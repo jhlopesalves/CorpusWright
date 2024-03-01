@@ -660,6 +660,150 @@ class ProcessingWorker(QRunnable):
         finally:
             self.signals.finished.emit()
 
+
+class FileManager:
+    def __init__(self):
+        self.documents = []
+
+    def add_files(self, file_paths):
+        new_documents = []
+        for path in file_paths:
+            normalized_path = os.path.normpath(path)
+            if not self.get_document_by_path(normalized_path):
+                doc = Document(normalized_path)
+                self.documents.append(doc)
+                new_documents.append(doc)
+        return new_documents
+
+    def add_directory(self, directory, signals, is_cancelled_callback):
+        new_documents = []
+        try:
+            candidate_paths = scan_supported_paths(directory)
+        except Exception as exc:
+            logging.error("Error scanning directory %s: %s", directory, exc)
+            candidate_paths = []
+
+        if not candidate_paths:
+            signals.update_progress.emit(0, 0, 0, None)
+            return []
+
+        total_files = len(candidate_paths)
+        start_time = time.time()
+        processed_files = 0
+
+        for raw_path in candidate_paths:
+            if is_cancelled_callback():
+                signals.update_progress.emit(
+                    processed_files, total_files, 0, "Operation cancelled."
+                )
+                return []
+
+            normalized_path = os.path.normpath(raw_path)
+            if self.get_document_by_path(normalized_path):
+                continue
+
+            try:
+                doc = Document(normalized_path)
+                self.documents.append(doc)
+                new_documents.append(doc)
+                processed_files += 1
+                elapsed_time = time.time() - start_time
+                estimated_remaining_time = (
+                    (elapsed_time / processed_files) * (total_files - processed_files)
+                    if processed_files > 0
+                    else 0
+                )
+                signals.update_progress.emit(
+                    processed_files,
+                    total_files,
+                    estimated_remaining_time,
+                    None,
+                )
+            except OSError as e:
+                signals.update_progress.emit(
+                    processed_files, total_files, 0, f"OS error: {str(e)}"
+                )
+            except Exception as e:
+                signals.update_progress.emit(
+                    processed_files,
+                    total_files,
+                    0,
+                    f"Unexpected error: {str(e)}",
+                )
+        return new_documents
+
+    def remove_files(self, file_paths):
+        self.documents = [doc for doc in self.documents if doc.file_path not in file_paths]
+
+    def clear_files(self):
+        self.documents.clear()
+
+    def get_files(self):
+        return self.documents
+
+    def get_document_by_path(self, path):
+        for doc in self.documents:
+            if doc.file_path == path:
+                return doc
+        return None
+
+    def get_total_size(self):
+        return sum(os.path.getsize(doc.file_path) for doc in self.documents)
+
+
+class FileListWidget(QListWidget):
+    files_added = Signal(list)
+    files_removed = Signal(list)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.setSelectionMode(QListWidget.ExtendedSelection)
+        self.setDragDropMode(QListWidget.InternalMove)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+            links = []
+            for url in event.mimeData().urls():
+                file_path = os.path.normpath(url.toLocalFile())
+                if is_supported_document_path(file_path):
+                    links.append(file_path)
+            if links:
+                self.addItems(links)
+                self.files_added.emit(links)
+        else:
+            super().dropEvent(event)
+            source_row = self.currentRow()
+            destination_row = self.row(self.itemAt(event.position().toPoint()))
+            if source_row != destination_row:
+                item = self.takeItem(source_row)
+                self.insertItem(destination_row, item)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Delete:
+            selected_items = self.selectedItems()
+            for item in selected_items:
+                self.takeItem(self.row(item))
+            self.files_removed.emit([item.text() for item in selected_items])
+        else:
+            super().keyPressEvent(event)
+
+
 class ThemeManager:
     def __init__(self):
         self.dark_theme = True
@@ -794,3 +938,554 @@ class ThemeManager:
     def update_color(self, color_key, color_value):
         if color_key in self.custom_colors:
             self.custom_colors[color_key] = color_value
+
+
+class AdvancedPatternBuilder(QWizard):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Advanced Pattern Builder")
+        self.setWizardStyle(QWizard.ModernStyle)
+        self.setMinimumSize(700, 500)
+        self.addPage(self.createPatternPage())
+        self.addPage(self.createPreviewPage())
+
+    def createPatternPage(self):
+        page = QWizardPage()
+        page.setTitle("Define Patterns")
+        layout = QVBoxLayout()
+        self.pattern_table = QTableWidget()
+        self.pattern_table.setColumnCount(4)
+        self.pattern_table.setHorizontalHeaderLabels(
+            ["Start Condition", "End Condition Type", "End Condition", "Number Length"]
+        )
+        self.pattern_table.horizontalHeader().setStretchLastSection(False)
+        self.pattern_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        header = self.pattern_table.horizontalHeader()
+        for i in range(4):
+            header.setSectionResizeMode(i, QHeaderView.Stretch)
+        layout.addWidget(self.pattern_table)
+        add_button = QPushButton("Create Pattern")
+        add_button.clicked.connect(self.addPattern)
+        layout.addWidget(add_button)
+        options_layout = QHBoxLayout()
+        self.case_sensitive = QCheckBox("Case sensitive")
+        options_layout.addWidget(self.case_sensitive)
+        self.whole_words = QCheckBox("Match whole words only")
+        options_layout.addWidget(self.whole_words)
+        options_layout.addStretch()
+        layout.addLayout(options_layout)
+        page.setLayout(layout)
+        return page
+
+    def createPreviewPage(self):
+        page = QWizardPage()
+        page.setTitle("Preview and Test")
+        layout = QVBoxLayout()
+        self.pattern_preview = QPlainTextEdit()
+        self.pattern_preview.setReadOnly(True)
+        layout.addWidget(QLabel("Pattern Preview:"))
+        layout.addWidget(self.pattern_preview)
+        self.explanation = QLabel()
+        self.explanation.setWordWrap(True)
+        layout.addWidget(QLabel("Explanation:"))
+        layout.addWidget(self.explanation)
+        self.test_input = QTextEdit()
+        self.test_input.setPlaceholderText("Enter test text here")
+        layout.addWidget(QLabel("Test your pattern:"))
+        layout.addWidget(self.test_input)
+        self.test_button = QPushButton("Test Pattern")
+        self.test_button.clicked.connect(self.testPattern)
+        layout.addWidget(self.test_button)
+        page.setLayout(layout)
+        return page
+
+    def addPattern(self):
+        row_position = self.pattern_table.rowCount()
+        self.pattern_table.insertRow(row_position)
+        start_edit = QLineEdit()
+        self.pattern_table.setCellWidget(row_position, 0, start_edit)
+        end_type_combo = QComboBox()
+        end_type_combo.addItems(["Single Number", "Multiple Numbers", "Specific Sequence"])
+        self.pattern_table.setCellWidget(row_position, 1, end_type_combo)
+        end_type_combo.currentIndexChanged.connect(
+            lambda index, row=row_position: self.updateEndCondition(row, index)
+        )
+        end_edit = QLineEdit()
+        self.pattern_table.setCellWidget(row_position, 2, end_edit)
+        number_length_edit = QLineEdit()
+        number_length_validator = QIntValidator(1, 100, self)
+        number_length_edit.setValidator(number_length_validator)
+        number_length_edit.setEnabled(False)
+        self.pattern_table.setCellWidget(row_position, 3, number_length_edit)
+
+    def updateEndCondition(self, row, index):
+        end_edit = self.pattern_table.cellWidget(row, 2)
+        number_length_edit = self.pattern_table.cellWidget(row, 3)
+        if index == 0:
+            end_edit.setEnabled(True)
+            end_edit.setValidator(QIntValidator(0, 9, self))
+            number_length_edit.setEnabled(False)
+        elif index == 1:
+            end_edit.setEnabled(False)
+            number_length_edit.setEnabled(True)
+        elif index == 2:
+            end_edit.setEnabled(True)
+            end_edit.setValidator(None)
+            number_length_edit.setEnabled(False)
+
+    def getPatternData(self):
+        pattern_data = []
+        for row in range(self.pattern_table.rowCount()):
+            start = self.pattern_table.cellWidget(row, 0).text().strip()
+            end_type = self.pattern_table.cellWidget(row, 1).currentText()
+            end = self.pattern_table.cellWidget(row, 2).text().strip()
+            number_length = self.pattern_table.cellWidget(row, 3).text().strip()
+            if start and end:
+                pattern_data.append(
+                    {
+                        "start": start,
+                        "end_type": end_type,
+                        "end": end,
+                        "number_length": number_length,
+                    }
+                )
+        return pattern_data
+
+    def updatePattern(self):
+        try:
+            pattern_data = self.getPatternData()
+            patterns = []
+            for data in pattern_data:
+                start = re.escape(data["start"])
+                if data["end_type"] == "Single Number":
+                    end = r"\d"
+                    pattern = rf"{start}.*?{end}"
+                elif data["end_type"] == "Multiple Numbers":
+                    if not data["number_length"].isdigit():
+                        raise ValueError(
+                            "Number Length must be a positive integer for Multiple Numbers."
+                        )
+                    end = r"\d{" + data["number_length"] + "}"
+                    pattern = rf"{start}.*?{end}"
+                else:  # Specific Sequence
+                    end = re.escape(data["end"])
+                    pattern = rf"{start}.*?{end}"
+                patterns.append(pattern)
+            final_pattern = "|".join(patterns)
+            if self.whole_words.isChecked():
+                final_pattern = rf"\b({final_pattern})\b"
+            flags = re.DOTALL | (0 if self.case_sensitive.isChecked() else re.IGNORECASE)
+            self.final_pattern = re.compile(final_pattern, flags)
+            self.pattern_preview.setPlainText(final_pattern)
+            self.explanation.setText(f"This pattern will match: {', '.join(patterns)}")
+            logging.debug(f"Final regex pattern: {final_pattern} with flags: {flags}")
+        except re.error as e:
+            ErrorHandler.show_error(
+                f"The entered pattern is invalid:\n{str(e)}", "Invalid Pattern", self
+            )
+            logging.error(f"Invalid regex pattern: {str(e)}")
+        except ValueError as ve:
+            ErrorHandler.show_error(str(ve), "Invalid Input", self)
+            logging.error(f"Invalid input for pattern: {str(ve)}")
+
+    def testPattern(self):
+        self.updatePattern()
+        text = self.test_input.toPlainText()
+        if not hasattr(self, "final_pattern") or not self.final_pattern:
+            ErrorHandler.show_error(
+                "Please define a valid pattern first.", "No Pattern Defined", self
+            )
+            return
+        try:
+            matches = list(self.final_pattern.finditer(text))
+            cursor = self.test_input.textCursor()
+            text_format = QTextCharFormat()
+            text_format.setBackground(Qt.yellow)
+            cursor.beginEditBlock()
+            cursor.select(QTextCursor.Document)
+            cursor.setCharFormat(QTextCharFormat())
+            cursor.clearSelection()
+            for match in matches:
+                cursor.setPosition(match.start())
+                cursor.setPosition(match.end(), QTextCursor.KeepAnchor)
+                cursor.setCharFormat(text_format)
+            cursor.endEditBlock()
+            if not matches:
+                ErrorHandler.show_warning(
+                    "The pattern did not match any text in the sample.",
+                    "No Matches Found",
+                    self,
+                )
+            else:
+                ErrorHandler.show_warning(f"Found {len(matches)} matches.", "Matches Found", self)
+        except Exception as e:
+            ErrorHandler.show_error(
+                f"An error occurred while testing the pattern:\n{str(e)}",
+                "Error Testing Pattern",
+                self,
+            )
+            logging.error(f"Error testing pattern: {str(e)}")
+
+    def getPattern(self):
+        self.updatePattern()
+        return self.final_pattern
+
+
+class RegexHighlighter(QSyntaxHighlighter):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.formats = {
+            "meta_char": QTextCharFormat(),
+            "quantifier": QTextCharFormat(),
+            "grouping": QTextCharFormat(),
+            "character_class": QTextCharFormat(),
+            "escaped_char": QTextCharFormat(),
+            "literal": QTextCharFormat(),
+        }
+        self.formats["meta_char"].setForeground(QColor("#C586C0"))
+        self.formats["quantifier"].setForeground(QColor("#D16969"))
+        self.formats["grouping"].setForeground(QColor("#4EC9B0"))
+        self.formats["character_class"].setForeground(QColor("#DCDCAA"))
+        self.formats["escaped_char"].setForeground(QColor("#9CDCFE"))
+        self.formats["literal"].setForeground(QColor("#FFFFFF"))
+
+    def highlightBlock(self, text):
+        index = 0
+        while index < len(text):
+            char = text[index]
+            if char == "\\" and index + 1 < len(text):
+                self.setFormat(index, 2, self.formats["escaped_char"])
+                index += 2
+                continue
+            if char in ".^$|?*+(){}[]":
+                if char in "(){}[]":
+                    self.setFormat(index, 1, self.formats["grouping"])
+                elif char in "?*+":
+                    self.setFormat(index, 1, self.formats["quantifier"])
+                else:
+                    self.setFormat(index, 1, self.formats["meta_char"])
+                index += 1
+                continue
+            self.setFormat(index, 1, self.formats["literal"])
+            index += 1
+
+
+class ParametersDialog(QDialog):
+    def __init__(self, current_parameters, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Processing Parameters")
+
+        # Set optimal dimensions
+        self.setMinimumSize(450, 300)  # Wider to show tabs, shorter height
+        self.setMaximumSize(600, 500)  # Prevent dialog from getting too large
+
+        # Create main layout with reduced margins
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)  # Reduce outer margins
+        layout.setSpacing(5)  # Reduce spacing between elements
+
+        # Initialize parameters
+        self.parameters = current_parameters.copy()
+        self.pattern_data = self.parameters.get("pattern_data", [])
+
+        # Descriptions for tooltips
+        self.descriptions = {
+            # Basic Cleanup
+            "remove_page_numbers": "Delete standalone page numbers that are isolated on their own lines within the text.",
+            "remove_roman_page_numbers": "Remove standalone Roman numeral page numbers that appear on their own lines.",
+            "remove_page_indicators": "Remove occurrences of page indicators like 'Page xvi', 'pag. xvi', considering different capitalizations and abbreviations.",
+            "remove_page_delimiters": "Remove page delimiter markers (e.g., '--- Page 123 ---') that are created by the PDF converter.",
+            "normalize_spacing": "Adjust spacing to ensure consistent formatting throughout the text.",
+            "remove_break_lines": "Join all line breaks into a single continuous text.",
+            "normalize_line_breaks": "Fix irregular line breaks and remove scattered characters from PDF-to-text conversions.",
+            # Text Transformation
+            "lowercase": "Convert all text to lowercase characters.",
+            "normalize_unicode": "Standardize text encoding to ensure consistency.",
+            "remove_diacritics": "Replace diacritical marks (accents) from characters (e.g., 'João' becomes 'Joao').",
+            "word_tokenization": "Split the text into individual words (tokens) for analysis.",
+            "remove_stop_words": "Eliminate common words (prepositions, articles, etc.) that typically don't carry significant meaning.",
+            # Character Sets
+            "remove_greek": "Remove all Greek alphabet characters from the text.",
+            "remove_cyrillic": "Remove all Cyrillic alphabet characters from the text.",
+            "remove_super_sub_script": "Remove superscript and subscript characters.",
+            "strip_html": "Remove any HTML markup tags from the text.",
+            # Advanced
+            "remove_bibliographical_references": "Remove citations like (Author 1994) from the text.",
+        }
+
+        # Create Tabs
+        tabs = QTabWidget()
+
+        # Basic Cleanup Tab
+        basic_tab = QWidget()
+        basic_layout = QVBoxLayout(basic_tab)
+        basic_options = [
+            ("remove_page_delimiters", "Remove Page Delimiters (--- Page X ---)"),
+            ("remove_page_numbers", "Remove Page Numbers"),
+            ("remove_roman_page_numbers", "Remove Roman Numeral Page Numbers"),
+            ("remove_page_indicators", "Remove Page Indicators (e.g., 'Page xvi')"),
+            ("normalize_spacing", "Normalize Spacing"),
+            ("remove_break_lines", "Join Break Lines"),
+            ("normalize_line_breaks", "Normalize Line Breaks"),
+        ]
+
+        self.add_options_to_layout(basic_layout, basic_options)
+        tabs.addTab(basic_tab, "Basic Cleanup")
+
+        # Text Transformation Tab
+        transform_tab = QWidget()
+        transform_layout = QVBoxLayout(transform_tab)
+        transform_options = [
+            ("lowercase", "Apply Lowercase"),
+            ("normalize_unicode", "Normalize Unicode"),
+            ("remove_diacritics", "Diacritic Replacement"),
+            ("word_tokenization", "Word Tokenization"),
+            ("remove_stop_words", "Remove Stop Words"),
+        ]
+        self.add_options_to_layout(transform_layout, transform_options)
+        tabs.addTab(transform_tab, "Text Transformation")
+
+        # Character Sets Tab
+        charset_tab = QWidget()
+        charset_layout = QVBoxLayout(charset_tab)
+        charset_options = [
+            ("remove_greek", "Remove Greek letters"),
+            ("remove_cyrillic", "Remove Cyrillic Script"),
+            ("remove_super_sub_script", "Remove Superscript and Subscript Characters"),
+            ("strip_html", "Strip HTML tags"),
+        ]
+        self.add_options_to_layout(charset_layout, charset_options)
+        tabs.addTab(charset_tab, "Character Sets")
+
+        # Advanced Tab
+        advanced_tab = QWidget()
+        advanced_layout = QVBoxLayout(advanced_tab)
+
+        # Regex Pattern Builder
+        regex_button = QPushButton("Define Patterns with Regex")
+        regex_button.clicked.connect(self.open_regex_dialog)
+        advanced_layout.addWidget(regex_button)
+
+        self.regex_display = QPlainTextEdit()
+        self.regex_display.setReadOnly(True)
+        self.regex_display.setPlainText(self.parameters.get("regex_pattern") or "None")
+        self.regex_display.setFont(QFont("Courier New", 10))
+        self.regex_highlighter = RegexHighlighter(self.regex_display.document())
+
+        advanced_layout.addWidget(QLabel("Current pattern:"))
+        advanced_layout.addWidget(self.regex_display)
+
+        # Character Selection Button
+        char_remove_button = QPushButton("Select Characters or Sequences to Remove")
+        char_remove_button.clicked.connect(self.open_char_selection)
+        advanced_layout.addWidget(char_remove_button)
+
+        # **Define self.char_list instead of self.char_list_widget**
+        self.char_list = QListWidget()
+        self.update_char_list()  # No arguments needed now
+        advanced_layout.addWidget(QLabel("Selected items:"))
+        advanced_layout.addWidget(self.char_list)
+
+        # Additional Advanced Options
+        advanced_options = [
+            ("remove_bibliographical_references", "Remove Bibliographical References")
+        ]
+        self.add_options_to_layout(advanced_layout, advanced_options)
+
+        tabs.addTab(advanced_tab, "Advanced")
+
+        layout.addWidget(tabs)
+
+        # Dialog Buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        # Initialize Checkboxes based on parameters
+        self.update_checkboxes()
+
+    def add_options_to_layout(self, layout, options):
+        for key, label in options:
+            h_layout = QHBoxLayout()
+
+            checkbox = QCheckBox(label)
+            checkbox.setChecked(self.parameters.get(key, False))
+            checkbox.stateChanged.connect(
+                lambda state, k=key: self.parameters.update({k: bool(state)})
+            )
+
+            if key in self.descriptions:
+                checkbox.setToolTip(self.descriptions[key])
+
+                info_button = QToolButton()
+                info_button.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxInformation))
+                info_button.setToolTip(self.descriptions[key])
+                info_button.setFixedSize(16, 16)
+                info_button.setStyleSheet(
+                    "QToolButton { border: none; background-color: transparent; }"
+                )
+
+                h_layout.addWidget(checkbox)
+                h_layout.addWidget(info_button)
+                h_layout.addStretch()
+            else:
+                h_layout.addWidget(checkbox)
+                h_layout.addStretch()
+
+            layout.addLayout(h_layout)
+
+        layout.addStretch()
+
+    def open_regex_dialog(self):
+        dialog = AdvancedPatternBuilder(self)
+        if self.pattern_data:
+            for row_data in self.pattern_data:
+                dialog.addPattern()
+                row_position = dialog.pattern_table.rowCount() - 1
+                dialog.pattern_table.cellWidget(row_position, 0).setText(row_data["start"])
+                dialog.pattern_table.cellWidget(row_position, 1).setCurrentText(
+                    row_data["end_type"]
+                )
+                dialog.pattern_table.cellWidget(row_position, 2).setText(row_data["end"])
+                dialog.pattern_table.cellWidget(row_position, 3).setText(
+                    row_data["number_length"]
+                )
+        if dialog.exec():
+            pattern = dialog.getPattern()
+            if pattern:
+                try:
+                    re.compile(pattern.pattern)
+                    self.parameters["regex_pattern"] = pattern.pattern
+                    self.regex_display.setPlainText(pattern.pattern)
+                    self.pattern_data = dialog.getPatternData()
+                    self.parameters["pattern_data"] = self.pattern_data
+                except re.error as e:
+                    ErrorHandler.show_error(
+                        f"The entered pattern is invalid:\n{str(e)}",
+                        "Invalid Pattern",
+                        self,
+                    )
+                    logging.error(f"Invalid regex pattern: {str(e)}")
+
+    def open_char_selection(self):
+        dialog = CharacterSelectionDialog(self.parameters.get("chars_to_remove", []), self)
+        if dialog.exec():
+            self.parameters["chars_to_remove"] = dialog.get_selected_chars()
+            self.update_char_list()
+
+    def update_char_list(self):
+        # Fetch the latest characters or sequences to remove
+        chars_to_remove = self.parameters.get("chars_to_remove", [])
+        self.char_list.clear()
+        for item in chars_to_remove:
+            list_item = QListWidgetItem(item)
+            self.char_list.addItem(list_item)
+
+    def update_checkboxes(self):
+        for checkbox in self.findChildren(QCheckBox):
+            key = next(
+                (
+                    k
+                    for k, v in [
+                        ("remove_page_numbers", "Remove Page Numbers"),
+                        (
+                            "remove_roman_page_numbers",
+                            "Remove Roman Numeral Page Numbers",
+                        ),
+                        (
+                            "remove_page_indicators",
+                            "Remove Page Indicators (e.g., 'Page xvi')",
+                        ),
+                        (
+                            "remove_page_delimiters",
+                            "Remove Page Delimiters (--- Page X ---)",
+                        ),
+                        (
+                            "remove_bibliographical_references",
+                            "Remove Bibliographical References",
+                        ),
+                        ("remove_greek", "Remove Greek letters"),
+                        ("remove_cyrillic", "Remove Cyrillic Script"),
+                        (
+                            "remove_super_sub_script",
+                            "Remove Superscript and Subscript Characters",
+                        ),
+                        ("remove_diacritics", "Diacritic Replacement"),
+                        ("strip_html", "Strip HTML tags"),
+                        ("lowercase", "Apply Lowercase"),
+                        ("normalize_spacing", "Normalize Spacing"),
+                        ("remove_stop_words", "Remove Stop Words"),
+                        ("word_tokenization", "Word Tokenization"),
+                        ("normalize_unicode", "Normalize Unicode"),
+                        ("normalize_line_breaks", "Normalize Line Breaks"),
+                        ("remove_break_lines", "Join Break Lines"),
+                    ]
+                    if v == checkbox.text()
+                ),
+                None,
+            )
+            if key:
+                checkbox.setChecked(self.parameters.get(key, False))
+
+    def get_parameters(self):
+        return self.parameters
+
+
+class CharacterSelectionDialog(QDialog):
+    def __init__(self, current_chars, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select Characters or Sequences to Remove")
+        self.setMinimumSize(400, 300)
+        layout = QVBoxLayout(self)
+        self.selected_chars = list(current_chars)
+        input_layout = QHBoxLayout()
+        self.char_input = QLineEdit()
+        self.char_input.setPlaceholderText("Enter characters or sequences to remove")
+        input_layout.addWidget(self.char_input)
+        include_button = QPushButton("Include")
+        include_button.clicked.connect(self.add_chars)
+        include_button.setDefault(True)
+        input_layout.addWidget(include_button)
+        layout.addLayout(input_layout)
+        self.char_list = QListWidget()
+        self.update_char_list(self.selected_chars)  # Correct attribute
+        layout.addWidget(QLabel("Items to remove:"))
+        layout.addWidget(self.char_list)
+        delete_button = QPushButton("Delete Selected")
+        delete_button.clicked.connect(self.delete_selected)
+        layout.addWidget(delete_button)
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        layout.addWidget(button_box)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        ok_button = button_box.button(QDialogButtonBox.Ok)
+        if ok_button:
+            ok_button.setAutoDefault(False)
+            ok_button.setDefault(False)
+        cancel_button = button_box.button(QDialogButtonBox.Cancel)
+        if cancel_button:
+            cancel_button.setAutoDefault(False)
+            cancel_button.setDefault(False)
+        self.char_input.returnPressed.connect(self.add_chars)
+
+    def add_chars(self):
+        new_item = self.char_input.text().strip()
+        if new_item and new_item not in self.selected_chars:
+            self.selected_chars.append(new_item)
+            self.update_char_list(self.selected_chars)  # Use correct attribute
+        self.char_input.clear()
+
+    def update_char_list(self, chars_to_remove):
+        self.char_list.clear()  # Correct attribute name
+        for item in chars_to_remove:
+            list_item = QListWidgetItem(item)
+            self.char_list.addItem(list_item)
+
+    def delete_selected(self):
+        for item in self.char_list.selectedItems():
+            self.selected_chars.remove(item.text())
+        self.update_char_list(self.selected_chars)
+
+    def get_selected_chars(self):
+        return self.selected_chars
