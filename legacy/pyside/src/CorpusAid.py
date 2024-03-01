@@ -271,6 +271,73 @@ class LowercaseModule(PreprocessingModule):
         return text.lower()
 
 
+class TokenBasedModule(PreprocessingModule):
+    def __init__(self):
+        self.nlp = get_spacy_model()
+
+    def process_tokens(self, tokens):
+        raise NotImplementedError
+
+    def process(self, text_or_tokens):
+        if isinstance(text_or_tokens, str):
+            doc = self.nlp(text_or_tokens)
+            tokens = [token.text for token in doc]
+        else:
+            tokens = text_or_tokens
+        return self.process_tokens(tokens)
+
+
+class RegexSubstitutionModule(PreprocessingModule):
+    def __init__(self, pattern, replacement=""):
+        try:
+            self.pattern = re.compile(pattern, re.DOTALL)
+            logging.debug(f"Compiled regex pattern: {pattern}")
+        except re.error as e:
+            logging.error(f"Invalid regex pattern: {pattern}\nError: {str(e)}")
+            ErrorHandler.show_error(
+                f"The entered regex pattern is invalid:\n{str(e)}",
+                "Invalid Regex Pattern",
+                parent=None,
+            )
+            self.pattern = None
+        self.replacement = replacement
+
+    def process(self, text):
+        if self.pattern:
+            new_text, count = self.pattern.subn(self.replacement, text)
+            if count > 0:
+                logging.debug(
+                    f"Applied pattern: '{self.pattern.pattern}' - {count} replacements made."
+                )
+            return new_text
+        return text
+
+
+class WordTokenizationModule(TokenBasedModule):
+    def process(self, text):
+        doc = self.nlp(text)
+        tokens = [token.text for token in doc]
+        return " ".join(tokens)
+
+
+class StopWordRemovalModule(TokenBasedModule):
+    def __init__(self):
+        super().__init__()
+        from spacy.lang.en.stop_words import STOP_WORDS
+
+        self.stop_words = set(STOP_WORDS)
+
+    def process_tokens(self, tokens):
+        return [word for word in tokens if word.lower() not in self.stop_words]
+
+
+class HTMLStripperModule(PreprocessingModule):
+    def process(self, text):
+        from bs4 import BeautifulSoup
+
+        return BeautifulSoup(text, "html.parser").get_text()
+
+
 class DiacriticRemovalModule(PreprocessingModule):
     def process(self, text):
         return "".join(
@@ -320,6 +387,278 @@ class PreprocessingPipeline:
             if isinstance(text, list):
                 text = " ".join(text)
         return text.strip()
+
+
+class Document:
+    def __init__(self, file_path):
+        self.file_path = os.path.normpath(file_path)
+        self._original_text = None
+        self._processed_text = None
+        self._document_type = None
+        self._extraction_method = None
+        self._extraction_warnings = []
+        self._extraction_metadata = {}
+        self.is_modified = False
+        self.history = []
+        self.history_index = -1
+
+    def load_original_text(self):
+        if self._original_text is not None:
+            return self._original_text
+
+        extracted_document = load_extracted_document(self.file_path)
+        if extracted_document is None:
+            self._original_text = ""
+        else:
+            _log_ingestion_warnings(self.file_path, extracted_document.warnings)
+            self._cache_extracted_document(extracted_document)
+
+        if self._processed_text is None:
+            self._processed_text = self._original_text
+        if not self.history:
+            self.history = [self._processed_text]
+            self.history_index = 0
+
+        return self._original_text
+
+    def _cache_extracted_document(self, extracted_document):
+        self._original_text = extracted_document.text
+        self._document_type = extracted_document.document_type
+        self._extraction_method = extracted_document.extraction_method
+        self._extraction_warnings = list(extracted_document.warnings)
+        self._extraction_metadata = dict(extracted_document.metadata)
+
+    def ensure_extraction_metadata(self):
+        if self._extraction_method is not None and self._original_text is not None:
+            return
+
+        extracted_document = load_extracted_document(self.file_path)
+        if extracted_document is None:
+            if self._original_text is None:
+                self._original_text = ""
+            return
+
+        _log_ingestion_warnings(self.file_path, extracted_document.warnings)
+        existing_processed_text = self._processed_text
+        self._cache_extracted_document(extracted_document)
+        if existing_processed_text is not None:
+            self._processed_text = existing_processed_text
+
+    @property
+    def original_text(self):
+        return self.load_original_text()
+
+    @property
+    def processed_text(self):
+        if self._processed_text is None:
+            self._processed_text = self.load_original_text()
+        return self._processed_text
+
+    @staticmethod
+    def _truncate_text(text, limit):
+        if limit is None or limit <= 0:
+            return text, False
+        if len(text) > limit:
+            return text[:limit], True
+        return text, False
+
+    def get_original_preview(self, limit):
+        if self._original_text is not None:
+            return self._truncate_text(self._original_text, limit)
+
+        if limit is None or limit <= 0:
+            return self.original_text, False
+
+        preview_text, truncated = load_extracted_preview(self.file_path, limit)
+
+        if not truncated:
+            # Cache the full content since it fits within the preview limit
+            self._original_text = preview_text
+            if self._processed_text is None:
+                self._processed_text = preview_text
+            if not self.history:
+                self.history = [preview_text]
+                self.history_index = 0
+
+        return preview_text, truncated
+
+    def get_processed_preview(self, limit):
+        if self._processed_text is None:
+            return self.get_original_preview(limit)
+        if limit is None or limit <= 0:
+            return self.processed_text, False
+        return self._truncate_text(self._processed_text, limit)
+
+    def update_processed_text(self, new_text):
+        if new_text != self.processed_text:
+            self._processed_text = new_text
+            self.is_modified = True
+            if self.history_index < len(self.history) - 1:
+                self.history = self.history[: self.history_index + 1]
+            self.history.append(self._processed_text)
+            self.history_index += 1
+
+    def undo(self):
+        if self.history_index > 0:
+            self.history_index -= 1
+            self._processed_text = self.history[self.history_index]
+            self.is_modified = self._processed_text != self.original_text
+            logging.debug(f"Undo performed. Current history index: {self.history_index}")
+
+    def redo(self):
+        if self.history_index < len(self.history) - 1:
+            self.history_index += 1
+            self._processed_text = self.history[self.history_index]
+            self.is_modified = self._processed_text != self.original_text
+            logging.debug(f"Redo performed. Current history index: {self.history_index}")
+
+
+class DocumentProcessor:
+    default_parameters = {
+        "remove_break_lines": False,
+        "lowercase": False,
+        "chars_to_remove": [],
+        "word_tokenization": False,
+        "remove_stop_words": False,
+        "regex_pattern": "",
+        "strip_html": False,
+        "remove_diacritics": False,
+        "remove_greek": False,
+        "remove_cyrillic": False,
+        "remove_super_sub_script": False,
+        "remove_roman_page_numbers": False,
+        "remove_page_indicators": False,
+        "remove_page_numbers": False,
+        "remove_page_delimiters": False,
+        "remove_bibliographical_references": False,
+        "normalize_spacing": False,
+        "normalize_unicode": False,
+        "normalize_line_breaks": False,
+    }
+
+    def __init__(self):
+        self.parameters = copy.deepcopy(self.default_parameters)
+        self.update_pipeline()
+
+    def set_parameters(self, parameters):
+        try:
+            if "regex_pattern" in parameters and parameters["regex_pattern"]:
+                re.compile(parameters["regex_pattern"])
+            if "chars_to_remove" in parameters:
+                if not isinstance(parameters["chars_to_remove"], list):
+                    raise ValueError("chars_to_remove must be a list of strings")
+                for item in parameters["chars_to_remove"]:
+                    if not isinstance(item, str):
+                        raise ValueError("All items in chars_to_remove must be strings")
+            sanitized_parameters = copy.deepcopy(parameters)
+            self.parameters.update(sanitized_parameters)
+            self.update_pipeline()
+            logging.debug(f"Updated parameters: {self.parameters}")
+        except re.error as e:
+            logging.error(f"Invalid regex pattern: {e}")
+            ErrorHandler.show_error(
+                f"The entered regex pattern is invalid:\n{str(e)}",
+                "Invalid Regex Pattern",
+                parent=None,
+            )
+        except ValueError as e:
+            logging.error(f"Parameter validation error: {e}")
+            ErrorHandler.show_error(str(e), "Parameter Error", parent=None)
+
+    def reset_parameters(self):
+        self.parameters = copy.deepcopy(self.default_parameters)
+        self.update_pipeline()
+
+    def update_pipeline(self):
+        self.pipeline = PreprocessingPipeline()
+
+        # **1. Normalization Modules**
+        if self.parameters["normalize_unicode"]:
+            self.pipeline.add_module(UnicodeNormalizationModule())
+        if self.parameters["remove_diacritics"]:
+            self.pipeline.add_module(DiacriticRemovalModule())
+        if self.parameters["normalize_spacing"]:
+            self.pipeline.add_module(WhitespaceNormalizationModule())
+        if self.parameters["normalize_line_breaks"]:
+            self.pipeline.add_module(LineBreakNormalizationModule())
+        if self.parameters["remove_break_lines"]:
+            self.pipeline.add_module(LineBreakRemovalModule())
+
+        # **2. Removal Modules**
+        if self.parameters["chars_to_remove"]:
+            self.pipeline.add_module(CharacterFilterModule(self.parameters["chars_to_remove"]))
+        if self.parameters["remove_page_numbers"]:
+            self.pipeline.add_module(PageNumberRemovalModule())
+        if self.parameters["remove_roman_page_numbers"]:
+            self.pipeline.add_module(RomanPageNumberRemovalModule())
+        if self.parameters["remove_page_indicators"]:
+            self.pipeline.add_module(PageIndicatorRemovalModule())
+        if self.parameters["remove_page_delimiters"]:
+            self.pipeline.add_module(PageDelimiterRemovalModule())
+        if self.parameters["remove_bibliographical_references"]:
+            self.pipeline.add_module(BibliographicalReferenceRemovalModule())
+
+        # **3. Transformation Modules**
+        if self.parameters["lowercase"]:
+            self.pipeline.add_module(LowercaseModule())
+        if self.parameters["strip_html"]:
+            self.pipeline.add_module(HTMLStripperModule())
+
+        # **4. Tokenization and Filtering**
+        if self.parameters["word_tokenization"]:
+            self.pipeline.add_module(WordTokenizationModule())
+        if self.parameters["remove_stop_words"]:
+            self.pipeline.add_module(StopWordRemovalModule())
+
+        # **5. Character Set Removal**
+        if self.parameters["remove_greek"]:
+            self.pipeline.add_module(GreekLetterRemovalModule())
+        if self.parameters["remove_cyrillic"]:
+            self.pipeline.add_module(CyrillicRemovalModule())
+        if self.parameters["remove_super_sub_script"]:
+            categories_to_remove = {"No", "Sk"}
+            self.pipeline.add_module(UnicodeCategoryFilterModule(categories_to_remove))
+
+        # **6. Regex Substitution**
+        if self.parameters["regex_pattern"]:
+            self.pipeline.add_module(RegexSubstitutionModule(self.parameters["regex_pattern"]))
+
+        # **7. Final Normalizations (if any)**
+        # Removed redundant additions
+
+    def get_parameters(self):
+        return self.parameters
+
+    def process_file(self, text):
+        if not any(self.parameters.values()):
+            return text
+        processed_text = self.pipeline.process(text)
+        logging.debug("Processed text through pipeline.")
+        return processed_text.strip()
+
+
+class ProcessingWorker(QRunnable):
+    def __init__(self, processor, document, signals):
+        super().__init__()
+        self.processor = processor
+        self.document = document
+        self.signals = signals
+        self.setAutoDelete(True)
+
+    def run(self):
+        try:
+            start_time = time.time()
+            processed_text = self.processor.process_file(self.document.original_text)
+            processing_time = time.time() - start_time
+            self.signals.result.emit(
+                self.document, processed_text, processing_time
+            )  # 3 arguments
+        except Exception as e:
+            self.signals.error.emit(
+                self.document.file_path, f"Unexpected error during processing: {str(e)}"
+            )
+        finally:
+            self.signals.finished.emit()
 
 class ThemeManager:
     def __init__(self):
