@@ -1,0 +1,2 @@
+"""CorpusAid Python package."""
+
