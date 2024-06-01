@@ -120,6 +120,54 @@ class PlainTextExtractor:
         )
 
 
+class HtmlExtractor:
+    """Extractor for HTML documents."""
+
+    document_type = "html"
+    support_level = "stable"
+    supported_extensions = {".html", ".htm"}
+    can_overwrite_with_extracted_text = False
+
+    def supports(self, path: PathLike) -> bool:
+        return _coerce_path(path).suffix.lower() in self.supported_extensions
+
+    def extract(self, path: PathLike) -> ExtractedDocument:
+        source_path = _coerce_path(path)
+        if not self.supports(source_path):
+            raise UnsupportedDocumentTypeError(
+                f"Unsupported document type: {source_path.suffix or '<none>'}"
+            )
+
+        html_source, _decode_method, decode_warnings = _read_utf8_text(source_path)
+        metadata = _html_metadata(source_path, html_source)
+        warnings = list(decode_warnings)
+        text: Optional[str] = None
+        method = "python:html.parser"
+
+        if text is None:
+            text, parser_warnings = _extract_html_with_python(html_source)
+            warnings.extend(parser_warnings)
+
+        if not text.strip():
+            warnings.append(
+                ExtractionWarning(
+                    code="empty_html_extraction",
+                    message="HTML extraction produced no text",
+                )
+            )
+
+        return ExtractedDocument(
+            source_path=source_path,
+            text=text,
+            document_type=self.document_type,
+            extraction_method=method,
+            warnings=warnings,
+            metadata=_metadata_with_quality(
+                text, metadata, self.document_type, self.support_level
+            ),
+        )
+
+
 class DocumentIngestionService:
     """Registry that selects the first extractor supporting a path."""
 
@@ -338,3 +386,164 @@ def _metadata_with_quality(
     )
     metadata.update(quality_metadata)
     return metadata
+
+class _HtmlTextParser(HTMLParser):
+    block_tags = {
+        "address",
+        "article",
+        "aside",
+        "blockquote",
+        "br",
+        "dd",
+        "div",
+        "dl",
+        "dt",
+        "figcaption",
+        "footer",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "hr",
+        "li",
+        "main",
+        "nav",
+        "ol",
+        "p",
+        "pre",
+        "section",
+        "table",
+        "td",
+        "th",
+        "tr",
+        "ul",
+    }
+    skip_tags = {"script", "style", "noscript"}
+    void_tags = {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    }
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts: List[str] = []
+        self.title_parts: List[str] = []
+        self.open_tags: List[str] = []
+        self.skip_depth = 0
+        self.in_title = False
+        self.malformed = False
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in self.skip_tags:
+            self.skip_depth += 1
+            return
+        if self.skip_depth:
+            return
+        if tag == "title":
+            self.in_title = True
+            self.open_tags.append(tag)
+            return
+        if tag in self.block_tags:
+            self._append_boundary()
+        if tag not in self.void_tags:
+            self.open_tags.append(tag)
+
+    def handle_startendtag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in self.skip_tags:
+            return
+        if self.skip_depth:
+            return
+        if tag in self.block_tags:
+            self._append_boundary()
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in self.skip_tags:
+            self.skip_depth = max(0, self.skip_depth - 1)
+            return
+        if self.skip_depth:
+            return
+        if tag == "title":
+            self.in_title = False
+        if tag in self.open_tags:
+            while self.open_tags:
+                current = self.open_tags.pop()
+                if current == tag:
+                    break
+                self.malformed = True
+        else:
+            self.malformed = True
+        if tag in self.block_tags:
+            self._append_boundary()
+
+    def handle_data(self, data):
+        if self.skip_depth:
+            return
+        if self.in_title:
+            self.title_parts.append(data)
+            return
+        self.parts.append(data)
+
+    def close(self):
+        super().close()
+        if self.open_tags:
+            self.malformed = True
+
+    def _append_boundary(self):
+        if self.parts and self.parts[-1] != "\n":
+            self.parts.append("\n")
+
+
+def _extract_html_with_python(html_source: str) -> Tuple[str, List[ExtractionWarning]]:
+    parser = _HtmlTextParser()
+    parser.feed(html_source)
+    parser.close()
+
+    warnings = []
+    if parser.malformed:
+        warnings.append(
+            ExtractionWarning(
+                code="malformed_html_recovered",
+                message="Malformed HTML was recovered by the Python parser",
+            )
+        )
+
+    return _normalize_html_text(parser.parts), warnings
+
+
+def _html_metadata(path: Path, html_source: str) -> Dict[str, object]:
+    metadata = _text_metadata(path)
+    parser = _HtmlTextParser()
+    parser.feed(html_source)
+    parser.close()
+    title = _normalize_inline_text(" ".join(parser.title_parts))
+    if title:
+        metadata["title"] = title
+    return metadata
+
+
+def _normalize_html_text(parts: List[str]) -> str:
+    raw = "".join(parts)
+    lines = [_normalize_inline_text(line) for line in raw.splitlines()]
+    return "\n".join(line for line in lines if line).strip()
+
+
+def _normalize_inline_text(text: str) -> str:
+    return " ".join(text.split())

@@ -3,6 +3,7 @@
 from .extractors import (
     DocumentIngestionService,
     DocumentPreview,
+    HtmlExtractor,
     PlainTextExtractor,
     UnsupportedDocumentTypeError,
     can_overwrite_with_extracted_text,
@@ -30,6 +31,7 @@ __all__ = [
     "ExtractionFallbackPolicy",
     "ExtractionManifest",
     "ExtractionWarning",
+    "HtmlExtractor",
     "PlainTextExtractor",
     "UnsupportedDocumentTypeError",
     "can_overwrite_with_extracted_text",
