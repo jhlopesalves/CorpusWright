@@ -1,6 +1,7 @@
 """Document ingestion primitives for CorpusAid."""
 
 from .extractors import (
+    DocxExtractor,
     DocumentIngestionService,
     DocumentPreview,
     HtmlExtractor,
@@ -24,6 +25,7 @@ from .models import (
 
 __all__ = [
     "DocumentExtractor",
+    "DocxExtractor",
     "DocumentIngestionService",
     "DocumentPreview",
     "ExtractedDocument",
