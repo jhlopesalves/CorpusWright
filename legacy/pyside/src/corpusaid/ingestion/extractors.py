@@ -168,6 +168,54 @@ class HtmlExtractor:
         )
 
 
+class DocxExtractor:
+    """Extractor for Office Open XML ``.docx`` documents."""
+
+    document_type = "docx"
+    support_level = "experimental"
+    supported_extensions = {".docx"}
+    can_overwrite_with_extracted_text = False
+
+    def supports(self, path: PathLike) -> bool:
+        return _coerce_path(path).suffix.lower() in self.supported_extensions
+
+    def extract(self, path: PathLike) -> ExtractedDocument:
+        source_path = _coerce_path(path)
+        if not self.supports(source_path):
+            raise UnsupportedDocumentTypeError(
+                f"Unsupported document type: {source_path.suffix or '<none>'}"
+            )
+
+        metadata, package_warnings = _docx_package_metadata(source_path)
+        warnings = list(package_warnings)
+        text: Optional[str] = None
+        method = "python:zip+xml"
+
+
+        if text is None:
+            text, parser_warnings = _extract_docx_with_python(source_path)
+            warnings.extend(parser_warnings)
+
+        if not text.strip():
+            warnings.append(
+                ExtractionWarning(
+                    code="empty_docx_extraction",
+                    message="DOCX extraction produced no text",
+                )
+            )
+
+        return ExtractedDocument(
+            source_path=source_path,
+            text=text,
+            document_type=self.document_type,
+            extraction_method=method,
+            warnings=warnings,
+            metadata=_metadata_with_quality(
+                text, metadata, self.document_type, self.support_level
+            ),
+        )
+
+
 class DocumentIngestionService:
     """Registry that selects the first extractor supporting a path."""
 
@@ -547,3 +595,145 @@ def _normalize_html_text(parts: List[str]) -> str:
 
 def _normalize_inline_text(text: str) -> str:
     return " ".join(text.split())
+
+def _extract_docx_with_python(path: Path) -> Tuple[str, List[ExtractionWarning]]:
+    try:
+        with ZipFile(path) as archive:
+            try:
+                document_xml = archive.read("word/document.xml")
+            except KeyError as exc:
+                raise ValueError("Invalid DOCX file: missing word/document.xml") from exc
+    except BadZipFile as exc:
+        raise ValueError(f"Invalid DOCX file: {exc}") from exc
+
+    try:
+        root = ET.fromstring(document_xml)
+    except ET.ParseError as exc:
+        raise ValueError(f"Invalid DOCX XML in word/document.xml: {exc}") from exc
+
+    warnings: List[ExtractionWarning] = []
+    if _docx_has_tracked_changes(root):
+        warnings.append(
+            ExtractionWarning(
+                code="docx_tracked_changes_not_extracted",
+                message="Tracked changes were detected but not extracted separately",
+            )
+        )
+
+    paragraphs = []
+    body = root.find("w:body", _WORD_NAMESPACE)
+    if body is None:
+        return "", warnings
+
+    for child in body:
+        tag = _local_name(child.tag)
+        if tag == "p":
+            paragraph = _docx_paragraph_text(child)
+            if paragraph:
+                paragraphs.append(paragraph)
+        elif tag == "tbl":
+            paragraphs.extend(_docx_table_lines(child))
+
+    return "\n".join(paragraphs).strip(), warnings
+
+
+def _docx_package_metadata(path: Path) -> Tuple[Dict[str, object], List[ExtractionWarning]]:
+    metadata = _text_metadata(path)
+    warnings: List[ExtractionWarning] = []
+    try:
+        with ZipFile(path) as archive:
+            names = set(archive.namelist())
+    except BadZipFile as exc:
+        raise ValueError(f"Invalid DOCX file: {exc}") from exc
+
+    extra_parts = []
+    if "word/comments.xml" in names:
+        extra_parts.append("comments")
+    if "word/footnotes.xml" in names:
+        extra_parts.append("footnotes")
+    if "word/endnotes.xml" in names:
+        extra_parts.append("endnotes")
+    if any(name.startswith("word/header") and name.endswith(".xml") for name in names):
+        extra_parts.append("headers")
+    if any(name.startswith("word/footer") and name.endswith(".xml") for name in names):
+        extra_parts.append("footers")
+
+    if extra_parts:
+        metadata["unextracted_parts"] = extra_parts
+        warnings.append(
+            ExtractionWarning(
+                code="docx_unextracted_parts",
+                message="DOCX contains parts that are not extracted by current DOCX support",
+                details=", ".join(extra_parts),
+            )
+        )
+
+    metadata["has_tables"] = "word/document.xml" in names and _docx_archive_has_tag(
+        path, "tbl"
+    )
+    return metadata, warnings
+
+
+def _docx_archive_has_tag(path: Path, local_tag: str) -> bool:
+    try:
+        with ZipFile(path) as archive:
+            document_xml = archive.read("word/document.xml")
+    except (BadZipFile, KeyError):
+        return False
+
+    try:
+        root = ET.fromstring(document_xml)
+    except ET.ParseError:
+        return False
+
+    return root.find(f".//w:{local_tag}", _WORD_NAMESPACE) is not None
+
+
+def _docx_has_tracked_changes(root: ET.Element) -> bool:
+    for element in root.iter():
+        if _local_name(element.tag) in _TRACKED_CHANGE_TAGS:
+            return True
+    return False
+
+
+def _docx_table_lines(table: ET.Element) -> List[str]:
+    lines = []
+    for row in table.findall("w:tr", _WORD_NAMESPACE):
+        cells = []
+        for cell in row.findall("w:tc", _WORD_NAMESPACE):
+            cell_parts = []
+            for paragraph in cell.findall("w:p", _WORD_NAMESPACE):
+                paragraph_text = _docx_paragraph_text(paragraph)
+                if paragraph_text:
+                    cell_parts.append(paragraph_text)
+            cell_text = "\n".join(cell_parts).strip()
+            if cell_text:
+                cells.append(cell_text)
+        if cells:
+            lines.append(" | ".join(cells))
+    return lines
+
+
+def _docx_paragraph_text(paragraph: ET.Element) -> str:
+    parts: List[str] = []
+    for element in paragraph.iter():
+        tag = _local_name(element.tag)
+        if tag == "t" and element.text:
+            parts.append(element.text)
+        elif tag in {"tab"}:
+            parts.append("\t")
+        elif tag in {"br", "cr"}:
+            parts.append("\n")
+    return _normalize_docx_paragraph("".join(parts))
+
+
+def _normalize_docx_paragraph(text: str) -> str:
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    cleaned = "\n".join(line for line in lines if line)
+    return cleaned.strip()
+
+
+def _local_name(tag: str) -> str:
+    if "}" in tag:
+        return tag.rsplit("}", 1)[1]
+    return tag
