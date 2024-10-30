@@ -1760,3 +1760,553 @@ class CorpusPreviewWorker(QObject):
                 self.error.emit(self.token, str(exc))
 
 
+
+class PreprocessorGUI(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.version = "0.8"
+        self.file_manager = FileManager()
+        self.theme_manager = ThemeManager()
+        self.processor = DocumentProcessor()
+        self.signals = AppSignals()
+        self.base_path = os.path.dirname(os.path.abspath(__file__))
+        self.assets_path = os.path.join(self.base_path, "assets")
+        self.icon_path = resource_path(os.path.join("assets", "my_icon.ico"))
+        self.font_path = resource_path(os.path.join("assets", "fonts", "Roboto-Regular.ttf"))
+        self.current_file = None
+        self.corpus_name = "Untitled Corpus"
+        self.thread_pool = QThreadPool()
+        self.thread_pool.setMaxThreadCount(multiprocessing.cpu_count())
+        self.processed_results = []
+        self.errors = []
+        self.warnings = []
+        self.active_workers = 0
+        self.files_processed = 0
+        self.total_size = 0
+        self.total_time = 0
+        self.processed_size = 0
+        self.documentation_window = None
+        self.report_thread = QThread()
+        self.report_worker = None
+        self.lock = Lock()
+        self.previous_search_term = ""
+        self.previous_text_edit = None
+        self.document_loader_thread = None
+        self.document_loader_worker = None
+        self.document_request_token = 0
+        self._active_loading_token = None
+        self._busy_cursor_depth = 0
+        self.init_ui()
+
+    def init_ui(self):
+        logging.info("Starting init_ui")
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setWindowTitle("CorpusAid")
+        self.setGeometry(100, 100, 1200, 800)
+        self.setFont(QFont("Roboto", 10))
+        icon_path = resource_path("assets/my_icon.ico")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+        self.create_menu_bar()
+        self.create_toolbar()
+        self.setup_central_widget()
+        self.setup_status_bar()
+        self.search_input.returnPressed.connect(self.search_text)
+        self.prev_button.clicked.connect(self.go_to_previous_occurrence)
+        self.next_button.clicked.connect(self.go_to_next_occurrence)
+        self.text_tabs.currentChanged.connect(self.on_tab_changed)
+        self.processed_text.customContextMenuRequested.connect(
+            self.show_processed_text_context_menu
+        )
+        self.signals.update_progress.connect(self.update_progress)
+        self.signals.result.connect(self.handle_result)
+        self.signals.error.connect(self.handle_error)
+        self.signals.warning.connect(self.handle_warning)
+        self.signals.finished.connect(self.on_all_workers_finished)
+        # self.signals.processing_complete.connect(self.display_report)
+        self.apply_theme()
+        self.showMaximized()
+        QTimer.singleShot(1000, lambda: self.check_for_updates(manual_trigger=False))
+
+    def _set_busy_cursor(self, enable):
+        if enable:
+            self._busy_cursor_depth += 1
+            if self._busy_cursor_depth == 1:
+                QApplication.setOverrideCursor(Qt.WaitCursor)
+        else:
+            if self._busy_cursor_depth > 0:
+                self._busy_cursor_depth -= 1
+                if self._busy_cursor_depth == 0:
+                    QApplication.restoreOverrideCursor()
+
+    def _force_hide_loading_indicator(self):
+        if self.preview_loading_widget.isVisible():
+            self.preview_loading_widget.hide()
+        self.preview_loading_label.clear()
+        self.preview_loading_bar.setRange(0, 1)
+        self.preview_loading_bar.setValue(0)
+        self.text_tabs.setEnabled(True)
+        if self._busy_cursor_depth > 0:
+            QApplication.restoreOverrideCursor()
+            self._busy_cursor_depth = 0
+        self._active_loading_token = None
+
+    def _show_loading_indicator(self, source, token, message, determinate=False):
+        self._force_hide_loading_indicator()
+        self._active_loading_token = (source, token)
+        self.preview_loading_label.setText(message)
+        if determinate:
+            self.preview_loading_bar.setRange(0, 100)
+            self.preview_loading_bar.setValue(0)
+        else:
+            self.preview_loading_bar.setRange(0, 0)
+        self.preview_loading_widget.show()
+        self.text_tabs.setEnabled(False)
+        self._set_busy_cursor(True)
+
+    def _update_loading_indicator(
+        self, source, token, value=None, message=None, determinate=None
+    ):
+        if self._active_loading_token != (source, token):
+            return
+        if determinate is not None:
+            if determinate:
+                if self.preview_loading_bar.maximum() == 0:
+                    self.preview_loading_bar.setRange(0, 100)
+                    self.preview_loading_bar.setValue(0)
+            else:
+                self.preview_loading_bar.setRange(0, 0)
+        if message is not None:
+            self.preview_loading_label.setText(message)
+        if value is not None and self.preview_loading_bar.maximum() != 0:
+            self.preview_loading_bar.setValue(max(0, min(100, value)))
+
+    def _hide_loading_indicator(self, source, token):
+        if self._active_loading_token != (source, token):
+            return
+        self._set_busy_cursor(False)
+        self._force_hide_loading_indicator()
+
+    def resource_path(self, relative_path):
+        """Get absolute path to resource, works for dev and for PyInstaller"""
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
+
+    def create_menu_bar(self):
+        menu_bar = self.menuBar()
+        # File Menu
+        file_menu = menu_bar.addMenu("&File")
+        self.new_action = self.create_action(
+            "New",
+            "document-new",
+            "Ctrl+N",
+            "Start a new project",
+            self.confirm_start_new_cleaning,
+        )
+        file_menu.addAction(self.new_action)
+        self.open_files_action = self.create_action(
+            "Open Files", "document-open", "Ctrl+O", "Open files", self.open_file
+        )
+        file_menu.addAction(self.open_files_action)
+        self.open_directory_action = self.create_action(
+            "Open Directory",
+            "folder-open",
+            "Ctrl+Shift+O",
+            "Open directory",
+            self.open_directory,
+        )
+        file_menu.addAction(self.open_directory_action)
+        self.save_action = self.create_action(
+            "Save", "document-save", "Ctrl+S", "Save current file", self.save_file
+        )
+        file_menu.addAction(self.save_action)
+        self.export_processed_corpus_action = self.create_action(
+            "Export Processed Corpus...",
+            "document-export",
+            "Ctrl+Shift+E",
+            "Export processed corpus texts and manifests",
+            self.export_processed_corpus,
+        )
+        file_menu.addAction(self.export_processed_corpus_action)
+        file_menu.addSeparator()
+        self.exit_action = self.create_action(
+            "Exit", "application-exit", "Ctrl+Q", "Exit the application", self.close
+        )
+        file_menu.addAction(self.exit_action)
+
+        # Edit Menu
+        edit_menu = menu_bar.addMenu("&Edit")
+        self.undo_action = self.create_action(
+            "Undo", "edit-undo", "Ctrl+Z", "Undo last action", self.undo
+        )
+        edit_menu.addAction(self.undo_action)
+        self.redo_action = self.create_action(
+            "Redo", "edit-redo", "Ctrl+Y", "Redo last action", self.redo
+        )
+        edit_menu.addAction(self.redo_action)
+
+        # Settings Menu
+        settings_menu = menu_bar.addMenu("&Settings")
+        self.toggle_theme_action = self.create_action(
+            "Toggle Theme",
+            "preferences-desktop-theme",
+            "",
+            "Switch between light and dark theme",
+            self.toggle_theme,
+        )
+        settings_menu.addAction(self.toggle_theme_action)
+        self.processing_parameters_action = self.create_action(
+            "Processing Parameters",
+            "preferences-system",
+            "",
+            "Configure processing options",
+            self.open_parameters_dialog,
+        )
+        settings_menu.addAction(self.processing_parameters_action)
+
+        # Help Menu
+        help_menu = menu_bar.addMenu("&Help")
+        self.about_action = self.create_action(
+            "About", "help-about", "", "About this application", self.show_about_dialog
+        )
+        help_menu.addAction(self.about_action)
+        self.documentation_action = self.create_action(
+            "Documentation",
+            "help-contents",
+            "F1",
+            "View documentation",
+            self.show_documentation,
+        )
+        help_menu.addAction(self.documentation_action)
+        self.check_updates_action = self.create_action(
+            "Check for Updates",
+            "system-software-update",
+            "",
+            "Check for updates",
+            lambda: self.check_for_updates(manual_trigger=True),
+        )
+        help_menu.addAction(self.check_updates_action)
+
+    def create_toolbar(self):
+        self.toolbar = QToolBar()
+        self.addToolBar(self.toolbar)
+        self.toolbar.addAction(self.new_action)
+        self.toolbar.addAction(self.open_files_action)
+        self.toolbar.addAction(self.open_directory_action)
+        self.toolbar.addAction(self.save_action)
+        self.toolbar.addAction(self.export_processed_corpus_action)
+
+        self.process_corpus_action = QAction(
+            QIcon.fromTheme("system-run"), "Process Loaded Corpus", self
+        )
+        self.process_corpus_action.triggered.connect(self.process_files)
+        self.toolbar.addAction(self.process_corpus_action)
+
+    def create_action(self, text, icon, shortcut, tooltip, callback):
+        action = QAction(QIcon.fromTheme(icon, QIcon()), text, self)
+        if shortcut:
+            if sys.platform == "darwin":
+                shortcut = shortcut.replace("Ctrl", "Meta")
+            action.setShortcut(QKeySequence(shortcut))
+            action.setShortcutContext(Qt.ApplicationShortcut)
+        action.setToolTip(tooltip)
+        action.triggered.connect(callback)
+        return action
+
+    def setup_central_widget(self):
+        central_widget = QWidget()
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Left Panel
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_panel.setMinimumWidth(350)  # Set minimum width for visibility
+
+        # File List Widget
+        file_list_widget = QWidget()
+        file_list_layout = QVBoxLayout(file_list_widget)
+        selected_files_label = QLabel("Selected Files:")
+        selected_files_label.setObjectName("sectionLabel")
+        file_list_layout.addWidget(selected_files_label)
+
+        self.file_list = FileListWidget()
+        self.file_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.file_list.files_added.connect(lambda docs: self.update_report())
+        self.file_list.files_removed.connect(lambda paths: self.file_manager.remove_files(paths))
+        self.file_list.itemSelectionChanged.connect(self.refresh_display)
+        file_list_layout.addWidget(self.file_list)
+        left_layout.addWidget(file_list_widget)
+
+        # Report Widget
+        report_widget = self.create_report_area()
+        left_layout.addWidget(report_widget)
+
+        left_layout.setStretch(0, 2)  # file_list_widget
+        left_layout.setStretch(1, 1)  # report_widget
+
+        # Text Display
+        text_display = QWidget()
+        text_layout = QVBoxLayout(text_display)
+        text_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        self.preview_loading_widget = QWidget()
+        preview_loading_layout = QHBoxLayout(self.preview_loading_widget)
+        preview_loading_layout.setContentsMargins(0, 0, 0, 0)
+        preview_loading_layout.setSpacing(8)
+        self.preview_loading_label = QLabel()
+        self.preview_loading_label.setObjectName("previewLoadingLabel")
+        self.preview_loading_bar = QProgressBar()
+        self.preview_loading_bar.setRange(0, 0)
+        preview_loading_layout.addWidget(self.preview_loading_label)
+        preview_loading_layout.addWidget(self.preview_loading_bar, 1)
+        self.preview_loading_widget.hide()
+
+        # Preview Control Panel
+        preview_panel = QWidget()
+        preview_layout = QHBoxLayout(preview_panel)
+        preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_layout.setSpacing(10)
+
+        self.preview_mode_combo = QComboBox()
+        self.preview_mode_combo.addItems(["Selected file", "Selected files", "First N files"])
+        self.preview_mode_combo.currentTextChanged.connect(self._toggle_preview_controls)
+
+        self.preview_count_spin = QSpinBox()
+        self.preview_count_spin.setRange(1, 1000)
+        self.preview_count_spin.setValue(50)
+        self.preview_count_spin.setPrefix("Files: ")
+
+        self.preview_chars_spin = QSpinBox()
+        self.preview_chars_spin.setRange(100, 50000)
+        self.preview_chars_spin.setSingleStep(100)
+        self.preview_chars_spin.setValue(2000)
+        self.preview_chars_spin.setPrefix("Max chars: ")
+
+        self.preview_paths_check = QCheckBox("Paths")
+        self.preview_paths_check.setChecked(True)
+
+        self.preview_original_btn = QPushButton("Preview Original")
+        self.preview_original_btn.clicked.connect(self.preview_original_action)
+
+        self.preview_processed_btn = QPushButton("Preview Processed")
+        self.preview_processed_btn.clicked.connect(self.preview_processed_action)
+
+        preview_layout.addWidget(QLabel("Preview:"))
+        preview_layout.addWidget(self.preview_mode_combo)
+        preview_layout.addWidget(self.preview_count_spin)
+        preview_layout.addWidget(self.preview_chars_spin)
+        preview_layout.addWidget(self.preview_paths_check)
+        preview_layout.addStretch()
+        preview_layout.addWidget(self.preview_original_btn)
+        preview_layout.addWidget(self.preview_processed_btn)
+
+        self._toggle_preview_controls(self.preview_mode_combo.currentText())
+
+        text_layout.addWidget(preview_panel)
+
+        self.text_tabs = QTabWidget()
+        self.original_text = QPlainTextEdit()
+        self.original_text.setReadOnly(True)
+        self.processed_text = QPlainTextEdit()
+        self.processed_text.setReadOnly(True)
+
+        # **Insert Here**
+        self.processed_text.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.processed_text.customContextMenuRequested.connect(
+            self.show_processed_text_context_menu
+        )
+
+        self.text_tabs.addTab(self.original_text, "Original Text")
+        self.text_tabs.addTab(self.processed_text, "Processed Text")
+        self.text_tabs.currentChanged.connect(self.on_tab_changed)
+
+        text_layout.addWidget(self.preview_loading_widget)
+        text_layout.addWidget(self.text_tabs)
+
+        # Search Layout
+        search_layout = QHBoxLayout()
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search in text...")
+        self.search_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        search_layout.addWidget(self.search_input)
+
+        self.prev_button = QPushButton()
+        self.prev_button.setIcon(QIcon.fromTheme("go-previous"))
+        self.prev_button.setToolTip("Previous occurrence")
+        self.prev_button.clicked.connect(self.go_to_previous_occurrence)
+        self.prev_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        search_layout.addWidget(self.prev_button)
+
+        self.next_button = QPushButton()
+        self.next_button.setIcon(QIcon.fromTheme("go-next"))
+        self.next_button.setToolTip("Next occurrence")
+        self.next_button.clicked.connect(self.go_to_next_occurrence)
+        self.next_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        search_layout.addWidget(self.next_button)
+
+        self.occurrence_label = QLabel("0/0")
+        self.occurrence_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        search_layout.addWidget(self.occurrence_label)
+
+        text_layout.addLayout(search_layout)
+
+        self.current_occurrence_index = -1
+        self.search_results = []
+
+        # Splitter to allow resizable panels
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.addWidget(left_panel)
+        splitter.addWidget(text_display)
+        splitter.setStretchFactor(0, 1)  # Left panel
+        splitter.setStretchFactor(1, 2)  # Right panel (text display) gets more space
+
+        main_layout.addWidget(splitter)
+
+        self.setCentralWidget(central_widget)
+
+    def create_report_area(self):
+        outer_widget = QWidget()
+        outer_layout = QVBoxLayout(outer_widget)
+
+        report_label = QLabel("Summary Report:")
+        report_label.setObjectName("sectionLabel")
+        outer_layout.addWidget(report_label)
+
+        report_widget = QWidget()
+        report_widget.setObjectName("reportWidget")
+        report_layout = QVBoxLayout(report_widget)
+
+        self.summary_stack = QStackedWidget()
+
+        # Empty Widget
+        empty_widget = QWidget()
+        self.summary_stack.addWidget(empty_widget)
+
+        # Loading Widget
+        loading_widget = QWidget()
+        loading_layout = QVBoxLayout(loading_widget)
+        self.loading_label = QLabel("Generating report...")
+        self.loading_label.setAlignment(Qt.AlignCenter)
+        loading_layout.addWidget(self.loading_label)
+        self.report_progress_bar = QProgressBar()
+        self.report_progress_bar.setRange(0, 100)
+        self.report_progress_bar.setValue(0)
+        loading_layout.addWidget(self.report_progress_bar)
+        self.summary_stack.addWidget(loading_widget)
+
+        # Report Content Widget
+        self.report_grid = QGridLayout()
+        self.report_grid.setSpacing(10)
+
+        self.report_items = {
+            "total_files": self.create_report_item("Total Files Processed", "0"),
+            "total_size": self.create_report_item("Total Size of Processed Files", "0 MB"),
+            "avg_size": self.create_report_item("Average File Size", "0 MB"),
+            "total_words": self.create_report_item("Total Word Count", "0"),
+            "avg_words": self.create_report_item("Average Word Count per File", "0"),
+        }
+
+        positions = [(i, j) for i in range(3) for j in range(2)]
+        for (key, widget), position in zip(self.report_items.items(), positions):
+            self.report_grid.addWidget(widget, *position)
+
+        report_content = QWidget()
+        report_content.setLayout(self.report_grid)
+        self.summary_stack.addWidget(report_content)
+
+        report_layout.addWidget(self.summary_stack)
+
+        outer_layout.addWidget(report_widget)
+
+        return outer_widget
+
+    def create_report_item(self, label, value):
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        value_label = QLabel(value)
+        value_label.setObjectName("reportValue")
+        value_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+        description_label = QLabel(label)
+        description_label.setObjectName("reportDescription")
+        description_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+        layout.addWidget(value_label)
+        layout.addWidget(description_label)
+
+        return widget
+
+    def setup_status_bar(self):
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.update_status_bar()
+
+    def apply_theme(self):
+        self.setStyleSheet(self.theme_manager.get_stylesheet())
+        self.update_icon_colors()
+
+    def update_icon_colors(self):
+        icon_color = QColor(
+            self.theme_manager.custom_colors["icon_dark"]
+            if self.theme_manager.dark_theme
+            else self.theme_manager.custom_colors["icon_light"]
+        )
+        for action in self.toolbar.actions():
+            if not action.isSeparator():
+                icon = action.icon()
+                if not icon.isNull():
+                    pixmap = icon.pixmap(QSize(24, 24))
+                    if not pixmap.isNull():
+                        painter = QPainter(pixmap)
+                        if painter.isActive():
+                            painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+                            painter.fillRect(pixmap.rect(), icon_color)
+                            painter.end()
+                            action.setIcon(QIcon(pixmap))
+
+    def toggle_theme(self):
+        self.theme_manager.toggle_theme()
+        self.apply_theme()
+
+    def update_status_bar(self):
+        total_size_mb = self.file_manager.get_total_size() / (1024 * 1024)
+        status_text = f"Files: {len(self.file_manager.documents)} | Total Size: {total_size_mb:.2f} MB | Status: {'Processing' if self.thread_pool.activeThreadCount() > 0 else 'Idle'}"
+        self.status_bar.showMessage(status_text)
+        if "Idle" in status_text:
+            self.status_bar.clearMessage()
+
+    def remove_selection_from_corpus(self):
+        selected_text = self.processed_text.textCursor().selectedText()
+        if selected_text:
+            chars_to_remove = self.processor.parameters.get("chars_to_remove", [])
+            if selected_text not in chars_to_remove:
+                chars_to_remove.append(selected_text)
+                self.processor.set_parameters({"chars_to_remove": chars_to_remove})
+                QMessageBox.information(
+                    self,
+                    "Sequence Added",
+                    f"'{selected_text}' has been added to sequences to remove.",
+                )
+                # Removed immediate processing to decouple registration from execution
+                # Optional: Highlight the added selection without altering scroll position
+                extra_selection = QTextEdit.ExtraSelection()
+                extra_selection.format.setBackground(QColor("#FFCCCC"))  # Light red background
+                extra_selection.cursor = self.processed_text.textCursor()
+                extra_selection.cursor.clearSelection()
+                self.processed_text.setExtraSelections([extra_selection])
+            else:
+                QMessageBox.information(
+                    self,
+                    "Sequence Already Exists",
+                    f"'{selected_text}' is already in the sequences to remove.",
+                )
+        else:
+            QMessageBox.warning(self, "No Selection", "Please select text to remove.")
