@@ -2310,3 +2310,229 @@ class PreprocessorGUI(QMainWindow):
                 )
         else:
             QMessageBox.warning(self, "No Selection", "Please select text to remove.")
+
+    def show_processed_text_context_menu(self, pos):
+        menu = self.processed_text.createStandardContextMenu()
+        remove_action = QAction("Remove Selection from Corpus", self)
+        remove_action.triggered.connect(self.remove_selection_from_corpus)
+        menu.addAction(remove_action)
+        menu.exec(self.processed_text.mapToGlobal(pos))
+
+    def open_file(self):
+        self.status_bar.clearMessage()
+        files, _ = QFileDialog.getOpenFileNames(
+            self, "Select files", "", supported_file_dialog_filter()
+        )
+        if files:
+            start_time = time.time()
+            new_documents = self.file_manager.add_files(files)
+            if new_documents:
+                self.file_list.setUpdatesEnabled(False)
+                self.file_list.addItems([doc.file_path for doc in new_documents])
+                self.file_list.setUpdatesEnabled(True)
+                self.update_status_bar()
+                elapsed = time.time() - start_time
+                logging.info(f"File list populated: {len(new_documents)} items in {elapsed:.2f}s")
+            else:
+                QMessageBox.information(
+                    self, "No New Files", "All selected files are already loaded."
+                )
+
+    def open_directory(self):
+        self.status_bar.clearMessage()
+        if hasattr(self, "loading_thread") and self.loading_thread.isRunning():
+            self.cancel_loading()
+        directory = QFileDialog.getExistingDirectory(self, "Select Directory")
+        if directory:
+            self.loading_dialog = FileLoadingDialog(self)
+            self.loading_dialog.show()
+            self.signals.update_progress.connect(self.loading_dialog.update_progress)
+            self.loading_thread = QThread()
+            self.loading_worker = DirectoryLoadingWorker(
+                self.file_manager, directory, self.signals
+            )
+            self.loading_worker.moveToThread(self.loading_thread)
+            self.loading_thread.started.connect(self.loading_worker.run)
+            self.loading_worker.finished.connect(self.on_directory_loading_finished)
+            self.loading_dialog.cancelled.connect(self.cancel_loading)
+            self.loading_dialog.rejected.connect(self.cancel_loading)
+
+            self.loading_thread.start()
+
+    def cancel_loading(self):
+        if hasattr(self, "loading_worker"):
+            self.loading_worker.cancel()
+        if hasattr(self, "loading_thread"):
+            self.loading_thread.quit()
+            self.loading_thread.wait()
+        if hasattr(self, "loading_dialog") and self.loading_dialog.isVisible():
+            self.loading_dialog.close()
+
+    def on_directory_loading_finished(self, new_documents):
+        self.loading_thread.quit()
+        self.loading_thread.wait()
+        if hasattr(self, "loading_dialog") and self.loading_dialog.isVisible():
+            self.loading_dialog.close()
+        if new_documents:
+            start_time = time.time()
+            self.file_list.setUpdatesEnabled(False)
+            self.file_list.addItems([doc.file_path for doc in new_documents])
+            self.file_list.setUpdatesEnabled(True)
+            self.update_status_bar()
+            elapsed = time.time() - start_time
+            logging.info(f"File list populated: {len(new_documents)} items in {elapsed:.2f}s")
+        else:
+            self.status_bar.showMessage("Operation cancelled or no new files added.", 5000)
+
+    def save_file(self):
+        if not self.file_manager.documents:
+            QMessageBox.warning(self, "Save Failed", "No files to save.")
+            return
+
+        modified_documents = [doc for doc in self.file_manager.documents if doc.is_modified]
+        if not modified_documents:
+            QMessageBox.information(self, "Save", "No modified files to save.")
+            return
+
+        structured_documents = [
+            doc
+            for doc in modified_documents
+            if not can_overwrite_with_extracted_text(doc.file_path)
+        ]
+        if structured_documents:
+            QMessageBox.information(
+                self,
+                "Export Required",
+                (
+                    "Save only overwrites plain .txt sources that can safely receive "
+                    "processed text.\n\n"
+                    "Structured sources such as HTML, DOCX, and PDF must be exported with "
+                    "File > Export Processed Corpus... so originals are not overwritten "
+                    "and manifests are written."
+                ),
+            )
+            return
+
+        confirmation_message = (
+            "This will back up and overwrite the original .txt files with the "
+            "processed text. Do you want to proceed?"
+        )
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Save",
+            confirmation_message,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            failed_files = []
+            saved_in_place = 0
+
+            for doc in modified_documents:
+                try:
+                    backup_path = f"{doc.file_path}.bak"
+                    if not os.path.exists(backup_path):
+                        shutil.copy2(doc.file_path, backup_path)
+                    with open(doc.file_path, "w", encoding="utf-8") as file:
+                        file.write(doc.processed_text)
+                    saved_in_place += 1
+
+                    doc.is_modified = False
+                    self.mark_file_as_modified(doc)
+                except Exception as e:
+                    logging.error(f"Error saving file {doc.file_path}: {str(e)}")
+                    failed_files.append(doc.file_path)
+
+            if failed_files:
+                QMessageBox.warning(
+                    self,
+                    "Save Completed with Errors",
+                    f"Some files could not be saved:\n{', '.join(failed_files)}",
+                )
+            else:
+                summary_parts = []
+                if saved_in_place:
+                    summary_parts.append(f"{saved_in_place} file(s) saved in place")
+                QMessageBox.information(
+                    self,
+                    "Save Successful",
+                    ". ".join(summary_parts) + ".",
+                )
+
+    def export_processed_corpus(self):
+        if not self.file_manager.documents:
+            QMessageBox.warning(self, "Export Failed", "No files to export.")
+            return
+
+        output_directory = QFileDialog.getExistingDirectory(self, "Export Processed Corpus")
+        if not output_directory:
+            self.status_bar.showMessage("Export cancelled.", 5000)
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Export",
+            (
+                "All loaded documents will be exported as UTF-8 .txt files under "
+                "a texts folder. CorpusAid will also write manifest.json, "
+                "warnings.json, warnings.csv, config.json, and README.txt.\n\n"
+                "Original source files will not be modified. Continue?"
+            ),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            self.status_bar.showMessage("Export cancelled.", 5000)
+            return
+
+        self._set_busy_cursor(True)
+        try:
+            records = [
+                processed_corpus_record_from_document(doc) for doc in self.file_manager.documents
+            ]
+            result = write_processed_corpus_export(
+                records,
+                self.processor.get_parameters(),
+                output_directory,
+                app_version=self.version,
+            )
+        except FileExistsError as exc:
+            logging.error("Processed corpus export refused to overwrite files: %s", exc)
+            QMessageBox.warning(
+                self,
+                "Export Failed",
+                (
+                    "CorpusAid will not overwrite an existing export. Choose an empty "
+                    f"folder or remove the previous export files.\n\n{exc}"
+                ),
+            )
+            return
+        except Exception as exc:
+            logging.exception("Processed corpus export failed")
+            QMessageBox.warning(
+                self,
+                "Export Failed",
+                f"Unable to export processed corpus:\n{exc}",
+            )
+            return
+        finally:
+            self._set_busy_cursor(False)
+
+        for doc in self.file_manager.documents:
+            doc.is_modified = False
+            self.mark_file_as_modified(doc)
+
+        self.status_bar.showMessage(
+            f"Exported {result.files_exported} file(s) to {result.output_directory}",
+            5000,
+        )
+        QMessageBox.information(
+            self,
+            "Export Successful",
+            (
+                f"Exported {result.files_exported} file(s).\n"
+                f"Warnings recorded: {result.warning_count}.\n\n"
+                f"Manifest: {result.manifest_path}"
+            ),
+        )
