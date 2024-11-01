@@ -2637,3 +2637,262 @@ class PreprocessorGUI(QMainWindow):
             self.processing_dialog.close()
         self.display_results()
         self._generate_report(processed=True)
+
+    def stop_corpus_preview(self):
+        """Legacy hook kept for compatibility; no-op in single-file view mode."""
+        pass
+
+    def display_results(self):
+        self.file_list.clearSelection()
+        self.refresh_display()
+
+        if self.warnings:
+            warning_msg = "\n".join(f"{file}: {warning}" for file, warning in self.warnings)
+            QMessageBox.warning(
+                self,
+                "Processing Warnings",
+                f"Warnings during processing:\n\n{warning_msg}",
+            )
+
+    def open_parameters_dialog(self):
+        dialog = ParametersDialog(self.processor.get_parameters(), self)
+        if dialog.exec():
+            new_parameters = dialog.get_parameters()
+            self.processor.set_parameters(new_parameters)
+            self.processor.update_pipeline()
+            self.status_bar.showMessage(
+                "Processing settings updated. Click 'Preview Processed' to preview changes or 'Process Loaded Corpus' to process all loaded files.",
+                10000,
+            )
+
+    def show_about_dialog(self):
+        QMessageBox.about(
+            self,
+            "About",
+            f"CorpusAid\nVersion {self.version}\n\nDeveloped by Jhonatan Lopes",
+        )
+
+    def show_documentation(self):
+        documentation_file = self.resource_path("docs/documentation.html")
+        if not os.path.exists(documentation_file):
+            QMessageBox.warning(
+                self,
+                "Documentation Not Found",
+                f"The documentation.html file could not be found: {documentation_file}",
+            )
+            return
+        with open(documentation_file, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        base_url = QUrl.fromLocalFile(os.path.abspath(documentation_file))
+
+        bg_color = self.theme_manager.custom_colors["background"]
+        text_color = self.theme_manager.custom_colors["text"]
+        primary_color = self.theme_manager.custom_colors["primary"]
+        secondary_color = self.theme_manager.custom_colors["secondary"]
+        accent_color = self.theme_manager.custom_colors["accent"]
+
+        css_styles = f"""
+        <style>
+            body {{
+                background-color: {bg_color};
+                color: {text_color};
+                font-family: Roboto, sans-serif;
+                margin: 20px;
+            }}
+            h1, h2, h3, h4, h5, h6 {{
+                color: {primary_color};
+            }}
+            a {{
+                color: {secondary_color};
+            }}
+            code, pre {{
+                background-color: #444444;
+                color: #f0f0f0;
+                padding: 5px;
+                border-radius: 5px;
+                font-family: 'Courier New', Courier, monospace;
+            }}
+            pre {{
+                padding: 10px;
+            }}
+        </style>
+        """
+
+        html_content = html_content.replace("</head>", f"{css_styles}</head>")
+
+        if self.documentation_window is None:
+            self.documentation_window = QWebEngineView()
+            self.documentation_window.setWindowTitle("Documentation")
+            self.documentation_window.resize(800, 600)
+            self.documentation_window.setMinimumSize(800, 600)
+            self.documentation_window.setWindowIcon(self.windowIcon())
+
+        self.documentation_window.setStyleSheet(self.theme_manager.get_stylesheet())
+        self.documentation_window.setHtml(html_content, base_url)
+        self.documentation_window.show()
+
+    def goto_occurrence(self, text_edit, index):
+        if 0 <= index < len(self.search_results):
+            cursor = QTextCursor(text_edit.document())
+            cursor.setPosition(self.search_results[index].selectionStart())
+            text_edit.setTextCursor(cursor)
+            text_edit.centerCursor()
+
+    def highlight_search_term(self, text_edit, search_term, current_index=-1):
+        extra_selections = []
+        self.search_results = []
+
+        if not search_term:
+            text_edit.setExtraSelections(extra_selections)
+            self.update_occurrence_label()
+            return
+
+        highlight_format = QTextCharFormat()
+        highlight_format.setBackground(QColor("#FFFF00"))
+        highlight_format.setForeground(QColor("#000000"))
+        highlight_format.setFontWeight(QFont.Bold)
+
+        current_highlight_format = QTextCharFormat()
+        current_highlight_format.setBackground(QColor("#FFA500"))
+        current_highlight_format.setForeground(QColor("#000000"))
+        current_highlight_format.setFontWeight(QFont.Bold)
+
+        document = text_edit.document()
+        cursor = QTextCursor(document)
+
+        regex_pattern = QRegularExpression.escape(search_term)
+        regex = QRegularExpression(regex_pattern)
+        regex.setPatternOptions(QRegularExpression.CaseInsensitiveOption)
+        matches = regex.globalMatch(document.toPlainText())
+
+        while matches.hasNext():
+            match = matches.next()
+            match_cursor = QTextCursor(document)
+            match_cursor.setPosition(match.capturedStart())
+            match_cursor.setPosition(match.capturedEnd(), QTextCursor.KeepAnchor)
+
+            selection = QTextEdit.ExtraSelection()
+            selection.cursor = match_cursor
+
+            if self.search_results and len(self.search_results) - 1 == current_index:
+                selection.format = current_highlight_format
+            else:
+                selection.format = highlight_format
+
+            extra_selections.append(selection)
+            self.search_results.append(match_cursor)
+
+        text_edit.setExtraSelections(extra_selections)
+        self.update_occurrence_label()
+
+    def search_text(self):
+        search_term = self.search_input.text().strip()
+        active_text_edit = self.text_tabs.currentWidget()
+        if not isinstance(active_text_edit, QPlainTextEdit):
+            return
+
+        # If the search term is empty, clear highlights and exit
+        if not search_term:
+            self.search_results = []
+            self.current_occurrence_index = -1
+            self.update_occurrence_label()
+            active_text_edit.setExtraSelections([])
+            return
+
+        if (
+            search_term != self.previous_search_term
+            or active_text_edit != self.previous_text_edit
+        ):
+            self.previous_search_term = search_term
+            self.previous_text_edit = active_text_edit
+            self.current_occurrence_index = 0
+
+            self.highlight_search_term(
+                active_text_edit, search_term, self.current_occurrence_index
+            )
+            if self.search_results:
+                self.goto_occurrence(active_text_edit, self.current_occurrence_index)
+                self.update_occurrence_label()
+            else:
+                self.current_occurrence_index = -1
+                self.update_occurrence_label()
+                QMessageBox.information(
+                    self,
+                    "Not Found",
+                    f"The occurrence '{search_term}' was not found in the current text.",
+                )
+        else:
+            if self.search_results:
+                self.go_to_next_occurrence()
+            else:
+                QMessageBox.information(
+                    self, "Not Found", f"The occurrence '{search_term}' was not found."
+                )
+
+    def go_to_next_occurrence(self):
+        search_term = self.search_input.text().strip()
+        active_text_edit = self.text_tabs.currentWidget()
+        if not isinstance(active_text_edit, QPlainTextEdit):
+            return
+
+        # If the search term is empty, do nothing
+        if not search_term:
+            return
+
+        if (
+            not self.search_results
+            or search_term != self.previous_search_term
+            or active_text_edit != self.previous_text_edit
+        ):
+            self.search_text()
+            return
+        if not self.search_results:
+            QMessageBox.information(
+                self, "Not Found", f"The occurrence '{search_term}' was not found."
+            )
+            return
+
+        self.current_occurrence_index = (self.current_occurrence_index + 1) % len(
+            self.search_results
+        )
+        self.highlight_search_term(active_text_edit, search_term, self.current_occurrence_index)
+        self.goto_occurrence(active_text_edit, self.current_occurrence_index)
+        self.update_occurrence_label()
+
+    def go_to_previous_occurrence(self):
+        search_term = self.search_input.text().strip()
+        active_text_edit = self.text_tabs.currentWidget()
+        if not isinstance(active_text_edit, QPlainTextEdit):
+            return
+
+        # If the search term is empty, do nothing
+        if not search_term:
+            return
+
+        if (
+            not self.search_results
+            or search_term != self.previous_search_term
+            or active_text_edit != self.previous_text_edit
+        ):
+            self.search_text()
+            return
+        if not self.search_results:
+            QMessageBox.information(
+                self, "Not Found", f"The occurrence '{search_term}' was not found."
+            )
+            return
+
+        self.current_occurrence_index = (self.current_occurrence_index - 1) % len(
+            self.search_results
+        )
+        self.highlight_search_term(active_text_edit, search_term, self.current_occurrence_index)
+        self.goto_occurrence(active_text_edit, self.current_occurrence_index)
+        self.update_occurrence_label()
+
+    def on_tab_changed(self, index):
+        self.search_text()
+
+    def update_occurrence_label(self):
+        total = len(self.search_results)
+        current = self.current_occurrence_index + 1 if self.current_occurrence_index >= 0 else 0
+        self.occurrence_label.setText(f"{current}/{total}")
