@@ -3194,3 +3194,123 @@ class PreprocessorGUI(QMainWindow):
         for key in self.report_items:
             self.report_items[key].findChild(QLabel, "reportValue").setText("0")
         self.summary_stack.setCurrentIndex(0)  # Show empty widget
+
+    def update_report_display(self, report_data):
+        self.summary_stack.setCurrentIndex(2)  # Show report content
+        for key, value in report_data.items():
+            if key in self.report_items:
+                if isinstance(value, float):
+                    formatted_value = f"{value:.2f}"
+                else:
+                    formatted_value = str(value)
+                if key.endswith("_size"):
+                    formatted_value += " MB"
+                self.report_items[key].findChild(QLabel, "reportValue").setText(formatted_value)
+
+    def display_original_texts(self):
+        if self.file_manager.documents:
+            self.file_list.clearSelection()
+            self.refresh_display()
+        else:
+            self.original_text.clear()
+            self.processed_text.clear()
+            self.current_file = None
+            self.status_bar.clearMessage()
+
+    def _generate_report(self, processed=False):
+        if self.report_worker is not None:
+            return  # Report is already being generated
+        parameters = self.processor.get_parameters()
+        self.report_worker = ReportWorker(
+            [doc.file_path for doc in self.file_manager.documents],
+            parameters,
+            processed,
+            self.processed_results,
+        )
+        self.report_thread = QThread()
+        self.report_worker.moveToThread(self.report_thread)
+        self.report_worker.progress.connect(self.update_report_progress)
+        self.report_worker.finished.connect(self.display_final_report)
+        self.report_thread.started.connect(self.report_worker.run)
+        self.report_thread.start()
+        self.summary_stack.setCurrentIndex(1)  # Show loading widget
+
+    def display_final_report(self, report_data):
+        self.summary_stack.setCurrentIndex(2)  # Show report content
+        for key, value in report_data.items():
+            if key in self.report_items:
+                if isinstance(value, float):
+                    formatted_value = f"{value:.2f}"
+                else:
+                    formatted_value = str(value)
+                if key.endswith("_size"):
+                    formatted_value += " MB"
+                self.report_items[key].findChild(QLabel, "reportValue").setText(formatted_value)
+        self._cleanup_report_worker()
+
+    def _cleanup_report_worker(self):
+        if self.report_worker:
+            self.report_worker.deleteLater()
+            self.report_worker = None
+        if self.report_thread:
+            self.report_thread.quit()
+            self.report_thread.wait()
+            self.report_thread.deleteLater()
+            self.report_thread = None
+
+    def update_report_progress(self, progress):
+        self.report_progress_bar.setValue(progress)
+        self.loading_label.setText(f"Generating report... {progress}%")
+
+    def handle_report_error(self, error_msg):
+        logging.error(f"Error in report generation: {error_msg}")
+        self.status_bar.showMessage("Error generating report", 5000)
+        # Optionally, display error in the UI
+        QMessageBox.warning(
+            self,
+            "Report Generation Error",
+            f"An error occurred while generating the report:\n{error_msg}",
+        )
+
+    @Slot(list, list)
+    def display_report(self, processed_results, warnings):
+        # Generate report_data dictionary based on processed_results
+        report_data = {
+            "total_files": len(processed_results),
+            "total_size": self.calculate_total_size(processed_results),
+            "avg_size": self.calculate_average_size(processed_results),
+            "total_words": self.calculate_total_words(processed_results),
+            "avg_words": self.calculate_average_words(processed_results),
+        }
+
+        for key, value in report_data.items():
+            if key in self.report_items:
+                if isinstance(value, float):
+                    formatted_value = f"{value:.2f}"
+                else:
+                    formatted_value = str(value)
+                if key.endswith("_size"):
+                    formatted_value += " MB"
+                self.report_items[key].findChild(QLabel, "reportValue").setText(formatted_value)
+
+    def calculate_total_size(self, processed_results):
+        total_size = 0
+        for _, _, processed in processed_results:
+            total_size += len(processed.encode("utf-8"))
+        return total_size / (1024 * 1024)  # Convert bytes to MB
+
+    def calculate_average_size(self, processed_results):
+        total_size = self.calculate_total_size(processed_results)
+        count = len(processed_results)
+        return total_size / count if count else 0
+
+    def calculate_total_words(self, processed_results):
+        total_words = 0
+        for _, _, processed in processed_results:
+            total_words += len(processed.split())
+        return total_words
+
+    def calculate_average_words(self, processed_results):
+        total_words = self.calculate_total_words(processed_results)
+        count = len(processed_results)
+        return total_words / count if count else 0
