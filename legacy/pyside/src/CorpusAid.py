@@ -3314,3 +3314,103 @@ class PreprocessorGUI(QMainWindow):
         total_words = self.calculate_total_words(processed_results)
         count = len(processed_results)
         return total_words / count if count else 0
+
+    def check_for_updates(self, manual_trigger=False):
+        try:
+            url = "https://api.github.com/repos/jhlopesalves/CorpusAid/releases/latest"
+            with urllib.request.urlopen(url) as response:
+                data = response.read()
+                latest_release = json.loads(data.decode("utf-8"))
+                latest_version = latest_release["tag_name"]
+
+                def parse_version(version_str):
+                    return tuple(map(int, (version_str.strip("v").split("."))))
+
+                current_version = parse_version(self.version)
+                latest_version_parsed = parse_version(latest_version)
+
+                if latest_version_parsed > current_version:
+                    reply = QMessageBox.question(
+                        self,
+                        "Update Available",
+                        f"A new version {latest_version} is available. Do you want to download it?",
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.Yes,
+                    )
+                    if reply == QMessageBox.Yes:
+                        QDesktopServices.openUrl(QUrl(latest_release["html_url"]))
+                elif manual_trigger:
+                    QMessageBox.information(
+                        self, "Up-to-Date", "You are using the latest version."
+                    )
+        except urllib.error.HTTPError as e:
+            if e.code == 404 and manual_trigger:
+                QMessageBox.information(
+                    self,
+                    "No Releases",
+                    "No updates are available yet. You are using the latest version.",
+                )
+            elif e.code != 404:
+                QMessageBox.warning(
+                    self,
+                    "Error",
+                    f"An error occurred while checking for updates:\n{str(e)}",
+                )
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"An error occurred while checking for updates:\n{str(e)}",
+            )
+
+    def closeEvent(self, event):
+        self.stop_corpus_preview()
+        self._cancel_document_loader()
+        self.thread_pool.clear()
+        self.thread_pool.waitForDone()
+        if hasattr(self, "loading_thread") and self.loading_thread.isRunning():
+            self.cancel_loading()
+        if self.report_thread and self.report_thread.isRunning():
+            self.report_thread.quit()
+            self.report_thread.wait()
+        event.accept()
+
+
+def main():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    log_dir = os.path.join(base_dir, "logs")
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    log_file = os.path.join(log_dir, "CorpusAid.log")
+
+    logging.basicConfig(
+        filename=log_file,
+        filemode="w",
+        level=logging.DEBUG,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
+
+    logging.info("Application started.")
+
+    try:
+        app = QApplication(sys.argv)
+
+        # Set application icon
+        icon_path = resource_path(os.path.join("assets", "my_icon.ico"))
+        if os.path.exists(icon_path):
+            app.setWindowIcon(QIcon(icon_path))
+            logging.info(f"Application icon set successfully from {icon_path}")
+        else:
+            logging.error(f"Application icon not found at {icon_path}")
+
+        window = PreprocessorGUI()
+        window.show()
+        exit_code = app.exec()
+        logging.info("Application closed.")
+        sys.exit(exit_code)
+    except Exception as e:
+        logging.exception("An error occurred: %s", e)
+
+
+if __name__ == "__main__":
+    main()
