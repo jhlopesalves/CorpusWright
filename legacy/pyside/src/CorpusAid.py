@@ -2536,3 +2536,104 @@ class PreprocessorGUI(QMainWindow):
                 f"Manifest: {result.manifest_path}"
             ),
         )
+
+    def process_files(self):
+        if not self.file_manager.documents:
+            QMessageBox.warning(self, "No Files", "Please select files to process.")
+            return
+
+        # Show the processing dialog
+        self.processing_dialog = FileLoadingDialog(self, title="Processing Files...")
+        self.processing_dialog.show()
+        self.signals.update_progress.connect(self.processing_dialog.update_progress)
+
+        # Reset processing state
+        self.processed_results.clear()
+        self.errors.clear()
+        self.warnings.clear()
+        self.files_processed = 0
+        self.total_size = self.file_manager.get_total_size()
+        self.total_time = 0
+        self.processed_size = 0
+        self.active_workers = len(self.file_manager.documents)
+
+        # Start processing each document
+        for doc in self.file_manager.documents:
+            worker = ProcessingWorker(self.processor, doc, self.signals)
+            self.thread_pool.start(worker)
+
+    def update_progress_info(self, message=None, error=None):
+        with self.lock:
+            progress = (
+                (self.files_processed / len(self.file_manager.documents)) * 100
+                if self.file_manager.documents
+                else 0
+            )
+            avg_speed = self.processed_size / self.total_time if self.total_time > 0 else 0
+            status_message = f"Progress: {progress:.2f}% | Avg. Speed: {avg_speed:.2f} B/s"
+            if message:
+                status_message += f" | {message}"
+            if error:
+                status_message += f" | Error: {error}"
+            self.status_bar.showMessage(status_message)
+
+    def handle_result(self, document, processed_text, processing_time):
+        with self.lock:
+            document.update_processed_text(processed_text)
+            self.processed_results.append(
+                (document.file_path, document.original_text, processed_text)
+            )
+            self.files_processed += 1
+            self.processed_size += len(processed_text.encode("utf-8"))
+            self.total_time += processing_time
+            self.active_workers -= 1
+        remaining_files = len(self.file_manager.documents) - self.files_processed
+        self.update_progress_info(
+            message=f"Processed {os.path.basename(document.file_path)} | Remaining files: {remaining_files}"
+        )
+        if self.active_workers == 0:
+            self.on_all_workers_finished()
+
+    def handle_error(self, file_path, error):
+        with self.lock:
+            self.errors.append((file_path, error))
+            self.files_processed += 1
+            self.active_workers -= 1
+        remaining_files = len(self.file_manager.documents) - self.files_processed
+        error_message = f"Error in {os.path.basename(file_path)}: {error} | Remaining files: {remaining_files}"
+        self.update_progress_info(error=error_message)
+        logging.error(f"Error processing {file_path}: {error}")
+        if self.active_workers == 0:
+            self.on_all_workers_finished()
+
+    def handle_warning(self, file_path, warning):
+        with self.lock:
+            self.warnings.append((file_path, warning))
+        warning_message = f"Warning in {os.path.basename(file_path)}: {warning}"
+        self.update_progress_info(message=warning_message)
+        logging.warning(f"Warning processing {file_path}: {warning}")
+
+    def update_progress(self, current, total, time_remaining, error):
+        with self.lock:
+            self.files_processed = current
+        self.update_progress_info()
+        if error:
+            self.status_bar.showMessage(f"Error: {error}", 5000)
+            logging.error(f"Error during loading: {error}")
+
+    def on_all_workers_finished(self):
+        self.signals.processing_complete.emit(self.processed_results, self.warnings)
+        if self.errors:
+            error_msg = "\n".join([f"{file}: {error}" for file, error in self.errors])
+            QMessageBox.warning(
+                self,
+                "Processing Completed with Errors",
+                f"Errors occurred during processing:\n\n{error_msg}",
+            )
+        else:
+            self.status_bar.clearMessage()
+        self.update_status_bar()
+        if hasattr(self, "processing_dialog") and self.processing_dialog.isVisible():
+            self.processing_dialog.close()
+        self.display_results()
+        self._generate_report(processed=True)
