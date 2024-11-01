@@ -13,6 +13,19 @@ import urllib.request
 from io import StringIO
 from threading import Lock
 
+from corpusaid.ingestion import (
+    UnsupportedDocumentTypeError,
+    can_overwrite_with_extracted_text,
+    extract_document,
+    load_document_preview,
+    scan_supported_paths,
+    supported_file_extensions,
+)
+from corpusaid.exporting import (
+    ProcessedDocumentRecord,
+    export_processed_corpus as write_processed_corpus_export,
+)
+
 from PySide6.QtCore import (
     QObject,
     QRegularExpression,
@@ -107,6 +120,93 @@ def resource_path(relative_path):
     else:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
+
+
+def _log_ingestion_warnings(file_path, warnings):
+    for warning in warnings:
+        logging.warning("Document ingestion warning for %s: %s", file_path, warning)
+
+
+def load_extracted_document(file_path):
+    """Load full document content and provenance through the ingestion layer."""
+    try:
+        return extract_document(file_path)
+    except UnsupportedDocumentTypeError as exc:
+        logging.error("Unsupported document type for %s: %s", file_path, exc)
+        return None
+    except Exception as exc:
+        logging.error("Error loading %s: %s", file_path, exc)
+        return None
+
+
+def load_extracted_text(file_path):
+    """Load full file content through the document ingestion layer."""
+    document = load_extracted_document(file_path)
+    if document is None:
+        return ""
+
+    _log_ingestion_warnings(file_path, document.warnings)
+    return document.text
+
+
+
+def load_extracted_preview(file_path, limit):
+    """Load a text preview through the document ingestion layer."""
+    try:
+        preview = load_document_preview(file_path, limit)
+    except UnsupportedDocumentTypeError as exc:
+        logging.error("Unsupported document type for %s: %s", file_path, exc)
+        return "", False
+    except Exception as exc:
+        logging.error("Error loading preview for %s: %s", file_path, exc)
+        return "", False
+
+    _log_ingestion_warnings(file_path, preview.warnings)
+    return preview.text, preview.truncated
+
+
+def supported_file_dialog_filter():
+    patterns = " ".join(f"*{extension}" for extension in supported_file_extensions())
+    return f"Supported Documents ({patterns})"
+
+
+def is_supported_document_path(file_path):
+    extension = os.path.splitext(file_path)[1].lower()
+    return os.path.isfile(file_path) and extension in supported_file_extensions()
+
+
+def processed_text_export_path(output_directory, source_path, reserved_paths):
+    base_name = os.path.splitext(os.path.basename(source_path))[0] or "document"
+    candidate = os.path.join(output_directory, f"{base_name}.txt")
+    index = 2
+
+    def normalized(path):
+        return os.path.normcase(os.path.abspath(path))
+
+    while normalized(candidate) in reserved_paths or os.path.exists(candidate):
+        candidate = os.path.join(output_directory, f"{base_name}-{index}.txt")
+        index += 1
+
+    reserved_paths.add(normalized(candidate))
+    return candidate
+
+
+def processed_corpus_record_from_document(document):
+    """Build a PySide-free export record from a GUI document object."""
+    document.ensure_extraction_metadata()
+    original_text = document._original_text
+    return ProcessedDocumentRecord(
+        source_path=document.file_path,
+        original_text=original_text,
+        processed_text=document.processed_text,
+        document_type=document._document_type,
+        extraction_method=document._extraction_method,
+        warnings=list(document._extraction_warnings),
+        metadata=dict(document._extraction_metadata),
+        extracted_character_count=(len(original_text) if original_text is not None else None),
+    )
+
+
 # Usage of resource_path updated to the new folder structure:
 # For assets
 icon_path = resource_path("assets/my_icon.ico")
@@ -1489,3 +1589,174 @@ class CharacterSelectionDialog(QDialog):
 
     def get_selected_chars(self):
         return self.selected_chars
+
+
+class FileLoadingDialog(QDialog):
+    cancelled = Signal()
+
+    def __init__(self, parent=None, title="Loading Files..."):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setModal(True)
+        layout = QVBoxLayout(self)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)
+        layout.addWidget(self.progress_bar)
+        self.label = QLabel("Loading files...")
+        layout.addWidget(self.label)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.on_cancel)
+        layout.addWidget(self.cancel_button)
+
+    def update_progress(self, current, total, time_remaining, error):
+        if total > 0:
+            self.progress_bar.setRange(0, total)
+            self.progress_bar.setValue(current)
+        if time_remaining is not None:
+            self.label.setText(
+                f"Processing file {current} of {total}... Estimated time remaining: {time_remaining:.2f} seconds"
+            )
+        else:
+            self.label.setText(f"Processing file {current} of {total}...")
+        if error:
+            pass
+
+    def on_cancel(self):
+        self.cancelled.emit()
+        self.reject()
+
+
+class DirectoryLoadingWorker(QObject):
+    finished = Signal(list)  # new_documents
+    update_progress = Signal(int, int, float, str)  # current, total, time_remaining, error
+
+    def __init__(self, file_manager, directory, signals):
+        super().__init__()
+        self.file_manager = file_manager
+        self.directory = directory
+        self.signals = signals
+        self._is_cancelled = False
+
+    @Slot()
+    def run(self):
+        try:
+            start_time = time.time()
+            new_documents = self.file_manager.add_directory(
+                self.directory, self.signals, self.is_cancelled
+            )
+            elapsed = time.time() - start_time
+            logging.info(
+                f"Directory scan/load start and finish: {len(new_documents)} files in {elapsed:.2f}s"
+            )
+            if not self._is_cancelled:
+                self.signals.processing_complete.emit(
+                    new_documents, []
+                )  # Assuming no warnings here
+            self.finished.emit(new_documents)
+        except Exception as e:
+            logging.error(f"Error loading directory {self.directory}: {e}")
+            self.signals.loading_error.emit(str(e))
+            self.finished.emit([])
+
+    def cancel(self):
+        self._is_cancelled = True
+
+    def is_cancelled(self):
+        return self._is_cancelled
+
+
+class DocumentLoaderWorker(QObject):
+    finished = Signal(int, str, str, str)  # token, path, original, processed
+    error = Signal(int, str, str)  # token, path, message
+
+    def __init__(self, file_path, processed_text, token):
+        super().__init__()
+        self.file_path = file_path
+        self.processed_text = processed_text
+        self.token = token
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
+
+    @Slot()
+    def run(self):
+        if self._cancelled:
+            return
+        try:
+            original_text = load_extracted_text(self.file_path)
+            if self._cancelled:
+                return
+            processed_text = (
+                self.processed_text if self.processed_text is not None else original_text
+            )
+            self.finished.emit(
+                self.token,
+                self.file_path,
+                original_text,
+                processed_text,
+            )
+        except Exception as exc:
+            if not self._cancelled:
+                self.error.emit(self.token, self.file_path, str(exc))
+
+
+class CorpusPreviewWorker(QObject):
+    finished = Signal(int, str, str)  # token, original_preview, processed_preview
+    error = Signal(int, str)  # token, message
+
+    def __init__(self, documents, token, max_chars, include_paths, is_processed):
+        super().__init__()
+        self.documents = documents
+        self.token = token
+        self.max_chars = max_chars
+        self.include_paths = include_paths
+        self.is_processed = is_processed
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
+
+    @Slot()
+    def run(self):
+        if self._cancelled:
+            return
+        try:
+            start_time = time.time()
+            parts = []
+            total = len(self.documents)
+            for i, doc in enumerate(self.documents):
+                if self._cancelled:
+                    return
+                header = f"\nFILE {i + 1:03d} / {total}\n" if total > 1 else ""
+                if self.include_paths and header:
+                    header += f"{doc.file_path}\n"
+                elif total == 1 and self.include_paths:
+                    header = f"{doc.file_path}\n\n"
+
+                if self.is_processed:
+                    preview, trunc = doc.get_processed_preview(self.max_chars)
+                else:
+                    preview, trunc = doc.get_original_preview(self.max_chars)
+
+                if trunc:
+                    preview += "\n[...TRUNCATED...]"
+
+                parts.append(header + preview)
+
+            elapsed = time.time() - start_time
+            mode = "Preview Processed" if self.is_processed else "Preview Original"
+            logging.info(
+                f"Preview generated: mode={mode}, files={total}, chars={self.max_chars}, elapsed={elapsed:.2f}s"
+            )
+
+            result = "".join(parts).strip()
+            if self.is_processed:
+                self.finished.emit(self.token, "", result)
+            else:
+                self.finished.emit(self.token, result, "")
+        except Exception as exc:
+            if not self._cancelled:
+                self.error.emit(self.token, str(exc))
+
+
