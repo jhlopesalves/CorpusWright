@@ -3158,3 +3158,39 @@ class PreprocessorGUI(QMainWindow):
         if active and self._active_loading_token and self._active_loading_token[0] == "document":
             self._force_hide_loading_indicator()
             self.document_request_token += 1
+
+    def confirm_start_new_cleaning(self):
+        reply = QMessageBox.question(
+            self,
+            "Confirm New Project",
+            "Are you sure you want to start a new project? All current data will be lost.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            self.start_new_cleaning()
+
+    def start_new_cleaning(self):
+        self.file_manager.clear_files()
+        self.file_list.clear()
+        self.stop_corpus_preview()
+        self._cancel_document_loader()
+        self.original_text.clear()
+        self.processed_text.clear()
+        self.current_file = None
+        self.corpus_name = "Untitled Corpus"
+        self.processor.reset_parameters()  # Ensure this method exists in DocumentProcessor
+        self.clear_report()
+        self.update_status_bar()
+
+        if self.report_worker:
+            self.report_thread.quit()
+            self.report_thread.wait()
+            self.report_worker = None
+
+        QMessageBox.information(self, "New Project", "A new project has been started.")
+
+    def clear_report(self):
+        for key in self.report_items:
+            self.report_items[key].findChild(QLabel, "reportValue").setText("0")
+        self.summary_stack.setCurrentIndex(0)  # Show empty widget
