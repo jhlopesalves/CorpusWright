@@ -2896,3 +2896,265 @@ class PreprocessorGUI(QMainWindow):
         total = len(self.search_results)
         current = self.current_occurrence_index + 1 if self.current_occurrence_index >= 0 else 0
         self.occurrence_label.setText(f"{current}/{total}")
+
+    def undo(self):
+        selected_items = self.file_list.selectedItems()
+        if selected_items:
+            selected_file = selected_items[0].text().strip("* ")
+            doc = self.file_manager.get_document_by_path(selected_file)
+            if doc:
+                doc.undo()
+                self.refresh_display()
+                self.mark_file_as_modified(doc)
+
+    def redo(self):
+        selected_items = self.file_list.selectedItems()
+        if selected_items:
+            selected_file = selected_items[0].text().strip("* ")
+            doc = self.file_manager.get_document_by_path(selected_file)
+            if doc:
+                doc.redo()
+                self.refresh_display()
+                self.mark_file_as_modified(doc)
+
+    def mark_file_as_modified(self, doc):
+        for index in range(self.file_list.count()):
+            item = self.file_list.item(index)
+            if item.text().strip("* ") == doc.file_path:
+                if doc.is_modified:
+                    if not item.text().startswith("* "):
+                        item.setText(f"* {doc.file_path}")
+                else:
+                    if item.text().startswith("* "):
+                        item.setText(doc.file_path)
+                break
+
+    def _toggle_preview_controls(self, mode_text):
+        enabled = mode_text == "First N files"
+        self.preview_count_spin.setEnabled(enabled)
+
+    def preview_original_action(self):
+        self._trigger_preview(is_processed=False)
+
+    def preview_processed_action(self):
+        self._trigger_preview(is_processed=True)
+
+    def _trigger_preview(self, is_processed):
+        mode = self.preview_mode_combo.currentText()
+        max_chars = self.preview_chars_spin.value()
+        include_paths = self.preview_paths_check.isChecked()
+
+        docs_to_preview = []
+        if mode == "First N files":
+            n_files = self.preview_count_spin.value()
+            docs_to_preview = self.file_manager.documents[:n_files]
+        elif mode == "Selected files":
+            paths = [item.text().strip("* ") for item in self.file_list.selectedItems()]
+            docs_to_preview = [self.file_manager.get_document_by_path(p) for p in paths if p]
+            docs_to_preview = [d for d in docs_to_preview if d]
+        elif mode == "Selected file":
+            selected_items = self.file_list.selectedItems()
+            if len(selected_items) == 1:
+                path = selected_items[0].text().strip("* ")
+                doc = self.file_manager.get_document_by_path(path)
+                if doc:
+                    docs_to_preview = [doc]
+            elif len(selected_items) > 1:
+                QMessageBox.warning(
+                    self,
+                    "Preview Error",
+                    "Multiple files selected. Please switch preview mode to 'Selected files'.",
+                )
+                return
+            else:
+                QMessageBox.warning(self, "Preview Error", "Please select a file to preview.")
+                return
+
+        if not docs_to_preview:
+            return
+
+        self.original_text.clear()
+        self.processed_text.clear()
+        self._load_corpus_preview_async(docs_to_preview, max_chars, include_paths, is_processed)
+
+    def _load_corpus_preview_async(self, documents, max_chars, include_paths, is_processed):
+        self._cancel_document_loader()
+        token = self._next_document_token()
+        self.document_loader_worker = CorpusPreviewWorker(
+            documents, token, max_chars, include_paths, is_processed
+        )
+        self.document_loader_thread = QThread()
+        self.document_loader_worker.moveToThread(self.document_loader_thread)
+        self.document_loader_thread.started.connect(self.document_loader_worker.run)
+        self.document_loader_worker.finished.connect(self._handle_corpus_preview_loaded)
+        self.document_loader_worker.error.connect(self._handle_document_error)
+        self.document_loader_worker.finished.connect(lambda *_: self._cleanup_document_loader())
+        self.document_loader_worker.error.connect(lambda *_: self._cleanup_document_loader())
+        self.document_loader_thread.start()
+
+        mode_str = "processed" if is_processed else "original"
+        message = f"Generating {mode_str} preview for {len(documents)} files..."
+        self._show_loading_indicator("document", token, message, determinate=False)
+        self.status_bar.showMessage(message)
+
+    def _handle_corpus_preview_loaded(self, token, original_preview, processed_preview):
+        if token != self.document_request_token:
+            return
+        self._hide_loading_indicator("document", token)
+
+        if original_preview:
+            self.original_text.setPlainText(original_preview)
+            self.text_tabs.setCurrentWidget(self.original_text)
+        elif processed_preview:
+            self.processed_text.setPlainText(processed_preview)
+            self.text_tabs.setCurrentWidget(self.processed_text)
+
+        self.status_bar.showMessage(f"Displaying corpus preview", 5000)
+
+    def refresh_display(self):
+        self.stop_corpus_preview()
+        self._cancel_document_loader()
+
+        selected_items = self.file_list.selectedItems()
+        mode = (
+            self.preview_mode_combo.currentText()
+            if hasattr(self, "preview_mode_combo")
+            else "Selected file"
+        )
+
+        if mode == "Selected files" and len(selected_items) > 1:
+            self.current_file = None
+            message = (
+                f"{len(selected_items)} files selected.\n\n"
+                "Click 'Preview Original' or 'Preview Processed' to generate a multi-file preview."
+            )
+            self.original_text.setPlainText(message)
+            self.processed_text.setPlainText(message)
+            self.status_bar.showMessage(f"{len(selected_items)} files selected.", 5000)
+            return
+
+        if len(selected_items) == 1:
+            selected_file_path = selected_items[0].text().strip("* ")
+            doc = self.file_manager.get_document_by_path(selected_file_path)
+            if doc:
+                self.current_file = doc.file_path
+                if doc._original_text is not None:
+                    original_text = doc._original_text
+                    processed_text = (
+                        doc._processed_text if doc._processed_text is not None else original_text
+                    )
+                    self.original_text.setPlainText(original_text)
+                    self.processed_text.setPlainText(processed_text)
+                    self.status_bar.showMessage(
+                        f"Displaying: {os.path.basename(doc.file_path)}",
+                        5000,
+                    )
+                else:
+                    self.original_text.clear()
+                    self.processed_text.clear()
+                    self._load_document_async(doc)
+
+        elif len(selected_items) > 1:
+            self.current_file = None
+            message = (
+                f"{len(selected_items)} files selected.\n\n"
+                "Please select a single file or switch preview mode to 'Selected files'."
+            )
+            self.original_text.setPlainText(message)
+            self.processed_text.setPlainText(message)
+            self.status_bar.showMessage(
+                f"{len(selected_items)} files selected.",
+                5000,
+            )
+        else:
+            self.current_file = None
+            if self.file_manager.documents:
+                message = "Please select a file from the list to view its content."
+                self.original_text.setPlainText(message)
+                self.processed_text.setPlainText(message)
+            else:
+                self.original_text.clear()
+                self.processed_text.clear()
+            self.status_bar.clearMessage()
+
+    def _next_document_token(self):
+        self.document_request_token += 1
+        return self.document_request_token
+
+    def _load_document_async(self, doc):
+        self._cancel_document_loader()
+        token = self._next_document_token()
+        self.document_loader_worker = DocumentLoaderWorker(
+            doc.file_path, doc._processed_text, token
+        )
+        self.document_loader_thread = QThread()
+        self.document_loader_worker.moveToThread(self.document_loader_thread)
+        self.document_loader_thread.started.connect(self.document_loader_worker.run)
+        self.document_loader_worker.finished.connect(self._handle_document_loaded)
+        self.document_loader_worker.error.connect(self._handle_document_error)
+        self.document_loader_worker.finished.connect(lambda *_: self._cleanup_document_loader())
+        self.document_loader_worker.error.connect(lambda *_: self._cleanup_document_loader())
+        self.document_loader_thread.start()
+        message = f"Loading {os.path.basename(doc.file_path)}..."
+        self._show_loading_indicator("document", token, message, determinate=False)
+        self.status_bar.showMessage(message)
+
+    def _handle_document_loaded(self, token, path, original_text, processed_text):
+        if token != self.document_request_token:
+            return
+        self._hide_loading_indicator("document", token)
+        doc = self.file_manager.get_document_by_path(path)
+        if doc:
+            doc._original_text = original_text
+            if doc._processed_text is None:
+                doc._processed_text = processed_text
+            if not doc.history:
+                doc.history = [doc._processed_text]
+                doc.history_index = 0
+            display_processed = (
+                doc._processed_text if doc._processed_text is not None else processed_text
+            )
+        else:
+            display_processed = processed_text
+        self.original_text.setPlainText(original_text)
+        self.processed_text.setPlainText(display_processed)
+        self.status_bar.showMessage(f"Displaying: {os.path.basename(path)}", 5000)
+
+    def _handle_document_error(self, token, path, message):
+        if token != self.document_request_token:
+            return
+        self._hide_loading_indicator("document", token)
+        logging.error("Failed to load %s: %s", path, message)
+        self.original_text.clear()
+        self.processed_text.clear()
+        self.status_bar.showMessage(f"Failed to load {os.path.basename(path)}", 5000)
+        QMessageBox.warning(
+            self,
+            "Load Error",
+            f"Unable to load {os.path.basename(path)}:\\n{message}",
+        )
+
+    def _cleanup_document_loader(self):
+        if self.document_loader_worker:
+            self.document_loader_worker.deleteLater()
+            self.document_loader_worker = None
+        if self.document_loader_thread:
+            if self.document_loader_thread.isRunning():
+                self.document_loader_thread.quit()
+                self.document_loader_thread.wait()
+            self.document_loader_thread.deleteLater()
+            self.document_loader_thread = None
+
+    def _cancel_document_loader(self):
+        active = False
+        if self.document_loader_worker:
+            self.document_loader_worker.cancel()
+            active = True
+        if self.document_loader_thread and self.document_loader_thread.isRunning():
+            self.document_loader_thread.quit()
+            self.document_loader_thread.wait()
+            active = True
+        self._cleanup_document_loader()
+        if active and self._active_loading_token and self._active_loading_token[0] == "document":
+            self._force_hide_loading_indicator()
+            self.document_request_token += 1
