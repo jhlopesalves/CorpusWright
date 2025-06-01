@@ -79,6 +79,33 @@ fn extract_html_text_from_bytes(bytes: &[u8]) -> PyResult<String> {
     html2text::from_read(decoded.as_bytes(), 120)
         .map_err(|err| PyValueError::new_err(err.to_string()))
 }
+fn extract_file_text(path: &str) -> PyResult<(String, u64)> {
+    let data = fs::read(path).map_err(|err| PyIOError::new_err(err.to_string()))?;
+    let text = if is_html_path(path) {
+        extract_html_text_from_bytes(&data)?
+    } else if std::path::Path::new(path)
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("docx"))
+        .unwrap_or(false)
+    {
+        extract_docx_text_from_bytes(&data)?
+    } else {
+        decode_with_chardet(&data)
+    };
+    Ok((text, data.len() as u64))
+}
+
+fn count_words(text: &str, use_simple_split: bool) -> u64 {
+    if use_simple_split {
+        text.split_whitespace()
+            .filter(|segment| !segment.is_empty())
+            .count() as u64
+    } else {
+        UnicodeSegmentation::unicode_words(text).count() as u64
+    }
+}
+
 #[pyfunction]
 fn load_preview(path: &str, limit: usize) -> PyResult<(String, bool)> {
     if path.is_empty() {
@@ -111,6 +138,80 @@ fn scan_directory(path: &str) -> PyResult<Vec<String>> {
 
     Ok(results)
 }
+
+#[pyfunction]
+#[pyo3(signature = (paths, use_processed, word_tokenization, processed_lookup=None, progress_callback=None))]
+fn generate_report_summary(
+    py: Python<'_>,
+    paths: Vec<String>,
+    use_processed: bool,
+    word_tokenization: bool,
+    processed_lookup: Option<HashMap<String, String>>,
+    progress_callback: Option<PyObject>,
+) -> PyResult<Py<PyDict>> {
+    let total_files = paths.len();
+    let mut total_bytes: u64 = 0;
+    let mut total_words: u64 = 0;
+
+    let processed_lookup = processed_lookup.unwrap_or_default();
+    let progress_callback = progress_callback.as_ref();
+
+    if total_files == 0 {
+        if let Some(callback) = progress_callback {
+            callback.call1(py, (100,))?;
+        }
+    }
+
+    for (idx, path) in paths.iter().enumerate() {
+        let (text, bytes): (Cow<'_, str>, u64) = if use_processed {
+            if let Some(processed_text) = processed_lookup.get(path) {
+                (
+                    Cow::Borrowed(processed_text.as_str()),
+                    processed_text.as_bytes().len() as u64,
+                )
+            } else {
+                let (text, bytes) = extract_file_text(path)?;
+                (Cow::Owned(text), bytes)
+            }
+        } else {
+            let (text, bytes) = extract_file_text(path)?;
+            (Cow::Owned(text), bytes)
+        };
+
+        total_bytes += bytes;
+        total_words += count_words(&text, word_tokenization);
+
+        if let Some(callback) = progress_callback {
+            let percent = if total_files == 0 {
+                100
+            } else {
+                ((idx + 1) * 100 / total_files) as i32
+            };
+            callback.call1(py, (percent,))?;
+        }
+    }
+
+    let dict = PyDict::new_bound(py);
+    dict.set_item("total_files", total_files)?;
+    let total_size_mb = total_bytes as f64 / (1024.0 * 1024.0);
+    dict.set_item("total_size", total_size_mb)?;
+    let avg_size_mb = if total_files > 0 {
+        total_size_mb / total_files as f64
+    } else {
+        0.0
+    };
+    dict.set_item("avg_size", avg_size_mb)?;
+    dict.set_item("total_words", total_words)?;
+    let avg_words = if total_files > 0 {
+        total_words as f64 / total_files as f64
+    } else {
+        0.0
+    };
+    dict.set_item("avg_words", avg_words)?;
+
+    Ok(dict.into())
+}
+
 #[pyfunction]
 fn load_full_text(path: &str) -> PyResult<String> {
     if path.is_empty() {
@@ -274,6 +375,7 @@ fn extract_docx_text(path: &str) -> PyResult<String> {
 fn corpus_preview(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(load_preview, m)?)?;
     m.add_function(wrap_pyfunction!(scan_directory, m)?)?;
+    m.add_function(wrap_pyfunction!(generate_report_summary, m)?)?;
     m.add_function(wrap_pyfunction!(load_full_text, m)?)?;
     m.add_function(wrap_pyfunction!(load_full_texts, m)?)?;
     m.add_function(wrap_pyfunction!(extract_html_text, m)?)?;
