@@ -66,6 +66,15 @@ fn is_html_path(path: &str) -> bool {
         .map(|ext| ext.eq_ignore_ascii_case("html") || ext.eq_ignore_ascii_case("htm"))
         .unwrap_or(false)
 }
+
+fn is_pdf_path(path: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("pdf"))
+        .unwrap_or(false)
+}
+
 fn is_supported_scan_extension(ext: &str) -> bool {
     ext.eq_ignore_ascii_case("txt")
         || ext.eq_ignore_ascii_case("html")
@@ -79,10 +88,13 @@ fn extract_html_text_from_bytes(bytes: &[u8]) -> PyResult<String> {
     html2text::from_read(decoded.as_bytes(), 120)
         .map_err(|err| PyValueError::new_err(err.to_string()))
 }
+
 fn extract_file_text(path: &str) -> PyResult<(String, u64)> {
     let data = fs::read(path).map_err(|err| PyIOError::new_err(err.to_string()))?;
     let text = if is_html_path(path) {
         extract_html_text_from_bytes(&data)?
+    } else if is_pdf_path(path) {
+        extract_pdf_text_from_path(path)?.text
     } else if std::path::Path::new(path)
         .extension()
         .and_then(|s| s.to_str())
@@ -371,6 +383,221 @@ fn extract_docx_text(path: &str) -> PyResult<String> {
     let data = fs::read(path).map_err(|err| PyIOError::new_err(err.to_string()))?;
     extract_docx_text_from_bytes(&data)
 }
+
+#[derive(Debug)]
+struct PdfExtractionResult {
+    text: String,
+    page_count: usize,
+    image_count: usize,
+}
+
+fn extract_pdf_text_from_path(path: &str) -> PyResult<PdfExtractionResult> {
+    let document = pdf_extract::Document::load(path).map_err(pdf_load_error_to_py)?;
+    if document.is_encrypted() {
+        return Err(PyValueError::new_err(
+            "Encrypted/password-protected PDF is unsupported",
+        ));
+    }
+
+    let page_count = document.get_pages().len();
+    let image_count = count_pdf_images(&document);
+    let pages = pdf_extract::extract_text_by_pages(path).map_err(pdf_extract_error_to_py)?;
+    let text = pages.join("\n\x0c\n").trim().to_string();
+
+    Ok(PdfExtractionResult {
+        text,
+        page_count: if page_count == 0 {
+            pages.len()
+        } else {
+            page_count
+        },
+        image_count,
+    })
+}
+
+fn count_pdf_images(document: &pdf_extract::Document) -> usize {
+    let mut image_count = 0usize;
+    for page_id in document.get_pages().values() {
+        if let Ok(images) = document.get_page_images(*page_id) {
+            image_count += images.len();
+        }
+    }
+    image_count
+}
+
+fn pdf_load_error_to_py<E: std::fmt::Display>(err: E) -> PyErr {
+    let message = err.to_string();
+    if pdf_error_message_looks_encrypted(&message) {
+        PyValueError::new_err(format!(
+            "Encrypted/password-protected PDF is unsupported: {message}"
+        ))
+    } else {
+        PyValueError::new_err(format!("Invalid PDF file: {message}"))
+    }
+}
+
+fn pdf_extract_error_to_py<E: std::fmt::Display>(err: E) -> PyErr {
+    let message = err.to_string();
+    if pdf_error_message_looks_encrypted(&message) {
+        PyValueError::new_err(format!(
+            "Encrypted/password-protected PDF is unsupported: {message}"
+        ))
+    } else {
+        PyValueError::new_err(format!("PDF extraction failed: {message}"))
+    }
+}
+
+fn pdf_error_message_looks_encrypted(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("encrypt") || lower.contains("password") || lower.contains("decrypt")
+}
+
+#[pyfunction]
+fn extract_pdf_text(py: Python<'_>, path: &str) -> PyResult<(String, Py<PyDict>)> {
+    if path.is_empty() {
+        return Err(PyValueError::new_err("Path cannot be empty"));
+    }
+
+    let result = extract_pdf_text_from_path(path)?;
+    let metadata = PyDict::new_bound(py);
+    metadata.set_item("backend", "pdf-extract")?;
+    metadata.set_item("native_backend", true)?;
+    metadata.set_item("page_count", result.page_count)?;
+    metadata.set_item("image_count", result.image_count)?;
+    metadata.set_item("page_separator", "form-feed")?;
+    Ok((result.text, metadata.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn supported_scan_extensions_include_current_ingestion_formats() {
+        assert!(is_supported_scan_extension("txt"));
+        assert!(is_supported_scan_extension("HTML"));
+        assert!(is_supported_scan_extension("htm"));
+        assert!(is_supported_scan_extension("DOCX"));
+        assert!(is_supported_scan_extension("PDF"));
+        assert!(!is_supported_scan_extension("doc"));
+    }
+
+    #[test]
+    fn docx_xml_extractor_handles_paragraphs_and_tables() {
+        let document_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>Rust paragraph.</w:t></w:r></w:p>
+    <w:tbl>
+      <w:tr>
+        <w:tc><w:p><w:r><w:t>Cell A</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:r><w:t>Cell B</w:t></w:r></w:p></w:tc>
+      </w:tr>
+    </w:tbl>
+  </w:body>
+</w:document>"#;
+
+        let text = extract_docx_text_from_xml(document_xml).unwrap();
+
+        assert_eq!(text, "Rust paragraph.\nCell A | Cell B");
+    }
+
+    #[test]
+    fn pdf_extractor_handles_minimal_embedded_text_pdf() {
+        let path = unique_pdf_path("text");
+        std::fs::write(&path, minimal_pdf_bytes("Rust PDF text")).unwrap();
+
+        let extraction = extract_pdf_text_from_path(path.to_str().unwrap()).unwrap();
+
+        assert!(extraction.text.contains("Rust PDF text"));
+        assert_eq!(extraction.page_count, 1);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn pdf_extractor_reports_empty_page_without_text() {
+        let path = unique_pdf_path("empty");
+        std::fs::write(&path, minimal_pdf_bytes("")).unwrap();
+
+        let extraction = extract_pdf_text_from_path(path.to_str().unwrap()).unwrap();
+
+        assert!(extraction.text.trim().is_empty());
+        assert_eq!(extraction.page_count, 1);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn pdf_extractor_rejects_invalid_pdf_bytes() {
+        pyo3::prepare_freethreaded_python();
+        let path = unique_pdf_path("invalid");
+        std::fs::write(&path, b"not a pdf").unwrap();
+
+        let error = extract_pdf_text_from_path(path.to_str().unwrap()).unwrap_err();
+
+        assert!(error.to_string().contains("Invalid PDF file"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    fn unique_pdf_path(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "corpus_preview_{label}_{}_{}.pdf",
+            std::process::id(),
+            nanos
+        ))
+    }
+
+    fn minimal_pdf_bytes(text: &str) -> Vec<u8> {
+        let escaped = text
+            .replace('\\', "\\\\")
+            .replace('(', "\\(")
+            .replace(')', "\\)");
+        let content = if escaped.is_empty() {
+            String::new()
+        } else {
+            format!("BT /F1 24 Tf 72 720 Td ({escaped}) Tj ET\n")
+        };
+        let objects = vec![
+            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>".to_string(),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+            format!(
+                "<< /Length {} >>\nstream\n{}endstream",
+                content.as_bytes().len(),
+                content
+            ),
+        ];
+
+        let mut pdf = b"%PDF-1.4\n".to_vec();
+        let mut offsets = vec![0usize];
+        for (index, object) in objects.iter().enumerate() {
+            offsets.push(pdf.len());
+            pdf.extend_from_slice(format!("{} 0 obj\n{}\nendobj\n", index + 1, object).as_bytes());
+        }
+        let xref_offset = pdf.len();
+        pdf.extend_from_slice(format!("xref\n0 {}\n", offsets.len()).as_bytes());
+        pdf.extend_from_slice(b"0000000000 65535 f \n");
+        for offset in offsets.iter().skip(1) {
+            pdf.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+        }
+        pdf.extend_from_slice(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n",
+                offsets.len(),
+                xref_offset
+            )
+            .as_bytes(),
+        );
+        pdf
+    }
+}
+
 #[pymodule]
 fn corpus_preview(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(load_preview, m)?)?;
@@ -380,5 +607,6 @@ fn corpus_preview(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(load_full_texts, m)?)?;
     m.add_function(wrap_pyfunction!(extract_html_text, m)?)?;
     m.add_function(wrap_pyfunction!(extract_docx_text, m)?)?;
+    m.add_function(wrap_pyfunction!(extract_pdf_text, m)?)?;
     Ok(())
 }
