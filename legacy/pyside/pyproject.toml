@@ -36,4 +36,5 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "integration: exercises non-ingestion app boundaries without launching the GUI",
+    "native: requires the compiled corpus_preview PyO3 extension",
 ]
