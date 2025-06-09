@@ -1,4 +1,8 @@
 """Format-specific document extraction.
+
+Plain-text, HTML, DOCX, and experimental PDF extraction are implemented. Future extractors should
+implement ``DocumentExtractor`` and be registered in
+``create_default_ingestion_service``.
 """
 
 from __future__ import annotations
@@ -11,6 +15,7 @@ import time
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 from zipfile import BadZipFile, ZipFile
+
 from .models import (
     DocumentExtractor,
     ExtractedDocument,
@@ -20,6 +25,9 @@ from .models import (
     PathLike,
 )
 from .backends import extraction_quality, orchestrate_extraction
+from .rust_backend import RustTextBackend
+from .tika_backend import TikaServerBackend
+
 
 class UnsupportedDocumentTypeError(ValueError):
     """Raised when no registered extractor supports a document path."""
@@ -35,6 +43,8 @@ class DocumentPreview:
     extraction_method: str
     warnings: List[ExtractionWarning] = field(default_factory=list)
     metadata: Dict[str, object] = field(default_factory=dict)
+
+
 class PlainTextExtractor:
     """Extractor for UTF-8 compatible ``.txt`` documents."""
 
@@ -43,6 +53,8 @@ class PlainTextExtractor:
     supported_extensions = {".txt"}
     can_overwrite_with_extracted_text = True
 
+    def __init__(self, rust_backend: Optional[RustTextBackend] = None):
+        self.rust_backend = rust_backend or RustTextBackend.from_optional_import()
 
     def supports(self, path: PathLike) -> bool:
         return _coerce_path(path).suffix.lower() in self.supported_extensions
@@ -57,6 +69,23 @@ class PlainTextExtractor:
         warnings: List[ExtractionWarning] = []
         text: Optional[str] = None
         method = "python:utf-8"
+
+        if self.rust_backend.load_full_text is not None:
+            try:
+                text = self.rust_backend.load_full_text(str(source_path))
+                method = "rust:corpus_preview.load_full_text"
+            except Exception as exc:  # pragma: no cover - exercised via unit test
+                warnings.append(
+                    ExtractionWarning(
+                        code="rust_full_text_fallback",
+                        message=(
+                            "Rust full-text loader failed; used Python fallback "
+                            "instead"
+                        ),
+                        details=str(exc),
+                    )
+                )
+
         if text is None:
             text, python_method, decode_warnings = _read_utf8_text(source_path)
             method = python_method
@@ -128,6 +157,9 @@ class HtmlExtractor:
     supported_extensions = {".html", ".htm"}
     can_overwrite_with_extracted_text = False
 
+    def __init__(self, rust_backend: Optional[RustTextBackend] = None):
+        self.rust_backend = rust_backend or RustTextBackend.from_optional_import()
+
     def supports(self, path: PathLike) -> bool:
         return _coerce_path(path).suffix.lower() in self.supported_extensions
 
@@ -143,6 +175,32 @@ class HtmlExtractor:
         warnings = list(decode_warnings)
         text: Optional[str] = None
         method = "python:html.parser"
+
+        if self.rust_backend.extract_html_text is not None:
+            try:
+                text = self.rust_backend.extract_html_text(str(source_path))
+                method = "rust:corpus_preview.extract_html_text"
+            except Exception as exc:  # pragma: no cover - exercised via unit test
+                warnings.append(
+                    ExtractionWarning(
+                        code="rust_html_fallback",
+                        message=(
+                            "Rust HTML extractor failed; used Python fallback "
+                            "instead"
+                        ),
+                        details=str(exc),
+                    )
+                )
+        else:
+            warnings.append(
+                ExtractionWarning(
+                    code="rust_html_unavailable",
+                    message=(
+                        "Rust HTML extractor unavailable; used Python fallback "
+                        "instead"
+                    ),
+                )
+            )
 
         if text is None:
             text, parser_warnings = _extract_html_with_python(html_source)
@@ -176,6 +234,9 @@ class DocxExtractor:
     supported_extensions = {".docx"}
     can_overwrite_with_extracted_text = False
 
+    def __init__(self, rust_backend: Optional[RustTextBackend] = None):
+        self.rust_backend = rust_backend or RustTextBackend.from_optional_import()
+
     def supports(self, path: PathLike) -> bool:
         return _coerce_path(path).suffix.lower() in self.supported_extensions
 
@@ -191,6 +252,31 @@ class DocxExtractor:
         text: Optional[str] = None
         method = "python:zip+xml"
 
+        if self.rust_backend.extract_docx_text is not None:
+            try:
+                text = self.rust_backend.extract_docx_text(str(source_path))
+                method = "rust:corpus_preview.extract_docx_text"
+            except Exception as exc:  # pragma: no cover - exercised via unit test
+                warnings.append(
+                    ExtractionWarning(
+                        code="rust_docx_fallback",
+                        message=(
+                            "Rust DOCX extractor failed; used Python fallback "
+                            "instead"
+                        ),
+                        details=str(exc),
+                    )
+                )
+        else:
+            warnings.append(
+                ExtractionWarning(
+                    code="rust_docx_unavailable",
+                    message=(
+                        "Rust DOCX extractor unavailable; used Python fallback "
+                        "instead"
+                    ),
+                )
+            )
 
         if text is None:
             text, parser_warnings = _extract_docx_with_python(source_path)
@@ -214,6 +300,147 @@ class DocxExtractor:
                 text, metadata, self.document_type, self.support_level
             ),
         )
+
+
+_ENV_CONFIGURED_FALLBACK = object()
+
+
+class PdfExtractor:
+    """Experimental extractor for born-digital PDFs with embedded text."""
+
+    document_type = "pdf"
+    support_level = "experimental"
+    supported_extensions = {".pdf"}
+    can_overwrite_with_extracted_text = False
+    backend_name = "pdf-extract"
+
+    def __init__(
+        self,
+        rust_backend: Optional[RustTextBackend] = None,
+        fallback_backend: object = _ENV_CONFIGURED_FALLBACK,
+        fallback_policy: Optional[ExtractionFallbackPolicy] = None,
+    ):
+        self.rust_backend = rust_backend or RustTextBackend.from_optional_import()
+        self.fallback_backend = (
+            TikaServerBackend.from_environment()
+            if fallback_backend is _ENV_CONFIGURED_FALLBACK
+            else fallback_backend
+        )
+        self.fallback_policy = fallback_policy or ExtractionFallbackPolicy()
+
+    def supports(self, path: PathLike) -> bool:
+        return _coerce_path(path).suffix.lower() in self.supported_extensions
+
+    def extract(self, path: PathLike) -> ExtractedDocument:
+        source_path = _coerce_path(path)
+        if not self.supports(source_path):
+            raise UnsupportedDocumentTypeError(
+                f"Unsupported document type: {source_path.suffix or '<none>'}"
+            )
+
+        source_path.stat()
+        metadata = _pdf_metadata(source_path, self.backend_name)
+        primary = self._extract_with_rust(source_path, metadata)
+
+        fallback_factory = None
+        if self.fallback_backend is not None:
+            fallback_factory = lambda reason: self.fallback_backend.extract(
+                source_path, fallback_reason=reason
+            )
+
+        orchestration = orchestrate_extraction(
+            primary=primary,
+            fallback_factory=fallback_factory,
+            policy=self.fallback_policy,
+            document_type=self.document_type,
+            support_status=self.support_level,
+            base_metadata=metadata,
+        )
+
+        return ExtractedDocument(
+            source_path=source_path,
+            text=orchestration.text,
+            document_type=self.document_type,
+            extraction_method=orchestration.extraction_method,
+            warnings=orchestration.warnings,
+            metadata=orchestration.metadata,
+        )
+
+    def _extract_with_rust(
+        self,
+        source_path: Path,
+        metadata: Mapping[str, object],
+    ) -> ExtractionBackendResult:
+        method = "rust:corpus_preview.extract_pdf_text"
+        start = time.perf_counter()
+
+        if self.rust_backend.extract_pdf_text is None:
+            return ExtractionBackendResult(
+                backend_name="unavailable:corpus_preview.extract_pdf_text",
+                success=False,
+                text="",
+                warnings=[
+                    ExtractionWarning(
+                        code="rust_pdf_unavailable",
+                        message=(
+                            "Rust PDF extractor unavailable; no PDF fallback is "
+                            "configured"
+                        ),
+                    )
+                ],
+                metadata=dict(metadata),
+                elapsed_seconds=time.perf_counter() - start,
+                support_status=self.support_level,
+                error="corpus_preview.extract_pdf_text is unavailable",
+            )
+
+        try:
+            result = self.rust_backend.extract_pdf_text(str(source_path))
+            text, native_metadata = _coerce_pdf_backend_result(result)
+            result_metadata = dict(metadata)
+            result_metadata.update(native_metadata)
+            result_metadata["backend"] = result_metadata.get("backend") or self.backend_name
+            result_metadata["native_backend"] = bool(
+                result_metadata.get("native_backend", True)
+            )
+            return ExtractionBackendResult(
+                backend_name=method,
+                success=True,
+                text=text,
+                warnings=[],
+                metadata=result_metadata,
+                elapsed_seconds=time.perf_counter() - start,
+                support_status=self.support_level,
+            )
+        except Exception as exc:  # pragma: no cover - exercised via unit test
+            warning = (
+                ExtractionWarning(
+                    code="encrypted_pdf_unsupported",
+                    message=(
+                        "Encrypted or password-protected PDF could not be "
+                        "extracted"
+                    ),
+                    details=str(exc),
+                )
+                if _pdf_error_looks_encrypted(exc)
+                else ExtractionWarning(
+                    code="pdf_extraction_failed",
+                    message="PDF extraction failed",
+                    details=str(exc),
+                )
+            )
+            result_metadata = dict(metadata)
+            result_metadata["native_backend"] = False
+            return ExtractionBackendResult(
+                backend_name=method,
+                success=False,
+                text="",
+                warnings=[warning],
+                metadata=result_metadata,
+                elapsed_seconds=time.perf_counter() - start,
+                support_status=self.support_level,
+                error=str(exc),
+            )
 
 
 class DocumentIngestionService:
@@ -299,6 +526,21 @@ class DocumentIngestionService:
             return False
         return bool(getattr(extractor, "can_overwrite_with_extracted_text", False))
 
+
+def create_default_ingestion_service(
+    rust_backend: Optional[RustTextBackend] = None,
+) -> DocumentIngestionService:
+    backend = rust_backend or RustTextBackend.from_optional_import()
+    return DocumentIngestionService(
+        [
+            PlainTextExtractor(backend),
+            HtmlExtractor(backend),
+            DocxExtractor(backend),
+            PdfExtractor(backend),
+        ]
+    )
+
+
 _DEFAULT_SERVICE: Optional[DocumentIngestionService] = None
 
 
@@ -328,17 +570,50 @@ def supported_document_formats() -> List[Dict[str, object]]:
 def can_overwrite_with_extracted_text(path: PathLike) -> bool:
     return _default_service().can_overwrite_with_extracted_text(path)
 
+
 def scan_supported_paths(directory: PathLike) -> List[str]:
     """Return supported document paths under a directory.
+
+    The optional Rust scanner is used when available, then filtered through the
+    registered extractor set. The Python walker remains the fallback and uses
+    the same ``supports`` checks.
     """
+
     service = _default_service()
     directory_path = _coerce_path(directory)
+    rust_backend = _rust_backend_from_service(service)
+
     candidate_paths = set()
+
+    if rust_backend and rust_backend.scan_directory is not None:
+        try:
+            candidate_paths.update(
+                str(_coerce_path(path))
+                for path in rust_backend.scan_directory(str(directory_path))
+                if service.supports(path)
+            )
+        except Exception as exc:
+            logging.warning(
+                "Rust directory scan failed for %s: %s. Falling back to Python walker.",
+                directory_path,
+                exc,
+            )
 
     for path in directory_path.rglob("*"):
         if path.is_file() and service.supports(path):
             candidate_paths.add(str(path))
     return sorted(candidate_paths)
+
+
+def _rust_backend_from_service(
+    service: DocumentIngestionService,
+) -> Optional[RustTextBackend]:
+    for extractor in service.extractors:
+        rust_backend = getattr(extractor, "rust_backend", None)
+        if isinstance(rust_backend, RustTextBackend):
+            return rust_backend
+    return None
+
 
 def _coerce_path(path: PathLike) -> Path:
     return Path(path)
@@ -434,6 +709,60 @@ def _metadata_with_quality(
     )
     metadata.update(quality_metadata)
     return metadata
+
+
+def _pdf_metadata(path: Path, backend: str) -> Dict[str, object]:
+    metadata = _text_metadata(path)
+    metadata.update(
+        {
+            "backend": backend,
+            "native_backend": False,
+            "source_type": "pdf",
+            "support_status": "experimental",
+        }
+    )
+    return metadata
+
+
+def _coerce_pdf_backend_result(result: Any) -> Tuple[str, Dict[str, object]]:
+    if isinstance(result, tuple):
+        text = "" if not result else str(result[0])
+        metadata = _mapping_to_metadata(result[1]) if len(result) > 1 else {}
+        return text, metadata
+
+    if isinstance(result, Mapping):
+        result_mapping = _mapping_to_metadata(result)
+        text = str(result_mapping.pop("text", ""))
+        metadata_value = result_mapping.pop("metadata", None)
+        metadata = _mapping_to_metadata(metadata_value)
+        metadata.update(result_mapping)
+        return text, metadata
+
+    return str(result), {}
+
+
+def _mapping_to_metadata(value: Any) -> Dict[str, object]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {str(key): _metadata_scalar(item) for key, item in value.items()}
+
+
+def _metadata_scalar(value: Any) -> object:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, Mapping):
+        return _mapping_to_metadata(value)
+    if isinstance(value, (list, tuple, set)):
+        return [_metadata_scalar(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def _pdf_error_looks_encrypted(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(token in message for token in ("encrypt", "password", "decrypt"))
+
 
 class _HtmlTextParser(HTMLParser):
     block_tags = {
@@ -595,6 +924,11 @@ def _normalize_html_text(parts: List[str]) -> str:
 
 def _normalize_inline_text(text: str) -> str:
     return " ".join(text.split())
+
+
+_WORD_NAMESPACE = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+_TRACKED_CHANGE_TAGS = {"ins", "del", "moveFrom", "moveTo"}
+
 
 def _extract_docx_with_python(path: Path) -> Tuple[str, List[ExtractionWarning]]:
     try:
