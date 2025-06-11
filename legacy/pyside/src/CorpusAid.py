@@ -26,6 +26,11 @@ from corpusaid.exporting import (
     export_processed_corpus as write_processed_corpus_export,
 )
 
+try:
+    from corpus_preview import generate_report_summary as rust_generate_report_summary
+except ImportError:  # pragma: no cover - fallback when extension is unavailable
+    rust_generate_report_summary = None
+
 from PySide6.QtCore import (
     QObject,
     QRegularExpression,
@@ -148,6 +153,10 @@ def load_extracted_text(file_path):
     _log_ingestion_warnings(file_path, document.warnings)
     return document.text
 
+
+def load_text_with_rust_fallback(file_path):
+    """Compatibility wrapper for older call sites."""
+    return load_extracted_text(file_path)
 
 
 def load_extracted_preview(file_path, limit):
@@ -1759,6 +1768,119 @@ class CorpusPreviewWorker(QObject):
             if not self._cancelled:
                 self.error.emit(self.token, str(exc))
 
+
+class ReportWorker(QObject):
+    progress = Signal(int)
+    finished = Signal(dict)
+
+    def __init__(self, files, parameters, processed=False, processed_results=None):
+        super().__init__()
+        self.files = files
+        self.parameters = parameters or {}
+        self.processed = processed
+        self.processed_results = processed_results or []
+        self.batch_size = 100
+        self.chunk_size = 100000  # Process text in chunks of 100,000 characters
+        self.use_rust = rust_generate_report_summary is not None
+        self._processed_lookup = (
+            {path: processed_text for path, _, processed_text in self.processed_results}
+            if self.processed
+            else {}
+        )
+        self.nlp = None if self.use_rust else get_spacy_model()
+
+    def run(self):
+        try:
+            if self.use_rust:
+                self._run_with_rust()
+            else:
+                self._run_with_python()
+        except Exception as e:
+            logging.error(f"Error in report generation: {str(e)}")
+
+    def _run_with_rust(self):
+        if rust_generate_report_summary is None:
+            raise RuntimeError("Rust report summary binding unavailable")
+
+        processed_lookup = self._processed_lookup if self.processed else {}
+        lookup_arg = processed_lookup or None
+
+        def progress_callback(value):
+            try:
+                self.progress.emit(int(value))
+            except Exception:
+                logging.exception("Failed to emit report progress update from Rust")
+
+        report_data = rust_generate_report_summary(
+            self.files,
+            self.processed,
+            bool(self.parameters.get("word_tokenization", False)),
+            processed_lookup=lookup_arg,
+            progress_callback=progress_callback,
+        )
+
+        if report_data is None:
+            report_data = {}
+        elif not isinstance(report_data, dict):
+            report_data = dict(report_data)
+
+        self.progress.emit(100)
+        self.finished.emit(report_data)
+
+    def _run_with_python(self):
+        total_words = 0
+        total_size = 0
+        file_count = len(self.files)
+
+        if file_count == 0:
+            self.progress.emit(100)
+
+        for i in range(0, file_count, self.batch_size):
+            batch = self.files[i : i + self.batch_size]
+            batch_words, batch_size = self.process_batch(batch)
+
+            total_words += batch_words
+            total_size += batch_size
+
+            if file_count:
+                progress = min(100, int((i + len(batch)) / file_count * 100))
+                self.progress.emit(progress)
+
+        avg_words = total_words / file_count if file_count else 0
+        avg_size = total_size / file_count if file_count else 0
+
+        final_report = {
+            "total_files": file_count,
+            "total_size": total_size / (1024 * 1024),
+            "avg_size": avg_size / (1024 * 1024),
+            "total_words": total_words,
+            "avg_words": avg_words,
+        }
+
+        self.progress.emit(100)
+        self.finished.emit(final_report)
+
+    def process_batch(self, batch):
+        batch_words = 0
+        batch_size = 0
+        for file_path in batch:
+            if self.processed:
+                text = self._processed_lookup.get(file_path, "")
+            else:
+                text = extract_document(file_path).text
+
+            batch_size += len(text.encode("utf-8"))
+
+            if self.parameters.get("word_tokenization"):
+                tokens = text.split()
+                batch_words += len(tokens)
+            else:
+                for i in range(0, len(text), self.chunk_size):
+                    chunk = text[i : i + self.chunk_size]
+                    doc = self.nlp(chunk)
+                    batch_words += len([token for token in doc if not token.is_space])
+
+        return batch_words, batch_size
 
 
 class PreprocessorGUI(QMainWindow):
