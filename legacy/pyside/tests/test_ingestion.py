@@ -892,3 +892,302 @@ def test_tika_server_backend_success_uses_put_text_plain(tmp_path):
     result = backend.extract(path, fallback_reason="primary_failed")
 
     assert result.success is True
+    assert result.text == "Tika extracted text"
+    assert result.backend_name == "tika:server"
+    assert result.metadata["fallback_reason"] == "primary_failed"
+    assert captured["url"] == "http://localhost:9998/tika"
+    assert captured["method"] == "PUT"
+    assert captured["accept"] == "text/plain"
+    assert captured["content_type"] == "application/pdf"
+    assert captured["timeout"] == 3
+    assert captured["data"] == b"%PDF-1.4\n"
+
+
+def test_tika_fallback_is_disabled_without_environment(monkeypatch):
+    monkeypatch.delenv("CORPUSAID_TIKA_SERVER_URL", raising=False)
+
+    assert TikaServerBackend.from_environment() is None
+
+
+def test_html_extraction_with_simple_paragraph(tmp_path):
+    path = tmp_path / "sample.html"
+    path.write_text("<html><body><p>Hello <strong>HTML</strong>.</p></body></html>")
+
+    document = html_extractor().extract(path)
+
+    assert document.document_type == "html"
+    assert document.extraction_method == "python:html.parser"
+    assert document.text == "Hello HTML."
+    assert document.warnings[0].code == "rust_html_unavailable"
+
+
+def test_htm_extraction(tmp_path):
+    path = tmp_path / "sample.htm"
+    path.write_text("<html><body><h1>Heading</h1><p>Body</p></body></html>")
+
+    document = html_extractor().extract(path)
+
+    assert document.text == "Heading\nBody"
+    assert document.metadata["extension"] == ".htm"
+
+
+def test_html_extraction_supports_uppercase_extension(tmp_path):
+    path = tmp_path / "SAMPLE.HTML"
+    path.write_text("<html><body><p>Uppercase HTML</p></body></html>")
+
+    document = html_extractor().extract(str(path))
+
+    assert document.source_path == path
+    assert document.text == "Uppercase HTML"
+
+
+def test_html_title_metadata(tmp_path):
+    path = tmp_path / "titled.html"
+    path.write_text(
+        "<html><head><title> Test Title </title></head>"
+        "<body><p>Text</p></body></html>"
+    )
+
+    document = html_extractor().extract(path)
+
+    assert document.metadata["title"] == "Test Title"
+
+
+def test_html_ignores_script_style_and_noscript_content(tmp_path):
+    path = tmp_path / "noise.html"
+    path.write_text(
+        "<html><head><style>.hidden{display:none}</style></head><body>"
+        "<script>alert('bad')</script><noscript>fallback</noscript>"
+        "<p>Visible text</p></body></html>"
+    )
+
+    document = html_extractor().extract(path)
+
+    assert document.text == "Visible text"
+    assert "alert" not in document.text
+    assert "display" not in document.text
+    assert "fallback" not in document.text
+
+
+def test_malformed_html_is_recovered_with_warning(tmp_path):
+    path = tmp_path / "malformed.html"
+    path.write_text("<html><body><p>First <strong>bold<p>Second</body></html>")
+
+    document = html_extractor().extract(path)
+
+    assert "First bold" in document.text
+    assert "Second" in document.text
+    assert any(
+        warning.code == "malformed_html_recovered"
+        for warning in document.warnings
+    )
+
+
+def test_empty_html_body_warning(tmp_path):
+    path = tmp_path / "empty.html"
+    path.write_text("<html><head><title>Empty</title></head><body></body></html>")
+
+    document = html_extractor().extract(path)
+
+    assert document.text == ""
+    assert document.metadata["title"] == "Empty"
+    assert any(
+        warning.code == "empty_html_extraction"
+        for warning in document.warnings
+    )
+
+
+def test_ingestion_service_chooses_html_extractor(tmp_path):
+    path = tmp_path / "sample.html"
+    path.write_text("<html><body><p>Dispatched</p></body></html>")
+    service = DocumentIngestionService([plain_text_extractor(), html_extractor()])
+
+    document = service.extract(path)
+
+    assert document.document_type == "html"
+    assert document.text == "Dispatched"
+
+
+def test_html_rust_unavailable_uses_python_fallback(tmp_path):
+    path = tmp_path / "fallback.html"
+    path.write_text("<html><body><p>Fallback</p></body></html>")
+
+    document = HtmlExtractor(rust_backend=RustTextBackend()).extract(path)
+
+    assert document.extraction_method == "python:html.parser"
+    assert document.text == "Fallback"
+    assert document.warnings[0].code == "rust_html_unavailable"
+
+
+def test_html_rust_failure_uses_python_fallback(tmp_path):
+    path = tmp_path / "fallback.html"
+    path.write_text("<html><body><p>Fallback</p></body></html>")
+
+    def broken_html_extractor(_path: str) -> str:
+        raise RuntimeError("native html unavailable")
+
+    document = HtmlExtractor(
+        rust_backend=RustTextBackend(extract_html_text=broken_html_extractor)
+    ).extract(path)
+
+    assert document.extraction_method == "python:html.parser"
+    assert document.text == "Fallback"
+    assert document.warnings[0].code == "rust_html_fallback"
+    assert "native html unavailable" in str(document.warnings[0])
+
+
+def test_html_rust_success_uses_native_text_with_python_title_metadata(tmp_path):
+    path = tmp_path / "native.html"
+    path.write_text("<html><head><title>Native</title></head><body>ignored</body></html>")
+
+    document = HtmlExtractor(
+        rust_backend=RustTextBackend(extract_html_text=lambda _path: "Native text")
+    ).extract(path)
+
+    assert document.extraction_method == "rust:corpus_preview.extract_html_text"
+    assert document.text == "Native text"
+    assert document.metadata["title"] == "Native"
+
+
+def test_docx_rust_failure_uses_python_fallback(tmp_path):
+    path = tmp_path / "fallback.docx"
+    write_docx(
+        path,
+        simple_docx_xml("<w:p><w:r><w:t>Fallback DOCX</w:t></w:r></w:p>"),
+    )
+
+    def broken_docx_extractor(_path: str) -> str:
+        raise RuntimeError("native docx unavailable")
+
+    document = DocxExtractor(
+        rust_backend=RustTextBackend(extract_docx_text=broken_docx_extractor)
+    ).extract(path)
+
+    assert document.extraction_method == "python:zip+xml"
+    assert document.text == "Fallback DOCX"
+    assert document.warnings[0].code == "rust_docx_fallback"
+    assert "native docx unavailable" in str(document.warnings[0])
+
+
+def test_docx_rust_success_uses_native_text_with_python_metadata(tmp_path):
+    path = tmp_path / "native.docx"
+    write_docx(
+        path,
+        simple_docx_xml("<w:p><w:r><w:t>Ignored</w:t></w:r></w:p>"),
+        footnotes=True,
+    )
+
+    document = DocxExtractor(
+        rust_backend=RustTextBackend(extract_docx_text=lambda _path: "Native DOCX text")
+    ).extract(path)
+
+    assert document.extraction_method == "rust:corpus_preview.extract_docx_text"
+    assert document.text == "Native DOCX text"
+    assert document.metadata["unextracted_parts"] == ["footnotes"]
+
+
+def test_extraction_manifest_serializes_to_json_dict(tmp_path):
+    path = tmp_path / "manifest.txt"
+    path.write_text("Manifest text", encoding="utf-8")
+    document = ExtractedDocument(
+        source_path=path,
+        text="Manifest text",
+        document_type="txt",
+        extraction_method="python:utf-8",
+        warnings=[
+            ExtractionWarning(
+                code="sample_warning",
+                message="Sample warning",
+                details="details",
+            )
+        ],
+        metadata={"extension": ".txt", "nested": {"path": path}},
+    )
+
+    manifest = ExtractionManifest.from_document(
+        document,
+        app_version="0.1.0",
+        project_version="project-2026",
+        include_source_hash=True,
+    )
+    payload = manifest.to_json_dict()
+
+    assert payload["app_version"] == "0.1.0"
+    assert payload["project_version"] == "project-2026"
+    assert payload["source_path"] == str(path)
+    assert payload["document_type"] == "txt"
+    assert payload["extraction_method"] == "python:utf-8"
+    assert payload["extracted_character_count"] == len("Manifest text")
+    assert payload["warnings"] == [
+        {
+            "code": "sample_warning",
+            "message": "Sample warning",
+            "details": "details",
+        }
+    ]
+    assert payload["metadata"]["nested"]["path"] == str(path)
+    assert payload["source_file_hash"] == {
+        "algorithm": "sha256",
+        "value": hashlib.sha256(b"Manifest text").hexdigest(),
+    }
+    json.dumps(payload)
+
+
+def test_extraction_manifest_hash_is_optional(tmp_path):
+    path = tmp_path / "manifest.txt"
+    document = ExtractedDocument(
+        source_path=path,
+        text="No hash",
+        document_type="txt",
+        extraction_method="python:utf-8",
+    )
+
+    payload = ExtractionManifest.from_document(document).to_json_dict()
+
+    assert payload["source_file_hash"] is None
+    assert payload["app_version"] is None
+    assert payload["project_version"] is None
+
+
+def test_preview_loading_truncates_without_caching_full_file(tmp_path):
+    path = tmp_path / "sample.txt"
+    path.write_text("abcdef", encoding="utf-8")
+
+    preview = plain_text_extractor().preview(path, 3)
+
+    assert preview.text == "abc"
+    assert preview.truncated is True
+    assert preview.document_type == "txt"
+    assert preview.extraction_method == "python:utf-8"
+    assert preview.warnings == []
+
+
+def test_preview_loading_collects_invalid_byte_warning(tmp_path):
+    path = tmp_path / "sample.txt"
+    path.write_bytes(b"abc\xffdef")
+
+    preview = plain_text_extractor().preview(path, 20)
+
+    assert preview.text == "abc\ufffddef"
+    assert preview.truncated is False
+    assert preview.extraction_method == "python:utf-8-replace"
+    assert preview.warnings[0].code == "invalid_utf8_preview_replacement"
+
+
+def test_rust_loader_failure_warning_is_collected(tmp_path):
+    path = tmp_path / "sample.txt"
+    path.write_text("Fallback text", encoding="utf-8")
+
+    def broken_loader(_path: str) -> str:
+        raise RuntimeError("native loader unavailable")
+
+    extractor = PlainTextExtractor(
+        rust_backend=RustTextBackend(load_full_text=broken_loader)
+    )
+
+    document = extractor.extract(Path(path))
+
+    assert document.text == "Fallback text"
+    assert document.extraction_method == "python:utf-8"
+    assert document.warnings[0].code == "rust_full_text_fallback"
+    assert "native loader unavailable" in str(document.warnings[0])
