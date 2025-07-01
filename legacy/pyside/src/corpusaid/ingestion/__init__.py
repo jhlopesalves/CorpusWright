@@ -5,9 +5,11 @@ from .extractors import (
     DocumentIngestionService,
     DocumentPreview,
     HtmlExtractor,
+    PdfExtractor,
     PlainTextExtractor,
     UnsupportedDocumentTypeError,
     can_overwrite_with_extracted_text,
+    create_default_ingestion_service,
     extract_document,
     load_document_preview,
     scan_supported_paths,
@@ -22,6 +24,8 @@ from .models import (
     ExtractionManifest,
     ExtractionWarning,
 )
+from .rust_backend import RustTextBackend
+from .tika_backend import TikaServerBackend
 
 __all__ = [
     "DocumentExtractor",
@@ -34,9 +38,13 @@ __all__ = [
     "ExtractionManifest",
     "ExtractionWarning",
     "HtmlExtractor",
+    "PdfExtractor",
     "PlainTextExtractor",
+    "RustTextBackend",
+    "TikaServerBackend",
     "UnsupportedDocumentTypeError",
     "can_overwrite_with_extracted_text",
+    "create_default_ingestion_service",
     "extract_document",
     "load_document_preview",
     "scan_supported_paths",
