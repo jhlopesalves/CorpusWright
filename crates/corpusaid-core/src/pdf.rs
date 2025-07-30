@@ -297,6 +297,85 @@ impl std::fmt::Display for PdfExtractionError {
         }
     }
 }
+
+pub fn reconstruct_visual_single_column(mut char_infos: Vec<CharInfo>) -> String {
+    if char_infos.is_empty() {
+        return String::new();
+    }
+
+    // Group into lines by Y midpoint. Sort by midpoint descending first.
+    char_infos.sort_by(|a, b| {
+        let mid_a = (a.top + a.bottom) / 2.0;
+        let mid_b = (b.top + b.bottom) / 2.0;
+        mid_b
+            .partial_cmp(&mid_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut lines: Vec<Vec<CharInfo>> = Vec::new();
+    for char_info in char_infos {
+        let mid = (char_info.top + char_info.bottom) / 2.0;
+        let mut placed = false;
+        for line in &mut lines {
+            if let Some(first) = line.first() {
+                let line_mid = (first.top + first.bottom) / 2.0;
+                let line_h = first.top - first.bottom;
+                let tolerance = (line_h * 0.4).max(4.0);
+                if (mid - line_mid).abs() <= tolerance {
+                    line.push(char_info.clone());
+                    placed = true;
+                    break;
+                }
+            }
+        }
+        if !placed {
+            lines.push(vec![char_info]);
+        }
+    }
+
+    // Sort lines by Y average coordinate descending (top to bottom)
+    lines.sort_by(|line_a, line_b| {
+        let avg_y_a =
+            line_a.iter().map(|c| (c.top + c.bottom) / 2.0).sum::<f32>() / line_a.len() as f32;
+        let avg_y_b =
+            line_b.iter().map(|c| (c.top + c.bottom) / 2.0).sum::<f32>() / line_b.len() as f32;
+        avg_y_b
+            .partial_cmp(&avg_y_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut page_text = String::new();
+    for mut line in lines {
+        // Sort characters left to right
+        line.sort_by(|a, b| {
+            a.left
+                .partial_cmp(&b.left)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let mut line_str = String::new();
+        for (i, char_info) in line.iter().enumerate() {
+            if i > 0 {
+                let prev = &line[i - 1];
+                let gap = char_info.left - prev.right;
+                let char_w = char_info.right - char_info.left;
+
+                // Programmatic spacing reconstruction
+                if gap > char_w * 0.5 && prev.c != " " && char_info.c != " " {
+                    line_str.push(' ');
+                }
+            }
+            line_str.push_str(&char_info.c);
+        }
+        let trimmed = line_str.trim();
+        if !trimmed.is_empty() {
+            if !page_text.is_empty() {
+                page_text.push('\n');
+            }
+            page_text.push_str(trimmed);
+        }
+    }
+    page_text
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PdfLineKind {
     Prose,
