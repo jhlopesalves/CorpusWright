@@ -376,6 +376,526 @@ pub fn reconstruct_visual_single_column(mut char_infos: Vec<CharInfo>) -> String
     }
     page_text
 }
+
+pub fn extract_pdf(
+    bytes: &[u8],
+    max_chars: Option<usize>,
+    options: PdfExtractionOptions,
+) -> Result<ExtractedPdf, PdfExtractionError> {
+    let PdfExtractionOptions {
+        strategy,
+        use_ocr,
+        remove_repeated_headers_footers,
+        remove_page_labels,
+        remove_symbol_heavy_artifacts,
+        remove_code_like_blocks,
+        remove_formula_like_lines,
+    } = options;
+
+    // 1. Initial formats & encrypted check using lopdf
+    let doc = match Document::load_mem(bytes) {
+        Ok(doc) => doc,
+        Err(e) => {
+            return Err(PdfExtractionError::InvalidFormat(format!(
+                "Failed to load PDF: {}",
+                e
+            )));
+        }
+    };
+
+    let mut warnings = Vec::new();
+
+    if doc.is_encrypted() {
+        warnings.push(
+            "PDF is encrypted or password protected. Text extraction may fail or produce garbage."
+                .to_string(),
+        );
+    }
+
+    // Load in PDFium
+    let pdfium = match crate::pdf_ocr::init_pdfium() {
+        Ok(p) => p,
+        Err(e) => {
+            return Err(PdfExtractionError::InvalidFormat(format!(
+                "Failed to initialize PDFium: {}",
+                e
+            )));
+        }
+    };
+
+    let document = {
+        let _lock = PDFIUM_LOCK.lock().unwrap();
+        match pdfium.load_pdf_from_byte_slice(bytes, None) {
+            Ok(d) => d,
+            Err(e) => {
+                return Err(PdfExtractionError::InvalidFormat(format!(
+                    "Failed to load PDF with PDFium: {:?}",
+                    e
+                )));
+            }
+        }
+    };
+
+    let page_count = {
+        let _lock = PDFIUM_LOCK.lock().unwrap();
+        document.pages().len() as usize
+    };
+
+    warnings.push("PDF reading order is not guaranteed. Formatting may be lost.".to_string());
+
+    let mut all_text = String::new();
+    let mut has_any_text = false;
+
+    let mut total_flat_chars = 0;
+    let mut total_visual_chars = 0;
+
+    // Warn on two-column strategy (since it is stubbed as unsupported)
+    if strategy == PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental {
+        warnings.push("Experimental two-column PDF extraction is currently unsupported/stubbed; falling back to visual single-column extraction.".to_string());
+    }
+
+    let mut page_lines_list: Vec<(usize, Vec<String>)> = Vec::new();
+    let mut current_chars_count = 0;
+
+    for page_index in 0..page_count {
+        if let Some(limit) = max_chars
+            && current_chars_count >= limit
+        {
+            break;
+        }
+
+        // Lock strictly to read page and extract characters once
+        let (flat_text_page, char_infos) = {
+            let _lock = PDFIUM_LOCK.lock().unwrap();
+            let page = match document.pages().get(page_index as i32) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            let text_page = match page.text() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+
+            let flat_text = text_page.all();
+
+            let mut infos = Vec::new();
+            let mut last_valid_coords = None;
+            for c in text_page.chars().iter() {
+                let txt = match c.unicode_string() {
+                    Some(s) => s,
+                    None => continue,
+                };
+                if txt == "\n" || txt == "\r" || txt.as_bytes().first().is_some_and(|&b| b < 32) {
+                    continue;
+                }
+                let bounds = c.loose_bounds();
+                let (bottom, left, top, right) = match bounds {
+                    Ok(b) => {
+                        let bottom = b.bottom().value;
+                        let left = b.left().value;
+                        let top = b.top().value;
+                        let right = b.right().value;
+                        if (right - left).abs() > 0.001 || (top - bottom).abs() > 0.001 {
+                            last_valid_coords = Some((bottom, left, top, right));
+                            (bottom, left, top, right)
+                        } else if txt == " " {
+                            if let Some((b, _, t, r)) = last_valid_coords {
+                                (b, r, t, r + 0.1)
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            continue;
+                        }
+                    }
+                    Err(_) => {
+                        if txt == " " {
+                            if let Some((b, _, t, r)) = last_valid_coords {
+                                (b, r, t, r + 0.1)
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            continue;
+                        }
+                    }
+                };
+                infos.push(CharInfo {
+                    c: txt,
+                    bottom,
+                    left,
+                    top,
+                    right,
+                });
+            }
+            (flat_text, infos)
+        }; // Lock is released here!
+
+        let visual_text_page = reconstruct_visual_single_column(char_infos);
+
+        let flat_len = flat_text_page
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .count();
+        let visual_len = visual_text_page
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .count();
+        total_flat_chars += flat_len;
+        total_visual_chars += visual_len;
+
+        let page_text = match strategy {
+            PdfEmbeddedTextStrategy::PdfiumFlat => flat_text_page,
+            PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn
+            | PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental => visual_text_page,
+        };
+
+        let lines: Vec<String> = page_text.lines().map(|s| s.to_string()).collect();
+        let page_chars: usize = lines.iter().map(|l| l.chars().count() + 1).sum();
+        current_chars_count += page_chars + 1;
+        page_lines_list.push((page_index + 1, lines));
+    }
+
+    let mut repeated_patterns = std::collections::HashSet::new();
+    let total_pages = page_lines_list.len();
+
+    // Part B: Repeated header/footer removal
+    if remove_repeated_headers_footers && total_pages >= 3 {
+        let n = 3;
+        let mut candidate_counts = std::collections::HashMap::new();
+
+        for (_, page) in &page_lines_list {
+            let len = page.len();
+            let top_limit = n.min(len);
+            let bottom_start = top_limit.max(len.saturating_sub(n));
+
+            // Collect unique normalized candidates on this page to count page occurrences
+            let mut page_candidates = std::collections::HashSet::new();
+
+            // Top candidates
+            for line in &page[0..top_limit] {
+                let norm = normalize_candidate_line(line);
+                if !norm.is_empty() {
+                    page_candidates.insert(norm);
+                }
+            }
+
+            // Bottom candidates
+            for line in &page[bottom_start..len] {
+                let norm = normalize_candidate_line(line);
+                if !norm.is_empty() {
+                    page_candidates.insert(norm);
+                }
+            }
+
+            for cand in page_candidates {
+                *candidate_counts.entry(cand).or_insert(0) += 1;
+            }
+        }
+
+        // Find repeated patterns that meet the threshold: at least 3 pages AND at least 50% of pages
+        let threshold = 3.max(total_pages.div_ceil(2));
+        for (cand, count) in candidate_counts {
+            if count >= threshold {
+                repeated_patterns.insert(cand);
+            }
+        }
+    }
+
+    let mut cleaned_pages = Vec::with_capacity(total_pages);
+    let mut header_footer_removed_pages_count = 0;
+    let mut page_labels_removed_pages_count = 0;
+    let mut header_footer_removed_patterns = std::collections::HashSet::new();
+
+    let mut symbol_heavy_removed_pages: Vec<(usize, usize, usize)> = Vec::new(); // (page_num, lines_count, blocks_count)
+    let n = 3;
+
+    let mut code_blocks_removed_total = 0;
+    let mut code_lines_removed_total = 0;
+    let mut code_pages_with_removals = 0;
+    let mut formula_lines_removed_total = 0;
+    let mut formula_pages_with_removals = 0;
+
+    for (page_num, page) in page_lines_list {
+        let len = page.len();
+        let top_limit = n.min(len);
+        let bottom_start = top_limit.max(len.saturating_sub(n));
+
+        let mut cleaned_page_lines = Vec::with_capacity(len);
+        let mut header_footer_removed_on_this_page = false;
+        let mut page_labels_removed_on_this_page = false;
+
+        let mut symbol_heavy_removed_lines_on_this_page = 0;
+        let mut symbol_heavy_removed_blocks_on_this_page = 0;
+        let mut current_block_active = false;
+
+        for (idx, line) in page.into_iter().enumerate() {
+            let is_in_candidate_zone = idx < top_limit || idx >= bottom_start;
+            let mut remove = false;
+
+            if is_in_candidate_zone {
+                // Check repeated header/footer
+                if remove_repeated_headers_footers && total_pages >= 3 {
+                    let norm = normalize_candidate_line(&line);
+                    if !norm.is_empty() && repeated_patterns.contains(&norm) {
+                        remove = true;
+                        header_footer_removed_on_this_page = true;
+                        header_footer_removed_patterns.insert(norm);
+                    }
+                }
+
+                // Check page labels/number
+                if !remove && remove_page_labels && is_page_label(&line) {
+                    remove = true;
+                    page_labels_removed_on_this_page = true;
+                }
+            }
+
+            // Check symbol-heavy graphical artifacts
+            if !remove && remove_symbol_heavy_artifacts {
+                if is_symbol_heavy_artifact(&line) {
+                    remove = true;
+                    symbol_heavy_removed_lines_on_this_page += 1;
+                    if !current_block_active {
+                        symbol_heavy_removed_blocks_on_this_page += 1;
+                        current_block_active = true;
+                    }
+                } else {
+                    current_block_active = false;
+                }
+            } else {
+                current_block_active = false;
+            }
+
+            if !remove {
+                cleaned_page_lines.push(line);
+            }
+        }
+
+        if header_footer_removed_on_this_page {
+            header_footer_removed_pages_count += 1;
+        }
+        if page_labels_removed_on_this_page {
+            page_labels_removed_pages_count += 1;
+        }
+        if symbol_heavy_removed_lines_on_this_page > 0 {
+            symbol_heavy_removed_pages.push((
+                page_num,
+                symbol_heavy_removed_lines_on_this_page,
+                symbol_heavy_removed_blocks_on_this_page,
+            ));
+        }
+
+        let mut final_page_lines = cleaned_page_lines;
+        let mut code_removed_on_this_page = 0;
+        let mut code_blocks_removed_on_this_page = 0;
+        let mut formula_removed_on_this_page = 0;
+
+        if remove_code_like_blocks || remove_formula_like_lines {
+            let len = final_page_lines.len();
+            let mut classification = Vec::with_capacity(len);
+            for line in &final_page_lines {
+                classification.push(classify_pdf_line(line));
+            }
+
+            let mut to_remove = vec![false; len];
+
+            if remove_code_like_blocks {
+                let mut start_idx = None;
+                for (i, class) in classification.iter().enumerate() {
+                    if *class == PdfLineKind::CodeLike {
+                        if start_idx.is_none() {
+                            start_idx = Some(i);
+                        }
+                    } else {
+                        if let Some(start) = start_idx {
+                            let run_len = i - start;
+                            if run_len >= 2 {
+                                for item in to_remove.iter_mut().take(i).skip(start) {
+                                    *item = true;
+                                }
+                            } else {
+                                if is_extremely_code_like_single_line(&final_page_lines[start]) {
+                                    to_remove[start] = true;
+                                }
+                            }
+                            start_idx = None;
+                        }
+                    }
+                }
+                if let Some(start) = start_idx {
+                    let run_len = len - start;
+                    if run_len >= 2 {
+                        for item in to_remove.iter_mut().take(len).skip(start) {
+                            *item = true;
+                        }
+                    } else {
+                        if is_extremely_code_like_single_line(&final_page_lines[start]) {
+                            to_remove[start] = true;
+                        }
+                    }
+                }
+            }
+
+            if remove_formula_like_lines {
+                for i in 0..len {
+                    if classification[i] == PdfLineKind::FormulaLike {
+                        to_remove[i] = true;
+                    }
+                }
+            }
+
+            let mut filtered = Vec::with_capacity(len);
+            let mut in_code_block = false;
+            for i in 0..len {
+                if to_remove[i] {
+                    if classification[i] == PdfLineKind::CodeLike {
+                        code_removed_on_this_page += 1;
+                        if !in_code_block {
+                            code_blocks_removed_on_this_page += 1;
+                            in_code_block = true;
+                        }
+                    } else {
+                        in_code_block = false;
+                    }
+                    if classification[i] == PdfLineKind::FormulaLike {
+                        formula_removed_on_this_page += 1;
+                    }
+                } else {
+                    in_code_block = false;
+                    filtered.push(final_page_lines[i].clone());
+                }
+            }
+            final_page_lines = filtered;
+        }
+
+        if code_removed_on_this_page > 0 {
+            code_lines_removed_total += code_removed_on_this_page;
+            code_blocks_removed_total += code_blocks_removed_on_this_page;
+            code_pages_with_removals += 1;
+        }
+        if formula_removed_on_this_page > 0 {
+            formula_lines_removed_total += formula_removed_on_this_page;
+            formula_pages_with_removals += 1;
+        }
+
+        cleaned_pages.push(final_page_lines);
+    }
+
+    // Reconstruct all_text
+    for page_lines in cleaned_pages {
+        let page_text = page_lines.join("\n");
+        let trimmed = page_text.trim();
+        if !trimmed.is_empty() {
+            has_any_text = true;
+            if !all_text.is_empty() {
+                all_text.push('\n');
+                all_text.push('\n');
+            }
+            all_text.push_str(trimmed);
+        }
+    }
+
+    if header_footer_removed_pages_count > 0 {
+        let mut patterns_vec: Vec<String> = header_footer_removed_patterns.into_iter().collect();
+        patterns_vec.sort();
+        let patterns_str = patterns_vec
+            .iter()
+            .map(|p| format!("\"{}\"", p))
+            .collect::<Vec<_>>()
+            .join(", ");
+        warnings.push(format!(
+            "Removed repeated PDF header/footer lines from {} pages (patterns: {}).",
+            header_footer_removed_pages_count, patterns_str
+        ));
+    }
+    if page_labels_removed_pages_count > 0 {
+        warnings.push(format!(
+            "Removed PDF page labels/page-number lines from {} pages.",
+            page_labels_removed_pages_count
+        ));
+    }
+    if !symbol_heavy_removed_pages.is_empty() {
+        let total_removed_lines: usize = symbol_heavy_removed_pages.iter().map(|(_, l, _)| l).sum();
+        let total_pages_with_removals = symbol_heavy_removed_pages.len();
+
+        if total_pages_with_removals == 1 {
+            let (page_num, lines_count, blocks_count) = symbol_heavy_removed_pages[0];
+            warnings.push(format!(
+                "Removed {} symbol-heavy PDF graphical artefact lines (folded into {} block{}) from page {}.",
+                lines_count, blocks_count, if blocks_count == 1 { "" } else { "s" }, page_num
+            ));
+        } else {
+            let example_pages: Vec<String> = symbol_heavy_removed_pages
+                .iter()
+                .take(3)
+                .map(|(p, _, _)| p.to_string())
+                .collect();
+            let example_str = example_pages.join(", ");
+            warnings.push(format!(
+                "Removed {} symbol-heavy PDF graphical artefact lines across {} pages. Example pages: {}.",
+                total_removed_lines, total_pages_with_removals, example_str
+            ));
+        }
+    }
+    if code_lines_removed_total > 0 {
+        warnings.push(format!(
+            "Removed {} PDF code-like blocks containing {} lines across {} pages.",
+            code_blocks_removed_total, code_lines_removed_total, code_pages_with_removals
+        ));
+    }
+    if formula_lines_removed_total > 0 {
+        warnings.push(format!(
+            "Removed {} PDF formula-like lines across {} pages.",
+            formula_lines_removed_total, formula_pages_with_removals
+        ));
+    }
+
+    // Diagnostics / warning for visual vs flat drop
+    if total_flat_chars > 0 {
+        let ratio = (total_visual_chars as f64) / (total_flat_chars as f64);
+        if ratio < 0.7 {
+            warnings.push("Layout-aware PDF extraction returned substantially less text than flat extraction; some nested or positioned text may have been skipped.".to_string());
+        }
+    }
+
+    let (quality, _) = crate::pdf_quality::evaluate(&all_text);
+    let is_poor_quality = quality == crate::pdf_quality::ExtractionQuality::Poor
+        || quality == crate::pdf_quality::ExtractionQuality::Suspicious;
+
+    if !has_any_text {
+        warnings.push(
+            "PDF produced no extractable text. It may be a scanned image-only document."
+                .to_string(),
+        );
+    } else if is_poor_quality {
+        warnings.push("PDF embedded-text extraction appears low quality. The output contains unusually many symbols or non-word fragments.".to_string());
+    }
+
+    if use_ocr && (!has_any_text || is_poor_quality) {
+        // Cap OCR fallback length for large previews to prevent UI freezing.
+        // Export passes None, so it remains uncapped.
+        let ocr_max_chars = max_chars.map(|limit| if limit > 2000 { 1000 } else { limit });
+
+        match crate::pdf_ocr::extract_text_via_ocr(bytes, ocr_max_chars) {
+            Ok(ocr_text) => {
+                all_text = ocr_text;
+                warnings
+                    .push("Used experimental OCR to extract text from scanned pages.".to_string());
+            }
+            Err(e) => {
+                warnings.push(format!("Experimental OCR failed: {}", e));
+            }
+        }
+    }
+
+    Ok(ExtractedPdf {
+        text: all_text,
+        warnings,
+        page_count,
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PdfLineKind {
     Prose,
