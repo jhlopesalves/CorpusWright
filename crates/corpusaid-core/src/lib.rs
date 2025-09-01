@@ -1,5 +1,6 @@
 //! Rust core for the CorpusAid desktop application.
 
+pub mod cache;
 pub mod clean;
 pub mod docx;
 pub mod html;
