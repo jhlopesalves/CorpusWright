@@ -8,6 +8,7 @@ pub mod pdf;
 pub mod pdf_ocr;
 pub mod pdf_quality;
 pub mod preview;
+pub mod repeated_artifacts;
 pub mod scan;
 pub mod search;
 pub mod word_count;
