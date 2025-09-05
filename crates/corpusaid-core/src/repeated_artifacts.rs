@@ -1251,3 +1251,379 @@ fn phase2_merge(
 
     global
 }
+
+/// Phase 3: filter, score, rank, deduplicate, collect final examples.
+/// Returns (candidates, diagnostics_counts).
+fn phase3_finalize(
+    global: HashMap<(RepeatedArtifactKind, String), CountEntry>,
+    file_texts: &[FileText],
+    config: &RepeatedArtifactScanConfig,
+) -> Vec<RepeatedArtifactCandidate> {
+    let mut scored: Vec<(f64, RepeatedArtifactCandidate)> = Vec::new();
+
+    // Collect all entries first, then deduplicate norm vs exact.
+    let mut entries: Vec<CountEntry> = global
+        .into_values()
+        .filter(|e| {
+            e.occurrence_count >= config.min_occurrences && e.file_ids.len() >= config.min_files
+        })
+        .collect();
+
+    // Dedup: remove NormalizedLine entries that add no value.
+    if config.include_normalized_lines && config.include_exact_lines {
+        let mut i = 0;
+        while i < entries.len() {
+            if entries[i].kind != RepeatedArtifactKind::NormalizedLine {
+                i += 1;
+                continue;
+            }
+            let norm_display = &entries[i].display_text;
+            let norm_occ = entries[i].occurrence_count;
+            let norm_files = entries[i].file_ids.len();
+            let norm_variants = entries[i].raw_variants.len();
+
+            if norm_variants > 1 {
+                i += 1;
+                continue;
+            }
+
+            let redundant = entries.iter().any(|e| {
+                e.kind == RepeatedArtifactKind::ExactLine
+                    && e.display_text == *norm_display
+                    && e.occurrence_count == norm_occ
+                    && e.file_ids.len() == norm_files
+            });
+
+            if redundant {
+                entries.swap_remove(i);
+                continue;
+            }
+            i += 1;
+        }
+    }
+
+    // Now score and build candidates
+    for entry in entries {
+        let file_count = entry.file_ids.len();
+        let score = calculate_suspicion_score(
+            &entry.kind,
+            &entry.display_text,
+            entry.occurrence_count,
+            file_count,
+            entry.top_count,
+            entry.bottom_count,
+        );
+
+        let risk_label = classify_risk(
+            &entry.display_text,
+            &entry.normalized_key,
+            entry.occurrence_count,
+            file_count,
+            entry.top_count,
+            entry.bottom_count,
+        );
+
+        let candidate_id = compute_stable_id(&entry.kind, &entry.candidate_key);
+
+        // Determine content class from the display text
+        let content_class = classify_content(&entry.display_text);
+
+        let raw_variant_count = entry.raw_variants.len();
+        let raw_variant_count_is_capped = entry.raw_variant_overflow;
+
+        // Collect examples from file_texts using stored refs.
+        // Different handling for inline vs line/block candidates.
+        let is_inline = entry.kind == RepeatedArtifactKind::InlineArtifact;
+        let examples: Vec<RepeatedArtifactExample> = entry
+            .example_refs
+            .iter()
+            .filter_map(|&(fid, rs, re)| {
+                let ft = file_texts.get(fid as usize)?;
+
+                if is_inline {
+                    // rs = line_idx, re = char position within line
+                    let line_idx = rs;
+                    let char_pos = re;
+                    let line = ft.raw_lines.get(line_idx)?;
+                    let pattern = &entry.display_text;
+                    let plen = pattern.len();
+
+                    let context_before = safe_context_before(line, char_pos, 80);
+                    let context_after = safe_context_after(line, char_pos, plen, 80);
+                    let matched_text = pattern.to_string();
+
+                    Some(RepeatedArtifactExample {
+                        file_name: ft.file_name.clone(),
+                        file_path: ft.file_path.clone(),
+                        line_number: Some(line_idx + 1),
+                        page_number: ft.page_nums.get(line_idx).copied().flatten(),
+                        context_before,
+                        matched_text,
+                        context_after,
+                    })
+                } else {
+                    let context_before = if rs > 0 {
+                        let t = ft.raw_lines[rs - 1].trim();
+                        if t.is_empty() {
+                            None
+                        } else {
+                            Some(t.chars().take(200).collect())
+                        }
+                    } else {
+                        None
+                    };
+                    let context_after = if re + 1 < ft.raw_lines.len() {
+                        let t = ft.raw_lines[re + 1].trim();
+                        if t.is_empty() {
+                            None
+                        } else {
+                            Some(t.chars().take(200).collect())
+                        }
+                    } else {
+                        None
+                    };
+                    let matched: Vec<&str> =
+                        ft.raw_lines[rs..=re].iter().map(|s| s.trim()).collect();
+                    let matched_text = matched.join("\n");
+
+                    Some(RepeatedArtifactExample {
+                        file_name: ft.file_name.clone(),
+                        file_path: ft.file_path.clone(),
+                        line_number: Some(rs + 1),
+                        page_number: ft.page_nums.get(rs).copied().flatten(),
+                        context_before,
+                        matched_text,
+                        context_after,
+                    })
+                }
+            })
+            .collect();
+
+        scored.push((
+            score,
+            RepeatedArtifactCandidate {
+                candidate_id,
+                kind: entry.kind,
+                display_text: entry.display_text,
+                normalized_key: entry.normalized_key,
+                occurrence_count: entry.occurrence_count,
+                file_count,
+                example_count: examples.len(),
+                position_summary: PositionSummary {
+                    top_count: entry.top_count,
+                    middle_count: entry.middle_count,
+                    bottom_count: entry.bottom_count,
+                    unknown_count: entry.unknown_count,
+                },
+                risk_label,
+                content_class,
+                raw_variant_count,
+                raw_variant_count_is_capped,
+                raw_variants: entry.raw_variants.into_iter().collect(),
+                examples,
+            },
+        ));
+    }
+
+    // Sort by suspicion score descending
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    scored
+        .into_iter()
+        .take(config.max_candidates)
+        .map(|(_, c)| c)
+        .collect()
+}
+
+/// Performs a corpus-wide scan for repeated lines and blocks, with optional cache.
+///
+/// Returns both candidates and diagnostics.
+pub fn scan_repeated_artifacts_report(
+    records: &[DocumentRecord],
+    config: &RepeatedArtifactScanConfig,
+    cleaning_config: &CleaningConfig,
+) -> Result<RepeatedArtifactScanReport, String> {
+    scan_repeated_artifacts_report_with_cancel(records, config, cleaning_config, &no_cancellation())
+}
+
+/// Performs a corpus-wide scan for repeated lines and blocks, with optional cache
+/// and cancellation.
+///
+/// Returns both candidates and diagnostics.
+pub fn scan_repeated_artifacts_report_with_cancel(
+    records: &[DocumentRecord],
+    config: &RepeatedArtifactScanConfig,
+    cleaning_config: &CleaningConfig,
+    cancel: &CancellationFlag,
+) -> Result<RepeatedArtifactScanReport, String> {
+    scan_repeated_artifacts_report_with_cancel_and_cache(
+        records,
+        config,
+        cleaning_config,
+        None,
+        cancel,
+    )
+}
+
+/// Performs a corpus-wide scan for repeated lines and blocks, with optional cache
+/// and cancellation.
+///
+/// Returns both candidates and diagnostics.
+pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
+    records: &'a [DocumentRecord],
+    config: &'a RepeatedArtifactScanConfig,
+    cleaning_config: &'a CleaningConfig,
+    cache: Option<&'a ExtractionCache>,
+    cancel: &'a CancellationFlag,
+) -> Result<RepeatedArtifactScanReport, String> {
+    let files_requested = records.len();
+    let analysed_processed_text = config.analyse_processed_text;
+    let custom_removals_active = cleaning_config.remove_patterns.len();
+    let max_examples_per_candidate = config.max_examples_per_candidate;
+
+    if records.is_empty() {
+        return Ok(RepeatedArtifactScanReport {
+            candidates: Vec::new(),
+            diagnostics: RepeatedArtifactScanDiagnostics {
+                files_requested: 0,
+                files_scanned: 0,
+                files_failed_extraction: 0,
+                files_empty_after_extraction: 0,
+                total_raw_lines: 0,
+                total_candidate_keys_before_filtering: 0,
+                candidates_after_min_occurrences: 0,
+                candidates_after_min_files: 0,
+                final_candidates: 0,
+                analysed_processed_text,
+                custom_removals_active,
+                max_examples_per_candidate,
+            },
+        });
+    }
+
+    // Phase 1: parallel extraction + per-file aggregation.
+    // Every file produces a Phase1Result (no filter_map, no dropping).
+    let phase_results: Vec<Phase1Result> = records
+        .par_iter()
+        .enumerate()
+        .map(|(idx, record)| phase1_scan_file(record, idx, config, cleaning_config, cache, cancel))
+        .collect();
+
+    if cancel.load(Ordering::Relaxed) {
+        return Err("Scan cancelled.".to_string());
+    }
+
+    // Count extraction diagnostics
+    let files_scanned = phase_results.len();
+    let files_failed_extraction = phase_results.iter().filter(|r| r.extraction_failed).count();
+
+    let file_texts: Vec<FileText> = phase_results
+        .iter()
+        .map(|pr| FileText {
+            file_idx: pr.ft.file_idx,
+            file_name: pr.ft.file_name.clone(),
+            file_path: pr.ft.file_path.clone(),
+            raw_lines: pr.ft.raw_lines.clone(),
+            total_lines: pr.ft.total_lines,
+            page_nums: pr.ft.page_nums.clone(),
+            page_line_info: pr.ft.page_line_info.clone(),
+        })
+        .collect();
+
+    let total_raw_lines: usize = file_texts.iter().map(|ft| ft.raw_lines.len()).sum();
+    let files_empty_after_extraction = file_texts
+        .iter()
+        .filter(|ft| ft.raw_lines.is_empty())
+        .count();
+
+    let all_maps: Vec<HashMap<(RepeatedArtifactKind, String), LocalCandidateStats>> =
+        phase_results.into_iter().map(|pr| pr.local_map).collect();
+
+    if cancel.load(Ordering::Relaxed) {
+        return Err("Scan cancelled.".to_string());
+    }
+
+    // Phase 2: merge
+    let global = phase2_merge(all_maps, config);
+
+    if cancel.load(Ordering::Relaxed) {
+        return Err("Scan cancelled.".to_string());
+    }
+
+    // --- Filtering stage counts for diagnostics ---
+    let total_candidate_keys_before_filtering = global.len();
+
+    let after_min_occurrences: Vec<(RepeatedArtifactKind, String)> = global
+        .iter()
+        .filter(|(_, e)| e.occurrence_count >= config.min_occurrences)
+        .map(|(k, _)| k.clone())
+        .collect();
+    let candidates_after_min_occurrences = after_min_occurrences.len();
+
+    let after_min_files: Vec<(RepeatedArtifactKind, String)> = global
+        .iter()
+        .filter(|(_, e)| {
+            e.occurrence_count >= config.min_occurrences && e.file_ids.len() >= config.min_files
+        })
+        .map(|(k, _)| k.clone())
+        .collect();
+    let candidates_after_min_files = after_min_files.len();
+
+    // Phase 3: finalize
+    let candidates = phase3_finalize(global, &file_texts, config);
+    let final_candidates = candidates.len();
+
+    Ok(RepeatedArtifactScanReport {
+        candidates,
+        diagnostics: RepeatedArtifactScanDiagnostics {
+            files_requested,
+            files_scanned,
+            files_failed_extraction,
+            files_empty_after_extraction,
+            total_raw_lines,
+            total_candidate_keys_before_filtering,
+            candidates_after_min_occurrences,
+            candidates_after_min_files,
+            final_candidates,
+            analysed_processed_text,
+            custom_removals_active,
+            max_examples_per_candidate,
+        },
+    })
+}
+
+/// Performs a corpus-wide scan for repeated lines and blocks.
+///
+/// Three-phase scan with cancellation support.
+///
+/// `cancel` is an `AtomicBool`. The scanner checks it:
+/// - before extracting each file
+/// - after extracting each file
+/// - after counting each file
+/// - between phases
+///
+/// Returns `Err("Scan cancelled.")` if cancelled.
+pub fn scan_repeated_artifacts(
+    records: &[DocumentRecord],
+    config: &RepeatedArtifactScanConfig,
+    cleaning_config: &CleaningConfig,
+) -> Result<Vec<RepeatedArtifactCandidate>, String> {
+    let report = scan_repeated_artifacts_report(records, config, cleaning_config)?;
+    Ok(report.candidates)
+}
+
+/// Like `scan_repeated_artifacts` but accepts an external cancellation flag.
+///
+/// Pass an `Arc<AtomicBool>` set to `true` to request cancellation.
+/// The scanner checks it cooperatively between operations.
+pub fn scan_repeated_artifacts_with_cancel(
+    records: &[DocumentRecord],
+    config: &RepeatedArtifactScanConfig,
+    cleaning_config: &CleaningConfig,
+    cancel: &CancellationFlag,
+) -> Result<Vec<RepeatedArtifactCandidate>, String> {
+    let report =
+        scan_repeated_artifacts_report_with_cancel(records, config, cleaning_config, cancel)?;
+    Ok(report.candidates)
+}
+
