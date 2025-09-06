@@ -4,6 +4,7 @@ pub mod cache;
 pub mod clean;
 pub mod docx;
 pub mod html;
+pub mod manifest;
 pub mod pdf;
 pub mod pdf_ocr;
 pub mod pdf_quality;
@@ -14,6 +15,7 @@ pub mod search;
 pub mod word_count;
 
 pub use clean::{CleaningConfig, ReplacementRule, clean_text};
+pub use manifest::{ExportManifest, ManifestFileRecord};
 pub use preview::{
     CombinedPreview, FilePreview, PreviewError, PreviewOptions, PreviewWarning, PreviewWarningKind,
     preview_file, preview_files, preview_processed_files,
