@@ -1025,6 +1025,181 @@ mark.search-match.current-match {
   color: #ff5555;
 }
 
+.artifact-scan-diagnostics {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  margin-bottom: 8px;
+}
+
+/* Repeated Artefact Finder Modal Styling */
+.repeated-artifact-table-container tbody tr {
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color 0.15s ease;
+}
+
+.repeated-artifact-table-container tbody tr:hover {
+  background-color: var(--hover-color);
+}
+
+.repeated-artifact-table-container tbody tr.selected {
+  background-color: var(--selected-color);
+}
+
+.repeated-artifact-table-container th,
+.repeated-artifact-table-container td {
+  padding: 6px 10px;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repeated-artifact-table-container td.candidate-text-cell {
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.risk-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.risk-badge.strong_header_footer_candidate {
+  background: rgba(235, 87, 87, 0.15);
+  border: 1px solid rgba(235, 87, 87, 0.3);
+  color: #eb5757;
+}
+
+.risk-badge.possible_boilerplate {
+  background: rgba(242, 201, 76, 0.15);
+  border: 1px solid rgba(242, 201, 76, 0.3);
+  color: #f2c94c;
+}
+
+.risk-badge.common_section_heading_review_carefully {
+  background: rgba(47, 128, 237, 0.15);
+  border: 1px solid rgba(47, 128, 237, 0.3);
+  color: #2f80ed;
+}
+
+.risk-badge.symbol_or_noise_candidate {
+  background: rgba(155, 81, 224, 0.15);
+  border: 1px solid rgba(155, 81, 224, 0.3);
+  color: #9b51e0;
+}
+
+.risk-badge.ambiguous {
+  background: rgba(130, 130, 130, 0.15);
+  border: 1px solid rgba(130, 130, 130, 0.3);
+  color: #828282;
+}
+
+/* Candidate detail panel display block */
+.candidate-display-block {
+  margin: 12px 0;
+}
+
+.candidate-display-header {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 6px;
+}
+
+.candidate-display-text {
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px 12px;
+  max-height: 180px;
+  overflow: auto;
+  line-height: 1.45;
+  color: var(--text-color);
+}
+
+.btn-copy-candidate {
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.btn-copy-candidate:hover {
+  background: var(--hover-color);
+}
+
+.detail-note {
+  font-size: 0.85rem;
+  padding: 8px;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+
+.detail-note-info {
+  color: var(--text-muted);
+  background: rgba(255, 255, 100, 0.08);
+  border-left: 3px solid #d4a017;
+}
+
+.artifact-example-card {
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.artifact-example-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 4px;
+}
+
+.artifact-example-body {
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.artifact-context-line {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.artifact-matched-line {
+  color: var(--text-color);
+  background-color: rgba(0, 122, 204, 0.15);
+  border-left: 3px solid var(--accent-color);
+  padding-left: 6px;
+  font-weight: 500;
+}
+
 /* Extraction tab accordion — lightweight sections with subtle dividers */
 .extraction-accordion details {
   border-bottom: 1px solid var(--border-color);
