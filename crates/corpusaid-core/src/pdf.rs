@@ -1539,8 +1539,19 @@ mod tests {
         );
     }
 
+    /// Skip this test if PDFium is not available on the current platform.
+    macro_rules! require_pdfium {
+        () => {
+            if !crate::pdf_ocr::pdfium_available() {
+                eprintln!("skipping PDFium-dependent test: PDFium library is not available");
+                return;
+            }
+        };
+    }
+
     #[test]
     fn test_extract_empty_pdf() {
+        require_pdfium!();
         let mut doc = Document::with_version("1.5");
         let pages_id = doc.new_object_id();
         let page_id = doc.add_object(dictionary!(
@@ -1585,6 +1596,7 @@ mod tests {
 
     #[test]
     fn test_extract_valid_pdf() {
+        require_pdfium!();
         let mut doc = Document::with_version("1.5");
         let pages_id = doc.new_object_id();
 
@@ -1762,6 +1774,7 @@ mod tests {
 
     #[test]
     fn test_pdf_cleanup_repeated_headers_footers() {
+        require_pdfium!();
         let pages = vec![
             vec![
                 "Repeated Header",
@@ -1838,6 +1851,7 @@ mod tests {
 
     #[test]
     fn test_pdf_cleanup_body_line_preserved() {
+        require_pdfium!();
         // A repeated line in the body (not in top 3 or bottom 3 candidates) should not be removed
         // We create pages with 7 lines: index 0,1,2 = top zone; index 3 = body; index 4,5,6 = bottom zone
         let pages = vec![
@@ -1896,6 +1910,7 @@ mod tests {
 
     #[test]
     fn test_pdf_cleanup_page_labels() {
+        require_pdfium!();
         let pages = vec![
             vec!["Header", "Some text in the page body.", "1"],
             vec!["Header", "Some text in the page body.", "Page 2"],
@@ -1932,6 +1947,7 @@ mod tests {
 
     #[test]
     fn test_pdf_cleanup_short_pdf_conservative() {
+        require_pdfium!();
         let pages = vec![
             vec![
                 "Repeated Header",
@@ -1996,6 +2012,7 @@ mod tests {
 
     #[test]
     fn test_pdf_cleanup_symbol_heavy_artifacts() {
+        require_pdfium!();
         let pages = vec![
             vec![
                 "* * * * * * * * *",
@@ -2048,6 +2065,7 @@ mod tests {
 
     #[test]
     fn test_pdf_cleanup_code_block_removal() {
+        require_pdfium!();
         let pages = vec![
             vec![
                 "The null hypothesis H0 is rejected.",
@@ -2150,6 +2168,7 @@ mod tests {
 
     #[test]
     fn test_pdf_cleanup_formula_removal() {
+        require_pdfium!();
         let pages = vec![vec![
             "The null hypothesis H0 is rejected.",
             "The model y = a + bx is simple.",
