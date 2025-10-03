@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/corpusaid-core", "apps/desktop/src-tauri"]
+exclude = ["legacy/pyside/rust_preview"]
 resolver = "2"
 
 [workspace.package]
