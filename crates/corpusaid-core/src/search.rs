@@ -6,12 +6,14 @@ use crate::pdf::extract_pdf;
 use crate::scan::{DocumentRecord, DocumentType};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// A single search hit with ready-to-render context strings.
 ///
 /// All text fields are char-boundary-safe slices of the original extracted text.
 /// The frontend should use these strings directly, not try to compute offsets.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct SearchHit {
     /// Index into the corpus records array.
     pub corpus_index: usize,
@@ -29,7 +31,8 @@ pub struct SearchHit {
     pub file_match_index: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct SearchResult {
     /// Total number of matches across all searched files (may exceed returned_hits).
     pub total_matches: usize,

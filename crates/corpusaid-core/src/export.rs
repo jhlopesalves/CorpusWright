@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use ts_rs::TS;
 
 pub use crate::manifest::ManifestFileRecord as ExportedFileRecord;
 
@@ -29,15 +30,17 @@ impl Default for ExportOptions {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(export)]
 pub enum ExportWarningKind {
     InvalidUtf8,
     ExtractionWarning,
     ExtractionError,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct ExportWarning {
     pub source_path: Option<PathBuf>,
     pub output_path: Option<PathBuf>,
@@ -45,7 +48,8 @@ pub struct ExportWarning {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct ExportReport {
     pub output_dir: PathBuf,
     pub texts_dir: PathBuf,

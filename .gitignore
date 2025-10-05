@@ -118,7 +118,6 @@ legacy/pyside/rust_preview/.rustup/
 *.spec
 *.bmp
 setup_icon.ico
-AGENTS.md
 smoke.html
 smoke.txt
 pdf_test.pdf
@@ -143,4 +142,4 @@ local-corpora/
 manual-corpora/
 sample-corpora-local/
 crates/corpusaid-core/tests/fixtures/non-tracked/
-codex_plan.txt
+
