@@ -6,7 +6,7 @@ import {
   getActivePreviewTab,
 } from "./dom";
 import { state } from "./state";
-import type { SearchResult } from "./types";
+import type { SearchResult } from "./generated/SearchResult.js";
 
 interface SearchCallbacks {
   schedulePreviewUpdate: (delay: number) => void;

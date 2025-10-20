@@ -4,7 +4,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { dom } from "./dom";
 import { updateFileList } from "./file-list";
 import { state } from "./state";
-import type { CorpusLoadResult, CorpusSummary } from "./types";
+import type { CorpusSummary } from "./generated/CorpusSummary.js";
+import type { CorpusLoadResult } from "./types";
 
 interface CorpusCallbacks {
   updateWordCount: () => void;

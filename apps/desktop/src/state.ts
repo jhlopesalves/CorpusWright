@@ -1,9 +1,9 @@
 import type { CleaningConfig, ReplacementRule } from "./generated/CleaningConfig.js";
 import { createDefaultCleaningConfig } from "./config";
+import type { DocumentRecord } from "./generated/DocumentRecord.js";
+import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
+import type { SearchResult } from "./generated/SearchResult.js";
 import type {
-  DocumentRecord,
-  RepeatedArtifactCandidate,
-  SearchResult,
   VisibleFile,
 } from "./types";
 

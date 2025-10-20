@@ -6,13 +6,11 @@ import {
   getSelectedArtifactTextMode,
 } from "./dom";
 import { state } from "./state";
-import type {
-  PositionSummary,
-  RepeatedArtifactCandidate,
-  RepeatedArtifactScanConfig,
-  RepeatedArtifactScanDiagnostics,
-  RepeatedArtifactScanReport,
-} from "./types";
+import type { PositionSummary } from "./generated/PositionSummary.js";
+import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
+import type { RepeatedArtifactScanConfig } from "./generated/RepeatedArtifactScanConfig.js";
+import type { RepeatedArtifactScanDiagnostics } from "./generated/RepeatedArtifactScanDiagnostics.js";
+import type { RepeatedArtifactScanReport } from "./generated/RepeatedArtifactScanReport.js";
 
 interface RepeatedArtifactCallbacks {
   renderCustomRemovals: () => void;
