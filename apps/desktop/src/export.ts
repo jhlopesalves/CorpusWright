@@ -33,8 +33,8 @@ async function handleExport(): Promise<void> {
     corpusName = sanitizeFolderName(basename);
   }
   const exportDirName = corpusName
-    ? `${corpusName}_corpusaid_processed_${timestamp}`
-    : `CorpusAid_processed_${timestamp}`;
+    ? `${corpusName}_corpuswright_processed_${timestamp}`
+    : `CorpusWright_processed_${timestamp}`;
   const separator = selected.includes("\\") ? "\\" : "/";
   const targetDir = `${selected}${selected.endsWith(separator) ? "" : separator}${exportDirName}`;
 

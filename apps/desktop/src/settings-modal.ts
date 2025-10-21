@@ -135,7 +135,7 @@ async function handleSaveConfig(): Promise<void> {
   const json = JSON.stringify(config, null, 2);
 
   const selected = await save({
-    defaultPath: "corpusaid-processing-config.json",
+    defaultPath: "corpuswright-processing-config.json",
     filters: [{ name: "JSON Config", extensions: ["json"] }]
   });
   if (selected === null) return;

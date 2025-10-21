@@ -40,9 +40,9 @@ pip-wheel-metadata/
 *.egg
 MANIFEST
 *.manifest
-CorpusAid.onefile-build/
-CorpusAid.build/
-CorpusAid.dist/
+CorpusWright.onefile-build/
+CorpusWright.build/
+CorpusWright.dist/
 CorpuScript.build/
 CorpuScript.dist/
 CorpuScript/
