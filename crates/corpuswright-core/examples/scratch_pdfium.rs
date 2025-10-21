@@ -1,4 +1,4 @@
-use corpusaid_core::scan_directory;
+use corpuswright_core::scan_directory;
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

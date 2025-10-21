@@ -1,14 +1,14 @@
-use corpusaid_core::cache::ExtractionCache;
-use corpusaid_core::clean::CleaningConfig;
-use corpusaid_core::export::{ExportError, ExportOptions, ExportReport, export_corpus};
-use corpusaid_core::preview::{
+use corpuswright_core::cache::ExtractionCache;
+use corpuswright_core::clean::CleaningConfig;
+use corpuswright_core::export::{ExportError, ExportOptions, ExportReport, export_corpus};
+use corpuswright_core::preview::{
     CombinedPreview, PreviewOptions, preview_files, preview_processed_files,
 };
-use corpusaid_core::repeated_artifacts::{
+use corpuswright_core::repeated_artifacts::{
     CancellationFlag, RepeatedArtifactScanConfig, RepeatedArtifactScanReport,
 };
-use corpusaid_core::scan::{DocumentRecord, ScanReport, load_files, scan_directory};
-use corpusaid_core::search::{SearchResult, search_corpus};
+use corpuswright_core::scan::{DocumentRecord, ScanReport, load_files, scan_directory};
+use corpuswright_core::search::{SearchResult, search_corpus};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -279,7 +279,7 @@ fn compute_word_count_command(
     let total_words: u64 = records
         .iter()
         .map(|record| {
-            corpusaid_core::word_count::count_words_for_record(
+            corpuswright_core::word_count::count_words_for_record(
                 record,
                 &cleaning_config,
                 Some(&*cache),
@@ -302,7 +302,7 @@ fn scan_repeated_artifacts_command(
     let records = corpus.records_for_indices(&indices, corpus_version)?;
     // Reset cancellation flag for this scan
     state.cancel.store(false, Ordering::Relaxed);
-    corpusaid_core::repeated_artifacts::scan_repeated_artifacts_report_with_cancel_and_cache(
+    corpuswright_core::repeated_artifacts::scan_repeated_artifacts_report_with_cancel_and_cache(
         &records,
         &config,
         &cleaning_config,

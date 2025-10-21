@@ -2,7 +2,7 @@
 //! for frontend-facing IPC/domain types.
 //!
 //! Usage:
-//!   cargo run -p corpusaid-core --example export_ts
+//!   cargo run -p corpuswright-core --example export_ts
 //!
 //! This writes .ts files to apps/desktop/src/generated/.
 
@@ -10,21 +10,23 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
-use corpusaid_core::clean::{
+use corpuswright_core::clean::{
     CleaningConfig, PdfEmbeddedTextStrategy, ReplacementRule, TableExtractionStrategy,
 };
-use corpusaid_core::export::{ExportReport, ExportWarning, ExportWarningKind};
-use corpusaid_core::manifest::{ExportManifest, ManifestFileRecord};
-use corpusaid_core::preview::{CombinedPreview, FilePreview, PreviewWarning, PreviewWarningKind};
-use corpusaid_core::repeated_artifacts::{
+use corpuswright_core::export::{ExportReport, ExportWarning, ExportWarningKind};
+use corpuswright_core::manifest::{ExportManifest, ManifestFileRecord};
+use corpuswright_core::preview::{
+    CombinedPreview, FilePreview, PreviewWarning, PreviewWarningKind,
+};
+use corpuswright_core::repeated_artifacts::{
     ArtifactRiskLabel, CandidateContentClass, PositionSummary, RepeatedArtifactCandidate,
     RepeatedArtifactExample, RepeatedArtifactKind, RepeatedArtifactScanConfig,
     RepeatedArtifactScanDiagnostics, RepeatedArtifactScanReport,
 };
-use corpusaid_core::scan::{
+use corpuswright_core::scan::{
     CorpusSummary, DocumentRecord, DocumentType, DocumentTypeCounts, ScanReport,
 };
-use corpusaid_core::search::{SearchHit, SearchResult};
+use corpuswright_core::search::{SearchHit, SearchResult};
 
 struct TypeImport {
     name: &'static str,
