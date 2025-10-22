@@ -537,6 +537,34 @@ pre {
   line-height: 1.4;
 }
 
+.about-modal-content {
+  width: min(90vw, 520px);
+}
+
+.about-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.about-details p {
+  margin: 0;
+}
+
+.selectable-text {
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+.about-alpha-note {
+  margin: 18px 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
 .modal-config-toolbar {
   display: flex;
   align-items: center;

@@ -1,6 +1,7 @@
 import "./state";
 import "./dom";
 
+import { initAboutModal } from "./about-modal";
 import { initCorpusHandlers } from "./corpus";
 import { initCustomRemovals, renderCustomRemovals } from "./custom-removals";
 import { initExport } from "./export";
@@ -41,6 +42,8 @@ function init(): void {
   initThemeToggle();
 
   initCustomRemovals();
+
+  initAboutModal();
 
   initSearch({
     schedulePreviewUpdate,
