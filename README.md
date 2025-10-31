@@ -1,12 +1,19 @@
 # CorpusWright
+[![CI](https://github.com/jhlopesalves/corpuswright/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jhlopesalves/corpuswright/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jhlopesalves/corpuswright?include_prereleases&label=release)](https://github.com/jhlopesalves/corpuswright/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
-![Tauri](https://img.shields.io/badge/Tauri-24C8DB?logo=tauri&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-[![CI](https://github.com/jhlopesalves/CorpusAid/actions/workflows/ci.yml/badge.svg)](https://github.com/jhlopesalves/CorpusAid/actions/workflows/ci.yml)
-![Status](https://img.shields.io/badge/status-active%20development-blue)
+![Tauri](https://img.shields.io/badge/Tauri-24C8DB?logo=tauri&logoColor=white)
+![Local-first](https://img.shields.io/badge/local--first-desktop-blue)
+![Corpus linguistics](https://img.shields.io/badge/corpus-linguistics-purple)
+
+
+
+**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.1](https://github.com/jhlopesalves/corpuswright/releases/tag/v0.1.0-alpha.1)
+
+> CorpusWright is currently experimental alpha software. Windows and macOS builds are available through GitHub Releases, but they may be unsigned and may trigger operating-system security warnings.
 
 **CorpusWright** is a desktop workbench for preparing research corpora for analysis.
 
