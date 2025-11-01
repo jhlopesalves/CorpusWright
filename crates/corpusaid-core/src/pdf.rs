@@ -1229,3 +1229,1012 @@ fn classify_pdf_line(line: &str) -> PdfLineKind {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy};
+    use lopdf::content::{Content, Operation};
+    use lopdf::{Document, Object, Stream, StringFormat, dictionary};
+
+    #[test]
+    fn test_pdf_extraction_options_from_cleaning_config() {
+        let config = CleaningConfig {
+            pdf_embedded_text_strategy: PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn,
+            remove_repeated_pdf_headers_footers: true,
+            remove_pdf_page_labels: true,
+            remove_pdf_symbol_heavy_artifacts: false,
+            remove_pdf_code_like_blocks: true,
+            remove_pdf_formula_like_lines: false,
+            ..CleaningConfig::default()
+        };
+        let options = PdfExtractionOptions::from_cleaning_config(&config);
+        assert_eq!(
+            options.strategy,
+            PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn
+        );
+        assert!(
+            !options.use_ocr,
+            "from_cleaning_config must set use_ocr = false"
+        );
+        assert!(options.remove_repeated_headers_footers);
+        assert!(options.remove_page_labels);
+        assert!(!options.remove_symbol_heavy_artifacts);
+        assert!(options.remove_code_like_blocks);
+        assert!(!options.remove_formula_like_lines);
+    }
+
+    #[test]
+    fn test_pdf_extraction_options_raw_default() {
+        let options = PdfExtractionOptions::raw_default();
+        assert_eq!(options.strategy, PdfEmbeddedTextStrategy::PdfiumFlat);
+        assert!(!options.use_ocr);
+        assert!(!options.remove_repeated_headers_footers);
+        assert!(!options.remove_page_labels);
+        assert!(!options.remove_symbol_heavy_artifacts);
+        assert!(!options.remove_code_like_blocks);
+        assert!(!options.remove_formula_like_lines);
+    }
+
+    #[test]
+    fn test_reconstruct_visual_single_column_preserves_line_order() {
+        let chars = vec![
+            // First line: "Top line"
+            CharInfo {
+                c: "T".to_string(),
+                bottom: 500.0,
+                left: 10.0,
+                top: 510.0,
+                right: 15.0,
+            },
+            CharInfo {
+                c: "o".to_string(),
+                bottom: 500.0,
+                left: 15.0,
+                top: 510.0,
+                right: 20.0,
+            },
+            CharInfo {
+                c: "p".to_string(),
+                bottom: 500.0,
+                left: 20.0,
+                top: 510.0,
+                right: 25.0,
+            },
+            CharInfo {
+                c: " ".to_string(),
+                bottom: 500.0,
+                left: 25.0,
+                top: 510.0,
+                right: 26.0,
+            },
+            CharInfo {
+                c: "l".to_string(),
+                bottom: 500.0,
+                left: 26.0,
+                top: 510.0,
+                right: 30.0,
+            },
+            CharInfo {
+                c: "i".to_string(),
+                bottom: 500.0,
+                left: 30.0,
+                top: 510.0,
+                right: 35.0,
+            },
+            CharInfo {
+                c: "n".to_string(),
+                bottom: 500.0,
+                left: 35.0,
+                top: 510.0,
+                right: 40.0,
+            },
+            CharInfo {
+                c: "e".to_string(),
+                bottom: 500.0,
+                left: 40.0,
+                top: 510.0,
+                right: 45.0,
+            },
+            // Second line: "Bottom"
+            CharInfo {
+                c: "B".to_string(),
+                bottom: 480.0,
+                left: 10.0,
+                top: 490.0,
+                right: 15.0,
+            },
+            CharInfo {
+                c: "o".to_string(),
+                bottom: 480.0,
+                left: 15.0,
+                top: 490.0,
+                right: 20.0,
+            },
+            CharInfo {
+                c: "t".to_string(),
+                bottom: 480.0,
+                left: 20.0,
+                top: 490.0,
+                right: 25.0,
+            },
+            CharInfo {
+                c: "t".to_string(),
+                bottom: 480.0,
+                left: 25.0,
+                top: 490.0,
+                right: 30.0,
+            },
+            CharInfo {
+                c: "o".to_string(),
+                bottom: 480.0,
+                left: 30.0,
+                top: 490.0,
+                right: 35.0,
+            },
+            CharInfo {
+                c: "m".to_string(),
+                bottom: 480.0,
+                left: 35.0,
+                top: 490.0,
+                right: 40.0,
+            },
+        ];
+
+        let result = reconstruct_visual_single_column(chars);
+        assert_eq!(result, "Top line\nBottom");
+    }
+
+    #[test]
+    fn test_reconstruct_visual_single_column_missing_space_reconstruction() {
+        let chars = vec![
+            // "Word1" and "Word2" with a gap of 10.0 (char width is 5.0)
+            CharInfo {
+                c: "W".to_string(),
+                bottom: 100.0,
+                left: 10.0,
+                top: 110.0,
+                right: 15.0,
+            },
+            CharInfo {
+                c: "o".to_string(),
+                bottom: 100.0,
+                left: 15.0,
+                top: 110.0,
+                right: 20.0,
+            },
+            CharInfo {
+                c: "r".to_string(),
+                bottom: 100.0,
+                left: 20.0,
+                top: 110.0,
+                right: 25.0,
+            },
+            CharInfo {
+                c: "d".to_string(),
+                bottom: 100.0,
+                left: 25.0,
+                top: 110.0,
+                right: 30.0,
+            },
+            CharInfo {
+                c: "1".to_string(),
+                bottom: 100.0,
+                left: 30.0,
+                top: 110.0,
+                right: 35.0,
+            },
+            CharInfo {
+                c: "W".to_string(),
+                bottom: 100.0,
+                left: 45.0,
+                top: 110.0,
+                right: 50.0,
+            },
+            CharInfo {
+                c: "o".to_string(),
+                bottom: 100.0,
+                left: 50.0,
+                top: 110.0,
+                right: 55.0,
+            },
+            CharInfo {
+                c: "r".to_string(),
+                bottom: 100.0,
+                left: 55.0,
+                top: 110.0,
+                right: 60.0,
+            },
+            CharInfo {
+                c: "d".to_string(),
+                bottom: 100.0,
+                left: 60.0,
+                top: 110.0,
+                right: 65.0,
+            },
+            CharInfo {
+                c: "2".to_string(),
+                bottom: 100.0,
+                left: 65.0,
+                top: 110.0,
+                right: 70.0,
+            },
+        ];
+        let result = reconstruct_visual_single_column(chars);
+        assert_eq!(result, "Word1 Word2");
+    }
+
+    #[test]
+    fn test_reconstruct_visual_single_column_right_aligned_toc() {
+        // TOC typically has text on the left, DOT leaders in the middle, and numbers on the right.
+        // Single column strategy MUST keep them on the same line.
+        let chars = vec![
+            CharInfo {
+                c: "1".to_string(),
+                bottom: 100.0,
+                left: 10.0,
+                top: 110.0,
+                right: 15.0,
+            },
+            CharInfo {
+                c: " ".to_string(),
+                bottom: 100.0,
+                left: 15.0,
+                top: 110.0,
+                right: 16.0,
+            },
+            CharInfo {
+                c: "I".to_string(),
+                bottom: 100.0,
+                left: 16.0,
+                top: 110.0,
+                right: 20.0,
+            },
+            CharInfo {
+                c: "n".to_string(),
+                bottom: 100.0,
+                left: 20.0,
+                top: 110.0,
+                right: 25.0,
+            },
+            CharInfo {
+                c: "t".to_string(),
+                bottom: 100.0,
+                left: 25.0,
+                top: 110.0,
+                right: 30.0,
+            },
+            CharInfo {
+                c: "r".to_string(),
+                bottom: 100.0,
+                left: 30.0,
+                top: 110.0,
+                right: 35.0,
+            },
+            CharInfo {
+                c: "o".to_string(),
+                bottom: 100.0,
+                left: 35.0,
+                top: 110.0,
+                right: 40.0,
+            },
+            // Gap representing middle DOT leaders, then the page number far to the right
+            CharInfo {
+                c: "1".to_string(),
+                bottom: 100.0,
+                left: 300.0,
+                top: 110.0,
+                right: 305.0,
+            },
+        ];
+        let result = reconstruct_visual_single_column(chars);
+        // It should reconstruct it on one line as "1 Intro 1"
+        assert_eq!(result, "1 Intro 1");
+    }
+
+    #[test]
+    fn test_two_column_strategy_is_not_default() {
+        assert_eq!(
+            PdfEmbeddedTextStrategy::default(),
+            PdfEmbeddedTextStrategy::PdfiumFlat
+        );
+    }
+
+    #[test]
+    fn test_extract_empty_pdf() {
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let page_id = doc.add_object(dictionary!(
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()]
+        ));
+
+        let pages = dictionary!(
+            "Type" => "Pages",
+            "Kids" => vec![page_id.into()],
+            "Count" => 1
+        );
+        doc.objects.insert(pages_id, Object::Dictionary(pages));
+
+        let catalog_id = doc.add_object(dictionary!(
+            "Type" => "Catalog",
+            "Pages" => pages_id
+        ));
+        doc.trailer.set("Root", catalog_id);
+
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+
+        let result = extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
+        assert_eq!(result.text, "");
+        assert_eq!(result.page_count, 1);
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("no extractable text"))
+        );
+    }
+
+    #[test]
+    fn test_extract_invalid_pdf() {
+        let invalid = b"This is not a PDF file.";
+        let result = extract_pdf(invalid, None, PdfExtractionOptions::raw_default());
+        assert!(matches!(result, Err(PdfExtractionError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_extract_valid_pdf() {
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+
+        let font_id = doc.add_object(dictionary!(
+            "Type" => "Font",
+            "Subtype" => "Type1",
+            "BaseFont" => "Helvetica"
+        ));
+
+        let resources_id = doc.add_object(dictionary!(
+            "Font" => dictionary!(
+                "F1" => font_id
+            )
+        ));
+
+        let content = Content {
+            operations: vec![
+                Operation::new("BT", vec![]),
+                Operation::new("Tf", vec!["F1".into(), 12.into()]),
+                Operation::new("Td", vec![100.into(), 100.into()]),
+                Operation::new(
+                    "Tj",
+                    vec![Object::String(
+                        b"Hello World".to_vec(),
+                        StringFormat::Literal,
+                    )],
+                ),
+                Operation::new("ET", vec![]),
+            ],
+        };
+
+        let content_id = doc.add_object(Stream::new(dictionary!(), content.encode().unwrap()));
+
+        let page_id = doc.add_object(dictionary!(
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "Contents" => content_id,
+            "Resources" => resources_id,
+            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()]
+        ));
+
+        let pages = dictionary!(
+            "Type" => "Pages",
+            "Kids" => vec![page_id.into()],
+            "Count" => 1
+        );
+        doc.objects.insert(pages_id, Object::Dictionary(pages));
+
+        let catalog_id = doc.add_object(dictionary!(
+            "Type" => "Catalog",
+            "Pages" => pages_id
+        ));
+
+        doc.trailer.set("Root", catalog_id);
+
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+
+        let result = extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
+        assert_eq!(result.text.trim(), "Hello World");
+        assert_eq!(result.page_count, 1);
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("PDF reading order is not guaranteed"))
+        );
+    }
+
+    #[test]
+    fn test_is_page_label() {
+        assert!(is_page_label("1"));
+        assert!(is_page_label("12"));
+        assert!(is_page_label("104"));
+        assert!(is_page_label("Page 12"));
+        assert!(is_page_label("page 12"));
+        assert!(is_page_label("p. 12"));
+        assert!(is_page_label("- 12 -"));
+        assert!(is_page_label("— 12 —"));
+        assert!(is_page_label("12 / 40"));
+        assert!(is_page_label("Page 12 of 40"));
+        assert!(is_page_label("i"));
+        assert!(is_page_label("iv"));
+        assert!(is_page_label("xii"));
+        assert!(is_page_label("Page iv"));
+
+        // Negative test cases
+        assert!(!is_page_label(""));
+        assert!(!is_page_label("12 apples"));
+        assert!(!is_page_label("Chapter 12"));
+        assert!(!is_page_label("dim"));
+        assert!(!is_page_label("mid"));
+        assert!(!is_page_label("This is page 12 of the book"));
+    }
+
+    #[test]
+    fn test_normalize_candidate_line() {
+        assert_eq!(normalize_candidate_line("Page 1"), "page #");
+        assert_eq!(normalize_candidate_line("- 12 -"), "#");
+        assert_eq!(normalize_candidate_line("Chapter 2"), "chapter #");
+        assert_eq!(normalize_candidate_line("  Introduction  "), "introduction");
+    }
+
+    fn create_multipage_pdf(pages_content: &[Vec<&str>]) -> Vec<u8> {
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+
+        let font_id = doc.add_object(dictionary!(
+            "Type" => "Font",
+            "Subtype" => "Type1",
+            "BaseFont" => "Helvetica"
+        ));
+
+        let resources_id = doc.add_object(dictionary!(
+            "Font" => dictionary!(
+                "F1" => font_id
+            )
+        ));
+
+        let mut kids = Vec::new();
+        for page_lines in pages_content {
+            let mut ops = vec![
+                Operation::new("BT", vec![]),
+                Operation::new("Tf", vec!["F1".into(), 12.into()]),
+            ];
+
+            let mut first = true;
+            for line in page_lines {
+                if first {
+                    ops.push(Operation::new("Td", vec![100.into(), 750.into()]));
+                    first = false;
+                } else {
+                    ops.push(Operation::new("Td", vec![0.into(), (-30.0).into()]));
+                }
+                ops.push(Operation::new(
+                    "Tj",
+                    vec![Object::String(
+                        line.as_bytes().to_vec(),
+                        StringFormat::Literal,
+                    )],
+                ));
+            }
+            ops.push(Operation::new("ET", vec![]));
+
+            let content = Content { operations: ops };
+            let content_id = doc.add_object(Stream::new(dictionary!(), content.encode().unwrap()));
+
+            let page_id = doc.add_object(dictionary!(
+                "Type" => "Page",
+                "Parent" => pages_id,
+                "Contents" => content_id,
+                "Resources" => resources_id,
+                "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()]
+            ));
+            kids.push(page_id.into());
+        }
+
+        let pages = dictionary!(
+            "Type" => "Pages",
+            "Kids" => kids,
+            "Count" => pages_content.len() as i32
+        );
+        doc.objects.insert(pages_id, Object::Dictionary(pages));
+
+        let catalog_id = doc.add_object(dictionary!(
+            "Type" => "Catalog",
+            "Pages" => pages_id
+        ));
+        doc.trailer.set("Root", catalog_id);
+
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
+    }
+
+    #[test]
+    fn test_pdf_cleanup_repeated_headers_footers() {
+        let pages = vec![
+            vec![
+                "Repeated Header",
+                "Top 1-2",
+                "Top 1-3",
+                "Body Line 1",
+                "Bottom 1-1",
+                "Bottom 1-2",
+                "Repeated Footer",
+            ],
+            vec![
+                "Repeated Header",
+                "Top 2-2",
+                "Top 2-3",
+                "Body Line 2",
+                "Bottom 2-1",
+                "Bottom 2-2",
+                "Repeated Footer",
+            ],
+            vec![
+                "Repeated Header",
+                "Top 3-2",
+                "Top 3-3",
+                "Body Line 3",
+                "Bottom 3-1",
+                "Bottom 3-2",
+                "Repeated Footer",
+            ],
+            vec![
+                "Repeated Header",
+                "Top 4-2",
+                "Top 4-3",
+                "Body Line 4",
+                "Bottom 4-1",
+                "Bottom 4-2",
+                "Repeated Footer",
+            ],
+        ];
+
+        let bytes = create_multipage_pdf(&pages);
+
+        // 1. With repeated headers/footers removal disabled
+        let result_disabled =
+            extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
+        assert!(result_disabled.text.contains("Repeated Header"));
+        assert!(result_disabled.text.contains("Repeated Footer"));
+        assert!(
+            !result_disabled
+                .warnings
+                .iter()
+                .any(|w| w.contains("Removed repeated PDF header/footer"))
+        );
+
+        // 2. With repeated headers/footers removal enabled
+        let result_enabled = extract_pdf(
+            &bytes,
+            None,
+            PdfExtractionOptions {
+                remove_repeated_headers_footers: true,
+                ..PdfExtractionOptions::raw_default()
+            },
+        )
+        .unwrap();
+        assert!(!result_enabled.text.contains("Repeated Header"));
+        assert!(!result_enabled.text.contains("Repeated Footer"));
+        assert!(result_enabled.text.contains("Body Line 1"));
+        assert!(
+            result_enabled
+                .warnings
+                .iter()
+                .any(|w| w.contains("Removed repeated PDF header/footer"))
+        );
+    }
+
+    #[test]
+    fn test_pdf_cleanup_body_line_preserved() {
+        // A repeated line in the body (not in top 3 or bottom 3 candidates) should not be removed
+        // We create pages with 7 lines: index 0,1,2 = top zone; index 3 = body; index 4,5,6 = bottom zone
+        let pages = vec![
+            vec![
+                "Top 1",
+                "Top 2",
+                "Top 3",
+                "Repeated Body",
+                "Bottom 1",
+                "Bottom 2",
+                "Bottom 3",
+            ],
+            vec![
+                "Top 1",
+                "Top 2",
+                "Top 3",
+                "Repeated Body",
+                "Bottom 1",
+                "Bottom 2",
+                "Bottom 3",
+            ],
+            vec![
+                "Top 1",
+                "Top 2",
+                "Top 3",
+                "Repeated Body",
+                "Bottom 1",
+                "Bottom 2",
+                "Bottom 3",
+            ],
+            vec![
+                "Top 1",
+                "Top 2",
+                "Top 3",
+                "Repeated Body",
+                "Bottom 1",
+                "Bottom 2",
+                "Bottom 3",
+            ],
+        ];
+
+        let bytes = create_multipage_pdf(&pages);
+
+        let result = extract_pdf(
+            &bytes,
+            None,
+            PdfExtractionOptions {
+                remove_repeated_headers_footers: true,
+                ..PdfExtractionOptions::raw_default()
+            },
+        )
+        .unwrap();
+        // The repeated body line must be preserved
+        assert!(result.text.contains("Repeated Body"));
+    }
+
+    #[test]
+    fn test_pdf_cleanup_page_labels() {
+        let pages = vec![
+            vec!["Header", "Some text in the page body.", "1"],
+            vec!["Header", "Some text in the page body.", "Page 2"],
+            vec!["Header", "Some text in the page body.", "- 3 -"],
+            vec!["Header", "Some text in the page body.", "page iv"],
+        ];
+
+        let bytes = create_multipage_pdf(&pages);
+
+        // 1. With page labels removal disabled
+        let result_disabled =
+            extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
+        assert!(result_disabled.text.contains("1"));
+        assert!(result_disabled.text.contains("Page 2"));
+        assert!(result_disabled.text.contains("- 3 -"));
+        assert!(result_disabled.text.contains("page iv"));
+
+        // 2. With page labels removal enabled
+        let result_enabled = extract_pdf(
+            &bytes,
+            None,
+            PdfExtractionOptions {
+                remove_page_labels: true,
+                ..PdfExtractionOptions::raw_default()
+            },
+        )
+        .unwrap();
+        assert!(!result_enabled.text.contains("\n1\n") && !result_enabled.text.ends_with("\n1"));
+        assert!(!result_enabled.text.contains("Page 2"));
+        assert!(!result_enabled.text.contains("- 3 -"));
+        assert!(!result_enabled.text.contains("page iv"));
+        assert!(result_enabled.text.contains("Some text in the page body."));
+    }
+
+    #[test]
+    fn test_pdf_cleanup_short_pdf_conservative() {
+        let pages = vec![
+            vec![
+                "Repeated Header",
+                "Body Line 1",
+                "Footer Line 1",
+                "Repeated Footer",
+            ],
+            vec![
+                "Repeated Header",
+                "Body Line 2",
+                "Footer Line 2",
+                "Repeated Footer",
+            ],
+        ];
+
+        let bytes = create_multipage_pdf(&pages);
+
+        // With fewer than 3 pages, repeated header/footer removal is conservative and does not remove anything
+        let result = extract_pdf(
+            &bytes,
+            None,
+            PdfExtractionOptions {
+                remove_repeated_headers_footers: true,
+                ..PdfExtractionOptions::raw_default()
+            },
+        )
+        .unwrap();
+        assert!(result.text.contains("Repeated Header"));
+        assert!(result.text.contains("Repeated Footer"));
+    }
+
+    #[test]
+    fn test_is_symbol_heavy_artifact() {
+        // Removable cases
+        assert!(is_symbol_heavy_artifact("● ● ● ● ● ● ● ● ● ● ● ● ●"));
+        assert!(is_symbol_heavy_artifact("● ● ● ●"));
+        assert!(is_symbol_heavy_artifact("---------"));
+        assert!(is_symbol_heavy_artifact("********"));
+        assert!(is_symbol_heavy_artifact("●●●●●●●●●●●●●●"));
+
+        // Preserved cases: mathematically meaningful or code-like lines
+        assert!(!is_symbol_heavy_artifact("y = a + bx"));
+        assert!(!is_symbol_heavy_artifact("non-parametric / parametric"));
+        assert!(!is_symbol_heavy_artifact("C:\\Users\\example\\file.txt"));
+        assert!(!is_symbol_heavy_artifact("x + y / z"));
+
+        // Preserved cases: labels, prose, captions, lists
+        assert!(!is_symbol_heavy_artifact("Intercept, a"));
+        assert!(!is_symbol_heavy_artifact("35 40 45 50 55 60"));
+        assert!(!is_symbol_heavy_artifact("• This is a real bullet item."));
+        assert!(!is_symbol_heavy_artifact(
+            "Figure 9.6 100 posterior simulations"
+        ));
+        assert!(is_symbol_heavy_artifact("● ● ●")); // short pure graphical markers
+        assert!(is_symbol_heavy_artifact("●"));
+        assert!(is_symbol_heavy_artifact("● ●"));
+        assert!(is_symbol_heavy_artifact("● + ●")); // composed entirely of noise symbols
+        assert!(!is_symbol_heavy_artifact("● / ●")); // short, but contains non-noise symbol '/'
+        assert!(!is_symbol_heavy_artifact("{ }")); // braces are preserved
+        assert!(!is_symbol_heavy_artifact("[ ]")); // brackets are preserved
+    }
+
+    #[test]
+    fn test_pdf_cleanup_symbol_heavy_artifacts() {
+        let pages = vec![
+            vec![
+                "* * * * * * * * *",
+                "* * * * * * * * *",
+                "Body Line 1",
+                "More prose text.",
+            ],
+            vec![
+                "Another Body Line",
+                "* * * * * * * * *",
+                "* * * * * * * * *",
+            ],
+        ];
+
+        let bytes = create_multipage_pdf(&pages);
+
+        // 1. With symbol-heavy cleanup disabled
+        let result_disabled =
+            extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
+        assert!(result_disabled.text.contains("* * * * * * * * *"));
+        assert!(
+            result_disabled
+                .warnings
+                .iter()
+                .all(|w| !w.contains("symbol-heavy PDF graphical artefact"))
+        );
+
+        // 2. With symbol-heavy cleanup enabled
+        let result_enabled = extract_pdf(
+            &bytes,
+            None,
+            PdfExtractionOptions {
+                remove_symbol_heavy_artifacts: true,
+                ..PdfExtractionOptions::raw_default()
+            },
+        )
+        .unwrap();
+        assert!(!result_enabled.text.contains("* * * * * * * * *"));
+        assert!(result_enabled.text.contains("Body Line 1"));
+        assert!(result_enabled.text.contains("Another Body Line"));
+
+        // Check warnings format
+        let warning = result_enabled
+            .warnings
+            .iter()
+            .find(|w| w.contains("symbol-heavy PDF"))
+            .unwrap();
+        assert!(warning.contains("Removed 4 symbol-heavy PDF graphical artefact lines across 2 pages. Example pages: 1, 2."));
+    }
+
+    #[test]
+    fn test_pdf_cleanup_code_block_removal() {
+        let pages = vec![
+            vec![
+                "The null hypothesis H0 is rejected.",
+                "The function returns a value.",
+                "This function returns a vector.",
+                "The model y = a + bx is simple.",
+                "non-parametric / parametric",
+                "p-values are often misunderstood.",
+                "library(dplyr)",
+                "data <- read.csv(\"data.csv\")",
+                "data |> filter(group == \"A\")",
+                "Some final prose words in a sentence.",
+            ],
+            vec![
+                "Ordinary header",
+                "y = a + bx",
+                "model <- lm(y ~ x, data = df)",
+                "summary(model)",
+                "plot(x, y)",
+                "This function returns a value.",
+            ],
+        ];
+        let bytes = create_multipage_pdf(&pages);
+
+        // 1. With code removal disabled: everything code-like is preserved
+        let result_disabled =
+            extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
+        assert!(result_disabled.text.contains("library(dplyr)"));
+        assert!(result_disabled.text.contains("data <- read.csv"));
+        assert!(result_disabled.text.contains("model <- lm"));
+        assert!(result_disabled.text.contains("summary(model)"));
+        assert!(
+            !result_disabled
+                .warnings
+                .iter()
+                .any(|w| w.contains("code-like"))
+        );
+
+        // 2. With code removal enabled: code blocks are removed, but mixed/prose is preserved
+        let result_enabled = extract_pdf(
+            &bytes,
+            None,
+            PdfExtractionOptions {
+                remove_code_like_blocks: true,
+                ..PdfExtractionOptions::raw_default()
+            },
+        )
+        .unwrap();
+        // Preserved mixed/prose
+        assert!(
+            result_enabled
+                .text
+                .contains("The null hypothesis H0 is rejected.")
+        );
+        assert!(
+            result_enabled
+                .text
+                .contains("The function returns a value.")
+        );
+        assert!(
+            result_enabled
+                .text
+                .contains("This function returns a vector.")
+        );
+        assert!(
+            result_enabled
+                .text
+                .contains("The model y = a + bx is simple.")
+        );
+        assert!(result_enabled.text.contains("non-parametric / parametric"));
+        assert!(
+            result_enabled
+                .text
+                .contains("p-values are often misunderstood.")
+        );
+        assert!(
+            result_enabled
+                .text
+                .contains("Some final prose words in a sentence.")
+        );
+        assert!(result_enabled.text.contains("y = a + bx")); // formula preserved when formula option disabled!
+
+        // Removed code blocks
+        assert!(!result_enabled.text.contains("library(dplyr)"));
+        assert!(!result_enabled.text.contains("data <- read.csv"));
+        assert!(!result_enabled.text.contains("model <- lm"));
+        assert!(!result_enabled.text.contains("summary(model)"));
+        assert!(!result_enabled.text.contains("plot(x, y)"));
+
+        // Warning generated
+        let warning = result_enabled
+            .warnings
+            .iter()
+            .find(|w| w.contains("code-like"))
+            .unwrap();
+        assert!(
+            warning.contains("Removed 2 PDF code-like blocks containing 6 lines across 2 pages.")
+        );
+    }
+
+    #[test]
+    fn test_pdf_cleanup_formula_removal() {
+        let pages = vec![vec![
+            "The null hypothesis H0 is rejected.",
+            "The model y = a + bx is simple.",
+            "p-values are often misunderstood.",
+            "non-parametric / parametric",
+            "y = a + bx",
+            "H0: β1 = 0",
+            "E[X] = μ",
+            "logit(p) = β0 + β1x",
+            "model <- lm(y ~ x, data = df)",
+            "summary(model)",
+        ]];
+        let bytes = create_multipage_pdf(&pages);
+
+        // 1. With formula removal disabled
+        let result_disabled =
+            extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
+        assert!(result_disabled.text.contains("y = a + bx"));
+        assert!(result_disabled.text.contains("E[X] = ˛…"));
+        assert!(result_disabled.text.contains("logit(p) = ˛†0 + ˛†1x"));
+        assert!(
+            !result_disabled
+                .warnings
+                .iter()
+                .any(|w| w.contains("formula-like"))
+        );
+
+        // 2. With formula removal enabled: formulas removed, prose preserved
+        let result_enabled = extract_pdf(
+            &bytes,
+            None,
+            PdfExtractionOptions {
+                remove_formula_like_lines: true,
+                ..PdfExtractionOptions::raw_default()
+            },
+        )
+        .unwrap();
+        assert!(
+            result_enabled
+                .text
+                .contains("The null hypothesis H0 is rejected.")
+        );
+        assert!(
+            result_enabled
+                .text
+                .contains("The model y = a + bx is simple.")
+        );
+        assert!(
+            result_enabled
+                .text
+                .contains("p-values are often misunderstood.")
+        );
+        assert!(result_enabled.text.contains("non-parametric / parametric"));
+        assert!(
+            result_enabled
+                .text
+                .contains("model <- lm(y ~ x, data = df)")
+        ); // code block preserved when code option disabled!
+
+        assert!(
+            !result_enabled
+                .text
+                .lines()
+                .any(|l| l.trim() == "y = a + bx")
+        );
+        assert!(
+            !result_enabled
+                .text
+                .lines()
+                .any(|l| l.trim() == "H0: ˛†1 = 0")
+        );
+        assert!(!result_enabled.text.lines().any(|l| l.trim() == "E[X] = ˛…"));
+        assert!(
+            !result_enabled
+                .text
+                .lines()
+                .any(|l| l.trim() == "logit(p) = ˛†0 + ˛†1x")
+        );
+
+        // Warning generated
+        let warning = result_enabled
+            .warnings
+            .iter()
+            .find(|w| w.contains("formula-like"))
+            .unwrap();
+        assert!(warning.contains("Removed 4 PDF formula-like lines across 1 pages."));
+    }
+}
