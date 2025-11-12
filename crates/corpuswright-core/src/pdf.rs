@@ -412,14 +412,35 @@ pub fn extract_pdf(
         );
     }
 
-    // Load in PDFium
+    // Load in PDFium — if unavailable, fall back to lopdf embedded text extraction
     let pdfium = match crate::pdf_ocr::init_pdfium() {
         Ok(p) => p,
         Err(e) => {
-            return Err(PdfExtractionError::InvalidFormat(format!(
-                "Failed to initialize PDFium: {}",
+            warnings.push(format!(
+                "PDFium native library not available; OCR fallback is disabled and PDF extraction may be limited. ({})",
                 e
-            )));
+            ));
+            // Attempt lopdf-based embedded text extraction as a degraded fallback
+            let page_numbers: Vec<u32> = doc.get_pages().keys().copied().collect();
+            if page_numbers.is_empty() {
+                return Err(PdfExtractionError::InvalidFormat(
+                    "PDF has no pages.".to_string(),
+                ));
+            }
+            return match doc.extract_text(&page_numbers) {
+                Ok(text) => {
+                    let page_count = page_numbers.len();
+                    Ok(ExtractedPdf {
+                        text,
+                        warnings,
+                        page_count,
+                    })
+                }
+                Err(lopdf_err) => Err(PdfExtractionError::InvalidFormat(format!(
+                    "Failed to initialize PDFium ({}) and lopdf fallback also failed: {}",
+                    e, lopdf_err
+                ))),
+            };
         }
     };
 
