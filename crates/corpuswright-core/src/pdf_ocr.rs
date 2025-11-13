@@ -1,21 +1,118 @@
 use ocrs::{OcrEngine, OcrEngineParams};
 use pdfium_render::prelude::*;
 use rten::Model;
-use std::sync::OnceLock;
+use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, OnceLock, RwLock};
 
 static OCR_ENGINE: OnceLock<OcrEngine> = OnceLock::new();
 static PDFIUM_LIBRARY: OnceLock<Pdfium> = OnceLock::new();
+static OCR_RESOURCE_DIR: LazyLock<RwLock<Option<PathBuf>>> = LazyLock::new(|| RwLock::new(None));
+
+/// Overrides the OCR/PDFium resource directory used by core extraction.
+///
+/// UI layers should call this during startup after resolving their packaged
+/// resource directory. The core crate intentionally does not depend on Tauri.
+pub fn set_ocr_resource_dir(path: impl Into<PathBuf>) -> anyhow::Result<()> {
+    let path = path.into();
+    if path.as_os_str().is_empty() {
+        return Err(anyhow::anyhow!("OCR resource directory cannot be empty"));
+    }
+
+    let mut configured = OCR_RESOURCE_DIR
+        .write()
+        .map_err(|_| anyhow::anyhow!("OCR resource directory lock was poisoned"))?;
+    *configured = Some(path);
+    Ok(())
+}
+
+pub fn configured_ocr_resource_dir() -> Option<PathBuf> {
+    OCR_RESOURCE_DIR.read().ok().and_then(|guard| guard.clone())
+}
+
+fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut deduped = Vec::new();
+    for path in paths {
+        if !deduped.iter().any(|seen| seen == &path) {
+            deduped.push(path);
+        }
+    }
+    deduped
+}
+
+fn default_ocr_resource_candidates_from_exe(current_exe: Option<&Path>) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    if let Some(current_exe) = current_exe {
+        let exe_dir = current_exe.parent().unwrap_or_else(|| Path::new(""));
+        paths.push(exe_dir.join("ocr"));
+        paths.push(exe_dir.join("../../../resources/ocr"));
+        paths.push(exe_dir.join("../../../../apps/desktop/src-tauri/resources/ocr"));
+    }
+
+    paths.push(PathBuf::from("resources/ocr"));
+    paths.push(PathBuf::from("../../apps/desktop/src-tauri/resources/ocr"));
+    paths.push(PathBuf::from("apps/desktop/src-tauri/resources/ocr"));
+
+    paths
+}
+
+fn ocr_resource_candidates_with(
+    configured: Option<PathBuf>,
+    env_override: Option<PathBuf>,
+    current_exe: Option<&Path>,
+) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    if let Some(path) = configured {
+        paths.push(path);
+    }
+    if let Some(path) = env_override {
+        paths.push(path);
+    }
+
+    paths.extend(default_ocr_resource_candidates_from_exe(current_exe));
+    dedupe_paths(paths)
+}
+
+pub fn ocr_resource_candidates() -> Vec<PathBuf> {
+    let configured = configured_ocr_resource_dir();
+    let env_override = std::env::var_os("CORPUSWRIGHT_OCR_DIR").map(PathBuf::from);
+    let current_exe = std::env::current_exe().ok();
+
+    ocr_resource_candidates_with(configured, env_override, current_exe.as_deref())
+}
+
+pub fn pdfium_library_path_for_dir(dir: &Path) -> PathBuf {
+    Pdfium::pdfium_platform_library_name_at_path(dir.to_string_lossy().as_ref())
+}
+
+pub fn pdfium_library_candidates() -> Vec<PathBuf> {
+    ocr_resource_candidates()
+        .into_iter()
+        .map(|dir| pdfium_library_path_for_dir(&dir))
+        .collect()
+}
+
+pub fn first_existing_pdfium_library() -> Option<PathBuf> {
+    pdfium_library_candidates()
+        .into_iter()
+        .find(|path| path.is_file())
+}
+
+fn first_existing_ocr_resource_dir() -> Option<PathBuf> {
+    ocr_resource_candidates()
+        .into_iter()
+        .find(|path| path.is_dir())
+}
 
 /// Returns true if PDFium can be initialized on the current platform.
 /// Useful for guarding tests that depend on the native PDFium library.
 #[cfg(test)]
 pub(crate) fn pdfium_available() -> bool {
-    // Quick check without caching: try to bind to the library
-    Pdfium::bind_to_system_library()
-        .or_else(|_| {
-            Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./ocr/"))
-        })
-        .is_ok()
+    first_existing_pdfium_library()
+        .and_then(|path| Pdfium::bind_to_library(path).ok())
+        .or_else(|| Pdfium::bind_to_system_library().ok())
+        .is_some()
 }
 
 pub fn init_pdfium() -> anyhow::Result<&'static Pdfium> {
@@ -30,37 +127,34 @@ pub fn init_pdfium() -> anyhow::Result<&'static Pdfium> {
         return Ok(p);
     }
 
-    let current_exe = std::env::current_exe()?;
-    let exe_dir = current_exe
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new(""));
+    let mut attempted = Vec::new();
+    for library_path in pdfium_library_candidates() {
+        if !library_path.is_file() {
+            attempted.push(format!("{} (missing)", library_path.display()));
+            continue;
+        }
 
-    let possible_paths = vec![
-        exe_dir.join("ocr"),                    // Production or adjacent
-        exe_dir.join("../../../resources/ocr"), // Dev fallback: target/debug/../../../resources/ocr
-        exe_dir.join("../../../../apps/desktop/src-tauri/resources/ocr"), // Dev fallback when running examples in core
-        std::path::PathBuf::from("resources/ocr"),                        // CWD relative fallback
-        std::path::PathBuf::from("../../apps/desktop/src-tauri/resources/ocr"), // CWD relative fallback when in core crate
-        std::path::PathBuf::from("apps/desktop/src-tauri/resources/ocr"), // CWD relative fallback when in root
-    ];
-    let ocr_res_dir = possible_paths
-        .into_iter()
-        .find(|p| p.exists())
-        .unwrap_or_else(|| std::path::PathBuf::from("ocr"));
+        match Pdfium::bind_to_library(&library_path) {
+            Ok(bindings) => {
+                let pdfium = Pdfium::new(bindings);
+                PDFIUM_LIBRARY
+                    .set(pdfium)
+                    .map_err(|_| anyhow::anyhow!("Failed to set PDFIUM_LIBRARY"))?;
+                return Ok(PDFIUM_LIBRARY.get().unwrap());
+            }
+            Err(error) => {
+                attempted.push(format!("{} ({:?})", library_path.display(), error));
+            }
+        }
+    }
 
-    // Attempt standard locations
-    let pdfium = Pdfium::new(
-        Pdfium::bind_to_system_library()
-            .or_else(|_| {
-                Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(
-                    ocr_res_dir.to_string_lossy().as_ref(),
-                ))
-            })
-            .or_else(|_| {
-                Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./ocr/"))
-            })
-            .map_err(|e| anyhow::anyhow!("Failed to bind to PDFium: {:?}", e))?,
-    );
+    let pdfium = Pdfium::new(Pdfium::bind_to_system_library().map_err(|error| {
+        anyhow::anyhow!(
+            "Failed to bind to PDFium; attempted bundled libraries [{}], then system library ({:?})",
+            attempted.join("; "),
+            error
+        )
+    })?);
 
     PDFIUM_LIBRARY
         .set(pdfium)
@@ -73,23 +167,7 @@ fn init_ocr_engine() -> anyhow::Result<&'static OcrEngine> {
         return Ok(engine);
     }
 
-    let current_exe = std::env::current_exe()?;
-    let exe_dir = current_exe
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new(""));
-
-    let possible_paths = vec![
-        exe_dir.join("ocr"),                    // Production or adjacent
-        exe_dir.join("../../../resources/ocr"), // Dev fallback: target/debug/../../../resources/ocr
-        exe_dir.join("../../../../apps/desktop/src-tauri/resources/ocr"), // Dev fallback when running examples in core
-        std::path::PathBuf::from("resources/ocr"),                        // CWD relative fallback
-        std::path::PathBuf::from("../../apps/desktop/src-tauri/resources/ocr"), // CWD relative fallback when in core crate
-        std::path::PathBuf::from("apps/desktop/src-tauri/resources/ocr"), // CWD relative fallback when in root
-    ];
-    let ocr_res_dir = possible_paths
-        .into_iter()
-        .find(|p| p.exists())
-        .unwrap_or_else(|| std::path::PathBuf::from("ocr"));
+    let ocr_res_dir = first_existing_ocr_resource_dir().unwrap_or_else(|| PathBuf::from("ocr"));
 
     let detection_path = ocr_res_dir.join("text-detection.rten");
     let recognition_path = ocr_res_dir.join("text-recognition.rten");
@@ -185,4 +263,21 @@ pub fn extract_text_via_ocr(bytes: &[u8], max_chars: Option<usize>) -> anyhow::R
     }
 
     Ok(all_text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn configured_resource_dir_is_first_candidate() {
+        let exe = Path::new("C:/Program Files/CorpusWright/corpuswright-desktop.exe");
+        let configured = PathBuf::from("C:/Users/example/AppData/Local/CorpusWright/resources/ocr");
+        let env_override = PathBuf::from("D:/override/ocr");
+
+        let candidates =
+            ocr_resource_candidates_with(Some(configured.clone()), Some(env_override), Some(exe));
+
+        assert_eq!(candidates.first(), Some(&configured));
+    }
 }

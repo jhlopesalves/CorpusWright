@@ -169,7 +169,7 @@ pub fn export_corpus(
                                 warnings.push(ExportWarning {
                                     source_path: Some(record.source_path.clone()),
                                     output_path: Some(manifest_output_path.clone()),
-                                    kind: ExportWarningKind::ExtractionWarning,
+                                    kind: export_extraction_warning_kind(w),
                                     message: w.clone(),
                                 });
                             }
@@ -196,7 +196,7 @@ pub fn export_corpus(
                                 warnings.push(ExportWarning {
                                     source_path: Some(record.source_path.clone()),
                                     output_path: Some(manifest_output_path.clone()),
-                                    kind: ExportWarningKind::ExtractionWarning,
+                                    kind: export_extraction_warning_kind(&w),
                                     message: w,
                                 });
                             }
@@ -228,7 +228,7 @@ pub fn export_corpus(
                                 warnings.push(ExportWarning {
                                     source_path: Some(record.source_path.clone()),
                                     output_path: Some(manifest_output_path.clone()),
-                                    kind: ExportWarningKind::ExtractionWarning,
+                                    kind: export_extraction_warning_kind(w),
                                     message: w.clone(),
                                 });
                             }
@@ -256,7 +256,7 @@ pub fn export_corpus(
                                 warnings.push(ExportWarning {
                                     source_path: Some(record.source_path.clone()),
                                     output_path: Some(manifest_output_path.clone()),
-                                    kind: ExportWarningKind::ExtractionWarning,
+                                    kind: export_extraction_warning_kind(&w),
                                     message: w,
                                 });
                             }
@@ -624,6 +624,17 @@ fn unique_output_relative_path(
 fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn export_extraction_warning_kind(message: &str) -> ExportWarningKind {
+    if message.contains("Failed")
+        || message.contains("low-quality text")
+        || message.contains("required for this PDF")
+    {
+        ExportWarningKind::ExtractionError
+    } else {
+        ExportWarningKind::ExtractionWarning
+    }
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), ExportError> {
@@ -1484,5 +1495,19 @@ mod tests {
         let rel = export.exported_files[0].output_path.clone();
         assert_eq!(rel, PathBuf::from("texts/file_bad_name.txt"));
         assert!(export.texts_dir.join("file_bad_name.txt").exists());
+    }
+
+    #[test]
+    fn degraded_pdf_quality_warning_is_export_extraction_error() {
+        assert_eq!(
+            export_extraction_warning_kind(
+                "PDFium is unavailable and degraded PDF extraction produced low-quality text. OCR/PDFium extraction is required for this PDF."
+            ),
+            ExportWarningKind::ExtractionError
+        );
+        assert_eq!(
+            export_extraction_warning_kind("PDF backend: PDFium."),
+            ExportWarningKind::ExtractionWarning
+        );
     }
 }
