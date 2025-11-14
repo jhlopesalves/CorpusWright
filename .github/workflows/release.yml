@@ -39,6 +39,31 @@ jobs:
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
 
+      - name: Derive canonical release tag from app version
+        id: release_metadata
+        shell: bash
+        run: |
+          APP_VERSION="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
+          echo "App version from tauri.conf.json: ${APP_VERSION}"
+
+          node -e "
+          const v = process.argv[1];
+          const semverRe = /^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$/;
+          const tagRe    = /^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$/;
+          if (!semverRe.test(v)) {
+            console.error('FATAL: Version \"' + v + '\" does not match strict alpha semver (required: X.Y.Z-alpha.N)');
+            process.exit(1);
+          }
+          const tag = 'v' + v;
+          if (!tagRe.test(tag)) {
+            console.error('FATAL: Computed tag \"' + tag + '\" is malformed (required: vX.Y.Z-alpha.N)');
+            process.exit(1);
+          }
+          console.log('release_tag=' + tag);
+          console.log('release_name=CorpusWright ' + tag);
+          " "${APP_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Computed canonical release tag: v${APP_VERSION}"
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -70,6 +95,9 @@ jobs:
             cp /tmp/lib/libpdfium.dylib apps/desktop/src-tauri/resources/ocr/libpdfium.dylib
           fi
 
+      - name: Check release version consistency
+        run: node scripts/check-release-consistency.cjs
+
       - name: Build Tauri artifacts and update draft prerelease
         uses: tauri-apps/tauri-action@v0.6.2
         env:
@@ -78,8 +106,8 @@ jobs:
         with:
           projectPath: apps/desktop
           tauriScript: npm run tauri
-          tagName: v0.1.0-alpha.3
-          releaseName: CorpusWright v0.1.0-alpha.3
+          tagName: ${{ steps.release_metadata.outputs.release_tag }}
+          releaseName: ${{ steps.release_metadata.outputs.release_name }}
           releaseBody: |
             Experimental alpha release for manual inspection.
 
