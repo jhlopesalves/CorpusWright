@@ -1,4 +1,4 @@
-use crate::clean::PdfEmbeddedTextStrategy;
+use crate::clean::{PdfEmbeddedTextStrategy, PdfTextSource};
 use lopdf::Document;
 use regex::Regex;
 use std::sync::{LazyLock, Mutex};
@@ -18,12 +18,11 @@ pub struct PdfExtractionOptions {
 }
 
 impl PdfExtractionOptions {
-    /// Build options from a `CleaningConfig`. OCR defaults to `false`;
-    /// call sites that need OCR must override it explicitly.
+    /// Build options from a `CleaningConfig`.
     pub fn from_cleaning_config(config: &crate::clean::CleaningConfig) -> Self {
         Self {
             strategy: config.pdf_embedded_text_strategy,
-            use_ocr: false,
+            use_ocr: matches!(config.pdf_text_source, PdfTextSource::Ocr),
             remove_repeated_headers_footers: config.remove_repeated_pdf_headers_footers,
             remove_page_labels: config.remove_pdf_page_labels,
             remove_symbol_heavy_artifacts: config.remove_pdf_symbol_heavy_artifacts,
@@ -1302,13 +1301,14 @@ fn classify_pdf_line(line: &str) -> PdfLineKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy};
+    use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, PdfTextSource};
     use lopdf::content::{Content, Operation};
     use lopdf::{Document, Object, Stream, StringFormat, dictionary};
 
     #[test]
     fn test_pdf_extraction_options_from_cleaning_config() {
         let config = CleaningConfig {
+            pdf_text_source: PdfTextSource::Ocr,
             pdf_embedded_text_strategy: PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn,
             remove_repeated_pdf_headers_footers: true,
             remove_pdf_page_labels: true,
@@ -1322,15 +1322,18 @@ mod tests {
             options.strategy,
             PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn
         );
-        assert!(
-            !options.use_ocr,
-            "from_cleaning_config must set use_ocr = false"
-        );
+        assert!(options.use_ocr);
         assert!(options.remove_repeated_headers_footers);
         assert!(options.remove_page_labels);
         assert!(!options.remove_symbol_heavy_artifacts);
         assert!(options.remove_code_like_blocks);
         assert!(!options.remove_formula_like_lines);
+    }
+
+    #[test]
+    fn test_pdf_extraction_options_default_to_embedded_text() {
+        let options = PdfExtractionOptions::from_cleaning_config(&CleaningConfig::default());
+        assert!(!options.use_ocr);
     }
 
     #[test]

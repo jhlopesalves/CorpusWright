@@ -37,6 +37,14 @@ pub enum PdfEmbeddedTextStrategy {
     PdfiumVisualColumnsExperimental,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
+#[ts(export)]
+pub enum PdfTextSource {
+    #[default]
+    EmbeddedText,
+    Ocr,
+}
+
 /// Configuration options for text cleaning operations.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[ts(export)]
@@ -63,6 +71,9 @@ pub struct CleaningConfig {
     pub remove_table_of_contents: bool,
     pub remove_patterns: Vec<String>,
     pub replace_patterns: Vec<ReplacementRule>,
+    /// PDF text source used before normal text cleaning is applied.
+    #[serde(default)]
+    pub pdf_text_source: PdfTextSource,
     /// PDF extraction strategy.
     /// NOTE: This is an extraction-layer option specifying how raw PDF text
     /// is reconstructed from the character stream, NOT a text-cleaning/sanitization transformation.
@@ -468,10 +479,20 @@ mod tests {
             config.table_extraction_strategy,
             TableExtractionStrategy::TabSeparated
         );
+        assert_eq!(config.pdf_text_source, PdfTextSource::EmbeddedText);
         assert_eq!(
             config.pdf_embedded_text_strategy,
             PdfEmbeddedTextStrategy::PdfiumFlat
         );
+    }
+
+    #[test]
+    fn test_cleaning_config_deserializes_missing_pdf_text_source() {
+        let mut value = serde_json::to_value(CleaningConfig::default()).unwrap();
+        value.as_object_mut().unwrap().remove("pdf_text_source");
+
+        let config: CleaningConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(config.pdf_text_source, PdfTextSource::EmbeddedText);
     }
 
     #[test]
