@@ -1,25 +1,28 @@
-# --- Python Bytecode & Build Artifacts ---
-__pycache__/
+# Python
+**pycache**/
 *.py[cod]
 *$py.class
-*.pyd
 *.so
 
-# --- Virtual Environments ---
+# Virtual environments and local Python config
 .venv/
 venv/
 env/
 ENV/
-.env/
-.env.*
 .conda/
-*.pyenv
-.pyenv*
+**pypackages**/
 pyvenv.cfg
 .python-version
-__pypackages__/
+*.pyenv
+.pyenv*
 
-# --- Packaging / Distribution ---
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Python packaging/build output
 build/
 dist/
 site/
@@ -40,6 +43,9 @@ pip-wheel-metadata/
 *.egg
 MANIFEST
 *.manifest
+bin/
+
+# Project-specific build output
 CorpusWright.onefile-build/
 CorpusWright.build/
 CorpusWright.dist/
@@ -48,9 +54,13 @@ CorpuScript.dist/
 CorpuScript/
 CorpuScript-backup.git/
 Nuitka/
-bin/
 
-# --- Tooling & Caches ---
+# Installer output
+InstallerOutput/
+output/
+setup/
+
+# Test, type-checking, and tool caches
 .mypy_cache/
 .pytest_cache/
 .pyre/
@@ -64,33 +74,42 @@ bin/
 .coverage.*
 .cache/
 
-# --- Installer Output ---
-InstallerOutput/
-output/
-setup/
+# Rust build output
+target/
 
-# --- Logs & Runtime Artifacts ---
+# Node/Web dependencies
+node_modules/
+
+# Logs and temporary files
 logs/
-legacy/pyside/src/logs/
 *.log
 *.tmp
 *.temp
 *.bak
 *.swp
+*.swo
 
-# --- Databases & Large Data ---
+# Databases and local data stores
 *.db
 *.db-*
 *.sqlite
 *.sqlite3
 
-# --- IDE / Editor ---
+# Local/private corpus data
+coragrarian/
+.local-corpora/
+local-corpora/
+manual-corpora/
+sample-corpora-local/
+crates/corpuswright-core/tests/fixtures/non-tracked/
+
+# Editors and IDEs
 .vscode/
 .idea/
 *.code-workspace
 .history/
 
-# --- OS Generated ---
+# OS-generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -99,7 +118,7 @@ legacy/pyside/src/logs/
 Thumbs.db
 ehthumbs.db
 
-# --- Executables & Binaries ---
+# Executables and binary packages
 *.exe
 *.dll
 *.msi
@@ -107,15 +126,14 @@ ehthumbs.db
 *.dmg
 *.iso
 
-# Exception: PDFium native library required for PDF rendering/OCR
+# PDFium is bundled intentionally for PDF rendering/OCR.
 !apps/desktop/src-tauri/resources/ocr/pdfium.dll
 
-# --- Rust Preview Module ---
-legacy/pyside/rust_preview/target/
+# Legacy Rust preview local state
 legacy/pyside/rust_preview/.cargo/
 legacy/pyside/rust_preview/.rustup/
 
-# --- Miscellaneous ---
+# Miscellaneous local files
 .svn/
 *.orig
 *.spec
@@ -125,30 +143,8 @@ smoke.html
 smoke.txt
 pdf_test.pdf
 
-# Rust build artefacts
-target/
-**/target/
-crates/**/target/
-apps/**/src-tauri/target/
-
-# Node/Web artefacts
-apps/**/node_modules/
-apps/**/dist/
-
-# Local/private corpus data
-coragrarian/
-**/coragrarian/
-**/coragrarian/**
-
-.local-corpora/
-local-corpora/
-manual-corpora/
-sample-corpora-local/
-crates/corpuswright-core/tests/fixtures/non-tracked/
-
-# Accidental local backup copy of this repository
+# Accidental local checkout copy
 /CorpusWright/
 
-
-# Local agent instructions
+# Local agents notes
 AGENTS.md
