@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
 use corpuswright_core::clean::{
-    CleaningConfig, PdfEmbeddedTextStrategy, PdfTextSource, ReplacementRule,
+    CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource, ReplacementRule,
     TableExtractionStrategy,
 };
 use corpuswright_core::export::{ExportReport, ExportWarning, ExportWarningKind};
@@ -77,6 +77,7 @@ fn main() {
     export_type::<TableExtractionStrategy>(&out_dir, &[], &[]);
     export_type::<PdfEmbeddedTextStrategy>(&out_dir, &[], &[]);
     export_type::<PdfTextSource>(&out_dir, &[], &[]);
+    export_type::<PdfOcrQuality>(&out_dir, &[], &[]);
     export_type::<PdfAuditQuality>(&out_dir, &[], &[]);
     export_type::<PdfAuditSuggestedProfile>(&out_dir, &[], &[]);
     export_type::<PdfAuditResult>(
@@ -112,12 +113,17 @@ fn main() {
                 name: "PdfTextSource",
                 file: "PdfTextSource",
             },
+            TypeImport {
+                name: "PdfOcrQuality",
+                file: "PdfOcrQuality",
+            },
         ],
         &[
             "ReplacementRule",
             "TableExtractionStrategy",
             "PdfEmbeddedTextStrategy",
             "PdfTextSource",
+            "PdfOcrQuality",
         ],
     );
 

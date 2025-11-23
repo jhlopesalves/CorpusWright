@@ -33,6 +33,7 @@ export const dom = {
   chkExtractHtml: getElement<HTMLInputElement>("chk-extract-html"),
   selTableExtraction: getElement<HTMLSelectElement>("sel-table-extraction"),
   selPdfTextSource: getElement<HTMLSelectElement>("sel-pdf-text-source"),
+  selPdfOcrQuality: getElement<HTMLSelectElement>("sel-pdf-ocr-quality"),
   selPdfEmbeddedTextStrategy: getElement<HTMLSelectElement>("sel-pdf-embedded-text-strategy"),
   chkRemoveHeaders: getElement<HTMLInputElement>("chk-remove-headers"),
   chkRemoveFooters: getElement<HTMLInputElement>("chk-remove-footers"),
