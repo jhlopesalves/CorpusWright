@@ -18,6 +18,15 @@ pub struct OcrExtraction {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct OcrPageExtraction {
+    pub page_index: usize,
+    pub text: String,
+    pub warnings: Vec<String>,
+    pub render_clamped: bool,
+    pub error: Option<String>,
+}
+
 #[derive(Clone, Copy)]
 struct OcrRenderPreset {
     dpi: f64,
@@ -209,6 +218,10 @@ pub fn ocr_model_resources_available() -> bool {
     first_existing_ocr_model_dir().is_some()
 }
 
+pub fn ocr_model_identity() -> Option<String> {
+    first_existing_ocr_model_dir().map(|path| path.display().to_string())
+}
+
 /// Returns true if PDFium can be initialized on the current platform.
 /// Useful for guarding tests that depend on the native PDFium library.
 #[cfg(test)]
@@ -387,6 +400,124 @@ pub fn extract_text_via_ocr(
         text: all_text,
         warnings,
     })
+}
+
+pub fn extract_page_range_via_ocr(
+    bytes: &[u8],
+    start_page_index: usize,
+    requested_page_count: usize,
+    quality: PdfOcrQuality,
+) -> anyhow::Result<(usize, Vec<OcrPageExtraction>)> {
+    let pdfium = init_pdfium()?;
+    let engine = init_ocr_engine()?;
+
+    let document = {
+        let _lock = crate::pdf::PDFIUM_LOCK.lock().unwrap();
+        pdfium.load_pdf_from_byte_slice(bytes, None)?
+    };
+
+    let page_count = {
+        let _lock = crate::pdf::PDFIUM_LOCK.lock().unwrap();
+        document.pages().len() as usize
+    };
+
+    let end_page_index = start_page_index
+        .saturating_add(requested_page_count)
+        .min(page_count);
+    let mut pages = Vec::with_capacity(end_page_index.saturating_sub(start_page_index));
+
+    for page_index in start_page_index..end_page_index {
+        let page_number = page_index + 1;
+        let mut warnings = Vec::new();
+        let mut render_clamped = false;
+
+        let image = {
+            let _lock = crate::pdf::PDFIUM_LOCK.lock().unwrap();
+            match document.pages().get(page_index as i32) {
+                Ok(page) => {
+                    let (render_config, render_warning) =
+                        render_config_for_page(&page, quality, page_number, false);
+                    if let Some(warning) = render_warning {
+                        render_clamped = true;
+                        warnings.push(warning);
+                    }
+
+                    match page.render_with_config(&render_config) {
+                        Ok(bitmap) => bitmap.as_image().map_err(|error| error.to_string()),
+                        Err(error) => Err(error.to_string()),
+                    }
+                }
+                Err(error) => Err(error.to_string()),
+            }
+        };
+
+        let image = match image {
+            Ok(image) => image,
+            Err(error) => {
+                pages.push(OcrPageExtraction {
+                    page_index,
+                    text: String::new(),
+                    warnings,
+                    render_clamped,
+                    error: Some(error),
+                });
+                continue;
+            }
+        };
+
+        let rgb_image = image.into_rgb8();
+        let (width, height) = rgb_image.dimensions();
+
+        let page_text = {
+            let _ocr_lock = OCR_ENGINE_LOCK.lock().unwrap();
+            let recognition = || -> anyhow::Result<String> {
+                let image_source =
+                    ocrs::ImageSource::from_bytes(rgb_image.as_raw(), (width, height))?;
+                let ocr_input = engine.prepare_input(image_source)?;
+                let word_rects = engine.detect_words(&ocr_input)?;
+                let line_rects = engine.find_text_lines(&ocr_input, &word_rects);
+                let line_texts = engine.recognize_text(&ocr_input, &line_rects)?;
+
+                let mut page_text = String::new();
+                for line in line_texts.iter().flatten() {
+                    if !page_text.is_empty() {
+                        page_text.push('\n');
+                    }
+                    page_text.push_str(&line.to_string());
+                }
+                Ok(page_text)
+            };
+
+            match recognition() {
+                Ok(text) => text,
+                Err(error) => {
+                    pages.push(OcrPageExtraction {
+                        page_index,
+                        text: String::new(),
+                        warnings,
+                        render_clamped,
+                        error: Some(error.to_string()),
+                    });
+                    continue;
+                }
+            }
+        };
+
+        let text = page_text.trim().to_string();
+        if text.is_empty() {
+            warnings.push(format!("OCR produced no text for page {page_number}."));
+        }
+
+        pages.push(OcrPageExtraction {
+            page_index,
+            text,
+            warnings,
+            render_clamped,
+            error: None,
+        });
+    }
+
+    Ok((page_count, pages))
 }
 
 #[cfg(test)]

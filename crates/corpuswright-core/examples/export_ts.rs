@@ -12,6 +12,7 @@ use corpuswright_core::clean::{
 };
 use corpuswright_core::export::{ExportReport, ExportWarning, ExportWarningKind};
 use corpuswright_core::manifest::{ExportManifest, ManifestFileRecord};
+use corpuswright_core::pdf::{PdfPageExtractionMethod, PdfPageRangePage, PdfPageRangeResult};
 use corpuswright_core::pdf_audit::{PdfAuditQuality, PdfAuditResult, PdfAuditSuggestedProfile};
 use corpuswright_core::preview::{
     CombinedPreview, FilePreview, PreviewWarning, PreviewWarningKind,
@@ -78,6 +79,23 @@ fn main() {
     export_type::<PdfEmbeddedTextStrategy>(&out_dir, &[], &[]);
     export_type::<PdfTextSource>(&out_dir, &[], &[]);
     export_type::<PdfOcrQuality>(&out_dir, &[], &[]);
+    export_type::<PdfPageExtractionMethod>(&out_dir, &[], &[]);
+    export_type::<PdfPageRangePage>(
+        &out_dir,
+        &[TypeImport {
+            name: "PdfPageExtractionMethod",
+            file: "PdfPageExtractionMethod",
+        }],
+        &[],
+    );
+    export_type::<PdfPageRangeResult>(
+        &out_dir,
+        &[TypeImport {
+            name: "PdfPageRangePage",
+            file: "PdfPageRangePage",
+        }],
+        &[],
+    );
     export_type::<PdfAuditQuality>(&out_dir, &[], &[]);
     export_type::<PdfAuditSuggestedProfile>(&out_dir, &[], &[]);
     export_type::<PdfAuditResult>(
