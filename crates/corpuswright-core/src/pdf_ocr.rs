@@ -3,11 +3,14 @@ use ocrs::{OcrEngine, OcrEngineParams};
 use pdfium_render::prelude::*;
 use rten::Model;
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, OnceLock, RwLock};
+use std::sync::{LazyLock, Mutex, OnceLock, RwLock};
 
 static OCR_ENGINE: OnceLock<OcrEngine> = OnceLock::new();
+static OCR_ENGINE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static PDFIUM_LIBRARY: OnceLock<Pdfium> = OnceLock::new();
 static OCR_RESOURCE_DIR: LazyLock<RwLock<Option<PathBuf>>> = LazyLock::new(|| RwLock::new(None));
+const PREVIEW_MAX_DIMENSION: i32 = 900;
+const PREVIEW_MAX_PIXELS: u64 = 300_000;
 
 #[derive(Debug, Clone)]
 pub struct OcrExtraction {
@@ -22,8 +25,8 @@ struct OcrRenderPreset {
     max_pixels: u64,
 }
 
-fn render_preset(quality: PdfOcrQuality) -> OcrRenderPreset {
-    match quality {
+fn render_preset(quality: PdfOcrQuality, preview_mode: bool) -> OcrRenderPreset {
+    let mut preset = match quality {
         PdfOcrQuality::Fast => OcrRenderPreset {
             dpi: 150.0,
             max_dimension: 2_400,
@@ -39,15 +42,23 @@ fn render_preset(quality: PdfOcrQuality) -> OcrRenderPreset {
             max_dimension: 4_096,
             max_pixels: 14_000_000,
         },
+    };
+
+    if preview_mode {
+        preset.max_dimension = preset.max_dimension.min(PREVIEW_MAX_DIMENSION);
+        preset.max_pixels = preset.max_pixels.min(PREVIEW_MAX_PIXELS);
     }
+
+    preset
 }
 
 fn render_config_for_page(
     page: &PdfPage<'_>,
     quality: PdfOcrQuality,
     page_number: usize,
+    preview_mode: bool,
 ) -> (PdfRenderConfig, Option<String>) {
-    let preset = render_preset(quality);
+    let preset = render_preset(quality, preview_mode);
     let page_width_points = f64::from(page.width().value).max(1.0);
     let page_height_points = f64::from(page.height().value).max(1.0);
     let desired_width = (page_width_points / 72.0 * preset.dpi).round().max(1.0);
@@ -83,7 +94,7 @@ fn render_config_for_page(
     };
 
     let render_config = PdfRenderConfig::new()
-        .set_target_width(target_width)
+        .set_target_size(target_width, target_height)
         .set_maximum_width(preset.max_dimension)
         .set_maximum_height(preset.max_dimension)
         .set_clear_color(PdfColor::WHITE);
@@ -301,6 +312,7 @@ pub fn extract_text_via_ocr(
 ) -> anyhow::Result<OcrExtraction> {
     let pdfium = init_pdfium()?;
     let engine = init_ocr_engine()?;
+    let preview_mode = max_chars.is_some() || max_pages.is_some();
 
     let document = {
         let _lock = crate::pdf::PDFIUM_LOCK.lock().unwrap();
@@ -329,7 +341,7 @@ pub fn extract_text_via_ocr(
             let _lock = crate::pdf::PDFIUM_LOCK.lock().unwrap();
             let page = document.pages().get(page_index as i32)?;
             let (render_config, render_warning) =
-                render_config_for_page(&page, quality, page_index + 1);
+                render_config_for_page(&page, quality, page_index + 1, preview_mode);
             if let Some(warning) = render_warning {
                 warnings.push(warning);
             }
@@ -341,20 +353,25 @@ pub fn extract_text_via_ocr(
         let rgb_image = image.into_rgb8();
         let (width, height) = rgb_image.dimensions();
 
-        let image_source = ocrs::ImageSource::from_bytes(rgb_image.as_raw(), (width, height))?;
-        let ocr_input = engine.prepare_input(image_source)?;
+        let page_text = {
+            // The recogniser is shared process-wide and can be called from Rayon workers.
+            let _ocr_lock = OCR_ENGINE_LOCK.lock().unwrap();
+            let image_source = ocrs::ImageSource::from_bytes(rgb_image.as_raw(), (width, height))?;
+            let ocr_input = engine.prepare_input(image_source)?;
 
-        let word_rects = engine.detect_words(&ocr_input)?;
-        let line_rects = engine.find_text_lines(&ocr_input, &word_rects);
-        let line_texts = engine.recognize_text(&ocr_input, &line_rects)?;
+            let word_rects = engine.detect_words(&ocr_input)?;
+            let line_rects = engine.find_text_lines(&ocr_input, &word_rects);
+            let line_texts = engine.recognize_text(&ocr_input, &line_rects)?;
 
-        let mut page_text = String::new();
-        for line in line_texts.iter().flatten() {
-            if !page_text.is_empty() {
-                page_text.push('\n');
+            let mut page_text = String::new();
+            for line in line_texts.iter().flatten() {
+                if !page_text.is_empty() {
+                    page_text.push('\n');
+                }
+                page_text.push_str(&line.to_string());
             }
-            page_text.push_str(&line.to_string());
-        }
+            page_text
+        };
 
         let trimmed = page_text.trim();
         if !trimmed.is_empty() {

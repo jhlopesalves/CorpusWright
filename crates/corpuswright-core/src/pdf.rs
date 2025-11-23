@@ -6,7 +6,7 @@ use std::sync::{LazyLock, Mutex};
 pub static PDFIUM_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 const PDF_OCR_PREVIEW_CHAR_CAP: usize = 5_000;
-const PDF_OCR_PREVIEW_PAGE_CAP: usize = 3;
+const PDF_OCR_PREVIEW_PAGE_CAP: usize = 1;
 
 /// Named options for PDF extraction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -57,9 +57,14 @@ fn capped_ocr_chars_for_preview(max_chars: Option<usize>) -> Option<usize> {
 
 fn warn_about_ocr_preview_cap(warnings: &mut Vec<String>, max_chars: Option<usize>) {
     if let Some(cap) = capped_ocr_chars_for_preview(max_chars) {
+        let page_unit = if PDF_OCR_PREVIEW_PAGE_CAP == 1 {
+            "page"
+        } else {
+            "pages"
+        };
         warnings.push(format!(
-            "OCR preview was capped to at most {} characters and {} pages. Search and export may process more text and take much longer.",
-            cap, PDF_OCR_PREVIEW_PAGE_CAP
+            "OCR preview is capped to at most {} characters and {} {}. Search/export may process more pages and take much longer.",
+            cap, PDF_OCR_PREVIEW_PAGE_CAP, page_unit
         ));
     }
 }
@@ -577,6 +582,8 @@ pub fn extract_pdf(
     warnings.push("PDF backend: PDFium.".to_string());
 
     if text_source == PdfTextSource::ForceOcr {
+        // OCR opens its own PDFium document; release the embedded-text handle first.
+        drop(document);
         let text = run_pdf_ocr(
             bytes,
             max_chars,
@@ -1018,20 +1025,21 @@ pub fn extract_pdf(
         warnings.push("PDF embedded-text extraction appears low quality. The output contains unusually many symbols or non-word fragments.".to_string());
     }
 
-    if text_source == PdfTextSource::Ocr
-        && (!has_any_text || is_poor_quality)
-        && let Some(ocr_text) = run_pdf_ocr(
+    if text_source == PdfTextSource::Ocr && (!has_any_text || is_poor_quality) {
+        // OCR opens its own PDFium document; release the embedded-text handle first.
+        drop(document);
+        if let Some(ocr_text) = run_pdf_ocr(
             bytes,
             max_chars,
             ocr_quality,
             &mut warnings,
             "Used experimental OCR rescue to extract text from scanned pages.",
-        )
-    {
-        if ocr_text.trim().is_empty() {
-            warnings.push("OCR rescue completed but produced no text.".to_string());
+        ) {
+            if ocr_text.trim().is_empty() {
+                warnings.push("OCR rescue completed but produced no text.".to_string());
+            }
+            all_text = ocr_text;
         }
-        all_text = ocr_text;
     }
 
     Ok(ExtractedPdf {
@@ -1426,6 +1434,19 @@ mod tests {
         assert!(!options.remove_symbol_heavy_artifacts);
         assert!(!options.remove_code_like_blocks);
         assert!(!options.remove_formula_like_lines);
+    }
+
+    #[test]
+    fn ocr_preview_cap_warning_mentions_page_cap() {
+        let mut warnings = Vec::new();
+
+        warn_about_ocr_preview_cap(&mut warnings, Some(10_000));
+
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("OCR preview is capped"));
+        assert!(warnings[0].contains("5000 characters"));
+        assert!(warnings[0].contains("1 page"));
+        assert!(warnings[0].contains("Search/export may process more pages"));
     }
 
     #[test]
