@@ -5,11 +5,17 @@ import { state } from "./state";
 import { highlightPreviewText } from "./utils";
 import type { CombinedPreview } from "./generated/CombinedPreview.js";
 import type { FilePreview } from "./generated/FilePreview.js";
+import type { PdfPageRangePage } from "./generated/PdfPageRangePage.js";
+import type { PdfPageRangeResult } from "./generated/PdfPageRangeResult.js";
 
 const PREVIEW_CHUNK_SIZE = 50;
+const FULL_OCR_CHUNK_SIZE = 2;
+const FULL_OCR_MAX_CHARS_PER_PAGE = 50_000;
 
 let previewObserver: IntersectionObserver | null = null;
 let chunkSentinelObserver: IntersectionObserver | null = null;
+let fullOcrRunId = 0;
+let fullOcrCancelRequested = false;
 
 interface PreviewCallbacks {
   onPreviewTabChanged: () => void;
@@ -18,6 +24,7 @@ interface PreviewCallbacks {
 export function invalidatePreviewSession(): void {
   state.previewGeneration += 1;
   state.activePreviewGeneration = state.previewGeneration;
+  invalidateFullOcrSession();
 }
 
 export function schedulePreviewUpdate(delay: number): void {
@@ -45,6 +52,7 @@ export function initPreviewTabs(callbacks: PreviewCallbacks): void {
 }
 
 export async function updatePreview(): Promise<void> {
+  invalidateFullOcrSession();
   const myVersion = state.currentCorpusVersion;
   const myPreviewGeneration = ++state.previewGeneration;
   state.activePreviewGeneration = myPreviewGeneration;
@@ -107,6 +115,9 @@ async function fetchAndRenderPreviewChunk(
 
     renderPreviewCards(dom.previewContent, original.files, append, offset, indices.length);
     renderPreviewCards(dom.processedPreviewContent, processed.files, append, offset, indices.length);
+    if (!append) {
+      renderFullOcrPreviewLauncher(indices, myVersion, myPreviewGeneration);
+    }
 
     highlightRenderedCards();
 
@@ -122,6 +133,209 @@ async function fetchAndRenderPreviewChunk(
   } finally {
     dom.previewLoadingOverlay.style.display = "none";
     state.isFetchingPreview = false;
+  }
+}
+
+function invalidateFullOcrSession(): void {
+  fullOcrRunId += 1;
+  fullOcrCancelRequested = true;
+}
+
+function selectedFullOcrPdfIndex(indices: number[]): number | null {
+  if (indices.length !== 1) return null;
+  const index = indices[0];
+  const record = state.allFiles[index];
+  if (!record || record.document_type !== "pdf") return null;
+  if (state.activeCleaningConfig.pdf_text_source !== "ForceOcr") return null;
+  if (state.activeCleaningConfig.pdf_ocr_quality !== "HighQuality") return null;
+  return index;
+}
+
+function renderFullOcrPreviewLauncher(
+  selectedIndices: number[],
+  corpusVersion: number,
+  previewGeneration: number,
+): void {
+  const index = selectedFullOcrPdfIndex(selectedIndices);
+  if (index === null) return;
+
+  const section = document.createElement("div");
+  section.className = "full-ocr-section";
+
+  const controls = document.createElement("div");
+  controls.className = "full-ocr-controls";
+
+  const title = document.createElement("div");
+  title.className = "full-ocr-title";
+  title.textContent = "Full OCR preview";
+
+  const actions = document.createElement("div");
+  actions.className = "full-ocr-actions";
+
+  const runButton = document.createElement("button");
+  runButton.type = "button";
+  runButton.className = "secondary-btn";
+  runButton.textContent = "Run full OCR preview";
+
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "secondary-btn hidden";
+  cancelButton.textContent = "Cancel";
+  cancelButton.disabled = true;
+
+  actions.append(runButton, cancelButton);
+  controls.append(title, actions);
+
+  const progress = document.createElement("div");
+  progress.className = "full-ocr-progress";
+  progress.setAttribute("aria-live", "polite");
+
+  const pageList = document.createElement("div");
+  pageList.className = "full-ocr-page-list";
+
+  runButton.addEventListener("click", () => {
+    runFullOcrPreview(
+      index,
+      corpusVersion,
+      previewGeneration,
+      runButton,
+      cancelButton,
+      progress,
+      pageList,
+    );
+  });
+
+  cancelButton.addEventListener("click", () => {
+    fullOcrCancelRequested = true;
+    cancelButton.disabled = true;
+    progress.textContent = "Cancelling after the current chunk...";
+  });
+
+  section.append(controls, progress, pageList);
+  dom.processedPreviewContent.appendChild(section);
+}
+
+async function runFullOcrPreview(
+  index: number,
+  corpusVersion: number,
+  previewGeneration: number,
+  runButton: HTMLButtonElement,
+  cancelButton: HTMLButtonElement,
+  progress: HTMLDivElement,
+  pageList: HTMLDivElement,
+): Promise<void> {
+  const runId = ++fullOcrRunId;
+  fullOcrCancelRequested = false;
+  runButton.disabled = true;
+  cancelButton.disabled = false;
+  cancelButton.classList.remove("hidden");
+  pageList.replaceChildren();
+
+  let startPageIndex = 0;
+  let totalPages: number | null = null;
+
+  try {
+    while (!fullOcrCancelRequested) {
+      progress.textContent = totalPages === null
+        ? `OCR pages ${startPageIndex} / ?`
+        : `OCR pages ${startPageIndex} / ${totalPages}`;
+
+      const result = await invoke<PdfPageRangeResult>("extract_pdf_page_range_command", {
+        index,
+        corpusVersion,
+        cleaningConfig: state.activeCleaningConfig,
+        startPageIndex,
+        pageCount: FULL_OCR_CHUNK_SIZE,
+        pdfTextSource: "ForceOcr",
+        ocrQuality: "HighQuality",
+        maxCharsPerPage: FULL_OCR_MAX_CHARS_PER_PAGE,
+      });
+
+      if (
+        runId !== fullOcrRunId ||
+        corpusVersion !== state.currentCorpusVersion ||
+        previewGeneration !== state.activePreviewGeneration
+      ) {
+        return;
+      }
+
+      totalPages = result.page_count;
+      appendFullOcrPages(pageList, result.pages);
+      startPageIndex = result.end_page_index;
+      progress.textContent = `OCR pages ${startPageIndex} / ${totalPages}`;
+
+      if (result.pages.length === 0 || startPageIndex >= totalPages) {
+        break;
+      }
+    }
+
+    if (fullOcrCancelRequested) {
+      const total = totalPages === null ? "?" : totalPages.toString();
+      progress.textContent = `OCR cancelled at ${startPageIndex} / ${total} pages.`;
+    } else if (totalPages !== null) {
+      progress.textContent = `OCR pages ${totalPages} / ${totalPages}`;
+    }
+  } catch (error) {
+    if (
+      runId === fullOcrRunId &&
+      corpusVersion === state.currentCorpusVersion &&
+      previewGeneration === state.activePreviewGeneration
+    ) {
+      progress.textContent = `OCR error: ${error}`;
+    }
+  } finally {
+    if (runId === fullOcrRunId) {
+      runButton.disabled = false;
+      cancelButton.disabled = true;
+      cancelButton.classList.add("hidden");
+    }
+  }
+}
+
+function appendFullOcrPages(container: HTMLDivElement, pages: PdfPageRangePage[]): void {
+  for (const page of pages) {
+    const card = document.createElement("div");
+    card.className = "full-ocr-page-card";
+
+    const header = document.createElement("div");
+    header.className = "full-ocr-page-header";
+
+    const title = document.createElement("div");
+    title.className = "full-ocr-page-title";
+    title.textContent = `Page ${page.page_number}`;
+
+    const meta = document.createElement("div");
+    meta.className = "full-ocr-page-meta";
+    meta.textContent = `${page.char_count.toLocaleString()} chars`;
+
+    header.append(title, meta);
+    card.appendChild(header);
+
+    if (page.error) {
+      const error = document.createElement("div");
+      error.className = "full-ocr-page-error";
+      error.textContent = page.error;
+      card.appendChild(error);
+    } else {
+      const body = document.createElement("div");
+      body.className = "full-ocr-page-body";
+      body.dataset.originalText = page.text;
+      body.innerHTML = highlightPreviewText(page.text, state.currentSearchQuery);
+      card.appendChild(body);
+    }
+
+    if (page.warnings.length > 0) {
+      const warnings = document.createElement("ul");
+      warnings.className = "full-ocr-page-warnings";
+      for (const warning of page.warnings) {
+        const item = document.createElement("li");
+        item.textContent = warning;
+        warnings.appendChild(item);
+      }
+      card.appendChild(warnings);
+    }
+
+    container.appendChild(card);
   }
 }
 
