@@ -1,6 +1,6 @@
 use crate::cache::ExtractionCache;
-use crate::clean::{CleaningConfig, PdfOcrQuality, PdfTextSource, clean_text};
-use crate::pdf::PdfExtractionOptions;
+use crate::clean::{CleaningConfig, clean_text};
+use crate::pdf::{PdfExtractionOptions, clean_extracted_pdf_text};
 use crate::scan::{DocumentRecord, DocumentType};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -88,6 +88,15 @@ pub enum PreviewError {
 pub fn preview_file(
     record: &DocumentRecord,
     options: &PreviewOptions,
+    cache: Option<&ExtractionCache>,
+) -> Result<FilePreview, PreviewError> {
+    preview_file_with_config(record, options, &CleaningConfig::default(), cache)
+}
+
+pub fn preview_file_with_config(
+    record: &DocumentRecord,
+    options: &PreviewOptions,
+    cleaning_config: &CleaningConfig,
     cache: Option<&ExtractionCache>,
 ) -> Result<FilePreview, PreviewError> {
     let (read, extraction_warnings) = if record.document_type == DocumentType::Docx {
@@ -181,15 +190,9 @@ pub fn preview_file(
             }
         }
     } else if record.document_type == DocumentType::Pdf {
-        let pdf_options = PdfExtractionOptions {
-            text_source: PdfTextSource::Ocr,
-            ocr_quality: PdfOcrQuality::Balanced,
-            ..PdfExtractionOptions::raw_default()
-        };
+        let pdf_options = PdfExtractionOptions::raw_from_cleaning_config(cleaning_config);
         if let Some(cache) = cache {
-            if let Some(entry) =
-                cache.try_get(record, Some(pdf_options), &CleaningConfig::default())
-            {
+            if let Some(entry) = cache.try_get(record, Some(pdf_options), cleaning_config) {
                 let truncated = entry.extracted_text.chars().count() > options.max_chars_per_file;
                 let text: String = entry
                     .extracted_text
@@ -210,15 +213,8 @@ pub fn preview_file(
                         path: record.source_path.clone(),
                         message: error.to_string(),
                     })?;
-                match crate::pdf::extract_pdf(
-                    &bytes,
-                    Some(options.max_chars_per_file),
-                    PdfExtractionOptions {
-                        text_source: PdfTextSource::Ocr,
-                        ocr_quality: PdfOcrQuality::Balanced,
-                        ..PdfExtractionOptions::raw_default()
-                    },
-                ) {
+                match crate::pdf::extract_pdf(&bytes, Some(options.max_chars_per_file), pdf_options)
+                {
                     Ok(extracted) => {
                         let truncated = extracted.text.chars().count() > options.max_chars_per_file;
                         let text: String = extracted
@@ -254,15 +250,7 @@ pub fn preview_file(
                 path: record.source_path.clone(),
                 message: error.to_string(),
             })?;
-            match crate::pdf::extract_pdf(
-                &bytes,
-                Some(options.max_chars_per_file),
-                PdfExtractionOptions {
-                    text_source: PdfTextSource::Ocr,
-                    ocr_quality: PdfOcrQuality::Balanced,
-                    ..PdfExtractionOptions::raw_default()
-                },
-            ) {
+            match crate::pdf::extract_pdf(&bytes, Some(options.max_chars_per_file), pdf_options) {
                 Ok(extracted) => {
                     let truncated = extracted.text.chars().count() > options.max_chars_per_file;
                     let text: String = extracted
@@ -351,6 +339,15 @@ pub fn preview_files(
     options: &PreviewOptions,
     cache: Option<&ExtractionCache>,
 ) -> Result<CombinedPreview, PreviewError> {
+    preview_files_with_config(records, options, &CleaningConfig::default(), cache)
+}
+
+pub fn preview_files_with_config(
+    records: &[DocumentRecord],
+    options: &PreviewOptions,
+    cleaning_config: &CleaningConfig,
+    cache: Option<&ExtractionCache>,
+) -> Result<CombinedPreview, PreviewError> {
     let limit = options
         .max_files
         .unwrap_or(records.len())
@@ -369,7 +366,7 @@ pub fn preview_files(
 
     let results: Result<Vec<_>, PreviewError> = records[..limit]
         .par_iter()
-        .map(|record| preview_file(record, options, cache))
+        .map(|record| preview_file_with_config(record, options, cleaning_config, cache))
         .collect();
 
     let previews = results?;
@@ -455,16 +452,19 @@ pub fn preview_processed_files(
                     }
                 }
             } else if record.document_type == DocumentType::Pdf {
-                let pdf_options = PdfExtractionOptions::from_cleaning_config(cleaning_config);
+                let pdf_options = PdfExtractionOptions::raw_from_cleaning_config(cleaning_config);
                 let cache_hit =
                     cache.and_then(|c| c.try_get(record, Some(pdf_options), cleaning_config));
                 if let Some(entry) = cache_hit {
-                    let text: String = entry
-                        .extracted_text
+                    let (pdf_cleaned, mut cleanup_warnings) =
+                        clean_extracted_pdf_text(&entry.extracted_text, cleaning_config);
+                    let text: String = pdf_cleaned
                         .chars()
                         .take(preview_options.max_chars_per_file)
                         .collect();
-                    (text, entry.warnings)
+                    let mut warnings = entry.warnings;
+                    warnings.append(&mut cleanup_warnings);
+                    (text, warnings)
                 } else {
                     let bytes =
                         std::fs::read(&record.source_path).map_err(|error| PreviewError::Io {
@@ -477,12 +477,15 @@ pub fn preview_processed_files(
                         pdf_options,
                     ) {
                         Ok(extracted) => {
-                            let text: String = extracted
-                                .text
+                            let (pdf_cleaned, mut cleanup_warnings) =
+                                clean_extracted_pdf_text(&extracted.text, cleaning_config);
+                            let text: String = pdf_cleaned
                                 .chars()
                                 .take(preview_options.max_chars_per_file)
                                 .collect();
-                            (text, extracted.warnings)
+                            let mut warnings = extracted.warnings;
+                            warnings.append(&mut cleanup_warnings);
+                            (text, warnings)
                         }
                         Err(e) => (String::new(), vec![format!("PDF Extraction Failed: {}", e)]),
                     }

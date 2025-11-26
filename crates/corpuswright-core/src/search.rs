@@ -2,7 +2,7 @@ use crate::cache::ExtractionCache;
 use crate::clean::{CleaningConfig, clean_text};
 use crate::docx::extract_docx;
 use crate::html::extract_html;
-use crate::pdf::extract_pdf;
+use crate::pdf::{PdfExtractionOptions, clean_extracted_pdf_text, extract_pdf};
 use crate::scan::{DocumentRecord, DocumentType};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -102,7 +102,7 @@ pub fn search_corpus(
 
         if let Some(cache) = cache {
             let pdf_options = if record.document_type == DocumentType::Pdf {
-                Some(crate::pdf::PdfExtractionOptions::from_cleaning_config(
+                Some(PdfExtractionOptions::raw_from_cleaning_config(
                     cleaning_config,
                 ))
             } else {
@@ -123,7 +123,7 @@ pub fn search_corpus(
                     && let Ok(extracted) = extract_pdf(
                         &bytes,
                         None, // no char cap – read full text
-                        crate::pdf::PdfExtractionOptions::from_cleaning_config(cleaning_config),
+                        PdfExtractionOptions::raw_from_cleaning_config(cleaning_config),
                     )
                 {
                     source_text = extracted.text;
@@ -139,6 +139,10 @@ pub fn search_corpus(
         }
 
         if is_processed {
+            if record.document_type == DocumentType::Pdf {
+                let (pdf_cleaned, _) = clean_extracted_pdf_text(&source_text, cleaning_config);
+                source_text = pdf_cleaned;
+            }
             if cleaning_config.extract_html {
                 source_text = extract_html(&source_text);
             }

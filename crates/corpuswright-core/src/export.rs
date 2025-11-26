@@ -221,7 +221,7 @@ pub fn export_corpus(
                 }
             } else if record.document_type == DocumentType::Pdf {
                 let pdf_options =
-                    crate::pdf::PdfExtractionOptions::from_cleaning_config(cleaning_config);
+                    crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(cleaning_config);
                 if let Some(cache) = cache {
                     match cache.get_or_extract(record, Some(pdf_options), cleaning_config) {
                         Ok(entry) => {
@@ -281,10 +281,29 @@ pub fn export_corpus(
                 raw_text
             };
 
+            let mut text_for_processing = original_text.clone();
+            if record.document_type == DocumentType::Pdf {
+                let (pdf_cleaned, cleanup_warnings) =
+                    crate::pdf::clean_extracted_pdf_text(&original_text, cleaning_config);
+                for w in cleanup_warnings {
+                    file_warnings.push(w.clone());
+                    warnings.push(ExportWarning {
+                        source_path: Some(record.source_path.clone()),
+                        output_path: Some(manifest_output_path.clone()),
+                        kind: export_extraction_warning_kind(&w),
+                        message: w,
+                    });
+                }
+                text_for_processing = pdf_cleaned;
+            }
+
             let processed_text = if cleaning_config.extract_html {
-                clean_text(&crate::html::extract_html(&original_text), cleaning_config)
+                clean_text(
+                    &crate::html::extract_html(&text_for_processing),
+                    cleaning_config,
+                )
             } else {
-                clean_text(&original_text, cleaning_config)
+                clean_text(&text_for_processing, cleaning_config)
             };
             let processed_bytes = processed_text.as_bytes();
             let processed_hash_sha256 = sha256_hex(processed_bytes);

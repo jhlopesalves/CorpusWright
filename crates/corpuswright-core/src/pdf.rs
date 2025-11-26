@@ -1,4 +1,4 @@
-use crate::clean::{PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource};
+use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource};
 use lopdf::Document;
 use pdfium_render::prelude::*;
 use regex::Regex;
@@ -36,6 +36,19 @@ impl PdfExtractionOptions {
             remove_symbol_heavy_artifacts: config.remove_pdf_symbol_heavy_artifacts,
             remove_code_like_blocks: config.remove_pdf_code_like_blocks,
             remove_formula_like_lines: config.remove_pdf_formula_like_lines,
+        }
+    }
+
+    /// Build extraction-only options from a `CleaningConfig`.
+    ///
+    /// The returned options choose the PDF source, OCR quality, and embedded
+    /// text strategy, but leave PDF cleanup disabled so cached text remains raw.
+    pub fn raw_from_cleaning_config(config: &CleaningConfig) -> Self {
+        Self {
+            strategy: config.pdf_embedded_text_strategy,
+            text_source: config.pdf_text_source,
+            ocr_quality: config.pdf_ocr_quality,
+            ..Self::raw_default()
         }
     }
 
@@ -792,15 +805,72 @@ pub fn extract_pdf_page_range(
     })
 }
 
-pub fn extract_pdf(
-    bytes: &[u8],
-    max_chars: Option<usize>,
-    options: PdfExtractionOptions,
-) -> Result<ExtractedPdf, PdfExtractionError> {
-    let PdfExtractionOptions {
-        strategy,
-        text_source,
-        ocr_quality,
+pub fn pdf_page_count(bytes: &[u8]) -> Result<usize, PdfExtractionError> {
+    let doc = Document::load_mem(bytes).map_err(|error| {
+        PdfExtractionError::InvalidFormat(format!("Failed to load PDF: {error}"))
+    })?;
+    Ok(doc.get_pages().len())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PdfCleanupOptions {
+    remove_repeated_headers_footers: bool,
+    remove_page_labels: bool,
+    remove_symbol_heavy_artifacts: bool,
+    remove_code_like_blocks: bool,
+    remove_formula_like_lines: bool,
+}
+
+impl PdfCleanupOptions {
+    fn from_cleaning_config(config: &CleaningConfig) -> Self {
+        Self {
+            remove_repeated_headers_footers: config.remove_repeated_pdf_headers_footers,
+            remove_page_labels: config.remove_pdf_page_labels,
+            remove_symbol_heavy_artifacts: config.remove_pdf_symbol_heavy_artifacts,
+            remove_code_like_blocks: config.remove_pdf_code_like_blocks,
+            remove_formula_like_lines: config.remove_pdf_formula_like_lines,
+        }
+    }
+
+    fn from_extraction_options(options: PdfExtractionOptions) -> Self {
+        Self {
+            remove_repeated_headers_footers: options.remove_repeated_headers_footers,
+            remove_page_labels: options.remove_page_labels,
+            remove_symbol_heavy_artifacts: options.remove_symbol_heavy_artifacts,
+            remove_code_like_blocks: options.remove_code_like_blocks,
+            remove_formula_like_lines: options.remove_formula_like_lines,
+        }
+    }
+}
+
+/// Applies CorpusWright's PDF-specific cleanup to already extracted raw text.
+///
+/// Full-document extraction stores pages separated by blank lines. The cleanup
+/// pass keeps using that convention so changing PDF cleanup options does not
+/// require another OCR or embedded-text extraction.
+pub fn clean_extracted_pdf_text(raw_text: &str, config: &CleaningConfig) -> (String, Vec<String>) {
+    let page_lines = raw_text
+        .split("\n\n")
+        .enumerate()
+        .map(|(index, page)| {
+            (
+                index + 1,
+                page.lines()
+                    .map(|line| line.to_string())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let (text, warnings, _) =
+        clean_pdf_page_lines(page_lines, PdfCleanupOptions::from_cleaning_config(config));
+    (text, warnings)
+}
+
+fn clean_pdf_page_lines(
+    page_lines_list: Vec<(usize, Vec<String>)>,
+    options: PdfCleanupOptions,
+) -> (String, Vec<String>, bool) {
+    let PdfCleanupOptions {
         remove_repeated_headers_footers,
         remove_page_labels,
         remove_symbol_heavy_artifacts,
@@ -808,213 +878,9 @@ pub fn extract_pdf(
         remove_formula_like_lines,
     } = options;
 
-    // lopdf is used first for format and encryption checks.
-    let doc = match Document::load_mem(bytes) {
-        Ok(doc) => doc,
-        Err(e) => {
-            return Err(PdfExtractionError::InvalidFormat(format!(
-                "Failed to load PDF: {}",
-                e
-            )));
-        }
-    };
-
     let mut warnings = Vec::new();
-
-    if doc.is_encrypted() {
-        warnings.push(
-            "PDF is encrypted or password protected. Text extraction may fail or produce garbage."
-                .to_string(),
-        );
-    }
-
-    // Fall back to lopdf when the native PDFium library is unavailable.
-    let pdfium = match crate::pdf_ocr::init_pdfium() {
-        Ok(p) => p,
-        Err(e) => {
-            let pdfium_error = e.to_string();
-            warnings.push(format!(
-                "PDFium native library not available; OCR fallback is disabled and PDF extraction may be limited. ({})",
-                pdfium_error
-            ));
-            if text_source == PdfTextSource::ForceOcr {
-                warnings.push(
-                    "Force OCR was selected, but PDFium is unavailable; embedded-text fallback was not used for this OCR mode."
-                        .to_string(),
-                );
-                return Ok(ExtractedPdf {
-                    text: String::new(),
-                    warnings,
-                    page_count: doc.get_pages().len(),
-                });
-            }
-            let page_numbers: Vec<u32> = doc.get_pages().keys().copied().collect();
-            return extract_with_lopdf_fallback(
-                &doc,
-                &page_numbers,
-                max_chars,
-                warnings,
-                &pdfium_error,
-            );
-        }
-    };
-
-    let document = {
-        let _lock = PDFIUM_LOCK.lock().unwrap();
-        match pdfium.load_pdf_from_byte_slice(bytes, None) {
-            Ok(d) => d,
-            Err(e) => {
-                return Err(PdfExtractionError::InvalidFormat(format!(
-                    "Failed to load PDF with PDFium: {:?}",
-                    e
-                )));
-            }
-        }
-    };
-
-    let page_count = {
-        let _lock = PDFIUM_LOCK.lock().unwrap();
-        document.pages().len() as usize
-    };
-
-    warnings.push("PDF reading order is not guaranteed. Formatting may be lost.".to_string());
-    warnings.push("PDF backend: PDFium.".to_string());
-
-    if text_source == PdfTextSource::ForceOcr {
-        // OCR opens its own PDFium document; release the embedded-text handle first.
-        drop(document);
-        let text = run_pdf_ocr(
-            bytes,
-            max_chars,
-            ocr_quality,
-            &mut warnings,
-            "Used experimental Force OCR to extract PDF text from rendered pages.",
-        )
-        .unwrap_or_default();
-        if text.trim().is_empty() {
-            warnings.push("Force OCR completed but produced no text.".to_string());
-        }
-
-        return Ok(ExtractedPdf {
-            text,
-            warnings,
-            page_count,
-        });
-    }
-
     let mut all_text = String::new();
     let mut has_any_text = false;
-
-    let mut total_flat_chars = 0;
-    let mut total_visual_chars = 0;
-
-    // The two-column strategy is still routed through single-column extraction.
-    if strategy == PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental {
-        warnings.push("Experimental two-column PDF extraction is currently unsupported/stubbed; falling back to visual single-column extraction.".to_string());
-    }
-
-    let mut page_lines_list: Vec<(usize, Vec<String>)> = Vec::new();
-    let mut current_chars_count = 0;
-
-    for page_index in 0..page_count {
-        if let Some(limit) = max_chars
-            && current_chars_count >= limit
-        {
-            break;
-        }
-
-        // PDFium document access is serialised across the native library boundary.
-        let (flat_text_page, char_infos) = {
-            let _lock = PDFIUM_LOCK.lock().unwrap();
-            let page = match document.pages().get(page_index as i32) {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
-            let text_page = match page.text() {
-                Ok(t) => t,
-                Err(_) => continue,
-            };
-
-            let flat_text = text_page.all();
-
-            let mut infos = Vec::new();
-            let mut last_valid_coords = None;
-            for c in text_page.chars().iter() {
-                let txt = match c.unicode_string() {
-                    Some(s) => s,
-                    None => continue,
-                };
-                if txt == "\n" || txt == "\r" || txt.as_bytes().first().is_some_and(|&b| b < 32) {
-                    continue;
-                }
-                let bounds = c.loose_bounds();
-                let (bottom, left, top, right) = match bounds {
-                    Ok(b) => {
-                        let bottom = b.bottom().value;
-                        let left = b.left().value;
-                        let top = b.top().value;
-                        let right = b.right().value;
-                        if (right - left).abs() > 0.001 || (top - bottom).abs() > 0.001 {
-                            last_valid_coords = Some((bottom, left, top, right));
-                            (bottom, left, top, right)
-                        } else if txt == " " {
-                            if let Some((b, _, t, r)) = last_valid_coords {
-                                (b, r, t, r + 0.1)
-                            } else {
-                                continue;
-                            }
-                        } else {
-                            continue;
-                        }
-                    }
-                    Err(_) => {
-                        if txt == " " {
-                            if let Some((b, _, t, r)) = last_valid_coords {
-                                (b, r, t, r + 0.1)
-                            } else {
-                                continue;
-                            }
-                        } else {
-                            continue;
-                        }
-                    }
-                };
-                infos.push(CharInfo {
-                    c: txt,
-                    bottom,
-                    left,
-                    top,
-                    right,
-                });
-            }
-            (flat_text, infos)
-        }; // Lock is released here!
-
-        let visual_text_page = reconstruct_visual_single_column(char_infos);
-
-        let flat_len = flat_text_page
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .count();
-        let visual_len = visual_text_page
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .count();
-        total_flat_chars += flat_len;
-        total_visual_chars += visual_len;
-
-        let page_text = match strategy {
-            PdfEmbeddedTextStrategy::PdfiumFlat => flat_text_page,
-            PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn
-            | PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental => visual_text_page,
-        };
-
-        let lines: Vec<String> = page_text.lines().map(|s| s.to_string()).collect();
-        let page_chars: usize = lines.iter().map(|l| l.chars().count() + 1).sum();
-        current_chars_count += page_chars + 1;
-        page_lines_list.push((page_index + 1, lines));
-    }
-
     let mut repeated_patterns = std::collections::HashSet::new();
     let total_pages = page_lines_list.len();
 
@@ -1063,7 +929,7 @@ pub fn extract_pdf(
     let mut page_labels_removed_pages_count = 0;
     let mut header_footer_removed_patterns = std::collections::HashSet::new();
 
-    let mut symbol_heavy_removed_pages: Vec<(usize, usize, usize)> = Vec::new(); // (page_num, lines_count, blocks_count)
+    let mut symbol_heavy_removed_pages: Vec<(usize, usize, usize)> = Vec::new();
     let n = 3;
 
     let mut code_blocks_removed_total = 0;
@@ -1160,20 +1026,16 @@ pub fn extract_pdf(
                         if start_idx.is_none() {
                             start_idx = Some(i);
                         }
-                    } else {
-                        if let Some(start) = start_idx {
-                            let run_len = i - start;
-                            if run_len >= 2 {
-                                for item in to_remove.iter_mut().take(i).skip(start) {
-                                    *item = true;
-                                }
-                            } else {
-                                if is_extremely_code_like_single_line(&final_page_lines[start]) {
-                                    to_remove[start] = true;
-                                }
+                    } else if let Some(start) = start_idx {
+                        let run_len = i - start;
+                        if run_len >= 2 {
+                            for item in to_remove.iter_mut().take(i).skip(start) {
+                                *item = true;
                             }
-                            start_idx = None;
+                        } else if is_extremely_code_like_single_line(&final_page_lines[start]) {
+                            to_remove[start] = true;
                         }
+                        start_idx = None;
                     }
                 }
                 if let Some(start) = start_idx {
@@ -1182,10 +1044,8 @@ pub fn extract_pdf(
                         for item in to_remove.iter_mut().take(len).skip(start) {
                             *item = true;
                         }
-                    } else {
-                        if is_extremely_code_like_single_line(&final_page_lines[start]) {
-                            to_remove[start] = true;
-                        }
+                    } else if is_extremely_code_like_single_line(&final_page_lines[start]) {
+                        to_remove[start] = true;
                     }
                 }
             }
@@ -1302,6 +1162,230 @@ pub fn extract_pdf(
             formula_lines_removed_total, formula_pages_with_removals
         ));
     }
+
+    (all_text, warnings, has_any_text)
+}
+
+pub fn extract_pdf(
+    bytes: &[u8],
+    max_chars: Option<usize>,
+    options: PdfExtractionOptions,
+) -> Result<ExtractedPdf, PdfExtractionError> {
+    let PdfExtractionOptions {
+        strategy,
+        text_source,
+        ocr_quality,
+        ..
+    } = options;
+
+    // lopdf is used first for format and encryption checks.
+    let doc = match Document::load_mem(bytes) {
+        Ok(doc) => doc,
+        Err(e) => {
+            return Err(PdfExtractionError::InvalidFormat(format!(
+                "Failed to load PDF: {}",
+                e
+            )));
+        }
+    };
+
+    let mut warnings = Vec::new();
+
+    if doc.is_encrypted() {
+        warnings.push(
+            "PDF is encrypted or password protected. Text extraction may fail or produce garbage."
+                .to_string(),
+        );
+    }
+
+    // Fall back to lopdf when the native PDFium library is unavailable.
+    let pdfium = match crate::pdf_ocr::init_pdfium() {
+        Ok(p) => p,
+        Err(e) => {
+            let pdfium_error = e.to_string();
+            warnings.push(format!(
+                "PDFium native library not available; OCR fallback is disabled and PDF extraction may be limited. ({})",
+                pdfium_error
+            ));
+            if text_source == PdfTextSource::ForceOcr {
+                warnings.push(
+                    "Force OCR was selected, but PDFium is unavailable; embedded-text fallback was not used for this OCR mode."
+                        .to_string(),
+                );
+                return Ok(ExtractedPdf {
+                    text: String::new(),
+                    warnings,
+                    page_count: doc.get_pages().len(),
+                });
+            }
+            let page_numbers: Vec<u32> = doc.get_pages().keys().copied().collect();
+            return extract_with_lopdf_fallback(
+                &doc,
+                &page_numbers,
+                max_chars,
+                warnings,
+                &pdfium_error,
+            );
+        }
+    };
+
+    let document = {
+        let _lock = PDFIUM_LOCK.lock().unwrap();
+        match pdfium.load_pdf_from_byte_slice(bytes, None) {
+            Ok(d) => d,
+            Err(e) => {
+                return Err(PdfExtractionError::InvalidFormat(format!(
+                    "Failed to load PDF with PDFium: {:?}",
+                    e
+                )));
+            }
+        }
+    };
+
+    let page_count = {
+        let _lock = PDFIUM_LOCK.lock().unwrap();
+        document.pages().len() as usize
+    };
+
+    warnings.push("PDF reading order is not guaranteed. Formatting may be lost.".to_string());
+    warnings.push("PDF backend: PDFium.".to_string());
+
+    if text_source == PdfTextSource::ForceOcr {
+        // OCR opens its own PDFium document; release the embedded-text handle first.
+        drop(document);
+        let text = run_pdf_ocr(
+            bytes,
+            max_chars,
+            ocr_quality,
+            &mut warnings,
+            "Used experimental Force OCR to extract PDF text from rendered pages.",
+        )
+        .unwrap_or_default();
+        if text.trim().is_empty() {
+            warnings.push("Force OCR completed but produced no text.".to_string());
+        }
+
+        return Ok(ExtractedPdf {
+            text,
+            warnings,
+            page_count,
+        });
+    }
+
+    let mut total_flat_chars = 0;
+    let mut total_visual_chars = 0;
+
+    // The two-column strategy is still routed through single-column extraction.
+    if strategy == PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental {
+        warnings.push("Experimental two-column PDF extraction is currently unsupported/stubbed; falling back to visual single-column extraction.".to_string());
+    }
+
+    let mut page_lines_list: Vec<(usize, Vec<String>)> = Vec::new();
+    let mut current_chars_count = 0;
+
+    for page_index in 0..page_count {
+        if let Some(limit) = max_chars
+            && current_chars_count >= limit
+        {
+            break;
+        }
+
+        // PDFium document access is serialised across the native library boundary.
+        let (flat_text_page, char_infos) = {
+            let _lock = PDFIUM_LOCK.lock().unwrap();
+            let page = match document.pages().get(page_index as i32) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            let text_page = match page.text() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+
+            let flat_text = text_page.all();
+
+            let mut infos = Vec::new();
+            let mut last_valid_coords = None;
+            for c in text_page.chars().iter() {
+                let txt = match c.unicode_string() {
+                    Some(s) => s,
+                    None => continue,
+                };
+                if txt == "\n" || txt == "\r" || txt.as_bytes().first().is_some_and(|&b| b < 32) {
+                    continue;
+                }
+                let bounds = c.loose_bounds();
+                let (bottom, left, top, right) = match bounds {
+                    Ok(b) => {
+                        let bottom = b.bottom().value;
+                        let left = b.left().value;
+                        let top = b.top().value;
+                        let right = b.right().value;
+                        if (right - left).abs() > 0.001 || (top - bottom).abs() > 0.001 {
+                            last_valid_coords = Some((bottom, left, top, right));
+                            (bottom, left, top, right)
+                        } else if txt == " " {
+                            if let Some((b, _, t, r)) = last_valid_coords {
+                                (b, r, t, r + 0.1)
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            continue;
+                        }
+                    }
+                    Err(_) => {
+                        if txt == " " {
+                            if let Some((b, _, t, r)) = last_valid_coords {
+                                (b, r, t, r + 0.1)
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            continue;
+                        }
+                    }
+                };
+                infos.push(CharInfo {
+                    c: txt,
+                    bottom,
+                    left,
+                    top,
+                    right,
+                });
+            }
+            (flat_text, infos)
+        }; // Lock is released here!
+
+        let visual_text_page = reconstruct_visual_single_column(char_infos);
+
+        let flat_len = flat_text_page
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .count();
+        let visual_len = visual_text_page
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .count();
+        total_flat_chars += flat_len;
+        total_visual_chars += visual_len;
+
+        let page_text = match strategy {
+            PdfEmbeddedTextStrategy::PdfiumFlat => flat_text_page,
+            PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn
+            | PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental => visual_text_page,
+        };
+
+        let lines: Vec<String> = page_text.lines().map(|s| s.to_string()).collect();
+        let page_chars: usize = lines.iter().map(|l| l.chars().count() + 1).sum();
+        current_chars_count += page_chars + 1;
+        page_lines_list.push((page_index + 1, lines));
+    }
+
+    let cleanup_options = PdfCleanupOptions::from_extraction_options(options);
+    let (mut all_text, cleanup_warnings, has_any_text) =
+        clean_pdf_page_lines(page_lines_list, cleanup_options);
+    warnings.extend(cleanup_warnings);
 
     // Compare layout-aware output against flat extraction as a loss signal.
     if total_flat_chars > 0 {
