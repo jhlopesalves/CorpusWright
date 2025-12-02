@@ -261,10 +261,10 @@ fn pdf_intake_file_name(record: &DocumentRecord) -> String {
         .unwrap_or_else(|| record.relative_path.to_string_lossy().to_string())
 }
 
-// Recognition is serialised by the shared OCR engine lock, so extra workers
-// mainly add render/init contention until a multi-engine path is proven faster.
-const DEFAULT_OCR_WORKERS: usize = 1;
-const MAX_INTERNAL_OCR_WORKERS: usize = 4;
+// PDFium page access and OCR recognition remain guarded, but a small pool lets
+// neighbouring pages overlap render work with the shared recogniser.
+const DEFAULT_OCR_WORKERS: usize = 4;
+const MAX_INTERNAL_OCR_WORKERS: usize = 5;
 
 fn configured_ocr_worker_count() -> usize {
     let available = std::thread::available_parallelism()
