@@ -6,6 +6,7 @@ import {
   getSelectedArtifactTextMode,
 } from "./dom";
 import { state } from "./state";
+import type { RemovalRule } from "./generated/CleaningConfig.js";
 import type { PositionSummary } from "./generated/PositionSummary.js";
 import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
 import type { RepeatedArtifactScanConfig } from "./generated/RepeatedArtifactScanConfig.js";
@@ -15,6 +16,49 @@ import type { RepeatedArtifactScanReport } from "./generated/RepeatedArtifactSca
 interface RepeatedArtifactCallbacks {
   renderCustomRemovals: () => void;
   schedulePreviewUpdate: (delay: number) => void;
+}
+
+function ruleDisplayText(rule: RemovalRule): string {
+  if (rule.matcher.kind === "literal") {
+    return rule.scope === "whole_line"
+      ? `Whole line: ${rule.matcher.text}`
+      : rule.matcher.text;
+  }
+  return rule.label;
+}
+
+function activeCustomRemovalCount(): number {
+  return state.activeCleaningConfig.remove_patterns.length +
+    state.activeCleaningConfig.removal_rules.filter(rule => rule.enabled).length;
+}
+
+function exactLineRuleId(candidate: RepeatedArtifactCandidate): string {
+  return `repeated-artifact:whole-line:${candidate.candidate_id}`;
+}
+
+function removalRuleDuplicateKey(rule: RemovalRule): string {
+  if (rule.matcher.kind === "literal") {
+    return `${rule.scope}\0${rule.matcher.text}`;
+  }
+  return `${rule.scope}\0${rule.id}`;
+}
+
+function exactLineRuleDuplicateKey(text: string): string {
+  return `whole_line\0${text}`;
+}
+
+function createExactLineRemovalRule(candidate: RepeatedArtifactCandidate): RemovalRule {
+  return {
+    id: exactLineRuleId(candidate),
+    label: candidate.display_text,
+    source: "promoted_repeated_artifact",
+    matcher: {
+      kind: "literal",
+      text: candidate.display_text,
+    },
+    scope: "whole_line",
+    enabled: true,
+  };
 }
 
 export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks): void {
@@ -28,12 +72,16 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
   function updateProcessedWarning(): void {
     const isProcessed = getSelectedArtifactTextMode()?.value === "processed";
-    if (isProcessed && state.activeCleaningConfig.remove_patterns.length > 0) {
-      const removals = state.activeCleaningConfig.remove_patterns;
-      const count = removals.length;
-      let previewText = `Processed scans apply ${count} active Custom Removal sequence(s).`;
+    const count = activeCustomRemovalCount();
+    if (isProcessed && count > 0) {
+      const legacyRemovals = state.activeCleaningConfig.remove_patterns;
+      const ruleRemovals = state.activeCleaningConfig.removal_rules.filter(rule => rule.enabled);
+      let previewText = `Processed scans apply ${count} active Custom Removal item(s).`;
       if (count > 0) {
-        const examples = removals.slice(0, 3);
+        const examples = [
+          ...legacyRemovals,
+          ...ruleRemovals.map(ruleDisplayText),
+        ].slice(0, 3);
         previewText += ` Active removals include: ${examples.join(", ")}${count > 3 ? ", ..." : ""}.`;
       }
       dom.artifactProcessedWarning.textContent = previewText;
@@ -91,7 +139,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     }
 
     if (diags.analysed_processed_text && diags.custom_removals_active > 0) {
-      text += ` · Processed scan applied ${diags.custom_removals_active} active Custom Removal sequence(s).`;
+      text += ` · Processed scan applied ${diags.custom_removals_active} active Custom Removal item(s).`;
     }
 
     dom.artifactDiagnostics.textContent = text;
@@ -122,7 +170,10 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     if (count === 0) return;
 
     const existingSet = new Set(state.activeCleaningConfig.remove_patterns);
-    let addedCount = 0;
+    const existingRuleIds = new Set(state.activeCleaningConfig.removal_rules.map(rule => rule.id));
+    const existingRuleKeys = new Set(state.activeCleaningConfig.removal_rules.map(removalRuleDuplicateKey));
+    let literalSequencesAdded = 0;
+    let wholeLineRulesAdded = 0;
     let skippedDuplicates = 0;
     let groupedCandidatesExpanded = 0;
     let cappedGroupedCandidatesExpanded = 0;
@@ -134,6 +185,23 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
       const isNormalized = cand.kind === "normalized_line";
 
+      if (cand.kind === "exact_line") {
+        const text = cand.display_text;
+        if (!text) continue;
+        const rule = createExactLineRemovalRule(cand);
+        const ruleKey = exactLineRuleDuplicateKey(text);
+        if (existingRuleIds.has(rule.id) || existingRuleKeys.has(ruleKey)) {
+          skippedDuplicates++;
+          continue;
+        }
+
+        state.activeCleaningConfig.removal_rules.push(rule);
+        existingRuleIds.add(rule.id);
+        existingRuleKeys.add(ruleKey);
+        wholeLineRulesAdded++;
+        continue;
+      }
+
       if (isNormalized) {
         if (!cand.raw_variants || cand.raw_variants.length === 0) continue;
         groupedCandidatesExpanded++;
@@ -144,7 +212,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
           if (!existingSet.has(variant)) {
             state.activeCleaningConfig.remove_patterns.push(variant);
             existingSet.add(variant);
-            addedCount++;
+            literalSequencesAdded++;
             trackedRawVariantsAddedFromGroupedCandidates++;
           } else {
             skippedDuplicates++;
@@ -155,20 +223,29 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         if (!existingSet.has(text)) {
           state.activeCleaningConfig.remove_patterns.push(text);
           existingSet.add(text);
-          addedCount++;
+          literalSequencesAdded++;
         } else {
           skippedDuplicates++;
         }
       }
     }
 
-    if (addedCount > 0) {
+    if (literalSequencesAdded > 0 || wholeLineRulesAdded > 0) {
       state.tempRemovePatterns = [...state.activeCleaningConfig.remove_patterns];
+      state.tempRemovalRules = state.activeCleaningConfig.removal_rules.map((rule) => ({
+        ...rule,
+        matcher: { ...rule.matcher },
+      }));
       callbacks.renderCustomRemovals();
     }
 
     const statusParts: string[] = [];
-    statusParts.push(`Added ${addedCount} sequence${addedCount === 1 ? "" : "s"} to Custom Removals`);
+    if (wholeLineRulesAdded > 0) {
+      statusParts.push(`Added ${wholeLineRulesAdded} whole-line rule${wholeLineRulesAdded === 1 ? "" : "s"}`);
+    }
+    if (literalSequencesAdded > 0) {
+      statusParts.push(`Added ${literalSequencesAdded} literal sequence${literalSequencesAdded === 1 ? "" : "s"} to Custom Removals`);
+    }
     if (groupedCandidatesExpanded > 0) {
       const addedTrackedText = trackedRawVariantsAddedFromGroupedCandidates > 0
         ? `; ${trackedRawVariantsAddedFromGroupedCandidates} tracked raw variant${trackedRawVariantsAddedFromGroupedCandidates === 1 ? "" : "s"} added from them`
@@ -181,7 +258,9 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     if (cappedGroupedCandidatesExpanded > 0) {
       statusParts.push(`Warning: ${cappedGroupedCandidatesExpanded} grouped candidate${cappedGroupedCandidatesExpanded === 1 ? " was" : "s were"} capped, so only the tracked variants were added; Custom Removals are literal strings, and additional untracked variants from the same family may remain`);
     }
-    dom.lblArtifactAddStatus.textContent = statusParts.join(". ") + ".";
+    dom.lblArtifactAddStatus.textContent = statusParts.length > 0
+      ? statusParts.join(". ") + "."
+      : "No new removals added.";
     setTimeout(() => { dom.lblArtifactAddStatus.textContent = ""; }, 5000);
 
     updateProcessedWarning();
@@ -207,7 +286,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     const analyseProcessed = textMode === "processed";
 
     state.scanWasProcessed = analyseProcessed;
-    state.removalCountAtScanStart = state.activeCleaningConfig.remove_patterns.length;
+    state.removalCountAtScanStart = activeCustomRemovalCount();
 
     const config: RepeatedArtifactScanConfig = {
       analyse_processed_text: analyseProcessed,
@@ -371,6 +450,8 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       if (isNormalized && (!cand.raw_variants || cand.raw_variants.length === 0)) {
         chk.disabled = true;
         chk.title = "This grouped pattern has no actionable raw variants to add.";
+      } else if (cand.kind === "exact_line") {
+        chk.title = "Selecting adds a structured whole-line removal rule.";
       } else if (isNormalized) {
         const cappedNote = cand.raw_variant_count_is_capped
           ? " This group is capped; additional untracked variants may remain after literal removal."

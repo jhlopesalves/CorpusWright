@@ -1349,7 +1349,12 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
 ) -> Result<RepeatedArtifactScanReport, String> {
     let files_requested = records.len();
     let analysed_processed_text = config.analyse_processed_text;
-    let custom_removals_active = cleaning_config.remove_patterns.len();
+    let custom_removals_active = cleaning_config.remove_patterns.len()
+        + cleaning_config
+            .removal_rules
+            .iter()
+            .filter(|rule| rule.enabled)
+            .count();
     let max_examples_per_candidate = config.max_examples_per_candidate;
 
     if records.is_empty() {
