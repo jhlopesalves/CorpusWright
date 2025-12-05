@@ -509,7 +509,7 @@ fn materialize_force_ocr_pdf(
         .build()
         .map_err(|error| format!("Failed to configure OCR workers: {error}"))?;
 
-    let mut page_texts = Vec::new();
+    let mut page_texts = Vec::with_capacity(total_pages);
     let mut warnings = Vec::new();
     let mut timings = Vec::with_capacity(total_pages);
     let mut latest_warning = None;
@@ -552,9 +552,7 @@ fn materialize_force_ocr_pdf(
             if let Some(page_warning) = latest_page_warning(&page_result.timing) {
                 latest_warning = Some(page_warning);
             }
-            if let Some(text) = page_result.text {
-                page_texts.push(text);
-            }
+            page_texts.push(page_result.text.unwrap_or_default());
             let page_warnings = page_result.timing.warnings.clone();
             warnings.extend(page_warnings);
             timings.push(page_result.timing);
@@ -590,14 +588,22 @@ fn materialize_force_ocr_pdf(
         return Err(pdf_intake_cancelled_message());
     }
 
+    let extracted_text = page_texts
+        .iter()
+        .map(|page| page.trim())
+        .filter(|page| !page.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
     cache.insert_extracted(
         record,
         Some(options),
         cleaning_config,
         CacheEntry {
-            extracted_text: page_texts.join("\n\n"),
+            extracted_text,
             warnings,
             page_count: Some(total_pages),
+            page_texts: Some(page_texts),
         },
     );
 

@@ -10,7 +10,7 @@
 
 use crate::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
 use crate::clean::CleaningConfig;
-use crate::scan::{DocumentRecord, DocumentType};
+use crate::scan::DocumentRecord;
 use crate::structured_document::StructuredDocument;
 use crate::text_normalization::normalize_line_for_repeated_artifact as normalize_line;
 use aho_corasick::AhoCorasick;
@@ -806,6 +806,7 @@ fn detect_inline_artifacts_with_automaton(
 /// Internal struct describing extraction status for a single file.
 struct ExtractedScanText {
     text: String,
+    page_texts: Option<Vec<String>>,
     extraction_failed: bool,
     fatal_error: Option<String>,
 }
@@ -830,6 +831,7 @@ fn get_document_text_with_status(
     match document_text_for_record(record, cleaning_config, mode, cache) {
         Ok(document_text) => ExtractedScanText {
             text: document_text.text,
+            page_texts: document_text.page_texts,
             extraction_failed: false,
             fatal_error: None,
         },
@@ -841,6 +843,7 @@ fn get_document_text_with_status(
             };
             ExtractedScanText {
                 text: String::new(),
+                page_texts: None,
                 extraction_failed: true,
                 fatal_error,
             }
@@ -848,8 +851,8 @@ fn get_document_text_with_status(
     }
 }
 
-/// Build a per-file `FileText` from extracted text and page info.
-fn build_file_text(record: &DocumentRecord, text: &str) -> FileText {
+/// Build a per-file `FileText` from extracted text and optional page metadata.
+fn build_file_text(record: &DocumentRecord, text: &str, page_texts: Option<&[String]>) -> FileText {
     let file_name = record
         .source_path
         .file_name()
@@ -857,9 +860,8 @@ fn build_file_text(record: &DocumentRecord, text: &str) -> FileText {
         .unwrap_or_else(|| "unknown".to_string());
     let file_path = record.relative_path.to_string_lossy().into_owned();
 
-    let is_pdf = record.document_type == DocumentType::Pdf;
-    let document = if is_pdf {
-        StructuredDocument::from_pages(text.split("\n\n"))
+    let document = if let Some(page_texts) = page_texts {
+        StructuredDocument::from_pages(page_texts)
     } else {
         StructuredDocument::from_flat_text_as_single_page(text)
     };
@@ -885,7 +887,7 @@ fn build_file_text(record: &DocumentRecord, text: &str) -> FileText {
         total_lines,
         document,
         line_locations,
-        has_page_metadata: is_pdf,
+        has_page_metadata: page_texts.is_some(),
     }
 }
 
@@ -902,7 +904,7 @@ fn phase1_scan_file(
 ) -> Phase1Result {
     if cancel.load(Ordering::Relaxed) {
         return Phase1Result {
-            ft: build_file_text(record, ""),
+            ft: build_file_text(record, "", None),
             local_map: HashMap::new(),
             extraction_failed: false,
             fatal_error: None,
@@ -918,14 +920,14 @@ fn phase1_scan_file(
 
     if cancel.load(Ordering::Relaxed) {
         return Phase1Result {
-            ft: build_file_text(record, ""),
+            ft: build_file_text(record, "", None),
             local_map: HashMap::new(),
             extraction_failed: false,
             fatal_error: None,
         };
     }
 
-    let ft = build_file_text(record, &extracted.text);
+    let ft = build_file_text(record, &extracted.text, extracted.page_texts.as_deref());
 
     let mut map = phase1_aggregate(&ft, config);
 
@@ -1550,6 +1552,7 @@ pub fn scan_repeated_artifacts_with_cancel(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scan::DocumentType;
     use std::path::PathBuf;
 
     #[test]
@@ -1799,6 +1802,10 @@ mod tests {
     }
 
     fn repeated_cached_pdf_text() -> String {
+        repeated_cached_pdf_pages().join("\n\n")
+    }
+
+    fn repeated_cached_pdf_pages() -> Vec<String> {
         (1..=3)
             .map(|page_number| {
                 [
@@ -1813,16 +1820,16 @@ mod tests {
                 .join("\n")
             })
             .collect::<Vec<_>>()
-            .join("\n\n")
     }
 
     #[test]
     fn test_file_text_uses_structured_document_for_pdf_pages() {
         let temp_dir = tempfile::tempdir().unwrap();
         let doc = make_pdf_record("structured-pages.pdf", temp_dir.path());
-        let text = repeated_cached_pdf_text();
+        let pages = repeated_cached_pdf_pages();
+        let text = pages.join("\n\n");
 
-        let ft = build_file_text(&doc, &text);
+        let ft = build_file_text(&doc, &text, Some(&pages));
 
         assert_eq!(ft.document.pages.len(), 3);
         assert_eq!(ft.raw_lines.len(), 21);
@@ -1839,11 +1846,27 @@ mod tests {
     }
 
     #[test]
+    fn test_file_text_does_not_invent_pdf_pages_without_metadata() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let doc = make_pdf_record("flat-cached.pdf", temp_dir.path());
+        let text = repeated_cached_pdf_text();
+
+        let ft = build_file_text(&doc, &text, None);
+
+        assert_eq!(ft.document.pages.len(), 1);
+        assert_eq!(ft.raw_lines.len(), 23);
+        assert_eq!(ft.page_number_for_line(0), None);
+        assert!(ft.lines_share_page(6, 7));
+        assert_eq!(compute_position_for_line(&ft, 0), LinePosition::Top);
+    }
+
+    #[test]
     fn test_scanner_preserves_cached_pdf_exact_and_normalized_page_positions() {
         let temp_dir = tempfile::tempdir().unwrap();
         let doc = make_pdf_record("cached-structured-pages.pdf", temp_dir.path());
         let cleaning_config = CleaningConfig::default();
         let cache = ExtractionCache::new();
+        let page_texts = repeated_cached_pdf_pages();
         cache.insert_extracted(
             &doc,
             Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
@@ -1851,9 +1874,10 @@ mod tests {
             )),
             &cleaning_config,
             crate::cache::CacheEntry {
-                extracted_text: repeated_cached_pdf_text(),
+                extracted_text: page_texts.join("\n\n"),
                 warnings: Vec::new(),
                 page_count: Some(3),
+                page_texts: Some(page_texts),
             },
         );
 
@@ -1945,6 +1969,61 @@ mod tests {
                 "Page 2".to_string(),
                 "Page 3".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn test_scanner_falls_back_to_flat_text_without_cached_pages() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let doc = make_pdf_record("old-flat-cache.pdf", temp_dir.path());
+        let cleaning_config = CleaningConfig::default();
+        let cache = ExtractionCache::new();
+        cache.insert_extracted(
+            &doc,
+            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                &cleaning_config,
+            )),
+            &cleaning_config,
+            crate::cache::CacheEntry {
+                extracted_text: repeated_cached_pdf_text(),
+                warnings: Vec::new(),
+                page_count: Some(3),
+                page_texts: None,
+            },
+        );
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 3,
+            min_files: 1,
+            min_line_chars: 3,
+            include_inline_artifacts: false,
+            max_candidates: 50,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let report = scan_repeated_artifacts_report_with_cancel_and_cache(
+            &[doc],
+            &config,
+            &cleaning_config,
+            Some(&cache),
+            &no_cancellation(),
+        )
+        .expect("cached PDF scan should fall back to flat text");
+
+        let header = report
+            .candidates
+            .iter()
+            .find(|candidate| {
+                candidate.kind == RepeatedArtifactKind::ExactLine
+                    && candidate.display_text == "Header"
+            })
+            .expect("expected exact Header candidate");
+        assert_eq!(header.occurrence_count, 3);
+        assert!(
+            header
+                .examples
+                .iter()
+                .all(|example| example.page_number.is_none())
         );
     }
 
@@ -3274,6 +3353,7 @@ mod tests {
                 extracted_text: "Header\nbody line\nHeader\nother body line\nHeader".to_string(),
                 warnings: Vec::new(),
                 page_count: Some(1),
+                page_texts: None,
             },
         );
 
@@ -3318,6 +3398,7 @@ mod tests {
                 extracted_text: "Header\nKept line\nHeader\nKept line\nHeader".to_string(),
                 warnings: Vec::new(),
                 page_count: Some(1),
+                page_texts: None,
             },
         );
 
