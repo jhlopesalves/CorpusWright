@@ -3428,4 +3428,96 @@ mod tests {
             candidate.kind == RepeatedArtifactKind::ExactLine && candidate.display_text == "Header"
         }));
     }
+
+    #[test]
+    fn test_scanner_uses_cleaned_page_texts_when_available() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let doc = make_pdf_record("cleaned-pages-scan.pdf", temp_dir.path());
+        let cleaning_config = CleaningConfig {
+            lowercase: true,
+            ..CleaningConfig::default()
+        };
+        let cache = ExtractionCache::new();
+        cache.insert_extracted(
+            &doc,
+            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                &cleaning_config,
+            )),
+            &cleaning_config,
+            crate::cache::CacheEntry {
+                extracted_text: "HEADER\n\nBODY".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(2),
+                page_texts: Some(vec!["HEADER".to_string(), "BODY".to_string()]),
+            },
+        );
+
+        let config = RepeatedArtifactScanConfig {
+            analyse_processed_text: true,
+            min_occurrences: 1,
+            min_files: 1,
+            min_line_chars: 3,
+            include_exact_lines: true,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let ft = phase1_scan_file(
+            &doc,
+            &config,
+            &cleaning_config,
+            Some(&cache),
+            &no_cancellation(),
+        )
+        .ft;
+
+        assert!(ft.has_page_metadata);
+        assert_eq!(ft.document.pages.len(), 2);
+        assert_eq!(ft.document.pages[0].lines[0].text, "header");
+        assert_eq!(ft.document.pages[1].lines[0].text, "body");
+    }
+
+    #[test]
+    fn test_scanner_falls_back_to_flat_text_when_cleaned_page_texts_are_unavailable() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let doc = make_pdf_record("no-cleaned-pages-scan.pdf", temp_dir.path());
+        let cleaning_config = CleaningConfig {
+            join_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+        let cache = ExtractionCache::new();
+        cache.insert_extracted(
+            &doc,
+            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                &cleaning_config,
+            )),
+            &cleaning_config,
+            crate::cache::CacheEntry {
+                extracted_text: "Alpha\nBeta".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(2),
+                page_texts: Some(vec!["Alpha".to_string(), "Beta".to_string()]),
+            },
+        );
+
+        let config = RepeatedArtifactScanConfig {
+            analyse_processed_text: true,
+            min_occurrences: 1,
+            min_files: 1,
+            min_line_chars: 3,
+            include_exact_lines: true,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let ft = phase1_scan_file(
+            &doc,
+            &config,
+            &cleaning_config,
+            Some(&cache),
+            &no_cancellation(),
+        )
+        .ft;
+
+        assert!(!ft.has_page_metadata);
+        assert_eq!(ft.document.pages.len(), 1);
+    }
 }
