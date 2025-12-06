@@ -355,9 +355,7 @@ pub(crate) fn has_page_zone_rules(config: &CleaningConfig) -> bool {
         rule.enabled
             && matches!(
                 rule.scope,
-                RemovalScope::PageTop
-                    | RemovalScope::PageBottom
-                    | RemovalScope::PageTopOrBottom
+                RemovalScope::PageTop | RemovalScope::PageBottom | RemovalScope::PageTopOrBottom
             )
     })
 }
@@ -1486,8 +1484,6 @@ mod tests {
 
     #[test]
     fn clean_structured_document_applies_page_zone_rules_correctly() {
-        let doc = StructuredDocument::from_pages(["L1\nL2\nL3\nMid\nL5\nL6\nL7"]);
-
         let config_top = CleaningConfig {
             removal_rules: vec![page_zone_rule("Target", RemovalScope::PageTop)],
             ..CleaningConfig::default()
