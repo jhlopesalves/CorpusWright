@@ -1,0 +1,1 @@
+export type CandidateTextSignalLabel = "likely_natural_text" | "likely_section_heading" | "likely_page_label" | "likely_table_or_numeric_row" | "likely_formula_or_code" | "likely_markup_or_extraction_noise" | "ambiguous";
