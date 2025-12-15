@@ -587,26 +587,15 @@
             </div>
             <div class="repeated-artifact-table-container" style="flex: 1; overflow: auto;">
               <table style="min-width: 100%; width: max-content; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
-                <colgroup>
-                  <col style="width: 50px;" />
-                  <col id="col-candidate-pattern" />
-                  <col style="width: 75px;" />
-                  <col style="width: 75px;" />
-                  <col style="width: 55px;" />
-                  <col style="width: 55px;" />
-                  <col style="width: 75px;" />
-                  <col style="width: 95px;" />
-                </colgroup>
                 <thead>
                   <tr
                     style="position: sticky; top: 0; background: var(--panel-bg); border-bottom: 1px solid var(--border-color); z-index: 10; font-size: 0.85rem; color: var(--text-muted);">
                     <th style="padding: 8px; text-align: center;">Select</th>
-                    <th id="th-candidate-pattern" style="padding: 8px; position: relative; user-select: none;">
+                    <th class="th-candidate-pattern" style="padding: 8px; user-select: none;">
                       <button class="sort-header" data-column="text" aria-label="Sort by Candidate or Pattern">
                         <span>Candidate / Pattern</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
-                      <div class="col-resize-handle" title="Drag to resize"></div>
                     </th>
                     <th style="padding: 8px;">
                       <button class="sort-header" data-column="kind" aria-label="Sort by Kind">
