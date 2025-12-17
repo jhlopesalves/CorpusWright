@@ -7,6 +7,7 @@ pub const PAGE_EDGE_LINE_COUNT: usize = 3;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructuredDocument {
     pub pages: Vec<DocumentPage>,
+    pub has_reliable_page_metadata: bool,
 }
 
 /// One page in a structured document.
@@ -61,12 +62,17 @@ impl StructuredDocument {
             })
             .collect();
 
-        Self { pages }
+        Self {
+            pages,
+            has_reliable_page_metadata: true,
+        }
     }
 
     /// Treats flat text as one page without guessing page breaks.
     pub fn from_flat_text_as_single_page(text: &str) -> Self {
-        Self::from_pages(std::iter::once(text))
+        let mut doc = Self::from_pages(std::iter::once(text));
+        doc.has_reliable_page_metadata = false;
+        doc
     }
 
     /// Flattens pages by joining page lines with `\n` and pages with `\n\n`.
