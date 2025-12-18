@@ -14,7 +14,16 @@
     <nav class="app-bar">
       <div class="app-title">CorpusWright</div>
       <div class="menu-items">
-        <div class="dropdown">
+        <div class="dropdown" id="menu-project-dropdown">
+          <span class="menu-item" tabindex="0">Project</span>
+          <div class="dropdown-content">
+            <div class="dropdown-item" id="menu-new-project" tabindex="0">New Corpus Project</div>
+            <div class="dropdown-item" id="menu-open-project" tabindex="0">Open Existing Project</div>
+            <div class="dropdown-item" id="menu-open-folder-project" tabindex="0">Open Folder as Corpus Project</div>
+            <div class="dropdown-item hidden" id="menu-close-project" tabindex="0">Close Project</div>
+          </div>
+        </div>
+        <div class="dropdown hidden" id="menu-file-dropdown">
           <span class="menu-item" tabindex="0">File</span>
           <div class="dropdown-content">
             <div class="dropdown-item" id="menu-open-files" tabindex="0">Open Files</div>
@@ -23,7 +32,7 @@
             <div class="dropdown-item" id="menu-save-corpus" tabindex="0">Save Processed Corpus</div>
           </div>
         </div>
-        <div class="dropdown">
+        <div class="dropdown hidden" id="menu-process-dropdown">
           <span class="menu-item" tabindex="0">Process</span>
           <div class="dropdown-content">
             <div class="dropdown-item" id="menu-processing-params" tabindex="0">Processing Parameters</div>
@@ -38,6 +47,10 @@
         </div>
       </div>
       <div class="top-right-controls">
+        <div id="project-context" class="project-context hidden">
+          <span id="project-context-name"></span>
+          <span id="project-context-path"></span>
+        </div>
         <button id="theme-toggle" class="icon-btn" title="Toggle Theme" aria-label="Toggle Theme">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
@@ -55,7 +68,24 @@
       </div>
     </nav>
 
-    <main>
+    <main id="welcome-screen" class="welcome-screen">
+      <section class="welcome-content" aria-labelledby="welcome-title">
+        <h1 id="welcome-title">Welcome to CorpusWright</h1>
+        <p>Create or open a corpus project to prepare documents, review cleaning decisions, and analyse your corpus.</p>
+        <div class="welcome-actions">
+          <button id="btn-new-project" class="primary-btn" type="button">New Corpus Project</button>
+          <button id="btn-open-project" type="button">Open Existing Project</button>
+          <button id="btn-open-folder-project" type="button">Open Folder as Corpus Project</button>
+        </div>
+        <div id="welcome-status" class="welcome-status" aria-live="polite"></div>
+        <section class="recent-projects" aria-labelledby="recent-projects-title">
+          <h2 id="recent-projects-title">Recent Projects</h2>
+          <div id="recent-projects-list" class="recent-projects-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <main id="project-workspace" class="project-workspace hidden">
       <aside class="left-panel">
         <h2>Corpus</h2>
         <div class="status-line" id="files-status">0 loaded | 0 selected</div>
