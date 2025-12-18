@@ -1,4 +1,6 @@
 use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource};
+use crate::project_sources::ProjectSourcePdfProfile;
+use crate::scan::{DocumentRecord, DocumentType};
 use lopdf::Document;
 use pdfium_render::prelude::*;
 use regex::Regex;
@@ -12,7 +14,7 @@ const PDF_OCR_PREVIEW_CHAR_CAP: usize = 5_000;
 const PDF_OCR_PREVIEW_PAGE_CAP: usize = 1;
 
 /// Named options for PDF extraction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct PdfExtractionOptions {
     pub strategy: PdfEmbeddedTextStrategy,
     pub text_source: PdfTextSource,
@@ -50,6 +52,44 @@ impl PdfExtractionOptions {
             ocr_quality: config.pdf_ocr_quality,
             ..Self::raw_default()
         }
+    }
+
+    /// Build extraction-only options from a record, using source-level route
+    /// metadata when present and falling back to the cleaning config otherwise.
+    pub fn raw_from_record_and_cleaning_config(
+        record: &DocumentRecord,
+        config: &CleaningConfig,
+    ) -> Self {
+        let mut options = Self::raw_from_cleaning_config(config);
+        if record.document_type == DocumentType::Pdf {
+            if let Some(route) = record.extraction_route
+                && let Some(text_source) = route.pdf_text_source()
+            {
+                options.text_source = text_source;
+            }
+            if let Some(profile) = record.pdf_profile {
+                match profile {
+                    ProjectSourcePdfProfile::Standard | ProjectSourcePdfProfile::NoAutomaticOcr => {
+                        options.strategy = PdfEmbeddedTextStrategy::PdfiumFlat;
+                        options.text_source = PdfTextSource::EmbeddedText;
+                    }
+                    ProjectSourcePdfProfile::LayoutHeavy => {
+                        options.strategy = PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn;
+                        options.text_source = PdfTextSource::EmbeddedText;
+                    }
+                    ProjectSourcePdfProfile::OcrRescue => {
+                        options.text_source = PdfTextSource::ForceOcr;
+                    }
+                    ProjectSourcePdfProfile::ForceOcr => {
+                        options.text_source = PdfTextSource::ForceOcr;
+                    }
+                }
+            }
+            if let Some(ocr_quality) = record.ocr_quality {
+                options.ocr_quality = ocr_quality;
+            }
+        }
+        options
     }
 
     /// Default options for raw extraction: PdfiumFlat strategy, no cleanup, no OCR.
@@ -726,7 +766,7 @@ fn extract_pdf_embedded_page_range(
 ///
 /// The OCR modes process only the requested pages and keep failures local to
 /// the affected page. `PdfTextSource::Ocr` runs OCR directly for this
-/// inspection path; mixed embedded-text/OCR fallback remains part of the
+/// inspection path; mixed embedded-text/OCR extraction remains part of the
 /// full-document extraction path.
 pub fn extract_pdf_page_range(
     bytes: &[u8],
@@ -1238,12 +1278,12 @@ pub fn extract_pdf(
         Err(e) => {
             let pdfium_error = e.to_string();
             warnings.push(format!(
-                "PDFium native library not available; OCR fallback is disabled and PDF extraction may be limited. ({})",
+                "PDFium native library not available; OCR extraction is disabled and PDF extraction may be limited. ({})",
                 pdfium_error
             ));
             if text_source == PdfTextSource::ForceOcr {
                 warnings.push(
-                    "Force OCR was selected, but PDFium is unavailable; embedded-text fallback was not used for this OCR mode."
+                    "Full OCR all pages was selected, but PDFium is unavailable; embedded-text fallback was not used for this OCR mode."
                         .to_string(),
                 );
                 return Ok(ExtractedPdf {
@@ -1293,13 +1333,13 @@ pub fn extract_pdf(
             max_chars,
             ocr_quality,
             &mut warnings,
-            "Used experimental Force OCR to extract PDF text from rendered pages.",
+            "Used experimental full OCR on all pages to extract PDF text from rendered pages.",
         );
         let (text, page_texts) = ocr
             .map(|ocr| (ocr.text, Some(ocr.page_texts)))
             .unwrap_or_else(|| (String::new(), None));
         if text.trim().is_empty() {
-            warnings.push("Force OCR completed but produced no text.".to_string());
+            warnings.push("Full OCR all pages completed but produced no text.".to_string());
         }
 
         return Ok(ExtractedPdf {
@@ -1454,10 +1494,10 @@ pub fn extract_pdf(
             max_chars,
             ocr_quality,
             &mut warnings,
-            "Used experimental OCR rescue to extract text from scanned pages.",
+            "Used experimental OCR for missing-text pages.",
         ) {
             if ocr.text.trim().is_empty() {
-                warnings.push("OCR rescue completed but produced no text.".to_string());
+                warnings.push("OCR completed but produced no text.".to_string());
             }
             all_text = ocr.text;
             page_texts = ocr.page_texts;
@@ -1809,8 +1849,11 @@ fn classify_pdf_line(line: &str) -> PdfLineKind {
 mod tests {
     use super::*;
     use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource};
+    use crate::project_sources::{ProjectSourceExtractionRoute, ProjectSourcePdfProfile};
+    use crate::scan::{DocumentRecord, DocumentType};
     use lopdf::content::{Content, Operation};
     use lopdf::{Document, Object, Stream, StringFormat, dictionary};
+    use std::path::PathBuf;
 
     #[test]
     fn test_pdf_extraction_options_from_cleaning_config() {
@@ -1857,6 +1900,26 @@ mod tests {
         assert!(!options.remove_symbol_heavy_artifacts);
         assert!(!options.remove_code_like_blocks);
         assert!(!options.remove_formula_like_lines);
+    }
+
+    #[test]
+    fn legacy_ocr_rescue_profile_uses_force_ocr_extraction() {
+        let record = DocumentRecord {
+            source_path: PathBuf::from("scan.pdf"),
+            relative_path: PathBuf::from("scan.pdf"),
+            document_type: DocumentType::Pdf,
+            size_bytes: 0,
+            extraction_route: Some(ProjectSourceExtractionRoute::OcrRequired),
+            pdf_profile: Some(ProjectSourcePdfProfile::OcrRescue),
+            ocr_quality: Some(PdfOcrQuality::Balanced),
+        };
+
+        let options = PdfExtractionOptions::raw_from_record_and_cleaning_config(
+            &record,
+            &CleaningConfig::default(),
+        );
+
+        assert_eq!(options.text_source, PdfTextSource::ForceOcr);
     }
 
     #[test]

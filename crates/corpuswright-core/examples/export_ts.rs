@@ -17,6 +17,11 @@ use corpuswright_core::pdf_audit::{PdfAuditQuality, PdfAuditResult, PdfAuditSugg
 use corpuswright_core::preview::{
     CombinedPreview, FilePreview, PreviewWarning, PreviewWarningKind,
 };
+use corpuswright_core::project_sources::{
+    ProjectSource, ProjectSourceExtractionRoute, ProjectSourceImportPolicy,
+    ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest, ProjectSourcePdfProfile,
+    ProjectSourceStatus, ProjectSourceUpdate,
+};
 use corpuswright_core::repeated_artifacts::{
     ArtifactRiskLabel, CandidateContentClass, CandidateTextProfile, CandidateTextSignalLabel,
     PositionSummary, RepeatedArtifactCandidate, RepeatedArtifactExample, RepeatedArtifactKind,
@@ -174,10 +179,24 @@ fn main() {
     export_type::<DocumentType>(&out_dir, &[], &[]);
     export_type::<DocumentRecord>(
         &out_dir,
-        &[TypeImport {
-            name: "DocumentType",
-            file: "DocumentType",
-        }],
+        &[
+            TypeImport {
+                name: "DocumentType",
+                file: "DocumentType",
+            },
+            TypeImport {
+                name: "ProjectSourceExtractionRoute",
+                file: "ProjectSourceExtractionRoute",
+            },
+            TypeImport {
+                name: "ProjectSourcePdfProfile",
+                file: "ProjectSourcePdfProfile",
+            },
+            TypeImport {
+                name: "PdfOcrQuality",
+                file: "PdfOcrQuality",
+            },
+        ],
         &[],
     );
     export_type::<DocumentTypeCounts>(&out_dir, &[], &[]);
@@ -201,6 +220,61 @@ fn main() {
                 file: "CorpusSummary",
             },
         ],
+        &[],
+    );
+    export_type::<ProjectSourceKind>(&out_dir, &[], &[]);
+    export_type::<ProjectSourceStatus>(&out_dir, &[], &[]);
+    export_type::<ProjectSourceExtractionRoute>(&out_dir, &[], &[]);
+    export_type::<ProjectSourceImportPolicy>(&out_dir, &[], &[]);
+    export_type::<ProjectSourcePdfProfile>(&out_dir, &[], &[]);
+    export_type::<ProjectSource>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "ProjectSourceKind",
+                file: "ProjectSourceKind",
+            },
+            TypeImport {
+                name: "ProjectSourceStatus",
+                file: "ProjectSourceStatus",
+            },
+            TypeImport {
+                name: "ProjectSourceExtractionRoute",
+                file: "ProjectSourceExtractionRoute",
+            },
+            TypeImport {
+                name: "PdfOcrQuality",
+                file: "PdfOcrQuality",
+            },
+            TypeImport {
+                name: "ProjectSourcePdfProfile",
+                file: "ProjectSourcePdfProfile",
+            },
+        ],
+        &[],
+    );
+    export_type::<ProjectSourceManifest>(
+        &out_dir,
+        &[TypeImport {
+            name: "ProjectSource",
+            file: "ProjectSource",
+        }],
+        &[],
+    );
+    export_type::<ProjectSourceUpdate>(
+        &out_dir,
+        &[TypeImport {
+            name: "ProjectSourceManifest",
+            file: "ProjectSourceManifest",
+        }],
+        &[],
+    );
+    export_type::<ProjectSourceImportReview>(
+        &out_dir,
+        &[TypeImport {
+            name: "ProjectSource",
+            file: "ProjectSource",
+        }],
         &[],
     );
 

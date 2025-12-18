@@ -3,10 +3,12 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import {
   clearStateForLoad,
-  loadDirectoryPath,
+  loadCorpusFromProjectSources,
+  registerFolderForActiveProject,
   renderProjectEmptyState,
 } from "./corpus";
 import { dom } from "./dom";
+import { loadProjectSourcesForActiveProject } from "./sources";
 import { state, type ActiveProject } from "./state";
 
 interface RecentProject {
@@ -119,14 +121,21 @@ async function activateProject(project: ActiveProject, scanSourceRoot: boolean):
   dom.projectContextName.textContent = `Project: ${project.name}`;
   dom.projectContextPath.textContent = project.rootPath;
 
+  state.projectSources = [];
+  state.sourceSearchQuery = "";
+  dom.searchInput.value = "";
   clearStateForLoad();
   renderProjectEmptyState();
   closeMenus();
 
-  if (scanSourceRoot && project.sourceRoots.length > 0) {
-    await loadDirectoryPath(project.sourceRoots[0]);
+  await loadProjectSourcesForActiveProject();
+  if (scanSourceRoot && project.sourceRoots.length > 0 && state.projectSources.length === 0) {
+    await registerFolderForActiveProject(project.sourceRoots[0]);
   } else {
-    dom.statusBar.textContent = `Project opened: ${project.name}`;
+    await loadCorpusFromProjectSources();
+    if (state.projectSources.length > 0) {
+      dom.statusBar.textContent = `Project opened: ${project.name}`;
+    }
   }
 }
 
@@ -212,6 +221,9 @@ async function handleCloseProject(): Promise<void> {
     dom.statusBar.textContent = `Close project warning: ${formatError(error)}`;
   }
   state.activeProject = null;
+  state.projectSources = [];
+  state.sourceSearchQuery = "";
+  dom.searchInput.value = "";
   clearStateForLoad();
   dom.corpusSummary.replaceChildren();
   dom.statusBar.textContent = "Ready";
