@@ -15,7 +15,11 @@ import type { RepeatedArtifactScanConfig } from "./generated/RepeatedArtifactSca
 import type { RepeatedArtifactScanDiagnostics } from "./generated/RepeatedArtifactScanDiagnostics.js";
 import type { RepeatedArtifactScanReport } from "./generated/RepeatedArtifactScanReport.js";
 import type { RemovalScope } from "./generated/RemovalScope.js";
-import { formatRemovalRuleText, syncRepeatedArtifactRulesSummary } from "./custom-removals.js";
+import {
+  formatRemovalRuleText,
+  syncDraftCustomRemovalsFromConfig,
+  syncRepeatedArtifactRulesSummary,
+} from "./custom-removals.js";
 
 interface RepeatedArtifactCallbacks {
   renderCustomRemovals: () => void;
@@ -29,6 +33,27 @@ interface RepeatedArtifactScanScope {
   helperText: string;
   modalText: string;
 }
+
+type ReviewBucket = "suggested" | "review" | "keep" | "accepted" | "ignored";
+type ReviewDecision = "accepted" | "kept" | "ignored";
+type DecisionMatcherKind = "literal" | "normalized_line";
+
+interface DecisionEntry {
+  decision: ReviewDecision;
+  candidate_signature: string;
+  candidate_text: string;
+  scope: RemovalScope;
+  matcher_kind: DecisionMatcherKind;
+  rule_id: string;
+  updated_at: string;
+}
+
+interface ProjectDecisions {
+  version: 1;
+  decisions: Record<string, DecisionEntry>;
+}
+
+export let projectDecisions: ProjectDecisions = { version: 1, decisions: {} };
 
 const RISK_RANK: Record<string, number> = {
   "strong_header_footer_candidate": 5,
@@ -257,14 +282,6 @@ function removalRuleDuplicateKey(rule: RemovalRule): string {
   return `${rule.scope}\0${rule.id}`;
 }
 
-function exactLineRuleDuplicateKey(text: string, scope: RemovalScope): string {
-  return `${scope}\0${text}`;
-}
-
-function normalizedLineRuleDuplicateKey(normalizedKey: string, scope: RemovalScope): string {
-  return `${scope}\0normalized_line\0${normalizedKey}`;
-}
-
 function computeCandidateScope(candidate: RepeatedArtifactCandidate): RemovalScope {
   if (
     candidate.position_summary_is_page_based &&
@@ -334,6 +351,256 @@ function createNormalizedLineRemovalRule(candidate: RepeatedArtifactCandidate, n
   };
 }
 
+function emptyProjectDecisions(): ProjectDecisions {
+  return { version: 1, decisions: {} };
+}
+
+function parseProjectDecisions(raw: string): ProjectDecisions {
+  const parsed = JSON.parse(raw) as unknown;
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return emptyProjectDecisions();
+  }
+  const object = parsed as Record<string, unknown>;
+  if (object.version !== 1 || object.decisions === null || typeof object.decisions !== "object" || Array.isArray(object.decisions)) {
+    return emptyProjectDecisions();
+  }
+
+  const decisions: Record<string, DecisionEntry> = {};
+  for (const [candidateId, entry] of Object.entries(object.decisions as Record<string, unknown>)) {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const record = entry as Record<string, unknown>;
+    const decision = record.decision;
+    const matcherKind = record.matcher_kind;
+    const scope = record.scope;
+    if (decision !== "accepted" && decision !== "kept" && decision !== "ignored") continue;
+    if (matcherKind !== "literal" && matcherKind !== "normalized_line") continue;
+    if (
+      scope !== "anywhere" &&
+      scope !== "whole_line" &&
+      scope !== "page_top" &&
+      scope !== "page_bottom" &&
+      scope !== "page_top_or_bottom"
+    ) {
+      continue;
+    }
+    if (
+      typeof record.candidate_signature !== "string" ||
+      typeof record.candidate_text !== "string" ||
+      typeof record.rule_id !== "string" ||
+      typeof record.updated_at !== "string"
+    ) {
+      continue;
+    }
+    decisions[candidateId] = {
+      decision,
+      candidate_signature: record.candidate_signature,
+      candidate_text: record.candidate_text,
+      scope,
+      matcher_kind: matcherKind,
+      rule_id: record.rule_id,
+      updated_at: record.updated_at,
+    };
+  }
+
+  return { version: 1, decisions };
+}
+
+async function loadProjectDecisions(rootPath: string): Promise<ProjectDecisions> {
+  try {
+    const raw = await invoke<string>("load_repeated_artifact_decisions_command", { rootPath });
+    return parseProjectDecisions(raw);
+  } catch (error) {
+    console.error("Failed to load repeated artefact decisions:", error);
+    return emptyProjectDecisions();
+  }
+}
+
+async function saveProjectDecisions(rootPath: string, decisions: ProjectDecisions): Promise<void> {
+  try {
+    await invoke("save_repeated_artifact_decisions_command", {
+      rootPath,
+      content: JSON.stringify(decisions, null, 2),
+    });
+  } catch (error) {
+    console.error("Failed to save repeated artefact decisions:", error);
+  }
+}
+
+function isRepeatedArtifactRule(rule: RemovalRule): boolean {
+  return rule.source === "promoted_repeated_artifact";
+}
+
+function removeRepeatedArtifactRulesFromConfig(): void {
+  state.activeCleaningConfig.removal_rules = state.activeCleaningConfig.removal_rules.filter(rule => !isRepeatedArtifactRule(rule));
+  state.tempRemovalRules = state.tempRemovalRules.filter(rule => !isRepeatedArtifactRule(rule));
+}
+
+function createRuleFromDecision(candidateId: string, entry: DecisionEntry): RemovalRule | null {
+  const candidateText = entry.candidate_text.trim();
+  if (!candidateText) return null;
+  const ruleId = entry.rule_id || `repeated-artifact:${entry.scope}:${candidateId}`;
+  const matcher = entry.matcher_kind === "normalized_line"
+    ? { kind: "normalized_line" as const, normalized_key: candidateText }
+    : { kind: "literal" as const, text: candidateText };
+  return {
+    id: ruleId,
+    label: formatRemovalRuleText({
+      id: "",
+      label: "",
+      source: "promoted_repeated_artifact",
+      matcher,
+      scope: entry.scope,
+      enabled: true,
+    }),
+    source: "promoted_repeated_artifact",
+    matcher,
+    scope: entry.scope,
+    enabled: true,
+  };
+}
+
+export async function loadDecisionsForProject(rootPath: string): Promise<void> {
+  projectDecisions = await loadProjectDecisions(rootPath);
+  syncAcceptedRulesIntoConfig();
+}
+
+export function clearDecisions(): void {
+  projectDecisions = emptyProjectDecisions();
+}
+
+export function syncAcceptedRulesIntoConfig(): void {
+  if (!state.activeProject) return;
+
+  removeRepeatedArtifactRulesFromConfig();
+  const existingRuleIds = new Set(state.activeCleaningConfig.removal_rules.map(rule => rule.id));
+  const existingRuleKeys = new Set(state.activeCleaningConfig.removal_rules.map(removalRuleDuplicateKey));
+
+  for (const [candidateId, entry] of Object.entries(projectDecisions.decisions)) {
+    if (entry.decision !== "accepted") continue;
+    const rule = createRuleFromDecision(candidateId, entry);
+    if (!rule) continue;
+    const ruleKey = removalRuleDuplicateKey(rule);
+    if (existingRuleIds.has(rule.id) || existingRuleKeys.has(ruleKey)) continue;
+    state.activeCleaningConfig.removal_rules.push(rule);
+    existingRuleIds.add(rule.id);
+    existingRuleKeys.add(ruleKey);
+  }
+
+  syncDraftCustomRemovalsFromConfig(state.activeCleaningConfig);
+}
+
+export function syncDecisionsWithActiveRules(): void {
+  if (!state.activeProject) return;
+
+  const activeRuleIds = new Set(state.activeCleaningConfig.removal_rules.map(rule => rule.id));
+  let changed = false;
+  for (const [candidateId, entry] of Object.entries(projectDecisions.decisions)) {
+    if (entry.decision !== "accepted") continue;
+    const ruleId = entry.rule_id || `repeated-artifact:${entry.scope}:${candidateId}`;
+    if (!activeRuleIds.has(ruleId)) {
+      delete projectDecisions.decisions[candidateId];
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    void saveProjectDecisions(state.activeProject.rootPath, projectDecisions);
+  }
+}
+
+function matcherKindForCandidate(candidate: RepeatedArtifactCandidate): DecisionMatcherKind {
+  return candidate.kind === "normalized_line" ? "normalized_line" : "literal";
+}
+
+function getCandidateRuleText(candidate: RepeatedArtifactCandidate): string {
+  return candidate.kind === "normalized_line"
+    ? (candidate.normalized_key || "").trim()
+    : candidate.display_text;
+}
+
+function canAcceptCandidate(candidate: RepeatedArtifactCandidate): boolean {
+  return getCandidateRuleText(candidate).trim().length > 0;
+}
+
+function removeRulesForCandidate(candidateId: string): void {
+  const suffix = `:${candidateId}`;
+  state.activeCleaningConfig.removal_rules = state.activeCleaningConfig.removal_rules.filter(rule => !rule.id.endsWith(suffix));
+  state.tempRemovalRules = state.tempRemovalRules.filter(rule => !rule.id.endsWith(suffix));
+}
+
+function cloneRemovalRule(rule: RemovalRule): RemovalRule {
+  return {
+    ...rule,
+    matcher: { ...rule.matcher },
+  };
+}
+
+function addRuleForCandidate(candidate: RepeatedArtifactCandidate, scope: RemovalScope): RemovalRule | null {
+  const ruleText = getCandidateRuleText(candidate).trim();
+  if (!ruleText) return null;
+
+  const rule = candidate.kind === "normalized_line"
+    ? createNormalizedLineRemovalRule(candidate, ruleText, scope)
+    : createExactLineRemovalRule(candidate, scope);
+
+  removeRulesForCandidate(candidate.candidate_id);
+
+  const ruleKey = removalRuleDuplicateKey(rule);
+  const existingRuleIds = new Set(state.activeCleaningConfig.removal_rules.map(existingRule => existingRule.id));
+  const existingRuleKeys = new Set(state.activeCleaningConfig.removal_rules.map(removalRuleDuplicateKey));
+  if (!existingRuleIds.has(rule.id) && !existingRuleKeys.has(ruleKey)) {
+    state.activeCleaningConfig.removal_rules.push(rule);
+  }
+
+  const tempRuleIds = new Set(state.tempRemovalRules.map(existingRule => existingRule.id));
+  const tempRuleKeys = new Set(state.tempRemovalRules.map(removalRuleDuplicateKey));
+  if (!tempRuleIds.has(rule.id) && !tempRuleKeys.has(ruleKey)) {
+    state.tempRemovalRules.push(cloneRemovalRule(rule));
+  }
+
+  return rule;
+}
+
+function buildDecisionEntry(candidate: RepeatedArtifactCandidate, decision: ReviewDecision, scope: RemovalScope, ruleId: string): DecisionEntry {
+  return {
+    decision,
+    candidate_signature: candidate.candidate_id,
+    candidate_text: getCandidateRuleText(candidate),
+    scope,
+    matcher_kind: matcherKindForCandidate(candidate),
+    rule_id: ruleId,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function getBucketForCandidate(candidate: RepeatedArtifactCandidate, decision: ReviewDecision | undefined): ReviewBucket {
+  if (decision === "accepted") return "accepted";
+  if (decision === "kept" || decision === "ignored") return "ignored";
+
+  const signal = getTextSignalLabelFromCandidate(candidate);
+  const isSuggested = (
+    candidate.risk_label === "strong_header_footer_candidate" ||
+    candidate.risk_label === "symbol_or_noise_candidate" ||
+    signal === "likely_markup_or_extraction_noise" ||
+    signal === "likely_page_label"
+  ) && signal !== "likely_natural_text" && signal !== "likely_section_heading";
+  if (isSuggested) return "suggested";
+
+  if (signal === "likely_natural_text" || signal === "likely_section_heading") return "keep";
+  return "review";
+}
+
+function getFilteredCandidatesForBucket(candidates: RepeatedArtifactCandidate[], bucket: ReviewBucket): RepeatedArtifactCandidate[] {
+  return candidates.filter(candidate => {
+    const decision = projectDecisions.decisions[candidate.candidate_id]?.decision;
+    return getBucketForCandidate(candidate, decision) === bucket;
+  });
+}
+
+function getTextSignalLabelFromCandidate(candidate: RepeatedArtifactCandidate): CandidateTextSignalLabel | null {
+  return candidate.text_signal_label ?? null;
+}
+
 export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks): void {
   const radioModes = getArtifactTextModeRadios();
 
@@ -344,8 +611,23 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   let currentAbortController: AbortController | null = null;
   let currentSortColumn: string | null = null;
   let currentSortDirection: "asc" | "desc" = "desc";
-  let activeSelectedCandidateId: string | null = null;
+  let focusedCandidateId: string | null = null;
   let lastDiagnostics: RepeatedArtifactScanDiagnostics | null = null;
+  let activeBucket: ReviewBucket = "suggested";
+
+  const configPanel = document.getElementById("repeated-artifact-config-panel") as HTMLDivElement | null;
+  const toggleScanSettingsButton = document.getElementById("btn-toggle-scan-settings") as HTMLButtonElement | null;
+  const scanSettingsArrow = document.getElementById("scan-settings-arrow") as HTMLSpanElement | null;
+  const bucketTabs = document.getElementById("artifact-bucket-tabs");
+  const selectAllCheckbox = document.getElementById("chk-select-all-tab") as HTMLInputElement | null;
+  const bulkToolbar = document.getElementById("repeated-artifact-batch-toolbar") as HTMLDivElement | null;
+  const bulkSelectionCount = document.getElementById("bulk-selection-count") as HTMLSpanElement | null;
+  const bulkAcceptButton = document.getElementById("btn-bulk-accept") as HTMLButtonElement | null;
+  const bulkKeepButton = document.getElementById("btn-bulk-keep") as HTMLButtonElement | null;
+  const bulkIgnoreButton = document.getElementById("btn-bulk-ignore") as HTMLButtonElement | null;
+  const bulkRevertButton = document.getElementById("btn-bulk-revert") as HTMLButtonElement | null;
+  const clearSelectionButton = document.getElementById("btn-clear-selection") as HTMLButtonElement | null;
+  const applyDecisionsButton = document.getElementById("btn-apply-artifact-decisions") as HTMLButtonElement | null;
 
   function updateProcessedWarning(): void {
     const isProcessed = getSelectedArtifactTextMode()?.value === "processed";
@@ -372,7 +654,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     const timeStr = elapsed !== undefined ? ` (${elapsed.toFixed(1)}s)` : "";
     dom.tblArtifactCandidates.innerHTML = `
       <tr>
-        <td colspan="8" style="padding: 20px; text-align: center;">
+        <td colspan="6" style="padding: 20px; text-align: center;">
           <div class="spinner" style="margin: 0 auto 10px auto; width: 24px; height: 24px;"></div>
           ${stage}${timeStr}
         </td>
@@ -388,10 +670,6 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     dom.btnCancelScan.style.display = "none";
     if (scanTimerInterval) { clearInterval(scanTimerInterval); scanTimerInterval = null; }
     syncRepeatedArtifactModalScope();
-  }
-
-  function updateAddSelectedButtonState(): void {
-    dom.btnAddSelectedRemovals.disabled = state.selectedCandidateIds.size === 0;
   }
 
   function syncRepeatedArtifactModalScope(): RepeatedArtifactScanScope {
@@ -453,11 +731,15 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     resetScanControls();
     dom.lblScanTime.style.display = "none";
     state.selectedCandidateIds.clear();
-    activeSelectedCandidateId = null;
+    focusedCandidateId = null;
+    activeBucket = "suggested";
+    setActiveBucketTab();
     currentSortColumn = null;
     currentSortDirection = "desc";
     lastDiagnostics = null;
     updateSortIndicators();
+    updateSelectAllCheckbox([]);
+    renderBulkToolbar([]);
     dom.artifactDiagnostics.classList.add("hidden");
     dom.repeatedArtifactModal.classList.add("hidden");
   }
@@ -511,198 +793,250 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     });
   }
 
-
-  dom.btnAddSelectedRemovals.addEventListener("click", () => {
-    const count = state.selectedCandidateIds.size;
-    if (count === 0) return;
-
-    const existingSet = new Set(state.activeCleaningConfig.remove_patterns);
-    const existingRuleIds = new Set(state.activeCleaningConfig.removal_rules.map(rule => rule.id));
-    const existingRuleKeys = new Set(state.activeCleaningConfig.removal_rules.map(removalRuleDuplicateKey));
-    const addedLiteralPatterns: string[] = [];
-    const addedRemovalRules: RemovalRule[] = [];
-    let literalRemovalsAdded = 0;
-    let pageTopRulesAdded = 0;
-    let pageBottomRulesAdded = 0;
-    let pageTopBottomRulesAdded = 0;
-    let wholeLineRulesAdded = 0;
-    let normalizedFamilyRulesAdded = 0;
-    let skippedDuplicates = 0;
-    let normalizedFallbackCandidates = 0;
-    let cappedNormalizedFallbackCandidates = 0;
-    let trackedRawVariantsAddedFromFallback = 0;
-
-    for (const id of state.selectedCandidateIds) {
-      const cand = state.lastScanCandidates.find(c => c.candidate_id === id);
-      if (!cand) continue;
-
-      const isNormalized = cand.kind === "normalized_line";
-      const scope = computeCandidateScope(cand);
-
-      if (cand.kind === "exact_line") {
-        const text = cand.display_text;
-        if (!text) continue;
-        const rule = createExactLineRemovalRule(cand, scope);
-        const ruleKey = exactLineRuleDuplicateKey(text, scope);
-        if (existingRuleIds.has(rule.id) || existingRuleKeys.has(ruleKey)) {
-          skippedDuplicates++;
-          continue;
+  function setTransientStatus(message: string): void {
+    dom.lblArtifactAddStatus.textContent = message;
+    if (message) {
+      setTimeout(() => {
+        if (dom.lblArtifactAddStatus.textContent === message) {
+          dom.lblArtifactAddStatus.textContent = "";
         }
+      }, 5000);
+    }
+  }
 
-        state.activeCleaningConfig.removal_rules.push(rule);
-        addedRemovalRules.push(rule);
-        existingRuleIds.add(rule.id);
-        existingRuleKeys.add(ruleKey);
+  function setActiveBucketTab(): void {
+    bucketTabs?.querySelectorAll<HTMLElement>(".tab").forEach(tab => {
+      tab.classList.toggle("active", tab.dataset.bucket === activeBucket);
+    });
+  }
 
-        if (scope === "page_top") {
-          pageTopRulesAdded++;
-        } else if (scope === "page_bottom") {
-          pageBottomRulesAdded++;
-        } else if (scope === "page_top_or_bottom") {
-          pageTopBottomRulesAdded++;
-        } else {
-          wholeLineRulesAdded++;
-        }
-        continue;
-      }
+  function currentBucketCandidates(): RepeatedArtifactCandidate[] {
+    return getFilteredCandidatesForBucket(state.lastScanCandidates, activeBucket);
+  }
 
-      if (isNormalized) {
-        const normalizedKey = (cand.normalized_key || "").trim();
-        if (normalizedKey) {
-          const rule = createNormalizedLineRemovalRule(cand, normalizedKey, scope);
-          const ruleKey = normalizedLineRuleDuplicateKey(normalizedKey, scope);
-          if (existingRuleIds.has(rule.id) || existingRuleKeys.has(ruleKey)) {
-            skippedDuplicates++;
-            continue;
-          }
+  function selectedCandidates(): RepeatedArtifactCandidate[] {
+    const selectedIds = state.selectedCandidateIds;
+    return state.lastScanCandidates.filter(candidate => selectedIds.has(candidate.candidate_id));
+  }
 
-          state.activeCleaningConfig.removal_rules.push(rule);
-          addedRemovalRules.push(rule);
-          existingRuleIds.add(rule.id);
-          existingRuleKeys.add(ruleKey);
+  function setHidden(element: HTMLElement | null, hidden: boolean): void {
+    if (!element) return;
+    element.classList.toggle("hidden", hidden);
+  }
 
-          if (scope === "page_top") {
-            pageTopRulesAdded++;
-          } else if (scope === "page_bottom") {
-            pageBottomRulesAdded++;
-          } else if (scope === "page_top_or_bottom") {
-            pageTopBottomRulesAdded++;
-          } else {
-            normalizedFamilyRulesAdded++;
-          }
-          continue;
-        }
+  function updateBucketTabs(candidates: RepeatedArtifactCandidate[]): void {
+    const counts: Record<ReviewBucket, number> = {
+      suggested: 0,
+      review: 0,
+      keep: 0,
+      accepted: 0,
+      ignored: 0,
+    };
 
-        if (!cand.raw_variants || cand.raw_variants.length === 0) continue;
-        normalizedFallbackCandidates++;
-        if (cand.raw_variant_count_is_capped) {
-          cappedNormalizedFallbackCandidates++;
-        }
-        for (const variant of cand.raw_variants) {
-          if (!existingSet.has(variant)) {
-            state.activeCleaningConfig.remove_patterns.push(variant);
-            addedLiteralPatterns.push(variant);
-            existingSet.add(variant);
-            literalRemovalsAdded++;
-            trackedRawVariantsAddedFromFallback++;
-          } else {
-            skippedDuplicates++;
-          }
-        }
-      } else {
-        const text = cand.display_text;
-        if (!existingSet.has(text)) {
-          state.activeCleaningConfig.remove_patterns.push(text);
-          addedLiteralPatterns.push(text);
-          existingSet.add(text);
-          literalRemovalsAdded++;
-        } else {
-          skippedDuplicates++;
-        }
-      }
+    for (const candidate of candidates) {
+      const decision = projectDecisions.decisions[candidate.candidate_id]?.decision;
+      counts[getBucketForCandidate(candidate, decision)]++;
     }
 
-    const rulesAdded = pageTopRulesAdded + pageBottomRulesAdded + pageTopBottomRulesAdded + wholeLineRulesAdded + normalizedFamilyRulesAdded;
-    if (literalRemovalsAdded > 0 || rulesAdded > 0) {
-      if (dom.settingsModal.classList.contains("hidden")) {
-        state.tempRemovePatterns = [...state.activeCleaningConfig.remove_patterns];
-        state.tempRemovalRules = state.activeCleaningConfig.removal_rules.map((rule) => ({
-          ...rule,
-          matcher: { ...rule.matcher },
-        }));
-      } else {
-        const tempLiteralSet = new Set(state.tempRemovePatterns);
-        for (const pattern of addedLiteralPatterns) {
-          if (!tempLiteralSet.has(pattern)) {
-            state.tempRemovePatterns.push(pattern);
-            tempLiteralSet.add(pattern);
-          }
-        }
+    const labels: Record<ReviewBucket, string> = {
+      suggested: "Suggested Removals",
+      review: "Review Carefully",
+      keep: "Probably Keep",
+      accepted: "Accepted Rules",
+      ignored: "Ignored / Kept",
+    };
 
-        const tempRuleIds = new Set(state.tempRemovalRules.map(rule => rule.id));
-        const tempRuleKeys = new Set(state.tempRemovalRules.map(removalRuleDuplicateKey));
-        for (const rule of addedRemovalRules) {
-          const clonedRule = {
-            ...rule,
-            matcher: { ...rule.matcher },
-          };
-          const ruleKey = removalRuleDuplicateKey(clonedRule);
-          if (!tempRuleIds.has(clonedRule.id) && !tempRuleKeys.has(ruleKey)) {
-            state.tempRemovalRules.push(clonedRule);
-            tempRuleIds.add(clonedRule.id);
-            tempRuleKeys.add(ruleKey);
-          }
-        }
-      }
-      callbacks.renderCustomRemovals();
-      syncRepeatedArtifactSettingsSection();
+    bucketTabs?.querySelectorAll<HTMLButtonElement>(".tab").forEach(tab => {
+      const bucket = tab.dataset.bucket as ReviewBucket | undefined;
+      if (!bucket || counts[bucket] === undefined) return;
+      tab.textContent = `${labels[bucket]} (${counts[bucket]})`;
+    });
+  }
+
+  function updateSelectAllCheckbox(filteredCandidates: RepeatedArtifactCandidate[]): void {
+    if (!selectAllCheckbox) return;
+    const candidateIds = new Set(filteredCandidates.map(candidate => candidate.candidate_id));
+    const selectedCount = Array.from(state.selectedCandidateIds).filter(id => candidateIds.has(id)).length;
+
+    selectAllCheckbox.disabled = filteredCandidates.length === 0;
+    if (filteredCandidates.length === 0 || selectedCount === 0) {
+      selectAllCheckbox.checked = false;
+      selectAllCheckbox.indeterminate = false;
+      return;
     }
 
-    const statusParts: string[] = [];
-    const addedParts: string[] = [];
-    if (pageTopRulesAdded > 0) {
-      addedParts.push(`${pageTopRulesAdded} page-top rule${pageTopRulesAdded === 1 ? "" : "s"}`);
+    selectAllCheckbox.checked = selectedCount === filteredCandidates.length;
+    selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < filteredCandidates.length;
+  }
+
+  function renderBulkToolbar(filteredCandidates: RepeatedArtifactCandidate[]): void {
+    const candidateIds = new Set(filteredCandidates.map(candidate => candidate.candidate_id));
+    const selectionCount = Array.from(state.selectedCandidateIds).filter(id => candidateIds.has(id)).length;
+
+    if (!bulkToolbar || selectionCount === 0) {
+      setHidden(bulkToolbar, true);
+      setHidden(bulkAcceptButton, true);
+      setHidden(bulkKeepButton, true);
+      setHidden(bulkIgnoreButton, true);
+      setHidden(bulkRevertButton, true);
+      setHidden(clearSelectionButton, true);
+      if (bulkSelectionCount) bulkSelectionCount.textContent = "";
+      return;
     }
-    if (pageBottomRulesAdded > 0) {
-      addedParts.push(`${pageBottomRulesAdded} page-bottom rule${pageBottomRulesAdded === 1 ? "" : "s"}`);
+
+    setHidden(bulkToolbar, false);
+    if (bulkSelectionCount) {
+      bulkSelectionCount.textContent = `${selectionCount} selected`;
     }
-    if (pageTopBottomRulesAdded > 0) {
-      addedParts.push(`${pageTopBottomRulesAdded} page-top/bottom rule${pageTopBottomRulesAdded === 1 ? "" : "s"}`);
+
+    const showAccept = activeBucket === "suggested" || activeBucket === "review" || activeBucket === "keep" || activeBucket === "ignored";
+    const showKeep = activeBucket === "suggested" || activeBucket === "review" || activeBucket === "keep";
+    const showIgnore = activeBucket === "suggested" || activeBucket === "review" || activeBucket === "keep";
+    const showRevert = activeBucket === "accepted" || activeBucket === "ignored";
+
+    setHidden(bulkAcceptButton, !showAccept);
+    setHidden(bulkKeepButton, !showKeep);
+    setHidden(bulkIgnoreButton, !showIgnore);
+    setHidden(bulkRevertButton, !showRevert);
+    setHidden(clearSelectionButton, false);
+  }
+
+  function syncSelectionControls(filteredCandidates = currentBucketCandidates()): void {
+    updateSelectAllCheckbox(filteredCandidates);
+    renderBulkToolbar(filteredCandidates);
+  }
+
+  async function persistDecisions(): Promise<void> {
+    if (state.activeProject) {
+      await saveProjectDecisions(state.activeProject.rootPath, projectDecisions);
     }
-    if (wholeLineRulesAdded > 0) {
-      addedParts.push(`${wholeLineRulesAdded} whole-line rule${wholeLineRulesAdded === 1 ? "" : "s"}`);
+  }
+
+  async function applyDecisionsAndClose(): Promise<void> {
+    if (state.selectedCandidateIds.size > 0) {
+      setTransientStatus("Choose Accept, Keep, Ignore, or Revert for the selected candidates before applying.");
+      return;
     }
-    if (normalizedFamilyRulesAdded > 0) {
-      addedParts.push(`${normalizedFamilyRulesAdded} normalised family rule${normalizedFamilyRulesAdded === 1 ? "" : "s"}`);
+
+    await persistDecisions();
+    callbacks.renderCustomRemovals();
+    syncRepeatedArtifactSettingsSection();
+    if (state.selectedCorpusIndices.size > 0 || state.selectedProjectSourceIds.size > 0) {
+      callbacks.schedulePreviewUpdate(150);
     }
-    if (literalRemovalsAdded > 0) {
-      addedParts.push(`${literalRemovalsAdded} literal sequence${literalRemovalsAdded === 1 ? "" : "s"}`);
+    closeArtifactModal();
+  }
+
+  async function applyBulkAccept(): Promise<void> {
+    const candidates = selectedCandidates();
+    let acceptedCount = 0;
+    for (const candidate of candidates) {
+      if (!canAcceptCandidate(candidate)) continue;
+      const scope = computeCandidateScope(candidate);
+      const rule = addRuleForCandidate(candidate, scope);
+      if (!rule) continue;
+      projectDecisions.decisions[candidate.candidate_id] = buildDecisionEntry(candidate, "accepted", scope, rule.id);
+      acceptedCount++;
     }
-    if (addedParts.length > 0) {
-      const lastPart = addedParts[addedParts.length - 1];
-      const leadingParts = addedParts.slice(0, -1);
-      const addedText = leadingParts.length > 0
-        ? `${leadingParts.join(", ")} and ${lastPart}`
-        : lastPart;
-      statusParts.push(`Added ${addedText} to Custom Removals`);
+
+    if (acceptedCount === 0) {
+      setTransientStatus("No selected candidates can create a structured removal rule.");
+      return;
     }
-    if (normalizedFallbackCandidates > 0) {
-      const addedTrackedText = trackedRawVariantsAddedFromFallback > 0
-        ? `; ${trackedRawVariantsAddedFromFallback} tracked raw variant${trackedRawVariantsAddedFromFallback === 1 ? "" : "s"} added from them`
-        : "";
-      statusParts.push(`${normalizedFallbackCandidates} normalised candidate${normalizedFallbackCandidates === 1 ? "" : "s"} had no normalised key and fell back to tracked raw variants${addedTrackedText}`);
+
+    await persistDecisions();
+    callbacks.renderCustomRemovals();
+    syncRepeatedArtifactSettingsSection();
+    state.selectedCandidateIds.clear();
+    focusedCandidateId = null;
+    renderCandidates(state.lastScanCandidates, lastDiagnostics);
+    setTransientStatus(`Accepted ${acceptedCount} selected candidate${acceptedCount === 1 ? "" : "s"}.`);
+  }
+
+  async function applyBulkDecision(decision: "kept" | "ignored"): Promise<void> {
+    const candidates = selectedCandidates();
+    for (const candidate of candidates) {
+      removeRulesForCandidate(candidate.candidate_id);
+      projectDecisions.decisions[candidate.candidate_id] = buildDecisionEntry(candidate, decision, computeCandidateScope(candidate), "");
     }
-    if (skippedDuplicates > 0) {
-      statusParts.push(`${skippedDuplicates} duplicate${skippedDuplicates === 1 ? "" : "s"} skipped`);
+
+    await persistDecisions();
+    callbacks.renderCustomRemovals();
+    syncRepeatedArtifactSettingsSection();
+    state.selectedCandidateIds.clear();
+    focusedCandidateId = null;
+    renderCandidates(state.lastScanCandidates, lastDiagnostics);
+    const label = decision === "kept" ? "Kept" : "Ignored";
+    setTransientStatus(`${label} ${candidates.length} selected candidate${candidates.length === 1 ? "" : "s"}.`);
+  }
+
+  async function applyBulkRevert(): Promise<void> {
+    const selectedIds = Array.from(state.selectedCandidateIds);
+    for (const candidateId of selectedIds) {
+      removeRulesForCandidate(candidateId);
+      delete projectDecisions.decisions[candidateId];
     }
-    if (cappedNormalizedFallbackCandidates > 0) {
-      statusParts.push(`Warning: ${cappedNormalizedFallbackCandidates} fallback normalised candidate${cappedNormalizedFallbackCandidates === 1 ? " was" : "s were"} capped, so only the tracked variants were added`);
+
+    await persistDecisions();
+    callbacks.renderCustomRemovals();
+    syncRepeatedArtifactSettingsSection();
+    state.selectedCandidateIds.clear();
+    focusedCandidateId = null;
+    renderCandidates(state.lastScanCandidates, lastDiagnostics);
+    setTransientStatus(`Reverted ${selectedIds.length} selected decision${selectedIds.length === 1 ? "" : "s"}.`);
+  }
+
+  function clearSelectionAndRender(): void {
+    state.selectedCandidateIds.clear();
+    renderCandidates(state.lastScanCandidates, lastDiagnostics, true);
+    if (focusedCandidateId) {
+      const focused = state.lastScanCandidates.find(candidate => candidate.candidate_id === focusedCandidateId);
+      if (focused) showCandidateDetails(focused);
     }
-    dom.lblArtifactAddStatus.textContent = statusParts.length > 0
-      ? statusParts.join(". ") + "."
-      : "No new removals added.";
-    setTimeout(() => { dom.lblArtifactAddStatus.textContent = ""; }, 5000);
+  }
+
+  toggleScanSettingsButton?.addEventListener("click", () => {
+    if (!configPanel) return;
+    const isHidden = configPanel.classList.toggle("hidden");
+    if (scanSettingsArrow) {
+      scanSettingsArrow.textContent = isHidden ? ">" : "v";
+    }
   });
+
+  bucketTabs?.querySelectorAll<HTMLButtonElement>(".tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      const bucket = tab.dataset.bucket as ReviewBucket | undefined;
+      if (!bucket || bucket === activeBucket) return;
+      activeBucket = bucket;
+      state.selectedCandidateIds.clear();
+      focusedCandidateId = null;
+      setActiveBucketTab();
+      renderCandidates(state.lastScanCandidates, lastDiagnostics);
+      dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Select a candidate to inspect examples.</div>`;
+    });
+  });
+
+  selectAllCheckbox?.addEventListener("change", () => {
+    const filteredCandidates = currentBucketCandidates();
+    state.selectedCandidateIds.clear();
+    if (selectAllCheckbox.checked) {
+      for (const candidate of filteredCandidates) {
+        state.selectedCandidateIds.add(candidate.candidate_id);
+      }
+    }
+    renderCandidates(state.lastScanCandidates, lastDiagnostics, true);
+    if (focusedCandidateId) {
+      const focused = state.lastScanCandidates.find(candidate => candidate.candidate_id === focusedCandidateId);
+      if (focused) showCandidateDetails(focused);
+    }
+  });
+
+  bulkAcceptButton?.addEventListener("click", () => { void applyBulkAccept(); });
+  bulkKeepButton?.addEventListener("click", () => { void applyBulkDecision("kept"); });
+  bulkIgnoreButton?.addEventListener("click", () => { void applyBulkDecision("ignored"); });
+  bulkRevertButton?.addEventListener("click", () => { void applyBulkRevert(); });
+  clearSelectionButton?.addEventListener("click", clearSelectionAndRender);
+  applyDecisionsButton?.addEventListener("click", () => { void applyDecisionsAndClose(); });
 
   dom.btnRunArtifactScan.addEventListener("click", async () => {
     const scope = syncRepeatedArtifactModalScope();
@@ -786,6 +1120,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       dom.lblScanTime.textContent = `Done in ${totalElapsed.toFixed(1)}s`;
 
       state.lastScanCandidates = report.candidates;
+      lastDiagnostics = report.diagnostics;
 
       renderDiagnostics(report.diagnostics);
 
@@ -802,7 +1137,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         dom.lblScanTime.textContent = "Cancelled";
         dom.tblArtifactCandidates.innerHTML = `
           <tr>
-            <td colspan="8" style="padding: 20px; text-align: center; color: var(--text-muted);">Scan was cancelled.</td>
+            <td colspan="6" style="padding: 20px; text-align: center; color: var(--text-muted);">Scan was cancelled.</td>
           </tr>
         `;
       } else {
@@ -811,7 +1146,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         dom.tblArtifactCandidates.innerHTML = "";
         const errorRow = document.createElement("tr");
         const errorCell = document.createElement("td");
-        errorCell.colSpan = 8;
+        errorCell.colSpan = 6;
         errorCell.style.cssText = "padding: 20px; text-align: center; color: #ff5e5e;";
         errorCell.textContent = `Error during scan: ${errStr}`;
         errorRow.appendChild(errorCell);
@@ -837,51 +1172,57 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   ): void {
     if (!isSortUpdate) {
       state.selectedCandidateIds.clear();
-      activeSelectedCandidateId = null;
-      updateAddSelectedButtonState();
+      focusedCandidateId = null;
     }
 
+    updateBucketTabs(candidates);
+    setActiveBucketTab();
+
+    const filteredCandidates = getFilteredCandidatesForBucket(candidates, activeBucket);
+    syncSelectionControls(filteredCandidates);
+
     dom.tblArtifactCandidates.innerHTML = "";
-    dom.lblArtifactResultsCount.textContent = `${candidates.length} found`;
+    dom.lblArtifactResultsCount.textContent = `${filteredCandidates.length} shown`;
 
-    if (candidates.length === 0) {
-      let msg: string;
+    if (filteredCandidates.length === 0) {
+      let msg = "No candidates in this bucket.";
 
-      if (diagnostics && diagnostics.total_raw_lines === 0) {
-        msg = "No candidates found because no text lines were extracted. Check whether the documents are scanned/image-only PDFs or whether extraction failed.";
-        if (diagnostics.files_failed_extraction > 0) {
-          msg += ` Extraction failures were reported for ${diagnostics.files_failed_extraction} file(s).`;
+      if (activeBucket === "suggested" && candidates.length === 0) {
+        if (diagnostics && diagnostics.total_raw_lines === 0) {
+          msg = "No candidates found because no text lines were extracted. Check whether the documents are scanned/image-only PDFs or whether extraction failed.";
+          if (diagnostics.files_failed_extraction > 0) {
+            msg += ` Extraction failures were reported for ${diagnostics.files_failed_extraction} file(s).`;
+          }
+        } else if (diagnostics && diagnostics.total_candidate_keys_before_filtering > 0 && diagnostics.candidates_after_min_occurrences === 0) {
+          msg = "Candidate keys were found, but none met Min Occurrences. Try lowering Min Occurrences.";
+        } else if (diagnostics && diagnostics.candidates_after_min_occurrences > 0 && diagnostics.candidates_after_min_files === 0) {
+          msg = "Candidates were found, but none appeared in enough distinct files. Try Min Files = 1 for repeated artefacts inside a single PDF/book.";
+        } else {
+          msg = "No suggested candidates meeting the thresholds.";
         }
-      } else if (diagnostics && diagnostics.total_candidate_keys_before_filtering > 0 && diagnostics.candidates_after_min_occurrences === 0) {
-        msg = "Candidate keys were found, but none met Min Occurrences. Try lowering Min Occurrences.";
-      } else if (diagnostics && diagnostics.candidates_after_min_occurrences > 0 && diagnostics.candidates_after_min_files === 0) {
-        msg = "Candidates were found, but none appeared in enough distinct files. Try Min Files = 1 for repeated artefacts inside a single PDF/book.";
-      } else {
-        msg = "No candidates found meeting the thresholds.";
-      }
 
-      if (state.scanWasProcessed && state.removalCountAtScanStart > 0) {
-        msg += " Processed scans apply current Custom Removals, so already-removed artefacts will not appear. Scan Original extracted text to rediscover raw artefacts.";
+        if (state.scanWasProcessed && state.removalCountAtScanStart > 0) {
+          msg += " Processed scans apply current Custom Removals, so already-removed artefacts will not appear. Scan Original extracted text to rediscover raw artefacts.";
+        }
       }
 
       dom.tblArtifactCandidates.innerHTML = `
         <tr>
-          <td colspan="8" style="padding: 20px; text-align: center; color: var(--text-muted);">${msg}</td>
+          <td colspan="6" style="padding: 20px; text-align: center; color: var(--text-muted);">${msg}</td>
         </tr>
       `;
       return;
     }
 
-    // Sort stably using comparators if a sort column is active
-    let displayCandidates = candidates;
+    let displayCandidates = filteredCandidates;
     if (currentSortColumn) {
-      const candidatesWithIndex = candidates.map((cand, idx) => ({ cand, idx }));
+      const candidatesWithIndex = filteredCandidates.map((cand, idx) => ({ cand, idx }));
       candidatesWithIndex.sort((a, b) => {
         const res = compareCandidates(a.cand, b.cand, currentSortColumn!);
         if (res !== 0) {
           return currentSortDirection === "asc" ? res : -res;
         }
-        return a.idx - b.idx; // stable sorting tie-breaker
+        return a.idx - b.idx;
       });
       displayCandidates = candidatesWithIndex.map(item => item.cand);
     }
@@ -889,8 +1230,11 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     displayCandidates.forEach((cand) => {
       const tr = document.createElement("tr");
       tr.dataset.id = cand.candidate_id;
-      if (cand.candidate_id === activeSelectedCandidateId) {
-        tr.classList.add("selected");
+      if (cand.candidate_id === focusedCandidateId) {
+        tr.classList.add("is-focused");
+      }
+      if (state.selectedCandidateIds.has(cand.candidate_id)) {
+        tr.classList.add("is-selected");
       }
 
       const tdCheck = document.createElement("td");
@@ -899,46 +1243,52 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       const chk = document.createElement("input");
       chk.type = "checkbox";
       chk.checked = state.selectedCandidateIds.has(cand.candidate_id);
-      const isNormalized = cand.kind === "normalized_line";
-      const normalizedKey = (cand.normalized_key || "").trim();
-      if (isNormalized && !normalizedKey && (!cand.raw_variants || cand.raw_variants.length === 0)) {
-        chk.disabled = true;
-        chk.title = "This grouped pattern has no normalised key or actionable raw variants to add.";
-      } else if (cand.kind === "exact_line") {
-        chk.title = "Selecting adds a structured whole-line removal rule.";
-      } else if (isNormalized && normalizedKey) {
-        chk.title = "Selecting adds a structured normalised whole-line removal rule.";
-      } else if (isNormalized) {
-        const cappedNote = cand.raw_variant_count_is_capped
-          ? " This fallback group is capped; additional untracked variants may remain after literal removal."
-          : "";
-        chk.title = `Selecting falls back to adding the ${cand.raw_variants.length} tracked raw variant${cand.raw_variants.length === 1 ? "" : "s"} to Custom Removals.${cappedNote}`;
-      }
+      chk.title = "Select this candidate for bulk action.";
       chk.addEventListener("click", (e) => {
         e.stopPropagation();
         if (chk.checked) {
           state.selectedCandidateIds.add(cand.candidate_id);
+          tr.classList.add("is-selected");
         } else {
           state.selectedCandidateIds.delete(cand.candidate_id);
+          tr.classList.remove("is-selected");
         }
-        updateAddSelectedButtonState();
+        syncSelectionControls(filteredCandidates);
+        if (focusedCandidateId === cand.candidate_id) {
+          showCandidateDetails(cand);
+        }
       });
       tdCheck.appendChild(chk);
 
       const tdText = document.createElement("td");
       tdText.className = "candidate-text-cell";
-      tdText.textContent = cand.normalized_key && cand.kind === "normalized_line"
+      const patternWrapper = document.createElement("div");
+      patternWrapper.className = "candidate-pattern-wrapper";
+
+      const textSpan = document.createElement("span");
+      textSpan.className = "candidate-text-display";
+      textSpan.textContent = cand.normalized_key && cand.kind === "normalized_line"
         ? cand.normalized_key
         : cand.display_text;
-      tdText.title = cand.display_text;
+      textSpan.title = cand.display_text;
 
-      const tdKind = document.createElement("td");
-      tdKind.textContent = formatKind(cand.kind);
+      const badges = document.createElement("div");
+      badges.className = "candidate-meta-badges";
 
-      const tdContent = document.createElement("td");
-      tdContent.textContent = formatContentClass(cand.content_class);
-      tdContent.style.fontSize = "0.8rem";
-      tdContent.title = formatTextSignalSummary(cand);
+      const kindChip = document.createElement("span");
+      const kindClass = cand.kind === "normalized_line" ? "normalized" : cand.kind.replace("_line", "").replace("_block", "-block");
+      kindChip.className = `meta-badge-chip kind-${kindClass}`;
+      kindChip.textContent = formatKind(cand.kind);
+
+      const contentChip = document.createElement("span");
+      const contentClass = cand.content_class.split("_")[0];
+      contentChip.className = `meta-badge-chip content-${contentClass}`;
+      contentChip.textContent = formatContentClass(cand.content_class);
+      contentChip.title = formatTextSignalSummary(cand);
+
+      badges.append(kindChip, contentChip);
+      patternWrapper.append(textSpan, badges);
+      tdText.appendChild(patternWrapper);
 
       const tdOcc = document.createElement("td");
       tdOcc.textContent = cand.occurrence_count.toString();
@@ -960,17 +1310,15 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
       tr.appendChild(tdCheck);
       tr.appendChild(tdText);
-      tr.appendChild(tdKind);
-      tr.appendChild(tdContent);
       tr.appendChild(tdOcc);
       tr.appendChild(tdFiles);
       tr.appendChild(tdPos);
       tr.appendChild(tdRisk);
 
       tr.onclick = () => {
-        dom.tblArtifactCandidates.querySelectorAll("tr").forEach((r) => r.classList.remove("selected"));
-        tr.classList.add("selected");
-        activeSelectedCandidateId = cand.candidate_id;
+        dom.tblArtifactCandidates.querySelectorAll("tr.is-focused").forEach((row) => row.classList.remove("is-focused"));
+        tr.classList.add("is-focused");
+        focusedCandidateId = cand.candidate_id;
         dom.artifactDetailsContent.innerHTML = "";
         showCandidateDetails(cand);
       };
@@ -1055,6 +1403,131 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
   function showCandidateDetails(cand: RepeatedArtifactCandidate): void {
     dom.artifactDetailsContent.innerHTML = "";
+
+    const activeEntry = projectDecisions.decisions[cand.candidate_id];
+    const decision = activeEntry?.decision;
+    const defaultScope = computeCandidateScope(cand);
+
+    if (state.selectedCandidateIds.size > 1) {
+      const selectionNote = document.createElement("div");
+      selectionNote.className = "detail-note detail-note-info";
+      selectionNote.textContent = `${state.selectedCandidateIds.size} candidates selected for bulk action.`;
+      dom.artifactDetailsContent.appendChild(selectionNote);
+    }
+
+    const triageBar = document.createElement("div");
+    triageBar.className = "candidate-triage-bar";
+
+    const triageControls = document.createElement("div");
+    triageControls.style.cssText = "display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%;";
+
+    const acceptBtn = document.createElement("button");
+    acceptBtn.type = "button";
+    acceptBtn.className = "triage-btn accept-btn";
+    acceptBtn.textContent = "Accept";
+    acceptBtn.disabled = !canAcceptCandidate(cand);
+    if (decision === "accepted") acceptBtn.classList.add("selected");
+    if (!canAcceptCandidate(cand)) {
+      acceptBtn.title = "This candidate cannot create a structured removal rule.";
+    }
+
+    const keepBtn = document.createElement("button");
+    keepBtn.type = "button";
+    keepBtn.className = "triage-btn keep-btn";
+    keepBtn.textContent = "Keep";
+    if (decision === "kept") keepBtn.classList.add("selected");
+
+    const ignoreBtn = document.createElement("button");
+    ignoreBtn.type = "button";
+    ignoreBtn.className = "triage-btn ignore-btn";
+    ignoreBtn.textContent = "Ignore";
+    if (decision === "ignored") ignoreBtn.classList.add("selected");
+
+    const revertBtn = document.createElement("button");
+    revertBtn.type = "button";
+    revertBtn.className = "triage-btn revert-btn";
+    revertBtn.textContent = "Revert";
+    if (!decision) revertBtn.classList.add("hidden");
+
+    const scopeContainer = document.createElement("div");
+    scopeContainer.style.cssText = "margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 0.8rem;";
+
+    const scopeLabel = document.createElement("span");
+    scopeLabel.textContent = "Scope:";
+
+    const selectScope = document.createElement("select");
+    selectScope.style.cssText = "background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 3px; padding: 2px 4px; font-size: 0.8rem;";
+    const scopeOptions: Array<[RemovalScope, string]> = cand.position_summary_is_page_based
+      ? [
+          ["whole_line", "Whole line"],
+          ["page_top", "Page top"],
+          ["page_bottom", "Page bottom"],
+          ["page_top_or_bottom", "Page top/bottom"],
+        ]
+      : [["whole_line", "Whole line"]];
+    for (const [value, label] of scopeOptions) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      selectScope.appendChild(option);
+    }
+    selectScope.value = activeEntry?.scope || defaultScope;
+    selectScope.disabled = decision === "accepted";
+
+    scopeContainer.append(scopeLabel, selectScope);
+    triageControls.append(acceptBtn, keepBtn, ignoreBtn, revertBtn, scopeContainer);
+    triageBar.appendChild(triageControls);
+    dom.artifactDetailsContent.appendChild(triageBar);
+
+    async function refreshAfterDecision(message: string): Promise<void> {
+      await persistDecisions();
+      callbacks.renderCustomRemovals();
+      syncRepeatedArtifactSettingsSection();
+      renderCandidates(state.lastScanCandidates, lastDiagnostics, true);
+      showCandidateDetails(cand);
+      setTransientStatus(message);
+    }
+
+    acceptBtn.addEventListener("click", () => {
+      void (async () => {
+        const scope = selectScope.value as RemovalScope;
+        const rule = addRuleForCandidate(cand, scope);
+        if (!rule) {
+          setTransientStatus("This candidate cannot create a structured removal rule.");
+          return;
+        }
+        projectDecisions.decisions[cand.candidate_id] = buildDecisionEntry(cand, "accepted", scope, rule.id);
+        focusedCandidateId = cand.candidate_id;
+        await refreshAfterDecision("Candidate accepted.");
+      })();
+    });
+
+    keepBtn.addEventListener("click", () => {
+      void (async () => {
+        removeRulesForCandidate(cand.candidate_id);
+        projectDecisions.decisions[cand.candidate_id] = buildDecisionEntry(cand, "kept", defaultScope, "");
+        focusedCandidateId = cand.candidate_id;
+        await refreshAfterDecision("Candidate kept.");
+      })();
+    });
+
+    ignoreBtn.addEventListener("click", () => {
+      void (async () => {
+        removeRulesForCandidate(cand.candidate_id);
+        projectDecisions.decisions[cand.candidate_id] = buildDecisionEntry(cand, "ignored", defaultScope, "");
+        focusedCandidateId = cand.candidate_id;
+        await refreshAfterDecision("Candidate ignored.");
+      })();
+    });
+
+    revertBtn.addEventListener("click", () => {
+      void (async () => {
+        removeRulesForCandidate(cand.candidate_id);
+        delete projectDecisions.decisions[cand.candidate_id];
+        focusedCandidateId = cand.candidate_id;
+        await refreshAfterDecision("Decision reverted.");
+      })();
+    });
 
     const isLiteral = cand.kind === "exact_line" ||
       cand.kind === "inline_artifact" ||
