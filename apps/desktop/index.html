@@ -228,82 +228,162 @@
               <p class="analyse-eyebrow">Analyse</p>
               <h1>Analyse Corpus</h1>
             </div>
-            <div class="analyse-status-card" aria-live="polite">
-              <span id="analyse-status-chip" class="analyse-status-chip">Analysis corpus: Not built</span>
+            <div class="analyse-status-line" aria-live="polite">
+              <span id="analyse-status-chip" class="analyse-status-text">Analysis corpus not built</span>
               <p id="analyse-status-detail">Analysis corpus not built yet.</p>
             </div>
           </header>
 
-          <div class="analyse-action-row">
-            <button id="analyse-build-button" class="primary-btn" type="button">Build Analysis Corpus</button>
-            <span id="analyse-build-note">Builds an in-memory analysis corpus from loaded project text.</span>
+          <div class="analyse-status-row">
+            <div id="analyse-input-banner" class="analyse-input-banner hidden" aria-live="polite"></div>
+            <div class="analyse-action-row">
+              <button id="analyse-build-button" class="primary-btn" type="button">Build Analysis Corpus</button>
+              <span id="analyse-build-note">Builds an in-memory analysis corpus from loaded project text.</span>
+            </div>
           </div>
 
-          <div id="analyse-input-banner" class="analyse-input-banner hidden" aria-live="polite"></div>
+          <div class="analyse-workspace-shell">
+            <nav class="analyse-tool-rail" aria-labelledby="analyse-tools-title">
+              <h2 id="analyse-tools-title">Analysis tools</h2>
+              <ul id="analyse-tools-list" class="analyse-tools-list"></ul>
+            </nav>
 
-          <section class="analyse-section" aria-labelledby="analyse-current-project-title">
-            <h2 id="analyse-current-project-title">Current project</h2>
-            <dl id="analyse-project-summary" class="analyse-project-summary"></dl>
-          </section>
+            <div class="analyse-tool-content">
+              <section id="analyse-overview-pane" class="analyse-section analyse-tool-pane" aria-labelledby="analyse-overview-title">
+                <h2 id="analyse-overview-title">Corpus Overview</h2>
+                <div id="analyse-overview" class="analyse-overview"></div>
+                <details class="analyse-project-details">
+                  <summary id="analyse-current-project-title">Project details</summary>
+                  <dl id="analyse-project-summary" class="analyse-project-summary"></dl>
+                </details>
+              </section>
 
-          <section class="analyse-section" aria-labelledby="analyse-tools-title">
-            <h2 id="analyse-tools-title">Analysis tools</h2>
-            <ul id="analyse-tools-list" class="analyse-tools-list"></ul>
-          </section>
-
-          <section class="analyse-section" aria-labelledby="analyse-overview-title">
-            <h2 id="analyse-overview-title">Corpus Overview</h2>
-            <div id="analyse-overview" class="analyse-overview"></div>
-          </section>
-
-          <section class="analyse-section frequency-section" aria-labelledby="frequency-list-title">
-            <div class="frequency-section-header">
-              <h2 id="frequency-list-title">Frequency List</h2>
-              <span id="frequency-result-count" class="frequency-result-count"></span>
+              <section id="frequency-list-pane" class="analyse-section analyse-tool-pane frequency-section" aria-labelledby="frequency-list-title">
+                <div class="frequency-section-header">
+                  <div>
+                    <h2 id="frequency-list-title">Frequency List</h2>
+                    <p id="frequency-summary" class="frequency-summary">Build an analysis corpus to populate the frequency list.</p>
+                  </div>
+                  <span id="frequency-result-count" class="frequency-result-count"></span>
+                </div>
+                <div class="frequency-controls">
+                  <div class="frequency-control-cluster frequency-query-cluster">
+                    <label for="frequency-search-input">
+                      <span>Token search</span>
+                      <input id="frequency-search-input" type="search" placeholder="Filter tokens..." autocomplete="off" />
+                    </label>
+                    <label for="frequency-match-mode">
+                      <span>Match mode</span>
+                      <select id="frequency-match-mode">
+                        <option value="contains">Contains</option>
+                        <option value="exact">Exact</option>
+                        <option value="startsWith">Starts with</option>
+                        <option value="regex">Regex</option>
+                      </select>
+                    </label>
+                    <label for="frequency-min-input">
+                      <span>Minimum frequency</span>
+                      <input id="frequency-min-input" type="number" min="1" step="1" value="1" />
+                    </label>
+                  </div>
+                  <div class="frequency-control-cluster frequency-display-cluster">
+                    <label for="frequency-token-class">
+                      <span>Token class</span>
+                      <select id="frequency-token-class">
+                        <option value="alphabetic" selected>Alphabetic words</option>
+                        <option value="includeSingles">Include single-character</option>
+                        <option value="includeNumerals">Include numerals</option>
+                        <option value="all">All tokens</option>
+                      </select>
+                    </label>
+                    <label class="frequency-stopword-control" for="frequency-hide-stopwords">
+                      <span>Stopwords</span>
+                      <span class="frequency-toggle">
+                        <input id="frequency-hide-stopwords" type="checkbox" />
+                        <span class="frequency-toggle-track" aria-hidden="true"></span>
+                        <span>Hide</span>
+                      </span>
+                    </label>
+                    <div class="frequency-file-scope-control">
+                      <span>File scope</span>
+                      <button id="frequency-files-button" type="button" class="secondary-btn">Files: 0 of 0</button>
+                    </div>
+                  </div>
+                </div>
+                <p class="frequency-search-note">Tokens are matched against the current lowercased token index.</p>
+                <div id="frequency-search-error" class="frequency-search-error hidden" role="alert"></div>
+                <div class="frequency-table-wrap">
+                  <table class="frequency-table">
+                    <thead id="frequency-table-head">
+                      <tr>
+                        <th>
+                          <button type="button" class="frequency-sort" data-sort="token">Token</button>
+                        </th>
+                        <th>
+                          <button type="button" class="frequency-sort frequency-sort-right" data-sort="frequency">Frequency</button>
+                        </th>
+                        <th>
+                          <button type="button" class="frequency-sort frequency-sort-right" data-sort="range">Range (docs)</button>
+                        </th>
+                        <th>
+                          <button type="button" class="frequency-sort frequency-sort-right" data-sort="rate">Per 10k</button>
+                        </th>
+                        <th>
+                          <button type="button" class="frequency-sort frequency-sort-right" data-sort="dispersion">Dispersion (DP)</button>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody id="frequency-table-body">
+                      <tr>
+                        <td colspan="5" class="frequency-empty">Build an analysis corpus to populate the frequency list.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <span id="frequency-limit-note" class="frequency-limit-note"></span>
+                <p class="frequency-explanation">Range = number of selected files the token occurs in. DP = Deviation of Proportions; 0 is evenly distributed relative to file sizes, 1 is highly concentrated.</p>
+              </section>
             </div>
-            <div class="frequency-controls">
-              <label for="frequency-search-input">
-                <span>Token search</span>
-                <input id="frequency-search-input" type="search" placeholder="Filter tokens..." autocomplete="off" />
-              </label>
-              <label for="frequency-min-input">
-                <span>Minimum frequency</span>
-                <input id="frequency-min-input" type="number" min="1" step="1" value="1" />
-              </label>
-            </div>
-            <div class="frequency-table-wrap">
-              <table class="frequency-table">
-                <thead id="frequency-table-head">
-                  <tr>
-                    <th>
-                      <button type="button" class="frequency-sort" data-sort="token">Token</button>
-                    </th>
-                    <th>
-                      <button type="button" class="frequency-sort frequency-sort-right" data-sort="frequency">Frequency</button>
-                    </th>
-                    <th>
-                      <button type="button" class="frequency-sort frequency-sort-right" data-sort="documentFrequency">Document Frequency</button>
-                    </th>
-                    <th>
-                      <button type="button" class="frequency-sort frequency-sort-right" data-sort="rate">Rate per 10,000 tokens</button>
-                    </th>
-                    <th class="frequency-bar-heading">Relative</th>
-                  </tr>
-                </thead>
-                <tbody id="frequency-table-body">
-                  <tr>
-                    <td colspan="5" class="frequency-empty">Build an analysis corpus to populate the frequency list.</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <span id="frequency-limit-note" class="frequency-limit-note"></span>
-          </section>
+          </div>
         </div>
       </section>
     </main>
 
     <footer id="status-bar">Ready</footer>
+
+    <div id="frequency-files-modal" class="modal hidden" role="dialog" aria-modal="true"
+      aria-labelledby="frequency-files-title" aria-describedby="frequency-files-description">
+      <div class="modal-content frequency-files-modal-content">
+        <button
+          id="frequency-files-close-button"
+          class="modal-close-btn"
+          type="button"
+          aria-label="Close file scope"
+        >
+          &times;
+        </button>
+        <h2 id="frequency-files-title">Choose files</h2>
+        <p id="frequency-files-description" class="modal-description">
+          Frequency counts, rates, range, and DP use only the selected files.
+        </p>
+
+        <label class="frequency-files-search" for="frequency-files-search-input">
+          <span>Search documents</span>
+          <input id="frequency-files-search-input" type="search" autocomplete="off" />
+        </label>
+        <div class="frequency-files-actions">
+          <button id="frequency-files-select-all" class="secondary-btn" type="button">Select all</button>
+          <button id="frequency-files-clear-all" class="secondary-btn" type="button">Clear all</button>
+        </div>
+        <div id="frequency-files-list" class="frequency-files-list"></div>
+
+        <div class="modal-actions">
+          <span id="frequency-files-status" class="frequency-files-status"></span>
+          <button id="frequency-files-cancel" class="secondary-btn" type="button">Cancel</button>
+          <button id="frequency-files-apply" class="primary-btn" type="button">Apply</button>
+        </div>
+      </div>
+    </div>
 
     <!-- About Modal -->
     <div id="about-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="about-title"
