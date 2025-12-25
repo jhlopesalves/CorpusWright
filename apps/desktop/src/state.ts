@@ -4,9 +4,12 @@ import type { DocumentRecord } from "./generated/DocumentRecord.js";
 import type { ProjectSource } from "./generated/ProjectSource.js";
 import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
 import type { SearchResult } from "./generated/SearchResult.js";
+import type { AnalysisCorpus } from "./analysis";
 import type {
   VisibleFile,
 } from "./types";
+
+export type WorkbenchId = "prepare" | "analyse";
 
 export interface ActiveProject {
   name: string;
@@ -18,11 +21,14 @@ export interface ActiveProject {
 
 export const state = {
   activeProject: null as ActiveProject | null,
+  activeWorkbench: "prepare" as WorkbenchId,
+  analysisCorpus: null as AnalysisCorpus | null,
   sourceManifestVersion: 1,
   projectSources: [] as ProjectSource[],
   sourceSearchQuery: "",
   currentCorpusVersion: 0,
   allFiles: [] as DocumentRecord[],
+  cleanedTokenCountText: null as string | null,
   visibleFiles: [] as VisibleFile[],
   selectedCorpusIndices: new Set<number>(),
   selectedProjectSourceIds: new Set<string>(),

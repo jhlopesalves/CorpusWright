@@ -11,6 +11,7 @@ import { dom } from "./dom";
 import { loadProjectSourcesForActiveProject } from "./sources";
 import { state, type ActiveProject } from "./state";
 import { clearDecisions, loadDecisionsForProject } from "./repeated-artifacts";
+import { hideWorkbenchSwitcher, resetWorkbenchForProject } from "./workbench";
 
 interface RecentProject {
   name: string;
@@ -106,6 +107,7 @@ function showWelcome(message = ""): void {
   dom.menuProcessDropdown.classList.add("hidden");
   dom.menuCloseProject.classList.add("hidden");
   dom.projectContext.classList.add("hidden");
+  hideWorkbenchSwitcher();
   setWelcomeStatus(message);
   renderRecentProjects();
   closeMenus();
@@ -113,6 +115,7 @@ function showWelcome(message = ""): void {
 
 async function activateProject(project: ActiveProject, scanSourceRoot: boolean): Promise<void> {
   state.activeProject = project;
+  state.analysisCorpus = null;
   await loadDecisionsForProject(project.rootPath);
   dom.welcomeScreen.classList.add("hidden");
   dom.projectWorkspace.classList.remove("hidden");
@@ -122,6 +125,7 @@ async function activateProject(project: ActiveProject, scanSourceRoot: boolean):
   dom.projectContext.classList.remove("hidden");
   dom.projectContextName.textContent = `Project: ${project.name}`;
   dom.projectContextPath.textContent = project.rootPath;
+  resetWorkbenchForProject();
 
   state.projectSources = [];
   state.sourceSearchQuery = "";
@@ -224,6 +228,7 @@ async function handleCloseProject(): Promise<void> {
   }
   clearDecisions();
   state.activeProject = null;
+  state.analysisCorpus = null;
   state.projectSources = [];
   state.sourceSearchQuery = "";
   dom.searchInput.value = "";

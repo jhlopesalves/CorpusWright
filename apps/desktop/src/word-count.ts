@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { dom, getSummaryAvgWords, getSummaryTotalWords, getSummaryWordLabel } from "./dom";
 import { state } from "./state";
+import { refreshAnalyseWorkbench } from "./workbench";
 
 const OCR_WORD_COUNT_SKIPPED_STATUS =
   "Cleaned token count unavailable until sources are processed with cleaning settings.";
@@ -22,6 +23,8 @@ export async function updateWordCount(): Promise<void> {
   if (state.allFiles.length === 0) {
     totalWordsEl.textContent = "0";
     avgWordsEl.textContent = "0";
+    state.cleanedTokenCountText = "0";
+    refreshAnalyseWorkbench();
     return;
   }
 
@@ -31,6 +34,8 @@ export async function updateWordCount(): Promise<void> {
 
   totalWordsEl.textContent = "Counting...";
   avgWordsEl.textContent = "Counting...";
+  state.cleanedTokenCountText = "Counting...";
+  refreshAnalyseWorkbench();
   if (wordLabelEl) wordLabelEl.textContent = "Known Cleaned Tokens";
 
   try {
@@ -46,6 +51,8 @@ export async function updateWordCount(): Promise<void> {
         if (myVersion !== state.currentCorpusVersion || myWordCountGeneration !== state.wordCountGeneration) return;
         totalWordsEl.textContent = "Unavailable";
         avgWordsEl.textContent = "Unavailable";
+        state.cleanedTokenCountText = "Unavailable";
+        refreshAnalyseWorkbench();
         if (wordLabelEl) {
           wordLabelEl.textContent = "Cleaned Token Count";
           wordLabelEl.title = OCR_WORD_COUNT_SKIPPED_STATUS;
@@ -60,6 +67,8 @@ export async function updateWordCount(): Promise<void> {
       if (myVersion !== state.currentCorpusVersion || myWordCountGeneration !== state.wordCountGeneration) return;
       totalWordsEl.textContent = `${totalWords.toLocaleString()} (${processed}/${totalFiles} files)`;
       avgWordsEl.textContent = avgWords.toLocaleString(undefined, { maximumFractionDigits: 2 });
+      state.cleanedTokenCountText = totalWordsEl.textContent;
+      refreshAnalyseWorkbench();
     }
 
     if (myVersion !== state.currentCorpusVersion || myWordCountGeneration !== state.wordCountGeneration) return;
@@ -70,10 +79,14 @@ export async function updateWordCount(): Promise<void> {
     const avgWords = totalWords / totalFiles;
     totalWordsEl.textContent = totalWords.toLocaleString();
     avgWordsEl.textContent = avgWords.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    state.cleanedTokenCountText = totalWordsEl.textContent;
+    refreshAnalyseWorkbench();
   } catch (err) {
     if (myVersion !== state.currentCorpusVersion || myWordCountGeneration !== state.wordCountGeneration) return;
     totalWordsEl.textContent = "Error";
     avgWordsEl.textContent = "Error";
+    state.cleanedTokenCountText = "Error";
+    refreshAnalyseWorkbench();
     console.error("Failed to compute word count", err);
   }
 }
