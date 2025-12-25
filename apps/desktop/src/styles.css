@@ -3198,6 +3198,89 @@ mark.search-match.current-match {
   line-height: 1.4;
 }
 
+/* --- Setting row with inline help icon --- */
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.setting-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-family: inherit;
+  line-height: 1;
+  cursor: help;
+  padding: 0;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.setting-help:hover,
+.setting-help:focus {
+  opacity: 1;
+  color: var(--text-color);
+  outline: none;
+}
+
+.setting-help:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 1px;
+}
+
+.setting-help .setting-tooltip {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: max-content;
+  max-width: 320px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background: var(--panel-bg);
+  color: var(--text-color);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: normal;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, visibility 0.12s ease;
+  z-index: 20;
+}
+
+.setting-help:hover .setting-tooltip,
+.setting-help:focus .setting-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* When tooltip would overflow right, position it to the left instead */
+.setting-help .setting-tooltip--left {
+  left: auto;
+  right: calc(100% + 8px);
+}
+
+/* Tighter gap between label rows when descriptions are hidden */
+.cleaning-controls-vertical .setting-row + .setting-row {
+  margin-top: 0;
+}
+
 .settings-field-label {
   display: block;
   margin: 10px 0 4px;

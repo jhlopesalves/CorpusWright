@@ -12,6 +12,13 @@ export type BooleanCleaningConfigKey = {
 }[keyof CleaningConfig & string];
 
 export const BOOLEAN_CLEANING_CONFIG_KEYS: BooleanCleaningConfigKey[] = [
+  "normalize_whitespace_line_endings",
+  "repair_wrapped_pdf_line_breaks",
+  "remove_isolated_page_markers",
+  "remove_url_only_lines",
+  "remove_email_only_lines",
+  "remove_doi_only_lines",
+  "remove_figure_table_captions",
   "join_line_breaks",
   "normalize_irregular_line_breaks",
   "remove_standalone_page_numbers",
@@ -59,6 +66,13 @@ export const ALLOWED_REMOVAL_SCOPES = ["anywhere", "whole_line", "page_top", "pa
 
 export function createDefaultCleaningConfig(): CleaningConfig {
   return {
+    normalize_whitespace_line_endings: false,
+    repair_wrapped_pdf_line_breaks: false,
+    remove_isolated_page_markers: false,
+    remove_url_only_lines: false,
+    remove_email_only_lines: false,
+    remove_doi_only_lines: false,
+    remove_figure_table_captions: false,
     join_line_breaks: false,
     normalize_irregular_line_breaks: false,
     remove_standalone_page_numbers: false,
@@ -178,6 +192,32 @@ export function normaliseCleaningConfig(raw: unknown): CleaningConfig {
     if (typeof val === "boolean") {
       configAny[configKey] = val;
     }
+  }
+
+  if (
+    obj.remove_standalone_page_numbers === true ||
+    obj.remove_standalone_roman_page_numbers === true ||
+    obj.remove_page_indicators === true ||
+    obj.remove_page_delimiters === true ||
+    obj.remove_pdf_page_labels === true
+  ) {
+    config.remove_isolated_page_markers = true;
+  }
+
+  if (
+    obj.normalize_line_endings === true ||
+    obj.trim_lines === true ||
+    obj.collapse_blank_lines === true
+  ) {
+    config.normalize_whitespace_line_endings = true;
+  }
+
+  if (obj.join_line_breaks === true || obj.normalize_irregular_line_breaks === true) {
+    config.repair_wrapped_pdf_line_breaks = true;
+  }
+
+  if (obj.remove_pdf_symbol_heavy_artifacts === true) {
+    config.remove_obvious_extraction_noise = true;
   }
 
   if (typeof obj.table_extraction_strategy === "string" &&

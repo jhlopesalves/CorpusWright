@@ -25,16 +25,14 @@ interface CheckboxBinding {
 }
 
 const cleaningCheckboxBindings: CheckboxBinding[] = [
-  { configKey: "join_line_breaks",                           element: dom.chkJoinLineBreaks },
-  { configKey: "normalize_irregular_line_breaks",            element: dom.chkNormalizeIrregularLineBreaks },
-  { configKey: "remove_standalone_page_numbers",             element: dom.chkRemoveStandalonePageNumbers },
-  { configKey: "remove_standalone_roman_page_numbers",       element: dom.chkRemoveStandaloneRomanPageNumbers },
-  { configKey: "remove_page_indicators",                     element: dom.chkRemovePageIndicators },
-  { configKey: "remove_page_delimiters",                     element: dom.chkRemovePageDelimiters },
+  { configKey: "normalize_whitespace_line_endings",          element: dom.chkNormalizeWhitespaceLineEndings },
+  { configKey: "repair_wrapped_pdf_line_breaks",             element: dom.chkRepairWrappedPdfLineBreaks },
+  { configKey: "remove_isolated_page_markers",               element: dom.chkRemoveIsolatedPageMarkers },
+  { configKey: "remove_url_only_lines",                      element: dom.chkRemoveUrlOnlyLines },
+  { configKey: "remove_email_only_lines",                    element: dom.chkRemoveEmailOnlyLines },
+  { configKey: "remove_doi_only_lines",                      element: dom.chkRemoveDoiOnlyLines },
+  { configKey: "remove_figure_table_captions",               element: dom.chkRemoveFigureTableCaptions },
   { configKey: "lowercase",                                  element: dom.chkLowercase },
-  { configKey: "normalize_line_endings",                     element: dom.chkNormalize },
-  { configKey: "trim_lines",                                 element: dom.chkTrim },
-  { configKey: "collapse_blank_lines",                       element: dom.chkCollapse },
   { configKey: "normalize_unicode",                          element: dom.chkNormalizeUnicode },
   { configKey: "replace_diacritics",                         element: dom.chkReplaceDiacritics },
   { configKey: "extract_html",                               element: dom.chkExtractHtml },
@@ -45,8 +43,6 @@ const cleaningCheckboxBindings: CheckboxBinding[] = [
   { configKey: "remove_endnotes",                            element: dom.chkRemoveEndnotes },
   { configKey: "remove_comments",                            element: dom.chkRemoveComments },
   { configKey: "remove_table_of_contents",                   element: dom.chkRemoveToc },
-  { configKey: "remove_pdf_page_labels",                     element: dom.chkRemovePdfPageLabels },
-  { configKey: "remove_pdf_symbol_heavy_artifacts",          element: dom.chkRemovePdfSymbolHeavyArtifacts },
   { configKey: "remove_pdf_code_like_blocks",                element: dom.chkRemovePdfCodeLikeBlocks },
   { configKey: "remove_pdf_formula_like_lines",              element: dom.chkRemovePdfFormulaLikeLines },
 ];
