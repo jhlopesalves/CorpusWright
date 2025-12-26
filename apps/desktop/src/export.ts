@@ -8,7 +8,8 @@ import { sanitizeFolderName } from "./utils";
 import type { ExportReport } from "./generated/ExportReport.js";
 
 async function handleExport(): Promise<void> {
-  if (state.allFiles.length === 0) {
+  const fileCount = state.activeProject ? state.projectCorpusFileCount : state.allFiles.length;
+  if (fileCount === 0) {
     dom.statusBar.textContent = "No files loaded. Open a corpus before saving.";
     return;
   }
@@ -56,10 +57,9 @@ async function handleExport(): Promise<void> {
     });
 
     const myVersion = state.currentCorpusVersion;
-    const indices = Array.from(
-      { length: state.allFiles.length },
-      (_, corpusIndex) => corpusIndex
-    );
+    const indices = state.activeProject
+      ? null
+      : Array.from({ length: state.allFiles.length }, (_, corpusIndex) => corpusIndex);
 
     const report: ExportReport = await invoke("export_corpus_command", {
       indices,
