@@ -11,6 +11,7 @@ import { dom } from "./dom";
 import { renderCustomRemovals, syncDraftCustomRemovalsFromConfig } from "./custom-removals";
 import { syncDecisionsWithActiveRules, syncRepeatedArtifactSettingsSection } from "./repeated-artifacts";
 import { state } from "./state";
+import { hasProjectSourceSelection } from "./sources";
 import type {
   CleaningConfig,
   PdfEmbeddedTextStrategy,
@@ -232,7 +233,7 @@ export function initSettingsModal(callbacks: SettingsModalCallbacks): void {
 
     callbacks.updateWordCount();
 
-    if (state.selectedCorpusIndices.size > 0 || state.selectedProjectSourceIds.size > 0) {
+    if (state.selectedCorpusIndices.size > 0 || hasProjectSourceSelection()) {
       callbacks.schedulePreviewUpdate(150);
     }
   });
