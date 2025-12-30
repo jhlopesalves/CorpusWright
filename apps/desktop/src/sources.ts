@@ -7,6 +7,7 @@ import type { ProjectSourceImportReview } from "./generated/ProjectSourceImportR
 import type { ProjectSourcePage } from "./generated/ProjectSourcePage.js";
 import type { ProjectSourcePdfProfile } from "./generated/ProjectSourcePdfProfile.js";
 import type { ProjectSourceStatus } from "./generated/ProjectSourceStatus.js";
+import type { ProjectSourceSelectionDescriptor } from "./generated/ProjectSourceSelectionDescriptor.js";
 import { state } from "./state";
 
 export interface ProjectSourcePdfHandlingOverride {
@@ -242,7 +243,10 @@ export function sourceDisplayStatusLabel(source: ProjectSource): string {
 
 export function projectSourceSelectionCount(): number {
   return state.allMatchingProjectSourcesSelected
-    ? state.projectSourceQuerySummary?.total_count ?? 0
+    ? Math.max(
+      0,
+      (state.projectSourceQuerySummary?.total_count ?? 0) - state.deselectedProjectSourceIds.size,
+    )
     : state.selectedProjectSourceIds.size;
 }
 
@@ -255,19 +259,32 @@ export function hasProjectSourceSelection(): boolean {
 }
 
 export function isProjectSourceSelected(sourceId: string): boolean {
-  return state.allMatchingProjectSourcesSelected || state.selectedProjectSourceIds.has(sourceId);
+  return state.allMatchingProjectSourcesSelected
+    ? !state.deselectedProjectSourceIds.has(sourceId)
+    : state.selectedProjectSourceIds.has(sourceId);
 }
 
 export function clearProjectSourceSelection(): void {
   state.selectedProjectSourceIds.clear();
   state.selectedProjectSourcesById.clear();
   state.allMatchingProjectSourcesSelected = false;
+  state.deselectedProjectSourceIds.clear();
 }
 
 export function selectAllMatchingProjectSources(): void {
   state.selectedProjectSourceIds.clear();
   state.selectedProjectSourcesById.clear();
+  state.deselectedProjectSourceIds.clear();
   state.allMatchingProjectSourcesSelected = (state.projectSourceQuerySummary?.total_count ?? 0) > 0;
+}
+
+export function projectSourceSelectionDescriptor(): ProjectSourceSelectionDescriptor {
+  return {
+    all_matching: state.allMatchingProjectSourcesSelected,
+    query: state.sourceSearchQuery,
+    ids: Array.from(state.selectedProjectSourceIds),
+    excluded_ids: Array.from(state.deselectedProjectSourceIds),
+  };
 }
 
 export function rememberSelectedProjectSource(source: ProjectSource): void {
@@ -426,5 +443,6 @@ export async function removeSelectedProjectSources(): Promise<ProjectSourceRemov
     allMatching: state.allMatchingProjectSourcesSelected,
     query: state.sourceSearchQuery,
     ids: Array.from(state.selectedProjectSourceIds),
+    excludedIds: Array.from(state.deselectedProjectSourceIds),
   });
 }

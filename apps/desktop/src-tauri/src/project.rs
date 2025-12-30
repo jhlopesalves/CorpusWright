@@ -2,11 +2,12 @@ use corpuswright_core::clean::PdfOcrQuality;
 use corpuswright_core::project_sources::{
     ProjectSourceImportPolicy, ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest,
     ProjectSourcePage, ProjectSourcePdfHandlingOverride, ProjectSourcePdfProfile,
-    ProjectSourceQuery, ProjectSourceStatus, add_project_source_paths_with_pdf_handling,
+    ProjectSourceQuery, ProjectSourceSelectionDescriptor, ProjectSourceSelectionViewport,
+    ProjectSourceStatus, add_project_source_paths_with_pdf_handling,
     add_project_source_paths_with_progress, load_project_source_manifest,
-    project_source_matches_query, query_project_source_manifest, review_project_source_paths,
-    save_project_source_manifest, source_manifest_path, update_project_source_pdf_handling,
-    update_project_source_pdf_profiles,
+    project_source_matches_query, query_project_source_manifest, query_project_source_selection,
+    review_project_source_paths, save_project_source_manifest, source_manifest_path,
+    update_project_source_pdf_handling, update_project_source_pdf_profiles,
 };
 use corpuswright_core::scan::{ScanReport, load_files, scan_directory};
 use serde::{Deserialize, Serialize};
@@ -88,8 +89,16 @@ impl ProjectSourceInventoryState {
         })
     }
 
-    pub(crate) fn matching_paths(&self, root: &Path, query: &str) -> Result<Vec<PathBuf>, String> {
+    pub(crate) fn matching_paths(
+        &self,
+        root: &Path,
+        query: &str,
+        excluded_ids: &[String],
+    ) -> Result<Vec<PathBuf>, String> {
         let query = query.trim().to_lowercase();
+        let excluded_ids = excluded_ids
+            .iter()
+            .collect::<std::collections::HashSet<_>>();
         self.with_manifest(root, |manifest| {
             manifest
                 .sources
@@ -97,10 +106,23 @@ impl ProjectSourceInventoryState {
                 .filter(|source| {
                     source.kind != ProjectSourceKind::Unknown
                         && source.status != ProjectSourceStatus::Failed
+                        && !excluded_ids.contains(&source.id)
                         && project_source_matches_query(source, &query)
                 })
                 .map(|source| source.path.clone())
                 .collect()
+        })
+    }
+
+    pub(crate) fn selection_viewport(
+        &self,
+        root: &Path,
+        selection: &ProjectSourceSelectionDescriptor,
+        viewport_start: usize,
+        viewport_size: usize,
+    ) -> Result<ProjectSourceSelectionViewport, String> {
+        self.with_manifest(root, |manifest| {
+            query_project_source_selection(manifest, selection, viewport_start, viewport_size)
         })
     }
 }
@@ -366,6 +388,7 @@ pub(crate) fn remove_project_source_selection_command(
     all_matching: bool,
     query: String,
     ids: Vec<String>,
+    excluded_ids: Vec<String>,
     inventory: tauri::State<'_, ProjectSourceInventoryState>,
 ) -> Result<ProjectSourceRemovalResult, String> {
     let root = validated_project_root(&root_path)?;
@@ -373,9 +396,12 @@ pub(crate) fn remove_project_source_selection_command(
     let original_count = manifest.sources.len();
     if all_matching {
         let query = query.trim().to_lowercase();
-        manifest
-            .sources
-            .retain(|source| !project_source_matches_query(source, &query));
+        let excluded_ids = excluded_ids
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>();
+        manifest.sources.retain(|source| {
+            excluded_ids.contains(&source.id) || !project_source_matches_query(source, &query)
+        });
     } else {
         let ids = ids.into_iter().collect::<std::collections::HashSet<_>>();
         manifest.sources.retain(|source| !ids.contains(&source.id));

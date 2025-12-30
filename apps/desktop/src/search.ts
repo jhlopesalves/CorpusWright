@@ -143,6 +143,9 @@ async function executeGlobalSearch(): Promise<void> {
         : null,
       rootPath: state.allMatchingProjectSourcesSelected ? state.activeProject?.rootPath : null,
       allMatchingQuery: state.allMatchingProjectSourcesSelected ? state.sourceSearchQuery : null,
+      excludedSourceIds: state.allMatchingProjectSourcesSelected
+        ? Array.from(state.deselectedProjectSourceIds)
+        : null,
       corpusVersion: myVersion,
       query: query,
       isProcessed: isProcessed,
