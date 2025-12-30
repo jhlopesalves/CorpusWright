@@ -47,7 +47,7 @@ interface MutableTerm {
 }
 
 export function loadAnalysisInputTexts(
-  indices: number[],
+  indices: number[] | null,
   corpusVersion: number,
   useProcessedText: boolean,
   cleaningConfig: CleaningConfig,
