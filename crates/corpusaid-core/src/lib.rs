@@ -7,9 +7,14 @@ pub mod html;
 pub mod pdf;
 pub mod pdf_ocr;
 pub mod pdf_quality;
+pub mod preview;
 pub mod scan;
 
 pub use clean::{CleaningConfig, ReplacementRule, clean_text};
+pub use preview::{
+    CombinedPreview, FilePreview, PreviewError, PreviewOptions, PreviewWarning, PreviewWarningKind,
+    preview_file, preview_files, preview_processed_files,
+};
 pub use scan::{
     CorpusSummary, DocumentRecord, DocumentType, DocumentTypeCounts, ScanError, ScanReport,
     scan_directory,
