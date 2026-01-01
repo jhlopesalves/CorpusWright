@@ -9,6 +9,7 @@ pub mod pdf_ocr;
 pub mod pdf_quality;
 pub mod preview;
 pub mod scan;
+pub mod word_count;
 
 pub use clean::{CleaningConfig, ReplacementRule, clean_text};
 pub use preview::{
