@@ -9,6 +9,7 @@ pub mod pdf_ocr;
 pub mod pdf_quality;
 pub mod preview;
 pub mod scan;
+pub mod search;
 pub mod word_count;
 
 pub use clean::{CleaningConfig, ReplacementRule, clean_text};
@@ -20,3 +21,4 @@ pub use scan::{
     CorpusSummary, DocumentRecord, DocumentType, DocumentTypeCounts, ScanError, ScanReport,
     scan_directory,
 };
+pub use search::{SearchHit, SearchResult, search_corpus};
