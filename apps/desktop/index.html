@@ -232,7 +232,7 @@
             <div id="analyse-input-banner" class="analyse-input-banner hidden" aria-live="polite"></div>
             <div class="analyse-action-row">
               <button id="analyse-build-button" class="primary-btn" type="button">Build Analysis Corpus</button>
-              <span id="analyse-build-note">Builds an in-memory analysis corpus from loaded project text.</span>
+              <span id="analyse-build-note">Builds a Rust analysis index from loaded project text.</span>
             </div>
           </div>
 
@@ -334,6 +334,11 @@
                     </tbody>
                   </table>
                 </div>
+                <div class="analysis-pagination" aria-label="Frequency result pages">
+                  <button id="frequency-page-previous" class="secondary-btn" type="button">Previous</button>
+                  <span id="frequency-page-status"></span>
+                  <button id="frequency-page-next" class="secondary-btn" type="button">Next</button>
+                </div>
                 <span id="frequency-limit-note" class="frequency-limit-note"></span>
                 <p class="frequency-explanation">Range = number of selected files the token occurs in. DP = Deviation of Proportions; 0 is evenly distributed relative to file sizes, 1 is highly concentrated.</p>
               </section>
@@ -370,6 +375,11 @@
           <button id="frequency-files-clear-all" class="secondary-btn" type="button">Clear all</button>
         </div>
         <div id="frequency-files-list" class="frequency-files-list"></div>
+        <div class="analysis-pagination" aria-label="File scope pages">
+          <button id="frequency-files-previous" class="secondary-btn" type="button">Previous</button>
+          <span id="frequency-files-page-status"></span>
+          <button id="frequency-files-next" class="secondary-btn" type="button">Next</button>
+        </div>
 
         <div class="modal-actions">
           <span id="frequency-files-status" class="frequency-files-status"></span>
