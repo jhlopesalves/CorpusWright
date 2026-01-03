@@ -4,10 +4,11 @@ use corpuswright_core::project_sources::{
     ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest, ProjectSourcePage,
     ProjectSourcePdfHandlingOverride, ProjectSourcePdfProfile, ProjectSourceQuery,
     ProjectSourceSelectionDescriptor, ProjectSourceSelectionViewport, ProjectSourceStatus,
-    add_project_source_paths_with_pdf_handling, add_project_source_paths_with_progress,
-    load_project_source_manifest, project_source_matches_query, query_project_source_manifest,
-    query_project_source_selection, review_project_source_paths, save_project_source_manifest,
-    source_manifest_path, update_project_source_pdf_handling, update_project_source_pdf_profiles,
+    ProjectSourceSummary, add_project_source_paths_with_pdf_handling,
+    add_project_source_paths_with_progress, load_project_source_manifest,
+    project_source_matches_query, query_project_source_manifest, query_project_source_selection,
+    review_project_source_paths, save_project_source_manifest, source_manifest_path,
+    update_project_source_pdf_handling, update_project_source_pdf_profiles,
 };
 use corpuswright_core::scan::{ScanReport, load_files, scan_directory};
 use serde::{Deserialize, Serialize};
@@ -86,6 +87,13 @@ impl ProjectSourceInventoryState {
                 .iter()
                 .find(|source| source.id == source_id)
                 .cloned()
+        })
+    }
+
+    pub(crate) fn summary(&self, root: &Path) -> Result<ProjectSourceSummary, String> {
+        self.with_manifest(root, |manifest| {
+            query_project_source_manifest(manifest, &ProjectSourceQuery::default())
+                .inventory_summary
         })
     }
 

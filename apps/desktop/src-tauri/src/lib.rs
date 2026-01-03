@@ -1,8 +1,8 @@
 use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildProgress, AnalysisCorpus, AnalysisDocumentPage,
-    AnalysisDocumentSelection, AnalysisInputSource, AnalysisOverview, FrequencyPage,
-    FrequencyQuery, TermDistributionPage, build_analysis_corpus, query_analysis_documents,
-    query_frequency_list, query_term_distribution,
+    AnalysisDocumentSelection, AnalysisInputSource, CorpusOverview, CorpusOverviewContext,
+    FrequencyPage, FrequencyQuery, TermDistributionPage, build_analysis_corpus,
+    query_analysis_documents, query_frequency_list, query_term_distribution,
 };
 use corpuswright_core::cache::{
     CacheEntry, DocumentTextMode, ExtractionCache, document_text_for_record,
@@ -81,7 +81,7 @@ struct AnalysisBuildStatus {
     state: AnalysisBuildStateKind,
     progress: Option<AnalysisBuildProgressPayload>,
     error: Option<String>,
-    overview: Option<AnalysisOverview>,
+    overview: Option<CorpusOverview>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1718,8 +1718,9 @@ async fn build_analysis_corpus_command(
     corpus: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     analysis: tauri::State<'_, AnalysisState>,
+    inventory: tauri::State<'_, project::ProjectSourceInventoryState>,
     window: Window,
-) -> Result<AnalysisOverview, String> {
+) -> Result<CorpusOverview, String> {
     let (records, project_root) = match request.indices {
         Some(indices) => corpus.records_and_root_for_indices(&indices, request.corpus_version)?,
         None => corpus.all_records_and_root(request.corpus_version)?,
@@ -1730,6 +1731,28 @@ async fn build_analysis_corpus_command(
     if analysis.inner.read().unwrap().state == AnalysisBuildStateKind::Building {
         return Err("An analysis corpus build is already running.".to_string());
     }
+
+    let overview_context = if let Some(root) = project_root.as_deref() {
+        let summary = inventory.summary(root)?;
+        CorpusOverviewContext {
+            sources_in_project: Some(summary.total_count),
+            processed_text_available: Some(summary.processed_count),
+            sources_with_warnings: Some(summary.warning_count),
+            failed_sources: summary.status_counts.failed,
+            config_version: None,
+            metadata_attached: false,
+        }
+    } else {
+        CorpusOverviewContext {
+            sources_in_project: Some(records.len()),
+            processed_text_available: (request.input_text_source == AnalysisInputSource::Processed)
+                .then_some(records.len()),
+            sources_with_warnings: None,
+            failed_sources: 0,
+            config_version: None,
+            metadata_attached: false,
+        }
+    };
 
     let text_mode = if request.input_text_source == AnalysisInputSource::Processed {
         DocumentTextMode::Processed
@@ -1765,6 +1788,7 @@ async fn build_analysis_corpus_command(
             input_text_source,
             built_at,
             build_signature,
+            overview_context,
             &cancel,
             |record| {
                 if record.document_type == DocumentType::Pdf {
@@ -1856,9 +1880,9 @@ fn get_analysis_build_status_command(
 }
 
 #[tauri::command(async)]
-fn get_analysis_overview_command(
+fn compute_corpus_overview_command(
     analysis: tauri::State<'_, AnalysisState>,
-) -> Result<AnalysisOverview, String> {
+) -> Result<CorpusOverview, String> {
     Ok(analysis.corpus()?.overview().clone())
 }
 
@@ -2555,7 +2579,7 @@ pub fn run() {
             build_analysis_corpus_command,
             cancel_analysis_build_command,
             get_analysis_build_status_command,
-            get_analysis_overview_command,
+            compute_corpus_overview_command,
             query_frequency_list_command,
             query_analysis_documents_command,
             query_term_distribution_command,
