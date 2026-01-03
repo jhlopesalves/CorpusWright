@@ -7,7 +7,7 @@ import { state } from "./state";
 import { sanitizeFolderName } from "./utils";
 import type { ExportReport } from "./generated/ExportReport.js";
 
-async function handleExport(): Promise<void> {
+export async function exportProcessedCorpus(): Promise<void> {
   const fileCount = state.activeProject ? state.projectCorpusFileCount : state.allFiles.length;
   if (fileCount === 0) {
     dom.statusBar.textContent = "No files loaded. Open a corpus before saving.";
@@ -84,5 +84,5 @@ async function handleExport(): Promise<void> {
 }
 
 export function initExport(): void {
-  dom.menuSaveCorpus.addEventListener("click", handleExport);
+  dom.menuSaveCorpus.addEventListener("click", exportProcessedCorpus);
 }

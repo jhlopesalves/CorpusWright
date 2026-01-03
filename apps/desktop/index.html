@@ -14,26 +14,21 @@
     <nav class="app-bar">
       <div class="app-title">CorpusWright</div>
       <div class="menu-items">
-        <div class="dropdown" id="menu-project-dropdown">
-          <span class="menu-item" tabindex="0">Project</span>
-          <div class="dropdown-content">
-            <div class="dropdown-item" id="menu-new-project" tabindex="0">New Corpus Project</div>
-            <div class="dropdown-item" id="menu-open-project" tabindex="0">Open Existing Project</div>
-            <div class="dropdown-item" id="menu-open-folder-project" tabindex="0">Open Folder as Corpus Project</div>
-            <div class="dropdown-item hidden" id="menu-close-project" tabindex="0">Close Project</div>
-          </div>
-        </div>
-        <div class="dropdown hidden" id="menu-file-dropdown">
+        <div class="dropdown" id="menu-file-dropdown">
           <span class="menu-item" tabindex="0">File</span>
           <div class="dropdown-content">
-            <div class="dropdown-item" id="menu-save-corpus" tabindex="0">Export Processed Corpus</div>
+            <div class="dropdown-item" id="menu-new-project" tabindex="0">New Project</div>
+            <div class="dropdown-item" id="menu-open-project" tabindex="0">Open Project</div>
+            <div class="dropdown-item" id="menu-open-folder-project" tabindex="0">Open Folder as Project</div>
+            <div class="dropdown-item hidden" id="menu-close-project" tabindex="0">Close Project</div>
+            <hr class="dropdown-divider">
+            <div class="dropdown-item" id="menu-save-corpus" tabindex="0">Export Processed Corpus...</div>
           </div>
         </div>
-        <div class="dropdown hidden" id="menu-process-dropdown">
-          <span class="menu-item" tabindex="0">Process</span>
+        <div class="dropdown" id="menu-view-dropdown">
+          <span class="menu-item" tabindex="0">View</span>
           <div class="dropdown-content">
-            <div class="dropdown-item" id="menu-processing-params" tabindex="0">Cleaning Settings</div>
-            <div class="dropdown-item hidden" id="menu-repeated-artifact-finder" tabindex="-1">Repeated Artefact Finder</div>
+            <div class="dropdown-item" id="menu-toggle-theme" tabindex="0">Toggle Theme</div>
           </div>
         </div>
         <div class="dropdown">
@@ -169,6 +164,17 @@
         </aside>
         <div class="sidebar-splitter" id="sidebar-splitter"></div>
         <section class="right-panel">
+        <div class="prepare-cockpit" aria-label="Prepare tools">
+          <div class="prepare-cockpit-status" aria-live="polite">
+            <span id="prepare-cockpit-source-count">Sources loading...</span>
+            <span id="prepare-cockpit-cleaning-summary">Cleaning settings ready</span>
+            <span id="prepare-processing-status">Processed Text previews current settings</span>
+          </div>
+          <div class="prepare-cockpit-actions">
+            <button id="prepare-cleaning-settings" class="secondary-btn" type="button">Cleaning Settings...</button>
+            <button id="prepare-repeated-artifact-finder" class="secondary-btn" type="button">Repeated Artefacts...</button>
+          </div>
+        </div>
 
         <div class="tabs">
           <button class="tab active" data-target="original-text">Original Text</button>

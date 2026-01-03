@@ -10,6 +10,8 @@ import type { ProjectSourceStatus } from "./generated/ProjectSourceStatus.js";
 import type { ProjectSourceSelectionDescriptor } from "./generated/ProjectSourceSelectionDescriptor.js";
 import { state } from "./state";
 
+const PROJECT_SOURCES_UPDATED_EVENT = "corpuswright:project-sources-updated";
+
 export interface ProjectSourcePdfHandlingOverride {
   path: string;
   pdfProfile: ProjectSourcePdfProfile;
@@ -31,6 +33,15 @@ export interface ProjectSourceImportResult {
 
 export interface ProjectSourceRemovalResult {
   removedCount: number;
+}
+
+export interface ProjectSourceSelectionActionSummary {
+  totalSelected: number;
+  allSelectedArePdfs: boolean;
+  usablePdfCount: number;
+  extractablePdfCount: number;
+  reextractablePdfCount: number;
+  failedPdfCount: number;
 }
 
 export function pathKey(path: string): string {
@@ -166,6 +177,7 @@ export function reasonLabel(code: string): string {
     case "review_recommended": return "text extracted with warnings";
     case "text_extraction_failed": return "text extraction failed";
     case "extraction_cancelled": return "Extraction cancelled";
+    case "processing_warning": return "processing warning";
     case "processed_ok": return "processed";
     case "processed_with_warnings": return "processed with warnings";
     case "low_text_density": return "low text density";
@@ -197,6 +209,7 @@ export function reasonDescription(code: string): string | null {
     case "force_ocr_planned": return "Full-page OCR is planned for this PDF.";
     case "text_extraction_failed": return "Text extraction failed.";
     case "extraction_cancelled": return "Extraction was cancelled.";
+    case "processing_warning": return "Processed text was generated with warnings.";
     case "low_text_density": return "Initial PDF diagnostics marked embedded text quality as suspicious.";
     case "layout_warning": return "Layout-aware extraction was used; inspect line order before export.";
     case "many_repeated_artifacts": return "Repeated extraction artefacts were reported.";
@@ -287,6 +300,22 @@ export function projectSourceSelectionDescriptor(): ProjectSourceSelectionDescri
   };
 }
 
+export async function queryProjectSourceSelectionActionSummary(): Promise<ProjectSourceSelectionActionSummary | null> {
+  if (!state.activeProject || !hasProjectSourceSelection()) return null;
+  return invoke<ProjectSourceSelectionActionSummary>("query_project_source_selection_action_summary_command", {
+    rootPath: state.activeProject.rootPath,
+    selection: projectSourceSelectionDescriptor(),
+  });
+}
+
+export async function resolveSelectedProjectPdfPaths(): Promise<string[]> {
+  if (!state.activeProject || !hasProjectSourceSelection()) return [];
+  return invoke<string[]>("resolve_project_source_selection_pdf_paths_command", {
+    rootPath: state.activeProject.rootPath,
+    selection: projectSourceSelectionDescriptor(),
+  });
+}
+
 export function rememberSelectedProjectSource(source: ProjectSource): void {
   state.selectedProjectSourceIds.add(source.id);
   state.selectedProjectSourcesById.set(source.id, source);
@@ -295,10 +324,6 @@ export function rememberSelectedProjectSource(source: ProjectSource): void {
 export function forgetSelectedProjectSource(sourceId: string): void {
   state.selectedProjectSourceIds.delete(sourceId);
   state.selectedProjectSourcesById.delete(sourceId);
-}
-
-export function selectedProjectSourcePaths(): string[] {
-  return selectedProjectSources().map((source) => source.path);
 }
 
 export function normalizeProjectSource(source: ProjectSource): ProjectSource {
@@ -336,6 +361,7 @@ export async function loadProjectSourcesForActiveProject(offset = 0): Promise<Pr
   }
   const generation = ++state.projectSourceQueryGeneration;
   state.projectSourceQueryPending = true;
+  window.dispatchEvent(new CustomEvent(PROJECT_SOURCES_UPDATED_EVENT));
   try {
     const page = await invoke<ProjectSourcePage>("query_project_sources_command", {
       rootPath: state.activeProject.rootPath,
@@ -356,6 +382,7 @@ export async function loadProjectSourcesForActiveProject(offset = 0): Promise<Pr
   } finally {
     if (generation === state.projectSourceQueryGeneration) {
       state.projectSourceQueryPending = false;
+      window.dispatchEvent(new CustomEvent(PROJECT_SOURCES_UPDATED_EVENT));
     }
   }
 }
