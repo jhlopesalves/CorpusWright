@@ -960,19 +960,11 @@
               <span id="lbl-artifact-results-count">0 found</span>
             </div>
             <div id="artifact-bucket-tabs" class="tabs repeated-artifact-bucket-tabs">
-              <button type="button" class="tab active" data-bucket="suggested">Suggested Removals</button>
-              <button type="button" class="tab" data-bucket="review">Review Carefully</button>
-              <button type="button" class="tab" data-bucket="keep">Probably Keep</button>
-              <button type="button" class="tab" data-bucket="accepted">Accepted Rules</button>
-              <button type="button" class="tab" data-bucket="ignored">Ignored / Kept</button>
-            </div>
-            <div id="repeated-artifact-batch-toolbar" class="repeated-artifact-batch-toolbar hidden">
-              <span id="bulk-selection-count"></span>
-              <button type="button" id="btn-bulk-accept" class="bulk-action-btn bulk-accept hidden">Accept selected</button>
-              <button type="button" id="btn-bulk-keep" class="bulk-action-btn bulk-keep hidden">Keep selected</button>
-              <button type="button" id="btn-bulk-ignore" class="bulk-action-btn bulk-ignore hidden">Ignore selected</button>
-              <button type="button" id="btn-bulk-revert" class="bulk-action-btn bulk-revert hidden">Revert selected</button>
-              <button type="button" id="btn-clear-selection" class="bulk-action-btn bulk-clear hidden">Clear selection</button>
+              <button type="button" class="tab active" data-bucket="suggested">Suggested removals</button>
+              <button type="button" class="tab" data-bucket="review">Review carefully</button>
+              <button type="button" class="tab" data-bucket="keep">Probably keep</button>
+              <button type="button" class="tab" data-bucket="accepted">Marked for removal</button>
+              <button type="button" class="tab" data-bucket="dismissed">Dismissed</button>
             </div>
             <div class="repeated-artifact-table-container">
               <table>
@@ -987,7 +979,7 @@
                 <thead>
                   <tr>
                     <th>
-                      <input type="checkbox" id="chk-select-all-tab" title="Select all candidates in this tab" aria-label="Select all candidates in this tab" disabled />
+                      <input type="checkbox" id="chk-select-all-tab" title="Mark all shown candidates for removal" aria-label="Mark all shown candidates for removal" disabled />
                     </th>
                     <th class="th-candidate-pattern">
                       <button class="sort-header" data-column="text" aria-label="Sort by Candidate or Pattern">
@@ -1045,9 +1037,13 @@
         </div>
 
         <div class="modal-actions repeated-artifact-footer">
-          <span id="lbl-artifact-add-status" style="font-size: 0.85rem; color: var(--text-muted); margin-right: auto;"></span>
-          <button type="button" id="btn-apply-artifact-decisions" class="primary-btn repeated-artifact-apply-btn" title="Apply accepted repeated artefact decisions and close the finder.">Apply Decisions</button>
-          <button type="button" id="btn-close-artifact-modal" class="primary-btn" style="padding: 6px 16px; border-radius: 4px; font-size: 0.9rem;">Close</button>
+          <div class="repeated-artifact-footer-copy">
+            <span id="repeated-artifact-decision-summary">0 marked for removal · 0 dismissed</span>
+            <span id="lbl-artifact-add-status"></span>
+            <span class="repeated-artifact-reassurance">Marking for removal updates cleaning rules. Source files are never modified.</span>
+          </div>
+          <button type="button" id="btn-apply-artifact-decisions" class="primary-btn repeated-artifact-apply-btn" title="Refresh the processed preview and close the finder.">Done</button>
+          <button type="button" id="btn-close-artifact-modal" class="secondary-btn">Close</button>
         </div>
       </div>
     </div>
