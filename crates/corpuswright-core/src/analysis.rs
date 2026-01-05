@@ -1,5 +1,6 @@
 //! Rust-owned corpus analysis and bounded query APIs.
 
+use crate::clean::CleaningConfig;
 use crate::scan::{DocumentRecord, DocumentType};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -53,7 +54,109 @@ static ENGLISH_STOPWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
 #[serde(rename_all = "camelCase")]
 pub enum AnalysisInputSource {
     Processed,
-    Extracted,
+    ProcessedWithSourceTextFallback,
+    SourceTextFallback,
+}
+
+/// Provenance of the text offered to the analysis index for one source.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AnalysisInputProvenance {
+    Processed,
+    SourceTextFallback,
+    EmptyOrFailed,
+}
+
+/// Outcome of resolving one source for analysis.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnalysisInputStatus {
+    Ready,
+    ReadyWithFallback { processed_error: String },
+    Empty,
+    Failed { error: String },
+}
+
+/// One source resolved through the active processing pipeline for analysis.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnalysisInputResolution {
+    pub text: Option<String>,
+    pub provenance: AnalysisInputProvenance,
+    pub source_id: String,
+    pub source_name: String,
+    pub status: AnalysisInputStatus,
+}
+
+/// Resolves one analysis input, preferring the active processed pipeline.
+///
+/// Source text is used only when processed text cannot be produced. An empty
+/// processed result is intentionally excluded rather than replaced with raw
+/// source text.
+pub fn resolve_analysis_input<ProcessedLoader, SourceTextLoader>(
+    record: &DocumentRecord,
+    cleaning_config: &CleaningConfig,
+    load_processed: ProcessedLoader,
+    load_source_text: SourceTextLoader,
+) -> AnalysisInputResolution
+where
+    ProcessedLoader: FnOnce(&DocumentRecord, &CleaningConfig) -> Result<String, String>,
+    SourceTextLoader: FnOnce(&DocumentRecord, &CleaningConfig) -> Result<String, String>,
+{
+    let source_id = record.source_path.to_string_lossy().into_owned();
+    let source_name = record.relative_path.to_string_lossy().into_owned();
+
+    match load_processed(record, cleaning_config) {
+        Ok(text) if !text.trim().is_empty() => AnalysisInputResolution {
+            text: Some(text),
+            provenance: AnalysisInputProvenance::Processed,
+            source_id,
+            source_name,
+            status: AnalysisInputStatus::Ready,
+        },
+        Ok(_) => AnalysisInputResolution {
+            text: None,
+            provenance: AnalysisInputProvenance::EmptyOrFailed,
+            source_id,
+            source_name,
+            status: AnalysisInputStatus::Empty,
+        },
+        Err(processed_error) => match load_source_text(record, cleaning_config) {
+            Ok(text) if !text.trim().is_empty() => AnalysisInputResolution {
+                text: Some(text),
+                provenance: AnalysisInputProvenance::SourceTextFallback,
+                source_id,
+                source_name,
+                status: AnalysisInputStatus::ReadyWithFallback { processed_error },
+            },
+            Ok(_) => AnalysisInputResolution {
+                text: None,
+                provenance: AnalysisInputProvenance::EmptyOrFailed,
+                source_id,
+                source_name,
+                status: AnalysisInputStatus::Empty,
+            },
+            Err(source_error) => AnalysisInputResolution {
+                text: None,
+                provenance: AnalysisInputProvenance::EmptyOrFailed,
+                source_id,
+                source_name,
+                status: AnalysisInputStatus::Failed {
+                    error: format!(
+                        "Processed text failed: {processed_error} Source text failed: {source_error}"
+                    ),
+                },
+            },
+        },
+    }
+}
+
+/// Returns a stable signature for every active processing option and rule.
+pub fn cleaning_config_signature(cleaning_config: &CleaningConfig) -> String {
+    let bytes = serde_json::to_vec(cleaning_config)
+        .expect("CleaningConfig serialization must remain infallible");
+    let hash = bytes.iter().fold(0xcbf29ce484222325u64, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
+    });
+    format!("{hash:016x}")
 }
 
 /// Current phase of a corpus analysis build.
@@ -121,11 +224,11 @@ pub struct CorpusOverviewTotals {
 pub struct CorpusOverviewPopulation {
     pub sources_in_project: Option<usize>,
     pub included_in_analysis: usize,
-    pub processed_text_available: Option<usize>,
-    pub using_extracted_fallback: usize,
+    pub processed_used: usize,
+    pub using_source_text_fallback: usize,
     pub empty_or_failed: usize,
     pub sources_with_warnings: Option<usize>,
-    pub input_source: AnalysisInputSource,
+    pub input_source: String,
     pub reading: String,
 }
 
@@ -292,7 +395,6 @@ pub struct CorpusOverviewBuild {
 #[derive(Debug, Clone, Default)]
 pub struct CorpusOverviewContext {
     pub sources_in_project: Option<usize>,
-    pub processed_text_available: Option<usize>,
     pub sources_with_warnings: Option<usize>,
     pub failed_sources: usize,
     pub config_version: Option<String>,
@@ -302,9 +404,9 @@ pub struct CorpusOverviewContext {
 /// Configuration and snapshot metadata for one analysis build.
 #[derive(Debug, Clone)]
 pub struct AnalysisBuildOptions {
-    pub input_text_source: AnalysisInputSource,
     pub built_at: String,
     pub build_signature: String,
+    pub processing_config_signature: String,
     pub overview_context: CorpusOverviewContext,
 }
 
@@ -319,6 +421,7 @@ pub struct CorpusOverview {
     pub input_text_source: AnalysisInputSource,
     pub built_at: String,
     pub build_signature: String,
+    pub processing_config_signature: String,
     pub skipped_documents: usize,
     pub skipped_pdf_documents: usize,
     pub totals: CorpusOverviewTotals,
@@ -355,8 +458,11 @@ struct AnalysisBuildMetadata {
     source_count: usize,
     total_tokens: u64,
     input_text_source: AnalysisInputSource,
+    processed_documents: usize,
+    source_text_fallback_documents: usize,
     built_at: String,
     build_signature: String,
+    processing_config_signature: String,
     skipped_documents: usize,
     skipped_pdf_documents: usize,
     overview_context: CorpusOverviewContext,
@@ -375,6 +481,11 @@ impl AnalysisCorpus {
     /// Returns the compact summary computed with the index.
     pub fn overview(&self) -> &CorpusOverview {
         &self.overview
+    }
+
+    /// Returns whether active processing settings differ from this snapshot.
+    pub fn is_stale_for_cleaning_config(&self, cleaning_config: &CleaningConfig) -> bool {
+        self.overview.processing_config_signature != cleaning_config_signature(cleaning_config)
     }
 }
 
@@ -895,6 +1006,15 @@ fn finding(
     }
 }
 
+fn analysis_input_label(processed_documents: usize, fallback_documents: usize) -> String {
+    match (processed_documents, fallback_documents) {
+        (0, 0) => "No usable analysis text".to_string(),
+        (0, _) => "Source text fallback".to_string(),
+        (_, 0) => "Processed text".to_string(),
+        (_, fallback) => format!("Processed text; {fallback} using source-text fallback"),
+    }
+}
+
 fn build_overview(
     documents: &[AnalysisDocument],
     terms: &[AnalysisTerm],
@@ -1044,11 +1164,6 @@ fn build_overview(
         },
         |sources| sources.saturating_sub(document_count),
     );
-    let using_extracted_fallback = if metadata.input_text_source == AnalysisInputSource::Extracted {
-        document_count
-    } else {
-        0
-    };
     let population_reading = match sources_in_project {
         Some(sources) if empty_or_failed == 0 && document_count == sources => format!(
             "No empty or failed sources; the analysis population contains all {sources} project sources."
@@ -1200,6 +1315,7 @@ fn build_overview(
         input_text_source: metadata.input_text_source,
         built_at: metadata.built_at.clone(),
         build_signature: metadata.build_signature,
+        processing_config_signature: metadata.processing_config_signature,
         skipped_documents: metadata.skipped_documents,
         skipped_pdf_documents: metadata.skipped_pdf_documents,
         totals: CorpusOverviewTotals {
@@ -1210,11 +1326,14 @@ fn build_overview(
         population: CorpusOverviewPopulation {
             sources_in_project,
             included_in_analysis: document_count,
-            processed_text_available: metadata.overview_context.processed_text_available,
-            using_extracted_fallback,
+            processed_used: metadata.processed_documents,
+            using_source_text_fallback: metadata.source_text_fallback_documents,
             empty_or_failed,
             sources_with_warnings: metadata.overview_context.sources_with_warnings,
-            input_source: metadata.input_text_source,
+            input_source: analysis_input_label(
+                metadata.processed_documents,
+                metadata.source_text_fallback_documents,
+            ),
             reading: population_reading,
         },
         documents: overview_documents,
@@ -1313,11 +1432,10 @@ fn build_overview(
                 "Numbers retained; punctuation delimits tokens except internal apostrophes and hyphens"
                     .to_string(),
             ),
-            input_source: match metadata.input_text_source {
-                AnalysisInputSource::Processed => "Processed text",
-                AnalysisInputSource::Extracted => "Native/extracted text",
-            }
-            .to_string(),
+            input_source: analysis_input_label(
+                metadata.processed_documents,
+                metadata.source_text_fallback_documents,
+            ),
             config_version: metadata.overview_context.config_version,
             snapshot_date: Some(metadata.built_at),
             metadata_attached: metadata.overview_context.metadata_attached,
@@ -1334,13 +1452,13 @@ pub fn build_analysis_corpus<TextLoader, Progress>(
     mut report_progress: Progress,
 ) -> Result<AnalysisCorpus, AnalysisBuildError>
 where
-    TextLoader: FnMut(&DocumentRecord) -> Result<Option<String>, String>,
+    TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
     Progress: FnMut(AnalysisBuildProgress),
 {
     let AnalysisBuildOptions {
-        input_text_source,
         built_at,
         build_signature,
+        processing_config_signature,
         overview_context,
     } = options;
 
@@ -1358,6 +1476,8 @@ where
     let mut total_tokens = 0u64;
     let mut skipped_documents = 0usize;
     let mut skipped_pdf_documents = 0usize;
+    let mut processed_documents = 0usize;
+    let mut source_text_fallback_documents = 0usize;
     report_progress(AnalysisBuildProgress {
         files_done: 0,
         files_total: records.len(),
@@ -1370,7 +1490,18 @@ where
         if cancel.load(AtomicOrdering::Relaxed) {
             return Err(AnalysisBuildError::Cancelled);
         }
-        let text = load_text(record).map_err(AnalysisBuildError::Message)?;
+        let resolution = load_text(record).map_err(AnalysisBuildError::Message)?;
+        let text = match resolution.provenance {
+            AnalysisInputProvenance::Processed => {
+                processed_documents += 1;
+                resolution.text
+            }
+            AnalysisInputProvenance::SourceTextFallback => {
+                source_text_fallback_documents += 1;
+                resolution.text
+            }
+            AnalysisInputProvenance::EmptyOrFailed => None,
+        };
         let Some(text) = text.filter(|value| !value.trim().is_empty()) else {
             skipped_documents += 1;
             if record.document_type == DocumentType::Pdf {
@@ -1467,9 +1598,16 @@ where
         AnalysisBuildMetadata {
             source_count: records.len(),
             total_tokens,
-            input_text_source,
+            input_text_source: match (processed_documents, source_text_fallback_documents) {
+                (0, _) => AnalysisInputSource::SourceTextFallback,
+                (_, 0) => AnalysisInputSource::Processed,
+                _ => AnalysisInputSource::ProcessedWithSourceTextFallback,
+            },
+            processed_documents,
+            source_text_fallback_documents,
             built_at,
             build_signature,
+            processing_config_signature,
             skipped_documents,
             skipped_pdf_documents,
             overview_context,
@@ -1803,6 +1941,7 @@ pub fn query_term_distribution(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
     use std::path::PathBuf;
 
     fn record(name: &str) -> DocumentRecord {
@@ -1818,12 +1957,22 @@ mod tests {
     }
 
     fn build_options() -> AnalysisBuildOptions {
+        let cleaning_config = CleaningConfig::default();
         AnalysisBuildOptions {
-            input_text_source: AnalysisInputSource::Extracted,
             built_at: "2026-01-01T00:00:00Z".to_string(),
             build_signature: "signature".to_string(),
+            processing_config_signature: cleaning_config_signature(&cleaning_config),
             overview_context: CorpusOverviewContext::default(),
         }
+    }
+
+    fn processed_resolution(record: &DocumentRecord, text: &str) -> AnalysisInputResolution {
+        resolve_analysis_input(
+            record,
+            &CleaningConfig::default(),
+            |_, _| Ok(text.to_string()),
+            |_, _| panic!("processed test input must not use fallback"),
+        )
     }
 
     fn corpus_for(texts: &[(&str, &str)]) -> AnalysisCorpus {
@@ -1837,13 +1986,184 @@ mod tests {
             build_options(),
             &AtomicBool::new(false),
             |record| {
-                Ok(text_by_name
-                    .get(record.source_path.to_str().unwrap())
-                    .map(|text| (*text).to_string()))
+                Ok(processed_resolution(
+                    record,
+                    text_by_name
+                        .get(record.source_path.to_str().unwrap())
+                        .copied()
+                        .unwrap_or_default(),
+                ))
             },
             |_| {},
         )
         .unwrap()
+    }
+
+    #[test]
+    fn resolver_uses_active_processed_pipeline_output() {
+        let record = record("processed.txt");
+        let cleaning_config = CleaningConfig {
+            remove_patterns: vec!["REMOVE".to_string()],
+            ..CleaningConfig::default()
+        };
+        let fallback_called = Cell::new(false);
+
+        let resolution = resolve_analysis_input(
+            &record,
+            &cleaning_config,
+            |_, config| Ok(crate::clean::clean_text("keep REMOVE", config)),
+            |_, _| {
+                fallback_called.set(true);
+                Ok("keep REMOVE".to_string())
+            },
+        );
+
+        assert_eq!(resolution.text.as_deref(), Some("keep "));
+        assert_eq!(resolution.provenance, AnalysisInputProvenance::Processed);
+        assert_eq!(resolution.status, AnalysisInputStatus::Ready);
+        assert!(!fallback_called.get());
+    }
+
+    #[test]
+    fn resolver_falls_back_only_when_processing_fails() {
+        let record = record("fallback.txt");
+        let resolution = resolve_analysis_input(
+            &record,
+            &CleaningConfig::default(),
+            |_, _| Err("processing unavailable".to_string()),
+            |_, _| Ok("native source text".to_string()),
+        );
+
+        assert_eq!(
+            resolution.provenance,
+            AnalysisInputProvenance::SourceTextFallback
+        );
+        assert_eq!(resolution.text.as_deref(), Some("native source text"));
+        assert!(matches!(
+            resolution.status,
+            AnalysisInputStatus::ReadyWithFallback { .. }
+        ));
+    }
+
+    #[test]
+    fn empty_processed_output_is_excluded_without_raw_fallback() {
+        let record = record("empty.txt");
+        let fallback_called = Cell::new(false);
+        let resolution = resolve_analysis_input(
+            &record,
+            &CleaningConfig::default(),
+            |_, _| Ok(" \n".to_string()),
+            |_, _| {
+                fallback_called.set(true);
+                Ok("raw text".to_string())
+            },
+        );
+
+        assert_eq!(
+            resolution.provenance,
+            AnalysisInputProvenance::EmptyOrFailed
+        );
+        assert_eq!(resolution.status, AnalysisInputStatus::Empty);
+        assert_eq!(resolution.text, None);
+        assert!(!fallback_called.get());
+    }
+
+    #[test]
+    fn provenance_counts_reconcile_for_mixed_corpus() {
+        let records = vec![
+            record("processed.txt"),
+            record("fallback.txt"),
+            record("empty.txt"),
+        ];
+        let mut options = build_options();
+        options.overview_context.sources_in_project = Some(records.len());
+        let corpus = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| {
+                let name = record.relative_path.to_string_lossy();
+                Ok(match name.as_ref() {
+                    "processed.txt" => processed_resolution(record, "processed words"),
+                    "fallback.txt" => resolve_analysis_input(
+                        record,
+                        &CleaningConfig::default(),
+                        |_, _| Err("processing unavailable".to_string()),
+                        |_, _| Ok("fallback words".to_string()),
+                    ),
+                    _ => processed_resolution(record, ""),
+                })
+            },
+            |_| {},
+        )
+        .unwrap();
+        let population = &corpus.overview().population;
+
+        assert_eq!(population.processed_used, 1);
+        assert_eq!(population.using_source_text_fallback, 1);
+        assert_eq!(population.included_in_analysis, 2);
+        assert_eq!(population.empty_or_failed, 1);
+        assert_eq!(
+            population.included_in_analysis,
+            population.processed_used + population.using_source_text_fallback
+        );
+        assert_eq!(
+            population.sources_in_project.unwrap(),
+            population.included_in_analysis + population.empty_or_failed
+        );
+        assert_eq!(
+            population.input_source,
+            "Processed text; 1 using source-text fallback"
+        );
+        assert_eq!(
+            corpus.overview().build.input_source,
+            "Processed text; 1 using source-text fallback"
+        );
+    }
+
+    #[test]
+    fn cleaning_rule_changes_analysed_token_count_after_rebuild() {
+        let records = vec![record("rules.txt")];
+        let build = |cleaning_config: &CleaningConfig| {
+            let mut options = build_options();
+            options.processing_config_signature = cleaning_config_signature(cleaning_config);
+            build_analysis_corpus(
+                &records,
+                options,
+                &AtomicBool::new(false),
+                |record| {
+                    Ok(resolve_analysis_input(
+                        record,
+                        cleaning_config,
+                        |_, config| Ok(crate::clean::clean_text("keep REMOVE", config)),
+                        |_, _| unreachable!("processing succeeds"),
+                    ))
+                },
+                |_| {},
+            )
+            .unwrap()
+        };
+        let before = build(&CleaningConfig::default());
+        let after_config = CleaningConfig {
+            remove_patterns: vec!["REMOVE".to_string()],
+            ..CleaningConfig::default()
+        };
+        let after = build(&after_config);
+
+        assert_eq!(before.overview().total_tokens, 2);
+        assert_eq!(after.overview().total_tokens, 1);
+    }
+
+    #[test]
+    fn cleaning_signature_marks_cached_analysis_stale() {
+        let corpus = corpus_for(&[("stale.txt", "current text")]);
+        let changed = CleaningConfig {
+            remove_patterns: vec!["current".to_string()],
+            ..CleaningConfig::default()
+        };
+
+        assert!(!corpus.is_stale_for_cleaning_config(&CleaningConfig::default()));
+        assert!(corpus.is_stale_for_cleaning_config(&changed));
     }
 
     #[test]
@@ -2051,7 +2371,7 @@ mod tests {
             &records,
             build_options(),
             &AtomicBool::new(false),
-            |_| Ok(Some(text.clone())),
+            |record| Ok(processed_resolution(record, &text)),
             |_| {},
         )
         .unwrap();
@@ -2125,7 +2445,7 @@ mod tests {
             &[],
             build_options(),
             &AtomicBool::new(false),
-            |_| Ok(None),
+            |record| Ok(processed_resolution(record, "")),
             |_| {},
         )
         .unwrap();
@@ -2161,7 +2481,7 @@ mod tests {
             &records,
             build_options(),
             &AtomicBool::new(false),
-            |_| Ok(Some("shared unique".to_string())),
+            |record| Ok(processed_resolution(record, "shared unique")),
             |_| {},
         )
         .unwrap();
@@ -2181,7 +2501,7 @@ mod tests {
             &records,
             build_options(),
             &cancel,
-            |_| Ok(Some("one two".to_string())),
+            |record| Ok(processed_resolution(record, "one two")),
             |progress| {
                 if progress.files_done == 1 {
                     cancel.store(true, AtomicOrdering::Relaxed);
