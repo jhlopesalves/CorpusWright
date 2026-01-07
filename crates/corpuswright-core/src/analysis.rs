@@ -2382,12 +2382,10 @@ mod tests {
 
     #[test]
     fn lexical_diversity_excludes_short_documents() {
-        let short = std::iter::repeat("short")
-            .take(99)
+        let short = std::iter::repeat_n("short", 99)
             .collect::<Vec<_>>()
             .join(" ");
-        let eligible = std::iter::repeat("eligible")
-            .take(100)
+        let eligible = std::iter::repeat_n("eligible", 100)
             .collect::<Vec<_>>()
             .join(" ");
         let corpus = corpus_for(&[

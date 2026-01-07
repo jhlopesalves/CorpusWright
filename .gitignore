@@ -148,6 +148,7 @@ pdf_test.pdf
 
 # Local agents notes
 AGENTS.md
+.agents/
 cargo
 cd
 npm

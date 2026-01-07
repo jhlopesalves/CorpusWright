@@ -889,6 +889,8 @@ fn reflow_paragraph_lines(lines: &[&str]) -> String {
         } else if should_dehyphenate_line_break(&reflowed, line) {
             reflowed.pop();
             reflowed.push_str(line);
+        } else if reflowed.ends_with('-') {
+            reflowed.push_str(line);
         } else {
             reflowed.push(' ');
             reflowed.push_str(line);
@@ -2461,7 +2463,7 @@ mod tests {
             ..CleaningConfig::default()
         };
 
-        assert_eq!(clean_text("Newton-\nRaphson", &config), "Newton- Raphson");
+        assert_eq!(clean_text("Newton-\nRaphson", &config), "Newton-Raphson");
     }
 
     #[test]
@@ -2471,8 +2473,8 @@ mod tests {
             ..CleaningConfig::default()
         };
 
-        assert_eq!(clean_text("COVID-\n19", &config), "COVID- 19");
-        assert_eq!(clean_text("value-\n% change", &config), "value- % change");
+        assert_eq!(clean_text("COVID-\n19", &config), "COVID-19");
+        assert_eq!(clean_text("value-\n% change", &config), "value-% change");
     }
 
     #[test]
@@ -2482,7 +2484,7 @@ mod tests {
             ..CleaningConfig::default()
         };
 
-        assert_eq!(clean_text("well-\nbeing", &config), "well- being");
+        assert_eq!(clean_text("well-\nbeing", &config), "well-being");
     }
 
     #[test]
@@ -2848,5 +2850,43 @@ mod tests {
             clean_text(&doc.to_flat_text(), &config_with_pz),
             "Header\nBody\n\nHeader\nMore body"
         );
+    }
+
+    #[test]
+    fn clean_text_characterisation_test_locks_output_byte_for_byte() {
+        let input = "Page 1
+
+Introduction
+This is a line of natural text.
+cid:12
+Some other line with a DROP pattern inside it.
+Another line with a replacement old_word inside.
+A line with   too    much   space.
+-
+14
+DROP_LITERAL
+A line that might be reflowed-
+across to the next line.
+";
+
+        let config = CleaningConfig {
+            remove_obvious_extraction_noise: true,
+            remove_standalone_page_numbers: true,
+            remove_isolated_page_markers: true,
+            remove_patterns: vec!["DROP".to_string(), "DROP_LITERAL".to_string()],
+            replace_patterns: vec![ReplacementRule {
+                pattern: "old_word".to_string(),
+                replacement: "new_word".to_string(),
+            }],
+            normalize_whitespace_line_endings: true,
+            join_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_text(input, &config);
+
+        let expected = "Page 1\n\nIntroduction This is a line of natural text. Some other line with a pattern inside it. Another line with a replacement new_word inside. A line with too much space. -14 _LITERAL A line that might be reflowedacross to the next line.";
+
+        assert_eq!(cleaned, expected, "Cleaned text output must remain byte-for-byte identical before and after audit refactor.");
     }
 }
