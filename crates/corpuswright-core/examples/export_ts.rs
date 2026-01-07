@@ -7,8 +7,10 @@ use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
 use corpuswright_core::clean::{
-    CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource, RemovalMatcher,
-    RemovalRule, RemovalRuleSource, RemovalScope, ReplacementRule, TableExtractionStrategy,
+    CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
+    PdfOcrQuality, PdfTextSource, ReasonCount, RemovalMatcher, RemovalRule, RemovalRuleSource,
+    RemovalScope, RemovalSummary, RemovedTextExample, ReplacementRule, SkippedRuleNotice,
+    TableExtractionStrategy,
 };
 use corpuswright_core::export::{ExportReport, ExportWarning, ExportWarningKind};
 use corpuswright_core::manifest::{ExportManifest, ManifestFileRecord};
@@ -341,6 +343,66 @@ fn main() {
         &[],
     );
 
+    export_type::<CleaningOperation>(&out_dir, &[], &[]);
+    export_type::<RemovedTextExample>(&out_dir, &[], &[]);
+    export_type::<RemovalSummary>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "CleaningOperation",
+                file: "CleaningOperation",
+            },
+            TypeImport {
+                name: "RemovalRuleSource",
+                file: "RemovalRuleSource",
+            },
+            TypeImport {
+                name: "RemovedTextExample",
+                file: "RemovedTextExample",
+            },
+        ],
+        &[],
+    );
+    export_type::<SkippedRuleNotice>(
+        &out_dir,
+        &[TypeImport {
+            name: "RemovalRuleSource",
+            file: "RemovalRuleSource",
+        }],
+        &[],
+    );
+    export_type::<CleaningCount>(
+        &out_dir,
+        &[TypeImport {
+            name: "CleaningOperation",
+            file: "CleaningOperation",
+        }],
+        &[],
+    );
+    export_type::<ReasonCount>(&out_dir, &[], &[]);
+    export_type::<CleaningReport>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "RemovalSummary",
+                file: "RemovalSummary",
+            },
+            TypeImport {
+                name: "SkippedRuleNotice",
+                file: "SkippedRuleNotice",
+            },
+            TypeImport {
+                name: "CleaningCount",
+                file: "CleaningCount",
+            },
+            TypeImport {
+                name: "ReasonCount",
+                file: "ReasonCount",
+            },
+        ],
+        &[],
+    );
+
     export_type::<PreviewWarningKind>(&out_dir, &[], &[]);
     export_type::<PreviewWarning>(
         &out_dir,
@@ -361,6 +423,10 @@ fn main() {
                 name: "PreviewWarning",
                 file: "PreviewWarning",
             },
+            TypeImport {
+                name: "CleaningReport",
+                file: "CleaningReport",
+            },
         ],
         &[],
     );
@@ -374,6 +440,10 @@ fn main() {
             TypeImport {
                 name: "PreviewWarning",
                 file: "PreviewWarning",
+            },
+            TypeImport {
+                name: "CleaningReport",
+                file: "CleaningReport",
             },
         ],
         &[],

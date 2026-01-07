@@ -1,5 +1,5 @@
 use crate::cache::ExtractionCache;
-use crate::clean::{CleaningConfig, clean_text};
+use crate::clean::CleaningConfig;
 use crate::pdf::{PdfExtractionOptions, clean_extracted_pdf_text};
 use crate::scan::{DocumentRecord, DocumentType};
 use rayon::prelude::*;
@@ -59,6 +59,7 @@ pub struct FilePreview {
     pub included_char_count: usize,
     pub truncated: bool,
     pub warnings: Vec<PreviewWarning>,
+    pub cleaning_report: Option<crate::clean::CleaningReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -69,6 +70,7 @@ pub struct CombinedPreview {
     pub total_files_previewed: usize,
     pub total_characters_included: usize,
     pub warnings: Vec<PreviewWarning>,
+    pub cleaning_report: Option<crate::clean::CleaningReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -329,6 +331,7 @@ pub fn preview_file_with_config(
         text: read.text,
         truncated: read.truncated,
         warnings,
+        cleaning_report: None,
     })
 }
 
@@ -388,6 +391,7 @@ pub fn preview_files_with_config(
         combined_text,
         total_characters_included,
         warnings,
+        cleaning_report: None,
     })
 }
 
@@ -506,7 +510,19 @@ pub fn preview_processed_files(
                 source_text = crate::html::extract_html(&source_text);
             }
 
-            let cleaned = clean_text(&source_text, cleaning_config);
+            let (cleaned, cleaning_report) = {
+                let context = crate::clean::CleaningContext {
+                    source_id: Some(record.relative_path.to_str().unwrap_or("")),
+                    source_label: Some(record.relative_path.to_str().unwrap_or("")),
+                };
+                let (text, report) = crate::clean::clean_text_with_report(
+                    &source_text,
+                    cleaning_config,
+                    Some(&context),
+                );
+                (text, Some(report))
+            };
+
             let included_char_count = cleaned.chars().count();
 
             let mut file_warnings: Vec<PreviewWarning> = extraction_warnings
@@ -541,6 +557,7 @@ pub fn preview_processed_files(
                 text: cleaned,
                 truncated,
                 warnings: file_warnings,
+                cleaning_report,
             })
         })
         .collect();
@@ -563,6 +580,7 @@ pub fn preview_processed_files(
         combined_text,
         total_characters_included,
         warnings: combined_warnings,
+        cleaning_report: None, // Can implement merging later if needed by UI
     })
 }
 
@@ -936,6 +954,7 @@ mod tests {
             total_files_previewed: 0,
             total_characters_included: 0,
             warnings: Vec::new(),
+            cleaning_report: None,
         };
 
         let json = serde_json::to_string(&preview).unwrap();
