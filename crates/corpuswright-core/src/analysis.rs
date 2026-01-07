@@ -1941,6 +1941,7 @@ pub fn query_term_distribution(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::clean::{RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope};
     use std::cell::Cell;
     use std::path::PathBuf;
 
@@ -1963,6 +1964,19 @@ mod tests {
             build_signature: "signature".to_string(),
             processing_config_signature: cleaning_config_signature(&cleaning_config),
             overview_context: CorpusOverviewContext::default(),
+        }
+    }
+
+    fn anywhere_literal_rule(text: &str) -> RemovalRule {
+        RemovalRule {
+            id: "rule-1".to_string(),
+            label: format!("Anywhere: {text}"),
+            source: RemovalRuleSource::PromotedRepeatedArtifact,
+            matcher: RemovalMatcher::Literal {
+                text: text.to_string(),
+            },
+            scope: RemovalScope::Anywhere,
+            enabled: true,
         }
     }
 
@@ -2021,6 +2035,31 @@ mod tests {
         assert_eq!(resolution.text.as_deref(), Some("keep "));
         assert_eq!(resolution.provenance, AnalysisInputProvenance::Processed);
         assert_eq!(resolution.status, AnalysisInputStatus::Ready);
+        assert!(!fallback_called.get());
+    }
+
+    #[test]
+    fn resolver_uses_inline_repeated_artifact_removal_rule() {
+        let record = record("inline.txt");
+        let cleaning_config = CleaningConfig {
+            normalize_whitespace_line_endings: true,
+            removal_rules: vec![anywhere_literal_rule("<br />")],
+            ..CleaningConfig::default()
+        };
+        let fallback_called = Cell::new(false);
+
+        let resolution = resolve_analysis_input(
+            &record,
+            &cleaning_config,
+            |_, config| Ok(crate::clean::clean_text("alpha<br /><br />beta", config)),
+            |_, _| {
+                fallback_called.set(true);
+                Ok("alpha<br />beta".to_string())
+            },
+        );
+
+        assert_eq!(resolution.text.as_deref(), Some("alpha beta"));
+        assert_eq!(resolution.provenance, AnalysisInputProvenance::Processed);
         assert!(!fallback_called.get());
     }
 
@@ -2152,6 +2191,52 @@ mod tests {
 
         assert_eq!(before.overview().total_tokens, 2);
         assert_eq!(after.overview().total_tokens, 1);
+    }
+
+    #[test]
+    fn inline_repeated_artifact_rule_is_absent_from_frequency_after_rebuild() {
+        let records = vec![record("inline-frequency.txt")];
+        let cleaning_config = CleaningConfig {
+            normalize_whitespace_line_endings: true,
+            removal_rules: vec![anywhere_literal_rule("<br />")],
+            ..CleaningConfig::default()
+        };
+        let mut options = build_options();
+        options.processing_config_signature = cleaning_config_signature(&cleaning_config);
+        let corpus = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| {
+                Ok(resolve_analysis_input(
+                    record,
+                    &cleaning_config,
+                    |_, config| Ok(crate::clean::clean_text("alpha<br /><br />beta", config)),
+                    |_, _| unreachable!("processing succeeds"),
+                ))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        assert_eq!(corpus.overview().total_tokens, 2);
+        let page = query_frequency_list(
+            &corpus,
+            &FrequencyQuery {
+                selection: AnalysisDocumentSelection::default(),
+                query: "br".to_string(),
+                match_mode: FrequencyMatchMode::Contains,
+                minimum_frequency: 1,
+                token_class: FrequencyTokenClass::All,
+                hide_stopwords: false,
+                sort_key: FrequencySortKey::Frequency,
+                sort_direction: SortDirection::Desc,
+                offset: 0,
+                limit: 10,
+            },
+        );
+
+        assert_eq!(page.total_terms, 0);
     }
 
     #[test]

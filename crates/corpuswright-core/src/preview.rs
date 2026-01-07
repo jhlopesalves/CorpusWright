@@ -731,10 +731,26 @@ fn push_limited(text: &mut String, fragment: &str, chars_seen: &mut usize, targe
 mod tests {
     use super::*;
     use crate::cache::ExtractionCache;
-    use crate::clean::{CleaningConfig, ReplacementRule};
+    use crate::clean::{
+        CleaningConfig, RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope,
+        ReplacementRule,
+    };
     use crate::scan::scan_directory;
     use std::fs;
     use tempfile::tempdir;
+
+    fn anywhere_literal_rule(text: &str) -> RemovalRule {
+        RemovalRule {
+            id: "rule-1".to_string(),
+            label: format!("Anywhere: {text}"),
+            source: RemovalRuleSource::PromotedRepeatedArtifact,
+            matcher: RemovalMatcher::Literal {
+                text: text.to_string(),
+            },
+            scope: RemovalScope::Anywhere,
+            enabled: true,
+        }
+    }
 
     #[test]
     fn previews_one_txt_file() {
@@ -891,6 +907,25 @@ mod tests {
                 .unwrap();
 
         assert!(preview.combined_text.contains("hello new\n\nworld"));
+    }
+
+    #[test]
+    fn processed_preview_applies_inline_repeated_artifact_rule() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), "alpha<br /><br />beta").unwrap();
+        let report = scan_directory(dir.path()).unwrap();
+        let cleaning = CleaningConfig {
+            normalize_whitespace_line_endings: true,
+            removal_rules: vec![anywhere_literal_rule("<br />")],
+            ..CleaningConfig::default()
+        };
+
+        let preview =
+            preview_processed_files(&report.files, &PreviewOptions::default(), &cleaning, None)
+                .unwrap();
+
+        assert!(preview.combined_text.contains("alpha beta"));
+        assert!(!preview.combined_text.contains("<br />"));
     }
 
     #[test]

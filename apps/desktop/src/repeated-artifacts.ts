@@ -25,6 +25,15 @@ import {
   syncDraftCustomRemovalsFromConfig,
   syncRepeatedArtifactRulesSummary,
 } from "./custom-removals.js";
+import {
+  canCreateRepeatedArtifactRule as canAcceptCandidate,
+  createRepeatedArtifactRemovalRule,
+  repeatedArtifactCandidateRuleText,
+  repeatedArtifactCandidateScope,
+  repeatedArtifactMatcherKindForCandidate,
+  removeRepeatedArtifactRulesForCandidate,
+  type RepeatedArtifactDecisionMatcherKind,
+} from "./repeated-artifact-rules.js";
 
 interface RepeatedArtifactCallbacks {
   renderCustomRemovals: () => void;
@@ -41,14 +50,13 @@ interface RepeatedArtifactScanScope {
 
 type ReviewBucket = "suggested" | "review" | "keep" | "accepted" | "dismissed";
 type ReviewDecision = "accepted" | "dismissed";
-type DecisionMatcherKind = "literal" | "normalized_line";
 
 interface DecisionEntry {
   decision: ReviewDecision;
   candidate_signature: string;
   candidate_text: string;
   scope: RemovalScope;
-  matcher_kind: DecisionMatcherKind;
+  matcher_kind: RepeatedArtifactDecisionMatcherKind;
   rule_id: string;
   updated_at: string;
 }
@@ -263,14 +271,6 @@ export function syncRepeatedArtifactSettingsSection(): RepeatedArtifactScanScope
   return scope;
 }
 
-function exactLineRuleId(candidate: RepeatedArtifactCandidate, scope: RemovalScope): string {
-  return `repeated-artifact:${scope}:${candidate.candidate_id}`;
-}
-
-function normalizedLineRuleId(candidate: RepeatedArtifactCandidate, scope: RemovalScope): string {
-  return `repeated-artifact:normalized-line:${scope}:${candidate.candidate_id}`;
-}
-
 function removalRuleDuplicateKey(rule: RemovalRule): string {
   if (rule.matcher.kind === "literal") {
     return `${rule.scope}\0${rule.matcher.text}`;
@@ -279,75 +279,6 @@ function removalRuleDuplicateKey(rule: RemovalRule): string {
     return `${rule.scope}\0normalized_line\0${rule.matcher.normalized_key}`;
   }
   return `${rule.scope}\0${rule.id}`;
-}
-
-function computeCandidateScope(candidate: RepeatedArtifactCandidate): RemovalScope {
-  if (
-    candidate.position_summary_is_page_based &&
-    candidate.position_summary.middle_count === 0
-  ) {
-    const top = candidate.position_summary.top_count;
-    const bot = candidate.position_summary.bottom_count;
-    if (top > 0 && bot === 0) {
-      return "page_top";
-    }
-    if (top === 0 && bot > 0) {
-      return "page_bottom";
-    }
-    if (top > 0 && bot > 0) {
-      return "page_top_or_bottom";
-    }
-  }
-  return "whole_line";
-}
-
-function createExactLineRemovalRule(candidate: RepeatedArtifactCandidate, scope: RemovalScope): RemovalRule {
-  const matcherText = candidate.display_text;
-  return {
-    id: exactLineRuleId(candidate, scope),
-    label: formatRemovalRuleText({
-      id: "",
-      label: "",
-      source: "promoted_repeated_artifact",
-      matcher: {
-        kind: "literal",
-        text: matcherText,
-      },
-      scope,
-      enabled: true,
-    }),
-    source: "promoted_repeated_artifact",
-    matcher: {
-      kind: "literal",
-      text: matcherText,
-    },
-    scope,
-    enabled: true,
-  };
-}
-
-function createNormalizedLineRemovalRule(candidate: RepeatedArtifactCandidate, normalizedKey: string, scope: RemovalScope): RemovalRule {
-  return {
-    id: normalizedLineRuleId(candidate, scope),
-    label: formatRemovalRuleText({
-      id: "",
-      label: "",
-      source: "promoted_repeated_artifact",
-      matcher: {
-        kind: "normalized_line",
-        normalized_key: normalizedKey,
-      },
-      scope,
-      enabled: true,
-    }),
-    source: "promoted_repeated_artifact",
-    matcher: {
-      kind: "normalized_line",
-      normalized_key: normalizedKey,
-    },
-    scope,
-    enabled: true,
-  };
 }
 
 function emptyProjectDecisions(): ProjectDecisions {
@@ -436,6 +367,28 @@ function isRepeatedArtifactRule(rule: RemovalRule): boolean {
   return rule.source === "promoted_repeated_artifact";
 }
 
+function isInlineDecision(candidateId: string, entry: DecisionEntry): boolean {
+  return entry.matcher_kind === "literal" && (
+    candidateId.startsWith("inline_") ||
+    entry.candidate_signature.startsWith("inline_") ||
+    entry.rule_id.includes(":inline_")
+  );
+}
+
+function effectiveDecisionScope(candidateId: string, entry: DecisionEntry): RemovalScope {
+  return isInlineDecision(candidateId, entry) ? "anywhere" : entry.scope;
+}
+
+function ruleIdForDecision(candidateId: string, entry: DecisionEntry, scope: RemovalScope): string {
+  if (entry.rule_id && entry.scope === scope) {
+    return entry.rule_id;
+  }
+  if (entry.matcher_kind === "normalized_line") {
+    return `repeated-artifact:normalized-line:${scope}:${candidateId}`;
+  }
+  return `repeated-artifact:${scope}:${candidateId}`;
+}
+
 function removeRepeatedArtifactRulesFromConfig(): void {
   state.activeCleaningConfig.removal_rules = state.activeCleaningConfig.removal_rules.filter(rule => !isRepeatedArtifactRule(rule));
   state.tempRemovalRules = state.tempRemovalRules.filter(rule => !isRepeatedArtifactRule(rule));
@@ -444,7 +397,8 @@ function removeRepeatedArtifactRulesFromConfig(): void {
 function createRuleFromDecision(candidateId: string, entry: DecisionEntry): RemovalRule | null {
   const candidateText = entry.candidate_text.trim();
   if (!candidateText) return null;
-  const ruleId = entry.rule_id || `repeated-artifact:${entry.scope}:${candidateId}`;
+  const scope = effectiveDecisionScope(candidateId, entry);
+  const ruleId = ruleIdForDecision(candidateId, entry, scope);
   const matcher = entry.matcher_kind === "normalized_line"
     ? { kind: "normalized_line" as const, normalized_key: candidateText }
     : { kind: "literal" as const, text: candidateText };
@@ -455,12 +409,12 @@ function createRuleFromDecision(candidateId: string, entry: DecisionEntry): Remo
       label: "",
       source: "promoted_repeated_artifact",
       matcher,
-      scope: entry.scope,
+      scope,
       enabled: true,
     }),
     source: "promoted_repeated_artifact",
     matcher,
-    scope: entry.scope,
+    scope,
     enabled: true,
   };
 }
@@ -480,9 +434,17 @@ export function syncAcceptedRulesIntoConfig(): void {
   removeRepeatedArtifactRulesFromConfig();
   const existingRuleIds = new Set(state.activeCleaningConfig.removal_rules.map(rule => rule.id));
   const existingRuleKeys = new Set(state.activeCleaningConfig.removal_rules.map(removalRuleDuplicateKey));
+  let migratedDecision = false;
 
   for (const [candidateId, entry] of Object.entries(projectDecisions.decisions)) {
     if (entry.decision !== "accepted") continue;
+    const scope = effectiveDecisionScope(candidateId, entry);
+    const ruleId = ruleIdForDecision(candidateId, entry, scope);
+    if (entry.scope !== scope || entry.rule_id !== ruleId) {
+      entry.scope = scope;
+      entry.rule_id = ruleId;
+      migratedDecision = true;
+    }
     const rule = createRuleFromDecision(candidateId, entry);
     if (!rule) continue;
     const ruleKey = removalRuleDuplicateKey(rule);
@@ -492,6 +454,9 @@ export function syncAcceptedRulesIntoConfig(): void {
     existingRuleKeys.add(ruleKey);
   }
 
+  if (migratedDecision) {
+    void saveProjectDecisions(state.activeProject.rootPath, projectDecisions);
+  }
   syncDraftCustomRemovalsFromConfig(state.activeCleaningConfig);
 }
 
@@ -502,7 +467,8 @@ export function syncDecisionsWithActiveRules(): void {
   let changed = false;
   for (const [candidateId, entry] of Object.entries(projectDecisions.decisions)) {
     if (entry.decision !== "accepted") continue;
-    const ruleId = entry.rule_id || `repeated-artifact:${entry.scope}:${candidateId}`;
+    const scope = effectiveDecisionScope(candidateId, entry);
+    const ruleId = ruleIdForDecision(candidateId, entry, scope);
     if (!activeRuleIds.has(ruleId)) {
       delete projectDecisions.decisions[candidateId];
       changed = true;
@@ -514,24 +480,15 @@ export function syncDecisionsWithActiveRules(): void {
   }
 }
 
-function matcherKindForCandidate(candidate: RepeatedArtifactCandidate): DecisionMatcherKind {
-  return candidate.kind === "normalized_line" ? "normalized_line" : "literal";
-}
-
-function getCandidateRuleText(candidate: RepeatedArtifactCandidate): string {
-  return candidate.kind === "normalized_line"
-    ? (candidate.normalized_key || "").trim()
-    : candidate.display_text;
-}
-
-function canAcceptCandidate(candidate: RepeatedArtifactCandidate): boolean {
-  return getCandidateRuleText(candidate).trim().length > 0;
-}
-
 function removeRulesForCandidate(candidateId: string): void {
-  const suffix = `:${candidateId}`;
-  state.activeCleaningConfig.removal_rules = state.activeCleaningConfig.removal_rules.filter(rule => !rule.id.endsWith(suffix));
-  state.tempRemovalRules = state.tempRemovalRules.filter(rule => !rule.id.endsWith(suffix));
+  state.activeCleaningConfig.removal_rules = removeRepeatedArtifactRulesForCandidate(
+    state.activeCleaningConfig.removal_rules,
+    candidateId
+  );
+  state.tempRemovalRules = removeRepeatedArtifactRulesForCandidate(
+    state.tempRemovalRules,
+    candidateId
+  );
 }
 
 function cloneRemovalRule(rule: RemovalRule): RemovalRule {
@@ -542,12 +499,22 @@ function cloneRemovalRule(rule: RemovalRule): RemovalRule {
 }
 
 function addRuleForCandidate(candidate: RepeatedArtifactCandidate, scope: RemovalScope): RemovalRule | null {
-  const ruleText = getCandidateRuleText(candidate).trim();
+  const ruleText = repeatedArtifactCandidateRuleText(candidate).trim();
   if (!ruleText) return null;
 
-  const rule = candidate.kind === "normalized_line"
-    ? createNormalizedLineRemovalRule(candidate, ruleText, scope)
-    : createExactLineRemovalRule(candidate, scope);
+  const matcher = candidate.kind === "normalized_line"
+    ? { kind: "normalized_line" as const, normalized_key: ruleText }
+    : { kind: "literal" as const, text: candidate.display_text };
+  const label = formatRemovalRuleText({
+    id: "",
+    label: "",
+    source: "promoted_repeated_artifact",
+    matcher,
+    scope,
+    enabled: true,
+  });
+  const rule = createRepeatedArtifactRemovalRule(candidate, label, scope);
+  if (!rule) return null;
 
   removeRulesForCandidate(candidate.candidate_id);
 
@@ -571,9 +538,9 @@ function buildDecisionEntry(candidate: RepeatedArtifactCandidate, decision: Revi
   return {
     decision,
     candidate_signature: candidate.candidate_id,
-    candidate_text: getCandidateRuleText(candidate),
+    candidate_text: repeatedArtifactCandidateRuleText(candidate),
     scope,
-    matcher_kind: matcherKindForCandidate(candidate),
+    matcher_kind: repeatedArtifactMatcherKindForCandidate(candidate),
     rule_id: ruleId,
     updated_at: new Date().toISOString(),
   };
@@ -581,7 +548,7 @@ function buildDecisionEntry(candidate: RepeatedArtifactCandidate, decision: Revi
 
 function markCandidateForRemoval(candidate: RepeatedArtifactCandidate): boolean {
   if (!canAcceptCandidate(candidate)) return false;
-  const scope = computeCandidateScope(candidate);
+  const scope = repeatedArtifactCandidateScope(candidate);
   const rule = addRuleForCandidate(candidate, scope);
   if (!rule) return false;
   projectDecisions.decisions[candidate.candidate_id] = buildDecisionEntry(candidate, "accepted", scope, rule.id);
@@ -600,7 +567,7 @@ function dismissCandidate(candidate: RepeatedArtifactCandidate): boolean {
   const existing = projectDecisions.decisions[candidate.candidate_id];
   if (existing?.decision === "dismissed") return false;
   removeRulesForCandidate(candidate.candidate_id);
-  const scope = computeCandidateScope(candidate);
+  const scope = repeatedArtifactCandidateScope(candidate);
   projectDecisions.decisions[candidate.candidate_id] = buildDecisionEntry(candidate, "dismissed", scope, "");
   return true;
 }
