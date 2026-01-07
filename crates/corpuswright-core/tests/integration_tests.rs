@@ -56,8 +56,8 @@ fn test_end_to_end_corpus_pipeline() {
         if file.relative_path.to_string_lossy().contains("dirty.txt") {
             let processed_lower = file.text.to_lowercase();
             assert!(
-                !processed_lower.contains("page "),
-                "Preview should not contain page indicators"
+                processed_lower.contains("page 99"),
+                "Flat preview should keep page indicators without page metadata"
             );
         }
     }
