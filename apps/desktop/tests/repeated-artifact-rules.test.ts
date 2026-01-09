@@ -3,7 +3,7 @@ import {
   repeatedArtifactCandidateScope,
   repeatedArtifactMatcherKindForCandidate,
   removeRepeatedArtifactRulesForCandidate,
-} from "../src/repeated-artifact-rules.js";
+} from "../src/repeated-artifact-rules.ts";
 import type { RepeatedArtifactCandidate } from "../src/generated/RepeatedArtifactCandidate.js";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -69,6 +69,7 @@ const inlineRule = createRepeatedArtifactRemovalRule(
   "Anywhere: <br />"
 );
 assert(inlineRule !== null, "inline candidate should produce a rule");
+assert(inlineRule.enabled, "inline candidate should produce an enabled rule");
 assert(inlineRule.scope === "anywhere", "inline candidate should use anywhere scope");
 assert(inlineRule.matcher.kind === "literal", "inline candidate should use a literal matcher");
 assert(inlineRule.matcher.text === "<br />", "inline literal text should be preserved");
@@ -108,6 +109,17 @@ const emptyInlineRule = createRepeatedArtifactRemovalRule(
   "Anywhere:"
 );
 assert(emptyInlineRule === null, "empty inline candidates cannot produce rules");
+
+const multilineInlineRule = createRepeatedArtifactRemovalRule(
+  candidate({
+    candidate_id: "inline_multiline",
+    kind: "inline_artifact",
+    display_text: "line one\nline two",
+    normalized_key: "",
+  }),
+  "Inline literal with a line break"
+);
+assert(multilineInlineRule === null, "multiline inline candidates cannot produce rules");
 
 const remainingRules = removeRepeatedArtifactRulesForCandidate(
   [

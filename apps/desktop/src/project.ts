@@ -11,6 +11,7 @@ import { dom } from "./dom";
 import { loadProjectSourcesForActiveProject, projectSourceTotalCount } from "./sources";
 import { state, type ActiveProject } from "./state";
 import { clearDecisions, loadDecisionsForProject } from "./repeated-artifacts";
+import { formatRemovalRuleMigrationSummary } from "./removal-rule-migration.ts";
 import { hideWorkbenchSwitcher, resetWorkbenchForProject } from "./workbench";
 
 interface RecentProject {
@@ -114,7 +115,7 @@ function showWelcome(message = ""): void {
 async function activateProject(project: ActiveProject, scanSourceRoot: boolean): Promise<void> {
   state.activeProject = project;
   state.analysisCorpus = null;
-  await loadDecisionsForProject(project.rootPath);
+  const decisionMigration = await loadDecisionsForProject(project.rootPath);
   dom.welcomeScreen.classList.add("hidden");
   dom.projectWorkspace.classList.remove("hidden");
   dom.menuCloseProject.classList.remove("hidden");
@@ -141,6 +142,10 @@ async function activateProject(project: ActiveProject, scanSourceRoot: boolean):
     if (projectSourceTotalCount() > 0) {
       dom.statusBar.textContent = `Project opened: ${project.name}`;
     }
+  }
+  const migrationStatus = formatRemovalRuleMigrationSummary(decisionMigration);
+  if (migrationStatus) {
+    dom.statusBar.textContent = `${dom.statusBar.textContent} ${migrationStatus}`;
   }
 }
 
