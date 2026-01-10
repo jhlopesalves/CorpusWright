@@ -2051,14 +2051,14 @@ mod tests {
         let resolution = resolve_analysis_input(
             &record,
             &cleaning_config,
-            |_, config| Ok(crate::clean::clean_text("alpha<br /><br />beta", config)),
+            |_, config| Ok(crate::clean::clean_text("foo<br />bar", config)),
             |_, _| {
                 fallback_called.set(true);
-                Ok("alpha<br />beta".to_string())
+                Ok("foo<br />bar".to_string())
             },
         );
 
-        assert_eq!(resolution.text.as_deref(), Some("alpha beta"));
+        assert_eq!(resolution.text.as_deref(), Some("foo bar"));
         assert_eq!(resolution.provenance, AnalysisInputProvenance::Processed);
         assert!(!fallback_called.get());
     }
