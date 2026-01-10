@@ -756,8 +756,8 @@ mod tests {
     use super::*;
     use crate::cache::ExtractionCache;
     use crate::clean::{
-        CleaningConfig, RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope,
-        ReplacementRule,
+        CleaningConfig, CleaningOperation, RemovalMatcher, RemovalRule, RemovalRuleSource,
+        RemovalScope, ReplacementRule,
     };
     use crate::scan::scan_directory;
     use std::fs;
@@ -963,6 +963,57 @@ mod tests {
             .unwrap();
         assert_eq!(inline_summary.occurrence_count, 3);
         assert_eq!(inline_summary.examples.len(), 3);
+    }
+
+    #[test]
+    fn combined_preview_keeps_normalisation_summaries_per_source() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), "\u{FB01}\u{00AD}").unwrap();
+        fs::write(dir.path().join("b.txt"), "\u{FB01}\u{FB02}\u{00AD}\u{200B}").unwrap();
+        let report = scan_directory(dir.path()).unwrap();
+        let cleaning = CleaningConfig {
+            expand_ligatures: true,
+            remove_invisible_controls: true,
+            ..CleaningConfig::default()
+        };
+
+        let preview =
+            preview_processed_files(&report.files, &PreviewOptions::default(), &cleaning, None)
+                .unwrap();
+        let combined_report = preview.cleaning_report.as_ref().unwrap();
+        let normalisation_summaries = combined_report
+            .summaries
+            .iter()
+            .filter(|summary| summary.operation == CleaningOperation::Normalization)
+            .collect::<Vec<_>>();
+
+        assert_eq!(normalisation_summaries.len(), 4);
+        for reason in ["ligature_expansion", "invisible_control_removal"] {
+            let summaries = normalisation_summaries
+                .iter()
+                .filter(|summary| {
+                    summary.reason_codes.len() == 1 && summary.reason_codes[0].as_str() == reason
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(summaries.len(), 2);
+            assert!(summaries.iter().all(|summary| summary.source_id.is_some()));
+            assert_eq!(
+                summaries
+                    .iter()
+                    .map(|summary| summary.occurrence_count)
+                    .sum::<usize>(),
+                3
+            );
+            assert_eq!(
+                combined_report
+                    .totals_by_reason
+                    .iter()
+                    .find(|count| count.reason == reason)
+                    .unwrap()
+                    .count,
+                3
+            );
+        }
     }
 
     #[test]

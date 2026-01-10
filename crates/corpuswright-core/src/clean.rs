@@ -34,6 +34,8 @@ lazy_static! {
 }
 
 const MAX_ROMAN_PAGE_MARKER_VALUE: u32 = 399;
+const MAX_REMOVED_TEXT_EXAMPLES: usize = 20;
+const MAX_REMOVED_TEXT_EXAMPLE_CHARS: usize = 200;
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[ts(export)]
@@ -77,6 +79,10 @@ pub enum PdfOcrQuality {
 pub struct CleaningConfig {
     #[serde(default)]
     pub normalize_whitespace_line_endings: bool,
+    #[serde(default)]
+    pub expand_ligatures: bool,
+    #[serde(default)]
+    pub remove_invisible_controls: bool,
     #[serde(default)]
     pub repair_wrapped_pdf_line_breaks: bool,
     #[serde(default)]
@@ -267,6 +273,7 @@ pub enum CleaningOperation {
     TrimLines,
     CollapseBlankLines,
     LineReflow,
+    Normalization,
     Other,
 }
 
@@ -412,7 +419,7 @@ impl CleaningReport {
                 });
                 summary.occurrence_count += item.occurrence_count;
                 for example in &item.examples {
-                    if summary.examples.len() >= 20 {
+                    if summary.examples.len() >= MAX_REMOVED_TEXT_EXAMPLES {
                         break;
                     }
                     summary.examples.push(example.clone());
@@ -530,6 +537,25 @@ impl CleaningReportCollector {
         });
     }
 
+    fn record_normalisation(
+        &mut self,
+        reason_code: &'static str,
+        context: Option<&CleaningContext>,
+        occurrence_count: usize,
+        examples: Vec<RemovedTextExample>,
+    ) {
+        self.events.push(RemovalEvent {
+            operation: CleaningOperation::Normalization,
+            rule_id: None,
+            rule_source: None,
+            reason_codes: vec![reason_code.to_string()],
+            source_id: context.and_then(|c| c.source_id.map(str::to_string)),
+            source_label: context.and_then(|c| c.source_label.map(str::to_string)),
+            occurrence_count,
+            examples,
+        });
+    }
+
     pub fn finish(self) -> CleaningReport {
         use std::collections::BTreeMap;
         let mut summary_map: BTreeMap<String, RemovalSummary> = BTreeMap::new();
@@ -563,12 +589,16 @@ impl CleaningReportCollector {
 
             summary.occurrence_count += event.occurrence_count;
             for example in event.examples {
-                if summary.examples.len() >= 20 {
+                if summary.examples.len() >= MAX_REMOVED_TEXT_EXAMPLES {
                     break;
                 }
                 let mut truncated_text = example.removed_text;
-                if truncated_text.chars().count() > 200 {
-                    truncated_text = truncated_text.chars().take(197).collect::<String>() + "...";
+                if truncated_text.chars().count() > MAX_REMOVED_TEXT_EXAMPLE_CHARS {
+                    truncated_text = truncated_text
+                        .chars()
+                        .take(MAX_REMOVED_TEXT_EXAMPLE_CHARS - 3)
+                        .collect::<String>()
+                        + "...";
                 }
                 summary.examples.push(RemovedTextExample {
                     removed_text: truncated_text,
@@ -597,6 +627,153 @@ impl CleaningReportCollector {
     }
 }
 
+struct NormalisationEffect {
+    reason_code: &'static str,
+    occurrence_count: usize,
+    examples: Vec<RemovedTextExample>,
+}
+
+struct EarlyNormalisationResult {
+    text: String,
+    effects: Vec<NormalisationEffect>,
+}
+
+fn apply_early_normalisations(
+    text: &str,
+    config: &CleaningConfig,
+    apply_lowercase: bool,
+) -> EarlyNormalisationResult {
+    let mut cleaned = text.to_string();
+    let mut effects = Vec::new();
+
+    if config.expand_ligatures {
+        let (expanded, effect) = expand_typographic_ligatures(&cleaned);
+        cleaned = expanded;
+        if let Some(effect) = effect {
+            effects.push(effect);
+        }
+    }
+
+    if config.remove_invisible_controls {
+        let (without_controls, effect) = remove_configured_invisible_controls(&cleaned);
+        cleaned = without_controls;
+        if let Some(effect) = effect {
+            effects.push(effect);
+        }
+    }
+
+    if config.replace_diacritics {
+        // Decompose to NFD before stripping combining diacritical marks.
+        cleaned = cleaned
+            .nfd()
+            .filter(|c| !matches!(*c, '\u{0300}'..='\u{036f}'))
+            .collect::<String>();
+    }
+
+    if config.normalize_unicode {
+        // NFC is the most common composed Unicode form.
+        cleaned = cleaned.nfc().collect::<String>();
+    }
+
+    if apply_lowercase && config.lowercase {
+        cleaned = cleaned.to_lowercase();
+    }
+
+    EarlyNormalisationResult {
+        text: cleaned,
+        effects,
+    }
+}
+
+fn expand_typographic_ligatures(text: &str) -> (String, Option<NormalisationEffect>) {
+    let mut expanded = String::with_capacity(text.len());
+    let mut occurrence_count = 0;
+    let mut examples = Vec::new();
+    let mut line_number = 1;
+
+    for character in text.chars() {
+        let replacement = match character {
+            '\u{FB00}' => Some("ff"),
+            '\u{FB01}' => Some("fi"),
+            '\u{FB02}' => Some("fl"),
+            '\u{FB03}' => Some("ffi"),
+            '\u{FB04}' => Some("ffl"),
+            '\u{FB05}' | '\u{FB06}' => Some("st"),
+            _ => None,
+        };
+
+        if let Some(replacement) = replacement {
+            expanded.push_str(replacement);
+            occurrence_count += 1;
+            if examples.len() < MAX_REMOVED_TEXT_EXAMPLES {
+                examples.push(RemovedTextExample {
+                    removed_text: format!("{character} -> {replacement}"),
+                    line_number: Some(line_number),
+                    page_number: None,
+                });
+            }
+        } else {
+            expanded.push(character);
+        }
+
+        if character == '\n' {
+            line_number += 1;
+        }
+    }
+
+    let effect = (occurrence_count > 0).then_some(NormalisationEffect {
+        reason_code: "ligature_expansion",
+        occurrence_count,
+        examples,
+    });
+    (expanded, effect)
+}
+
+fn remove_configured_invisible_controls(text: &str) -> (String, Option<NormalisationEffect>) {
+    let mut cleaned = String::with_capacity(text.len());
+    let mut occurrence_count = 0;
+    let mut examples = Vec::new();
+    let mut line_number = 1;
+
+    for character in text.chars() {
+        let should_remove = matches!(
+            character,
+            '\u{0000}'..='\u{0008}'
+                | '\u{000B}'..='\u{000C}'
+                | '\u{000E}'..='\u{001F}'
+                | '\u{007F}'..='\u{009F}'
+                | '\u{00AD}'
+                | '\u{200B}'
+                | '\u{2060}'
+                | '\u{FEFF}'
+        );
+
+        if should_remove {
+            occurrence_count += 1;
+            if examples.len() < MAX_REMOVED_TEXT_EXAMPLES {
+                examples.push(RemovedTextExample {
+                    removed_text: format!("U+{:04X}", character as u32),
+                    line_number: Some(line_number),
+                    page_number: None,
+                });
+            }
+        } else {
+            cleaned.push(character);
+        }
+
+        if character == '\n' {
+            line_number += 1;
+        }
+    }
+
+    let effect = (occurrence_count > 0).then_some(NormalisationEffect {
+        reason_code: "invisible_control_removal",
+        occurrence_count,
+        examples,
+    });
+    (cleaned, effect)
+}
+
 /// Processes a string according to the given cleaning rules.
 pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
     clean_text_impl(text, config, None, None)
@@ -615,21 +792,20 @@ pub(crate) fn clean_text_impl(
         cleaned = cleaned.replace("\r\n", "\n").replace('\r', "\n");
     }
 
-    if config.replace_diacritics {
-        // Decompose to NFD before stripping combining diacritical marks.
-        cleaned = cleaned
-            .nfd()
-            .filter(|c| !matches!(*c, '\u{0300}'..='\u{036f}'))
-            .collect::<String>();
-    }
-
-    if config.normalize_unicode {
-        // NFC is the most common composed Unicode form.
-        cleaned = cleaned.nfc().collect::<String>();
-    }
-
-    if config.lowercase {
-        cleaned = cleaned.to_lowercase();
+    let normalised = apply_early_normalisations(&cleaned, config, true);
+    cleaned = normalised.text;
+    if let Some(col) = collector.as_deref_mut() {
+        for mut effect in normalised.effects {
+            for example in &mut effect.examples {
+                example.page_number = context.and_then(|value| value.page_number);
+            }
+            col.record_normalisation(
+                effect.reason_code,
+                context,
+                effect.occurrence_count,
+                effect.examples,
+            );
+        }
     }
 
     if config.remove_url_only_lines {
@@ -742,62 +918,15 @@ pub fn clean_text_with_report(
 /// each page independently and joining the cleaned pages produces exactly the
 /// same flat output.
 fn prepare_line_for_rule_matching(line_text: &str, config: &CleaningConfig) -> String {
-    let mut cleaned = line_text.to_string();
-
-    if config.replace_diacritics {
-        cleaned = cleaned
-            .nfd()
-            .filter(|c| !matches!(*c, '\u{0300}'..='\u{036f}'))
-            .collect::<String>();
-    }
-
-    if config.normalize_unicode {
-        cleaned = cleaned.nfc().collect::<String>();
-    }
-
-    if config.lowercase {
-        cleaned = cleaned.to_lowercase();
-    }
-
-    cleaned
+    apply_early_normalisations(line_text, config, true).text
 }
 
 fn prepare_rule_text_for_matching(text: &str, config: &CleaningConfig) -> String {
-    let mut cleaned = text.to_string();
-
-    if config.replace_diacritics {
-        cleaned = cleaned
-            .nfd()
-            .filter(|c| !matches!(*c, '\u{0300}'..='\u{036f}'))
-            .collect::<String>();
-    }
-
-    if config.normalize_unicode {
-        cleaned = cleaned.nfc().collect::<String>();
-    }
-
-    if config.lowercase {
-        cleaned = cleaned.to_lowercase();
-    }
-
-    cleaned
+    apply_early_normalisations(text, config, true).text
 }
 
 fn prepare_normalized_key_for_rule_matching(key: &str, config: &CleaningConfig) -> String {
-    let mut cleaned = key.to_string();
-
-    if config.replace_diacritics {
-        cleaned = cleaned
-            .nfd()
-            .filter(|c| !matches!(*c, '\u{0300}'..='\u{036f}'))
-            .collect::<String>();
-    }
-
-    if config.normalize_unicode {
-        cleaned = cleaned.nfc().collect::<String>();
-    }
-
-    cleaned
+    apply_early_normalisations(key, config, false).text
 }
 
 fn should_remove_line_by_rules(
@@ -1633,7 +1762,7 @@ fn replace_anywhere_literals_with_report(
             cleaned.push(' ');
             last_end = start + matched.len();
             occurrence_count += 1;
-            if examples.len() < 20 {
+            if examples.len() < MAX_REMOVED_TEXT_EXAMPLES {
                 examples.push(RemovedTextExample {
                     removed_text: matched.to_string(),
                     line_number: Some(line_number),
@@ -2352,6 +2481,8 @@ mod tests {
         let mut value = serde_json::to_value(CleaningConfig::default()).unwrap();
         let object = value.as_object_mut().unwrap();
         object.remove("normalize_whitespace_line_endings");
+        object.remove("expand_ligatures");
+        object.remove("remove_invisible_controls");
         object.remove("repair_wrapped_pdf_line_breaks");
         object.remove("remove_isolated_page_markers");
         object.remove("remove_url_only_lines");
@@ -2361,6 +2492,8 @@ mod tests {
 
         let config: CleaningConfig = serde_json::from_value(value).unwrap();
         assert!(!config.normalize_whitespace_line_endings);
+        assert!(!config.expand_ligatures);
+        assert!(!config.remove_invisible_controls);
         assert!(!config.repair_wrapped_pdf_line_breaks);
         assert!(!config.remove_isolated_page_markers);
         assert!(!config.remove_url_only_lines);
@@ -2916,6 +3049,287 @@ mod tests {
     }
 
     #[test]
+    fn normalisation_flags_are_independent_and_disabled_paths_are_byte_exact() {
+        let input = "of\u{FB01}\u{00AD}ce\r\n";
+        assert_eq!(clean_text(input, &CleaningConfig::default()), input);
+
+        let ligatures_only = CleaningConfig {
+            expand_ligatures: true,
+            ..CleaningConfig::default()
+        };
+        assert_eq!(clean_text(input, &ligatures_only), "offi\u{00AD}ce\r\n");
+
+        let controls_only = CleaningConfig {
+            remove_invisible_controls: true,
+            ..CleaningConfig::default()
+        };
+        assert_eq!(clean_text(input, &controls_only), "of\u{FB01}ce\r\n");
+    }
+
+    #[test]
+    fn expands_only_supported_typographic_ligatures() {
+        let config = CleaningConfig {
+            expand_ligatures: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text(
+                "\u{FB00} \u{FB01} \u{FB02} \u{FB03} \u{FB04} \u{FB05} \u{FB06}",
+                &config
+            ),
+            "ff fi fl ffi ffl st st"
+        );
+    }
+
+    #[test]
+    fn ligature_expansion_preserves_semantic_letters() {
+        let config = CleaningConfig {
+            expand_ligatures: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(clean_text("æ œ ß \u{FB01}", &config), "æ œ ß fi");
+    }
+
+    #[test]
+    fn removes_only_configured_invisible_controls() {
+        let config = CleaningConfig {
+            remove_invisible_controls: true,
+            ..CleaningConfig::default()
+        };
+        let removed = (0x0000..=0x001F)
+            .filter(|code| !matches!(*code, 0x0009 | 0x000A | 0x000D))
+            .chain(0x007F..=0x009F)
+            .chain([0x00AD, 0x200B, 0x2060, 0xFEFF])
+            .filter_map(char::from_u32)
+            .collect::<String>();
+
+        assert_eq!(clean_text(&removed, &config), "");
+        assert_eq!(
+            clean_text("\u{007F}\u{0085}\u{009F}\t\n\u{00A0}", &config),
+            "\t\n\u{00A0}"
+        );
+    }
+
+    #[test]
+    fn invisible_control_removal_preserves_layout_joiners_and_replacement_character() {
+        let config = CleaningConfig {
+            remove_invisible_controls: true,
+            ..CleaningConfig::default()
+        };
+        let preserved = "\t\n\r\u{200C}\u{200D}\u{00A0}\u{FFFD}";
+
+        assert_eq!(clean_text(preserved, &config), preserved);
+    }
+
+    #[test]
+    fn invisible_control_removal_preserves_cr_without_line_ending_normalisation() {
+        let config = CleaningConfig {
+            remove_invisible_controls: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(clean_text("a\rb\r\nc", &config), "a\rb\r\nc");
+    }
+
+    #[test]
+    fn line_ending_options_still_normalise_cr_with_invisible_control_removal() {
+        for config in [
+            CleaningConfig {
+                remove_invisible_controls: true,
+                normalize_line_endings: true,
+                ..CleaningConfig::default()
+            },
+            CleaningConfig {
+                remove_invisible_controls: true,
+                normalize_whitespace_line_endings: true,
+                ..CleaningConfig::default()
+            },
+        ] {
+            assert_eq!(clean_text("a\rb\r\nc", &config), "a\nb\nc");
+        }
+    }
+
+    #[test]
+    fn invisible_control_removal_preserves_existing_wrapped_line_repair() {
+        let config = CleaningConfig {
+            remove_invisible_controls: true,
+            repair_wrapped_pdf_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text("inter-\u{00AD}\nnational", &config),
+            "international"
+        );
+    }
+
+    #[test]
+    fn soft_hyphen_only_wrapped_break_uses_existing_non_hyphenated_reflow() {
+        let with_soft_hyphen = CleaningConfig {
+            remove_invisible_controls: true,
+            repair_wrapped_pdf_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+        let existing_reflow = CleaningConfig {
+            repair_wrapped_pdf_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text("exam\u{00AD}\nple", &with_soft_hyphen),
+            clean_text("exam\nple", &existing_reflow)
+        );
+        assert_eq!(
+            clean_text("exam\u{00AD}\nple", &with_soft_hyphen),
+            "exam ple"
+        );
+    }
+
+    #[test]
+    fn rule_matching_uses_shared_early_normalisations() {
+        let normalized_input = "of\u{FB01}\u{00AD}ce";
+        let enabled = CleaningConfig {
+            expand_ligatures: true,
+            remove_invisible_controls: true,
+            removal_rules: vec![whole_line_rule("office")],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(
+            clean_text(&format!("{normalized_input}\nBody"), &enabled),
+            "Body"
+        );
+
+        let disabled = CleaningConfig {
+            removal_rules: vec![whole_line_rule("office")],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(
+            clean_text(&format!("{normalized_input}\nBody"), &disabled),
+            format!("{normalized_input}\nBody")
+        );
+
+        let normalised_rule_text = CleaningConfig {
+            expand_ligatures: true,
+            remove_invisible_controls: true,
+            removal_rules: vec![whole_line_rule(normalized_input)],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(clean_text("office\nBody", &normalised_rule_text), "Body");
+
+        let normalised_key = CleaningConfig {
+            expand_ligatures: true,
+            remove_invisible_controls: true,
+            removal_rules: vec![normalized_line_rule(normalized_input)],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(clean_text("office\nBody", &normalised_key), "Body");
+
+        let page_zone = CleaningConfig {
+            expand_ligatures: true,
+            remove_invisible_controls: true,
+            removal_rules: vec![page_zone_rule("office", RemovalScope::PageTop)],
+            ..CleaningConfig::default()
+        };
+        let document = StructuredDocument::from_pages([format!("{normalized_input}\nBody")]);
+        assert_eq!(
+            clean_structured_document(&document, &page_zone).text,
+            "Body"
+        );
+
+        let disabled_page_zone = CleaningConfig {
+            removal_rules: vec![page_zone_rule("office", RemovalScope::PageTop)],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(
+            clean_structured_document(&document, &disabled_page_zone).text,
+            format!("{normalized_input}\nBody")
+        );
+    }
+
+    #[test]
+    fn normalisation_audit_aggregates_counts_and_caps_examples() {
+        let input = format!("{}{}", "\u{FB01}".repeat(25), "\u{00AD}".repeat(25));
+        let config = CleaningConfig {
+            expand_ligatures: true,
+            remove_invisible_controls: true,
+            ..CleaningConfig::default()
+        };
+        let (_, report) = clean_text_with_report(&input, &config, None);
+
+        assert_eq!(report.summaries.len(), 2);
+        for (reason, expected_example) in [
+            ("ligature_expansion", "\u{FB01} -> fi"),
+            ("invisible_control_removal", "U+00AD"),
+        ] {
+            let summary = report
+                .summaries
+                .iter()
+                .find(|summary| {
+                    summary.reason_codes.len() == 1 && summary.reason_codes[0].as_str() == reason
+                })
+                .unwrap();
+            assert_eq!(summary.operation, CleaningOperation::Normalization);
+            assert_eq!(summary.occurrence_count, 25);
+            assert_eq!(summary.examples.len(), MAX_REMOVED_TEXT_EXAMPLES);
+            assert_eq!(summary.examples[0].removed_text, expected_example);
+        }
+        assert_eq!(
+            report
+                .totals_by_operation
+                .iter()
+                .find(|count| count.operation == CleaningOperation::Normalization)
+                .unwrap()
+                .count,
+            50
+        );
+    }
+
+    #[test]
+    fn normalisation_output_is_identical_with_or_without_audit_flat_and_structured() {
+        let config = CleaningConfig {
+            expand_ligatures: true,
+            remove_invisible_controls: true,
+            removal_rules: vec![page_zone_rule("never", RemovalScope::PageTop)],
+            ..CleaningConfig::default()
+        };
+        let input = "of\u{FB01}\u{00AD}ce\u{200B}";
+        let without = clean_text_impl(input, &config, None, None);
+        let mut flat_collector = CleaningReportCollector::default();
+        let with = clean_text_impl(input, &config, None, Some(&mut flat_collector));
+        assert_eq!(with, without);
+
+        let document = StructuredDocument::from_pages([input, "\u{FB02}ow\u{2060}"]);
+        let structured_without = clean_structured_document_impl(&document, &config, None, None);
+        let mut structured_collector = CleaningReportCollector::default();
+        let structured_with = clean_structured_document_impl(
+            &document,
+            &config,
+            Some(&mut structured_collector),
+            None,
+        );
+        assert_eq!(structured_with, structured_without);
+    }
+
+    #[test]
+    fn normalisations_preserve_flat_and_structured_parity() {
+        let document = StructuredDocument::from_pages([
+            "of\u{FB01}\u{00AD}ce\nfirst",
+            "\u{FB02}ow\u{200B}\nsecond",
+        ]);
+        let config = CleaningConfig {
+            expand_ligatures: true,
+            remove_invisible_controls: true,
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_structured_document(&document, &config);
+        assert_eq!(cleaned.text, clean_text(&document.to_flat_text(), &config));
+        assert_eq!(cleaned.text, page_texts(cleaned.clone()).join("\n\n"));
+    }
+
+    #[test]
     fn replaces_diacritics() {
         let config = CleaningConfig {
             replace_diacritics: true,
@@ -3314,6 +3728,8 @@ mod tests {
     fn test_cleaning_config_defaults() {
         let config = CleaningConfig::default();
         assert!(!config.normalize_whitespace_line_endings);
+        assert!(!config.expand_ligatures);
+        assert!(!config.remove_invisible_controls);
         assert!(!config.repair_wrapped_pdf_line_breaks);
         assert!(!config.remove_isolated_page_markers);
         assert!(!config.remove_url_only_lines);
