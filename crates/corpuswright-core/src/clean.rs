@@ -2478,6 +2478,218 @@ mod tests {
     }
 
     #[test]
+    fn anywhere_literal_rule_preserves_token_boundaries_and_normalises_spacing() {
+        let config = CleaningConfig {
+            normalize_whitespace_line_endings: true,
+            removal_rules: vec![anywhere_literal_rule("<br />")],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(clean_text("foo<br />bar", &config), "foo bar");
+        assert_eq!(clean_text("foo<br /><br />bar", &config), "foo bar");
+
+        let spaced = CleaningConfig {
+            normalize_whitespace_line_endings: true,
+            removal_rules: vec![anywhere_literal_rule("X")],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(clean_text("left X right", &spaced), "left right");
+
+        let without_normalisation = CleaningConfig {
+            removal_rules: vec![anywhere_literal_rule("X")],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(
+            clean_text("left X right", &without_normalisation),
+            "left   right"
+        );
+    }
+
+    #[test]
+    fn anywhere_literal_rule_keeps_existing_global_normalisation_interactions() {
+        assert_eq!(
+            clean_text(
+                "keep tag remove TAG",
+                &CleaningConfig {
+                    removal_rules: vec![anywhere_literal_rule("TAG")],
+                    ..CleaningConfig::default()
+                }
+            ),
+            "keep tag remove  "
+        );
+        assert_eq!(
+            clean_text(
+                "keep TAG",
+                &CleaningConfig {
+                    lowercase: true,
+                    normalize_whitespace_line_endings: true,
+                    removal_rules: vec![anywhere_literal_rule("TAG")],
+                    ..CleaningConfig::default()
+                }
+            ),
+            "keep"
+        );
+        assert_eq!(
+            clean_text(
+                "keep Página",
+                &CleaningConfig {
+                    replace_diacritics: true,
+                    normalize_whitespace_line_endings: true,
+                    removal_rules: vec![anywhere_literal_rule("Página")],
+                    ..CleaningConfig::default()
+                }
+            ),
+            "keep"
+        );
+        assert_eq!(
+            clean_text(
+                "keep e\u{301}",
+                &CleaningConfig {
+                    normalize_unicode: true,
+                    normalize_whitespace_line_endings: true,
+                    removal_rules: vec![anywhere_literal_rule("é")],
+                    ..CleaningConfig::default()
+                }
+            ),
+            "keep"
+        );
+    }
+
+    #[test]
+    fn invalid_anywhere_rules_are_disabled_when_deserialised() {
+        for rule in [
+            normalized_anywhere_rule("page #"),
+            anywhere_literal_rule(""),
+            anywhere_literal_rule("   "),
+            anywhere_literal_rule("one\ntwo"),
+            anywhere_literal_rule("one\rtwo"),
+        ] {
+            let json = serde_json::to_value(rule).unwrap();
+            let migrated: RemovalRule = serde_json::from_value(json).unwrap();
+            assert!(!migrated.enabled);
+            let second: RemovalRule =
+                serde_json::from_value(serde_json::to_value(&migrated).unwrap()).unwrap();
+            assert_eq!(second, migrated);
+        }
+
+        let valid: RemovalRule =
+            serde_json::from_value(serde_json::to_value(anywhere_literal_rule("<br />")).unwrap())
+                .unwrap();
+        assert!(valid.enabled);
+
+        let disabled: RemovalRule = serde_json::from_value(
+            serde_json::to_value(normalized_anywhere_rule("page #")).unwrap(),
+        )
+        .unwrap();
+        let (_, report) = clean_text_with_report(
+            "Page 1\nBody",
+            &CleaningConfig {
+                removal_rules: vec![disabled],
+                ..CleaningConfig::default()
+            },
+            None,
+        );
+        assert!(report.skipped_rules.is_empty());
+    }
+
+    #[test]
+    fn anywhere_literal_audit_counts_occurrences_and_caps_examples() {
+        let input = std::iter::repeat_n("<br />", 25).collect::<String>();
+        let config = CleaningConfig {
+            removal_rules: vec![anywhere_literal_rule("<br />")],
+            ..CleaningConfig::default()
+        };
+        let (cleaned, report) = clean_text_with_report(&input, &config, None);
+
+        assert_eq!(cleaned, " ".repeat(25));
+        assert_eq!(report.summaries.len(), 1);
+        let summary = &report.summaries[0];
+        assert_eq!(summary.rule_id.as_deref(), Some("rule-1"));
+        assert_eq!(summary.operation, CleaningOperation::StructuredRemovalRule);
+        assert_eq!(summary.reason_codes, vec!["inline_literal"]);
+        assert_eq!(summary.occurrence_count, 25);
+        assert_eq!(summary.examples.len(), 20);
+        assert_eq!(summary.examples[0].removed_text, "<br />");
+    }
+
+    #[test]
+    fn anywhere_literal_audit_truncates_long_examples() {
+        let literal = "x".repeat(250);
+        let config = CleaningConfig {
+            removal_rules: vec![anywhere_literal_rule(&literal)],
+            ..CleaningConfig::default()
+        };
+        let (_, report) = clean_text_with_report(&literal, &config, None);
+        let example = &report.summaries[0].examples[0].removed_text;
+        assert_eq!(example.chars().count(), 200);
+        assert!(example.ends_with("..."));
+    }
+
+    #[test]
+    fn anywhere_literal_output_is_identical_with_or_without_audit() {
+        let input = "foo<br />bar\nleft <br /> right";
+        let config = CleaningConfig {
+            normalize_whitespace_line_endings: true,
+            removal_rules: vec![anywhere_literal_rule("<br />")],
+            ..CleaningConfig::default()
+        };
+        let without = clean_text_impl(input, &config, None, None);
+        let mut collector = CleaningReportCollector::default();
+        let with = clean_text_impl(input, &config, None, Some(&mut collector));
+        assert_eq!(with, without);
+        assert_eq!(with, "foo bar\nleft right");
+    }
+
+    #[test]
+    fn page_aware_anywhere_literal_audit_records_page_numbers() {
+        let document =
+            StructuredDocument::from_pages(["Header\nfoo<br />bar", "Header\nleft<br />right"]);
+        let config = CleaningConfig {
+            normalize_whitespace_line_endings: true,
+            removal_rules: vec![
+                anywhere_literal_rule("<br />"),
+                page_zone_rule("never matches", RemovalScope::PageTop),
+            ],
+            ..CleaningConfig::default()
+        };
+        let without = clean_structured_document_impl(&document, &config, None, None);
+        let mut collector = CleaningReportCollector::default();
+        let with = clean_structured_document_impl(&document, &config, Some(&mut collector), None);
+        let report = collector.finish();
+
+        assert_eq!(with, without);
+        assert_eq!(with.text, "Header\nfoo bar\n\nHeader\nleft right");
+        let summary = report
+            .summaries
+            .iter()
+            .find(|summary| summary.rule_id.as_deref() == Some("rule-1"))
+            .unwrap();
+        assert_eq!(summary.occurrence_count, 2);
+        assert_eq!(
+            summary
+                .examples
+                .iter()
+                .map(|example| example.page_number)
+                .collect::<Vec<_>>(),
+            vec![Some(1), Some(2)]
+        );
+    }
+
+    #[test]
+    fn enabled_invalid_anywhere_rule_is_reported_as_runtime_skip() {
+        let config = CleaningConfig {
+            removal_rules: vec![normalized_anywhere_rule("page #")],
+            ..CleaningConfig::default()
+        };
+        let (cleaned, report) = clean_text_with_report("Page 1\nBody", &config, None);
+        assert_eq!(cleaned, "Page 1\nBody");
+        assert_eq!(report.skipped_rules.len(), 1);
+        assert_eq!(
+            report.skipped_rules[0].rule_id.as_deref(),
+            Some("normalised-anywhere")
+        );
+    }
+
+    #[test]
     fn anywhere_literal_rule_is_literal_not_regex() {
         let config = CleaningConfig {
             removal_rules: vec![anywhere_literal_rule("a.c[1]")],
