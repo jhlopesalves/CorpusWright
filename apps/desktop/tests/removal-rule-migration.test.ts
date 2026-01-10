@@ -26,6 +26,7 @@ const rules: RemovalRule[] = [
   literalRule("empty-inline", ""),
   literalRule("whitespace-inline", "   "),
   literalRule("multiline-inline", "one\ntwo"),
+  literalRule("bare-cr-inline", "one\rtwo"),
   {
     id: "normalised-inline",
     label: "normalised-inline",
@@ -41,10 +42,30 @@ assert(first.rules[0].enabled, "valid literal Anywhere rules must remain enabled
 assert(!first.rules[1].enabled, "empty inline literals must be disabled");
 assert(!first.rules[2].enabled, "whitespace-only inline literals must be disabled");
 assert(!first.rules[3].enabled, "multiline inline literals must be disabled");
-assert(!first.rules[4].enabled, "normalised-line Anywhere rules must be disabled");
+assert(first.rules.length === rules.length, "invalid inline literals must be retained");
+assert(first.rules[4].id === "bare-cr-inline", "bare-CR inline literals must be retained");
+assert(!first.rules[4].enabled, "bare-CR inline literals must be disabled");
+assert(!first.rules[5].enabled, "normalised-line Anywhere rules must be disabled");
 assert(first.summary.inlineLiteralRuleCount === 1, "the valid inline interpretation must be reported");
-assert(first.summary.disabledInvalidRuleCount === 4, "all invalid combinations must be reported");
-assert(first.summary.notices.length === 5, "each migrated rule must have a reason");
+assert(first.summary.disabledInvalidRuleCount === 5, "all invalid combinations must be reported");
+assert(first.summary.notices.length === 6, "each migrated rule must have a reason");
+
+const lfNotice = first.summary.notices.find(notice => notice.ruleId === "multiline-inline");
+const bareCrNotice = first.summary.notices.find(notice => notice.ruleId === "bare-cr-inline");
+assert(lfNotice !== undefined, "LF inline literals must produce a migration warning");
+assert(bareCrNotice !== undefined, "bare-CR inline literals must produce a migration warning");
+assert(
+  bareCrNotice.reason === "multiline_inline_literal_disabled",
+  "bare-CR inline literals must expose the multiline reason code"
+);
+assert(
+  bareCrNotice.message === "Inline literal text cannot contain line breaks; the rule was disabled.",
+  "bare-CR inline literals must expose a readable reason"
+);
+assert(
+  bareCrNotice.reason === lfNotice.reason && bareCrNotice.message === lfNotice.message,
+  "bare-CR and LF inline literals must expose the same migration warning"
+);
 
 const second = migrateRemovalRules(first.rules);
 assert(
