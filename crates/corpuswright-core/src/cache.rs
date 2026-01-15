@@ -430,7 +430,6 @@ fn apply_document_processing_impl(
         let pdf_config = if has_reliable_page_metadata {
             pdf_cleanup_config = cleaning_config.clone();
             pdf_cleanup_config.remove_repeated_pdf_headers_footers = false;
-            pdf_cleanup_config.auto_apply_strong_header_footer = false;
             &pdf_cleanup_config
         } else {
             cleaning_config

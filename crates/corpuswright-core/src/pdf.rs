@@ -33,8 +33,7 @@ impl PdfExtractionOptions {
             strategy: config.pdf_embedded_text_strategy,
             text_source: config.pdf_text_source,
             ocr_quality: config.pdf_ocr_quality,
-            remove_repeated_headers_footers: config.remove_repeated_pdf_headers_footers
-                || config.auto_apply_strong_header_footer,
+            remove_repeated_headers_footers: config.remove_repeated_pdf_headers_footers,
             remove_page_labels: config.remove_pdf_page_labels
                 || config.remove_isolated_page_markers,
             remove_symbol_heavy_artifacts: config.remove_pdf_symbol_heavy_artifacts
@@ -876,8 +875,7 @@ struct PdfCleanupOptions {
 impl PdfCleanupOptions {
     fn from_cleaning_config(config: &CleaningConfig) -> Self {
         Self {
-            remove_repeated_headers_footers: config.remove_repeated_pdf_headers_footers
-                || config.auto_apply_strong_header_footer,
+            remove_repeated_headers_footers: config.remove_repeated_pdf_headers_footers,
             remove_page_labels: config.remove_pdf_page_labels
                 || config.remove_isolated_page_markers,
             remove_symbol_heavy_artifacts: config.remove_pdf_symbol_heavy_artifacts
@@ -2584,7 +2582,7 @@ mod tests {
     }
 
     #[test]
-    fn test_pdf_cleanup_repeated_headers_footers() {
+    fn repeated_header_footer_fallback_requires_explicit_flag_and_unreliable_metadata() {
         require_pdfium!();
         let pages = vec![
             vec![
@@ -2656,8 +2654,18 @@ mod tests {
                 .any(|w| w.contains("Removed repeated PDF header/footer"))
         );
 
+        let (fallback_disabled_text, fallback_disabled_warnings) =
+            clean_extracted_pdf_text(&result_reliable.text, &CleaningConfig::default());
+        assert!(fallback_disabled_text.contains("Repeated Header"));
+        assert!(fallback_disabled_text.contains("Repeated Footer"));
+        assert!(
+            !fallback_disabled_warnings
+                .iter()
+                .any(|warning| warning.contains("Removed repeated PDF header/footer"))
+        );
+
         let fallback_config = CleaningConfig {
-            auto_apply_strong_header_footer: true,
+            remove_repeated_pdf_headers_footers: true,
             ..CleaningConfig::default()
         };
         let (fallback_text, fallback_warnings) =
