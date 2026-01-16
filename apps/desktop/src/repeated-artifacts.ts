@@ -19,6 +19,8 @@ import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCand
 import type { RepeatedArtifactScanConfig } from "./generated/RepeatedArtifactScanConfig.js";
 import type { RepeatedArtifactScanDiagnostics } from "./generated/RepeatedArtifactScanDiagnostics.js";
 import type { RepeatedArtifactScanReport } from "./generated/RepeatedArtifactScanReport.js";
+import type { RepeatedArtifactPromotion } from "./generated/RepeatedArtifactPromotion.js";
+import type { RepeatedArtifactMatcherKind } from "./generated/RepeatedArtifactMatcherKind.js";
 import type { RemovalScope } from "./generated/RemovalScope.js";
 import {
   effectivePersistedDecisionScope,
@@ -33,19 +35,13 @@ import {
   syncDraftCustomRemovalsFromConfig,
   syncRepeatedArtifactRulesSummary,
 } from "./custom-removals.js";
-import {
-  canCreateRepeatedArtifactRule as canAcceptCandidate,
-  createRepeatedArtifactRemovalRule,
-  repeatedArtifactCandidateRuleText,
-  repeatedArtifactCandidateScope,
-  repeatedArtifactMatcherKindForCandidate,
-  removeRepeatedArtifactRulesForCandidate,
-  type RepeatedArtifactDecisionMatcherKind,
-} from "./repeated-artifact-rules.js";
+import { removalRuleDuplicateKey } from "./removal-rule-utils.js";
+import { reconcileAutoPromotedRules } from "./auto-promoted-rules.js";
 
 interface RepeatedArtifactCallbacks {
   renderCustomRemovals: () => void;
   schedulePreviewUpdate: (delay: number) => void;
+  updateWordCount: () => void;
 }
 
 interface RepeatedArtifactScanScope {
@@ -64,7 +60,7 @@ interface DecisionEntry {
   candidate_signature: string;
   candidate_text: string;
   scope: RemovalScope;
-  matcher_kind: RepeatedArtifactDecisionMatcherKind;
+  matcher_kind: RepeatedArtifactMatcherKind;
   rule_id: string;
   updated_at: string;
 }
@@ -75,6 +71,7 @@ interface ProjectDecisions {
 }
 
 export let projectDecisions: ProjectDecisions = { version: 1, decisions: {} };
+let promotionsByCandidateId = new Map<string, RepeatedArtifactPromotion>();
 
 const RISK_RANK: Record<string, number> = {
   "strong_header_footer_candidate": 5,
@@ -276,17 +273,44 @@ export function syncRepeatedArtifactSettingsSection(): RepeatedArtifactScanScope
   dom.btnFindRepeatedArtifactsSettings.disabled = !scope.canScan;
   dom.repeatedArtifactScopeHelp.textContent = scope.helperText;
   syncRepeatedArtifactRulesSummary();
+  if (state.activeCleaningConfig.auto_apply_strong_header_footer) {
+    const count = state.autoPromotedRemovalRules.length;
+    const suffix = count === 0
+      ? " Auto-apply is enabled; no runtime rules are active until a qualifying scan completes."
+      : ` Auto-applied from the latest scan: ${count.toLocaleString()}.`;
+    dom.repeatedArtifactRulesSummary.textContent += suffix;
+  }
   return scope;
 }
 
-function removalRuleDuplicateKey(rule: RemovalRule): string {
-  if (rule.matcher.kind === "literal") {
-    return `${rule.scope}\0${rule.matcher.text}`;
-  }
-  if (rule.matcher.kind === "normalized_line") {
-    return `${rule.scope}\0normalized_line\0${rule.matcher.normalized_key}`;
-  }
-  return `${rule.scope}\0${rule.id}`;
+function promotionForCandidate(candidate: RepeatedArtifactCandidate): RepeatedArtifactPromotion | undefined {
+  return promotionsByCandidateId.get(candidate.candidate_id);
+}
+
+function canAcceptCandidate(candidate: RepeatedArtifactCandidate): boolean {
+  return promotionForCandidate(candidate)?.can_promote === true;
+}
+
+function removeRepeatedArtifactRulesForCandidate(
+  rules: RemovalRule[],
+  candidateId: string
+): RemovalRule[] {
+  const suffix = `:${candidateId}`;
+  return rules.filter(rule => !rule.id.endsWith(suffix));
+}
+
+export function syncRuntimeAutoPromotedRules(): void {
+  const dismissedCandidateIds = new Set(
+    Object.entries(projectDecisions.decisions)
+      .filter(([, entry]) => entry.decision === "dismissed")
+      .map(([candidateId]) => candidateId)
+  );
+  state.autoPromotedRemovalRules = reconcileAutoPromotedRules(
+    state.lastScanAutoPromotedRules,
+    state.activeCleaningConfig.removal_rules,
+    dismissedCandidateIds,
+    state.activeCleaningConfig.auto_apply_strong_header_footer
+  );
 }
 
 function emptyProjectDecisions(): ProjectDecisions {
@@ -421,6 +445,9 @@ export async function loadDecisionsForProject(rootPath: string): Promise<Removal
 
 export function clearDecisions(): void {
   projectDecisions = emptyProjectDecisions();
+  promotionsByCandidateId = new Map();
+  state.lastScanAutoPromotedRules = [];
+  state.autoPromotedRemovalRules = [];
 }
 
 export function syncAcceptedRulesIntoConfig(): void {
@@ -453,6 +480,7 @@ export function syncAcceptedRulesIntoConfig(): void {
     void saveProjectDecisions(state.activeProject.rootPath, projectDecisions);
   }
   syncDraftCustomRemovalsFromConfig(state.activeCleaningConfig);
+  syncRuntimeAutoPromotedRules();
 }
 
 export function syncDecisionsWithActiveRules(): void {
@@ -473,6 +501,7 @@ export function syncDecisionsWithActiveRules(): void {
   if (changed) {
     void saveProjectDecisions(state.activeProject.rootPath, projectDecisions);
   }
+  syncRuntimeAutoPromotedRules();
 }
 
 function removeRulesForCandidate(candidateId: string): void {
@@ -493,23 +522,10 @@ function cloneRemovalRule(rule: RemovalRule): RemovalRule {
   };
 }
 
-function addRuleForCandidate(candidate: RepeatedArtifactCandidate, scope: RemovalScope): RemovalRule | null {
-  const ruleText = repeatedArtifactCandidateRuleText(candidate).trim();
-  if (!ruleText) return null;
-
-  const matcher = candidate.kind === "normalized_line"
-    ? { kind: "normalized_line" as const, normalized_key: ruleText }
-    : { kind: "literal" as const, text: candidate.display_text };
-  const label = formatRemovalRuleText({
-    id: "",
-    label: "",
-    source: "promoted_repeated_artifact",
-    matcher,
-    scope,
-    enabled: true,
-  });
-  const rule = createRepeatedArtifactRemovalRule(candidate, label, scope);
-  if (!rule) return null;
+function addRuleForCandidate(candidate: RepeatedArtifactCandidate): RemovalRule | null {
+  const promotedRule = promotionForCandidate(candidate)?.rule;
+  if (!promotedRule) return null;
+  const rule = cloneRemovalRule(promotedRule);
 
   removeRulesForCandidate(candidate.candidate_id);
 
@@ -529,24 +545,30 @@ function addRuleForCandidate(candidate: RepeatedArtifactCandidate, scope: Remova
   return rule;
 }
 
-function buildDecisionEntry(candidate: RepeatedArtifactCandidate, decision: ReviewDecision, scope: RemovalScope, ruleId: string): DecisionEntry {
+function buildDecisionEntry(
+  candidate: RepeatedArtifactCandidate,
+  promotion: RepeatedArtifactPromotion,
+  decision: ReviewDecision
+): DecisionEntry {
   return {
     decision,
     candidate_signature: candidate.candidate_id,
-    candidate_text: repeatedArtifactCandidateRuleText(candidate),
-    scope,
-    matcher_kind: repeatedArtifactMatcherKindForCandidate(candidate),
-    rule_id: ruleId,
+    candidate_text: promotion.rule_text,
+    scope: promotion.scope,
+    matcher_kind: promotion.matcher_kind,
+    rule_id: decision === "accepted" ? promotion.rule_id : "",
     updated_at: new Date().toISOString(),
   };
 }
 
 function markCandidateForRemoval(candidate: RepeatedArtifactCandidate): boolean {
   if (!canAcceptCandidate(candidate)) return false;
-  const scope = repeatedArtifactCandidateScope(candidate);
-  const rule = addRuleForCandidate(candidate, scope);
+  const promotion = promotionForCandidate(candidate);
+  if (!promotion) return false;
+  const rule = addRuleForCandidate(candidate);
   if (!rule) return false;
-  projectDecisions.decisions[candidate.candidate_id] = buildDecisionEntry(candidate, "accepted", scope, rule.id);
+  projectDecisions.decisions[candidate.candidate_id] = buildDecisionEntry(candidate, promotion, "accepted");
+  syncRuntimeAutoPromotedRules();
   return true;
 }
 
@@ -555,15 +577,18 @@ function unmarkCandidateForRemoval(candidate: RepeatedArtifactCandidate): boolea
   if (entry?.decision !== "accepted") return false;
   removeRulesForCandidate(candidate.candidate_id);
   delete projectDecisions.decisions[candidate.candidate_id];
+  syncRuntimeAutoPromotedRules();
   return true;
 }
 
 function dismissCandidate(candidate: RepeatedArtifactCandidate): boolean {
   const existing = projectDecisions.decisions[candidate.candidate_id];
   if (existing?.decision === "dismissed") return false;
+  const promotion = promotionForCandidate(candidate);
+  if (!promotion) return false;
   removeRulesForCandidate(candidate.candidate_id);
-  const scope = repeatedArtifactCandidateScope(candidate);
-  projectDecisions.decisions[candidate.candidate_id] = buildDecisionEntry(candidate, "dismissed", scope, "");
+  projectDecisions.decisions[candidate.candidate_id] = buildDecisionEntry(candidate, promotion, "dismissed");
+  syncRuntimeAutoPromotedRules();
   return true;
 }
 
@@ -571,6 +596,7 @@ function restoreCandidate(candidate: RepeatedArtifactCandidate): boolean {
   const entry = projectDecisions.decisions[candidate.candidate_id];
   if (entry?.decision !== "dismissed") return false;
   delete projectDecisions.decisions[candidate.candidate_id];
+  syncRuntimeAutoPromotedRules();
   return true;
 }
 
@@ -1035,6 +1061,20 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       dom.lblScanTime.textContent = `Done in ${totalElapsed.toFixed(1)}s`;
 
       state.lastScanCandidates = report.candidates;
+      promotionsByCandidateId = new Map(
+        report.promotions.map(promotion => [promotion.candidate_id, promotion])
+      );
+      const previousAutoRuleIds = state.autoPromotedRemovalRules.map(rule => rule.id).join("\0");
+      state.lastScanAutoPromotedRules = report.auto_promoted_rules.map(promotion => ({
+        candidate_id: promotion.candidate_id,
+        rule: cloneRemovalRule(promotion.rule),
+      }));
+      syncRuntimeAutoPromotedRules();
+      const nextAutoRuleIds = state.autoPromotedRemovalRules.map(rule => rule.id).join("\0");
+      if (previousAutoRuleIds !== nextAutoRuleIds) {
+        callbacks.updateWordCount();
+        scheduleProcessedPreviewUpdate();
+      }
       lastDiagnostics = report.diagnostics;
 
       renderDiagnostics(report.diagnostics);

@@ -46,6 +46,7 @@ export const BOOLEAN_CLEANING_CONFIG_KEYS: BooleanCleaningConfigKey[] = [
   "remove_endnotes",
   "remove_comments",
   "remove_table_of_contents",
+  "auto_apply_strong_header_footer",
   "remove_repeated_pdf_headers_footers",
   "remove_pdf_page_labels",
   "remove_pdf_symbol_heavy_artifacts",
@@ -67,6 +68,7 @@ export const ALLOWED_PDF_OCR_QUALITIES = ["Fast", "Balanced", "HighQuality"] as 
 export const ALLOWED_REMOVAL_RULE_SOURCES = [
   "manual",
   "promoted_repeated_artifact",
+  "auto_promoted_repeated_artifact",
   "generated_pdf_cleanup",
 ] as const;
 export const ALLOWED_REMOVAL_SCOPES = ["anywhere", "whole_line", "page_top", "page_bottom", "page_top_or_bottom"] as const;
@@ -109,6 +111,7 @@ export function createDefaultCleaningConfig(): CleaningConfig {
     pdf_text_source: "EmbeddedText",
     pdf_ocr_quality: "Balanced",
     pdf_embedded_text_strategy: "PdfiumFlat",
+    auto_apply_strong_header_footer: false,
     remove_repeated_pdf_headers_footers: false,
     remove_pdf_page_labels: false,
     remove_pdf_symbol_heavy_artifacts: false,
@@ -257,10 +260,13 @@ export function normaliseCleaningConfigWithMigration(raw: unknown): NormalisedCl
   }
 
   if (Array.isArray(obj.removal_rules) && obj.removal_rules.every(isRemovalRule)) {
-    const migrated = migrateRemovalRules(obj.removal_rules.map((rule) => ({
-      ...rule,
-      matcher: { ...rule.matcher },
-    })));
+    const persistedRules = obj.removal_rules
+      .filter(rule => rule.source !== "auto_promoted_repeated_artifact")
+      .map((rule) => ({
+        ...rule,
+        matcher: { ...rule.matcher },
+      }));
+    const migrated = migrateRemovalRules(persistedRules);
     config.removal_rules = migrated.rules;
     migrationSummary = migrated.summary;
   }

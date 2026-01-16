@@ -6,6 +6,7 @@ import {
   getActivePreviewTab,
 } from "./dom";
 import { state } from "./state";
+import { effectiveCleaningConfig } from "./effective-cleaning-config";
 import {
   hasProjectSourceSelection,
   isPreviewableSource,
@@ -149,7 +150,7 @@ async function executeGlobalSearch(): Promise<void> {
       corpusVersion: myVersion,
       query: query,
       isProcessed: isProcessed,
-      cleaningConfig: state.activeCleaningConfig,
+      cleaningConfig: effectiveCleaningConfig(),
       maxHits: 1000
     });
 
