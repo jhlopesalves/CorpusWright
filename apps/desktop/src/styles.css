@@ -4148,6 +4148,8 @@ mark.search-match.current-match {
   transition: background-color 0.15s ease;
 }
 
+/* If tabs ever reach tens of thousands of rows, prefer content-visibility: auto over custom windowing. */
+
 .repeated-artifact-table-container tbody tr:hover {
   background-color: var(--cw-interaction-bg-hover);
 }
