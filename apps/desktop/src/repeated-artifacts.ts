@@ -595,6 +595,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   const selectAllCheckbox = document.getElementById("chk-select-all-tab") as HTMLInputElement | null;
   const decisionSummary = document.getElementById("repeated-artifact-decision-summary") as HTMLSpanElement | null;
   const applyDecisionsButton = document.getElementById("btn-apply-artifact-decisions") as HTMLButtonElement | null;
+  const candidateTableContainer = dom.tblArtifactCandidates.closest(".repeated-artifact-table-container") as HTMLElement | null;
 
   function updateProcessedWarning(): void {
     const isProcessed = getSelectedArtifactTextMode()?.value === "processed";
@@ -662,6 +663,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     parts.push(`Candidate keys: ${diags.total_candidate_keys_before_filtering}`);
     parts.push(`After occurrence filter: ${diags.candidates_after_min_occurrences}`);
     parts.push(`After file filter: ${diags.candidates_after_min_files}`);
+    parts.push(`Before cap: ${diags.candidates_before_cap}`);
     parts.push(`Final: ${diags.final_candidates}`);
 
     const failureParts: string[] = [];
@@ -679,6 +681,9 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
     if (diags.analysed_processed_text && diags.custom_removals_active > 0) {
       text += ` · Processed scan applied ${diags.custom_removals_active} active Custom Removal item(s).`;
+    }
+    if (diags.candidates_truncated > 0) {
+      text += ` · ${diags.candidates_truncated.toLocaleString()} more not shown because Max Candidates limited the result.`;
     }
 
     dom.artifactDiagnostics.textContent = text;
@@ -779,6 +784,12 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     });
   }
 
+  function resetCandidateTableScroll(): void {
+    if (candidateTableContainer) {
+      candidateTableContainer.scrollTop = 0;
+    }
+  }
+
   function currentReviewCandidates(): RepeatedArtifactCandidate[] {
     return filterCandidatesForReview(
       state.lastScanCandidates,
@@ -857,7 +868,13 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     const decisions = Object.values(projectDecisions.decisions);
     const markedCount = decisions.filter(entry => entry.decision === "accepted").length;
     const dismissedCount = decisions.filter(entry => entry.decision === "dismissed").length;
-    decisionSummary.textContent = `${markedCount} marked for removal · ${dismissedCount} dismissed`;
+    const reviewedInScan = state.lastScanCandidates.filter(candidate => (
+      projectDecisions.decisions[candidate.candidate_id]?.decision !== undefined
+    )).length;
+    const progress = state.lastScanCandidates.length > 0
+      ? ` · ${reviewedInScan} of ${state.lastScanCandidates.length} reviewed`
+      : "";
+    decisionSummary.textContent = `${markedCount} marked for removal · ${dismissedCount} dismissed${progress}`;
   }
 
   async function persistDecisions(): Promise<void> {
@@ -909,6 +926,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       if (!category || category === activeCategory) return;
       activeCategory = category;
       focusedCandidateId = null;
+      resetCandidateTableScroll();
       renderCandidates(state.lastScanCandidates, lastDiagnostics);
       dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Select a candidate to inspect examples.</div>`;
     });
@@ -920,6 +938,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       if (!filter || filter === activeDecisionFilter) return;
       activeDecisionFilter = filter;
       focusedCandidateId = null;
+      resetCandidateTableScroll();
       renderCandidates(state.lastScanCandidates, lastDiagnostics);
       dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Select a candidate to inspect examples.</div>`;
     });
@@ -972,12 +991,14 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       include_mixed_text_numbers: dom.chkArtifactMixed.checked,
       include_numeric_dominant: dom.chkArtifactNumeric.checked,
       include_symbol_noise: dom.chkArtifactSymbol.checked,
-      min_occurrences: parseInt(dom.numArtifactMinOcc.value, 10) || 5,
+      min_occurrences: parseInt(dom.numArtifactMinOcc.value, 10) || 3,
       min_files: parseInt(dom.numArtifactMinFiles.value, 10) || 1,
-      max_candidates: parseInt(dom.numArtifactMaxCand.value, 10) || 100,
+      max_candidates: Number.isFinite(parseInt(dom.numArtifactMaxCand.value, 10))
+        ? Math.max(parseInt(dom.numArtifactMaxCand.value, 10), 1)
+        : null,
       max_examples_per_candidate: Math.min(Math.max(parseInt(dom.numArtifactMaxExamples.value, 10) || 25, 1), 100),
-      min_line_chars: 4,
-      max_line_chars: 300,
+      min_line_chars: 2,
+      max_line_chars: 600,
     };
 
     dom.btnRunArtifactScan.style.display = "none";
@@ -1111,7 +1132,11 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     syncDecisionControls(filteredCandidates);
 
     dom.tblArtifactCandidates.innerHTML = "";
-    dom.lblArtifactResultsCount.textContent = `${filteredCandidates.length} shown`;
+    const reviewedCount = candidates.filter(candidate => (
+      projectDecisions.decisions[candidate.candidate_id]?.decision !== undefined
+    )).length;
+    dom.lblArtifactResultsCount.textContent =
+      `${filteredCandidates.length.toLocaleString()} shown · ${reviewedCount.toLocaleString()} of ${candidates.length.toLocaleString()} reviewed`;
 
     if (filteredCandidates.length === 0) {
       let msg = "No candidates in this type and decision filter.";
@@ -1143,7 +1168,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       return;
     }
 
-    let displayCandidates = [...filteredCandidates].sort(compareCandidatesByEvidence);
+    let displayCandidates = [...filteredCandidates];
     if (currentSortColumn) {
       displayCandidates.sort((a, b) => {
         const res = compareCandidates(a, b, currentSortColumn!);
@@ -1154,132 +1179,11 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       });
     }
 
+    if (!isSortUpdate) {
+      resetCandidateTableScroll();
+    }
     displayCandidates.forEach((cand) => {
-      const tr = document.createElement("tr");
-      tr.dataset.id = cand.candidate_id;
-      if (cand.candidate_id === focusedCandidateId) {
-        tr.classList.add("is-focused");
-      }
-
-      const tdCheck = document.createElement("td");
-      tdCheck.style.padding = "6px 8px";
-      tdCheck.style.textAlign = "center";
-      const decision = projectDecisions.decisions[cand.candidate_id]?.decision;
-      if (decision !== "dismissed") {
-        const chk = document.createElement("input");
-        chk.type = "checkbox";
-        chk.checked = decision === "accepted";
-        chk.disabled = !canAcceptCandidate(cand);
-        chk.title = chk.disabled
-          ? "This candidate cannot form a removal rule."
-          : "Mark this candidate for removal.";
-        chk.setAttribute("aria-label", chk.title);
-        chk.addEventListener("click", (event) => {
-          event.stopPropagation();
-        });
-        chk.addEventListener("change", (event) => {
-          event.stopPropagation();
-          const changed = chk.checked
-            ? markCandidateForRemoval(cand)
-            : unmarkCandidateForRemoval(cand);
-          if (!changed) {
-            chk.checked = projectDecisions.decisions[cand.candidate_id]?.decision === "accepted";
-            return;
-          }
-          const message = chk.checked
-            ? "Candidate marked for removal."
-            : "Candidate no longer marked for removal.";
-          void refreshAfterDecision(message, true);
-        });
-        tdCheck.appendChild(chk);
-      }
-
-      const tdText = document.createElement("td");
-      tdText.className = "candidate-text-cell";
-      const patternWrapper = document.createElement("div");
-      patternWrapper.className = "candidate-pattern-wrapper";
-
-      const textSpan = document.createElement("span");
-      textSpan.className = "candidate-text-display";
-      textSpan.textContent = cand.normalized_key && cand.kind === "normalized_line"
-        ? cand.normalized_key
-        : cand.display_text;
-      textSpan.title = cand.display_text;
-
-      const badges = document.createElement("div");
-      badges.className = "candidate-meta-badges";
-
-      const kindChip = document.createElement("span");
-      const kindClass = cand.kind === "normalized_line" ? "normalized" : cand.kind.replace("_line", "").replace("_block", "-block");
-      kindChip.className = `meta-badge-chip kind-${kindClass}`;
-      kindChip.textContent = formatKind(cand.kind);
-
-      const contentChip = document.createElement("span");
-      const contentClass = cand.content_class.split("_")[0];
-      contentChip.className = `meta-badge-chip content-${contentClass}`;
-      contentChip.textContent = formatContentClass(cand.content_class);
-      contentChip.title = formatTextSignalSummary(cand);
-
-      badges.append(kindChip, contentChip);
-      if (decision !== "accepted") {
-        const decisionAction = document.createElement("button");
-        decisionAction.type = "button";
-        decisionAction.className = "candidate-decision-action";
-        const isDismissed = decision === "dismissed";
-        decisionAction.textContent = isDismissed ? "Restore" : "Dismiss";
-        decisionAction.title = isDismissed
-          ? "Restore — show this candidate in scan results again."
-          : "Dismiss — stop suggesting this candidate on future scans.";
-        decisionAction.addEventListener("click", (event) => {
-          event.stopPropagation();
-          const changed = isDismissed
-            ? restoreCandidate(cand)
-            : dismissCandidate(cand);
-          if (!changed) return;
-          void refreshAfterDecision(
-            isDismissed ? "Candidate restored." : "Candidate dismissed.",
-            false,
-          );
-        });
-        badges.appendChild(decisionAction);
-      }
-      patternWrapper.append(textSpan, badges);
-      tdText.appendChild(patternWrapper);
-
-      const tdOcc = document.createElement("td");
-      tdOcc.textContent = cand.occurrence_count.toString();
-      tdOcc.style.textAlign = "right";
-
-      const tdFiles = document.createElement("td");
-      tdFiles.textContent = cand.file_count.toString();
-      tdFiles.style.textAlign = "right";
-
-      const tdPos = document.createElement("td");
-      tdPos.textContent = formatPosition(cand.position_summary);
-      tdPos.style.fontSize = "0.8rem";
-
-      const tdRisk = document.createElement("td");
-      const spanBadge = document.createElement("span");
-      spanBadge.className = `risk-badge ${cand.risk_label}`;
-      spanBadge.textContent = formatRiskLabel(cand.risk_label);
-      tdRisk.appendChild(spanBadge);
-
-      tr.appendChild(tdCheck);
-      tr.appendChild(tdText);
-      tr.appendChild(tdOcc);
-      tr.appendChild(tdFiles);
-      tr.appendChild(tdPos);
-      tr.appendChild(tdRisk);
-
-      tr.onclick = () => {
-        dom.tblArtifactCandidates.querySelectorAll("tr.is-focused").forEach((row) => row.classList.remove("is-focused"));
-        tr.classList.add("is-focused");
-        focusedCandidateId = cand.candidate_id;
-        dom.artifactDetailsContent.innerHTML = "";
-        showCandidateDetails(cand);
-      };
-
-      dom.tblArtifactCandidates.appendChild(tr);
+      dom.tblArtifactCandidates.appendChild(renderCandidateRow(cand));
     });
 
     const noteContainer = dom.tblArtifactCandidates.closest(".repeated-artifact-table-container");
@@ -1287,6 +1191,134 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       const existingNote = noteContainer.querySelector(".artifact-dedup-note");
       if (existingNote) existingNote.remove();
     }
+  }
+
+  function renderCandidateRow(cand: RepeatedArtifactCandidate): HTMLTableRowElement {
+    const tr = document.createElement("tr");
+    tr.dataset.id = cand.candidate_id;
+    if (cand.candidate_id === focusedCandidateId) {
+      tr.classList.add("is-focused");
+    }
+
+    const tdCheck = document.createElement("td");
+    tdCheck.style.padding = "6px 8px";
+    tdCheck.style.textAlign = "center";
+    const decision = projectDecisions.decisions[cand.candidate_id]?.decision;
+    if (decision !== "dismissed") {
+      const chk = document.createElement("input");
+      chk.type = "checkbox";
+      chk.checked = decision === "accepted";
+      chk.disabled = !canAcceptCandidate(cand);
+      chk.title = chk.disabled
+        ? "This candidate cannot form a removal rule."
+        : "Mark this candidate for removal.";
+      chk.setAttribute("aria-label", chk.title);
+      chk.addEventListener("click", (event) => {
+        event.stopPropagation();
+      });
+      chk.addEventListener("change", (event) => {
+        event.stopPropagation();
+        const changed = chk.checked
+          ? markCandidateForRemoval(cand)
+          : unmarkCandidateForRemoval(cand);
+        if (!changed) {
+          chk.checked = projectDecisions.decisions[cand.candidate_id]?.decision === "accepted";
+          return;
+        }
+        const message = chk.checked
+          ? "Candidate marked for removal."
+          : "Candidate no longer marked for removal.";
+        void refreshAfterDecision(message, true);
+      });
+      tdCheck.appendChild(chk);
+    }
+
+    const tdText = document.createElement("td");
+    tdText.className = "candidate-text-cell";
+    const patternWrapper = document.createElement("div");
+    patternWrapper.className = "candidate-pattern-wrapper";
+
+    const textSpan = document.createElement("span");
+    textSpan.className = "candidate-text-display";
+    textSpan.textContent = cand.normalized_key && cand.kind === "normalized_line"
+      ? cand.normalized_key
+      : cand.display_text;
+    textSpan.title = cand.display_text;
+
+    const badges = document.createElement("div");
+    badges.className = "candidate-meta-badges";
+
+    const kindChip = document.createElement("span");
+    const kindClass = cand.kind === "normalized_line" ? "normalized" : cand.kind.replace("_line", "").replace("_block", "-block");
+    kindChip.className = `meta-badge-chip kind-${kindClass}`;
+    kindChip.textContent = formatKind(cand.kind);
+
+    const contentChip = document.createElement("span");
+    const contentClass = cand.content_class.split("_")[0];
+    contentChip.className = `meta-badge-chip content-${contentClass}`;
+    contentChip.textContent = formatContentClass(cand.content_class);
+    contentChip.title = formatTextSignalSummary(cand);
+
+    badges.append(kindChip, contentChip);
+    if (decision !== "accepted") {
+      const decisionAction = document.createElement("button");
+      decisionAction.type = "button";
+      decisionAction.className = "candidate-decision-action";
+      const isDismissed = decision === "dismissed";
+      decisionAction.textContent = isDismissed ? "Restore" : "Dismiss";
+      decisionAction.title = isDismissed
+        ? "Restore - show this candidate in scan results again."
+        : "Dismiss - stop suggesting this candidate on future scans.";
+      decisionAction.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const changed = isDismissed
+          ? restoreCandidate(cand)
+          : dismissCandidate(cand);
+        if (!changed) return;
+        void refreshAfterDecision(
+          isDismissed ? "Candidate restored." : "Candidate dismissed.",
+          false,
+        );
+      });
+      badges.appendChild(decisionAction);
+    }
+    patternWrapper.append(textSpan, badges);
+    tdText.appendChild(patternWrapper);
+
+    const tdOcc = document.createElement("td");
+    tdOcc.textContent = cand.occurrence_count.toString();
+    tdOcc.style.textAlign = "right";
+
+    const tdFiles = document.createElement("td");
+    tdFiles.textContent = cand.file_count.toString();
+    tdFiles.style.textAlign = "right";
+
+    const tdPos = document.createElement("td");
+    tdPos.textContent = formatPosition(cand.position_summary);
+    tdPos.style.fontSize = "0.8rem";
+
+    const tdRisk = document.createElement("td");
+    const spanBadge = document.createElement("span");
+    spanBadge.className = `risk-badge ${cand.risk_label}`;
+    spanBadge.textContent = formatRiskLabel(cand.risk_label);
+    tdRisk.appendChild(spanBadge);
+
+    tr.appendChild(tdCheck);
+    tr.appendChild(tdText);
+    tr.appendChild(tdOcc);
+    tr.appendChild(tdFiles);
+    tr.appendChild(tdPos);
+    tr.appendChild(tdRisk);
+
+    tr.onclick = () => {
+      dom.tblArtifactCandidates.querySelectorAll("tr.is-focused").forEach((row) => row.classList.remove("is-focused"));
+      tr.classList.add("is-focused");
+      focusedCandidateId = cand.candidate_id;
+      dom.artifactDetailsContent.innerHTML = "";
+      showCandidateDetails(cand);
+    };
+
+    return tr;
   }
 
   function getTextProfile(cand: RepeatedArtifactCandidate): CandidateTextProfile | null {
