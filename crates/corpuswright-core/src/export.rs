@@ -699,7 +699,14 @@ fn readme_text(app_name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clean::{CleaningConfig, ReplacementRule};
+    use crate::cache::{
+        CacheEntry, DocumentTextMode, ExtractionCache, document_text_from_cache_entry,
+    };
+    use crate::clean::{
+        CleaningConfig, RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope,
+        ReplacementRule,
+    };
+    use crate::pdf::PdfExtractionOptions;
     use crate::scan::scan_directory;
     use std::fs;
     use tempfile::tempdir;
@@ -928,6 +935,59 @@ mod tests {
             export.exported_files[0].output_path,
             PathBuf::from("texts").join("a.txt")
         );
+    }
+
+    #[test]
+    fn export_matches_document_text_for_cached_pdf_page_zone_rule() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("running-head.pdf"), b"%PDF-1.4").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+        let record = &report.files[0];
+        let page_texts = vec![
+            "4\u{2002}|\u{2002}Some fundamentals of empirical research\nFirst body".to_string(),
+            "Second body\n5\u{2002}|\u{2002}Some fundamentals of empirical research".to_string(),
+            "Third body".to_string(),
+        ];
+        let entry = CacheEntry {
+            extracted_text: page_texts.join("\n\n"),
+            warnings: Vec::new(),
+            page_count: Some(page_texts.len()),
+            page_texts: Some(page_texts),
+        };
+        let cleaning = CleaningConfig {
+            removal_rules: vec![RemovalRule {
+                id: "running-head".to_string(),
+                label: "running head".to_string(),
+                source: RemovalRuleSource::PromotedRepeatedArtifact,
+                matcher: RemovalMatcher::NormalizedLine {
+                    normalized_key: "# | some fundamentals of empirical research".to_string(),
+                },
+                scope: RemovalScope::PageTopOrBottom,
+                enabled: true,
+            }],
+            ..CleaningConfig::default()
+        };
+        let cache = ExtractionCache::new();
+        let pdf_options =
+            PdfExtractionOptions::raw_from_record_and_cleaning_config(record, &cleaning);
+        cache.insert_extracted(record, Some(pdf_options), &cleaning, entry.clone());
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &cleaning,
+            &ExportOptions::default(),
+            None,
+            Some(&cache),
+        )
+        .unwrap();
+        let exported_text = fs::read_to_string(export.texts_dir.join("running-head.txt")).unwrap();
+        let document =
+            document_text_from_cache_entry(record, &cleaning, DocumentTextMode::Processed, entry);
+
+        assert_eq!(exported_text, document.text);
+        assert!(!exported_text.contains("Some fundamentals of empirical research"));
     }
 
     #[test]
