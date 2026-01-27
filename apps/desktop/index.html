@@ -6,6 +6,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CorpusWright</title>
   <link rel="icon" type="image/svg+xml" href="/ico.svg" />
+  <script>
+    (() => {
+      try {
+        const raw = localStorage.getItem("corpuswright.appearance.v1");
+        if (!raw) return;
+        const preference = JSON.parse(raw);
+        const root = document.documentElement;
+        if (typeof preference.themeId === "string") {
+          root.dataset.theme = preference.themeId;
+        }
+        if (typeof preference.fontFamily === "string") {
+          root.style.setProperty("--cw-font-ui", preference.fontFamily);
+        }
+        if (typeof preference.monoFontFamily === "string") {
+          root.style.setProperty("--cw-font-mono", preference.monoFontFamily);
+        }
+        if (Number.isFinite(preference.fontSize)) {
+          const fontSize = Math.min(20, Math.max(12, Math.round(preference.fontSize)));
+          root.style.setProperty("--cw-font-size-base", `${fontSize}px`);
+        }
+      } catch (_) {
+        // Keep startup resilient if stored presentation preferences are malformed.
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="/src/styles.css" />
 </head>
 
@@ -28,7 +53,9 @@
         <div class="dropdown" id="menu-view-dropdown">
           <span class="menu-item" tabindex="0">View</span>
           <div class="dropdown-content">
-            <div class="dropdown-item" id="menu-toggle-theme" tabindex="0">Toggle Theme</div>
+            <div class="dropdown-item" id="menu-appearance" tabindex="0">Appearance...</div>
+            <hr class="dropdown-divider">
+            <div class="dropdown-item" id="menu-toggle-theme" tabindex="0">Toggle Light/Dark</div>
           </div>
         </div>
         <div class="dropdown">
@@ -43,7 +70,7 @@
           <span id="project-context-name"></span>
           <span id="project-context-path"></span>
         </div>
-        <button id="theme-toggle" class="icon-btn" title="Toggle Theme" aria-label="Toggle Theme">
+        <button id="theme-toggle" class="icon-btn" title="Toggle Light/Dark" aria-label="Toggle Light/Dark">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="5"></circle>
@@ -355,6 +382,61 @@
     </main>
 
     <footer id="status-bar">Ready</footer>
+
+    <div id="appearance-modal" class="modal hidden" role="dialog" aria-modal="true"
+      aria-labelledby="appearance-title" aria-describedby="appearance-description">
+      <div class="modal-content appearance-modal-content">
+        <button
+          id="appearance-close-button"
+          class="modal-close-btn"
+          type="button"
+          aria-label="Close Appearance"
+        >
+          &times;
+        </button>
+        <h2 id="appearance-title">Appearance</h2>
+        <p id="appearance-description" class="modal-description">
+          Theme and type choices apply immediately to this window.
+        </p>
+
+        <div class="appearance-controls">
+          <label class="appearance-field" for="appearance-theme-select">
+            <span>Theme preset</span>
+            <select id="appearance-theme-select" class="settings-select"></select>
+          </label>
+
+          <label class="appearance-field" for="appearance-font-select">
+            <span>Font family</span>
+            <select id="appearance-font-select" class="settings-select"></select>
+          </label>
+
+          <label class="appearance-field" for="appearance-mono-font-select">
+            <span>Monospace font</span>
+            <select id="appearance-mono-font-select" class="settings-select"></select>
+          </label>
+
+          <label class="appearance-field" for="appearance-font-size-input">
+            <span>Font size</span>
+            <input
+              id="appearance-font-size-input"
+              class="settings-input"
+              type="number"
+              min="12"
+              max="20"
+              step="1"
+              inputmode="numeric"
+            />
+          </label>
+        </div>
+
+        <div class="modal-actions appearance-actions">
+          <button id="appearance-reset-button" class="secondary-btn" type="button">Reset to default</button>
+          <span class="appearance-action-spacer"></span>
+          <button id="appearance-cancel-button" class="secondary-btn" type="button">Cancel</button>
+          <button id="appearance-save-button" class="primary-btn" type="button">Save</button>
+        </div>
+      </div>
+    </div>
 
     <div id="frequency-files-modal" class="modal hidden" role="dialog" aria-modal="true"
       aria-labelledby="frequency-files-title" aria-describedby="frequency-files-description">
@@ -898,7 +980,7 @@
             </label>
             <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Original extracted text: scans extracted/raw text before current processing rules.</span>
             <span style="font-size: 0.75rem; color: var(--text-muted);">Processed text with current settings: scans text after current Cleaning Settings and Custom Removals have been applied.</span>
-            <div id="artifact-processed-warning" style="display: none; font-size: 0.8rem; color: #d4a017; background: rgba(212, 160, 23, 0.08); padding: 6px 8px; border-radius: 4px; border-left: 3px solid #d4a017; margin-top: 4px;"></div>
+            <div id="artifact-processed-warning" style="display: none; font-size: 0.8rem; color: var(--cw-warning-text); background: var(--cw-warning-bg); padding: 6px 8px; border-radius: 4px; border-left: 3px solid var(--cw-warning-border-strong); margin-top: 4px;"></div>
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 6px;">
