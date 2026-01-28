@@ -1093,7 +1093,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         const errorRow = document.createElement("tr");
         const errorCell = document.createElement("td");
         errorCell.colSpan = 6;
-        errorCell.style.cssText = "padding: 20px; text-align: center; color: #ff5e5e;";
+        errorCell.style.cssText = "padding: 20px; text-align: center; color: var(--cw-danger-text);";
         errorCell.textContent = `Error during scan: ${errStr}`;
         errorRow.appendChild(errorCell);
         dom.tblArtifactCandidates.appendChild(errorRow);
@@ -1456,11 +1456,11 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     if (cand.content_class === "numeric_dominant") {
       const numericCaution = document.createElement("div");
       numericCaution.style.fontSize = "0.8rem";
-      numericCaution.style.color = "#e8a000";
-      numericCaution.style.background = "rgba(232, 160, 0, 0.08)";
+      numericCaution.style.color = "var(--cw-category-numeric-text)";
+      numericCaution.style.background = "var(--cw-category-numeric-bg)";
       numericCaution.style.padding = "6px 8px";
       numericCaution.style.borderRadius = "4px";
-      numericCaution.style.borderLeft = "3px solid #e8a000";
+      numericCaution.style.borderLeft = "3px solid var(--cw-category-numeric-border)";
       numericCaution.textContent = "Numeric-dominant candidate — review carefully. These may group unrelated tables, formulas, axis ticks, or statistical output.";
       dom.artifactDetailsContent.appendChild(numericCaution);
     }
@@ -1517,9 +1517,9 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         const variantsActionDiv = document.createElement("div");
         variantsActionDiv.style.fontSize = "0.85rem";
         variantsActionDiv.style.padding = "8px";
-        variantsActionDiv.style.background = "rgba(80, 200, 120, 0.06)";
+        variantsActionDiv.style.background = "var(--cw-success-bg-strong)";
         variantsActionDiv.style.borderRadius = "4px";
-        variantsActionDiv.style.borderLeft = "3px solid #50c878";
+        variantsActionDiv.style.borderLeft = "3px solid var(--cw-success-border-strong)";
 
         let variantsLabel = normalizedKey
           ? `Tracked raw variants are shown for review. Marking this candidate adds one normalised whole-line rule for "${normalizedKey}"`
@@ -1611,7 +1611,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     riskAdvisoryDiv.style.color = "var(--text-muted)";
     riskAdvisoryDiv.style.lineHeight = "1.4";
     riskAdvisoryDiv.style.padding = "6px 8px";
-    riskAdvisoryDiv.style.background = "rgba(255, 255, 255, 0.02)";
+    riskAdvisoryDiv.style.background = "var(--cw-advisory-bg)";
     riskAdvisoryDiv.style.borderLeft = "2px solid var(--border-color)";
 
     let advisoryText = "";
