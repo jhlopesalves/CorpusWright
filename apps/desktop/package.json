@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "check:theme-tokens": "node scripts/check-theme-tokens.mjs",
+    "check:theme-contrast": "node scripts/check-theme-contrast.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "generate-types": "cd ../.. && cargo run -p corpuswright-core --example export_ts"
