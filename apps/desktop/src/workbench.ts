@@ -31,6 +31,7 @@ import { dom } from "./dom";
 import { effectiveCleaningConfig } from "./effective-cleaning-config";
 import {
   overviewGlossary,
+  type OverviewGlossaryEntry,
   type OverviewGlossaryId,
 } from "./overview-glossary";
 import { sourceHasExtractedText } from "./sources";
@@ -55,6 +56,7 @@ interface OverviewMetricRow {
   title?: string;
   glossaryId?: OverviewGlossaryId;
   labelSuffix?: string;
+  description?: string;
 }
 
 interface CompositionSegment {
@@ -478,11 +480,87 @@ function createOverviewPanel(titleText: string): HTMLElement {
   return panel;
 }
 
+function appendGlossarySection(panel: HTMLElement, titleText: string, body: HTMLElement): void {
+  const section = document.createElement("section");
+  section.className = "analysis-glossary-section";
+
+  const title = document.createElement("h4");
+  title.textContent = titleText;
+  section.append(title, body);
+  panel.appendChild(section);
+}
+
+function createGlossaryParagraph(text: string): HTMLParagraphElement {
+  const paragraph = document.createElement("p");
+  paragraph.textContent = text;
+  return paragraph;
+}
+
+function createGlossarySymbol(source: string): HTMLSpanElement {
+  const symbol = document.createElement("span");
+  symbol.className = "analysis-glossary-symbol-math";
+  try {
+    katex.render(source, symbol, {
+      displayMode: false,
+      output: "htmlAndMathml",
+      throwOnError: false,
+    });
+  } catch {
+    symbol.textContent = source;
+  }
+  return symbol;
+}
+
+function createGlossarySymbolsList(symbols: OverviewGlossaryEntry["symbols"]): HTMLDListElement {
+  const list = document.createElement("dl");
+  list.className = "analysis-glossary-symbols";
+
+  for (const symbol of symbols ?? []) {
+    const row = document.createElement("div");
+    row.className = "analysis-glossary-symbol-row";
+
+    const term = document.createElement("dt");
+    term.appendChild(createGlossarySymbol(symbol.sym));
+
+    const definition = document.createElement("dd");
+    definition.textContent = symbol.def;
+
+    row.append(term, definition);
+    list.appendChild(row);
+  }
+
+  return list;
+}
+
+function createGlossaryLimitationsList(limitations: string[]): HTMLUListElement {
+  const list = document.createElement("ul");
+  list.className = "analysis-glossary-limitations";
+
+  for (const limitation of limitations) {
+    const item = document.createElement("li");
+    item.textContent = limitation;
+    list.appendChild(item);
+  }
+
+  return list;
+}
+
+function createGlossaryExample(example: string): HTMLDetailsElement {
+  const disclosure = document.createElement("details");
+  disclosure.className = "analysis-glossary-example";
+
+  const summary = document.createElement("summary");
+  summary.textContent = "Worked example";
+
+  disclosure.append(summary, createGlossaryParagraph(example));
+  return disclosure;
+}
+
 function createGlossaryDisclosure(
   glossaryId: OverviewGlossaryId,
   onToggle?: (expanded: boolean) => void,
 ): { button: HTMLButtonElement; panel: HTMLDivElement } {
-  const entry = overviewGlossary[glossaryId];
+  const entry: OverviewGlossaryEntry = overviewGlossary[glossaryId];
   const panelId = `overview-glossary-${entry.id}-${++overviewGlossaryControlId}`;
 
   const button = document.createElement("button");
@@ -506,6 +584,12 @@ function createGlossaryDisclosure(
 
   const explanation = document.createElement("p");
   explanation.textContent = entry.explanation;
+  panel.appendChild(explanation);
+
+  if (entry.detail) {
+    panel.appendChild(createGlossaryParagraph(entry.detail));
+  }
+
   const formula = document.createElement("div");
   formula.className = "analysis-glossary-formula";
   katex.render(entry.latex, formula, {
@@ -513,7 +597,23 @@ function createGlossaryDisclosure(
     output: "htmlAndMathml",
     throwOnError: false,
   });
-  panel.append(explanation, formula);
+  panel.appendChild(formula);
+
+  if (entry.symbols?.length) {
+    appendGlossarySection(panel, "Where", createGlossarySymbolsList(entry.symbols));
+  }
+
+  if (entry.interpretation) {
+    appendGlossarySection(panel, "How to read it", createGlossaryParagraph(entry.interpretation));
+  }
+
+  if (entry.limitations?.length) {
+    appendGlossarySection(panel, "Limitations", createGlossaryLimitationsList(entry.limitations));
+  }
+
+  if (entry.example) {
+    panel.appendChild(createGlossaryExample(entry.example));
+  }
 
   button.addEventListener("click", () => {
     const expanded = button.getAttribute("aria-expanded") !== "true";
@@ -550,14 +650,22 @@ function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTable
       });
       glossaryPanel = disclosure.panel;
       label.appendChild(disclosure.button);
-      if (row.labelSuffix) {
-        const suffix = document.createElement("span");
-        suffix.className = "analysis-glossary-label-suffix";
-        suffix.textContent = ` ${row.labelSuffix}`;
-        label.appendChild(suffix);
-      }
     } else {
-      label.textContent = row.label;
+      const labelText = document.createElement("span");
+      labelText.textContent = row.label;
+      label.appendChild(labelText);
+    }
+    if (row.labelSuffix) {
+      const suffix = document.createElement("span");
+      suffix.className = "analysis-glossary-label-suffix";
+      suffix.textContent = ` ${row.labelSuffix}`;
+      label.appendChild(suffix);
+    }
+    if (row.description) {
+      const description = document.createElement("span");
+      description.className = "analysis-metric-description";
+      description.textContent = row.description;
+      label.appendChild(description);
     }
 
     const value = document.createElement("td");
@@ -1090,13 +1198,14 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
       labelSuffix: "(at least 0.5, frequent types)",
       value: `${formatNumber(dispersion.highDpFrequentTypes)} of ${formatNumber(dispersion.frequentTypes)}`,
       glossaryId: "griesDp",
+      description: "How many frequent types are noticeably clumped - their DP is 0.5 or higher.",
     });
     if (dispersion.medianDp !== null) {
       rows.push({
         label: "Gries DP",
         labelSuffix: "(median, frequent types)",
         value: formatFixedNumber(dispersion.medianDp, 2),
-        glossaryId: "griesDp",
+        description: "The middle DP value across frequent types - how uneven the typical frequent type is.",
       });
     }
   }
