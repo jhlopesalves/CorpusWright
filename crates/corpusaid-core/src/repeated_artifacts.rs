@@ -1627,3 +1627,1408 @@ pub fn scan_repeated_artifacts_with_cancel(
     Ok(report.candidates)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_normalize_line() {
+        assert_eq!(normalize_line("--- Page 12 ---"), "page #");
+        assert_eq!(normalize_line("Chapter 1: Intro"), "chapter #: intro");
+        assert_eq!(normalize_line("   Some    spaces   "), "some spaces");
+    }
+
+    #[test]
+    fn test_compute_stable_id() {
+        let id1 = compute_stable_id(&RepeatedArtifactKind::ExactLine, "test key");
+        let id2 = compute_stable_id(&RepeatedArtifactKind::ExactLine, "test key");
+        let id3 = compute_stable_id(&RepeatedArtifactKind::NormalizedLine, "test key");
+
+        assert_eq!(id1, id2);
+        assert_ne!(id1, id3);
+        assert!(id1.starts_with("exact_"));
+        assert!(id3.starts_with("norm_"));
+    }
+
+    #[test]
+    fn test_classify_risk_headings() {
+        let risk = classify_risk("Introduction", "introduction", 5, 2, 0, 0);
+        assert_eq!(risk, ArtifactRiskLabel::CommonSectionHeadingReviewCarefully);
+    }
+
+    #[test]
+    fn test_classify_risk_noise() {
+        let risk = classify_risk("### ||| ***", "### ||| ***", 5, 2, 0, 0);
+        assert_eq!(risk, ArtifactRiskLabel::SymbolOrNoiseCandidate);
+    }
+
+    #[test]
+    fn test_classify_risk_header_footer() {
+        let risk = classify_risk("Running Header", "running header", 10, 3, 8, 2); // 100% top/bottom concentration
+        assert_eq!(risk, ArtifactRiskLabel::StrongHeaderFooterCandidate);
+    }
+
+    #[test]
+    fn test_classify_risk_boilerplate() {
+        let risk = classify_risk("Copyright notice info", "copyright notice info", 5, 3, 1, 1); // < 75% top/bottom concentration
+        assert_eq!(risk, ArtifactRiskLabel::PossibleBoilerplate);
+    }
+
+    fn create_test_pdf(pages_content: &[Vec<&str>]) -> Vec<u8> {
+        use lopdf::content::{Content, Operation};
+        use lopdf::{Document, Object, Stream, StringFormat, dictionary};
+
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+
+        let font_id = doc.add_object(dictionary!(
+            "Type" => "Font",
+            "Subtype" => "Type1",
+            "BaseFont" => "Helvetica"
+        ));
+
+        let resources_id = doc.add_object(dictionary!(
+            "Font" => dictionary!(
+                "F1" => font_id
+            )
+        ));
+
+        let mut kids = Vec::new();
+        for page_lines in pages_content {
+            let mut ops = vec![
+                Operation::new("BT", vec![]),
+                Operation::new("Tf", vec!["F1".into(), 12.into()]),
+            ];
+
+            let mut first = true;
+            for line in page_lines {
+                if first {
+                    ops.push(Operation::new("Td", vec![100.into(), 750.into()]));
+                    first = false;
+                } else {
+                    ops.push(Operation::new("Td", vec![0.into(), (-30.0).into()]));
+                }
+                ops.push(Operation::new(
+                    "Tj",
+                    vec![Object::String(
+                        line.as_bytes().to_vec(),
+                        StringFormat::Literal,
+                    )],
+                ));
+            }
+            ops.push(Operation::new("ET", vec![]));
+
+            let content = Content { operations: ops };
+            let content_id = doc.add_object(Stream::new(dictionary!(), content.encode().unwrap()));
+
+            let page_id = doc.add_object(dictionary!(
+                "Type" => "Page",
+                "Parent" => pages_id,
+                "Contents" => content_id,
+                "Resources" => resources_id,
+                "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()]
+            ));
+            kids.push(page_id.into());
+        }
+
+        let pages = dictionary!(
+            "Type" => "Pages",
+            "Kids" => kids,
+            "Count" => pages_content.len() as i32
+        );
+        doc.objects.insert(pages_id, Object::Dictionary(pages));
+
+        let catalog_id = doc.add_object(dictionary!(
+            "Type" => "Catalog",
+            "Pages" => pages_id
+        ));
+        doc.trailer.set("Root", catalog_id);
+
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
+    }
+
+    fn make_text_record(name: &str, content: &str, temp_dir: &std::path::Path) -> DocumentRecord {
+        let file_path = temp_dir.join(name);
+        std::fs::write(&file_path, content).unwrap();
+        DocumentRecord {
+            source_path: file_path.clone(),
+            relative_path: PathBuf::from(name),
+            document_type: DocumentType::Text,
+            size_bytes: content.len() as u64,
+        }
+    }
+
+    fn relaxed_config() -> RepeatedArtifactScanConfig {
+        RepeatedArtifactScanConfig {
+            min_occurrences: 3,
+            min_files: 1,
+            max_candidates: 100,
+            min_line_chars: 3,
+            ..RepeatedArtifactScanConfig::default()
+        }
+    }
+
+    #[test]
+    fn test_example_capping() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = vec!["Header Line"; 20].join("\n");
+        let doc = make_text_record("dummy.txt", &content, temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            max_examples_per_candidate: 5,
+            ..relaxed_config()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        assert!(!result.is_empty());
+        let cand = result
+            .iter()
+            .find(|c| c.kind == RepeatedArtifactKind::ExactLine)
+            .unwrap();
+        assert_eq!(cand.occurrence_count, 20);
+        assert_eq!(cand.examples.len(), 5);
+    }
+
+    #[test]
+    fn test_approximate_positions_for_inferred_pdf() {
+        let pages = vec![
+            vec![
+                "Page1Line1",
+                "Page1Line2",
+                "Page1Line3",
+                "Page1Line4",
+                "Page1Line5",
+            ],
+            vec![
+                "Page2Line1",
+                "Page2Line2",
+                "Page2Line3",
+                "Page2Line4",
+                "Page2Line5",
+            ],
+        ];
+        let bytes = create_test_pdf(&pages);
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("dummy.pdf");
+        std::fs::write(&file_path, bytes).unwrap();
+
+        let doc = DocumentRecord {
+            source_path: file_path.clone(),
+            relative_path: PathBuf::from("dummy.pdf"),
+            document_type: DocumentType::Pdf,
+            size_bytes: 1000,
+        };
+
+        let config = RepeatedArtifactScanConfig {
+            analyse_processed_text: false,
+            min_files: 1,
+            min_occurrences: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let total_bottom: usize = result.iter().map(|c| c.position_summary.bottom_count).sum();
+        let total_top: usize = result.iter().map(|c| c.position_summary.top_count).sum();
+        assert!(total_bottom > 0);
+        assert!(total_top > 0);
+    }
+
+    #[test]
+    fn test_deterministic_candidate_ids() {
+        let id1 = compute_stable_id(&RepeatedArtifactKind::ExactLine, "Same Key");
+        let id2 = compute_stable_id(&RepeatedArtifactKind::ExactLine, "Same Key");
+        let id3 = compute_stable_id(&RepeatedArtifactKind::ExactLine, "Different Key");
+
+        assert_eq!(id1, id2);
+        assert_ne!(id1, id3);
+        assert!(id1.starts_with("exact_"));
+    }
+
+    #[test]
+    fn test_normalisation_self_contained() {
+        assert_eq!(normalize_line("  --- test 123 --- "), "test #");
+        assert_eq!(normalize_line("Another Line"), "another line");
+        assert_eq!(normalize_line("Another [Line]"), "another [line");
+    }
+
+    #[test]
+    fn test_headings_not_hidden() {
+        let risk = classify_risk("Introduction", "introduction", 5, 2, 0, 0);
+        assert_eq!(risk, ArtifactRiskLabel::CommonSectionHeadingReviewCarefully);
+    }
+
+    // ---- Performance / synthetic stress tests ----
+
+    #[test]
+    fn test_many_unique_lines_no_explosion() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut lines = Vec::new();
+        for i in 0..2000 {
+            lines.push(format!("Unique line number {}", i));
+        }
+        let content = lines.join("\n");
+        let doc = make_text_record("many_unique.txt", &content, temp_dir.path());
+
+        let result =
+            scan_repeated_artifacts(&[doc], &relaxed_config(), &CleaningConfig::default()).unwrap();
+        assert!(
+            result.len() <= 10,
+            "expected <=10 candidates, got {}",
+            result.len()
+        );
+    }
+
+    #[test]
+    fn test_repeated_header_across_files() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let header = "Copyright (c) 2024 Example Publishing Co.";
+        let mut records = Vec::new();
+        for i in 0..5 {
+            let body: Vec<String> = (0..50)
+                .map(|j| format!("Body line {} in file {}", j, i))
+                .collect();
+            let content = format!("{}\n{}", header, body.join("\n"));
+            records.push(make_text_record(
+                &format!("file{}.txt", i),
+                &content,
+                temp_dir.path(),
+            ));
+        }
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 4,
+            min_files: 2,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let result =
+            scan_repeated_artifacts(&records, &config, &CleaningConfig::default()).unwrap();
+        assert!(!result.is_empty(), "should find the repeated header");
+        let header_cand = result.iter().find(|c| c.display_text == header);
+        assert!(header_cand.is_some(), "should find the exact header line");
+        let h = header_cand.unwrap();
+        assert!(h.file_count >= 2, "should appear in multiple files");
+    }
+
+    #[test]
+    fn test_examples_capped_stress() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = vec!["Repeated line here"; 100].join("\n");
+        let doc = make_text_record("many_occurrences.txt", &content, temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            max_examples_per_candidate: 3,
+            ..relaxed_config()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        for cand in &result {
+            assert!(cand.examples.len() <= 3, "examples should be capped at 3");
+        }
+    }
+
+    #[test]
+    fn test_blocks_disabled_does_not_produce_blocks() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "Line one\nLine two\nLine three\nLine one\nLine two\nLine three\n";
+        let doc = make_text_record("block_test.txt", content, temp_dir.path());
+
+        let config = relaxed_config();
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        for cand in &result {
+            assert_ne!(cand.kind, RepeatedArtifactKind::TwoLineBlock);
+            assert_ne!(cand.kind, RepeatedArtifactKind::ThreeLineBlock);
+        }
+    }
+
+    #[test]
+    fn test_blocks_enabled_produces_blocks() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let block = "Header A\nHeader B";
+        let parts = vec![block; 20];
+        let content = parts.join("\n");
+        let doc = make_text_record("blocks.txt", &content, temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            include_two_line_blocks: true,
+            min_occurrences: 5,
+            min_files: 1,
+            max_candidates: 100,
+            min_line_chars: 3,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let has_block = result
+            .iter()
+            .any(|c| c.kind == RepeatedArtifactKind::TwoLineBlock);
+        assert!(has_block, "should detect 2-line blocks when enabled");
+    }
+
+    #[test]
+    fn test_long_lines_skipped() {}
+
+    #[test]
+    fn test_long_lines_skipped_proper() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repeated = "hello";
+        let long = "X".repeat(500);
+        let mut parts = Vec::new();
+        for _ in 0..10 {
+            parts.push(long.clone());
+            parts.push(repeated.to_string());
+        }
+        let content = parts.join("\n");
+        let doc = make_text_record("long_lines2.txt", &content, temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 5,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let found_hello = result.iter().any(|c| c.display_text == "hello");
+        assert!(found_hello, "should find the short repeated line");
+        for cand in &result {
+            assert!(
+                cand.display_text.len() < 500,
+                "long line should not appear as candidate"
+            );
+        }
+    }
+
+    #[test]
+    fn test_min_files_filtering() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let shared = "Shared header line here";
+        let records = vec![
+            make_text_record("f1.txt", shared, temp_dir.path()),
+            make_text_record("f2.txt", "Only in file 2", temp_dir.path()),
+            make_text_record("f3.txt", "Only in file 3", temp_dir.path()),
+        ];
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 1,
+            min_files: 2,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let result =
+            scan_repeated_artifacts(&records, &config, &CleaningConfig::default()).unwrap();
+        let found_shared = result.iter().any(|c| c.display_text == shared);
+        assert!(
+            !found_shared,
+            "single-file occurrence should not pass min_files=2"
+        );
+    }
+
+    #[test]
+    fn test_high_occurrence_does_not_store_unlimited_examples() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = vec!["Repeated artefact line"; 500].join("\n");
+        let doc = make_text_record("high_occ.txt", &content, temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            max_examples_per_candidate: 4,
+            ..relaxed_config()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        for cand in &result {
+            assert!(cand.examples.len() <= 4, "examples must be capped");
+            assert_eq!(cand.example_count, cand.examples.len());
+        }
+    }
+
+    #[test]
+    fn test_should_skip_line() {
+        assert!(should_skip_line("", 3, 300));
+        assert!(should_skip_line("   ", 3, 300));
+        assert!(should_skip_line("ab", 3, 300));
+        assert!(should_skip_line(&"X".repeat(500), 3, 300));
+        assert!(!should_skip_line("hello", 3, 300));
+        assert!(!should_skip_line("  hello  ", 3, 300));
+    }
+
+    // ---- Dedup / normalisation tests ----
+
+    #[test]
+    fn test_norm_dedup_removes_single_variant_norm() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = ["Hello World"; 10].join("\n");
+        let doc = make_text_record("dedup.txt", &content, temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 5,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let exact = result
+            .iter()
+            .filter(|c| c.kind == RepeatedArtifactKind::ExactLine)
+            .count();
+        let norm = result
+            .iter()
+            .filter(|c| c.kind == RepeatedArtifactKind::NormalizedLine)
+            .count();
+        assert_eq!(exact, 1, "should have one exact candidate");
+        if norm > 0 {
+            let nc = result
+                .iter()
+                .find(|c| c.kind == RepeatedArtifactKind::NormalizedLine)
+                .unwrap();
+            let ec = result
+                .iter()
+                .find(|c| c.kind == RepeatedArtifactKind::ExactLine)
+                .unwrap();
+            assert!(
+                !(nc.display_text == ec.display_text && nc.occurrence_count == ec.occurrence_count),
+                "normalized candidate should not be a duplicate of exact candidate"
+            );
+        }
+    }
+
+    #[test]
+    fn test_norm_dedup_preserves_multi_variant_norm() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut content_parts = Vec::new();
+        for i in 0..10 {
+            content_parts.push(format!("Page {}", (i % 3) + 1));
+        }
+        let content = content_parts.join("\n");
+        let doc = make_text_record("multi_norm.txt", &content, temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 3,
+            min_files: 1,
+            min_line_chars: 3,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let norm_page = result.iter().find(|c| {
+            c.normalized_key == "page #" && c.kind == RepeatedArtifactKind::NormalizedLine
+        });
+        assert!(
+            norm_page.is_some(),
+            "normalised 'page #' should be present (multi-variant)"
+        );
+    }
+
+    #[test]
+    fn test_pdf_no_ocr_by_default() {
+        let pages = vec![vec!["Header", "Body line 1", "Body line 2", "Footer"]];
+        let bytes = create_test_pdf(&pages);
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("minimal.pdf");
+        std::fs::write(&file_path, bytes).unwrap();
+
+        let doc = DocumentRecord {
+            source_path: file_path.clone(),
+            relative_path: PathBuf::from("minimal.pdf"),
+            document_type: DocumentType::Pdf,
+            size_bytes: 200,
+        };
+
+        let config = RepeatedArtifactScanConfig {
+            analyse_processed_text: false,
+            min_files: 1,
+            min_occurrences: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        assert!(result.len() <= 10, "pdf scan should complete without OCR");
+    }
+
+    #[test]
+    fn test_cancellation_returns_err() {
+        let cancel = std::sync::Arc::new(AtomicBool::new(true));
+        let temp_dir = tempfile::tempdir().unwrap();
+        let doc = make_text_record("cancel_test.txt", "Some text", temp_dir.path());
+
+        let result = scan_repeated_artifacts_with_cancel(
+            &[doc],
+            &RepeatedArtifactScanConfig::default(),
+            &CleaningConfig::default(),
+            &cancel,
+        );
+        assert!(result.is_err(), "cancelled scan should return error");
+        let err_msg = result.unwrap_err();
+        assert!(
+            err_msg.contains("cancelled"),
+            "error should mention cancellation"
+        );
+    }
+
+    #[test]
+    fn test_default_min_files_is_one() {
+        let cfg = RepeatedArtifactScanConfig::default();
+        assert_eq!(cfg.min_files, 1, "default min_files should be 1");
+    }
+
+    #[test]
+    fn test_long_lines_filtered_by_short_default() {
+        assert!(
+            RepeatedArtifactScanConfig::default().max_line_chars <= 300,
+            "default max_line_chars should be <= 300"
+        );
+    }
+
+    // ---- Content classification tests ----
+
+    #[test]
+    fn test_classify_numeric_decimal() {
+        assert_eq!(
+            classify_content("32.01 46.83"),
+            CandidateContentClass::NumericDominant
+        );
+        assert_eq!(
+            classify_content("0.2 0.1 0.3 0.4 0.5"),
+            CandidateContentClass::NumericDominant
+        );
+        assert_eq!(
+            classify_content("[0.386, 1.378]"),
+            CandidateContentClass::NumericDominant
+        );
+        assert_eq!(
+            classify_content("4.10"),
+            CandidateContentClass::NumericDominant
+        );
+        assert_eq!(
+            classify_content("42 41 40 39"),
+            CandidateContentClass::NumericDominant
+        );
+        assert_eq!(
+            classify_content("-5.81 28.93"),
+            CandidateContentClass::NumericDominant
+        );
+    }
+
+    #[test]
+    fn test_classify_mixed_text_numbers() {
+        assert_eq!(
+            classify_content("Page 12"),
+            CandidateContentClass::MixedTextNumbers
+        );
+        assert_eq!(
+            classify_content("Chapter 5"),
+            CandidateContentClass::MixedTextNumbers
+        );
+        assert_eq!(
+            classify_content("Figure 9.6"),
+            CandidateContentClass::MixedTextNumbers
+        );
+        assert_eq!(
+            classify_content("Table 3.2"),
+            CandidateContentClass::MixedTextNumbers
+        );
+        assert_eq!(
+            classify_content("Section 4.10"),
+            CandidateContentClass::MixedTextNumbers
+        );
+        assert_eq!(
+            classify_content("Exercise 3.14"),
+            CandidateContentClass::MixedTextNumbers
+        );
+    }
+
+    #[test]
+    fn test_classify_text_dominant() {
+        assert_eq!(
+            classify_content("This book has been published by Cambridge University Press"),
+            CandidateContentClass::TextDominant
+        );
+        assert_eq!(
+            classify_content("Introduction"),
+            CandidateContentClass::TextDominant
+        );
+        assert_eq!(
+            classify_content("Methods"),
+            CandidateContentClass::TextDominant
+        );
+    }
+
+    #[test]
+    fn test_classify_symbol_noise() {
+        assert_eq!(
+            classify_content("● ● ● ● ● ● ●"),
+            CandidateContentClass::SymbolNoiseDominant
+        );
+        assert_eq!(
+            classify_content("------"),
+            CandidateContentClass::SymbolNoiseDominant
+        );
+        assert_eq!(
+            classify_content("********"),
+            CandidateContentClass::SymbolNoiseDominant
+        );
+        assert_eq!(
+            classify_content("||| ||| |||"),
+            CandidateContentClass::SymbolNoiseDominant
+        );
+    }
+
+    #[test]
+    fn test_normalised_content_filter_default() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "32.01 46.83\n31.28 20.91\n40.68 1.05\n";
+        let doc = make_text_record("numeric_norm.txt", content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 1,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let norm_numeric = result
+            .iter()
+            .any(|c| c.kind == RepeatedArtifactKind::NormalizedLine);
+        assert!(
+            !norm_numeric,
+            "numeric-dominant lines should not produce NormalizedLine by default"
+        );
+    }
+
+    #[test]
+    fn test_numeric_dominant_enabled_shows_norm() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "32.01 46.83\n31.28 20.91\n40.68 1.05\n";
+        let doc = make_text_record("numeric_on2.txt", content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            include_numeric_dominant: true,
+            min_occurrences: 2,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let has_norm = result
+            .iter()
+            .any(|c| c.kind == RepeatedArtifactKind::NormalizedLine);
+        assert!(
+            has_norm,
+            "numeric-dominant should produce NormalizedLine when enabled"
+        );
+    }
+
+    #[test]
+    fn test_exact_numeric_obey_content_filter() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "42.5\n42.5\n42.5\n42.5\n42.5\n";
+        let doc = make_text_record("numeric_exact2.txt", content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 4,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result = scan_repeated_artifacts(
+            std::slice::from_ref(&doc),
+            &config,
+            &CleaningConfig::default(),
+        )
+        .unwrap();
+        let exact_numeric = result
+            .iter()
+            .any(|c| c.kind == RepeatedArtifactKind::ExactLine && c.display_text == "42.5");
+        assert!(
+            !exact_numeric,
+            "exact numeric hidden when numeric filter off"
+        );
+        let config2 = RepeatedArtifactScanConfig {
+            include_numeric_dominant: true,
+            min_occurrences: 4,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result2 = scan_repeated_artifacts(
+            std::slice::from_ref(&doc),
+            &config2,
+            &CleaningConfig::default(),
+        )
+        .unwrap();
+        let exact_numeric2 = result2
+            .iter()
+            .any(|c| c.kind == RepeatedArtifactKind::ExactLine && c.display_text == "42.5");
+        assert!(
+            exact_numeric2,
+            "exact numeric should appear when numeric filter on"
+        );
+    }
+
+    #[test]
+    fn test_page_chapter_still_produce_norm() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "Page 1\nPage 2\nPage 3\nPage 4\nPage 5\nPage 6\n";
+        let doc = make_text_record("pages2.txt", content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 5,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let page_norm = result.iter().any(|c| {
+            c.kind == RepeatedArtifactKind::NormalizedLine && c.normalized_key == "page #"
+        });
+        assert!(
+            page_norm,
+            "Page patterns should still produce normalised candidates"
+        );
+    }
+
+    #[test]
+    fn test_chapter_still_produce_norm() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "Chapter 1\nChapter 2\nChapter 3\nChapter 4\nChapter 5\nChapter 6\n";
+        let doc = make_text_record("chapters2.txt", content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 5,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let ch_norm = result.iter().any(|c| {
+            c.kind == RepeatedArtifactKind::NormalizedLine && c.normalized_key == "chapter #"
+        });
+        assert!(
+            ch_norm,
+            "Chapter patterns should still produce normalised candidates"
+        );
+    }
+
+    #[test]
+    fn test_numeric_dominant_content_filter_default() {
+        let cfg = RepeatedArtifactScanConfig::default();
+        assert!(!cfg.include_numeric_dominant);
+        assert!(cfg.include_text_dominant);
+        assert!(cfg.include_mixed_text_numbers);
+        assert!(cfg.include_symbol_noise);
+    }
+
+    #[test]
+    fn test_content_class_on_candidate() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "Header\nHeader\nHeader\n";
+        let doc = make_text_record("content_cand.txt", content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 2,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        for cand in &result {
+            if cand.display_text == "Header" {
+                assert_eq!(cand.content_class, CandidateContentClass::TextDominant);
+            }
+        }
+    }
+
+    // ---- Inline artefact detection tests ----
+
+    #[test]
+    fn test_br_tag_detected_as_inline() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "some text.<br/>more text\nother <br/> stuff\n";
+        let doc = make_text_record("br_test.txt", content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 1,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let br = result
+            .iter()
+            .find(|c| c.kind == RepeatedArtifactKind::InlineArtifact && c.display_text == "<br/>");
+        assert!(br.is_some(), "<br/> should be detected as InlineArtifact");
+        assert_eq!(br.unwrap().occurrence_count, 2);
+    }
+
+    #[test]
+    fn test_nbsp_detected_as_inline() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "word1&nbsp;word2\nword3&nbsp;word4&nbsp;word5\n";
+        let doc = make_text_record("nbsp_test.txt", content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 1,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let nbsp = result
+            .iter()
+            .find(|c| c.kind == RepeatedArtifactKind::InlineArtifact && c.display_text == "&nbsp;");
+        assert!(
+            nbsp.is_some(),
+            "&nbsp; should be detected as InlineArtifact"
+        );
+        assert_eq!(nbsp.unwrap().occurrence_count, 3);
+    }
+
+    #[test]
+    fn test_inline_examples_are_capped() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let parts = vec!["<br/>"; 100];
+        let content = parts.join(" ");
+        let doc = make_text_record("br_many.txt", &content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            max_examples_per_candidate: 3,
+            min_occurrences: 1,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let br = result
+            .iter()
+            .find(|c| c.kind == RepeatedArtifactKind::InlineArtifact && c.display_text == "<br/>");
+        assert!(br.is_some());
+        let br = br.unwrap();
+        assert!(br.examples.len() <= 3, "inline examples must be capped");
+        assert_eq!(br.occurrence_count, 100);
+    }
+
+    #[test]
+    fn test_inline_has_context() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "awful movie.<br/>the acting was great\n";
+        let doc = make_text_record("context_test.txt", content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 1,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let br = result
+            .iter()
+            .find(|c| c.kind == RepeatedArtifactKind::InlineArtifact && c.display_text == "<br/>");
+        assert!(br.is_some());
+        let ex = &br.unwrap().examples[0];
+        assert!(
+            ex.context_before
+                .as_ref()
+                .is_some_and(|c| c.contains("awful")),
+            "context_before should contain text before match"
+        );
+        assert!(
+            ex.context_after
+                .as_ref()
+                .is_some_and(|c| c.contains("acting")),
+            "context_after should contain text after match"
+        );
+    }
+
+    #[test]
+    fn test_inline_across_multiple_files() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![
+            make_text_record("f1.txt", "x &nbsp; y", temp_dir.path()),
+            make_text_record("f2.txt", "a &nbsp; b", temp_dir.path()),
+            make_text_record("f3.txt", "c &nbsp; d", temp_dir.path()),
+        ];
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 1,
+            min_files: 2,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result =
+            scan_repeated_artifacts(&records, &config, &CleaningConfig::default()).unwrap();
+        let nbsp = result
+            .iter()
+            .find(|c| c.kind == RepeatedArtifactKind::InlineArtifact && c.display_text == "&nbsp;");
+        assert!(nbsp.is_some());
+        assert_eq!(nbsp.unwrap().file_count, 3);
+    }
+
+    // ---- Candidate ID tests ----
+
+    #[test]
+    fn test_inline_candidate_ids_distinct() {
+        let id1 = compute_stable_id(&RepeatedArtifactKind::InlineArtifact, "<br />");
+        let id2 = compute_stable_id(&RepeatedArtifactKind::InlineArtifact, "&nbsp;");
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_exact_lines_same_norm_different_ids() {
+        let id1 = compute_stable_id(&RepeatedArtifactKind::ExactLine, "Hello World 1");
+        let id2 = compute_stable_id(&RepeatedArtifactKind::ExactLine, "Hello World 2");
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_inline_candidate_ids_distinct_in_pipeline() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "café naïve <br /> texto &nbsp; mais\noutra linha &nbsp; aqui <br /> ali\n";
+        let doc = make_text_record("inline_ids_pipeline.txt", content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 1,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let br_cand = result
+            .iter()
+            .find(|c| c.kind == RepeatedArtifactKind::InlineArtifact && c.display_text == "<br />");
+        let nbsp_cand = result
+            .iter()
+            .find(|c| c.kind == RepeatedArtifactKind::InlineArtifact && c.display_text == "&nbsp;");
+        assert!(br_cand.is_some(), "<br /> candidate should exist");
+        assert!(nbsp_cand.is_some(), "&nbsp; candidate should exist");
+        assert_ne!(
+            br_cand.unwrap().candidate_id,
+            nbsp_cand.unwrap().candidate_id,
+            "distinct inline patterns must produce distinct candidate IDs"
+        );
+    }
+
+    // ---- UTF-8 context safety tests ----
+
+    #[test]
+    fn test_safe_context_before_non_ascii() {
+        let text = "café naïve façade <br /> texto";
+        let pos = text.find("<br />").unwrap();
+        let ctx = safe_context_before(text, pos, 80);
+        assert!(ctx.is_some());
+        assert!(ctx.unwrap().contains("café"));
+    }
+
+    #[test]
+    fn test_safe_context_after_non_ascii() {
+        let text = "ação é ótima <br /> continuação";
+        let pos = text.find("<br />").unwrap();
+        let ctx = safe_context_after(text, pos, "<br />".len(), 80);
+        assert!(ctx.is_some());
+        assert!(ctx.unwrap().contains("continuação"));
+    }
+
+    #[test]
+    fn test_inline_context_utf8_safe() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "café naïve façade <br /> texto\n";
+        let doc = make_text_record("utf8_inline.txt", content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 1,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let br = result
+            .iter()
+            .find(|c| c.kind == RepeatedArtifactKind::InlineArtifact && c.display_text == "<br />");
+        assert!(br.is_some());
+        let ex = &br.unwrap().examples[0];
+        assert!(ex.context_before.is_some() || ex.context_after.is_some());
+    }
+
+    #[test]
+    fn test_inline_disabled_does_not_detect() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "text <br/> more text\n";
+        let doc = make_text_record("inline_off.txt", content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            include_inline_artifacts: false,
+            min_occurrences: 1,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+        let has_inline = result
+            .iter()
+            .any(|c| c.kind == RepeatedArtifactKind::InlineArtifact);
+        assert!(
+            !has_inline,
+            "inline detection should produce nothing when disabled"
+        );
+    }
+
+    // ---- Raw variant count tests ----
+
+    #[test]
+    fn test_normalized_raw_variant_count_is_distinct() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = ["Page 1", "Page 2", "Page 2", "Page 2", "Page 2", "Page 1"].join("\n");
+        let doc = make_text_record("variants.txt", &content, temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 2,
+            min_files: 1,
+            min_line_chars: 3,
+            include_normalized_lines: true,
+            include_exact_lines: true,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+
+        let page_norm = result
+            .iter()
+            .find(|candidate| {
+                candidate.kind == RepeatedArtifactKind::NormalizedLine
+                    && candidate.normalized_key == "page #"
+            })
+            .expect("expected page # normalised candidate");
+
+        assert_eq!(page_norm.raw_variant_count, 2);
+        assert!(!page_norm.raw_variant_count_is_capped);
+    }
+
+    #[test]
+    fn test_raw_variant_count_capped_flag() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        // Generate more unique variants than RAW_VARIANT_TRACK_CAP (200) to trigger overflow.
+        let variant_count = RAW_VARIANT_TRACK_CAP + 10;
+        let mut lines = Vec::with_capacity(variant_count);
+        for i in 1..=variant_count {
+            lines.push(format!("Page {}", i));
+        }
+        let content = lines.join("\n");
+        let doc = make_text_record("capped.txt", &content, temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 1,
+            min_files: 1,
+            min_line_chars: 3,
+            include_normalized_lines: true,
+            include_exact_lines: false,
+            include_inline_artifacts: false,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+
+        let page_norm = result
+            .iter()
+            .find(|candidate| {
+                candidate.kind == RepeatedArtifactKind::NormalizedLine
+                    && candidate.normalized_key == "page #"
+            })
+            .expect("expected page # normalised candidate");
+
+        assert_eq!(page_norm.raw_variant_count, RAW_VARIANT_TRACK_CAP);
+        assert!(page_norm.raw_variant_count_is_capped);
+    }
+
+    #[test]
+    fn test_exact_line_raw_variant_count_one() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = ["Repeated Header"; 10].join("\n");
+        let doc = make_text_record("exact_one.txt", &content, temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 5,
+            min_files: 1,
+            min_line_chars: 3,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+
+        let exact_cand = result
+            .iter()
+            .find(|c| {
+                c.kind == RepeatedArtifactKind::ExactLine && c.display_text == "Repeated Header"
+            })
+            .expect("expected exact line candidate 'Repeated Header'");
+
+        assert_eq!(exact_cand.raw_variant_count, 1);
+        assert!(!exact_cand.raw_variant_count_is_capped);
+    }
+
+    // ---- Diagnostics tests ----
+
+    #[test]
+    fn test_scan_report_contains_diagnostics() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = ["Repeated Line"; 10].join("\n");
+        let doc = make_text_record("diag.txt", &content, temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 5,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let report =
+            scan_repeated_artifacts_report(&[doc], &config, &CleaningConfig::default()).unwrap();
+
+        assert_eq!(report.diagnostics.files_requested, 1);
+        assert_eq!(report.diagnostics.files_scanned, 1);
+        assert!(report.diagnostics.total_raw_lines > 0);
+        assert!(report.diagnostics.total_candidate_keys_before_filtering > 0);
+        assert_eq!(report.diagnostics.final_candidates, report.candidates.len());
+    }
+
+    #[test]
+    fn test_scan_report_min_files_filter_diagnostics() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = ["Repeated Line"; 10].join("\n");
+        let doc = make_text_record("diag2.txt", &content, temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 2,
+            min_files: 2,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let report =
+            scan_repeated_artifacts_report(&[doc], &config, &CleaningConfig::default()).unwrap();
+
+        assert!(report.diagnostics.candidates_after_min_occurrences > 0);
+        assert_eq!(report.diagnostics.candidates_after_min_files, 0);
+        assert_eq!(report.diagnostics.final_candidates, 0);
+    }
+
+    #[test]
+    fn test_scan_report_empty_extraction_diagnostics() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let doc = make_text_record("empty.txt", "", temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 1,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let report =
+            scan_repeated_artifacts_report(&[doc], &config, &CleaningConfig::default()).unwrap();
+
+        assert_eq!(report.diagnostics.files_empty_after_extraction, 1);
+        assert_eq!(report.diagnostics.total_raw_lines, 0);
+    }
+
+    // ---- Cache equivalence tests ----
+
+    #[test]
+    fn test_repeated_artifacts_with_cache_equals_without_cache() {
+        let temp_dir = tempfile::tempdir().unwrap();
+
+        // Create a few text files with repeated lines
+        let content1 =
+            "Header\nBody line A\nBody line B\nFooter\nHeader\nBody line C\nBody line D\nFooter\n";
+        let content2 = "Header\nBody line X\nBody line Y\nFooter\nHeader\nBody line Z\nFooter\n";
+
+        let records = vec![
+            make_text_record("file1.txt", content1, temp_dir.path()),
+            make_text_record("file2.txt", content2, temp_dir.path()),
+        ];
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 2,
+            min_files: 1,
+            min_line_chars: 3,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let cleaning_config = CleaningConfig::default();
+        let cancel = no_cancellation();
+
+        // Run without cache
+        let report_no_cache = scan_repeated_artifacts_report_with_cancel_and_cache(
+            &records,
+            &config,
+            &cleaning_config,
+            None,
+            &cancel,
+        )
+        .expect("scan without cache should succeed");
+
+        // Run with cache (first call populates)
+        let cache = ExtractionCache::new();
+        let report_with_cache_first = scan_repeated_artifacts_report_with_cancel_and_cache(
+            &records,
+            &config,
+            &cleaning_config,
+            Some(&cache),
+            &cancel,
+        )
+        .expect("scan with cache (first) should succeed");
+
+        // Run with cache again (should be cache hits)
+        let report_with_cache_second = scan_repeated_artifacts_report_with_cancel_and_cache(
+            &records,
+            &config,
+            &cleaning_config,
+            Some(&cache),
+            &cancel,
+        )
+        .expect("scan with cache (second) should succeed");
+
+        // Compare candidates: same count
+        assert_eq!(
+            report_no_cache.candidates.len(),
+            report_with_cache_first.candidates.len(),
+            "candidate count should match between cache and no-cache (first)"
+        );
+        assert_eq!(
+            report_no_cache.candidates.len(),
+            report_with_cache_second.candidates.len(),
+            "candidate count should match between cache and no-cache (second)"
+        );
+
+        // Compare deterministic fields of each candidate
+        // Sort by candidate_id for deterministic comparison (order may differ due to Rayon)
+        let mut no_cache_sorted: Vec<_> = report_no_cache.candidates.iter().collect();
+        no_cache_sorted.sort_by(|a, b| a.candidate_id.cmp(&b.candidate_id));
+
+        for (report_candidates, label) in [
+            (&report_with_cache_first.candidates, "first cache pass"),
+            (&report_with_cache_second.candidates, "second cache pass"),
+        ] {
+            let mut cache_sorted: Vec<_> = report_candidates.iter().collect();
+            cache_sorted.sort_by(|a, b| a.candidate_id.cmp(&b.candidate_id));
+
+            assert_eq!(
+                no_cache_sorted.len(),
+                cache_sorted.len(),
+                "candidate count mismatch for {}",
+                label
+            );
+
+            for (nc, cc) in no_cache_sorted.iter().zip(cache_sorted.iter()) {
+                assert_eq!(
+                    nc.candidate_id, cc.candidate_id,
+                    "candidate_id mismatch for {}",
+                    label
+                );
+                assert_eq!(
+                    nc.kind, cc.kind,
+                    "kind mismatch for candidate {} in {}",
+                    nc.candidate_id, label
+                );
+                assert_eq!(
+                    nc.display_text, cc.display_text,
+                    "display_text mismatch for candidate {} in {}",
+                    nc.candidate_id, label
+                );
+                assert_eq!(
+                    nc.normalized_key, cc.normalized_key,
+                    "normalized_key mismatch for candidate {} in {}",
+                    nc.candidate_id, label
+                );
+                assert_eq!(
+                    nc.occurrence_count, cc.occurrence_count,
+                    "occurrence_count mismatch for candidate {} in {}",
+                    nc.candidate_id, label
+                );
+                assert_eq!(
+                    nc.file_count, cc.file_count,
+                    "file_count mismatch for candidate {} in {}",
+                    nc.candidate_id, label
+                );
+                assert_eq!(
+                    nc.position_summary, cc.position_summary,
+                    "position_summary mismatch for candidate {} in {}",
+                    nc.candidate_id, label
+                );
+                assert_eq!(
+                    nc.risk_label, cc.risk_label,
+                    "risk_label mismatch for candidate {} in {}",
+                    nc.candidate_id, label
+                );
+                assert_eq!(
+                    nc.content_class, cc.content_class,
+                    "content_class mismatch for candidate {} in {}",
+                    nc.candidate_id, label
+                );
+                // Preserves raw_variants
+                assert_eq!(
+                    nc.raw_variants, cc.raw_variants,
+                    "raw_variants mismatch for candidate {} in {}",
+                    nc.candidate_id, label
+                );
+                assert_eq!(
+                    nc.raw_variant_count, cc.raw_variant_count,
+                    "raw_variant_count mismatch for candidate {} in {}",
+                    nc.candidate_id, label
+                );
+                assert_eq!(
+                    nc.raw_variant_count_is_capped, cc.raw_variant_count_is_capped,
+                    "raw_variant_count_is_capped mismatch for candidate {} in {}",
+                    nc.candidate_id, label
+                );
+            }
+        }
+
+        // Check cache was actually used (at least some entries populated)
+        assert!(!cache.is_empty(), "cache should have entries after scan");
+
+        // Verify diagnostics are equivalent (failed_extraction should be 0 for both)
+        assert_eq!(
+            report_no_cache.diagnostics.files_failed_extraction,
+            report_with_cache_first.diagnostics.files_failed_extraction
+        );
+        assert_eq!(
+            report_no_cache.diagnostics.files_scanned,
+            report_with_cache_first.diagnostics.files_scanned
+        );
+    }
+
+    #[test]
+    fn test_repeated_artifacts_with_cache_preserves_raw_variants() {
+        let temp_dir = tempfile::tempdir().unwrap();
+
+        // Test with normalised candidates that have multiple raw variants
+        let content_parts = ["Page 1", "Page 2", "Page 1", "Page 3", "Page 2", "Page 1"];
+        let content = content_parts.join("\n");
+        let doc = make_text_record("multivariant.txt", &content, temp_dir.path());
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 2,
+            min_files: 1,
+            min_line_chars: 3,
+            include_exact_lines: true,
+            include_normalized_lines: true,
+            include_inline_artifacts: false,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let cleaning_config = CleaningConfig::default();
+        let cancel = no_cancellation();
+        let cache = ExtractionCache::new();
+
+        let report = scan_repeated_artifacts_report_with_cancel_and_cache(
+            &[doc],
+            &config,
+            &cleaning_config,
+            Some(&cache),
+            &cancel,
+        )
+        .expect("scan should succeed");
+
+        // Check that normalised "page #" candidate exists and has raw_variants
+        let page_norm = report.candidates.iter().find(|c| {
+            c.kind == RepeatedArtifactKind::NormalizedLine && c.normalized_key == "page #"
+        });
+
+        assert!(
+            page_norm.is_some(),
+            "normalised page # candidate should exist"
+        );
+        let page_norm = page_norm.unwrap();
+        assert!(
+            page_norm.raw_variant_count >= 2,
+            "should have at least 2 raw variants, got {}",
+            page_norm.raw_variant_count
+        );
+        assert!(
+            !page_norm.raw_variants.is_empty(),
+            "raw_variants should not be empty"
+        );
+        // All variants should be present (up to cap)
+        for expected_variant in &["Page 1", "Page 2", "Page 3"] {
+            assert!(
+                page_norm
+                    .raw_variants
+                    .contains(&expected_variant.to_string()),
+                "raw_variants should contain '{}', got {:?}",
+                expected_variant,
+                page_norm.raw_variants
+            );
+        }
+    }
+}
