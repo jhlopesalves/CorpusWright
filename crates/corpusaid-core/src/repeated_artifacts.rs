@@ -270,3 +270,513 @@ struct FileText {
     page_line_info: Vec<(Option<usize>, usize, usize)>,
 }
 
+// ---- Utility functions ----
+
+/// Returns true if the line should be skipped before any candidate processing.
+/// Filters: empty, whitespace-only, too short, too long.
+#[inline]
+fn should_skip_line(text: &str, min_chars: usize, max_chars: usize) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    let char_count = trimmed.chars().count();
+    char_count < min_chars || char_count > max_chars
+}
+
+/// Detects punctuation for candidate normalization.
+fn is_punctuation(c: char) -> bool {
+    matches!(
+        c,
+        '-' | '—'
+            | '–'
+            | '['
+            | ']'
+            | '('
+            | ')'
+            | '{'
+            | '}'
+            | '.'
+            | ','
+            | '*'
+            | '/'
+            | '\\'
+            | '_'
+            | '|'
+            | '•'
+            | '°'
+    )
+}
+
+/// Normalizes a line deterministically for candidate grouping.
+/// Strips surrounding punctuation, lowercases, collapses whitespace, and replaces digit runs with '#'.
+fn normalize_line(s: &str) -> String {
+    let trimmed = s.trim();
+    let chars: Vec<char> = trimmed.chars().collect();
+
+    let mut i = 0;
+    while i < chars.len() && is_punctuation(chars[i]) {
+        i += 1;
+    }
+    let start = i;
+
+    let mut j = chars.len();
+    while j > start && is_punctuation(chars[j - 1]) {
+        j -= 1;
+    }
+    let end = j;
+
+    if start >= end {
+        return String::new();
+    }
+
+    let substring: String = chars[start..end].iter().collect();
+    let trimmed_sub = substring.trim();
+    let lower = trimmed_sub.to_lowercase();
+
+    use regex::Regex;
+    use std::sync::LazyLock;
+    static RE_DIGITS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
+    static RE_SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
+
+    let with_replaced_digits = RE_DIGITS.replace_all(&lower, "#");
+    let collapsed_spaces = RE_SPACES.replace_all(&with_replaced_digits, " ");
+
+    collapsed_spaces.trim().to_string()
+}
+
+/// Computes the layout position of a line using per-line page metadata from `FileText`.
+/// For PDFs (page_num is Some): uses line-in-page index and total-lines-on-page for
+/// top/bottom detection (first/last 3 lines of each page).
+/// For non-PDFs: falls back to file-level 10% rule.
+fn compute_position_for_line(ft: &FileText, line_idx: usize) -> LinePosition {
+    if let Some(&(page_num_opt, line_in_page, page_total)) = ft.page_line_info.get(line_idx)
+        && page_num_opt.is_some()
+    {
+        // Page-aware: first 3 / last 3 lines of this page
+        if line_in_page < 3 {
+            return LinePosition::Top;
+        } else if line_in_page >= page_total.saturating_sub(3) {
+            return LinePosition::Bottom;
+        } else {
+            return LinePosition::Middle;
+        }
+    }
+    // Fallback to file-level position
+    let total_lines = ft.total_lines;
+    let ten_percent = (total_lines / 10).max(1);
+    if line_idx < ten_percent {
+        LinePosition::Top
+    } else if line_idx >= total_lines.saturating_sub(ten_percent) {
+        LinePosition::Bottom
+    } else {
+        LinePosition::Middle
+    }
+}
+
+/// Generates a stable, deterministic ID for a candidate.
+fn compute_stable_id(kind: &RepeatedArtifactKind, key: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(key.as_bytes());
+    let hash_str = format!("{:x}", hasher.finalize());
+    let kind_str = match kind {
+        RepeatedArtifactKind::ExactLine => "exact",
+        RepeatedArtifactKind::NormalizedLine => "norm",
+        RepeatedArtifactKind::TwoLineBlock => "block2",
+        RepeatedArtifactKind::ThreeLineBlock => "block3",
+        RepeatedArtifactKind::InlineArtifact => "inline",
+    };
+    format!("{}_{:.16}", kind_str, hash_str)
+}
+
+/// Safely extracts up to `max_chars` characters before `byte_pos` in `s`.
+/// Walks back to the nearest char boundary, then takes up to `max_chars` chars.
+/// Prefixes with `...` and trims leading whitespace.
+fn safe_context_before(s: &str, byte_pos: usize, max_chars: usize) -> Option<String> {
+    if byte_pos == 0 {
+        return None;
+    }
+    // Walk back to a valid char boundary
+    let end = (0..=byte_pos).rev().find(|&i| s.is_char_boundary(i))?;
+    if end == 0 {
+        return None;
+    }
+    let before = &s[..end];
+    let context: String = before
+        .chars()
+        .rev()
+        .take(max_chars)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    let trimmed = context.trim_start().to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(format!("...{}", trimmed))
+    }
+}
+
+/// Safely extracts up to `max_chars` characters after `byte_pos + pattern_len` in `s`.
+/// Checks `char_boundary` before slicing to avoid panic on multi-byte UTF-8.
+/// Suffixes with `...` and trims trailing whitespace.
+fn safe_context_after(
+    s: &str,
+    byte_pos: usize,
+    pattern_len: usize,
+    max_chars: usize,
+) -> Option<String> {
+    let start = byte_pos.checked_add(pattern_len)?;
+    if start >= s.len() || !s.is_char_boundary(start) {
+        return None;
+    }
+    let after = &s[start..];
+    let context: String = after.chars().take(max_chars).collect();
+    let trimmed = context.trim_end().to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(format!("{}...", trimmed))
+    }
+}
+
+/// Computes the suspicion score used to rank candidates.
+fn calculate_suspicion_score(
+    kind: &RepeatedArtifactKind,
+    display_text: &str,
+    occurrence_count: usize,
+    file_count: usize,
+    top_count: usize,
+    bottom_count: usize,
+) -> f64 {
+    let occ_factor = (occurrence_count as f64).ln_1p();
+    let file_factor = (file_count as f64).ln_1p();
+
+    let total_pos = (top_count + bottom_count) as f64;
+    let pos_ratio = if occurrence_count > 0 {
+        total_pos / occurrence_count as f64
+    } else {
+        0.0
+    };
+    let position_bonus = 1.0 + pos_ratio * 2.0;
+
+    let block_multiplier = match kind {
+        RepeatedArtifactKind::ExactLine => 1.0,
+        RepeatedArtifactKind::NormalizedLine => 1.0,
+        RepeatedArtifactKind::TwoLineBlock => 1.5,
+        RepeatedArtifactKind::ThreeLineBlock => 2.0,
+        RepeatedArtifactKind::InlineArtifact => 1.0,
+    };
+
+    let char_len = display_text.chars().count();
+    let len_factor = if char_len <= 3 {
+        0.2
+    } else if char_len <= 8 {
+        0.6
+    } else {
+        1.0
+    };
+
+    let non_alphanumeric_count = display_text
+        .chars()
+        .filter(|c| !c.is_alphanumeric() && !c.is_whitespace())
+        .count();
+    let symbol_ratio = if char_len > 0 {
+        non_alphanumeric_count as f64 / char_len as f64
+    } else {
+        0.0
+    };
+    let symbol_bonus = 1.0 + symbol_ratio * 1.5;
+
+    occ_factor * file_factor * position_bonus * block_multiplier * len_factor * symbol_bonus
+}
+
+/// Classifies a candidate's risk label.
+fn classify_risk(
+    display_text: &str,
+    normalized_key: &str,
+    occurrence_count: usize,
+    file_count: usize,
+    top_count: usize,
+    bottom_count: usize,
+) -> ArtifactRiskLabel {
+    let lower_key = normalized_key.trim().to_lowercase();
+
+    // 1. Common Academic Headings
+    let common_headings = [
+        "abstract",
+        "introduction",
+        "methods",
+        "results",
+        "discussion",
+        "conclusion",
+        "references",
+        "bibliography",
+        "appendix",
+    ];
+    if common_headings.contains(&lower_key.as_str()) {
+        return ArtifactRiskLabel::CommonSectionHeadingReviewCarefully;
+    }
+
+    // 2. Symbol/Noise
+    let char_len = display_text.chars().count();
+    let non_alphanumeric_count = display_text
+        .chars()
+        .filter(|c| !c.is_alphanumeric() && !c.is_whitespace())
+        .count();
+    let symbol_ratio = if char_len > 0 {
+        non_alphanumeric_count as f64 / char_len as f64
+    } else {
+        0.0
+    };
+    if symbol_ratio >= 0.50 {
+        return ArtifactRiskLabel::SymbolOrNoiseCandidate;
+    }
+
+    // 3. Strong Header/Footer
+    let pos_ratio = if occurrence_count > 0 {
+        (top_count + bottom_count) as f64 / occurrence_count as f64
+    } else {
+        0.0
+    };
+    if occurrence_count >= 3 && pos_ratio >= 0.75 {
+        return ArtifactRiskLabel::StrongHeaderFooterCandidate;
+    }
+
+    // 4. Possible Boilerplate
+    if file_count >= 2 {
+        return ArtifactRiskLabel::PossibleBoilerplate;
+    }
+
+    ArtifactRiskLabel::Ambiguous
+}
+
+/// Classifies a text line's content into one of four categories.
+///
+/// Classification rules (applied in order):
+/// 1. If >=50% non-alphanumeric symbols → SymbolNoiseDominant
+/// 2. If >=60% digits (and >0 digits) → NumericDominant
+/// 3. If both alphabetic and digits exist, and alphabetic ratio >= digit ratio → MixedTextNumbers
+/// 4. If digit count > alpha count (below 60% threshold) → NumericDominant
+/// 5. Default → TextDominant
+pub fn classify_content(text: &str) -> CandidateContentClass {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return CandidateContentClass::TextDominant;
+    }
+
+    let chars: Vec<char> = trimmed.chars().collect();
+    let total = chars.len() as f64;
+    if total == 0.0 {
+        return CandidateContentClass::TextDominant;
+    }
+
+    let alpha_count = chars.iter().filter(|c| c.is_alphabetic()).count() as f64;
+    let digit_count = chars.iter().filter(|c| c.is_ascii_digit()).count() as f64;
+    let symbol_count = chars
+        .iter()
+        .filter(|c| !c.is_alphanumeric() && !c.is_whitespace())
+        .count() as f64;
+
+    let symbol_ratio = symbol_count / total;
+    let digit_ratio = digit_count / total;
+    let alpha_ratio = alpha_count / total;
+
+    // 1. Symbol/noise dominant
+    if symbol_ratio >= 0.50 {
+        return CandidateContentClass::SymbolNoiseDominant;
+    }
+
+    // 2. Numeric dominant
+    if digit_ratio >= 0.60 && digit_count > 0.0 {
+        return CandidateContentClass::NumericDominant;
+    }
+
+    // 3. Mixed text + numbers: some of both, alphabetic >= digit
+    if alpha_ratio > 0.0 && digit_count > 0.0 && alpha_ratio >= digit_ratio {
+        return CandidateContentClass::MixedTextNumbers;
+    }
+
+    // 4. Digit-dominant but below 60% threshold — still numeric-dominant if digits dominate alpha
+    if digit_count > alpha_count && digit_ratio > 0.0 {
+        return CandidateContentClass::NumericDominant;
+    }
+
+    // 5. Mostly text
+    CandidateContentClass::TextDominant
+}
+
+/// Returns true if a candidate with the given content class should be included
+/// based on the scan config filters.
+fn should_include_content_class(
+    cc: CandidateContentClass,
+    config: &RepeatedArtifactScanConfig,
+) -> bool {
+    match cc {
+        CandidateContentClass::TextDominant => config.include_text_dominant,
+        CandidateContentClass::MixedTextNumbers => config.include_mixed_text_numbers,
+        CandidateContentClass::NumericDominant => config.include_numeric_dominant,
+        CandidateContentClass::SymbolNoiseDominant => config.include_symbol_noise,
+    }
+}
+
+/// Returns the dominant content class for a 2-line block.
+/// If either line is NumericDominant, the block is NumericDominant.
+/// If either is SymbolNoiseDominant, the block is SymbolNoiseDominant.
+/// Otherwise prefer MixedTextNumbers over TextDominant when there's mixing.
+fn dominant_content_class(
+    a: CandidateContentClass,
+    b: CandidateContentClass,
+) -> CandidateContentClass {
+    use CandidateContentClass::*;
+    if a == NumericDominant || b == NumericDominant {
+        return NumericDominant;
+    }
+    if a == SymbolNoiseDominant || b == SymbolNoiseDominant {
+        return SymbolNoiseDominant;
+    }
+    if a == MixedTextNumbers || b == MixedTextNumbers {
+        return MixedTextNumbers;
+    }
+    TextDominant
+}
+
+fn dominant_content_class_3(
+    a: CandidateContentClass,
+    b: CandidateContentClass,
+    c: CandidateContentClass,
+) -> CandidateContentClass {
+    use CandidateContentClass::*;
+    if a == NumericDominant || b == NumericDominant || c == NumericDominant {
+        return NumericDominant;
+    }
+    if a == SymbolNoiseDominant || b == SymbolNoiseDominant || c == SymbolNoiseDominant {
+        return SymbolNoiseDominant;
+    }
+    if a == MixedTextNumbers || b == MixedTextNumbers || c == MixedTextNumbers {
+        return MixedTextNumbers;
+    }
+    TextDominant
+}
+
+// ---- Inline artefact detection ----
+
+/// Known inline markup/conversion patterns.
+const KNOWN_INLINE_PATTERNS: &[&str] = &[
+    "<br/>", "<br>", "<br />", "<BR/>", "<BR>", "<BR />", "&nbsp;", "&amp;", "&lt;", "&gt;",
+    "&quot;", "&apos;",
+];
+
+/// Detects inline artefacts in the given file text.
+/// Returns a per-file local aggregated map.
+fn detect_inline_artifacts(
+    ft: &FileText,
+    config: &RepeatedArtifactScanConfig,
+) -> HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> {
+    let mut map: HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> = HashMap::new();
+
+    if !config.include_inline_artifacts {
+        return map;
+    }
+
+    for (line_idx, line) in ft.raw_lines.iter().enumerate() {
+        if line.is_empty() {
+            continue;
+        }
+        for &pattern in KNOWN_INLINE_PATTERNS {
+            let mut search_start = 0;
+            while let Some(pos) = line[search_start..].find(pattern) {
+                let abs_pos = search_start + pos;
+                search_start = abs_pos + pattern.len();
+
+                let key = (RepeatedArtifactKind::InlineArtifact, pattern.to_string());
+                let entry = map.entry(key).or_insert_with(|| LocalCandidateStats {
+                    occurrence_count: 0,
+                    top_count: 0,
+                    middle_count: 0,
+                    bottom_count: 0,
+                    unknown_count: 0,
+                    normalized_key: String::new(),
+                    display_text: pattern.to_string(),
+                    example_refs: Vec::new(),
+                    raw_variants: BTreeSet::from([pattern.to_string()]),
+                    raw_variant_overflow: false,
+                });
+
+                entry.occurrence_count += 1;
+                let pos_class = compute_position_for_line(ft, line_idx);
+                match pos_class {
+                    LinePosition::Top => entry.top_count += 1,
+                    LinePosition::Middle => entry.middle_count += 1,
+                    LinePosition::Bottom => entry.bottom_count += 1,
+                }
+
+                if entry.example_refs.len() < config.max_examples_per_candidate {
+                    // For inline, store (line_idx, char_pos) — char_pos used as context offset
+                    entry.example_refs.push((line_idx, abs_pos));
+                }
+            }
+        }
+    }
+
+    map
+}
+
+/// Build the PDF extraction options used by repeated artefact scanning.
+///
+/// OCR is always `false` regardless of `cleaning_config`.
+/// When `analyse_processed_text` is true, uses the user's config for cleanup flags
+/// and strategy; otherwise uses PdfiumFlat and all cleanup flags disabled.
+fn build_repeated_artifact_pdf_options(
+    analyse_processed_text: bool,
+    cleaning_config: &CleaningConfig,
+) -> PdfExtractionOptions {
+    if analyse_processed_text {
+        PdfExtractionOptions {
+            strategy: cleaning_config.pdf_embedded_text_strategy,
+            use_ocr: false,
+            remove_repeated_headers_footers: cleaning_config.remove_repeated_pdf_headers_footers,
+            remove_page_labels: cleaning_config.remove_pdf_page_labels,
+            remove_symbol_heavy_artifacts: cleaning_config.remove_pdf_symbol_heavy_artifacts,
+            remove_code_like_blocks: cleaning_config.remove_pdf_code_like_blocks,
+            remove_formula_like_lines: cleaning_config.remove_pdf_formula_like_lines,
+        }
+    } else {
+        PdfExtractionOptions {
+            strategy: crate::clean::PdfEmbeddedTextStrategy::PdfiumFlat,
+            use_ocr: false,
+            remove_repeated_headers_footers: false,
+            remove_page_labels: false,
+            remove_symbol_heavy_artifacts: false,
+            remove_code_like_blocks: false,
+            remove_formula_like_lines: false,
+        }
+    }
+}
+
+/// Build the DOCX extraction config used by repeated artefact scanning.
+fn build_repeated_artifact_docx_config(
+    analyse_processed_text: bool,
+    cleaning_config: &CleaningConfig,
+) -> CleaningConfig {
+    if analyse_processed_text {
+        cleaning_config.clone()
+    } else {
+        CleaningConfig::default()
+    }
+}
+
+/// Apply post-extraction processing (HTML extraction + cleaning) that is
+/// currently done after text extraction when `analyse_processed_text` is true.
+/// This preserves the exact same ordering as the non-cache path.
+fn apply_scan_post_processing(raw_text: &str, cleaning_config: &CleaningConfig) -> String {
+    let temp = if cleaning_config.extract_html {
+        crate::html::extract_html(raw_text)
+    } else {
+        raw_text.to_string()
+    };
+    crate::clean::clean_text(&temp, cleaning_config)
+}
+
