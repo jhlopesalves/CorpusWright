@@ -780,3 +780,474 @@ fn apply_scan_post_processing(raw_text: &str, cleaning_config: &CleaningConfig) 
     crate::clean::clean_text(&temp, cleaning_config)
 }
 
+/// Internal struct describing extraction status for a single file.
+struct ExtractedScanText {
+    text: String,
+    extraction_failed: bool,
+}
+
+/// Extracts text and records whether extraction failed (vs. succeeded with possibly empty text).
+///
+/// If a cache is provided, uses `cache.get_or_extract` to avoid re-extracting documents
+/// that have been previously extracted with compatible options. Post-extraction cleaning
+/// is applied *after* cache retrieval to preserve the existing order (cache stores raw
+/// extracted text only).
+fn get_document_text_with_status(
+    record: &DocumentRecord,
+    analyse_processed_text: bool,
+    cleaning_config: &CleaningConfig,
+    cache: Option<&ExtractionCache>,
+) -> ExtractedScanText {
+    // ── Cache path ───────────────────────────────────────────────────────
+    if let Some(cache) = cache {
+        let pdf_opts = if record.document_type == DocumentType::Pdf {
+            Some(build_repeated_artifact_pdf_options(
+                analyse_processed_text,
+                cleaning_config,
+            ))
+        } else {
+            None
+        };
+        let docx_config =
+            build_repeated_artifact_docx_config(analyse_processed_text, cleaning_config);
+
+        match cache.get_or_extract(record, pdf_opts, &docx_config) {
+            Ok(entry) => {
+                let processed_text = if analyse_processed_text {
+                    apply_scan_post_processing(&entry.extracted_text, cleaning_config)
+                } else {
+                    entry.extracted_text
+                };
+                return ExtractedScanText {
+                    text: processed_text,
+                    extraction_failed: false,
+                };
+            }
+            Err(_) => {
+                return ExtractedScanText {
+                    text: String::new(),
+                    extraction_failed: true,
+                };
+            }
+        }
+    }
+
+    // ── Direct extraction path (no cache) ────────────────────────────────
+    let source_bytes = match std::fs::read(&record.source_path) {
+        Ok(b) => b,
+        Err(_) => {
+            return ExtractedScanText {
+                text: String::new(),
+                extraction_failed: true,
+            };
+        }
+    };
+
+    let (raw_text, extraction_failed) = match record.document_type {
+        DocumentType::Docx => {
+            let cfg = build_repeated_artifact_docx_config(analyse_processed_text, cleaning_config);
+            match crate::docx::extract_docx(&source_bytes, &cfg) {
+                Ok(extracted) => (extracted.text, false),
+                Err(_) => (String::new(), true),
+            }
+        }
+        DocumentType::Pdf => {
+            let pdf_opts =
+                build_repeated_artifact_pdf_options(analyse_processed_text, cleaning_config);
+            match crate::pdf::extract_pdf(&source_bytes, None, pdf_opts) {
+                Ok(extracted) => (extracted.text, false),
+                Err(_) => (String::new(), true),
+            }
+        }
+        _ => (String::from_utf8_lossy(&source_bytes).into_owned(), false),
+    };
+
+    let processed_text = if analyse_processed_text {
+        apply_scan_post_processing(&raw_text, cleaning_config)
+    } else {
+        raw_text
+    };
+
+    ExtractedScanText {
+        text: processed_text,
+        extraction_failed,
+    }
+}
+
+/// Build a per-file `FileText` from extracted text and page info.
+fn build_file_text(file_idx: usize, record: &DocumentRecord, text: &str) -> FileText {
+    let file_name = record
+        .source_path
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "unknown".to_string());
+    let file_path = record.relative_path.to_string_lossy().into_owned();
+
+    let is_pdf = record.document_type == DocumentType::Pdf;
+
+    // Build raw lines and page boundary info.
+    // For PDFs we split on "\n\n" to approximate pages.
+    let mut raw_lines: Vec<String> = Vec::new();
+    let mut page_nums: Vec<Option<usize>> = Vec::new();
+
+    if is_pdf {
+        let page_chunks: Vec<&str> = text.split("\n\n").collect();
+        for (p_idx, chunk) in page_chunks.iter().enumerate() {
+            for line in chunk.lines() {
+                raw_lines.push(line.to_string());
+                page_nums.push(Some(p_idx + 1));
+            }
+        }
+    } else {
+        for line in text.lines() {
+            raw_lines.push(line.to_string());
+        }
+        page_nums.resize(raw_lines.len(), None);
+    }
+
+    let total_lines = raw_lines.len();
+
+    // Build page_line_info aligned with raw_lines
+    let mut page_line_info: Vec<(Option<usize>, usize, usize)> =
+        Vec::with_capacity(raw_lines.len());
+    if is_pdf {
+        let page_chunks: Vec<&str> = text.split("\n\n").collect();
+        for (p_idx, chunk) in page_chunks.iter().enumerate() {
+            let page_lines: Vec<&str> = chunk.lines().collect();
+            let total_on_page = page_lines.len();
+            for (line_in_page, _line) in page_lines.iter().enumerate() {
+                page_line_info.push((Some(p_idx + 1), line_in_page, total_on_page));
+            }
+        }
+    } else {
+        for idx in 0..raw_lines.len() {
+            page_line_info.push((None, idx, raw_lines.len()));
+        }
+    }
+
+    FileText {
+        file_idx,
+        file_name,
+        file_path,
+        raw_lines,
+        total_lines,
+        page_nums,
+        page_line_info,
+    }
+}
+
+/// Phase 1 (parallel): each file builds an aggregated local map.
+/// Returns Phase1Result (never None — always produces a structured result).
+fn phase1_scan_file(
+    record: &DocumentRecord,
+    file_idx: usize,
+    config: &RepeatedArtifactScanConfig,
+    cleaning_config: &CleaningConfig,
+    cache: Option<&ExtractionCache>,
+    cancel: &CancellationFlag,
+) -> Phase1Result {
+    // Check cancellation before extraction
+    if cancel.load(Ordering::Relaxed) {
+        return Phase1Result {
+            ft: build_file_text(file_idx, record, ""),
+            local_map: HashMap::new(),
+            extraction_failed: false,
+        };
+    }
+
+    let extracted = get_document_text_with_status(
+        record,
+        config.analyse_processed_text,
+        cleaning_config,
+        cache,
+    );
+
+    // Check cancellation after extraction
+    if cancel.load(Ordering::Relaxed) {
+        return Phase1Result {
+            ft: build_file_text(file_idx, record, ""),
+            local_map: HashMap::new(),
+            extraction_failed: false,
+        };
+    }
+
+    let ft = build_file_text(file_idx, record, &extracted.text);
+
+    let mut map = phase1_aggregate(&ft, config);
+
+    // Detect inline artefacts and merge into the same local map
+    let inline_map = detect_inline_artifacts(&ft, config);
+    for ((kind, key), inline_stats) in inline_map {
+        map.insert((kind, key), inline_stats);
+    }
+
+    Phase1Result {
+        ft,
+        local_map: map,
+        extraction_failed: extracted.extraction_failed,
+    }
+}
+
+/// Aggregate occurrences into a local stats map (one entry per key, not per occurrence).
+fn phase1_aggregate(
+    ft: &FileText,
+    config: &RepeatedArtifactScanConfig,
+) -> HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> {
+    let mut map: HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> = HashMap::new();
+    let total = ft.total_lines;
+    let min_c = config.min_line_chars;
+    let max_c = config.max_line_chars;
+
+    if total == 0 {
+        return map;
+    }
+
+    // First pass: pre-compute valid entries with content class.
+    // Normalise once per line; reuse for exact + normalised.
+    let mut valid_entries: Vec<(
+        usize,
+        String,
+        /* norm */ String,
+        /* content_class */ CandidateContentClass,
+    )> = Vec::new();
+    for idx in 0..total {
+        let raw = ft.raw_lines[idx].trim();
+        if should_skip_line(raw, min_c, max_c) {
+            continue;
+        }
+        let norm = normalize_line(raw);
+        let cc = classify_content(raw);
+        valid_entries.push((idx, raw.to_string(), norm, cc));
+    }
+
+    // Helper to insert/update a local aggregated entry.
+    let mut upsert = |kind: RepeatedArtifactKind,
+                      key: String,
+                      norm_key: String,
+                      display: String,
+                      _cc: CandidateContentClass,
+                      pos: LinePosition,
+                      rs: usize,
+                      re: usize| {
+        let map_key = (kind, key);
+        let entry = map.entry(map_key).or_insert_with(|| LocalCandidateStats {
+            occurrence_count: 0,
+            top_count: 0,
+            middle_count: 0,
+            bottom_count: 0,
+            unknown_count: 0,
+            normalized_key: norm_key,
+            display_text: String::new(),
+            example_refs: Vec::new(),
+            raw_variants: BTreeSet::new(),
+            raw_variant_overflow: false,
+        });
+        entry.occurrence_count += 1;
+        match pos {
+            LinePosition::Top => entry.top_count += 1,
+            LinePosition::Middle => entry.middle_count += 1,
+            LinePosition::Bottom => entry.bottom_count += 1,
+        }
+        // Set display text on first occurrence
+        if entry.display_text.is_empty() {
+            entry.display_text = display.clone();
+        }
+        // Bounded examples
+        if entry.example_refs.len() < config.max_examples_per_candidate {
+            entry.example_refs.push((rs, re));
+        }
+        // Track distinct raw variants using a bounded set.
+        if entry.raw_variants.len() < RAW_VARIANT_TRACK_CAP {
+            entry.raw_variants.insert(display.clone());
+        } else if !entry.raw_variants.contains(&display) {
+            entry.raw_variant_overflow = true;
+        }
+    };
+
+    // --- Exact lines (filter by content class) ---
+    if config.include_exact_lines {
+        for &(idx, ref line, ref norm, cc) in &valid_entries {
+            if !should_include_content_class(cc, config) {
+                continue;
+            }
+            let pos = compute_position_for_line(ft, idx);
+            upsert(
+                RepeatedArtifactKind::ExactLine,
+                line.clone(),
+                norm.clone(),
+                line.clone(),
+                cc,
+                pos,
+                idx,
+                idx,
+            );
+        }
+    }
+
+    // --- Normalised lines (reuse norm from valid_entries) ---
+    // SAFETY: NumericDominant lines are NOT used for normalised grouping
+    // unless explicitly enabled (include_numeric_dominant).
+    if config.include_normalized_lines {
+        for &(idx, ref line, ref norm, cc) in &valid_entries {
+            if norm.is_empty() {
+                continue;
+            }
+            // Skip numeric-dominant lines for normalised grouping unless enabled
+            if cc == CandidateContentClass::NumericDominant && !config.include_numeric_dominant {
+                continue;
+            }
+            let pos = compute_position_for_line(ft, idx);
+            upsert(
+                RepeatedArtifactKind::NormalizedLine,
+                norm.clone(),
+                norm.clone(),
+                line.clone(),
+                cc,
+                pos,
+                idx,
+                idx,
+            );
+        }
+    }
+
+    // --- 2-line blocks (opt-in) ---
+    if config.include_two_line_blocks && valid_entries.len() >= 2 {
+        for w in valid_entries.windows(2) {
+            let (i0, ref l0, ref n0, cc0) = w[0];
+            let (i1, ref l1, ref n1, cc1) = w[1];
+            // Must be contiguous in raw lines and same page
+            if i1 != i0 + 1 {
+                continue;
+            }
+            if ft.page_nums.get(i0).copied().flatten() != ft.page_nums.get(i1).copied().flatten() {
+                continue;
+            }
+            let text_block = format!("{}\n{}", l0, l1);
+            let norm_block = format!("{}\n{}", n0, n1);
+            // Classify block: use the dominant class of its lines
+            let block_cc = dominant_content_class(cc0, cc1);
+            if !should_include_content_class(block_cc, config) {
+                continue;
+            }
+            let pos = compute_position_for_line(ft, i0);
+            upsert(
+                RepeatedArtifactKind::TwoLineBlock,
+                text_block.clone(),
+                norm_block,
+                text_block,
+                block_cc,
+                pos,
+                i0,
+                i1,
+            );
+        }
+    }
+
+    // --- 3-line blocks (opt-in) ---
+    if config.include_three_line_blocks && valid_entries.len() >= 3 {
+        for w in valid_entries.windows(3) {
+            let (i0, ref l0, ref n0, cc0) = w[0];
+            let (i1, ref l1, ref n1, cc1) = w[1];
+            let (i2, ref l2, ref n2, cc2) = w[2];
+            if i1 != i0 + 1 || i2 != i1 + 1 {
+                continue;
+            }
+            if ft.page_nums.get(i0).copied().flatten() != ft.page_nums.get(i1).copied().flatten()
+                || ft.page_nums.get(i0).copied().flatten()
+                    != ft.page_nums.get(i2).copied().flatten()
+            {
+                continue;
+            }
+            let text_block = format!("{}\n{}\n{}", l0, l1, l2);
+            let norm_block = format!("{}\n{}\n{}", n0, n1, n2);
+            let block_cc = dominant_content_class_3(cc0, cc1, cc2);
+            if !should_include_content_class(block_cc, config) {
+                continue;
+            }
+            let pos = compute_position_for_line(ft, i0);
+            upsert(
+                RepeatedArtifactKind::ThreeLineBlock,
+                text_block.clone(),
+                norm_block,
+                text_block,
+                block_cc,
+                pos,
+                i0,
+                i2,
+            );
+        }
+    }
+
+    map
+}
+
+/// Phase 2: merge local aggregated maps into global CountEntry map.
+fn phase2_merge(
+    all_maps: Vec<HashMap<(RepeatedArtifactKind, String), LocalCandidateStats>>,
+    config: &RepeatedArtifactScanConfig,
+) -> HashMap<(RepeatedArtifactKind, String), CountEntry> {
+    let mut global: HashMap<(RepeatedArtifactKind, String), CountEntry> = HashMap::new();
+
+    // Track file index for compact file IDs
+    // Because each local map belongs to exactly one file, we can
+    // increment file_count once per key per local map without per-occurrence checks.
+    for (_file_idx, local_map) in all_maps.into_iter().enumerate() {
+        for ((kind, key), stats) in local_map {
+            // Only one entry per key per file now — merge directly.
+            let entry = global
+                .entry((kind, key.clone()))
+                .or_insert_with(|| CountEntry {
+                    kind,
+                    display_text: stats.display_text.clone(),
+                    normalized_key: stats.normalized_key.clone(),
+                    candidate_key: key.clone(),
+                    occurrence_count: 0,
+                    top_count: 0,
+                    middle_count: 0,
+                    bottom_count: 0,
+                    unknown_count: 0,
+                    file_ids: Vec::new(),
+                    example_refs: Vec::new(),
+                    raw_variants: BTreeSet::new(),
+                    raw_variant_overflow: false,
+                });
+
+            entry.occurrence_count += stats.occurrence_count;
+            entry.top_count += stats.top_count;
+            entry.middle_count += stats.middle_count;
+            entry.bottom_count += stats.bottom_count;
+            entry.unknown_count += stats.unknown_count;
+
+            // File counting: each local map = one file. Just push if not already tracked.
+            let fid = _file_idx as u32;
+            // Since keys appear at most once per file, we can just push unconditionally
+            // because each local_map corresponds to a different _file_idx.
+            // But to be safe, avoid duplicates (shouldn't happen, but be robust).
+            if !entry.file_ids.contains(&fid) {
+                entry.file_ids.push(fid);
+            }
+
+            // Merge example refs (bounded)
+            for (rs, re) in &stats.example_refs {
+                if entry.example_refs.len() < config.max_examples_per_candidate {
+                    entry.example_refs.push((fid, *rs, *re));
+                }
+            }
+
+            // Merge distinct raw variants from local stats into global entry.
+            // Use capped set semantics: insert up to RAW_VARIANT_TRACK_CAP, then set overflow.
+            for variant in &stats.raw_variants {
+                if entry.raw_variants.len() < RAW_VARIANT_TRACK_CAP {
+                    entry.raw_variants.insert(variant.clone());
+                } else if !entry.raw_variants.contains(variant) {
+                    entry.raw_variant_overflow = true;
+                }
+            }
+            if stats.raw_variant_overflow {
+                entry.raw_variant_overflow = true;
+            }
+        }
+    }
+
+    global
+}
