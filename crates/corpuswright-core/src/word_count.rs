@@ -9,6 +9,7 @@
 use crate::cache::ExtractionCache;
 use crate::clean::{CleaningConfig, PdfTextSource, clean_text};
 use crate::scan::{DocumentRecord, DocumentType};
+use crate::tokenization::{TokenizationConfig, tokenize};
 
 pub const OCR_WORD_COUNT_SKIPPED_STATUS: &str =
     "Cleaned token count unavailable until sources are processed with cleaning settings.";
@@ -130,7 +131,10 @@ fn count_words_in_processed_text(raw: &str, cleaning_config: &CleaningConfig) ->
         raw.to_string()
     };
     let cleaned = clean_text(&text, cleaning_config);
-    cleaned.split_whitespace().count()
+    tokenize(&cleaned, 0, &TokenizationConfig::default())
+        .into_iter()
+        .filter(|token| token.counts_as_word())
+        .count()
 }
 
 #[cfg(test)]
@@ -183,6 +187,21 @@ mod tests {
         assert_eq!(
             count, 3,
             "expected 3 words with default config, got {count}"
+        );
+    }
+
+    #[test]
+    fn shared_boundaries_preserve_compounds_and_split_numeric_separators() {
+        let config = CleaningConfig::default();
+        assert_eq!(
+            count_words_in_processed_text("well-being twenty-one", &config),
+            2
+        );
+        assert_eq!(count_words_in_processed_text("don't don’t", &config), 2);
+        assert_eq!(count_words_in_processed_text("3.14 1,000", &config), 4);
+        assert_eq!(
+            count_words_in_processed_text("-leading trailing- alpha—beta", &config),
+            4
         );
     }
 

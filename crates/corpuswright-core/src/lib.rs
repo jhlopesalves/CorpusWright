@@ -38,6 +38,7 @@ pub mod search;
 pub mod structured_document;
 mod text_normalization;
 pub mod text_profile;
+pub mod tokenization;
 pub mod word_count;
 
 pub use clean::{
@@ -88,3 +89,7 @@ pub use structured_document::{
     DocumentLine, DocumentPage, PAGE_EDGE_LINE_COUNT, StructuredDocument,
 };
 pub use text_profile::{CandidateTextProfile, CandidateTextSignalLabel};
+pub use tokenization::{
+    TOKENIZER_ID, TOKENIZER_VERSION, Token, TokenKind, TokenizationConfig, TokenizationManifest,
+    UnicodeNormalizationForm, tokenize,
+};
