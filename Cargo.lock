@@ -817,6 +817,7 @@ dependencies = [
  "tempfile",
  "ts-rs",
  "unicode-normalization",
+ "unicode-segmentation",
  "zip",
 ]
 

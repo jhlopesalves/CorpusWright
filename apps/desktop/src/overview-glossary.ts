@@ -104,26 +104,6 @@ export const overviewGlossary = {
       "Corpus-size-dependent; only compare across corpora of similar size.",
     ],
   },
-  rawTtr: {
-    id: "raw-ttr",
-    label: "Raw type–token ratio (TTR)",
-    explanation: "Divides unique types by tokens; it usually falls as a text becomes longer.",
-    latex: String.raw`\mathrm{TTR}=\frac{V}{N}`,
-    detail:
-      "The simplest lexical-diversity measure: distinct types divided by total tokens. It states what fraction of the running text is 'new' vocabulary.",
-    symbols: [
-      { sym: String.raw`\mathrm{TTR}`, def: "Raw type-token ratio." },
-      { sym: String.raw`V`, def: "Number of distinct types (vocabulary size)." },
-      { sym: String.raw`N`, def: "Number of tokens." },
-    ],
-    interpretation:
-      "Runs from 0 to 1; higher means more varied vocabulary. But TTR falls mechanically as a text grows - later tokens mostly repeat existing types - so it is only meaningful when comparing texts of equal length. Treat it as length-bound, and prefer MATTR or MTLD when documents differ in length.",
-    limitations: [
-      "Strongly length-dependent: longer texts score lower purely because of length, not poorer vocabulary.",
-      "Not comparable across documents of different lengths.",
-      "Sensitive to tokenisation and casing.",
-    ],
-  },
   mattr: {
     id: "mattr",
     label: "MATTR",
