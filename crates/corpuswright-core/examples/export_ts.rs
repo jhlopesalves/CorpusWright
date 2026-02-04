@@ -6,6 +6,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
+use corpuswright_core::analysis::{
+    AnalysisDocumentSelection, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
+    FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
+    FrequencyTokenClass, SortDirection,
+};
 use corpuswright_core::clean::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
     PdfOcrQuality, PdfTextSource, ReasonCount, RemovalMatcher, RemovalRule, RemovalRuleSource,
@@ -497,6 +502,66 @@ fn main() {
             name: "TokenizationConfig",
             file: "TokenizationConfig",
         }],
+        &[],
+    );
+    export_type::<AnalysisDocumentSelection>(&out_dir, &[], &[]);
+    export_type::<FrequencyMatchMode>(&out_dir, &[], &[]);
+    export_type::<FrequencyTokenClass>(&out_dir, &[], &[]);
+    export_type::<FrequencySortKey>(&out_dir, &[], &[]);
+    export_type::<SortDirection>(&out_dir, &[], &[]);
+    export_type::<FrequencyGroupMode>(&out_dir, &[], &[]);
+    export_type::<FrequencyNoticeKind>(&out_dir, &[], &[]);
+    export_type::<FrequencyNotice>(
+        &out_dir,
+        &[TypeImport {
+            name: "FrequencyNoticeKind",
+            file: "FrequencyNoticeKind",
+        }],
+        &[],
+    );
+    export_type::<FrequencyQuery>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "AnalysisDocumentSelection",
+                file: "AnalysisDocumentSelection",
+            },
+            TypeImport {
+                name: "FrequencyMatchMode",
+                file: "FrequencyMatchMode",
+            },
+            TypeImport {
+                name: "FrequencyTokenClass",
+                file: "FrequencyTokenClass",
+            },
+            TypeImport {
+                name: "FrequencyGroupMode",
+                file: "FrequencyGroupMode",
+            },
+            TypeImport {
+                name: "FrequencySortKey",
+                file: "FrequencySortKey",
+            },
+            TypeImport {
+                name: "SortDirection",
+                file: "SortDirection",
+            },
+        ],
+        &[],
+    );
+    export_type::<FrequencyTermItem>(&out_dir, &[], &[]);
+    export_type::<FrequencyPage>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "FrequencyTermItem",
+                file: "FrequencyTermItem",
+            },
+            TypeImport {
+                name: "FrequencyNotice",
+                file: "FrequencyNotice",
+            },
+        ],
         &[],
     );
     export_type::<ExportManifest>(
