@@ -2095,12 +2095,11 @@ fn resolve_frequency_grouping(query: &FrequencyQuery) -> ResolvedFrequencyGroupi
         FrequencyGroupMode::Lemma => {
             // Lemma grouping requires annotation data. When annotation is
             // unavailable, we surface a notice and fall back to surface.
-            let mut notices = Vec::new();
-            notices.push(FrequencyNotice {
+            let notices = vec![FrequencyNotice {
                 kind: FrequencyNoticeKind::AnnotationUnavailable,
                 message: "Lemma grouping requires UDPipe annotation. Build the analysis corpus with annotation enabled, or switch to surface/stem grouping."
                     .to_string(),
-            });
+            }];
             ResolvedFrequencyGrouping {
                 group_by: FrequencyGroupMode::Surface,
                 case_fold: query.case_fold,
@@ -2140,7 +2139,7 @@ fn resolve_frequency_grouping(query: &FrequencyQuery) -> ResolvedFrequencyGroupi
 
 fn frequency_group_key(surface: &str, grouping: &ResolvedFrequencyGrouping) -> String {
     match grouping.group_by {
-        FrequencyGroupMode::Surface => {
+        FrequencyGroupMode::Surface | FrequencyGroupMode::Lemma => {
             if grouping.case_fold {
                 case_fold_surface(surface)
             } else {
@@ -2345,6 +2344,7 @@ pub fn query_term_distribution(
         group_by: query.group_by,
         case_fold: query.case_fold,
         language: query.language.clone(),
+        pos_filter: None,
         sort_key: FrequencySortKey::Token,
         sort_direction: SortDirection::Asc,
         offset: 0,
@@ -2824,6 +2824,7 @@ mod tests {
                 group_by: FrequencyGroupMode::Surface,
                 case_fold: false,
                 language: None,
+                pos_filter: None,
                 sort_key: FrequencySortKey::Frequency,
                 sort_direction: SortDirection::Desc,
                 offset: 0,
@@ -2869,6 +2870,7 @@ mod tests {
                 group_by: FrequencyGroupMode::Surface,
                 case_fold: false,
                 language: None,
+                pos_filter: None,
                 sort_key: FrequencySortKey::Frequency,
                 sort_direction: SortDirection::Desc,
                 offset: 0,
@@ -2901,6 +2903,7 @@ mod tests {
                 group_by: FrequencyGroupMode::Surface,
                 case_fold: false,
                 language: None,
+                pos_filter: None,
                 sort_key: FrequencySortKey::Token,
                 sort_direction: SortDirection::Asc,
                 offset: 1,
@@ -3199,6 +3202,7 @@ mod tests {
                 group_by: FrequencyGroupMode::Surface,
                 case_fold: false,
                 language: None,
+                pos_filter: None,
                 sort_key: FrequencySortKey::Frequency,
                 sort_direction: SortDirection::Desc,
                 offset: 0,
