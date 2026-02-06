@@ -1,1 +1,1 @@
-export type FrequencyGroupMode = "surface" | "stem";
+export type FrequencyGroupMode = "surface" | "stem" | "lemma";
