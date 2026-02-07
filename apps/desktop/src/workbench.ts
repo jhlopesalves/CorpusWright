@@ -1529,6 +1529,11 @@ function currentFrequencyLanguage(): string | null {
   return currentFrequencyGroupMode() === "stem" ? dom.frequencyLanguageSelect.value : null;
 }
 
+function currentFrequencyPosFilter(): string | null {
+  const value = dom.frequencyPosFilterSelect.value.trim();
+  return value.length === 0 ? null : value;
+}
+
 function syncFrequencyCaseFoldToggle(): void {
   const stemsAreSelected = currentFrequencyGroupMode() === "stem";
   const isFolded = currentFrequencyCaseFold();
@@ -1556,6 +1561,8 @@ function frequencyGroupingSummary(): string {
   switch (currentFrequencyGroupMode()) {
     case "surface":
       return currentFrequencyCaseFold() ? "case-folded surface forms" : "surface forms";
+    case "lemma":
+      return currentFrequencyCaseFold() ? "case-folded lemmas" : "lemmas";
     case "stem":
       return `${dom.frequencyLanguageSelect.selectedOptions[0]?.textContent ?? "selected language"} stems`;
   }
@@ -1768,6 +1775,7 @@ async function refreshFrequencyPage(resetOffset = true): Promise<void> {
         groupBy: currentFrequencyGroupMode(),
         caseFold: currentFrequencyCaseFold(),
         language: currentFrequencyLanguage(),
+        posFilter: currentFrequencyPosFilter(),
         sortKey: frequencySortKey,
         sortDirection: frequencySortDirection,
         offset: frequencyPageOffset,
@@ -1988,6 +1996,16 @@ export function refreshAnalyseWorkbench(): void {
   }
 }
 
+function analysisLanguageOverrides(indices: number[] | null): Record<number, string> {
+  const language = dom.analyseLanguageOverrideSelect.value.trim();
+  if (language.length === 0) {
+    return {};
+  }
+  const targetIndices = indices
+    ?? Array.from({ length: state.projectCorpusFileCount }, (_, index) => index);
+  return Object.fromEntries(targetIndices.map((index) => [index, language]));
+}
+
 async function handleBuildAnalysisCorpus(): Promise<void> {
   if (analysisBuildInProgress) {
     dom.analyseBuildButton.disabled = true;
@@ -2003,6 +2021,7 @@ async function handleBuildAnalysisCorpus(): Promise<void> {
 
   const indices = state.activeProject ? null : state.allFiles.map((_, index) => index);
   const buildSignature = analysisBuildSignature();
+  const languageOverrides = analysisLanguageOverrides(indices);
 
   analysisNotice = null;
 
@@ -2033,6 +2052,7 @@ async function handleBuildAnalysisCorpus(): Promise<void> {
       state.currentCorpusVersion,
       buildSignature,
       effectiveCleaningConfig(),
+      languageOverrides,
     );
     if (analysisBuildGeneration !== buildGeneration) {
       return;
@@ -2469,6 +2489,7 @@ export function initWorkbenchSwitcher(): void {
     void refreshFrequencyPage();
   });
   dom.frequencyLanguageSelect.addEventListener("change", () => void refreshFrequencyPage());
+  dom.frequencyPosFilterSelect.addEventListener("change", () => void refreshFrequencyPage());
   dom.frequencyTokenClassSelect.addEventListener("change", () => void refreshFrequencyPage());
   syncFrequencyStopwordsToggle();
   dom.frequencyHideStopwordsInput.addEventListener("change", () => {
