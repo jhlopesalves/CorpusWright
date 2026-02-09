@@ -3054,6 +3054,202 @@ mod tests {
     }
 
     #[test]
+    fn build_is_surface_only_without_udpipe_models() {
+        let corpus = corpus_for(&[("surface.txt", "Cats cat ran running")]);
+
+        assert!(!corpus.overview().annotation_available);
+        assert_eq!(
+            corpus.overview().build.lemmatisation.as_deref(),
+            Some("Surface-only build; lemma/POS annotation is not built yet.")
+        );
+        assert!(
+            corpus
+                .documents
+                .iter()
+                .all(|document| !document.annotation_available)
+        );
+        assert!(
+            corpus
+                .documents
+                .iter()
+                .all(|document| document.annotated_term_counts.is_empty())
+        );
+
+        let page = query_frequency_list(&corpus, &base_frequency_query());
+        assert_eq!(
+            frequency_tokens(&page),
+            [("Cats", 1), ("cat", 1), ("ran", 1), ("running", 1)]
+        );
+    }
+
+    #[test]
+    fn language_override_skips_detection_in_fast_build() {
+        let records = vec![record("override.txt")];
+        let mut options = build_options();
+        options.language_overrides.insert(0, "en".to_string());
+        let corpus = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "Bonjour le monde")),
+            |_| {},
+        )
+        .unwrap();
+        let summary = &corpus.documents[0].summary;
+
+        assert_eq!(summary.language.as_deref(), Some("en"));
+        assert_eq!(summary.language_confidence, None);
+        assert!(summary.language_is_overridden);
+    }
+
+    #[test]
+    fn parallel_map_matches_sequential_reference_build() {
+        let long_text = (0..130)
+            .map(|index| match index % 5 {
+                0 => "alpha",
+                1 => "beta",
+                2 => "gamma",
+                3 => "delta",
+                _ => "epsilon",
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let texts = [
+            ("z.txt", "Bonjour le monde alpha"),
+            ("a.txt", long_text.as_str()),
+            ("empty.txt", " \n"),
+            ("b.txt", "Cats cat ran running alpha"),
+        ];
+        let mut options = build_options();
+        options.language_overrides.insert(0, "fr".to_string());
+
+        let sequential = analysis_product_for(&texts, options.clone(), false);
+        let parallel = analysis_product_for(&texts, options, true);
+
+        assert_eq!(
+            snapshot_analysis_product(&parallel),
+            snapshot_analysis_product(&sequential)
+        );
+    }
+
+    #[test]
+    fn golden_fixture_pins_document_and_term_ordering() {
+        let texts = [
+            ("z.txt", "Beta delta alpha"),
+            ("a.txt", "Beta alpha beta"),
+            ("m.txt", "alpha Gamma"),
+            ("empty.txt", " "),
+        ];
+        let mut options = build_options();
+        for index in 0..texts.len() {
+            options.language_overrides.insert(index, "en".to_string());
+        }
+        let product = analysis_product_for(&texts, options, true);
+        let corpus = &product.corpus;
+
+        let summaries = corpus
+            .documents
+            .iter()
+            .map(|document| {
+                (
+                    document.summary.id,
+                    document.summary.relative_path.as_str(),
+                    document.summary.token_count,
+                    document.summary.language.as_deref(),
+                    document.summary.language_confidence,
+                    document.summary.language_is_overridden,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            summaries,
+            vec![
+                (0, "a.txt", 3, Some("en"), None, true),
+                (1, "m.txt", 2, Some("en"), None, true),
+                (2, "z.txt", 3, Some("en"), None, true),
+            ]
+        );
+
+        let prepared_terms = product
+            .terms
+            .iter()
+            .map(|term| {
+                (
+                    term.token.as_str(),
+                    term.frequency,
+                    term.document_frequency,
+                    term.document_counts.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            prepared_terms,
+            vec![
+                ("beta", 3, 2, vec![(0, 2), (2, 1)]),
+                ("alpha", 3, 3, vec![(0, 1), (1, 1), (2, 1)]),
+                ("gamma", 1, 1, vec![(1, 1)]),
+                ("delta", 1, 1, vec![(2, 1)]),
+            ]
+        );
+
+        let surface_terms = corpus
+            .surface_terms
+            .iter()
+            .map(|term| (term.token.as_str(), term.document_counts.clone()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            surface_terms,
+            vec![
+                ("Beta", vec![(0, 1), (2, 1)]),
+                ("alpha", vec![(0, 1), (1, 1), (2, 1)]),
+                ("beta", vec![(0, 1)]),
+                ("Gamma", vec![(1, 1)]),
+                ("delta", vec![(2, 1)]),
+            ]
+        );
+
+        let document_surface_counts = corpus
+            .documents
+            .iter()
+            .map(|document| {
+                (
+                    document.summary.relative_path.as_str(),
+                    document.surface_term_counts.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            document_surface_counts,
+            vec![
+                ("a.txt", vec![(0, 1), (1, 1), (2, 1)]),
+                ("m.txt", vec![(1, 1), (3, 1)]),
+                ("z.txt", vec![(0, 1), (1, 1), (4, 1)]),
+            ]
+        );
+        assert_eq!(
+            corpus.overview().vocabulary_growth.points,
+            vec![
+                VocabularyGrowthPoint {
+                    tokens: 1,
+                    types: 1,
+                },
+                VocabularyGrowthPoint {
+                    tokens: 2,
+                    types: 2,
+                },
+                VocabularyGrowthPoint {
+                    tokens: 4,
+                    types: 2,
+                },
+                VocabularyGrowthPoint {
+                    tokens: 8,
+                    types: 4,
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn resolver_uses_active_processed_pipeline_output() {
         let record = record("processed.txt");
         let cleaning_config = CleaningConfig {
@@ -3579,6 +3775,13 @@ mod tests {
     #[test]
     fn frequency_lemma_requires_annotation_notice() {
         let corpus = corpus_for(&[("lemma.txt", "Cats cat")]);
+        assert!(
+            corpus
+                .documents
+                .iter()
+                .all(|document| !document.annotation_available)
+        );
+        assert!(!corpus.overview().annotation_available);
         let page = query_frequency_list(
             &corpus,
             &FrequencyQuery {
@@ -3600,6 +3803,13 @@ mod tests {
     #[test]
     fn frequency_pos_filter_requires_annotation_notice() {
         let corpus = corpus_for(&[("pos.txt", "Cats ran")]);
+        assert!(
+            corpus
+                .documents
+                .iter()
+                .all(|document| !document.annotation_available)
+        );
+        assert!(!corpus.overview().annotation_available);
         let page = query_frequency_list(
             &corpus,
             &FrequencyQuery {
