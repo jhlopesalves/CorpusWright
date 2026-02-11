@@ -1,6 +1,8 @@
 //! Rust-owned corpus analysis and bounded query APIs.
 
-use crate::annotation::{LemmaTable, UniversalPos};
+use crate::annotation::{
+    AnnotatedToken, AnnotationError, LemmaTable, ModelManager, UniversalPos, default_model_dir,
+};
 use crate::clean::CleaningConfig;
 use crate::language::detect_and_resolve;
 use crate::scan::{DocumentRecord, DocumentType};
@@ -10,7 +12,8 @@ use regex::Regex;
 use rust_stemmers::{Algorithm, Stemmer};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use ts_rs::TS;
@@ -532,13 +535,119 @@ struct AnalysisSurfaceTerm {
     document_counts: Vec<(usize, u64)>,
 }
 
-#[derive(Debug, Clone)]
-struct AnnotatedTermCount {
-    surface_term_id: u32,
-    lemma_id: u32,
-    upos: UniversalPos,
-    count: u64,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnnotatedTermCount {
+    pub surface_term_id: u32,
+    pub lemma_id: u32,
+    pub upos: UniversalPos,
+    pub count: u64,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnnotationLayer {
+    pub documents: Vec<AnnotationLayerDocument>,
+    pub lemma_table: LemmaTable,
+    pub languages_used: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnnotationLayerDocument {
+    /// Index into `AnalysisCorpus.documents`.
+    pub analysis_document_index: usize,
+    pub source_path: String,
+    pub relative_path: String,
+    pub term_counts: Vec<AnnotatedTermCount>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AnnotationLayerBuildOptions {
+    pub udpipe_model_dir: Option<PathBuf>,
+    /// Per-document language override keyed by the original records slice,
+    /// before the corpus build sorts records into analysis order.
+    pub language_overrides: HashMap<usize, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnnotationLayerBuildError {
+    Cancelled,
+    TextLoadFailed {
+        source_path: String,
+        error: String,
+    },
+    CorpusDocumentMismatch {
+        reason: String,
+    },
+    UnsupportedLanguages {
+        languages: Vec<String>,
+    },
+    ModelPreflightFailed {
+        language: String,
+        error: String,
+    },
+    ModelTaggingFailed {
+        analysis_document_index: usize,
+        language: String,
+        error: String,
+    },
+    AlignmentOrIdentityMismatch {
+        analysis_document_index: usize,
+        reason: String,
+    },
+}
+
+impl std::fmt::Display for AnnotationLayerBuildError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cancelled => formatter.write_str("Annotation layer build cancelled."),
+            Self::TextLoadFailed { source_path, error } => {
+                write!(
+                    formatter,
+                    "Failed to load analysis text for {source_path}: {error}"
+                )
+            }
+            Self::CorpusDocumentMismatch { reason } => {
+                write!(
+                    formatter,
+                    "Annotation inputs do not match the analysis corpus: {reason}"
+                )
+            }
+            Self::UnsupportedLanguages { languages } => {
+                write!(
+                    formatter,
+                    "No UDPipe model is available for language(s): {}",
+                    languages.join(", ")
+                )
+            }
+            Self::ModelPreflightFailed { language, error } => {
+                write!(
+                    formatter,
+                    "Failed to preflight UDPipe model for language {language}: {error}"
+                )
+            }
+            Self::ModelTaggingFailed {
+                analysis_document_index,
+                language,
+                error,
+            } => {
+                write!(
+                    formatter,
+                    "UDPipe tagging failed for analysis document {analysis_document_index} ({language}): {error}"
+                )
+            }
+            Self::AlignmentOrIdentityMismatch {
+                analysis_document_index,
+                reason,
+            } => {
+                write!(
+                    formatter,
+                    "Annotation identity mismatch for analysis document {analysis_document_index}: {reason}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for AnnotationLayerBuildError {}
 
 struct AnalysisBuildMetadata {
     source_count: usize,
@@ -591,6 +700,29 @@ struct LocalTermCount {
     token: String,
     count: u64,
     first_token_position: u64,
+}
+
+struct AnnotationDocumentInput {
+    analysis_document_index: usize,
+    source_path: String,
+    relative_path: String,
+    text: String,
+    language: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LocalAnnotatedTermCount {
+    surface_term_id: u32,
+    lemma: String,
+    upos: UniversalPos,
+    count: u64,
+}
+
+struct WorkerAnnotationDocument {
+    analysis_document_index: usize,
+    source_path: String,
+    relative_path: String,
+    term_counts: Vec<LocalAnnotatedTermCount>,
 }
 
 /// Sparse Rust-owned analysis index.
@@ -1784,6 +1916,425 @@ where
         .map(|product| product.corpus)
 }
 
+pub fn build_annotation_layer<TextLoader>(
+    corpus: &AnalysisCorpus,
+    records: &[DocumentRecord],
+    options: AnnotationLayerBuildOptions,
+    cancel: &AtomicBool,
+    load_text: TextLoader,
+) -> Result<AnnotationLayer, AnnotationLayerBuildError>
+where
+    TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
+{
+    build_annotation_layer_with_mapping(corpus, records, options, cancel, load_text, true)
+}
+
+fn build_annotation_layer_with_mapping<TextLoader>(
+    corpus: &AnalysisCorpus,
+    records: &[DocumentRecord],
+    options: AnnotationLayerBuildOptions,
+    cancel: &AtomicBool,
+    mut load_text: TextLoader,
+    parallel_map: bool,
+) -> Result<AnnotationLayer, AnnotationLayerBuildError>
+where
+    TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
+{
+    let model_dir = options.udpipe_model_dir.unwrap_or_else(default_model_dir);
+    let inputs = load_annotation_document_inputs(
+        corpus,
+        records,
+        &options.language_overrides,
+        cancel,
+        &mut load_text,
+    )?;
+    let surface_term_lookup = build_surface_term_lookup(corpus)?;
+    let languages_used = inputs
+        .iter()
+        .map(|input| input.language.clone())
+        .collect::<BTreeSet<_>>();
+
+    preflight_annotation_languages(&languages_used, &model_dir)?;
+
+    let worker_documents = annotate_annotation_documents(
+        &inputs,
+        &surface_term_lookup,
+        &model_dir,
+        cancel,
+        parallel_map,
+    )?;
+    reduce_annotation_documents(worker_documents, languages_used.into_iter().collect())
+}
+
+fn load_annotation_document_inputs<TextLoader>(
+    corpus: &AnalysisCorpus,
+    records: &[DocumentRecord],
+    language_overrides: &HashMap<usize, String>,
+    cancel: &AtomicBool,
+    load_text: &mut TextLoader,
+) -> Result<Vec<AnnotationDocumentInput>, AnnotationLayerBuildError>
+where
+    TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
+{
+    let mut ordered_records = records.iter().enumerate().collect::<Vec<_>>();
+    ordered_records.sort_by(|left, right| {
+        left.1
+            .relative_path
+            .cmp(&right.1.relative_path)
+            .then_with(|| left.1.source_path.cmp(&right.1.source_path))
+    });
+
+    let mut inputs = Vec::with_capacity(corpus.documents.len());
+    for (original_record_index, record) in ordered_records {
+        if cancel.load(AtomicOrdering::Relaxed) {
+            return Err(AnnotationLayerBuildError::Cancelled);
+        }
+
+        let source_path = record.source_path.to_string_lossy().into_owned();
+        let relative_path = record.relative_path.to_string_lossy().into_owned();
+        let resolution =
+            load_text(record).map_err(|error| AnnotationLayerBuildError::TextLoadFailed {
+                source_path: source_path.clone(),
+                error,
+            })?;
+        let text = match resolution.provenance {
+            AnalysisInputProvenance::Processed | AnalysisInputProvenance::SourceTextFallback => {
+                resolution.text
+            }
+            AnalysisInputProvenance::EmptyOrFailed => None,
+        };
+        let Some(text) = text.filter(|value| !value.trim().is_empty()) else {
+            continue;
+        };
+
+        let analysis_document_index = inputs.len();
+        let Some(document) = corpus.documents.get(analysis_document_index) else {
+            return Err(AnnotationLayerBuildError::CorpusDocumentMismatch {
+                reason: format!(
+                    "canonical text supplied more usable documents than the analysis corpus; first extra source is {relative_path}"
+                ),
+            });
+        };
+        verify_annotation_document_identity(
+            analysis_document_index,
+            document,
+            &source_path,
+            &relative_path,
+            &text,
+        )?;
+
+        let language =
+            if let Some(override_language) = language_overrides.get(&original_record_index) {
+                detect_and_resolve(&text, Some(override_language))
+                    .resolution
+                    .effective_language
+            } else if let Some(language) = document.summary.language.clone() {
+                language
+            } else {
+                detect_and_resolve(&text, None)
+                    .resolution
+                    .effective_language
+            };
+
+        inputs.push(AnnotationDocumentInput {
+            analysis_document_index,
+            source_path,
+            relative_path,
+            text,
+            language,
+        });
+    }
+
+    if inputs.len() != corpus.documents.len() {
+        return Err(AnnotationLayerBuildError::CorpusDocumentMismatch {
+            reason: format!(
+                "canonical text supplied {} usable documents, but the analysis corpus contains {} documents",
+                inputs.len(),
+                corpus.documents.len()
+            ),
+        });
+    }
+
+    Ok(inputs)
+}
+
+fn verify_annotation_document_identity(
+    analysis_document_index: usize,
+    document: &AnalysisDocument,
+    source_path: &str,
+    relative_path: &str,
+    text: &str,
+) -> Result<(), AnnotationLayerBuildError> {
+    if document.summary.source_path != source_path
+        || document.summary.relative_path != relative_path
+    {
+        return Err(AnnotationLayerBuildError::CorpusDocumentMismatch {
+            reason: format!(
+                "document {analysis_document_index} is {}, but canonical text supplied {}",
+                document_name(&document.summary),
+                if relative_path.is_empty() {
+                    source_path
+                } else {
+                    relative_path
+                }
+            ),
+        });
+    }
+
+    let document_id = u32::try_from(analysis_document_index).map_err(|_| {
+        AnnotationLayerBuildError::CorpusDocumentMismatch {
+            reason: "analysis corpus contains more than u32::MAX documents".to_string(),
+        }
+    })?;
+    let tokenization_config = TokenizationConfig::default();
+    let tokens = analysis_word_tokens(text, document_id, &tokenization_config);
+    if tokens.len() as u64 != document.summary.token_count {
+        return Err(AnnotationLayerBuildError::CorpusDocumentMismatch {
+            reason: format!(
+                "document {analysis_document_index} token count changed from {} to {}",
+                document.summary.token_count,
+                tokens.len()
+            ),
+        });
+    }
+
+    Ok(())
+}
+
+fn build_surface_term_lookup(
+    corpus: &AnalysisCorpus,
+) -> Result<HashMap<String, u32>, AnnotationLayerBuildError> {
+    let mut lookup = HashMap::with_capacity(corpus.surface_terms.len());
+    for (index, term) in corpus.surface_terms.iter().enumerate() {
+        let term_id = u32::try_from(index).map_err(|_| {
+            AnnotationLayerBuildError::CorpusDocumentMismatch {
+                reason: "analysis surface vocabulary contains more than u32::MAX types".to_string(),
+            }
+        })?;
+        if lookup.insert(term.token.clone(), term_id).is_some() {
+            return Err(AnnotationLayerBuildError::CorpusDocumentMismatch {
+                reason: format!(
+                    "analysis surface vocabulary contains duplicate term {:?}",
+                    term.token
+                ),
+            });
+        }
+    }
+    Ok(lookup)
+}
+
+fn preflight_annotation_languages(
+    languages: &BTreeSet<String>,
+    model_dir: &Path,
+) -> Result<(), AnnotationLayerBuildError> {
+    let mut manager = ModelManager::new(model_dir.to_path_buf());
+    let mut unsupported = Vec::new();
+    for language in languages {
+        match manager.load_model(language) {
+            Ok(()) => {}
+            Err(AnnotationError::ModelNotFound { language }) => unsupported.push(language),
+            Err(error) => {
+                return Err(AnnotationLayerBuildError::ModelPreflightFailed {
+                    language: language.clone(),
+                    error: error.to_string(),
+                });
+            }
+        }
+    }
+
+    if !unsupported.is_empty() {
+        return Err(AnnotationLayerBuildError::UnsupportedLanguages {
+            languages: unsupported,
+        });
+    }
+
+    Ok(())
+}
+
+fn annotate_annotation_documents(
+    inputs: &[AnnotationDocumentInput],
+    surface_term_lookup: &HashMap<String, u32>,
+    model_dir: &Path,
+    cancel: &AtomicBool,
+    parallel_map: bool,
+) -> Result<Vec<WorkerAnnotationDocument>, AnnotationLayerBuildError> {
+    if parallel_map {
+        let model_dir = model_dir.to_path_buf();
+        inputs
+            .par_iter()
+            .map_init(
+                || ModelManager::new(model_dir.clone()),
+                |manager, input| {
+                    annotate_annotation_document(input, surface_term_lookup, manager, cancel)
+                },
+            )
+            .collect()
+    } else {
+        let mut manager = ModelManager::new(model_dir.to_path_buf());
+        inputs
+            .iter()
+            .map(|input| {
+                annotate_annotation_document(input, surface_term_lookup, &mut manager, cancel)
+            })
+            .collect()
+    }
+}
+
+fn annotate_annotation_document(
+    input: &AnnotationDocumentInput,
+    surface_term_lookup: &HashMap<String, u32>,
+    manager: &mut ModelManager,
+    cancel: &AtomicBool,
+) -> Result<WorkerAnnotationDocument, AnnotationLayerBuildError> {
+    if cancel.load(AtomicOrdering::Relaxed) {
+        return Err(AnnotationLayerBuildError::Cancelled);
+    }
+
+    manager
+        .load_model(&input.language)
+        .map_err(|error| annotation_document_error(input, error))?;
+
+    let document_id = u32::try_from(input.analysis_document_index).map_err(|_| {
+        AnnotationLayerBuildError::CorpusDocumentMismatch {
+            reason: "analysis corpus contains more than u32::MAX documents".to_string(),
+        }
+    })?;
+    let tokenization_config = TokenizationConfig::default();
+    let tokens = analysis_word_tokens(&input.text, document_id, &tokenization_config);
+    let token_surfaces = tokens.iter().map(|token| token.surface).collect::<Vec<_>>();
+    let annotated_tokens = manager
+        .tag_and_align(&input.language, &token_surfaces)
+        .map_err(|error| annotation_document_error(input, error))?;
+    let term_counts = resolve_annotated_tokens_to_local_counts(
+        input.analysis_document_index,
+        &annotated_tokens,
+        surface_term_lookup,
+    )?;
+
+    Ok(WorkerAnnotationDocument {
+        analysis_document_index: input.analysis_document_index,
+        source_path: input.source_path.clone(),
+        relative_path: input.relative_path.clone(),
+        term_counts,
+    })
+}
+
+fn annotation_document_error(
+    input: &AnnotationDocumentInput,
+    error: AnnotationError,
+) -> AnnotationLayerBuildError {
+    match error {
+        AnnotationError::AlignmentFailed { reason } => {
+            AnnotationLayerBuildError::AlignmentOrIdentityMismatch {
+                analysis_document_index: input.analysis_document_index,
+                reason,
+            }
+        }
+        AnnotationError::ModelNotFound { language } => {
+            AnnotationLayerBuildError::UnsupportedLanguages {
+                languages: vec![language],
+            }
+        }
+        error => AnnotationLayerBuildError::ModelTaggingFailed {
+            analysis_document_index: input.analysis_document_index,
+            language: input.language.clone(),
+            error: error.to_string(),
+        },
+    }
+}
+
+fn resolve_annotated_tokens_to_local_counts(
+    analysis_document_index: usize,
+    annotated_tokens: &[AnnotatedToken],
+    surface_term_lookup: &HashMap<String, u32>,
+) -> Result<Vec<LocalAnnotatedTermCount>, AnnotationLayerBuildError> {
+    let mut counts = HashMap::<(u32, String, UniversalPos), u64>::new();
+    for annotated_token in annotated_tokens {
+        let Some(&surface_term_id) = surface_term_lookup.get(&annotated_token.surface) else {
+            return Err(AnnotationLayerBuildError::AlignmentOrIdentityMismatch {
+                analysis_document_index,
+                reason: format!(
+                    "annotated surface {:?} at token {} does not exist in the analysis surface vocabulary",
+                    annotated_token.surface, annotated_token.token_index
+                ),
+            });
+        };
+        let key = (
+            surface_term_id,
+            annotated_token.lemma.clone(),
+            annotated_token.upos,
+        );
+        let count = counts.entry(key).or_default();
+        *count = count.checked_add(1).ok_or_else(|| {
+            AnnotationLayerBuildError::AlignmentOrIdentityMismatch {
+                analysis_document_index,
+                reason: "annotated token count overflowed u64".to_string(),
+            }
+        })?;
+    }
+
+    let mut terms = counts
+        .into_iter()
+        .map(
+            |((surface_term_id, lemma, upos), count)| LocalAnnotatedTermCount {
+                surface_term_id,
+                lemma,
+                upos,
+                count,
+            },
+        )
+        .collect::<Vec<_>>();
+    terms.sort_by(|left, right| {
+        left.surface_term_id
+            .cmp(&right.surface_term_id)
+            .then_with(|| left.lemma.cmp(&right.lemma))
+            .then_with(|| left.upos.as_upos_str().cmp(right.upos.as_upos_str()))
+    });
+    Ok(terms)
+}
+
+fn reduce_annotation_documents(
+    mut worker_documents: Vec<WorkerAnnotationDocument>,
+    languages_used: Vec<String>,
+) -> Result<AnnotationLayer, AnnotationLayerBuildError> {
+    worker_documents.sort_by_key(|document| document.analysis_document_index);
+    let mut lemma_table = LemmaTable::new();
+    let mut documents = Vec::with_capacity(worker_documents.len());
+
+    for (expected_index, document) in worker_documents.into_iter().enumerate() {
+        if document.analysis_document_index != expected_index {
+            return Err(AnnotationLayerBuildError::CorpusDocumentMismatch {
+                reason: format!(
+                    "annotation worker returned document index {}, expected {expected_index}",
+                    document.analysis_document_index
+                ),
+            });
+        }
+        let term_counts = document
+            .term_counts
+            .into_iter()
+            .map(|local_count| AnnotatedTermCount {
+                surface_term_id: local_count.surface_term_id,
+                lemma_id: lemma_table.intern(&local_count.lemma),
+                upos: local_count.upos,
+                count: local_count.count,
+            })
+            .collect::<Vec<_>>();
+        documents.push(AnnotationLayerDocument {
+            analysis_document_index: document.analysis_document_index,
+            source_path: document.source_path,
+            relative_path: document.relative_path,
+            term_counts,
+        });
+    }
+
+    Ok(AnnotationLayer {
+        documents,
+        lemma_table,
+        languages_used,
+    })
+}
+
 fn build_analysis_corpus_with_mapping<TextLoader, Progress>(
     records: &[DocumentRecord],
     options: AnalysisBuildOptions,
@@ -2962,6 +3513,48 @@ mod tests {
         .unwrap()
     }
 
+    fn annotation_options(
+        language_overrides: HashMap<usize, String>,
+    ) -> AnnotationLayerBuildOptions {
+        AnnotationLayerBuildOptions {
+            udpipe_model_dir: Some(default_model_dir()),
+            language_overrides,
+        }
+    }
+
+    fn annotation_layer_for(
+        texts: &[(&str, &str)],
+        language_overrides: HashMap<usize, String>,
+        parallel_map: bool,
+    ) -> (AnalysisCorpus, AnnotationLayer) {
+        let mut analysis_options = build_options();
+        analysis_options.language_overrides = language_overrides.clone();
+        let corpus = analysis_product_for(texts, analysis_options, true).corpus;
+        let records = texts
+            .iter()
+            .map(|(name, _)| record(name))
+            .collect::<Vec<_>>();
+        let text_by_name = texts.iter().copied().collect::<HashMap<_, _>>();
+        let layer = build_annotation_layer_with_mapping(
+            &corpus,
+            &records,
+            annotation_options(language_overrides),
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    text_by_name
+                        .get(record.source_path.to_str().unwrap())
+                        .copied()
+                        .unwrap_or_default(),
+                ))
+            },
+            parallel_map,
+        )
+        .unwrap();
+        (corpus, layer)
+    }
+
     fn snapshot_analysis_product(product: &AnalysisBuildProduct) -> AnalysisCorpusSnapshot {
         let corpus = &product.corpus;
         let mut frequency_by_frequency_query = base_frequency_query();
@@ -3080,6 +3673,197 @@ mod tests {
             frequency_tokens(&page),
             [("Cats", 1), ("cat", 1), ("ran", 1), ("running", 1)]
         );
+    }
+
+    #[test]
+    fn annotation_input_language_overrides_use_original_record_indices() {
+        let texts = [("z.txt", "Bonjour le monde"), ("a.txt", "Cats run")];
+        let records = texts
+            .iter()
+            .map(|(name, _)| record(name))
+            .collect::<Vec<_>>();
+        let text_by_name = texts.iter().copied().collect::<HashMap<_, _>>();
+        let mut language_overrides = HashMap::new();
+        language_overrides.insert(0, "fr".to_string());
+        language_overrides.insert(1, "en".to_string());
+        let mut analysis_options = build_options();
+        analysis_options.language_overrides = language_overrides.clone();
+        let corpus = analysis_product_for(&texts, analysis_options, true).corpus;
+        let mut load_text = |record: &DocumentRecord| {
+            Ok(processed_resolution(
+                record,
+                text_by_name
+                    .get(record.source_path.to_str().unwrap())
+                    .copied()
+                    .unwrap_or_default(),
+            ))
+        };
+
+        let inputs = load_annotation_document_inputs(
+            &corpus,
+            &records,
+            &language_overrides,
+            &AtomicBool::new(false),
+            &mut load_text,
+        )
+        .unwrap();
+
+        assert_eq!(inputs[0].relative_path, "a.txt");
+        assert_eq!(inputs[0].language, "en");
+        assert_eq!(inputs[1].relative_path, "z.txt");
+        assert_eq!(inputs[1].language, "fr");
+    }
+
+    #[test]
+    fn annotation_parallel_build_matches_serial_reference() {
+        let texts = [("b.txt", "Dogs run quickly"), ("a.txt", "Cats chase mice")];
+        let mut language_overrides = HashMap::new();
+        language_overrides.insert(0, "en".to_string());
+        language_overrides.insert(1, "en".to_string());
+
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let (_, parallel) = annotation_layer_for(&texts, language_overrides, true);
+
+        assert_eq!(parallel, serial);
+    }
+
+    #[test]
+    fn annotation_build_blocks_unsupported_language_before_tagging() {
+        let texts = [("unsupported.txt", "Hallo welt")];
+        let records = texts
+            .iter()
+            .map(|(name, _)| record(name))
+            .collect::<Vec<_>>();
+        let text_by_name = texts.iter().copied().collect::<HashMap<_, _>>();
+        let mut language_overrides = HashMap::new();
+        language_overrides.insert(0, "zz".to_string());
+        let mut analysis_options = build_options();
+        analysis_options.language_overrides = language_overrides.clone();
+        let corpus = analysis_product_for(&texts, analysis_options, true).corpus;
+
+        let result = build_annotation_layer_with_mapping(
+            &corpus,
+            &records,
+            annotation_options(language_overrides),
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    text_by_name
+                        .get(record.source_path.to_str().unwrap())
+                        .copied()
+                        .unwrap_or_default(),
+                ))
+            },
+            true,
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            AnnotationLayerBuildError::UnsupportedLanguages {
+                languages: vec!["zz".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn annotation_identity_mismatch_is_error_not_skip() {
+        let corpus = corpus_for(&[("identity.txt", "Cats run")]);
+        let surface_lookup = build_surface_term_lookup(&corpus).unwrap();
+        let annotated = vec![AnnotatedToken {
+            surface: "Missing".to_string(),
+            lemma: "missing".to_string(),
+            upos: UniversalPos::Noun,
+            token_index: 0,
+            features: HashMap::new(),
+        }];
+
+        let result = resolve_annotated_tokens_to_local_counts(0, &annotated, &surface_lookup);
+
+        assert!(matches!(
+            result,
+            Err(AnnotationLayerBuildError::AlignmentOrIdentityMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn annotation_surface_lookup_uses_raw_surface_terms_not_frequency_keys() {
+        let corpus = corpus_for(&[("case.txt", "Beta beta")]);
+        let surface_lookup = build_surface_term_lookup(&corpus).unwrap();
+        let upper_id = *surface_lookup.get("Beta").unwrap();
+        let lower_id = *surface_lookup.get("beta").unwrap();
+        assert_ne!(upper_id, lower_id);
+        let annotated = vec![
+            AnnotatedToken {
+                surface: "Beta".to_string(),
+                lemma: "beta".to_string(),
+                upos: UniversalPos::Noun,
+                token_index: 0,
+                features: HashMap::new(),
+            },
+            AnnotatedToken {
+                surface: "beta".to_string(),
+                lemma: "beta".to_string(),
+                upos: UniversalPos::Noun,
+                token_index: 1,
+                features: HashMap::new(),
+            },
+        ];
+
+        let counts =
+            resolve_annotated_tokens_to_local_counts(0, &annotated, &surface_lookup).unwrap();
+
+        assert_eq!(
+            counts,
+            vec![
+                LocalAnnotatedTermCount {
+                    surface_term_id: upper_id,
+                    lemma: "beta".to_string(),
+                    upos: UniversalPos::Noun,
+                    count: 1,
+                },
+                LocalAnnotatedTermCount {
+                    surface_term_id: lower_id,
+                    lemma: "beta".to_string(),
+                    upos: UniversalPos::Noun,
+                    count: 1,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn annotation_layer_happy_path_populates_lemma_upos_and_surface_ids() {
+        let texts = [("english.txt", "Dogs run")];
+        let mut language_overrides = HashMap::new();
+        language_overrides.insert(0, "en".to_string());
+        let (corpus, layer) = annotation_layer_for(&texts, language_overrides, true);
+
+        assert_eq!(layer.languages_used, vec!["en"]);
+        assert_eq!(layer.documents.len(), corpus.documents.len());
+        assert_eq!(layer.documents[0].analysis_document_index, 0);
+        assert_eq!(layer.documents[0].relative_path, "english.txt");
+        assert!(!layer.lemma_table.is_empty());
+
+        let annotated_token_total = layer.documents[0]
+            .term_counts
+            .iter()
+            .map(|count| count.count)
+            .sum::<u64>();
+        assert_eq!(
+            annotated_token_total,
+            corpus.documents[0].summary.token_count
+        );
+        assert!(
+            layer.documents[0]
+                .term_counts
+                .iter()
+                .any(|count| count.upos != UniversalPos::X)
+        );
+        for count in &layer.documents[0].term_counts {
+            assert!((count.surface_term_id as usize) < corpus.surface_terms.len());
+            assert!(layer.lemma_table.lookup(count.lemma_id).is_some());
+        }
     }
 
     #[test]
