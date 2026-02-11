@@ -535,7 +535,7 @@ struct AnalysisSurfaceTerm {
     document_counts: Vec<(usize, u64)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnnotatedTermCount {
     pub surface_term_id: u32,
     pub lemma_id: u32,
@@ -550,7 +550,7 @@ pub struct AnnotationLayer {
     pub languages_used: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnnotationLayerDocument {
     /// Index into `AnalysisCorpus.documents`.
     pub analysis_document_index: usize,
@@ -740,9 +740,16 @@ impl AnalysisCorpus {
         &self.overview
     }
 
-    /// Returns whether active processing settings differ from this snapshot.
     pub fn is_stale_for_cleaning_config(&self, cleaning_config: &CleaningConfig) -> bool {
         self.overview.processing_config_signature != cleaning_config_signature(cleaning_config)
+    }
+
+    pub(crate) fn document_summaries(&self) -> impl Iterator<Item = &AnalysisDocumentSummary> {
+        self.documents.iter().map(|doc| &doc.summary)
+    }
+
+    pub(crate) fn surface_term_tokens(&self) -> impl Iterator<Item = &str> {
+        self.surface_terms.iter().map(|term| term.token.as_str())
     }
 }
 

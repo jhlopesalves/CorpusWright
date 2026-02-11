@@ -156,6 +156,11 @@ impl LemmaTable {
         Self::default()
     }
 
+    /// Returns the ordered slice of all interned lemmas.
+    pub fn entries(&self) -> &[String] {
+        &self.reverse
+    }
+
     /// Intern a lemma string, returning its stable id.
     pub fn intern(&mut self, lemma: &str) -> u32 {
         if let Some(&id) = self.map.get(lemma) {
@@ -285,6 +290,43 @@ fn verify_bundled_model_checksum(path: &Path) -> Result<(), AnnotationError> {
         });
     }
     Ok(())
+}
+
+/// Returns model identity metadata for a language, if the model file exists.
+/// Returns a tuple of `(language, model_filename, udpipe_model_name, sha256)`.
+pub fn model_identity(
+    language: &str,
+    model_dir: &Path,
+) -> Result<(String, String, String, String), AnnotationError> {
+    let udpipe_name = language_to_udpipe_name(language);
+    let model_name = bundled_model_filename(language)
+        .map(str::to_string)
+        .unwrap_or_else(|| udpipe_rs::model_filename(&udpipe_name));
+
+    let path = model_dir.join(&model_name);
+
+    let mut file = File::open(&path).map_err(|error| AnnotationError::ModelLoadFailed {
+        path: path.to_path_buf(),
+        error: format!("failed to open model for identity: {error}"),
+    })?;
+
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let bytes_read =
+            file.read(&mut buffer)
+                .map_err(|error| AnnotationError::ModelLoadFailed {
+                    path: path.to_path_buf(),
+                    error: format!("failed to read model for identity: {error}"),
+                })?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+    let sha256 = format!("{:02x}", hasher.finalize());
+
+    Ok((language.to_string(), model_name, udpipe_name, sha256))
 }
 
 #[repr(C)]
