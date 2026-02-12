@@ -1,22 +1,19 @@
 import { dom } from "./dom.ts";
+import { invoke } from "@tauri-apps/api/core";
 
 export const APPEARANCE_STORAGE_KEY = "corpuswright.appearance.v1";
 
 const SYSTEM_UI_STACK = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const DEFAULT_MONO_STACK = '"JetBrains Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace';
-const DEFAULT_DARK_THEME_ID = "dark";
-const DEFAULT_LIGHT_THEME_ID = "light";
 const DEFAULT_FONT_SIZE = 16;
 const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 20;
 
-export type ThemeMode = "light" | "dark";
+export type ThemeVariant = "light" | "dark";
 
-export interface ThemePreset {
+export interface ThemeFamily {
   id: string;
   name: string;
-  mode: ThemeMode;
-  pairId?: string;
 }
 
 interface FontOption {
@@ -25,43 +22,24 @@ interface FontOption {
   stack: string;
 }
 
-interface AppearancePreference {
-  themeId: string;
+export interface AppearancePreference {
+  themeFamilyId: string;
+  themeVariant: ThemeVariant;
   fontFamily: string;
   monoFontFamily: string;
   fontSize: number;
 }
 
-export const THEME_PRESETS: ThemePreset[] = [
-  { id: "dark", name: "Corpus Dark", mode: "dark", pairId: "corpus" },
-  { id: "light", name: "Corpus Light", mode: "light", pairId: "corpus" },
-  { id: "repository-light", name: "Repository Light", mode: "light", pairId: "repository" },
-  { id: "repository-dark", name: "Repository Dark", mode: "dark", pairId: "repository" },
-  { id: "clear-day", name: "Clear Day", mode: "light", pairId: "clear" },
-  { id: "clear-night", name: "Clear Night", mode: "dark", pairId: "clear" },
-  { id: "spectrum-paper", name: "Spectrum Paper", mode: "light", pairId: "spectrum" },
-  { id: "spectrum-ink", name: "Spectrum Ink", mode: "dark", pairId: "spectrum" },
-  { id: "retro-paper", name: "Retro Paper", mode: "light", pairId: "retro" },
-  { id: "retro-console", name: "Retro Console", mode: "dark", pairId: "retro" },
-  { id: "graphite-day", name: "Graphite Day", mode: "light", pairId: "graphite" },
-  { id: "graphite-desk", name: "Graphite Desk", mode: "dark", pairId: "graphite" },
-  { id: "cloud-desk", name: "Cloud Desk", mode: "light", pairId: "cloud" },
-  { id: "cloud-night", name: "Cloud Night", mode: "dark", pairId: "cloud" },
-  { id: "solar-paper", name: "Solar Paper", mode: "light", pairId: "solar" },
-  { id: "solar-night", name: "Solar Night", mode: "dark", pairId: "solar" },
-  { id: "amber-paper", name: "Amber Paper", mode: "light", pairId: "amber" },
-  { id: "ink-amber", name: "Ink & Amber", mode: "dark", pairId: "amber" },
-  { id: "sepia-reading", name: "Sepia Reading", mode: "light" },
-  { id: "moss-day", name: "Moss Day", mode: "light", pairId: "moss" },
-  { id: "moss-desk", name: "Moss Desk", mode: "dark", pairId: "moss" },
-  { id: "mineral-chalk", name: "Mineral Chalk", mode: "light", pairId: "mineral" },
-  { id: "mineral-slate", name: "Mineral Slate", mode: "dark", pairId: "mineral" },
-  { id: "studio-light", name: "Studio Light", mode: "light", pairId: "studio" },
-  { id: "studio-dark", name: "Studio Dark", mode: "dark", pairId: "studio" },
-  { id: "high-contrast", name: "High Contrast", mode: "dark" },
+export const THEME_FAMILIES: ThemeFamily[] = [
+  { id: "corpus", name: "Corpus" },
+  { id: "workbench", name: "Workbench" },
+  { id: "solar", name: "Solar" },
+  { id: "graphite", name: "Graphite" },
+  { id: "retro", name: "Retro" },
+  { id: "sepia", name: "Sepia" },
+  { id: "moss", name: "Moss" },
+  { id: "high-contrast", name: "High Contrast" },
 ];
-
-export const INTENTIONAL_SINGLETONS = ["sepia-reading", "high-contrast"] as const;
 
 export const FONT_OPTIONS: FontOption[] = [
   { id: "system-ui", name: "System UI", stack: SYSTEM_UI_STACK },
@@ -89,20 +67,21 @@ export const MONO_FONT_OPTIONS: FontOption[] = [
 const SUN_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`;
 const MOON_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"></path></svg>`;
 
-function preferredDefaultThemeId(): string {
+function preferredDefaultThemeVariant(): ThemeVariant {
   if (
     typeof window !== "undefined"
     && typeof window.matchMedia === "function"
     && window.matchMedia("(prefers-color-scheme: light)").matches
   ) {
-    return DEFAULT_LIGHT_THEME_ID;
+    return "light";
   }
-  return DEFAULT_DARK_THEME_ID;
+  return "dark";
 }
 
 function createDefaultAppearance(): AppearancePreference {
   return {
-    themeId: preferredDefaultThemeId(),
+    themeFamilyId: "corpus",
+    themeVariant: preferredDefaultThemeVariant(),
     fontFamily: SYSTEM_UI_STACK,
     monoFontFamily: DEFAULT_MONO_STACK,
     fontSize: DEFAULT_FONT_SIZE,
@@ -119,60 +98,22 @@ function clampFontSize(value: number): number {
   return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(value)));
 }
 
-function isKnownTheme(themeId: string): boolean {
-  return THEME_PRESETS.some(theme => theme.id === themeId);
+function isKnownThemeFamily(familyId: string): boolean {
+  return THEME_FAMILIES.some(family => family.id === familyId);
 }
 
-function findThemePreset(themeId: string): ThemePreset | undefined {
-  return THEME_PRESETS.find(theme => theme.id === themeId);
-}
-
-function pairedThemeFor(theme: ThemePreset): ThemePreset | undefined {
-  if (!theme.pairId) {
-    return undefined;
-  }
-  return THEME_PRESETS.find(candidate => candidate.pairId === theme.pairId && candidate.mode !== theme.mode);
-}
-
-function oppositeMode(mode: ThemeMode): ThemeMode {
+function oppositeMode(mode: ThemeVariant): ThemeVariant {
   return mode === "light" ? "dark" : "light";
 }
 
-function activeThemePreset(): ThemePreset | undefined {
-  const activeTheme = document.documentElement.dataset.theme;
-  if (activeTheme && isKnownTheme(activeTheme)) {
-    return findThemePreset(activeTheme);
-  }
-  return findThemePreset(readAppearancePreference().themeId);
-}
-
-function setThemeToggleIcon(targetMode: ThemeMode): void {
+function setThemeToggleIcon(targetMode: ThemeVariant): void {
   dom.themeToggle.innerHTML = targetMode === "light" ? SUN_ICON : MOON_ICON;
 }
 
-function refreshLightDarkToggleState(themeId: string): void {
-  const theme = findThemePreset(themeId) ?? findThemePreset(DEFAULT_APPEARANCE.themeId);
-  if (!theme) {
-    return;
-  }
-
-  const pairedTheme = pairedThemeFor(theme);
-  const targetMode = pairedTheme?.mode ?? oppositeMode(theme.mode);
-
-  if (!pairedTheme) {
-    const unavailable = `No ${targetMode} variant for ${theme.name}`;
-    dom.themeToggle.disabled = true;
-    dom.themeToggle.title = unavailable;
-    dom.themeToggle.setAttribute("aria-label", unavailable);
-    dom.menuToggleTheme.textContent = unavailable;
-    dom.menuToggleTheme.title = unavailable;
-    dom.menuToggleTheme.setAttribute("aria-disabled", "true");
-    dom.menuToggleTheme.tabIndex = -1;
-    setThemeToggleIcon(targetMode);
-    return;
-  }
-
+function refreshLightDarkToggleState(currentVariant: ThemeVariant): void {
+  const targetMode = oppositeMode(currentVariant);
   const label = `Switch to ${targetMode} variant`;
+
   dom.themeToggle.disabled = false;
   dom.themeToggle.title = label;
   dom.themeToggle.setAttribute("aria-label", label);
@@ -180,6 +121,7 @@ function refreshLightDarkToggleState(themeId: string): void {
   dom.menuToggleTheme.title = label;
   dom.menuToggleTheme.removeAttribute("aria-disabled");
   dom.menuToggleTheme.tabIndex = 0;
+
   setThemeToggleIcon(targetMode);
 }
 
@@ -191,27 +133,81 @@ function isKnownMonoFontStack(fontFamily: string): boolean {
   return MONO_FONT_OPTIONS.some(font => font.stack === fontFamily);
 }
 
-function normaliseAppearance(value: Partial<AppearancePreference>): AppearancePreference {
-  const themeId = typeof value.themeId === "string" && isKnownTheme(value.themeId)
-    ? value.themeId
-    : DEFAULT_APPEARANCE.themeId;
+function normaliseAppearance(value: any): AppearancePreference {
+  const themeFamilyId = typeof value.themeFamilyId === "string" && isKnownThemeFamily(value.themeFamilyId)
+    ? value.themeFamilyId
+    : DEFAULT_APPEARANCE.themeFamilyId;
+
+  const themeVariant = value.themeVariant === "light" || value.themeVariant === "dark"
+    ? value.themeVariant
+    : DEFAULT_APPEARANCE.themeVariant;
+
   const fontFamily = typeof value.fontFamily === "string" && isKnownFontStack(value.fontFamily)
     ? value.fontFamily
     : DEFAULT_APPEARANCE.fontFamily;
+
   const monoFontFamily = typeof value.monoFontFamily === "string" && isKnownMonoFontStack(value.monoFontFamily)
     ? value.monoFontFamily
     : DEFAULT_APPEARANCE.monoFontFamily;
+
   const fontSize = clampFontSize(Number(value.fontSize));
 
-  return { themeId, fontFamily, monoFontFamily, fontSize };
+  return { themeFamilyId, themeVariant, fontFamily, monoFontFamily, fontSize };
+}
+
+function migrateLegacyAppearance(raw: any): Partial<AppearancePreference> {
+  if (typeof raw.themeFamilyId === "string") {
+    return raw;
+  }
+
+  const legacyId = typeof raw.themeId === "string" ? raw.themeId : "dark";
+  const migrationMap: Record<string, { family: string, variant: ThemeVariant }> = {
+    "dark": { family: "corpus", variant: "dark" },
+    "light": { family: "corpus", variant: "light" },
+    "repository-light": { family: "workbench", variant: "light" },
+    "repository-dark": { family: "workbench", variant: "dark" },
+    "solar-paper": { family: "solar", variant: "light" },
+    "solar-night": { family: "solar", variant: "dark" },
+    "graphite-day": { family: "graphite", variant: "light" },
+    "graphite-desk": { family: "graphite", variant: "dark" },
+    "retro-paper": { family: "retro", variant: "light" },
+    "retro-console": { family: "retro", variant: "dark" },
+    "sepia-reading": { family: "sepia", variant: "light" },
+    "high-contrast": { family: "high-contrast", variant: "dark" },
+    "moss-day": { family: "moss", variant: "light" },
+    "moss-desk": { family: "moss", variant: "dark" },
+    "clear-day": { family: "corpus", variant: "light" },
+    "clear-night": { family: "corpus", variant: "dark" },
+    "spectrum-paper": { family: "solar", variant: "light" },
+    "spectrum-ink": { family: "solar", variant: "dark" },
+    "cloud-desk": { family: "workbench", variant: "light" },
+    "cloud-night": { family: "workbench", variant: "dark" },
+    "amber-paper": { family: "sepia", variant: "light" },
+    "ink-amber": { family: "sepia", variant: "dark" },
+    "mineral-chalk": { family: "graphite", variant: "light" },
+    "mineral-slate": { family: "graphite", variant: "dark" },
+    "studio-light": { family: "workbench", variant: "light" },
+    "studio-dark": { family: "workbench", variant: "dark" }
+  };
+
+  const migrated = migrationMap[legacyId] ?? { family: "corpus", variant: "dark" };
+
+  return {
+    themeFamilyId: migrated.family,
+    themeVariant: migrated.variant,
+    fontFamily: raw.fontFamily,
+    monoFontFamily: raw.monoFontFamily,
+    fontSize: raw.fontSize,
+  };
 }
 
 export function readAppearancePreference(): AppearancePreference {
   try {
     const raw = localStorage.getItem(APPEARANCE_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_APPEARANCE };
-    const parsed = JSON.parse(raw) as Partial<AppearancePreference>;
-    return normaliseAppearance(parsed);
+    const parsed = JSON.parse(raw);
+    const migrated = migrateLegacyAppearance(parsed);
+    return normaliseAppearance(migrated);
   } catch {
     return { ...DEFAULT_APPEARANCE };
   }
@@ -221,21 +217,52 @@ function saveAppearancePreference(preference: AppearancePreference): void {
   localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify(preference));
 }
 
+function getTitleBarColor(familyId: string, variant: ThemeVariant): string {
+  switch (familyId) {
+    case "corpus":
+      return "#0058a6";
+    case "workbench":
+      return variant === "dark" ? "#252526" : "#ffffff";
+    case "graphite":
+      return variant === "dark" ? "#202224" : "#f0f0f4";
+    case "retro":
+      return "#000080"; // Win98 active window title bar (navy)
+    case "solar":
+      return variant === "dark" ? "#002b36" : "#fdf6e3";
+    case "sepia":
+      return variant === "dark" ? "#2b241c" : "#f4ecd8";
+    case "moss":
+      return variant === "dark" ? "#1a201c" : "#f2f4f3";
+    case "high-contrast":
+      return variant === "dark" ? "#000000" : "#ffffff";
+    default:
+      return "#0058a6";
+  }
+}
+
 export function applyAppearancePreference(preference: AppearancePreference): void {
   const next = normaliseAppearance(preference);
   const root = document.documentElement;
-  root.dataset.theme = next.themeId;
+  root.dataset.theme = `${next.themeFamilyId}-${next.themeVariant}`;
   root.style.setProperty("--cw-font-ui", next.fontFamily);
   root.style.setProperty("--cw-font-mono", next.monoFontFamily);
   root.style.setProperty("--cw-font-size-base", `${next.fontSize}px`);
-  refreshLightDarkToggleState(next.themeId);
+  refreshLightDarkToggleState(next.themeVariant);
+
+  // Dynamically set native titlebar color on Windows
+  if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
+    const titleBarColor = getTitleBarColor(next.themeFamilyId, next.themeVariant);
+    invoke("set_window_titlebar_color", { color: titleBarColor }).catch((e) => {
+      console.error("Failed to set titlebar color:", e);
+    });
+  }
 }
 
 function populateSelects(): void {
-  dom.appearanceThemeSelect.replaceChildren(...THEME_PRESETS.map(theme => {
+  dom.appearanceThemeSelect.replaceChildren(...THEME_FAMILIES.map(family => {
     const option = document.createElement("option");
-    option.value = theme.id;
-    option.textContent = theme.name;
+    option.value = family.id;
+    option.textContent = family.name;
     return option;
   }));
 
@@ -271,7 +298,7 @@ function monoFontStackForId(fontId: string): string {
 }
 
 function syncControls(preference: AppearancePreference): void {
-  dom.appearanceThemeSelect.value = preference.themeId;
+  dom.appearanceThemeSelect.value = preference.themeFamilyId;
   dom.appearanceFontSelect.value = fontIdForStack(preference.fontFamily);
   dom.appearanceMonoFontSelect.value = monoFontIdForStack(preference.monoFontFamily);
   dom.appearanceFontSizeInput.value = String(preference.fontSize);
@@ -298,15 +325,11 @@ function openAppearanceDialog(): void {
 }
 
 export function toggleLightDarkTheme(): void {
-  const currentTheme = activeThemePreset();
-  const nextTheme = currentTheme ? pairedThemeFor(currentTheme) : undefined;
-  if (!nextTheme) {
-    refreshLightDarkToggleState(currentTheme?.id ?? DEFAULT_APPEARANCE.themeId);
-    return;
-  }
+  const currentAppearance = readAppearancePreference();
+  const nextVariant = oppositeMode(currentAppearance.themeVariant);
   const nextAppearance = normaliseAppearance({
-    ...readAppearancePreference(),
-    themeId: nextTheme.id,
+    ...currentAppearance,
+    themeVariant: nextVariant,
   });
   savedAppearance = nextAppearance;
   draftAppearance = { ...nextAppearance };
@@ -329,7 +352,7 @@ export function initAppearanceDialog(): void {
   dom.appearanceThemeSelect.addEventListener("change", () => {
     draftAppearance = {
       ...draftAppearance,
-      themeId: dom.appearanceThemeSelect.value,
+      themeFamilyId: dom.appearanceThemeSelect.value,
     };
     previewDraft();
   });
