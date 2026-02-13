@@ -1,0 +1,1 @@
+export type AnnotationCacheBuildError = { "type": "cancelled" } | { "type": "missingCacheRoot" } | { "type": "surfaceBuildFailed", error: string, } | { "type": "unsupportedLanguages", languages: Array<string>, } | { "type": "annotationFailed", error: string, } | { "type": "manifestError", error: string, } | { "type": "cacheWriteError", error: string, };
