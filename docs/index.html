@@ -1,148 +1,278 @@
 <!doctype html>
 <html lang="en-GB">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A desktop corpus-linguistics workbench with a Rust core. Clean, inspect, and analyse research corpora with statistical and methodological care.">
+  <meta name="description"
+    content="A desktop corpus-linguistics workbench with a Rust core. Clean, inspect, and analyse research corpora with statistical and methodological rigour.">
   <title>CorpusWright — Rust corpus workbench</title>
   <link rel="stylesheet" href="assets/site.css">
   <link rel="icon" href="assets/icon.png">
+  <script>
+    (function() {
+      const savedTheme = localStorage.getItem('theme');
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
+    })();
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme') ||
+                           (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+    }
+  </script>
 </head>
+
 <body>
-<header class="site-header">
-  <div class="shell nav">
-    <a class="brand" href="index.html"><svg class="mark"><use href="#kwic"/></svg> CorpusWright</a>
-    <nav class="nav-links" aria-label="Primary">
-      <a href="method.html">Method</a>
-      <a href="roadmap.html">Roadmap</a>
-      <a href="technical-docs.html">Docs</a>
-      <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
-    </nav>
-  </div>
-</header>
-
-<main id="top">
-
-  <section class="hero">
-    <svg class="hero-bg" aria-hidden="true" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
-      <use href="#kwic" x="58%" y="-6%" width="560" height="420"/>
-    </svg>
-    <div class="shell hero-inner">
-      <p class="eyebrow">Rust corpus workbench</p>
-      <h1>Clean, inspect, and analyse corpora.</h1>
-      <p class="lede">A desktop workbench for corpus linguistics, built on a Rust core. The focus is analysis that holds up statistically and methodologically, with modern analytics and metrics as core features rather than add-ons.</p>
-      <div class="actions">
-        <a class="btn primary" href="technical-docs.html">Documentation</a>
-        <a class="btn ghost" href="https://github.com/jhlopesalves/CorpusWright">Source code</a>
-        <a class="btn ghost" href="https://github.com/jhlopesalves/CorpusWright/releases">Release notes</a>
-      </div>
+  <header class="site-header">
+    <div class="shell nav">
+      <a class="brand" href="index.html"><svg class="mark">
+          <use href="#kwic" />
+        </svg> CorpusWright</a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="method.html">Method</a>
+        <a href="roadmap.html">Roadmap</a>
+        <a href="technical-docs.html">Docs</a>
+        <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
+        <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
+          <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+          </svg>
+          <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+          </svg>
+        </button>
+      </nav>
     </div>
-  </section>
+  </header>
 
-  <div class="shell"><div class="kwic-divider"><svg viewBox="0 0 64 48" preserveAspectRatio="xMidYMid meet"><use href="#kwic"/></svg></div></div>
+  <main id="top">
 
-  <section class="section" id="demo">
-    <div class="shell">
-      <div class="section-lead">
-        <p class="eyebrow">Preprocessing</p>
-        <h2>Before and after cleaning</h2>
-        <p>Extraction from PDFs and documents leaves running headers, footers, page numbers, and hyphenation breaks. CorpusWright removes them deterministically and records every change in a cleaning report.</p>
-      </div>
-      <div class="ba">
-        <div class="ba-col">
-          <div class="ba-head"><span class="state raw">Raw extraction</span><span>source.pdf · p.12</span></div>
-          <div class="ba-body"><span class="junk">DRAFT — not for circulation        12</span>
-<span class="junk">─────────────────────────────</span>
-The distribution of lexical items
-across a corpus is rarely uni<span class="junk">-
-</span>form; dispersion measures cap<span class="junk">-
-</span>ture how evenly a feature occurs.
-<span class="junk">University Press · 2019 · p. 12</span></div>
-        </div>
-        <div class="ba-col">
-          <div class="ba-head"><span class="state clean">After cleaning</span><span>deterministic · auditable</span></div>
-          <div class="ba-body">The distribution of lexical items
-across a corpus is rarely <span class="fix">uniform</span>;
-dispersion measures <span class="fix">capture</span>
-how evenly a feature occurs.</div>
+    <section class="hero">
+      <svg class="hero-bg" aria-hidden="true" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+        <use href="#kwic" x="58%" y="-6%" width="560" height="420" />
+      </svg>
+      <div class="shell hero-inner">
+        <p class="eyebrow">CorpusWright — a Rust corpus workbench</p>
+        <h1>Clean, inspect, and analyse corpora.</h1>
+        <p class="lede">A desktop application for corpus linguistics built on a Rust core. It prioritises statistically
+          robust, methodologically sound analysis, with modern analytics and quantitative metrics.</p>
+        <div class="actions">
+          <a class="btn primary" href="technical-docs.html">Documentation</a>
+          <a class="btn ghost" href="https://github.com/jhlopesalves/CorpusWright">Source code</a>
+          <a class="btn ghost" href="https://github.com/jhlopesalves/CorpusWright/releases">Release notes</a>
         </div>
       </div>
-      <div class="annot">
-        <span>running header removed</span>
-        <span>page number stripped</span>
-        <span>de-hyphenated: uni-form → uniform</span>
-        <span>footer boilerplate removed</span>
-      </div>
-      <p class="ba-caption">Every removal is recorded in the cleaning report. Same corpus and same configuration produce the same output, every time.</p>
-    </div>
-  </section>
+    </section>
 
-  <section class="section" id="what">
     <div class="shell">
-      <div class="section-lead">
-        <h2>What it is</h2>
-        <p>These commitments shape every part of CorpusWright.</p>
-      </div>
-      <div class="principles">
-        <p><span class="term">Local-first.</span> Your corpus stays on your machine; nothing is uploaded to a server.</p>
-        <p><span class="term">Auditable.</span> Every cleaning step is deterministic and recorded, so nothing is silently corrected.</p>
-        <p><span class="term">Analysis-aware.</span> Preprocessing, concordancing, and analysis stay in one loop, not scattered across separate tools.</p>
-        <p><span class="term">Statistically grounded.</span> Dispersion (DP), entropy, and frequency distributions such as Zipf and hapax counts are treated as core measures, computed transparently.</p>
-      </div>
+      <div class="kwic-divider"><svg viewBox="0 0 64 48" preserveAspectRatio="xMidYMid meet">
+          <use href="#kwic" />
+        </svg></div>
     </div>
-  </section>
 
-  <section class="section" id="status">
-    <div class="shell cols">
-      <div>
-        <p class="eyebrow">What works today</p>
-        <h2>Honest about the alpha</h2>
-        <ul class="checklist">
-          <li>Local project folders and source management</li>
-          <li>Text extraction from TXT, HTML, DOCX, and PDF</li>
-          <li>Configurable, deterministic cleaning with processed previews</li>
-          <li>Repeated-artefact finder</li>
-          <li>Structured custom removals</li>
-        </ul>
-        <p class="roadmap-link"><a href="roadmap.html">See the roadmap for what's planned &rarr;</a></p>
+    <section class="section" id="demo">
+      <div class="shell">
+        <div class="section-lead">
+          <p class="eyebrow">Preprocessing</p>
+          <h2>Before and after cleaning</h2>
+          <p>Extraction from PDFs and documents leaves running headers, footers, page numbers, and hyphenation breaks.
+            CorpusWright removes them deterministically and records every change in a cleaning report.</p>
+        </div>
+        <div class="ba">
+          <div class="ba-col">
+            <div class="ba-head"><span class="state raw">Raw extraction</span><span>source.pdf · p.12</span></div>
+            <div class="ba-body"><span class="junk">DRAFT — not for circulation 12</span>
+              <span class="junk">─────────────────────────────</span>
+              The distribution of lexical items
+              across a corpus is rarely uni<span class="junk">-
+              </span>form; dispersion measures cap<span class="junk">-
+              </span>ture how evenly a feature occurs.
+              <span class="junk">University Press · 2019 · p. 12</span>
+            </div>
+          </div>
+          <div class="ba-col">
+            <div class="ba-head"><span class="state clean">After cleaning</span><span>deterministic · auditable</span>
+            </div>
+            <div class="ba-body">The distribution of lexical items
+              across a corpus is rarely <span class="fix">uniform</span>;
+              dispersion measures <span class="fix">capture</span>
+              how evenly a feature occurs.</div>
+          </div>
+        </div>
+        <div class="annot">
+          <span>running header removed</span>
+          <span>page number stripped</span>
+          <span>de-hyphenated: uni-form → uniform</span>
+          <span>footer boilerplate removed</span>
+        </div>
+        <p class="ba-caption">Every removal is recorded in the cleaning report. Same corpus and same configuration
+          produce the same output, every time.</p>
       </div>
-      <div>
-        <table class="status">
-          <thead><tr><th>Area</th><th>Status</th></tr></thead>
-          <tbody>
-            <tr><td>Prepare &amp; cleaning</td><td><span class="badge active">Active</span></td></tr>
-            <tr><td>Cleaning audit</td><td><span class="badge active">Active</span></td></tr>
-            <tr><td>Frequency list</td><td><span class="badge active">Active</span></td></tr>
-            <tr><td>Lemma / POS annotation</td><td><span class="badge exp">Experimental</span></td></tr>
-            <tr><td>KWIC / Explore</td><td><span class="badge plan">Planned</span></td></tr>
-            <tr><td>Public release</td><td><span class="badge plan">Pre-public</span></td></tr>
-          </tbody>
-        </table>
+    </section>
+
+    <section class="section" id="prepare-workflow">
+      <div class="shell">
+        <div class="section-lead">
+          <p class="eyebrow">The Preprocessing Workflow</p>
+          <h2>A tour of the Prepare workbench</h2>
+          <p>Take a look at how CorpusWright helps you load, clean, and audit your corpus locally.</p>
+        </div>
+
+        <div class="workflow-steps">
+          <div class="workflow-step">
+            <div class="workflow-text">
+              <h3>1. Load and inspect your sources</h3>
+              <p>Load text, HTML, DOCX, or PDF files. The prepare bench shows you raw text side-by-side with cleaning previews, highlighting warnings and structural elements in real time.</p>
+            </div>
+            <div class="window">
+              <div class="window-header">
+                <span class="window-dot"></span>
+                <span class="window-dot"></span>
+                <span class="window-dot"></span>
+              </div>
+              <div class="window-body">
+                <img src="assets/screenshots/prepare-dark.png" class="theme-img-dark" alt="Prepare Bench dark mode">
+                <img src="assets/screenshots/prepare-light.png" class="theme-img-light" alt="Prepare Bench light mode">
+              </div>
+            </div>
+          </div>
+
+          <div class="workflow-step">
+            <div class="workflow-text">
+              <h3>2. Configure deterministic cleaning rules</h3>
+              <p>Control exact cleaning rules—like de-hyphenation, unicode normalization, line ending normalization, and noise removal. Every toggled option is saved to your project configuration, making your preprocessing pipeline completely repeatable.</p>
+            </div>
+            <div class="window">
+              <div class="window-header">
+                <span class="window-dot"></span>
+                <span class="window-dot"></span>
+                <span class="window-dot"></span>
+              </div>
+              <div class="window-body">
+                <img src="assets/screenshots/prepare-cleaning-settings-dark.png" class="theme-img-dark" alt="Cleaning Settings dark mode">
+                <img src="assets/screenshots/prepare-cleaning-settings-light.png" class="theme-img-light" alt="Cleaning Settings light mode">
+              </div>
+            </div>
+          </div>
+
+          <div class="workflow-step">
+            <div class="workflow-text">
+              <h3>3. Detect and audit repeated artefacts</h3>
+              <p>The Repeated-Artefact Finder automatically scans the entire corpus to identify recurring headers, footers, boilerplate, and extraction noise. Accept or reject candidates to safely build your custom removal rules without risk of silent data loss.</p>
+            </div>
+            <div class="window">
+              <div class="window-header">
+                <span class="window-dot"></span>
+                <span class="window-dot"></span>
+                <span class="window-dot"></span>
+              </div>
+              <div class="window-body">
+                <img src="assets/screenshots/prepare-repeated-artefacts-dark.png" class="theme-img-dark" alt="Repeated Artefacts dark mode">
+                <img src="assets/screenshots/prepare-repeated-artefacts-light.png" class="theme-img-light" alt="Repeated Artefacts light mode">
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+    </section>
+
+    <section class="section" id="what">
+      <div class="shell">
+        <div class="section-lead">
+          <h2>What it is</h2>
+          <p>These commitments shape every part of CorpusWright.</p>
+        </div>
+        <div class="principles">
+          <p><span class="term">Local-first.</span> Your corpus stays on your machine; nothing is uploaded to a server.
+          </p>
+          <p><span class="term">Auditable.</span> Every cleaning step is deterministic and recorded.</p>
+          <p><span class="term">Analysis-aware.</span> Preprocessing, concordancing, and analysis stay in one loop.</p>
+          <p><span class="term">Statistically grounded.</span> Dispersion (DP), entropy, and frequency distributions
+            such as Zipf and hapax counts are computed transparently.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="status">
+      <div class="shell cols">
+        <div>
+          <p class="eyebrow">What works today</p>
+          <h2>Honest about the alpha</h2>
+          <ul class="checklist">
+            <li>Local project folders and source management</li>
+            <li>Text extraction from TXT, HTML, DOCX, and PDF</li>
+            <li>Configurable, deterministic cleaning with processed previews</li>
+            <li>Repeated-artefact finder</li>
+            <li>Structured custom removals</li>
+          </ul>
+          <p class="roadmap-link"><a href="roadmap.html">See the roadmap for what's planned &rarr;</a></p>
+        </div>
+        <div>
+          <table class="status">
+            <thead>
+              <tr>
+                <th>Area</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Prepare &amp; cleaning</td>
+                <td><span class="badge active">Active</span></td>
+              </tr>
+              <tr>
+                <td>Cleaning audit</td>
+                <td><span class="badge active">Active</span></td>
+              </tr>
+              <tr>
+                <td>Frequency list</td>
+                <td><span class="badge active">Active</span></td>
+              </tr>
+              <tr>
+                <td>Lemma / POS annotation</td>
+                <td><span class="badge exp">Experimental</span></td>
+              </tr>
+              <tr>
+                <td>KWIC / Explore</td>
+                <td><span class="badge plan">Planned</span></td>
+              </tr>
+              <tr>
+                <td>Public release</td>
+                <td><span class="badge plan">Pre-public</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell foot">
+      <span>CorpusWright is an open, local-first corpus linguistics workbench in early, pre-public development.</span>
+      <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
     </div>
-  </section>
+  </footer>
 
-</main>
-
-<footer class="site-footer">
-  <div class="shell foot">
-    <span>CorpusWright is an open, local-first corpus linguistics workbench in early, pre-public development.</span>
-    <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
-  </div>
-</footer>
-
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="kwic" viewBox="0 0 64 48">
-    <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
-      <circle cx="32" cy="24" r="5"/>
-      <path d="M32 6 v8 M32 34 v8"/>
-      <path d="M6 9 h4 M15 9 h11 M38 9 h20"/>
-      <path d="M6 17 h4 M15 17 h6 M25 17 h1 M38 17 h20"/>
-      <path d="M6 25 h4 M15 25 h7 M38 25 h20"/>
-      <path d="M6 33 h4 M13 33 h4 M22 33 h4 M38 33 h20"/>
-      <path d="M6 41 h4 M13 41 h6 M38 41 h20"/>
-    </g>
-  </symbol>
-</svg>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="kwic" viewBox="0 0 64 48">
+      <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+        <circle cx="32" cy="24" r="5" />
+        <path d="M32 6 v8 M32 34 v8" />
+        <path d="M6 9 h4 M15 9 h11 M38 9 h20" />
+        <path d="M6 17 h4 M15 17 h6 M25 17 h1 M38 17 h20" />
+        <path d="M6 25 h4 M15 25 h7 M38 25 h20" />
+        <path d="M6 33 h4 M13 33 h4 M22 33 h4 M38 33 h20" />
+        <path d="M6 41 h4 M13 41 h6 M38 41 h20" />
+      </g>
+    </symbol>
+  </svg>
 </body>
+
 </html>
