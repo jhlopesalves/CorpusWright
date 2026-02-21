@@ -11,10 +11,13 @@ import {
   queryAnalysisDocuments,
   queryFrequencyList,
   queryTermDistribution,
+  searchConcordance,
   type AnalysisBuildProgress,
   type AnalysisDocumentPage,
   type AnalysisDocumentSelection,
   type AnalysisInputSource,
+  type ConcordanceResult,
+  type ConcordanceRow,
   type CorpusOverview as AnalysisCorpus,
   type CorpusOverviewFinding,
   type CorpusOverviewFindingSeverity,
@@ -28,6 +31,11 @@ import {
   type TermDistributionPage,
 } from "./analysis";
 import { BOOLEAN_CLEANING_CONFIG_KEYS } from "./config";
+import {
+  clampConcordanceWindow,
+  concordanceSummaryText,
+  normaliseConcordanceQuery,
+} from "./concordance";
 import { createChevron } from "./chevron";
 import { dom } from "./dom";
 import { effectiveCleaningConfig } from "./effective-cleaning-config";
@@ -42,7 +50,6 @@ import { sourceHasExtractedText } from "./sources";
 import { state, type WorkbenchId } from "./state";
 
 const FUTURE_ANALYSIS_TOOLS = [
-  "KWIC / Concordance",
   "N-grams",
   "Exports",
 ];
@@ -50,10 +57,11 @@ const FUTURE_ANALYSIS_TOOLS = [
 const FREQUENCY_PAGE_SIZE = 200;
 const FREQUENCY_DOCUMENT_PAGE_SIZE = 200;
 const TERM_DISTRIBUTION_PAGE_SIZE = 100;
+const CONCORDANCE_PAGE_SIZE = 100;
 const FREQUENCY_TABLE_COLUMN_COUNT = 5;
 const ANNOTATION_UNAVAILABLE_MESSAGE =
   "Lemma grouping and POS filters need the annotation layer, which isn't available yet.";
-type AnalysisToolId = "overview" | "frequency";
+type AnalysisToolId = "overview" | "frequency" | "concordance";
 
 interface OverviewMetricRow {
   label: string;
@@ -81,6 +89,7 @@ const ANALYSIS_TOOLS: Array<{
 }> = [
   { id: "overview", name: "Corpus Overview", panelId: "analyse-overview-pane" },
   { id: "frequency", name: "Frequency List", panelId: "frequency-list-pane" },
+  { id: "concordance", name: "Concordance", panelId: "concordance-pane" },
 ];
 
 let activeAnalysisTool: AnalysisToolId = "overview";
@@ -101,6 +110,11 @@ let frequencyDocumentsPending = false;
 let overviewGlossaryControlId = 0;
 let frequencyDocumentsDebounceTimer: number | null = null;
 let frequencyDocumentsFailure: string | null = null;
+let concordanceResult: ConcordanceResult | null = null;
+let concordanceOffset = 0;
+let concordanceQueryGeneration = 0;
+let concordancePending = false;
+let concordanceFailure: string | null = null;
 let expandedFrequencyTokens = new Set<string>();
 let termDistributionPages = new Map<string, TermDistributionPage>();
 let termDistributionGenerations = new Map<string, number>();
@@ -479,6 +493,7 @@ function renderAnalysisTools(): void {
 function renderAnalysisToolPanels(): void {
   dom.analyseOverviewPane.classList.toggle("hidden", activeAnalysisTool !== "overview");
   dom.frequencySection.classList.toggle("hidden", activeAnalysisTool !== "frequency");
+  dom.concordanceSection.classList.toggle("hidden", activeAnalysisTool !== "concordance");
 }
 
 function documentName(document: { relativePath: string; sourcePath: string }): string {
@@ -1494,9 +1509,179 @@ function resetFrequencyCorpusState(): void {
   frequencyDocumentsGeneration += 1;
   frequencyDocumentsPending = false;
   frequencyDocumentsFailure = null;
+  concordanceResult = null;
+  concordanceOffset = 0;
+  concordanceQueryGeneration += 1;
+  concordancePending = false;
+  concordanceFailure = null;
   expandedFrequencyTokens = new Set<string>();
   termDistributionPages.clear();
   termDistributionGenerations.clear();
+}
+
+function currentConcordanceWindow(): number {
+  return clampConcordanceWindow(Number.parseInt(dom.concordanceWindowInput.value, 10));
+}
+
+function syncConcordanceCaseToggle(): void {
+  const isCaseSensitive = dom.concordanceCaseSensitiveInput.checked;
+  dom.concordanceCaseSensitiveInput.setAttribute("aria-checked", isCaseSensitive ? "true" : "false");
+  dom.concordanceCaseState.textContent = isCaseSensitive ? "Sensitive" : "Insensitive";
+}
+
+function renderConcordanceStatus(message: string | null, isError = false): void {
+  dom.concordanceStatus.textContent = message ?? "";
+  dom.concordanceStatus.classList.toggle("hidden", message === null);
+  dom.concordanceStatus.classList.toggle("warning", isError);
+}
+
+function concordanceRowText(tokens: string[]): string {
+  return tokens.join(" ");
+}
+
+function createConcordanceRow(row: ConcordanceRow): HTMLElement {
+  const item = document.createElement("article");
+  item.className = "concordance-row";
+
+  const context = document.createElement("div");
+  context.className = "concordance-context";
+
+  const left = document.createElement("span");
+  left.className = "concordance-left";
+  left.textContent = concordanceRowText(row.leftContext);
+
+  const node = document.createElement("mark");
+  node.className = "concordance-node";
+  node.textContent = row.node;
+
+  const right = document.createElement("span");
+  right.className = "concordance-right";
+  right.textContent = concordanceRowText(row.rightContext);
+
+  context.append(left, node, right);
+
+  const meta = document.createElement("p");
+  meta.className = "concordance-meta";
+  meta.textContent = `${row.displayName || row.sourcePath} · token ${formatNumber(row.tokenIndex + 1)}`;
+
+  item.append(context, meta);
+  return item;
+}
+
+function renderConcordance(): void {
+  syncConcordanceCaseToggle();
+  dom.concordanceResults.replaceChildren();
+
+  if (concordancePending) {
+    dom.concordanceSummary.textContent = "Searching concordance...";
+    dom.concordanceResultCount.textContent = "";
+    renderConcordanceStatus(null);
+    dom.concordancePagePreviousButton.disabled = true;
+    dom.concordancePageNextButton.disabled = true;
+    dom.concordancePageStatus.textContent = "";
+    return;
+  }
+
+  if (concordanceFailure) {
+    dom.concordanceSummary.textContent = "Search for a surface word to see its occurrences in context.";
+    dom.concordanceResultCount.textContent = "";
+    renderConcordanceStatus(concordanceFailure, true);
+    dom.concordancePagePreviousButton.disabled = true;
+    dom.concordancePageNextButton.disabled = true;
+    dom.concordancePageStatus.textContent = "";
+    return;
+  }
+
+  const result = concordanceResult;
+  if (!result) {
+    dom.concordanceSummary.textContent = "Search for a surface word to see its occurrences in context.";
+    dom.concordanceResultCount.textContent = "";
+    renderConcordanceStatus(null);
+    dom.concordancePagePreviousButton.disabled = true;
+    dom.concordancePageNextButton.disabled = true;
+    dom.concordancePageStatus.textContent = "";
+    return;
+  }
+
+  dom.concordanceSummary.textContent = concordanceSummaryText(result);
+  dom.concordanceResultCount.textContent = formatNumber(result.totalHits);
+  renderConcordanceStatus(null);
+
+  if (result.rows.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "frequency-empty concordance-empty";
+    empty.textContent = "No concordance rows found.";
+    dom.concordanceResults.appendChild(empty);
+  } else {
+    for (const row of result.rows) {
+      dom.concordanceResults.appendChild(createConcordanceRow(row));
+    }
+  }
+
+  const first = result.totalHits === 0 ? 0 : result.offset + 1;
+  const last = Math.min(result.totalHits, result.offset + result.rows.length);
+  dom.concordancePageStatus.textContent =
+    result.totalHits === 0 ? "0 of 0" : `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(result.totalHits)}`;
+  dom.concordancePagePreviousButton.disabled = result.offset === 0;
+  dom.concordancePageNextButton.disabled = result.offset + result.rows.length >= result.totalHits;
+}
+
+async function refreshConcordance(resetOffset = true): Promise<void> {
+  const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
+  if (resetOffset) {
+    concordanceOffset = 0;
+  }
+  if (query.length === 0) {
+    concordanceResult = null;
+    concordanceFailure = "Enter one surface word to search.";
+    renderConcordance();
+    return;
+  }
+
+  const generation = ++concordanceQueryGeneration;
+  concordancePending = true;
+  concordanceFailure = null;
+  concordanceResult = null;
+  renderConcordance();
+
+  try {
+    const result = await searchConcordance(
+      {
+        query,
+        caseSensitive: dom.concordanceCaseSensitiveInput.checked,
+        windowTokens: currentConcordanceWindow(),
+        offset: concordanceOffset,
+        limit: CONCORDANCE_PAGE_SIZE,
+      },
+      state.currentCorpusVersion,
+      effectiveCleaningConfig(),
+    );
+    if (generation !== concordanceQueryGeneration) {
+      return;
+    }
+    concordanceResult = result;
+    concordanceOffset = result.offset;
+  } catch (error) {
+    if (generation !== concordanceQueryGeneration) {
+      return;
+    }
+    concordanceFailure = `${error}`;
+  } finally {
+    if (generation === concordanceQueryGeneration) {
+      concordancePending = false;
+      renderConcordance();
+    }
+  }
+}
+
+function showPreviousConcordancePage(): void {
+  concordanceOffset = Math.max(0, concordanceOffset - CONCORDANCE_PAGE_SIZE);
+  void refreshConcordance(false);
+}
+
+function showNextConcordancePage(): void {
+  concordanceOffset += CONCORDANCE_PAGE_SIZE;
+  void refreshConcordance(false);
 }
 
 function renderFrequencyScopeControl(corpus: AnalysisCorpus | null): void {
@@ -1979,6 +2164,7 @@ export function renderAnalyseWorkbench(): void {
   renderAnalysisToolPanels();
   renderCorpusOverview();
   renderFrequencyList();
+  renderConcordance();
 }
 
 export function setActiveWorkbench(workbench: WorkbenchId): void {
@@ -2003,6 +2189,8 @@ function setActiveAnalysisTool(tool: AnalysisToolId): void {
   renderAnalysisToolPanels();
   if (tool === "frequency") {
     renderFrequencyList();
+  } else if (tool === "concordance") {
+    renderConcordance();
   }
   refreshStageNavigator();
 }
@@ -2510,6 +2698,18 @@ export function initWorkbenchSwitcher(): void {
     void handleBuildAnalysisCorpus();
   });
   dom.analyseToolsList.addEventListener("click", handleAnalysisToolClick);
+  dom.concordanceSearchButton.addEventListener("click", () => {
+    void refreshConcordance();
+  });
+  dom.concordanceQueryInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void refreshConcordance();
+    }
+  });
+  dom.concordanceCaseSensitiveInput.addEventListener("change", syncConcordanceCaseToggle);
+  dom.concordancePagePreviousButton.addEventListener("click", showPreviousConcordancePage);
+  dom.concordancePageNextButton.addEventListener("click", showNextConcordancePage);
   dom.frequencySearchInput.addEventListener("input", scheduleFrequencyRefresh);
   dom.frequencyMatchModeSelect.addEventListener("change", () => void refreshFrequencyPage());
   dom.frequencyMinInput.addEventListener("input", scheduleFrequencyRefresh);

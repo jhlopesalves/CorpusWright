@@ -1,9 +1,10 @@
 use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisCorpus,
-    AnalysisDocumentPage, AnalysisDocumentSelection, CorpusOverview, CorpusOverviewContext,
-    FrequencyGroupMode, FrequencyPage, FrequencyQuery, TermDistributionPage, TermDistributionQuery,
-    build_analysis_corpus, cleaning_config_signature, query_analysis_documents,
-    query_frequency_list, query_term_distribution, resolve_analysis_input,
+    AnalysisDocumentPage, AnalysisDocumentSelection, ConcordanceDocument, ConcordanceQuery,
+    ConcordanceResult, CorpusOverview, CorpusOverviewContext, FrequencyGroupMode, FrequencyPage,
+    FrequencyQuery, TermDistributionPage, TermDistributionQuery, build_analysis_corpus,
+    cleaning_config_signature, query_analysis_documents, query_frequency_list,
+    query_term_distribution, resolve_analysis_input, search_concordance_documents,
 };
 use corpuswright_core::cache::{
     CacheEntry, DocumentTextMode, ExtractionCache, document_text_for_record,
@@ -2093,6 +2094,59 @@ fn compute_corpus_overview_command(
 }
 
 #[tauri::command]
+async fn search_concordance_command(
+    query: ConcordanceQuery,
+    corpus_version: u64,
+    cleaning_config: CleaningConfig,
+    corpus: tauri::State<'_, CorpusState>,
+    cache: tauri::State<'_, ExtractionCache>,
+) -> Result<ConcordanceResult, String> {
+    let (records, project_root) = corpus.all_records_and_root(corpus_version)?;
+    let cache = cache.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut documents = Vec::new();
+        for (document_index, record) in records.iter().enumerate() {
+            let resolution = resolve_analysis_input_for_record(
+                record,
+                project_root.as_deref(),
+                &cleaning_config,
+                &cache,
+            );
+            let text = match resolution.provenance {
+                corpuswright_core::analysis::AnalysisInputProvenance::Processed
+                | corpuswright_core::analysis::AnalysisInputProvenance::SourceTextFallback => {
+                    resolution.text
+                }
+                corpuswright_core::analysis::AnalysisInputProvenance::EmptyOrFailed => None,
+            };
+            let Some(text) = text.filter(|value| !value.trim().is_empty()) else {
+                continue;
+            };
+            let source_path = record.source_path.to_string_lossy().into_owned();
+            let relative_path = record.relative_path.to_string_lossy().into_owned();
+            documents.push(ConcordanceDocument {
+                document_index,
+                source_path: source_path.clone(),
+                display_name: if relative_path.is_empty() {
+                    source_path
+                } else {
+                    relative_path
+                },
+                text,
+            });
+        }
+        search_concordance_documents(
+            &documents,
+            &query,
+            &corpuswright_core::tokenization::TokenizationConfig::default(),
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("Concordance query task failed: {error}"))?
+}
+
+#[tauri::command]
 async fn query_frequency_list_command(
     query: FrequencyQuery,
     cleaning_config: CleaningConfig,
@@ -2885,6 +2939,7 @@ pub fn run() {
             cancel_analysis_build_command,
             get_analysis_build_status_command,
             compute_corpus_overview_command,
+            search_concordance_command,
             query_frequency_list_command,
             query_analysis_documents_command,
             query_term_distribution_command,
