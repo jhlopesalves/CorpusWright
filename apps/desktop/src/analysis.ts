@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import type { AnnotatedFrequencyMode as GeneratedAnnotatedFrequencyMode } from "./generated/AnnotatedFrequencyMode.js";
+import type { AnnotatedFrequencyQuery as GeneratedAnnotatedFrequencyQuery } from "./generated/AnnotatedFrequencyQuery.js";
+import type { AnnotatedFrequencyResult as GeneratedAnnotatedFrequencyResult } from "./generated/AnnotatedFrequencyResult.js";
+import type { AnnotationCacheAvailability as GeneratedAnnotationCacheAvailability } from "./generated/AnnotationCacheAvailability.js";
+import type { AnnotationCacheState as GeneratedAnnotationCacheState } from "./generated/AnnotationCacheState.js";
 import type { AnalysisDocumentSelection as GeneratedAnalysisDocumentSelection } from "./generated/AnalysisDocumentSelection.js";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
 import type { ConcordanceQuery as GeneratedConcordanceQuery } from "./generated/ConcordanceQuery.js";
@@ -30,6 +35,11 @@ export type FrequencyMatchMode = GeneratedFrequencyMatchMode;
 export type FrequencyTokenClass = GeneratedFrequencyTokenClass;
 export type FrequencyGroupMode = GeneratedFrequencyGroupMode;
 export type SortDirection = GeneratedSortDirection;
+export type AnnotatedFrequencyMode = GeneratedAnnotatedFrequencyMode;
+export type AnnotatedFrequencyQuery = GeneratedAnnotatedFrequencyQuery;
+export type AnnotatedFrequencyResult = GeneratedAnnotatedFrequencyResult;
+export type AnnotationCacheAvailability = GeneratedAnnotationCacheAvailability;
+export type AnnotationCacheState = GeneratedAnnotationCacheState;
 
 export interface AnalysisDocumentSummary {
   id: number;
@@ -319,6 +329,18 @@ export function queryFrequencyList(
   cleaningConfig: CleaningConfig,
 ): Promise<FrequencyPage> {
   return invoke<FrequencyPage>("query_frequency_list_command", { query, cleaningConfig });
+}
+
+export function queryAnnotatedFrequency(
+  query: AnnotatedFrequencyQuery,
+  corpusVersion: number,
+  cleaningConfig: CleaningConfig,
+): Promise<AnnotatedFrequencyResult> {
+  return invoke<AnnotatedFrequencyResult>("query_annotated_frequency_command", {
+    query,
+    corpusVersion,
+    cleaningConfig,
+  });
 }
 
 export function searchConcordance(
