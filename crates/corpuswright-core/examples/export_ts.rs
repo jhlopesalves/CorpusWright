@@ -7,10 +7,12 @@ use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
 use corpuswright_core::analysis::{
-    AnalysisDocumentSelection, AnnotationCacheBuildError, AnnotationCacheBuildReport,
-    ConcordanceQuery, ConcordanceResult, ConcordanceRow, FrequencyGroupMode, FrequencyMatchMode,
-    FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey,
-    FrequencyTermItem, FrequencyTokenClass, SortDirection,
+    AnalysisDocumentSelection, AnnotatedFrequencyMode, AnnotatedFrequencyQuery,
+    AnnotatedFrequencyResult, AnnotationCacheAvailability, AnnotationCacheBuildError,
+    AnnotationCacheBuildReport, AnnotationCacheState, ConcordanceQuery, ConcordanceResult,
+    ConcordanceRow, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice, FrequencyNoticeKind,
+    FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem, FrequencyTokenClass,
+    LexFrequencyRow, PosFrequencyRow, SortDirection,
 };
 use corpuswright_core::clean::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
@@ -600,6 +602,54 @@ fn main() {
             TypeImport {
                 name: "FrequencyNotice",
                 file: "FrequencyNotice",
+            },
+        ],
+        &[],
+    );
+    export_type::<AnnotatedFrequencyMode>(&out_dir, &[], &[]);
+    export_type::<AnnotationCacheState>(&out_dir, &[], &[]);
+    export_type::<AnnotationCacheAvailability>(
+        &out_dir,
+        &[TypeImport {
+            name: "AnnotationCacheState",
+            file: "AnnotationCacheState",
+        }],
+        &[],
+    );
+    export_type::<AnnotatedFrequencyQuery>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "AnalysisDocumentSelection",
+                file: "AnalysisDocumentSelection",
+            },
+            TypeImport {
+                name: "AnnotatedFrequencyMode",
+                file: "AnnotatedFrequencyMode",
+            },
+        ],
+        &[],
+    );
+    export_type::<PosFrequencyRow>(&out_dir, &[], &[]);
+    export_type::<LexFrequencyRow>(&out_dir, &[], &[]);
+    export_type::<AnnotatedFrequencyResult>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "AnnotatedFrequencyMode",
+                file: "AnnotatedFrequencyMode",
+            },
+            TypeImport {
+                name: "AnnotationCacheAvailability",
+                file: "AnnotationCacheAvailability",
+            },
+            TypeImport {
+                name: "PosFrequencyRow",
+                file: "PosFrequencyRow",
+            },
+            TypeImport {
+                name: "LexFrequencyRow",
+                file: "LexFrequencyRow",
             },
         ],
         &[],
