@@ -5861,6 +5861,178 @@ mod tests {
     }
 
     #[test]
+    fn dp_is_zero_for_perfectly_even_distribution() {
+        let corpus = corpus_for(&[("a.txt", "alpha alpha"), ("b.txt", "beta beta")]);
+        let stats = frequency_distribution_stats(&[(0, 1), (1, 1)], 2, &corpus.documents, 4);
+
+        assert_close(stats.dp, 0.0);
+    }
+
+    #[test]
+    fn dp_increases_with_concentration() {
+        let corpus = corpus_for(&[("a.txt", "alpha alpha"), ("b.txt", "beta beta")]);
+        let even = frequency_distribution_stats(&[(0, 1), (1, 1)], 2, &corpus.documents, 4);
+        let concentrated = frequency_distribution_stats(&[(0, 2)], 2, &corpus.documents, 4);
+
+        assert!(concentrated.dp > even.dp);
+    }
+
+    #[test]
+    fn dp_uses_document_sizes_not_equal_parts() {
+        let corpus = corpus_for(&[("short.txt", "alpha"), ("long.txt", "alpha beta gamma")]);
+        let stats = frequency_distribution_stats(&[(0, 3), (1, 1)], 4, &corpus.documents, 4);
+
+        assert_close(stats.dp, 0.0);
+    }
+
+    #[test]
+    fn top_document_share_reports_max_single_doc_proportion() {
+        let corpus = corpus_for(&[("a.txt", "alpha alpha"), ("b.txt", "beta beta")]);
+        let stats = frequency_distribution_stats(&[(0, 2), (1, 6)], 8, &corpus.documents, 4);
+
+        assert_close(stats.top_doc_share, 0.75);
+    }
+
+    #[test]
+    fn normalised_frequency_per_10k_is_correct() {
+        let corpus = corpus_for(&[("a.txt", "alpha beta gamma"), ("b.txt", "delta epsilon")]);
+        let stats = frequency_distribution_stats(&[(0, 3), (1, 2)], 5, &corpus.documents, 10);
+
+        assert_close(stats.per_10k, 5_000.0);
+    }
+
+    #[test]
+    fn document_frequency_counts_documents_with_at_least_one_hit() {
+        let corpus = corpus_for(&[("a.txt", "alpha"), ("b.txt", "beta"), ("c.txt", "gamma")]);
+        let stats =
+            frequency_distribution_stats(&[(0, 2), (1, 0), (2, 3)], 5, &corpus.documents, 3);
+
+        assert_eq!(stats.doc_freq, 2);
+    }
+
+    #[test]
+    fn pos_distribution_lists_all_present_upos_tags() {
+        let mut corpus = corpus_for(&[("a.txt", "Cats run quickly"), ("b.txt", "Cats run")]);
+        add_document_annotations(
+            &mut corpus,
+            0,
+            &[
+                ("Cats", "cat", UniversalPos::Noun, 1),
+                ("run", "run", UniversalPos::Verb, 1),
+                ("quickly", "quickly", UniversalPos::Adv, 1),
+            ],
+        );
+        add_document_annotations(
+            &mut corpus,
+            1,
+            &[
+                ("Cats", "cat", UniversalPos::Noun, 1),
+                ("run", "run", UniversalPos::Verb, 1),
+            ],
+        );
+
+        let result = query_annotated_frequency(
+            &corpus,
+            &annotated_frequency_query(AnnotatedFrequencyMode::Pos),
+            ready_annotation_cache(),
+        );
+        let rows = result
+            .pos_rows
+            .iter()
+            .map(|row| (row.upos.as_str(), row.raw, row.doc_freq, row.doc_total))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            rows,
+            vec![("NOUN", 2, 2, 2), ("VERB", 2, 2, 2), ("ADV", 1, 1, 2),]
+        );
+    }
+
+    #[test]
+    fn lemma_pos_frequency_groups_by_lemma_and_upos() {
+        let mut corpus = corpus_for(&[("a.txt", "run runs"), ("b.txt", "run running")]);
+        add_document_annotations(
+            &mut corpus,
+            0,
+            &[
+                ("run", "run", UniversalPos::Verb, 1),
+                ("runs", "run", UniversalPos::Verb, 1),
+            ],
+        );
+        add_document_annotations(
+            &mut corpus,
+            1,
+            &[
+                ("run", "run", UniversalPos::Noun, 1),
+                ("running", "run", UniversalPos::Verb, 1),
+            ],
+        );
+
+        let result = query_annotated_frequency(
+            &corpus,
+            &annotated_frequency_query(AnnotatedFrequencyMode::LemmaPos),
+            ready_annotation_cache(),
+        );
+        let rows = result
+            .lex_rows
+            .iter()
+            .map(|row| (row.lemma.as_str(), row.upos.as_str(), row.raw, row.doc_freq))
+            .collect::<Vec<_>>();
+
+        assert_eq!(rows, vec![("run", "VERB", 3, 2), ("run", "NOUN", 1, 1)]);
+    }
+
+    #[test]
+    fn annotated_frequency_requires_ready_annotation_layer() {
+        let mut corpus = corpus_for(&[("pos.txt", "Cats run")]);
+        add_document_annotations(
+            &mut corpus,
+            0,
+            &[
+                ("Cats", "cat", UniversalPos::Noun, 1),
+                ("run", "run", UniversalPos::Verb, 1),
+            ],
+        );
+
+        let result = query_annotated_frequency(
+            &corpus,
+            &annotated_frequency_query(AnnotatedFrequencyMode::Pos),
+            AnnotationCacheAvailability {
+                state: AnnotationCacheState::Missing,
+                detail: None,
+            },
+        );
+
+        assert!(result.pos_rows.is_empty());
+        assert_eq!(
+            result.unavailable_message.as_deref(),
+            Some(ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE)
+        );
+    }
+
+    #[test]
+    fn single_document_corpus_has_zero_dp_and_full_top_doc_share() {
+        let mut corpus = corpus_for(&[("one.txt", "Cats run")]);
+        add_document_annotations(
+            &mut corpus,
+            0,
+            &[
+                ("Cats", "cat", UniversalPos::Noun, 1),
+                ("run", "run", UniversalPos::Verb, 1),
+            ],
+        );
+
+        let result = query_annotated_frequency(
+            &corpus,
+            &annotated_frequency_query(AnnotatedFrequencyMode::Pos),
+            ready_annotation_cache(),
+        );
+
+        assert!(result.pos_rows.iter().all(|row| row.dp == 0.0));
+        assert!(result.pos_rows.iter().all(|row| row.top_doc_share == 1.0));
+    }
+
+    #[test]
     fn frequency_lemma_requires_annotation_notice() {
         let corpus = corpus_for(&[("lemma.txt", "Cats cat")]);
         assert!(
@@ -6666,6 +6838,7 @@ mod tests {
         // 1. Build unannotated corpus
         let mut options = build_options();
         options.udpipe_model_dir = Some(default_model_dir());
+        options.force_compute_hashes = true;
         let corpus = build_analysis_corpus(
             &records,
             options.clone(),
@@ -6987,6 +7160,7 @@ mod tests {
         let mut options = build_options();
         options.language_overrides = overrides;
         options.udpipe_model_dir = Some(default_model_dir());
+        options.force_compute_hashes = true;
 
         let corpus = build_analysis_corpus(
             &records,
@@ -7127,9 +7301,12 @@ mod tests {
         assert!(report.total_annotated_term_count_rows > 0);
 
         // Assert we can read it and it's Ready
+        let mut manifest_options = build_options();
+        manifest_options.udpipe_model_dir = options.udpipe_model_dir.clone();
+        manifest_options.force_compute_hashes = true;
         let corpus = build_analysis_corpus(
             &records,
-            build_options(),
+            manifest_options,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "The quick brown fox.")),
             |_| {},
@@ -7213,9 +7390,12 @@ mod tests {
         let envelope: crate::annotation_cache::AnnotationLayerCacheEnvelope =
             serde_json::from_slice(&bytes).unwrap();
 
+        let mut manifest_options = build_options();
+        manifest_options.udpipe_model_dir = options.udpipe_model_dir.clone();
+        manifest_options.force_compute_hashes = true;
         let corpus = build_analysis_corpus(
             &records,
-            build_options(),
+            manifest_options,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "The quick brown fox.")),
             |_| {},
