@@ -19,6 +19,7 @@ import {
   type AnnotatedFrequencyResult,
   type AnnotationCacheAvailability,
   type AnnotationCacheBuildReport,
+  type AnnotationCacheBuildProgress,
   type AnnotationCacheState,
   type AnalysisBuildProgress,
   type AnalysisDocumentPage,
@@ -151,6 +152,7 @@ let annotationBuildGeneration = 0;
 let annotationBuildStartedAt: number | null = null;
 let annotationBuildTimer: number | null = null;
 let lastAnnotationBuildReport: AnnotationCacheBuildReport | null = null;
+let annotationProgressUnlisten: (() => void) | null = null;
 
 function pluralise(count: number, singular: string, plural = `${singular}s`): string {
   return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
@@ -2666,6 +2668,7 @@ function refreshAnnotationBuildElapsed(): void {
   annotationBuildTransient = {
     status: "building",
     elapsedMs: Date.now() - annotationBuildStartedAt,
+    progress: annotationBuildTransient?.status === "building" ? annotationBuildTransient.progress : null,
   };
   renderFrequencyAnnotationLayer();
 }
@@ -2770,7 +2773,7 @@ async function handleAnnotationLayerAction(): Promise<void> {
   annotationCacheProbeGeneration += 1;
   annotationCacheProbePending = false;
   annotationBuildStartedAt = Date.now();
-  annotationBuildTransient = { status: "building", elapsedMs: 0 };
+  annotationBuildTransient = { status: "building", elapsedMs: 0, progress: null };
   lastAnnotationBuildReport = null;
   startAnnotationBuildTimer();
   renderFrequencyList();
@@ -2921,6 +2924,21 @@ async function initialiseAnalysisBuildState(): Promise<void> {
   if (analysisProgressUnlisten) {
     analysisProgressUnlisten();
   }
+  if (annotationProgressUnlisten) {
+    annotationProgressUnlisten();
+  }
+
+  annotationProgressUnlisten = await listen<AnnotationCacheBuildProgress>("annotation-build-progress", (event) => {
+    if (annotationBuildTransient?.status !== "building") {
+      return;
+    }
+    annotationBuildTransient = {
+      ...annotationBuildTransient,
+      progress: event.payload,
+    };
+    renderFrequencyAnnotationLayer();
+  });
+
   analysisProgressUnlisten = await listen<AnalysisBuildProgress>("analysis-build-progress", (event) => {
     if (!analysisBuildInProgress) {
       return;
