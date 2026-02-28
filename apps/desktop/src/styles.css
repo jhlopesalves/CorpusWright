@@ -2940,6 +2940,53 @@ main {
   opacity: 0.55;
 }
 
+.annotation-layer-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+}
+
+.annotation-layer-strip.is-hidden {
+  display: none;
+}
+
+.annotation-layer-strip[data-status="ready"] {
+  border-left-color: var(--accent-color);
+}
+
+.annotation-layer-strip[data-status="invalid"],
+.annotation-layer-strip[data-status="failed"] {
+  border-left-color: var(--danger-color);
+}
+
+.annotation-layer-copy {
+  min-width: 0;
+}
+
+.annotation-layer-title {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.annotation-layer-help {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.annotation-layer-action {
+  flex: 0 0 auto;
+}
+
 .frequency-result-count,
 .frequency-limit-note {
   color: var(--text-muted);

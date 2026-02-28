@@ -40,7 +40,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use tauri::path::BaseDirectory;
 use tauri::{Emitter, Manager, Window};
@@ -55,6 +55,43 @@ struct ScanState {
 
 struct PdfIntakeState {
     cancel: Arc<AtomicBool>,
+}
+
+struct AnnotationBuildState {
+    cancel: Mutex<Option<Arc<AtomicBool>>>,
+}
+
+impl AnnotationBuildState {
+    fn new() -> Self {
+        Self {
+            cancel: Mutex::new(None),
+        }
+    }
+
+    fn begin(&self) -> Arc<AtomicBool> {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let mut active = self.cancel.lock().unwrap();
+        if let Some(previous) = active.replace(cancel.clone()) {
+            previous.store(true, Ordering::Relaxed);
+        }
+        cancel
+    }
+
+    fn cancel(&self) {
+        if let Some(cancel) = self.cancel.lock().unwrap().as_ref() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+    }
+
+    fn finish(&self, token: &Arc<AtomicBool>) {
+        let mut active = self.cancel.lock().unwrap();
+        if active
+            .as_ref()
+            .is_some_and(|cancel| Arc::ptr_eq(cancel, token))
+        {
+            *active = None;
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -1809,6 +1846,7 @@ async fn build_annotation_cache_command(
     corpus: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     inventory: tauri::State<'_, project::ProjectSourceInventoryState>,
+    annotation: tauri::State<'_, AnnotationBuildState>,
     window: Window,
 ) -> Result<
     corpuswright_core::analysis::AnnotationCacheBuildReport,
@@ -1890,16 +1928,15 @@ async fn build_annotation_cache_command(
 
     let cleaning_config = request.cleaning_config;
     let cache_inner = cache.inner().clone();
+    let cancel = annotation.begin();
+    let cancel_for_task = cancel.clone();
 
-    // We use a local atomic bool since this action doesn't have UI cancellation wiring yet.
-    let cancel = std::sync::atomic::AtomicBool::new(false);
-
-    let report = tauri::async_runtime::spawn_blocking(move || {
+    let task_result = tauri::async_runtime::spawn_blocking(move || {
         corpuswright_core::analysis::build_and_write_annotation_cache(
             &records,
             analysis_options,
             annotation_options,
-            &cancel,
+            &cancel_for_task,
             |record| {
                 Ok(resolve_analysis_input_for_record(
                     record,
@@ -1911,13 +1948,25 @@ async fn build_annotation_cache_command(
         )
     })
     .await
-    .map_err(|e| {
-        corpuswright_core::analysis::AnnotationCacheBuildError::SurfaceBuildFailed {
+    .map_err(
+        |e| corpuswright_core::analysis::AnnotationCacheBuildError::SurfaceBuildFailed {
             error: e.to_string(),
-        }
-    })??;
+        },
+    );
+
+    annotation.finish(&cancel);
+
+    let report = task_result??;
 
     Ok(report)
+}
+
+#[tauri::command]
+fn cancel_annotation_cache_build_command(
+    annotation: tauri::State<'_, AnnotationBuildState>,
+) -> Result<(), String> {
+    annotation.cancel();
+    Ok(())
 }
 
 #[tauri::command]
@@ -2950,6 +2999,7 @@ pub fn run() {
         .manage(PdfIntakeState {
             cancel: Arc::new(AtomicBool::new(false)),
         })
+        .manage(AnnotationBuildState::new())
         .manage(AnalysisState::new())
         .manage(CorpusState {
             inner: RwLock::new(CorpusStateInner::empty()),
@@ -2972,6 +3022,7 @@ pub fn run() {
             read_project_source_preview_command,
             query_selected_source_preview_viewport_command,
             build_annotation_cache_command,
+            cancel_annotation_cache_build_command,
             build_analysis_corpus_command,
             cancel_analysis_build_command,
             get_analysis_build_status_command,
