@@ -4,7 +4,12 @@ import type { AnnotationCacheState } from "./generated/AnnotationCacheState.js";
 import type { AnnotationCacheBuildProgress } from "./generated/AnnotationCacheBuildProgress.js";
 
 export type AnnotationLayerTransientState =
-  | { status: "building"; elapsedMs: number | null; progress: AnnotationCacheBuildProgress | null }
+  | {
+      status: "building";
+      elapsedMs: number | null;
+      annotatingElapsedMs: number | null;
+      progress: AnnotationCacheBuildProgress | null;
+    }
   | { status: "failed"; message: string }
   | { status: "cancelled" };
 
@@ -25,10 +30,20 @@ export interface AnnotationLayerControlViewModel {
   status: AnnotationLayerStatus;
   statusLabel: string;
   help: string;
+  progress: AnnotationLayerProgressViewModel | null;
   action: AnnotationLayerAction;
   actionLabel: "Build annotations" | "Cancel" | "Rebuild annotations";
   actionDisabled: boolean;
   actionDisabledReason: string | null;
+}
+
+export interface AnnotationLayerProgressViewModel {
+  kind: "indeterminate" | "determinate";
+  phaseLabel: string;
+  percent: number | null;
+  percentLabel: string | null;
+  filesLine: string | null;
+  etaLabel: string;
 }
 
 export const BUILD_ANNOTATIONS_HELP =
@@ -50,17 +65,80 @@ function formatNumber(value: number): string {
   return value.toLocaleString();
 }
 
+function formatCoarseDuration(ms: number): string {
+  const seconds = Math.max(0, Math.ceil(ms / 1000));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = `${seconds % 60}`.padStart(2, "0");
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
 export function formatAnnotationElapsed(elapsedMs: number | null): string | null {
   if (elapsedMs === null) {
     return null;
   }
-  const seconds = Math.max(0, Math.floor(elapsedMs / 1000));
-  if (seconds < 60) {
-    return `${seconds}s elapsed`;
+  return `${formatCoarseDuration(elapsedMs)} elapsed`;
+}
+
+function annotationPhaseLabel(progress: AnnotationCacheBuildProgress): string {
+  switch (progress.current_phase.type) {
+    case "BuildingSurface":
+      return "Building surface analysis";
+    case "LoadingModel":
+      return "Loading model / preparing models";
+    case "Annotating":
+      return "Annotating";
+    case "WritingCache":
+      return "Writing cache";
+    case "Completed":
+      return "Completed";
+    case "Failed":
+      return "Failed";
+    case "Cancelled":
+      return "Cancelled";
   }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = `${seconds % 60}`.padStart(2, "0");
-  return `${minutes}m ${remainingSeconds}s elapsed`;
+}
+
+function annotationProgressViewModel(
+  progress: AnnotationCacheBuildProgress,
+  annotatingElapsedMs: number | null,
+): AnnotationLayerProgressViewModel {
+  const phaseLabel = annotationPhaseLabel(progress);
+  if (progress.current_phase.type !== "Annotating") {
+    return {
+      kind: "indeterminate",
+      phaseLabel,
+      percent: null,
+      percentLabel: null,
+      filesLine: null,
+      etaLabel: "Estimating...",
+    };
+  }
+
+  const total = Math.max(0, progress.files_total);
+  const done = Math.min(Math.max(0, progress.files_done), total);
+  const fraction = total > 0 ? done / total : 0;
+  const percent = total > 0
+    ? Math.min(100, Math.max(0, Math.floor(fraction * 100)))
+    : 0;
+
+  let etaLabel = "Estimating...";
+  if (annotatingElapsedMs !== null && done > 0 && fraction >= 0.02) {
+    const remainingFiles = Math.max(0, total - done);
+    const msPerFile = Math.max(0, annotatingElapsedMs) / done;
+    etaLabel = `${formatCoarseDuration(remainingFiles * msPerFile)} remaining`;
+  }
+
+  return {
+    kind: "determinate",
+    phaseLabel,
+    percent,
+    percentLabel: `${percent}%`,
+    filesLine: `${formatNumber(done)} / ${formatNumber(total)} files`,
+    etaLabel,
+  };
 }
 
 function readyHelp(input: AnnotationLayerControlInput): string {
@@ -93,36 +171,7 @@ function helpText(input: AnnotationLayerControlInput, status: AnnotationLayerSta
       const isBuilding = trans?.status === "building";
       const elapsed = isBuilding ? formatAnnotationElapsed(trans.elapsedMs) : null;
       const progress = isBuilding ? trans.progress : null;
-
-      if (progress && progress.current_phase.type === "Annotating") {
-        const percent =
-          progress.files_total > 0
-            ? Math.floor((progress.files_done / progress.files_total) * 100)
-            : 0;
-        
-        let eta = "Estimating...";
-        if (isBuilding && trans.elapsedMs !== null && percent >= 2 && progress.files_done > 0) {
-          const msPerFile = trans.elapsedMs / progress.files_done;
-          const remainingFiles = progress.files_total - progress.files_done;
-          const remainingMs = remainingFiles * msPerFile;
-          const remainingSeconds = Math.max(0, Math.floor(remainingMs / 1000));
-          if (remainingSeconds < 60) {
-            eta = `${remainingSeconds}s remaining`;
-          } else {
-            const minutes = Math.floor(remainingSeconds / 60);
-            const rSec = `${remainingSeconds % 60}`.padStart(2, "0");
-            eta = `${minutes}m ${rSec}s remaining`;
-          }
-        }
-        
-        return `${formatNumber(progress.files_done)} / ${formatNumber(progress.files_total)} files · ${percent}% · ${eta}`;
-      }
-
-      const statusMsg = progress
-        ? (progress.current_phase.type === "BuildingSurface" ? "Preparing text" :
-           progress.current_phase.type === "LoadingModel" ? "Loading models" :
-           progress.current_phase.type === "WritingCache" ? "Saving annotations" : "Annotating")
-        : "Annotating current project text.";
+      const statusMsg = progress ? annotationPhaseLabel(progress) : "Preparing annotation build";
 
       return elapsed ? `${elapsed} · ${statusMsg}` : statusMsg;
     }
@@ -148,12 +197,19 @@ export function annotationLayerControlViewModel(
   const actionDisabled =
     action === "start" && input.surfaceAnalysisRequired && !input.surfaceAnalysisBuilt;
   const label = statusLabel(status);
+  const progress = status === "building" && input.transient?.status === "building" && input.transient.progress
+    ? annotationProgressViewModel(
+        input.transient.progress,
+        input.transient.annotatingElapsedMs,
+      )
+    : null;
 
   return {
     title: `Linguistic annotations · ${label}`,
     status,
     statusLabel: label,
     help: helpText(input, status),
+    progress,
     action,
     actionLabel,
     actionDisabled,
