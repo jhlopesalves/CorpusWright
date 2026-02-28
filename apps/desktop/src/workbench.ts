@@ -2413,7 +2413,6 @@ function renderFrequencyList(): void {
 export function renderAnalyseWorkbench(): void {
   renderAnalyseStatus();
   renderAnalysisNotice();
-  dom.analyseProjectLanguage.textContent = `Project language: ${activeProjectLanguageLabel()}`;
   dom.frequencyLanguageDisplay.textContent = activeProjectLanguageLabel();
   renderProjectSummary();
   renderAnalysisTools();
