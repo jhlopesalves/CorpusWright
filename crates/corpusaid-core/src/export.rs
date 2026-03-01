@@ -644,3 +644,841 @@ fn readme_text(app_name: &str) -> String {
     )
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clean::{CleaningConfig, ReplacementRule};
+    use crate::scan::scan_directory;
+    use std::fs;
+    use tempfile::tempdir;
+
+    // ----------------------------------------------------------------------
+    // Helpers
+    // ----------------------------------------------------------------------
+    /// Build a DocumentRecord manually for testing naming/export logic.
+    fn make_record(
+        source_dir: &Path,
+        relative: &str,
+        doc_type: DocumentType,
+        content: &str,
+    ) -> DocumentRecord {
+        let source_path = source_dir.join(relative);
+        // Ensure parent directory exists
+        if let Some(parent) = source_path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(&source_path, content).unwrap();
+        DocumentRecord {
+            source_path,
+            relative_path: PathBuf::from(relative),
+            document_type: doc_type,
+            size_bytes: content.len() as u64,
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    // sanitize_path_component unit tests
+    // ----------------------------------------------------------------------
+    #[test]
+    fn sanitize_keeps_valid_unicode() {
+        assert_eq!(sanitize_path_component("Linha_10", "document"), "Linha_10");
+        assert_eq!(sanitize_path_component("café", "document"), "café");
+        // Spaces are valid on modern filesystems and preserved
+        assert_eq!(sanitize_path_component("a b.txt", "document"), "a b.txt");
+    }
+
+    #[test]
+    fn sanitize_replaces_invalid_chars() {
+        let s = sanitize_path_component("a<b>c:d\"e/f\\g|h?i*j", "document");
+        assert_eq!(s, "a_b_c_d_e_f_g_h_i_j");
+    }
+
+    #[test]
+    fn sanitize_handles_windows_reserved_names() {
+        assert_eq!(sanitize_path_component("CON", "document"), "CON_");
+        assert_eq!(sanitize_path_component("con", "document"), "con_");
+        assert_eq!(sanitize_path_component("nul", "document"), "nul_");
+        assert_eq!(sanitize_path_component("COM1", "document"), "COM1_");
+        assert_eq!(sanitize_path_component("lpt9", "document"), "lpt9_");
+    }
+
+    #[test]
+    fn sanitize_empty_falls_back() {
+        assert_eq!(sanitize_path_component("", "document"), "document");
+        assert_eq!(sanitize_path_component("   ", "document"), "document");
+    }
+
+    #[test]
+    fn sanitize_trims_trailing_dots() {
+        let s = sanitize_path_component("file...", "document");
+        assert!(!s.ends_with('.'));
+    }
+
+    #[test]
+    fn sanitize_caps_at_128_chars() {
+        let long = "a".repeat(200);
+        let s = sanitize_path_component(&long, "document");
+        assert!(s.len() <= 128);
+    }
+
+    // ----------------------------------------------------------------------
+    // unique_output_relative_path unit tests
+    // ----------------------------------------------------------------------
+    #[test]
+    fn relative_path_plain_txt_file() {
+        let rec = DocumentRecord {
+            source_path: PathBuf::from("/tmp/Linha_10.txt"),
+            relative_path: PathBuf::from("Linha_10.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 10,
+        };
+        let mut used = HashSet::new();
+        let out = unique_output_relative_path(&rec, &mut used);
+        assert_eq!(out, PathBuf::from("Linha_10.txt"));
+    }
+
+    #[test]
+    fn relative_path_pdf_extension_changed() {
+        let rec = DocumentRecord {
+            source_path: PathBuf::from("/tmp/paper.pdf"),
+            relative_path: PathBuf::from("paper.pdf"),
+            document_type: DocumentType::Pdf,
+            size_bytes: 100,
+        };
+        let mut used = HashSet::new();
+        let out = unique_output_relative_path(&rec, &mut used);
+        assert_eq!(out, PathBuf::from("paper.txt"));
+    }
+
+    #[test]
+    fn relative_path_nested_subdirectory() {
+        let rec = DocumentRecord {
+            source_path: PathBuf::from("/tmp/sub/a.txt"),
+            relative_path: PathBuf::from("sub/a.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+        };
+        let mut used = HashSet::new();
+        let out = unique_output_relative_path(&rec, &mut used);
+        assert_eq!(out, PathBuf::from("sub/a.txt"));
+    }
+
+    #[test]
+    fn relative_path_collision_creates_suffixed_name() {
+        let mut used = HashSet::new();
+        let rec1 = DocumentRecord {
+            source_path: PathBuf::from("/tmp/one/name.txt"),
+            relative_path: PathBuf::from("one/name.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+        };
+        let rec2 = DocumentRecord {
+            source_path: PathBuf::from("/tmp/two/name.txt"),
+            relative_path: PathBuf::from("two/name.txt"),
+            // Different subdirs -> no collision
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+        };
+        let out1 = unique_output_relative_path(&rec1, &mut used);
+        assert_eq!(out1, PathBuf::from("one/name.txt"));
+        let out2 = unique_output_relative_path(&rec2, &mut used);
+        assert_eq!(out2, PathBuf::from("two/name.txt"));
+    }
+
+    #[test]
+    fn relative_path_collision_same_subdir() {
+        let mut used = HashSet::new();
+        // Same subdir and same stem -> collision
+        let rec1 = DocumentRecord {
+            source_path: PathBuf::from("/tmp/sub/name.txt"),
+            relative_path: PathBuf::from("sub/name.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+        };
+        // Second with same relative_path but different source (can happen with symlinks etc.)
+        let rec2 = DocumentRecord {
+            source_path: PathBuf::from("/tmp/sub/name_other.txt"),
+            relative_path: PathBuf::from("sub/name.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+        };
+        let out1 = unique_output_relative_path(&rec1, &mut used);
+        assert_eq!(out1, PathBuf::from("sub/name.txt"));
+        let out2 = unique_output_relative_path(&rec2, &mut used);
+        assert_eq!(out2, PathBuf::from("sub/name__2.txt"));
+    }
+
+    #[test]
+    fn relative_path_unsafe_characters_sanitised() {
+        let rec = DocumentRecord {
+            source_path: PathBuf::from("/tmp/file<bad>.txt"),
+            relative_path: PathBuf::from("file<bad>.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+        };
+        let mut used = HashSet::new();
+        let out = unique_output_relative_path(&rec, &mut used);
+        assert_eq!(out, PathBuf::from("file_bad_.txt"));
+    }
+
+    #[test]
+    fn relative_path_empty_stem_falls_back() {
+        // If file_stem returns empty or None, should fallback to "document"
+        let rec = DocumentRecord {
+            source_path: PathBuf::from("/tmp/.hidden"),
+            relative_path: PathBuf::from(".hidden"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+        };
+        let mut used = HashSet::new();
+        let out = unique_output_relative_path(&rec, &mut used);
+        assert!(!out.as_os_str().is_empty());
+    }
+
+    // ----------------------------------------------------------------------
+    // Integration tests for export_corpus
+    // ----------------------------------------------------------------------
+    #[test]
+    fn exports_one_file() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "Hello").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        // Output file should be texts/a.txt
+        let expected_output = export.texts_dir.join("a.txt");
+        assert_eq!(fs::read_to_string(&expected_output).unwrap(), "Hello");
+        // Manifest output_path should match
+        assert_eq!(
+            export.exported_files[0].output_path,
+            PathBuf::from("texts").join("a.txt")
+        );
+    }
+
+    #[test]
+    fn exports_multiple_files() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        fs::write(source.path().join("b.html"), "B").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 2);
+        assert_eq!(fs::read_dir(&export.texts_dir).unwrap().count(), 2);
+        // Check filenames are source-like
+        let mut names: Vec<String> = fs::read_dir(&export.texts_dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["a.txt", "b.txt"]);
+    }
+
+    #[test]
+    fn duplicate_basenames_do_not_collide() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::create_dir(source.path().join("one")).unwrap();
+        fs::create_dir(source.path().join("two")).unwrap();
+        fs::write(source.path().join("one").join("same.txt"), "one").unwrap();
+        fs::write(source.path().join("two").join("same.txt"), "two").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        // Different subdirs -> no collision, both are in separate folders
+        assert_eq!(export.files_exported, 2);
+        assert!(
+            export
+                .exported_files
+                .iter()
+                .any(|f| f.output_path == *"texts/one/same.txt")
+        );
+        assert!(
+            export
+                .exported_files
+                .iter()
+                .any(|f| f.output_path == *"texts/two/same.txt")
+        );
+        assert_eq!(
+            fs::read_to_string(export.texts_dir.join("one/same.txt")).unwrap(),
+            "one"
+        );
+        assert_eq!(
+            fs::read_to_string(export.texts_dir.join("two/same.txt")).unwrap(),
+            "two"
+        );
+    }
+
+    #[test]
+    fn writes_only_txt_files_under_texts() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        // Create a subdirectory to test recursive check
+        fs::create_dir(source.path().join("sub")).unwrap();
+        fs::write(source.path().join("sub").join("a.html"), "<h1>A</h1>").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        // Walk all files under texts/ and verify .txt extension
+        for entry in walkdir(export.texts_dir.as_path()) {
+            let path = entry.path();
+            if path.is_file() {
+                assert_eq!(
+                    path.extension().unwrap(),
+                    "txt",
+                    "Non-txt file found: {:?}",
+                    path
+                );
+            }
+        }
+    }
+
+    fn walkdir(dir: &Path) -> Vec<std::fs::DirEntry> {
+        let mut entries = Vec::new();
+        if dir.is_dir()
+            && let Ok(read_dir) = fs::read_dir(dir)
+        {
+            for entry in read_dir.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    entries.extend(walkdir(&entry.path()));
+                } else {
+                    entries.push(entry);
+                }
+            }
+        }
+        entries
+    }
+
+    #[test]
+    fn writes_manifest_warnings_config_and_readme() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(export.manifest_path.exists());
+        assert!(export.warnings_path.exists());
+        assert!(export.config_path.exists());
+        assert!(export.readme_path.exists());
+    }
+
+    #[test]
+    fn manifest_contains_source_and_processed_hashes() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let manifest: ExportManifest =
+            serde_json::from_str(&fs::read_to_string(export.manifest_path).unwrap()).unwrap();
+        assert_eq!(manifest.files.len(), 1);
+        assert_eq!(manifest.files[0].source_hash_sha256.len(), 64);
+        assert_eq!(manifest.files[0].processed_hash_sha256.len(), 64);
+    }
+
+    #[test]
+    fn refuses_existing_output_directory_unless_overwrite_is_true() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        let output = output_parent.path().join("export");
+        fs::create_dir(&output).unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let result = export_corpus(
+            &report.files,
+            &output,
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        );
+        assert!(matches!(
+            result,
+            Err(ExportError::ExistingOutputDirectory { .. })
+        ));
+
+        let options = ExportOptions {
+            overwrite: true,
+            ..ExportOptions::default()
+        };
+        assert!(
+            export_corpus(
+                &report.files,
+                &output,
+                &CleaningConfig::default(),
+                &options,
+                None,
+                None,
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn source_files_are_unchanged_after_export() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        let source_path = source.path().join("a.txt");
+        fs::write(&source_path, "Original").unwrap();
+        let before = fs::read(&source_path).unwrap();
+        let report = scan_directory(source.path()).unwrap();
+        let config = CleaningConfig {
+            lowercase: true,
+            ..CleaningConfig::default()
+        };
+
+        export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &config,
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(fs::read(&source_path).unwrap(), before);
+    }
+
+    #[test]
+    fn allows_output_inside_source_root_subdirectory() {
+        let source = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let result = export_corpus(
+            &report.files,
+            source.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        );
+
+        // Should succeed — subdirectories inside the corpus root are valid export targets
+        assert!(result.is_ok());
+        let export = result.unwrap();
+        assert_eq!(export.files_exported, 1);
+        assert!(export.texts_dir.join("a.txt").exists());
+    }
+
+    #[test]
+    fn applies_cleaning_during_export() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "HELLO old").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+        let config = CleaningConfig {
+            lowercase: true,
+            replace_patterns: vec![ReplacementRule {
+                pattern: "old".to_string(),
+                replacement: "new".to_string(),
+            }],
+            ..CleaningConfig::default()
+        };
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &config,
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let output_file = export.texts_dir.join("a.txt");
+        assert_eq!(fs::read_to_string(output_file).unwrap(), "hello new");
+    }
+
+    #[test]
+    fn warnings_json_is_written_even_when_empty() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(fs::read_to_string(export.warnings_path).unwrap(), "[]\n");
+    }
+
+    #[test]
+    fn public_export_structs_serialize_to_json() {
+        let options = ExportOptions::default();
+        let json = serde_json::to_string(&options).unwrap();
+        assert!(json.contains("app_name"));
+    }
+
+    #[test]
+    fn exports_to_bare_relative_output_directory() {
+        let source = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let output_dir_name = "test_bare_relative_output_dir_12345";
+        let output_path = std::path::PathBuf::from(output_dir_name);
+        if output_path.exists() {
+            fs::remove_dir_all(&output_path).unwrap();
+        }
+
+        let export = export_corpus(
+            &report.files,
+            &output_path,
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        assert!(export.manifest_path.exists());
+        fs::remove_dir_all(&output_path).unwrap();
+    }
+
+    #[test]
+    fn exports_to_dot_slash_relative_output_directory() {
+        let source = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let output_dir_name = "./test_dot_slash_relative_output_dir_12345";
+        let output_path = std::path::PathBuf::from(output_dir_name);
+        if output_path.exists() {
+            fs::remove_dir_all(&output_path).unwrap();
+        }
+
+        let export = export_corpus(
+            &report.files,
+            &output_path,
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        assert!(export.manifest_path.exists());
+        fs::remove_dir_all(&output_path).unwrap();
+    }
+
+    // ----------------------------------------------------------------------
+    // New naming tests
+    // ----------------------------------------------------------------------
+    #[test]
+    fn exports_text_file_with_source_like_name() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("Linha_10.txt"), "Hello").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        // Output should be texts/Linha_10.txt
+        let output_path = export.texts_dir.join("Linha_10.txt");
+        assert!(output_path.exists());
+        assert_eq!(fs::read_to_string(output_path).unwrap(), "Hello");
+        // Manifest must match
+        assert_eq!(
+            export.exported_files[0].output_path,
+            PathBuf::from("texts").join("Linha_10.txt")
+        );
+    }
+
+    #[test]
+    fn exports_non_txt_changes_extension_to_txt() {
+        // For a PDF, the output should have .txt extension
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+
+        // We can test naming directly without needing actual PDF extraction
+        // by using a DocumentRecord with DocumentType::Pdf
+        let record = make_record(
+            source.path(),
+            "paper.pdf",
+            DocumentType::Pdf,
+            "dummy content",
+        );
+        let records = vec![record];
+
+        let export = export_corpus(
+            &records,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        assert_eq!(
+            export.exported_files[0].output_path,
+            PathBuf::from("texts").join("paper.txt")
+        );
+        // The file on disk should also be .txt
+        assert!(export.texts_dir.join("paper.txt").exists());
+    }
+
+    #[test]
+    fn exports_html_changes_extension_to_txt() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+
+        let record = make_record(source.path(), "page.html", DocumentType::Html, "<h1>A</h1>");
+        let records = vec![record];
+
+        let export = export_corpus(
+            &records,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        assert_eq!(
+            export.exported_files[0].output_path,
+            PathBuf::from("texts").join("page.txt")
+        );
+        assert!(export.texts_dir.join("page.txt").exists());
+    }
+
+    #[test]
+    fn exports_docx_changes_extension_to_txt() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+
+        let record = make_record(source.path(), "essay.docx", DocumentType::Docx, "dummy");
+        let records = vec![record];
+
+        let export = export_corpus(
+            &records,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        assert_eq!(
+            export.exported_files[0].output_path,
+            PathBuf::from("texts").join("essay.txt")
+        );
+        assert!(export.texts_dir.join("essay.txt").exists());
+    }
+
+    #[test]
+    fn preserves_relative_subdirectories() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+
+        let record = make_record(
+            source.path(),
+            "CoreReviews/IMBD Corpus/Linha_10.txt",
+            DocumentType::Text,
+            "Hello",
+        );
+        let records = vec![record];
+
+        let export = export_corpus(
+            &records,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        // Output should be texts/CoreReviews/IMBD Corpus/Linha_10.txt
+        let expected_rel = PathBuf::from("texts/CoreReviews/IMBD Corpus/Linha_10.txt");
+        assert_eq!(export.exported_files[0].output_path, expected_rel);
+        // The file must actually exist on disk at that relative path under texts_dir
+        assert!(
+            export
+                .texts_dir
+                .join("CoreReviews/IMBD Corpus/Linha_10.txt")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn collision_handling_integration() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+
+        // Create two files with same relative_path (same directory, same name)
+        fs::create_dir_all(source.path().join("sub")).unwrap();
+        fs::write(source.path().join("sub").join("name.txt"), "first").unwrap();
+        // Second file is different source but same relative path
+        fs::write(source.path().join("sub").join("name_other.txt"), "second").unwrap();
+
+        // We need to manually construct records because scan will give different relative_paths
+        let rec1 = DocumentRecord {
+            source_path: source.path().join("sub").join("name.txt"),
+            relative_path: PathBuf::from("sub").join("name.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+        };
+        let rec2 = DocumentRecord {
+            source_path: source.path().join("sub").join("name_other.txt"),
+            relative_path: PathBuf::from("sub").join("name.txt"), // Same relative path intentionally
+            document_type: DocumentType::Text,
+            size_bytes: 6,
+        };
+
+        let records = vec![rec1, rec2];
+        let export = export_corpus(
+            &records,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 2);
+
+        // First should be name.txt, second should be name__2.txt
+        let paths: Vec<&PathBuf> = export
+            .exported_files
+            .iter()
+            .map(|f| &f.output_path)
+            .collect();
+        assert!(paths.contains(&&PathBuf::from("texts/sub/name.txt")));
+        assert!(paths.contains(&&PathBuf::from("texts/sub/name__2.txt")));
+
+        // Check on disk
+        assert!(export.texts_dir.join("sub/name.txt").exists());
+        assert!(export.texts_dir.join("sub/name__2.txt").exists());
+        assert_eq!(
+            fs::read_to_string(export.texts_dir.join("sub/name.txt")).unwrap(),
+            "first"
+        );
+        assert_eq!(
+            fs::read_to_string(export.texts_dir.join("sub/name__2.txt")).unwrap(),
+            "second"
+        );
+    }
+
+    #[test]
+    fn unsafe_path_characters_are_sanitised_in_export() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+
+        // On Windows we cannot create a file with '<' or ':' in the name,
+        // so we use a safe source filename but override the relative_path
+        // to contain unsafe characters, simulating what would happen on Linux.
+        let source_path = source.path().join("source.txt");
+        fs::write(&source_path, "content").unwrap();
+        let record = DocumentRecord {
+            source_path,
+            relative_path: PathBuf::from("file<bad>:name.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 7,
+        };
+        let records = vec![record];
+
+        let export = export_corpus(
+            &records,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        // The output must have sanitised name
+        let rel = export.exported_files[0].output_path.clone();
+        assert_eq!(rel, PathBuf::from("texts/file_bad_name.txt"));
+        assert!(export.texts_dir.join("file_bad_name.txt").exists());
+    }
+}
