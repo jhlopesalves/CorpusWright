@@ -7,11 +7,14 @@ use crate::scan::{DocumentRecord, DocumentType};
 use crate::tokenization::TokenizationManifest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::time::Instant;
 
 pub const ANNOTATION_LAYER_SCHEMA_VERSION: u32 = 1;
 pub const ANNOTATION_LAYER_CACHE_FILE_VERSION: u32 = 1;
+const VERIFY_CACHE_WRITE_ENV: &str = "CORPUSWRIGHT_VERIFY_CACHE_WRITE";
 
 /// Full identity of the annotation layer and the corpus it was built from.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -142,6 +145,10 @@ pub enum AnnotationLayerCacheError {
 
 fn normalize_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+fn verify_cache_write_enabled() -> bool {
+    std::env::var(VERIFY_CACHE_WRITE_ENV).as_deref() == Ok("1")
 }
 
 /// Constructs the full AnnotationManifest for a given corpus analysis and options.
@@ -352,43 +359,53 @@ pub(crate) fn write_annotation_layer_cache_with_timing(
         },
     };
 
+    let file =
+        File::create(&temp_path).map_err(|e| AnnotationLayerCacheError::IoError(e.to_string()))?;
+    let mut writer = BufWriter::new(file);
+
     let serialise_started = Instant::now();
-    let json = serde_json::to_string(&envelope)
+    serde_json::to_writer(&mut writer, &envelope)
         .map_err(|e| AnnotationLayerCacheError::SerializationError(e.to_string()))?;
     if let Some(timing) = timing {
         timing.record_cache_serialise(serialise_started.elapsed());
     }
 
     let write_started = Instant::now();
-    std::fs::write(&temp_path, json)
+    writer
+        .flush()
         .map_err(|e| AnnotationLayerCacheError::IoError(e.to_string()))?;
+    drop(writer);
     if let Some(timing) = timing {
         timing.record_cache_write(write_started.elapsed());
     }
 
-    // Read back and verify
-    let readback_started = Instant::now();
-    let read_back =
-        std::fs::read(&temp_path).map_err(|e| AnnotationLayerCacheError::IoError(e.to_string()))?;
-    let parsed: AnnotationLayerCacheEnvelope = serde_json::from_slice(&read_back).map_err(|e| {
-        AnnotationLayerCacheError::ValidationError(format!("Roundtrip validation failed: {}", e))
-    })?;
+    if verify_cache_write_enabled() {
+        let readback_started = Instant::now();
+        let read_back = std::fs::read(&temp_path)
+            .map_err(|e| AnnotationLayerCacheError::IoError(e.to_string()))?;
+        let parsed: AnnotationLayerCacheEnvelope =
+            serde_json::from_slice(&read_back).map_err(|e| {
+                AnnotationLayerCacheError::ValidationError(format!(
+                    "Roundtrip validation failed: {}",
+                    e
+                ))
+            })?;
 
-    if let Err(load_state) = validate_annotation_cache_envelope(&parsed, Some(manifest)) {
-        return Err(AnnotationLayerCacheError::ValidationError(format!(
-            "Roundtrip invariants validation failed: {:?}",
-            load_state
-        )));
-    }
-    // Also test fallible DTO conversion
-    if let Err(e) = LemmaTable::try_from(parsed.layer.lemma_table) {
-        return Err(AnnotationLayerCacheError::ValidationError(format!(
-            "Roundtrip LemmaTable validation failed: {}",
-            e
-        )));
-    }
-    if let Some(timing) = timing {
-        timing.record_cache_readback_verification(readback_started.elapsed());
+        if let Err(load_state) = validate_annotation_cache_envelope(&parsed, Some(manifest)) {
+            return Err(AnnotationLayerCacheError::ValidationError(format!(
+                "Roundtrip invariants validation failed: {:?}",
+                load_state
+            )));
+        }
+        if let Err(e) = LemmaTable::try_from(parsed.layer.lemma_table) {
+            return Err(AnnotationLayerCacheError::ValidationError(format!(
+                "Roundtrip LemmaTable validation failed: {}",
+                e
+            )));
+        }
+        if let Some(timing) = timing {
+            timing.record_cache_readback_verification(readback_started.elapsed());
+        }
     }
 
     // Atomic rename (Windows safe)
@@ -456,6 +473,45 @@ mod tests {
     use super::*;
     use crate::scan::DocumentType;
     use crate::tokenization::TokenizationConfig;
+    use std::ffi::OsString;
+    use std::sync::Mutex;
+
+    static VERIFY_CACHE_WRITE_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct VerifyCacheWriteEnvGuard {
+        previous: Option<OsString>,
+    }
+
+    impl VerifyCacheWriteEnvGuard {
+        fn set(value: Option<&str>) -> Self {
+            let previous = std::env::var_os(VERIFY_CACHE_WRITE_ENV);
+            // SAFETY: tests that mutate this process environment variable hold
+            // VERIFY_CACHE_WRITE_ENV_LOCK. The flag only affects this module's
+            // optional cache-write verification branch.
+            unsafe {
+                if let Some(value) = value {
+                    std::env::set_var(VERIFY_CACHE_WRITE_ENV, value);
+                } else {
+                    std::env::remove_var(VERIFY_CACHE_WRITE_ENV);
+                }
+            }
+            Self { previous }
+        }
+    }
+
+    impl Drop for VerifyCacheWriteEnvGuard {
+        fn drop(&mut self) {
+            // SAFETY: see VerifyCacheWriteEnvGuard::set; the guard is held
+            // within the same locked test scope that created it.
+            unsafe {
+                if let Some(previous) = &self.previous {
+                    std::env::set_var(VERIFY_CACHE_WRITE_ENV, previous);
+                } else {
+                    std::env::remove_var(VERIFY_CACHE_WRITE_ENV);
+                }
+            }
+        }
+    }
 
     fn empty_manifest() -> AnnotationManifest {
         AnnotationManifest {
@@ -478,6 +534,38 @@ mod tests {
                 resolved_documents: vec![],
             },
             models: vec![],
+        }
+    }
+
+    fn sample_layer() -> AnnotationLayer {
+        let mut layer = AnnotationLayer {
+            documents: vec![],
+            lemma_table: LemmaTable::new(),
+            languages_used: vec!["en".to_string()],
+        };
+        layer.lemma_table.intern("test");
+        layer
+    }
+
+    fn cache_file_path(cache_root: &Path) -> std::path::PathBuf {
+        cache_root.join(format!(
+            "annotation-layer.v{}.json",
+            ANNOTATION_LAYER_CACHE_FILE_VERSION
+        ))
+    }
+
+    fn cache_envelope_for(
+        manifest: &AnnotationManifest,
+        layer: &AnnotationLayer,
+    ) -> AnnotationLayerCacheEnvelope {
+        AnnotationLayerCacheEnvelope {
+            cache_file_version: ANNOTATION_LAYER_CACHE_FILE_VERSION,
+            manifest: manifest.clone(),
+            layer: AnnotationLayerDto {
+                documents: layer.documents.clone(),
+                lemma_table: LemmaTableDto::from(&layer.lemma_table),
+                languages_used: layer.languages_used.clone(),
+            },
         }
     }
 
@@ -588,13 +676,7 @@ mod tests {
         let cache_root = dir.path();
 
         let manifest = empty_manifest();
-        let mut layer = AnnotationLayer {
-            documents: vec![],
-            lemma_table: LemmaTable::new(),
-            languages_used: vec![],
-        };
-        layer.lemma_table.intern("test");
-        layer.languages_used.push("en".to_string());
+        let layer = sample_layer();
 
         assert!(write_annotation_layer_cache(cache_root, &manifest, &layer).is_ok());
 
@@ -605,6 +687,57 @@ mod tests {
             }
             _ => panic!("Expected Ready, got {:?}", loaded),
         }
+    }
+
+    #[test]
+    fn cache_write_skips_internal_readback_by_default_but_public_load_validates() {
+        let _env_lock = VERIFY_CACHE_WRITE_ENV_LOCK.lock().unwrap();
+        let _env = VerifyCacheWriteEnvGuard::set(None);
+        let dir = tempfile::tempdir().unwrap();
+        let cache_root = dir.path();
+        let manifest = empty_manifest();
+        let layer = sample_layer();
+        let timing = AnnotationBuildTimingCounters::new();
+
+        write_annotation_layer_cache_with_timing(cache_root, &manifest, &layer, Some(&timing))
+            .unwrap();
+
+        assert!(!timing.readback_verification_ran());
+        let loaded = load_annotation_layer_cache(cache_root, &manifest);
+        assert!(matches!(loaded, AnnotationLayerCacheLoad::Ready(_)));
+    }
+
+    #[test]
+    fn cache_write_runs_internal_readback_when_env_flag_is_set() {
+        let _env_lock = VERIFY_CACHE_WRITE_ENV_LOCK.lock().unwrap();
+        let _env = VerifyCacheWriteEnvGuard::set(Some("1"));
+        let dir = tempfile::tempdir().unwrap();
+        let cache_root = dir.path();
+        let manifest = empty_manifest();
+        let layer = sample_layer();
+        let timing = AnnotationBuildTimingCounters::new();
+
+        write_annotation_layer_cache_with_timing(cache_root, &manifest, &layer, Some(&timing))
+            .unwrap();
+
+        assert!(timing.readback_verification_ran());
+    }
+
+    #[test]
+    fn streaming_cache_write_matches_in_memory_serializer_bytes() {
+        let _env_lock = VERIFY_CACHE_WRITE_ENV_LOCK.lock().unwrap();
+        let _env = VerifyCacheWriteEnvGuard::set(None);
+        let dir = tempfile::tempdir().unwrap();
+        let cache_root = dir.path();
+        let manifest = empty_manifest();
+        let layer = sample_layer();
+        let envelope = cache_envelope_for(&manifest, &layer);
+        let expected = serde_json::to_string(&envelope).unwrap().into_bytes();
+
+        write_annotation_layer_cache(cache_root, &manifest, &layer).unwrap();
+
+        let bytes = std::fs::read(cache_file_path(cache_root)).unwrap();
+        assert_eq!(bytes, expected);
     }
 
     #[test]
