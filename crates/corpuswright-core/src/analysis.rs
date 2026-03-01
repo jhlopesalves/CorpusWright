@@ -15,7 +15,8 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
+use std::time::{Duration, Instant};
 use ts_rs::TS;
 use unicode_normalization::UnicodeNormalization;
 
@@ -30,6 +31,9 @@ const CONCORDANCE_DEFAULT_LIMIT: usize = 100;
 const CONCORDANCE_MAX_LIMIT: usize = 500;
 const ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE: &str =
     "Build the annotation cache to enable lemma and POS frequency.";
+const ANNOTATION_TIMING_ENV: &str = "CORPUSWRIGHT_ANNOTATION_TIMING";
+#[cfg(test)]
+static TEST_ANNOTATION_TIMING_ENABLED: AtomicBool = AtomicBool::new(false);
 // These lexical-diversity parameters are provisional and should remain visible in the UI.
 const MATTR_WINDOW_TOKENS: usize = 100;
 const MTLD_TTR_THRESHOLD: f64 = 0.720;
@@ -699,6 +703,232 @@ fn annotation_build_progress(
     }
 }
 
+pub(crate) struct AnnotationBuildTimingCounters {
+    internal_surface_rebuild_ns: AtomicU64,
+    manifest_cache_ready_ns: AtomicU64,
+    annotation_input_load_ns: AtomicU64,
+    identity_verification_ns: AtomicU64,
+    in_loop_retokenisation_ns: AtomicU64,
+    udpipe_tag_call_ns: AtomicU64,
+    alignment_ns: AtomicU64,
+    local_counting_ns: AtomicU64,
+    reduce_global_interning_ns: AtomicU64,
+    cache_serialise_ns: AtomicU64,
+    cache_write_ns: AtomicU64,
+    cache_readback_verification_ns: AtomicU64,
+    cache_readback_verification_runs: AtomicU64,
+}
+
+impl AnnotationBuildTimingCounters {
+    fn new() -> Self {
+        Self {
+            internal_surface_rebuild_ns: AtomicU64::new(0),
+            manifest_cache_ready_ns: AtomicU64::new(0),
+            annotation_input_load_ns: AtomicU64::new(0),
+            identity_verification_ns: AtomicU64::new(0),
+            in_loop_retokenisation_ns: AtomicU64::new(0),
+            udpipe_tag_call_ns: AtomicU64::new(0),
+            alignment_ns: AtomicU64::new(0),
+            local_counting_ns: AtomicU64::new(0),
+            reduce_global_interning_ns: AtomicU64::new(0),
+            cache_serialise_ns: AtomicU64::new(0),
+            cache_write_ns: AtomicU64::new(0),
+            cache_readback_verification_ns: AtomicU64::new(0),
+            cache_readback_verification_runs: AtomicU64::new(0),
+        }
+    }
+
+    fn add_duration(bucket: &AtomicU64, duration: Duration) {
+        let nanos = duration.as_nanos().min(u128::from(u64::MAX)) as u64;
+        bucket.fetch_add(nanos, AtomicOrdering::Relaxed);
+    }
+
+    fn load_duration(bucket: &AtomicU64) -> Duration {
+        Duration::from_nanos(bucket.load(AtomicOrdering::Relaxed))
+    }
+
+    fn record_internal_surface_rebuild(&self, duration: Duration) {
+        Self::add_duration(&self.internal_surface_rebuild_ns, duration);
+    }
+
+    fn record_manifest_cache_ready(&self, duration: Duration) {
+        Self::add_duration(&self.manifest_cache_ready_ns, duration);
+    }
+
+    fn record_annotation_input_load(&self, duration: Duration) {
+        Self::add_duration(&self.annotation_input_load_ns, duration);
+    }
+
+    fn record_identity_verification(&self, duration: Duration) {
+        Self::add_duration(&self.identity_verification_ns, duration);
+    }
+
+    fn record_in_loop_retokenisation(&self, duration: Duration) {
+        Self::add_duration(&self.in_loop_retokenisation_ns, duration);
+    }
+
+    fn record_udpipe_tag_call(&self, duration: Duration) {
+        Self::add_duration(&self.udpipe_tag_call_ns, duration);
+    }
+
+    fn record_alignment(&self, duration: Duration) {
+        Self::add_duration(&self.alignment_ns, duration);
+    }
+
+    fn record_local_counting(&self, duration: Duration) {
+        Self::add_duration(&self.local_counting_ns, duration);
+    }
+
+    fn record_reduce_global_interning(&self, duration: Duration) {
+        Self::add_duration(&self.reduce_global_interning_ns, duration);
+    }
+
+    pub(crate) fn record_cache_serialise(&self, duration: Duration) {
+        Self::add_duration(&self.cache_serialise_ns, duration);
+    }
+
+    pub(crate) fn record_cache_write(&self, duration: Duration) {
+        Self::add_duration(&self.cache_write_ns, duration);
+    }
+
+    pub(crate) fn record_cache_readback_verification(&self, duration: Duration) {
+        self.cache_readback_verification_runs
+            .fetch_add(1, AtomicOrdering::Relaxed);
+        Self::add_duration(&self.cache_readback_verification_ns, duration);
+    }
+
+    fn readback_verification_ran(&self) -> bool {
+        self.cache_readback_verification_runs
+            .load(AtomicOrdering::Relaxed)
+            > 0
+    }
+}
+
+fn annotation_timing_enabled() -> bool {
+    #[cfg(test)]
+    if TEST_ANNOTATION_TIMING_ENABLED.load(AtomicOrdering::Relaxed) {
+        return true;
+    }
+
+    std::env::var(ANNOTATION_TIMING_ENV).as_deref() == Ok("1")
+}
+
+fn duration_ms(duration: Duration) -> f64 {
+    duration.as_secs_f64() * 1000.0
+}
+
+fn timing_percent(duration: Duration, total: Duration) -> f64 {
+    if total.is_zero() {
+        0.0
+    } else {
+        duration.as_secs_f64() / total.as_secs_f64() * 100.0
+    }
+}
+
+fn log_annotation_timing_bucket(name: &str, duration: Duration, total: Duration) {
+    eprintln!(
+        "annotation_timing bucket=\"{}\" wall_ms={:.2} pct_total={:.2}",
+        name,
+        duration_ms(duration),
+        timing_percent(duration, total)
+    );
+}
+
+fn log_annotation_build_timings(
+    timing: &AnnotationBuildTimingCounters,
+    total: Duration,
+    documents: usize,
+    tokens: u64,
+    reused_existing: bool,
+    cache_written: bool,
+) {
+    let total_seconds = total.as_secs_f64();
+    let docs_per_sec = if total_seconds > 0.0 {
+        documents as f64 / total_seconds
+    } else {
+        0.0
+    };
+    let tokens_per_sec = if total_seconds > 0.0 {
+        tokens as f64 / total_seconds
+    } else {
+        0.0
+    };
+    let cache_status = if reused_existing { "reused" } else { "rebuilt" };
+
+    eprintln!(
+        "annotation_timing total_wall_ms={:.2} documents={} tokens={} docs_per_sec={:.2} tokens_per_sec={:.2} rayon_workers={} cache={} cache_written={} readback_verification={}",
+        duration_ms(total),
+        documents,
+        tokens,
+        docs_per_sec,
+        tokens_per_sec,
+        rayon::current_num_threads(),
+        cache_status,
+        cache_written,
+        timing.readback_verification_ran()
+    );
+    log_annotation_timing_bucket(
+        "internal surface rebuild",
+        AnnotationBuildTimingCounters::load_duration(&timing.internal_surface_rebuild_ns),
+        total,
+    );
+    log_annotation_timing_bucket(
+        "manifest construction / cache-ready check",
+        AnnotationBuildTimingCounters::load_duration(&timing.manifest_cache_ready_ns),
+        total,
+    );
+    log_annotation_timing_bucket(
+        "annotation input load",
+        AnnotationBuildTimingCounters::load_duration(&timing.annotation_input_load_ns),
+        total,
+    );
+    log_annotation_timing_bucket(
+        "identity verification",
+        AnnotationBuildTimingCounters::load_duration(&timing.identity_verification_ns),
+        total,
+    );
+    log_annotation_timing_bucket(
+        "in-loop re-tokenisation",
+        AnnotationBuildTimingCounters::load_duration(&timing.in_loop_retokenisation_ns),
+        total,
+    );
+    log_annotation_timing_bucket(
+        "UDPipe tag call",
+        AnnotationBuildTimingCounters::load_duration(&timing.udpipe_tag_call_ns),
+        total,
+    );
+    log_annotation_timing_bucket(
+        "alignment",
+        AnnotationBuildTimingCounters::load_duration(&timing.alignment_ns),
+        total,
+    );
+    log_annotation_timing_bucket(
+        "local per-document counting",
+        AnnotationBuildTimingCounters::load_duration(&timing.local_counting_ns),
+        total,
+    );
+    log_annotation_timing_bucket(
+        "reduce + global lemma interning",
+        AnnotationBuildTimingCounters::load_duration(&timing.reduce_global_interning_ns),
+        total,
+    );
+    log_annotation_timing_bucket(
+        "serialise",
+        AnnotationBuildTimingCounters::load_duration(&timing.cache_serialise_ns),
+        total,
+    );
+    log_annotation_timing_bucket(
+        "write",
+        AnnotationBuildTimingCounters::load_duration(&timing.cache_write_ns),
+        total,
+    );
+    log_annotation_timing_bucket(
+        "read-back verification",
+        AnnotationBuildTimingCounters::load_duration(&timing.cache_readback_verification_ns),
+        total,
+    );
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ts_rs::TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -825,6 +1055,12 @@ struct WorkerAnnotationDocument {
     source_path: String,
     relative_path: String,
     term_counts: Vec<LocalAnnotatedTermCount>,
+}
+
+#[derive(Clone, Copy)]
+struct AnnotationLayerBuildRuntime<'a> {
+    docs_done: &'a std::sync::atomic::AtomicUsize,
+    timing: Option<&'a AnnotationBuildTimingCounters>,
 }
 
 /// Sparse Rust-owned analysis index.
@@ -2268,6 +2504,10 @@ where
     TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String> + Send,
     Progress: FnMut(AnnotationCacheBuildProgress),
 {
+    let total_started = Instant::now();
+    let timing = annotation_timing_enabled().then(AnnotationBuildTimingCounters::new);
+    let timing_ref = timing.as_ref();
+
     let cache_root = analysis_options
         .annotation_cache_root
         .take()
@@ -2285,7 +2525,8 @@ where
         },
     ));
 
-    let corpus = match build_analysis_corpus(
+    let surface_started = Instant::now();
+    let corpus_result = build_analysis_corpus(
         records,
         analysis_options,
         cancel,
@@ -2299,7 +2540,11 @@ where
                 },
             ));
         },
-    ) {
+    );
+    if let Some(timing) = timing_ref {
+        timing.record_internal_surface_rebuild(surface_started.elapsed());
+    }
+    let corpus = match corpus_result {
         Ok(corpus) => corpus,
         Err(error) => {
             let cancelled = matches!(&error, AnalysisBuildError::Cancelled);
@@ -2333,6 +2578,7 @@ where
         return Err(AnnotationCacheBuildError::Cancelled);
     }
 
+    let manifest_cache_started = Instant::now();
     let manifest = match build_expected_manifest(
         &corpus,
         records,
@@ -2341,6 +2587,9 @@ where
     ) {
         Ok(manifest) => manifest,
         Err(error) => {
+            if let Some(timing) = timing_ref {
+                timing.record_manifest_cache_ready(manifest_cache_started.elapsed());
+            }
             report_progress(annotation_build_progress(
                 0,
                 annotation_files_total,
@@ -2353,6 +2602,9 @@ where
     };
 
     let cache_load = crate::annotation_cache::load_annotation_layer_cache(&cache_root, &manifest);
+    if let Some(timing) = timing_ref {
+        timing.record_manifest_cache_ready(manifest_cache_started.elapsed());
+    }
     if let crate::annotation_cache::AnnotationLayerCacheLoad::Ready(layer) = cache_load {
         let documents_annotated = layer.documents.len();
         let total_annotated_term_count_rows = layer
@@ -2366,6 +2618,17 @@ where
             annotation_files_total,
             AnnotationCacheBuildPhase::Completed,
         ));
+
+        if let Some(timing) = timing_ref {
+            log_annotation_build_timings(
+                timing,
+                total_started.elapsed(),
+                documents_annotated,
+                corpus.overview().total_tokens,
+                true,
+                false,
+            );
+        }
 
         return Ok(AnnotationCacheBuildReport {
             documents_annotated,
@@ -2392,13 +2655,17 @@ where
 
     let layer = std::thread::scope(|s| {
         let handle = s.spawn(|| {
-            build_annotation_layer(
+            build_annotation_layer_with_mapping_timed(
                 &corpus,
                 records,
                 annotation_options,
                 cancel,
                 &mut load_text,
-                &docs_done,
+                true,
+                AnnotationLayerBuildRuntime {
+                    docs_done: &docs_done,
+                    timing: timing_ref,
+                },
             )
         });
 
@@ -2463,9 +2730,12 @@ where
         return Err(AnnotationCacheBuildError::Cancelled);
     }
 
-    if let Err(error) =
-        crate::annotation_cache::write_annotation_layer_cache(&cache_root, &manifest, &layer)
-    {
+    if let Err(error) = crate::annotation_cache::write_annotation_layer_cache_with_timing(
+        &cache_root,
+        &manifest,
+        &layer,
+        timing_ref,
+    ) {
         report_progress(annotation_build_progress(
             annotation_files_total,
             annotation_files_total,
@@ -2488,6 +2758,17 @@ where
         annotation_files_total,
         AnnotationCacheBuildPhase::Completed,
     ));
+
+    if let Some(timing) = timing_ref {
+        log_annotation_build_timings(
+            timing,
+            total_started.elapsed(),
+            documents_annotated,
+            corpus.overview().total_tokens,
+            false,
+            true,
+        );
+    }
 
     Ok(AnnotationCacheBuildReport {
         documents_annotated,
@@ -2679,9 +2960,35 @@ fn build_annotation_layer_with_mapping<TextLoader>(
     records: &[DocumentRecord],
     options: AnnotationLayerBuildOptions,
     cancel: &AtomicBool,
-    mut load_text: TextLoader,
+    load_text: TextLoader,
     parallel_map: bool,
     docs_done: &std::sync::atomic::AtomicUsize,
+) -> Result<AnnotationLayer, AnnotationLayerBuildError>
+where
+    TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
+{
+    build_annotation_layer_with_mapping_timed(
+        corpus,
+        records,
+        options,
+        cancel,
+        load_text,
+        parallel_map,
+        AnnotationLayerBuildRuntime {
+            docs_done,
+            timing: None,
+        },
+    )
+}
+
+fn build_annotation_layer_with_mapping_timed<TextLoader>(
+    corpus: &AnalysisCorpus,
+    records: &[DocumentRecord],
+    options: AnnotationLayerBuildOptions,
+    cancel: &AtomicBool,
+    mut load_text: TextLoader,
+    parallel_map: bool,
+    runtime: AnnotationLayerBuildRuntime<'_>,
 ) -> Result<AnnotationLayer, AnnotationLayerBuildError>
 where
     TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
@@ -2693,6 +3000,7 @@ where
         &options.language_overrides,
         cancel,
         &mut load_text,
+        runtime.timing,
     )?;
     let surface_term_lookup = build_surface_term_lookup(corpus)?;
     let languages_used = inputs
@@ -2709,9 +3017,14 @@ where
         cancel,
         parallel_map,
         &corpus.tokenization,
-        docs_done,
+        runtime,
     )?;
-    reduce_annotation_documents(worker_documents, languages_used.into_iter().collect())
+    let reduce_started = Instant::now();
+    let layer = reduce_annotation_documents(worker_documents, languages_used.into_iter().collect());
+    if let Some(timing) = runtime.timing {
+        timing.record_reduce_global_interning(reduce_started.elapsed());
+    }
+    layer
 }
 
 fn load_annotation_document_inputs<TextLoader>(
@@ -2720,6 +3033,7 @@ fn load_annotation_document_inputs<TextLoader>(
     language_overrides: &HashMap<usize, String>,
     cancel: &AtomicBool,
     load_text: &mut TextLoader,
+    timing: Option<&AnnotationBuildTimingCounters>,
 ) -> Result<Vec<AnnotationDocumentInput>, AnnotationLayerBuildError>
 where
     TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
@@ -2735,8 +3049,13 @@ where
 
         let source_path = record.source_path.to_string_lossy().into_owned();
         let relative_path = record.relative_path.to_string_lossy().into_owned();
+        let load_started = Instant::now();
+        let resolution_result = load_text(record);
+        if let Some(timing) = timing {
+            timing.record_annotation_input_load(load_started.elapsed());
+        }
         let resolution =
-            load_text(record).map_err(|error| AnnotationLayerBuildError::TextLoadFailed {
+            resolution_result.map_err(|error| AnnotationLayerBuildError::TextLoadFailed {
                 source_path: source_path.clone(),
                 error,
             })?;
@@ -2758,6 +3077,7 @@ where
                 ),
             });
         };
+        let verify_started = Instant::now();
         verify_annotation_document_identity(
             analysis_document_index,
             document,
@@ -2766,6 +3086,9 @@ where
             &text,
             &corpus.tokenization,
         )?;
+        if let Some(timing) = timing {
+            timing.record_identity_verification(verify_started.elapsed());
+        }
 
         let language =
             if let Some(override_language) = language_overrides.get(&original_record_index) {
@@ -2902,7 +3225,7 @@ fn annotate_annotation_documents(
     cancel: &AtomicBool,
     parallel_map: bool,
     tokenization_config: &TokenizationConfig,
-    docs_done: &std::sync::atomic::AtomicUsize,
+    runtime: AnnotationLayerBuildRuntime<'_>,
 ) -> Result<Vec<WorkerAnnotationDocument>, AnnotationLayerBuildError> {
     if parallel_map {
         let model_dir = model_dir.to_path_buf();
@@ -2917,9 +3240,12 @@ fn annotate_annotation_documents(
                         manager,
                         cancel,
                         tokenization_config,
+                        runtime.timing,
                     );
                     if result.is_ok() {
-                        docs_done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        runtime
+                            .docs_done
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     }
                     result
                 },
@@ -2936,9 +3262,12 @@ fn annotate_annotation_documents(
                     &mut manager,
                     cancel,
                     tokenization_config,
+                    runtime.timing,
                 );
                 if result.is_ok() {
-                    docs_done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    runtime
+                        .docs_done
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
                 result
             })
@@ -2952,6 +3281,7 @@ fn annotate_annotation_document(
     manager: &mut ModelManager,
     cancel: &AtomicBool,
     tokenization_config: &TokenizationConfig,
+    timing: Option<&AnnotationBuildTimingCounters>,
 ) -> Result<WorkerAnnotationDocument, AnnotationLayerBuildError> {
     if cancel.load(AtomicOrdering::Relaxed) {
         return Err(AnnotationLayerBuildError::Cancelled);
@@ -2966,16 +3296,32 @@ fn annotate_annotation_document(
             reason: "analysis corpus contains more than u32::MAX documents".to_string(),
         }
     })?;
+    let retokenisation_started = Instant::now();
     let tokens = analysis_word_tokens(&input.text, document_id, tokenization_config);
+    if let Some(timing) = timing {
+        timing.record_in_loop_retokenisation(retokenisation_started.elapsed());
+    }
     let token_surfaces = tokens.iter().map(|token| token.surface).collect::<Vec<_>>();
-    let annotated_tokens = manager
-        .tag_and_align(&input.language, &token_surfaces)
-        .map_err(|error| annotation_document_error(input, error))?;
+    let annotated_tokens = if let Some(timing) = timing {
+        manager.tag_and_align_with_timing(
+            &input.language,
+            &token_surfaces,
+            |duration| timing.record_udpipe_tag_call(duration),
+            |duration| timing.record_alignment(duration),
+        )
+    } else {
+        manager.tag_and_align(&input.language, &token_surfaces)
+    }
+    .map_err(|error| annotation_document_error(input, error))?;
+    let counting_started = Instant::now();
     let term_counts = resolve_annotated_tokens_to_local_counts(
         input.analysis_document_index,
         &annotated_tokens,
         surface_term_lookup,
     )?;
+    if let Some(timing) = timing {
+        timing.record_local_counting(counting_started.elapsed());
+    }
 
     Ok(WorkerAnnotationDocument {
         analysis_document_index: input.analysis_document_index,
@@ -5198,6 +5544,7 @@ mod tests {
             &language_overrides,
             &AtomicBool::new(false),
             &mut load_text,
+            None,
         )
         .unwrap();
 
@@ -7673,6 +8020,57 @@ mod tests {
             serde_json::from_slice(&bytes2).unwrap();
 
         assert_eq!(envelope1, envelope2);
+    }
+
+    #[test]
+    fn test_annotation_timing_does_not_change_cache_output() {
+        struct TimingReset;
+        impl Drop for TimingReset {
+            fn drop(&mut self) {
+                TEST_ANNOTATION_TIMING_ENABLED.store(false, AtomicOrdering::Relaxed);
+            }
+        }
+
+        let _reset = TimingReset;
+        let records = vec![record("doc.txt")];
+
+        let build_cache = |cache_root: &std::path::Path| {
+            let mut options = build_options();
+            options.annotation_cache_root = Some(cache_root.to_path_buf());
+            options.udpipe_model_dir = Some(default_model_dir());
+            let build_ann_options = AnnotationLayerBuildOptions {
+                udpipe_model_dir: options.udpipe_model_dir.clone(),
+                language_overrides: options.language_overrides.clone(),
+            };
+
+            build_and_write_annotation_cache(
+                &records,
+                options,
+                build_ann_options,
+                &AtomicBool::new(false),
+                |record| Ok(processed_resolution(record, "The quick brown fox.")),
+                |_| {},
+            )
+            .unwrap();
+
+            let cache_file = cache_root.join(format!(
+                "annotation-layer.v{}.json",
+                crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+            ));
+            let bytes = std::fs::read(cache_file).unwrap();
+            serde_json::from_slice::<crate::annotation_cache::AnnotationLayerCacheEnvelope>(&bytes)
+                .unwrap()
+        };
+
+        let untimed_dir = tempfile::tempdir().unwrap();
+        TEST_ANNOTATION_TIMING_ENABLED.store(false, AtomicOrdering::Relaxed);
+        let untimed = build_cache(untimed_dir.path());
+
+        let timed_dir = tempfile::tempdir().unwrap();
+        TEST_ANNOTATION_TIMING_ENABLED.store(true, AtomicOrdering::Relaxed);
+        let timed = build_cache(timed_dir.path());
+
+        assert_eq!(untimed, timed);
     }
 
     #[test]
