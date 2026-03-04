@@ -7127,6 +7127,151 @@ mod tests {
     }
 
     #[test]
+    fn lemma_pos_frequency_honours_filters_before_pagination() {
+        let mut corpus = corpus_for(&[
+            ("a.txt", "Alpha alpha the run"),
+            ("b.txt", "ALPHA the run run"),
+        ]);
+        add_document_annotations(
+            &mut corpus,
+            0,
+            &[
+                ("Alpha", "Alpha", UniversalPos::Noun, 1),
+                ("alpha", "alpha", UniversalPos::Noun, 1),
+                ("the", "the", UniversalPos::Det, 1),
+                ("run", "run", UniversalPos::Verb, 1),
+            ],
+        );
+        add_document_annotations(
+            &mut corpus,
+            1,
+            &[
+                ("ALPHA", "alpha", UniversalPos::Noun, 1),
+                ("the", "the", UniversalPos::Det, 1),
+                ("run", "run", UniversalPos::Verb, 2),
+            ],
+        );
+
+        let result = query_annotated_frequency(
+            &corpus,
+            &AnnotatedFrequencyQuery {
+                query: "ALPHA".to_string(),
+                match_mode: FrequencyMatchMode::Exact,
+                case_fold: true,
+                pos_filter: Some("noun".to_string()),
+                minimum_frequency: 2,
+                limit: 1,
+                ..annotated_frequency_query(AnnotatedFrequencyMode::LemmaPos)
+            },
+            ready_annotation_cache(),
+        );
+
+        assert_eq!(result.total_rows, 1);
+        assert_eq!(result.lex_rows.len(), 1);
+        assert_eq!(result.lex_rows[0].lemma, "alpha");
+        assert_eq!(result.lex_rows[0].upos, "NOUN");
+        assert_eq!(result.lex_rows[0].raw, 2);
+    }
+
+    #[test]
+    fn lemma_pos_frequency_hides_stopwords_by_lemma() {
+        let mut corpus = corpus_for(&[("a.txt", "The work"), ("b.txt", "the work")]);
+        add_document_annotations(
+            &mut corpus,
+            0,
+            &[
+                ("The", "The", UniversalPos::Det, 1),
+                ("work", "work", UniversalPos::Noun, 1),
+            ],
+        );
+        add_document_annotations(
+            &mut corpus,
+            1,
+            &[
+                ("the", "the", UniversalPos::Det, 1),
+                ("work", "work", UniversalPos::Verb, 1),
+            ],
+        );
+
+        let result = query_annotated_frequency(
+            &corpus,
+            &AnnotatedFrequencyQuery {
+                hide_stopwords: true,
+                sort_key: FrequencySortKey::Token,
+                sort_direction: SortDirection::Asc,
+                ..annotated_frequency_query(AnnotatedFrequencyMode::LemmaPos)
+            },
+            ready_annotation_cache(),
+        );
+
+        let rows = result
+            .lex_rows
+            .iter()
+            .map(|row| (row.lemma.as_str(), row.upos.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(result.total_rows, 2);
+        assert_eq!(rows, vec![("work", "NOUN"), ("work", "VERB")]);
+    }
+
+    #[test]
+    fn annotated_frequency_sorts_with_shared_keys_and_direction() {
+        let mut corpus = corpus_for(&[("a.txt", "alpha beta beta"), ("b.txt", "gamma gamma")]);
+        add_document_annotations(
+            &mut corpus,
+            0,
+            &[
+                ("alpha", "alpha", UniversalPos::Noun, 1),
+                ("beta", "beta", UniversalPos::Noun, 2),
+            ],
+        );
+        add_document_annotations(&mut corpus, 1, &[("gamma", "gamma", UniversalPos::Verb, 2)]);
+
+        let result = query_annotated_frequency(
+            &corpus,
+            &AnnotatedFrequencyQuery {
+                sort_key: FrequencySortKey::Frequency,
+                sort_direction: SortDirection::Asc,
+                ..annotated_frequency_query(AnnotatedFrequencyMode::LemmaPos)
+            },
+            ready_annotation_cache(),
+        );
+
+        let rows = result
+            .lex_rows
+            .iter()
+            .map(|row| (row.lemma.as_str(), row.raw))
+            .collect::<Vec<_>>();
+        assert_eq!(rows, vec![("alpha", 1), ("beta", 2), ("gamma", 2)]);
+    }
+
+    #[test]
+    fn pos_frequency_query_matches_upos_case_insensitively() {
+        let mut corpus = corpus_for(&[("a.txt", "Cats run quickly")]);
+        add_document_annotations(
+            &mut corpus,
+            0,
+            &[
+                ("Cats", "cat", UniversalPos::Noun, 1),
+                ("run", "run", UniversalPos::Verb, 1),
+                ("quickly", "quickly", UniversalPos::Adv, 1),
+            ],
+        );
+
+        let result = query_annotated_frequency(
+            &corpus,
+            &AnnotatedFrequencyQuery {
+                query: "verb".to_string(),
+                match_mode: FrequencyMatchMode::Exact,
+                ..annotated_frequency_query(AnnotatedFrequencyMode::Pos)
+            },
+            ready_annotation_cache(),
+        );
+
+        assert_eq!(result.total_rows, 1);
+        assert_eq!(result.pos_rows[0].upos, "VERB");
+    }
+
+    #[test]
     fn annotated_frequency_requires_ready_annotation_layer() {
         let mut corpus = corpus_for(&[("pos.txt", "Cats run")]);
         add_document_annotations(
@@ -7281,6 +7426,70 @@ mod tests {
         assert_eq!(distribution.total_documents, 2);
         assert_eq!(distribution.items.len(), 1);
         assert_eq!(distribution.items[0].count, 1);
+    }
+
+    #[test]
+    fn annotated_term_distribution_counts_pos_and_lemma_pos_per_document() {
+        let mut corpus = corpus_for(&[("a.txt", "Cats run run"), ("b.txt", "cat run")]);
+        add_document_annotations(
+            &mut corpus,
+            0,
+            &[
+                ("Cats", "cat", UniversalPos::Noun, 1),
+                ("run", "run", UniversalPos::Verb, 2),
+            ],
+        );
+        add_document_annotations(
+            &mut corpus,
+            1,
+            &[
+                ("cat", "cat", UniversalPos::Noun, 1),
+                ("run", "run", UniversalPos::Verb, 1),
+            ],
+        );
+
+        let pos_distribution = query_annotated_term_distribution(
+            &corpus,
+            &AnnotatedTermDistributionQuery {
+                selection: AnalysisDocumentSelection::default(),
+                selector: AnnotatedTermSelector::Pos {
+                    upos: "VERB".to_string(),
+                },
+                offset: 0,
+                limit: 10,
+            },
+        );
+        let lemma_distribution = query_annotated_term_distribution(
+            &corpus,
+            &AnnotatedTermDistributionQuery {
+                selection: AnalysisDocumentSelection::default(),
+                selector: AnnotatedTermSelector::LemmaPos {
+                    lemma: "cat".to_string(),
+                    upos: "NOUN".to_string(),
+                },
+                offset: 0,
+                limit: 10,
+            },
+        );
+
+        assert_eq!(pos_distribution.total_documents, 2);
+        assert_eq!(
+            pos_distribution
+                .items
+                .iter()
+                .map(|item| (item.relative_path.as_str(), item.count))
+                .collect::<Vec<_>>(),
+            vec![("a.txt", 2), ("b.txt", 1)]
+        );
+        assert_close(pos_distribution.items[0].rate_per_10k, 20_000.0 / 3.0);
+        assert_eq!(
+            lemma_distribution
+                .items
+                .iter()
+                .map(|item| (item.relative_path.as_str(), item.count))
+                .collect::<Vec<_>>(),
+            vec![("a.txt", 1), ("b.txt", 1)]
+        );
     }
 
     #[test]
