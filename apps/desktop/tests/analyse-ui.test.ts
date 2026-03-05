@@ -33,3 +33,29 @@ assert(
   !html.includes("Build annotation cache"),
   "Primary UI copy should not say Build annotation cache",
 );
+
+const frequencyHeadMatch = html.match(/<thead id="frequency-table-head">([\s\S]*?)<\/thead>/);
+assert(frequencyHeadMatch, "Frequency table head should exist");
+const frequencyHead = frequencyHeadMatch[1];
+for (const label of ["Token", "Frequency", "Range (docs)", "Dispersion (DP)"]) {
+  assert(frequencyHead.includes(label), `Default surface table should render ${label}`);
+}
+for (const label of ["Per 10k", "Per 100k", "Per million", "Top-doc share"]) {
+  assert(!frequencyHead.includes(label), `Default frequency table should not render ${label}`);
+}
+assert(
+  html.includes('<option value="off" selected>Off</option>'),
+  "Rate control should default to Off",
+);
+assert(
+  html.includes("Normalised rates are optional and can be unstable in very short files; inspect raw counts and document tokens."),
+  "Rate help text should use the compact methodological warning",
+);
+assert(
+  !html.includes("frequency-language-display"),
+  "Frequency controls should not include an editable-looking language field",
+);
+assert(
+  !workbench.includes("Top-doc share"),
+  "Frequency renderer should not render Top-doc share by default",
+);

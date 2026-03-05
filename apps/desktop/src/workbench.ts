@@ -56,10 +56,18 @@ import { dom } from "./dom";
 import { effectiveCleaningConfig } from "./effective-cleaning-config";
 import {
   ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE,
+  DEFAULT_FREQUENCY_RATE_SCALE,
   annotatedFrequencyModeEnabled,
+  frequencyColumnLabels,
   frequencyControlVisibility,
+  frequencyDistributionBarValue,
+  frequencyDistributionColumnLabels,
+  frequencyRateLabel,
+  frequencyRateValue,
+  frequencyTableColumnCountForMode,
   formatDocumentFrequency,
   frequencyModeLabel,
+  type FrequencyRateScale,
   type FrequencyViewMode,
 } from "./frequency";
 import {
@@ -1944,14 +1952,18 @@ function currentAnnotatedFrequencyMode(): AnnotatedFrequencyMode | null {
   return frequencyViewMode === "surface" ? null : frequencyViewMode;
 }
 
+function currentFrequencyRateScale(): FrequencyRateScale {
+  return dom.frequencyRateScaleSelect.value as FrequencyRateScale;
+}
+
 function frequencyTableColumnCount(): number {
-  switch (frequencyViewMode) {
-    case "surface":
-      return 5;
-    case "pos":
-      return 6;
-    case "lemmaPos":
-      return 7;
+  return frequencyTableColumnCountForMode(frequencyViewMode, currentFrequencyRateScale());
+}
+
+function ensureVisibleFrequencySortKey(): void {
+  if (currentFrequencyRateScale() === "off" && frequencySortKey === "rate") {
+    frequencySortKey = "frequency";
+    frequencySortDirection = "desc";
   }
 }
 
@@ -1996,10 +2008,10 @@ function syncFrequencyControlMatrix(corpus: AnalysisCorpus | null = state.analys
   setFrequencyControlVisible(dom.frequencyMinInput, controls.minimumFrequency);
   setFrequencyControlVisible(dom.frequencyGroupBySelect, controls.groupBy);
   setFrequencyControlVisible(dom.frequencyCaseFoldInput, controls.caseFold);
-  setFrequencyControlVisible(dom.frequencyLanguageDisplay, controls.language);
   setFrequencyControlVisible(dom.frequencyTokenClassSelect, controls.tokenClass);
   setFrequencyControlVisible(dom.frequencyPosFilterSelect, controls.posFilter);
   setFrequencyControlVisible(dom.frequencyHideStopwordsInput, controls.hideStopwords);
+  setFrequencyControlVisible(dom.frequencyRateScaleSelect, controls.rate);
 
   dom.frequencySearchInput.disabled = !enabled || !controls.query;
   dom.frequencyMatchModeSelect.disabled = !enabled || !controls.matchMode;
@@ -2008,6 +2020,7 @@ function syncFrequencyControlMatrix(corpus: AnalysisCorpus | null = state.analys
   dom.frequencyTokenClassSelect.disabled = !enabled || !controls.tokenClass;
   dom.frequencyHideStopwordsInput.disabled = !enabled || !controls.hideStopwords;
   dom.frequencyPosFilterSelect.disabled = !enabled || !controls.posFilter || !annotationAvailable;
+  dom.frequencyRateScaleSelect.disabled = !enabled || !controls.rate;
 }
 
 function syncFrequencyAnnotationControls(corpus: AnalysisCorpus | null = state.analysisCorpus): void {
@@ -2070,8 +2083,6 @@ function syncFrequencyCaseFoldToggle(): void {
   }
   dom.frequencyCaseFoldInput.setAttribute("aria-checked", controls.caseFold && isFolded ? "true" : "false");
   dom.frequencyCaseFoldState.textContent = controls.caseFold && isFolded ? "Folded" : "As typed";
-  dom.frequencyLanguageDisplay.textContent = activeProjectLanguageLabel();
-  dom.frequencyLanguageDisplay.classList.toggle("is-disabled", !controls.language || !stemsAreSelected);
 }
 
 function tokenClassSummary(filter: FrequencyTokenClassFilter): string {
@@ -2113,7 +2124,7 @@ function annotatedDistributionKey(selector: AnnotatedTermSelector): string {
 
 function createExpandableTokenCell(label: string, title = label): HTMLTableCellElement {
   const token = document.createElement("td");
-  token.className = "frequency-token-cell";
+  token.className = "frequency-token-cell frequency-col-term";
   token.title = title;
   const tokenContent = document.createElement("span");
   tokenContent.className = "frequency-token-content";
@@ -2126,14 +2137,85 @@ function createExpandableTokenCell(label: string, title = label): HTMLTableCellE
   return token;
 }
 
-function appendHeaderCell(row: HTMLTableRowElement, label: string): void {
+function createTextCell(text: string, className: string): HTMLTableCellElement {
+  const cell = document.createElement("td");
+  cell.className = className;
+  cell.textContent = text;
+  return cell;
+}
+
+function createNumericCell(text: string, className: string): HTMLTableCellElement {
+  return createTextCell(text, `numeric ${className}`);
+}
+
+function createRateCell(value: number): HTMLTableCellElement {
+  return createNumericCell(formatFixedNumber(value, 2), "frequency-col-rate");
+}
+
+function frequencyColumnClass(label: string): string {
+  switch (label) {
+    case "Token":
+    case "Lemma":
+      return "frequency-col-term";
+    case "UPOS":
+      return "frequency-col-upos";
+    case "Frequency":
+      return "frequency-col-frequency";
+    case "Range (docs)":
+      return "frequency-col-range";
+    case "Per 10k":
+    case "Per 100k":
+    case "Per million":
+      return "frequency-col-rate";
+    case "Dispersion (DP)":
+      return "frequency-col-dispersion";
+    default:
+      return "";
+  }
+}
+
+function frequencyColumnSortKey(label: string): FrequencySortKey | null {
+  switch (label) {
+    case "Token":
+    case "Lemma":
+      return "token";
+    case "UPOS":
+      return frequencyViewMode === "pos" ? "token" : null;
+    case "Frequency":
+      return "frequency";
+    case "Range (docs)":
+      return "range";
+    case "Per 10k":
+    case "Per 100k":
+    case "Per million":
+      return "rate";
+    case "Dispersion (DP)":
+      return "dispersion";
+    default:
+      return null;
+  }
+}
+
+function frequencyColumnAlignsRight(label: string): boolean {
+  return label !== "Token" && label !== "Lemma" && label !== "UPOS";
+}
+
+function appendHeaderCell(row: HTMLTableRowElement, label: string, className = ""): void {
   const cell = document.createElement("th");
+  cell.className = className;
   cell.textContent = label;
   row.appendChild(cell);
 }
 
-function appendSortHeaderCell(row: HTMLTableRowElement, label: string, sort: FrequencySortKey, alignRight = false): void {
+function appendSortHeaderCell(
+  row: HTMLTableRowElement,
+  label: string,
+  sort: FrequencySortKey,
+  alignRight = false,
+  className = "",
+): void {
   const cell = document.createElement("th");
+  cell.className = className;
   const button = document.createElement("button");
   button.type = "button";
   button.className = alignRight ? "frequency-sort frequency-sort-right" : "frequency-sort";
@@ -2144,28 +2226,16 @@ function appendSortHeaderCell(row: HTMLTableRowElement, label: string, sort: Fre
 }
 
 function renderFrequencyTableHead(): void {
+  ensureVisibleFrequencySortKey();
   const row = document.createElement("tr");
-  if (frequencyViewMode === "surface") {
-    appendSortHeaderCell(row, "Token", "token");
-    appendSortHeaderCell(row, "Frequency", "frequency", true);
-    appendSortHeaderCell(row, "Range (docs)", "range", true);
-    appendSortHeaderCell(row, "Per million", "rate", true);
-    appendSortHeaderCell(row, "Dispersion (DP)", "dispersion", true);
-  } else if (frequencyViewMode === "pos") {
-    appendSortHeaderCell(row, "UPOS", "token");
-    appendSortHeaderCell(row, "Frequency", "frequency", true);
-    appendSortHeaderCell(row, "Range (docs)", "range", true);
-    appendSortHeaderCell(row, "Per 10k", "rate", true);
-    appendSortHeaderCell(row, "Dispersion (DP)", "dispersion", true);
-    appendHeaderCell(row, "Top-doc share");
-  } else {
-    appendSortHeaderCell(row, "Lemma", "token");
-    appendHeaderCell(row, "UPOS");
-    appendSortHeaderCell(row, "Frequency", "frequency", true);
-    appendSortHeaderCell(row, "Range (docs)", "range", true);
-    appendSortHeaderCell(row, "Per 10k", "rate", true);
-    appendSortHeaderCell(row, "Dispersion (DP)", "dispersion", true);
-    appendHeaderCell(row, "Top-doc share");
+  for (const label of frequencyColumnLabels(frequencyViewMode, currentFrequencyRateScale())) {
+    const sortKey = frequencyColumnSortKey(label);
+    const className = frequencyColumnClass(label);
+    if (sortKey) {
+      appendSortHeaderCell(row, label, sortKey, frequencyColumnAlignsRight(label), className);
+    } else {
+      appendHeaderCell(row, label, className);
+    }
   }
   dom.frequencyTableHead.replaceChildren(row);
 }
@@ -2210,7 +2280,7 @@ function dispersionLevel(dispersion: number): "low" | "medium" | "high" {
 
 function createDispersionValueCell(dispersion: number): HTMLTableCellElement {
   const cell = document.createElement("td");
-  cell.className = "numeric frequency-dp-cell";
+  cell.className = "numeric frequency-dp-cell frequency-col-dispersion";
 
   const value = document.createElement("span");
   value.className = "frequency-dp-value";
@@ -2230,6 +2300,38 @@ function createDispersionValueCell(dispersion: number): HTMLTableCellElement {
 
 function createDispersionCell(term: FrequencyTermItem): HTMLTableCellElement {
   return createDispersionValueCell(term.dispersion);
+}
+
+function frequencyDistributionColumnClass(label: string): string {
+  switch (label) {
+    case "Document/File":
+      return "frequency-distribution-file-col";
+    case "Count":
+      return "frequency-distribution-count";
+    case "Document tokens":
+      return "frequency-distribution-tokens";
+    case "Per 10k":
+    case "Per 100k":
+    case "Per million":
+      return "frequency-distribution-rate";
+    case "Bar":
+      return "frequency-distribution-bar";
+    default:
+      return "";
+  }
+}
+
+function frequencyDistributionMaxBarValue(page: TermDistributionPage, rateScale: FrequencyRateScale): number {
+  switch (rateScale) {
+    case "off":
+      return Math.max(0, ...page.items.map((item) => item.count));
+    case "per10k":
+      return page.maxRatePer10k;
+    case "per100k":
+      return page.maxRatePer10k * 10;
+    case "perMillion":
+      return page.maxRatePerMillion;
+  }
 }
 
 async function loadTermDistribution(token: string, offset: number): Promise<void> {
@@ -2303,8 +2405,10 @@ function createFrequencyDistributionPanel(
   distributionKey: string,
   loadPage: (offset: number) => void,
 ): HTMLElement {
+  const rateScale = currentFrequencyRateScale();
   const panel = document.createElement("div");
   panel.className = "frequency-distribution-panel";
+  panel.dataset.rateScale = rateScale;
 
   const title = document.createElement("h3");
   title.textContent = "Per-file distribution (selected files)";
@@ -2321,42 +2425,62 @@ function createFrequencyDistributionPanel(
 
   const header = document.createElement("div");
   header.className = "frequency-distribution-row frequency-distribution-header";
-  header.append(
-    Object.assign(document.createElement("span"), { textContent: "Document/File" }),
-    Object.assign(document.createElement("span"), { textContent: "Count" }),
-    Object.assign(document.createElement("span"), { textContent: "Per 10k" }),
-    Object.assign(document.createElement("span"), { textContent: "Bar" }),
-  );
+  for (const label of frequencyDistributionColumnLabels(rateScale)) {
+    const column = document.createElement("span");
+    column.className = frequencyDistributionColumnClass(label);
+    column.textContent = label;
+    header.appendChild(column);
+  }
   panel.appendChild(header);
 
+  const maxBarValue = frequencyDistributionMaxBarValue(page, rateScale);
+  const rateLabel = frequencyRateLabel(rateScale);
   for (const item of page.items) {
     const line = document.createElement("div");
     line.className = "frequency-distribution-row";
 
     const label = document.createElement("span");
-    label.className = "frequency-distribution-file";
+    label.className = "frequency-distribution-file frequency-distribution-file-col";
     label.title = documentName(item);
     label.textContent = documentName(item);
 
     const count = document.createElement("span");
-    count.className = "numeric";
+    count.className = "numeric frequency-distribution-count";
     count.textContent = formatNumber(item.count);
 
-    const rate = document.createElement("span");
-    rate.className = "numeric";
-    rate.textContent = formatFixedNumber(item.ratePerMillion, 2);
+    const documentTokens = document.createElement("span");
+    documentTokens.className = "numeric frequency-distribution-tokens";
+    documentTokens.textContent = formatNumber(item.tokenCount);
 
     const track = document.createElement("span");
-    track.className = "frequency-distribution-track";
+    track.className = "frequency-distribution-track frequency-distribution-bar";
     const fill = document.createElement("span");
     fill.className = "frequency-distribution-fill";
-    const barWidth = page.maxRatePerMillion > 0 && item.ratePerMillion > 0
-      ? Math.max(3, (item.ratePerMillion / page.maxRatePerMillion) * 100)
+    const barValue = frequencyDistributionBarValue(rateScale, {
+      count: item.count,
+      per10k: item.ratePer10k,
+      perMillion: item.ratePerMillion,
+    });
+    const barWidth = maxBarValue > 0 && barValue > 0
+      ? Math.max(3, (barValue / maxBarValue) * 100)
       : 0;
     fill.style.setProperty("--bar-width", `${barWidth}%`);
+    fill.dataset.barValue = formatFixedNumber(barValue, 2);
+    track.title = rateLabel ? `${rateLabel}: ${formatFixedNumber(barValue, 2)}` : `Count: ${formatNumber(item.count)}`;
     track.appendChild(fill);
 
-    line.append(label, count, rate, track);
+    line.append(label, count, documentTokens);
+    const rateValue = frequencyRateValue(rateScale, {
+      per10k: item.ratePer10k,
+      perMillion: item.ratePerMillion,
+    });
+    if (rateValue !== null) {
+      const rate = document.createElement("span");
+      rate.className = "numeric frequency-distribution-rate";
+      rate.textContent = formatFixedNumber(rateValue, 2);
+      line.appendChild(rate);
+    }
+    line.appendChild(track);
     panel.appendChild(line);
   }
 
@@ -2392,6 +2516,7 @@ async function refreshFrequencyPage(resetOffset = true): Promise<void> {
   if (!corpus) {
     return;
   }
+  ensureVisibleFrequencySortKey();
   syncFrequencyModeTabs(corpus);
   syncFrequencyAnnotationControls(corpus);
   if (resetOffset) {
@@ -2560,6 +2685,7 @@ function renderAnnotatedFrequencyList(corpus: AnalysisCorpus): void {
     return;
   }
 
+  const rateScale = currentFrequencyRateScale();
   if (page.mode === "pos") {
     for (const item of page.posRows) {
       const selector: AnnotatedTermSelector = { mode: "pos", upos: item.upos };
@@ -2574,14 +2700,19 @@ function renderAnnotatedFrequencyList(corpus: AnalysisCorpus): void {
       row.setAttribute("aria-expanded", isExpanded ? "true" : "false");
       row.setAttribute("aria-controls", detailId);
       row.setAttribute("aria-label", `${isExpanded ? "Collapse" : "Expand"} per-file distribution for ${item.upos}`);
-      row.append(
+      const cells = [
         createExpandableTokenCell(item.upos),
-        Object.assign(document.createElement("td"), { className: "numeric", textContent: formatNumber(item.raw) }),
-        Object.assign(document.createElement("td"), { className: "numeric", textContent: formatDocumentFrequency(item.docFreq, item.docTotal) }),
-        Object.assign(document.createElement("td"), { className: "numeric", textContent: formatFixedNumber(item.per10k, 2) }),
+        createNumericCell(formatNumber(item.raw), "frequency-col-frequency"),
+        createNumericCell(formatDocumentFrequency(item.docFreq, item.docTotal), "frequency-col-range"),
+      ];
+      const rateValue = frequencyRateValue(rateScale, { per10k: item.per10k });
+      if (rateValue !== null) {
+        cells.push(createRateCell(rateValue));
+      }
+      cells.push(
         createDispersionValueCell(item.dp),
-        Object.assign(document.createElement("td"), { className: "numeric", textContent: formatPercent(item.topDocShare, 1) }),
       );
+      row.append(...cells);
       dom.frequencyTableBody.appendChild(row);
       if (isExpanded) {
         const detailRow = document.createElement("tr");
@@ -2613,15 +2744,20 @@ function renderAnnotatedFrequencyList(corpus: AnalysisCorpus): void {
     row.setAttribute("aria-expanded", isExpanded ? "true" : "false");
     row.setAttribute("aria-controls", detailId);
     row.setAttribute("aria-label", `${isExpanded ? "Collapse" : "Expand"} per-file distribution for ${label}`);
-    row.append(
+    const cells = [
       createExpandableTokenCell(item.lemma),
-      Object.assign(document.createElement("td"), { textContent: item.upos }),
-      Object.assign(document.createElement("td"), { className: "numeric", textContent: formatNumber(item.raw) }),
-      Object.assign(document.createElement("td"), { className: "numeric", textContent: formatDocumentFrequency(item.docFreq, item.docTotal) }),
-      Object.assign(document.createElement("td"), { className: "numeric", textContent: formatFixedNumber(item.per10k, 2) }),
+      createTextCell(item.upos, "frequency-col-upos"),
+      createNumericCell(formatNumber(item.raw), "frequency-col-frequency"),
+      createNumericCell(formatDocumentFrequency(item.docFreq, item.docTotal), "frequency-col-range"),
+    ];
+    const rateValue = frequencyRateValue(rateScale, { per10k: item.per10k });
+    if (rateValue !== null) {
+      cells.push(createRateCell(rateValue));
+    }
+    cells.push(
       createDispersionValueCell(item.dp),
-      Object.assign(document.createElement("td"), { className: "numeric", textContent: formatPercent(item.topDocShare, 1) }),
     );
+    row.append(...cells);
     dom.frequencyTableBody.appendChild(row);
     if (isExpanded) {
       const detailRow = document.createElement("tr");
@@ -2718,6 +2854,7 @@ function renderFrequencyList(): void {
     return;
   }
 
+  const rateScale = currentFrequencyRateScale();
   for (const term of page.items) {
     const isExpanded = expandedFrequencyTokens.has(term.token);
     const detailId = frequencyDetailId(term.token);
@@ -2731,16 +2868,23 @@ function renderFrequencyList(): void {
 
     const token = createExpandableTokenCell(term.token);
 
-    const frequency = document.createElement("td");
-    frequency.className = "numeric";
-    frequency.textContent = formatNumber(term.frequency);
-    const documentFrequency = document.createElement("td");
-    documentFrequency.className = "numeric";
-    documentFrequency.textContent = `${formatNumber(term.documentFrequency)} / ${formatNumber(page.selectedDocumentCount)}`;
-    const rate = document.createElement("td");
-    rate.className = "numeric";
-    rate.textContent = formatFixedNumber(term.ratePerMillion, 2);
-    row.append(token, frequency, documentFrequency, rate, createDispersionCell(term));
+    const cells = [
+      token,
+      createNumericCell(formatNumber(term.frequency), "frequency-col-frequency"),
+      createNumericCell(
+        `${formatNumber(term.documentFrequency)} / ${formatNumber(page.selectedDocumentCount)}`,
+        "frequency-col-range",
+      ),
+    ];
+    const rateValue = frequencyRateValue(rateScale, {
+      per10k: term.ratePer10k,
+      perMillion: term.ratePerMillion,
+    });
+    if (rateValue !== null) {
+      cells.push(createRateCell(rateValue));
+    }
+    cells.push(createDispersionCell(term));
+    row.append(...cells);
     dom.frequencyTableBody.appendChild(row);
 
     if (isExpanded) {
@@ -2760,7 +2904,6 @@ function renderFrequencyList(): void {
 export function renderAnalyseWorkbench(): void {
   renderAnalyseStatus();
   renderAnalysisNotice();
-  dom.frequencyLanguageDisplay.textContent = activeProjectLanguageLabel();
   renderProjectSummary();
   renderAnalysisTools();
   renderAnalysisToolPanels();
@@ -3625,6 +3768,7 @@ export function initWorkbenchSwitcher(): void {
     syncFrequencyCaseFoldToggle();
     void refreshFrequencyPage();
   });
+  dom.frequencyRateScaleSelect.value = DEFAULT_FREQUENCY_RATE_SCALE;
   syncFrequencyAnnotationControls();
   syncFrequencyCaseFoldToggle();
   dom.frequencyCaseFoldInput.addEventListener("change", () => {
@@ -3633,6 +3777,15 @@ export function initWorkbenchSwitcher(): void {
   });
   dom.frequencyPosFilterSelect.addEventListener("change", () => void refreshFrequencyPage());
   dom.frequencyTokenClassSelect.addEventListener("change", () => void refreshFrequencyPage());
+  dom.frequencyRateScaleSelect.addEventListener("change", () => {
+    const previousSortKey = frequencySortKey;
+    ensureVisibleFrequencySortKey();
+    if (previousSortKey === frequencySortKey) {
+      renderFrequencyList();
+    } else {
+      void refreshFrequencyPage();
+    }
+  });
   syncFrequencyStopwordsToggle();
   dom.frequencyHideStopwordsInput.addEventListener("change", () => {
     syncFrequencyStopwordsToggle();
