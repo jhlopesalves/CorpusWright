@@ -6,6 +6,7 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const workbench = readFileSync(new URL("../src/workbench.ts", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
 const topAnalyseMatch = html.match(
   /<div class="analyse-status-row">([\s\S]*?)<div class="analyse-workspace-shell">/,
@@ -74,6 +75,10 @@ assert(
   "Concordance no-query copy should invite word or phrase search",
 );
 assert(
+  !html.includes('id="concordance-result-count"'),
+  "Concordance header should not render a duplicate standalone hit count",
+);
+assert(
   workbench.includes("function handleConcordanceSortChange")
     && workbench.includes("void refreshConcordance(true, true);"),
   "Concordance sort changes should reset KWIC and distribution pagination",
@@ -81,4 +86,47 @@ assert(
 assert(
   workbench.includes("Searching...") && workbench.includes("CONCORDANCE_NO_HITS_MESSAGE"),
   "Concordance renderer should include loading and no-hit states",
+);
+assert(
+  workbench.includes("addEventListener(\"click\", () => {\n    void toggleConcordanceExpansion(row);")
+    && workbench.includes("event.key !== \"Enter\" && event.key !== \" \"")
+    && workbench.includes("aria-expanded"),
+  "Concordance rows should support click, keyboard toggle, and aria-expanded",
+);
+assert(
+  workbench.includes("concordanceExpansionViewModel")
+    && workbench.includes("concordance-expansion-message is-")
+    && workbench.includes("concordance-expansion-node"),
+  "Concordance renderer should include ready, loading, and error expansion states",
+);
+assert(
+  workbench.includes("collapseConcordanceExpansionFromControlChange")
+    && workbench.includes("dom.concordanceQueryInput.addEventListener(\"input\", collapseConcordanceExpansionFromControlChange)")
+    && workbench.includes("dom.concordanceWindowInput.addEventListener(\"change\", collapseConcordanceExpansionFromControlChange)")
+    && workbench.includes("function handleConcordanceCaseChange"),
+  "Query, window, and case changes should collapse expanded Concordance rows",
+);
+assert(
+  workbench.includes("function showPreviousConcordancePage")
+    && workbench.includes("void refreshConcordance(false, false);")
+    && workbench.includes("function handleConcordancePageSizeChange")
+    && workbench.includes("collapseConcordanceExpansion();\n  void refreshFrequencyPage();"),
+  "Page, page-size, and file-scope changes should collapse expanded Concordance rows",
+);
+
+const concordanceNodeCssMatch = styles.match(/\.concordance-node \{([\s\S]*?)\n\}/);
+assert(concordanceNodeCssMatch, "Concordance node CSS should exist");
+const concordanceNodeCss = concordanceNodeCssMatch[1];
+assert(
+  !concordanceNodeCss.includes("text-overflow: ellipsis"),
+  "Concordance node should not use ordinary ellipsis clipping",
+);
+assert(
+  concordanceNodeCss.includes("overflow-x: auto") && concordanceNodeCss.includes("white-space: nowrap"),
+  "Very long Concordance nodes should be horizontally scrollable",
+);
+assert(
+  styles.includes(".concordance-table td:nth-child(3)")
+    && styles.includes("min-width: 180px"),
+  "Concordance node column should have a sensible minimum width",
 );

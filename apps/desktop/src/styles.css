@@ -3246,9 +3246,12 @@ main {
 .frequency-file-scope-control button {
   width: 100%;
   min-width: 0;
-  min-height: 34px;
+  height: 34px;
   padding: 5px 10px;
   font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .frequency-search-note,
@@ -3280,9 +3283,9 @@ main {
 
 .concordance-table {
   width: 100%;
-  min-width: 860px;
+  min-width: 960px;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .concordance-table th,
@@ -3309,13 +3312,20 @@ main {
 }
 
 .concordance-table th:nth-child(2),
-.concordance-table th:nth-child(4) {
+.concordance-table td:nth-child(2),
+.concordance-table th:nth-child(4),
+.concordance-table td:nth-child(4) {
   width: 32%;
+}
+
+.concordance-table th:nth-child(3),
+.concordance-table td:nth-child(3) {
+  width: 1%;
+  min-width: 180px;
 }
 
 .concordance-file,
 .concordance-left,
-.concordance-node-cell,
 .concordance-right {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3341,6 +3351,7 @@ main {
 }
 
 .concordance-node-cell {
+  white-space: nowrap;
   text-align: center;
 }
 
@@ -3351,17 +3362,106 @@ main {
 
 .concordance-node {
   display: inline-block;
-  max-width: 100%;
+  max-width: min(56ch, 52vw);
   padding: 1px 5px;
   border: 1px solid var(--cw-info-border-strong);
   border-radius: 3px;
   background: var(--cw-info-bg);
   color: var(--text-color);
   font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-overflow: clip;
   white-space: nowrap;
   vertical-align: middle;
+}
+
+.concordance-row {
+  cursor: pointer;
+}
+
+.concordance-row:hover td,
+.concordance-row:focus-visible td,
+.concordance-row.is-expanded td {
+  background: var(--cw-interaction-bg-hover);
+}
+
+.concordance-row:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+}
+
+.concordance-table .concordance-expansion-cell {
+  width: auto;
+  min-width: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.concordance-expansion-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-left: 3px solid var(--cw-info-border-strong);
+  background: var(--panel-bg);
+}
+
+.concordance-expansion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.concordance-expansion-file {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.concordance-expansion-close {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 0.78rem;
+}
+
+.concordance-expansion-context {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  overflow-x: auto;
+  font-family: var(--cw-font-mono);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  white-space: nowrap;
+}
+
+.concordance-expansion-left,
+.concordance-expansion-right {
+  color: var(--text-muted);
+}
+
+.concordance-expansion-left {
+  text-align: right;
+}
+
+.concordance-expansion-node {
+  flex: 0 0 auto;
+}
+
+.concordance-expansion-message {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+.concordance-expansion-message.is-error {
+  color: var(--danger-color);
 }
 
 .concordance-empty {
