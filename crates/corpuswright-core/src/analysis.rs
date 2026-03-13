@@ -6534,6 +6534,39 @@ mod tests {
         search_concordance_documents(documents, &query, &TokenizationConfig::default())
     }
 
+    fn collocation_query(query: &str) -> ConcordanceCollocationQuery {
+        ConcordanceCollocationQuery {
+            selection: AnalysisDocumentSelection::default(),
+            query: query.to_string(),
+            case_sensitive: false,
+            span: 2,
+            direction: ConcordanceCollocationDirection::Both,
+            min_cooccurrence: 1,
+            min_collocate_frequency: 1,
+            hide_stopwords: false,
+            sort_measure: ConcordanceCollocationMeasure::LogDice,
+            limit: 100,
+        }
+    }
+
+    fn collocations_for(
+        documents: &[ConcordanceDocument],
+        query: ConcordanceCollocationQuery,
+    ) -> Result<ConcordanceCollocationResult, ConcordanceError> {
+        query_concordance_collocations_documents(documents, &query, &TokenizationConfig::default())
+    }
+
+    fn collocate<'a>(
+        result: &'a ConcordanceCollocationResult,
+        surface: &str,
+    ) -> &'a ConcordanceCollocateRow {
+        result
+            .rows
+            .iter()
+            .find(|row| row.surface == surface)
+            .unwrap_or_else(|| panic!("missing collocate {surface}"))
+    }
+
     fn concordance_expansion_for(
         document: &ConcordanceDocument,
         query: ConcordanceExpansionQuery,
@@ -6841,6 +6874,26 @@ mod tests {
     }
 
     #[test]
+    fn kwic_context_filter_counts_full_filtered_hit_set() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "red target blue target green target red",
+        )];
+        let mut query = concordance_query("target");
+        query.window_tokens = 1;
+        query.limit = 1;
+        query.context_filter = Some("blue".to_string());
+
+        let result = concordance_for(&documents, query).unwrap();
+
+        assert_eq!(result.context_filter.as_deref(), Some("blue"));
+        assert_eq!(result.total_hits, 2);
+        assert_eq!(result.rows.len(), 1);
+        assert_eq!(result.rows[0].right_context, ["blue"]);
+    }
+
+    #[test]
     fn kwic_respects_offset_and_limit() {
         let documents = vec![concordance_document(
             0,
@@ -7106,6 +7159,121 @@ mod tests {
         assert_eq!(expansion.display_name, "a.txt");
         assert_eq!(expansion.node_tokens, ["beta"]);
         assert_eq!(expansion.right_context, ["gamma"]);
+    }
+
+    #[test]
+    fn surface_collocations_compute_window_counts_and_scores() {
+        let documents = vec![
+            concordance_document(0, "a.txt", "red alpha blue target green alpha blue"),
+            concordance_document(1, "b.txt", "yellow target blue green"),
+        ];
+
+        let result = collocations_for(&documents, collocation_query("target")).unwrap();
+        let blue = collocate(&result, "blue");
+
+        assert_eq!(result.f_node, 2);
+        assert_eq!(result.r1, 7);
+        assert_eq!(result.n, 11);
+        assert_eq!(blue.o11, 2);
+        assert_eq!(blue.o12, 5);
+        assert_eq!(blue.o21, 1);
+        assert_eq!(blue.o22, 3);
+        assert_eq!(blue.collocate_frequency, 3);
+        // Hand values for blue: E11 = 7 * 3 / 11 = 1.9091; O12/O21/O22 = 5/1/3.
+        assert_close_4dp(blue.mi, 0.0671141959);
+        assert_close_4dp(blue.mi3, 2.0671141959);
+        assert_close_4dp(blue.t_score, 0.0642824347);
+        assert_close_4dp(blue.z_score, 0.0657951695);
+        assert_close_4dp(blue.g2, 0.0165022055);
+        assert_close_4dp(blue.log_dice, 12.6780719051);
+        assert_close_4dp(blue.log_ratio, 0.1926450779);
+    }
+
+    #[test]
+    fn surface_collocation_floors_exclude_below_threshold_candidates() {
+        let documents = vec![
+            concordance_document(0, "a.txt", "red alpha blue target green alpha blue"),
+            concordance_document(1, "b.txt", "yellow target blue green"),
+        ];
+        let mut query = collocation_query("target");
+        query.min_cooccurrence = 2;
+        query.min_collocate_frequency = 2;
+
+        let result = collocations_for(&documents, query).unwrap();
+
+        let surfaces = result
+            .rows
+            .iter()
+            .map(|row| row.surface.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(surfaces.len(), 3);
+        assert!(surfaces.contains(&"alpha"));
+        assert!(surfaces.contains(&"blue"));
+        assert!(surfaces.contains(&"green"));
+        assert!(!surfaces.contains(&"yellow"));
+    }
+
+    #[test]
+    fn surface_collocation_direction_changes_window_counts() {
+        let documents = vec![
+            concordance_document(0, "a.txt", "red alpha blue target green alpha blue"),
+            concordance_document(1, "b.txt", "yellow target blue green"),
+        ];
+        let mut left_query = collocation_query("target");
+        left_query.direction = ConcordanceCollocationDirection::Left;
+        let mut right_query = collocation_query("target");
+        right_query.direction = ConcordanceCollocationDirection::Right;
+        let both_query = collocation_query("target");
+
+        let left = collocations_for(&documents, left_query).unwrap();
+        let right = collocations_for(&documents, right_query).unwrap();
+        let both = collocations_for(&documents, both_query).unwrap();
+
+        assert_eq!(left.r1, 3);
+        assert_eq!(right.r1, 4);
+        assert_eq!(both.r1, 7);
+        assert_eq!(collocate(&left, "blue").o11, 1);
+        assert_eq!(collocate(&right, "blue").o11, 1);
+        assert_eq!(collocate(&both, "blue").o11, 2);
+    }
+
+    #[test]
+    fn surface_collocations_do_not_return_node_tokens_as_collocates() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "target target alpha target",
+        )];
+        let mut query = collocation_query("target");
+        query.span = 1;
+
+        let result = collocations_for(&documents, query).unwrap();
+
+        assert_eq!(result.f_node, 3);
+        assert!(result.rows.iter().all(|row| row.surface != "target"));
+        assert_eq!(collocate(&result, "alpha").o11, 2);
+    }
+
+    #[test]
+    fn surface_collocation_phrase_windows_wrap_the_whole_node_span() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "pre alpha beta post mid alpha beta tail",
+        )];
+        let mut query = collocation_query("alpha beta");
+        query.span = 1;
+
+        let result = collocations_for(&documents, query).unwrap();
+
+        assert_eq!(result.f_node, 2);
+        assert_eq!(result.r1, 4);
+        assert_eq!(collocate(&result, "pre").o11, 1);
+        assert_eq!(collocate(&result, "post").o11, 1);
+        assert_eq!(collocate(&result, "mid").o11, 1);
+        assert_eq!(collocate(&result, "tail").o11, 1);
+        assert!(result.rows.iter().all(|row| row.surface != "alpha"));
+        assert!(result.rows.iter().all(|row| row.surface != "beta"));
     }
 
     fn snapshot_analysis_product(product: &AnalysisBuildProduct) -> AnalysisCorpusSnapshot {
