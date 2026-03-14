@@ -1,8 +1,10 @@
 import type { ConcordanceCollocateRow } from "./generated/ConcordanceCollocateRow.js";
 import type { ConcordanceCollocationMeasure } from "./generated/ConcordanceCollocationMeasure.js";
+import type { ConcordanceCollocationSortKey } from "./generated/ConcordanceCollocationSortKey.js";
 import type { ConcordanceExpansionResult } from "./generated/ConcordanceExpansionResult.js";
 import type { ConcordanceRow } from "./generated/ConcordanceRow.js";
 import type { ConcordanceSortKey } from "./generated/ConcordanceSortKey.js";
+import type { SortDirection } from "./generated/SortDirection.js";
 
 export const CONCORDANCE_MIN_WINDOW = 1;
 export const CONCORDANCE_DEFAULT_WINDOW = 5;
@@ -26,6 +28,8 @@ export const CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE =
 export const CONCORDANCE_COLLOCATION_NO_ROWS_MESSAGE =
   "No collocates above the current floors.";
 export const DEFAULT_CONCORDANCE_COLLOCATION_MEASURE: ConcordanceCollocationMeasure = "logDice";
+export const DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY: ConcordanceCollocationSortKey = "association";
+export const DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION: SortDirection = "desc";
 
 export const CONCORDANCE_SORT_OPTIONS: Array<{ value: ConcordanceSortKey; label: string }> = [
   { value: "filePosition", label: "File/position" },
@@ -49,6 +53,32 @@ export const CONCORDANCE_COLLOCATION_MEASURE_OPTIONS: Array<{
   { value: "zScore", label: "z-score" },
   { value: "g2", label: "log-likelihood" },
   { value: "logRatio", label: "log-ratio" },
+];
+
+export const CONCORDANCE_COLLOCATION_SORT_OPTIONS: Array<{
+  value: ConcordanceCollocationSortKey;
+  label: string;
+  notation: string;
+  title: string;
+}> = [
+  {
+    value: "nearQuery",
+    label: "Near query",
+    notation: "O11",
+    title: "Co-occurrences within the selected span; O11",
+  },
+  {
+    value: "corpusFrequency",
+    label: "Corpus frequency",
+    notation: "f_c",
+    title: "Total frequency of the collocate in scope; f_c",
+  },
+  {
+    value: "association",
+    label: "Association",
+    notation: "",
+    title: "Association score for the active measure",
+  },
 ];
 
 export function normaliseConcordanceQuery(value: string): string {
@@ -131,10 +161,20 @@ export function concordanceSummaryText(result: {
   topDocumentShare: number;
   dp: number;
 }): string {
+  return `${result.query} · ${concordanceSummaryMetricsText(result)}`;
+}
+
+export function concordanceSummaryMetricsText(result: {
+  totalHits: number;
+  documentsWithHits: number;
+  selectedDocumentsTotal: number;
+  topDocumentShare: number;
+  dp: number;
+}): string {
   const rangePct = concordanceRangePercent(result).toFixed(1);
   const topFilePct = (result.topDocumentShare * 100).toFixed(1);
   const sparse = concordanceIsSparse(result) ? " · Sparse" : "";
-  return `${result.query} · ${result.totalHits.toLocaleString()} hits · ${result.documentsWithHits.toLocaleString()} / ${result.selectedDocumentsTotal.toLocaleString()} files · range ${rangePct}% · top file ${topFilePct}% · DP ${result.dp.toFixed(2)}${sparse}`;
+  return `${result.totalHits.toLocaleString()} hits · ${result.documentsWithHits.toLocaleString()} / ${result.selectedDocumentsTotal.toLocaleString()} files · range ${rangePct}% · top file ${topFilePct}% · DP ${result.dp.toFixed(2)}${sparse}`;
 }
 
 export function concordanceCollocationScore(
@@ -159,27 +199,42 @@ export function concordanceCollocationScore(
   }
 }
 
-export function sortConcordanceCollocates(
-  rows: ConcordanceCollocateRow[],
+export function concordanceCollocationSortHeaderLabel(
+  sortKey: ConcordanceCollocationSortKey,
   measure: ConcordanceCollocationMeasure,
-): ConcordanceCollocateRow[] {
-  return [...rows].sort((left, right) => {
-    const leftScore = concordanceCollocationScore(left, measure);
-    const rightScore = concordanceCollocationScore(right, measure);
-    if (leftScore !== null && rightScore !== null && leftScore !== rightScore) {
-      return rightScore - leftScore;
-    }
-    if (leftScore !== null && rightScore === null) {
-      return -1;
-    }
-    if (leftScore === null && rightScore !== null) {
-      return 1;
-    }
-    if (left.collocateFrequency !== right.collocateFrequency) {
-      return right.collocateFrequency - left.collocateFrequency;
-    }
-    return left.surface.localeCompare(right.surface);
-  });
+): string {
+  if (sortKey === "association") {
+    return `Association: ${concordanceCollocationMeasureLabel(measure)}`;
+  }
+  return CONCORDANCE_COLLOCATION_SORT_OPTIONS.find((option) => option.value === sortKey)?.label
+    ?? "Association";
+}
+
+export function concordanceCollocationScoreBarPercent(
+  value: number | null,
+  measure: ConcordanceCollocationMeasure,
+  visibleScores: Array<number | null> = [],
+): number | null {
+  if (value === null || !Number.isFinite(value)) {
+    return null;
+  }
+  if (measure === "logDice") {
+    return Math.min(100, Math.max(0, value / 14 * 100));
+  }
+
+  const finiteScores = visibleScores.filter((score): score is number =>
+    score !== null && Number.isFinite(score)
+  );
+  if (finiteScores.length === 0) {
+    return null;
+  }
+
+  const minimum = Math.min(...finiteScores);
+  const maximum = Math.max(...finiteScores);
+  if (maximum === minimum) {
+    return 100;
+  }
+  return Math.min(100, Math.max(0, (value - minimum) / (maximum - minimum) * 100));
 }
 
 export interface ConcordanceExpansionStateSnapshot {

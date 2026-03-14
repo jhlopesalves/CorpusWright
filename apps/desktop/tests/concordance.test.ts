@@ -4,7 +4,10 @@ import {
   CONCORDANCE_COLLOCATION_DEFAULT_SPAN,
   CONCORDANCE_COLLOCATION_LIMIT,
   CONCORDANCE_COLLOCATION_MEASURE_OPTIONS,
+  CONCORDANCE_COLLOCATION_SORT_OPTIONS,
   DEFAULT_CONCORDANCE_COLLOCATION_MEASURE,
+  DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION,
+  DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY,
   CONCORDANCE_EXPANSION_WINDOW,
   CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,
@@ -16,15 +19,17 @@ import {
   clampConcordanceWindow,
   concordanceCollocationMeasureLabel,
   concordanceCollocationScore,
+  concordanceCollocationScoreBarPercent,
+  concordanceCollocationSortHeaderLabel,
   concordanceExpansionViewModel,
   concordanceIsSparse,
   concordanceRangePercent,
   concordanceRowExpansionKey,
   concordanceRowText,
   concordanceSortLabel,
+  concordanceSummaryMetricsText,
   concordanceSummaryText,
   normaliseConcordanceQuery,
-  sortConcordanceCollocates,
   toggleConcordanceExpansionKey,
 } from "../src/concordance.ts";
 
@@ -46,6 +51,8 @@ assert(clampConcordanceCollocationFloor(-1) === 5, "Invalid collocation floors s
 assert(clampConcordanceCollocationFloor(3.8) === 3, "Collocation floors should use whole counts");
 assert(DEFAULT_CONCORDANCE_SORT_KEY === "filePosition", "Default sort should be file/position");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_MEASURE === "logDice", "Default collocation measure should be logDice");
+assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY === "association", "Default collocation sort should be association");
+assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION === "desc", "Default collocation sort should descend");
 assert(CONCORDANCE_COLLOCATION_DEFAULT_SPAN === 5, "Default collocation span should be +/-5");
 assert(CONCORDANCE_COLLOCATION_DEFAULT_FLOOR === 5, "Default collocation floors should be 5");
 assert(CONCORDANCE_COLLOCATION_LIMIT === 100, "Collocation results should request the default top 100");
@@ -66,6 +73,19 @@ assert(
   CONCORDANCE_COLLOCATION_MEASURE_OPTIONS.map((option) => option.value).join("|")
     === "logDice|mi|mi3|tScore|zScore|g2|logRatio",
   "Collocation measures should include all requested association scores",
+);
+assert(
+  CONCORDANCE_COLLOCATION_SORT_OPTIONS.map((option) => option.value).join("|")
+    === "nearQuery|corpusFrequency|association",
+  "Collocation sort options should expose true backend ranking columns",
+);
+assert(
+  concordanceCollocationSortHeaderLabel("association", "logDice") === "Association: logDice",
+  "Association sort header should include the active measure",
+);
+assert(
+  concordanceCollocationSortHeaderLabel("nearQuery", "logDice") === "Near query",
+  "Near-query sort header should use human-readable wording",
 );
 assert(
   CONCORDANCE_COLUMNS.join("|") === "File|Left context|Node|Right context",
@@ -96,6 +116,15 @@ assert(summary.includes("range 50.0%"), "Summary should lead with range percenta
 assert(summary.includes("top file 37.5%"), "Summary should include top-file share");
 assert(summary.includes("DP 0.57"), "Summary should include DP");
 assert(!summary.includes("Sparse"), "Broad summaries should omit the sparse caveat");
+const summaryMetrics = concordanceSummaryMetricsText({
+  totalHits: 24,
+  documentsWithHits: 12,
+  selectedDocumentsTotal: 24,
+  topDocumentShare: 0.375,
+  dp: 0.57,
+});
+assert(!summaryMetrics.includes("good movie"), "Summary metrics should omit the query token");
+assert(summaryMetrics.includes("24 hits"), "Summary metrics should include hit count");
 assert(concordanceRangePercent({ documentsWithHits: 3, selectedDocumentsTotal: 12 }) === 25, "Range percent should divide hits by selected files");
 assert(concordanceRangePercent({ documentsWithHits: 3, selectedDocumentsTotal: 0 }) === 0, "Range percent should guard zero selected files");
 assert(
@@ -120,15 +149,13 @@ const collocates = [
   { surface: "gamma", o11: 4, o12: 11, o21: 1, o22: 41, collocateFrequency: 5, mi: null, mi3: null, tScore: null, zScore: null, g2: null, logDice: null, logRatio: null },
 ];
 assert(concordanceCollocationScore(collocates[0], "mi") === 2, "Score lookup should use selected measure");
+assert(concordanceCollocationScoreBarPercent(-1, "logDice") === 0, "logDice bars should clamp below zero");
+assert(concordanceCollocationScoreBarPercent(7, "logDice") === 50, "logDice bars should use a fixed 0-14 scale");
+assert(concordanceCollocationScoreBarPercent(20, "logDice") === 100, "logDice bars should clamp above 14");
+assert(concordanceCollocationScoreBarPercent(null, "logDice") === null, "Null association scores should not render bars");
 assert(
-  sortConcordanceCollocates(collocates, "logDice").map((row) => row.surface).join("|")
-    === "beta|alpha|gamma",
-  "Collocation sorting should use measure, frequency tie-break, then text, with missing scores last",
-);
-assert(
-  sortConcordanceCollocates(collocates, "mi").map((row) => row.surface).join("|")
-    === "alpha|beta|gamma",
-  "Switching measure should re-sort returned collocates client-side",
+  concordanceCollocationScoreBarPercent(4, "mi", [2, 4, 6]) === 50,
+  "Unbounded association bars should be relative to the visible scores",
 );
 
 const row = {

@@ -52,7 +52,7 @@ export const dom = {
   concordanceCollocationHideStopwordsInput: getElement<HTMLInputElement>("concordance-collocation-hide-stopwords"),
   concordanceCollocationStopwordState: getElement<HTMLSpanElement>("concordance-collocation-stopword-state"),
   concordanceCollocationsStatus: getElement<HTMLDivElement>("concordance-collocations-status"),
-  concordanceCollocationsMeasureHead: getElement<HTMLTableCellElement>("concordance-collocations-measure-head"),
+  concordanceCollocationsTableHead: getElement<HTMLTableSectionElement>("concordance-collocations-table-head"),
   concordanceCollocationsTableBody: getElement<HTMLTableSectionElement>("concordance-collocations-table-body"),
   frequencyModeTabs: getElement<HTMLDivElement>("frequency-mode-tabs"),
   frequencyAnnotationLayer: getElement<HTMLDivElement>("frequency-annotation-layer"),

@@ -82,14 +82,14 @@ assert(
   html.includes('id="concordance-view-tabs"')
     && html.includes('data-concordance-view="lines"')
     && html.includes('data-concordance-view="collocates"')
-    && html.includes('data-concordance-view="distribution"'),
-  "Concordance should expose Lines, Collocates, and Distribution tabs",
+    && !html.includes('data-concordance-view="distribution"'),
+  "Concordance should expose Lines and Collocates as the work-mode tabs",
 );
 assert(
   html.includes('id="concordance-lines-panel" class="concordance-view-panel concordance-kwic-panel"')
     && html.includes('id="concordance-collocations-panel" class="concordance-view-panel concordance-collocations-panel hidden"')
-    && html.includes('id="concordance-distribution-panel" class="concordance-view-panel concordance-distribution-view hidden"'),
-  "Concordance should render one initially visible full-width view panel",
+    && html.includes('id="concordance-distribution-panel" class="concordance-document-spread"'),
+  "Concordance should render document spread inside the Lines workspace",
 );
 assert(
   !html.includes("concordance-results-grid") && !styles.includes("concordance-results-grid"),
@@ -105,7 +105,7 @@ assert(
     && html.includes('id="concordance-collocation-hide-stopwords"'),
   "Concordance should expose collocation controls",
 );
-for (const label of ["Collocate", "Co-occ (O11)", "Collocate freq (f_c)", "logDice"]) {
+for (const label of ["Collocate", "Near query", "O11", "Corpus frequency", "f_c", "Association: logDice"]) {
   assert(html.includes(label), `Collocation table should render ${label}`);
 }
 for (const measure of ["logDice", "mi", "mi3", "tScore", "zScore", "g2", "logRatio"]) {
@@ -117,10 +117,12 @@ assert(
   "Concordance sort changes should reset KWIC and distribution pagination",
 );
 assert(
-  workbench.includes("concordanceSummaryText(result)")
+  workbench.includes("concordanceSummaryMetricsText(result)")
+    && workbench.includes('query.className = "concordance-summary-query"')
+    && workbench.includes('metrics.className = "concordance-summary-scope"')
     && !workbench.includes("createInlineDispersionBar")
     && !workbench.includes("concordance-dp-track"),
-  "Concordance summary should use plain range-led text without the coloured DP bar",
+  "Concordance summary should emphasise only the query and keep DP plain",
 );
 assert(
   workbench.includes("Searching...") && workbench.includes("CONCORDANCE_NO_HITS_MESSAGE"),
@@ -128,12 +130,16 @@ assert(
 );
 assert(
   workbench.includes("queryConcordanceCollocations")
-    && workbench.includes("sortConcordanceCollocates(result.rows, measure)")
+    && workbench.includes("sortKey: concordanceCollocationSortKey")
+    && workbench.includes("sortDirection: currentConcordanceCollocationSortDirection()")
+    && workbench.includes("function handleConcordanceCollocationSortClick")
+    && workbench.includes("void refreshConcordanceCollocations();")
+    && !workbench.includes("sortConcordanceCollocates(result.rows, measure)")
     && workbench.includes("handleConcordanceCollocateClick"),
-  "Concordance collocations should query Rust, sort selected measures client-side, and support click-through",
+  "Concordance collocations should query Rust for true top-N sorting and support click-through",
 );
 assert(
-  workbench.includes('type ConcordanceViewId = "lines" | "collocates" | "distribution";')
+  workbench.includes('type ConcordanceViewId = "lines" | "collocates";')
     && workbench.includes("function syncConcordanceViewTabs")
     && workbench.includes('dom.concordanceViewTabs.addEventListener("click", handleConcordanceViewTabClick)')
     && !workbench.includes("function handleConcordanceViewTabClick(event: MouseEvent): void {\n  void refreshConcordance"),
@@ -141,8 +147,10 @@ assert(
 );
 assert(
   workbench.includes('table.className = "concordance-distribution-table"')
-    && workbench.includes('for (const label of ["File", "Hits", "Tokens", "Bar"])'),
-  "Concordance distribution should render as a full-width table",
+    && workbench.includes('for (const label of ["File", "Hits", "Tokens", "Bar"])')
+    && workbench.includes('panel.className = "concordance-document-spread-panel"')
+    && workbench.includes("Document spread"),
+  "Concordance document spread should render as a collapsible table",
 );
 assert(
   workbench.includes("addEventListener(\"click\", () => {\n    void toggleConcordanceExpansion(row);")
@@ -169,6 +177,17 @@ assert(
     && workbench.includes("function handleConcordancePageSizeChange")
     && workbench.includes("collapseConcordanceExpansion();\n  void refreshFrequencyPage();"),
   "Page, page-size, and file-scope changes should collapse expanded Concordance rows",
+);
+assert(
+  workbench.includes("renderFrequencyScopeControl(state.analysisCorpus);")
+    && workbench.includes("dom.concordanceFilesButton.textContent = dom.frequencyFilesButton.textContent"),
+  "Concordance file-scope button should refresh from the shared Frequency scope",
+);
+assert(
+  workbench.includes('setActiveConcordanceView("lines")')
+    && workbench.includes('label.textContent = `Showing lines where "${result.query}" occurs near "${filter}".`;')
+    && workbench.includes("clearConcordanceContextFilter"),
+  "Collocate filtering should switch to Lines and expose a clearable active-filter chip",
 );
 
 const concordanceNodeCssMatch = styles.match(/\.concordance-node \{([\s\S]*?)\n\}/);
@@ -199,7 +218,13 @@ assert(
 );
 assert(
   styles.includes(".concordance-collocations-table th:nth-child(4)")
-    && styles.includes("width: 17%")
+    && styles.includes("width: 24%")
     && styles.includes("min-width: 760px"),
   "Concordance collocation measure-score column should have visible full-width table space",
+);
+assert(
+  styles.includes(".concordance-collocation-score-track")
+    && styles.includes(".concordance-collocation-score-fill")
+    && styles.includes(".concordance-document-spread-toggle::before"),
+  "Collocates should render association bars and Document spread should expose a collapsible toggle",
 );
