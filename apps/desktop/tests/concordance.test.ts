@@ -4,6 +4,9 @@ import {
   CONCORDANCE_COLLOCATION_DEFAULT_SPAN,
   CONCORDANCE_COLLOCATION_LIMIT,
   CONCORDANCE_COLLOCATION_MEASURE_OPTIONS,
+  CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE,
+  CONCORDANCE_COLLOCATION_STALE_DETAIL,
+  CONCORDANCE_COLLOCATION_STALE_MESSAGE,
   CONCORDANCE_COLLOCATION_SORT_OPTIONS,
   DEFAULT_CONCORDANCE_COLLOCATION_MEASURE,
   DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION,
@@ -17,6 +20,8 @@ import {
   clampConcordanceCollocationSpan,
   clampConcordancePageSize,
   clampConcordanceWindow,
+  concordanceCollocationDirectionLabel,
+  concordanceCollocationExplanation,
   concordanceCollocationMeasureLabel,
   concordanceCollocationScore,
   concordanceCollocationScoreBarPercent,
@@ -56,10 +61,28 @@ assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION === "desc", "Default collo
 assert(CONCORDANCE_COLLOCATION_DEFAULT_SPAN === 5, "Default collocation span should be +/-5");
 assert(CONCORDANCE_COLLOCATION_DEFAULT_FLOOR === 5, "Default collocation floors should be 5");
 assert(CONCORDANCE_COLLOCATION_LIMIT === 100, "Collocation results should request the default top 100");
+assert(
+  CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE === "Collocates have not been computed yet.",
+  "Collocates should expose an explicit not-computed state",
+);
+assert(
+  CONCORDANCE_COLLOCATION_STALE_MESSAGE === "Collocates need refresh.",
+  "Collocates should expose an explicit stale state",
+);
+assert(
+  CONCORDANCE_COLLOCATION_STALE_DETAIL === "The query or collocate settings changed.",
+  "Stale collocate copy should explain why refresh is needed",
+);
 assert(CONCORDANCE_EXPANSION_WINDOW === 40, "Expansion should request the default wide KWIC window");
 assert(concordanceSortLabel("left1") === "1L", "Left sort labels should use KWIC shorthand");
 assert(concordanceSortLabel("right3") === "3R", "Right sort labels should use KWIC shorthand");
 assert(concordanceCollocationMeasureLabel("g2") === "log-likelihood", "Measure labels should be readable");
+assert(concordanceCollocationDirectionLabel("both") === "both sides", "Both-side direction should be readable");
+assert(
+  concordanceCollocationExplanation("movie", 5, "both", "logDice")
+    === 'Collocates near "movie" within 5 tokens (both sides), ranked by Association: logDice. Near query = times the word appears around the query · Corpus frequency = total frequency in the selected corpus.',
+  "Collocation explanation should translate the active query, span, direction, measure, and raw counts",
+);
 assert(concordanceRowText(["not", "very", "good"]) === "not very good", "KWIC token text should use token spacing");
 for (const node of ["movie", "this movie", "not very good"]) {
   assert(concordanceRowText(node.split(" ")) === node, `${node} node text should render in full`);
