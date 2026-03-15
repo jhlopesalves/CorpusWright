@@ -87,9 +87,10 @@ assert(
 );
 assert(
   html.includes('id="concordance-lines-panel" class="concordance-view-panel concordance-kwic-panel"')
+    && html.includes('id="concordance-source-preview" class="concordance-source-preview hidden"')
     && html.includes('id="concordance-collocations-panel" class="concordance-view-panel concordance-collocations-panel hidden"')
     && html.includes('id="concordance-distribution-panel" class="concordance-document-spread"'),
-  "Concordance should render document spread inside the Lines workspace",
+  "Concordance should render source preview and document spread inside the Lines workspace",
 );
 assert(
   !html.includes("concordance-results-grid") && !styles.includes("concordance-results-grid"),
@@ -187,10 +188,19 @@ assert(
 );
 assert(
   workbench.includes("concordanceExpansionViewModel")
+    && workbench.includes("function renderConcordanceSourcePreview")
+    && workbench.includes("dom.concordanceSourcePreview.replaceChildren(createConcordanceSourcePreviewPanel(row))")
     && workbench.includes("concordance-expansion-message is-")
     && workbench.includes("concordance-expansion-node")
-    && workbench.includes("handleConcordanceExpansionEscape"),
-  "Concordance renderer should include ready, loading, error, and Escape-close expansion states",
+    && workbench.includes("handleConcordanceExpansionEscape")
+    && !workbench.includes("createConcordanceExpansionRow")
+    && !workbench.includes("concordanceTableBody.appendChild(createConcordanceExpansionRow"),
+  "Concordance renderer should include ready, loading, error, and Escape-close preview states outside the table body",
+);
+assert(
+  styles.includes(".concordance-source-preview")
+    && !styles.includes("concordance-expansion-cell"),
+  "Concordance source preview should have its own mount outside the KWIC table overflow context",
 );
 const concordanceExpansionCssMatch = styles.match(/\.concordance-expansion-context \{([\s\S]*?)\n\}/);
 assert(concordanceExpansionCssMatch, "Concordance source preview CSS should exist");

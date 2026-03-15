@@ -39,6 +39,7 @@ export const dom = {
   concordanceDistributionPanel: getElement<HTMLElement>("concordance-distribution-panel"),
   concordanceStatus: getElement<HTMLDivElement>("concordance-status"),
   concordanceTableBody: getElement<HTMLTableSectionElement>("concordance-table-body"),
+  concordanceSourcePreview: getElement<HTMLDivElement>("concordance-source-preview"),
   concordancePagePreviousButton: getElement<HTMLButtonElement>("concordance-page-previous"),
   concordancePageNextButton: getElement<HTMLButtonElement>("concordance-page-next"),
   concordancePageStatus: getElement<HTMLSpanElement>("concordance-page-status"),
