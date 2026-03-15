@@ -108,6 +108,16 @@ assert(
 for (const label of ["Collocate", "Near query", "O11", "Corpus frequency", "f_c", "Association: logDice"]) {
   assert(html.includes(label), `Collocation table should render ${label}`);
 }
+for (const label of [
+  "CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE",
+  "CONCORDANCE_COLLOCATION_STALE_MESSAGE",
+  "CONCORDANCE_COLLOCATION_STALE_DETAIL",
+  "Compute collocates",
+  "Refresh collocates",
+  "Show lines",
+]) {
+  assert(workbench.includes(label), `Collocates should render ${label}`);
+}
 for (const measure of ["logDice", "mi", "mi3", "tScore", "zScore", "g2", "logRatio"]) {
   assert(html.includes(`value="${measure}"`), `Collocation measure should include ${measure}`);
 }
@@ -128,22 +138,36 @@ assert(
   workbench.includes("Searching...") && workbench.includes("CONCORDANCE_NO_HITS_MESSAGE"),
   "Concordance renderer should include loading and no-hit states",
 );
+const runConcordanceSearchMatch = workbench.match(
+  /function runConcordanceSearch\(\): void \{([\s\S]*?)\n\}/,
+);
+assert(runConcordanceSearchMatch, "Concordance search handler should exist");
+assert(
+  runConcordanceSearchMatch[1].includes("void refreshConcordance();")
+    && !runConcordanceSearchMatch[1].includes("refreshConcordanceCollocations"),
+  "Search should refresh KWIC lines only",
+);
 assert(
   workbench.includes("queryConcordanceCollocations")
     && workbench.includes("sortKey: concordanceCollocationSortKey")
     && workbench.includes("sortDirection: currentConcordanceCollocationSortDirection()")
     && workbench.includes("function handleConcordanceCollocationSortClick")
-    && workbench.includes("void refreshConcordanceCollocations();")
+    && workbench.includes("function handleConcordanceCollocationAggregationControlChange")
+    && workbench.includes("function handleConcordanceCollocationPresentationControlChange")
+    && workbench.includes("refreshConcordanceCollocationsForPresentationChange")
+    && workbench.includes("markConcordanceCollocationsForAggregationChange")
     && !workbench.includes("sortConcordanceCollocates(result.rows, measure)")
     && workbench.includes("handleConcordanceCollocateClick"),
-  "Concordance collocations should query Rust for true top-N sorting and support click-through",
+  "Concordance collocations should query Rust for true top-N sorting, split aggregation/presentation controls, and support click-through",
 );
 assert(
   workbench.includes('type ConcordanceViewId = "lines" | "collocates";')
+    && workbench.includes('type ConcordanceCollocationState = "idle_not_computed" | "loading" | "ready" | "stale" | "error";')
     && workbench.includes("function syncConcordanceViewTabs")
+    && workbench.includes("function maybeAutoComputeConcordanceCollocations")
     && workbench.includes('dom.concordanceViewTabs.addEventListener("click", handleConcordanceViewTabClick)')
     && !workbench.includes("function handleConcordanceViewTabClick(event: MouseEvent): void {\n  void refreshConcordance"),
-  "Concordance tab switching should be a layout-only state change",
+  "Concordance tab switching should use the lazy collocates trigger rather than refreshing KWIC",
 );
 assert(
   workbench.includes('table.className = "concordance-distribution-table"')
@@ -166,10 +190,11 @@ assert(
 );
 assert(
   workbench.includes("collapseConcordanceExpansionFromControlChange")
-    && workbench.includes("dom.concordanceQueryInput.addEventListener(\"input\", collapseConcordanceExpansionFromControlChange)")
+    && workbench.includes("function handleConcordanceQueryInput")
+    && workbench.includes("dom.concordanceQueryInput.addEventListener(\"input\", handleConcordanceQueryInput)")
     && workbench.includes("dom.concordanceWindowInput.addEventListener(\"change\", collapseConcordanceExpansionFromControlChange)")
     && workbench.includes("function handleConcordanceCaseChange"),
-  "Query, window, and case changes should collapse expanded Concordance rows",
+  "Query, window, and case changes should collapse expanded Concordance rows, with query changes dirtying Collocates",
 );
 assert(
   workbench.includes("function showPreviousConcordancePage")
@@ -223,8 +248,26 @@ assert(
   "Concordance collocation measure-score column should have visible full-width table space",
 );
 assert(
+  !styles.includes("max-height: min(62vh, 720px)")
+    && styles.includes(".concordance-table-wrap {\n  overflow-x: auto;")
+    && styles.includes(".concordance-collocations-table-wrap {\n  overflow-x: auto;")
+    && styles.includes(".concordance-distribution-table-wrap {\n  overflow-x: auto;"),
+  "Concordance tables should use natural vertical workspace scrolling with horizontal overflow only as needed",
+);
+const collocateButtonCssMatch = styles.match(/\.concordance-collocate-button \{([\s\S]*?)\n\}/);
+assert(collocateButtonCssMatch, "Collocate button CSS should exist");
+const collocateButtonCss = collocateButtonCssMatch[1];
+assert(
+  collocateButtonCss.includes("font-weight: 500")
+    && !collocateButtonCss.includes("font-weight: 650")
+    && !collocateButtonCss.includes("text-decoration"),
+  "Collocate identifiers should not look like heavy ordinary links",
+);
+assert(
   styles.includes(".concordance-collocation-score-track")
     && styles.includes(".concordance-collocation-score-fill")
+    && styles.includes("background: var(--cw-viz-frequency-mid);")
+    && styles.includes(".concordance-collocation-row:hover td")
     && styles.includes(".concordance-document-spread-toggle::before"),
-  "Collocates should render association bars and Document spread should expose a collapsible toggle",
+  "Collocates should render association bars, row hover, and Document spread should expose a collapsible toggle",
 );
