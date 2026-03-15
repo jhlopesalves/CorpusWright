@@ -2080,7 +2080,6 @@ function renderConcordanceTableState(message: string): void {
   cell.textContent = message;
   row.appendChild(cell);
   dom.concordanceTableBody.replaceChildren(row);
-  clearConcordanceSourcePreview();
 }
 
 function createConcordanceRow(row: ConcordanceRow): HTMLTableRowElement {
@@ -2127,11 +2126,6 @@ function createConcordanceRow(row: ConcordanceRow): HTMLTableRowElement {
 
   item.append(file, left, nodeCell, right);
   return item;
-}
-
-function clearConcordanceSourcePreview(): void {
-  dom.concordanceSourcePreview.replaceChildren();
-  dom.concordanceSourcePreview.classList.add("hidden");
 }
 
 function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElement {
@@ -2182,19 +2176,17 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
   return panel;
 }
 
-function renderConcordanceSourcePreview(rows: ConcordanceRow[]): void {
-  if (concordanceExpansionKey === null) {
-    clearConcordanceSourcePreview();
-    return;
-  }
-  const row = rows.find((candidate) => concordanceRowExpansionKey(candidate) === concordanceExpansionKey);
-  if (!row) {
-    clearConcordanceSourcePreview();
-    return;
-  }
+function createConcordanceSourcePreviewRow(row: ConcordanceRow): HTMLTableRowElement {
+  const item = document.createElement("tr");
+  item.className = "concordance-preview-row";
 
-  dom.concordanceSourcePreview.replaceChildren(createConcordanceSourcePreviewPanel(row));
-  dom.concordanceSourcePreview.classList.remove("hidden");
+  const cell = document.createElement("td");
+  cell.className = "concordance-preview-cell";
+  cell.colSpan = CONCORDANCE_COLUMNS.length;
+  cell.appendChild(createConcordanceSourcePreviewPanel(row));
+
+  item.appendChild(cell);
+  return item;
 }
 
 function renderConcordanceSummary(result: ConcordanceResult): void {
@@ -2622,8 +2614,12 @@ function renderConcordance(): void {
     for (const row of result.rows) {
       const rowElement = createConcordanceRow(row);
       dom.concordanceTableBody.appendChild(rowElement);
+      const rowKey = concordanceRowExpansionKey(row);
+      const expansion = concordanceExpansionViewModel(rowKey, currentConcordanceExpansionState());
+      if (expansion.expanded) {
+        dom.concordanceTableBody.appendChild(createConcordanceSourcePreviewRow(row));
+      }
     }
-    renderConcordanceSourcePreview(result.rows);
   }
   renderConcordanceDistribution(result);
   renderConcordanceCollocations();
