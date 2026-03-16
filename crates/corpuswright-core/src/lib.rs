@@ -23,6 +23,7 @@ pub mod annotation;
 pub mod annotation_cache;
 pub mod cache;
 pub mod clean;
+pub mod decode;
 pub mod docx;
 pub mod export;
 pub mod hash;
@@ -76,6 +77,9 @@ pub use annotation_cache::{
 pub use clean::{
     CleaningConfig, PdfOcrQuality, PdfTextSource, RemovalMatcher, RemovalRule, RemovalRuleSource,
     RemovalScope, ReplacementRule, clean_text,
+};
+pub use decode::{
+    DECODE_POLICY_VERSION, DecodeStrategy, DecodedText, SourceEncoding, decode_source_bytes,
 };
 pub use export::{
     ExportError, ExportOptions, ExportReport, ExportWarning, ExportWarningKind, ExportedFileRecord,

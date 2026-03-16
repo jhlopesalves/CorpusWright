@@ -1,5 +1,6 @@
 use crate::cache::ExtractionCache;
 use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, PdfTextSource, clean_text};
+use crate::decode::{DECODE_POLICY_VERSION, DecodeStrategy, SourceEncoding, decode_source_bytes};
 use crate::manifest::{ExportManifest, ManifestFileRecord};
 use crate::scan::{DocumentRecord, DocumentType};
 use chrono::{SecondsFormat, Utc};
@@ -135,8 +136,11 @@ pub fn export_corpus(
                 message: error.to_string(),
             })?;
             let source_hash_sha256 = crate::hash::sha256_hex(&source_bytes);
-            let invalid_utf8 = std::str::from_utf8(&source_bytes).is_err();
-            let raw_text = String::from_utf8_lossy(&source_bytes).into_owned();
+            let decoded_source = matches!(
+                record.document_type,
+                DocumentType::Text | DocumentType::Html
+            )
+            .then(|| decode_source_bytes(&source_bytes));
 
             let mut file_warnings = Vec::new();
             let mut warnings = Vec::new();
@@ -293,7 +297,11 @@ pub fn export_corpus(
                     }
                 }
             } else {
-                raw_text
+                decoded_source
+                    .as_ref()
+                    .expect("textual records are decoded before export")
+                    .text
+                    .clone()
             };
 
             let processed_text = if record.document_type == DocumentType::Pdf {
@@ -332,12 +340,13 @@ pub fn export_corpus(
             let processed_bytes = processed_text.as_bytes();
             let processed_hash_sha256 = crate::hash::sha256_hex(processed_bytes);
 
-            if invalid_utf8
-                && record.document_type != DocumentType::Docx
-                && record.document_type != DocumentType::Pdf
+            if decoded_source
+                .as_ref()
+                .is_some_and(|decoded| decoded.had_utf8_error)
             {
-                let message = "Invalid UTF-8 was replaced with the Unicode replacement character."
-                    .to_string();
+                let message =
+                    "Source was not valid UTF-8 and was recovered with Windows-1252 fallback."
+                        .to_string();
                 file_warnings.push(message.clone());
                 warnings.push(ExportWarning {
                     source_path: Some(record.source_path.clone()),
@@ -346,6 +355,17 @@ pub fn export_corpus(
                     message,
                 });
             }
+
+            let (detected_encoding, decode_strategy, replacement_char_count) =
+                if let Some(decoded) = decoded_source.as_ref() {
+                    (
+                        decoded.detected_encoding,
+                        decoded.decode_strategy,
+                        decoded.replacement_char_count,
+                    )
+                } else {
+                    (SourceEncoding::Utf8, DecodeStrategy::Utf8Strict, 0)
+                };
 
             let output_path = texts_dir.join(relative_path);
             if let Some(parent) = output_path.parent() {
@@ -370,6 +390,10 @@ pub fn export_corpus(
                 processed_char_count: processed_text.chars().count(),
                 source_hash_sha256,
                 processed_hash_sha256,
+                decode_policy_version: DECODE_POLICY_VERSION,
+                detected_encoding,
+                decode_strategy,
+                replacement_char_count,
                 warnings: file_warnings,
                 extraction_method,
                 page_count,
@@ -404,6 +428,7 @@ pub fn export_corpus(
         files_exported: exported_files.len(),
         warnings_count: warnings.len(),
         cleaning_config: cleaning_config.clone(),
+        decode_policy_version: DECODE_POLICY_VERSION,
         tokenization: crate::tokenization::TokenizationManifest::default(),
         files: exported_files.clone(),
     };
@@ -1156,6 +1181,82 @@ mod tests {
         assert_eq!(
             manifest.tokenization.config,
             crate::tokenization::TokenizationConfig::default()
+        );
+    }
+
+    #[test]
+    fn manifest_records_decode_provenance_for_text_files() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("utf8.txt"), "café").unwrap();
+        let latin_bytes = [b'c', b'a', b'f', 0xe9];
+        fs::write(source.path().join("latin.txt"), latin_bytes).unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let manifest: ExportManifest =
+            serde_json::from_str(&fs::read_to_string(export.manifest_path).unwrap()).unwrap();
+        assert_eq!(
+            manifest.decode_policy_version,
+            crate::decode::DECODE_POLICY_VERSION
+        );
+
+        let utf8 = manifest
+            .files
+            .iter()
+            .find(|file| file.relative_path.as_path() == Path::new("utf8.txt"))
+            .unwrap();
+        assert_eq!(
+            utf8.decode_policy_version,
+            crate::decode::DECODE_POLICY_VERSION
+        );
+        assert_eq!(utf8.detected_encoding, crate::decode::SourceEncoding::Utf8);
+        assert_eq!(
+            utf8.decode_strategy,
+            crate::decode::DecodeStrategy::Utf8Strict
+        );
+        assert_eq!(utf8.replacement_char_count, 0);
+
+        let latin = manifest
+            .files
+            .iter()
+            .find(|file| file.relative_path.as_path() == Path::new("latin.txt"))
+            .unwrap();
+        assert_eq!(
+            latin.detected_encoding,
+            crate::decode::SourceEncoding::Windows1252
+        );
+        assert_eq!(
+            latin.decode_strategy,
+            crate::decode::DecodeStrategy::Windows1252Fallback
+        );
+        assert_eq!(latin.replacement_char_count, 0);
+        assert!(
+            latin
+                .warnings
+                .iter()
+                .any(|warning| { warning.contains("recovered with Windows-1252 fallback") })
+        );
+
+        let exported_latin = fs::read_to_string(export.texts_dir.join("latin.txt")).unwrap();
+        assert_eq!(exported_latin, "café");
+        assert_eq!(
+            latin.processed_hash_sha256,
+            crate::hash::sha256_hex("café".as_bytes())
+        );
+        let old_lossy = String::from_utf8_lossy(&latin_bytes);
+        assert_ne!(
+            latin.processed_hash_sha256,
+            crate::hash::sha256_hex(old_lossy.as_bytes())
         );
     }
 
