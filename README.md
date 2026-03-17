@@ -1,6 +1,6 @@
 # CorpusWright
 [![CI](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v0.1.0--alpha.7-blue)](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.7)
+[![Release](https://img.shields.io/badge/release-v0.1.0--alpha.8-blue)](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8)
 [![Docs](https://img.shields.io/badge/docs-website-006cd6)](https://jhlopesalves.github.io/CorpusWright/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -10,9 +10,13 @@
 
 A local-first desktop workbench for cleaning, inspecting, and analysing text corpora — with every step visible and reproducible.
 
-**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.7](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.7)
+**Project website:** https://jhlopesalves.github.io/CorpusWright/ — the public GitHub Pages site for downloads, quick start, method and concepts, roadmap, citation guidance, and technical docs.
 
-> Experimental alpha. Windows and macOS builds are on the Releases page, but they're unsigned, so your OS will probably warn you before letting them run.
+**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.8](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8)
+
+Latest release page: https://github.com/jhlopesalves/CorpusWright/releases/latest
+
+> Experimental alpha. Release builds are on the Releases page. Windows installers may still trigger the usual unsigned-app warnings.
 
 CorpusWright is a Rust/Tauri rewrite of an earlier PySide6 prototype. The old PySide app is still in the repo under `legacy/pyside/` for reference, but all active development now happens in the Rust/Tauri version.
 

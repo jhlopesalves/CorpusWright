@@ -13,8 +13,9 @@ authors:
     email: jhlopesalves@gmail.com
 repository-code: "https://github.com/jhlopesalves/CorpusWright"
 url: "https://jhlopesalves.github.io/CorpusWright/"
-version: 0.1.0-alpha.7
-date-released: "2026-06-25"   # TODO: set to the actual release date of this version
+version: 0.1.0-alpha.8
+date-released: "2026-06-29"
+license: MIT
 keywords:
   - corpus linguistics
   - text processing

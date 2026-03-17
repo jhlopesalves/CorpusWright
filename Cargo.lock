@@ -800,6 +800,7 @@ dependencies = [
  "anyhow",
  "cc",
  "chrono",
+ "encoding_rs",
  "html2text",
  "image",
  "lazy_static",
@@ -827,7 +828,7 @@ dependencies = [
 
 [[package]]
 name = "corpuswright-desktop"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 dependencies = [
  "corpuswright-core",
  "jiff",
