@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/site.css">
-  <link rel="icon" href="assets/icon.png">
+  <link rel="icon" href="assets/icon-32.png">
   <script>
     (function() {
       const savedTheme = localStorage.getItem('theme');
@@ -34,7 +34,14 @@
       <a href="method.html">Method</a>
       <a href="roadmap.html" aria-current="page">Roadmap</a>
       <a href="technical-docs.html">Docs</a>
-      <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
+      <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round" aria-hidden="true">
+          <path
+            d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
+          </path>
+        </svg>
+      </a>
       <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
         <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="4"></circle>
@@ -54,8 +61,8 @@
   <div class="shell">
     <div class="section-lead">
       <p class="eyebrow">Roadmap</p>
-      <h1>Alpha now, research workbench later.</h1>
-      <p class="lede">The first public story is preprocessing: extraction, cleaning, review, provenance, and repeatability. Analysis features should grow on top of that foundation without breaking it.</p>
+      <h1>Alpha workbench now, indexed analysis next.</h1>
+      <p class="lede">CorpusWright alpha.8 includes preprocessing, frequency views, KWIC, collocates, document spread diagnostics, and safer text decoding. The next architecture step is the positional index that will make those analysis paths stronger.</p>
     </div>
   </div>
 </section>
@@ -63,35 +70,58 @@
 <section class="section">
   <div class="shell grid">
     <article class="card">
-      <h3>Now</h3>
+      <h3>Alpha.8 now</h3>
       <ul class="checklist">
         <li>Local project folders</li>
         <li>Text extraction from supported formats</li>
         <li>Cleaning settings and processed previews</li>
         <li>Repeated artefact finder</li>
         <li>Structured custom removals</li>
+        <li>Corpus Overview / Frequency List</li>
+        <li>Surface and phrase KWIC search</li>
+        <li>KWIC sorting and source preview</li>
+        <li>Document spread diagnostics</li>
+        <li>Collocates alpha with raw counts, corpus frequency, and logDice</li>
+        <li>Strict UTF-8 decoding with Windows-1252 recovery</li>
       </ul>
     </article>
     <article class="card">
-      <h3>Next</h3>
+      <h3>Next / near-term</h3>
       <ul class="checklist">
-        <li>Sharper documentation</li>
-        <li>More stable release packaging</li>
-        <li>Better sample/demo corpora</li>
-        <li>Cleaner UI explanations for warnings</li>
-        <li>Regression-proof extraction tests</li>
+        <li>Dogfood alpha.8 on IMDB and Portuguese corpora</li>
+        <li>Design and build the surface positional index</li>
+        <li>Migrate KWIC and Collocates to the index behind parity gates</li>
+        <li>Write the frontend Analyse workspace state-model brief</li>
+        <li>Shape the future one-workspace Concordance interaction model</li>
       </ul>
     </article>
     <article class="card">
-      <h3>Later</h3>
+      <h3>Future</h3>
       <ul class="checklist">
-        <li>KWIC and concordance workflows</li>
-        <li>Frequency and dispersion views</li>
-        <li>Collocates and n-grams</li>
-        <li>Exportable analysis artefacts</li>
-        <li>Statistically defensible comparison workflows</li>
+        <li>N-grams</li>
+        <li>CQL-lite</li>
+        <li>Lemma/POS KWIC</li>
+        <li>Annotation-aware Concordance</li>
+        <li>Richer Collocates</li>
+        <li>Export and copy workflows</li>
       </ul>
     </article>
+  </div>
+</section>
+
+<section class="section">
+  <div class="shell">
+    <div class="section-lead">
+      <h2>Known alpha limits</h2>
+      <p>These are not hidden future promises. They are the boundaries of the current public alpha.</p>
+    </div>
+    <div class="principles">
+      <p><span class="term">Concordance and Collocates:</span> functional alpha features, not the final workflow design.</p>
+      <p><span class="term">Indexing:</span> alpha.8 still uses scan and cached paths. The positional index is not included yet.</p>
+      <p><span class="term">Queries:</span> there is no CQL, no N-grams, no lemma/POS KWIC, and no annotation-aware Concordance yet.</p>
+      <p><span class="term">Hosting:</span> CorpusWright is local-first. It does not provide remote corpus hosting.</p>
+      <p><span class="term">Packaging:</span> Windows builds may still show unsigned-app warnings.</p>
+    </div>
   </div>
 </section>
 

@@ -13,7 +13,7 @@
     href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Source+Code+Pro&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="assets/site.css">
-  <link rel="icon" href="assets/icon.png">
+  <link rel="icon" href="assets/icon-32.png">
   <script>
     (function () {
       var stored = localStorage.getItem('theme');
@@ -31,7 +31,7 @@
       <nav class="nav-links" aria-label="Primary">
         <a href="quick-start.html">Get Started</a>
         <a href="#">User Guide</a>
-        <a href="#">Learn</a>
+        <a href="learn.html">Learn</a>
         <a href="roadmap.html">Roadmap</a>
         <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8">Download</a>
         <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
@@ -63,7 +63,7 @@
     <section class="hero">
       <div class="shell">
         <div class="hero-split">
-          <img class="hero-logo" src="assets/icon.png" alt="CorpusWright logo">
+          <img class="hero-logo" src="assets/icon-32.png" alt="CorpusWright logo">
           <div>
             <h1>A local-first corpus tool, built in Rust.</h1>
             <p class="lede">Clean documents, build a corpus of any size, and profile it: frequency, diversity,
@@ -112,43 +112,6 @@
               <p>A Rust core processes large corpora in parallel, natively.</p>
             </div>
           </div>
-          <div>
-            <div class="shot-tabs" role="tablist" aria-label="Interface screenshots">
-              <button class="shot-tab" role="tab" id="tab-0" aria-controls="panel-0"
-                aria-selected="true">Prepare</button>
-              <button class="shot-tab" role="tab" id="tab-1" aria-controls="panel-1" aria-selected="false">Cleaning
-                settings</button>
-              <button class="shot-tab" role="tab" id="tab-2" aria-controls="panel-2" aria-selected="false">Repeated
-                artefacts</button>
-            </div>
-            <div class="shot-panel" role="tabpanel" id="panel-0" aria-labelledby="tab-0">
-              <figure class="screenshot">
-                <div class="theme-img-dark"><img src="assets/screenshots/prepare-dark.png" alt="Prepare, dark"></div>
-                <div class="theme-img-light"><img src="assets/screenshots/prepare-light.png" alt="Prepare, light"></div>
-                <figcaption>Prepare workbench with source selection, corpus summary, and original/processed text
-                  preview.</figcaption>
-              </figure>
-            </div>
-            <div class="shot-panel" role="tabpanel" id="panel-1" aria-labelledby="tab-1" hidden>
-              <figure class="screenshot">
-                <div class="theme-img-dark"><img src="assets/screenshots/prepare-cleaning-settings-dark.png"
-                    alt="Cleaning settings, dark"></div>
-                <div class="theme-img-light"><img src="assets/screenshots/prepare-cleaning-settings-light.png"
-                    alt="Cleaning settings, light"></div>
-                <figcaption>Cleaning settings used to configure repeatable preprocessing behaviour.</figcaption>
-              </figure>
-            </div>
-            <div class="shot-panel" role="tabpanel" id="panel-2" aria-labelledby="tab-2" hidden>
-              <figure class="screenshot">
-                <div class="theme-img-dark"><img src="assets/screenshots/prepare-repeated-artefacts-dark.png"
-                    alt="Repeated artefacts, dark"></div>
-                <div class="theme-img-light"><img src="assets/screenshots/prepare-repeated-artefacts-light.png"
-                    alt="Repeated artefacts, light"></div>
-                <figcaption>Repeated-artefact finder for reviewing recurring extraction noise before adding removal
-                  rules.</figcaption>
-              </figure>
-            </div>
-          </div>
         </div>
       </div>
     </section>
@@ -167,7 +130,7 @@
             <p>How each tool works: source extraction, cleaning rules, the Repeated Artefact Finder, the Analyse
               Overview; task by task.</p><span class="card-link">To the user guide &#x2192;</span>
           </a>
-          <a class="card" href="#">
+          <a class="card" href="learn.html">
             <h3>Learn</h3>
             <p>The statistics and linguistics behind the numbers: dispersion, lexical diversity, vocabulary growth, and
               how to read them.</p><span class="card-link">To the explanations &#x2192;</span>

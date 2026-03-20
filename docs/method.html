@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/site.css">
-  <link rel="icon" href="assets/icon.png">
+  <link rel="icon" href="assets/icon-32.png">
   <script>
     (function() {
       const savedTheme = localStorage.getItem('theme');
@@ -34,7 +34,14 @@
       <a href="method.html" aria-current="page">Method</a>
       <a href="roadmap.html">Roadmap</a>
       <a href="technical-docs.html">Docs</a>
-      <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
+      <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round" aria-hidden="true">
+          <path
+            d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
+          </path>
+        </svg>
+      </a>
       <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
         <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="4"></circle>
@@ -54,8 +61,8 @@
   <div class="shell">
     <div class="section-lead">
       <p class="eyebrow">Method</p>
-      <h1>CorpusWright treats cleaning as part of analysis.</h1>
-      <p class="lede">The core idea is simple: corpus preprocessing should be inspectable, repeatable, and connected to the places where researchers notice problems.</p>
+      <h1>CorpusWright treats cleaning as part of the analysis.</h1>
+      <p class="lede">The core idea is actually quite simple. Corpus preprocessing is not a separate, dirty phase we hide from the final paper. It should be inspectable, repeatable, and intimately connected to the places where we actually notice problems.</p>
     </div>
   </div>
 </section>
@@ -64,19 +71,19 @@
   <div class="shell grid">
     <article class="card">
       <h3>Deterministic by default</h3>
-      <p>Cleaning rules should behave the same way today and tomorrow. A saved configuration should be a research object, not a vague memory of GUI clicks.</p>
+      <p>We've all been there, right? A vague memory of GUI clicks that somehow cleaned the texts six months ago. Not here. Cleaning rules must behave exactly the same way today, tomorrow, and next Tuesday. A saved configuration is a research object. It exposes itself to scrutiny.</p>
     </article>
     <article class="card">
       <h3>Review before removal</h3>
-      <p>Repeated artefact detection is evidence, not permission. Candidates become cleaning rules only when the user accepts or promotes them.</p>
+      <p>Finding a repeated artefact is evidence, not permission to delete it. The software might flag the noise, but it does not make the final call. Candidates only become cleaning rules when we explicitly accept them. We prefer cautious decisions over destructive guesses, don't we? We all do.</p>
     </article>
     <article class="card">
       <h3>Page-aware when possible</h3>
-      <p>Headers and footers are page phenomena. CorpusWright distinguishes page-aware extraction metadata from flat-text fallback behaviour.</p>
+      <p>Headers and footers are page phenomena, not just floating text. CorpusWright treats a PDF like a physical document — well, like a suspiciously close cousin to a physical document, at least. It actively distinguishes page-aware metadata from basic flat-text fallbacks.</p>
     </article>
     <article class="card">
       <h3>Analysis loop, not pipeline theatre</h3>
-      <p>Cleaning, KWIC inspection, frequencies, and candidate review should form a tight loop. Researchers should not have to export/import repeatedly just to check whether a cleaning decision worked.</p>
+      <p>Export. Import. Check. Export again. We shouldn't have to jump through hoops just to see if a cleaning decision actually worked. Cleaning, KWIC inspection, and frequencies should form a tight loop. This is about real analysis, not just pipeline theatre.</p>
     </article>
   </div>
 </section>
@@ -84,13 +91,14 @@
 <section class="section">
   <div class="shell">
     <div class="section-lead">
-      <h2>Design principles</h2>
+      <h2>The principles</h2>
+      <p>Corpus tools can be seductive. They often make us think we are doing rigorous work just because the interface looks serious and is full of measurable nouns. But let's clear the ground first. Here is what actually drives the design:</p>
     </div>
     <div class="principles">
-      <p><span class="term">Local-first:</span> private corpora should not need cloud services.</p>
-      <p><span class="term">Auditability:</span> extraction warnings, cleaning rules, and project metadata should be inspectable.</p>
-      <p><span class="term">Conservatism:</span> the cleaner should avoid destructive guesses.</p>
-      <p><span class="term">Statistical seriousness:</span> future analysis features should respect corpus design, dispersion, document-level variation, and uncertainty.</p>
+      <p><span class="term">Local-first:</span> Private corpora should not require sending your data to a cloud server. The analysis stays on your machine.</p>
+      <p><span class="term">Auditability:</span> If we cannot imagine the world contradicting our decisions, we are not doing science. Extraction warnings and cleaning rules must remain inspectable.</p>
+      <p><span class="term">Conservatism:</span> The cleaner avoids destructive guesses. It would rather leave noise in the text than silently erase data. Funny, isn't it? A cleaner that prefers not to clean.</p>
+      <p><span class="term">Statistical seriousness:</span> We refuse to dress basic frequencies up as revolutionary. Future analysis features will respect corpus design, dispersion, document-level variation, and genuine uncertainty.</p>
     </div>
   </div>
 </section>
