@@ -8,7 +8,7 @@
 ![Local-first](https://img.shields.io/badge/local--first-desktop-blue)
 ![Corpus linguistics](https://img.shields.io/badge/corpus-linguistics-purple)
 
-A local-first desktop workbench for cleaning, inspecting, and analysing text corpora — with every step visible and reproducible.
+A local-first desktop corpus workbench for cleaning, counting, concordancing, and exploring real-world text corpora — with every step visible and reproducible.
 
 **Project website:** https://jhlopesalves.github.io/CorpusWright/ — the public GitHub Pages site for downloads, quick start, method and concepts, roadmap, citation guidance, and technical docs.
 
@@ -22,7 +22,15 @@ CorpusWright is a Rust/Tauri rewrite of an earlier PySide6 prototype. The old Py
 
 ## Documentation
 
-Full documentation: **https://jhlopesalves.github.io/CorpusWright/**
+The public GitHub Pages website is the best entry point for readers: **https://jhlopesalves.github.io/CorpusWright/**
+
+Public website links:
+
+- [Website home](https://jhlopesalves.github.io/CorpusWright/)
+- [Quick start](https://jhlopesalves.github.io/CorpusWright/quick-start.html)
+- [Learn / Method and concepts](https://jhlopesalves.github.io/CorpusWright/learn.html)
+- [Roadmap](https://jhlopesalves.github.io/CorpusWright/roadmap.html)
+- [Citation guidance](https://jhlopesalves.github.io/CorpusWright/citation.html)
 
 Reference material lives in [`docs/`](docs/) and is linked in context throughout this README:
 
@@ -50,6 +58,12 @@ CorpusWright is my attempt to make that stage less miserable: load the documents
 - Promotes selected exact and normalised repeated-line candidates into structured cleaning rules from Cleaning Settings.
 - Uses page-aware repeated artefact evidence and page-zone scoped rules when reliable PDF/OCR page metadata is available; flat text paths do not invent page zones.
 - Searches across selected documents with backend-powered hit navigation.
+- Builds Corpus Overview / Frequency List tables for surface tokens, lemmas plus POS where annotation is available, and POS tags, with raw frequency, document range, DP/dispersion-aware defaults, and optional normalised rates.
+- Provides alpha Concordance / KWIC workflows for surface and phrase search, KWIC lines, sorting by file/position, node, and left/right context positions, source preview, and document spread diagnostics.
+- Provides alpha Collocates around the current query, including raw co-occurrence count, Near query/O11, corpus frequency/f_c, and association scores such as logDice.
+- Keeps Collocates lazy and cached, so ordinary Search updates KWIC lines without immediately recomputing collocate tables.
+- Uses canonical source decoding across preview, export, and word-count paths: strict UTF-8 first, then Windows-1252 fallback for legacy Western-European, Portuguese, and French-style text files.
+- Records decode provenance in manifests, and includes decode policy in annotation/cache identity so stale text foundations can be detected.
 - Exports cleaned text alongside a manifest, a warnings file, and the exact configuration used.
 
 Cleaning configurations save and load as JSON, so a corpus you cleaned today can be cleaned identically six months from now.
@@ -113,16 +127,25 @@ cargo check -p corpuswright-desktop --all-targets
 
 ## Status
 
-This is alpha, and it behaves like alpha. The core pipeline - loading, preview, cleaning, search, export, repeated-artefact detection, extraction caching - is in place and working. The rough edges are mostly in packaging, UI polish, documentation, and the higher-level corpus-linguistic features.
+This is alpha, and it behaves like alpha. The core pipeline - loading, preview, cleaning, search, export, repeated-artefact detection, extraction caching - is in place and working. Alpha.8 also includes the first public analysis pass: Corpus Overview / Frequency List, surface and phrase KWIC, Collocates alpha, document spread diagnostics, and safer source decoding for UTF-8 and Windows-1252 text.
+
+Known limits:
+
+- Concordance and Collocates are functional alpha features, not final workflow design.
+- Current analysis still uses scan and cached paths rather than the future positional index.
+- CQL, N-grams, lemma/POS KWIC, and annotation-aware Concordance are not implemented yet.
+- Collocates are useful alpha functionality, not the final indexed architecture.
+- CorpusWright is local-first; it does not host corpora remotely.
+- Windows installers may still be unsigned.
 
 Next on my list:
 
-- an original-vs-processed diff view;
-- richer export summaries;
-- frequency lists and other corpus diagnostics;
-- more TypeScript bindings generated from the Rust types;
-- a frontend tidy-up;
-- proper screenshots and documentation.
+- dogfood alpha.8 on IMDB and Portuguese corpora;
+- design and build the surface positional index;
+- migrate KWIC and Collocates to the index behind parity gates;
+- write the frontend/Analyse workspace state-model brief;
+- shape the future one-workspace Concordance interaction model;
+- add N-grams, CQL-lite, lemma/POS KWIC, richer Collocates, and export/copy workflows after the foundations are ready.
 
 ## Legacy PySide version
 
