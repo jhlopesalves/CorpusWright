@@ -1,17 +1,19 @@
 use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisCorpus,
     AnalysisDocumentPage, AnalysisDocumentSelection, AnnotatedFrequencyQuery,
-    AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, ConcordanceCollocationAggregate,
+    AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, ConcordanceBackend,
+    ConcordanceBackendUsed, ConcordanceCollocationAggregate,
     ConcordanceCollocationAggregationSignature, ConcordanceCollocationQuery,
     ConcordanceCollocationResult, ConcordanceDocument, ConcordanceExpansionQuery,
-    ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult, CorpusOverview,
-    CorpusOverviewContext, FrequencyGroupMode, FrequencyPage, FrequencyQuery, TermDistributionPage,
-    TermDistributionQuery, aggregate_concordance_collocations_documents,
+    ConcordanceExpansionResult, ConcordanceFallbackReason, ConcordanceQuery, ConcordanceResult,
+    ConcordanceRow, ConcordanceSearchContext, CorpusOverview, CorpusOverviewContext,
+    FrequencyGroupMode, FrequencyPage, FrequencyQuery, RoutedConcordanceResult,
+    TermDistributionPage, TermDistributionQuery, aggregate_concordance_collocations_documents,
     annotation_cache_availability_for_corpus, build_analysis_corpus, cleaning_config_signature,
     concordance_collocation_aggregation_signature, expand_concordance_context,
     query_analysis_documents, query_annotated_frequency, query_annotated_term_distribution,
     query_concordance_collocations_from_aggregate, query_frequency_list, query_term_distribution,
-    resolve_analysis_input, search_concordance_documents,
+    resolve_analysis_input, search_concordance_documents, search_concordance_documents_routed,
 };
 use corpuswright_core::cache::{
     CacheEntry, DocumentTextMode, ExtractionCache, document_text_for_record,
@@ -363,6 +365,58 @@ impl ConcordanceCollocationCache {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConcordanceIndexContextKey {
+    corpus_version: u64,
+    project_root: Option<String>,
+    cleaning_config_signature: String,
+}
+
+struct ConcordanceIndexContextEntry {
+    key: ConcordanceIndexContextKey,
+    context: ConcordanceSearchContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ConcordanceDefaultIndexFailureState {
+    RetryPending,
+    Disabled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConcordanceDefaultIndexFailure {
+    key: ConcordanceIndexContextKey,
+    state: ConcordanceDefaultIndexFailureState,
+}
+
+#[derive(Default)]
+struct ConcordanceIndexContextCache {
+    entry: Option<ConcordanceIndexContextEntry>,
+    default_index_failure: Option<ConcordanceDefaultIndexFailure>,
+}
+
+type ConcordanceIndexContextHandle = Arc<Mutex<ConcordanceIndexContextCache>>;
+
+struct ConcordanceIndexContextState {
+    inner: ConcordanceIndexContextHandle,
+}
+
+impl ConcordanceIndexContextState {
+    fn new() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(ConcordanceIndexContextCache::default())),
+        }
+    }
+
+    fn context_handle(&self) -> ConcordanceIndexContextHandle {
+        Arc::clone(&self.inner)
+    }
+
+    fn clear(&self) {
+        *self.inner.lock().unwrap() = ConcordanceIndexContextCache::default();
+    }
+}
+
 impl CorpusState {
     fn records_for_indices(
         &self,
@@ -623,12 +677,14 @@ fn scan_directory_command(
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
     collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
+    index_context: tauri::State<'_, ConcordanceIndexContextState>,
     analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<CorpusLoadResult, String> {
     analysis.clear();
     cache.clear();
     page_cache.clear();
     collocation_cache.clear();
+    index_context.clear();
     let report = scan_directory(&path).map_err(|e| format!("{:?}", e))?;
     let version = {
         let mut inner = corpus_state.inner.write().unwrap();
@@ -648,12 +704,14 @@ fn load_files_command(
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
     collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
+    index_context: tauri::State<'_, ConcordanceIndexContextState>,
     analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<CorpusLoadResult, String> {
     analysis.clear();
     cache.clear();
     page_cache.clear();
     collocation_cache.clear();
+    index_context.clear();
     let path_bufs = paths.into_iter().map(PathBuf::from).collect();
     let report = load_files(path_bufs).map_err(|e| format!("{:?}", e))?;
     let version = {
@@ -674,12 +732,14 @@ fn load_project_source_records_command(
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
     collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
+    index_context: tauri::State<'_, ConcordanceIndexContextState>,
     analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<ProjectCorpusLoadResult, String> {
     analysis.clear();
     cache.clear();
     page_cache.clear();
     collocation_cache.clear();
+    index_context.clear();
     let report = project::load_project_source_records(root_path)?;
     hydrate_project_source_text_cache(&report.root, &report.files, &cache);
     let version = {
@@ -855,6 +915,83 @@ fn configured_ocr_worker_count() -> usize {
         .filter(|value| *value > 0)
         .map(|value| value.min(MAX_INTERNAL_OCR_WORKERS).min(available).max(1))
         .unwrap_or(default_workers)
+}
+
+const CONCORDANCE_BACKEND_ENV: &str = "CORPUSWRIGHT_CONCORDANCE_BACKEND";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConcordanceBackendMode {
+    DefaultIndex,
+    Scan,
+    StrictIndex,
+    Audit,
+}
+
+impl ConcordanceBackendMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::DefaultIndex => "default_index",
+            Self::Scan => "scan",
+            Self::StrictIndex => "strict_index",
+            Self::Audit => "audit",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConcordanceBackendModeParse {
+    mode: ConcordanceBackendMode,
+    unknown_value: Option<String>,
+}
+
+fn parse_concordance_backend_mode(value: Option<&str>) -> ConcordanceBackendModeParse {
+    let Some(trimmed) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return ConcordanceBackendModeParse {
+            mode: ConcordanceBackendMode::DefaultIndex,
+            unknown_value: None,
+        };
+    };
+
+    let mode = match trimmed.to_ascii_lowercase().as_str() {
+        "scan" => ConcordanceBackendMode::Scan,
+        "index" => ConcordanceBackendMode::StrictIndex,
+        "audit" => ConcordanceBackendMode::Audit,
+        _ => {
+            return ConcordanceBackendModeParse {
+                mode: ConcordanceBackendMode::DefaultIndex,
+                unknown_value: Some(trimmed.to_string()),
+            };
+        }
+    };
+
+    ConcordanceBackendModeParse {
+        mode,
+        unknown_value: None,
+    }
+}
+
+fn concordance_backend_mode_from_env() -> ConcordanceBackendMode {
+    match std::env::var(CONCORDANCE_BACKEND_ENV) {
+        Ok(value) => {
+            let parsed = parse_concordance_backend_mode(Some(&value));
+            if let Some(unknown_value) = parsed.unknown_value.as_deref() {
+                eprintln!(
+                    "[concordance-backend] mode=default_index warning=unknown_env env={} value={}",
+                    CONCORDANCE_BACKEND_ENV,
+                    log_string(unknown_value, 80)
+                );
+            }
+            parsed.mode
+        }
+        Err(std::env::VarError::NotPresent) => ConcordanceBackendMode::DefaultIndex,
+        Err(std::env::VarError::NotUnicode(_)) => {
+            eprintln!(
+                "[concordance-backend] mode=default_index warning=invalid_env_unicode env={}",
+                CONCORDANCE_BACKEND_ENV
+            );
+            ConcordanceBackendMode::DefaultIndex
+        }
+    }
 }
 
 fn duration_ms(duration: Duration) -> u64 {
@@ -1346,6 +1483,7 @@ fn load_pdf_intake_files_command(
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
     collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
+    index_context: tauri::State<'_, ConcordanceIndexContextState>,
     intake_state: tauri::State<'_, PdfIntakeState>,
 ) -> Result<CorpusLoadResult, String> {
     if paths.is_empty() {
@@ -1356,6 +1494,7 @@ fn load_pdf_intake_files_command(
     cache.clear();
     page_cache.clear();
     collocation_cache.clear();
+    index_context.clear();
     corpus_state.inner.write().unwrap().clear();
 
     let path_bufs = paths.into_iter().map(PathBuf::from).collect();
@@ -1417,6 +1556,7 @@ fn prepare_project_pdf_sources_command(
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
     collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
+    index_context: tauri::State<'_, ConcordanceIndexContextState>,
     intake_state: tauri::State<'_, PdfIntakeState>,
 ) -> Result<CorpusLoadResult, String> {
     if paths.is_empty() {
@@ -1427,6 +1567,7 @@ fn prepare_project_pdf_sources_command(
     cache.clear();
     page_cache.clear();
     collocation_cache.clear();
+    index_context.clear();
     corpus_state.inner.write().unwrap().clear();
 
     if let Some(profile) = profile_override {
@@ -1574,12 +1715,14 @@ fn clear_corpus_command(
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
     collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
+    index_context: tauri::State<'_, ConcordanceIndexContextState>,
     analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<(), String> {
     analysis.clear();
     cache.clear();
     page_cache.clear();
     collocation_cache.clear();
+    index_context.clear();
     corpus_state.inner.write().unwrap().clear();
     Ok(())
 }
@@ -1946,6 +2089,694 @@ fn concordance_document_from_record(
     })
 }
 
+fn log_string(value: &str, max_chars: usize) -> String {
+    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut truncated = String::new();
+    for (index, character) in compact.chars().enumerate() {
+        if index >= max_chars {
+            truncated.push_str("...");
+            break;
+        }
+        truncated.push(if character.is_control() {
+            ' '
+        } else {
+            character
+        });
+    }
+    if truncated.is_empty() {
+        truncated.push_str("<empty>");
+    }
+    serde_json::to_string(&truncated).unwrap_or_else(|_| "\"<unavailable>\"".to_string())
+}
+
+fn concordance_backend_used_label(backend: ConcordanceBackendUsed) -> &'static str {
+    match backend {
+        ConcordanceBackendUsed::Scan => "scan",
+        ConcordanceBackendUsed::Index => "index",
+        ConcordanceBackendUsed::ScanFallback { .. } => "scan_fallback",
+    }
+}
+
+fn concordance_fallback_reason_label(reason: ConcordanceFallbackReason) -> &'static str {
+    match reason {
+        ConcordanceFallbackReason::UnsupportedFilter => "unsupported_filter",
+    }
+}
+
+fn concordance_fallback_label(backend: ConcordanceBackendUsed) -> &'static str {
+    match backend {
+        ConcordanceBackendUsed::ScanFallback { reason } => {
+            concordance_fallback_reason_label(reason)
+        }
+        ConcordanceBackendUsed::Scan | ConcordanceBackendUsed::Index => "none",
+    }
+}
+
+fn concordance_row_identity(row: &ConcordanceRow) -> String {
+    format!(
+        "document_id={},token_ordinal={},node_len={}",
+        row.document_index, row.token_index, row.node_token_length
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConcordanceAuditDifference {
+    field: &'static str,
+    row_index: Option<usize>,
+    scan: String,
+    index: String,
+}
+
+fn concordance_audit_difference(
+    field: &'static str,
+    scan: impl Into<String>,
+    index: impl Into<String>,
+) -> ConcordanceAuditDifference {
+    ConcordanceAuditDifference {
+        field,
+        row_index: None,
+        scan: scan.into(),
+        index: index.into(),
+    }
+}
+
+fn compare_concordance_results(
+    scan: &ConcordanceResult,
+    index: &ConcordanceResult,
+) -> Option<ConcordanceAuditDifference> {
+    if scan.total_hits != index.total_hits {
+        return Some(concordance_audit_difference(
+            "total_hits",
+            scan.total_hits.to_string(),
+            index.total_hits.to_string(),
+        ));
+    }
+    if scan.documents_with_hits != index.documents_with_hits {
+        return Some(concordance_audit_difference(
+            "documents_with_hits",
+            scan.documents_with_hits.to_string(),
+            index.documents_with_hits.to_string(),
+        ));
+    }
+    if scan.rows.len() != index.rows.len() {
+        return Some(concordance_audit_difference(
+            "rows_len",
+            scan.rows.len().to_string(),
+            index.rows.len().to_string(),
+        ));
+    }
+
+    for (row_index, (scan_row, index_row)) in scan.rows.iter().zip(&index.rows).enumerate() {
+        let scan_identity = concordance_row_identity(scan_row);
+        let index_identity = concordance_row_identity(index_row);
+        if scan_identity != index_identity {
+            return Some(ConcordanceAuditDifference {
+                field: "row_identity",
+                row_index: Some(row_index),
+                scan: scan_identity,
+                index: index_identity,
+            });
+        }
+        if scan_row != index_row {
+            return Some(ConcordanceAuditDifference {
+                field: "row_payload",
+                row_index: Some(row_index),
+                scan: scan_identity,
+                index: index_identity,
+            });
+        }
+    }
+
+    if scan.top_document_share.to_bits() != index.top_document_share.to_bits() {
+        return Some(concordance_audit_difference(
+            "top_document_share",
+            format!("{:.6}", scan.top_document_share),
+            format!("{:.6}", index.top_document_share),
+        ));
+    }
+    if scan.distribution.total_documents != index.distribution.total_documents {
+        return Some(concordance_audit_difference(
+            "distribution_total_documents",
+            scan.distribution.total_documents.to_string(),
+            index.distribution.total_documents.to_string(),
+        ));
+    }
+    if scan.distribution.items.len() != index.distribution.items.len() {
+        return Some(concordance_audit_difference(
+            "distribution_items_len",
+            scan.distribution.items.len().to_string(),
+            index.distribution.items.len().to_string(),
+        ));
+    }
+    for (item_index, (scan_item, index_item)) in scan
+        .distribution
+        .items
+        .iter()
+        .zip(&index.distribution.items)
+        .enumerate()
+    {
+        let scan_summary = format!(
+            "document_id={},count={},tokens={}",
+            scan_item.document_id, scan_item.count, scan_item.token_count
+        );
+        let index_summary = format!(
+            "document_id={},count={},tokens={}",
+            index_item.document_id, index_item.count, index_item.token_count
+        );
+        if scan_summary != index_summary {
+            return Some(ConcordanceAuditDifference {
+                field: "distribution_item",
+                row_index: Some(item_index),
+                scan: scan_summary,
+                index: index_summary,
+            });
+        }
+    }
+    if scan != index {
+        return Some(concordance_audit_difference(
+            "result",
+            "differs_after_checked_fields",
+            "differs_after_checked_fields",
+        ));
+    }
+
+    None
+}
+
+impl ConcordanceIndexContextCache {
+    fn default_index_disabled_for(&self, key: &ConcordanceIndexContextKey) -> bool {
+        self.default_index_failure.as_ref().is_some_and(|failure| {
+            failure.key == *key && failure.state == ConcordanceDefaultIndexFailureState::Disabled
+        })
+    }
+
+    fn clear_default_index_failure_for(&mut self, key: &ConcordanceIndexContextKey) {
+        if self
+            .default_index_failure
+            .as_ref()
+            .is_some_and(|failure| failure.key == *key)
+        {
+            self.default_index_failure = None;
+        }
+    }
+
+    fn record_default_index_error(
+        &mut self,
+        key: &ConcordanceIndexContextKey,
+    ) -> ConcordanceDefaultIndexFailureState {
+        if self
+            .entry
+            .as_ref()
+            .is_some_and(|cached_entry| cached_entry.key == *key)
+        {
+            self.entry = None;
+        }
+
+        let next_state = if self.default_index_failure.as_ref().is_some_and(|failure| {
+            failure.key == *key
+                && failure.state == ConcordanceDefaultIndexFailureState::RetryPending
+        }) {
+            ConcordanceDefaultIndexFailureState::Disabled
+        } else {
+            ConcordanceDefaultIndexFailureState::RetryPending
+        };
+        self.default_index_failure = Some(ConcordanceDefaultIndexFailure {
+            key: key.clone(),
+            state: next_state.clone(),
+        });
+        next_state
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConcordanceIndexRecoveryReason {
+    IndexError,
+    PreviousIndexError,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct ConcordanceSearchOutcome {
+    result: ConcordanceResult,
+    backend_used: ConcordanceBackendUsed,
+    index_rebuilt: Option<bool>,
+    recovery_reason: Option<ConcordanceIndexRecoveryReason>,
+}
+
+impl ConcordanceSearchOutcome {
+    fn from_routed(routed: RoutedConcordanceResult) -> Self {
+        Self {
+            result: routed.result,
+            backend_used: routed.backend_used,
+            index_rebuilt: Some(routed.index_rebuilt),
+            recovery_reason: None,
+        }
+    }
+}
+
+fn concordance_default_index_failure_state_label(
+    state: ConcordanceDefaultIndexFailureState,
+) -> &'static str {
+    match state {
+        ConcordanceDefaultIndexFailureState::RetryPending => "retry_pending",
+        ConcordanceDefaultIndexFailureState::Disabled => "disabled",
+    }
+}
+
+fn concordance_default_index_disabled_for_key(
+    context_state: &ConcordanceIndexContextHandle,
+    key: &ConcordanceIndexContextKey,
+) -> bool {
+    context_state
+        .lock()
+        .unwrap()
+        .default_index_disabled_for(key)
+}
+
+fn record_concordance_default_index_error(
+    context_state: &ConcordanceIndexContextHandle,
+    key: &ConcordanceIndexContextKey,
+) -> ConcordanceDefaultIndexFailureState {
+    context_state
+        .lock()
+        .unwrap()
+        .record_default_index_error(key)
+}
+
+fn search_concordance_documents_with_warm_index(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceQuery,
+    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    context_state: &ConcordanceIndexContextHandle,
+    key: ConcordanceIndexContextKey,
+) -> Result<RoutedConcordanceResult, corpuswright_core::analysis::ConcordanceError> {
+    let mut cache = context_state.lock().unwrap();
+    if cache
+        .entry
+        .as_ref()
+        .is_none_or(|cached_entry| cached_entry.key != key)
+    {
+        cache.entry = Some(ConcordanceIndexContextEntry {
+            key: key.clone(),
+            context: ConcordanceSearchContext::default(),
+        });
+    }
+    let entry = cache
+        .entry
+        .as_mut()
+        .expect("concordance index context exists after insertion");
+    let routed = search_concordance_documents_routed(
+        documents,
+        query,
+        tokenization_config,
+        &mut entry.context,
+        ConcordanceBackend::Index,
+    )?;
+    if routed.backend_used == ConcordanceBackendUsed::Index {
+        cache.clear_default_index_failure_for(&key);
+    }
+    Ok(routed)
+}
+
+fn log_concordance_index_result(
+    mode: ConcordanceBackendMode,
+    query: &ConcordanceQuery,
+    routed: &RoutedConcordanceResult,
+    index_elapsed: Duration,
+) {
+    eprintln!(
+        "[concordance-backend] mode={} backend={} fallback={} rebuilt={} elapsed_ms={} query={} case_sensitive={} hits={} rows={}",
+        mode.label(),
+        concordance_backend_used_label(routed.backend_used),
+        concordance_fallback_label(routed.backend_used),
+        routed.index_rebuilt,
+        duration_ms(index_elapsed),
+        log_string(&query.query, 80),
+        query.case_sensitive,
+        routed.result.total_hits,
+        routed.result.rows.len()
+    );
+}
+
+fn log_concordance_index_error(
+    mode: ConcordanceBackendMode,
+    query: &ConcordanceQuery,
+    index_elapsed: Duration,
+    error: &corpuswright_core::analysis::ConcordanceError,
+) {
+    eprintln!(
+        "[concordance-backend] mode={} backend=index fallback=none rebuilt=unknown elapsed_ms={} status=index_error query={} case_sensitive={} error={}",
+        mode.label(),
+        duration_ms(index_elapsed),
+        log_string(&query.query, 80),
+        query.case_sensitive,
+        log_string(&error.to_string(), 160)
+    );
+}
+
+fn log_concordance_default_index_recovery(
+    query: &ConcordanceQuery,
+    scan: &ConcordanceResult,
+    index_elapsed: Duration,
+    scan_elapsed: Duration,
+    error: &corpuswright_core::analysis::ConcordanceError,
+    failure_state: ConcordanceDefaultIndexFailureState,
+) {
+    eprintln!(
+        "[concordance-backend] mode=default_index backend=index recovery=index_error retry_state={} index_ms={} scan_recovery_ms={} query={} case_sensitive={} hits={} rows={} error={}",
+        concordance_default_index_failure_state_label(failure_state),
+        duration_ms(index_elapsed),
+        duration_ms(scan_elapsed),
+        log_string(&query.query, 80),
+        query.case_sensitive,
+        scan.total_hits,
+        scan.rows.len(),
+        log_string(&error.to_string(), 160)
+    );
+}
+
+fn log_concordance_default_index_recovery_scan_error(
+    query: &ConcordanceQuery,
+    index_elapsed: Duration,
+    scan_elapsed: Duration,
+    index_error: &corpuswright_core::analysis::ConcordanceError,
+    scan_error: &corpuswright_core::analysis::ConcordanceError,
+    failure_state: ConcordanceDefaultIndexFailureState,
+) {
+    eprintln!(
+        "[concordance-backend] mode=default_index backend=index recovery=index_error retry_state={} index_ms={} scan_recovery_ms={} scan_status=error query={} case_sensitive={} index_error={} scan_error={}",
+        concordance_default_index_failure_state_label(failure_state),
+        duration_ms(index_elapsed),
+        duration_ms(scan_elapsed),
+        log_string(&query.query, 80),
+        query.case_sensitive,
+        log_string(&index_error.to_string(), 160),
+        log_string(&scan_error.to_string(), 160)
+    );
+}
+
+fn log_concordance_default_index_previous_error_recovery(
+    query: &ConcordanceQuery,
+    scan: &ConcordanceResult,
+    scan_elapsed: Duration,
+) {
+    eprintln!(
+        "[concordance-backend] mode=default_index backend=scan recovery=previous_index_error scan_recovery_ms={} query={} case_sensitive={} hits={} rows={}",
+        duration_ms(scan_elapsed),
+        log_string(&query.query, 80),
+        query.case_sensitive,
+        scan.total_hits,
+        scan.rows.len()
+    );
+}
+
+fn search_concordance_documents_strict_index_mode(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceQuery,
+    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    context_state: &ConcordanceIndexContextHandle,
+    key: ConcordanceIndexContextKey,
+) -> Result<ConcordanceSearchOutcome, String> {
+    search_concordance_documents_strict_index_mode_with(
+        documents,
+        query,
+        tokenization_config,
+        context_state,
+        key,
+        search_concordance_documents_with_warm_index,
+    )
+}
+
+fn search_concordance_documents_strict_index_mode_with<SearchIndex>(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceQuery,
+    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    context_state: &ConcordanceIndexContextHandle,
+    key: ConcordanceIndexContextKey,
+    search_index: SearchIndex,
+) -> Result<ConcordanceSearchOutcome, String>
+where
+    SearchIndex:
+        FnOnce(
+            &[ConcordanceDocument],
+            &ConcordanceQuery,
+            &corpuswright_core::tokenization::TokenizationConfig,
+            &ConcordanceIndexContextHandle,
+            ConcordanceIndexContextKey,
+        )
+            -> Result<RoutedConcordanceResult, corpuswright_core::analysis::ConcordanceError>,
+{
+    let index_started_at = Instant::now();
+    let routed = search_index(documents, query, tokenization_config, context_state, key);
+    let index_elapsed = index_started_at.elapsed();
+    match routed {
+        Ok(routed) => {
+            log_concordance_index_result(
+                ConcordanceBackendMode::StrictIndex,
+                query,
+                &routed,
+                index_elapsed,
+            );
+            Ok(ConcordanceSearchOutcome::from_routed(routed))
+        }
+        Err(error) => {
+            log_concordance_index_error(
+                ConcordanceBackendMode::StrictIndex,
+                query,
+                index_elapsed,
+                &error,
+            );
+            Err(error.to_string())
+        }
+    }
+}
+
+fn search_concordance_documents_default_index_mode(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceQuery,
+    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    context_state: &ConcordanceIndexContextHandle,
+    key: ConcordanceIndexContextKey,
+) -> Result<ConcordanceSearchOutcome, String> {
+    search_concordance_documents_default_index_mode_with(
+        documents,
+        query,
+        tokenization_config,
+        context_state,
+        key,
+        search_concordance_documents,
+        search_concordance_documents_with_warm_index,
+    )
+}
+
+fn search_concordance_documents_default_index_mode_with<SearchScan, SearchIndex>(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceQuery,
+    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    context_state: &ConcordanceIndexContextHandle,
+    key: ConcordanceIndexContextKey,
+    search_scan: SearchScan,
+    search_index: SearchIndex,
+) -> Result<ConcordanceSearchOutcome, String>
+where
+    SearchScan: Fn(
+        &[ConcordanceDocument],
+        &ConcordanceQuery,
+        &corpuswright_core::tokenization::TokenizationConfig,
+    ) -> Result<ConcordanceResult, corpuswright_core::analysis::ConcordanceError>,
+    SearchIndex:
+        FnOnce(
+            &[ConcordanceDocument],
+            &ConcordanceQuery,
+            &corpuswright_core::tokenization::TokenizationConfig,
+            &ConcordanceIndexContextHandle,
+            ConcordanceIndexContextKey,
+        )
+            -> Result<RoutedConcordanceResult, corpuswright_core::analysis::ConcordanceError>,
+{
+    if concordance_default_index_disabled_for_key(context_state, &key) {
+        let scan_started_at = Instant::now();
+        let scan = search_scan(documents, query, tokenization_config)
+            .map_err(|error| error.to_string())?;
+        let scan_elapsed = scan_started_at.elapsed();
+        log_concordance_default_index_previous_error_recovery(query, &scan, scan_elapsed);
+        return Ok(ConcordanceSearchOutcome {
+            result: scan,
+            backend_used: ConcordanceBackendUsed::Scan,
+            index_rebuilt: None,
+            recovery_reason: Some(ConcordanceIndexRecoveryReason::PreviousIndexError),
+        });
+    }
+
+    let index_started_at = Instant::now();
+    let routed = search_index(
+        documents,
+        query,
+        tokenization_config,
+        context_state,
+        key.clone(),
+    );
+    let index_elapsed = index_started_at.elapsed();
+    match routed {
+        Ok(routed) => {
+            log_concordance_index_result(
+                ConcordanceBackendMode::DefaultIndex,
+                query,
+                &routed,
+                index_elapsed,
+            );
+            Ok(ConcordanceSearchOutcome::from_routed(routed))
+        }
+        Err(index_error) => {
+            let failure_state = record_concordance_default_index_error(context_state, &key);
+            let scan_started_at = Instant::now();
+            let scan = search_scan(documents, query, tokenization_config);
+            let scan_elapsed = scan_started_at.elapsed();
+            match scan {
+                Ok(scan) => {
+                    log_concordance_default_index_recovery(
+                        query,
+                        &scan,
+                        index_elapsed,
+                        scan_elapsed,
+                        &index_error,
+                        failure_state,
+                    );
+                    Ok(ConcordanceSearchOutcome {
+                        result: scan,
+                        backend_used: ConcordanceBackendUsed::Scan,
+                        index_rebuilt: None,
+                        recovery_reason: Some(ConcordanceIndexRecoveryReason::IndexError),
+                    })
+                }
+                Err(scan_error) => {
+                    log_concordance_default_index_recovery_scan_error(
+                        query,
+                        index_elapsed,
+                        scan_elapsed,
+                        &index_error,
+                        &scan_error,
+                        failure_state,
+                    );
+                    Err(scan_error.to_string())
+                }
+            }
+        }
+    }
+}
+
+fn log_concordance_audit_result(
+    query: &ConcordanceQuery,
+    scan: &ConcordanceResult,
+    routed: &RoutedConcordanceResult,
+    scan_elapsed: Duration,
+    index_elapsed: Duration,
+    difference: Option<&ConcordanceAuditDifference>,
+) {
+    let parity = match routed.backend_used {
+        ConcordanceBackendUsed::ScanFallback { .. } => "scan_fallback",
+        ConcordanceBackendUsed::Scan | ConcordanceBackendUsed::Index => {
+            if difference.is_some() {
+                "mismatch"
+            } else {
+                "match"
+            }
+        }
+    };
+    let difference_summary = difference
+        .map(|difference| {
+            format!(
+                " diff_field={} diff_row={} scan={} index={}",
+                difference.field,
+                difference
+                    .row_index
+                    .map(|index| index.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+                log_string(&difference.scan, 120),
+                log_string(&difference.index, 120)
+            )
+        })
+        .unwrap_or_default();
+    eprintln!(
+        "[concordance-backend] mode=audit backend={} fallback={} rebuilt={} scan_ms={} index_ms={} parity={} query={} case_sensitive={} hits={} rows={}{}",
+        concordance_backend_used_label(routed.backend_used),
+        concordance_fallback_label(routed.backend_used),
+        routed.index_rebuilt,
+        duration_ms(scan_elapsed),
+        duration_ms(index_elapsed),
+        parity,
+        log_string(&query.query, 80),
+        query.case_sensitive,
+        scan.total_hits,
+        scan.rows.len(),
+        difference_summary
+    );
+}
+
+fn log_concordance_audit_index_error(
+    query: &ConcordanceQuery,
+    scan: &ConcordanceResult,
+    scan_elapsed: Duration,
+    index_elapsed: Duration,
+    error: &corpuswright_core::analysis::ConcordanceError,
+) {
+    eprintln!(
+        "[concordance-backend] mode=audit backend=index fallback=none rebuilt=unknown scan_ms={} index_ms={} parity=index_error query={} case_sensitive={} hits={} rows={} error={}",
+        duration_ms(scan_elapsed),
+        duration_ms(index_elapsed),
+        log_string(&query.query, 80),
+        query.case_sensitive,
+        scan.total_hits,
+        scan.rows.len(),
+        log_string(&error.to_string(), 160)
+    );
+}
+
+fn search_concordance_documents_audit_mode(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceQuery,
+    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    context_state: &ConcordanceIndexContextHandle,
+    key: ConcordanceIndexContextKey,
+) -> Result<ConcordanceResult, String> {
+    let scan_started_at = Instant::now();
+    let scan = search_concordance_documents(documents, query, tokenization_config)
+        .map_err(|error| error.to_string())?;
+    let scan_elapsed = scan_started_at.elapsed();
+
+    let index_started_at = Instant::now();
+    let routed = search_concordance_documents_with_warm_index(
+        documents,
+        query,
+        tokenization_config,
+        context_state,
+        key,
+    );
+    let index_elapsed = index_started_at.elapsed();
+    match routed {
+        Ok(routed) => {
+            let difference = match routed.backend_used {
+                ConcordanceBackendUsed::ScanFallback { .. } => None,
+                ConcordanceBackendUsed::Scan | ConcordanceBackendUsed::Index => {
+                    compare_concordance_results(&scan, &routed.result)
+                }
+            };
+            log_concordance_audit_result(
+                query,
+                &scan,
+                &routed,
+                scan_elapsed,
+                index_elapsed,
+                difference.as_ref(),
+            );
+        }
+        Err(error) => {
+            log_concordance_audit_index_error(query, &scan, scan_elapsed, index_elapsed, &error);
+        }
+    }
+
+    Ok(scan)
+}
+
 fn project_effective_language_overrides(
     project_root: Option<&Path>,
     records: &[DocumentRecord],
@@ -2292,8 +3123,16 @@ async fn search_concordance_command(
     cleaning_config: CleaningConfig,
     corpus: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
+    index_context: tauri::State<'_, ConcordanceIndexContextState>,
 ) -> Result<ConcordanceResult, String> {
     let (records, project_root) = corpus.all_records_and_root(corpus_version)?;
+    let mode = concordance_backend_mode_from_env();
+    let context_key = ConcordanceIndexContextKey {
+        corpus_version,
+        project_root: project_root_cache_key(project_root.as_deref()),
+        cleaning_config_signature: cleaning_config_signature(&cleaning_config),
+    };
+    let index_context = index_context.context_handle();
     let cache = cache.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let mut documents = Vec::new();
@@ -2309,12 +3148,38 @@ async fn search_concordance_command(
                 documents.push(document);
             }
         }
-        search_concordance_documents(
-            &documents,
-            &query,
-            &corpuswright_core::tokenization::TokenizationConfig::default(),
-        )
-        .map_err(|error| error.to_string())
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        match mode {
+            ConcordanceBackendMode::DefaultIndex => {
+                search_concordance_documents_default_index_mode(
+                    &documents,
+                    &query,
+                    &tokenization_config,
+                    &index_context,
+                    context_key,
+                )
+                .map(|outcome| outcome.result)
+            }
+            ConcordanceBackendMode::Scan => {
+                search_concordance_documents(&documents, &query, &tokenization_config)
+                    .map_err(|error| error.to_string())
+            }
+            ConcordanceBackendMode::StrictIndex => search_concordance_documents_strict_index_mode(
+                &documents,
+                &query,
+                &tokenization_config,
+                &index_context,
+                context_key,
+            )
+            .map(|outcome| outcome.result),
+            ConcordanceBackendMode::Audit => search_concordance_documents_audit_mode(
+                &documents,
+                &query,
+                &tokenization_config,
+                &index_context,
+                context_key,
+            ),
+        }
     })
     .await
     .map_err(|error| format!("Concordance query task failed: {error}"))?
@@ -2858,6 +3723,7 @@ fn process_project_sources_command(
     corpus: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     inventory: tauri::State<'_, project::ProjectSourceInventoryState>,
+    index_context: tauri::State<'_, ConcordanceIndexContextState>,
     analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<ProcessSourcesReport, String> {
     let project_root = project::validated_project_root(&root_path)?;
@@ -2946,6 +3812,7 @@ fn process_project_sources_command(
         update_project_source_processing_results(&project_root, processing_results)?;
     }
     analysis.clear();
+    index_context.clear();
 
     Ok(ProcessSourcesReport {
         total_count: total,
@@ -3240,6 +4107,7 @@ pub fn run() {
         .manage(ExtractionCache::new())
         .manage(PdfPageRangeCache::new())
         .manage(ConcordanceCollocationCache::new())
+        .manage(ConcordanceIndexContextState::new())
         .manage(project::ProjectSourceInventoryState::new())
         .invoke_handler(tauri::generate_handler![
             scan_directory_command,
