@@ -4218,6 +4218,476 @@ mod tests {
         }
     }
 
+    fn concordance_test_documents() -> Vec<ConcordanceDocument> {
+        vec![
+            ConcordanceDocument {
+                document_index: 0,
+                source_path: "a.txt".to_string(),
+                display_name: "a.txt".to_string(),
+                text: "Movie, movie. Good movie! I love it. ação coração não João.".to_string(),
+            },
+            ConcordanceDocument {
+                document_index: 1,
+                source_path: "b.txt".to_string(),
+                display_name: "b.txt".to_string(),
+                text: "A good movie is still a movie. Eu digo ação, coração, não, João."
+                    .to_string(),
+            },
+        ]
+    }
+
+    fn concordance_test_query(query: &str) -> ConcordanceQuery {
+        ConcordanceQuery {
+            selection: AnalysisDocumentSelection::default(),
+            query: query.to_string(),
+            context_filter: None,
+            case_sensitive: false,
+            sort_key: corpuswright_core::analysis::ConcordanceSortKey::FilePosition,
+            window_tokens: 5,
+            offset: 0,
+            limit: 100,
+            distribution_offset: 0,
+            distribution_limit: 10,
+        }
+    }
+
+    fn concordance_test_context_key(corpus_version: u64) -> ConcordanceIndexContextKey {
+        ConcordanceIndexContextKey {
+            corpus_version,
+            project_root: Some("project".to_string()),
+            cleaning_config_signature: "cleaning-v1".to_string(),
+        }
+    }
+
+    fn concordance_test_context() -> ConcordanceIndexContextHandle {
+        Arc::new(Mutex::new(ConcordanceIndexContextCache::default()))
+    }
+
+    fn concordance_test_index_error() -> corpuswright_core::analysis::ConcordanceError {
+        corpuswright_core::analysis::ConcordanceError::Index(
+            corpuswright_core::index::SurfaceIndexError::DuplicateDocumentId(0),
+        )
+    }
+
+    #[test]
+    fn concordance_backend_mode_parser_covers_env_contract() {
+        let cases = [
+            (None, ConcordanceBackendMode::DefaultIndex, None),
+            (Some(""), ConcordanceBackendMode::DefaultIndex, None),
+            (Some("   "), ConcordanceBackendMode::DefaultIndex, None),
+            (Some("scan"), ConcordanceBackendMode::Scan, None),
+            (Some("ScAn"), ConcordanceBackendMode::Scan, None),
+            (Some("index"), ConcordanceBackendMode::StrictIndex, None),
+            (Some(" INDEX "), ConcordanceBackendMode::StrictIndex, None),
+            (Some("Audit"), ConcordanceBackendMode::Audit, None),
+            (
+                Some("something-else"),
+                ConcordanceBackendMode::DefaultIndex,
+                Some("something-else"),
+            ),
+        ];
+
+        for (value, expected_mode, expected_unknown) in cases {
+            let parsed = parse_concordance_backend_mode(value);
+            assert_eq!(parsed.mode, expected_mode);
+            assert_eq!(parsed.unknown_value.as_deref(), expected_unknown);
+        }
+    }
+
+    #[test]
+    fn concordance_default_index_uses_index_for_supported_query() {
+        let documents = concordance_test_documents();
+        let query = concordance_test_query("movie");
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let context = concordance_test_context();
+        let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
+
+        let outcome = search_concordance_documents_default_index_mode(
+            &documents,
+            &query,
+            &tokenization_config,
+            &context,
+            concordance_test_context_key(7),
+        )
+        .unwrap();
+
+        assert_eq!(outcome.backend_used, ConcordanceBackendUsed::Index);
+        assert_eq!(outcome.recovery_reason, None);
+        assert_eq!(outcome.index_rebuilt, Some(true));
+        assert_eq!(outcome.result, scan);
+    }
+
+    #[test]
+    fn concordance_default_index_success_does_not_invoke_scan_route() {
+        let documents = concordance_test_documents();
+        let query = concordance_test_query("movie");
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let context = concordance_test_context();
+        let expected = search_concordance_documents(&documents, &query, &tokenization_config)
+            .expect("fixture scan should succeed");
+        let scan_calls = std::cell::Cell::new(0usize);
+        let index_calls = std::cell::Cell::new(0usize);
+
+        let outcome = search_concordance_documents_default_index_mode_with(
+            &documents,
+            &query,
+            &tokenization_config,
+            &context,
+            concordance_test_context_key(7),
+            |_, _, _| {
+                scan_calls.set(scan_calls.get() + 1);
+                panic!("default index success must not invoke scan")
+            },
+            |_, _, _, _, _| {
+                index_calls.set(index_calls.get() + 1);
+                Ok(RoutedConcordanceResult {
+                    result: expected.clone(),
+                    backend_used: ConcordanceBackendUsed::Index,
+                    index_rebuilt: false,
+                })
+            },
+        )
+        .unwrap();
+
+        assert_eq!(index_calls.get(), 1);
+        assert_eq!(scan_calls.get(), 0);
+        assert_eq!(outcome.backend_used, ConcordanceBackendUsed::Index);
+        assert_eq!(outcome.result, expected);
+    }
+
+    #[test]
+    fn concordance_default_index_falls_back_for_unsupported_filter() {
+        let documents = concordance_test_documents();
+        let mut query = concordance_test_query("movie");
+        query.context_filter = Some("good".to_string());
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let context = concordance_test_context();
+        let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
+
+        let outcome = search_concordance_documents_default_index_mode(
+            &documents,
+            &query,
+            &tokenization_config,
+            &context,
+            concordance_test_context_key(7),
+        )
+        .unwrap();
+
+        assert_eq!(
+            outcome.backend_used,
+            ConcordanceBackendUsed::ScanFallback {
+                reason: ConcordanceFallbackReason::UnsupportedFilter,
+            }
+        );
+        assert_eq!(outcome.recovery_reason, None);
+        assert_eq!(outcome.index_rebuilt, Some(false));
+        assert_eq!(outcome.result, scan);
+    }
+
+    #[test]
+    fn concordance_default_index_recovers_from_index_error_and_retries_clean_rebuild() {
+        let documents = concordance_test_documents();
+        let query = concordance_test_query("movie");
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let context = concordance_test_context();
+        let key = concordance_test_context_key(7);
+        let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
+        let primed = search_concordance_documents_with_warm_index(
+            &documents,
+            &query,
+            &tokenization_config,
+            &context,
+            key.clone(),
+        )
+        .unwrap();
+        assert!(primed.index_rebuilt);
+        assert!(context.lock().unwrap().entry.is_some());
+
+        let index_error = concordance_test_index_error();
+        let outcome = search_concordance_documents_default_index_mode_with(
+            &documents,
+            &query,
+            &tokenization_config,
+            &context,
+            key.clone(),
+            search_concordance_documents,
+            |_, _, _, _, _| Err(index_error.clone()),
+        )
+        .unwrap();
+
+        assert_eq!(outcome.backend_used, ConcordanceBackendUsed::Scan);
+        assert_eq!(
+            outcome.recovery_reason,
+            Some(ConcordanceIndexRecoveryReason::IndexError)
+        );
+        assert_eq!(outcome.index_rebuilt, None);
+        assert_eq!(outcome.result, scan);
+        {
+            let cache = context.lock().unwrap();
+            assert!(cache.entry.is_none());
+            assert_eq!(
+                cache
+                    .default_index_failure
+                    .as_ref()
+                    .map(|failure| &failure.state),
+                Some(&ConcordanceDefaultIndexFailureState::RetryPending)
+            );
+        }
+
+        let retry = search_concordance_documents_default_index_mode(
+            &documents,
+            &query,
+            &tokenization_config,
+            &context,
+            key,
+        )
+        .unwrap();
+
+        assert_eq!(retry.backend_used, ConcordanceBackendUsed::Index);
+        assert_eq!(retry.index_rebuilt, Some(true));
+        assert_eq!(retry.recovery_reason, None);
+        assert!(context.lock().unwrap().default_index_failure.is_none());
+    }
+
+    #[test]
+    fn concordance_default_index_disables_after_repeated_index_error() {
+        let documents = concordance_test_documents();
+        let query = concordance_test_query("movie");
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let context = concordance_test_context();
+        let key = concordance_test_context_key(7);
+        let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
+
+        for expected_state in [
+            ConcordanceDefaultIndexFailureState::RetryPending,
+            ConcordanceDefaultIndexFailureState::Disabled,
+        ] {
+            let index_error = concordance_test_index_error();
+            let outcome = search_concordance_documents_default_index_mode_with(
+                &documents,
+                &query,
+                &tokenization_config,
+                &context,
+                key.clone(),
+                search_concordance_documents,
+                |_, _, _, _, _| Err(index_error.clone()),
+            )
+            .unwrap();
+            assert_eq!(outcome.result, scan);
+            assert_eq!(
+                outcome.recovery_reason,
+                Some(ConcordanceIndexRecoveryReason::IndexError)
+            );
+            assert_eq!(
+                context
+                    .lock()
+                    .unwrap()
+                    .default_index_failure
+                    .as_ref()
+                    .map(|failure| &failure.state),
+                Some(&expected_state)
+            );
+        }
+
+        let index_calls = std::cell::Cell::new(0usize);
+        let outcome = search_concordance_documents_default_index_mode_with(
+            &documents,
+            &query,
+            &tokenization_config,
+            &context,
+            key,
+            search_concordance_documents,
+            |_, _, _, _, _| {
+                index_calls.set(index_calls.get() + 1);
+                Err(concordance_test_index_error())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(index_calls.get(), 0);
+        assert_eq!(outcome.result, scan);
+        assert_eq!(
+            outcome.recovery_reason,
+            Some(ConcordanceIndexRecoveryReason::PreviousIndexError)
+        );
+    }
+
+    #[test]
+    fn concordance_strict_index_surfaces_injected_index_error() {
+        let documents = concordance_test_documents();
+        let query = concordance_test_query("movie");
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let context = concordance_test_context();
+        let index_error = concordance_test_index_error();
+
+        let error = search_concordance_documents_strict_index_mode_with(
+            &documents,
+            &query,
+            &tokenization_config,
+            &context,
+            concordance_test_context_key(7),
+            |_, _, _, _, _| Err(index_error.clone()),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, index_error.to_string());
+    }
+
+    #[test]
+    fn concordance_audit_difference_reports_first_row_identity_mismatch() {
+        let documents = concordance_test_documents();
+        let query = concordance_test_query("movie");
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
+        let mut index = scan.clone();
+        index.rows[0].token_index += 1;
+
+        let difference = compare_concordance_results(&scan, &index).unwrap();
+
+        assert_eq!(difference.field, "row_identity");
+        assert_eq!(difference.row_index, Some(0));
+        assert_ne!(difference.scan, difference.index);
+    }
+
+    #[test]
+    fn concordance_warm_index_context_reuses_store_for_fixture_sequence() {
+        let documents = concordance_test_documents();
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let context = concordance_test_context();
+        let queries = [
+            "movie",
+            "good movie",
+            "I love it",
+            "ação",
+            "coração",
+            "não",
+            "João",
+        ];
+        let mut rebuild_count = 0;
+
+        for pass in 0..2 {
+            for query_text in queries.iter().copied() {
+                let query = concordance_test_query(query_text);
+                let scan =
+                    search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
+                let started_at = Instant::now();
+                let routed = search_concordance_documents_with_warm_index(
+                    &documents,
+                    &query,
+                    &tokenization_config,
+                    &context,
+                    concordance_test_context_key(7),
+                )
+                .unwrap();
+                eprintln!(
+                    "[concordance-backend-test] pass={} query={} index_ms={} rebuilt={}",
+                    pass,
+                    log_string(query_text, 80),
+                    duration_ms(started_at.elapsed()),
+                    routed.index_rebuilt
+                );
+
+                assert_eq!(routed.backend_used, ConcordanceBackendUsed::Index);
+                assert_eq!(routed.result, scan);
+                if routed.index_rebuilt {
+                    rebuild_count += 1;
+                }
+                if pass == 1 {
+                    assert!(!routed.index_rebuilt);
+                }
+            }
+        }
+
+        assert_eq!(rebuild_count, 1);
+    }
+
+    #[test]
+    fn concordance_warm_index_context_rebuilds_when_corpus_key_changes() {
+        let documents = concordance_test_documents();
+        let query = concordance_test_query("movie");
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let context = concordance_test_context();
+
+        let first = search_concordance_documents_with_warm_index(
+            &documents,
+            &query,
+            &tokenization_config,
+            &context,
+            concordance_test_context_key(7),
+        )
+        .unwrap();
+        let second = search_concordance_documents_with_warm_index(
+            &documents,
+            &query,
+            &tokenization_config,
+            &context,
+            concordance_test_context_key(7),
+        )
+        .unwrap();
+        let third = search_concordance_documents_with_warm_index(
+            &documents,
+            &query,
+            &tokenization_config,
+            &context,
+            concordance_test_context_key(8),
+        )
+        .unwrap();
+
+        assert!(first.index_rebuilt);
+        assert!(!second.index_rebuilt);
+        assert!(third.index_rebuilt);
+    }
+
+    #[test]
+    fn concordance_index_fallback_returns_scan_without_rebuild() {
+        let documents = concordance_test_documents();
+        let mut query = concordance_test_query("movie");
+        query.context_filter = Some("good".to_string());
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let context = concordance_test_context();
+        let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
+
+        let routed = search_concordance_documents_with_warm_index(
+            &documents,
+            &query,
+            &tokenization_config,
+            &context,
+            concordance_test_context_key(7),
+        )
+        .unwrap();
+
+        assert_eq!(
+            routed.backend_used,
+            ConcordanceBackendUsed::ScanFallback {
+                reason: ConcordanceFallbackReason::UnsupportedFilter,
+            }
+        );
+        assert!(!routed.index_rebuilt);
+        assert_eq!(routed.result, scan);
+    }
+
+    #[test]
+    fn concordance_index_errors_surface_from_warm_route() {
+        let documents = concordance_test_documents();
+        let query = concordance_test_query("   ");
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let context = concordance_test_context();
+
+        let error = search_concordance_documents_with_warm_index(
+            &documents,
+            &query,
+            &tokenization_config,
+            &context,
+            concordance_test_context_key(7),
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            corpuswright_core::analysis::ConcordanceError::EmptyQuery
+        );
+    }
+
     #[test]
     fn concordance_collocation_cache_is_keyed_by_aggregation_inputs() {
         let cache = ConcordanceCollocationCache::new();
