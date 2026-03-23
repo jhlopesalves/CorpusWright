@@ -976,3 +976,329 @@ mod tests {
         let config = TokenizationConfig::default();
         let tokens = tokenize("Movie ação João", 0, &config)
             .into_iter()
+            .filter(|token| token.counts_as_word())
+            .collect::<Vec<_>>();
+
+        for token in tokens {
+            assert_eq!(
+                token.aggregation_key(&config),
+                concordance_key(token.surface, false)
+            );
+        }
+    }
+
+    #[test]
+    fn exact_surface_postings_distinguish_case_from_normalised_postings() {
+        let documents = [
+            document_input(2, "b.txt", "MOVIE movie"),
+            document_input(0, "a.txt", "Movie movie MOVIE"),
+        ];
+
+        let store = build_index(&documents);
+        let normalised_postings = store.postings("movie").unwrap();
+
+        assert_eq!(
+            normalised_postings
+                .iter()
+                .map(|posting| (posting.document_id, posting.token_ordinal_in_document))
+                .collect::<Vec<_>>(),
+            [(0, 0), (0, 1), (0, 2), (2, 0), (2, 1)]
+        );
+        assert_eq!(
+            store
+                .exact_surface_postings("movie")
+                .unwrap()
+                .iter()
+                .map(|posting| (posting.document_id, posting.token_ordinal_in_document))
+                .collect::<Vec<_>>(),
+            [(0, 1), (2, 1)]
+        );
+        assert_eq!(
+            store
+                .exact_surface_postings("Movie")
+                .unwrap()
+                .iter()
+                .map(|posting| (posting.document_id, posting.token_ordinal_in_document))
+                .collect::<Vec<_>>(),
+            [(0, 0)]
+        );
+        assert_eq!(
+            store
+                .exact_surface_postings("MOVIE")
+                .unwrap()
+                .iter()
+                .map(|posting| (posting.document_id, posting.token_ordinal_in_document))
+                .collect::<Vec<_>>(),
+            [(0, 2), (2, 0)]
+        );
+    }
+
+    #[test]
+    fn postings_are_sorted_by_document_and_token_ordinal() {
+        let documents = [
+            document_input(2, "b.txt", "alpha beta alpha"),
+            document_input(0, "a.txt", "beta alpha"),
+        ];
+
+        let store = build_index(&documents);
+        let postings = store.postings("alpha").unwrap();
+
+        assert_eq!(
+            postings
+                .iter()
+                .map(|posting| (posting.document_id, posting.token_ordinal_in_document))
+                .collect::<Vec<_>>(),
+            [(0, 1), (2, 0), (2, 2)]
+        );
+        assert_eq!(store.document_frequency("alpha"), 2);
+
+        let exact_postings = store.exact_surface_postings("alpha").unwrap();
+        assert_eq!(
+            exact_postings
+                .iter()
+                .map(|posting| (posting.document_id, posting.token_ordinal_in_document))
+                .collect::<Vec<_>>(),
+            [(0, 1), (2, 0), (2, 2)]
+        );
+    }
+
+    #[test]
+    fn query_ast_resolves_case_modes_without_crossing_documents() {
+        let documents = [
+            document_input(
+                0,
+                "a.txt",
+                "Movie, movie. MOVIE. good movie. Good movie! I love it. i love it.",
+            ),
+            document_input(1, "b.txt", "good"),
+            document_input(2, "c.txt", "movie"),
+        ];
+        let store = build_index(&documents);
+
+        assert_eq!(
+            search_positions(&store, "movie", false),
+            [(0, 0), (0, 1), (0, 2), (0, 4), (0, 6), (2, 0)]
+        );
+        assert_eq!(
+            search_positions(&store, "Movie", false),
+            [(0, 0), (0, 1), (0, 2), (0, 4), (0, 6), (2, 0)]
+        );
+        assert_eq!(
+            search_positions(&store, "movie", true),
+            [(0, 1), (0, 4), (0, 6), (2, 0)]
+        );
+        assert_eq!(search_positions(&store, "Movie", true), [(0, 0)]);
+        assert_eq!(search_positions(&store, "MOVIE", true), [(0, 2)]);
+
+        assert_eq!(
+            search_positions(&store, "good movie", false),
+            [(0, 3), (0, 5)]
+        );
+        assert_eq!(
+            search_positions(&store, "Good movie", false),
+            [(0, 3), (0, 5)]
+        );
+        assert_eq!(search_positions(&store, "good movie", true), [(0, 3)]);
+        assert_eq!(search_positions(&store, "Good movie", true), [(0, 5)]);
+
+        let boundary_documents = [
+            document_input(1, "boundary-a.txt", "good"),
+            document_input(2, "boundary-b.txt", "movie"),
+        ];
+        let boundary_store = build_index(&boundary_documents);
+        assert!(search_positions(&boundary_store, "good movie", false).is_empty());
+    }
+
+    #[test]
+    fn scan_vs_index_parity_holds_for_required_english_queries() {
+        let documents = [
+            concordance_document(
+                0,
+                "a.txt",
+                "Movie, movie. MOVIE. good movie. Good movie! I love it. i love it.",
+            ),
+            concordance_document(
+                1,
+                "b.txt",
+                "A movie is not the same as a Good movie? I love it.",
+            ),
+        ];
+
+        for query in [
+            "movie",
+            "Movie",
+            "MOVIE",
+            "good movie",
+            "Good movie",
+            "I love it",
+            "i love it",
+        ] {
+            assert_scan_index_parity_both_modes(&documents, query);
+        }
+    }
+
+    #[test]
+    fn scan_vs_index_parity_holds_for_required_portuguese_queries() {
+        let documents = [
+            concordance_document(
+                0,
+                "pt-a.txt",
+                "ação Ação coração Coração não Não João joão maçã Maçã.",
+            ),
+            concordance_document(1, "pt-b.txt", "A ação toca o coração, e João diz não."),
+        ];
+
+        for query in [
+            "ação",
+            "Ação",
+            "coração",
+            "Coração",
+            "não",
+            "Não",
+            "João",
+            "joão",
+        ] {
+            assert_scan_index_parity_both_modes(&documents, query);
+        }
+    }
+
+    #[test]
+    fn windows_1252_recovered_portuguese_offsets_and_parity_hold() {
+        let bytes = b"caf\xe9 a\xe7\xe3o A\xe7\xe3o Jo\xe3o jo\xe3o cora\xe7\xe3o Cora\xe7\xe3o n\xe3o N\xe3o ma\xe7\xe3 Ma\xe7\xe3";
+        let decoded = decode_source_bytes(bytes);
+        assert_eq!(decoded.detected_encoding, SourceEncoding::Windows1252);
+        assert_eq!(decoded.decode_strategy, DecodeStrategy::Windows1252Fallback);
+        assert!(decoded.had_utf8_error);
+        assert_eq!(
+            decoded.text,
+            "café ação Ação João joão coração Coração não Não maçã Maçã"
+        );
+        assert!(!decoded.text.contains('\u{fffd}'));
+
+        let documents = [document_input(0, "pt-win1252.txt", &decoded.text)];
+        let store = build_index(&documents);
+        let records = store.records_for_document(0).unwrap();
+
+        for expected_surface in [
+            "ação",
+            "Ação",
+            "João",
+            "joão",
+            "coração",
+            "Coração",
+            "não",
+            "Não",
+            "maçã",
+            "Maçã",
+        ] {
+            let record = records
+                .iter()
+                .find(|record| record.surface == expected_surface)
+                .unwrap();
+            assert_eq!(
+                surface_at_char_offsets(
+                    &decoded.text,
+                    record.prepared_char_start,
+                    record.prepared_char_end
+                ),
+                expected_surface
+            );
+        }
+        let acao = records
+            .iter()
+            .find(|record| record.surface == "ação")
+            .unwrap();
+        assert_eq!((acao.prepared_char_start, acao.prepared_char_end), (5, 9));
+
+        assert!(records.iter().any(|record| record.surface == "João"));
+        assert!(records.iter().any(|record| record.surface == "joão"));
+
+        let concordance_documents = [concordance_document(
+            0,
+            "pt-win1252.txt",
+            decoded.text.as_str(),
+        )];
+        for query in [
+            "ação",
+            "Ação",
+            "coração",
+            "Coração",
+            "não",
+            "Não",
+            "João",
+            "joão",
+        ] {
+            assert_scan_index_parity_both_modes(&concordance_documents, query);
+        }
+    }
+
+    #[test]
+    fn linear_offset_conversion_matches_reference_character_offsets() {
+        let config = TokenizationConfig::default();
+        let text = "ação Coração não João maçã ".repeat(40);
+        let documents = [document_input(3, "long-pt.txt", &text)];
+        let store = build_index(&documents);
+        let records = store.records_for_document(3).unwrap();
+        let word_tokens = tokenize(&text, 3, &config)
+            .into_iter()
+            .filter(|token| token.counts_as_word())
+            .collect::<Vec<_>>();
+
+        assert_eq!(records.len(), word_tokens.len());
+        for (record, token) in records.iter().zip(&word_tokens) {
+            let reference_start = text[..token.byte_start].chars().count();
+            let reference_end = text[..token.byte_end].chars().count();
+            assert_eq!(record.prepared_char_start, reference_start);
+            assert_eq!(record.prepared_char_end, reference_end);
+        }
+    }
+
+    #[test]
+    fn invalid_prepared_offset_inside_utf8_codepoint_still_errors() {
+        let error = prepared_char_offsets_for_token_bytes("ação", 7, &[(2, 3)]).unwrap_err();
+
+        assert_eq!(
+            error,
+            SurfaceIndexError::InvalidPreparedOffset {
+                document_id: 7,
+                byte_start: 2,
+                byte_end: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn manifest_invalidates_when_identity_inputs_change() {
+        let expected = SurfaceIndexManifest::new(
+            "processed-hash".to_string(),
+            TokenizationManifest::default(),
+        );
+        assert_eq!(expected.schema_version, 2);
+
+        let mut changed_schema = expected.clone();
+        changed_schema.schema_version = 1;
+        assert!(!changed_schema.is_valid_for(&expected));
+
+        let mut changed_decode = expected.clone();
+        changed_decode.decode_policy_version += 1;
+        assert!(!changed_decode.is_valid_for(&expected));
+
+        let mut changed_tokenization = expected.clone();
+        changed_tokenization.tokenization.version = "2".to_string();
+        assert!(!changed_tokenization.is_valid_for(&expected));
+
+        let mut changed_processed_text = expected.clone();
+        changed_processed_text.processed_texts_hash_sha256 = "other-hash".to_string();
+        assert!(!changed_processed_text.is_valid_for(&expected));
+    }
+
+    #[test]
+    fn index_types_remain_rust_only_without_ts_export() {
+        let source = include_str!("index.rs");
+        let ts_export_attr = concat!("#[", "ts(export)]");
+        let ts_derive = concat!("derive(", "TS");
+
+        assert!(!source.contains(ts_export_attr));
+        assert!(!source.contains(ts_derive));
+    }
+}
