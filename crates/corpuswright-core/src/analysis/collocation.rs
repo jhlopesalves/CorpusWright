@@ -6,6 +6,7 @@ use super::concordance::{
 use super::frequency::{SortDirection, case_fold_surface};
 use super::shared::ENGLISH_STOPWORDS;
 use crate::tokenization::TokenizationConfig;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -13,6 +14,7 @@ use ts_rs::TS;
 
 const CONCORDANCE_COLLOCATION_DEFAULT_SPAN: usize = 5;
 const CONCORDANCE_COLLOCATION_MAX_SPAN: usize = 20;
+const CONCORDANCE_COLLOCATION_DISTANCE_BUCKETS: usize = CONCORDANCE_COLLOCATION_MAX_SPAN * 2;
 const CONCORDANCE_COLLOCATION_DEFAULT_LIMIT: usize = 100;
 const CONCORDANCE_COLLOCATION_MAX_LIMIT: usize = 500;
 
@@ -143,19 +145,81 @@ pub struct ConcordanceCollocationResult {
 pub struct ConcordanceCollocationAggregationSignature {
     pub query: String,
     pub case_sensitive: bool,
-    pub span: usize,
-    pub direction: ConcordanceCollocationDirection,
+}
+
+/// Per-distance counts for left distances 1..=20 followed by right distances 1..=20.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConcordanceCollocationDistanceCounts {
+    counts: [u64; CONCORDANCE_COLLOCATION_DISTANCE_BUCKETS],
 }
 
 /// Corpus-scan output for concordance collocates.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConcordanceCollocationAggregate {
     pub signature: ConcordanceCollocationAggregationSignature,
-    pub candidate_counts: HashMap<String, u64>,
+    pub candidate_counts: HashMap<String, ConcordanceCollocationDistanceCounts>,
     pub collocate_frequencies: HashMap<String, u64>,
-    pub r1: u64,
+    pub r1: ConcordanceCollocationDistanceCounts,
     pub n: u64,
     pub f_node: u64,
+}
+
+impl Default for ConcordanceCollocationDistanceCounts {
+    fn default() -> Self {
+        Self {
+            counts: [0; CONCORDANCE_COLLOCATION_DISTANCE_BUCKETS],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CollocationWindowSide {
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CollocationWindow {
+    start: usize,
+    end: usize,
+    node_edge: usize,
+    side: CollocationWindowSide,
+}
+
+impl ConcordanceCollocationDistanceCounts {
+    fn add(&mut self, side: CollocationWindowSide, distance: usize, count: u64) {
+        debug_assert!((1..=CONCORDANCE_COLLOCATION_MAX_SPAN).contains(&distance));
+        let offset = match side {
+            CollocationWindowSide::Left => 0,
+            CollocationWindowSide::Right => CONCORDANCE_COLLOCATION_MAX_SPAN,
+        };
+        self.counts[offset + distance - 1] += count;
+    }
+
+    fn merge(&mut self, other: &Self) {
+        for (left, right) in self.counts.iter_mut().zip(other.counts) {
+            *left += right;
+        }
+    }
+
+    fn sum(&self, span: usize, direction: ConcordanceCollocationDirection) -> u64 {
+        let span = span.min(CONCORDANCE_COLLOCATION_MAX_SPAN);
+        let mut total = 0;
+        if matches!(
+            direction,
+            ConcordanceCollocationDirection::Left | ConcordanceCollocationDirection::Both
+        ) {
+            total += self.counts[..span].iter().sum::<u64>();
+        }
+        if matches!(
+            direction,
+            ConcordanceCollocationDirection::Right | ConcordanceCollocationDirection::Both
+        ) {
+            let start = CONCORDANCE_COLLOCATION_MAX_SPAN;
+            total += self.counts[start..start + span].iter().sum::<u64>();
+        }
+        total
+    }
 }
 
 fn default_collocation_floor() -> u64 {
@@ -182,20 +246,32 @@ fn stopword_matches(value: &str) -> bool {
     ENGLISH_STOPWORDS.contains(case_fold_surface(value).as_str())
 }
 
-fn add_collocation_window_tokens<'text>(
-    tokens: &[crate::tokenization::Token<'text>],
-    start: usize,
-    end: usize,
-    case_sensitive: bool,
+fn add_collocation_window_token_keys(
+    token_keys: &[String],
+    window: CollocationWindow,
     query_keys: &HashSet<String>,
-    candidate_counts: &mut HashMap<String, u64>,
+    r1: &mut ConcordanceCollocationDistanceCounts,
+    candidate_counts: &mut HashMap<String, ConcordanceCollocationDistanceCounts>,
 ) {
-    for token in &tokens[start..end] {
-        let candidate = concordance_key(token.surface, case_sensitive);
-        if query_keys.contains(&candidate) {
+    for (token_index, candidate) in token_keys
+        .iter()
+        .enumerate()
+        .take(window.end)
+        .skip(window.start)
+    {
+        let distance = match window.side {
+            CollocationWindowSide::Left => window.node_edge - token_index,
+            CollocationWindowSide::Right => token_index - window.node_edge + 1,
+        };
+        r1.add(window.side, distance, 1);
+
+        if query_keys.contains(candidate) {
             continue;
         }
-        *candidate_counts.entry(candidate).or_default() += 1;
+        candidate_counts
+            .entry(candidate.clone())
+            .or_default()
+            .add(window.side, distance, 1);
     }
 }
 
@@ -388,7 +464,6 @@ fn resolve_concordance_collocation_aggregation(
     ),
     ConcordanceError,
 > {
-    let span = concordance_collocation_span(query.span);
     let query_tokens = resolve_concordance_query_tokens(&query.query, tokenization_config)?;
     let query_keys = query_tokens
         .iter()
@@ -399,8 +474,6 @@ fn resolve_concordance_collocation_aggregation(
         ConcordanceCollocationAggregationSignature {
             query: query_tokens.join(" "),
             case_sensitive: query.case_sensitive,
-            span,
-            direction: query.direction,
         },
         query_keys,
         query_key_set,
@@ -416,6 +489,111 @@ pub fn concordance_collocation_aggregation_signature(
         .map(|(signature, _, _)| signature)
 }
 
+#[derive(Debug)]
+struct ConcordanceCollocationDocumentAggregate {
+    document_index: usize,
+    candidate_counts: HashMap<String, ConcordanceCollocationDistanceCounts>,
+    collocate_frequencies: HashMap<String, u64>,
+    r1: ConcordanceCollocationDistanceCounts,
+    n: u64,
+    f_node: u64,
+}
+
+impl ConcordanceCollocationAggregate {
+    fn merge_document(&mut self, document: ConcordanceCollocationDocumentAggregate) {
+        for (candidate, counts) in document.candidate_counts {
+            self.candidate_counts
+                .entry(candidate)
+                .or_default()
+                .merge(&counts);
+        }
+        for (candidate, frequency) in document.collocate_frequencies {
+            *self.collocate_frequencies.entry(candidate).or_default() += frequency;
+        }
+        self.r1.merge(&document.r1);
+        self.n += document.n;
+        self.f_node += document.f_node;
+    }
+}
+
+fn aggregate_concordance_collocations_document(
+    document: &ConcordanceDocument,
+    query_keys: &[String],
+    query_key_set: &HashSet<String>,
+    case_sensitive: bool,
+    tokenization_config: &TokenizationConfig,
+) -> ConcordanceCollocationDocumentAggregate {
+    let tokens = analysis_word_tokens(
+        &document.text,
+        document.document_index as u32,
+        tokenization_config,
+    );
+    let token_keys = tokens
+        .iter()
+        .map(|token| concordance_key(token.surface, case_sensitive))
+        .collect::<Vec<_>>();
+    let mut collocate_frequencies = HashMap::<String, u64>::new();
+    let mut candidate_counts = HashMap::<String, ConcordanceCollocationDistanceCounts>::new();
+    let mut r1 = ConcordanceCollocationDistanceCounts::default();
+    let mut f_node = 0u64;
+
+    for key in &token_keys {
+        *collocate_frequencies.entry(key.clone()).or_default() += 1;
+    }
+
+    for token_index in 0..token_keys.len() {
+        let node_end = token_index + query_keys.len();
+        if node_end > token_keys.len() {
+            break;
+        }
+        let node_matches = token_keys[token_index..node_end]
+            .iter()
+            .zip(query_keys)
+            .all(|(token_key, query_key)| token_key == query_key);
+        if !node_matches {
+            continue;
+        }
+
+        f_node += 1;
+        let left_start = token_index.saturating_sub(CONCORDANCE_COLLOCATION_MAX_SPAN);
+        add_collocation_window_token_keys(
+            &token_keys,
+            CollocationWindow {
+                start: left_start,
+                end: token_index,
+                node_edge: token_index,
+                side: CollocationWindowSide::Left,
+            },
+            query_key_set,
+            &mut r1,
+            &mut candidate_counts,
+        );
+
+        let right_end = (node_end + CONCORDANCE_COLLOCATION_MAX_SPAN).min(token_keys.len());
+        add_collocation_window_token_keys(
+            &token_keys,
+            CollocationWindow {
+                start: node_end,
+                end: right_end,
+                node_edge: node_end,
+                side: CollocationWindowSide::Right,
+            },
+            query_key_set,
+            &mut r1,
+            &mut candidate_counts,
+        );
+    }
+
+    ConcordanceCollocationDocumentAggregate {
+        document_index: document.document_index,
+        candidate_counts,
+        collocate_frequencies,
+        r1,
+        n: token_keys.len() as u64,
+        f_node,
+    }
+}
+
 /// Counts collocate candidates around every concordance hit in the selected documents.
 pub fn aggregate_concordance_collocations_documents(
     documents: &[ConcordanceDocument],
@@ -425,85 +603,35 @@ pub fn aggregate_concordance_collocations_documents(
     let (signature, query_keys, query_key_set) =
         resolve_concordance_collocation_aggregation(query, tokenization_config)?;
     let selected_document_ids = selected_concordance_document_ids(documents, &query.selection);
-    let mut collocate_frequencies = HashMap::<String, u64>::new();
-    let mut candidate_counts = HashMap::<String, u64>::new();
-    let mut n = 0u64;
-    let mut r1 = 0u64;
-    let mut f_node = 0u64;
 
-    for document in documents {
-        if !selected_document_ids.contains(&document.document_index) {
-            continue;
-        }
-        let tokens = analysis_word_tokens(
-            &document.text,
-            document.document_index as u32,
-            tokenization_config,
-        );
-        n += tokens.len() as u64;
-        for token in &tokens {
-            let key = concordance_key(token.surface, query.case_sensitive);
-            *collocate_frequencies.entry(key).or_default() += 1;
-        }
+    let mut document_aggregates = documents
+        .par_iter()
+        .filter(|document| selected_document_ids.contains(&document.document_index))
+        .map(|document| {
+            aggregate_concordance_collocations_document(
+                document,
+                &query_keys,
+                &query_key_set,
+                query.case_sensitive,
+                tokenization_config,
+            )
+        })
+        .collect::<Vec<_>>();
+    document_aggregates.sort_by_key(|aggregate| aggregate.document_index);
 
-        for token_index in 0..tokens.len() {
-            let node_end = token_index + query_keys.len();
-            if node_end > tokens.len() {
-                break;
-            }
-            let node_matches =
-                tokens[token_index..node_end]
-                    .iter()
-                    .zip(&query_keys)
-                    .all(|(token, query_key)| {
-                        concordance_key(token.surface, query.case_sensitive) == *query_key
-                    });
-            if !node_matches {
-                continue;
-            }
-
-            f_node += 1;
-            if matches!(
-                signature.direction,
-                ConcordanceCollocationDirection::Left | ConcordanceCollocationDirection::Both
-            ) {
-                let left_start = token_index.saturating_sub(signature.span);
-                r1 += (token_index - left_start) as u64;
-                add_collocation_window_tokens(
-                    &tokens,
-                    left_start,
-                    token_index,
-                    query.case_sensitive,
-                    &query_key_set,
-                    &mut candidate_counts,
-                );
-            }
-            if matches!(
-                signature.direction,
-                ConcordanceCollocationDirection::Right | ConcordanceCollocationDirection::Both
-            ) {
-                let right_end = (node_end + signature.span).min(tokens.len());
-                r1 += (right_end - node_end) as u64;
-                add_collocation_window_tokens(
-                    &tokens,
-                    node_end,
-                    right_end,
-                    query.case_sensitive,
-                    &query_key_set,
-                    &mut candidate_counts,
-                );
-            }
-        }
+    let mut aggregate = ConcordanceCollocationAggregate {
+        signature,
+        candidate_counts: HashMap::new(),
+        collocate_frequencies: HashMap::new(),
+        r1: ConcordanceCollocationDistanceCounts::default(),
+        n: 0,
+        f_node: 0,
+    };
+    for document_aggregate in document_aggregates {
+        aggregate.merge_document(document_aggregate);
     }
 
-    Ok(ConcordanceCollocationAggregate {
-        signature,
-        candidate_counts,
-        collocate_frequencies,
-        r1,
-        n,
-        f_node,
-    })
+    Ok(aggregate)
 }
 
 /// Applies presentation filters, scoring, ranking, and truncation to a cached aggregate.
@@ -511,24 +639,30 @@ pub fn query_concordance_collocations_from_aggregate(
     aggregate: &ConcordanceCollocationAggregate,
     query: &ConcordanceCollocationQuery,
 ) -> ConcordanceCollocationResult {
+    let span = concordance_collocation_span(query.span);
+    let direction = query.direction;
     let limit = concordance_collocation_limit(query.limit);
+    let r1 = aggregate.r1.sum(span, direction);
     let mut rows = aggregate
         .candidate_counts
         .iter()
-        .filter_map(|(surface, o11)| {
+        .filter_map(|(surface, counts)| {
             if query.hide_stopwords && stopword_matches(surface) {
                 return None;
             }
             let collocate_frequency = *aggregate.collocate_frequencies.get(surface).unwrap_or(&0);
-            let o11 = *o11;
-            if o11 < query.min_cooccurrence || collocate_frequency < query.min_collocate_frequency {
+            let o11 = counts.sum(span, direction);
+            if o11 == 0
+                || o11 < query.min_cooccurrence
+                || collocate_frequency < query.min_collocate_frequency
+            {
                 return None;
             }
             Some(collocation_row(
                 surface.clone(),
                 o11,
                 collocate_frequency,
-                aggregate.r1,
+                r1,
                 aggregate.n,
             ))
         })
@@ -548,8 +682,8 @@ pub fn query_concordance_collocations_from_aggregate(
     ConcordanceCollocationResult {
         query: aggregate.signature.query.clone(),
         case_sensitive: aggregate.signature.case_sensitive,
-        span: aggregate.signature.span,
-        direction: aggregate.signature.direction,
+        span,
+        direction,
         min_cooccurrence: query.min_cooccurrence,
         min_collocate_frequency: query.min_collocate_frequency,
         hide_stopwords: query.hide_stopwords,
@@ -557,7 +691,7 @@ pub fn query_concordance_collocations_from_aggregate(
         sort_key: query.sort_key,
         sort_direction: query.sort_direction,
         limit,
-        r1: aggregate.r1,
+        r1,
         n: aggregate.n,
         f_node: aggregate.f_node,
         total_candidates,

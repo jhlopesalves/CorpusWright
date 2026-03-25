@@ -1,5 +1,404 @@
 use super::*;
 use crate::analysis::test_support::*;
+use crate::tokenization::TokenizationConfig;
+use std::collections::HashMap;
+
+fn naive_collocations_for(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceCollocationQuery,
+) -> Result<ConcordanceCollocationResult, ConcordanceError> {
+    let tokenization_config = TokenizationConfig::default();
+    let (signature, query_keys, query_key_set) =
+        resolve_concordance_collocation_aggregation(query, &tokenization_config)?;
+    let selected_document_ids = selected_concordance_document_ids(documents, &query.selection);
+    let span = concordance_collocation_span(query.span);
+    let direction = query.direction;
+    let mut collocate_frequencies = HashMap::<String, u64>::new();
+    let mut candidate_counts = HashMap::<String, u64>::new();
+    let mut n = 0u64;
+    let mut r1 = 0u64;
+    let mut f_node = 0u64;
+
+    for document in documents {
+        if !selected_document_ids.contains(&document.document_index) {
+            continue;
+        }
+        let tokens = analysis_word_tokens(
+            &document.text,
+            document.document_index as u32,
+            &tokenization_config,
+        );
+        let token_keys = tokens
+            .iter()
+            .map(|token| concordance_key(token.surface, query.case_sensitive))
+            .collect::<Vec<_>>();
+        n += token_keys.len() as u64;
+
+        for key in &token_keys {
+            *collocate_frequencies.entry(key.clone()).or_default() += 1;
+        }
+
+        for token_index in 0..token_keys.len() {
+            let node_end = token_index + query_keys.len();
+            if node_end > token_keys.len() {
+                break;
+            }
+            let node_matches = token_keys[token_index..node_end]
+                .iter()
+                .zip(&query_keys)
+                .all(|(token_key, query_key)| token_key == query_key);
+            if !node_matches {
+                continue;
+            }
+
+            f_node += 1;
+            if matches!(
+                direction,
+                ConcordanceCollocationDirection::Left | ConcordanceCollocationDirection::Both
+            ) {
+                let left_start = token_index.saturating_sub(span);
+                r1 += (token_index - left_start) as u64;
+                for candidate in &token_keys[left_start..token_index] {
+                    if query_key_set.contains(candidate) {
+                        continue;
+                    }
+                    *candidate_counts.entry(candidate.clone()).or_default() += 1;
+                }
+            }
+            if matches!(
+                direction,
+                ConcordanceCollocationDirection::Right | ConcordanceCollocationDirection::Both
+            ) {
+                let right_end = (node_end + span).min(token_keys.len());
+                r1 += (right_end - node_end) as u64;
+                for candidate in &token_keys[node_end..right_end] {
+                    if query_key_set.contains(candidate) {
+                        continue;
+                    }
+                    *candidate_counts.entry(candidate.clone()).or_default() += 1;
+                }
+            }
+        }
+    }
+
+    let limit = concordance_collocation_limit(query.limit);
+    let mut rows = candidate_counts
+        .into_iter()
+        .filter_map(|(surface, o11)| {
+            if query.hide_stopwords && stopword_matches(&surface) {
+                return None;
+            }
+            let collocate_frequency = *collocate_frequencies.get(&surface).unwrap_or(&0);
+            if o11 < query.min_cooccurrence || collocate_frequency < query.min_collocate_frequency {
+                return None;
+            }
+            Some(collocation_row(surface, o11, collocate_frequency, r1, n))
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        compare_collocation_rows(
+            left,
+            right,
+            query.sort_key,
+            query.sort_measure,
+            query.sort_direction,
+        )
+    });
+    let total_candidates = rows.len();
+    rows.truncate(limit);
+
+    Ok(ConcordanceCollocationResult {
+        query: signature.query,
+        case_sensitive: signature.case_sensitive,
+        span,
+        direction,
+        min_cooccurrence: query.min_cooccurrence,
+        min_collocate_frequency: query.min_collocate_frequency,
+        hide_stopwords: query.hide_stopwords,
+        sort_measure: query.sort_measure,
+        sort_key: query.sort_key,
+        sort_direction: query.sort_direction,
+        limit,
+        r1,
+        n,
+        f_node,
+        total_candidates,
+        rows,
+    })
+}
+
+fn assert_collocation_matches_naive(
+    documents: &[ConcordanceDocument],
+    query: ConcordanceCollocationQuery,
+) {
+    let naive = naive_collocations_for(documents, &query).unwrap();
+    let aggregate = collocation_aggregate_for(documents, &query).unwrap();
+    let from_aggregate = query_concordance_collocations_from_aggregate(&aggregate, &query);
+    assert_eq!(
+        from_aggregate, naive,
+        "query={} span={} direction={:?} case_sensitive={}",
+        query.query, query.span, query.direction, query.case_sensitive
+    );
+}
+
+#[test]
+fn surface_collocation_distance_aggregate_matches_naive_reference_matrix() {
+    let fixtures = [
+        (
+            "english",
+            vec![
+                concordance_document(
+                    0,
+                    "en-a.txt",
+                    "Movie movie MOVIE good movie good film movie ending credits",
+                ),
+                concordance_document(
+                    1,
+                    "en-b.txt",
+                    "A good movie is not the same as a Movie but movie fans return",
+                ),
+            ],
+            "movie",
+        ),
+        (
+            "portuguese",
+            vec![
+                concordance_document(
+                    0,
+                    "pt-a.txt",
+                    "ação Ação coração Coração não Não João joão maçã Maçã",
+                ),
+                concordance_document(
+                    1,
+                    "pt-b.txt",
+                    "A ação toca o coração e João diz não quando a ação termina",
+                ),
+            ],
+            "ação",
+        ),
+    ];
+
+    for (fixture_name, documents, query_text) in fixtures {
+        for span in [1, 2, 5, 19, 20] {
+            for direction in [
+                ConcordanceCollocationDirection::Left,
+                ConcordanceCollocationDirection::Right,
+                ConcordanceCollocationDirection::Both,
+            ] {
+                for case_sensitive in [true, false] {
+                    let mut query = collocation_query(query_text);
+                    query.span = span;
+                    query.direction = direction;
+                    query.case_sensitive = case_sensitive;
+                    let naive = naive_collocations_for(&documents, &query).unwrap();
+                    let aggregate = collocation_aggregate_for(&documents, &query).unwrap();
+                    let from_aggregate =
+                        query_concordance_collocations_from_aggregate(&aggregate, &query);
+                    assert_eq!(
+                        from_aggregate, naive,
+                        "{fixture_name} span={span} direction={direction:?} case_sensitive={case_sensitive}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn surface_collocation_distance_aggregate_matches_naive_edge_cases() {
+    let directions = [
+        ConcordanceCollocationDirection::Left,
+        ConcordanceCollocationDirection::Right,
+        ConcordanceCollocationDirection::Both,
+    ];
+    let cases = [
+        (
+            vec![concordance_document(
+                0,
+                "edges.txt",
+                "target start middle end target",
+            )],
+            "target",
+            3,
+        ),
+        (
+            vec![concordance_document(
+                0,
+                "phrase.txt",
+                "pre alpha beta post mid alpha beta tail",
+            )],
+            "alpha beta",
+            2,
+        ),
+        (
+            vec![concordance_document(0, "overlap.txt", "a a a a a")],
+            "a a",
+            2,
+        ),
+        (
+            vec![concordance_document(0, "short.txt", "left target right")],
+            "target",
+            99,
+        ),
+    ];
+
+    for (documents, query_text, span) in cases {
+        for direction in directions {
+            let mut query = collocation_query(query_text);
+            query.span = span;
+            query.direction = direction;
+            assert_collocation_matches_naive(&documents, query);
+        }
+    }
+
+    let documents = vec![concordance_document(
+        0,
+        "empty-selection.txt",
+        "left target right",
+    )];
+    let mut query = collocation_query("target");
+    query.selection = AnalysisDocumentSelection {
+        all_documents: false,
+        ids: Vec::new(),
+        excluded_ids: Vec::new(),
+    };
+    let result = collocations_for(&documents, query.clone()).unwrap();
+    assert_eq!(result, naive_collocations_for(&documents, &query).unwrap());
+    assert_eq!(result.n, 0);
+    assert_eq!(result.r1, 0);
+    assert_eq!(result.f_node, 0);
+    assert!(result.rows.is_empty());
+}
+
+#[test]
+fn surface_collocation_parallel_aggregation_is_deterministic() {
+    let documents = vec![
+        concordance_document(
+            0,
+            "a.txt",
+            "red alpha blue target green alpha blue target yellow",
+        ),
+        concordance_document(
+            1,
+            "b.txt",
+            "yellow target blue green target alpha blue green",
+        ),
+        concordance_document(
+            2,
+            "c.txt",
+            "target red target blue target green target alpha",
+        ),
+    ];
+    let mut query = collocation_query("target");
+    query.span = 20;
+
+    let default_pool = collocation_aggregate_for(&documents, &query).unwrap();
+    let single_thread_pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(1)
+        .build()
+        .unwrap()
+        .install(|| collocation_aggregate_for(&documents, &query).unwrap());
+
+    assert_eq!(default_pool, single_thread_pool);
+}
+
+fn docs_fixture_documents() -> Vec<ConcordanceDocument> {
+    let docs_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|path| path.parent())
+        .unwrap()
+        .join("docs");
+    let mut paths = std::fs::read_dir(&docs_dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            matches!(
+                path.extension().and_then(|extension| extension.to_str()),
+                Some("html" | "md")
+            )
+        })
+        .collect::<Vec<_>>();
+    paths.sort();
+
+    paths
+        .into_iter()
+        .enumerate()
+        .map(|(index, path)| {
+            let text = std::fs::read_to_string(&path).unwrap();
+            let display_name = path.file_name().unwrap().to_string_lossy();
+            concordance_document(index, &display_name, &text)
+        })
+        .collect()
+}
+
+#[test]
+#[ignore = "prints local timing evidence for the collocation aggregate cache path"]
+fn surface_collocation_performance_evidence_on_docs_fixture() {
+    let documents = docs_fixture_documents();
+    let mut query = collocation_query("corpus");
+    query.span = 5;
+    query.limit = 500;
+
+    let direct_cold_start = std::time::Instant::now();
+    let direct_cold = naive_collocations_for(&documents, &query).unwrap();
+    let direct_cold_ms = direct_cold_start.elapsed().as_secs_f64() * 1000.0;
+
+    let cold_start = std::time::Instant::now();
+    let aggregate = collocation_aggregate_for(&documents, &query).unwrap();
+    let cold = query_concordance_collocations_from_aggregate(&aggregate, &query);
+    let cold_ms = cold_start.elapsed().as_secs_f64() * 1000.0;
+    assert_eq!(cold, direct_cold);
+
+    let mut span_query = query.clone();
+    span_query.span = 20;
+    let direct_span_start = std::time::Instant::now();
+    let direct_span = naive_collocations_for(&documents, &span_query).unwrap();
+    let direct_span_ms = direct_span_start.elapsed().as_secs_f64() * 1000.0;
+    let cached_span_start = std::time::Instant::now();
+    let cached_span = query_concordance_collocations_from_aggregate(&aggregate, &span_query);
+    let cached_span_ms = cached_span_start.elapsed().as_secs_f64() * 1000.0;
+    assert_eq!(cached_span, direct_span);
+
+    let mut direction_query = query.clone();
+    direction_query.direction = ConcordanceCollocationDirection::Left;
+    let direct_direction_start = std::time::Instant::now();
+    let direct_direction = naive_collocations_for(&documents, &direction_query).unwrap();
+    let direct_direction_ms = direct_direction_start.elapsed().as_secs_f64() * 1000.0;
+    let cached_direction_start = std::time::Instant::now();
+    let cached_direction =
+        query_concordance_collocations_from_aggregate(&aggregate, &direction_query);
+    let cached_direction_ms = cached_direction_start.elapsed().as_secs_f64() * 1000.0;
+    assert_eq!(cached_direction, direct_direction);
+
+    let mut new_query = query.clone();
+    new_query.query = "analysis".to_string();
+    let direct_new_query_start = std::time::Instant::now();
+    let direct_new_query = naive_collocations_for(&documents, &new_query).unwrap();
+    let direct_new_query_ms = direct_new_query_start.elapsed().as_secs_f64() * 1000.0;
+    let new_query_start = std::time::Instant::now();
+    let new_query_aggregate = collocation_aggregate_for(&documents, &new_query).unwrap();
+    let new_query_result =
+        query_concordance_collocations_from_aggregate(&new_query_aggregate, &new_query);
+    let new_query_ms = new_query_start.elapsed().as_secs_f64() * 1000.0;
+    assert_eq!(new_query_result, direct_new_query);
+
+    let candidate_count = aggregate.candidate_counts.len();
+    let distance_value_bytes =
+        candidate_count * std::mem::size_of::<ConcordanceCollocationDistanceCounts>();
+    eprintln!(
+        "docs fixture: documents={} tokens={} candidates={} distance_value_bytes={}",
+        documents.len(),
+        cold.n,
+        candidate_count,
+        distance_value_bytes
+    );
+    eprintln!("first query: direct={direct_cold_ms:.3}ms aggregate+query={cold_ms:.3}ms");
+    eprintln!("span change: direct={direct_span_ms:.3}ms cached_query={cached_span_ms:.3}ms");
+    eprintln!(
+        "direction change: direct={direct_direction_ms:.3}ms cached_query={cached_direction_ms:.3}ms"
+    );
+    eprintln!("new query: direct={direct_new_query_ms:.3}ms aggregate+query={new_query_ms:.3}ms");
+}
 
 #[test]
 fn surface_collocations_compute_window_counts_and_scores() {
