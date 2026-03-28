@@ -1,165 +1,191 @@
 #!/usr/bin/env node
-/**
- * check-release-consistency.cjs
- *
- * Verifies that the app version is consistent across all files that
- * reference it.  Exits with code 0 if everything is aligned, or code 1
- * with a clear list of mismatches.
- *
- * Usage:
- *   node scripts/check-release-consistency.cjs
- *
- * Can also be invoked from a GitHub Actions step with:
- *   node ${{ github.workspace }}/scripts/check-release-consistency.cjs
- */
-
 "use strict";
 
 const fs = require("fs");
 const path = require("path");
 
-const ROOT = path.resolve(__dirname, "..");
+const {
+  ROOT,
+  alphaLabel,
+  getReleaseMetadata,
+  syncReleaseMetadata,
+  versionPattern,
+} = require("./sync-release-metadata.cjs");
 
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
-
-function readJson(...parts) {
-  const p = path.join(ROOT, ...parts);
-  return JSON.parse(fs.readFileSync(p, "utf-8"));
+function readJson(relativePath) {
+  return JSON.parse(fs.readFileSync(path.join(ROOT, relativePath), "utf-8"));
 }
 
-function readFile(...parts) {
-  return fs.readFileSync(path.join(ROOT, ...parts), "utf-8");
+function readText(relativePath) {
+  return fs.readFileSync(path.join(ROOT, relativePath), "utf-8");
 }
 
-function semverAlphaPattern() {
-  // Strict alpha semver: X.Y.Z-alpha.N
-  return /^\d+\.\d+\.\d+-alpha\.\d+$/;
+function extractCargoVersion(relativePath) {
+  const match = readText(relativePath).match(/^version\s*=\s*"([^"]+)"/m);
+  return match ? match[1] : null;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Collect version from each source                                   */
-/* ------------------------------------------------------------------ */
-
-const sources = [];
-
-// 1. tauri.conf.json  (canonical source)
-const tauriConf = readJson("apps", "desktop", "src-tauri", "tauri.conf.json");
-sources.push({
-  file: "apps/desktop/src-tauri/tauri.conf.json",
-  version: tauriConf.version,
-  canonical: true,
-});
-
-// 2. Cargo.toml
-const cargoToml = readFile("apps", "desktop", "src-tauri", "Cargo.toml");
-const cargoVersion = cargoToml.match(/^version\s*=\s*"(.*?)"/m);
-sources.push({
-  file: "apps/desktop/src-tauri/Cargo.toml",
-  version: cargoVersion ? cargoVersion[1] : null,
-});
-
-// 3. package.json
-const pkgJson = readJson("apps", "desktop", "package.json");
-sources.push({
-  file: "apps/desktop/package.json",
-  version: pkgJson.version,
-});
-
-// 4. package-lock.json
-const pkgLock = readJson("apps", "desktop", "package-lock.json");
-sources.push({
-  file: "apps/desktop/package-lock.json",
-  version: pkgLock.version,
-});
-
-// 5. Cargo.lock entry for corpuswright-desktop
-const cargoLock = readFile("Cargo.lock");
-let lockVersion = null;
-const packageBlocks = cargoLock.split(/\[\[package\]\]/);
-for (const block of packageBlocks) {
-  const nameMatch = block.match(/^\s*name\s*=\s*"([^"]+)"/m);
-  if (nameMatch && nameMatch[1] === "corpuswright-desktop") {
-    const versionMatch = block.match(/^\s*version\s*=\s*"([^"]+)"/m);
-    if (versionMatch) {
-      lockVersion = versionMatch[1];
-      break;
+function extractDesktopLockVersion() {
+  const cargoLock = readText("Cargo.lock");
+  const packageBlocks = cargoLock.split(/\[\[package\]\]/);
+  for (const block of packageBlocks) {
+    const nameMatch = block.match(/^\s*name\s*=\s*"([^"]+)"/m);
+    if (nameMatch && nameMatch[1] === "corpuswright-desktop") {
+      const versionMatch = block.match(/^\s*version\s*=\s*"([^"]+)"/m);
+      return versionMatch ? versionMatch[1] : null;
     }
   }
+  return null;
 }
-sources.push({
-  file: "Cargo.lock",
-  version: lockVersion,
-});
 
-// 6. README.md alpha download link
-const readme = readFile("README.md");
-const readmeMatch = readme.match(
-  /CorpusWright v(\d+\.\d+\.\d+-alpha\.\d+)/
-);
-sources.push({
-  file: "README.md",
-  version: readmeMatch ? readmeMatch[1] : null,
-});
-
-// 7. index.html About dialog version
-const indexHtml = readFile("apps", "desktop", "index.html");
-const htmlMatch = indexHtml.match(
-  /<strong>Version:<\/strong>\s*(\d+\.\d+\.\d+-alpha\.\d+)/
-);
-sources.push({
-  file: "apps/desktop/index.html",
-  version: htmlMatch ? htmlMatch[1] : null,
-});
-
-/* ------------------------------------------------------------------ */
-/*  Validate                                                           */
-/* ------------------------------------------------------------------ */
-
-const canonical = sources.find((s) => s.canonical);
-const expected = canonical.version;
-
-if (!expected) {
-  console.error(
-    "FATAL: Could not read version from tauri.conf.json (canonical source)."
+function extractAboutVersion() {
+  const match = readText("apps/desktop/index.html").match(
+    /<strong>Version:<\/strong>\s*(\d+\.\d+\.\d+-alpha\.\d+)/
   );
-  process.exit(1);
+  return match ? match[1] : null;
 }
 
-if (!semverAlphaPattern().test(expected)) {
+function reportSource(label, actual, expected) {
+  if (actual === expected) {
+    console.log(`  OK  ${label}  =>  "${actual}"`);
+    return true;
+  }
+
+  if (actual === null || actual === undefined) {
+    console.error(`MISMATCH: ${label} - could not extract version`);
+  } else {
+    console.error(
+      `MISMATCH: ${label} has version "${actual}", expected "${expected}"`
+    );
+  }
+  return false;
+}
+
+function checkNoLiveVersionCopy(metadata) {
+  const scannedFiles = [
+    "README.md",
+    "docs/404.html",
+    "docs/citation.html",
+    "docs/index.html",
+    "docs/method-and-measures.html",
+    "docs/quick-start.html",
+    "docs/roadmap.html",
+  ];
+  const liveVersionPattern = /\bv?\d+\.\d+\.\d+-alpha\.\d+\b|\balpha\.\d+\b/g;
+  let ok = true;
+
+  for (const relativePath of scannedFiles) {
+    const text = stripGeneratedCitationCopy(relativePath, readText(relativePath));
+    const matches = [...text.matchAll(liveVersionPattern)];
+    if (matches.length === 0) {
+      console.log(`  OK  ${relativePath} has no hard-coded live alpha version`);
+      continue;
+    }
+
+    ok = false;
+    for (const match of matches) {
+      const before = text.slice(0, match.index);
+      const line = before.split(/\r?\n/).length;
+      console.error(
+        `MISMATCH: ${relativePath}:${line} hard-codes "${match[0]}"; use release-metadata sync or agnostic copy`
+      );
+    }
+  }
+
+  if (!ok) {
+    console.error(
+      `\nLive docs should not hard-code "${metadata.version}" or "${alphaLabel(
+        metadata
+      )}" outside release-history pages.`
+    );
+  }
+
+  return ok;
+}
+
+function stripGeneratedCitationCopy(relativePath, text) {
+  let next = text;
+  next = next.replace(
+    /\*\*Current `CITATION\.cff`:\*\*\r?\n```yaml\r?\n[\s\S]*?\r?\n```/g,
+    ""
+  );
+  next = next.replace(
+    /<pre class="code" id="home-citation-cff"><code class="mono">[\s\S]*?<\/code><\/pre>/g,
+    ""
+  );
+  next = next.replace(
+    /<pre class="code" id="citation-(?:bibtex|cff)"><code class="mono">[\s\S]*?<\/code><\/pre>/g,
+    ""
+  );
+
+  if (relativePath === "docs/citation.html") {
+    next = next.replace(/<p><strong>Lopes, J\. H\.[\s\S]*?<\/strong><\/p>/g, "");
+  }
+
+  return next;
+}
+
+const metadata = getReleaseMetadata();
+const expected = metadata.version;
+
+if (!versionPattern().test(expected)) {
   console.error(
-    `FATAL: Canonical version "${expected}" does not match strict alpha semver ` +
-      `(required: X.Y.Z-alpha.N).`
+    `FATAL: release-metadata.json version "${expected}" does not match X.Y.Z-alpha.N.`
   );
   process.exit(1);
 }
 
 let allOk = true;
 
-for (const source of sources) {
-  const label = source.file;
-  const actual = source.version;
+const tauriConf = readJson("apps/desktop/src-tauri/tauri.conf.json");
+const packageJson = readJson("apps/desktop/package.json");
+const packageLock = readJson("apps/desktop/package-lock.json");
 
-  if (actual === null) {
-    console.error(`MISMATCH: ${label} — could not extract version`);
-    allOk = false;
-    continue;
-  }
+allOk =
+  reportSource("release-metadata.json", expected, expected) && allOk;
+allOk =
+  reportSource("apps/desktop/src-tauri/tauri.conf.json", tauriConf.version, expected) &&
+  allOk;
+allOk =
+  reportSource(
+    "apps/desktop/src-tauri/Cargo.toml",
+    extractCargoVersion("apps/desktop/src-tauri/Cargo.toml"),
+    expected
+  ) && allOk;
+allOk =
+  reportSource("apps/desktop/package.json", packageJson.version, expected) &&
+  allOk;
+allOk =
+  reportSource("apps/desktop/package-lock.json", packageLock.version, expected) &&
+  allOk;
+allOk =
+  reportSource(
+    'apps/desktop/package-lock.json packages[""]',
+    packageLock.packages && packageLock.packages[""]
+      ? packageLock.packages[""].version
+      : null,
+    expected
+  ) && allOk;
+allOk = reportSource("Cargo.lock", extractDesktopLockVersion(), expected) && allOk;
+allOk =
+  reportSource("apps/desktop/index.html", extractAboutVersion(), expected) &&
+  allOk;
 
-  if (actual !== expected) {
-    console.error(
-      `MISMATCH: ${label} has version "${actual}", expected "${expected}"`
-    );
-    allOk = false;
-  } else {
-    console.log(`  OK  ${label}  =>  "${actual}"`);
+const staleFiles = syncReleaseMetadata({ check: true, quiet: true });
+if (staleFiles.length > 0) {
+  allOk = false;
+  console.error("\nGenerated release metadata outputs are stale:");
+  for (const relativePath of staleFiles) {
+    console.error(`  - ${relativePath}`);
   }
+  console.error("\nRun: node scripts/sync-release-metadata.cjs");
 }
 
+allOk = checkNoLiveVersionCopy(metadata) && allOk;
+
 if (!allOk) {
-  console.error("\nVersion consistency check FAILED.");
+  console.error("\nRelease consistency check FAILED.");
   process.exit(1);
 }
 
-console.log("\nAll version references are consistent.");
+console.log("\nAll release metadata references are consistent.");
