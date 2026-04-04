@@ -25,14 +25,13 @@ export const CONCORDANCE_COLLOCATION_MAX_SPAN = 20;
 export const CONCORDANCE_COLLOCATION_DEFAULT_FLOOR = 5;
 export const CONCORDANCE_COLLOCATION_LIMIT = 100;
 export const CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE =
-  "Enter a word or phrase to profile collocates.";
+  "Enter a word or phrase to build a collocate profile.";
 export const CONCORDANCE_COLLOCATION_NO_ROWS_MESSAGE =
   "No collocates above the current floors.";
 export const CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE =
-  "Collocates have not been computed yet.";
-export const CONCORDANCE_COLLOCATION_STALE_MESSAGE = "Collocates need refresh.";
-export const CONCORDANCE_COLLOCATION_STALE_DETAIL =
-  "The query or collocate settings changed.";
+  "The collocate profile has not been computed yet.";
+export const CONCORDANCE_COLLOCATION_STALE_MESSAGE =
+  "Update the collocate profile for the current query.";
 export const DEFAULT_CONCORDANCE_COLLOCATION_MEASURE: ConcordanceCollocationMeasure = "logDice";
 export const DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY: ConcordanceCollocationSortKey = "association";
 export const DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION: SortDirection = "desc";
@@ -95,6 +94,28 @@ export function concordanceRowText(tokens: string[]): string {
   return tokens.join(" ");
 }
 
+export interface ConcordanceContextTokenSegment {
+  text: string;
+  collocate: boolean;
+}
+
+export function concordanceContextTokenSegments(
+  tokens: string[],
+  activeFilter: string | null,
+  caseSensitive: boolean,
+): ConcordanceContextTokenSegment[] {
+  const comparisonFilter = caseSensitive || activeFilter === null
+    ? activeFilter
+    : activeFilter.toLowerCase();
+  return tokens.map((token) => {
+    const comparisonToken = caseSensitive ? token : token.toLowerCase();
+    return {
+      text: token,
+      collocate: comparisonFilter !== null && comparisonToken === comparisonFilter,
+    };
+  });
+}
+
 export function clampConcordanceWindow(value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
     return CONCORDANCE_DEFAULT_WINDOW;
@@ -142,7 +163,7 @@ export function concordanceCollocationExplanation(
   measure: ConcordanceCollocationMeasure,
 ): string {
   const directionText = concordanceCollocationDirectionLabel(direction);
-  return `Collocates near "${query}" within ${span.toLocaleString()} tokens (${directionText}), ranked by Association: ${concordanceCollocationMeasureLabel(measure)}. Near query = times the word appears around the query · Corpus frequency = total frequency in the selected corpus.`;
+  return `Collocates near "${query}" · ${span.toLocaleString()}-token window · ${directionText} · ranked by ${concordanceCollocationMeasureLabel(measure)}`;
 }
 
 export function clampConcordanceCollocationSpan(value: number): number {
