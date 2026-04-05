@@ -5,7 +5,6 @@ import {
   CONCORDANCE_COLLOCATION_LIMIT,
   CONCORDANCE_COLLOCATION_MEASURE_OPTIONS,
   CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE,
-  CONCORDANCE_COLLOCATION_STALE_DETAIL,
   CONCORDANCE_COLLOCATION_STALE_MESSAGE,
   CONCORDANCE_COLLOCATION_SORT_OPTIONS,
   DEFAULT_CONCORDANCE_COLLOCATION_MEASURE,
@@ -26,6 +25,7 @@ import {
   concordanceCollocationScore,
   concordanceCollocationScoreBarPercent,
   concordanceCollocationSortHeaderLabel,
+  concordanceContextTokenSegments,
   concordanceExpansionViewModel,
   concordanceIsSparse,
   concordanceRangePercent,
@@ -62,16 +62,12 @@ assert(CONCORDANCE_COLLOCATION_DEFAULT_SPAN === 5, "Default collocation span sho
 assert(CONCORDANCE_COLLOCATION_DEFAULT_FLOOR === 5, "Default collocation floors should be 5");
 assert(CONCORDANCE_COLLOCATION_LIMIT === 100, "Collocation results should request the default top 100");
 assert(
-  CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE === "Collocates have not been computed yet.",
-  "Collocates should expose an explicit not-computed state",
+  CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE === "The collocate profile has not been computed yet.",
+  "Collocate Profile should expose an explicit not-computed state",
 );
 assert(
-  CONCORDANCE_COLLOCATION_STALE_MESSAGE === "Collocates need refresh.",
-  "Collocates should expose an explicit stale state",
-);
-assert(
-  CONCORDANCE_COLLOCATION_STALE_DETAIL === "The query or collocate settings changed.",
-  "Stale collocate copy should explain why refresh is needed",
+  CONCORDANCE_COLLOCATION_STALE_MESSAGE === "Update the collocate profile for the current query.",
+  "Stale collocate copy should be a single action sentence",
 );
 assert(CONCORDANCE_EXPANSION_WINDOW === 40, "Expansion should request the default wide KWIC window");
 assert(concordanceSortLabel("left1") === "1L", "Left sort labels should use KWIC shorthand");
@@ -80,13 +76,40 @@ assert(concordanceCollocationMeasureLabel("g2") === "log-likelihood", "Measure l
 assert(concordanceCollocationDirectionLabel("both") === "both sides", "Both-side direction should be readable");
 assert(
   concordanceCollocationExplanation("movie", 5, "both", "logDice")
-    === 'Collocates near "movie" within 5 tokens (both sides), ranked by Association: logDice. Near query = times the word appears around the query · Corpus frequency = total frequency in the selected corpus.',
-  "Collocation explanation should translate the active query, span, direction, measure, and raw counts",
+    === 'Collocates near "movie" · 5-token window · both sides · ranked by logDice',
+  "Collocation explanation should translate the active query, span, direction, and measure compactly",
+);
+assert(
+  !concordanceCollocationExplanation("movie", 5, "both", "logDice").includes("Near query =")
+    && !concordanceCollocationExplanation("movie", 5, "both", "logDice").includes("Corpus frequency =")
+    && !concordanceCollocationExplanation("movie", 5, "both", "logDice").includes("Association:"),
+  "Collocation explanation should not include persistent definition copy or Association prefix",
 );
 assert(concordanceRowText(["not", "very", "good"]) === "not very good", "KWIC token text should use token spacing");
 for (const node of ["movie", "this movie", "not very good"]) {
   assert(concordanceRowText(node.split(" ")) === node, `${node} node text should render in full`);
 }
+const unfilteredSegments = concordanceContextTokenSegments(["not", "movie"], null, false);
+assert(
+  unfilteredSegments.map((segment) => segment.text).join(" ") === "not movie"
+    && unfilteredSegments.every((segment) => !segment.collocate),
+  "Unfiltered KWIC context should keep plain token text without collocate highlights",
+);
+const insensitiveSegments = concordanceContextTokenSegments(["Movie", "night"], "movie", false);
+assert(
+  insensitiveSegments[0].collocate && !insensitiveSegments[1].collocate,
+  "Case-insensitive collocate filters should highlight matching context tokens",
+);
+const sensitiveSegments = concordanceContextTokenSegments(["Movie", "movie"], "movie", true);
+assert(
+  !sensitiveSegments[0].collocate && sensitiveSegments[1].collocate,
+  "Case-sensitive collocate filters should only highlight exact token matches",
+);
+const unsafeSegments = concordanceContextTokenSegments(["<img src=x onerror=alert(1)>"], "<img src=x onerror=alert(1)>", true);
+assert(
+  unsafeSegments[0].text === "<img src=x onerror=alert(1)>" && unsafeSegments[0].collocate,
+  "Collocate token segmentation should preserve unsafe-looking token text for text-node rendering",
+);
 assert(
   CONCORDANCE_SORT_OPTIONS.map((option) => option.value).join("|")
     === "filePosition|node|left1|left2|left3|right1|right2|right3",
