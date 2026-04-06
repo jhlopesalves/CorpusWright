@@ -165,6 +165,58 @@ fn kwic_context_filter_counts_full_filtered_hit_set() {
 }
 
 #[test]
+fn kwic_context_filter_direction_defaults_to_both_when_omitted() {
+    let query: ConcordanceQuery = serde_json::from_value(serde_json::json!({
+        "query": "target",
+        "contextFilter": "blue",
+        "windowTokens": 1,
+        "offset": 0,
+        "limit": 100
+    }))
+    .unwrap();
+
+    assert_eq!(
+        query.context_filter_direction,
+        ConcordanceContextFilterDirection::Both
+    );
+}
+
+#[test]
+fn kwic_context_filter_respects_direction() {
+    let documents = vec![concordance_document(
+        0,
+        "doc.txt",
+        "red target blue target green",
+    )];
+    let token_indexes_for_direction = |direction: ConcordanceContextFilterDirection| -> Vec<usize> {
+        let mut query = concordance_query("target");
+        query.window_tokens = 1;
+        query.context_filter = Some("blue".to_string());
+        query.context_filter_direction = direction;
+
+        concordance_for(&documents, query)
+            .unwrap()
+            .rows
+            .iter()
+            .map(|row| row.token_index)
+            .collect()
+    };
+
+    assert_eq!(
+        token_indexes_for_direction(ConcordanceContextFilterDirection::Both),
+        [1, 3]
+    );
+    assert_eq!(
+        token_indexes_for_direction(ConcordanceContextFilterDirection::Right),
+        [1]
+    );
+    assert_eq!(
+        token_indexes_for_direction(ConcordanceContextFilterDirection::Left),
+        [3]
+    );
+}
+
+#[test]
 fn kwic_respects_offset_and_limit() {
     let documents = vec![concordance_document(
         0,
@@ -419,6 +471,7 @@ fn routed_index_falls_back_for_context_filter_and_matches_scan() {
     let mut query = concordance_query("target");
     query.window_tokens = 1;
     query.context_filter = Some("blue".to_string());
+    query.context_filter_direction = ConcordanceContextFilterDirection::Right;
     let scan = concordance_for(&documents, query.clone()).unwrap();
     let mut context = ConcordanceSearchContext::default();
 

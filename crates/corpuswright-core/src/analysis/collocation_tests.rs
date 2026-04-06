@@ -1,7 +1,25 @@
 use super::*;
 use crate::analysis::test_support::*;
+use crate::index::{
+    InMemoryIndexStore, SurfaceIndexDocumentInput, SurfaceIndexQuery, search_surface_index,
+};
 use crate::tokenization::TokenizationConfig;
 use std::collections::HashMap;
+
+#[test]
+fn collocation_routing_types_remain_rust_only_without_ts_export() {
+    let source = include_str!("collocation.rs");
+    let start = source
+        .find("pub struct RoutedConcordanceCollocationAggregate")
+        .expect("collocation routing type source should exist");
+    let end = source
+        .find("impl Default for ConcordanceCollocationDistanceCounts")
+        .expect("collocation aggregate implementation source should exist");
+    let routing_source = &source[start..end];
+
+    assert!(!routing_source.contains("#[ts(export)]"));
+    assert!(!routing_source.contains("TS"));
+}
 
 fn naive_collocations_for(
     documents: &[ConcordanceDocument],
@@ -139,6 +157,290 @@ fn assert_collocation_matches_naive(
         "query={} span={} direction={:?} case_sensitive={}",
         query.query, query.span, query.direction, query.case_sensitive
     );
+}
+
+struct CollocationIndexFixture {
+    name: &'static str,
+    documents: Vec<ConcordanceDocument>,
+    query: ConcordanceCollocationQuery,
+    representative_span: usize,
+    representative_direction: ConcordanceCollocationDirection,
+}
+
+fn collocation_index_fixtures() -> Vec<CollocationIndexFixture> {
+    let mut empty_selection = collocation_query("target");
+    empty_selection.selection = AnalysisDocumentSelection {
+        all_documents: false,
+        ids: Vec::new(),
+        excluded_ids: Vec::new(),
+    };
+
+    vec![
+        CollocationIndexFixture {
+            name: "english",
+            documents: vec![
+                concordance_document(
+                    0,
+                    "en-a.txt",
+                    "Movie movie MOVIE good movie good film movie ending credits",
+                ),
+                concordance_document(
+                    1,
+                    "en-b.txt",
+                    "A good movie is not the same as a Movie but movie fans return",
+                ),
+            ],
+            query: collocation_query("movie"),
+            representative_span: 5,
+            representative_direction: ConcordanceCollocationDirection::Both,
+        },
+        CollocationIndexFixture {
+            name: "portuguese",
+            documents: vec![
+                concordance_document(
+                    0,
+                    "pt-a.txt",
+                    "ação Ação coração Coração não Não João joão maçã Maçã",
+                ),
+                concordance_document(
+                    1,
+                    "pt-b.txt",
+                    "A ação toca o coração e João diz não quando a ação termina",
+                ),
+            ],
+            query: collocation_query("ação"),
+            representative_span: 4,
+            representative_direction: ConcordanceCollocationDirection::Both,
+        },
+        CollocationIndexFixture {
+            name: "overlap",
+            documents: vec![concordance_document(0, "overlap.txt", "a a a a a")],
+            query: collocation_query("a a"),
+            representative_span: 2,
+            representative_direction: ConcordanceCollocationDirection::Both,
+        },
+        CollocationIndexFixture {
+            name: "multi-token",
+            documents: vec![concordance_document(
+                0,
+                "phrase.txt",
+                "pre alpha beta post mid alpha beta tail",
+            )],
+            query: collocation_query("alpha beta"),
+            representative_span: 1,
+            representative_direction: ConcordanceCollocationDirection::Both,
+        },
+        CollocationIndexFixture {
+            name: "boundary",
+            documents: vec![concordance_document(
+                0,
+                "edges.txt",
+                "target start middle end target",
+            )],
+            query: collocation_query("target"),
+            representative_span: 3,
+            representative_direction: ConcordanceCollocationDirection::Both,
+        },
+        CollocationIndexFixture {
+            name: "empty-selection",
+            documents: vec![concordance_document(
+                0,
+                "empty-selection.txt",
+                "left target right",
+            )],
+            query: empty_selection,
+            representative_span: 2,
+            representative_direction: ConcordanceCollocationDirection::Both,
+        },
+    ]
+}
+
+#[test]
+fn surface_collocation_index_aggregate_matches_scan_matrix() {
+    let tokenization_config = TokenizationConfig::default();
+
+    for fixture in collocation_index_fixtures() {
+        for case_sensitive in [false, true] {
+            let mut query = fixture.query.clone();
+            query.case_sensitive = case_sensitive;
+            let scan = aggregate_concordance_collocations_documents(
+                &fixture.documents,
+                &query,
+                &tokenization_config,
+            )
+            .unwrap();
+            let mut context = ConcordanceSearchContext::default();
+            let index = aggregate_concordance_collocations_documents_routed(
+                &fixture.documents,
+                &query,
+                &tokenization_config,
+                &mut context,
+                ConcordanceBackend::Index,
+            )
+            .unwrap();
+
+            assert_eq!(index.backend_used, ConcordanceBackendUsed::Index);
+            assert_eq!(
+                index.aggregate, scan,
+                "{} case_sensitive={case_sensitive}",
+                fixture.name
+            );
+        }
+
+        let mut representative = fixture.query.clone();
+        representative.span = fixture.representative_span;
+        representative.direction = fixture.representative_direction;
+        let mut context = ConcordanceSearchContext::default();
+        let index = aggregate_concordance_collocations_documents_routed(
+            &fixture.documents,
+            &representative,
+            &tokenization_config,
+            &mut context,
+            ConcordanceBackend::Index,
+        )
+        .unwrap();
+        let from_index =
+            query_concordance_collocations_from_aggregate(&index.aggregate, &representative);
+        let naive = naive_collocations_for(&fixture.documents, &representative).unwrap();
+
+        assert_eq!(
+            from_index, naive,
+            "{} representative span={} direction={:?}",
+            fixture.name, representative.span, representative.direction
+        );
+    }
+}
+
+#[test]
+fn surface_collocation_index_phrase_hits_match_overlapping_scan_nodes() {
+    let documents = vec![concordance_document(0, "overlap.txt", "a a a a a")];
+    let query = collocation_query("a a");
+    let tokenization_config = TokenizationConfig::default();
+    let inputs = [SurfaceIndexDocumentInput {
+        document_id: 0,
+        source_path: "overlap.txt".to_string(),
+        display_name: "overlap.txt".to_string(),
+        prepared_text: documents[0].text.as_str(),
+    }];
+    let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
+    let index_query =
+        SurfaceIndexQuery::from_surface_text_with_case("a a", false, &tokenization_config).unwrap();
+    let hits = search_surface_index(&store, &index_query).unwrap();
+
+    assert_eq!(
+        hits.hits
+            .iter()
+            .map(|hit| (hit.document_id, hit.token_ordinal_in_document))
+            .collect::<Vec<_>>(),
+        [(0, 0), (0, 1), (0, 2), (0, 3)]
+    );
+
+    let scan =
+        aggregate_concordance_collocations_documents(&documents, &query, &tokenization_config)
+            .unwrap();
+    let index =
+        aggregate_concordance_collocations_index(&store, &query, &tokenization_config).unwrap();
+
+    assert_eq!(scan.f_node, 4);
+    assert_eq!(index.f_node, 4);
+    assert_eq!(index, scan);
+}
+
+#[test]
+fn surface_collocation_and_concordance_share_warm_index_context_in_both_orders() {
+    let documents = vec![
+        concordance_document(0, "a.txt", "Movie movie good movie"),
+        concordance_document(1, "b.txt", "Good movie"),
+    ];
+    let tokenization_config = TokenizationConfig::default();
+    let concordance = parity_concordance_query("movie", false);
+    let collocation = collocation_query("good movie");
+
+    let mut concordance_first_context = ConcordanceSearchContext::default();
+    let concordance_first = crate::analysis::search_concordance_documents_routed(
+        &documents,
+        &concordance,
+        &tokenization_config,
+        &mut concordance_first_context,
+        ConcordanceBackend::Index,
+    )
+    .unwrap();
+    let collocation_second = aggregate_concordance_collocations_documents_routed(
+        &documents,
+        &collocation,
+        &tokenization_config,
+        &mut concordance_first_context,
+        ConcordanceBackend::Index,
+    )
+    .unwrap();
+    assert_eq!(
+        concordance_first.backend_used,
+        ConcordanceBackendUsed::Index
+    );
+    assert_eq!(
+        collocation_second.backend_used,
+        ConcordanceBackendUsed::Index
+    );
+    assert_eq!(concordance_first_context.index_build_count(), 1);
+
+    let mut collocation_first_context = ConcordanceSearchContext::default();
+    let collocation_first = aggregate_concordance_collocations_documents_routed(
+        &documents,
+        &collocation,
+        &tokenization_config,
+        &mut collocation_first_context,
+        ConcordanceBackend::Index,
+    )
+    .unwrap();
+    let concordance_second = crate::analysis::search_concordance_documents_routed(
+        &documents,
+        &concordance,
+        &tokenization_config,
+        &mut collocation_first_context,
+        ConcordanceBackend::Index,
+    )
+    .unwrap();
+    assert_eq!(
+        collocation_first.backend_used,
+        ConcordanceBackendUsed::Index
+    );
+    assert_eq!(
+        concordance_second.backend_used,
+        ConcordanceBackendUsed::Index
+    );
+    assert_eq!(collocation_first_context.index_build_count(), 1);
+}
+
+#[test]
+fn surface_collocation_index_error_falls_back_to_scan_aggregate() {
+    let documents = vec![
+        concordance_document(0, "a.txt", "left target right"),
+        concordance_document(0, "duplicate.txt", "other target side"),
+    ];
+    let query = collocation_query("target");
+    let tokenization_config = TokenizationConfig::default();
+    let scan =
+        aggregate_concordance_collocations_documents(&documents, &query, &tokenization_config)
+            .unwrap();
+    let mut context = ConcordanceSearchContext::default();
+
+    let routed = aggregate_concordance_collocations_documents_routed(
+        &documents,
+        &query,
+        &tokenization_config,
+        &mut context,
+        ConcordanceBackend::Index,
+    )
+    .unwrap();
+
+    assert_eq!(
+        routed.backend_used,
+        ConcordanceBackendUsed::ScanFallback {
+            reason: ConcordanceFallbackReason::IndexError,
+        }
+    );
+    assert_eq!(routed.aggregate, scan);
+    assert_eq!(context.index_build_count(), 0);
 }
 
 #[test]
@@ -349,6 +651,19 @@ fn surface_collocation_performance_evidence_on_docs_fixture() {
     let cold_ms = cold_start.elapsed().as_secs_f64() * 1000.0;
     assert_eq!(cold, direct_cold);
 
+    let tokenization_config = TokenizationConfig::default();
+    let mut warm_context = ConcordanceSearchContext::default();
+    let warm_seed = aggregate_concordance_collocations_documents_routed(
+        &documents,
+        &query,
+        &tokenization_config,
+        &mut warm_context,
+        ConcordanceBackend::Index,
+    )
+    .unwrap();
+    assert!(warm_seed.index_rebuilt);
+    assert_eq!(warm_seed.aggregate, aggregate);
+
     let mut span_query = query.clone();
     span_query.span = 20;
     let direct_span_start = std::time::Instant::now();
@@ -375,11 +690,24 @@ fn surface_collocation_performance_evidence_on_docs_fixture() {
     let direct_new_query_start = std::time::Instant::now();
     let direct_new_query = naive_collocations_for(&documents, &new_query).unwrap();
     let direct_new_query_ms = direct_new_query_start.elapsed().as_secs_f64() * 1000.0;
-    let new_query_start = std::time::Instant::now();
+    let new_query_scan_aggregate_start = std::time::Instant::now();
     let new_query_aggregate = collocation_aggregate_for(&documents, &new_query).unwrap();
+    let new_query_scan_aggregate_ms =
+        new_query_scan_aggregate_start.elapsed().as_secs_f64() * 1000.0;
+    let new_query_warm_index_start = std::time::Instant::now();
+    let new_query_index = aggregate_concordance_collocations_documents_routed(
+        &documents,
+        &new_query,
+        &tokenization_config,
+        &mut warm_context,
+        ConcordanceBackend::Index,
+    )
+    .unwrap();
+    let new_query_warm_index_ms = new_query_warm_index_start.elapsed().as_secs_f64() * 1000.0;
+    assert!(!new_query_index.index_rebuilt);
+    assert_eq!(new_query_index.aggregate, new_query_aggregate);
     let new_query_result =
-        query_concordance_collocations_from_aggregate(&new_query_aggregate, &new_query);
-    let new_query_ms = new_query_start.elapsed().as_secs_f64() * 1000.0;
+        query_concordance_collocations_from_aggregate(&new_query_index.aggregate, &new_query);
     assert_eq!(new_query_result, direct_new_query);
 
     let candidate_count = aggregate.candidate_counts.len();
@@ -397,7 +725,9 @@ fn surface_collocation_performance_evidence_on_docs_fixture() {
     eprintln!(
         "direction change: direct={direct_direction_ms:.3}ms cached_query={cached_direction_ms:.3}ms"
     );
-    eprintln!("new query: direct={direct_new_query_ms:.3}ms aggregate+query={new_query_ms:.3}ms");
+    eprintln!(
+        "new query: direct={direct_new_query_ms:.3}ms scan_aggregate={new_query_scan_aggregate_ms:.3}ms warm_index_aggregate={new_query_warm_index_ms:.3}ms"
+    );
 }
 
 #[test]
