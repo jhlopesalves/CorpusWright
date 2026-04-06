@@ -38,7 +38,7 @@ pub struct SurfaceIndexTokenRecord {
 }
 
 impl SurfaceIndexTokenRecord {
-    fn concordance_key(&self, case_sensitive: bool) -> &str {
+    pub(crate) fn concordance_key(&self, case_sensitive: bool) -> &str {
         if case_sensitive {
             &self.exact_surface
         } else {
@@ -116,6 +116,7 @@ pub trait IndexStore {
     fn total_indexed_tokens(&self) -> usize;
     fn total_indexed_documents(&self) -> usize;
     fn indexed_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store>;
+    fn indexed_exact_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store>;
     fn indexed_documents<'store>(
         &'store self,
     ) -> Box<dyn Iterator<Item = &'store SurfaceIndexDocument> + 'store>;
@@ -144,6 +145,17 @@ pub trait IndexStore {
             self.exact_surface_postings(concordance_key)
         } else {
             self.postings(concordance_key)
+        }
+    }
+
+    fn indexed_terms_for_concordance_key<'store>(
+        &'store self,
+        case_sensitive: bool,
+    ) -> Box<dyn Iterator<Item = &'store str> + 'store> {
+        if case_sensitive {
+            self.indexed_exact_terms()
+        } else {
+            self.indexed_terms()
         }
     }
 }
@@ -290,6 +302,10 @@ impl IndexStore for InMemoryIndexStore {
                 .keys()
                 .map(String::as_str),
         )
+    }
+
+    fn indexed_exact_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store> {
+        Box::new(self.postings_by_exact_surface.keys().map(String::as_str))
     }
 
     fn indexed_documents<'store>(
@@ -790,8 +806,8 @@ fn surface_index_window_tokens(window_tokens: usize) -> usize {
 mod tests {
     use super::*;
     use crate::analysis::{
-        AnalysisDocumentSelection, ConcordanceDocument, ConcordanceQuery, ConcordanceSortKey,
-        search_concordance_documents,
+        AnalysisDocumentSelection, ConcordanceContextFilterDirection, ConcordanceDocument,
+        ConcordanceQuery, ConcordanceSortKey, search_concordance_documents,
     };
     use crate::decode::{DecodeStrategy, SourceEncoding, decode_source_bytes};
 
@@ -834,6 +850,7 @@ mod tests {
             selection: AnalysisDocumentSelection::default(),
             query: query.to_string(),
             context_filter: None,
+            context_filter_direction: ConcordanceContextFilterDirection::Both,
             case_sensitive,
             sort_key: ConcordanceSortKey::FilePosition,
             window_tokens: 5,
