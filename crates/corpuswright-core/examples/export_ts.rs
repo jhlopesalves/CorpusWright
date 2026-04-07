@@ -13,9 +13,9 @@ use corpuswright_core::analysis::{
     AnnotationCacheBuildProgress, AnnotationCacheBuildReport, AnnotationCacheState,
     ConcordanceCollocateRow, ConcordanceCollocationDirection, ConcordanceCollocationMeasure,
     ConcordanceCollocationQuery, ConcordanceCollocationResult, ConcordanceCollocationSortKey,
-    ConcordanceDistributionItem, ConcordanceDistributionPage, ConcordanceExpansionQuery,
-    ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult, ConcordanceRow,
-    ConcordanceSortKey, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
+    ConcordanceContextFilterDirection, ConcordanceDistributionItem, ConcordanceDistributionPage,
+    ConcordanceExpansionQuery, ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult,
+    ConcordanceRow, ConcordanceSortKey, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
     FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
     FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow, SortDirection, TermDistributionItem,
     TermDistributionPage,
@@ -710,12 +710,17 @@ fn main() {
         &[],
     );
     export_type::<ConcordanceSortKey>(&out_dir, &[], &[]);
+    export_type::<ConcordanceContextFilterDirection>(&out_dir, &[], &[]);
     export_type::<ConcordanceQuery>(
         &out_dir,
         &[
             TypeImport {
                 name: "AnalysisDocumentSelection",
                 file: "AnalysisDocumentSelection",
+            },
+            TypeImport {
+                name: "ConcordanceContextFilterDirection",
+                file: "ConcordanceContextFilterDirection",
             },
             TypeImport {
                 name: "ConcordanceSortKey",
