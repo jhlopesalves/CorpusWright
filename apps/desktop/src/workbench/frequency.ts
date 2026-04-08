@@ -355,7 +355,7 @@ function currentAnnotatedFrequencyCaseFold(mode: AnnotatedFrequencyMode): boolea
 }
 
 function currentFrequencyLanguage(): string | null {
-  return currentFrequencyGroupMode() === "stem" ? activeProjectLanguageCode() : null;
+  return activeProjectLanguageCode();
 }
 
 function currentFrequencyPosFilter(): string | null {
@@ -549,7 +549,7 @@ function frequencySummaryText(page: FrequencyPage, tokenClassFilter: FrequencyTo
     : `${formatNumber(page.selectedDocumentCount)} of ${formatNumber(page.totalDocumentCount)} files`;
   const parts = [`${formatNumber(page.totalTerms)} of ${formatNumber(page.scopedTotalTypes)} types shown`];
   if (dom.frequencyHideStopwordsInput.checked) {
-    parts.push("English stopwords hidden");
+    parts.push("Stopwords hidden");
   }
   parts.push(
     frequencyGroupingSummary(),
@@ -836,6 +836,7 @@ export async function refreshFrequencyPage(resetOffset = true): Promise<void> {
           minimumFrequency: Math.max(1, Number.parseInt(dom.frequencyMinInput.value, 10) || 1),
           hideStopwords: annotatedMode === "lemmaPos" && dom.frequencyHideStopwordsInput.checked,
           caseFold: currentAnnotatedFrequencyCaseFold(annotatedMode),
+          language: currentFrequencyLanguage(),
           posFilter: annotatedMode === "lemmaPos" ? currentFrequencyPosFilter() : null,
           sortKey: frequencySortKey,
           sortDirection: frequencySortDirection,

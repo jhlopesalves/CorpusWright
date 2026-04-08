@@ -8,16 +8,21 @@
 //! vendored UDPipe public header. `udpipe-rs` is still used for model filenames
 //! and downloads, but not for tagging text.
 
+use crate::tokenization::{Token, TokenKind};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
 use std::fs::File;
 use std::io::Read;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
 use std::time::{Duration, Instant};
 use ts_rs::TS;
+
+pub const ANNOTATION_SENTENCE_CHUNK_WORD_CAP: usize = 512;
+pub const ANNOTATION_PIPELINE_VERSION: u32 = 2;
 
 // ---------------------------------------------------------------------------
 // Closed UPOS enum (u8-backed, not String)
@@ -490,6 +495,89 @@ fn parse_features(feats: &str) -> HashMap<String, String> {
     features
 }
 
+fn is_sentence_terminal(surface: &str) -> bool {
+    surface
+        .chars()
+        .any(|ch| matches!(ch, '.' | '!' | '?' | '…'))
+}
+
+fn is_closing_delimiter(ch: char) -> bool {
+    matches!(
+        ch,
+        '"' | '\''
+            | ')'
+            | ']'
+            | '}'
+            | '»'
+            | '›'
+            | '”'
+            | '’'
+            | '〉'
+            | '》'
+            | '」'
+            | '』'
+            | '】'
+            | '〗'
+            | '〕'
+            | '〙'
+            | '〛'
+    )
+}
+
+fn is_closing_delimiter_token(token: &Token<'_>) -> bool {
+    token.kind == TokenKind::Punctuation
+        && !token.surface.is_empty()
+        && token.surface.chars().all(is_closing_delimiter)
+}
+
+pub fn sentence_chunks(tokens: &[Token<'_>], max_word_tokens: usize) -> Vec<Range<usize>> {
+    if tokens.is_empty() {
+        return Vec::new();
+    }
+
+    let max_word_tokens = if max_word_tokens == 0 {
+        ANNOTATION_SENTENCE_CHUNK_WORD_CAP
+    } else {
+        max_word_tokens
+    };
+
+    let mut chunks = Vec::new();
+    let mut chunk_start = 0usize;
+    let mut words_in_chunk = 0usize;
+    let mut index = 0usize;
+
+    while index < tokens.len() {
+        let token = &tokens[index];
+        if token.counts_as_word() {
+            if words_in_chunk == max_word_tokens {
+                chunks.push(chunk_start..index);
+                chunk_start = index;
+                words_in_chunk = 0;
+            }
+            words_in_chunk += 1;
+        }
+
+        if token.kind == TokenKind::Punctuation && is_sentence_terminal(token.surface) {
+            let mut chunk_end = index + 1;
+            while chunk_end < tokens.len() && is_closing_delimiter_token(&tokens[chunk_end]) {
+                chunk_end += 1;
+            }
+            chunks.push(chunk_start..chunk_end);
+            chunk_start = chunk_end;
+            words_in_chunk = 0;
+            index = chunk_end;
+        } else {
+            index += 1;
+        }
+    }
+
+    if chunk_start < tokens.len() {
+        chunks.push(chunk_start..tokens.len());
+    }
+
+    chunks
+}
+
 fn align_tagged_words(
     tokens: &[&str],
     words: &[TaggedWord],
@@ -708,6 +796,35 @@ pub fn download_model_if_missing(language_iso: &str, model_dir: &Path) -> Result
 mod tests {
     use super::*;
 
+    fn test_token(surface: &'static str, kind: TokenKind, index: usize) -> Token<'static> {
+        Token {
+            surface,
+            byte_start: index,
+            byte_end: index + surface.len(),
+            document_id: 0,
+            kind,
+        }
+    }
+
+    fn word(surface: &'static str, index: usize) -> Token<'static> {
+        test_token(surface, TokenKind::Word, index)
+    }
+
+    fn punct(surface: &'static str, index: usize) -> Token<'static> {
+        test_token(surface, TokenKind::Punctuation, index)
+    }
+
+    fn assert_chunks_cover(tokens: &[Token<'_>], chunks: &[Range<usize>]) {
+        let mut expected_start = 0usize;
+        for chunk in chunks {
+            assert_eq!(chunk.start, expected_start);
+            assert!(chunk.start < chunk.end, "chunk must not be empty");
+            assert!(chunk.end <= tokens.len(), "chunk must stay inside tokens");
+            expected_start = chunk.end;
+        }
+        assert_eq!(expected_start, tokens.len());
+    }
+
     fn tagged(surface: &str, lemma: &str, upos: &str) -> TaggedWord {
         tagged_with_features(surface, lemma, upos, "_")
     }
@@ -722,6 +839,89 @@ mod tests {
             misc: "_".to_string(),
             id: 0,
         }
+    }
+
+    #[test]
+    fn sentence_chunks_split_on_terminal_punctuation_and_attach_closers() {
+        let tokens = vec![
+            word("Hello", 0),
+            punct(".", 1),
+            punct("\"", 2),
+            word("Go", 3),
+            punct("!", 4),
+            punct(")", 5),
+            word("Why", 6),
+            punct("?", 7),
+            word("Fine", 8),
+            punct("…", 9),
+            punct("]", 10),
+        ];
+
+        let chunks = sentence_chunks(&tokens, 512);
+
+        assert_eq!(chunks, vec![0..3, 3..6, 6..8, 8..11]);
+        assert_chunks_cover(&tokens, &chunks);
+    }
+
+    #[test]
+    fn sentence_chunks_respect_cap_and_prefer_boundary_at_cap() {
+        let tokens = vec![
+            word("one", 0),
+            word("two", 1),
+            punct(".", 2),
+            word("three", 3),
+        ];
+
+        let chunks = sentence_chunks(&tokens, 2);
+
+        assert_eq!(chunks, vec![0..3, 3..4]);
+        assert_chunks_cover(&tokens, &chunks);
+    }
+
+    #[test]
+    fn sentence_chunks_hard_split_when_cap_is_forced() {
+        let tokens = vec![
+            word("one", 0),
+            word("two", 1),
+            word("three", 2),
+            word("four", 3),
+            word("five", 4),
+        ];
+
+        let chunks = sentence_chunks(&tokens, 2);
+
+        assert_eq!(chunks, vec![0..2, 2..4, 4..5]);
+        assert_chunks_cover(&tokens, &chunks);
+    }
+
+    #[test]
+    fn sentence_chunks_zero_cap_uses_default_cap() {
+        let tokens = (0..(ANNOTATION_SENTENCE_CHUNK_WORD_CAP + 1))
+            .map(|index| word("w", index))
+            .collect::<Vec<_>>();
+
+        let chunks = sentence_chunks(&tokens, 0);
+
+        assert_eq!(
+            chunks,
+            vec![
+                0..ANNOTATION_SENTENCE_CHUNK_WORD_CAP,
+                ANNOTATION_SENTENCE_CHUNK_WORD_CAP..ANNOTATION_SENTENCE_CHUNK_WORD_CAP + 1
+            ]
+        );
+        assert_chunks_cover(&tokens, &chunks);
+    }
+
+    #[test]
+    fn sentence_chunks_handle_punctuation_only_and_empty_inputs() {
+        let empty: Vec<Token<'static>> = Vec::new();
+        assert!(sentence_chunks(&empty, 512).is_empty());
+
+        let tokens = vec![punct("!", 0), punct(")", 1), punct(",", 2)];
+        let chunks = sentence_chunks(&tokens, 512);
+
+        assert_eq!(chunks, vec![0..2, 2..3]);
+        assert_chunks_cover(&tokens, &chunks);
     }
 
     #[test]
