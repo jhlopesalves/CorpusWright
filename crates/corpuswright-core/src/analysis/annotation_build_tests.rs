@@ -5,9 +5,10 @@ use crate::annotation::{AnnotatedToken, LemmaTable, UniversalPos, default_model_
 use crate::language::{ProjectLanguage, resolve_effective_document_languages};
 use crate::scan::DocumentRecord;
 use crate::tokenization::{TokenizationConfig, tokenize};
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{BTreeSet, HashMap};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
+use std::sync::{Arc, Mutex};
 
 fn fake_annotation(surface: &str, token_index: u32) -> AnnotatedToken {
     AnnotatedToken {
@@ -17,6 +18,437 @@ fn fake_annotation(surface: &str, token_index: u32) -> AnnotatedToken {
         token_index,
         features: HashMap::new(),
     }
+}
+
+fn english_overrides(count: usize) -> HashMap<usize, String> {
+    (0..count).map(|index| (index, "en".to_string())).collect()
+}
+
+fn repeated_word_text(word: &str, word_count: usize) -> String {
+    std::iter::repeat_n(word, word_count)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn annotation_layer_result_for(
+    texts: &[(&str, &str)],
+    language_overrides: HashMap<usize, String>,
+    parallel_map: bool,
+    cancel: &AtomicBool,
+    docs_done: &AtomicUsize,
+) -> Result<(AnalysisCorpus, AnnotationLayer), AnnotationLayerBuildError> {
+    annotation_layer_result_for_with_timing(
+        texts,
+        language_overrides,
+        parallel_map,
+        cancel,
+        docs_done,
+        None,
+    )
+}
+
+fn annotation_layer_result_for_with_timing(
+    texts: &[(&str, &str)],
+    language_overrides: HashMap<usize, String>,
+    parallel_map: bool,
+    cancel: &AtomicBool,
+    docs_done: &AtomicUsize,
+    timing: Option<&AnnotationBuildTimingCounters>,
+) -> Result<(AnalysisCorpus, AnnotationLayer), AnnotationLayerBuildError> {
+    let mut analysis_options = build_options();
+    analysis_options.language_overrides = language_overrides.clone();
+    let corpus = analysis_product_for(texts, analysis_options, true).corpus;
+    let records = texts
+        .iter()
+        .map(|(name, _)| record(name))
+        .collect::<Vec<_>>();
+    let text_by_name = texts.iter().copied().collect::<HashMap<_, _>>();
+    let layer = build_annotation_layer_with_mapping_timed(
+        &corpus,
+        &records,
+        annotation_options(language_overrides),
+        cancel,
+        |record| {
+            Ok(processed_resolution(
+                record,
+                text_by_name
+                    .get(record.source_path.to_str().unwrap())
+                    .copied()
+                    .unwrap_or_default(),
+            ))
+        },
+        parallel_map,
+        AnnotationLayerBuildRuntime { docs_done, timing },
+    )?;
+    Ok((corpus, layer))
+}
+
+fn annotation_layer_result_for_with_wave_budget(
+    texts: &[(&str, &str)],
+    language_overrides: HashMap<usize, String>,
+    cancel: &AtomicBool,
+    docs_done: &AtomicUsize,
+    timing: Option<&AnnotationBuildTimingCounters>,
+    wave_budget: usize,
+) -> Result<(AnalysisCorpus, AnnotationLayer), AnnotationLayerBuildError> {
+    let mut analysis_options = build_options();
+    analysis_options.language_overrides = language_overrides.clone();
+    let corpus = analysis_product_for(texts, analysis_options, true).corpus;
+    let records = texts
+        .iter()
+        .map(|(name, _)| record(name))
+        .collect::<Vec<_>>();
+    let text_by_name = texts.iter().copied().collect::<HashMap<_, _>>();
+    let mut load_text = |record: &DocumentRecord| {
+        Ok(processed_resolution(
+            record,
+            text_by_name
+                .get(record.source_path.to_str().unwrap())
+                .copied()
+                .unwrap_or_default(),
+        ))
+    };
+    let inputs = load_annotation_document_inputs(
+        &corpus,
+        &records,
+        &language_overrides,
+        cancel,
+        &mut load_text,
+        timing,
+    )?;
+    let surface_term_lookup = build_surface_term_lookup(&corpus)?;
+    let languages_used = inputs
+        .iter()
+        .map(|input| input.language.clone())
+        .collect::<BTreeSet<_>>();
+    let model_dir = default_model_dir();
+    let worker_documents = annotate_annotation_documents_in_staged_waves_with_budget(
+        &inputs,
+        &surface_term_lookup,
+        AnnotationModelBuildContext {
+            languages_used: &languages_used,
+            model_dir: &model_dir,
+        },
+        cancel,
+        &corpus.tokenization,
+        AnnotationLayerBuildRuntime { docs_done, timing },
+        wave_budget,
+    )?;
+    let layer =
+        reduce_annotation_documents(worker_documents, languages_used.into_iter().collect())?;
+    Ok((corpus, layer))
+}
+
+fn multi_wave_english_texts() -> (Vec<(String, String)>, usize, usize) {
+    let token_budget = annotation_wave_token_budget();
+    let words_per_doc = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP * 2 + 17;
+    let target_words = token_budget.saturating_mul(2).saturating_add(words_per_doc);
+    let mut total_words = 0usize;
+    let mut texts = Vec::new();
+
+    while total_words <= target_words {
+        let words = words_per_doc + texts.len() % 5;
+        texts.push((
+            format!("doc-{:03}.txt", texts.len()),
+            repeated_word_text("word", words),
+        ));
+        total_words = total_words.saturating_add(words);
+    }
+
+    assert!(total_words > token_budget.saturating_mul(2));
+    (texts, total_words, token_budget)
+}
+
+fn cache_file_path(cache_root: &Path) -> PathBuf {
+    cache_root.join(format!(
+        "annotation-layer.v{}.json",
+        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+    ))
+}
+
+fn cache_records(texts: &[(&str, &str)]) -> Vec<DocumentRecord> {
+    texts.iter().map(|(name, _)| record(name)).collect()
+}
+
+fn cache_surface_corpus_for(
+    texts: &[(&str, &str)],
+    language_overrides: HashMap<usize, String>,
+) -> AnalysisCorpus {
+    let mut options = build_options();
+    options.force_compute_hashes = true;
+    options.udpipe_model_dir = Some(default_model_dir());
+    options.language_overrides = language_overrides;
+    analysis_product_for(texts, options, true).corpus
+}
+
+fn build_cache_with_reusable_surface(
+    cache_root: &Path,
+    texts: &[(&str, &str)],
+    language_overrides: HashMap<usize, String>,
+    reusable_surface_corpus: &AnalysisCorpus,
+) -> (
+    AnnotationCacheBuildReport,
+    crate::annotation_cache::AnnotationLayerCacheEnvelope,
+    Vec<String>,
+) {
+    let records = cache_records(texts);
+    let text_by_name = texts
+        .iter()
+        .map(|(name, text)| ((*name).to_string(), (*text).to_string()))
+        .collect::<HashMap<_, _>>();
+    let loaded_records = Arc::new(Mutex::new(Vec::new()));
+    let loaded_records_for_closure = loaded_records.clone();
+    let mut options = build_options();
+    options.annotation_cache_root = Some(cache_root.to_path_buf());
+    options.udpipe_model_dir = Some(default_model_dir());
+    options.language_overrides = language_overrides.clone();
+    let annotation_options = AnnotationLayerBuildOptions {
+        udpipe_model_dir: options.udpipe_model_dir.clone(),
+        language_overrides,
+    };
+
+    let report = build_and_write_annotation_cache_with_reusable_surface_corpus(
+        &records,
+        options,
+        annotation_options,
+        &AtomicBool::new(false),
+        |record| {
+            loaded_records_for_closure
+                .lock()
+                .unwrap()
+                .push(record.relative_path.to_string_lossy().into_owned());
+            Ok(processed_resolution(
+                record,
+                text_by_name
+                    .get(record.source_path.to_str().unwrap())
+                    .map(String::as_str)
+                    .unwrap_or_default(),
+            ))
+        },
+        |_| {},
+        Some(reusable_surface_corpus),
+    )
+    .unwrap();
+    let envelope = read_annotation_cache_envelope(cache_root);
+    let loaded_records = loaded_records.lock().unwrap().clone();
+
+    (report, envelope, loaded_records)
+}
+
+fn build_full_rebuild_cache(
+    cache_root: &Path,
+    texts: &[(&str, &str)],
+    language_overrides: HashMap<usize, String>,
+    reusable_surface_corpus: &AnalysisCorpus,
+) -> crate::annotation_cache::AnnotationLayerCacheEnvelope {
+    build_cache_with_reusable_surface(
+        cache_root,
+        texts,
+        language_overrides,
+        reusable_surface_corpus,
+    )
+    .1
+}
+
+fn write_cache_envelope(
+    cache_root: &Path,
+    envelope: &crate::annotation_cache::AnnotationLayerCacheEnvelope,
+) {
+    std::fs::write(
+        cache_file_path(cache_root),
+        serde_json::to_vec(envelope).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn annotation_cache_salvage_unchanged_corpus_uses_fast_path() {
+    let cache_dir = tempfile::tempdir().unwrap();
+    let texts = [("a.txt", "Cats chase mice."), ("b.txt", "Dogs jump high.")];
+    let language_overrides = english_overrides(texts.len());
+    let corpus = cache_surface_corpus_for(&texts, language_overrides.clone());
+
+    let (first_report, _, first_loaded) = build_cache_with_reusable_surface(
+        cache_dir.path(),
+        &texts,
+        language_overrides.clone(),
+        &corpus,
+    );
+    assert!(first_report.cache_written);
+    assert_eq!(first_loaded.len(), texts.len());
+
+    let (second_report, _, second_loaded) =
+        build_cache_with_reusable_surface(cache_dir.path(), &texts, language_overrides, &corpus);
+
+    assert!(second_report.reused_existing);
+    assert!(!second_report.cache_written);
+    assert!(second_loaded.is_empty());
+}
+
+#[test]
+fn annotation_cache_salvage_added_documents_matches_full_rebuild() {
+    let salvage_dir = tempfile::tempdir().unwrap();
+    let full_dir = tempfile::tempdir().unwrap();
+    let old_texts = [("a.txt", "Cats chase mice.")];
+    let new_texts = [("a.txt", "Cats chase mice."), ("b.txt", "Dogs jump high.")];
+    let old_overrides = english_overrides(old_texts.len());
+    let new_overrides = english_overrides(new_texts.len());
+    let old_corpus = cache_surface_corpus_for(&old_texts, old_overrides.clone());
+    let new_corpus = cache_surface_corpus_for(&new_texts, new_overrides.clone());
+
+    build_cache_with_reusable_surface(salvage_dir.path(), &old_texts, old_overrides, &old_corpus);
+    let (_, salvaged, loaded) = build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &new_texts,
+        new_overrides.clone(),
+        &new_corpus,
+    );
+    let full = build_full_rebuild_cache(full_dir.path(), &new_texts, new_overrides, &new_corpus);
+
+    assert_eq!(loaded, vec!["b.txt".to_string()]);
+    assert_eq!(salvaged.layer, full.layer);
+}
+
+#[test]
+fn annotation_cache_salvage_removed_documents_matches_full_rebuild() {
+    let salvage_dir = tempfile::tempdir().unwrap();
+    let full_dir = tempfile::tempdir().unwrap();
+    let old_texts = [("a.txt", "Cats chase mice."), ("b.txt", "Dogs jump high.")];
+    let new_texts = [("a.txt", "Cats chase mice.")];
+    let old_overrides = english_overrides(old_texts.len());
+    let new_overrides = english_overrides(new_texts.len());
+    let old_corpus = cache_surface_corpus_for(&old_texts, old_overrides.clone());
+    let new_corpus = cache_surface_corpus_for(&new_texts, new_overrides.clone());
+
+    build_cache_with_reusable_surface(salvage_dir.path(), &old_texts, old_overrides, &old_corpus);
+    let (_, salvaged, loaded) = build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &new_texts,
+        new_overrides.clone(),
+        &new_corpus,
+    );
+    let full = build_full_rebuild_cache(full_dir.path(), &new_texts, new_overrides, &new_corpus);
+
+    assert!(loaded.is_empty());
+    assert_eq!(salvaged.layer, full.layer);
+}
+
+#[test]
+fn annotation_cache_salvage_modified_document_reannotates_only_misses() {
+    let salvage_dir = tempfile::tempdir().unwrap();
+    let full_dir = tempfile::tempdir().unwrap();
+    let old_texts = [("a.txt", "Cats chase mice."), ("b.txt", "Dogs jump high.")];
+    let new_texts = [
+        ("a.txt", "Cats chase mice."),
+        ("b.txt", "Birds sing softly."),
+    ];
+    let old_overrides = english_overrides(old_texts.len());
+    let new_overrides = english_overrides(new_texts.len());
+    let old_corpus = cache_surface_corpus_for(&old_texts, old_overrides.clone());
+    let new_corpus = cache_surface_corpus_for(&new_texts, new_overrides.clone());
+
+    build_cache_with_reusable_surface(salvage_dir.path(), &old_texts, old_overrides, &old_corpus);
+    let (_, salvaged, loaded) = build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &new_texts,
+        new_overrides.clone(),
+        &new_corpus,
+    );
+    let full = build_full_rebuild_cache(full_dir.path(), &new_texts, new_overrides, &new_corpus);
+
+    assert_eq!(loaded, vec!["b.txt".to_string()]);
+    assert_eq!(salvaged.layer, full.layer);
+}
+
+#[test]
+fn annotation_cache_salvage_renamed_document_reuses() {
+    let salvage_dir = tempfile::tempdir().unwrap();
+    let full_dir = tempfile::tempdir().unwrap();
+    let old_texts = [("old-name.txt", "Cats chase mice.")];
+    let new_texts = [("new-name.txt", "Cats chase mice.")];
+    let old_overrides = english_overrides(old_texts.len());
+    let new_overrides = english_overrides(new_texts.len());
+    let old_corpus = cache_surface_corpus_for(&old_texts, old_overrides.clone());
+    let new_corpus = cache_surface_corpus_for(&new_texts, new_overrides.clone());
+
+    build_cache_with_reusable_surface(salvage_dir.path(), &old_texts, old_overrides, &old_corpus);
+    let (_, salvaged, loaded) = build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &new_texts,
+        new_overrides.clone(),
+        &new_corpus,
+    );
+    let full = build_full_rebuild_cache(full_dir.path(), &new_texts, new_overrides, &new_corpus);
+
+    assert!(loaded.is_empty());
+    assert_eq!(salvaged.layer, full.layer);
+    assert_eq!(salvaged.layer.documents[0].relative_path, "new-name.txt");
+}
+
+#[test]
+fn annotation_cache_salvage_model_change_invalidates_language() {
+    let salvage_dir = tempfile::tempdir().unwrap();
+    let full_dir = tempfile::tempdir().unwrap();
+    let texts = [
+        ("en.txt", "The small cat sleeps."),
+        ("pt.txt", "O gato preto correu."),
+    ];
+    let mut language_overrides = HashMap::new();
+    language_overrides.insert(0, "en".to_string());
+    language_overrides.insert(1, "pt".to_string());
+    let corpus = cache_surface_corpus_for(&texts, language_overrides.clone());
+
+    build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &texts,
+        language_overrides.clone(),
+        &corpus,
+    );
+    let mut old_envelope = read_annotation_cache_envelope(salvage_dir.path());
+    let pt_model = old_envelope
+        .manifest
+        .models
+        .iter_mut()
+        .find(|model| model.language == "pt")
+        .expect("test fixture should include pt model");
+    pt_model.sha256 = "changed-model-sha".to_string();
+    write_cache_envelope(salvage_dir.path(), &old_envelope);
+
+    let (_, salvaged, loaded) = build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &texts,
+        language_overrides.clone(),
+        &corpus,
+    );
+    let full = build_full_rebuild_cache(full_dir.path(), &texts, language_overrides, &corpus);
+
+    assert_eq!(loaded, vec!["pt.txt".to_string()]);
+    assert_eq!(salvaged.layer, full.layer);
+}
+
+#[test]
+fn annotation_cache_salvage_rejects_pipeline_version_mismatch() {
+    let salvage_dir = tempfile::tempdir().unwrap();
+    let texts = [("a.txt", "Cats chase mice."), ("b.txt", "Dogs jump high.")];
+    let language_overrides = english_overrides(texts.len());
+    let corpus = cache_surface_corpus_for(&texts, language_overrides.clone());
+
+    build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &texts,
+        language_overrides.clone(),
+        &corpus,
+    );
+    let mut old_envelope = read_annotation_cache_envelope(salvage_dir.path());
+    old_envelope.manifest.annotation_pipeline_version += 1;
+    write_cache_envelope(salvage_dir.path(), &old_envelope);
+
+    let (report, _, loaded) =
+        build_cache_with_reusable_surface(salvage_dir.path(), &texts, language_overrides, &corpus);
+
+    assert!(report.cache_written);
+    assert!(!report.reused_existing);
+    assert_eq!(loaded.len(), texts.len());
 }
 
 #[test]
@@ -107,6 +539,506 @@ fn annotation_parallel_build_matches_serial_reference() {
     let (_, parallel) = annotation_layer_for(&texts, language_overrides, true);
 
     assert_eq!(parallel, serial);
+}
+
+#[test]
+fn annotation_chunk_parallel_matches_serial_for_skewed_documents() {
+    let whale = repeated_word_text(
+        "whale",
+        crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP * 3 + 23,
+    );
+    let texts = [
+        ("d-short.txt", "Cats run quickly."),
+        ("b-whale.txt", whale.as_str()),
+        ("e-short.txt", "Dogs jump."),
+        ("a-short.txt", "Birds sing."),
+    ];
+    let language_overrides = english_overrides(texts.len());
+
+    let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+    let (_, parallel) = annotation_layer_for(&texts, language_overrides, true);
+
+    assert_eq!(parallel, serial);
+    assert_eq!(
+        parallel
+            .documents
+            .iter()
+            .map(|document| document.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        serial
+            .documents
+            .iter()
+            .map(|document| document.relative_path.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn annotation_chunk_parallel_multi_wave_matches_serial_reference() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let (owned_texts, total_words, token_budget) = multi_wave_english_texts();
+        assert!(total_words > token_budget.saturating_mul(2));
+        let texts = owned_texts
+            .iter()
+            .map(|(name, text)| (name.as_str(), text.as_str()))
+            .collect::<Vec<_>>();
+        let language_overrides = english_overrides(texts.len());
+
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let (_, parallel) = annotation_layer_for(&texts, language_overrides, true);
+
+        assert_eq!(parallel, serial);
+        assert_eq!(
+            parallel
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            serial
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            parallel
+                .documents
+                .iter()
+                .map(|document| &document.term_counts)
+                .collect::<Vec<_>>(),
+            serial
+                .documents
+                .iter()
+                .map(|document| &document.term_counts)
+                .collect::<Vec<_>>()
+        );
+    });
+}
+
+#[test]
+fn annotation_chunk_parallel_many_small_documents_matches_serial_reference() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let token_budget = annotation_wave_token_budget();
+        let words_per_doc = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP / 2 + 1;
+        let doc_count = (token_budget.saturating_mul(2) / words_per_doc + 2).max(64);
+        let owned_texts = (0..doc_count)
+            .map(|index| {
+                (
+                    format!("doc-{index:03}.txt"),
+                    repeated_word_text("word", words_per_doc),
+                )
+            })
+            .collect::<Vec<_>>();
+        let total_words = doc_count.saturating_mul(words_per_doc);
+        assert!(total_words > token_budget.saturating_mul(2));
+
+        let texts = owned_texts
+            .iter()
+            .map(|(name, text)| (name.as_str(), text.as_str()))
+            .collect::<Vec<_>>();
+        let expected_paths = owned_texts
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>();
+        let language_overrides = english_overrides(texts.len());
+
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let (_, parallel) = annotation_layer_for(&texts, language_overrides, true);
+
+        assert_eq!(parallel, serial);
+        assert_eq!(
+            parallel
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            expected_paths
+        );
+        assert_eq!(
+            parallel
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            serial
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>()
+        );
+    });
+}
+
+#[test]
+fn annotation_chunk_parallel_model_loads_are_bounded_per_worker() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let (owned_texts, total_words, token_budget) = multi_wave_english_texts();
+        assert!(total_words > token_budget.saturating_mul(2));
+        let texts = owned_texts
+            .iter()
+            .map(|(name, text)| (name.as_str(), text.as_str()))
+            .collect::<Vec<_>>();
+        let timing = AnnotationBuildTimingCounters::new();
+        let docs_done = AtomicUsize::new(0);
+
+        let (_, layer) = annotation_layer_result_for_with_timing(
+            &texts,
+            english_overrides(texts.len()),
+            true,
+            &AtomicBool::new(false),
+            &docs_done,
+            Some(&timing),
+        )
+        .unwrap();
+
+        assert_eq!(layer.documents.len(), texts.len());
+        assert_eq!(docs_done.load(AtomicOrdering::Relaxed), texts.len());
+
+        let worker_count = rayon::current_num_threads().max(1) as u64;
+        let model_load_actual = timing.model_load_actual.load(AtomicOrdering::Relaxed);
+        let manager_instances_created = timing
+            .manager_instances_created
+            .load(AtomicOrdering::Relaxed);
+        let model_load_attempts = timing.model_load_attempts.load(AtomicOrdering::Relaxed);
+
+        // For this same-language English fixture, actual loads are bounded by
+        // workers. A multi-language fixture would be bounded by workers times
+        // languages used.
+        assert!(
+            model_load_actual <= worker_count,
+            "actual model loads {model_load_actual} exceeded worker count {worker_count}"
+        );
+        assert!(
+            manager_instances_created <= worker_count,
+            "manager instances {manager_instances_created} exceeded worker count {worker_count}"
+        );
+        assert!(model_load_attempts >= model_load_actual);
+        assert!(
+            model_load_attempts > model_load_actual,
+            "multi-chunk fixture should exercise cached model-load hits"
+        );
+    });
+}
+
+#[test]
+fn annotation_segment_waves_oversized_document_matches_serial_reference() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let wave_budget = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP;
+        let whale = repeated_word_text("whale", wave_budget * 3 + 23);
+        let texts = [("whale.txt", whale.as_str())];
+        let language_overrides = english_overrides(texts.len());
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let timing = AnnotationBuildTimingCounters::new();
+        let docs_done = AtomicUsize::new(0);
+
+        let (_, segmented) = annotation_layer_result_for_with_wave_budget(
+            &texts,
+            language_overrides,
+            &AtomicBool::new(false),
+            &docs_done,
+            Some(&timing),
+            wave_budget,
+        )
+        .unwrap();
+
+        assert_eq!(segmented, serial);
+        assert_eq!(docs_done.load(AtomicOrdering::Relaxed), texts.len());
+        let segments_processed = timing
+            .annotation_segments_processed
+            .load(AtomicOrdering::Relaxed);
+        assert_eq!(segments_processed, 4);
+        assert!(segments_processed > 1);
+    });
+}
+
+#[test]
+fn annotation_segment_waves_mixed_corpus_matches_serial_reference() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let wave_budget = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP;
+        let whale = repeated_word_text("whale", wave_budget * 4 + 37);
+        let texts = [
+            ("a-small.txt", "Cats run quickly."),
+            ("b-whale.txt", whale.as_str()),
+            ("c-small.txt", "Dogs jump."),
+        ];
+        let language_overrides = english_overrides(texts.len());
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let timing = AnnotationBuildTimingCounters::new();
+        let docs_done = AtomicUsize::new(0);
+
+        let (_, segmented) = annotation_layer_result_for_with_wave_budget(
+            &texts,
+            language_overrides,
+            &AtomicBool::new(false),
+            &docs_done,
+            Some(&timing),
+            wave_budget,
+        )
+        .unwrap();
+
+        assert_eq!(segmented, serial);
+        assert_eq!(docs_done.load(AtomicOrdering::Relaxed), texts.len());
+        assert!(
+            timing
+                .annotation_segments_processed
+                .load(AtomicOrdering::Relaxed)
+                > 1
+        );
+    });
+}
+
+#[test]
+fn annotation_segment_waves_single_giant_chunk_is_own_segment() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let wave_budget = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP / 4;
+        let word_count = wave_budget + 7;
+        assert!(word_count < crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP);
+        let giant = repeated_word_text("giant", word_count);
+        let texts = [("giant.txt", giant.as_str())];
+        let language_overrides = english_overrides(texts.len());
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let timing = AnnotationBuildTimingCounters::new();
+        let docs_done = AtomicUsize::new(0);
+
+        let (_, segmented) = annotation_layer_result_for_with_wave_budget(
+            &texts,
+            language_overrides,
+            &AtomicBool::new(false),
+            &docs_done,
+            Some(&timing),
+            wave_budget,
+        )
+        .unwrap();
+
+        assert_eq!(segmented, serial);
+        assert_eq!(docs_done.load(AtomicOrdering::Relaxed), texts.len());
+        assert_eq!(
+            timing
+                .annotation_segments_processed
+                .load(AtomicOrdering::Relaxed),
+            1
+        );
+    });
+}
+
+#[test]
+fn annotation_segment_waves_under_budget_waves_use_existing_path() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let wave_budget = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP * 8;
+        let texts = [
+            ("a-small.txt", "Cats run quickly."),
+            ("b-small.txt", "Dogs jump."),
+            ("c-small.txt", "Birds sing."),
+        ];
+        let language_overrides = english_overrides(texts.len());
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let timing = AnnotationBuildTimingCounters::new();
+        let docs_done = AtomicUsize::new(0);
+
+        let (_, parallel) = annotation_layer_result_for_with_wave_budget(
+            &texts,
+            language_overrides,
+            &AtomicBool::new(false),
+            &docs_done,
+            Some(&timing),
+            wave_budget,
+        )
+        .unwrap();
+
+        assert_eq!(parallel, serial);
+        assert_eq!(docs_done.load(AtomicOrdering::Relaxed), texts.len());
+        assert_eq!(
+            timing
+                .annotation_segments_processed
+                .load(AtomicOrdering::Relaxed),
+            0
+        );
+    });
+}
+
+#[test]
+fn annotation_segment_waves_cancellation_between_segments() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let wave_budget = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP;
+        let whale = repeated_word_text("whale", wave_budget * 20 + 3);
+        let texts = [("whale.txt", whale.as_str())];
+        let language_overrides = english_overrides(texts.len());
+        let timing = AnnotationBuildTimingCounters::new();
+        let cancel = AtomicBool::new(false);
+        let docs_done = AtomicUsize::new(0);
+
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                while timing
+                    .annotation_segments_processed
+                    .load(AtomicOrdering::Relaxed)
+                    == 0
+                {
+                    std::thread::yield_now();
+                }
+                cancel.store(true, AtomicOrdering::Relaxed);
+            });
+
+            let result = annotation_layer_result_for_with_wave_budget(
+                &texts,
+                language_overrides,
+                &cancel,
+                &docs_done,
+                Some(&timing),
+                wave_budget,
+            );
+
+            match result {
+                Err(error) => assert_eq!(error, AnnotationLayerBuildError::Cancelled),
+                Ok(_) => panic!("segmented annotation build completed after cancellation"),
+            }
+        });
+        assert_eq!(docs_done.load(AtomicOrdering::Relaxed), 0);
+    });
+}
+
+#[test]
+fn annotation_chunk_parallel_completes_single_whale_document() {
+    let whale = repeated_word_text(
+        "word",
+        crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP * 2 + 17,
+    );
+    let texts = [("whale.txt", whale.as_str())];
+    let language_overrides = english_overrides(texts.len());
+    let (corpus, layer) = annotation_layer_for(&texts, language_overrides, true);
+
+    let annotated_token_total = layer.documents[0]
+        .term_counts
+        .iter()
+        .map(|count| count.count)
+        .sum::<u64>();
+
+    assert_eq!(
+        annotated_token_total,
+        corpus.documents[0].summary.token_count
+    );
+    assert_eq!(
+        annotated_token_total,
+        (crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP * 2 + 17) as u64
+    );
+}
+
+#[test]
+fn annotation_chunk_parallel_preserves_punctuation_only_and_empty_documents() {
+    let punctuation_texts = [("punctuation.txt", "!?...")];
+    let punctuation_overrides = english_overrides(punctuation_texts.len());
+    let (punctuation_corpus, punctuation_layer) =
+        annotation_layer_for(&punctuation_texts, punctuation_overrides, true);
+
+    assert_eq!(punctuation_corpus.documents[0].summary.token_count, 0);
+    assert!(punctuation_layer.documents[0].term_counts.is_empty());
+    assert!(punctuation_layer.lemma_table.is_empty());
+
+    let empty_texts = [("empty.txt", "")];
+    let empty_overrides = english_overrides(empty_texts.len());
+    let (empty_corpus, empty_layer) = annotation_layer_for(&empty_texts, empty_overrides, true);
+
+    assert!(empty_corpus.documents.is_empty());
+    assert!(empty_layer.documents.is_empty());
+}
+
+#[test]
+fn annotation_chunk_parallel_cancellation_after_input_load_reports_cancelled() {
+    let texts = [("cancel.txt", "The quick brown fox jumps.")];
+    let records = texts
+        .iter()
+        .map(|(name, _)| record(name))
+        .collect::<Vec<_>>();
+    let text_by_name = texts.iter().copied().collect::<HashMap<_, _>>();
+    let language_overrides = english_overrides(texts.len());
+    let mut analysis_options = build_options();
+    analysis_options.language_overrides = language_overrides.clone();
+    let corpus = analysis_product_for(&texts, analysis_options, true).corpus;
+    let cancel = AtomicBool::new(false);
+    let docs_done = AtomicUsize::new(0);
+
+    let result = build_annotation_layer_with_mapping(
+        &corpus,
+        &records,
+        annotation_options(language_overrides),
+        &cancel,
+        |record| {
+            cancel.store(true, AtomicOrdering::Relaxed);
+            Ok(processed_resolution(
+                record,
+                text_by_name
+                    .get(record.source_path.to_str().unwrap())
+                    .copied()
+                    .unwrap_or_default(),
+            ))
+        },
+        true,
+        &docs_done,
+    );
+
+    assert_eq!(result.unwrap_err(), AnnotationLayerBuildError::Cancelled);
+    assert_eq!(docs_done.load(AtomicOrdering::Relaxed), 0);
+}
+
+#[test]
+fn annotation_chunk_parallel_progress_counts_each_document_once() {
+    let texts = [
+        ("c.txt", "Cats run."),
+        ("a.txt", "Dogs jump."),
+        ("b.txt", "Birds sing."),
+    ];
+    let docs_done = AtomicUsize::new(0);
+    let (_, layer) = annotation_layer_result_for(
+        &texts,
+        english_overrides(texts.len()),
+        true,
+        &AtomicBool::new(false),
+        &docs_done,
+    )
+    .unwrap();
+
+    assert_eq!(layer.documents.len(), texts.len());
+    assert_eq!(docs_done.load(AtomicOrdering::Relaxed), texts.len());
 }
 
 #[test]
@@ -530,8 +1462,13 @@ fn test_annotation_cache_seam_stale_cache() {
         languages_used: vec![],
     };
 
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     // 2. Build with cache root
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
@@ -635,8 +1572,13 @@ fn test_annotation_cache_seam_valid_cache() {
         &options.language_overrides,
     )
     .unwrap();
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     // 4. Run fresh analysis build with cache root
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
@@ -730,8 +1672,13 @@ fn test_annotation_cache_seam_validation_reject_bad_layer_docs() {
     )
     .unwrap();
 
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
     let corpus2 = build_analysis_corpus(
@@ -803,8 +1750,13 @@ fn test_annotation_cache_seam_validation_reject_bad_ids() {
         &options.language_overrides,
     )
     .unwrap();
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
     let corpus2 = build_analysis_corpus(
@@ -881,8 +1833,13 @@ fn test_annotation_cache_seam_tokenisation_threading() {
     )
     .unwrap();
 
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     // Build with default tokenization config (should read Stale)
     let mut options_default = build_options();
@@ -966,8 +1923,13 @@ fn test_annotation_cache_seam_mixed_en_pt() {
     assert!(manifest.models.iter().any(|m| m.language == "pt"));
     assert!(manifest.models.iter().any(|m| m.language == "en"));
 
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
     let corpus_cached = build_analysis_corpus(
