@@ -2295,6 +2295,278 @@ fn annotate_staged_annotation_wave_documents_with_budget(
             cancel,
             runtime,
             segment_budget,
+        )
+        .map(|document| vec![document]);
+    }
+
+    let jobs = annotation_chunk_jobs(wave);
+    let annotated_chunks = annotate_annotation_chunk_jobs(wave, &jobs, managers, cancel, runtime)?;
+
+    let mut chunks_by_document = (0..wave.len()).map(|_| Vec::new()).collect::<Vec<_>>();
+    for annotated_chunk in annotated_chunks {
+        chunks_by_document[annotated_chunk.document_position].push(annotated_chunk);
+    }
+
+    let finished_documents = chunks_by_document
+        .into_par_iter()
+        .enumerate()
+        .map(|(document_position, mut document_chunks)| {
+            let staged_document = &wave[document_position];
+            document_chunks.sort_by_key(|chunk| chunk.chunk_index);
+            let annotated_chunks = document_chunks
+                .into_iter()
+                .map(|chunk| (chunk.chunk, chunk.annotations))
+                .collect();
+            let document = finish_staged_annotation_document(
+                staged_document,
+                surface_term_lookup,
+                annotated_chunks,
+                runtime.timing,
+            )?;
+            runtime.docs_done.fetch_add(1, AtomicOrdering::Relaxed);
+            Ok(document)
+        })
+        .collect::<Vec<Result<_, _>>>();
+
+    finished_documents.into_iter().collect()
+}
+
+fn annotate_annotation_chunk_jobs(
+    wave: &[StagedAnnotationDocument<'_>],
+    jobs: &[AnnotationChunkJob],
+    managers: &[Mutex<ModelManager>],
+    cancel: &AtomicBool,
+    runtime: AnnotationLayerBuildRuntime<'_>,
+) -> Result<Vec<AnnotatedAnnotationChunk>, AnnotationLayerBuildError> {
+    let annotated_chunks = jobs
+        .par_iter()
+        .map(|job| {
+            let staged_document = &wave[job.document_position];
+            let manager_slot = rayon::current_thread_index().unwrap_or(0) % managers.len();
+            let mut manager = managers[manager_slot].lock().map_err(|_| {
+                AnnotationLayerBuildError::ModelTaggingFailed {
+                    analysis_document_index: staged_document.input.analysis_document_index,
+                    language: staged_document.input.language.clone(),
+                    error: "annotation model manager lock poisoned".to_string(),
+                }
+            })?;
+            tag_staged_annotation_chunk(staged_document, job, &mut manager, cancel, runtime.timing)
+                .map(|annotations| AnnotatedAnnotationChunk {
+                    document_position: job.document_position,
+                    chunk_index: job.chunk_index,
+                    chunk: job.chunk.clone(),
+                    annotations,
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(annotated_chunks)
+}
+
+fn annotate_segmented_staged_annotation_document(
+    staged_document: &StagedAnnotationDocument<'_>,
+    surface_term_lookup: &HashMap<String, u32>,
+    managers: &[Mutex<ModelManager>],
+    cancel: &AtomicBool,
+    runtime: AnnotationLayerBuildRuntime<'_>,
+    segment_budget: usize,
+) -> Result<WorkerAnnotationDocument, AnnotationLayerBuildError> {
+    let segment_budget = segment_budget.max(1);
+    let segments = annotation_chunk_segments(&staged_document.chunks, segment_budget);
+    let mut count_accumulator = LocalAnnotatedTermCountAccumulator::new();
+    let mut next_word_token_index = 0usize;
+
+    for segment in segments {
+        if cancel.load(AtomicOrdering::Relaxed) {
+            return Err(AnnotationLayerBuildError::Cancelled);
+        }
+
+        let segment_chunks = &staged_document.chunks[segment.clone()];
+        let token_range = annotation_segment_token_range(segment_chunks);
+        let jobs = annotation_segment_chunk_jobs(segment_chunks, segment.start);
+        let mut annotated_chunks = annotate_annotation_chunk_jobs(
+            std::slice::from_ref(staged_document),
+            &jobs,
+            managers,
+            cancel,
+            runtime,
+        )?;
+        annotated_chunks.sort_by_key(|chunk| chunk.chunk_index);
+        let annotated_chunks = annotated_chunks
+            .into_iter()
+            .map(|chunk| (chunk.chunk, chunk.annotations))
+            .collect();
+
+        let projected_len = {
+            let projected = project_chunk_annotations_to_word_tokens_for_token_range(
+                staged_document.input,
+                &staged_document.tokens,
+                token_range,
+                annotated_chunks,
+                next_word_token_index,
+            )?;
+            let projected_len = projected.len();
+            let counting_started = Instant::now();
+            accumulate_annotated_tokens_to_local_counts(
+                staged_document.input.analysis_document_index,
+                &projected,
+                surface_term_lookup,
+                &mut count_accumulator,
+            )?;
+            if let Some(timing) = runtime.timing {
+                timing.record_local_counting(counting_started.elapsed());
+            }
+            projected_len
+        };
+
+        next_word_token_index = next_word_token_index
+            .checked_add(projected_len)
+            .ok_or_else(|| {
+                annotation_projection_invariant_error(
+                    staged_document.input,
+                    next_word_token_index,
+                    "annotated word-token index overflowed usize".to_string(),
+                )
+            })?;
+        if let Some(timing) = runtime.timing {
+            timing.record_annotation_segment_processed();
+        }
+    }
+
+    let term_counts = finish_accumulated_local_counts(count_accumulator);
+    runtime.docs_done.fetch_add(1, AtomicOrdering::Relaxed);
+    Ok(worker_annotation_document_from_local_counts(
+        staged_document.input,
+        term_counts,
+    ))
+}
+
+fn annotation_chunk_segments(chunks: &[Range<usize>], segment_budget: usize) -> Vec<Range<usize>> {
+    let segment_budget = segment_budget.max(1);
+    let mut segments = Vec::new();
+    let mut segment_start = 0usize;
+    let mut segment_weight = 0usize;
+
+    for (chunk_index, chunk) in chunks.iter().enumerate() {
+        let chunk_weight = annotation_chunk_token_weight(chunk);
+        if segment_start < chunk_index
+            && segment_weight.saturating_add(chunk_weight) > segment_budget
+        {
+            segments.push(segment_start..chunk_index);
+            segment_start = chunk_index;
+            segment_weight = 0;
+        }
+
+        segment_weight = segment_weight.saturating_add(chunk_weight);
+        if chunk_weight > segment_budget {
+            segments.push(segment_start..chunk_index + 1);
+            segment_start = chunk_index + 1;
+            segment_weight = 0;
+        }
+    }
+
+    if segment_start < chunks.len() {
+        segments.push(segment_start..chunks.len());
+    }
+
+    segments
+}
+
+fn annotation_chunk_token_weight(chunk: &Range<usize>) -> usize {
+    chunk.end.saturating_sub(chunk.start).max(1)
+}
+
+fn annotation_segment_chunk_jobs(
+    segment_chunks: &[Range<usize>],
+    first_chunk_index: usize,
+) -> Vec<AnnotationChunkJob> {
+    segment_chunks
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(offset, chunk)| AnnotationChunkJob {
+            document_position: 0,
+            chunk_index: first_chunk_index + offset,
+            chunk,
+        })
+        .collect()
+}
+
+fn annotation_segment_token_range(segment_chunks: &[Range<usize>]) -> Range<usize> {
+    let start = segment_chunks.first().map_or(0, |chunk| chunk.start);
+    let end = segment_chunks.last().map_or(start, |chunk| chunk.end);
+    start..end
+}
+
+fn tag_staged_annotation_chunk(
+    staged_document: &StagedAnnotationDocument<'_>,
+    job: &AnnotationChunkJob,
+    manager: &mut ModelManager,
+    cancel: &AtomicBool,
+    timing: Option<&AnnotationBuildTimingCounters>,
+) -> Result<Vec<AnnotatedToken>, AnnotationLayerBuildError> {
+    if cancel.load(AtomicOrdering::Relaxed) {
+        return Err(AnnotationLayerBuildError::Cancelled);
+    }
+
+    let input = staged_document.input;
+    load_annotation_model(manager, &input.language, timing)
+        .map_err(|error| annotation_document_error(input, error))?;
+
+    let token_surfaces = staged_document.tokens[job.chunk.clone()]
+        .iter()
+        .map(|token| token.surface)
+        .collect::<Vec<_>>();
+    if let Some(timing) = timing {
+        manager.tag_and_align_with_timing(
+            &input.language,
+            &token_surfaces,
+            |duration| timing.record_udpipe_tag_call(duration),
+            |duration| timing.record_alignment(duration),
+        )
+    } else {
+        manager.tag_and_align(&input.language, &token_surfaces)
+    }
+    .map_err(|error| annotation_document_error(input, error))
+}
+
+fn finish_staged_annotation_document(
+    staged_document: &StagedAnnotationDocument<'_>,
+    surface_term_lookup: &HashMap<String, u32>,
+    annotated_chunks: Vec<(Range<usize>, Vec<AnnotatedToken>)>,
+    timing: Option<&AnnotationBuildTimingCounters>,
+) -> Result<WorkerAnnotationDocument, AnnotationLayerBuildError> {
+    let input = staged_document.input;
+    let annotated_tokens =
+        project_chunk_annotations_to_word_tokens(input, &staged_document.tokens, annotated_chunks)?;
+    let counting_started = Instant::now();
+    let term_counts = resolve_annotated_tokens_to_local_counts(
+        input.analysis_document_index,
+        &annotated_tokens,
+        surface_term_lookup,
+    )?;
+    if let Some(timing) = timing {
+        timing.record_local_counting(counting_started.elapsed());
+    }
+
+    Ok(worker_annotation_document_from_local_counts(
+        input,
+        term_counts,
+    ))
+}
+
+fn worker_annotation_document_from_local_counts(
+    input: &AnnotationDocumentInput,
+    term_counts: Vec<LocalAnnotatedTermCount>,
+) -> WorkerAnnotationDocument {
+    WorkerAnnotationDocument {
+        analysis_document_index: input.analysis_document_index,
+        source_path: input.source_path.clone(),
+        relative_path: input.relative_path.clone(),
+        term_counts,
+    }
+}
+
 fn annotate_annotation_document(
     input: &AnnotationDocumentInput,
     surface_term_lookup: &HashMap<String, u32>,
@@ -2307,8 +2579,7 @@ fn annotate_annotation_document(
         return Err(AnnotationLayerBuildError::Cancelled);
     }
 
-    manager
-        .load_model(&input.language)
+    load_annotation_model(manager, &input.language, timing)
         .map_err(|error| annotation_document_error(input, error))?;
 
     let document_id = u32::try_from(input.analysis_document_index).map_err(|_| {
@@ -2374,7 +2645,55 @@ fn project_chunk_annotations_to_word_tokens(
         .map(|token| token.surface)
         .collect::<Vec<_>>();
     let mut projected = Vec::with_capacity(expected_word_surfaces.len());
+    project_chunk_annotations_to_word_tokens_into(
+        input,
+        tokens,
+        annotated_chunks,
+        0,
+        &mut projected,
+    )?;
 
+    validate_projected_word_annotations(input, &projected, &expected_word_surfaces, 0)?;
+    Ok(projected)
+}
+
+fn project_chunk_annotations_to_word_tokens_for_token_range(
+    input: &AnnotationDocumentInput,
+    tokens: &[Token<'_>],
+    token_range: Range<usize>,
+    annotated_chunks: Vec<(Range<usize>, Vec<AnnotatedToken>)>,
+    base_word_token_index: usize,
+) -> Result<Vec<AnnotatedToken>, AnnotationLayerBuildError> {
+    let expected_word_surfaces = tokens[token_range]
+        .iter()
+        .filter(|token| token.counts_as_word())
+        .map(|token| token.surface)
+        .collect::<Vec<_>>();
+    let mut projected = Vec::with_capacity(expected_word_surfaces.len());
+    project_chunk_annotations_to_word_tokens_into(
+        input,
+        tokens,
+        annotated_chunks,
+        base_word_token_index,
+        &mut projected,
+    )?;
+
+    validate_projected_word_annotations(
+        input,
+        &projected,
+        &expected_word_surfaces,
+        base_word_token_index,
+    )?;
+    Ok(projected)
+}
+
+fn project_chunk_annotations_to_word_tokens_into(
+    input: &AnnotationDocumentInput,
+    tokens: &[Token<'_>],
+    annotated_chunks: Vec<(Range<usize>, Vec<AnnotatedToken>)>,
+    base_word_token_index: usize,
+    projected: &mut Vec<AnnotatedToken>,
+) -> Result<(), AnnotationLayerBuildError> {
     for (chunk, annotations) in annotated_chunks {
         let chunk_tokens = &tokens[chunk.clone()];
         if annotations.len() != chunk_tokens.len() {
@@ -2406,10 +2725,19 @@ fn project_chunk_annotations_to_word_tokens(
 
             if token.counts_as_word() {
                 let mut word_annotation = annotation;
-                word_annotation.token_index = u32::try_from(projected.len()).map_err(|_| {
+                let word_token_index = base_word_token_index
+                    .checked_add(projected.len())
+                    .ok_or_else(|| {
+                        annotation_projection_invariant_error(
+                            input,
+                            projected.len(),
+                            "annotated word-token index overflowed usize".to_string(),
+                        )
+                    })?;
+                word_annotation.token_index = u32::try_from(word_token_index).map_err(|_| {
                     annotation_projection_invariant_error(
                         input,
-                        projected.len(),
+                        word_token_index,
                         "annotated word-token index overflowed u32".to_string(),
                     )
                 })?;
@@ -2418,19 +2746,21 @@ fn project_chunk_annotations_to_word_tokens(
         }
     }
 
-    validate_projected_word_annotations(input, &projected, &expected_word_surfaces)?;
-    Ok(projected)
+    Ok(())
 }
 
 fn validate_projected_word_annotations(
     input: &AnnotationDocumentInput,
     projected: &[AnnotatedToken],
     expected_word_surfaces: &[&str],
+    base_word_token_index: usize,
 ) -> Result<(), AnnotationLayerBuildError> {
     if projected.len() != expected_word_surfaces.len() {
+        let mismatch_index =
+            base_word_token_index.saturating_add(projected.len().min(expected_word_surfaces.len()));
         return Err(annotation_projection_invariant_error(
             input,
-            projected.len().min(expected_word_surfaces.len()),
+            mismatch_index,
             format!(
                 "projected {} word annotations but expected {} word tokens",
                 projected.len(),
@@ -2445,9 +2775,10 @@ fn validate_projected_word_annotations(
         .enumerate()
     {
         if annotation.surface != *expected_surface {
+            let mismatch_index = base_word_token_index.saturating_add(index);
             return Err(annotation_projection_invariant_error(
                 input,
-                index,
+                mismatch_index,
                 format!(
                     "projected surface {:?} but expected word surface {:?}",
                     annotation.surface, expected_surface
@@ -2538,13 +2869,68 @@ pub(super) fn resolve_annotated_tokens_to_local_counts(
             },
         )
         .collect::<Vec<_>>();
+    sort_local_annotated_term_counts(&mut terms);
+    Ok(terms)
+}
+
+fn accumulate_annotated_tokens_to_local_counts(
+    analysis_document_index: usize,
+    annotated_tokens: &[AnnotatedToken],
+    surface_term_lookup: &HashMap<String, u32>,
+    accumulator: &mut LocalAnnotatedTermCountAccumulator,
+) -> Result<(), AnnotationLayerBuildError> {
+    for annotated_token in annotated_tokens {
+        let Some(&surface_term_id) = surface_term_lookup.get(&annotated_token.surface) else {
+            return Err(AnnotationLayerBuildError::AlignmentOrIdentityMismatch {
+                analysis_document_index,
+                reason: format!(
+                    "annotated surface {:?} at token {} does not exist in the analysis surface vocabulary",
+                    annotated_token.surface, annotated_token.token_index
+                ),
+            });
+        };
+        let key = (
+            surface_term_id,
+            annotated_token.lemma.clone(),
+            annotated_token.upos,
+        );
+        let count = accumulator.entry(key).or_default();
+        *count = count.checked_add(1).ok_or_else(|| {
+            AnnotationLayerBuildError::AlignmentOrIdentityMismatch {
+                analysis_document_index,
+                reason: "annotated token count overflowed u64".to_string(),
+            }
+        })?;
+    }
+
+    Ok(())
+}
+
+fn finish_accumulated_local_counts(
+    accumulator: LocalAnnotatedTermCountAccumulator,
+) -> Vec<LocalAnnotatedTermCount> {
+    let mut terms = accumulator
+        .into_iter()
+        .map(
+            |((surface_term_id, lemma, upos), count)| LocalAnnotatedTermCount {
+                surface_term_id,
+                lemma,
+                upos,
+                count,
+            },
+        )
+        .collect::<Vec<_>>();
+    sort_local_annotated_term_counts(&mut terms);
+    terms
+}
+
+fn sort_local_annotated_term_counts(terms: &mut [LocalAnnotatedTermCount]) {
     terms.sort_by(|left, right| {
         left.surface_term_id
             .cmp(&right.surface_term_id)
             .then_with(|| left.lemma.cmp(&right.lemma))
             .then_with(|| left.upos.as_upos_str().cmp(right.upos.as_upos_str()))
     });
-    Ok(terms)
 }
 
 fn reduce_annotation_documents(
