@@ -11,6 +11,62 @@ export interface OverviewGlossaryEntry {
 }
 
 export const overviewGlossary = {
+  token: {
+    id: "token",
+    label: "Token",
+    explanation:
+      "A countable word-like unit: one occurrence of a word or number in the analysis corpus.",
+    latex: String.raw`N=\sum_{d=1}^{D}N_d`,
+    detail:
+      "CorpusWright segments text into Unicode word segments and counts two kinds: words and numbers. Standalone punctuation is never counted. By default, hyphen compounds (state-of-the-art) and apostrophe contractions (don't) are kept whole, and numeric separators are split. Every corpus-level figure on this page counts these tokens.",
+    symbols: [
+      { sym: String.raw`N`, def: "Total tokens in the analysis corpus." },
+      { sym: String.raw`N_d`, def: "Tokens in document d." },
+      { sym: String.raw`D`, def: "Number of documents." },
+    ],
+    interpretation:
+      "Tokens measure corpus size - how much running text there is. Every 'per million' rate and every proportion on this page uses N as its denominator.",
+    limitations: [
+      "Counts depend on the tokenisation rules above; corpora processed with different rules are not comparable.",
+      "Numbers count as tokens, so number-heavy material (tables, OCR output) inflates N.",
+    ],
+  },
+  type: {
+    id: "type",
+    label: "Type",
+    explanation:
+      "A distinct token form. Counting every occurrence gives tokens; counting each distinct form once gives types.",
+    latex: String.raw`V=\bigl\lvert\{\mathrm{key}(t):t\in\text{corpus}\}\bigr\rvert`,
+    detail:
+      "Two tokens belong to the same type when they share an aggregation key: the token's text, Unicode-normalised (NFC) and lowercased. 'The' and 'the' are one type; 'run' and 'running' remain two - types are surface forms, not lemmas. The Overview always computes over the full type universe of the analysis corpus.",
+    symbols: [
+      { sym: String.raw`V`, def: "Vocabulary size - the number of distinct types." },
+      { sym: String.raw`\mathrm{key}(t)`, def: "Token t's aggregation key: NFC-normalised, lowercased text." },
+    ],
+    interpretation:
+      "Types measure vocabulary breadth. The Frequency List applies its own view filters (alphabetic words only, hidden stopwords), so its displayed type count can legitimately differ from the Overview's total. The Overview is a fixed corpus snapshot; the Frequency List is an interactive filtered table.",
+    limitations: [
+      "Types are case-folded surface forms, not lemmas - inflected variants count separately.",
+      "OCR errors and spelling variants each create their own type, inflating V in noisy corpora.",
+    ],
+  },
+  documentUnit: {
+    id: "document",
+    label: "Document",
+    explanation:
+      "One source text in the analysis corpus - the unit behind balance, dispersion, and document-frequency measures.",
+    latex: String.raw`s_d=\frac{N_d}{N}`,
+    detail:
+      "Every file included in the analysis is one document. Balance metrics compare document sizes; dispersion metrics ask how each type spreads across documents. Documents that yield no tokens are excluded from these calculations.",
+    symbols: [
+      { sym: String.raw`s_d`, def: "Document d's share of all corpus tokens." },
+    ],
+    interpretation:
+      "Every document-based measure inherits your segmentation choices. One enormous file among thousands of small ones dominates the shares - check the largest-document share in the balance panel before reading dispersion.",
+    limitations: [
+      "Merging or splitting source files changes every document-based measure without changing a word of text.",
+    ],
+  },
   giniCoefficient: {
     id: "gini-coefficient",
     label: "Gini coefficient",
@@ -64,7 +120,7 @@ export const overviewGlossary = {
       { sym: String.raw`\sum s_d^2`, def: "Sum of squared shares - the Simpson concentration." },
     ],
     interpretation:
-      "Compare it to the real document count. Close to the actual number means well balanced; much lower means a few large documents carry most of the mass. For example, '7.0 of 8' means the eight documents behave almost like eight equal ones - well balanced. It is the document-level analogue of effective vocabulary.",
+      "It answers: given this imbalance, how many equally sized documents would the corpus behave like? Compare it to the real document count. Close to the actual number means well balanced; much lower means a few large documents carry most of the mass. For example, '7.0 of 8' means the eight documents behave almost like eight equal ones - well balanced. It is the document-level analogue of effective vocabulary.",
     limitations: [
       "Measures balance of document sizes, not content or quality.",
       "Depends on how the corpus is segmented into documents.",
@@ -149,6 +205,90 @@ export const overviewGlossary = {
       "Sensitive to tokenisation and casing.",
     ],
   },
+  shannonEntropy: {
+    id: "shannon-entropy",
+    label: "Shannon entropy",
+    explanation:
+      "The average uncertainty, in bits, of the type of a randomly drawn token.",
+    latex: String.raw`H=-\sum_{i=1}^{V}p_i\log_2 p_i`,
+    detail:
+      "Shannon entropy treats the corpus as a probability distribution over types. Drawing one token at random, H is the average number of yes/no questions needed to identify its type. It is highest when token mass is spread evenly across many types, and falls as a few types come to dominate.",
+    symbols: [
+      { sym: String.raw`H`, def: "Shannon entropy, in bits (base-2 logarithm)." },
+      { sym: String.raw`p_i`, def: "Relative frequency of type i - its count divided by total tokens." },
+      { sym: String.raw`V`, def: "Number of distinct types." },
+    ],
+    interpretation:
+      "Raw H rises with both vocabulary size and evenness, so read it through its two derived figures: normalised entropy (H rescaled to 0-1) and effective vocabulary (2 to the power H). H is the quantity those two are built from.",
+    limitations: [
+      "Depends on tokenisation and the type definition; only comparable across identically processed corpora.",
+      "Base-2 by convention here, so that effective vocabulary is two raised to H.",
+    ],
+  },
+  zipfFit: {
+    id: "zipf-fit",
+    label: "Rank-frequency (Zipf) fit",
+    explanation:
+      "Fits a straight line to log frequency against log rank, testing how closely the vocabulary follows a power law.",
+    latex: String.raw`f(r)\approx C\,r^{-a}\;\Longleftrightarrow\;\ln f(r)=\ln C-a\ln r`,
+    detail:
+      "Types are ranked by frequency and a least-squares line is fitted to ln(frequency) against ln(rank). Rank 1 and the frequency-one tail are excluded before fitting: the top rank is often idiosyncratic, and the tail of once-only types forms horizontal steps that distort the slope. The fitted-ranks row reports exactly which ranks the line describes.",
+    symbols: [
+      { sym: String.raw`r`, def: "A type's frequency rank (1 = most frequent)." },
+      { sym: String.raw`f(r)`, def: "Token frequency of the type at rank r." },
+      { sym: String.raw`a`, def: "Zipf exponent - the negated slope. Classic Zipf's law predicts a near 1." },
+      { sym: String.raw`C`, def: "Zipf coefficient - exp(intercept), the fitted frequency at rank 1." },
+      { sym: String.raw`R^2`, def: "Share of log-frequency variance explained, over the fitted ranks only." },
+    ],
+    interpretation:
+      "The exponent says how steeply frequency falls with rank: near 1 is the classic Zipfian profile; steeper means high-frequency types dominate more; shallower means a flatter, more even vocabulary. Read the fitted range before the parameters - the fit describes only those ranks.",
+    limitations: [
+      "A high R-squared says the selected log-log segment is nearly straight. It does not prove Zipf's law and says nothing about corpus quality.",
+      "Rank 1 and the frequency-one tail are excluded by design; the fit does not describe them.",
+      "Least squares on log-log data is the pragmatic convention for power laws, not the statistically optimal estimator.",
+      "The coefficient is scale-dependent: rescaling the y-axis (raw frequency vs rate per million) rescales C but leaves the exponent and R-squared unchanged.",
+    ],
+  },
+  heapsFit: {
+    id: "heaps-fit",
+    label: "Vocabulary growth (Heaps) fit",
+    explanation:
+      "Describes how the number of distinct types grows as more tokens are read.",
+    latex: String.raw`V(N)=K\,N^{\beta}\;\Longleftrightarrow\;\ln V=\ln K+\beta\ln N`,
+    detail:
+      "As the corpus is read in its current document order, vocabulary size is recorded at doubling token checkpoints, plus a final point for the whole corpus. Heaps' law proposes the power relation above; K and beta come from a least-squares line on the ln-ln checkpoints.",
+    symbols: [
+      { sym: String.raw`N`, def: "Tokens read so far." },
+      { sym: String.raw`V(N)`, def: "Distinct types observed after N tokens." },
+      { sym: String.raw`K`, def: "Fitted coefficient - the scale of the growth curve." },
+      { sym: String.raw`\beta`, def: "Growth exponent. Natural-language corpora typically show values around 0.4-0.6." },
+      { sym: String.raw`R^2`, def: "Fit quality on the log-log checkpoints." },
+    ],
+    interpretation:
+      "Beta near 1 means nearly every stretch of new text brings new types (rich or noisy vocabulary, or a corpus still far from saturation); lower beta means the vocabulary is levelling off. The final observed point is simply the whole corpus: total tokens and total types.",
+    limitations: [
+      "The curve describes vocabulary growth in the corpus's current document order. It is not a prediction of growth under other orderings or samples - reordering documents changes the checkpoints and can change the fit.",
+      "K and beta are correlated estimates from few checkpoints; read them as a pair describing the growth curve, not as precise constants.",
+    ],
+  },
+  topNCoverage: {
+    id: "top-n-coverage",
+    label: "Top-N coverage",
+    explanation: "The share of all tokens accounted for by the N most frequent types.",
+    latex: String.raw`C_N=\frac{1}{T}\sum_{i=1}^{N}f_{(i)}`,
+    detail:
+      "Sort types by frequency, take the top N, and divide their combined token count by the corpus total. It shows how much of the running text a reader covers by knowing only the commonest words.",
+    symbols: [
+      { sym: String.raw`C_N`, def: "Coverage of the top N types, in [0, 1]." },
+      { sym: String.raw`f_{(i)}`, def: "Frequency of the i-th most frequent type." },
+      { sym: String.raw`T`, def: "Total tokens in the corpus." },
+    ],
+    interpretation:
+      "In natural language the top 100 types - mostly function words - often cover 40-50% of all tokens. Very high coverage at small N signals strong concentration; compare corpora only at the same N.",
+    limitations: [
+      "Depends on tokenisation and case folding, like every frequency measure.",
+    ],
+  },
   normalisedEntropy: {
     id: "normalised-entropy",
     label: "Normalised entropy / evenness",
@@ -172,7 +312,7 @@ export const overviewGlossary = {
   },
   effectiveVocabulary: {
     id: "effective-vocabulary",
-    label: "Effective vocabulary (entropy-based)",
+    label: "Effective vocabulary (perplexity)",
     explanation: "Gives the number of equally frequent types that would have the same entropy as this corpus.",
     latex: String.raw`V_{\mathrm{eff}}=2^H`,
     detail:
@@ -183,7 +323,7 @@ export const overviewGlossary = {
       { sym: String.raw`V_{\mathrm{eff}}`, def: "Effective vocabulary - the equivalent count of equally frequent types." },
     ],
     interpretation:
-      "Read it against the raw type count. A corpus can have tens of thousands of unique types but a much smaller effective vocabulary - meaning its diversity behaves as if there were only that many equally common words. A large gap between the two is the signature of a Zipfian long tail: a small set of high-frequency forms carries most of the token mass while the bulk of types are rare. Higher effective vocabulary means richer effective diversity.",
+      "Read it against the raw type count. A corpus can have tens of thousands of unique types but a much smaller effective vocabulary - meaning its diversity behaves as if there were only that many equally common words. A large gap between the two is the signature of a Zipfian long tail: a small set of high-frequency forms carries most of the token mass while the bulk of types are rare. Higher effective vocabulary means richer effective diversity. Some tools report this same quantity as perplexity - they are one number, not two metrics.",
     limitations: [
       "Derived from H, so it inherits the same base-2 and tokenisation dependence.",
       "Robust to the exact size of the rare tail, but not to how types are defined.",

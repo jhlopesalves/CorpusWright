@@ -2353,6 +2353,7 @@ main {
 }
 
 .analysis-panel {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -2514,10 +2515,12 @@ main {
 
 .analysis-metric-table {
   width: 100%;
+  max-width: none;
   border-collapse: collapse;
-  table-layout: auto;
-  font-size: 0.82rem;
+  table-layout: fixed;
+  font-size: 0.88rem;
   line-height: 1.35;
+  overflow: visible;
 }
 
 .analysis-metric-table tr {
@@ -2531,7 +2534,6 @@ main {
 }
 
 .analysis-metric-table th {
-  width: 52%;
   padding-right: 14px;
   color: var(--text-muted);
   font-weight: 600;
@@ -2557,6 +2559,30 @@ main {
   color: var(--text-muted) !important;
   text-align: right;
   white-space: nowrap;
+}
+
+.analysis-metric-table.has-share-column th {
+  width: 52%;
+}
+
+.analysis-metric-table.has-share-column .analysis-metric-value {
+  width: 31%;
+}
+
+.analysis-metric-table.has-share-column .analysis-metric-share {
+  width: 17%;
+}
+
+.analysis-metric-table.has-no-share-column th {
+  width: 62%;
+}
+
+.analysis-metric-table.has-no-share-column .analysis-metric-value {
+  width: 38%;
+}
+
+.analysis-metric-table.has-no-share-column .analysis-metric-share {
+  display: none;
 }
 
 .analysis-metric-share:empty {
@@ -2605,6 +2631,12 @@ main {
   font-weight: 500;
 }
 
+.analysis-dispersion-sample-toggle {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
 .analysis-metric-description {
   display: block;
   margin-top: 3px;
@@ -2618,7 +2650,16 @@ main {
   border-top: 0 !important;
 }
 
+.analysis-dispersion-sample-row {
+  border-top: 0 !important;
+}
+
 .analysis-glossary-row > td {
+  padding: 0 0 8px !important;
+  overflow: visible;
+}
+
+.analysis-dispersion-sample-row > td {
   padding: 0 0 8px !important;
 }
 
@@ -2634,15 +2675,47 @@ main {
   overflow: visible;
 }
 
+.analysis-glossary-row .analysis-glossary-detail {
+  width: min(960px, 100cqw);
+  max-width: min(960px, 100cqw);
+}
+
+.analysis-dispersion-sample-detail {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--border-color);
+  background: var(--cw-interaction-bg-hover);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  overflow: visible;
+}
+
 .analysis-glossary-detail[hidden],
 .analysis-composition-glossary[hidden],
-.analysis-glossary-row[hidden] {
+.analysis-glossary-row[hidden],
+.analysis-dispersion-sample-detail[hidden],
+.analysis-dispersion-sample-row[hidden] {
   display: none;
 }
 
 .analysis-glossary-detail p {
   margin: 0;
   color: var(--text-color);
+}
+
+.analysis-dispersion-sample-types {
+  margin: 0;
+  color: var(--text-color);
+  font-family: var(--cw-font-mono);
+  overflow-wrap: anywhere;
+}
+
+.analysis-dispersion-sample-caption {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.76rem;
 }
 
 .analysis-glossary-section {
@@ -2725,6 +2798,10 @@ main {
   font-family: var(--cw-font-math);
   font-size: 0.82rem;
   line-height: 1.35;
+}
+
+.analysis-glossary-row .analysis-glossary-formula {
+  font-size: 1rem;
 }
 
 .analysis-glossary-formula .katex-display {
@@ -2866,13 +2943,30 @@ main {
   gap: 7px;
 }
 
+.document-length-header,
 .document-length-row {
   display: grid;
   grid-template-columns: minmax(120px, 1.4fr) minmax(90px, 2fr) minmax(80px, max-content) minmax(64px, max-content);
   gap: 10px;
   align-items: center;
-  font-size: 0.82rem;
   min-width: 0;
+}
+
+.document-length-header {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.document-length-header .document-length-track {
+  height: auto;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+.document-length-row {
+  font-size: 0.82rem;
 }
 
 .document-length-name {
@@ -2903,6 +2997,8 @@ main {
 }
 
 .analysis-panel-note {
+  width: 100%;
+  max-width: none;
   margin: 0;
   color: var(--text-muted);
   font-size: 0.82rem;
@@ -4611,6 +4707,7 @@ main {
     min-width: 132px;
   }
 
+  .document-length-header,
   .document-length-row {
     grid-template-columns: minmax(90px, 1fr) minmax(72px, 1fr) minmax(72px, max-content);
   }
