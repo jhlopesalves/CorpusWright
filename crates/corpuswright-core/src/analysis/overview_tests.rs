@@ -4,6 +4,108 @@ use crate::analysis::*;
 use crate::annotation::UniversalPos;
 use std::sync::atomic::AtomicBool;
 
+fn assert_dispersion_buckets_partition(overview: &CorpusOverview) {
+    let dispersion = &overview.dispersion;
+    let exclusive_count_total = dispersion.df_in_1_count
+        + dispersion.df_in_2_to_9_count
+        + dispersion.df_in_10_to_99_count
+        + dispersion.df_in_100_plus_count;
+    assert_eq!(exclusive_count_total, overview.total_types);
+
+    if overview.total_types > 0 {
+        let exclusive_share_total = [
+            dispersion.df_in_1_share,
+            dispersion.df_in_2_to_9_share,
+            dispersion.df_in_10_to_99_share,
+            dispersion.df_in_100_plus_share,
+        ]
+        .into_iter()
+        .map(Option::unwrap)
+        .sum::<f64>();
+        assert!((exclusive_share_total - 1.0).abs() < 1e-12);
+    }
+
+    assert_dispersion_sample_lengths(overview);
+}
+
+fn sample_strings(values: &[&str]) -> Vec<String> {
+    values.iter().map(|value| (*value).to_string()).collect()
+}
+
+fn assert_dispersion_sample_lengths(overview: &CorpusOverview) {
+    let dispersion = &overview.dispersion;
+    for (label, count, sample_types) in [
+        (
+            "df_in_1",
+            dispersion.df_in_1_count,
+            &dispersion.df_in_1_sample_types,
+        ),
+        (
+            "df_in_2_to_9",
+            dispersion.df_in_2_to_9_count,
+            &dispersion.df_in_2_to_9_sample_types,
+        ),
+        (
+            "df_in_10_to_99",
+            dispersion.df_in_10_to_99_count,
+            &dispersion.df_in_10_to_99_sample_types,
+        ),
+        (
+            "df_in_100_plus",
+            dispersion.df_in_100_plus_count,
+            &dispersion.df_in_100_plus_sample_types,
+        ),
+        (
+            "df_in_all",
+            dispersion.df_in_all_count,
+            &dispersion.df_in_all_sample_types,
+        ),
+        (
+            "df_at_least_1pct",
+            dispersion.df_at_least_1pct_count,
+            &dispersion.df_at_least_1pct_sample_types,
+        ),
+        (
+            "df_at_least_10pct",
+            dispersion.df_at_least_10pct_count,
+            &dispersion.df_at_least_10pct_sample_types,
+        ),
+        (
+            "df_at_least_50pct",
+            dispersion.df_at_least_50pct_count,
+            &dispersion.df_at_least_50pct_sample_types,
+        ),
+        (
+            "df_at_least_90pct",
+            dispersion.df_at_least_90pct_count,
+            &dispersion.df_at_least_90pct_sample_types,
+        ),
+    ] {
+        assert_eq!(
+            sample_types.len(),
+            count.min(DISPERSION_SAMPLE_TYPE_LIMIT),
+            "{label} sample length should be complete or capped"
+        );
+    }
+}
+
+fn assert_sample_document_frequencies<F, P>(
+    sample_types: &[String],
+    document_frequency_for: F,
+    predicate: P,
+) where
+    F: Fn(&str) -> usize,
+    P: Fn(usize) -> bool,
+{
+    for sample_type in sample_types {
+        let document_frequency = document_frequency_for(sample_type);
+        assert!(
+            predicate(document_frequency),
+            "{sample_type} has document frequency {document_frequency}"
+        );
+    }
+}
+
 #[test]
 fn single_document_corpus_has_zero_dp_and_full_top_doc_share() {
     let mut corpus = corpus_for(&[("one.txt", "Cats run")]);
@@ -247,7 +349,6 @@ fn empty_corpus_overview_has_no_non_finite_values() {
     assert_eq!(overview.lexical_spectrum.mtld_median, None);
     assert_eq!(overview.frequency_concentration.shannon_entropy_bits, None);
     assert_eq!(overview.frequency_concentration.evenness_j, None);
-    assert_eq!(overview.frequency_concentration.perplexity, None);
     assert_eq!(
         overview
             .frequency_concentration
@@ -256,6 +357,199 @@ fn empty_corpus_overview_has_no_non_finite_values() {
     );
     let json = serde_json::to_string(overview).unwrap();
     assert!(!json.contains("rawTtr"));
+    assert!(!json.contains("perplexity"));
     assert!(!json.contains("NaN"));
     assert!(!json.contains("Infinity"));
+    assert_dispersion_buckets_partition(overview);
+}
+
+#[test]
+fn document_frequency_buckets_partition_type_count_on_fixtures() {
+    for corpus in [
+        corpus_for(&[("one.txt", "alpha beta beta")]),
+        corpus_for(&[
+            ("one.txt", "alpha shared common"),
+            ("two.txt", "beta shared common"),
+            ("three.txt", "gamma common"),
+        ]),
+        corpus_for(&[]),
+    ] {
+        assert_dispersion_buckets_partition(corpus.overview());
+    }
+}
+
+#[test]
+fn document_frequency_buckets_and_thresholds_match_hand_computed_fixture() {
+    let texts = (0..100)
+        .map(|index| {
+            let mut tokens = vec!["alltype"];
+            if index == 0 {
+                tokens.push("single");
+            }
+            if index < 2 {
+                tokens.push("pairtype");
+            }
+            if index < 10 {
+                tokens.push("tentype");
+            }
+            (format!("doc-{index}.txt"), tokens.join(" "))
+        })
+        .collect::<Vec<_>>();
+    let borrowed_texts = texts
+        .iter()
+        .map(|(name, text)| (name.as_str(), text.as_str()))
+        .collect::<Vec<_>>();
+    let corpus = corpus_for(&borrowed_texts);
+    let overview = corpus.overview();
+    let dispersion = &overview.dispersion;
+
+    assert_eq!(overview.total_types, 4);
+    assert_eq!(dispersion.df_in_1_count, 1);
+    assert_eq!(dispersion.df_in_2_to_9_count, 1);
+    assert_eq!(dispersion.df_in_10_to_99_count, 1);
+    assert_eq!(dispersion.df_in_100_plus_count, 1);
+    assert_eq!(dispersion.df_in_all_count, 1);
+    assert_eq!(dispersion.df_at_least_1pct_count, 4);
+    assert_eq!(dispersion.df_at_least_10pct_count, 2);
+    assert_eq!(dispersion.df_at_least_50pct_count, 1);
+    assert_eq!(dispersion.df_at_least_90pct_count, 1);
+    assert_eq!(dispersion.df_at_least_1pct_share, Some(1.0));
+    assert_eq!(dispersion.df_at_least_10pct_share, Some(0.5));
+    assert_eq!(dispersion.df_at_least_50pct_share, Some(0.25));
+    assert_eq!(dispersion.df_at_least_90pct_share, Some(0.25));
+    assert_eq!(dispersion.df_in_1_sample_types, sample_strings(&["single"]));
+    assert_eq!(
+        dispersion.df_in_2_to_9_sample_types,
+        sample_strings(&["pairtype"])
+    );
+    assert_eq!(
+        dispersion.df_in_10_to_99_sample_types,
+        sample_strings(&["tentype"])
+    );
+    assert_eq!(
+        dispersion.df_in_100_plus_sample_types,
+        sample_strings(&["alltype"])
+    );
+    assert_eq!(
+        dispersion.df_in_all_sample_types,
+        sample_strings(&["alltype"])
+    );
+    assert_eq!(
+        dispersion.df_at_least_1pct_sample_types,
+        sample_strings(&["alltype", "tentype", "pairtype", "single"])
+    );
+    assert_eq!(
+        dispersion.df_at_least_10pct_sample_types,
+        sample_strings(&["alltype", "tentype"])
+    );
+    assert_eq!(
+        dispersion.df_at_least_50pct_sample_types,
+        sample_strings(&["alltype"])
+    );
+    assert_eq!(
+        dispersion.df_at_least_90pct_sample_types,
+        sample_strings(&["alltype"])
+    );
+
+    let document_frequency_for = |sample_type: &str| match sample_type {
+        "single" => 1,
+        "pairtype" => 2,
+        "tentype" => 10,
+        "alltype" => 100,
+        other => panic!("unexpected sample type {other}"),
+    };
+    assert_sample_document_frequencies(
+        &dispersion.df_in_1_sample_types,
+        document_frequency_for,
+        |df| df == 1,
+    );
+    assert_sample_document_frequencies(
+        &dispersion.df_in_2_to_9_sample_types,
+        document_frequency_for,
+        |df| (2..=9).contains(&df),
+    );
+    assert_sample_document_frequencies(
+        &dispersion.df_in_10_to_99_sample_types,
+        document_frequency_for,
+        |df| (10..=99).contains(&df),
+    );
+    assert_sample_document_frequencies(
+        &dispersion.df_in_100_plus_sample_types,
+        document_frequency_for,
+        |df| df >= 100,
+    );
+    assert_sample_document_frequencies(
+        &dispersion.df_in_all_sample_types,
+        document_frequency_for,
+        |df| df == 100,
+    );
+    assert_sample_document_frequencies(
+        &dispersion.df_at_least_1pct_sample_types,
+        document_frequency_for,
+        |df| df >= 1,
+    );
+    assert_sample_document_frequencies(
+        &dispersion.df_at_least_10pct_sample_types,
+        document_frequency_for,
+        |df| df >= 10,
+    );
+    assert_sample_document_frequencies(
+        &dispersion.df_at_least_50pct_sample_types,
+        document_frequency_for,
+        |df| df >= 50,
+    );
+    assert_sample_document_frequencies(
+        &dispersion.df_at_least_90pct_sample_types,
+        document_frequency_for,
+        |df| df >= 90,
+    );
+
+    let repeated = corpus_for(&borrowed_texts);
+    assert_eq!(dispersion, &repeated.overview().dispersion);
+    assert_dispersion_buckets_partition(overview);
+}
+
+#[test]
+fn single_document_document_frequency_thresholds_clamp_to_one_document() {
+    let corpus = corpus_for(&[("one.txt", "alpha beta beta")]);
+    let overview = corpus.overview();
+    let dispersion = &overview.dispersion;
+
+    assert_eq!(overview.total_types, 2);
+    assert_eq!(dispersion.df_in_1_count, 2);
+    assert_eq!(dispersion.df_in_all_count, 2);
+    assert_eq!(dispersion.df_at_least_1pct_count, overview.total_types);
+    assert_eq!(dispersion.df_at_least_10pct_count, overview.total_types);
+    assert_eq!(dispersion.df_at_least_50pct_count, overview.total_types);
+    assert_eq!(dispersion.df_at_least_90pct_count, overview.total_types);
+    assert_eq!(dispersion.df_at_least_1pct_share, Some(1.0));
+    assert_eq!(dispersion.df_at_least_10pct_share, Some(1.0));
+    assert_eq!(dispersion.df_at_least_50pct_share, Some(1.0));
+    assert_eq!(dispersion.df_at_least_90pct_share, Some(1.0));
+    assert_dispersion_buckets_partition(overview);
+}
+
+#[test]
+fn document_frequency_samples_are_capped_and_tiebroken_by_type() {
+    let mut tokens = Vec::new();
+    for suffix in b'a'..=b'y' {
+        let token = format!("word{}", suffix as char);
+        tokens.extend(std::iter::repeat_n(token, 2));
+    }
+    let text = tokens.join(" ");
+    let corpus = corpus_for(&[("one.txt", text.as_str())]);
+    let overview = corpus.overview();
+    let dispersion = &overview.dispersion;
+    let expected = (b'a'..=b't')
+        .map(|suffix| format!("word{}", suffix as char))
+        .collect::<Vec<_>>();
+
+    assert_eq!(overview.total_types, 25);
+    assert_eq!(dispersion.df_in_1_count, 25);
+    assert_eq!(dispersion.df_in_all_count, 25);
+    assert_eq!(dispersion.df_at_least_1pct_count, 25);
+    assert_eq!(dispersion.df_in_1_sample_types, expected);
+    assert_eq!(dispersion.df_in_all_sample_types, expected);
+    assert_eq!(dispersion.df_at_least_1pct_sample_types, expected);
+    assert_dispersion_buckets_partition(overview);
 }

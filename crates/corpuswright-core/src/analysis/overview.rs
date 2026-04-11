@@ -1,11 +1,13 @@
 use super::build::{AnalysisBuildMetadata, AnalysisDocument, AnalysisTerm, document_name};
 use super::input::AnalysisInputSource;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub(super) const OVERVIEW_DOCUMENT_LIMIT: usize = 20;
 const FREQUENT_TERM_THRESHOLD: u64 = 10;
 const HIGH_DISPERSION_THRESHOLD: f64 = 0.5;
+const DISPERSION_SAMPLE_TYPE_LIMIT: usize = 20;
 
 const MAX_DISTRIBUTION_POINTS: usize = 200;
 
@@ -128,7 +130,6 @@ pub struct CorpusOverviewFrequencyConcentration {
     pub top_10000_coverage: Option<f64>,
     pub shannon_entropy_bits: Option<f64>,
     pub evenness_j: Option<f64>,
-    pub perplexity: Option<f64>,
     pub effective_vocabulary_entropy: Option<f64>,
     pub reading: String,
 }
@@ -190,11 +191,32 @@ pub struct CorpusOverviewDispersion {
     pub high_dp_frequent_types: usize,
     pub median_dp: Option<f64>,
     pub df_in_1_count: usize,
-    pub df_in_2_to_n_minus_1_count: usize,
+    pub df_in_2_to_9_count: usize,
+    pub df_in_10_to_99_count: usize,
+    pub df_in_100_plus_count: usize,
     pub df_in_all_count: usize,
+    pub df_in_1_sample_types: Vec<String>,
+    pub df_in_2_to_9_sample_types: Vec<String>,
+    pub df_in_10_to_99_sample_types: Vec<String>,
+    pub df_in_100_plus_sample_types: Vec<String>,
+    pub df_in_all_sample_types: Vec<String>,
     pub df_in_1_share: Option<f64>,
-    pub df_in_2_to_n_minus_1_share: Option<f64>,
+    pub df_in_2_to_9_share: Option<f64>,
+    pub df_in_10_to_99_share: Option<f64>,
+    pub df_in_100_plus_share: Option<f64>,
     pub df_in_all_share: Option<f64>,
+    pub df_at_least_1pct_count: usize,
+    pub df_at_least_1pct_sample_types: Vec<String>,
+    pub df_at_least_1pct_share: Option<f64>,
+    pub df_at_least_10pct_count: usize,
+    pub df_at_least_10pct_sample_types: Vec<String>,
+    pub df_at_least_10pct_share: Option<f64>,
+    pub df_at_least_50pct_count: usize,
+    pub df_at_least_50pct_sample_types: Vec<String>,
+    pub df_at_least_50pct_share: Option<f64>,
+    pub df_at_least_90pct_count: usize,
+    pub df_at_least_90pct_sample_types: Vec<String>,
+    pub df_at_least_90pct_share: Option<f64>,
     pub median_documents_per_type: Option<f64>,
     pub reading: String,
 }
@@ -652,6 +674,89 @@ fn type_share(count: usize, total: usize) -> Option<f64> {
     (total > 0).then(|| count as f64 / total as f64)
 }
 
+fn document_frequency_threshold(document_count: usize, proportion: f64) -> usize {
+    if document_count == 0 {
+        return 0;
+    }
+
+    ((document_count as f64 * proportion).ceil() as usize).clamp(1, document_count)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TypeSample {
+    token: String,
+    frequency: u64,
+}
+
+#[derive(Debug, Default)]
+struct TypeSampleCollector {
+    samples: Vec<TypeSample>,
+}
+
+impl TypeSampleCollector {
+    fn consider(&mut self, term: &AnalysisTerm) {
+        if self.samples.len() < DISPERSION_SAMPLE_TYPE_LIMIT {
+            self.samples.push(TypeSample {
+                token: term.token.clone(),
+                frequency: term.frequency,
+            });
+            return;
+        }
+
+        let Some(worst_index) = self.worst_index() else {
+            return;
+        };
+        let worst = &self.samples[worst_index];
+        if compare_type_sample(term.frequency, &term.token, worst.frequency, &worst.token)
+            == Ordering::Less
+        {
+            self.samples[worst_index] = TypeSample {
+                token: term.token.clone(),
+                frequency: term.frequency,
+            };
+        }
+    }
+
+    fn into_ordered_tokens(mut self) -> Vec<String> {
+        self.samples.sort_unstable_by(|left, right| {
+            compare_type_sample(left.frequency, &left.token, right.frequency, &right.token)
+        });
+        self.samples
+            .into_iter()
+            .map(|sample| sample.token)
+            .collect()
+    }
+
+    fn worst_index(&self) -> Option<usize> {
+        let mut worst_index = 0;
+        for index in 1..self.samples.len() {
+            let worst = &self.samples[worst_index];
+            let candidate = &self.samples[index];
+            if compare_type_sample(
+                worst.frequency,
+                &worst.token,
+                candidate.frequency,
+                &candidate.token,
+            ) == Ordering::Less
+            {
+                worst_index = index;
+            }
+        }
+        Some(worst_index)
+    }
+}
+
+fn compare_type_sample(
+    left_frequency: u64,
+    left_token: &str,
+    right_frequency: u64,
+    right_token: &str,
+) -> Ordering {
+    right_frequency
+        .cmp(&left_frequency)
+        .then_with(|| left_token.cmp(right_token))
+}
+
 pub(super) fn balance_severity(
     document_count: usize,
     total_tokens: u64,
@@ -844,28 +949,70 @@ pub(super) fn build_overview(
         && documents
             .iter()
             .all(|document| document.annotation_available);
-    let (df_in_1_count, df_in_2_to_n_minus_1_count, df_in_all_count) = if document_count == 0 {
-        (0, 0, 0)
-    } else if document_count == 1 {
-        (0, 0, total_types)
-    } else {
-        (
-            terms
-                .iter()
-                .filter(|term| term.document_frequency == 1)
-                .count(),
-            terms
-                .iter()
-                .filter(|term| {
-                    term.document_frequency >= 2 && term.document_frequency < document_count
-                })
-                .count(),
-            terms
-                .iter()
-                .filter(|term| term.document_frequency == document_count)
-                .count(),
-        )
-    };
+    let df_at_least_1pct_threshold = document_frequency_threshold(document_count, 0.01);
+    let df_at_least_10pct_threshold = document_frequency_threshold(document_count, 0.10);
+    let df_at_least_50pct_threshold = document_frequency_threshold(document_count, 0.50);
+    let df_at_least_90pct_threshold = document_frequency_threshold(document_count, 0.90);
+    let mut df_in_1_count = 0usize;
+    let mut df_in_2_to_9_count = 0usize;
+    let mut df_in_10_to_99_count = 0usize;
+    let mut df_in_100_plus_count = 0usize;
+    let mut df_in_all_count = 0usize;
+    let mut df_at_least_1pct_count = 0usize;
+    let mut df_at_least_10pct_count = 0usize;
+    let mut df_at_least_50pct_count = 0usize;
+    let mut df_at_least_90pct_count = 0usize;
+    let mut df_in_1_samples = TypeSampleCollector::default();
+    let mut df_in_2_to_9_samples = TypeSampleCollector::default();
+    let mut df_in_10_to_99_samples = TypeSampleCollector::default();
+    let mut df_in_100_plus_samples = TypeSampleCollector::default();
+    let mut df_in_all_samples = TypeSampleCollector::default();
+    let mut df_at_least_1pct_samples = TypeSampleCollector::default();
+    let mut df_at_least_10pct_samples = TypeSampleCollector::default();
+    let mut df_at_least_50pct_samples = TypeSampleCollector::default();
+    let mut df_at_least_90pct_samples = TypeSampleCollector::default();
+    for term in terms {
+        let df = term.document_frequency;
+        debug_assert!(df > 0);
+        match df {
+            1 => {
+                df_in_1_count += 1;
+                df_in_1_samples.consider(term);
+            }
+            2..=9 => {
+                df_in_2_to_9_count += 1;
+                df_in_2_to_9_samples.consider(term);
+            }
+            10..=99 => {
+                df_in_10_to_99_count += 1;
+                df_in_10_to_99_samples.consider(term);
+            }
+            _ => {
+                df_in_100_plus_count += 1;
+                df_in_100_plus_samples.consider(term);
+            }
+        }
+        if document_count > 0 && df == document_count {
+            df_in_all_count += 1;
+            df_in_all_samples.consider(term);
+        }
+        if df_at_least_1pct_threshold > 0 && df >= df_at_least_1pct_threshold {
+            df_at_least_1pct_count += 1;
+            df_at_least_1pct_samples.consider(term);
+        }
+        if df_at_least_10pct_threshold > 0 && df >= df_at_least_10pct_threshold {
+            df_at_least_10pct_count += 1;
+            df_at_least_10pct_samples.consider(term);
+        }
+        if df_at_least_50pct_threshold > 0 && df >= df_at_least_50pct_threshold {
+            df_at_least_50pct_count += 1;
+            df_at_least_50pct_samples.consider(term);
+        }
+        if df_at_least_90pct_threshold > 0 && df >= df_at_least_90pct_threshold {
+            df_at_least_90pct_count += 1;
+            df_at_least_90pct_samples.consider(term);
+        }
+    }
     let mut document_frequencies = terms
         .iter()
         .map(|term| term.document_frequency as u64)
@@ -1142,7 +1289,6 @@ pub(super) fn build_overview(
             top_10000_coverage,
             shannon_entropy_bits,
             evenness_j,
-            perplexity: effective_vocabulary_entropy,
             effective_vocabulary_entropy,
             reading: "A small set of high-frequency forms can carry much of the token mass even when most types are rare."
                 .to_string(),
@@ -1154,14 +1300,32 @@ pub(super) fn build_overview(
             high_dp_frequent_types,
             median_dp,
             df_in_1_count,
-            df_in_2_to_n_minus_1_count,
+            df_in_2_to_9_count,
+            df_in_10_to_99_count,
+            df_in_100_plus_count,
             df_in_all_count,
+            df_in_1_sample_types: df_in_1_samples.into_ordered_tokens(),
+            df_in_2_to_9_sample_types: df_in_2_to_9_samples.into_ordered_tokens(),
+            df_in_10_to_99_sample_types: df_in_10_to_99_samples.into_ordered_tokens(),
+            df_in_100_plus_sample_types: df_in_100_plus_samples.into_ordered_tokens(),
+            df_in_all_sample_types: df_in_all_samples.into_ordered_tokens(),
             df_in_1_share: type_share(df_in_1_count, total_types),
-            df_in_2_to_n_minus_1_share: type_share(
-                df_in_2_to_n_minus_1_count,
-                total_types,
-            ),
+            df_in_2_to_9_share: type_share(df_in_2_to_9_count, total_types),
+            df_in_10_to_99_share: type_share(df_in_10_to_99_count, total_types),
+            df_in_100_plus_share: type_share(df_in_100_plus_count, total_types),
             df_in_all_share: type_share(df_in_all_count, total_types),
+            df_at_least_1pct_count,
+            df_at_least_1pct_sample_types: df_at_least_1pct_samples.into_ordered_tokens(),
+            df_at_least_1pct_share: type_share(df_at_least_1pct_count, total_types),
+            df_at_least_10pct_count,
+            df_at_least_10pct_sample_types: df_at_least_10pct_samples.into_ordered_tokens(),
+            df_at_least_10pct_share: type_share(df_at_least_10pct_count, total_types),
+            df_at_least_50pct_count,
+            df_at_least_50pct_sample_types: df_at_least_50pct_samples.into_ordered_tokens(),
+            df_at_least_50pct_share: type_share(df_at_least_50pct_count, total_types),
+            df_at_least_90pct_count,
+            df_at_least_90pct_sample_types: df_at_least_90pct_samples.into_ordered_tokens(),
+            df_at_least_90pct_share: type_share(df_at_least_90pct_count, total_types),
             median_documents_per_type,
             reading: if document_count < 2 {
                 "Dispersion and document-frequency spread require at least two documents."
