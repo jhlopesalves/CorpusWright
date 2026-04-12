@@ -6,9 +6,11 @@ import type { AnnotationCacheBuildProgress } from "./generated/AnnotationCacheBu
 export type AnnotationLayerTransientState =
   | {
       status: "building";
-      elapsedMs: number | null;
+      elapsedMs: number;
       annotatingElapsedMs: number | null;
+      cancellationRequested: boolean;
       progress: AnnotationCacheBuildProgress | null;
+      progressSamples: AnnotationTokenProgressSample[];
     }
   | { status: "failed"; message: string }
   | { status: "cancelled" };
@@ -32,7 +34,7 @@ export interface AnnotationLayerControlViewModel {
   help: string;
   progress: AnnotationLayerProgressViewModel | null;
   action: AnnotationLayerAction;
-  actionLabel: "Build annotations" | "Cancel" | "Rebuild annotations";
+  actionLabel: "Build annotations" | "Cancel" | "Cancelling..." | "Rebuild annotations";
   actionDisabled: boolean;
   actionDisabledReason: string | null;
 }
@@ -44,10 +46,18 @@ export interface AnnotationLayerProgressViewModel {
   percentLabel: string | null;
   filesLine: string | null;
   etaLabel: string;
+  heartbeatLine: string | null;
 }
 
 export const BUILD_ANNOTATIONS_HELP =
   "Build annotations to enable lemma and POS frequency.";
+export const ANNOTATION_THROUGHPUT_WINDOW_MS = 60000;
+export const ANNOTATION_THROUGHPUT_MIN_SPAN_MS = 30000;
+
+export interface AnnotationTokenProgressSample {
+  atMs: number;
+  tokensDone: bigint;
+}
 
 function statusLabel(status: AnnotationLayerStatus): string {
   switch (status) {
@@ -65,7 +75,7 @@ function formatNumber(value: number): string {
   return value.toLocaleString();
 }
 
-function formatCoarseDuration(ms: number): string {
+export function formatCoarseDuration(ms: number): string {
   const seconds = Math.max(0, Math.ceil(ms / 1000));
   if (seconds < 60) {
     return `${seconds}s`;
@@ -75,10 +85,7 @@ function formatCoarseDuration(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
-export function formatAnnotationElapsed(elapsedMs: number | null): string | null {
-  if (elapsedMs === null) {
-    return null;
-  }
+export function formatAnnotationElapsed(elapsedMs: number): string {
   return `${formatCoarseDuration(elapsedMs)} elapsed`;
 }
 
@@ -101,9 +108,121 @@ function annotationPhaseLabel(progress: AnnotationCacheBuildProgress): string {
   }
 }
 
+function clampTokenProgress(progress: AnnotationCacheBuildProgress): {
+  done: bigint;
+  total: bigint;
+} {
+  const total = progress.tokens_total > 0n ? progress.tokens_total : 0n;
+  const rawDone = progress.tokens_done > 0n ? progress.tokens_done : 0n;
+  const done = rawDone > total ? total : rawDone;
+  return { done, total };
+}
+
+export function annotationTokenProgressPercent(progress: AnnotationCacheBuildProgress): number {
+  const { done, total } = clampTokenProgress(progress);
+  if (total === 0n) {
+    return 0;
+  }
+  return Number((done * 100n) / total);
+}
+
+export function appendAnnotationTokenProgressSample(
+  samples: readonly AnnotationTokenProgressSample[],
+  sample: AnnotationTokenProgressSample,
+  windowMs = ANNOTATION_THROUGHPUT_WINDOW_MS,
+): AnnotationTokenProgressSample[] {
+  const cutoff = sample.atMs - windowMs;
+  const retained = samples.filter((entry) =>
+    Number.isFinite(entry.atMs) && entry.atMs >= cutoff && entry.atMs <= sample.atMs
+  );
+  const last = retained[retained.length - 1];
+  if (last?.atMs === sample.atMs && last.tokensDone === sample.tokensDone) {
+    return retained;
+  }
+  return [...retained, sample];
+}
+
+export function estimateAnnotationTokenThroughput(
+  samples: readonly AnnotationTokenProgressSample[],
+  windowMs = ANNOTATION_THROUGHPUT_WINDOW_MS,
+  minSpanMs = ANNOTATION_THROUGHPUT_MIN_SPAN_MS,
+): number | null {
+  const latest = samples[samples.length - 1];
+  if (!latest || !Number.isFinite(latest.atMs)) {
+    return null;
+  }
+
+  const cutoff = latest.atMs - windowMs;
+  let earliest: AnnotationTokenProgressSample | null = null;
+  for (const sample of samples) {
+    if (!Number.isFinite(sample.atMs) || sample.atMs < cutoff || sample.atMs > latest.atMs) {
+      continue;
+    }
+    if (latest.atMs - sample.atMs >= minSpanMs) {
+      earliest = sample;
+      break;
+    }
+  }
+
+  if (!earliest) {
+    return null;
+  }
+
+  const tokenDelta = latest.tokensDone - earliest.tokensDone;
+  const elapsedMs = latest.atMs - earliest.atMs;
+  if (tokenDelta <= 0n || elapsedMs <= 0) {
+    return null;
+  }
+
+  return Number(tokenDelta) / (elapsedMs / 1000);
+}
+
+export function formatAnnotationTokenRate(tokensPerSecond: number): string {
+  if (tokensPerSecond < 100) {
+    return "under 100 tokens/s";
+  }
+  const rounded = Math.round(tokensPerSecond / 100) * 100;
+  return `${formatNumber(rounded)} tokens/s`;
+}
+
+export function annotationTokenEtaLabel(
+  progress: AnnotationCacheBuildProgress,
+  samples: readonly AnnotationTokenProgressSample[],
+): string {
+  const { done, total } = clampTokenProgress(progress);
+  const remainingTokens = total - done;
+  if (remainingTokens <= 0n) {
+    return "0s remaining";
+  }
+
+  const tokensPerSecond = estimateAnnotationTokenThroughput(samples);
+  if (tokensPerSecond === null) {
+    return "Estimating...";
+  }
+
+  const remainingMs = Number(remainingTokens) / tokensPerSecond * 1000;
+  const duration = formatCoarseDuration(remainingMs);
+  return duration === "1s" ? "Almost done" : `${duration} remaining`;
+}
+
+export function annotationHeartbeatLine(
+  progress: AnnotationCacheBuildProgress,
+  samples: readonly AnnotationTokenProgressSample[],
+): string | null {
+  if (progress.current_phase.type !== "Annotating") {
+    return null;
+  }
+
+  const tokensPerSecond = estimateAnnotationTokenThroughput(samples);
+  return tokensPerSecond === null
+    ? "annotating - Estimating..."
+    : `annotating - ${formatAnnotationTokenRate(tokensPerSecond)}`;
+}
+
 function annotationProgressViewModel(
   progress: AnnotationCacheBuildProgress,
   annotatingElapsedMs: number | null,
+  samples: readonly AnnotationTokenProgressSample[],
 ): AnnotationLayerProgressViewModel {
   const phaseLabel = annotationPhaseLabel(progress);
   if (progress.current_phase.type !== "Annotating") {
@@ -114,30 +233,23 @@ function annotationProgressViewModel(
       percentLabel: null,
       filesLine: null,
       etaLabel: "Estimating...",
+      heartbeatLine: null,
     };
   }
 
-  const total = Math.max(0, progress.files_total);
-  const done = Math.min(Math.max(0, progress.files_done), total);
-  const fraction = total > 0 ? done / total : 0;
-  const percent = total > 0
-    ? Math.min(100, Math.max(0, Math.floor(fraction * 100)))
-    : 0;
-
-  let etaLabel = "Estimating...";
-  if (annotatingElapsedMs !== null && done > 0 && fraction >= 0.02) {
-    const remainingFiles = Math.max(0, total - done);
-    const msPerFile = Math.max(0, annotatingElapsedMs) / done;
-    etaLabel = `${formatCoarseDuration(remainingFiles * msPerFile)} remaining`;
-  }
+  const totalFiles = Math.max(0, progress.files_total);
+  const doneFiles = Math.min(Math.max(0, progress.files_done), totalFiles);
+  const percent = annotationTokenProgressPercent(progress);
+  const progressSamples = annotatingElapsedMs === null ? [] : samples;
 
   return {
     kind: "determinate",
     phaseLabel,
     percent,
     percentLabel: `${percent}%`,
-    filesLine: `${formatNumber(done)} / ${formatNumber(total)} files`,
-    etaLabel,
+    filesLine: `${formatNumber(doneFiles)} / ${formatNumber(totalFiles)} files`,
+    etaLabel: annotationTokenEtaLabel(progress, progressSamples),
+    heartbeatLine: annotationHeartbeatLine(progress, progressSamples),
   };
 }
 
@@ -189,18 +301,22 @@ export function annotationLayerControlViewModel(
 ): AnnotationLayerControlViewModel {
   const status = input.transient?.status ?? input.cache.state;
   const action: AnnotationLayerAction = status === "building" ? "cancel" : "start";
+  const cancellationRequested =
+    input.transient?.status === "building" && input.transient.cancellationRequested;
   const actionLabel = status === "building"
-    ? "Cancel"
+    ? cancellationRequested ? "Cancelling..." : "Cancel"
     : status === "ready" || status === "stale"
       ? "Rebuild annotations"
       : "Build annotations";
   const actionDisabled =
-    action === "start" && input.surfaceAnalysisRequired && !input.surfaceAnalysisBuilt;
+    cancellationRequested
+      || (action === "start" && input.surfaceAnalysisRequired && !input.surfaceAnalysisBuilt);
   const label = statusLabel(status);
   const progress = status === "building" && input.transient?.status === "building" && input.transient.progress
     ? annotationProgressViewModel(
         input.transient.progress,
         input.transient.annotatingElapsedMs,
+        input.transient.progressSamples,
       )
     : null;
 
@@ -213,6 +329,8 @@ export function annotationLayerControlViewModel(
     action,
     actionLabel,
     actionDisabled,
-    actionDisabledReason: actionDisabled ? "Build surface analysis first." : null,
+    actionDisabledReason: cancellationRequested
+      ? "Cancellation requested."
+      : actionDisabled ? "Build surface analysis first." : null,
   };
 }
