@@ -7,7 +7,7 @@ use crate::scan::DocumentRecord;
 use crate::tokenization::{TokenizationConfig, tokenize};
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
 
 fn fake_annotation(surface: &str, token_index: u32) -> AnnotatedToken {
@@ -58,6 +58,8 @@ fn annotation_layer_result_for_with_timing(
     let mut analysis_options = build_options();
     analysis_options.language_overrides = language_overrides.clone();
     let corpus = analysis_product_for(texts, analysis_options, true).corpus;
+    let tokens_done = AtomicU64::new(0);
+    let document_token_counts = annotation_document_token_counts(&corpus);
     let records = texts
         .iter()
         .map(|(name, _)| record(name))
@@ -78,7 +80,14 @@ fn annotation_layer_result_for_with_timing(
             ))
         },
         parallel_map,
-        AnnotationLayerBuildRuntime { docs_done, timing },
+        AnnotationLayerBuildRuntime {
+            docs_done,
+            tokens_done: &tokens_done,
+            document_token_counts: &document_token_counts,
+            timing,
+            loading_steps_done: None,
+            annotating_started: None,
+        },
     )?;
     Ok((corpus, layer))
 }
@@ -94,6 +103,8 @@ fn annotation_layer_result_for_with_wave_budget(
     let mut analysis_options = build_options();
     analysis_options.language_overrides = language_overrides.clone();
     let corpus = analysis_product_for(texts, analysis_options, true).corpus;
+    let tokens_done = AtomicU64::new(0);
+    let document_token_counts = annotation_document_token_counts(&corpus);
     let records = texts
         .iter()
         .map(|(name, _)| record(name))
@@ -115,6 +126,7 @@ fn annotation_layer_result_for_with_wave_budget(
         cancel,
         &mut load_text,
         timing,
+        None,
     )?;
     let surface_term_lookup = build_surface_term_lookup(&corpus)?;
     let languages_used = inputs
@@ -131,7 +143,14 @@ fn annotation_layer_result_for_with_wave_budget(
         },
         cancel,
         &corpus.tokenization,
-        AnnotationLayerBuildRuntime { docs_done, timing },
+        AnnotationLayerBuildRuntime {
+            docs_done,
+            tokens_done: &tokens_done,
+            document_token_counts: &document_token_counts,
+            timing,
+            loading_steps_done: None,
+            annotating_started: None,
+        },
         wave_budget,
     )?;
     let layer =
@@ -361,6 +380,80 @@ fn annotation_cache_salvage_modified_document_reannotates_only_misses() {
 }
 
 #[test]
+fn annotation_cache_salvage_progress_credits_reused_tokens_immediately() {
+    let salvage_dir = tempfile::tempdir().unwrap();
+    let old_texts = [
+        ("reused.txt", "Cats chase patient mice."),
+        ("miss.txt", "Dogs jump high."),
+    ];
+    let new_texts = [
+        ("reused.txt", "Cats chase patient mice."),
+        ("miss.txt", "Birds sing very softly."),
+    ];
+    let old_overrides = english_overrides(old_texts.len());
+    let new_overrides = english_overrides(new_texts.len());
+    let old_corpus = cache_surface_corpus_for(&old_texts, old_overrides.clone());
+    let new_corpus = cache_surface_corpus_for(&new_texts, new_overrides.clone());
+
+    build_cache_with_reusable_surface(salvage_dir.path(), &old_texts, old_overrides, &old_corpus);
+
+    let records = cache_records(&new_texts);
+    let text_by_name = new_texts
+        .iter()
+        .map(|(name, text)| ((*name).to_string(), (*text).to_string()))
+        .collect::<HashMap<_, _>>();
+    let mut options = build_options();
+    options.annotation_cache_root = Some(salvage_dir.path().to_path_buf());
+    options.udpipe_model_dir = Some(default_model_dir());
+    options.language_overrides = new_overrides.clone();
+    let annotation_options = AnnotationLayerBuildOptions {
+        udpipe_model_dir: options.udpipe_model_dir.clone(),
+        language_overrides: new_overrides,
+    };
+    let mut progress_events = Vec::new();
+
+    let report = build_and_write_annotation_cache_with_reusable_surface_corpus(
+        &records,
+        options,
+        annotation_options,
+        &AtomicBool::new(false),
+        |record| {
+            Ok(processed_resolution(
+                record,
+                text_by_name
+                    .get(record.source_path.to_str().unwrap())
+                    .map(String::as_str)
+                    .unwrap_or_default(),
+            ))
+        },
+        |progress| progress_events.push(progress),
+        Some(&new_corpus),
+    )
+    .unwrap();
+
+    let first_annotating = progress_events
+        .iter()
+        .find(|progress| {
+            matches!(
+                progress.current_phase,
+                AnnotationCacheBuildPhase::Annotating
+            )
+        })
+        .unwrap();
+    let reused_tokens = new_corpus.documents[0].summary.token_count;
+    let total_tokens = new_corpus
+        .documents
+        .iter()
+        .map(|document| document.summary.token_count)
+        .sum::<u64>();
+
+    assert!(report.cache_written);
+    assert_eq!(first_annotating.files_done, 1);
+    assert_eq!(first_annotating.tokens_done, reused_tokens);
+    assert_eq!(first_annotating.tokens_total, total_tokens);
+}
+
+#[test]
 fn annotation_cache_salvage_renamed_document_reuses() {
     let salvage_dir = tempfile::tempdir().unwrap();
     let full_dir = tempfile::tempdir().unwrap();
@@ -518,6 +611,7 @@ fn annotation_input_language_overrides_use_original_record_indices() {
         &language_overrides,
         &AtomicBool::new(false),
         &mut load_text,
+        None,
         None,
     )
     .unwrap();
@@ -938,6 +1032,33 @@ fn annotation_segment_waves_cancellation_between_segments() {
 }
 
 #[test]
+fn annotation_segment_token_credit_is_monotonic_and_exact() {
+    let document_tokens = 101;
+    let total_segment_tokens = 10;
+    let mut processed_segment_tokens = 0usize;
+    let mut credited_document_tokens = 0u64;
+    let mut cumulative = Vec::new();
+
+    for segment_tokens in [3usize, 3, 4] {
+        processed_segment_tokens += segment_tokens;
+        let credit = proportional_segment_token_credit(
+            document_tokens,
+            total_segment_tokens,
+            processed_segment_tokens,
+            credited_document_tokens,
+        );
+        credited_document_tokens += credit;
+        cumulative.push(credited_document_tokens);
+    }
+
+    assert!(cumulative.windows(2).all(|window| window[0] <= window[1]));
+    assert_eq!(credited_document_tokens, document_tokens);
+    assert_eq!(proportional_segment_token_credit(0, 0, 0, 0), 0);
+    assert_eq!(proportional_segment_token_credit(0, 10, 5, 0), 0);
+    assert_eq!(proportional_segment_token_credit(10, 0, 0, 0), 0);
+}
+
+#[test]
 fn annotation_chunk_parallel_completes_single_whale_document() {
     let whale = repeated_word_text(
         "word",
@@ -1018,6 +1139,22 @@ fn annotation_chunk_parallel_cancellation_after_input_load_reports_cancelled() {
 
     assert_eq!(result.unwrap_err(), AnnotationLayerBuildError::Cancelled);
     assert_eq!(docs_done.load(AtomicOrdering::Relaxed), 0);
+}
+
+#[test]
+fn annotation_model_preflight_honours_cancel_before_loading_model() {
+    let mut languages = BTreeSet::new();
+    languages.insert("en".to_string());
+    let cancel = AtomicBool::new(true);
+    let timing = AnnotationBuildTimingCounters::new();
+    let model_dir = default_model_dir();
+    let mut manager = new_annotation_model_manager(&model_dir, Some(&timing));
+
+    let result =
+        preflight_annotation_languages(&languages, &mut manager, &cancel, None, Some(&timing));
+
+    assert_eq!(result.unwrap_err(), AnnotationLayerBuildError::Cancelled);
+    assert_eq!(timing.model_load_attempts.load(AtomicOrdering::Relaxed), 0);
 }
 
 #[test]
@@ -1487,6 +1624,51 @@ fn test_annotation_cache_seam_stale_cache() {
     .unwrap();
 
     assert!(!corpus2.overview().annotation_available);
+}
+
+#[test]
+fn annotation_cache_decision_diagnostics_name_first_manifest_mismatch() {
+    let records = vec![record("doc.txt")];
+    let mut options = build_options();
+    options.udpipe_model_dir = Some(default_model_dir());
+    options.language_overrides = english_overrides(records.len());
+    let corpus = build_analysis_corpus(
+        &records,
+        options.clone(),
+        &AtomicBool::new(false),
+        |record| Ok(processed_resolution(record, "The quick brown fox.")),
+        |_| {},
+    )
+    .unwrap();
+    let expected = build_expected_manifest(
+        &corpus,
+        &records,
+        options.udpipe_model_dir.as_deref(),
+        &options.language_overrides,
+    )
+    .unwrap();
+
+    let mut processed_mismatch = expected.clone();
+    processed_mismatch.corpus.processed_texts_hash_sha256 = "different".to_string();
+    assert_eq!(
+        annotation_manifest_mismatch_for_diagnostics(
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION,
+            &processed_mismatch,
+            &expected,
+        ),
+        Some("processed_texts_hash")
+    );
+
+    let mut model_mismatch = expected.clone();
+    model_mismatch.models[0].sha256 = "different".to_string();
+    assert_eq!(
+        annotation_manifest_mismatch_for_diagnostics(
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION,
+            &model_mismatch,
+            &expected,
+        ),
+        Some("model_identity")
+    );
 }
 
 #[test]
@@ -2557,6 +2739,12 @@ fn test_annotation_cache_build_reports_phase_progress() {
             .iter()
             .any(|progress| matches!(progress.current_phase, AnnotationCacheBuildPhase::Completed))
     );
+    let completed = progress_events
+        .iter()
+        .find(|progress| matches!(progress.current_phase, AnnotationCacheBuildPhase::Completed))
+        .unwrap();
+    assert!(completed.tokens_total > 0);
+    assert_eq!(completed.tokens_done, completed.tokens_total);
 
     let annotating_done = progress_events
         .iter()
@@ -2572,6 +2760,100 @@ fn test_annotation_cache_build_reports_phase_progress() {
             .all(|window| window[0] <= window[1])
     );
     assert_eq!(annotating_done.last(), Some(&2));
+
+    let annotating_tokens_done = progress_events
+        .iter()
+        .filter_map(|progress| match progress.current_phase {
+            AnnotationCacheBuildPhase::Annotating => Some(progress.tokens_done),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        annotating_tokens_done
+            .windows(2)
+            .all(|window| window[0] <= window[1])
+    );
+    assert_eq!(annotating_tokens_done.last(), Some(&completed.tokens_total));
+}
+
+#[test]
+fn annotation_cache_build_emits_loading_model_heartbeat_before_annotation() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let texts = [("slow.txt", "The quick brown fox.")];
+    let language_overrides = english_overrides(texts.len());
+    let reusable_surface_corpus = cache_surface_corpus_for(&texts, language_overrides.clone());
+    let records = cache_records(&texts);
+    let mut options = build_options();
+    options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+    options.udpipe_model_dir = Some(default_model_dir());
+    options.language_overrides = language_overrides.clone();
+    let annotation_options = AnnotationLayerBuildOptions {
+        udpipe_model_dir: options.udpipe_model_dir.clone(),
+        language_overrides,
+    };
+    let mut progress_events = Vec::new();
+
+    build_and_write_annotation_cache_with_reusable_surface_corpus(
+        &records,
+        options,
+        annotation_options,
+        &AtomicBool::new(false),
+        |record| {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            Ok(processed_resolution(record, texts[0].1))
+        },
+        |progress| progress_events.push(progress),
+        Some(&reusable_surface_corpus),
+    )
+    .unwrap();
+
+    let loading_model_events = progress_events
+        .iter()
+        .filter(|progress| {
+            matches!(
+                progress.current_phase,
+                AnnotationCacheBuildPhase::LoadingModel
+            )
+        })
+        .count();
+    assert!(
+        loading_model_events >= 2,
+        "expected repeated LoadingModel heartbeat events, got {loading_model_events}"
+    );
+}
+
+#[test]
+fn annotation_cache_progress_handles_zero_token_documents() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let records = vec![record("punctuation.txt")];
+    let mut options = build_options();
+    options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+    options.udpipe_model_dir = Some(default_model_dir());
+    options.language_overrides = english_overrides(records.len());
+
+    let build_ann_options = AnnotationLayerBuildOptions {
+        udpipe_model_dir: options.udpipe_model_dir.clone(),
+        language_overrides: options.language_overrides.clone(),
+    };
+
+    let mut progress_events = Vec::new();
+    let report = build_and_write_annotation_cache(
+        &records,
+        options,
+        build_ann_options,
+        &AtomicBool::new(false),
+        |record| Ok(processed_resolution(record, "!?...")),
+        |progress| progress_events.push(progress),
+    )
+    .unwrap();
+
+    let completed = progress_events
+        .iter()
+        .find(|progress| matches!(progress.current_phase, AnnotationCacheBuildPhase::Completed))
+        .unwrap();
+    assert_eq!(report.documents_annotated, 1);
+    assert_eq!(completed.tokens_done, 0);
+    assert_eq!(completed.tokens_total, 0);
 }
 
 #[test]
