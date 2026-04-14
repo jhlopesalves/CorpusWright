@@ -11,6 +11,14 @@ fn assert_dispersion_buckets_partition(overview: &CorpusOverview) {
         + dispersion.df_in_10_to_99_count
         + dispersion.df_in_100_plus_count;
     assert_eq!(exclusive_count_total, overview.total_types);
+    assert_eq!(
+        dispersion
+            .profile_buckets
+            .iter()
+            .map(|bucket| bucket.count)
+            .sum::<usize>(),
+        overview.total_types
+    );
 
     if overview.total_types > 0 {
         let exclusive_share_total = [
@@ -23,6 +31,12 @@ fn assert_dispersion_buckets_partition(overview: &CorpusOverview) {
         .map(Option::unwrap)
         .sum::<f64>();
         assert!((exclusive_share_total - 1.0).abs() < 1e-12);
+        let profile_share_total = dispersion
+            .profile_buckets
+            .iter()
+            .map(|bucket| bucket.share.unwrap())
+            .sum::<f64>();
+        assert!((profile_share_total - 1.0).abs() < 1e-12);
     }
 
     assert_dispersion_sample_lengths(overview);
@@ -85,6 +99,15 @@ fn assert_dispersion_sample_lengths(overview: &CorpusOverview) {
             sample_types.len(),
             count.min(DISPERSION_SAMPLE_TYPE_LIMIT),
             "{label} sample length should be complete or capped"
+        );
+    }
+
+    for bucket in &dispersion.profile_buckets {
+        assert_eq!(
+            bucket.sample_types.len(),
+            bucket.count.min(DISPERSION_SAMPLE_TYPE_LIMIT),
+            "{} profile sample length should be complete or capped",
+            bucket.label
         );
     }
 }
@@ -175,6 +198,93 @@ fn mtld_averages_forward_and_backward_runs() {
 }
 
 #[test]
+fn length_histogram_sums_single_document_and_power_edges() {
+    let bins = document_length_histogram(&[0, 1, 2, 3, 4, 8]);
+    assert_eq!(bins.iter().map(|bin| bin.count).sum::<usize>(), 6);
+    assert_eq!(
+        bins,
+        vec![
+            LengthHistogramBin {
+                lower_tokens: 1,
+                upper_tokens: Some(2),
+                count: 2,
+            },
+            LengthHistogramBin {
+                lower_tokens: 2,
+                upper_tokens: Some(4),
+                count: 2,
+            },
+            LengthHistogramBin {
+                lower_tokens: 4,
+                upper_tokens: Some(8),
+                count: 1,
+            },
+            LengthHistogramBin {
+                lower_tokens: 8,
+                upper_tokens: Some(16),
+                count: 1,
+            },
+        ]
+    );
+
+    assert_eq!(
+        document_length_histogram(&[7]),
+        vec![LengthHistogramBin {
+            lower_tokens: 4,
+            upper_tokens: Some(8),
+            count: 1,
+        }]
+    );
+}
+
+fn overview_test_document(name: &str, tokens: u64, mattr: Option<f64>) -> AnalysisDocument {
+    AnalysisDocument {
+        summary: AnalysisDocumentSummary {
+            id: 0,
+            source_path: name.to_string(),
+            relative_path: name.to_string(),
+            token_count: tokens,
+            language: None,
+            language_confidence: None,
+            language_is_overridden: false,
+        },
+        surface_term_counts: Vec::new(),
+        annotated_term_counts: Vec::new(),
+        annotation_available: false,
+        mattr,
+        mtld: None,
+        processed_hash_sha256: String::new(),
+    }
+}
+
+#[test]
+fn mattr_distribution_bins_sum_witnesses_cap_and_one_clamps_to_final_bin() {
+    let documents = vec![
+        overview_test_document("zero.txt", 100, Some(0.0)),
+        overview_test_document("low.txt", 100, Some(0.024)),
+        overview_test_document("edge.txt", 100, Some(0.025)),
+        overview_test_document("middle.txt", 100, Some(0.4)),
+        overview_test_document("high.txt", 100, Some(0.8)),
+        overview_test_document("one.txt", 100, Some(1.0)),
+        overview_test_document("short.txt", 99, None),
+    ];
+
+    let distribution = mattr_distribution(&documents).unwrap();
+    assert_eq!(distribution.bin_width, 0.025);
+    assert_eq!(distribution.counts.len(), 40);
+    assert_eq!(distribution.counts.iter().sum::<u32>(), 6);
+    assert_eq!(distribution.used_documents, 6);
+    assert_eq!(distribution.excluded_documents, 1);
+    assert_eq!(distribution.counts[0], 2);
+    assert_eq!(distribution.counts[1], 1);
+    assert_eq!(distribution.counts[39], 1);
+    assert_eq!(distribution.low_witnesses.len(), 5);
+    assert_eq!(distribution.high_witnesses.len(), 5);
+    assert_eq!(distribution.low_witnesses.first().unwrap().name, "zero.txt");
+    assert_eq!(distribution.high_witnesses.first().unwrap().name, "one.txt");
+}
+
+#[test]
 fn lexical_diversity_excludes_short_documents() {
     let short = std::iter::repeat_n("short", 99)
         .collect::<Vec<_>>()
@@ -190,6 +300,13 @@ fn lexical_diversity_excludes_short_documents() {
 
     assert_eq!(lexical.mattr_docs_used, 1);
     assert_eq!(lexical.mattr_docs_excluded, 1);
+    assert_eq!(
+        lexical
+            .mattr_distribution
+            .as_ref()
+            .map(|distribution| distribution.used_documents),
+        Some(1)
+    );
     assert_eq!(lexical.mtld_docs_used, 1);
     assert_eq!(lexical.mtld_docs_excluded, 1);
     assert_eq!(lexical.mattr_median, Some(0.01));
@@ -216,8 +333,9 @@ fn entropy_metrics_omit_single_type_and_empty_distributions() {
 
 #[test]
 fn frequency_spectrum_counts_exact_frequency_classes() {
-    let (points, truncated) = frequency_spectrum(&[5, 2, 2, 1]);
+    let (points, truncated, total) = frequency_spectrum(&[5, 2, 2, 1]);
     assert!(!truncated);
+    assert_eq!(total, 3);
     assert_eq!(
         points,
         vec![
@@ -242,9 +360,213 @@ fn zipf_fit_recovers_known_synthetic_exponent() {
     let frequencies = (1..=20u64)
         .map(|rank| 1_000_000 / rank.pow(2))
         .collect::<Vec<_>>();
-    let summary = rank_frequency_summary(&frequencies, frequencies.iter().sum());
+    let tokens = (1..=20u64)
+        .map(|rank| format!("type-{rank}"))
+        .collect::<Vec<_>>();
+    let summary = rank_frequency_summary(&frequencies, &tokens, frequencies.iter().sum());
     assert!((summary.zipf_exponent.unwrap() - 2.0).abs() < 0.02);
     assert!(summary.r_squared.unwrap() > 0.999);
+    assert_eq!(summary.fitted_rank_start, Some(4));
+    assert_eq!(summary.fitted_rank_end, Some(20));
+    assert_eq!(
+        summary.points.first().unwrap().token.as_deref(),
+        Some("type-1")
+    );
+}
+
+#[test]
+fn cumulative_coverage_uses_125_ladder_and_full_vocabulary() {
+    assert!(cumulative_coverage_checkpoints(&[], 0).is_empty());
+
+    let single = cumulative_coverage_checkpoints(&[7], 7);
+    assert_eq!(single, vec![CumulativeCoveragePoint { k: 1, share: 1.0 }]);
+
+    let frequencies = vec![50, 25, 10, 5, 5, 3, 1, 1];
+    let points = cumulative_coverage_checkpoints(&frequencies, 100);
+    let ks = points.iter().map(|point| point.k).collect::<Vec<_>>();
+    assert_eq!(ks, vec![1, 2, 5, 8]);
+    assert_eq!(points.last().unwrap().share, 1.0);
+}
+
+#[test]
+fn universal_types_are_thresholded_sorted_and_capped() {
+    let terms = (0..14usize)
+        .map(|index| AnalysisTerm {
+            token: format!("u{index:02}"),
+            frequency: 100 - index as u64,
+            document_frequency: if index == 13 { 8 } else { 9 },
+            document_counts: Vec::new(),
+            dispersion: 0.0,
+        })
+        .collect::<Vec<_>>();
+    let refs = terms.iter().collect::<Vec<_>>();
+
+    let universal = universal_types(&refs, 9);
+    assert_eq!(universal.len(), 12);
+    assert_eq!(universal.first().unwrap().token, "u00");
+    assert_eq!(universal.last().unwrap().token, "u11");
+    assert!(universal.iter().all(|term| term.document_frequency >= 9));
+    assert!(universal_types(&refs, 0).is_empty());
+}
+
+fn overview_test_term(
+    token: &str,
+    frequency: u64,
+    document_frequency: usize,
+    dispersion: f64,
+) -> AnalysisTerm {
+    AnalysisTerm {
+        token: token.to_string(),
+        frequency,
+        document_frequency,
+        document_counts: Vec::new(),
+        dispersion,
+    }
+}
+
+#[test]
+fn dispersion_plane_grid_witnesses_and_loud_count_are_deterministic() {
+    let mut terms = vec![
+        overview_test_term("core-local", 6_000, 2, 0.95),
+        overview_test_term("core-even", 5_000, 5, 0.05),
+        overview_test_term("core-rare", 4_000, 1, 0.70),
+    ];
+    for index in 0..10 {
+        terms.push(overview_test_term(
+            &format!("loud-{index}"),
+            1_500 - index,
+            2,
+            0.90 - index as f64 * 0.01,
+        ));
+    }
+    for (index, dispersion) in [0.01, 0.02, 0.03, 0.04].into_iter().enumerate() {
+        terms.push(overview_test_term(
+            &format!("quiet-{index}"),
+            500 - index as u64,
+            5,
+            dispersion,
+        ));
+    }
+    terms.push(overview_test_term("rare-a", 900, 1, 0.80));
+    terms.push(overview_test_term("rare-b", 800, 1, 0.75));
+    terms.push(overview_test_term("rare-c", 700, 1, 0.60));
+
+    assert!(dispersion_plane(&terms, 1).is_none());
+    let plane = dispersion_plane(&terms, 5).unwrap();
+    assert_eq!(plane.x_bins, 48);
+    assert_eq!(plane.y_bins, 32);
+    assert_eq!(plane.counts.len(), 48 * 32);
+    assert_eq!(plane.counts.iter().sum::<u32>(), terms.len() as u32);
+    assert_eq!(plane.loud_but_local_count, 12);
+    assert!(plane.max_cell_count > 0);
+    assert_eq!(plane.witnesses.len(), 16);
+    assert_eq!(
+        plane
+            .witnesses
+            .iter()
+            .filter(|witness| witness.kind == DispersionWitnessKind::Core)
+            .count(),
+        3
+    );
+    assert_eq!(
+        plane
+            .witnesses
+            .iter()
+            .filter(|witness| witness.kind == DispersionWitnessKind::LoudButLocal)
+            .count(),
+        8
+    );
+    assert_eq!(
+        plane
+            .witnesses
+            .iter()
+            .filter(|witness| witness.kind == DispersionWitnessKind::QuietAndEven)
+            .count(),
+        3
+    );
+    assert_eq!(
+        plane
+            .witnesses
+            .iter()
+            .filter(|witness| witness.kind == DispersionWitnessKind::RareAndLocal)
+            .count(),
+        2
+    );
+    let unique_tokens = plane
+        .witnesses
+        .iter()
+        .map(|witness| witness.token.as_str())
+        .collect::<HashSet<_>>();
+    assert_eq!(unique_tokens.len(), plane.witnesses.len());
+    assert_eq!(plane.witnesses[0].token, "core-local");
+    assert_eq!(plane.witnesses[0].kind, DispersionWitnessKind::Core);
+}
+
+#[test]
+fn dispersion_plane_witnesses_apply_document_floor_before_kind_ranking() {
+    let terms = vec![
+        overview_test_term("noise-high", 12_000, 2, 0.10),
+        overview_test_term("core-wide", 9_000, 7, 0.12),
+        overview_test_term("core-tie-a", 8_000, 5, 0.11),
+        overview_test_term("core-tie-b", 8_000, 5, 0.11),
+        overview_test_term("loud-low-df", 5_000, 2, 0.98),
+        overview_test_term("loud-wide", 4_000, 9, 0.90),
+        overview_test_term("quiet-low-df", 500, 2, 0.01),
+        overview_test_term("quiet-wide", 400, 6, 0.02),
+        overview_test_term("rare-local", 300, 1, 0.80),
+    ];
+
+    let plane = dispersion_plane(&terms, 10).unwrap();
+    let core_tokens = plane
+        .witnesses
+        .iter()
+        .filter(|witness| witness.kind == DispersionWitnessKind::Core)
+        .map(|witness| witness.token.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(core_tokens, vec!["core-wide", "core-tie-a", "core-tie-b"]);
+    assert!(plane.witnesses.iter().any(|witness| {
+        witness.kind == DispersionWitnessKind::LoudButLocal && witness.token == "loud-wide"
+    }));
+    assert!(plane.witnesses.iter().any(|witness| {
+        witness.kind == DispersionWitnessKind::QuietAndEven && witness.token == "quiet-wide"
+    }));
+    assert!(!plane.witnesses.iter().any(|witness| {
+        matches!(
+            witness.token.as_str(),
+            "noise-high" | "loud-low-df" | "quiet-low-df"
+        )
+    }));
+    assert!(plane.witnesses.iter().any(|witness| {
+        witness.kind == DispersionWitnessKind::RareAndLocal && witness.token == "rare-local"
+    }));
+}
+
+#[test]
+fn dispersion_roster_is_capped_ordered_and_bounded() {
+    let terms = (0..125)
+        .map(|index| {
+            overview_test_term(
+                &format!("term-{index:02}"),
+                1_000 - index as u64,
+                2,
+                index as f64 / 44.0,
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut ranked_terms = terms.iter().collect::<Vec<_>>();
+    ranked_terms.sort_by(|left, right| {
+        compare_type_sample(left.frequency, &left.token, right.frequency, &right.token)
+    });
+
+    let roster = dispersion_roster(&ranked_terms);
+    assert_eq!(roster.len(), 120);
+    assert_eq!(roster.first().unwrap().token, "term-00");
+    assert!(
+        roster
+            .windows(2)
+            .all(|window| window[0].frequency >= window[1].frequency)
+    );
+    assert!(roster.iter().all(|entry| (0.0..=1.0).contains(&entry.dp)));
 }
 
 #[test]
@@ -376,6 +698,33 @@ fn document_frequency_buckets_partition_type_count_on_fixtures() {
     ] {
         assert_dispersion_buckets_partition(corpus.overview());
     }
+}
+
+#[test]
+fn dispersion_profile_omits_ladder_rungs_above_document_count() {
+    let corpus = corpus_for(&[
+        ("one.txt", "alpha shared common"),
+        ("two.txt", "beta shared common"),
+        ("three.txt", "gamma common"),
+    ]);
+    let profile = &corpus.overview().dispersion.profile_buckets;
+
+    assert_eq!(
+        profile
+            .iter()
+            .map(|bucket| bucket.label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["1", "2", "3–4"]
+    );
+    assert_eq!(
+        profile
+            .iter()
+            .map(|bucket| bucket.count)
+            .collect::<Vec<_>>(),
+        vec![3, 1, 1]
+    );
+    assert!(profile.iter().all(|bucket| bucket.lower_bound <= 3));
+    assert_eq!(profile.iter().map(|bucket| bucket.count).sum::<usize>(), 5);
 }
 
 #[test]
