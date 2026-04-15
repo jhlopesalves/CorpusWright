@@ -1450,3 +1450,730 @@ export function buildLengthHistogramGeometry(options: {
   bins: LengthHistogramBinDatum[];
   documents: number;
   medianTokens: number | null;
+  minimumTokens: number | null;
+  maximumTokens: number | null;
+  box?: PlotBox;
+}): LengthHistogramGeometry {
+  const binCount = Math.max(1, options.bins.length);
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 360, {
+    top: 34,
+    right: 40,
+    bottom: 72,
+    left: 72,
+  });
+  const xScale = createScale("linear", [0, binCount], [
+    box.margin.left,
+    box.width - box.margin.right,
+  ]);
+  const maxCount = Math.max(1, ...options.bins.map((bin) => bin.count));
+  const yScale = createScale("linear", [0, maxCount], [box.height - box.margin.bottom, box.margin.top]);
+  const slotWidth = box.innerWidth / binCount;
+  const barGap = Math.min(2, slotWidth * 0.28);
+  // Bars are truthful here because the encoded value is linear document count; the power-of-two ranges are categorical slots, not log-scaled bar lengths.
+  const bars = options.bins.map((bin, index) => {
+    const x = box.margin.left + (index * slotWidth) + (barGap / 2);
+    const y = scaleValue(yScale, bin.count);
+    return {
+      x,
+      y,
+      width: Math.max(1, slotWidth - barGap),
+      height: Math.max(0, box.height - box.margin.bottom - y),
+      datum: bin,
+      tooltipTitle: `${formatInteger(bin.count)} documents`,
+      tooltipRows: [`${formatExactLengthBinBounds(bin)} tokens`],
+    };
+  });
+  const median = options.medianTokens;
+  const medianIndex = median === null ? -1 : findLengthHistogramBinIndex(options.bins, median);
+  const medianLine = medianIndex < 0
+    ? null
+    : {
+        x1: lengthHistogramMedianX(options.bins[medianIndex]!, median!, medianIndex, slotWidth, box.margin.left),
+        y1: box.margin.top,
+        x2: lengthHistogramMedianX(options.bins[medianIndex]!, median!, medianIndex, slotWidth, box.margin.left),
+        y2: box.height - box.margin.bottom,
+        className: "cw-plot-threshold-line",
+      };
+  const labels = medianLine === null || median === null
+    ? []
+    : placeLabels(
+        [{
+          x: medianLine.x1,
+          y: box.margin.top + 15,
+          text: `median ${formatInteger(median)} tokens`,
+          className: "cw-plot-label-mono",
+          fontSize: 10.5,
+          candidates: [
+            { dx: 8, dy: 0, anchor: "start" },
+            { dx: -8, dy: 0, anchor: "end" },
+            { dx: 0, dy: 18, anchor: "middle" },
+          ],
+        }],
+        bars.map((bar) => ({ kind: "box" as const, box: { x: bar.x, y: bar.y, width: bar.width, height: bar.height } })),
+        plotLabelBounds(box),
+      );
+  return {
+    box,
+    xScale,
+    yScale,
+    xTicks: lengthHistogramBoundaryTicks(options.bins, slotWidth, box.margin.left),
+    yTicks: linearTicks(yScale, 5),
+    bars,
+    medianLine,
+    labels,
+  };
+}
+
+export function formatLengthHistogramStats(documents: number, medianTokens: number | null, minimumTokens: number | null, maximumTokens: number | null): string {
+  const median = medianTokens === null ? "n/a" : formatInteger(medianTokens);
+  const range = minimumTokens === null || maximumTokens === null
+    ? "n/a"
+    : `${formatInteger(minimumTokens)}–${formatInteger(maximumTokens)}`;
+  return `${formatInteger(documents)} documents · median ${median} · range ${range} tokens`;
+}
+
+export function buildMattrDistributionGeometry(options: {
+  distribution: MattrDistributionPayload;
+  median: number | null;
+  box?: PlotBox;
+}): MattrDistributionGeometry {
+  const distribution = options.distribution;
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 380, {
+    top: 34,
+    right: 40,
+    bottom: 72,
+    left: 72,
+  });
+  const domain = mattrOccupiedDomain(distribution.counts, distribution.binWidth);
+  const xScale = createScale("linear", domain, [box.margin.left, box.width - box.margin.right]);
+  const visibleBins = visibleMattrBins(distribution.counts, distribution.binWidth, domain);
+  const maxCount = Math.max(1, ...visibleBins.map((bin) => bin.count));
+  const yScale = createScale("linear", [0, maxCount], [box.height - box.margin.bottom, box.margin.top]);
+  const bars = visibleBins.map((bin) => {
+    const x1 = scaleValue(xScale, bin.lower);
+    const x2 = scaleValue(xScale, bin.upper);
+    const gap = Math.min(2, Math.max(0, (x2 - x1) * 0.28));
+    const y = scaleValue(yScale, bin.count);
+    return {
+      x: x1 + (gap / 2),
+      y,
+      width: Math.max(1, x2 - x1 - gap),
+      height: Math.max(0, box.height - box.margin.bottom - y),
+      datum: bin,
+      tooltipTitle: `${formatInteger(bin.count)} documents`,
+      tooltipRows: [`MATTR ${formatFixed(bin.lower, 3)}–${formatFixed(bin.upper, 3)}`],
+    };
+  });
+  const median = options.median;
+  const medianX = median === null ? null : scaleValue(xScale, clamp(median, domain[0], domain[1]));
+  const medianLine = medianX === null
+    ? null
+    : {
+        x1: medianX,
+        y1: box.margin.top,
+        x2: medianX,
+        y2: box.height - box.margin.bottom,
+        className: "cw-plot-threshold-line",
+      };
+  const witnessTicks = [...distribution.lowWitnesses, ...distribution.highWitnesses].map((witness) => ({
+    x: scaleValue(xScale, clamp(witness.mattr, domain[0], domain[1])),
+    y1: box.height - box.margin.bottom + 5,
+    y2: box.height - box.margin.bottom + 15,
+    datum: witness,
+    tooltipTitle: witness.name,
+    tooltipRows: [
+      `MATTR ${formatFixed(witness.mattr, 3)}`,
+      `${formatInteger(witness.tokens)} tokens`,
+    ],
+  }));
+  const extremeWitnesses = [distribution.lowWitnesses[0], distribution.highWitnesses[0]]
+    .filter((witness): witness is MattrWitnessDatum => witness !== undefined)
+    .filter((witness, index, values) => values.findIndex((candidate) => candidate.name === witness.name) === index);
+  const witnessLabels = placeLabels(extremeWitnesses.map((witness) => ({
+    x: scaleValue(xScale, clamp(witness.mattr, domain[0], domain[1])),
+    y: box.height - box.margin.bottom - 8,
+    text: middleEllipsis(witness.name, 24),
+    className: "cw-plot-label-mono cw-plot-label-muted",
+    candidates: [
+      { dx: 0, dy: 0, anchor: "middle" as const },
+      { dx: 0, dy: -16, anchor: "middle" as const },
+      { dx: -8, dy: -8, anchor: "end" as const },
+      { dx: 8, dy: -8, anchor: "start" as const },
+    ],
+  })), bars.map((bar) => ({ kind: "box" as const, box: { x: bar.x, y: bar.y, width: bar.width, height: bar.height } })), plotLabelBounds(box));
+  const medianLabel = medianLine === null || median === null
+    ? []
+    : placeLabels(
+        [{
+          x: medianLine.x1,
+          y: box.margin.top + 15,
+          text: `median ${formatFixed(median, 3)}`,
+          className: "cw-plot-label-mono",
+          fontSize: 10.5,
+          candidates: [
+            { dx: 8, dy: 0, anchor: "start" },
+            { dx: -8, dy: 0, anchor: "end" },
+            { dx: 0, dy: 18, anchor: "middle" },
+          ],
+        }],
+        bars.map((bar) => ({ kind: "box" as const, box: { x: bar.x, y: bar.y, width: bar.width, height: bar.height } })),
+        plotLabelBounds(box),
+      );
+  return {
+    box,
+    xScale,
+    yScale,
+    xTicks: mattrTicks(domain, xScale),
+    yTicks: linearTicks(yScale, 5),
+    bars,
+    medianLine,
+    labels: [...medianLabel, ...witnessLabels],
+    witnessTicks,
+    domain,
+  };
+}
+
+export function formatMattrDistributionStats(
+  usedDocuments: number,
+  median: number | null,
+  excludedDocuments: number,
+  windowTokens: number,
+): string {
+  return `${formatInteger(usedDocuments)} documents · median ${median === null ? "n/a" : formatFixed(median, 3)} · ${formatInteger(excludedDocuments)} excluded (< ${formatInteger(windowTokens)} tokens)`;
+}
+
+export function formatDispersionProfileStats(totalTypes: number, reachBandCount: number, universalCount: number): string {
+  return `${formatInteger(totalTypes)} types · ${formatInteger(reachBandCount)} reach bands · ${formatInteger(universalCount)} types in ≥90% of documents`;
+}
+
+export function formatUniversalTypeCaption(tokens: string[], totalCount: number): string | undefined {
+  const visibleTokens = tokens.slice(0, 3);
+  if (visibleTokens.length === 0) return undefined;
+  const remaining = Math.max(0, totalCount - 3);
+  return `${visibleTokens.join(" · ")}${remaining > 0 ? ` +${formatInteger(remaining)} more` : ""}`;
+}
+
+export function formatInteger(value: number): string {
+  return Math.round(value).toLocaleString("en-US");
+}
+
+export function formatFixed(value: number, digits: number): string {
+  return value.toLocaleString("en-US", {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  });
+}
+
+export function formatPercent(value: number, digits = 1): string {
+  return `${(value * 100).toLocaleString("en-US", {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  })}%`;
+}
+
+export function formatMillions(value: number): string {
+  return `${(value / 1_000_000).toLocaleString("en-US", {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  })}M`;
+}
+
+function normaliseLinearDomain(domain: [number, number]): [number, number] {
+  let [min, max] = domain;
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+  if (min === max) {
+    const padding = Math.abs(min) > 0 ? Math.abs(min) * 0.1 : 1;
+    min -= padding;
+    max += padding;
+  }
+  if (min > max) return [max, min];
+  return [min, max];
+}
+
+function normaliseLogDomain(domain: [number, number]): [number, number] {
+  let [min, max] = domain;
+  min = Number.isFinite(min) ? Math.max(min, LOG_MINIMUM) : 1;
+  max = Number.isFinite(max) ? Math.max(max, min) : min * 10;
+  if (min === max) {
+    min = Math.max(LOG_MINIMUM, min / 10);
+    max *= 10;
+  }
+  if (min > max) return [max, min];
+  return [min, max];
+}
+
+function niceNumber(value: number, round: boolean): number {
+  const exponent = Math.floor(Math.log10(value));
+  const fraction = value / (10 ** exponent);
+  let niceFraction: number;
+  if (round) {
+    if (fraction < 1.5) niceFraction = 1;
+    else if (fraction < 3) niceFraction = 2;
+    else if (fraction < 7) niceFraction = 5;
+    else niceFraction = 10;
+  } else if (fraction <= 1) niceFraction = 1;
+  else if (fraction <= 2) niceFraction = 2;
+  else if (fraction <= 5) niceFraction = 5;
+  else niceFraction = 10;
+  return niceFraction * (10 ** exponent);
+}
+
+function formatTickNumber(value: number): string {
+  if (value >= 1_000_000) return `${formatFixed(value / 1_000_000, value % 1_000_000 === 0 ? 0 : 1)}M`;
+  if (value >= 1_000) return `${formatFixed(value / 1_000, value % 1_000 === 0 ? 0 : 1)}k`;
+  if (value >= 1) return formatInteger(value);
+  return value.toLocaleString("en-US", { maximumFractionDigits: 3 });
+}
+
+function extent(values: number[]): [number, number] {
+  if (values.length === 0) return [1, 10];
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [1, 10];
+  return [min, max];
+}
+
+function buildDispersionPlaneCells(
+  plane: DispersionPlanePayload,
+  xScale: PlotScale,
+  yScale: PlotScale,
+): DispersionPlaneCellGeometry[] {
+  const cells: DispersionPlaneCellGeometry[] = [];
+  const maxCellCount = Math.max(1, plane.maxCellCount);
+  for (let index = 0; index < plane.counts.length; index += 1) {
+    const count = plane.counts[index] ?? 0;
+    if (count <= 0) continue;
+    const xi = index % plane.xBins;
+    const yi = Math.floor(index / plane.xBins);
+    const freqLowerLog = (xi / plane.xBins) * Math.max(0, plane.freqLog10Max);
+    const freqUpperLog = ((xi + 1) / plane.xBins) * Math.max(0, plane.freqLog10Max);
+    const dpLower = yi / plane.yBins;
+    const dpUpper = (yi + 1) / plane.yBins;
+    const x = scaleValue(xScale, freqLowerLog);
+    const x2 = scaleValue(xScale, freqUpperLog);
+    const y = scaleValue(yScale, dpUpper);
+    const y2 = scaleValue(yScale, dpLower);
+    const t = Math.log1p(count) / Math.log1p(maxCellCount);
+    const opacity = 0.12 + (0.80 * t);
+    const frequencyRange = `${formatFrequencyRangeBoundary(10 ** freqLowerLog)}-${formatFrequencyRangeBoundary(10 ** freqUpperLog)}`;
+    const dpRange = `${formatFixed(dpLower, 2)}-${formatFixed(dpUpper, 2)}`;
+    cells.push({
+      x,
+      y,
+      width: Math.max(1, x2 - x),
+      height: Math.max(1, y2 - y),
+      count,
+      t,
+      opacity,
+      fill: densityRampFill(t),
+      tooltipTitle: `${formatInteger(count)} types · f ${frequencyRange} · DP ${dpRange}`,
+      tooltipRows: [],
+    });
+  }
+  return cells;
+}
+
+function buildDispersionPlaneWitnessLabelRequests(
+  witnesses: Array<PlotPointGeometry<DispersionWitnessDatum>>,
+): LabelPlacementRequest[] {
+  return witnesses.map((witness) => ({
+    x: witness.x,
+    y: witness.y,
+    text: witness.datum.token,
+    className: "cw-plot-label-mono",
+    candidates: [
+      { dx: 10, dy: -8, anchor: "start" },
+      { dx: 10, dy: 14, anchor: "start" },
+      { dx: -10, dy: -8, anchor: "end" },
+      { dx: -10, dy: 14, anchor: "end" },
+      { dx: 0, dy: -16, anchor: "middle" },
+      { dx: 0, dy: 24, anchor: "middle" },
+    ],
+  }));
+}
+
+function permanentDispersionPlaneWitnesses(
+  witnesses: Array<PlotPointGeometry<DispersionWitnessDatum>>,
+): Array<PlotPointGeometry<DispersionWitnessDatum>> {
+  const core = witnesses.filter((witness) => witness.datum.kind === "core").slice(0, 3);
+  const loudButLocal = witnesses.filter((witness) => witness.datum.kind === "loudButLocal").slice(0, 2);
+  const quietAndEven = witnesses.filter((witness) => witness.datum.kind === "quietAndEven").slice(0, 1);
+  return [...core, ...loudButLocal, ...quietAndEven].slice(0, 6);
+}
+
+function buildDispersionPlaneQuadrantPills(
+  box: PlotBox,
+  obstacles: LabelObstacle[],
+): DispersionPlanePillGeometry[] {
+  const bounds = plotLabelBounds(box);
+  const pillLabels = placeLabels(
+    [
+      {
+        x: box.margin.left + 12,
+        y: box.margin.top + 19,
+        text: "RARE & LOCAL",
+        className: "cw-plot-quadrant-pill-label",
+        fontSize: 10,
+        candidates: [
+          { dx: 0, dy: 0, anchor: "start" },
+          { dx: 0, dy: 24, anchor: "start" },
+          { dx: 18, dy: 0, anchor: "start" },
+        ],
+      },
+      {
+        x: box.width - box.margin.right - 12,
+        y: box.margin.top + 19,
+        text: "LOUD BUT LOCAL",
+        className: "cw-plot-quadrant-pill-label",
+        fontSize: 10,
+        candidates: [
+          { dx: 0, dy: 0, anchor: "end" },
+          { dx: 0, dy: 24, anchor: "end" },
+          { dx: -18, dy: 0, anchor: "end" },
+        ],
+      },
+      {
+        x: box.margin.left + 12,
+        y: box.height - box.margin.bottom - 12,
+        text: "QUIET & EVEN",
+        className: "cw-plot-quadrant-pill-label",
+        fontSize: 10,
+        candidates: [
+          { dx: 0, dy: 0, anchor: "start" },
+          { dx: 0, dy: -24, anchor: "start" },
+          { dx: 18, dy: -8, anchor: "start" },
+        ],
+      },
+      {
+        x: box.width - box.margin.right - 12,
+        y: box.height - box.margin.bottom - 30,
+        text: "CORE VOCABULARY",
+        className: "cw-plot-quadrant-pill-label",
+        fontSize: 10,
+        candidates: [
+          { dx: 0, dy: 0, anchor: "end" },
+          { dx: 0, dy: -26, anchor: "end" },
+          { dx: -18, dy: -42, anchor: "end" },
+          { dx: 0, dy: -58, anchor: "end" },
+        ],
+      },
+    ],
+    obstacles,
+    bounds,
+  );
+  return pillLabels.map((label) => {
+    const labelBox = estimateLabelBox(label);
+    const box = {
+      x: labelBox.x - QUADRANT_PILL_PADDING_X,
+      y: label.y - (QUADRANT_PILL_HEIGHT / 2) - 3,
+      width: labelBox.width + (QUADRANT_PILL_PADDING_X * 2),
+      height: QUADRANT_PILL_HEIGHT,
+    };
+    return { label, box };
+  });
+}
+
+function dispersionPlaneDecadeTicks(freqLog10Max: number, scale: PlotScale): PlotTick[] {
+  const ticks: PlotTick[] = [];
+  const maxPower = Math.floor(Math.max(0, freqLog10Max));
+  for (let power = 0; power <= maxPower; power += 1) {
+    const decade = 10 ** power;
+    const majorValue = Math.log10(decade);
+    if (majorValue <= freqLog10Max + 1e-9) {
+      ticks.push({
+        value: majorValue,
+        position: scaleValue(scale, majorValue),
+        label: formatTickNumber(decade),
+        major: true,
+      });
+    }
+    for (let multiplier = 2; multiplier <= 9; multiplier += 1) {
+      const minorValue = Math.log10(multiplier * decade);
+      if (minorValue > freqLog10Max + 1e-9) continue;
+      ticks.push({
+        value: minorValue,
+        position: scaleValue(scale, minorValue),
+        label: "",
+        major: false,
+      });
+    }
+  }
+  return ticks.sort((left, right) => left.value - right.value);
+}
+
+function densityRampFill(t: number): string {
+  const clamped = clamp(t, 0, 1);
+  if (clamped <= 0) return "var(--cw-plot-ramp-1)";
+  if (clamped >= 1) return "var(--cw-plot-ramp-5)";
+  const scaled = clamped * 4;
+  const lower = Math.floor(scaled) + 1;
+  const upper = Math.min(5, lower + 1);
+  const upperWeight = (scaled - Math.floor(scaled)) * 100;
+  const lowerWeight = 100 - upperWeight;
+  return `color-mix(in srgb, var(--cw-plot-ramp-${lower}) ${formatFixed(lowerWeight, 2)}%, var(--cw-plot-ramp-${upper}) ${formatFixed(upperWeight, 2)}%)`;
+}
+
+function formatCompactFrequency(value: number): string {
+  if (value >= 1_000_000 && value % 1_000_000 === 0) return `${formatInteger(value / 1_000_000)}M`;
+  if (value >= 1_000 && value % 1_000 === 0) return `${formatInteger(value / 1_000)}k`;
+  return formatInteger(value);
+}
+
+function formatDpThreshold(value: number): string {
+  return formatFixed(value, value === 0 || value === 1 ? 0 : 1);
+}
+
+function formatDpTick(value: number): string {
+  if (value === 0 || value === 1) return formatFixed(value, 0);
+  if (value === 0.5) return formatFixed(value, 1);
+  return formatFixed(value, 2);
+}
+
+function formatFrequencyRangeBoundary(value: number): string {
+  if (value >= 1_000_000) return `${formatFixed(value / 1_000_000, value % 1_000_000 === 0 ? 0 : 1)}M`;
+  if (value >= 1_000) return `${formatFixed(value / 1_000, value % 1_000 === 0 ? 0 : 1)}k`;
+  if (value >= 100) return formatInteger(value);
+  if (value >= 10) return formatFixed(value, value % 1 === 0 ? 0 : 1);
+  return formatFixed(value, value % 1 === 0 ? 0 : 2);
+}
+
+function formatExactLengthBinBounds(bin: LengthHistogramBinDatum): string {
+  const upper = bin.upperTokens ?? bin.lowerTokens;
+  return `${formatInteger(bin.lowerTokens)}–${formatInteger(upper)}`;
+}
+
+function lengthHistogramBoundaryTicks(
+  bins: LengthHistogramBinDatum[],
+  slotWidth: number,
+  left: number,
+): PlotTick[] {
+  if (bins.length === 0) return [];
+  const boundaries = [bins[0]!.lowerTokens, ...bins.map((bin) => bin.upperTokens ?? bin.lowerTokens)];
+  return boundaries.map((boundary, index) => ({
+    value: index,
+    position: left + (index * slotWidth),
+    label: index === 0 || index === boundaries.length - 1 || index % 2 === 0
+      ? formatCompactTokenBoundary(boundary)
+      : "",
+    accessibleLabel: formatCompactTokenBoundary(boundary),
+    major: true,
+  }));
+}
+
+function formatCompactTokenBoundary(value: number): string {
+  if (value >= 1_048_576 && value % 1_048_576 === 0) return `${formatInteger(value / 1_048_576)}M`;
+  if (value >= 1_024 && value % 1_024 === 0) return `${formatInteger(value / 1_024)}k`;
+  if (value >= 1_000_000) return `${formatFixed(value / 1_000_000, 1)}M`;
+  if (value >= 1_000) return `${formatFixed(value / 1_000, 1)}k`;
+  return formatInteger(value);
+}
+
+function findLengthHistogramBinIndex(bins: LengthHistogramBinDatum[], medianTokens: number): number {
+  const exact = bins.findIndex((bin) => medianTokens >= bin.lowerTokens && medianTokens < (bin.upperTokens ?? Number.POSITIVE_INFINITY));
+  if (exact >= 0) return exact;
+  if (bins.length === 0) return -1;
+  if (medianTokens < bins[0]!.lowerTokens) return 0;
+  return bins.length - 1;
+}
+
+function lengthHistogramMedianX(
+  bin: LengthHistogramBinDatum,
+  medianTokens: number,
+  index: number,
+  slotWidth: number,
+  plotLeft: number,
+): number {
+  const upper = bin.upperTokens ?? bin.lowerTokens + 1;
+  const span = Math.max(1, upper - bin.lowerTokens);
+  const t = clamp((medianTokens - bin.lowerTokens) / span, 0.08, 0.92);
+  return plotLeft + (index + t) * slotWidth;
+}
+
+function mattrOccupiedDomain(counts: number[], binWidth: number): [number, number] {
+  const first = counts.findIndex((count) => count > 0);
+  if (first < 0) return [0, 1];
+  let last = counts.length - 1;
+  while (last > first && (counts[last] ?? 0) <= 0) last -= 1;
+  const lower = Math.max(0, (first - 1) * binWidth);
+  const upper = Math.min(1, (last + 2) * binWidth);
+  return lower === upper ? [Math.max(0, lower - binWidth), Math.min(1, upper + binWidth)] : [lower, upper];
+}
+
+function visibleMattrBins(counts: number[], binWidth: number, domain: [number, number]): MattrDistributionBinDatum[] {
+  const bins: MattrDistributionBinDatum[] = [];
+  for (let index = 0; index < counts.length; index += 1) {
+    const lower = index * binWidth;
+    const upper = Math.min(1, lower + binWidth);
+    if (upper <= domain[0] || lower >= domain[1]) continue;
+    bins.push({
+      index,
+      lower,
+      upper,
+      count: counts[index] ?? 0,
+    });
+  }
+  return bins;
+}
+
+function mattrTicks(domain: [number, number], scale: PlotScale): PlotTick[] {
+  const ticks: PlotTick[] = [];
+  const start = Math.ceil((domain[0] - 1e-9) / 0.05) * 0.05;
+  const end = Math.floor((domain[1] + 1e-9) / 0.05) * 0.05;
+  for (let value = start; value <= end + 1e-9; value += 0.05) {
+    const rounded = Number(value.toFixed(2));
+    ticks.push({
+      value: rounded,
+      position: scaleValue(scale, rounded),
+      label: formatFixed(rounded, 2),
+      major: true,
+    });
+  }
+  return ticks;
+}
+
+function middleEllipsis(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  const keep = Math.max(1, maxLength - 1);
+  const head = Math.ceil(keep / 2);
+  const tail = Math.floor(keep / 2);
+  return `${value.slice(0, head)}…${value.slice(value.length - tail)}`;
+}
+
+function roundSvg(value: number): string {
+  return Number(value.toFixed(2)).toString();
+}
+
+function rampIndex(value: number, domain: [number, number], log: boolean): number {
+  const [min, max] = domain;
+  const start = log ? Math.log10(Math.max(min, LOG_MINIMUM)) : min;
+  const end = log ? Math.log10(Math.max(max, LOG_MINIMUM)) : max;
+  const current = log ? Math.log10(Math.max(value, LOG_MINIMUM)) : value;
+  if (start === end) return 2;
+  return Math.max(0, Math.min(4, Math.floor(((current - start) / (end - start)) * 5)));
+}
+
+function lexicalSpectrumRampIndex(frequency: number): number {
+  if (frequency <= 1) return 0;
+  if (frequency === 2) return 1;
+  if (frequency <= 9) return 2;
+  return 4;
+}
+
+function vocabularyGrowthFitValues(
+  observed: VocabularyGrowthDatum[],
+  heapsK: number | null,
+  heapsBeta: number | null,
+): VocabularyGrowthDatum[] {
+  if (observed.length === 0 || heapsK === null || heapsBeta === null || heapsK <= 0 || heapsBeta <= 0) {
+    return [];
+  }
+  const start = Math.min(...observed.map((point) => point.tokens));
+  const end = Math.max(...observed.map((point) => point.tokens));
+  if (start <= 0 || end < start) return [];
+  const count = Math.max(2, Math.min(48, observed.length * 4));
+  return Array.from({ length: count }, (_, index) => {
+    const t = index / (count - 1);
+    const tokens = start * ((end / start) ** t);
+    return { tokens, types: heapsK * (tokens ** heapsBeta) };
+  });
+}
+
+function buildLexicalSpectrumBands(scale: PlotScale): LexicalSpectrumBandGeometry[] {
+  const [domainStart, domainEnd] = scale.domain;
+  const boundaries = [
+    { start: 1, end: Math.SQRT2, label: "HAPAX", alternate: false },
+    { start: Math.SQRT2, end: Math.sqrt(6), label: "DIS", alternate: true },
+    { start: Math.sqrt(6), end: Math.sqrt(90), label: "3–9", alternate: false },
+    { start: Math.sqrt(90), end: domainEnd, label: "10+", alternate: true },
+  ];
+  return boundaries.flatMap((band) => {
+    const start = Math.max(domainStart, band.start);
+    const end = Math.min(domainEnd, band.end);
+    if (end <= start) return [];
+    const x = scaleValue(scale, start);
+    const right = scaleValue(scale, end);
+    return [{
+      x,
+      width: Math.max(0, right - x),
+      label: band.label,
+      alternate: band.alternate,
+    }];
+  });
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function fitPointsForRank(
+  options: {
+    zipfExponent: number | null;
+    zipfCoefficient: number | null;
+    fittedRankStart: number | null;
+    fittedRankEnd: number | null;
+  },
+  xScale: PlotScale,
+  yScale: PlotScale,
+): Array<{ x: number; y: number }> {
+  if (
+    options.zipfExponent === null
+    || options.zipfCoefficient === null
+    || options.fittedRankStart === null
+    || options.fittedRankEnd === null
+    || options.fittedRankEnd < options.fittedRankStart
+  ) {
+    return [];
+  }
+  const start = Math.max(options.fittedRankStart, xScale.domain[0]);
+  const end = Math.min(options.fittedRankEnd, xScale.domain[1]);
+  const ranks = start === end ? [start] : [start, Math.sqrt(start * end), end];
+  return ranks.map((rank) => {
+    const raw = options.zipfCoefficient === null || options.zipfExponent === null
+      ? 0
+      : options.zipfCoefficient * (rank ** -options.zipfExponent);
+    return {
+      x: scaleValue(xScale, rank),
+      y: scaleValue(yScale, raw),
+    };
+  });
+}
+
+function rankFrequencyTicks(scale: PlotScale, mode: "rate" | "raw", totalTokens: number): PlotTick[] {
+  return logTicks(scale).map((tick) => ({
+    ...tick,
+    label: !tick.major || mode === "raw"
+      ? tick.label
+      : formatRatePerMillion(tick.value, totalTokens),
+  }));
+}
+
+function formatRatePerMillion(frequency: number, totalTokens: number): string {
+  if (totalTokens <= 0) return "0";
+  return formatTickNumber(frequency / totalTokens * 1_000_000);
+}
+
+function labelRequestForExactFrequency(
+  points: Array<PlotPointGeometry<FrequencySpectrumDatum>>,
+  frequency: number,
+  text: string,
+): LabelPlacementRequest | null {
+  const point = points.find((candidate) => candidate.datum.frequency === frequency);
+  if (!point) return null;
+  return {
+    x: point.x,
+    y: point.y,
+    text,
+    className: "cw-plot-label-mono cw-plot-label-muted",
+    candidates: [
+      { dx: 10, dy: 4, anchor: "start" },
+      { dx: 10, dy: -10, anchor: "start" },
+      { dx: -10, dy: 4, anchor: "end" },
+      { dx: -10, dy: -10, anchor: "end" },
+    ],
+  };
+}
