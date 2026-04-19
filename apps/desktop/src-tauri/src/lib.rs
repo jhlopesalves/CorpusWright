@@ -39,7 +39,8 @@ use corpuswright_core::project_sources::{
     update_project_source_processing_results,
 };
 use corpuswright_core::repeated_artifacts::{
-    CancellationFlag, RepeatedArtifactScanConfig, RepeatedArtifactScanReport,
+    CancellationFlag, RepeatedArtifactScanConfig, RepeatedArtifactScanError,
+    RepeatedArtifactScanReport,
 };
 use corpuswright_core::scan::{
     CorpusSummary, DocumentRecord, DocumentType, ScanReport, load_files, scan_directory,
@@ -4573,7 +4574,8 @@ fn scan_repeated_artifacts_command(
     state: tauri::State<'_, ScanState>,
     cache: tauri::State<'_, ExtractionCache>,
     inventory: tauri::State<'_, project::ProjectSourceInventoryState>,
-) -> Result<RepeatedArtifactScanReport, String> {
+    window: Window,
+) -> Result<RepeatedArtifactScanReport, RepeatedArtifactScanError> {
     let records = if let (Some(root_path), Some(selection_query)) = (root_path, all_matching_query)
     {
         let root = project::validated_project_root(&root_path)?;
@@ -4595,14 +4597,16 @@ fn scan_repeated_artifacts_command(
     };
     // A previous cancellation must not leak into the next scan.
     state.cancel.store(false, Ordering::Relaxed);
-    corpuswright_core::repeated_artifacts::scan_repeated_artifacts_report_with_cancel_and_cache(
+    corpuswright_core::repeated_artifacts::scan_repeated_artifacts_report_with_cancel_cache_and_progress(
         &records,
         &config,
         &cleaning_config,
         Some(&*cache),
         &state.cancel,
+        |progress| {
+            let _ = window.emit("repeated-artifact-scan-progress", progress);
+        },
     )
-    .map_err(|e| e.to_string())
 }
 
 #[tauri::command(async)]
