@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import { createChevron } from "./chevron";
 import {
@@ -63,6 +64,59 @@ interface RepeatedArtifactScanScope {
   buttonLabel: string;
   helperText: string;
   modalText: string;
+}
+
+type MemoryBoundedRepeatedArtifactScanConfig = RepeatedArtifactScanConfig & {
+  memory_ceiling_bytes: number;
+};
+
+type RepeatedArtifactScanProgress = {
+  phase: "pass_1_scanning" | "filtering" | "pass_2_materialising";
+  files_completed: number;
+  files_total: number;
+};
+
+type RepeatedArtifactScanError =
+  | { type: "cancelled" }
+  | {
+    type: "corpusTooLarge";
+    stage: "pass_1_counting" | "survivor_materialisation";
+    ceiling_bytes: number;
+    estimated_bytes: number;
+    suggestions: string[];
+  }
+  | { type: "scanFailed"; message: string };
+
+const REPEATED_ARTIFACT_MEMORY_CEILING_BYTES = 1_288_490_188;
+
+function repeatedArtifactProgressLabel(progress: RepeatedArtifactScanProgress): string {
+  switch (progress.phase) {
+    case "pass_1_scanning":
+      return `Counting candidates... ${progress.files_completed.toLocaleString()}/${progress.files_total.toLocaleString()} files`;
+    case "filtering":
+      return "Filtering candidates...";
+    case "pass_2_materialising":
+      return `Materialising candidates... ${progress.files_completed.toLocaleString()}/${progress.files_total.toLocaleString()} files`;
+  }
+}
+
+function structuredRepeatedArtifactError(error: unknown): RepeatedArtifactScanError | null {
+  if (typeof error !== "object" || error === null || !("type" in error)) return null;
+  const type = (error as { type?: unknown }).type;
+  if (type === "cancelled" || type === "corpusTooLarge" || type === "scanFailed") {
+    return error as RepeatedArtifactScanError;
+  }
+  return null;
+}
+
+function repeatedArtifactErrorMessage(error: unknown): string {
+  const structured = structuredRepeatedArtifactError(error);
+  if (structured?.type === "corpusTooLarge") {
+    const ceilingMb = Math.round(structured.ceiling_bytes / (1024 * 1024));
+    return `Corpus too large for this configuration (${ceilingMb.toLocaleString()} MB scan ceiling). ${structured.suggestions.join(" ")}`;
+  }
+  if (structured?.type === "scanFailed") return structured.message;
+  return String(error);
 }
 
 interface DecisionEntry {
@@ -989,7 +1043,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     state.scanWasProcessed = analyseProcessed;
     state.removalCountAtScanStart = activeCustomRemovalCount();
 
-    const config: RepeatedArtifactScanConfig = {
+    const config: MemoryBoundedRepeatedArtifactScanConfig = {
       analyse_processed_text: analyseProcessed,
       include_exact_lines: dom.chkArtifactExact.checked,
       include_normalized_lines: dom.chkArtifactNorm.checked,
@@ -1008,6 +1062,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       max_examples_per_candidate: Math.min(Math.max(parseInt(dom.numArtifactMaxExamples.value, 10) || 25, 1), 100),
       min_line_chars: 2,
       max_line_chars: 600,
+      memory_ceiling_bytes: REPEATED_ARTIFACT_MEMORY_CEILING_BYTES,
     };
 
     dom.btnRunArtifactScan.style.display = "none";
@@ -1026,23 +1081,20 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     scanTimerInterval = setInterval(() => {
       const elapsed = (performance.now() - startTime) / 1000;
       dom.lblScanTime.textContent = `${elapsed.toFixed(1)}s`;
-      if (elapsed < 2) {
-        setStatus("Preparing files...", elapsed);
-      } else if (elapsed < 3) {
-        setStatus("Extracting text...", elapsed);
-      } else if (elapsed < 8) {
-        setStatus("Scanning lines...", elapsed);
-      } else if (elapsed < 30) {
-        setStatus("Merging candidates...", elapsed);
-      } else {
-        setStatus("Ranking candidates...", elapsed);
-      }
     }, 500);
 
     const myVersion = state.currentCorpusVersion;
     const indices = state.activeProject ? null : scope.indices;
 
+    let unlistenProgress: UnlistenFn | null = null;
     try {
+      unlistenProgress = await listen<RepeatedArtifactScanProgress>(
+        "repeated-artifact-scan-progress",
+        (event) => {
+          if (myGen !== scanGeneration) return;
+          setStatus(repeatedArtifactProgressLabel(event.payload));
+        },
+      );
       const report = await invoke<RepeatedArtifactScanReport>("scan_repeated_artifacts_command", {
         indices,
         sourcePaths: state.activeProject && hasProjectSourceSelection() && !state.allMatchingProjectSourcesSelected
@@ -1087,8 +1139,9 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
       if (scanTimerInterval) { clearInterval(scanTimerInterval); scanTimerInterval = null; }
 
-      const errStr = String(err);
-      if (errStr.includes("cancelled") || errStr.includes("Cancelled") || errStr.includes("cancel")) {
+      const structuredError = structuredRepeatedArtifactError(err);
+      const errStr = repeatedArtifactErrorMessage(err);
+      if (structuredError?.type === "cancelled" || errStr.toLowerCase().includes("cancel")) {
         dom.lblScanTime.textContent = "Cancelled";
         dom.tblArtifactCandidates.innerHTML = `
           <tr>
@@ -1109,6 +1162,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       }
 
     } finally {
+      unlistenProgress?.();
       if (myGen !== scanGeneration) return;
       resetScanControls();
     }

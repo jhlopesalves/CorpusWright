@@ -5,8 +5,7 @@
 //!   candidates, and 2-line blocks are enabled by default.
 //! - 3-line blocks are opt-in because they multiply the candidate space.
 //! - Processed-text scans are slower because they apply extraction/cleanup settings.
-//! - Uses a two-pass strategy: count first, collect examples only for survivors.
-//! - Parallel workers build local maps; merged after per-file processing to avoid global lock contention.
+//! - Uses a two-pass strategy: fingerprint counts first, then materialises survivors.
 
 use crate::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
 use crate::clean::CleaningConfig;
@@ -19,9 +18,9 @@ use crate::text_profile::{
     is_decimal_digit, is_page_label_like, profile_text_line, text_signal_reasons,
 };
 use aho_corasick::AhoCorasick;
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
+use std::fmt;
 use std::sync::{
     LazyLock,
     atomic::{AtomicBool, Ordering},
@@ -33,6 +32,25 @@ pub use crate::text_profile::{CandidateTextProfile, CandidateTextSignalLabel};
 /// Maximum distinct raw variants tracked per candidate key.
 /// Beyond this cap, `raw_variant_overflow` is set to true.
 const RAW_VARIANT_TRACK_CAP: usize = 200;
+
+/// Default accumulation ceiling for each repeated-artefact scan phase.
+const DEFAULT_MEMORY_CEILING_BYTES: usize = 1_288_490_188;
+
+/// Conservative pass-1 accounting for a sharded hash-map entry, including load-factor overhead.
+const PASS1_ESTIMATED_BYTES_PER_KEY: usize = 80;
+
+/// Fixed accounting before the variable strings and example payloads of a survivor.
+const MATERIALIZED_ESTIMATED_BASE_BYTES_PER_KEY: usize = 512;
+
+/// Small shards keep fallible hash-map growth allocations far below the corpus-wide map size.
+const FINGERPRINT_MAP_SHARDS: usize = 256;
+
+/// Cancellation is sampled at least this often while scanning a large file.
+const CANCELLATION_CHECK_LINE_INTERVAL: usize = 1_024;
+
+fn default_memory_ceiling_bytes() -> usize {
+    DEFAULT_MEMORY_CEILING_BYTES
+}
 
 /// Configuration options for the repeated artefact scan.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -65,6 +83,9 @@ pub struct RepeatedArtifactScanConfig {
     pub max_examples_per_candidate: usize,
     pub min_line_chars: usize,
     pub max_line_chars: usize,
+    /// Maximum estimated bytes used by pass-1 accounting or survivor materialisation.
+    #[serde(default = "default_memory_ceiling_bytes")]
+    pub memory_ceiling_bytes: usize,
 }
 
 impl Default for RepeatedArtifactScanConfig {
@@ -86,7 +107,99 @@ impl Default for RepeatedArtifactScanConfig {
             max_examples_per_candidate: 25,
             min_line_chars: 2,
             max_line_chars: 600,
+            memory_ceiling_bytes: DEFAULT_MEMORY_CEILING_BYTES,
         }
+    }
+}
+
+/// Backend phases reported while a repeated-artefact scan is running.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum RepeatedArtifactScanPhase {
+    Pass1Scanning,
+    Filtering,
+    Pass2Materialising,
+}
+
+/// Honest phase and file progress for a repeated-artefact scan.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct RepeatedArtifactScanProgress {
+    pub phase: RepeatedArtifactScanPhase,
+    pub files_completed: usize,
+    pub files_total: usize,
+}
+
+/// Accumulation stage that reached the configured scan memory ceiling.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum RepeatedArtifactMemoryStage {
+    Pass1Counting,
+    SurvivorMaterialisation,
+}
+
+/// Structured failures returned through the normal command error channel.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(tag = "type", rename_all = "camelCase")]
+#[ts(export)]
+pub enum RepeatedArtifactScanError {
+    Cancelled,
+    CorpusTooLarge {
+        stage: RepeatedArtifactMemoryStage,
+        ceiling_bytes: usize,
+        estimated_bytes: usize,
+        suggestions: Vec<String>,
+    },
+    ScanFailed {
+        message: String,
+    },
+}
+
+impl RepeatedArtifactScanError {
+    fn corpus_too_large(
+        stage: RepeatedArtifactMemoryStage,
+        ceiling_bytes: usize,
+        estimated_bytes: usize,
+    ) -> Self {
+        Self::CorpusTooLarge {
+            stage,
+            ceiling_bytes,
+            estimated_bytes,
+            suggestions: vec![
+                "Raise Min Files to discard corpus-specific singletons.".to_string(),
+                "Disable inline artefacts or 2-line blocks to reduce candidate keys.".to_string(),
+                "Lower Max Candidates to materialise fewer survivors.".to_string(),
+            ],
+        }
+    }
+}
+
+impl fmt::Display for RepeatedArtifactScanError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Cancelled => formatter.write_str("Scan cancelled."),
+            Self::CorpusTooLarge {
+                stage,
+                ceiling_bytes,
+                estimated_bytes,
+                suggestions,
+            } => write!(
+                formatter,
+                "Corpus too large for this configuration during {stage:?}: estimated {estimated_bytes} bytes exceeds the {ceiling_bytes}-byte ceiling. {}",
+                suggestions.join(" ")
+            ),
+            Self::ScanFailed { message } => formatter.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for RepeatedArtifactScanError {}
+
+impl From<String> for RepeatedArtifactScanError {
+    fn from(message: String) -> Self {
+        Self::ScanFailed { message }
     }
 }
 
@@ -237,56 +350,155 @@ pub fn no_cancellation() -> CancellationFlag {
     std::sync::Arc::new(AtomicBool::new(false))
 }
 
-/// Per-file aggregated candidate stats (one struct per candidate key per file,
-/// NOT one per occurrence).
-#[derive(Debug, Clone)]
-struct LocalCandidateStats {
-    occurrence_count: usize,
-    top_count: usize,
-    middle_count: usize,
-    bottom_count: usize,
-    unknown_count: usize,
-    normalized_key: String,
-    display_text: String,
-    /// Bounded example references: (raw_start_idx, raw_end_idx).
-    example_refs: Vec<(usize, usize)>,
-    /// Distinct raw text variants seen for this key (capped at RAW_VARIANT_TRACK_CAP).
-    raw_variants: BTreeSet<String>,
-    /// True if more than RAW_VARIANT_TRACK_CAP distinct variants were seen.
-    raw_variant_overflow: bool,
-    position_summary_is_page_based: bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct CandidateFingerprint([u8; 16]);
+
+/// Fixed-size pass-1 accounting. Candidate text never enters this structure.
+#[derive(Debug, Clone, Copy)]
+struct FingerprintStats {
+    kind: RepeatedArtifactKind,
+    occurrence_count: u32,
+    file_count: u32,
+    top_count: u32,
+    bottom_count: u32,
+    display_char_count: u32,
+    display_symbol_count: u32,
+    stable_id_prefix: u64,
+    /// Exact-line fingerprint of the first raw variant for normalised-line de-duplication.
+    first_display_fingerprint: CandidateFingerprint,
+    first_display_has_exact_candidate: bool,
+    has_multiple_raw_variants: bool,
 }
 
-/// Lightweight stats gathered during the merge phase.
-#[derive(Debug, Clone)]
-struct CountEntry {
+struct ShardedFingerprintMap<Value> {
+    shards: [HashMap<CandidateFingerprint, Value>; FINGERPRINT_MAP_SHARDS],
+    len: usize,
+}
+
+impl<Value> ShardedFingerprintMap<Value> {
+    fn new() -> Self {
+        Self {
+            shards: std::array::from_fn(|_| HashMap::new()),
+            len: 0,
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    fn shard_index(fingerprint: &CandidateFingerprint) -> usize {
+        usize::from(fingerprint.0[0])
+    }
+
+    fn get(&self, fingerprint: &CandidateFingerprint) -> Option<&Value> {
+        self.shards[Self::shard_index(fingerprint)].get(fingerprint)
+    }
+
+    fn get_mut(&mut self, fingerprint: &CandidateFingerprint) -> Option<&mut Value> {
+        self.shards[Self::shard_index(fingerprint)].get_mut(fingerprint)
+    }
+
+    fn try_insert(
+        &mut self,
+        fingerprint: CandidateFingerprint,
+        value: Value,
+    ) -> Result<Option<Value>, std::collections::TryReserveError> {
+        let shard = &mut self.shards[Self::shard_index(&fingerprint)];
+        if !shard.contains_key(&fingerprint) {
+            shard.try_reserve(1)?;
+            self.len += 1;
+        }
+        Ok(shard.insert(fingerprint, value))
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (&CandidateFingerprint, &Value)> {
+        self.shards.iter().flat_map(|shard| shard.iter())
+    }
+
+    fn retain(&mut self, mut keep: impl FnMut(&CandidateFingerprint, &mut Value) -> bool) {
+        for shard in &mut self.shards {
+            let before = shard.len();
+            shard.retain(|fingerprint, value| keep(fingerprint, value));
+            self.len -= before - shard.len();
+        }
+    }
+
+    fn into_values(self) -> impl Iterator<Item = Value> {
+        self.shards
+            .into_iter()
+            .flat_map(|shard| shard.into_values())
+    }
+
+    fn into_entries(self) -> impl Iterator<Item = (CandidateFingerprint, Value)> {
+        self.shards.into_iter().flat_map(|shard| shard.into_iter())
+    }
+}
+
+struct MaterializedCandidate {
     kind: RepeatedArtifactKind,
     display_text: String,
     normalized_key: String,
     candidate_key: String,
     occurrence_count: usize,
+    file_count: usize,
     top_count: usize,
     middle_count: usize,
     bottom_count: usize,
     unknown_count: usize,
-    /// Set of file IDs where this candidate appears.
-    file_ids: Vec<u32>,
-    /// Bounded example references: (file_idx, raw_start_idx, raw_end_idx).
-    example_refs: Vec<(u32, usize, usize)>,
-    /// Distinct raw variants merged across files (capped at RAW_VARIANT_TRACK_CAP).
-    raw_variants: BTreeSet<String>,
-    /// True if more than RAW_VARIANT_TRACK_CAP distinct variants exist.
+    raw_variants: Vec<String>,
     raw_variant_overflow: bool,
     position_summary_is_page_based: bool,
+    examples: Vec<RepeatedArtifactExample>,
 }
 
-/// Structured per-file result from the parallel aggregation pass.
-/// Failed extraction still produces one of these so diagnostics can account for the file.
-struct Phase1Result {
-    ft: FileText,
-    local_map: HashMap<(RepeatedArtifactKind, String), LocalCandidateStats>,
+struct Pass1FileResult {
+    local_counts: ShardedFingerprintMap<FingerprintStats>,
     extraction_failed: bool,
-    fatal_error: Option<String>,
+    raw_line_count: usize,
+    empty_after_extraction: bool,
+}
+
+struct MaterializationBudget {
+    ceiling_bytes: usize,
+    estimated_bytes: usize,
+}
+
+impl MaterializationBudget {
+    fn new(ceiling_bytes: usize, initial_bytes: usize) -> Result<Self, RepeatedArtifactScanError> {
+        if initial_bytes > ceiling_bytes {
+            return Err(RepeatedArtifactScanError::corpus_too_large(
+                RepeatedArtifactMemoryStage::SurvivorMaterialisation,
+                ceiling_bytes,
+                initial_bytes,
+            ));
+        }
+        Ok(Self {
+            ceiling_bytes,
+            estimated_bytes: initial_bytes,
+        })
+    }
+
+    fn reserve(&mut self, bytes: usize) -> Result<(), RepeatedArtifactScanError> {
+        let estimated_bytes = self.estimated_bytes.saturating_add(bytes);
+        if estimated_bytes > self.ceiling_bytes {
+            return Err(RepeatedArtifactScanError::corpus_too_large(
+                RepeatedArtifactMemoryStage::SurvivorMaterialisation,
+                self.ceiling_bytes,
+                estimated_bytes,
+            ));
+        }
+        self.estimated_bytes = estimated_bytes;
+        Ok(())
+    }
+
+    fn release(&mut self, bytes: usize) {
+        self.estimated_bytes = self.estimated_bytes.saturating_sub(bytes);
+    }
 }
 
 /// Single file's pre-processed text ready for scanning.
@@ -376,6 +588,208 @@ fn compute_position_for_line(ft: &FileText, line_idx: usize) -> LinePosition {
     } else {
         LinePosition::Middle
     }
+}
+
+#[derive(Clone, Copy)]
+enum CandidateTextParts<'a> {
+    Single(&'a str),
+    Two(&'a str, &'a str),
+    Three(&'a str, &'a str, &'a str),
+}
+
+impl CandidateTextParts<'_> {
+    fn update_digest(self, digest: &mut impl sha2::Digest) {
+        match self {
+            Self::Single(text) => digest.update(text.as_bytes()),
+            Self::Two(first, second) => {
+                digest.update(first.as_bytes());
+                digest.update(b"\n");
+                digest.update(second.as_bytes());
+            }
+            Self::Three(first, second, third) => {
+                digest.update(first.as_bytes());
+                digest.update(b"\n");
+                digest.update(second.as_bytes());
+                digest.update(b"\n");
+                digest.update(third.as_bytes());
+            }
+        }
+    }
+
+    fn byte_len(self) -> usize {
+        match self {
+            Self::Single(text) => text.len(),
+            Self::Two(first, second) => first.len() + second.len() + 1,
+            Self::Three(first, second, third) => first.len() + second.len() + third.len() + 2,
+        }
+    }
+
+    fn matches_string(self, value: &str) -> bool {
+        if value.len() != self.byte_len() {
+            return false;
+        }
+        match self {
+            Self::Single(text) => value == text,
+            Self::Two(first, second) => {
+                value
+                    .strip_prefix(first)
+                    .and_then(|rest| rest.strip_prefix('\n'))
+                    == Some(second)
+            }
+            Self::Three(first, second, third) => {
+                value
+                    .strip_prefix(first)
+                    .and_then(|rest| rest.strip_prefix('\n'))
+                    .and_then(|rest| rest.strip_prefix(second))
+                    .and_then(|rest| rest.strip_prefix('\n'))
+                    == Some(third)
+            }
+        }
+    }
+
+    fn char_and_symbol_counts(self) -> (u32, u32) {
+        let count_text = |text: &str| {
+            (
+                text.chars().count(),
+                text.chars()
+                    .filter(|character| !character.is_alphanumeric() && !character.is_whitespace())
+                    .count(),
+            )
+        };
+        let (char_count, symbol_count) = match self {
+            Self::Single(text) => count_text(text),
+            Self::Two(first, second) => {
+                let first_counts = count_text(first);
+                let second_counts = count_text(second);
+                (
+                    first_counts.0 + second_counts.0 + 1,
+                    first_counts.1 + second_counts.1,
+                )
+            }
+            Self::Three(first, second, third) => {
+                let first_counts = count_text(first);
+                let second_counts = count_text(second);
+                let third_counts = count_text(third);
+                (
+                    first_counts.0 + second_counts.0 + third_counts.0 + 2,
+                    first_counts.1 + second_counts.1 + third_counts.1,
+                )
+            }
+        };
+        (
+            u32::try_from(char_count).unwrap_or(u32::MAX),
+            u32::try_from(symbol_count).unwrap_or(u32::MAX),
+        )
+    }
+
+    fn try_to_string(
+        self,
+        budget: &mut MaterializationBudget,
+    ) -> Result<String, RepeatedArtifactScanError> {
+        let byte_len = self.byte_len();
+        budget.reserve(byte_len)?;
+        let mut output = String::new();
+        output.try_reserve(byte_len).map_err(|_| {
+            RepeatedArtifactScanError::corpus_too_large(
+                RepeatedArtifactMemoryStage::SurvivorMaterialisation,
+                budget.ceiling_bytes,
+                budget.ceiling_bytes.saturating_add(1),
+            )
+        })?;
+        match self {
+            Self::Single(text) => output.push_str(text),
+            Self::Two(first, second) => {
+                output.push_str(first);
+                output.push('\n');
+                output.push_str(second);
+            }
+            Self::Three(first, second, third) => {
+                output.push_str(first);
+                output.push('\n');
+                output.push_str(second);
+                output.push('\n');
+                output.push_str(third);
+            }
+        }
+        Ok(output)
+    }
+}
+
+fn kind_fingerprint_tag(kind: RepeatedArtifactKind) -> u8 {
+    match kind {
+        RepeatedArtifactKind::ExactLine => 1,
+        RepeatedArtifactKind::NormalizedLine => 2,
+        RepeatedArtifactKind::TwoLineBlock => 3,
+        RepeatedArtifactKind::ThreeLineBlock => 4,
+        RepeatedArtifactKind::InlineArtifact => 5,
+    }
+}
+
+fn candidate_fingerprint(
+    kind: RepeatedArtifactKind,
+    key: CandidateTextParts<'_>,
+) -> CandidateFingerprint {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update([kind_fingerprint_tag(kind)]);
+    key.update_digest(&mut hasher);
+    let digest = hasher.finalize();
+    let mut fingerprint = [0_u8; 16];
+    fingerprint.copy_from_slice(&digest[..16]);
+    // At 128 bits, collisions remain negligible for the tens of millions of keys in scope.
+    CandidateFingerprint(fingerprint)
+}
+
+fn stable_id_prefix(key: CandidateTextParts<'_>) -> u64 {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    key.update_digest(&mut hasher);
+    let digest = hasher.finalize();
+    u64::from_be_bytes(
+        digest[..8]
+            .try_into()
+            .expect("SHA-256 prefix is eight bytes"),
+    )
+}
+
+fn stable_kind_order(kind: RepeatedArtifactKind) -> u8 {
+    match kind {
+        RepeatedArtifactKind::TwoLineBlock => 0,
+        RepeatedArtifactKind::ThreeLineBlock => 1,
+        RepeatedArtifactKind::ExactLine => 2,
+        RepeatedArtifactKind::InlineArtifact => 3,
+        RepeatedArtifactKind::NormalizedLine => 4,
+    }
+}
+
+fn estimated_pass1_bytes(global_keys: usize, local_keys: usize) -> usize {
+    global_keys
+        .saturating_add(local_keys)
+        .saturating_mul(PASS1_ESTIMATED_BYTES_PER_KEY)
+}
+
+fn ensure_pass1_memory(
+    global_keys: usize,
+    local_keys: usize,
+    ceiling_bytes: usize,
+) -> Result<(), RepeatedArtifactScanError> {
+    let estimated_bytes = estimated_pass1_bytes(global_keys, local_keys);
+    if estimated_bytes > ceiling_bytes {
+        return Err(RepeatedArtifactScanError::corpus_too_large(
+            RepeatedArtifactMemoryStage::Pass1Counting,
+            ceiling_bytes,
+            estimated_bytes,
+        ));
+    }
+    Ok(())
+}
+
+fn pass1_allocation_error(ceiling_bytes: usize) -> RepeatedArtifactScanError {
+    RepeatedArtifactScanError::corpus_too_large(
+        RepeatedArtifactMemoryStage::Pass1Counting,
+        ceiling_bytes,
+        ceiling_bytes.saturating_add(1),
+    )
 }
 
 /// Generates a stable, deterministic ID for a candidate.
