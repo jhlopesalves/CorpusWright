@@ -1622,324 +1622,573 @@ struct FilteredFingerprints {
 fn fingerprint_passes_min_occurrences(
     stats: &FingerprintStats,
     config: &RepeatedArtifactScanConfig,
-) -> HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> {
-    let mut map: HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> = HashMap::new();
-    let total = ft.total_lines;
-    let min_c = config.min_line_chars;
-    let max_c = config.max_line_chars;
-
-    if total == 0 {
-        return map;
-    }
-
-    // Normalising once per line avoids repeated work across candidate paths.
-    let mut valid_entries: Vec<(
-        usize,
-        String,
-        /* norm */ String,
-        /* content_class */ CandidateContentClass,
-    )> = Vec::new();
-    for idx in 0..total {
-        let raw = ft.raw_lines[idx].trim();
-        if should_skip_line(raw, min_c, max_c) {
-            continue;
-        }
-        let norm = normalize_line(raw);
-        let cc = classify_content(raw);
-        valid_entries.push((idx, raw.to_string(), norm, cc));
-    }
-
-    let mut upsert = |kind: RepeatedArtifactKind,
-                      key: String,
-                      norm_key: String,
-                      display: String,
-                      _cc: CandidateContentClass,
-                      pos: LinePosition,
-                      rs: usize,
-                      re: usize| {
-        let map_key = (kind, key);
-        let entry = map.entry(map_key).or_insert_with(|| LocalCandidateStats {
-            occurrence_count: 0,
-            top_count: 0,
-            middle_count: 0,
-            bottom_count: 0,
-            unknown_count: 0,
-            normalized_key: norm_key,
-            display_text: String::new(),
-            example_refs: Vec::new(),
-            raw_variants: BTreeSet::new(),
-            raw_variant_overflow: false,
-            position_summary_is_page_based: ft.has_page_metadata,
-        });
-        entry.occurrence_count += 1;
-        match pos {
-            LinePosition::Top => entry.top_count += 1,
-            LinePosition::Middle => entry.middle_count += 1,
-            LinePosition::Bottom => entry.bottom_count += 1,
-        }
-        if entry.display_text.is_empty() {
-            entry.display_text = display.clone();
-        }
-        if entry.example_refs.len() < config.max_examples_per_candidate {
-            entry.example_refs.push((rs, re));
-        }
-        // Raw variants are capped to keep large normalised groups bounded.
-        if entry.raw_variants.len() < RAW_VARIANT_TRACK_CAP {
-            entry.raw_variants.insert(display.clone());
-        } else if !entry.raw_variants.contains(&display) {
-            entry.raw_variant_overflow = true;
-        }
-    };
-
-    if config.include_exact_lines {
-        for &(idx, ref line, ref norm, cc) in &valid_entries {
-            if !should_include_content_class(cc, config) {
-                continue;
-            }
-            let pos = compute_position_for_line(ft, idx);
-            upsert(
-                RepeatedArtifactKind::ExactLine,
-                line.clone(),
-                norm.clone(),
-                line.clone(),
-                cc,
-                pos,
-                idx,
-                idx,
-            );
-        }
-    }
-
-    // SAFETY: NumericDominant lines are NOT used for normalised grouping
-    // unless explicitly enabled (include_numeric_dominant).
-    if config.include_normalized_lines {
-        for &(idx, ref line, ref norm, cc) in &valid_entries {
-            if norm.is_empty() {
-                continue;
-            }
-            if cc == CandidateContentClass::NumericDominant && !config.include_numeric_dominant {
-                continue;
-            }
-            let pos = compute_position_for_line(ft, idx);
-            upsert(
-                RepeatedArtifactKind::NormalizedLine,
-                norm.clone(),
-                norm.clone(),
-                line.clone(),
-                cc,
-                pos,
-                idx,
-                idx,
-            );
-        }
-    }
-
-    if config.include_two_line_blocks && valid_entries.len() >= 2 {
-        for w in valid_entries.windows(2) {
-            let (i0, ref l0, ref n0, cc0) = w[0];
-            let (i1, ref l1, ref n1, cc1) = w[1];
-            // Must be contiguous in raw lines and same page
-            if i1 != i0 + 1 {
-                continue;
-            }
-            if !ft.lines_share_page(i0, i1) {
-                continue;
-            }
-            let text_block = format!("{}\n{}", l0, l1);
-            let norm_block = format!("{}\n{}", n0, n1);
-            let block_cc = dominant_content_class(cc0, cc1);
-            if !should_include_content_class(block_cc, config) {
-                continue;
-            }
-            let pos = compute_position_for_line(ft, i0);
-            upsert(
-                RepeatedArtifactKind::TwoLineBlock,
-                text_block.clone(),
-                norm_block,
-                text_block,
-                block_cc,
-                pos,
-                i0,
-                i1,
-            );
-        }
-    }
-
-    if config.include_three_line_blocks && valid_entries.len() >= 3 {
-        for w in valid_entries.windows(3) {
-            let (i0, ref l0, ref n0, cc0) = w[0];
-            let (i1, ref l1, ref n1, cc1) = w[1];
-            let (i2, ref l2, ref n2, cc2) = w[2];
-            if i1 != i0 + 1 || i2 != i1 + 1 {
-                continue;
-            }
-            if !ft.lines_share_page(i0, i1) || !ft.lines_share_page(i0, i2) {
-                continue;
-            }
-            let text_block = format!("{}\n{}\n{}", l0, l1, l2);
-            let norm_block = format!("{}\n{}\n{}", n0, n1, n2);
-            let block_cc = dominant_content_class_3(cc0, cc1, cc2);
-            if !should_include_content_class(block_cc, config) {
-                continue;
-            }
-            let pos = compute_position_for_line(ft, i0);
-            upsert(
-                RepeatedArtifactKind::ThreeLineBlock,
-                text_block.clone(),
-                norm_block,
-                text_block,
-                block_cc,
-                pos,
-                i0,
-                i2,
-            );
-        }
-    }
-
-    map
+) -> bool {
+    stats.occurrence_count as usize >= config.min_occurrences
 }
 
-/// Merges per-file candidate maps into global candidate counts.
-fn phase2_merge(
-    all_maps: Vec<HashMap<(RepeatedArtifactKind, String), LocalCandidateStats>>,
+fn fingerprint_passes_thresholds(
+    stats: &FingerprintStats,
     config: &RepeatedArtifactScanConfig,
-) -> HashMap<(RepeatedArtifactKind, String), CountEntry> {
-    let mut global: HashMap<(RepeatedArtifactKind, String), CountEntry> = HashMap::new();
+) -> bool {
+    fingerprint_passes_min_occurrences(stats, config)
+        && stats.file_count as usize >= config.min_files
+}
 
-    // Each local map belongs to one file, so a key is counted once per map.
-    for (_file_idx, local_map) in all_maps.into_iter().enumerate() {
-        for ((kind, key), stats) in local_map {
-            let entry = global
-                .entry((kind, key.clone()))
-                .or_insert_with(|| CountEntry {
-                    kind,
-                    display_text: stats.display_text.clone(),
-                    normalized_key: stats.normalized_key.clone(),
-                    candidate_key: key.clone(),
-                    occurrence_count: 0,
+fn fingerprint_is_redundant_normalized(
+    stats: &FingerprintStats,
+    config: &RepeatedArtifactScanConfig,
+) -> bool {
+    config.include_normalized_lines
+        && config.include_exact_lines
+        && stats.kind == RepeatedArtifactKind::NormalizedLine
+        && !stats.has_multiple_raw_variants
+        && stats.first_display_has_exact_candidate
+}
+
+fn ranked_fingerprint(
+    fingerprint: CandidateFingerprint,
+    stats: FingerprintStats,
+) -> RankedFingerprint {
+    let score = calculate_suspicion_score_from_counts(
+        stats.kind,
+        stats.display_char_count as usize,
+        stats.display_symbol_count as usize,
+        stats.occurrence_count as usize,
+        stats.file_count as usize,
+        stats.top_count as usize,
+        stats.bottom_count as usize,
+    );
+    RankedFingerprint {
+        fingerprint,
+        stats,
+        score,
+    }
+}
+
+fn filter_fingerprints(
+    mut global_counts: ShardedFingerprintMap<FingerprintStats>,
+    config: &RepeatedArtifactScanConfig,
+    cancel: &CancellationFlag,
+) -> Result<FilteredFingerprints, RepeatedArtifactScanError> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err(RepeatedArtifactScanError::Cancelled);
+    }
+
+    let candidates_after_min_occurrences = global_counts
+        .iter()
+        .filter(|(_, stats)| fingerprint_passes_min_occurrences(stats, config))
+        .count();
+    let candidates_after_min_files = global_counts
+        .iter()
+        .filter(|(_, stats)| fingerprint_passes_thresholds(stats, config))
+        .count();
+    let candidates_before_cap = global_counts
+        .iter()
+        .filter(|(_, stats)| {
+            fingerprint_passes_thresholds(stats, config)
+                && !fingerprint_is_redundant_normalized(stats, config)
+        })
+        .count();
+
+    let Some(limit) = config.max_candidates else {
+        global_counts.retain(|_, stats| {
+            fingerprint_passes_thresholds(stats, config)
+                && !fingerprint_is_redundant_normalized(stats, config)
+        });
+        return Ok(FilteredFingerprints {
+            survivors: global_counts,
+            candidates_after_min_occurrences,
+            candidates_after_min_files,
+            candidates_before_cap,
+            candidates_truncated: 0,
+        });
+    };
+
+    let mut selected = std::collections::BinaryHeap::<RankedFingerprint>::new();
+    for (index, (fingerprint, stats)) in global_counts.iter().enumerate() {
+        if index % CANCELLATION_CHECK_LINE_INTERVAL == 0 && cancel.load(Ordering::Relaxed) {
+            return Err(RepeatedArtifactScanError::Cancelled);
+        }
+        if !fingerprint_passes_thresholds(stats, config)
+            || fingerprint_is_redundant_normalized(stats, config)
+            || limit == 0
+        {
+            continue;
+        }
+        let ranked = ranked_fingerprint(*fingerprint, *stats);
+        if selected.len() < limit {
+            let estimated_bytes = estimated_pass1_bytes(global_counts.len(), selected.len() + 1);
+            if estimated_bytes > config.memory_ceiling_bytes {
+                return Err(RepeatedArtifactScanError::corpus_too_large(
+                    RepeatedArtifactMemoryStage::SurvivorMaterialisation,
+                    config.memory_ceiling_bytes,
+                    estimated_bytes,
+                ));
+            }
+            selected.try_reserve(1).map_err(|_| {
+                RepeatedArtifactScanError::corpus_too_large(
+                    RepeatedArtifactMemoryStage::SurvivorMaterialisation,
+                    config.memory_ceiling_bytes,
+                    config.memory_ceiling_bytes.saturating_add(1),
+                )
+            })?;
+            selected.push(ranked);
+        } else if selected
+            .peek()
+            .is_some_and(|worst| compare_ranked_quality(&ranked, worst).is_gt())
+        {
+            selected.pop();
+            selected.push(ranked);
+        }
+    }
+    drop(global_counts);
+
+    let selected_len = selected.len();
+    ensure_pass1_memory(selected_len, 0, config.memory_ceiling_bytes)?;
+    let mut survivors = ShardedFingerprintMap::new();
+    for ranked in selected {
+        survivors
+            .try_insert(ranked.fingerprint, ranked.stats)
+            .map_err(|_| {
+                RepeatedArtifactScanError::corpus_too_large(
+                    RepeatedArtifactMemoryStage::SurvivorMaterialisation,
+                    config.memory_ceiling_bytes,
+                    config.memory_ceiling_bytes.saturating_add(1),
+                )
+            })?;
+    }
+
+    Ok(FilteredFingerprints {
+        survivors,
+        candidates_after_min_occurrences,
+        candidates_after_min_files,
+        candidates_before_cap,
+        candidates_truncated: candidates_before_cap.saturating_sub(selected_len),
+    })
+}
+
+#[derive(Clone, Copy)]
+struct MaterializedOccurrence<'a> {
+    kind: RepeatedArtifactKind,
+    candidate_key: CandidateTextParts<'a>,
+    normalized_key: CandidateTextParts<'a>,
+    display_text: CandidateTextParts<'a>,
+    start_line: usize,
+    end_line: usize,
+    inline_byte_position: Option<usize>,
+}
+
+fn try_clone_materialized_string(
+    value: &str,
+    budget: &mut MaterializationBudget,
+) -> Result<String, RepeatedArtifactScanError> {
+    CandidateTextParts::Single(value).try_to_string(budget)
+}
+
+fn account_optional_string(
+    value: &Option<String>,
+    budget: &mut MaterializationBudget,
+) -> Result<(), RepeatedArtifactScanError> {
+    if let Some(value) = value {
+        budget.reserve(value.len())?;
+    }
+    Ok(())
+}
+
+fn materialize_occurrence(
+    ft: &FileText,
+    occurrence: MaterializedOccurrence<'_>,
+    position: LinePosition,
+    survivors: &ShardedFingerprintMap<FingerprintStats>,
+    materialized: &mut ShardedFingerprintMap<MaterializedCandidate>,
+    config: &RepeatedArtifactScanConfig,
+    budget: &mut MaterializationBudget,
+) -> Result<(), RepeatedArtifactScanError> {
+    let fingerprint = candidate_fingerprint(occurrence.kind, occurrence.candidate_key);
+    if materialized.get(&fingerprint).is_none() {
+        let Some(stats) = survivors.get(&fingerprint).copied() else {
+            return Ok(());
+        };
+        budget.reserve(MATERIALIZED_ESTIMATED_BASE_BYTES_PER_KEY)?;
+        let candidate_key = occurrence.candidate_key.try_to_string(budget)?;
+        let normalized_key = occurrence.normalized_key.try_to_string(budget)?;
+        let display_text = occurrence.display_text.try_to_string(budget)?;
+        materialized
+            .try_insert(
+                fingerprint,
+                MaterializedCandidate {
+                    kind: stats.kind,
+                    display_text,
+                    normalized_key,
+                    candidate_key,
+                    occurrence_count: stats.occurrence_count as usize,
+                    file_count: stats.file_count as usize,
                     top_count: 0,
                     middle_count: 0,
                     bottom_count: 0,
                     unknown_count: 0,
-                    file_ids: Vec::new(),
-                    example_refs: Vec::new(),
-                    raw_variants: BTreeSet::new(),
+                    raw_variants: Vec::new(),
                     raw_variant_overflow: false,
-                    position_summary_is_page_based: stats.position_summary_is_page_based,
-                });
+                    position_summary_is_page_based: true,
+                    examples: Vec::new(),
+                },
+            )
+            .map_err(|_| {
+                RepeatedArtifactScanError::corpus_too_large(
+                    RepeatedArtifactMemoryStage::SurvivorMaterialisation,
+                    config.memory_ceiling_bytes,
+                    config.memory_ceiling_bytes.saturating_add(1),
+                )
+            })?;
+    }
 
-            entry.occurrence_count += stats.occurrence_count;
-            entry.top_count += stats.top_count;
-            entry.middle_count += stats.middle_count;
-            entry.bottom_count += stats.bottom_count;
-            entry.unknown_count += stats.unknown_count;
-            entry.position_summary_is_page_based &= stats.position_summary_is_page_based;
+    let entry = materialized
+        .get_mut(&fingerprint)
+        .expect("survivor entry was inserted before materialisation");
+    match position {
+        LinePosition::Top => entry.top_count += 1,
+        LinePosition::Middle => entry.middle_count += 1,
+        LinePosition::Bottom => entry.bottom_count += 1,
+    }
+    entry.position_summary_is_page_based &= ft.has_page_metadata;
 
-            let fid = _file_idx as u32;
-            if !entry.file_ids.contains(&fid) {
-                entry.file_ids.push(fid);
-            }
-
-            for (rs, re) in &stats.example_refs {
-                if entry.example_refs.len() < config.max_examples_per_candidate {
-                    entry.example_refs.push((fid, *rs, *re));
-                }
-            }
-
-            // Merge distinct raw variants from local stats into global entry.
-            // The overflow flag preserves "more existed" without retaining every variant.
-            for variant in &stats.raw_variants {
-                if entry.raw_variants.len() < RAW_VARIANT_TRACK_CAP {
-                    entry.raw_variants.insert(variant.clone());
-                } else if !entry.raw_variants.contains(variant) {
-                    entry.raw_variant_overflow = true;
-                }
-            }
-            if stats.raw_variant_overflow {
-                entry.raw_variant_overflow = true;
-            }
+    let variant_already_present = entry
+        .raw_variants
+        .iter()
+        .any(|variant| occurrence.display_text.matches_string(variant));
+    if !variant_already_present {
+        if entry.raw_variants.len() < RAW_VARIANT_TRACK_CAP {
+            entry.raw_variants.try_reserve(1).map_err(|_| {
+                RepeatedArtifactScanError::corpus_too_large(
+                    RepeatedArtifactMemoryStage::SurvivorMaterialisation,
+                    config.memory_ceiling_bytes,
+                    config.memory_ceiling_bytes.saturating_add(1),
+                )
+            })?;
+            entry
+                .raw_variants
+                .push(occurrence.display_text.try_to_string(budget)?);
+        } else {
+            entry.raw_variant_overflow = true;
         }
     }
 
-    global
+    if entry.examples.len() >= config.max_examples_per_candidate {
+        return Ok(());
+    }
+    entry.examples.try_reserve(1).map_err(|_| {
+        RepeatedArtifactScanError::corpus_too_large(
+            RepeatedArtifactMemoryStage::SurvivorMaterialisation,
+            config.memory_ceiling_bytes,
+            config.memory_ceiling_bytes.saturating_add(1),
+        )
+    })?;
+
+    let (context_before, context_after) =
+        if let Some(byte_position) = occurrence.inline_byte_position {
+            let line = &ft.raw_lines[occurrence.start_line];
+            (
+                safe_context_before(line, byte_position, 80),
+                safe_context_after(line, byte_position, occurrence.display_text.byte_len(), 80),
+            )
+        } else {
+            let before = if occurrence.start_line > 0 {
+                let text = ft.raw_lines[occurrence.start_line - 1].trim();
+                (!text.is_empty()).then(|| text.chars().take(200).collect())
+            } else {
+                None
+            };
+            let after = if occurrence.end_line + 1 < ft.raw_lines.len() {
+                let text = ft.raw_lines[occurrence.end_line + 1].trim();
+                (!text.is_empty()).then(|| text.chars().take(200).collect())
+            } else {
+                None
+            };
+            (before, after)
+        };
+    account_optional_string(&context_before, budget)?;
+    account_optional_string(&context_after, budget)?;
+    budget.reserve(std::mem::size_of::<RepeatedArtifactExample>())?;
+    let example = RepeatedArtifactExample {
+        file_name: try_clone_materialized_string(&ft.file_name, budget)?,
+        file_path: try_clone_materialized_string(&ft.file_path, budget)?,
+        line_number: Some(occurrence.start_line + 1),
+        page_number: ft.page_number_for_line(occurrence.start_line),
+        context_before,
+        matched_text: occurrence.display_text.try_to_string(budget)?,
+        context_after,
+    };
+    entry.examples.push(example);
+    Ok(())
 }
 
-struct FinalizedRepeatedArtifactCandidates {
-    candidates: Vec<RepeatedArtifactCandidate>,
-    candidates_before_cap: usize,
-    candidates_truncated: usize,
-}
-
-/// Filters, scores, ranks, deduplicates, and attaches examples.
-fn phase3_finalize(
-    global: HashMap<(RepeatedArtifactKind, String), CountEntry>,
-    file_texts: &[FileText],
+fn materialize_file_survivors(
+    ft: &FileText,
     config: &RepeatedArtifactScanConfig,
-) -> FinalizedRepeatedArtifactCandidates {
-    let mut scored: Vec<(f64, RepeatedArtifactCandidate)> = Vec::new();
+    survivors: &ShardedFingerprintMap<FingerprintStats>,
+    materialized: &mut ShardedFingerprintMap<MaterializedCandidate>,
+    cancel: &CancellationFlag,
+    budget: &mut MaterializationBudget,
+) -> Result<(), RepeatedArtifactScanError> {
+    let mut previous_one: Option<Pass1Line<'_>> = None;
+    let mut previous_two: Option<Pass1Line<'_>> = None;
+    let mut inline_matches_since_cancel_check = 0usize;
 
-    let mut entries: Vec<CountEntry> = global
-        .into_values()
-        .filter(|e| {
-            e.occurrence_count >= config.min_occurrences && e.file_ids.len() >= config.min_files
-        })
-        .collect();
-
-    // Keep normalised entries only when they add variants beyond exact matches.
-    if config.include_normalized_lines && config.include_exact_lines {
-        let mut i = 0;
-        while i < entries.len() {
-            if entries[i].kind != RepeatedArtifactKind::NormalizedLine {
-                i += 1;
-                continue;
-            }
-            let norm_display = &entries[i].display_text;
-            let norm_occ = entries[i].occurrence_count;
-            let norm_files = entries[i].file_ids.len();
-            let norm_variants = entries[i].raw_variants.len();
-
-            if norm_variants > 1 {
-                i += 1;
-                continue;
-            }
-
-            let redundant = entries.iter().any(|e| {
-                e.kind == RepeatedArtifactKind::ExactLine
-                    && e.display_text == *norm_display
-                    && e.occurrence_count == norm_occ
-                    && e.file_ids.len() == norm_files
-            });
-
-            if redundant {
-                entries.swap_remove(i);
-                continue;
-            }
-            i += 1;
+    for (line_index, source_line) in ft.raw_lines.iter().enumerate() {
+        if line_index % CANCELLATION_CHECK_LINE_INTERVAL == 0 && cancel.load(Ordering::Relaxed) {
+            return Err(RepeatedArtifactScanError::Cancelled);
         }
+
+        if config.include_inline_artifacts && !source_line.is_empty() {
+            for inline_match in KNOWN_INLINE_AUTOMATON.find_iter(source_line) {
+                inline_matches_since_cancel_check += 1;
+                if inline_matches_since_cancel_check >= CANCELLATION_CHECK_LINE_INTERVAL {
+                    inline_matches_since_cancel_check = 0;
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err(RepeatedArtifactScanError::Cancelled);
+                    }
+                }
+                let pattern = KNOWN_INLINE_PATTERNS[inline_match.pattern().as_usize()];
+                let pattern_text = CandidateTextParts::Single(pattern);
+                materialize_occurrence(
+                    ft,
+                    MaterializedOccurrence {
+                        kind: RepeatedArtifactKind::InlineArtifact,
+                        candidate_key: pattern_text,
+                        normalized_key: CandidateTextParts::Single(""),
+                        display_text: pattern_text,
+                        start_line: line_index,
+                        end_line: line_index,
+                        inline_byte_position: Some(inline_match.start()),
+                    },
+                    compute_position_for_line(ft, line_index),
+                    survivors,
+                    materialized,
+                    config,
+                    budget,
+                )?;
+            }
+        }
+
+        let raw = source_line.trim();
+        if should_skip_line(raw, config.min_line_chars, config.max_line_chars) {
+            previous_one = None;
+            previous_two = None;
+            continue;
+        }
+        let normalized = normalize_line(raw);
+        let content_class = classify_content(raw);
+        let position = compute_position_for_line(ft, line_index);
+        let raw_text = CandidateTextParts::Single(raw);
+
+        if config.include_exact_lines && should_include_content_class(content_class, config) {
+            materialize_occurrence(
+                ft,
+                MaterializedOccurrence {
+                    kind: RepeatedArtifactKind::ExactLine,
+                    candidate_key: raw_text,
+                    normalized_key: CandidateTextParts::Single(&normalized),
+                    display_text: raw_text,
+                    start_line: line_index,
+                    end_line: line_index,
+                    inline_byte_position: None,
+                },
+                position,
+                survivors,
+                materialized,
+                config,
+                budget,
+            )?;
+        }
+
+        if config.include_normalized_lines
+            && !normalized.is_empty()
+            && (content_class != CandidateContentClass::NumericDominant
+                || config.include_numeric_dominant)
+        {
+            materialize_occurrence(
+                ft,
+                MaterializedOccurrence {
+                    kind: RepeatedArtifactKind::NormalizedLine,
+                    candidate_key: CandidateTextParts::Single(&normalized),
+                    normalized_key: CandidateTextParts::Single(&normalized),
+                    display_text: raw_text,
+                    start_line: line_index,
+                    end_line: line_index,
+                    inline_byte_position: None,
+                },
+                position,
+                survivors,
+                materialized,
+                config,
+                budget,
+            )?;
+        }
+
+        let current = Pass1Line {
+            index: line_index,
+            raw,
+            normalized,
+            content_class,
+        };
+
+        if config.include_two_line_blocks
+            && let Some(previous) = previous_one.as_ref()
+            && current.index == previous.index + 1
+            && ft.lines_share_page(previous.index, current.index)
+        {
+            let block_class = dominant_content_class(previous.content_class, current.content_class);
+            if should_include_content_class(block_class, config) {
+                materialize_occurrence(
+                    ft,
+                    MaterializedOccurrence {
+                        kind: RepeatedArtifactKind::TwoLineBlock,
+                        candidate_key: CandidateTextParts::Two(previous.raw, current.raw),
+                        normalized_key: CandidateTextParts::Two(
+                            &previous.normalized,
+                            &current.normalized,
+                        ),
+                        display_text: CandidateTextParts::Two(previous.raw, current.raw),
+                        start_line: previous.index,
+                        end_line: current.index,
+                        inline_byte_position: None,
+                    },
+                    compute_position_for_line(ft, previous.index),
+                    survivors,
+                    materialized,
+                    config,
+                    budget,
+                )?;
+            }
+        }
+
+        if config.include_three_line_blocks
+            && let (Some(first), Some(second)) = (previous_two.as_ref(), previous_one.as_ref())
+            && second.index == first.index + 1
+            && current.index == second.index + 1
+            && ft.lines_share_page(first.index, second.index)
+            && ft.lines_share_page(first.index, current.index)
+        {
+            let block_class = dominant_content_class_3(
+                first.content_class,
+                second.content_class,
+                current.content_class,
+            );
+            if should_include_content_class(block_class, config) {
+                materialize_occurrence(
+                    ft,
+                    MaterializedOccurrence {
+                        kind: RepeatedArtifactKind::ThreeLineBlock,
+                        candidate_key: CandidateTextParts::Three(
+                            first.raw,
+                            second.raw,
+                            current.raw,
+                        ),
+                        normalized_key: CandidateTextParts::Three(
+                            &first.normalized,
+                            &second.normalized,
+                            &current.normalized,
+                        ),
+                        display_text: CandidateTextParts::Three(first.raw, second.raw, current.raw),
+                        start_line: first.index,
+                        end_line: current.index,
+                        inline_byte_position: None,
+                    },
+                    compute_position_for_line(ft, first.index),
+                    survivors,
+                    materialized,
+                    config,
+                    budget,
+                )?;
+            }
+        }
+
+        previous_two = previous_one.take();
+        previous_one = Some(current);
     }
 
-    for entry in entries {
-        let file_count = entry.file_ids.len();
+    if cancel.load(Ordering::Relaxed) {
+        return Err(RepeatedArtifactScanError::Cancelled);
+    }
+    Ok(())
+}
+
+struct Pass2Accumulation<'a> {
+    survivors: &'a ShardedFingerprintMap<FingerprintStats>,
+    materialized: &'a mut ShardedFingerprintMap<MaterializedCandidate>,
+    cancel: &'a CancellationFlag,
+    budget: &'a mut MaterializationBudget,
+}
+
+fn materialize_file_record(
+    record: &DocumentRecord,
+    config: &RepeatedArtifactScanConfig,
+    cleaning_config: &CleaningConfig,
+    cache: Option<&ExtractionCache>,
+    accumulation: &mut Pass2Accumulation<'_>,
+) -> Result<(), RepeatedArtifactScanError> {
+    if accumulation.cancel.load(Ordering::Relaxed) {
+        return Err(RepeatedArtifactScanError::Cancelled);
+    }
+    let extracted = get_document_text_with_status(
+        record,
+        config.analyse_processed_text,
+        cleaning_config,
+        cache,
+    );
+    if let Some(message) = extracted.fatal_error {
+        return Err(RepeatedArtifactScanError::ScanFailed { message });
+    }
+    if accumulation.cancel.load(Ordering::Relaxed) {
+        return Err(RepeatedArtifactScanError::Cancelled);
+    }
+    let ft = build_file_text(record, &extracted.text, extracted.page_texts.as_deref());
+    materialize_file_survivors(
+        &ft,
+        config,
+        accumulation.survivors,
+        accumulation.materialized,
+        accumulation.cancel,
+        accumulation.budget,
+    )
+}
+
+fn finalize_materialized_candidates(
+    materialized: ShardedFingerprintMap<MaterializedCandidate>,
+    budget: &mut MaterializationBudget,
+) -> Result<Vec<RepeatedArtifactCandidate>, RepeatedArtifactScanError> {
+    let candidate_count = materialized.len();
+    budget.reserve(candidate_count.saturating_mul(
+        std::mem::size_of::<RepeatedArtifactCandidate>() + std::mem::size_of::<f64>(),
+    ))?;
+    let mut scored = Vec::new();
+    scored.try_reserve(candidate_count).map_err(|_| {
+        RepeatedArtifactScanError::corpus_too_large(
+            RepeatedArtifactMemoryStage::SurvivorMaterialisation,
+            budget.ceiling_bytes,
+            budget.ceiling_bytes.saturating_add(1),
+        )
+    })?;
+
+    for mut entry in materialized.into_values() {
+        entry.raw_variants.sort();
         let score = calculate_suspicion_score(
             &entry.kind,
             &entry.display_text,
             entry.occurrence_count,
-            file_count,
+            entry.file_count,
             entry.top_count,
             entry.bottom_count,
         );
-
         let risk_label = classify_risk(
             &entry.display_text,
             &entry.normalized_key,
             entry.occurrence_count,
-            file_count,
+            entry.file_count,
             entry.top_count,
             entry.bottom_count,
         );
-
         let candidate_id = compute_stable_id(&entry.kind, &entry.candidate_key);
-
         let content_class = classify_content(&entry.display_text);
         let position_summary = PositionSummary {
             top_count: entry.top_count,
@@ -1960,75 +2209,6 @@ fn phase3_finalize(
             text_signal_label,
             &position_summary,
         );
-
-        let raw_variant_count = entry.raw_variants.len();
-        let raw_variant_count_is_capped = entry.raw_variant_overflow;
-
-        let is_inline = entry.kind == RepeatedArtifactKind::InlineArtifact;
-        let examples: Vec<RepeatedArtifactExample> = entry
-            .example_refs
-            .iter()
-            .filter_map(|&(fid, rs, re)| {
-                let ft = file_texts.get(fid as usize)?;
-
-                if is_inline {
-                    let line_idx = rs;
-                    let byte_pos = re;
-                    let line = ft.raw_lines.get(line_idx)?;
-                    let pattern = &entry.display_text;
-                    let plen = pattern.len();
-
-                    let context_before = safe_context_before(line, byte_pos, 80);
-                    let context_after = safe_context_after(line, byte_pos, plen, 80);
-                    let matched_text = pattern.to_string();
-
-                    Some(RepeatedArtifactExample {
-                        file_name: ft.file_name.clone(),
-                        file_path: ft.file_path.clone(),
-                        line_number: Some(line_idx + 1),
-                        page_number: ft.page_number_for_line(line_idx),
-                        context_before,
-                        matched_text,
-                        context_after,
-                    })
-                } else {
-                    let context_before = if rs > 0 {
-                        let t = ft.raw_lines[rs - 1].trim();
-                        if t.is_empty() {
-                            None
-                        } else {
-                            Some(t.chars().take(200).collect())
-                        }
-                    } else {
-                        None
-                    };
-                    let context_after = if re + 1 < ft.raw_lines.len() {
-                        let t = ft.raw_lines[re + 1].trim();
-                        if t.is_empty() {
-                            None
-                        } else {
-                            Some(t.chars().take(200).collect())
-                        }
-                    } else {
-                        None
-                    };
-                    let matched: Vec<&str> =
-                        ft.raw_lines[rs..=re].iter().map(|s| s.trim()).collect();
-                    let matched_text = matched.join("\n");
-
-                    Some(RepeatedArtifactExample {
-                        file_name: ft.file_name.clone(),
-                        file_path: ft.file_path.clone(),
-                        line_number: Some(rs + 1),
-                        page_number: ft.page_number_for_line(rs),
-                        context_before,
-                        matched_text,
-                        context_after,
-                    })
-                }
-            })
-            .collect();
-
         scored.push((
             score,
             RepeatedArtifactCandidate {
@@ -2037,8 +2217,8 @@ fn phase3_finalize(
                 display_text: entry.display_text,
                 normalized_key: entry.normalized_key,
                 occurrence_count: entry.occurrence_count,
-                file_count,
-                example_count: examples.len(),
+                file_count: entry.file_count,
+                example_count: entry.examples.len(),
                 position_summary,
                 position_summary_is_page_based: entry.position_summary_is_page_based,
                 risk_label,
@@ -2046,41 +2226,25 @@ fn phase3_finalize(
                 text_profile,
                 text_signal_label,
                 text_signal_reasons,
-                raw_variant_count,
-                raw_variant_count_is_capped,
-                raw_variants: entry.raw_variants.into_iter().collect(),
-                examples,
+                raw_variant_count: entry.raw_variants.len(),
+                raw_variant_count_is_capped: entry.raw_variant_overflow,
+                raw_variants: entry.raw_variants,
+                examples: entry.examples,
             },
         ));
     }
 
-    scored.sort_by(|a, b| {
-        b.0.partial_cmp(&a.0)
+    scored.sort_by(|first, second| {
+        second
+            .0
+            .partial_cmp(&first.0)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.1.candidate_id.cmp(&b.1.candidate_id))
+            .then_with(|| first.1.candidate_id.cmp(&second.1.candidate_id))
     });
-
-    let candidates_before_cap = scored.len();
-    let candidates_truncated = config
-        .max_candidates
-        .map(|limit| candidates_before_cap.saturating_sub(limit))
-        .unwrap_or(0);
-
-    let candidates = match config.max_candidates {
-        Some(limit) => scored.into_iter().take(limit).map(|(_, c)| c).collect(),
-        None => scored.into_iter().map(|(_, c)| c).collect(),
-    };
-
-    FinalizedRepeatedArtifactCandidates {
-        candidates,
-        candidates_before_cap,
-        candidates_truncated,
-    }
+    Ok(scored.into_iter().map(|(_, candidate)| candidate).collect())
 }
 
-/// Performs a corpus-wide scan for repeated lines and blocks, with optional cache.
-///
-/// Returns both candidates and diagnostics.
+/// Performs a corpus-wide scan for repeated lines and blocks.
 pub fn scan_repeated_artifacts_report(
     records: &[DocumentRecord],
     config: &RepeatedArtifactScanConfig,
@@ -2089,10 +2253,7 @@ pub fn scan_repeated_artifacts_report(
     scan_repeated_artifacts_report_with_cancel(records, config, cleaning_config, &no_cancellation())
 }
 
-/// Performs a corpus-wide scan for repeated lines and blocks, with optional cache
-/// and cancellation.
-///
-/// Returns both candidates and diagnostics.
+/// Performs a corpus-wide scan with cooperative cancellation.
 pub fn scan_repeated_artifacts_report_with_cancel(
     records: &[DocumentRecord],
     config: &RepeatedArtifactScanConfig,
@@ -2106,19 +2267,39 @@ pub fn scan_repeated_artifacts_report_with_cancel(
         None,
         cancel,
     )
+    .map_err(|error| error.to_string())
 }
 
-/// Performs a corpus-wide scan for repeated lines and blocks, with optional cache
-/// and cancellation.
-///
-/// Returns both candidates and diagnostics.
-pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
-    records: &'a [DocumentRecord],
-    config: &'a RepeatedArtifactScanConfig,
-    cleaning_config: &'a CleaningConfig,
-    cache: Option<&'a ExtractionCache>,
-    cancel: &'a CancellationFlag,
-) -> Result<RepeatedArtifactScanReport, String> {
+/// Performs the memory-bounded two-pass scan with optional extraction cache.
+pub fn scan_repeated_artifacts_report_with_cancel_and_cache(
+    records: &[DocumentRecord],
+    config: &RepeatedArtifactScanConfig,
+    cleaning_config: &CleaningConfig,
+    cache: Option<&ExtractionCache>,
+    cancel: &CancellationFlag,
+) -> Result<RepeatedArtifactScanReport, RepeatedArtifactScanError> {
+    scan_repeated_artifacts_report_with_cancel_cache_and_progress(
+        records,
+        config,
+        cleaning_config,
+        cache,
+        cancel,
+        |_| {},
+    )
+}
+
+/// Performs the memory-bounded two-pass scan and reports backend phase progress.
+pub fn scan_repeated_artifacts_report_with_cancel_cache_and_progress<Progress>(
+    records: &[DocumentRecord],
+    config: &RepeatedArtifactScanConfig,
+    cleaning_config: &CleaningConfig,
+    cache: Option<&ExtractionCache>,
+    cancel: &CancellationFlag,
+    mut report_progress: Progress,
+) -> Result<RepeatedArtifactScanReport, RepeatedArtifactScanError>
+where
+    Progress: FnMut(RepeatedArtifactScanProgress),
+{
     let files_requested = records.len();
     let analysed_processed_text = config.analyse_processed_text;
     let custom_removals_active = cleaning_config.remove_patterns.len()
