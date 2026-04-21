@@ -869,6 +869,31 @@ fn calculate_suspicion_score(
     top_count: usize,
     bottom_count: usize,
 ) -> f64 {
+    let char_len = display_text.chars().count();
+    let non_alphanumeric_count = display_text
+        .chars()
+        .filter(|c| !c.is_alphanumeric() && !c.is_whitespace())
+        .count();
+    calculate_suspicion_score_from_counts(
+        *kind,
+        char_len,
+        non_alphanumeric_count,
+        occurrence_count,
+        file_count,
+        top_count,
+        bottom_count,
+    )
+}
+
+fn calculate_suspicion_score_from_counts(
+    kind: RepeatedArtifactKind,
+    char_len: usize,
+    non_alphanumeric_count: usize,
+    occurrence_count: usize,
+    file_count: usize,
+    top_count: usize,
+    bottom_count: usize,
+) -> f64 {
     let occ_factor = (occurrence_count as f64).ln_1p();
     let file_factor = (file_count as f64).ln_1p();
 
@@ -888,7 +913,6 @@ fn calculate_suspicion_score(
         RepeatedArtifactKind::InlineArtifact => 1.0,
     };
 
-    let char_len = display_text.chars().count();
     let len_factor = if char_len <= 3 {
         0.2
     } else if char_len <= 8 {
@@ -897,10 +921,6 @@ fn calculate_suspicion_score(
         1.0
     };
 
-    let non_alphanumeric_count = display_text
-        .chars()
-        .filter(|c| !c.is_alphanumeric() && !c.is_whitespace())
-        .count();
     let symbol_ratio = if char_len > 0 {
         non_alphanumeric_count as f64 / char_len as f64
     } else {
@@ -1113,66 +1133,6 @@ fn dominant_content_class_3(
 static KNOWN_INLINE_AUTOMATON: LazyLock<AhoCorasick> =
     LazyLock::new(|| AhoCorasick::new(KNOWN_INLINE_PATTERNS).unwrap());
 
-/// Detects inline artefacts in the given file text.
-/// Returns a per-file local aggregated map.
-fn detect_inline_artifacts(
-    ft: &FileText,
-    config: &RepeatedArtifactScanConfig,
-) -> HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> {
-    if !config.include_inline_artifacts {
-        return HashMap::new();
-    }
-
-    detect_inline_artifacts_with_automaton(ft, config, &KNOWN_INLINE_AUTOMATON)
-}
-
-fn detect_inline_artifacts_with_automaton(
-    ft: &FileText,
-    config: &RepeatedArtifactScanConfig,
-    automaton: &AhoCorasick,
-) -> HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> {
-    let mut map: HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> = HashMap::new();
-
-    for (line_idx, line) in ft.raw_lines.iter().enumerate() {
-        if line.is_empty() {
-            continue;
-        }
-
-        for mat in automaton.find_iter(line) {
-            let pattern = KNOWN_INLINE_PATTERNS[mat.pattern().as_usize()];
-            let key = (RepeatedArtifactKind::InlineArtifact, pattern.to_string());
-            let entry = map.entry(key).or_insert_with(|| LocalCandidateStats {
-                occurrence_count: 0,
-                top_count: 0,
-                middle_count: 0,
-                bottom_count: 0,
-                unknown_count: 0,
-                normalized_key: String::new(),
-                display_text: pattern.to_string(),
-                example_refs: Vec::new(),
-                raw_variants: BTreeSet::from([pattern.to_string()]),
-                raw_variant_overflow: false,
-                position_summary_is_page_based: ft.has_page_metadata,
-            });
-
-            entry.occurrence_count += 1;
-            let pos_class = compute_position_for_line(ft, line_idx);
-            match pos_class {
-                LinePosition::Top => entry.top_count += 1,
-                LinePosition::Middle => entry.middle_count += 1,
-                LinePosition::Bottom => entry.bottom_count += 1,
-            }
-
-            if entry.example_refs.len() < config.max_examples_per_candidate {
-                // Inline examples use the second slot as a byte offset.
-                entry.example_refs.push((line_idx, mat.start()));
-            }
-        }
-    }
-
-    map
-}
-
 /// Internal struct describing extraction status for a single file.
 struct ExtractedScanText {
     text: String,
@@ -1261,62 +1221,406 @@ fn build_file_text(record: &DocumentRecord, text: &str, page_texts: Option<&[Str
     }
 }
 
-/// Builds the per-file scan result used by the parallel aggregation pass.
-///
-/// A result is returned even when extraction fails so diagnostics stay aligned
-/// with the requested records.
-fn phase1_scan_file(
+/// Lightweight view of one valid line while pass 1 advances through a file.
+struct Pass1Line<'a> {
+    index: usize,
+    raw: &'a str,
+    normalized: String,
+    content_class: CandidateContentClass,
+}
+
+struct Pass1Occurrence<'a> {
+    kind: RepeatedArtifactKind,
+    candidate_key: CandidateTextParts<'a>,
+    display_text: CandidateTextParts<'a>,
+    first_display_fingerprint: CandidateFingerprint,
+    first_display_has_exact_candidate: bool,
+    position: LinePosition,
+}
+
+fn increment_pass1_candidate(
+    local_counts: &mut ShardedFingerprintMap<FingerprintStats>,
+    global_key_count: usize,
+    config: &RepeatedArtifactScanConfig,
+    occurrence: Pass1Occurrence<'_>,
+) -> Result<CandidateFingerprint, RepeatedArtifactScanError> {
+    let fingerprint = candidate_fingerprint(occurrence.kind, occurrence.candidate_key);
+    if let Some(stats) = local_counts.get_mut(&fingerprint) {
+        stats.occurrence_count = stats
+            .occurrence_count
+            .checked_add(1)
+            .ok_or_else(|| pass1_allocation_error(config.memory_ceiling_bytes))?;
+        match occurrence.position {
+            LinePosition::Top => {
+                stats.top_count = stats
+                    .top_count
+                    .checked_add(1)
+                    .ok_or_else(|| pass1_allocation_error(config.memory_ceiling_bytes))?;
+            }
+            LinePosition::Bottom => {
+                stats.bottom_count = stats
+                    .bottom_count
+                    .checked_add(1)
+                    .ok_or_else(|| pass1_allocation_error(config.memory_ceiling_bytes))?;
+            }
+            LinePosition::Middle => {}
+        }
+        if occurrence.kind == RepeatedArtifactKind::NormalizedLine
+            && stats.first_display_fingerprint != occurrence.first_display_fingerprint
+        {
+            stats.has_multiple_raw_variants = true;
+        }
+        return Ok(fingerprint);
+    }
+
+    ensure_pass1_memory(
+        global_key_count,
+        local_counts.len().saturating_add(1),
+        config.memory_ceiling_bytes,
+    )?;
+    let (display_char_count, display_symbol_count) =
+        occurrence.display_text.char_and_symbol_counts();
+    let mut stats = FingerprintStats {
+        kind: occurrence.kind,
+        occurrence_count: 1,
+        file_count: 1,
+        top_count: 0,
+        bottom_count: 0,
+        display_char_count,
+        display_symbol_count,
+        stable_id_prefix: stable_id_prefix(occurrence.candidate_key),
+        first_display_fingerprint: occurrence.first_display_fingerprint,
+        first_display_has_exact_candidate: occurrence.first_display_has_exact_candidate,
+        has_multiple_raw_variants: false,
+    };
+    match occurrence.position {
+        LinePosition::Top => stats.top_count = 1,
+        LinePosition::Bottom => stats.bottom_count = 1,
+        LinePosition::Middle => {}
+    }
+    local_counts
+        .try_insert(fingerprint, stats)
+        .map_err(|_| pass1_allocation_error(config.memory_ceiling_bytes))?;
+    Ok(fingerprint)
+}
+
+fn count_file_fingerprints(
+    ft: &FileText,
+    config: &RepeatedArtifactScanConfig,
+    global_key_count: usize,
+    cancel: &CancellationFlag,
+) -> Result<ShardedFingerprintMap<FingerprintStats>, RepeatedArtifactScanError> {
+    let mut local_counts = ShardedFingerprintMap::new();
+    let mut previous_one: Option<Pass1Line<'_>> = None;
+    let mut previous_two: Option<Pass1Line<'_>> = None;
+    let mut inline_matches_since_cancel_check = 0usize;
+
+    for (line_index, source_line) in ft.raw_lines.iter().enumerate() {
+        if line_index % CANCELLATION_CHECK_LINE_INTERVAL == 0 && cancel.load(Ordering::Relaxed) {
+            return Err(RepeatedArtifactScanError::Cancelled);
+        }
+
+        if config.include_inline_artifacts && !source_line.is_empty() {
+            for inline_match in KNOWN_INLINE_AUTOMATON.find_iter(source_line) {
+                inline_matches_since_cancel_check += 1;
+                if inline_matches_since_cancel_check >= CANCELLATION_CHECK_LINE_INTERVAL {
+                    inline_matches_since_cancel_check = 0;
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err(RepeatedArtifactScanError::Cancelled);
+                    }
+                }
+                let pattern = KNOWN_INLINE_PATTERNS[inline_match.pattern().as_usize()];
+                let pattern_text = CandidateTextParts::Single(pattern);
+                let fingerprint =
+                    candidate_fingerprint(RepeatedArtifactKind::InlineArtifact, pattern_text);
+                increment_pass1_candidate(
+                    &mut local_counts,
+                    global_key_count,
+                    config,
+                    Pass1Occurrence {
+                        kind: RepeatedArtifactKind::InlineArtifact,
+                        candidate_key: pattern_text,
+                        display_text: pattern_text,
+                        first_display_fingerprint: fingerprint,
+                        first_display_has_exact_candidate: true,
+                        position: compute_position_for_line(ft, line_index),
+                    },
+                )?;
+            }
+        }
+
+        let raw = source_line.trim();
+        if should_skip_line(raw, config.min_line_chars, config.max_line_chars) {
+            previous_one = None;
+            previous_two = None;
+            continue;
+        }
+
+        let normalized = normalize_line(raw);
+        let content_class = classify_content(raw);
+        let position = compute_position_for_line(ft, line_index);
+        let raw_text = CandidateTextParts::Single(raw);
+        let mut exact_fingerprint = None;
+
+        if config.include_exact_lines && should_include_content_class(content_class, config) {
+            let fingerprint = candidate_fingerprint(RepeatedArtifactKind::ExactLine, raw_text);
+            increment_pass1_candidate(
+                &mut local_counts,
+                global_key_count,
+                config,
+                Pass1Occurrence {
+                    kind: RepeatedArtifactKind::ExactLine,
+                    candidate_key: raw_text,
+                    display_text: raw_text,
+                    first_display_fingerprint: fingerprint,
+                    first_display_has_exact_candidate: true,
+                    position,
+                },
+            )?;
+            exact_fingerprint = Some(fingerprint);
+        }
+
+        if config.include_normalized_lines
+            && !normalized.is_empty()
+            && (content_class != CandidateContentClass::NumericDominant
+                || config.include_numeric_dominant)
+        {
+            let first_display_fingerprint = if config.include_exact_lines {
+                exact_fingerprint.unwrap_or_else(|| {
+                    candidate_fingerprint(RepeatedArtifactKind::ExactLine, raw_text)
+                })
+            } else {
+                CandidateFingerprint([0; 16])
+            };
+            increment_pass1_candidate(
+                &mut local_counts,
+                global_key_count,
+                config,
+                Pass1Occurrence {
+                    kind: RepeatedArtifactKind::NormalizedLine,
+                    candidate_key: CandidateTextParts::Single(&normalized),
+                    display_text: raw_text,
+                    first_display_fingerprint,
+                    first_display_has_exact_candidate: exact_fingerprint.is_some(),
+                    position,
+                },
+            )?;
+        }
+
+        let current = Pass1Line {
+            index: line_index,
+            raw,
+            normalized,
+            content_class,
+        };
+
+        if config.include_two_line_blocks
+            && let Some(previous) = previous_one.as_ref()
+            && current.index == previous.index + 1
+            && ft.lines_share_page(previous.index, current.index)
+        {
+            let block_class = dominant_content_class(previous.content_class, current.content_class);
+            if should_include_content_class(block_class, config) {
+                let raw_block = CandidateTextParts::Two(previous.raw, current.raw);
+                let block_fingerprint =
+                    candidate_fingerprint(RepeatedArtifactKind::TwoLineBlock, raw_block);
+                increment_pass1_candidate(
+                    &mut local_counts,
+                    global_key_count,
+                    config,
+                    Pass1Occurrence {
+                        kind: RepeatedArtifactKind::TwoLineBlock,
+                        candidate_key: raw_block,
+                        display_text: raw_block,
+                        first_display_fingerprint: block_fingerprint,
+                        first_display_has_exact_candidate: true,
+                        position: compute_position_for_line(ft, previous.index),
+                    },
+                )?;
+            }
+        }
+
+        if config.include_three_line_blocks
+            && let (Some(first), Some(second)) = (previous_two.as_ref(), previous_one.as_ref())
+            && second.index == first.index + 1
+            && current.index == second.index + 1
+            && ft.lines_share_page(first.index, second.index)
+            && ft.lines_share_page(first.index, current.index)
+        {
+            let block_class = dominant_content_class_3(
+                first.content_class,
+                second.content_class,
+                current.content_class,
+            );
+            if should_include_content_class(block_class, config) {
+                let raw_block = CandidateTextParts::Three(first.raw, second.raw, current.raw);
+                let block_fingerprint =
+                    candidate_fingerprint(RepeatedArtifactKind::ThreeLineBlock, raw_block);
+                increment_pass1_candidate(
+                    &mut local_counts,
+                    global_key_count,
+                    config,
+                    Pass1Occurrence {
+                        kind: RepeatedArtifactKind::ThreeLineBlock,
+                        candidate_key: raw_block,
+                        display_text: raw_block,
+                        first_display_fingerprint: block_fingerprint,
+                        first_display_has_exact_candidate: true,
+                        position: compute_position_for_line(ft, first.index),
+                    },
+                )?;
+            }
+        }
+
+        previous_two = previous_one.take();
+        previous_one = Some(current);
+    }
+
+    if cancel.load(Ordering::Relaxed) {
+        return Err(RepeatedArtifactScanError::Cancelled);
+    }
+    Ok(local_counts)
+}
+
+/// Counts one file into fingerprint-only per-file state. The set is discarded after merging.
+fn pass1_scan_file(
     record: &DocumentRecord,
     config: &RepeatedArtifactScanConfig,
     cleaning_config: &CleaningConfig,
     cache: Option<&ExtractionCache>,
     cancel: &CancellationFlag,
-) -> Phase1Result {
+    global_key_count: usize,
+) -> Result<Pass1FileResult, RepeatedArtifactScanError> {
     if cancel.load(Ordering::Relaxed) {
-        return Phase1Result {
-            ft: build_file_text(record, "", None),
-            local_map: HashMap::new(),
-            extraction_failed: false,
-            fatal_error: None,
-        };
+        return Err(RepeatedArtifactScanError::Cancelled);
     }
-
     let extracted = get_document_text_with_status(
         record,
         config.analyse_processed_text,
         cleaning_config,
         cache,
     );
-
+    if let Some(message) = extracted.fatal_error {
+        return Err(RepeatedArtifactScanError::ScanFailed { message });
+    }
     if cancel.load(Ordering::Relaxed) {
-        return Phase1Result {
-            ft: build_file_text(record, "", None),
-            local_map: HashMap::new(),
-            extraction_failed: false,
-            fatal_error: None,
-        };
+        return Err(RepeatedArtifactScanError::Cancelled);
     }
 
+    let extraction_failed = extracted.extraction_failed;
     let ft = build_file_text(record, &extracted.text, extracted.page_texts.as_deref());
+    let raw_line_count = ft.raw_lines.len();
+    let empty_after_extraction = ft.raw_lines.is_empty();
+    let local_counts = count_file_fingerprints(&ft, config, global_key_count, cancel)?;
+    Ok(Pass1FileResult {
+        local_counts,
+        extraction_failed,
+        raw_line_count,
+        empty_after_extraction,
+    })
+}
 
-    let mut map = phase1_aggregate(&ft, config);
+fn merge_pass1_file(
+    global_counts: &mut ShardedFingerprintMap<FingerprintStats>,
+    local_counts: ShardedFingerprintMap<FingerprintStats>,
+    config: &RepeatedArtifactScanConfig,
+) -> Result<(), RepeatedArtifactScanError> {
+    let local_key_count = local_counts.len();
+    for (fingerprint, local) in local_counts.into_entries() {
+        if let Some(global) = global_counts.get_mut(&fingerprint) {
+            global.occurrence_count = global
+                .occurrence_count
+                .checked_add(local.occurrence_count)
+                .ok_or_else(|| pass1_allocation_error(config.memory_ceiling_bytes))?;
+            global.file_count = global
+                .file_count
+                .checked_add(local.file_count)
+                .ok_or_else(|| pass1_allocation_error(config.memory_ceiling_bytes))?;
+            global.top_count = global
+                .top_count
+                .checked_add(local.top_count)
+                .ok_or_else(|| pass1_allocation_error(config.memory_ceiling_bytes))?;
+            global.bottom_count = global
+                .bottom_count
+                .checked_add(local.bottom_count)
+                .ok_or_else(|| pass1_allocation_error(config.memory_ceiling_bytes))?;
+            if global.kind == RepeatedArtifactKind::NormalizedLine
+                && (local.has_multiple_raw_variants
+                    || global.first_display_fingerprint != local.first_display_fingerprint)
+            {
+                global.has_multiple_raw_variants = true;
+            }
+            continue;
+        }
 
-    let inline_map = detect_inline_artifacts(&ft, config);
-    for ((kind, key), inline_stats) in inline_map {
-        map.insert((kind, key), inline_stats);
+        ensure_pass1_memory(
+            global_counts.len().saturating_add(1),
+            local_key_count,
+            config.memory_ceiling_bytes,
+        )?;
+        global_counts
+            .try_insert(fingerprint, local)
+            .map_err(|_| pass1_allocation_error(config.memory_ceiling_bytes))?;
     }
+    Ok(())
+}
+#[derive(Debug, Clone, Copy)]
+struct RankedFingerprint {
+    fingerprint: CandidateFingerprint,
+    stats: FingerprintStats,
+    score: f64,
+}
 
-    Phase1Result {
-        ft,
-        local_map: map,
-        extraction_failed: extracted.extraction_failed,
-        fatal_error: extracted.fatal_error,
+impl PartialEq for RankedFingerprint {
+    fn eq(&self, other: &Self) -> bool {
+        self.fingerprint == other.fingerprint
     }
 }
 
-/// Aggregate occurrences into a local stats map (one entry per key, not per occurrence).
-fn phase1_aggregate(
-    ft: &FileText,
+impl Eq for RankedFingerprint {}
+
+fn compare_ranked_quality(
+    first: &RankedFingerprint,
+    second: &RankedFingerprint,
+) -> std::cmp::Ordering {
+    first
+        .score
+        .total_cmp(&second.score)
+        .then_with(|| {
+            stable_kind_order(second.stats.kind).cmp(&stable_kind_order(first.stats.kind))
+        })
+        .then_with(|| {
+            second
+                .stats
+                .stable_id_prefix
+                .cmp(&first.stats.stable_id_prefix)
+        })
+        .then_with(|| second.fingerprint.cmp(&first.fingerprint))
+}
+
+impl Ord for RankedFingerprint {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // BinaryHeap keeps the worst selected candidate at the root.
+        compare_ranked_quality(other, self)
+    }
+}
+
+impl PartialOrd for RankedFingerprint {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+struct FilteredFingerprints {
+    survivors: ShardedFingerprintMap<FingerprintStats>,
+    candidates_after_min_occurrences: usize,
+    candidates_after_min_files: usize,
+    candidates_before_cap: usize,
+    candidates_truncated: usize,
+}
+
+fn fingerprint_passes_min_occurrences(
+    stats: &FingerprintStats,
     config: &RepeatedArtifactScanConfig,
 ) -> HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> {
     let mut map: HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> = HashMap::new();
