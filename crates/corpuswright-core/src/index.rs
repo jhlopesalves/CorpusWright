@@ -1,13 +1,167 @@
 use crate::analysis::concordance_key;
 use crate::decode::DECODE_POLICY_VERSION;
-use crate::tokenization::{TokenizationConfig, TokenizationManifest, tokenize};
+use crate::tokenization::{TokenizationConfig, TokenizationManifest, tokenize, visit_tokens};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, HashMap};
+use std::fs::File;
+use std::hash::{Hash, Hasher};
+use std::io::{BufReader, BufWriter, Read, Write};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+use std::{
+    sync::Arc,
+    sync::atomic::{AtomicBool, Ordering as AtomicOrdering},
+    time::Instant,
+};
 
-pub const INDEX_SCHEMA_VERSION: u32 = 2;
+pub const INDEX_SCHEMA_VERSION: u32 = 4;
+pub const SURFACE_INDEX_CACHE_FILE_VERSION: u32 = 2;
+
+const SURFACE_INDEX_CACHE_MAGIC: &[u8; 8] = b"CWIIDX02";
+const SURFACE_INDEX_CHECKSUM_BYTES: usize = 32;
+const SURFACE_INDEX_MAX_MANIFEST_BYTES: u64 = 1_048_576;
+const SURFACE_INDEX_MAX_RETAINED_FILES: usize = 2;
+const SURFACE_INDEX_MAX_RETAINED_AGGREGATE_BYTES: u64 = 2_147_483_648;
 
 const DEFAULT_WINDOW_TOKENS: usize = 5;
 const MAX_WINDOW_TOKENS: usize = 20;
+
+const DEFAULT_MAX_PROJECTED_RESIDENT_INDEX_BYTES: u64 = 1_073_741_824;
+const DEFAULT_MAX_STAGED_PREPARED_TEXT_BYTES: u64 = 67_108_864;
+const DEFAULT_MAX_STAGED_TOKEN_RECORDS: u64 = 1_000_000;
+const DEFAULT_MAX_RETAINED_QUERY_SORT_RECORDS: u64 = 100_000;
+
+#[allow(dead_code)]
+struct LegacySurfaceIndexTokenRecordLayout {
+    document_id: usize,
+    token_ordinal_in_document: usize,
+    surface_symbol_id: u32,
+    normalised_surface_symbol_id: u32,
+    exact_surface_symbol_id: u32,
+    prepared_char_start: usize,
+    prepared_char_end: usize,
+    counts_as_word: bool,
+}
+
+#[allow(dead_code)]
+struct LegacySurfacePostingLayout {
+    document_id: usize,
+    token_ordinal_in_document: usize,
+}
+
+/// Aggregate resource budget enforced by surface-index build and query paths.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SurfaceIndexResourceLimits {
+    pub max_projected_resident_index_bytes: u64,
+    pub max_staged_prepared_text_bytes: u64,
+    pub max_staged_token_records: u64,
+    pub max_retained_query_sort_records: u64,
+}
+
+impl Default for SurfaceIndexResourceLimits {
+    fn default() -> Self {
+        Self::from_environment()
+    }
+}
+
+impl SurfaceIndexResourceLimits {
+    /// Conservative defaults can be overridden for diagnostics. Invalid values
+    /// are ignored so deployment cannot accidentally disable a limit.
+    pub fn from_environment() -> Self {
+        Self {
+            max_projected_resident_index_bytes: resource_limit_from_environment(
+                "CORPUSWRIGHT_SURFACE_INDEX_MAX_RESIDENT_BYTES",
+                DEFAULT_MAX_PROJECTED_RESIDENT_INDEX_BYTES,
+            ),
+            max_staged_prepared_text_bytes: resource_limit_from_environment(
+                "CORPUSWRIGHT_SURFACE_INDEX_MAX_STAGED_TEXT_BYTES",
+                DEFAULT_MAX_STAGED_PREPARED_TEXT_BYTES,
+            ),
+            max_staged_token_records: resource_limit_from_environment(
+                "CORPUSWRIGHT_SURFACE_INDEX_MAX_STAGED_TOKEN_RECORDS",
+                DEFAULT_MAX_STAGED_TOKEN_RECORDS,
+            ),
+            max_retained_query_sort_records: resource_limit_from_environment(
+                "CORPUSWRIGHT_SURFACE_INDEX_MAX_SORT_RECORDS",
+                DEFAULT_MAX_RETAINED_QUERY_SORT_RECORDS,
+            ),
+        }
+    }
+}
+
+fn resource_limit_from_environment(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
+/// Conservative resident-memory projection used before corpus-proportional
+/// allocation. `fixed_array_bytes` excludes strings and lookup-table slack.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SurfaceIndexResourceEstimate {
+    pub token_count: u64,
+    pub document_count: u64,
+    pub fixed_array_bytes: u64,
+    pub symbol_utf8_bytes: u64,
+    pub lookup_overhead_bytes: u64,
+    pub projected_resident_bytes: u64,
+}
+
+impl SurfaceIndexResourceEstimate {
+    /// Structural lower bound of the representation inherited by this branch:
+    /// one token record plus two `(usize, usize)` postings per indexed token.
+    /// Vec headers, allocation slack, symbols, documents and lookup maps are
+    /// intentionally excluded, so this is evidence of a floor, not a forecast.
+    pub fn legacy_structural_lower_bound(token_count: u64) -> Option<u64> {
+        let bytes_per_token =
+            u64::try_from(std::mem::size_of::<LegacySurfaceIndexTokenRecordLayout>())
+                .ok()?
+                .checked_add(
+                    u64::try_from(std::mem::size_of::<LegacySurfacePostingLayout>())
+                        .ok()?
+                        .checked_mul(2)?,
+                )?;
+        token_count.checked_mul(bytes_per_token)
+    }
+}
+
+/// Measurements recorded by bounded builders. Later commits populate the
+/// phase timings and exact compact-store estimate.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SurfaceIndexBuildStats {
+    pub total_documents: u64,
+    pub total_tokens: u64,
+    pub distinct_surfaces: u64,
+    pub distinct_normalised_keys: u64,
+    pub maximum_staged_prepared_text_bytes: u64,
+    pub maximum_staged_token_records: u64,
+    pub final_estimated_resident_bytes: u64,
+    pub large_documents_streamed: u64,
+    pub tokenization_elapsed: Duration,
+    pub postings_elapsed: Duration,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SurfaceIndexCancellationToken(Arc<AtomicBool>);
+
+impl SurfaceIndexCancellationToken {
+    pub fn cancel(&self) {
+        self.0.store(true, AtomicOrdering::Release);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(AtomicOrdering::Acquire)
+    }
+}
+
+impl From<Arc<AtomicBool>> for SurfaceIndexCancellationToken {
+    fn from(cancel: Arc<AtomicBool>) -> Self {
+        Self(cancel)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SurfaceIndexDocumentInput<'text> {
@@ -17,43 +171,19 @@ pub struct SurfaceIndexDocumentInput<'text> {
     pub prepared_text: &'text str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SurfaceIndexDocument {
     pub document_id: usize,
     pub source_path: String,
     pub display_name: String,
-    pub token_count: usize,
+    pub global_token_start: u32,
+    pub token_count: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SurfaceIndexTokenRecord {
-    pub document_id: usize,
-    pub token_ordinal_in_document: usize,
-    pub surface: String,
-    pub normalised_surface: String,
-    pub exact_surface: String,
-    pub prepared_char_start: usize,
-    pub prepared_char_end: usize,
-    pub counts_as_word: bool,
-}
-
-impl SurfaceIndexTokenRecord {
-    pub(crate) fn concordance_key(&self, case_sensitive: bool) -> &str {
-        if case_sensitive {
-            &self.exact_surface
-        } else {
-            &self.normalised_surface
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SurfacePosting {
-    pub document_id: usize,
-    pub token_ordinal_in_document: usize,
-    pub prepared_char_start: usize,
-    pub prepared_char_end: usize,
-}
+/// Compatibility alias for one entry in the compact token-surface stream.
+pub type SurfaceIndexTokenRecord = u32;
+/// One compact global token position in the single CSR postings population.
+pub type SurfacePosting = u32;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SurfaceIndexError {
@@ -70,6 +200,25 @@ pub enum SurfaceIndexError {
         token_ordinal_in_document: usize,
         node_token_length: usize,
     },
+    ProjectedResidentIndexExceedsLimit {
+        projected_bytes: u64,
+        limit_bytes: u64,
+    },
+    StagedBuildStateExceedsLimit {
+        prepared_text_bytes: u64,
+        token_records: u64,
+        prepared_text_limit: u64,
+        token_record_limit: u64,
+    },
+    TokenPopulationExceedsU32Capacity {
+        token_count: u64,
+    },
+    RetainedSortDepthExceedsQueryBudget {
+        requested_records: u64,
+        limit_records: u64,
+    },
+    Cancelled,
+    Allocation(String),
 }
 
 impl std::fmt::Display for SurfaceIndexError {
@@ -102,17 +251,66 @@ impl std::fmt::Display for SurfaceIndexError {
                 formatter,
                 "surface index store is missing token span document={document_id} ordinal={token_ordinal_in_document} length={node_token_length}"
             ),
+            Self::ProjectedResidentIndexExceedsLimit {
+                projected_bytes,
+                limit_bytes,
+            } => write!(
+                formatter,
+                "projected resident surface index size {projected_bytes} bytes exceeds configured limit {limit_bytes} bytes"
+            ),
+            Self::StagedBuildStateExceedsLimit {
+                prepared_text_bytes,
+                token_records,
+                prepared_text_limit,
+                token_record_limit,
+            } => write!(
+                formatter,
+                "staged surface index build state exceeds its budget: prepared_text_bytes={prepared_text_bytes}/{prepared_text_limit}, token_records={token_records}/{token_record_limit}"
+            ),
+            Self::TokenPopulationExceedsU32Capacity { token_count } => write!(
+                formatter,
+                "surface index token population {token_count} exceeds the u32 position format capacity"
+            ),
+            Self::RetainedSortDepthExceedsQueryBudget {
+                requested_records,
+                limit_records,
+            } => write!(
+                formatter,
+                "concordance sort requires {requested_records} retained records, exceeding configured limit {limit_records}"
+            ),
+            Self::Cancelled => formatter.write_str("surface index operation was cancelled"),
+            Self::Allocation(detail) => {
+                write!(formatter, "surface index allocation failed: {detail}")
+            }
         }
     }
 }
 
 impl std::error::Error for SurfaceIndexError {}
 
+impl SurfaceIndexError {
+    pub fn is_resource_or_cancellation(&self) -> bool {
+        matches!(
+            self,
+            Self::ProjectedResidentIndexExceedsLimit { .. }
+                | Self::StagedBuildStateExceedsLimit { .. }
+                | Self::TokenPopulationExceedsU32Capacity { .. }
+                | Self::RetainedSortDepthExceedsQueryBudget { .. }
+                | Self::Cancelled
+        )
+    }
+}
+
 pub trait IndexStore {
     fn postings(&self, normalised_surface: &str) -> Option<&[SurfacePosting]>;
-    fn exact_surface_postings(&self, exact_surface: &str) -> Option<&[SurfacePosting]>;
     fn records_for_document(&self, document_id: usize) -> Option<&[SurfaceIndexTokenRecord]>;
     fn document(&self, document_id: usize) -> Option<&SurfaceIndexDocument>;
+    fn document_and_ordinal_for_position(&self, position: u32) -> Option<(usize, usize)>;
+    fn global_position_for_document_token(
+        &self,
+        document_id: usize,
+        token_ordinal_in_document: usize,
+    ) -> Option<u32>;
     fn total_indexed_tokens(&self) -> usize;
     fn total_indexed_documents(&self) -> usize;
     fn indexed_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store>;
@@ -120,6 +318,25 @@ pub trait IndexStore {
     fn indexed_documents<'store>(
         &'store self,
     ) -> Box<dyn Iterator<Item = &'store SurfaceIndexDocument> + 'store>;
+    fn surface_for_record<'store>(
+        &'store self,
+        record: &SurfaceIndexTokenRecord,
+    ) -> Option<&'store str>;
+    fn concordance_key_for_record<'store>(
+        &'store self,
+        record: &SurfaceIndexTokenRecord,
+        case_sensitive: bool,
+    ) -> Option<&'store str>;
+    fn concordance_symbol_id_for_record(
+        &self,
+        record: &SurfaceIndexTokenRecord,
+        case_sensitive: bool,
+    ) -> Option<u32>;
+    fn concordance_symbol_id(&self, key: &str, case_sensitive: bool) -> Option<u32>;
+    fn concordance_symbols<'store>(
+        &'store self,
+        case_sensitive: bool,
+    ) -> Box<dyn Iterator<Item = &'store str> + 'store>;
 
     fn document_frequency(&self, normalised_surface: &str) -> usize {
         let Some(postings) = self.postings(normalised_surface) else {
@@ -128,9 +345,12 @@ pub trait IndexStore {
         let mut last_document_id = None;
         let mut count = 0usize;
         for posting in postings {
-            if last_document_id != Some(posting.document_id) {
+            let Some((document_id, _)) = self.document_and_ordinal_for_position(*posting) else {
+                continue;
+            };
+            if last_document_id != Some(document_id) {
                 count += 1;
-                last_document_id = Some(posting.document_id);
+                last_document_id = Some(document_id);
             }
         }
         count
@@ -141,11 +361,9 @@ pub trait IndexStore {
         concordance_key: &str,
         case_sensitive: bool,
     ) -> Option<&[SurfacePosting]> {
-        if case_sensitive {
-            self.exact_surface_postings(concordance_key)
-        } else {
-            self.postings(concordance_key)
-        }
+        let normalised =
+            case_sensitive.then(|| crate::analysis::concordance_key(concordance_key, false));
+        self.postings(normalised.as_deref().unwrap_or(concordance_key))
     }
 
     fn indexed_terms_for_concordance_key<'store>(
@@ -160,16 +378,185 @@ pub trait IndexStore {
     }
 }
 
-/// In-memory storage only. Persistent, mmap-backed, or incremental stores are deferred.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct InMemoryIndexStore {
-    documents: BTreeMap<usize, SurfaceIndexDocument>,
-    records_by_document: BTreeMap<usize, Vec<SurfaceIndexTokenRecord>>,
-    // The index carries two Concordance parity dimensions: normalised keys for
-    // case-insensitive search, and exact-surface keys for case-sensitive search.
-    postings_by_normalised_surface: BTreeMap<String, Vec<SurfacePosting>>,
-    postings_by_exact_surface: BTreeMap<String, Vec<SurfacePosting>>,
-    total_indexed_tokens: usize,
+    documents: Vec<SurfaceIndexDocument>,
+    surface_symbols: Vec<String>,
+    normalised_symbols: Vec<String>,
+    surface_to_normalised: Vec<u32>,
+    token_surface_ids: Vec<u32>,
+    postings_offsets: Vec<u64>,
+    postings_positions: Vec<u32>,
+    #[serde(skip)]
+    surface_ids_by_hash: HashMap<u64, Vec<u32>>,
+    #[serde(skip)]
+    normalised_ids_by_hash: HashMap<u64, Vec<u32>>,
+}
+
+pub struct SurfaceIndexBuilder {
+    store: InMemoryIndexStore,
+    tokenization_config: TokenizationConfig,
+    limits: SurfaceIndexResourceLimits,
+    cancellation: SurfaceIndexCancellationToken,
+    stats: SurfaceIndexBuildStats,
+    last_document_id: Option<usize>,
+}
+
+impl SurfaceIndexBuilder {
+    pub fn new(
+        tokenization_config: TokenizationConfig,
+        limits: SurfaceIndexResourceLimits,
+    ) -> Self {
+        Self::with_cancellation(
+            tokenization_config,
+            limits,
+            SurfaceIndexCancellationToken::default(),
+        )
+    }
+
+    pub fn with_cancellation(
+        tokenization_config: TokenizationConfig,
+        limits: SurfaceIndexResourceLimits,
+        cancellation: SurfaceIndexCancellationToken,
+    ) -> Self {
+        Self {
+            store: InMemoryIndexStore::default(),
+            tokenization_config,
+            limits,
+            cancellation,
+            stats: SurfaceIndexBuildStats::default(),
+            last_document_id: None,
+        }
+    }
+
+    pub fn add_document(
+        &mut self,
+        document: &SurfaceIndexDocumentInput<'_>,
+    ) -> Result<(), SurfaceIndexError> {
+        if self.cancellation.is_cancelled() {
+            return Err(SurfaceIndexError::Cancelled);
+        }
+        if self
+            .last_document_id
+            .is_some_and(|last| document.document_id <= last)
+        {
+            return Err(SurfaceIndexError::DuplicateDocumentId(document.document_id));
+        }
+        let tokenizer_document_id = u32::try_from(document.document_id)
+            .map_err(|_| SurfaceIndexError::DocumentIdTooLarge(document.document_id))?;
+        let prepared_text_bytes = document.prepared_text.len() as u64;
+        if prepared_text_bytes > self.limits.max_staged_prepared_text_bytes {
+            return Err(SurfaceIndexError::StagedBuildStateExceedsLimit {
+                prepared_text_bytes,
+                token_records: 0,
+                prepared_text_limit: self.limits.max_staged_prepared_text_bytes,
+                token_record_limit: self.limits.max_staged_token_records,
+            });
+        }
+        self.stats.maximum_staged_prepared_text_bytes = self
+            .stats
+            .maximum_staged_prepared_text_bytes
+            .max(prepared_text_bytes);
+        if prepared_text_bytes > self.limits.max_staged_prepared_text_bytes / 2 {
+            self.stats.large_documents_streamed += 1;
+        }
+
+        let global_token_start =
+            u32::try_from(self.store.token_surface_ids.len()).map_err(|_| {
+                SurfaceIndexError::TokenPopulationExceedsU32Capacity {
+                    token_count: self.store.token_surface_ids.len() as u64,
+                }
+            })?;
+        let tokenization_started = Instant::now();
+        let mut tokens_seen = 0usize;
+        let tokenization_config = self.tokenization_config;
+        visit_tokens(
+            document.prepared_text,
+            tokenizer_document_id,
+            &tokenization_config,
+            |token| {
+                tokens_seen += 1;
+                if tokens_seen.is_multiple_of(1_024) && self.cancellation.is_cancelled() {
+                    return Err(SurfaceIndexError::Cancelled);
+                }
+                if !token.counts_as_word() {
+                    return Ok(());
+                }
+                if self.store.token_surface_ids.len() >= u32::MAX as usize {
+                    return Err(SurfaceIndexError::TokenPopulationExceedsU32Capacity {
+                        token_count: self.store.token_surface_ids.len() as u64 + 1,
+                    });
+                }
+                let surface_symbol_id = self.store.intern_surface(token.surface)?;
+                try_reserve(&mut self.store.token_surface_ids, 1, "token surface ids")?;
+                self.store.token_surface_ids.push(surface_symbol_id);
+                if self.store.token_surface_ids.len().is_multiple_of(4_096) {
+                    self.enforce_resident_limit()?;
+                }
+                Ok(())
+            },
+        )?;
+        self.stats.tokenization_elapsed += tokenization_started.elapsed();
+
+        let token_count =
+            u32::try_from(self.store.token_surface_ids.len() - global_token_start as usize)
+                .map_err(|_| SurfaceIndexError::TokenPopulationExceedsU32Capacity {
+                    token_count: self.store.token_surface_ids.len() as u64,
+                })?;
+        try_reserve(&mut self.store.documents, 1, "indexed documents")?;
+        self.store.documents.push(SurfaceIndexDocument {
+            document_id: document.document_id,
+            source_path: fallible_string_clone(&document.source_path, "source path")?,
+            display_name: fallible_string_clone(&document.display_name, "display name")?,
+            global_token_start,
+            token_count,
+        });
+        self.last_document_id = Some(document.document_id);
+        self.stats.total_documents += 1;
+        self.stats.total_tokens += token_count as u64;
+        self.enforce_resident_limit()
+    }
+
+    fn enforce_resident_limit(&self) -> Result<(), SurfaceIndexError> {
+        let projected_bytes = self
+            .store
+            .estimated_resident_bytes()
+            .saturating_add(
+                (self.store.token_surface_ids.len() * std::mem::size_of::<u32>()) as u64,
+            )
+            .saturating_add(
+                ((self.store.normalised_symbols.len() + 1) * std::mem::size_of::<u64>()) as u64,
+            );
+        if projected_bytes > self.limits.max_projected_resident_index_bytes {
+            return Err(SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
+                projected_bytes,
+                limit_bytes: self.limits.max_projected_resident_index_bytes,
+            });
+        }
+        Ok(())
+    }
+
+    pub fn finish(
+        mut self,
+    ) -> Result<(InMemoryIndexStore, SurfaceIndexBuildStats), SurfaceIndexError> {
+        self.enforce_resident_limit()?;
+        let postings_started = Instant::now();
+        self.store.build_postings(&self.cancellation)?;
+        self.stats.postings_elapsed = postings_started.elapsed();
+        self.stats.distinct_surfaces = self.store.surface_symbols.len() as u64;
+        self.stats.distinct_normalised_keys = self.store.normalised_symbols.len() as u64;
+        self.stats.final_estimated_resident_bytes = self.store.estimated_resident_bytes();
+        if self.stats.final_estimated_resident_bytes
+            > self.limits.max_projected_resident_index_bytes
+        {
+            return Err(SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
+                projected_bytes: self.stats.final_estimated_resident_bytes,
+                limit_bytes: self.limits.max_projected_resident_index_bytes,
+            });
+        }
+        debug_assert!(self.store.has_valid_internal_references());
+        Ok((self.store, self.stats))
+    }
 }
 
 impl InMemoryIndexStore {
@@ -177,119 +564,368 @@ impl InMemoryIndexStore {
         documents: &[SurfaceIndexDocumentInput<'_>],
         tokenization_config: &TokenizationConfig,
     ) -> Result<Self, SurfaceIndexError> {
-        let mut store = Self::default();
+        Self::build_with_limits(
+            documents,
+            tokenization_config,
+            SurfaceIndexResourceLimits::default(),
+        )
+    }
 
-        for document in documents {
-            if store.documents.contains_key(&document.document_id) {
-                return Err(SurfaceIndexError::DuplicateDocumentId(document.document_id));
+    pub fn build_with_limits(
+        documents: &[SurfaceIndexDocumentInput<'_>],
+        tokenization_config: &TokenizationConfig,
+        limits: SurfaceIndexResourceLimits,
+    ) -> Result<Self, SurfaceIndexError> {
+        Self::build_with_limits_and_stats(documents, tokenization_config, limits)
+            .map(|(store, _)| store)
+    }
+
+    pub fn build_with_limits_and_stats(
+        documents: &[SurfaceIndexDocumentInput<'_>],
+        tokenization_config: &TokenizationConfig,
+        limits: SurfaceIndexResourceLimits,
+    ) -> Result<(Self, SurfaceIndexBuildStats), SurfaceIndexError> {
+        let mut sorted_documents = Vec::new();
+        try_reserve(
+            &mut sorted_documents,
+            documents.len(),
+            "document input ordering",
+        )?;
+        sorted_documents.extend(documents.iter());
+        sorted_documents.sort_by_key(|document| document.document_id);
+        for pair in sorted_documents.windows(2) {
+            if pair[0].document_id == pair[1].document_id {
+                return Err(SurfaceIndexError::DuplicateDocumentId(pair[0].document_id));
             }
-
-            let tokenizer_document_id = u32::try_from(document.document_id)
-                .map_err(|_| SurfaceIndexError::DocumentIdTooLarge(document.document_id))?;
-            let word_tokens = tokenize(
-                document.prepared_text,
-                tokenizer_document_id,
-                tokenization_config,
-            )
-            .into_iter()
-            .filter(|token| token.counts_as_word())
-            .collect::<Vec<_>>();
-            let token_byte_offsets = word_tokens
-                .iter()
-                .map(|token| (token.byte_start, token.byte_end))
-                .collect::<Vec<_>>();
-            let prepared_char_offsets = prepared_char_offsets_for_token_bytes(
-                document.prepared_text,
-                document.document_id,
-                &token_byte_offsets,
-            )?;
-
-            let mut records = Vec::new();
-            for (token, (prepared_char_start, prepared_char_end)) in
-                word_tokens.into_iter().zip(prepared_char_offsets)
-            {
-                records.push(SurfaceIndexTokenRecord {
-                    document_id: document.document_id,
-                    token_ordinal_in_document: records.len(),
-                    surface: token.surface.to_string(),
-                    normalised_surface: concordance_key(token.surface, false),
-                    exact_surface: concordance_key(token.surface, true),
-                    prepared_char_start,
-                    prepared_char_end,
-                    counts_as_word: token.counts_as_word(),
-                });
-            }
-
-            for record in &records {
-                store
-                    .postings_by_normalised_surface
-                    .entry(record.normalised_surface.clone())
-                    .or_default()
-                    .push(SurfacePosting {
-                        document_id: record.document_id,
-                        token_ordinal_in_document: record.token_ordinal_in_document,
-                        prepared_char_start: record.prepared_char_start,
-                        prepared_char_end: record.prepared_char_end,
-                    });
-                store
-                    .postings_by_exact_surface
-                    .entry(record.exact_surface.clone())
-                    .or_default()
-                    .push(SurfacePosting {
-                        document_id: record.document_id,
-                        token_ordinal_in_document: record.token_ordinal_in_document,
-                        prepared_char_start: record.prepared_char_start,
-                        prepared_char_end: record.prepared_char_end,
-                    });
-            }
-
-            store.total_indexed_tokens += records.len();
-            store.documents.insert(
-                document.document_id,
-                SurfaceIndexDocument {
-                    document_id: document.document_id,
-                    source_path: document.source_path.clone(),
-                    display_name: document.display_name.clone(),
-                    token_count: records.len(),
-                },
-            );
-            store
-                .records_by_document
-                .insert(document.document_id, records);
         }
 
-        sort_posting_map(&mut store.postings_by_normalised_surface);
-        sort_posting_map(&mut store.postings_by_exact_surface);
+        let mut builder = SurfaceIndexBuilder::new(*tokenization_config, limits);
+        for document in sorted_documents {
+            builder.add_document(document)?;
+        }
+        builder.finish()
+    }
 
-        Ok(store)
+    fn intern_surface(&mut self, symbol: &str) -> Result<u32, SurfaceIndexError> {
+        let hash = symbol_hash(symbol);
+        if let Some(ids) = self.surface_ids_by_hash.get(&hash) {
+            for &id in ids {
+                if self
+                    .surface_symbols
+                    .get(id as usize)
+                    .is_some_and(|known| known == symbol)
+                {
+                    return Ok(id);
+                }
+            }
+        }
+
+        let normalised = concordance_key(symbol, false);
+        let normalised_id = self.intern_normalised(&normalised)?;
+        let id = u32::try_from(self.surface_symbols.len()).map_err(|_| {
+            SurfaceIndexError::Allocation("surface symbol table exceeds u32 capacity".to_string())
+        })?;
+        try_reserve(&mut self.surface_symbols, 1, "surface symbol table")?;
+        try_reserve(
+            &mut self.surface_to_normalised,
+            1,
+            "surface normalisation map",
+        )?;
+        self.surface_symbols
+            .push(fallible_string_clone(symbol, "interned symbol")?);
+        self.surface_to_normalised.push(normalised_id);
+
+        if !self.surface_ids_by_hash.contains_key(&hash) {
+            self.surface_ids_by_hash
+                .try_reserve(1)
+                .map_err(|error| allocation_error("surface symbol hash table", error))?;
+        }
+        let ids = self.surface_ids_by_hash.entry(hash).or_default();
+        try_reserve(ids, 1, "surface symbol collision bucket")?;
+        ids.push(id);
+        Ok(id)
+    }
+
+    fn intern_normalised(&mut self, symbol: &str) -> Result<u32, SurfaceIndexError> {
+        let hash = symbol_hash(symbol);
+        if let Some(id) = self.normalised_ids_by_hash.get(&hash).and_then(|ids| {
+            ids.iter().copied().find(|&id| {
+                self.normalised_symbols
+                    .get(id as usize)
+                    .is_some_and(|known| known == symbol)
+            })
+        }) {
+            return Ok(id);
+        }
+        let id = u32::try_from(self.normalised_symbols.len()).map_err(|_| {
+            SurfaceIndexError::Allocation(
+                "normalised symbol table exceeds u32 capacity".to_string(),
+            )
+        })?;
+        try_reserve(&mut self.normalised_symbols, 1, "normalised symbol table")?;
+        self.normalised_symbols
+            .push(fallible_string_clone(symbol, "normalised symbol")?);
+        if !self.normalised_ids_by_hash.contains_key(&hash) {
+            self.normalised_ids_by_hash
+                .try_reserve(1)
+                .map_err(|error| allocation_error("normalised symbol hash table", error))?;
+        }
+        let ids = self.normalised_ids_by_hash.entry(hash).or_default();
+        try_reserve(ids, 1, "normalised symbol collision bucket")?;
+        ids.push(id);
+        Ok(id)
+    }
+
+    fn normalised_symbol_id(&self, symbol: &str) -> Option<u32> {
+        lookup_symbol_id(
+            &self.normalised_symbols,
+            &self.normalised_ids_by_hash,
+            symbol,
+        )
+    }
+
+    fn surface_symbol_id(&self, symbol: &str) -> Option<u32> {
+        lookup_symbol_id(&self.surface_symbols, &self.surface_ids_by_hash, symbol)
+    }
+
+    pub(crate) fn rebuild_symbol_lookup(&mut self) -> Result<(), SurfaceIndexError> {
+        rebuild_symbol_lookup(
+            &self.surface_symbols,
+            &mut self.surface_ids_by_hash,
+            "surface symbol",
+        )?;
+        rebuild_symbol_lookup(
+            &self.normalised_symbols,
+            &mut self.normalised_ids_by_hash,
+            "normalised symbol",
+        )?;
+        Ok(())
+    }
+
+    fn build_postings(
+        &mut self,
+        cancellation: &SurfaceIndexCancellationToken,
+    ) -> Result<(), SurfaceIndexError> {
+        let mut counts = Vec::<u64>::new();
+        try_reserve(&mut counts, self.normalised_symbols.len(), "posting counts")?;
+        counts.resize(self.normalised_symbols.len(), 0);
+        for (index, &surface_id) in self.token_surface_ids.iter().enumerate() {
+            if index % 16_384 == 0 && cancellation.is_cancelled() {
+                return Err(SurfaceIndexError::Cancelled);
+            }
+            let normalised_id = self.surface_to_normalised[surface_id as usize] as usize;
+            counts[normalised_id] = counts[normalised_id].checked_add(1).ok_or_else(|| {
+                SurfaceIndexError::Allocation("posting count overflow".to_string())
+            })?;
+        }
+        try_reserve(
+            &mut self.postings_offsets,
+            counts.len().saturating_add(1),
+            "posting offsets",
+        )?;
+        self.postings_offsets.push(0);
+        for (index, count) in counts.into_iter().enumerate() {
+            if index % 16_384 == 0 && cancellation.is_cancelled() {
+                return Err(SurfaceIndexError::Cancelled);
+            }
+            let next = self
+                .postings_offsets
+                .last()
+                .copied()
+                .unwrap_or(0)
+                .checked_add(count)
+                .ok_or_else(|| {
+                    SurfaceIndexError::Allocation("posting offset overflow".to_string())
+                })?;
+            self.postings_offsets.push(next);
+        }
+        try_reserve(
+            &mut self.postings_positions,
+            self.token_surface_ids.len(),
+            "posting positions",
+        )?;
+        self.postings_positions
+            .resize(self.token_surface_ids.len(), 0);
+        let mut cursors = self.postings_offsets[..self.normalised_symbols.len()].to_vec();
+        for (position, &surface_id) in self.token_surface_ids.iter().enumerate() {
+            if position % 16_384 == 0 && cancellation.is_cancelled() {
+                return Err(SurfaceIndexError::Cancelled);
+            }
+            let position = u32::try_from(position).map_err(|_| {
+                SurfaceIndexError::TokenPopulationExceedsU32Capacity {
+                    token_count: self.token_surface_ids.len() as u64,
+                }
+            })?;
+            let normalised_id = self.surface_to_normalised[surface_id as usize] as usize;
+            let cursor = cursors[normalised_id] as usize;
+            self.postings_positions[cursor] = position;
+            cursors[normalised_id] += 1;
+        }
+        Ok(())
+    }
+
+    /// Bytes occupied by compact numeric arrays. This includes vocabulary-sized
+    /// maps as well as the two corpus-sized `u32` arrays.
+    pub fn fixed_array_bytes(&self) -> u64 {
+        (self.surface_to_normalised.len() * std::mem::size_of::<u32>()
+            + self.token_surface_ids.len() * std::mem::size_of::<u32>()
+            + self.postings_offsets.len() * std::mem::size_of::<u64>()
+            + self.postings_positions.len() * std::mem::size_of::<u32>()) as u64
+    }
+
+    pub fn symbol_utf8_bytes(&self) -> u64 {
+        self.surface_symbols
+            .iter()
+            .chain(&self.normalised_symbols)
+            .map(|symbol| symbol.len() as u64)
+            .sum()
+    }
+
+    /// Conservative lookup estimate: hash entries, collision IDs and String
+    /// headers. Allocator-specific bucket slack is represented by a 2x factor.
+    pub fn lookup_overhead_estimate(&self) -> u64 {
+        let symbols = (self.surface_symbols.len() + self.normalised_symbols.len()) as u64;
+        symbols.saturating_mul(
+            (2 * (std::mem::size_of::<u64>() + std::mem::size_of::<Vec<u32>>())
+                + std::mem::size_of::<String>()) as u64,
+        )
+    }
+
+    pub fn estimated_resident_bytes(&self) -> u64 {
+        let document_metadata = self.documents.iter().fold(0u64, |total, document| {
+            total
+                .saturating_add(std::mem::size_of::<SurfaceIndexDocument>() as u64)
+                .saturating_add(document.source_path.len() as u64)
+                .saturating_add(document.display_name.len() as u64)
+        });
+        self.fixed_array_bytes()
+            .saturating_add(self.symbol_utf8_bytes())
+            .saturating_add(self.lookup_overhead_estimate())
+            .saturating_add(document_metadata)
+    }
+
+    #[cfg(test)]
+    fn total_postings(&self) -> usize {
+        self.postings_positions.len()
+    }
+
+    pub(crate) fn refresh_document_metadata(
+        &mut self,
+        inputs: &[SurfaceIndexDocumentInput<'_>],
+    ) -> Result<(), SurfaceIndexError> {
+        if inputs.len() != self.documents.len() {
+            return Err(SurfaceIndexError::InconsistentStore {
+                document_id: 0,
+                token_ordinal_in_document: 0,
+                node_token_length: 0,
+            });
+        }
+        for input in inputs {
+            let document = self.document_mut(input.document_id).ok_or(
+                SurfaceIndexError::InconsistentStore {
+                    document_id: input.document_id,
+                    token_ordinal_in_document: 0,
+                    node_token_length: 0,
+                },
+            )?;
+            document.source_path = fallible_string_clone(&input.source_path, "source path")?;
+            document.display_name = fallible_string_clone(&input.display_name, "display name")?;
+        }
+        Ok(())
+    }
+
+    fn document_mut(&mut self, document_id: usize) -> Option<&mut SurfaceIndexDocument> {
+        self.documents
+            .binary_search_by_key(&document_id, |document| document.document_id)
+            .ok()
+            .map(|index| &mut self.documents[index])
+    }
+
+    fn has_valid_internal_references(&self) -> bool {
+        if self.surface_to_normalised.len() != self.surface_symbols.len()
+            || self.postings_offsets.len() != self.normalised_symbols.len().saturating_add(1)
+            || self.postings_positions.len() != self.token_surface_ids.len()
+            || self
+                .documents
+                .windows(2)
+                .any(|pair| pair[0].document_id >= pair[1].document_id)
+        {
+            return false;
+        }
+        let mut token_total = 0u64;
+        for document in &self.documents {
+            if document.global_token_start as u64 != token_total {
+                return false;
+            }
+            let Some(next_total) = token_total.checked_add(document.token_count as u64) else {
+                return false;
+            };
+            token_total = next_total;
+        }
+        if token_total != self.token_surface_ids.len() as u64
+            || self
+                .surface_to_normalised
+                .iter()
+                .any(|id| *id as usize >= self.normalised_symbols.len())
+            || self
+                .token_surface_ids
+                .iter()
+                .any(|id| *id as usize >= self.surface_symbols.len())
+            || self.postings_offsets.first() != Some(&0)
+            || self.postings_offsets.last().copied() != Some(self.postings_positions.len() as u64)
+            || self
+                .postings_offsets
+                .windows(2)
+                .any(|pair| pair[0] > pair[1])
+            || self
+                .postings_positions
+                .iter()
+                .any(|position| *position as usize >= self.token_surface_ids.len())
+        {
+            return false;
+        }
+        for normalised_id in 0..self.normalised_symbols.len() {
+            let start = self.postings_offsets[normalised_id] as usize;
+            let end = self.postings_offsets[normalised_id + 1] as usize;
+            let postings = &self.postings_positions[start..end];
+            if postings.windows(2).any(|pair| pair[0] >= pair[1]) {
+                return false;
+            }
+            if postings.iter().any(|position| {
+                let surface_id = self.token_surface_ids[*position as usize] as usize;
+                self.surface_to_normalised[surface_id] as usize != normalised_id
+            }) {
+                return false;
+            }
+        }
+        true
     }
 }
 
 impl IndexStore for InMemoryIndexStore {
     fn postings(&self, normalised_surface: &str) -> Option<&[SurfacePosting]> {
-        self.postings_by_normalised_surface
-            .get(normalised_surface)
-            .map(Vec::as_slice)
-    }
-
-    fn exact_surface_postings(&self, exact_surface: &str) -> Option<&[SurfacePosting]> {
-        self.postings_by_exact_surface
-            .get(exact_surface)
-            .map(Vec::as_slice)
+        let symbol_id = self.normalised_symbol_id(normalised_surface)? as usize;
+        let start = *self.postings_offsets.get(symbol_id)? as usize;
+        let end = *self.postings_offsets.get(symbol_id + 1)? as usize;
+        (start != end).then_some(&self.postings_positions[start..end])
     }
 
     fn records_for_document(&self, document_id: usize) -> Option<&[SurfaceIndexTokenRecord]> {
-        self.records_by_document
-            .get(&document_id)
-            .map(Vec::as_slice)
+        let document = self.document(document_id)?;
+        let start = document.global_token_start as usize;
+        let end = start.checked_add(document.token_count as usize)?;
+        self.token_surface_ids.get(start..end)
     }
 
     fn document(&self, document_id: usize) -> Option<&SurfaceIndexDocument> {
-        self.documents.get(&document_id)
+        self.documents
+            .binary_search_by_key(&document_id, |document| document.document_id)
+            .ok()
+            .map(|index| &self.documents[index])
     }
 
     fn total_indexed_tokens(&self) -> usize {
-        self.total_indexed_tokens
+        self.token_surface_ids.len()
     }
 
     fn total_indexed_documents(&self) -> usize {
@@ -298,20 +934,24 @@ impl IndexStore for InMemoryIndexStore {
 
     fn indexed_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store> {
         Box::new(
-            self.postings_by_normalised_surface
-                .keys()
-                .map(String::as_str),
+            self.normalised_symbols
+                .iter()
+                .enumerate()
+                .filter_map(|(index, symbol)| {
+                    (self.postings_offsets[index] != self.postings_offsets[index + 1])
+                        .then_some(symbol.as_str())
+                }),
         )
     }
 
     fn indexed_exact_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store> {
-        Box::new(self.postings_by_exact_surface.keys().map(String::as_str))
+        Box::new(self.surface_symbols.iter().map(String::as_str))
     }
 
     fn indexed_documents<'store>(
         &'store self,
     ) -> Box<dyn Iterator<Item = &'store SurfaceIndexDocument> + 'store> {
-        Box::new(self.documents.values())
+        Box::new(self.documents.iter())
     }
 }
 
