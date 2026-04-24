@@ -1909,23 +1909,270 @@ fn search_concordance_documents_scan_with_stats(
         distribution_limit,
     );
 
-    Ok(ConcordanceResult {
-        query: query_tokens.join(" "),
-        context_filter: context_filter_tokens.map(|tokens| tokens.join(" ")),
-        case_sensitive: query.case_sensitive,
-        sort_key: query.sort_key,
-        window_tokens,
-        total_hits,
-        documents_with_hits: document_counts.len(),
-        selected_documents_total: selected_document_ids.len(),
-        selected_tokens_total,
-        dp,
-        dispersion_label: annotated_dispersion_label(dp).to_string(),
-        top_document_share,
-        offset,
-        limit,
-        rows,
-        distribution,
+    Ok((
+        ConcordanceResult {
+            query: query_tokens.join(" "),
+            context_filter: context_filter_tokens.map(|tokens| tokens.join(" ")),
+            case_sensitive: query.case_sensitive,
+            sort_key: query.sort_key,
+            window_tokens,
+            total_hits,
+            documents_with_hits: document_counts.len(),
+            selected_documents_total: selected_document_ids.len(),
+            selected_tokens_total,
+            dp,
+            dispersion_label: annotated_dispersion_label(dp).to_string(),
+            top_document_share,
+            offset,
+            limit,
+            rows,
+            distribution,
+        },
+        execution_stats,
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scan_concordance_document_into_collector(
+    document: &ConcordanceDocument,
+    query_keys: &[String],
+    context_filter_keys: Option<&[String]>,
+    context_filter_direction: ConcordanceContextFilterDirection,
+    case_sensitive: bool,
+    window_tokens: usize,
+    tokenization_config: &TokenizationConfig,
+    collector: &mut BoundedConcordanceCollector,
+) -> Result<u64, ConcordanceError> {
+    let document_id = u32::try_from(document.document_index)
+        .map_err(|_| ConcordanceError::InvalidDocumentIdentity)?;
+    let lookaround = window_tokens.max(3);
+    let mut buffer = VecDeque::<Token<'_>>::new();
+    let mut buffer_start = 0usize;
+    let mut total_tokens = 0usize;
+    let mut next_candidate = 0usize;
+    visit_tokens(&document.text, document_id, tokenization_config, |token| {
+        if !token.counts_as_word() {
+            return Ok(());
+        }
+        buffer.push_back(token);
+        total_tokens += 1;
+        while next_candidate
+            .checked_add(query_keys.len())
+            .and_then(|end| end.checked_add(lookaround))
+            .is_some_and(|ready| ready <= total_tokens)
+        {
+            process_streaming_scan_candidate(
+                document.document_index,
+                &buffer,
+                buffer_start,
+                total_tokens,
+                next_candidate,
+                query_keys,
+                context_filter_keys,
+                context_filter_direction,
+                case_sensitive,
+                window_tokens,
+                collector,
+            )?;
+            next_candidate += 1;
+            let keep_from = next_candidate.saturating_sub(lookaround);
+            while buffer_start < keep_from {
+                buffer.pop_front();
+                buffer_start += 1;
+            }
+        }
+        Ok::<(), ConcordanceError>(())
+    })?;
+    while next_candidate
+        .checked_add(query_keys.len())
+        .is_some_and(|end| end <= total_tokens)
+    {
+        process_streaming_scan_candidate(
+            document.document_index,
+            &buffer,
+            buffer_start,
+            total_tokens,
+            next_candidate,
+            query_keys,
+            context_filter_keys,
+            context_filter_direction,
+            case_sensitive,
+            window_tokens,
+            collector,
+        )?;
+        next_candidate += 1;
+        let keep_from = next_candidate.saturating_sub(lookaround);
+        while buffer_start < keep_from {
+            buffer.pop_front();
+            buffer_start += 1;
+        }
+    }
+    Ok(total_tokens as u64)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn process_streaming_scan_candidate(
+    document_id: usize,
+    buffer: &VecDeque<Token<'_>>,
+    buffer_start: usize,
+    total_tokens: usize,
+    token_index: usize,
+    query_keys: &[String],
+    context_filter_keys: Option<&[String]>,
+    context_filter_direction: ConcordanceContextFilterDirection,
+    case_sensitive: bool,
+    window_tokens: usize,
+    collector: &mut BoundedConcordanceCollector,
+) -> Result<(), ConcordanceError> {
+    collector.stats.candidates_visited += 1;
+    let node_end = token_index + query_keys.len();
+    if !(token_index..node_end).zip(query_keys).all(|(index, key)| {
+        streaming_scan_token(buffer, buffer_start, index).is_some_and(|token| {
+            concordance_surface_matches_key(token.surface, key, case_sensitive)
+        })
+    }) {
+        return Ok(());
+    }
+    let left_start = token_index.saturating_sub(window_tokens);
+    let right_end = node_end.saturating_add(window_tokens).min(total_tokens);
+    if let Some(keys) = context_filter_keys {
+        let left_matches = matches!(
+            context_filter_direction,
+            ConcordanceContextFilterDirection::Left | ConcordanceContextFilterDirection::Both
+        ) && streaming_scan_range_matches(
+            buffer,
+            buffer_start,
+            left_start,
+            token_index,
+            keys,
+            case_sensitive,
+        );
+        let right_matches = matches!(
+            context_filter_direction,
+            ConcordanceContextFilterDirection::Right | ConcordanceContextFilterDirection::Both
+        ) && streaming_scan_range_matches(
+            buffer,
+            buffer_start,
+            node_end,
+            right_end,
+            keys,
+            case_sensitive,
+        );
+        if !left_matches && !right_matches {
+            return Ok(());
+        }
+    }
+
+    let (left_owned, right_owned) = if sort_key_context(collector.sort_key).is_some() {
+        let key_at = |index: Option<usize>| {
+            index
+                .and_then(|index| streaming_scan_token(buffer, buffer_start, index))
+                .map(|token| concordance_key(token.surface, case_sensitive))
+        };
+        (
+            [
+                key_at(token_index.checked_sub(1)),
+                key_at(token_index.checked_sub(2)),
+                key_at(token_index.checked_sub(3)),
+            ],
+            [
+                key_at((node_end < total_tokens).then_some(node_end)),
+                key_at((node_end + 1 < total_tokens).then_some(node_end + 1)),
+                key_at((node_end + 2 < total_tokens).then_some(node_end + 2)),
+            ],
+        )
+    } else {
+        ([None, None, None], [None, None, None])
+    };
+    collector.record(CandidateConcordanceHit {
+        document_id,
+        token_index,
+        node_token_length: query_keys.len(),
+        left_keys: left_owned.each_ref().map(|key| key.as_deref()),
+        right_keys: right_owned.each_ref().map(|key| key.as_deref()),
+    })
+}
+
+fn streaming_scan_token<'text>(
+    buffer: &'text VecDeque<Token<'text>>,
+    buffer_start: usize,
+    absolute_index: usize,
+) -> Option<&'text Token<'text>> {
+    absolute_index
+        .checked_sub(buffer_start)
+        .and_then(|index| buffer.get(index))
+}
+
+fn streaming_scan_range_matches(
+    buffer: &VecDeque<Token<'_>>,
+    buffer_start: usize,
+    start: usize,
+    end: usize,
+    query_keys: &[String],
+    case_sensitive: bool,
+) -> bool {
+    !query_keys.is_empty()
+        && end.saturating_sub(start) >= query_keys.len()
+        && (start..=end - query_keys.len()).any(|candidate| {
+            (candidate..candidate + query_keys.len())
+                .zip(query_keys)
+                .all(|(index, key)| {
+                    streaming_scan_token(buffer, buffer_start, index).is_some_and(|token| {
+                        concordance_surface_matches_key(token.surface, key, case_sensitive)
+                    })
+                })
+        })
+}
+
+fn materialize_streaming_scan_hit(
+    document: &ConcordanceDocument,
+    hit: &CompactConcordanceHit,
+    window_tokens: usize,
+    tokenization_config: &TokenizationConfig,
+) -> Result<ConcordanceRow, ConcordanceError> {
+    let document_id = u32::try_from(document.document_index)
+        .map_err(|_| ConcordanceError::InvalidDocumentIdentity)?;
+    let node_end = hit.token_index + hit.node_token_length;
+    let left_start = hit.token_index.saturating_sub(window_tokens);
+    let right_end = node_end.saturating_add(window_tokens);
+    let mut ordinal = 0usize;
+    let mut left_context = Vec::new();
+    let mut node_tokens = Vec::new();
+    let mut right_context = Vec::new();
+    let _stopped_after_window =
+        visit_tokens(&document.text, document_id, tokenization_config, |token| {
+            if !token.counts_as_word() {
+                return Ok(());
+            }
+            if ordinal >= right_end {
+                return Err(());
+            }
+            if (left_start..hit.token_index).contains(&ordinal) {
+                left_context.push(token.surface.to_string());
+            } else if (hit.token_index..node_end).contains(&ordinal) {
+                node_tokens.push(token.surface.to_string());
+            } else if (node_end..right_end).contains(&ordinal) {
+                right_context.push(token.surface.to_string());
+            }
+            ordinal += 1;
+            if ordinal >= right_end {
+                Err(())
+            } else {
+                Ok(())
+            }
+        });
+    if node_tokens.len() != hit.node_token_length {
+        return Err(ConcordanceError::InvalidHitIdentity);
+    }
+    Ok(ConcordanceRow {
+        document_index: document.document_index,
+        source_path: document.source_path.clone(),
+        display_name: document.display_name.clone(),
+        token_index: hit.token_index,
+        node_token_length: hit.node_token_length,
+        left_context,
+        node: node_tokens.join(" "),
+        right_context,
     })
 }
 
