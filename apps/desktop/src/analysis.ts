@@ -18,6 +18,8 @@ import type { ConcordanceContextFilterDirection as GeneratedConcordanceContextFi
 import type { ConcordanceQuery as GeneratedConcordanceQuery } from "./generated/ConcordanceQuery.js";
 import type { ConcordanceExpansionQuery as GeneratedConcordanceExpansionQuery } from "./generated/ConcordanceExpansionQuery.js";
 import type { ConcordanceExpansionResult as GeneratedConcordanceExpansionResult } from "./generated/ConcordanceExpansionResult.js";
+import type { ConcordancePhase as GeneratedConcordancePhase } from "./generated/ConcordancePhase.js";
+import type { ConcordanceProgress as GeneratedConcordanceProgress } from "./generated/ConcordanceProgress.js";
 import type { ConcordanceCollocateRow as GeneratedConcordanceCollocateRow } from "./generated/ConcordanceCollocateRow.js";
 import type { ConcordanceCollocationDirection as GeneratedConcordanceCollocationDirection } from "./generated/ConcordanceCollocationDirection.js";
 import type { ConcordanceCollocationMeasure as GeneratedConcordanceCollocationMeasure } from "./generated/ConcordanceCollocationMeasure.js";
@@ -386,6 +388,8 @@ export type ConcordanceContextFilterDirection = GeneratedConcordanceContextFilte
 export type ConcordanceQuery = GeneratedConcordanceQuery;
 export type ConcordanceExpansionQuery = GeneratedConcordanceExpansionQuery;
 export type ConcordanceExpansionResult = GeneratedConcordanceExpansionResult;
+export type ConcordancePhase = GeneratedConcordancePhase;
+export type ConcordanceProgress = GeneratedConcordanceProgress;
 export type ConcordanceCollocateRow = GeneratedConcordanceCollocateRow;
 export type ConcordanceCollocationDirection = GeneratedConcordanceCollocationDirection;
 export type ConcordanceCollocationMeasure = GeneratedConcordanceCollocationMeasure;
@@ -516,6 +520,10 @@ export function expandConcordanceContext(
     corpusVersion,
     cleaningConfig,
   });
+}
+
+export function cancelConcordance(): Promise<void> {
+  return invoke("cancel_concordance_command");
 }
 
 export function queryConcordanceCollocations(
