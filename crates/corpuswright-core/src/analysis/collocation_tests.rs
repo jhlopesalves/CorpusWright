@@ -1300,6 +1300,375 @@ fn surface_collocation_vocabulary_sized_aggregate_resource_limit_failure() {
 }
 
 #[test]
+fn surface_collocation_index_refuses_candidate_growth_before_budget() {
+    let text = "alpha target beta";
+    let tokenization_config = TokenizationConfig::default();
+    let inputs = [SurfaceIndexDocumentInput {
+        document_id: 0,
+        source_path: "doc.txt".to_string(),
+        display_name: "doc.txt".to_string(),
+        prepared_text: text,
+    }];
+    let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
+    let limits = crate::index::SurfaceIndexResourceLimits {
+        max_projected_resident_index_bytes: 1,
+        ..Default::default()
+    };
+    let error = aggregate_concordance_collocations_index_with_limits(
+        &store,
+        &collocation_query("target"),
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+        limits,
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        ConcordanceError::Index(
+            crate::index::SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
+                projected_bytes,
+                limit_bytes: 1,
+            }
+        ) if projected_bytes > 1
+    ));
+}
+
+#[test]
+fn concordance_analysis_memory_admission_is_combined_and_underflow_safe() {
+    let limits = ConcordanceAnalysisMemoryLimits {
+        max_combined_bytes: 1_000,
+        safety_margin_bytes: 100,
+    };
+    let admitted = ConcordanceAnalysisMemoryEstimate::admit(800, 75, limits).unwrap();
+    assert_eq!(admitted.remaining_collocation_bytes, 100);
+    assert_eq!(admitted.combined_projected_bytes, 975);
+
+    let near_limit = ConcordanceAnalysisMemoryEstimate::admit(901, 0, limits).unwrap_err();
+    assert!(matches!(
+        near_limit,
+        ConcordanceError::AnalysisMemoryLimitExceeded {
+            estimated_resident_index_bytes: 901,
+            projected_aggregate_bytes: 0,
+            combined_limit_bytes: 1_000,
+            safety_margin_bytes: 100,
+        }
+    ));
+
+    let aggregate_too_large =
+        ConcordanceAnalysisMemoryEstimate::admit(800, 101, limits).unwrap_err();
+    assert!(matches!(
+        aggregate_too_large,
+        ConcordanceError::AnalysisMemoryLimitExceeded {
+            projected_aggregate_bytes: 101,
+            ..
+        }
+    ));
+
+    let arithmetic_underflow = ConcordanceAnalysisMemoryEstimate::admit(
+        u64::MAX,
+        u64::MAX,
+        ConcordanceAnalysisMemoryLimits {
+            max_combined_bytes: 1,
+            safety_margin_bytes: u64::MAX,
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(
+        arithmetic_underflow,
+        ConcordanceError::AnalysisMemoryLimitExceeded { .. }
+    ));
+}
+
+#[test]
+fn surface_collocation_combined_budget_admits_small_and_refuses_growth() {
+    let text = "alpha target beta alpha";
+    let tokenization_config = TokenizationConfig::default();
+    let inputs = [SurfaceIndexDocumentInput {
+        document_id: 0,
+        source_path: "doc.txt".to_string(),
+        display_name: "doc.txt".to_string(),
+        prepared_text: text,
+    }];
+    let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
+    let index_bytes = store.estimated_resident_bytes();
+    let surface_limits = crate::index::SurfaceIndexResourceLimits::default();
+    let safety_margin_bytes = 1_024;
+    let admitted_limit = index_bytes
+        .saturating_add(safety_margin_bytes)
+        .saturating_add(1_000_000);
+    let (_, stats) = aggregate_concordance_collocations_index_with_memory_limits(
+        &store,
+        &collocation_query("target"),
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+        surface_limits,
+        ConcordanceAnalysisMemoryLimits {
+            max_combined_bytes: admitted_limit,
+            safety_margin_bytes,
+        },
+    )
+    .unwrap();
+    assert_eq!(stats.estimated_resident_index_bytes, index_bytes);
+    assert_eq!(stats.combined_limit_bytes, admitted_limit);
+    assert_eq!(stats.safety_margin_bytes, safety_margin_bytes);
+    assert!(stats.combined_projected_bytes <= admitted_limit);
+
+    let refusal = aggregate_concordance_collocations_index_with_memory_limits(
+        &store,
+        &collocation_query("target"),
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+        surface_limits,
+        ConcordanceAnalysisMemoryLimits {
+            max_combined_bytes: index_bytes
+                .saturating_add(safety_margin_bytes)
+                .saturating_add(1),
+            safety_margin_bytes,
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(
+        &refusal,
+        ConcordanceError::AnalysisMemoryLimitExceeded {
+            estimated_resident_index_bytes,
+            projected_aggregate_bytes,
+            safety_margin_bytes: 1_024,
+            ..
+        } if *estimated_resident_index_bytes == index_bytes && *projected_aggregate_bytes > 1
+    ));
+    assert!(refusal.prevents_unbounded_scan_fallback());
+    let message = refusal.to_string();
+    assert!(message.contains("Narrow the file scope"));
+    assert!(message.contains("less frequent node"));
+    assert!(!message.contains("add more RAM"));
+}
+
+#[test]
+fn surface_collocation_cancellation_interrupts_frequency_finalisation() {
+    let text = "alpha target alpha alpha";
+    let tokenization_config = TokenizationConfig::default();
+    let inputs = [SurfaceIndexDocumentInput {
+        document_id: 0,
+        source_path: "doc.txt".to_string(),
+        display_name: "doc.txt".to_string(),
+        prepared_text: text,
+    }];
+    let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
+    let source_id = store.concordance_symbol_id("alpha", false).unwrap();
+    let mut candidates = IndexedCollocationCandidates::default();
+    candidates.counts.insert(source_id, Default::default());
+    candidates.peak_candidate_entries = 1;
+    let cancellation = SurfaceIndexCancellationToken::default();
+
+    let error = finalise_indexed_collocation_candidates(
+        &store,
+        ConcordanceCollocationAggregationSignature {
+            query: "target".to_string(),
+            case_sensitive: false,
+        },
+        &HashSet::from([0]),
+        4,
+        candidates,
+        false,
+        &cancellation,
+        crate::index::SurfaceIndexResourceLimits::default(),
+        || cancellation.cancel(),
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        ConcordanceError::Index(crate::index::SurfaceIndexError::Cancelled)
+    ));
+}
+
+fn collocation_scale_usize(name: &str, default: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
+#[test]
+#[ignore = "release-only synthetic evidence; configure with CORPUSWRIGHT_COLLOCATION_SCALE_* env vars"]
+fn surface_collocation_scale_evidence() {
+    const PROJECTED_TOKENS: u64 = 60_000_000;
+    let token_count = collocation_scale_usize("CORPUSWRIGHT_COLLOCATION_SCALE_TOKENS", 5_000_000);
+    let vocabulary_size =
+        collocation_scale_usize("CORPUSWRIGHT_COLLOCATION_SCALE_VOCABULARY", 4_096);
+    let candidate_percent =
+        collocation_scale_usize("CORPUSWRIGHT_COLLOCATION_SCALE_CANDIDATE_PERCENT", 1).min(100);
+    let tokens_per_document = collocation_scale_usize(
+        "CORPUSWRIGHT_COLLOCATION_SCALE_TOKENS_PER_DOCUMENT",
+        4_000_000,
+    );
+    assert!(token_count > vocabulary_size);
+    assert!(vocabulary_size >= 4);
+    let candidate_vocabulary = vocabulary_size
+        .saturating_mul(candidate_percent)
+        .div_ceil(100)
+        .clamp(1, vocabulary_size - 1);
+    let non_candidate_vocabulary = vocabulary_size - candidate_vocabulary;
+    let vocabulary = (0..vocabulary_size)
+        .map(|index| format!("v{index}"))
+        .collect::<Vec<_>>();
+
+    let generation_started = Instant::now();
+    let document_count = token_count.div_ceil(tokens_per_document);
+    let mut texts = Vec::with_capacity(document_count);
+    let mut generated_tokens = 0usize;
+    while generated_tokens < token_count {
+        let document_tokens = (token_count - generated_tokens).min(tokens_per_document);
+        let mut text = String::with_capacity(document_tokens.saturating_mul(8));
+        for local_position in 0..document_tokens {
+            let position = generated_tokens + local_position;
+            let token = if position < vocabulary_size {
+                vocabulary[position].as_str()
+            } else {
+                let phase = (position - vocabulary_size) % 64;
+                if phase == 0 {
+                    "commonnode"
+                } else if phase == 32 && (position - vocabulary_size) % 1_024 == 32 {
+                    "moderatenode"
+                } else if phase <= 20 || phase >= 44 {
+                    vocabulary[position % candidate_vocabulary].as_str()
+                } else {
+                    vocabulary[candidate_vocabulary + position % non_candidate_vocabulary].as_str()
+                }
+            };
+            text.push_str(token);
+            text.push(' ');
+        }
+        texts.push(text);
+        generated_tokens += document_tokens;
+    }
+    let generation_elapsed = generation_started.elapsed();
+
+    let tokenization_config = TokenizationConfig::default();
+    let inputs = texts
+        .iter()
+        .enumerate()
+        .map(|(document_id, text)| SurfaceIndexDocumentInput {
+            document_id,
+            source_path: format!("synthetic-scale-{document_id}.txt"),
+            display_name: format!("synthetic-scale-{document_id}.txt"),
+            prepared_text: text.as_str(),
+        })
+        .collect::<Vec<_>>();
+    let index_started = Instant::now();
+    let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
+    let index_elapsed = index_started.elapsed();
+    drop(inputs);
+    drop(texts);
+
+    let mut common_query = collocation_query("commonnode");
+    common_query.limit = 500;
+    let common_started = Instant::now();
+    let (common_aggregate, common_stats) = aggregate_concordance_collocations_index(
+        &store,
+        &common_query,
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+    )
+    .unwrap();
+    let common_elapsed = common_started.elapsed();
+    let common_result =
+        query_concordance_collocations_from_aggregate(&common_aggregate, &common_query);
+
+    let mut moderate_query = collocation_query("moderatenode");
+    moderate_query.limit = 500;
+    let moderate_started = Instant::now();
+    let (moderate_aggregate, moderate_stats) = aggregate_concordance_collocations_index(
+        &store,
+        &moderate_query,
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+    )
+    .unwrap();
+    let moderate_elapsed = moderate_started.elapsed();
+    let moderate_result =
+        query_concordance_collocations_from_aggregate(&moderate_aggregate, &moderate_query);
+
+    let cached = Arc::new(common_aggregate);
+    let cache_handle = Arc::clone(&cached);
+    let cache_arc_strong_count = Arc::strong_count(&cached);
+    assert!(Arc::ptr_eq(&cached, &cache_handle));
+    let complete_vocabulary = store.concordance_symbols(false).count();
+    let projected_candidate_symbol_bytes = vocabulary
+        .iter()
+        .take(candidate_vocabulary)
+        .map(|symbol| symbol.len() as u64)
+        .sum::<u64>();
+    let projected_aggregate_bytes = indexed_final_aggregate_bytes(
+        "commonnode".len() as u64,
+        candidate_vocabulary,
+        projected_candidate_symbol_bytes,
+    );
+    let compact_60m_token_array_floor =
+        crate::index::SurfaceIndexResourceEstimate::compact_token_array_lower_bound(
+            PROJECTED_TOKENS,
+        )
+        .unwrap();
+    let legacy_60m_structural_floor =
+        crate::index::SurfaceIndexResourceEstimate::legacy_structural_lower_bound(PROJECTED_TOKENS)
+            .unwrap();
+
+    eprintln!(
+        "[collocation-scale] measured_tokens={token_count} projected_tokens={PROJECTED_TOKENS} measured_documents={document_count} tokens_per_document={tokens_per_document} vocabulary_configured={vocabulary_size} candidate_percent={candidate_percent} generation_ms={} index_ms={} common_ms={} moderate_ms={}",
+        generation_elapsed.as_millis(),
+        index_elapsed.as_millis(),
+        common_elapsed.as_millis(),
+        moderate_elapsed.as_millis(),
+    );
+    eprintln!(
+        "[collocation-scale] index_estimated_resident_bytes={} complete_index_vocabulary={} compact_60m_token_array_floor={} legacy_60m_structural_floor={}",
+        store.estimated_resident_bytes(),
+        complete_vocabulary,
+        compact_60m_token_array_floor,
+        legacy_60m_structural_floor,
+    );
+    eprintln!(
+        "[collocation-scale] common_f_node={} common_candidates={} common_candidate_symbol_bytes={} common_final_projected_bytes={} common_peak_projected_bytes={} common_rows={} cache_arc_strong_count={}",
+        cached.f_node,
+        common_stats.final_candidate_count,
+        common_stats.candidate_symbol_bytes,
+        common_stats.final_projected_bytes,
+        common_stats.peak_projected_bytes,
+        common_result.rows.len(),
+        cache_arc_strong_count,
+    );
+    eprintln!(
+        "[collocation-scale] moderate_f_node={} moderate_candidates={} moderate_candidate_symbol_bytes={} moderate_final_projected_bytes={} moderate_peak_projected_bytes={} moderate_rows={}",
+        moderate_aggregate.f_node,
+        moderate_stats.final_candidate_count,
+        moderate_stats.candidate_symbol_bytes,
+        moderate_stats.final_projected_bytes,
+        moderate_stats.peak_projected_bytes,
+        moderate_result.rows.len(),
+    );
+    eprintln!(
+        "[collocation-scale] combined_index_bytes={} combined_peak_aggregate_bytes={} combined_safety_margin_bytes={} combined_projected_bytes={} combined_limit_bytes={} remaining_collocation_bytes={} projected_60m_candidate_aggregate_bytes={}",
+        common_stats.estimated_resident_index_bytes,
+        common_stats.peak_projected_bytes,
+        common_stats.safety_margin_bytes,
+        common_stats.combined_projected_bytes,
+        common_stats.combined_limit_bytes,
+        common_stats.remaining_collocation_bytes,
+        projected_aggregate_bytes,
+    );
+
+    assert_eq!(store.total_indexed_tokens(), token_count);
+    assert!(complete_vocabulary >= vocabulary_size);
+    assert!(
+        common_stats.final_candidate_count
+            <= candidate_vocabulary + CONCORDANCE_COLLOCATION_MAX_SPAN
+    );
+    assert_eq!(cache_arc_strong_count, 2);
+    assert!(common_stats.combined_projected_bytes <= common_stats.combined_limit_bytes);
+    assert!(moderate_stats.combined_projected_bytes <= moderate_stats.combined_limit_bytes);
+}
+
+#[test]
 fn surface_collocation_cancellation_interrupts_indexed_aggregation() {
     let documents = [concordance_document(0, "a.txt", "target collocate")];
     let query = collocation_query("target");
