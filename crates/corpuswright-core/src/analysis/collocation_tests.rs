@@ -3,11 +3,13 @@ use crate::analysis::concordance::analysis_word_tokens;
 use crate::analysis::test_support::*;
 use crate::analysis::{ConcordanceBackend, aggregate_concordance_collocations_documents_routed};
 use crate::index::{
-    InMemoryIndexStore, SurfaceIndexCancellationToken, SurfaceIndexDocumentInput,
+    InMemoryIndexStore, IndexStore, SurfaceIndexCancellationToken, SurfaceIndexDocumentInput,
     SurfaceIndexQuery, search_surface_index,
 };
 use crate::tokenization::TokenizationConfig;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::time::Instant;
 
 #[test]
 fn collocation_routing_types_remain_rust_only_without_ts_export() {
@@ -65,7 +67,7 @@ fn naive_collocations_for(
     let span = concordance_collocation_span(query.span);
     let direction = query.direction;
     let mut collocate_frequencies = HashMap::<String, u64>::new();
-    let mut candidate_counts = HashMap::<String, u64>::new();
+    let mut candidate_counts = HashMap::<String, ConcordanceCollocationDistanceCounts>::new();
     let mut n = 0u64;
     let mut r1 = 0u64;
     let mut f_node = 0u64;
@@ -109,11 +111,20 @@ fn naive_collocations_for(
             ) {
                 let left_start = token_index.saturating_sub(span);
                 r1 += (token_index - left_start) as u64;
-                for candidate in &token_keys[left_start..token_index] {
+                for (candidate_index, candidate) in token_keys
+                    .iter()
+                    .enumerate()
+                    .take(token_index)
+                    .skip(left_start)
+                {
                     if query_key_set.contains(candidate) {
                         continue;
                     }
-                    *candidate_counts.entry(candidate.clone()).or_default() += 1;
+                    candidate_counts.entry(candidate.clone()).or_default().add(
+                        CollocationWindowSide::Left,
+                        token_index - candidate_index,
+                        1,
+                    );
                 }
             }
             if matches!(
@@ -122,11 +133,17 @@ fn naive_collocations_for(
             ) {
                 let right_end = (node_end + span).min(token_keys.len());
                 r1 += (right_end - node_end) as u64;
-                for candidate in &token_keys[node_end..right_end] {
+                for (candidate_index, candidate) in
+                    token_keys.iter().enumerate().take(right_end).skip(node_end)
+                {
                     if query_key_set.contains(candidate) {
                         continue;
                     }
-                    *candidate_counts.entry(candidate.clone()).or_default() += 1;
+                    candidate_counts.entry(candidate.clone()).or_default().add(
+                        CollocationWindowSide::Right,
+                        candidate_index - node_end + 1,
+                        1,
+                    );
                 }
             }
         }
@@ -135,7 +152,7 @@ fn naive_collocations_for(
     let limit = concordance_collocation_limit(query.limit);
     let mut rows = candidate_counts
         .into_iter()
-        .filter_map(|(surface, o11)| {
+        .filter_map(|(surface, counts)| {
             if query.hide_stopwords
                 && crate::analysis::shared::stopword_matches(
                     &surface,
@@ -147,10 +164,18 @@ fn naive_collocations_for(
                 return None;
             }
             let collocate_frequency = *collocate_frequencies.get(&surface).unwrap_or(&0);
+            let o11 = counts.sum(span, direction);
             if o11 < query.min_cooccurrence || collocate_frequency < query.min_collocate_frequency {
                 return None;
             }
-            Some(collocation_row(surface, o11, collocate_frequency, r1, n))
+            Some(collocation_row(
+                surface,
+                o11,
+                collocate_frequency,
+                r1,
+                n,
+                counts.first_five(span, direction),
+            ))
         })
         .collect::<Vec<_>>();
     rows.sort_by(|left, right| {
@@ -399,7 +424,10 @@ fn surface_collocation_index_phrase_hits_match_overlapping_scan_nodes() {
 
     assert_eq!(scan.f_node, 4);
     assert_eq!(index.f_node, 4);
-    assert_eq!(index, scan);
+    assert_eq!(
+        query_concordance_collocations_from_aggregate(&index, &query),
+        query_concordance_collocations_from_aggregate(&scan, &query),
+    );
 }
 
 #[test]
@@ -635,6 +663,74 @@ fn surface_collocation_distance_aggregate_matches_naive_edge_cases() {
     assert_eq!(result.r1, 0);
     assert_eq!(result.f_node, 0);
     assert!(result.rows.is_empty());
+}
+
+#[test]
+fn collocate_position_counts_expose_exact_bounded_bins() {
+    let documents = vec![concordance_document(
+        0,
+        "positions.txt",
+        "alpha beta alpha gamma alpha target alpha delta alpha epsilon alpha",
+    )];
+    let mut query = collocation_query("target");
+    query.span = 5;
+    let aggregate = collocation_aggregate_for(&documents, &query).unwrap();
+
+    let both = query_concordance_collocations_from_aggregate(&aggregate, &query);
+    let alpha = collocate(&both, "alpha");
+    assert_eq!(alpha.o11, 6);
+    assert_eq!(alpha.position_counts.left, [1, 0, 1, 0, 1]);
+    assert_eq!(alpha.position_counts.right, [1, 0, 1, 0, 1]);
+
+    let mut left_query = query.clone();
+    left_query.direction = ConcordanceCollocationDirection::Left;
+    let left = query_concordance_collocations_from_aggregate(&aggregate, &left_query);
+    let alpha = collocate(&left, "alpha");
+    assert_eq!(alpha.o11, 3);
+    assert_eq!(alpha.position_counts.left, [1, 0, 1, 0, 1]);
+    assert_eq!(alpha.position_counts.right, [0, 0, 0, 0, 0]);
+
+    let mut right_query = query.clone();
+    right_query.direction = ConcordanceCollocationDirection::Right;
+    let right = query_concordance_collocations_from_aggregate(&aggregate, &right_query);
+    let alpha = collocate(&right, "alpha");
+    assert_eq!(alpha.o11, 3);
+    assert_eq!(alpha.position_counts.left, [0, 0, 0, 0, 0]);
+    assert_eq!(alpha.position_counts.right, [1, 0, 1, 0, 1]);
+
+    let mut span_two_query = query.clone();
+    span_two_query.span = 2;
+    let span_two = query_concordance_collocations_from_aggregate(&aggregate, &span_two_query);
+    let alpha = collocate(&span_two, "alpha");
+    assert_eq!(alpha.o11, 2);
+    assert_eq!(alpha.position_counts.left, [1, 0, 0, 0, 0]);
+    assert_eq!(alpha.position_counts.right, [1, 0, 0, 0, 0]);
+}
+
+#[test]
+fn collocate_position_counts_follow_file_selection() {
+    let documents = vec![
+        concordance_document(
+            0,
+            "excluded.txt",
+            "alpha beta alpha target alpha beta alpha",
+        ),
+        concordance_document(1, "selected.txt", "omega target alpha beta"),
+    ];
+    let mut query = collocation_query("target");
+    query.selection = AnalysisDocumentSelection {
+        all_documents: false,
+        ids: vec![1],
+        excluded_ids: Vec::new(),
+    };
+    query.span = 5;
+
+    let result = collocations_for(&documents, query.clone()).unwrap();
+    assert_eq!(result, naive_collocations_for(&documents, &query).unwrap());
+    let alpha = collocate(&result, "alpha");
+    assert_eq!(alpha.o11, 1);
+    assert_eq!(alpha.position_counts.left, [0, 0, 0, 0, 0]);
+    assert_eq!(alpha.position_counts.right, [1, 0, 0, 0, 0]);
 }
 
 #[test]
@@ -1065,6 +1161,93 @@ fn surface_collocation_high_node_frequency_without_materializing_all_occurrences
 
     assert_eq!(stats.valid_node_occurrences, 10_000);
     assert!(stats.peak_aggregate_entries < 10);
+}
+
+#[test]
+fn surface_collocation_index_finalises_only_actual_candidates() {
+    let selected = "alpha target beta alpha";
+    let mut unrelated_vocabulary = String::new();
+    for index in 0..10_000 {
+        unrelated_vocabulary.push_str(&format!("vocabulary{index} "));
+    }
+    let tokenization_config = TokenizationConfig::default();
+    let inputs = [
+        SurfaceIndexDocumentInput {
+            document_id: 0,
+            source_path: "selected.txt".to_string(),
+            display_name: "selected.txt".to_string(),
+            prepared_text: selected,
+        },
+        SurfaceIndexDocumentInput {
+            document_id: 1,
+            source_path: "unselected.txt".to_string(),
+            display_name: "unselected.txt".to_string(),
+            prepared_text: &unrelated_vocabulary,
+        },
+    ];
+    let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
+    let complete_vocabulary = store.concordance_symbols(false).count();
+    let complete_symbol_bytes = store
+        .concordance_symbols(false)
+        .map(|symbol| symbol.len() as u64)
+        .sum::<u64>();
+    let mut query = collocation_query("target");
+    query.selection = AnalysisDocumentSelection {
+        all_documents: false,
+        ids: vec![0],
+        excluded_ids: Vec::new(),
+    };
+
+    let (aggregate, stats) = aggregate_concordance_collocations_index(
+        &store,
+        &query,
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+    )
+    .unwrap();
+    let (repeat, repeat_stats) = aggregate_concordance_collocations_index(
+        &store,
+        &query,
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+    )
+    .unwrap();
+
+    assert!(complete_vocabulary > 10_000);
+    assert_eq!(aggregate.symbols, ["alpha", "beta"]);
+    assert_eq!(aggregate.symbols, repeat.symbols);
+    assert_eq!(aggregate.candidate_counts, repeat.candidate_counts);
+    assert_eq!(aggregate.collocate_frequencies.len(), 2);
+    assert_eq!(stats.final_candidate_count, 2);
+    assert_eq!(stats.aggregate_entries, 2);
+    assert_eq!(stats.candidate_symbol_bytes, 9);
+    assert!(stats.candidate_symbol_bytes < complete_symbol_bytes);
+    assert_eq!(stats.final_projected_bytes, stats.projected_aggregate_bytes);
+    assert!(stats.peak_projected_bytes >= stats.final_projected_bytes);
+    assert_eq!(
+        stats.final_projected_bytes,
+        repeat_stats.final_projected_bytes
+    );
+
+    let result = query_concordance_collocations_from_aggregate(&aggregate, &query);
+    assert_eq!(
+        result
+            .rows
+            .iter()
+            .find(|row| row.surface == "alpha")
+            .unwrap()
+            .collocate_frequency,
+        2,
+    );
+    assert_eq!(
+        result
+            .rows
+            .iter()
+            .find(|row| row.surface == "beta")
+            .unwrap()
+            .collocate_frequency,
+        1,
+    );
 }
 
 #[test]
