@@ -111,6 +111,16 @@ pub struct SurfaceIndexResourceEstimate {
 }
 
 impl SurfaceIndexResourceEstimate {
+    /// Lower bound for the compact store's two corpus-sized `u32` arrays:
+    /// token surface IDs and CSR posting positions. Vocabulary offsets,
+    /// symbols, maps, documents, Vec headers and allocation slack are omitted.
+    pub fn compact_token_array_lower_bound(token_count: u64) -> Option<u64> {
+        let bytes_per_token = u64::try_from(std::mem::size_of::<u32>())
+            .ok()?
+            .checked_mul(2)?;
+        token_count.checked_mul(bytes_per_token)
+    }
+
     /// Structural lower bound of the representation inherited by this branch:
     /// one token record plus two `(usize, usize)` postings per indexed token.
     /// Vec headers, allocation slack, symbols, documents and lookup maps are
@@ -313,6 +323,7 @@ pub trait IndexStore {
     ) -> Option<u32>;
     fn total_indexed_tokens(&self) -> usize;
     fn total_indexed_documents(&self) -> usize;
+    fn estimated_resident_bytes(&self) -> u64;
     fn indexed_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store>;
     fn indexed_exact_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store>;
     fn indexed_documents<'store>(
@@ -333,6 +344,7 @@ pub trait IndexStore {
         case_sensitive: bool,
     ) -> Option<u32>;
     fn concordance_symbol_id(&self, key: &str, case_sensitive: bool) -> Option<u32>;
+    fn concordance_symbol_for_id(&self, symbol_id: u32, case_sensitive: bool) -> Option<&str>;
     fn concordance_symbols<'store>(
         &'store self,
         case_sensitive: bool,
@@ -932,6 +944,10 @@ impl IndexStore for InMemoryIndexStore {
         self.documents.len()
     }
 
+    fn estimated_resident_bytes(&self) -> u64 {
+        InMemoryIndexStore::estimated_resident_bytes(self)
+    }
+
     fn indexed_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store> {
         Box::new(
             self.normalised_symbols
@@ -995,6 +1011,18 @@ impl IndexStore for InMemoryIndexStore {
             self.surface_symbol_id(key)
         } else {
             self.normalised_symbol_id(key)
+        }
+    }
+
+    fn concordance_symbol_for_id(&self, symbol_id: u32, case_sensitive: bool) -> Option<&str> {
+        if case_sensitive {
+            self.surface_symbols
+                .get(symbol_id as usize)
+                .map(String::as_str)
+        } else {
+            self.normalised_symbols
+                .get(symbol_id as usize)
+                .map(String::as_str)
         }
     }
 
@@ -2092,8 +2120,10 @@ mod tests {
             window_tokens: 5,
             offset: 0,
             limit: 500,
+            include_rows: true,
             distribution_offset: 0,
             distribution_limit: 500,
+            include_distribution: true,
         }
     }
 
@@ -2144,14 +2174,17 @@ mod tests {
         assert_close(index.top_document_share, scan.top_document_share);
         let scan_hit_counts = scan
             .distribution
+            .as_ref()
+            .expect("distribution was requested")
             .items
             .iter()
             .filter(|item| item.count > 0)
             .map(|item| (item.document_id, item.count))
             .collect::<BTreeMap<_, _>>();
         assert_eq!(index.document_hit_counts, scan_hit_counts, "{message}");
-        assert_eq!(index.rows.len(), scan.rows.len(), "{message}");
-        for (index_row, scan_row) in index.rows.iter().zip(&scan.rows) {
+        let scan_rows = scan.rows.as_ref().expect("rows were requested");
+        assert_eq!(index.rows.len(), scan_rows.len(), "{message}");
+        for (index_row, scan_row) in index.rows.iter().zip(scan_rows) {
             assert_eq!(index_row.document_id, scan_row.document_index, "{message}");
             assert_eq!(
                 index_row.token_ordinal_in_document, scan_row.token_index,
