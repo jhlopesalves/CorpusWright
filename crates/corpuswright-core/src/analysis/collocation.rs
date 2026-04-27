@@ -21,6 +21,78 @@ const CONCORDANCE_COLLOCATION_MAX_SPAN: usize = 20;
 const CONCORDANCE_COLLOCATION_DISTANCE_BUCKETS: usize = CONCORDANCE_COLLOCATION_MAX_SPAN * 2;
 const CONCORDANCE_COLLOCATION_DEFAULT_LIMIT: usize = 100;
 const CONCORDANCE_COLLOCATION_MAX_LIMIT: usize = 500;
+pub const CONCORDANCE_MAX_COMBINED_BYTES_ENV: &str = "CORPUSWRIGHT_CONCORDANCE_MAX_COMBINED_BYTES";
+pub const DEFAULT_CONCORDANCE_MAX_COMBINED_BYTES: u64 = 1_610_612_736;
+pub const DEFAULT_CONCORDANCE_ANALYSIS_SAFETY_MARGIN_BYTES: u64 = 268_435_456;
+
+/// A bounded estimate for the two large concordance-owned structures. This is
+/// deliberately not described as complete process RSS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConcordanceAnalysisMemoryLimits {
+    pub max_combined_bytes: u64,
+    pub safety_margin_bytes: u64,
+}
+
+impl Default for ConcordanceAnalysisMemoryLimits {
+    fn default() -> Self {
+        let max_combined_bytes = std::env::var(CONCORDANCE_MAX_COMBINED_BYTES_ENV)
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(DEFAULT_CONCORDANCE_MAX_COMBINED_BYTES);
+        Self {
+            max_combined_bytes,
+            safety_margin_bytes: DEFAULT_CONCORDANCE_ANALYSIS_SAFETY_MARGIN_BYTES,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConcordanceAnalysisMemoryEstimate {
+    pub estimated_resident_index_bytes: u64,
+    pub projected_aggregate_bytes: u64,
+    pub safety_margin_bytes: u64,
+    pub combined_limit_bytes: u64,
+    pub combined_projected_bytes: u64,
+    pub remaining_collocation_bytes: u64,
+}
+
+impl ConcordanceAnalysisMemoryEstimate {
+    pub fn admit(
+        estimated_resident_index_bytes: u64,
+        projected_aggregate_bytes: u64,
+        limits: ConcordanceAnalysisMemoryLimits,
+    ) -> Result<Self, ConcordanceError> {
+        let remaining_collocation_bytes = limits
+            .max_combined_bytes
+            .checked_sub(estimated_resident_index_bytes)
+            .and_then(|remaining| remaining.checked_sub(limits.safety_margin_bytes))
+            .ok_or(ConcordanceError::AnalysisMemoryLimitExceeded {
+                estimated_resident_index_bytes,
+                projected_aggregate_bytes,
+                combined_limit_bytes: limits.max_combined_bytes,
+                safety_margin_bytes: limits.safety_margin_bytes,
+            })?;
+        if projected_aggregate_bytes > remaining_collocation_bytes {
+            return Err(ConcordanceError::AnalysisMemoryLimitExceeded {
+                estimated_resident_index_bytes,
+                projected_aggregate_bytes,
+                combined_limit_bytes: limits.max_combined_bytes,
+                safety_margin_bytes: limits.safety_margin_bytes,
+            });
+        }
+        Ok(Self {
+            estimated_resident_index_bytes,
+            projected_aggregate_bytes,
+            safety_margin_bytes: limits.safety_margin_bytes,
+            combined_limit_bytes: limits.max_combined_bytes,
+            combined_projected_bytes: estimated_resident_index_bytes
+                .saturating_add(projected_aggregate_bytes)
+                .saturating_add(limits.safety_margin_bytes),
+            remaining_collocation_bytes,
+        })
+    }
+}
 
 /// Span side used for surface-token collocation around a concordance node.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -94,6 +166,17 @@ pub struct ConcordanceCollocationQuery {
 }
 
 /// One surface-token collocate with contingency counts and association scores.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ConcordanceCollocatePositionCounts {
+    #[ts(type = "Array<number>")]
+    pub left: Vec<u64>,
+    #[ts(type = "Array<number>")]
+    pub right: Vec<u64>,
+}
+
+/// One surface-token collocate with contingency counts and association scores.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -109,6 +192,7 @@ pub struct ConcordanceCollocateRow {
     pub o22: i64,
     #[ts(type = "number")]
     pub collocate_frequency: u64,
+    pub position_counts: ConcordanceCollocatePositionCounts,
     pub mi: Option<f64>,
     pub mi3: Option<f64>,
     pub t_score: Option<f64>,
@@ -189,6 +273,16 @@ pub struct CollocationAggregationStats {
     pub aggregate_entries: usize,
     pub projected_aggregate_bytes: u64,
     pub peak_aggregate_entries: usize,
+    pub peak_candidate_entries: usize,
+    pub peak_projected_bytes: u64,
+    pub final_projected_bytes: u64,
+    pub candidate_symbol_bytes: u64,
+    pub final_candidate_count: usize,
+    pub estimated_resident_index_bytes: u64,
+    pub combined_limit_bytes: u64,
+    pub safety_margin_bytes: u64,
+    pub remaining_collocation_bytes: u64,
+    pub combined_projected_bytes: u64,
     pub max_span_cache_reuse: bool,
     pub index_reuse: bool,
     pub fallback_used: bool,
@@ -215,6 +309,16 @@ struct CollocationWindow {
     end: usize,
     node_edge: usize,
     side: CollocationWindowSide,
+}
+
+#[derive(Default)]
+struct IndexedCollocationCandidates {
+    counts: HashMap<u32, ConcordanceCollocationDistanceCounts>,
+    r1: ConcordanceCollocationDistanceCounts,
+    f_node: u64,
+    candidates_visited: u64,
+    peak_candidate_entries: usize,
+    peak_projected_bytes: u64,
 }
 
 impl ConcordanceCollocationDistanceCounts {
@@ -245,6 +349,30 @@ impl ConcordanceCollocationDistanceCounts {
         }
         total
     }
+
+    fn first_five(
+        &self,
+        span: usize,
+        direction: ConcordanceCollocationDirection,
+    ) -> ConcordanceCollocatePositionCounts {
+        let active_span = span.min(5);
+        let mut left = vec![0; 5];
+        let mut right = vec![0; 5];
+        if matches!(
+            direction,
+            ConcordanceCollocationDirection::Left | ConcordanceCollocationDirection::Both
+        ) {
+            left[..active_span].copy_from_slice(&self.counts[..active_span]);
+        }
+        if matches!(
+            direction,
+            ConcordanceCollocationDirection::Right | ConcordanceCollocationDirection::Both
+        ) {
+            let start = CONCORDANCE_COLLOCATION_MAX_SPAN;
+            right[..active_span].copy_from_slice(&self.counts[start..start + active_span]);
+        }
+        ConcordanceCollocatePositionCounts { left, right }
+    }
 }
 
 fn default_collocation_floor() -> u64 {
@@ -267,14 +395,17 @@ fn concordance_collocation_limit(limit: usize) -> usize {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_collocation_window_record_ids(
     store: &impl IndexStore,
     records: &[SurfaceIndexTokenRecord],
     window: CollocationWindow,
     query_keys: &HashSet<String>,
     case_sensitive: bool,
-    aggregate: &mut ConcordanceCollocationAggregate,
+    candidates: &mut IndexedCollocationCandidates,
+    signature_bytes: u64,
     limits: SurfaceIndexResourceLimits,
+    cancellation: &SurfaceIndexCancellationToken,
 ) -> Result<(), ConcordanceError> {
     for (token_index, record) in records
         .iter()
@@ -286,7 +417,11 @@ fn add_collocation_window_record_ids(
             CollocationWindowSide::Left => window.node_edge - token_index,
             CollocationWindowSide::Right => token_index - window.node_edge + 1,
         };
-        aggregate.r1.add(window.side, distance, 1);
+        candidates.candidates_visited = candidates.candidates_visited.saturating_add(1);
+        if candidates.candidates_visited.is_multiple_of(1_024) && cancellation.is_cancelled() {
+            return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
+        }
+        candidates.r1.add(window.side, distance, 1);
         let symbol_id = store
             .concordance_symbol_id_for_record(record, case_sensitive)
             .ok_or({
@@ -296,21 +431,17 @@ fn add_collocation_window_record_ids(
                     node_token_length: 1,
                 })
             })?;
-        let candidate = aggregate
-            .symbols
-            .get(symbol_id as usize)
+        let candidate = store
+            .concordance_symbol_for_id(symbol_id, case_sensitive)
             .ok_or(ConcordanceError::InvalidHitIdentity)?;
         if query_keys.contains(candidate) {
             continue;
         }
-        if !aggregate.candidate_counts.contains_key(&symbol_id) {
-            let projected = (aggregate.candidate_counts.len() as u64 + 1).saturating_mul(
-                (std::mem::size_of::<ConcordanceCollocationDistanceCounts>() + 32) as u64,
-            ) + aggregate
-                .symbols
-                .iter()
-                .map(|symbol| symbol.len() as u64 + 96)
-                .sum::<u64>();
+        if !candidates.counts.contains_key(&symbol_id) {
+            let projected = indexed_candidate_discovery_bytes(
+                signature_bytes,
+                candidates.counts.len().saturating_add(1),
+            );
             if projected > limits.max_projected_resident_index_bytes {
                 return Err(ConcordanceError::Index(
                     SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
@@ -319,18 +450,86 @@ fn add_collocation_window_record_ids(
                     },
                 ));
             }
-            aggregate
-                .candidate_counts
+            candidates
+                .counts
                 .try_reserve(1)
                 .map_err(collocation_allocation("indexed collocation candidates"))?;
+            candidates.peak_projected_bytes = candidates.peak_projected_bytes.max(projected);
         }
-        aggregate
-            .candidate_counts
+        candidates
+            .counts
             .entry(symbol_id)
             .or_default()
             .add(window.side, distance, 1);
+        candidates.peak_candidate_entries = candidates
+            .peak_candidate_entries
+            .max(candidates.counts.len());
     }
     Ok(())
+}
+
+fn conservative_hash_map_bytes(entries: usize, key_bytes: usize, value_bytes: usize) -> u64 {
+    (entries as u64)
+        .saturating_mul((key_bytes.saturating_add(value_bytes).saturating_add(16)) as u64)
+        .saturating_mul(2)
+}
+
+fn indexed_candidate_discovery_bytes(signature_bytes: u64, candidate_count: usize) -> u64 {
+    (std::mem::size_of::<ConcordanceCollocationAggregate>() as u64)
+        .saturating_add(signature_bytes)
+        .saturating_add(conservative_hash_map_bytes(
+            candidate_count,
+            std::mem::size_of::<u32>(),
+            std::mem::size_of::<ConcordanceCollocationDistanceCounts>(),
+        ))
+}
+
+fn indexed_final_aggregate_bytes(
+    signature_bytes: u64,
+    candidate_count: usize,
+    candidate_symbol_bytes: u64,
+) -> u64 {
+    (std::mem::size_of::<ConcordanceCollocationAggregate>() as u64)
+        .saturating_add(signature_bytes)
+        .saturating_add(candidate_symbol_bytes)
+        .saturating_add(
+            (candidate_count as u64)
+                .saturating_mul(std::mem::size_of::<String>() as u64)
+                .saturating_mul(2),
+        )
+        .saturating_add(
+            (candidate_count as u64)
+                .saturating_mul(std::mem::size_of::<u64>() as u64)
+                .saturating_mul(2),
+        )
+        .saturating_add(conservative_hash_map_bytes(
+            candidate_count,
+            std::mem::size_of::<u32>(),
+            std::mem::size_of::<ConcordanceCollocationDistanceCounts>(),
+        ))
+}
+
+fn indexed_finalisation_peak_bytes(
+    signature_bytes: u64,
+    candidate_count: usize,
+    candidate_symbol_bytes: u64,
+) -> u64 {
+    indexed_candidate_discovery_bytes(signature_bytes, candidate_count)
+        .saturating_add(indexed_final_aggregate_bytes(
+            signature_bytes,
+            candidate_count,
+            candidate_symbol_bytes,
+        ))
+        .saturating_add(conservative_hash_map_bytes(
+            candidate_count,
+            std::mem::size_of::<u32>(),
+            std::mem::size_of::<u32>(),
+        ))
+        .saturating_add(
+            (candidate_count as u64)
+                .saturating_mul(std::mem::size_of::<(u32, &str)>() as u64)
+                .saturating_mul(2),
+        )
 }
 
 fn finite_score(value: f64) -> Option<f64> {
@@ -383,6 +582,7 @@ fn collocation_row(
     collocate_frequency: u64,
     r1: u64,
     n: u64,
+    position_counts: ConcordanceCollocatePositionCounts,
 ) -> ConcordanceCollocateRow {
     let o12_i = i128_to_i64(r1 as i128 - o11 as i128);
     let o21_i = i128_to_i64(collocate_frequency as i128 - o11 as i128);
@@ -429,6 +629,7 @@ fn collocation_row(
         o21: o21_i,
         o22: o22_i,
         collocate_frequency,
+        position_counts,
         mi,
         mi3,
         t_score,
@@ -771,11 +972,23 @@ impl NumericCollocationBuilder {
         self,
         signature: ConcordanceCollocationAggregationSignature,
     ) -> (ConcordanceCollocationAggregate, CollocationAggregationStats) {
+        let candidate_symbol_bytes = self
+            .candidate_counts
+            .keys()
+            .filter_map(|id| self.symbols.get(*id as usize))
+            .map(|symbol| symbol.len() as u64)
+            .sum();
+        let final_projected_bytes = self.projected_bytes();
         let stats = CollocationAggregationStats {
             valid_node_occurrences: self.f_node,
             aggregate_entries: self.candidate_counts.len(),
-            projected_aggregate_bytes: self.projected_bytes(),
+            projected_aggregate_bytes: final_projected_bytes,
             peak_aggregate_entries: self.peak_candidate_entries,
+            peak_candidate_entries: self.peak_candidate_entries,
+            peak_projected_bytes: final_projected_bytes,
+            final_projected_bytes,
+            candidate_symbol_bytes,
+            final_candidate_count: self.candidate_counts.len(),
             ..Default::default()
         };
         let aggregate = ConcordanceCollocationAggregate {
@@ -945,8 +1158,13 @@ pub fn aggregate_concordance_collocations_documents(
             .filter(|document| selected_document_ids.contains(&document.document_index)),
     );
     ordered_documents.sort_by_key(|document| document.document_index);
-    let mut builder =
-        NumericCollocationBuilder::new(SurfaceIndexResourceLimits::default(), cancellation.clone());
+    let analysis_limits = ConcordanceAnalysisMemoryLimits::default();
+    let admission = ConcordanceAnalysisMemoryEstimate::admit(0, 0, analysis_limits)?;
+    let mut surface_limits = SurfaceIndexResourceLimits::default();
+    surface_limits.max_projected_resident_index_bytes = surface_limits
+        .max_projected_resident_index_bytes
+        .min(admission.remaining_collocation_bytes);
+    let mut builder = NumericCollocationBuilder::new(surface_limits, cancellation.clone());
     for document in ordered_documents {
         if cancellation.is_cancelled() {
             return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
@@ -964,11 +1182,262 @@ pub fn aggregate_concordance_collocations_documents(
     Ok(aggregate)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn finalise_indexed_collocation_candidates(
+    store: &impl IndexStore,
+    signature: ConcordanceCollocationAggregationSignature,
+    selected_document_ids: &HashSet<usize>,
+    selected_tokens: u64,
+    candidates: IndexedCollocationCandidates,
+    case_sensitive: bool,
+    cancellation: &SurfaceIndexCancellationToken,
+    limits: SurfaceIndexResourceLimits,
+    before_frequency_scan: impl FnOnce(),
+) -> Result<(ConcordanceCollocationAggregate, CollocationAggregationStats), ConcordanceError> {
+    if cancellation.is_cancelled() {
+        return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
+    }
+    let signature_bytes = signature.query.len() as u64;
+    let candidate_count = candidates.counts.len();
+    let mut source_ids = Vec::new();
+    source_ids
+        .try_reserve_exact(candidate_count)
+        .map_err(collocation_allocation(
+            "indexed collocation candidate ordering",
+        ))?;
+    source_ids.extend(candidates.counts.keys().copied());
+    source_ids.sort_unstable();
+
+    let mut candidate_symbols = Vec::new();
+    candidate_symbols
+        .try_reserve_exact(candidate_count)
+        .map_err(collocation_allocation(
+            "indexed candidate symbol references",
+        ))?;
+    let mut candidate_symbol_bytes = 0u64;
+    for (index, source_id) in source_ids.iter().enumerate() {
+        if index.is_multiple_of(1_024) && cancellation.is_cancelled() {
+            return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
+        }
+        let symbol = store
+            .concordance_symbol_for_id(*source_id, case_sensitive)
+            .ok_or(ConcordanceError::InvalidHitIdentity)?;
+        candidate_symbol_bytes = candidate_symbol_bytes.saturating_add(symbol.len() as u64);
+        candidate_symbols.push((*source_id, symbol));
+    }
+    drop(source_ids);
+
+    let finalisation_peak =
+        indexed_finalisation_peak_bytes(signature_bytes, candidate_count, candidate_symbol_bytes);
+    if finalisation_peak > limits.max_projected_resident_index_bytes {
+        return Err(ConcordanceError::Index(
+            SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
+                projected_bytes: finalisation_peak,
+                limit_bytes: limits.max_projected_resident_index_bytes,
+            },
+        ));
+    }
+
+    let mut symbols = Vec::new();
+    symbols
+        .try_reserve_exact(candidate_count)
+        .map_err(collocation_allocation("indexed candidate symbols"))?;
+    let mut collocate_frequencies = Vec::new();
+    collocate_frequencies
+        .try_reserve_exact(candidate_count)
+        .map_err(collocation_allocation("indexed candidate frequencies"))?;
+    collocate_frequencies.resize(candidate_count, 0u64);
+    let mut source_to_local = HashMap::<u32, u32>::new();
+    source_to_local
+        .try_reserve(candidate_count)
+        .map_err(collocation_allocation("indexed candidate remapping"))?;
+
+    for (local_index, &(source_id, source)) in candidate_symbols.iter().enumerate() {
+        if local_index.is_multiple_of(1_024) && cancellation.is_cancelled() {
+            return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
+        }
+        let local_id = u32::try_from(local_index).map_err(|_| {
+            ConcordanceError::Index(SurfaceIndexError::Allocation(
+                "indexed collocation candidates exceed u32 capacity".to_string(),
+            ))
+        })?;
+        let mut owned = String::new();
+        owned
+            .try_reserve_exact(source.len())
+            .map_err(collocation_allocation("indexed candidate symbol text"))?;
+        owned.push_str(source);
+        symbols.push(owned);
+        source_to_local.insert(source_id, local_id);
+    }
+
+    let IndexedCollocationCandidates {
+        counts: source_counts,
+        r1,
+        f_node,
+        candidates_visited,
+        peak_candidate_entries,
+        peak_projected_bytes,
+    } = candidates;
+    let mut candidate_counts = HashMap::new();
+    candidate_counts
+        .try_reserve(candidate_count)
+        .map_err(collocation_allocation("indexed compact candidate counts"))?;
+    for (source_id, counts) in source_counts {
+        let local_id = source_to_local
+            .get(&source_id)
+            .copied()
+            .ok_or(ConcordanceError::InvalidHitIdentity)?;
+        candidate_counts.insert(local_id, counts);
+    }
+
+    before_frequency_scan();
+    let mut frequency_records_seen = 0u64;
+    for document in store
+        .indexed_documents()
+        .filter(|document| selected_document_ids.contains(&document.document_id))
+    {
+        if cancellation.is_cancelled() {
+            return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
+        }
+        let records = store.records_for_document(document.document_id).ok_or({
+            ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
+                document_id: document.document_id,
+                token_ordinal_in_document: 0,
+                node_token_length: 0,
+            })
+        })?;
+        for record in records {
+            frequency_records_seen = frequency_records_seen.saturating_add(1);
+            if frequency_records_seen.is_multiple_of(16_384) && cancellation.is_cancelled() {
+                return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
+            }
+            let source_id = store
+                .concordance_symbol_id_for_record(record, case_sensitive)
+                .ok_or({
+                    ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
+                        document_id: document.document_id,
+                        token_ordinal_in_document: 0,
+                        node_token_length: 1,
+                    })
+                })?;
+            let Some(&local_id) = source_to_local.get(&source_id) else {
+                continue;
+            };
+            let frequency = &mut collocate_frequencies[local_id as usize];
+            *frequency = frequency.checked_add(1).ok_or_else(|| {
+                ConcordanceError::Index(SurfaceIndexError::Allocation(
+                    "indexed collocation frequency overflow".to_string(),
+                ))
+            })?;
+        }
+    }
+    drop(source_to_local);
+    drop(candidate_symbols);
+
+    let final_projected_bytes =
+        indexed_final_aggregate_bytes(signature_bytes, candidate_count, candidate_symbol_bytes);
+    let stats = CollocationAggregationStats {
+        candidates_visited,
+        valid_node_occurrences: f_node,
+        aggregate_entries: candidate_count,
+        projected_aggregate_bytes: final_projected_bytes,
+        peak_aggregate_entries: peak_candidate_entries,
+        peak_candidate_entries,
+        peak_projected_bytes: peak_projected_bytes.max(finalisation_peak),
+        final_projected_bytes,
+        candidate_symbol_bytes,
+        final_candidate_count: candidate_count,
+        ..Default::default()
+    };
+    Ok((
+        ConcordanceCollocationAggregate {
+            signature,
+            symbols,
+            candidate_counts,
+            collocate_frequencies,
+            r1,
+            n: selected_tokens,
+            f_node,
+        },
+        stats,
+    ))
+}
+
 pub fn aggregate_concordance_collocations_index(
     store: &impl IndexStore,
     query: &ConcordanceCollocationQuery,
     tokenization_config: &TokenizationConfig,
     cancellation: SurfaceIndexCancellationToken,
+) -> Result<(ConcordanceCollocationAggregate, CollocationAggregationStats), ConcordanceError> {
+    aggregate_concordance_collocations_index_with_memory_limits(
+        store,
+        query,
+        tokenization_config,
+        cancellation,
+        SurfaceIndexResourceLimits::default(),
+        ConcordanceAnalysisMemoryLimits::default(),
+    )
+}
+
+fn aggregate_concordance_collocations_index_with_memory_limits(
+    store: &impl IndexStore,
+    query: &ConcordanceCollocationQuery,
+    tokenization_config: &TokenizationConfig,
+    cancellation: SurfaceIndexCancellationToken,
+    mut surface_limits: SurfaceIndexResourceLimits,
+    analysis_limits: ConcordanceAnalysisMemoryLimits,
+) -> Result<(ConcordanceCollocationAggregate, CollocationAggregationStats), ConcordanceError> {
+    let estimated_resident_index_bytes = store.estimated_resident_bytes();
+    let initial_estimate = ConcordanceAnalysisMemoryEstimate::admit(
+        estimated_resident_index_bytes,
+        0,
+        analysis_limits,
+    )?;
+    let combined_budget_is_binding = initial_estimate.remaining_collocation_bytes
+        < surface_limits.max_projected_resident_index_bytes;
+    surface_limits.max_projected_resident_index_bytes = surface_limits
+        .max_projected_resident_index_bytes
+        .min(initial_estimate.remaining_collocation_bytes);
+
+    match aggregate_concordance_collocations_index_with_limits(
+        store,
+        query,
+        tokenization_config,
+        cancellation,
+        surface_limits,
+    ) {
+        Ok((aggregate, mut stats)) => {
+            let estimate = ConcordanceAnalysisMemoryEstimate::admit(
+                estimated_resident_index_bytes,
+                stats.peak_projected_bytes,
+                analysis_limits,
+            )?;
+            stats.estimated_resident_index_bytes = estimate.estimated_resident_index_bytes;
+            stats.combined_limit_bytes = estimate.combined_limit_bytes;
+            stats.safety_margin_bytes = estimate.safety_margin_bytes;
+            stats.remaining_collocation_bytes = estimate.remaining_collocation_bytes;
+            stats.combined_projected_bytes = estimate.combined_projected_bytes;
+            Ok((aggregate, stats))
+        }
+        Err(ConcordanceError::Index(SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
+            projected_bytes,
+            ..
+        })) if combined_budget_is_binding => Err(ConcordanceError::AnalysisMemoryLimitExceeded {
+            estimated_resident_index_bytes,
+            projected_aggregate_bytes: projected_bytes,
+            combined_limit_bytes: analysis_limits.max_combined_bytes,
+            safety_margin_bytes: analysis_limits.safety_margin_bytes,
+        }),
+        Err(error) => Err(error),
+    }
+}
+
+fn aggregate_concordance_collocations_index_with_limits(
+    store: &impl IndexStore,
+    query: &ConcordanceCollocationQuery,
+    tokenization_config: &TokenizationConfig,
+    cancellation: SurfaceIndexCancellationToken,
+    limits: SurfaceIndexResourceLimits,
 ) -> Result<(ConcordanceCollocationAggregate, CollocationAggregationStats), ConcordanceError> {
     let (signature, _, query_key_set) =
         resolve_concordance_collocation_aggregation(query, tokenization_config)?;
@@ -1003,85 +1472,20 @@ pub fn aggregate_concordance_collocations_index(
         .filter(|document| selected_document_ids.contains(&document.document_id))
         .map(|document| document.token_count as u64)
         .sum();
-    let mut symbols = Vec::new();
-    for symbol in store.concordance_symbols(query.case_sensitive) {
-        symbols
-            .try_reserve(1)
-            .map_err(collocation_allocation("indexed collocation symbols"))?;
-        let mut owned = String::new();
-        owned
-            .try_reserve(symbol.len())
-            .map_err(collocation_allocation("indexed collocation symbol text"))?;
-        owned.push_str(symbol);
-        symbols.push(owned);
-    }
-    let limits = SurfaceIndexResourceLimits::default();
-    let base_estimate = symbols
-        .iter()
-        .map(|symbol| symbol.len() as u64)
-        .sum::<u64>()
-        + (symbols.len() * (std::mem::size_of::<String>() + std::mem::size_of::<u64>() + 64))
-            as u64;
-    if base_estimate > limits.max_projected_resident_index_bytes {
-        return Err(ConcordanceError::Index(
-            SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
-                projected_bytes: base_estimate,
-                limit_bytes: limits.max_projected_resident_index_bytes,
-            },
-        ));
-    }
-    let mut collocate_frequencies = Vec::new();
-    collocate_frequencies
-        .try_reserve_exact(symbols.len())
-        .map_err(collocation_allocation("indexed collocation frequencies"))?;
-    collocate_frequencies.resize(symbols.len(), 0);
-    for document in store
-        .indexed_documents()
-        .filter(|document| selected_document_ids.contains(&document.document_id))
-    {
-        if cancellation.is_cancelled() {
-            return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
-        }
-        let records = store.records_for_document(document.document_id).ok_or({
-            ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
-                document_id: document.document_id,
-                token_ordinal_in_document: 0,
-                node_token_length: 0,
-            })
-        })?;
-        for record in records {
-            let id = store
-                .concordance_symbol_id_for_record(record, query.case_sensitive)
-                .ok_or({
-                    ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
-                        document_id: document.document_id,
-                        token_ordinal_in_document: 0,
-                        node_token_length: 1,
-                    })
-                })? as usize;
-            collocate_frequencies[id] += 1;
-        }
-    }
-    let mut aggregate = ConcordanceCollocationAggregate {
-        signature,
-        symbols,
-        candidate_counts: HashMap::new(),
-        collocate_frequencies,
-        r1: ConcordanceCollocationDistanceCounts::default(),
-        n: selected_tokens,
-        f_node: 0,
+    let signature_bytes = signature.query.len() as u64;
+    let mut candidates = IndexedCollocationCandidates {
+        peak_projected_bytes: indexed_candidate_discovery_bytes(signature_bytes, 0),
+        ..Default::default()
     };
 
-    let mut peak_aggregate_entries = 0;
-
     visit_index_query_hits(store, &index_query, |hit| {
-        if aggregate.f_node.is_multiple_of(1_024) && cancellation.is_cancelled() {
+        if candidates.f_node.is_multiple_of(1_024) && cancellation.is_cancelled() {
             return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
         }
         if !selected_document_ids.contains(&hit.document_id) {
             return Ok(());
         }
-        aggregate.f_node += 1;
+        candidates.f_node = candidates.f_node.saturating_add(1);
         let records = store
             .records_for_document(hit.document_id)
             .ok_or_else(|| collocation_inconsistent_index_error(&hit))?;
@@ -1107,12 +1511,11 @@ pub fn aggregate_concordance_collocations_index(
             },
             &query_key_set,
             query.case_sensitive,
-            &mut aggregate,
+            &mut candidates,
+            signature_bytes,
             limits,
+            &cancellation,
         )?;
-        if aggregate.candidate_counts.len() > peak_aggregate_entries {
-            peak_aggregate_entries = aggregate.candidate_counts.len();
-        }
 
         let right_end = node_end
             .saturating_add(CONCORDANCE_COLLOCATION_MAX_SPAN)
@@ -1128,23 +1531,24 @@ pub fn aggregate_concordance_collocations_index(
             },
             &query_key_set,
             query.case_sensitive,
-            &mut aggregate,
+            &mut candidates,
+            signature_bytes,
             limits,
+            &cancellation,
         )?;
-        if aggregate.candidate_counts.len() > peak_aggregate_entries {
-            peak_aggregate_entries = aggregate.candidate_counts.len();
-        }
         Ok(())
     })?;
-
-    let stats = CollocationAggregationStats {
-        valid_node_occurrences: aggregate.f_node,
-        aggregate_entries: aggregate.candidate_counts.len(),
-        projected_aggregate_bytes: base_estimate, // Simplified for indexed, we don't recalculate the whole string overhead
-        peak_aggregate_entries,
-        ..Default::default()
-    };
-    Ok((aggregate, stats))
+    finalise_indexed_collocation_candidates(
+        store,
+        signature,
+        &selected_document_ids,
+        selected_tokens,
+        candidates,
+        query.case_sensitive,
+        &cancellation,
+        limits,
+        || {},
+    )
 }
 
 pub fn aggregate_concordance_collocations_routed_provider<Resolve, Progress>(
@@ -1191,8 +1595,13 @@ where
 {
     let (signature, query_keys, query_key_set) =
         resolve_concordance_collocation_aggregation(query, tokenization_config)?;
-    let mut builder =
-        NumericCollocationBuilder::new(SurfaceIndexResourceLimits::default(), cancellation.clone());
+    let analysis_limits = ConcordanceAnalysisMemoryLimits::default();
+    let admission = ConcordanceAnalysisMemoryEstimate::admit(0, 0, analysis_limits)?;
+    let mut surface_limits = SurfaceIndexResourceLimits::default();
+    surface_limits.max_projected_resident_index_bytes = surface_limits
+        .max_projected_resident_index_bytes
+        .min(admission.remaining_collocation_bytes);
+    let mut builder = NumericCollocationBuilder::new(surface_limits, cancellation.clone());
     for document_index in 0..document_slots {
         let selected = if query.selection.all_documents {
             !query.selection.excluded_ids.contains(&document_index)
@@ -1281,7 +1690,14 @@ pub fn query_concordance_collocations_from_aggregate(
             &mut retained,
             NumericCollocationRow {
                 symbol_id,
-                row: collocation_row(String::new(), o11, collocate_frequency, r1, aggregate.n),
+                row: collocation_row(
+                    String::new(),
+                    o11,
+                    collocate_frequency,
+                    r1,
+                    aggregate.n,
+                    counts.first_five(span, direction),
+                ),
             },
             limit,
             query,
