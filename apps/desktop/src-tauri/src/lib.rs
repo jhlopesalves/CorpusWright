@@ -346,7 +346,7 @@ struct ConcordanceCollocationCache {
     inner: Mutex<
         Option<(
             ConcordanceCollocationCacheKey,
-            ConcordanceCollocationAggregate,
+            Arc<ConcordanceCollocationAggregate>,
         )>,
     >,
 }
@@ -358,17 +358,20 @@ impl ConcordanceCollocationCache {
         }
     }
 
-    fn get(&self, key: &ConcordanceCollocationCacheKey) -> Option<ConcordanceCollocationAggregate> {
+    fn get(
+        &self,
+        key: &ConcordanceCollocationCacheKey,
+    ) -> Option<Arc<ConcordanceCollocationAggregate>> {
         let inner = self.inner.lock().unwrap();
         inner
             .as_ref()
-            .and_then(|(cached_key, aggregate)| (cached_key == key).then(|| aggregate.clone()))
+            .and_then(|(cached_key, aggregate)| (cached_key == key).then(|| Arc::clone(aggregate)))
     }
 
     fn insert(
         &self,
         key: ConcordanceCollocationCacheKey,
-        aggregate: ConcordanceCollocationAggregate,
+        aggregate: Arc<ConcordanceCollocationAggregate>,
     ) {
         *self.inner.lock().unwrap() = Some((key, aggregate));
     }
@@ -2173,6 +2176,10 @@ fn concordance_row_identity(row: &ConcordanceRow) -> String {
     )
 }
 
+fn concordance_materialised_row_count(result: &ConcordanceResult) -> usize {
+    result.rows.as_ref().map_or(0, Vec::len)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ConcordanceAuditDifference {
     field: &'static str,
@@ -2212,15 +2219,24 @@ fn compare_concordance_results(
             index.documents_with_hits.to_string(),
         ));
     }
-    if scan.rows.len() != index.rows.len() {
+    if scan.rows.is_some() != index.rows.is_some() {
+        return Some(concordance_audit_difference(
+            "rows_included",
+            scan.rows.is_some().to_string(),
+            index.rows.is_some().to_string(),
+        ));
+    }
+    let scan_rows = scan.rows.as_deref().unwrap_or_default();
+    let index_rows = index.rows.as_deref().unwrap_or_default();
+    if scan_rows.len() != index_rows.len() {
         return Some(concordance_audit_difference(
             "rows_len",
-            scan.rows.len().to_string(),
-            index.rows.len().to_string(),
+            scan_rows.len().to_string(),
+            index_rows.len().to_string(),
         ));
     }
 
-    for (row_index, (scan_row, index_row)) in scan.rows.iter().zip(&index.rows).enumerate() {
+    for (row_index, (scan_row, index_row)) in scan_rows.iter().zip(index_rows).enumerate() {
         let scan_identity = concordance_row_identity(scan_row);
         let index_identity = concordance_row_identity(index_row);
         if scan_identity != index_identity {
@@ -2248,25 +2264,44 @@ fn compare_concordance_results(
             format!("{:.6}", index.top_document_share),
         ));
     }
-    if scan.distribution.total_documents != index.distribution.total_documents {
+    if scan.distribution.is_some() != index.distribution.is_some() {
+        return Some(concordance_audit_difference(
+            "distribution_included",
+            scan.distribution.is_some().to_string(),
+            index.distribution.is_some().to_string(),
+        ));
+    }
+    let Some(scan_distribution) = scan.distribution.as_ref() else {
+        return (scan != index).then(|| {
+            concordance_audit_difference(
+                "result",
+                "differs_after_checked_fields",
+                "differs_after_checked_fields",
+            )
+        });
+    };
+    let index_distribution = index
+        .distribution
+        .as_ref()
+        .expect("distribution presence checked above");
+    if scan_distribution.total_documents != index_distribution.total_documents {
         return Some(concordance_audit_difference(
             "distribution_total_documents",
-            scan.distribution.total_documents.to_string(),
-            index.distribution.total_documents.to_string(),
+            scan_distribution.total_documents.to_string(),
+            index_distribution.total_documents.to_string(),
         ));
     }
-    if scan.distribution.items.len() != index.distribution.items.len() {
+    if scan_distribution.items.len() != index_distribution.items.len() {
         return Some(concordance_audit_difference(
             "distribution_items_len",
-            scan.distribution.items.len().to_string(),
-            index.distribution.items.len().to_string(),
+            scan_distribution.items.len().to_string(),
+            index_distribution.items.len().to_string(),
         ));
     }
-    for (item_index, (scan_item, index_item)) in scan
-        .distribution
+    for (item_index, (scan_item, index_item)) in scan_distribution
         .items
         .iter()
-        .zip(&index.distribution.items)
+        .zip(&index_distribution.items)
         .enumerate()
     {
         let scan_summary = format!(
@@ -2563,7 +2598,7 @@ fn log_concordance_index_result(
         log_string(&query.query, 80),
         query.case_sensitive,
         routed.result.total_hits,
-        routed.result.rows.len()
+        concordance_materialised_row_count(&routed.result)
     );
 }
 
@@ -2599,7 +2634,7 @@ fn log_concordance_default_index_recovery(
         log_string(&query.query, 80),
         query.case_sensitive,
         scan.total_hits,
-        scan.rows.len(),
+        concordance_materialised_row_count(scan),
         log_string(&error.to_string(), 160)
     );
 }
@@ -2635,7 +2670,7 @@ fn log_concordance_default_index_previous_error_recovery(
         log_string(&query.query, 80),
         query.case_sensitive,
         scan.total_hits,
-        scan.rows.len()
+        concordance_materialised_row_count(scan)
     );
 }
 
@@ -2852,7 +2887,7 @@ fn log_concordance_audit_result(
         log_string(&query.query, 80),
         query.case_sensitive,
         scan.total_hits,
-        scan.rows.len(),
+        concordance_materialised_row_count(scan),
         difference_summary
     );
 }
@@ -2871,7 +2906,7 @@ fn log_concordance_audit_index_error(
         log_string(&query.query, 80),
         query.case_sensitive,
         scan.total_hits,
-        scan.rows.len(),
+        concordance_materialised_row_count(scan),
         log_string(&error.to_string(), 160)
     );
 }
@@ -4127,7 +4162,8 @@ async fn query_concordance_collocations_command(
     .await
     .map_err(|error| format!("Concordance collocation task failed: {error}"))?
     .map(|aggregate| {
-        collocation_cache.insert(cache_key, aggregate.clone());
+        let aggregate = Arc::new(aggregate);
+        collocation_cache.insert(cache_key, Arc::clone(&aggregate));
         query_concordance_collocations_from_aggregate(&aggregate, &query)
     })
 }
@@ -5238,8 +5274,8 @@ mod tests {
             return query_concordance_collocations_from_aggregate(&aggregate, query);
         }
 
-        let aggregate = aggregate(aggregation);
-        cache.insert(cache_key, aggregate.clone());
+        let aggregate = Arc::new(aggregate(aggregation));
+        cache.insert(cache_key, Arc::clone(&aggregate));
         query_concordance_collocations_from_aggregate(&aggregate, query)
     }
 
@@ -5273,8 +5309,10 @@ mod tests {
             window_tokens: 5,
             offset: 0,
             limit: 100,
+            include_rows: true,
             distribution_offset: 0,
             distribution_limit: 10,
+            include_distribution: true,
         }
     }
 
@@ -5565,13 +5603,38 @@ mod tests {
         let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
         let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
         let mut index = scan.clone();
-        index.rows[0].token_index += 1;
+        index.rows.as_mut().expect("rows requested")[0].token_index += 1;
 
         let difference = compare_concordance_results(&scan, &index).unwrap();
 
         assert_eq!(difference.field, "row_identity");
         assert_eq!(difference.row_index, Some(0));
         assert_ne!(difference.scan, difference.index);
+    }
+
+    #[test]
+    fn concordance_audit_compares_omitted_result_sections() {
+        let documents = concordance_test_documents();
+        let mut query = concordance_test_query("movie");
+        query.include_rows = false;
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
+        let mut index = scan.clone();
+
+        assert_eq!(compare_concordance_results(&scan, &index), None);
+        index.rows = Some(Vec::new());
+        assert_eq!(
+            compare_concordance_results(&scan, &index)
+                .expect("section mismatch")
+                .field,
+            "rows_included"
+        );
+
+        query.include_rows = true;
+        query.include_distribution = false;
+        let rows_only =
+            search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
+        assert_eq!(compare_concordance_results(&rows_only, &rows_only), None);
     }
 
     #[test]
@@ -5622,6 +5685,48 @@ mod tests {
         assert_eq!(collocation.index_rebuilt, Some(false));
         assert_eq!(collocation.recovery_reason, None);
         assert_eq!(collocation.aggregate, scan);
+    }
+
+    #[test]
+    fn concordance_collocation_memory_refusal_never_invokes_scan_fallback() {
+        let documents = concordance_test_documents();
+        let query = desktop_collocation_query(
+            "movie",
+            false,
+            5,
+            corpuswright_core::analysis::ConcordanceCollocationDirection::Both,
+        );
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let context = concordance_test_context();
+        let scan_calls = std::cell::Cell::new(0usize);
+        let index_error =
+            corpuswright_core::analysis::ConcordanceError::AnalysisMemoryLimitExceeded {
+                estimated_resident_index_bytes: 900,
+                projected_aggregate_bytes: 200,
+                combined_limit_bytes: 1_000,
+                safety_margin_bytes: 100,
+            };
+
+        let error = aggregate_concordance_collocations_default_index_mode_with(
+            documents.len(),
+            &query,
+            &tokenization_config,
+            &context,
+            concordance_test_context_key(7),
+            &corpuswright_core::index::SurfaceIndexCancellationToken::default(),
+            |document_index| Some(documents[document_index].clone()),
+            |_| {},
+            |_, _, _, _, _, _| {
+                scan_calls.set(scan_calls.get() + 1);
+                Err(concordance_test_index_error())
+            },
+            |_, _, _, _, _, _, _, _| Err(index_error.clone()),
+        )
+        .unwrap_err();
+
+        assert_eq!(scan_calls.get(), 0);
+        assert!(error.contains("Narrow the file scope"));
+        assert!(context.lock().unwrap().default_index_failure.is_none());
     }
 
     #[test]
@@ -5788,7 +5893,10 @@ mod tests {
     fn concordance_collocation_cache_is_keyed_by_aggregation_inputs() {
         let cache = ConcordanceCollocationCache::new();
         let key = collocation_cache_key(7, AnalysisDocumentSelection::default(), "movie", false);
-        cache.insert(key.clone(), collocation_aggregate(key.aggregation.clone()));
+        cache.insert(
+            key.clone(),
+            Arc::new(collocation_aggregate(key.aggregation.clone())),
+        );
 
         assert!(cache.get(&key).is_some());
         let mut other_project = key.clone();
@@ -5841,6 +5949,51 @@ mod tests {
                 ))
                 .is_none()
         );
+    }
+
+    #[test]
+    fn concordance_collocation_cache_shares_and_releases_aggregate_allocations() {
+        let cache = ConcordanceCollocationCache::new();
+        let key = collocation_cache_key(7, AnalysisDocumentSelection::default(), "movie", false);
+        let mut owned = collocation_aggregate(key.aggregation.clone());
+        owned.symbols.push("candidate".to_string());
+        owned.collocate_frequencies.push(11);
+        owned.candidate_counts.insert(0, Default::default());
+        let aggregate = Arc::new(owned);
+        let symbol_ptr = aggregate.symbols[0].as_ptr();
+        cache.insert(key.clone(), Arc::clone(&aggregate));
+
+        let first = cache.get(&key).unwrap();
+        let second = cache.get(&key).unwrap();
+        assert!(Arc::ptr_eq(&aggregate, &first));
+        assert!(Arc::ptr_eq(&first, &second));
+        assert_eq!(first.symbols[0].as_ptr(), symbol_ptr);
+        let strong_count = Arc::strong_count(&aggregate);
+
+        let query = desktop_collocation_query(
+            "movie",
+            false,
+            5,
+            corpuswright_core::analysis::ConcordanceCollocationDirection::Both,
+        );
+        let _ = query_concordance_collocations_from_aggregate(&first, &query);
+        assert_eq!(Arc::strong_count(&aggregate), strong_count);
+        assert_eq!(first.symbols[0].as_ptr(), symbol_ptr);
+
+        drop(first);
+        drop(second);
+        let weak = Arc::downgrade(&aggregate);
+        drop(aggregate);
+        let replacement = Arc::new(collocation_aggregate(key.aggregation.clone()));
+        cache.insert(key.clone(), replacement);
+        assert!(weak.upgrade().is_none());
+
+        let replacement = cache.get(&key).unwrap();
+        let replacement_weak = Arc::downgrade(&replacement);
+        drop(replacement);
+        cache.clear();
+        assert!(cache.get(&key).is_none());
+        assert!(replacement_weak.upgrade().is_none());
     }
 
     #[test]
