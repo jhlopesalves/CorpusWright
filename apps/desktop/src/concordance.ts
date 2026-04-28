@@ -24,7 +24,9 @@ export const CONCORDANCE_COLLOCATION_MIN_SPAN = 1;
 export const CONCORDANCE_COLLOCATION_DEFAULT_SPAN = 5;
 export const CONCORDANCE_COLLOCATION_MAX_SPAN = 20;
 export const CONCORDANCE_COLLOCATION_DEFAULT_FLOOR = 5;
-export const CONCORDANCE_COLLOCATION_LIMIT = 100;
+export const CONCORDANCE_COLLOCATION_LIMIT = 500;
+export const CONCORDANCE_COLLOCATION_INITIAL_ROWS = 10;
+export const CONCORDANCE_COLLOCATION_SHOW_MORE_STEP = 25;
 export const CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE =
   "Enter a word or phrase to build a collocate profile.";
 export const CONCORDANCE_COLLOCATION_NO_ROWS_MESSAGE =
@@ -154,10 +156,211 @@ export function concordanceSortLabel(sortKey: ConcordanceSortKey): string {
   return CONCORDANCE_SORT_OPTIONS.find((option) => option.value === sortKey)?.label ?? "File/position";
 }
 
+function formatConcordanceCount(value: number): string {
+  return value.toLocaleString();
+}
+
+export function concordanceLinesCardStatsText(options: {
+  windowTokens: number;
+  sortKey: ConcordanceSortKey;
+  shown: number;
+  totalHits: number;
+  contextFilter: string | null;
+}): string {
+  const sortLabel = concordanceSortLabel(options.sortKey);
+  const parts = [
+    `window ${options.windowTokens}L–${options.windowTokens}R`,
+    `${sortLabel[0]?.toLowerCase() ?? ""}${sortLabel.slice(1)}`,
+  ];
+  if (options.contextFilter !== null) parts.push(`context “${options.contextFilter}”`);
+  parts.push(`showing ${formatConcordanceCount(options.shown)} of ${formatConcordanceCount(options.totalHits)}`);
+  return parts.join(" · ");
+}
+
+export function concordanceCollocatesCardStatsText(options: {
+  span: number;
+  direction: ConcordanceCollocationDirection;
+  measure: ConcordanceCollocationMeasure;
+  minimumFrequency: number;
+  shown: number;
+  loadedRows: number;
+  totalCandidates: number;
+}): string {
+  const spanText = options.direction === "left"
+    ? `${options.span}L`
+    : options.direction === "right"
+      ? `${options.span}R`
+      : `${options.span}L–${options.span}R`;
+  const parts = [
+    `span ${spanText}`,
+    concordanceCollocationMeasureLabel(options.measure),
+    `min freq ${formatConcordanceCount(options.minimumFrequency)}`,
+  ];
+  if (options.totalCandidates > options.loadedRows) {
+    parts.push(
+      `showing ${formatConcordanceCount(options.shown)} of ${formatConcordanceCount(options.loadedRows)} available rows`,
+      `${formatConcordanceCount(options.totalCandidates)} qualifying collocates`,
+    );
+  } else {
+    parts.push(`showing ${formatConcordanceCount(options.shown)} of ${formatConcordanceCount(options.totalCandidates)}`);
+  }
+  return parts.join(" · ");
+}
+
+export function concordanceDistributionCardStatsText(options: {
+  documentsWithHits: number;
+  selectedDocumentsTotal: number;
+  shown: number;
+  totalDocuments: number;
+}): string {
+  return `${formatConcordanceCount(options.documentsWithHits)} of ${formatConcordanceCount(options.selectedDocumentsTotal)} documents with hits · showing ${formatConcordanceCount(options.shown)} of ${formatConcordanceCount(options.totalDocuments)}`;
+}
+
+export type ConcordanceSortLevel = 1 | 2 | 3 | null;
+
+export interface ConcordanceContextSortLevels {
+  left: ConcordanceSortLevel[];
+  right: ConcordanceSortLevel[];
+}
+
+export function concordanceContextSortLevels(
+  sortKey: ConcordanceSortKey,
+  leftLength: number,
+  rightLength: number,
+): ConcordanceContextSortLevels {
+  const left = Array<ConcordanceSortLevel>(leftLength).fill(null);
+  const right = Array<ConcordanceSortLevel>(rightLength).fill(null);
+  const levelOrder = (primary: number): [number, number, number] => {
+    if (primary === 0) return [1, 2, 3];
+    if (primary === 1) return [2, 1, 3];
+    return [3, 2, 1];
+  };
+  const match = /^(left|right)([123])$/.exec(sortKey);
+  if (!match) return { left, right };
+  const side = match[1];
+  const primary = Number.parseInt(match[2]!, 10) - 1;
+  const levels = levelOrder(primary);
+  for (let distance = 0; distance < 3; distance += 1) {
+    if (side === "left") {
+      const index = leftLength - distance - 1;
+      if (index >= 0) left[index] = levels[distance]! as 1 | 2 | 3;
+    } else if (distance < rightLength) {
+      right[distance] = levels[distance]! as 1 | 2 | 3;
+    }
+  }
+  return { left, right };
+}
+
+export function concordanceMiddleEllipsis(value: string, maximumLength = 28): string {
+  if (value.length <= maximumLength || maximumLength < 5) return value;
+  const remaining = maximumLength - 1;
+  const startLength = Math.ceil(remaining / 2);
+  const endLength = Math.floor(remaining / 2);
+  return `${value.slice(0, startLength)}…${value.slice(value.length - endLength)}`;
+}
+
 export function concordanceCollocationMeasureLabel(
   measure: ConcordanceCollocationMeasure,
 ): string {
   return CONCORDANCE_COLLOCATION_MEASURE_OPTIONS.find((option) => option.value === measure)?.label ?? "logDice";
+}
+
+export type ConcordanceStrengthDirection = "negative" | "zero" | "positive" | "nonNegative";
+
+export interface ConcordanceStrengthBarModel {
+  signed: boolean;
+  direction: ConcordanceStrengthDirection;
+  magnitudePercent: number;
+  ramp: 1 | 2 | 3 | 4 | 5;
+}
+
+export function concordanceCollocationMeasureIsSigned(
+  measure: ConcordanceCollocationMeasure,
+): boolean {
+  return measure === "mi"
+    || measure === "mi3"
+    || measure === "tScore"
+    || measure === "zScore"
+    || measure === "logRatio";
+}
+
+export function concordanceCollocationStrengthBar(
+  value: number | null,
+  measure: ConcordanceCollocationMeasure,
+  loadedScores: Array<number | null>,
+): ConcordanceStrengthBarModel | null {
+  if (value === null || !Number.isFinite(value)) return null;
+  const finite = loadedScores.filter((score): score is number => score !== null && Number.isFinite(score));
+  const signed = concordanceCollocationMeasureIsSigned(measure);
+  const maximum = signed
+    ? Math.max(0, ...finite.map((score) => Math.abs(score)))
+    : Math.max(0, ...finite);
+  const magnitudePercent = maximum === 0
+    ? 0
+    : Math.min(100, Math.abs(value) / maximum * 100);
+  const ramp = Math.min(5, Math.max(1, Math.ceil(magnitudePercent / 20))) as 1 | 2 | 3 | 4 | 5;
+  const direction: ConcordanceStrengthDirection = signed
+    ? value < 0
+      ? "negative"
+      : value > 0
+        ? "positive"
+        : "zero"
+    : "nonNegative";
+  return { signed, direction, magnitudePercent, ramp };
+}
+
+export function nextConcordanceCollocateDisplayCount(
+  current: number,
+  loadedRows: number,
+): number {
+  return Math.min(loadedRows, Math.max(CONCORDANCE_COLLOCATION_INITIAL_ROWS, current) + CONCORDANCE_COLLOCATION_SHOW_MORE_STEP);
+}
+
+export interface ConcordancePositionGlyphBin {
+  label: `L${1 | 2 | 3 | 4 | 5}` | `R${1 | 2 | 3 | 4 | 5}`;
+  count: number;
+  active: boolean;
+  intensity: number;
+}
+
+export function concordanceCollocatePositionGlyph(
+  left: number[],
+  right: number[],
+  span: number,
+  direction: ConcordanceCollocationDirection,
+): ConcordancePositionGlyphBin[] {
+  const countAt = (values: number[], distance: number) => values[distance - 1] ?? 0;
+  const leftActive = direction === "left" || direction === "both";
+  const rightActive = direction === "right" || direction === "both";
+  const bins: ConcordancePositionGlyphBin[] = [];
+  for (const distance of [5, 4, 3, 2, 1] as const) {
+    bins.push({
+      label: `L${distance}`,
+      count: countAt(left, distance),
+      active: leftActive && distance <= span,
+      intensity: 0,
+    });
+  }
+  for (const distance of [1, 2, 3, 4, 5] as const) {
+    bins.push({
+      label: `R${distance}`,
+      count: countAt(right, distance),
+      active: rightActive && distance <= span,
+      intensity: 0,
+    });
+  }
+  const maximum = Math.max(0, ...bins.filter((bin) => bin.active).map((bin) => bin.count));
+  return bins.map((bin) => ({
+    ...bin,
+    intensity: !bin.active || maximum === 0 ? 0 : bin.count / maximum,
+  }));
+}
+
+export function concordancePositionGlyphAccessibleText(
+  surface: string,
+  bins: ConcordancePositionGlyphBin[],
+): string {
+  return `${surface}: ${bins.map((bin) => `${bin.label} ${bin.count}`).join(", ")}`;
 }
 
 export function concordanceCollocationDirectionLabel(
@@ -208,6 +411,14 @@ export function concordanceRangePercent(result: {
     return 0;
   }
   return result.documentsWithHits / result.selectedDocumentsTotal * 100;
+}
+
+export function concordanceDistributionMagnitudePercent(
+  count: number,
+  maxCount: number,
+): number {
+  if (!Number.isFinite(count) || !Number.isFinite(maxCount) || maxCount <= 0) return 0;
+  return Math.min(100, Math.max(0, count / maxCount * 100));
 }
 
 export function concordanceIsSparse(result: {
@@ -275,33 +486,6 @@ export function concordanceCollocationSortHeaderLabel(
   }
   return CONCORDANCE_COLLOCATION_SORT_OPTIONS.find((option) => option.value === sortKey)?.label
     ?? "Association";
-}
-
-export function concordanceCollocationScoreBarPercent(
-  value: number | null,
-  measure: ConcordanceCollocationMeasure,
-  visibleScores: Array<number | null> = [],
-): number | null {
-  if (value === null || !Number.isFinite(value)) {
-    return null;
-  }
-  if (measure === "logDice") {
-    return Math.min(100, Math.max(0, value / 14 * 100));
-  }
-
-  const finiteScores = visibleScores.filter((score): score is number =>
-    score !== null && Number.isFinite(score)
-  );
-  if (finiteScores.length === 0) {
-    return null;
-  }
-
-  const minimum = Math.min(...finiteScores);
-  const maximum = Math.max(...finiteScores);
-  if (maximum === minimum) {
-    return 100;
-  }
-  return Math.min(100, Math.max(0, (value - minimum) / (maximum - minimum) * 100));
 }
 
 export interface ConcordanceExpansionStateSnapshot {
