@@ -2,11 +2,12 @@ import type { ConcordanceResult } from "../../analysis";
 import {
   CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,
+  concordanceDistributionMagnitudePercent,
   concordanceRangePercent,
 } from "../../concordance";
 import { dom } from "../../dom";
 import { formatFixedNumber, formatNumber } from "../shell";
-import { refreshConcordance } from "./shared";
+import { refreshConcordanceDistribution } from "./shared";
 
 export const CONCORDANCE_DISTRIBUTION_PAGE_SIZE = 10;
 
@@ -17,6 +18,7 @@ export function renderConcordanceDistribution(
   emptyMessage = CONCORDANCE_NO_QUERY_MESSAGE,
 ): void {
   dom.concordanceDistribution.replaceChildren();
+  const distribution = result?.distribution ?? null;
 
   const panel = document.createElement("div");
   panel.className = "concordance-document-spread-panel";
@@ -78,6 +80,12 @@ export function renderConcordanceDistribution(
 
     metrics.append(hitMetric, rangeMetric, topFileMetric, dispersionMetric);
     panel.appendChild(metrics);
+
+    const reading = document.createElement("p");
+    reading.className = "concordance-distribution-reading";
+    reading.textContent =
+      "Concentration in a few documents may suggest topic, genre, or source dependence; broad reach may suggest more corpus-general use.";
+    panel.appendChild(reading);
   }
 
   const tableWrap = document.createElement("div");
@@ -88,7 +96,7 @@ export function renderConcordanceDistribution(
 
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  for (const label of ["File", "Hits", "Tokens", "Hits per 10k", "Share of hits"]) {
+  for (const label of ["File", "Occurrences", "Tokens", "Hits per 10k", "Share of hits"]) {
     const cell = document.createElement("th");
     cell.textContent = label;
     header.appendChild(cell);
@@ -97,16 +105,20 @@ export function renderConcordanceDistribution(
   table.appendChild(head);
 
   const body = document.createElement("tbody");
-  if (!result || result.totalHits === 0) {
+  if (!result || result.totalHits === 0 || distribution === null) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = 5;
     cell.className = "frequency-empty concordance-empty";
-    cell.textContent = result ? CONCORDANCE_NO_HITS_MESSAGE : emptyMessage;
+    cell.textContent = !result
+      ? emptyMessage
+      : distribution === null
+        ? "Distribution was not included in this response."
+        : CONCORDANCE_NO_HITS_MESSAGE;
     row.appendChild(cell);
     body.appendChild(row);
   } else {
-    for (const item of result.distribution.items) {
+    for (const item of distribution.items) {
       const row = document.createElement("tr");
 
       const file = document.createElement("td");
@@ -115,8 +127,21 @@ export function renderConcordanceDistribution(
       file.textContent = item.displayName || item.sourcePath;
 
       const count = document.createElement("td");
-      count.className = "numeric";
-      count.textContent = formatNumber(item.count);
+      count.className = "numeric concordance-distribution-occurrences";
+      const countValue = document.createElement("span");
+      countValue.className = "concordance-distribution-count";
+      countValue.textContent = formatNumber(item.count);
+      const countTrack = document.createElement("span");
+      countTrack.className = "concordance-distribution-bar-track";
+      countTrack.setAttribute("aria-hidden", "true");
+      const countBar = document.createElement("span");
+      countBar.className = "concordance-distribution-bar";
+      countBar.style.setProperty(
+        "--distribution-bar-width",
+        `${concordanceDistributionMagnitudePercent(item.count, distribution.maxCount)}%`,
+      );
+      countTrack.appendChild(countBar);
+      count.append(countValue, countTrack);
 
       const tokens = document.createElement("td");
       tokens.className = "numeric";
@@ -140,33 +165,33 @@ export function renderConcordanceDistribution(
   tableWrap.appendChild(table);
   panel.appendChild(tableWrap);
 
-  if (result && result.totalHits > 0) {
+  if (result && result.totalHits > 0 && distribution) {
     const pagination = document.createElement("div");
     pagination.className = "analysis-pagination";
     const previous = document.createElement("button");
     previous.type = "button";
     previous.className = "secondary-btn";
     previous.textContent = "Previous";
-    previous.disabled = result.distribution.offset === 0;
+    previous.disabled = distribution.offset === 0;
     previous.addEventListener("click", () => {
-      concordanceDistributionOffset = Math.max(0, result.distribution.offset - result.distribution.limit);
-      void refreshConcordance(false, false, false);
+      concordanceDistributionOffset = Math.max(0, distribution.offset - distribution.limit);
+      void refreshConcordanceDistribution();
     });
     const status = document.createElement("span");
-    const first = result.distribution.totalDocuments === 0 ? 0 : result.distribution.offset + 1;
+    const first = distribution.totalDocuments === 0 ? 0 : distribution.offset + 1;
     const last = Math.min(
-      result.distribution.totalDocuments,
-      result.distribution.offset + result.distribution.items.length,
+      distribution.totalDocuments,
+      distribution.offset + distribution.items.length,
     );
-    status.textContent = `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(result.distribution.totalDocuments)}`;
+    status.textContent = `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(distribution.totalDocuments)}`;
     const next = document.createElement("button");
     next.type = "button";
     next.className = "secondary-btn";
     next.textContent = "Next";
-    next.disabled = result.distribution.offset + result.distribution.items.length >= result.distribution.totalDocuments;
+    next.disabled = distribution.offset + distribution.items.length >= distribution.totalDocuments;
     next.addEventListener("click", () => {
-      concordanceDistributionOffset = result.distribution.offset + result.distribution.limit;
-      void refreshConcordance(false, false, false);
+      concordanceDistributionOffset = distribution.offset + distribution.limit;
+      void refreshConcordanceDistribution();
     });
     pagination.append(previous, status, next);
     panel.appendChild(pagination);

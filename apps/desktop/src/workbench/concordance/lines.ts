@@ -8,7 +8,10 @@ import {
 import {
   clampConcordancePageSize,
   clampConcordanceWindow,
+  concordanceContextSortLevels,
+  concordanceContextTokenSegments,
   concordanceExpansionViewModel,
+  concordanceMiddleEllipsis,
   concordanceRowExpansionKey,
   concordanceRowText,
   CONCORDANCE_COLUMNS,
@@ -25,9 +28,8 @@ import { state } from "../../state";
 import { formatNumber } from "../shell";
 import {
   currentConcordanceSearchResult,
-  refreshConcordance,
+  refreshConcordanceLines,
   renderConcordance,
-  renderContextTokens,
 } from "./shared";
 
 let concordanceOffset = 0;
@@ -188,18 +190,46 @@ function appendConcordanceKwicCells(
   activeFilter: string | null,
   caseSensitive: boolean,
 ): void {
+  const sortLevels = concordanceContextSortLevels(
+    concordanceSortKey,
+    row.leftContext.length,
+    row.rightContext.length,
+  );
   const file = document.createElement("td");
   file.className = "concordance-file";
   file.title = row.displayName || row.sourcePath;
-  file.textContent = row.displayName || row.sourcePath;
+  file.textContent = concordanceMiddleEllipsis(row.displayName || row.sourcePath);
+
+  const appendContext = (
+    cell: HTMLTableCellElement,
+    tokens: string[],
+    levels: Array<1 | 2 | 3 | null>,
+  ) => {
+    const run = document.createElement("span");
+    run.className = "concordance-context-run";
+    const segments = concordanceContextTokenSegments(tokens, activeFilter, caseSensitive);
+    segments.forEach((segment, index) => {
+      if (index > 0) run.appendChild(document.createTextNode(" "));
+      const token = document.createElement("span");
+      token.className = "concordance-context-token";
+      if (segment.collocate) token.classList.add("concordance-kwic-pair");
+      const level = levels[index];
+      if (level !== null) {
+        const priority = level === 1 ? "primary" : level === 2 ? "secondary" : "tertiary";
+        token.classList.add(`is-sort-level-${level}`);
+        token.dataset.sortLevel = level.toString();
+        token.title = `${priority[0]!.toUpperCase()}${priority.slice(1)} sort key: ${segment.text}`;
+        token.setAttribute("aria-label", `${segment.text}, ${priority} sort key`);
+      }
+      token.textContent = segment.text;
+      run.appendChild(token);
+    });
+    cell.appendChild(run);
+  };
 
   const left = document.createElement("td");
   left.className = "concordance-left";
-  if (activeFilter === null) {
-    left.textContent = concordanceRowText(row.leftContext);
-  } else {
-    left.appendChild(renderContextTokens(row.leftContext, activeFilter, caseSensitive));
-  }
+  appendContext(left, row.leftContext, sortLevels.left);
 
   const nodeCell = document.createElement("td");
   nodeCell.className = "concordance-node-cell";
@@ -210,11 +240,7 @@ function appendConcordanceKwicCells(
 
   const right = document.createElement("td");
   right.className = "concordance-right";
-  if (activeFilter === null) {
-    right.textContent = concordanceRowText(row.rightContext);
-  } else {
-    right.appendChild(renderContextTokens(row.rightContext, activeFilter, caseSensitive));
-  }
+  appendContext(right, row.rightContext, sortLevels.right);
 
   item.append(file, left, nodeCell, right);
 }
@@ -277,11 +303,8 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
     context.className = "concordance-expansion-context";
     const left = document.createElement("span");
     left.className = "concordance-expansion-left";
-    const concordanceResult = currentConcordanceSearchResult();
-    const activeFilter = concordanceResult?.contextFilter ?? null;
-    const caseSensitive = concordanceResult?.caseSensitive ?? false;
     if (concordanceExpansionResult !== null) {
-      left.appendChild(renderContextTokens(concordanceExpansionResult.leftContext, activeFilter, caseSensitive));
+      left.textContent = concordanceRowText(concordanceExpansionResult.leftContext);
     } else {
       left.textContent = expansion.leftText;
     }
@@ -291,7 +314,7 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
     const right = document.createElement("span");
     right.className = "concordance-expansion-right";
     if (concordanceExpansionResult !== null) {
-      right.appendChild(renderContextTokens(concordanceExpansionResult.rightContext, activeFilter, caseSensitive));
+      right.textContent = concordanceRowText(concordanceExpansionResult.rightContext);
     } else {
       right.textContent = expansion.rightText;
     }
@@ -324,6 +347,10 @@ export function renderConcordanceLines(
   result: ConcordanceResult | null,
   emptyMessage = CONCORDANCE_NO_QUERY_MESSAGE,
 ): void {
+  dom.concordanceSortLegend.classList.toggle(
+    "hidden",
+    concordanceSortKey === "filePosition" || concordanceSortKey === "node",
+  );
   if (!result) {
     renderConcordanceTableState(emptyMessage);
     dom.concordancePagePreviousButton.disabled = true;
@@ -331,12 +358,20 @@ export function renderConcordanceLines(
     dom.concordancePageStatus.textContent = "";
     return;
   }
+  const rows = result.rows;
+  if (rows === null) {
+    renderConcordanceTableState("Concordance lines were not included in this response.");
+    dom.concordancePagePreviousButton.disabled = true;
+    dom.concordancePageNextButton.disabled = true;
+    dom.concordancePageStatus.textContent = "";
+    return;
+  }
 
-  if (result.rows.length === 0) {
+  if (rows.length === 0) {
     renderConcordanceTableState(CONCORDANCE_NO_HITS_MESSAGE);
   } else {
     dom.concordanceTableBody.replaceChildren();
-    for (const row of result.rows) {
+    for (const row of rows) {
       const rowElement = createConcordanceRow(row);
       dom.concordanceTableBody.appendChild(rowElement);
       const rowKey = concordanceRowExpansionKey(row);
@@ -348,35 +383,47 @@ export function renderConcordanceLines(
   }
 
   const first = result.totalHits === 0 ? 0 : result.offset + 1;
-  const last = Math.min(result.totalHits, result.offset + result.rows.length);
+  const last = Math.min(result.totalHits, result.offset + rows.length);
   dom.concordancePageStatus.textContent =
     result.totalHits === 0 ? "0 of 0" : `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(result.totalHits)}`;
   dom.concordancePagePreviousButton.disabled = result.offset === 0;
-  dom.concordancePageNextButton.disabled = result.offset + result.rows.length >= result.totalHits;
+  dom.concordancePageNextButton.disabled = result.offset + rows.length >= result.totalHits;
 }
 
 export function showPreviousConcordancePage(): void {
   const concordanceResult = currentConcordanceSearchResult();
   const pageSize = concordanceResult?.limit ?? currentConcordancePageSize();
   concordanceOffset = Math.max(0, concordanceOffset - pageSize);
-  void refreshConcordance(false, false);
+  collapseConcordanceExpansion();
+  void refreshConcordanceLines();
 }
 
 export function showNextConcordancePage(): void {
   const concordanceResult = currentConcordanceSearchResult();
   const pageSize = concordanceResult?.limit ?? currentConcordancePageSize();
   concordanceOffset += pageSize;
-  void refreshConcordance(false, false);
+  collapseConcordanceExpansion();
+  void refreshConcordanceLines();
 }
 
 export function handleConcordanceSortChange(): void {
   concordanceSortKey = currentConcordanceSortKey();
-  void refreshConcordance(true, true);
+  collapseConcordanceExpansion();
+  resetConcordanceLineOffset();
+  void refreshConcordanceLines();
 }
 
 export function handleConcordancePageSizeChange(): void {
   currentConcordancePageSize();
-  void refreshConcordance(true, true);
+  collapseConcordanceExpansion();
+  resetConcordanceLineOffset();
+  void refreshConcordanceLines();
+}
+
+export function handleConcordanceWindowChange(): void {
+  collapseConcordanceExpansion();
+  resetConcordanceLineOffset();
+  void refreshConcordanceLines();
 }
 
 export function collapseConcordanceExpansionFromControlChange(): void {
