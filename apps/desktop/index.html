@@ -466,7 +466,7 @@
                   <div class="concordance-controls">
                     <label for="concordance-query-input">
                       <span>Surface word or phrase</span>
-                      <input id="concordance-query-input" type="search" autocomplete="off" />
+                      <input id="concordance-query-input" type="search" autocomplete="off" aria-controls="concordance-workbench" />
                     </label>
                     <label class="frequency-stopword-control" for="concordance-case-sensitive">
                       <span>Case</span>
@@ -481,20 +481,25 @@
                       <button id="concordance-files-button" type="button" class="secondary-btn">Files: 0 of 0</button>
                     </div>
                     <div class="concordance-search-actions">
-                      <button id="concordance-search-button" class="primary-btn" type="button">Search</button>
-                      <button id="concordance-cancel-button" class="secondary-btn hidden" type="button">Cancel</button>
+                      <button id="concordance-search-button" class="primary-btn" type="button" aria-controls="concordance-workbench" aria-describedby="concordance-status">Search</button>
+                      <button id="concordance-cancel-button" class="secondary-btn hidden" type="button" aria-label="Cancel concordance search" aria-controls="concordance-workbench" aria-hidden="true" disabled>Cancel</button>
                     </div>
                   </div>
                 </div>
                 <div id="concordance-status" class="frequency-query-notice hidden" role="status"></div>
-                <div id="concordance-view-tabs" class="concordance-view-tabs" role="tablist" aria-label="Concordance views">
-                  <button id="concordance-lines-tab" type="button" class="concordance-view-tab is-active" data-concordance-view="lines" role="tab" aria-selected="true" aria-controls="concordance-lines-panel">Concordance lines</button>
-                  <button id="concordance-collocates-tab" type="button" class="concordance-view-tab" data-concordance-view="collocates" role="tab" aria-selected="false" aria-controls="concordance-collocations-panel">Collocates</button>
-                  <button id="concordance-distribution-tab" type="button" class="concordance-view-tab" data-concordance-view="distribution" role="tab" aria-selected="false" aria-controls="concordance-distribution-panel">Distribution</button>
-                </div>
-                <div class="concordance-views">
-                  <section id="concordance-lines-panel" class="concordance-view-panel concordance-kwic-panel" data-concordance-view-panel="lines" role="tabpanel" aria-labelledby="concordance-lines-tab">
-                    <div class="concordance-lines-controls">
+                <div id="concordance-workbench" class="concordance-workbench">
+                  <section id="concordance-lines-panel" class="concordance-card concordance-kwic-panel" aria-labelledby="concordance-lines-title" tabindex="-1">
+                    <header class="concordance-card-header">
+                      <div class="concordance-card-heading">
+                        <h3 id="concordance-lines-title">Concordance Lines</h3>
+                        <p>Where and how does the node occur in context?</p>
+                      </div>
+                      <div class="concordance-card-actions">
+                        <button id="concordance-lines-stats" class="concordance-card-stats" type="button" data-concordance-card="lines" data-concordance-card-action="controls" aria-expanded="false" aria-controls="concordance-lines-controls">window 5L–5R · file/position · showing 0 of 0</button>
+                        <button id="concordance-lines-collapse" class="concordance-card-collapse" type="button" data-concordance-card="lines" data-concordance-card-action="collapse" aria-expanded="true" aria-controls="concordance-lines-body" aria-label="Collapse Concordance Lines">Collapse</button>
+                      </div>
+                    </header>
+                    <div id="concordance-lines-controls" class="concordance-card-controls concordance-lines-controls hidden">
                       <label for="concordance-window-input">
                         <span>Window</span>
                         <input id="concordance-window-input" type="number" min="1" max="20" step="1" value="5" />
@@ -517,8 +522,18 @@
                         <input id="concordance-page-size-input" type="number" min="25" max="500" step="25" value="100" />
                       </label>
                     </div>
-                    <div class="concordance-table-wrap">
-                      <table class="concordance-table">
+                    <div id="concordance-lines-body" class="concordance-card-body">
+                      <div id="concordance-lines-filter" class="concordance-filter-chip hidden" role="status">
+                        <span id="concordance-lines-filter-summary"></span>
+                        <button id="concordance-lines-filter-clear" class="secondary-btn concordance-filter-clear" type="button">Clear</button>
+                      </div>
+                      <div id="concordance-sort-legend" class="concordance-sort-legend hidden" aria-label="Context sort priority">
+                        <span class="is-level-1"><strong>1</strong> Primary sort</span>
+                        <span class="is-level-2"><strong>2</strong> Secondary sort</span>
+                        <span class="is-level-3"><strong>3</strong> Tertiary sort</span>
+                      </div>
+                      <div class="concordance-table-wrap">
+                        <table class="concordance-table">
                         <thead>
                           <tr>
                             <th>File</th>
@@ -532,17 +547,27 @@
                             <td colspan="4" class="frequency-empty">Enter a word or phrase to see concordance lines.</td>
                           </tr>
                         </tbody>
-                      </table>
-                    </div>
-                    <div class="analysis-pagination" aria-label="Concordance result pages">
-                      <button id="concordance-page-previous" class="secondary-btn" type="button">Previous</button>
-                      <span id="concordance-page-status"></span>
-                      <button id="concordance-page-next" class="secondary-btn" type="button">Next</button>
+                        </table>
+                      </div>
+                      <div class="analysis-pagination" aria-label="Concordance result pages">
+                        <button id="concordance-page-previous" class="secondary-btn" type="button">Previous</button>
+                        <span id="concordance-page-status"></span>
+                        <button id="concordance-page-next" class="secondary-btn" type="button">Next</button>
+                      </div>
                     </div>
                   </section>
-                  <section id="concordance-collocations-panel" class="concordance-view-panel concordance-collocations-panel hidden" data-concordance-view-panel="collocates" role="tabpanel" aria-labelledby="concordance-collocates-tab" aria-hidden="true">
-                    <p id="concordance-collocations-summary" class="frequency-summary">Enter a word or phrase to build a collocate profile.</p>
-                    <div class="concordance-collocation-controls">
+                  <section id="concordance-collocations-panel" class="concordance-card concordance-collocations-panel" aria-labelledby="concordance-collocates-title">
+                    <header class="concordance-card-header">
+                      <div class="concordance-card-heading">
+                        <h3 id="concordance-collocates-title">Collocates</h3>
+                        <p>Which words systematically occur near the node, and where relative to it?</p>
+                      </div>
+                      <div class="concordance-card-actions">
+                        <button id="concordance-collocates-stats" class="concordance-card-stats" type="button" data-concordance-card="collocates" data-concordance-card-action="controls" aria-expanded="false" aria-controls="concordance-collocates-controls">span 5L–5R · logDice · min freq 5 · showing 0 of 0</button>
+                        <button id="concordance-collocates-collapse" class="concordance-card-collapse" type="button" data-concordance-card="collocates" data-concordance-card-action="collapse" aria-expanded="true" aria-controls="concordance-collocates-body" aria-label="Collapse Collocates">Collapse</button>
+                      </div>
+                    </header>
+                    <div id="concordance-collocates-controls" class="concordance-card-controls concordance-collocation-controls hidden">
                       <label for="concordance-collocation-span">
                         <span>Span</span>
                         <input id="concordance-collocation-span" type="number" min="1" max="20" step="1" value="5" />
@@ -584,27 +609,52 @@
                         </span>
                       </label>
                     </div>
-                    <div id="concordance-collocations-status" class="frequency-query-notice hidden" role="status"></div>
-                    <div class="concordance-collocations-table-wrap">
-                      <table class="concordance-collocations-table">
+                    <div id="concordance-collocates-body" class="concordance-card-body">
+                      <p id="concordance-collocations-summary" class="frequency-summary">Enter a word or phrase to build a collocate profile.</p>
+                      <div id="concordance-collocations-status" class="frequency-query-notice hidden" role="status"></div>
+                      <div class="concordance-collocations-table-wrap">
+                        <table class="concordance-collocations-table">
                         <thead id="concordance-collocations-table-head">
                           <tr>
                             <th>Collocate</th>
                             <th title="Co-occurrences within the selected span; O11">Near query <span class="concordance-collocation-heading-sublabel">O11</span></th>
                             <th title="Total frequency of the collocate in scope; f_c">Corpus frequency <span class="concordance-collocation-heading-sublabel">f_c</span></th>
                             <th>Association: logDice</th>
+                            <th>Position</th>
+                            <th>Evidence</th>
                           </tr>
                         </thead>
                         <tbody id="concordance-collocations-table-body">
                           <tr>
-                            <td colspan="4" class="frequency-empty">Enter a word or phrase to build a collocate profile.</td>
+                            <td colspan="6" class="frequency-empty">Enter a word or phrase to build a collocate profile.</td>
                           </tr>
                         </tbody>
-                      </table>
+                        </table>
+                      </div>
+                      <p class="concordance-collocation-reading">Bar length and colour are relative within the currently loaded collocate set; they do not represent statistical significance. Frequency floors change the qualifying population; Show more changes presentation only.</p>
+                      <div id="concordance-collocations-more" class="concordance-collocations-more hidden">
+                        <span id="concordance-collocations-more-status"></span>
+                        <button id="concordance-collocations-more-button" class="secondary-btn" type="button">Show 25 more</button>
+                      </div>
                     </div>
                   </section>
-                  <section id="concordance-distribution-panel" class="concordance-view-panel concordance-distribution-panel hidden" data-concordance-view-panel="distribution" role="tabpanel" aria-labelledby="concordance-distribution-tab" aria-hidden="true">
-                    <div id="concordance-distribution" class="concordance-distribution"></div>
+                  <section id="concordance-distribution-panel" class="concordance-card concordance-distribution-panel" aria-labelledby="concordance-distribution-title">
+                    <header class="concordance-card-header">
+                      <div class="concordance-card-heading">
+                        <h3 id="concordance-distribution-title">Distribution</h3>
+                        <p>How are the node occurrences spread across documents?</p>
+                      </div>
+                      <div class="concordance-card-actions">
+                        <button id="concordance-distribution-stats" class="concordance-card-stats" type="button" data-concordance-card="distribution" data-concordance-card-action="controls" aria-expanded="false" aria-controls="concordance-distribution-controls">0 of 0 documents with hits · showing 0 of 0</button>
+                        <button id="concordance-distribution-collapse" class="concordance-card-collapse" type="button" data-concordance-card="distribution" data-concordance-card-action="collapse" aria-expanded="true" aria-controls="concordance-distribution-body" aria-label="Collapse Distribution">Collapse</button>
+                      </div>
+                    </header>
+                    <div id="concordance-distribution-controls" class="concordance-card-controls concordance-distribution-controls hidden">
+                      <p>Ranked by occurrence count · 10 documents per page</p>
+                    </div>
+                    <div id="concordance-distribution-body" class="concordance-card-body">
+                      <div id="concordance-distribution" class="concordance-distribution"></div>
+                    </div>
                   </section>
                 </div>
               </section>
