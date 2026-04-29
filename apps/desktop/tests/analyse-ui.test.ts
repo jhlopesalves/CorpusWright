@@ -136,65 +136,71 @@ assert(
     && !concordanceSharedControls.includes('id="concordance-page-size-input"'),
   "Concordance shared controls should contain only query, case, file scope, and search controls",
 );
-const concordanceTabsStart = html.indexOf('id="concordance-view-tabs"', concordanceStatusStart);
-const concordanceViewsStart = html.indexOf('<div class="concordance-views">', concordanceTabsStart);
-const concordanceTabs = html.slice(concordanceTabsStart, concordanceViewsStart);
+const concordanceWorkbenchStart = html.indexOf('<div id="concordance-workbench" class="concordance-workbench">', concordanceStatusStart);
 assert(
-  concordanceTabs.includes('id="concordance-lines-tab"')
-    && concordanceTabs.includes('data-concordance-view="lines"')
-    && concordanceTabs.includes(">Concordance lines</button>")
-    && concordanceTabs.includes('id="concordance-collocates-tab"')
-    && concordanceTabs.includes('data-concordance-view="collocates"')
-    && concordanceTabs.includes(">Collocates</button>")
-    && concordanceTabs.includes('id="concordance-distribution-tab"')
-    && concordanceTabs.includes('data-concordance-view="distribution"')
-    && concordanceTabs.includes(">Distribution</button>"),
-  "Concordance should expose Concordance lines, Collocates, and Distribution as query view tabs",
+  concordanceWorkbenchStart > concordanceStatusStart
+    && !html.includes('id="concordance-view-tabs"')
+    && !html.includes('role="tablist" aria-label="Concordance views"'),
+  "Concordance should use one stacked workbench without a view tab strip",
 );
-assert(
-  !concordanceTabs.includes(">Evidence lines</button>")
-    && !concordanceTabs.includes(">Collocate profile</button>"),
-  "Concordance view tabs should not use the old Evidence lines or Collocate profile labels",
-);
-assert(
-  concordanceStatusStart < concordanceTabsStart && concordanceTabsStart < concordanceViewsStart,
-  "Concordance status should sit above the query view selector and panels",
-);
-const concordanceLinesStart = html.indexOf('id="concordance-lines-panel"', concordanceViewsStart);
+const concordanceLinesStart = html.indexOf('id="concordance-lines-panel"', concordanceWorkbenchStart);
 const concordanceCollocationsStart = html.indexOf('id="concordance-collocations-panel"', concordanceLinesStart);
 const concordanceDistributionStart = html.indexOf('id="concordance-distribution-panel"', concordanceCollocationsStart);
 assert(
-  concordanceLinesStart > concordanceViewsStart
+  concordanceLinesStart > concordanceWorkbenchStart
     && concordanceCollocationsStart > concordanceLinesStart
     && concordanceDistributionStart > concordanceCollocationsStart,
-  "Concordance view panels should render as Concordance lines, Collocates, and Distribution siblings",
+  "Concordance cards should render in Lines, Collocates, Distribution order",
 );
 const concordanceLinesPanel = html.slice(concordanceLinesStart, concordanceCollocationsStart);
 const concordanceCollocationsPanel = html.slice(concordanceCollocationsStart, concordanceDistributionStart);
 assert(
-  concordanceLinesPanel.includes('class="concordance-lines-controls"')
+  concordanceLinesPanel.includes('id="concordance-lines-title">Concordance Lines</h3>')
+    && concordanceLinesPanel.includes("Where and how does the node occur in context?")
+    && concordanceLinesPanel.includes('id="concordance-lines-stats"')
+    && concordanceLinesPanel.includes('aria-controls="concordance-lines-controls"')
+    && concordanceLinesPanel.includes('data-concordance-card-action="collapse"')
+    && concordanceLinesPanel.includes('class="concordance-card-controls concordance-lines-controls hidden"')
     && concordanceLinesPanel.includes('id="concordance-window-input"')
     && concordanceLinesPanel.includes('id="concordance-sort-select"')
     && concordanceLinesPanel.includes('id="concordance-page-size-input"')
     && !concordanceLinesPanel.includes('id="concordance-distribution-panel"'),
-  "Concordance Lines controls should live inside the Lines view panel without nesting Distribution",
+  "Concordance Lines should have card chrome and local controls without nesting Distribution",
 );
 assert(
-  concordanceCollocationsPanel.includes('class="concordance-collocation-controls"')
+  concordanceCollocationsPanel.includes('id="concordance-collocates-title">Collocates</h3>')
+    && concordanceCollocationsPanel.includes("Which words systematically occur near the node")
+    && concordanceCollocationsPanel.includes('id="concordance-collocates-stats"')
+    && concordanceCollocationsPanel.includes('class="concordance-card-controls concordance-collocation-controls hidden"')
     && concordanceCollocationsPanel.includes('id="concordance-collocation-span"')
     && concordanceCollocationsPanel.includes('id="concordance-collocation-direction"')
     && concordanceCollocationsPanel.includes('id="concordance-collocation-measure"')
     && concordanceCollocationsPanel.includes('id="concordance-collocation-min-o11"')
     && concordanceCollocationsPanel.includes('id="concordance-collocation-min-freq"')
     && concordanceCollocationsPanel.includes('id="concordance-collocation-hide-stopwords"'),
-  "Collocates controls should remain inside the Collocates panel",
+  "Collocates should have card chrome and retain its local controls",
 );
 assert(
-  html.includes('id="concordance-distribution-panel" class="concordance-view-panel concordance-distribution-panel hidden"')
-    && html.includes('data-concordance-view-panel="distribution"')
-    && html.includes('aria-labelledby="concordance-distribution-tab"')
-    && html.includes('aria-hidden="true"'),
-  "Distribution should render as a hidden sibling view panel",
+  html.includes('id="concordance-distribution-panel" class="concordance-card concordance-distribution-panel"')
+    && html.includes('id="concordance-distribution-title">Distribution</h3>')
+    && html.includes("How are the node occurrences spread across documents?")
+    && html.includes('id="concordance-distribution-stats"')
+    && html.includes('aria-controls="concordance-distribution-controls"'),
+  "Distribution should render as an expanded sibling card with truthful disclosure controls",
+);
+assert(
+  concordanceSharedControls.includes('id="concordance-query-input" type="search" autocomplete="off" aria-controls="concordance-workbench"')
+    && concordanceSharedControls.includes('id="concordance-search-button" class="primary-btn" type="button" aria-controls="concordance-workbench" aria-describedby="concordance-status"')
+    && concordanceSharedControls.includes('id="concordance-cancel-button" class="secondary-btn hidden" type="button" aria-label="Cancel concordance search"')
+    && concordanceSharedControls.includes('aria-hidden="true" disabled>Cancel</button>')
+    && concordanceLinesPanel.includes('aria-expanded="true" aria-controls="concordance-lines-body" aria-label="Collapse Concordance Lines"')
+    && concordanceCollocationsPanel.includes('aria-expanded="true" aria-controls="concordance-collocates-body" aria-label="Collapse Collocates"')
+    && workbench.includes('elements.collapse.setAttribute("aria-expanded", cardState.collapsed ? "false" : "true");')
+    && workbench.includes('`${cardState.collapsed ? "Expand" : "Collapse"} ${labels[card]}`')
+    && workbench.includes('dom.concordanceCancelButton.disabled = !pending;')
+    && workbench.includes('dom.concordanceCancelButton.setAttribute("aria-hidden", pending ? "false" : "true");')
+    && workbench.includes('dom.concordanceSection.setAttribute("aria-busy", pending ? "true" : "false");'),
+  "Search, Cancel, and every card disclosure should expose their live state and controlled region to assistive technology",
 );
 assert(
   !html.includes('id="concordance-source-preview"'),
@@ -220,7 +226,7 @@ for (const label of ["Collocate", "Near query", "O11", "Corpus frequency", "f_c"
 for (const label of [
   "CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE",
   "CONCORDANCE_COLLOCATION_STALE_MESSAGE",
-  "Update profile",
+  "Compute collocates",
 ]) {
   assert(workbench.includes(label), `Collocate Profile should render ${label}`);
 }
@@ -230,10 +236,27 @@ assert(
   "Collocate Profile stale copy should not concatenate repeated implementation-state text",
 );
 assert(
-  !workbench.includes("Compute collocates")
+  workbench.includes("Compute collocates")
     && !workbench.includes("Show lines")
     && !workbench.includes("Show KWIC lines"),
-  "Collocate Profile should avoid resting compute buttons and glued Show lines row text",
+  "Collocate Profile should expose explicit computation without glued Show lines row text",
+);
+const collocationActionStart = workbench.indexOf("function renderConcordanceCollocationAction(");
+const collocationActionEnd = workbench.indexOf("function collocateEvidenceExpansionDomId", collocationActionStart);
+const collocationActionBody = workbench.slice(collocationActionStart, collocationActionEnd);
+assert(
+  collocationActionStart >= 0
+    && (collocationActionBody.match(/executeExplicitConcordanceCollocationRequest\(/g) ?? []).length === 1
+    && collocationActionBody.includes("refreshConcordanceCollocations"),
+  "Compute collocates should issue exactly one collocation query",
+);
+for (const status of ["not computed", "stale — recompute required", "aggregating", "computed"]) {
+  assert(workbench.includes(`"${status}"`), `Collocates stats should distinguish ${status}`);
+}
+assert(
+  workbench.includes("renderConcordanceCollocationStatus(message, true)")
+    && workbench.includes("workbenchState.lines.error ?? workbenchState.distribution.error"),
+  "Collocate resource refusals should stay inside the Collocates card and preserve other results",
 );
 for (const measure of ["logDice", "mi", "mi3", "tScore", "zScore", "g2", "logRatio"]) {
   assert(html.includes(`value="${measure}"`), `Collocation measure should include ${measure}`);
@@ -248,8 +271,8 @@ assert(
 );
 assert(
   workbench.includes("function handleConcordanceSortChange")
-    && workbench.includes("void refreshConcordance(true, true);"),
-  "Concordance sort changes should reset KWIC and distribution pagination",
+    && workbench.includes("void refreshConcordanceLines();"),
+  "Concordance sort changes should re-drive only the Lines card",
 );
 assert(
   workbench.includes("concordanceSummaryMetricsText(result)")
@@ -268,40 +291,15 @@ const runConcordanceSearchMatch = workbench.match(
 );
 assert(runConcordanceSearchMatch, "Concordance search handler should exist");
 assert(
-  runConcordanceSearchMatch[1].includes("void runConcordanceSearchForActiveView();")
-    && !runConcordanceSearchMatch[1].includes("setActiveConcordanceView"),
-  "Search should delegate to the active Concordance view workflow without forcing Concordance lines",
-);
-const runConcordanceSearchForActiveViewMatch = workbench.match(
-  /async function runConcordanceSearchForActiveView\(\): Promise<void> \{([\s\S]*?)\n\}/,
-);
-assert(runConcordanceSearchForActiveViewMatch, "Active-view Concordance search helper should exist");
-const runConcordanceSearchForActiveViewBody = runConcordanceSearchForActiveViewMatch[1];
-const collocationRefreshesFromSearch = (
-  runConcordanceSearchForActiveViewBody.match(/refreshConcordanceCollocations\(/g) ?? []
-).length;
-assert(
-  runConcordanceSearchForActiveViewBody.includes("const viewAtSearch = activeConcordanceViewId();")
-    && runConcordanceSearchForActiveViewBody.includes("const queryAtSearch = normaliseConcordanceQuery(dom.concordanceQueryInput.value);")
-    && runConcordanceSearchForActiveViewBody.includes("clearCollocateEvidence();")
-    && runConcordanceSearchForActiveViewBody.includes("await refreshConcordance();"),
-  "Active-view Concordance search should capture the current view/query, clear collocate evidence, and refresh the query result first",
-);
-assert(
-  runConcordanceSearchForActiveViewBody.includes('viewAtSearch === "collocates"')
-    && runConcordanceSearchForActiveViewBody.includes('activeConcordanceViewId() === "collocates"')
-    && runConcordanceSearchForActiveViewBody.includes("normaliseConcordanceQuery(dom.concordanceQueryInput.value) === queryAtSearch")
-    && runConcordanceSearchForActiveViewBody.includes("currentConcordanceSearchResult() !== null")
-    && runConcordanceSearchForActiveViewBody.includes("currentConcordanceSearchFailure() === null")
-    && runConcordanceSearchForActiveViewBody.includes("await refreshConcordanceCollocations();")
-    && collocationRefreshesFromSearch === 1,
-  "Search should update Collocate Profile directly only when the Collocate Profile view is still active for the same successful query",
-);
-assert(
-  !runConcordanceSearchForActiveViewBody.includes('viewAtSearch === "distribution"')
-    && !runConcordanceSearchForActiveViewBody.includes("maybeAutoComputeConcordanceCollocations")
-    && !runConcordanceSearchForActiveViewBody.includes("setActiveConcordanceView"),
-  "Distribution search should rely on the refreshed Concordance result and avoid collocation computation or forced view changes",
+  runConcordanceSearchMatch[1].includes("planConcordanceSharedRequest(workbenchState)")
+    && runConcordanceSearchMatch[1].includes("executeConcordanceSharedRequest(plan, refreshConcordance)")
+    && !runConcordanceSearchMatch[1].includes("refreshConcordanceCollocations")
+    && !runConcordanceSearchMatch[1].includes("Promise.all")
+    && workbench.includes('if (!state.lines.collapsed) cards.push("lines");')
+    && workbench.includes('if (!state.distribution.collapsed) cards.push("distribution");')
+    && workbench.includes("collocates: false")
+    && !workbench.includes("activeConcordanceView"),
+  "Shared Search should coordinate Lines and Distribution without computing Collocates",
 );
 assert(
   workbench.includes("queryConcordanceCollocations")
@@ -312,22 +310,33 @@ assert(
     && workbench.includes("function handleConcordanceCollocationPresentationControlChange")
     && workbench.includes("refreshConcordanceCollocationsForPresentationChange")
     && workbench.includes("markConcordanceCollocationsForAggregationChange")
-    && workbench.includes("concordanceCollocationAutoComputedAggregationKeys")
+    && workbench.includes('action.textContent = label;')
+    && workbench.includes('"Compute collocates"')
     && !workbench.includes("sortConcordanceCollocates(result.rows, measure)")
     && workbench.includes("handleConcordanceCollocateClick"),
-  "Concordance collocations should query Rust for true top-N sorting, split aggregation/presentation controls, auto-compute fresh keys once, and support evidence drawers",
+  "Concordance collocations should query Rust only from an explicit action, split aggregation/presentation controls, and support evidence drawers",
 );
 assert(
-  workbench.includes('type ConcordanceViewId = "lines" | "collocates" | "distribution";')
-    && workbench.includes('return value === "lines" || value === "collocates" || value === "distribution";')
-    && workbench.includes('{ view: "distribution", element: dom.concordanceDistributionPanel }')
-    && workbench.includes('type ConcordanceCollocationState = "idle_not_computed" | "loading" | "ready" | "stale" | "error";')
-    && workbench.includes("function syncConcordanceViewTabs")
-    && workbench.includes("function maybeAutoComputeConcordanceCollocations")
-    && workbench.includes('dom.concordanceViewTabs.addEventListener("click", handleConcordanceViewTabClick)')
-    && workbench.includes('if (view === "collocates") {\n    maybeAutoComputeConcordanceCollocations();\n  }')
-    && !workbench.includes("function handleConcordanceViewTabClick(event: MouseEvent): void {\n  void refreshConcordance"),
-  "Concordance tab switching should recognise Distribution and only lazy-compute Collocate Profile",
+  workbench.includes('export type ConcordanceCardId = "lines" | "collocates" | "distribution";')
+    && workbench.includes("function syncConcordanceCardChrome")
+    && workbench.includes("function handleConcordanceCardAction")
+    && workbench.includes("writeConcordanceCollapsedCards")
+    && workbench.includes("beginConcordanceCardRequest")
+    && workbench.includes("acceptConcordanceCardResponse")
+    && !workbench.includes("function maybeAutoComputeConcordanceCollocations")
+    && workbench.includes('dom.concordanceSection.addEventListener("click", handleConcordanceCardAction)')
+    && !workbench.includes("syncConcordanceViewTabs")
+    && !workbench.includes("handleConcordanceViewTabClick"),
+  "Concordance cards should persist collapse state, suppress stale responses, and avoid computing on expansion",
+);
+const cardActionStart = workbench.indexOf("function handleConcordanceCardAction");
+const cardActionEnd = workbench.indexOf("function handleConcordanceQueryInput", cardActionStart);
+const cardActionBody = workbench.slice(cardActionStart, cardActionEnd);
+assert(
+  cardActionStart >= 0
+    && !cardActionBody.includes("refreshConcordanceCollocations")
+    && !cardActionBody.includes("maybeAutoComputeConcordanceCollocations"),
+  "Expanding Collocates should not query",
 );
 assert(
   workbench.includes('table.className = "concordance-distribution-table"')
@@ -345,10 +354,14 @@ const renderConcordanceDistributionMatch = workbench.match(
 assert(renderConcordanceDistributionMatch, "Concordance Distribution renderer should exist");
 const renderConcordanceDistributionBody = renderConcordanceDistributionMatch[1];
 assert(
-  renderConcordanceDistributionBody.includes('for (const label of ["File", "Hits", "Tokens", "Hits per 10k", "Share of hits"])')
+  renderConcordanceDistributionBody.includes('for (const label of ["File", "Occurrences", "Tokens", "Hits per 10k", "Share of hits"])')
     && !renderConcordanceDistributionBody.includes('"Bar"')
-    && renderConcordanceDistributionBody.includes("cell.colSpan = 5;"),
-  "Concordance Distribution should expose metric-first columns and a five-column empty state",
+    && renderConcordanceDistributionBody.includes("cell.colSpan = 5;")
+    && renderConcordanceDistributionBody.includes('countValue.className = "concordance-distribution-count";')
+    && renderConcordanceDistributionBody.includes('countTrack.className = "concordance-distribution-bar-track";')
+    && renderConcordanceDistributionBody.includes('countBar.className = "concordance-distribution-bar";')
+    && renderConcordanceDistributionBody.includes("concordanceDistributionMagnitudePercent(item.count, distribution.maxCount)"),
+  "Concordance Distribution should expose a five-column ledger with exact occurrence counts and payload-scaled bars",
 );
 assert(
   renderConcordanceDistributionBody.includes('metrics.className = "concordance-distribution-metrics"')
@@ -367,8 +380,14 @@ assert(
   styles.includes(".concordance-distribution-metrics")
     && styles.includes(".concordance-distribution-metric")
     && styles.includes(".concordance-distribution-metric-label")
-    && styles.includes("grid-template-columns: repeat(auto-fit, minmax(8rem, max-content));"),
-  "Concordance Distribution metric strip should have compact wrapping CSS",
+    && styles.includes("grid-template-columns: repeat(auto-fit, minmax(8rem, max-content));")
+    && styles.includes(".concordance-distribution-bar {\n  display: block;")
+    && styles.includes("background: var(--cw-plot-ramp-3);")
+    && styles.includes(".concordance-distribution-reading")
+    && renderConcordanceDistributionBody.includes("Concentration in a few documents may suggest topic, genre, or source dependence; broad reach may suggest more corpus-general use.")
+    && !renderConcordanceDistributionBody.includes("significance")
+    && !renderConcordanceDistributionBody.includes("representative"),
+  "Concordance Distribution should retain its metrics and use a restrained shared-ramp ledger with cautious interpretive copy",
 );
 assert(
   renderConcordanceDistributionBody.includes("item.ratePer10k")
@@ -408,13 +427,9 @@ assert(
     && !workbench.includes("dom.concordanceSourcePreview"),
   "Concordance renderer should include ready, loading, error, and Escape-close preview states immediately after the selected row",
 );
-const concordanceRowsLoopMatch = workbench.match(
-  /for \(const row of result\.rows\) \{([\s\S]*?)\n    \}/,
-);
-assert(concordanceRowsLoopMatch, "Concordance renderer should append rows in a single result loop");
 assert(
-  concordanceRowsLoopMatch[1].indexOf("dom.concordanceTableBody.appendChild(rowElement);")
-    < concordanceRowsLoopMatch[1].indexOf("dom.concordanceTableBody.appendChild(createConcordanceSourcePreviewRow(row));"),
+  workbench.indexOf("dom.concordanceTableBody.appendChild(rowElement);")
+    < workbench.indexOf("dom.concordanceTableBody.appendChild(createConcordanceSourcePreviewRow(row));"),
   "Concordance source preview row should be appended immediately after the selected KWIC row",
 );
 assert(
@@ -437,13 +452,14 @@ assert(
   workbench.includes("collapseConcordanceExpansionFromControlChange")
     && workbench.includes("function handleConcordanceQueryInput")
     && workbench.includes("dom.concordanceQueryInput.addEventListener(\"input\", handleConcordanceQueryInput)")
-    && workbench.includes("dom.concordanceWindowInput.addEventListener(\"change\", collapseConcordanceExpansionFromControlChange)")
+    && workbench.includes("dom.concordanceWindowInput.addEventListener(\"change\", handleConcordanceWindowChange)")
+    && workbench.includes("function handleConcordanceWindowChange")
     && workbench.includes("function handleConcordanceCaseChange"),
   "Query, window, and case changes should collapse expanded Concordance rows, with query changes dirtying Collocates",
 );
 assert(
   workbench.includes("function showPreviousConcordancePage")
-    && workbench.includes("void refreshConcordance(false, false);")
+    && workbench.includes("void refreshConcordanceLines();")
     && workbench.includes("function handleConcordancePageSizeChange")
     && workbench.includes("function resetConcordanceForFrequencyScopeChange")
     && workbench.includes("resetConcordanceForFrequencyScopeChange();\n  void refreshFrequencyPage();")
@@ -466,11 +482,11 @@ assert(
     && handleConcordanceCollocateBody.includes("void refreshCollocateEvidence();")
     && !handleConcordanceCollocateBody.includes("preserveResult")
     && !handleConcordanceCollocateBody.includes("setActiveConcordanceView")
-    && !workbench.includes("concordanceContextFilter"),
-  "Collocate clicks should open dedicated inline evidence without switching to Concordance lines or mutating the base context filter",
+    && !handleConcordanceCollocateBody.includes("openCollocateInConcordanceLines"),
+  "Collocate clicks should open dedicated inline evidence without implicitly switching to Concordance Lines",
 );
-const refreshConcordanceStart = workbench.indexOf("async function refreshConcordance(");
-const refreshConcordanceEnd = workbench.indexOf("function runConcordanceSearch", refreshConcordanceStart);
+const refreshConcordanceStart = workbench.indexOf("async function refreshConcordanceCards(");
+const refreshConcordanceEnd = workbench.indexOf("export async function refreshConcordanceLines", refreshConcordanceStart);
 const refreshCollocateEvidenceStart = workbench.indexOf("async function refreshCollocateEvidence");
 const refreshCollocateEvidenceEnd = workbench.indexOf("async function refreshConcordanceCollocations", refreshCollocateEvidenceStart);
 assert(
@@ -483,8 +499,10 @@ assert(
 const refreshConcordanceBody = workbench.slice(refreshConcordanceStart, refreshConcordanceEnd);
 const refreshCollocateEvidenceBody = workbench.slice(refreshCollocateEvidenceStart, refreshCollocateEvidenceEnd);
 assert(
-  refreshConcordanceBody.includes("contextFilter: null")
-    && refreshConcordanceBody.includes('contextFilterDirection: "both"')
+  refreshConcordanceBody.includes("contextFilter: includeDistribution ? null : workbenchState.lines.contextFilter")
+    && refreshConcordanceBody.includes("contextFilterDirection: workbenchState.lines.contextFilterDirection")
+    && refreshConcordanceBody.includes('refreshConcordanceCards(["lines"])')
+    && refreshConcordanceBody.includes('refreshConcordanceCards(["distribution"])')
     && refreshCollocateEvidenceBody.includes("const result = await searchConcordance(")
     && refreshCollocateEvidenceBody.includes("contextFilter: selection.surface")
     && refreshCollocateEvidenceBody.includes("contextFilterDirection: selection.direction")
@@ -492,9 +510,11 @@ assert(
     && refreshCollocateEvidenceBody.includes("limit: collocateEvidenceLimit")
     && refreshCollocateEvidenceBody.includes("options: { preserveResult?: boolean } = {}")
     && refreshCollocateEvidenceBody.includes("if (!options.preserveResult) {\n    collocateEvidenceResult = null;\n  }")
+    && refreshCollocateEvidenceBody.includes("const generation = ++collocateEvidenceGeneration;")
+    && refreshCollocateEvidenceBody.includes("if (generation !== collocateEvidenceGeneration)")
     && !refreshCollocateEvidenceBody.includes("collocateEvidenceFailure = null;\n  collocateEvidenceResult = null;\n  renderConcordanceCollocations();")
     && !refreshCollocateEvidenceBody.includes("collocateEvidenceOffset"),
-  "Base Concordance refresh should stay unfiltered while the collocate drawer performs a separate direction-aware cumulative evidence search with optional preserved results",
+  "Distribution should stay unfiltered while Lines and the stale-safe collocate drawer perform separate direction-aware searches",
 );
 const collocateEvidenceLimitMatch = workbench.match(/const CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT = (\d+);/);
 assert(
@@ -617,15 +637,19 @@ assert(
     && workbench.includes("concordanceContextTokenSegments(tokens, activeFilter, caseSensitive)")
     && workbench.includes("document.createTextNode(\" \")")
     && workbench.includes('const token = document.createElement("span");')
-    && workbench.includes('token.className = "concordance-collocate";')
+    && workbench.includes('token.className = "concordance-kwic-pair";')
     && workbench.includes("token.textContent = segment.text;")
     && workbench.includes("function appendConcordanceKwicCells(")
+    && workbench.includes("concordanceContextSortLevels(")
+    && workbench.includes('token.className = "concordance-context-token";')
+    && workbench.includes('if (segment.collocate) token.classList.add("concordance-kwic-pair");')
+    && workbench.includes('token.classList.add(`is-sort-level-${level}`)')
     && workbench.includes("const activeContextFilter = concordanceResult?.contextFilter ?? null;")
     && workbench.includes("const contextFilterCaseSensitive = concordanceResult?.caseSensitive ?? false;")
-    && workbench.includes("const activeFilter = concordanceResult?.contextFilter ?? null;")
-    && workbench.includes("const caseSensitive = concordanceResult?.caseSensitive ?? false;")
-    && workbench.includes("left.appendChild(renderContextTokens(concordanceExpansionResult.leftContext, activeFilter, caseSensitive));")
-    && workbench.includes("right.appendChild(renderContextTokens(concordanceExpansionResult.rightContext, activeFilter, caseSensitive));")
+    && workbench.includes("left.textContent = concordanceRowText(concordanceExpansionResult.leftContext);")
+    && workbench.includes("right.textContent = concordanceRowText(concordanceExpansionResult.rightContext);")
+    && !workbench.includes("renderContextTokens(concordanceExpansionResult.leftContext")
+    && !workbench.includes("renderContextTokens(concordanceExpansionResult.rightContext")
     && workbench.includes("function createCollocateEvidenceSnippet(row: ConcordanceRow): HTMLSpanElement")
     && workbench.includes("function createCollocateEvidenceLine(row: ConcordanceRow): HTMLDivElement")
     && workbench.includes("function createCollocateEvidenceList(result: ConcordanceResult): HTMLDivElement")
@@ -633,11 +657,12 @@ assert(
     && !workbench.includes("function createCollocateEvidenceTable")
     && !workbench.includes("concordance-collocate-evidence-table")
     && !workbench.includes("innerHTML"),
-  "Concordance context rendering should use text nodes and shared span-based collocate highlights in KWIC, expanded context, and inline drawer evidence",
+  "Concordance context rendering should use safe token spans in KWIC and plain continuous context in expansions while retaining inline drawer evidence",
 );
 assert(
-  collocateEvidenceRendererBody.includes("renderContextTokens(row.leftContext, activeFilter, caseSensitive)")
-    && collocateEvidenceRendererBody.includes("renderContextTokens(row.rightContext, activeFilter, caseSensitive)")
+  collocateEvidenceRendererBody.includes("renderContextTokens(")
+    && collocateEvidenceRendererBody.includes("row.leftContext,")
+    && collocateEvidenceRendererBody.includes("row.rightContext,")
     && collocateEvidenceRendererBody.includes('const node = document.createElement("mark");')
     && collocateEvidenceRendererBody.includes('node.className = "concordance-node";')
     && collocateEvidenceRendererBody.includes("node.textContent = row.node;")
@@ -653,25 +678,28 @@ assert(
   collocateEvidenceSnippetBody.includes("if (row.leftContext.length > 0)")
     && collocateEvidenceSnippetBody.includes("if (row.rightContext.length > 0)")
     && collocateEvidenceSnippetSpaceCount === 2
-    && collocateEvidenceSnippetBody.indexOf("renderContextTokens(row.leftContext") < collocateEvidenceSnippetBody.indexOf("node.textContent = row.node;")
-    && collocateEvidenceSnippetBody.indexOf("node.textContent = row.node;") < collocateEvidenceSnippetBody.indexOf("renderContextTokens(row.rightContext"),
+    && collocateEvidenceSnippetBody.indexOf("row.leftContext,") < collocateEvidenceSnippetBody.indexOf("node.textContent = row.node;")
+    && collocateEvidenceSnippetBody.indexOf("node.textContent = row.node;") < collocateEvidenceSnippetBody.indexOf("row.rightContext,"),
   "Collocate evidence snippets should use ordinary conditional text spaces in left-context, node, right-context order",
 );
 assert(
-  styles.includes(".concordance-collocate {\n  background: var(--cw-collocate-bg);\n  color: var(--cw-collocate-text);")
-    && !styles.includes("mark.concordance-collocate"),
-  "Concordance collocate tokens should use the quiet collocate colour role, not mark styling",
+  styles.includes(".concordance-kwic-pair {\n  color: var(--cw-kwic-pair);")
+    && styles.includes("text-decoration: underline;")
+    && !styles.includes("mark.concordance-kwic-pair"),
+  "Inspected pair tokens should use the dedicated theme role plus a non-colour underline cue",
 );
 assert(
   workbench.includes('item.className = "concordance-collocation-row"')
     && workbench.includes('item.classList.toggle("is-active", isActiveCollocateEvidenceRow(row));')
-    && workbench.includes('item.setAttribute("role", "button")')
-    && workbench.includes('item.setAttribute("aria-label", actionLabel)')
-    && workbench.includes('event.key !== "Enter" && event.key !== " "')
+    && workbench.includes('evidenceButton.type = "button";')
+    && workbench.includes('evidenceButton.className = "concordance-collocate-evidence-toggle";')
+    && workbench.includes('evidenceButton.textContent = expanded ? "Hide evidence" : "Inspect evidence";')
+    && workbench.includes('evidenceButton.setAttribute("aria-expanded", expanded ? "true" : "false");')
+    && workbench.includes('evidenceButton.addEventListener("click", () => handleConcordanceCollocateClick(row));')
     && workbench.includes('item.className = "concordance-collocate-evidence-row"')
     && workbench.includes("panel.appendChild(createCollocateEvidenceList(collocateEvidenceResult));")
     && workbench.includes("dom.concordanceCollocationsTableBody.appendChild(createCollocateEvidenceDrawerRow(row));"),
-  "Collocate rows should be clickable, keyboard accessible, mark the active evidence row, and render the drawer inline",
+  "Collocate rows should use a native labelled evidence control, mark the active evidence row, and render the drawer inline",
 );
 assert(
   collocateEvidenceRendererBody.includes('item.className = "concordance-collocate-evidence-line"')
@@ -702,6 +730,41 @@ assert(
     && !workbench.includes('"Loading evidence..."')
     && !workbench.includes("No evidence lines found"),
   "Collocate drawer user-visible terminology should use co-occurrence lines rather than Evidence copy",
+);
+const openInLinesStart = workbench.indexOf("export function openCollocateInConcordanceLines");
+const openInLinesEnd = workbench.indexOf(
+  "export function handleClearConcordanceLinesContextFilter",
+  openInLinesStart,
+);
+assert(openInLinesStart >= 0 && openInLinesEnd > openInLinesStart, "Open-in-Lines action should exist");
+const openInLinesBody = workbench.slice(openInLinesStart, openInLinesEnd);
+const clearLinesFilterStart = openInLinesEnd;
+const clearLinesFilterEnd = workbench.indexOf(
+  "export async function refreshConcordanceDistribution",
+  clearLinesFilterStart,
+);
+assert(
+  clearLinesFilterStart >= 0 && clearLinesFilterEnd > clearLinesFilterStart,
+  "Lines context-filter clear action should exist",
+);
+const clearLinesFilterBody = workbench.slice(clearLinesFilterStart, clearLinesFilterEnd);
+assert(
+  html.includes('id="concordance-lines-filter" class="concordance-filter-chip hidden" role="status"')
+    && html.includes('id="concordance-lines-filter-clear"')
+    && html.includes('id="concordance-lines-panel" class="concordance-card concordance-kwic-panel" aria-labelledby="concordance-lines-title" tabindex="-1"')
+    && collocateEvidenceDrawerBody.includes('openInLines.textContent = "Open in concordance lines";')
+    && collocateEvidenceDrawerBody.includes("openCollocateInConcordanceLines(row.surface, direction);")
+    && openInLinesBody.includes("applyConcordanceLinesContextFilter(workbenchState, surface, direction);")
+    && openInLinesBody.includes("writeConcordanceCollapsedCards(workbenchState);")
+    && openInLinesBody.includes("dom.concordanceLinesPanel.focus({ preventScroll: true });")
+    && openInLinesBody.includes('dom.concordanceLinesPanel.scrollIntoView({ behavior: "smooth", block: "start" });')
+    && openInLinesBody.includes("void refreshConcordanceLines();")
+    && !openInLinesBody.includes("refreshConcordanceCollocations")
+    && !openInLinesBody.includes("refreshConcordanceDistribution")
+    && clearLinesFilterBody.includes("clearConcordanceLinesContextFilter(workbenchState);")
+    && clearLinesFilterBody.includes("void refreshConcordanceLines();")
+    && workbench.includes('dom.concordanceLinesFilterSummary.textContent = `Context filter: “${filter}” ${location}`;'),
+  "Open in Concordance Lines should set only the local removable Lines filter, expand and focus Lines, and re-drive only that card",
 );
 assert(
   collocateEvidenceDrawerBody.includes("collocateEvidenceResult !== null && collocateEvidenceResult.totalHits > 0")
@@ -788,27 +851,11 @@ assert(
   "Very long Concordance nodes should expand into the table scroll region rather than adding a nested scrollbar",
 );
 assert(
-  styles.includes(".concordance-table td:nth-child(3)"),
-  "Concordance node column selector should remain present",
-);
-const concordanceContextColumnCssMatch = styles.match(
-  /\.concordance-table th:nth-child\(2\),\n\.concordance-table td:nth-child\(2\),\n\.concordance-table th:nth-child\(4\),\n\.concordance-table td:nth-child\(4\) \{([\s\S]*?)\n\}/,
-);
-assert(concordanceContextColumnCssMatch, "Concordance context column CSS should exist");
-const concordanceContextColumnCss = concordanceContextColumnCssMatch[1];
-const concordanceNodeColumnCssMatch = styles.match(
-  /\.concordance-table th:nth-child\(3\),\n\.concordance-table td:nth-child\(3\) \{([\s\S]*?)\n\}/,
-);
-assert(concordanceNodeColumnCssMatch, "Concordance node column CSS should exist");
-const concordanceNodeColumnCss = concordanceNodeColumnCssMatch[1];
-assert(
-  concordanceNodeColumnCss.includes("width: 9rem;")
-    && concordanceNodeColumnCss.includes("min-width: 7rem;")
-    && concordanceContextColumnCss.includes("width: calc((100% - 150px - 9rem) / 2);")
-    && !concordanceNodeColumnCss.includes("width: 180px;")
-    && !concordanceNodeColumnCss.includes("min-width: 140px;")
-    && !concordanceContextColumnCss.includes("330px"),
-  "Concordance node column should be materially narrower while context columns share the remaining space",
+  styles.includes(".concordance-table tr {\n  display: grid;")
+    && styles.includes("grid-template-columns: minmax(7rem, 10rem) minmax(0, 1fr) max-content minmax(0, 1fr);")
+    && styles.includes(".concordance-left {\n  color: var(--text-muted);\n  direction: rtl;")
+    && styles.includes(".concordance-context-run {\n  display: inline;\n  direction: ltr;"),
+  "Classic KWIC should use a restrained file column, symmetric flexible contexts, and an uncompressed node column",
 );
 
 const concordanceRightCssMatch = styles.match(/\.concordance-right \{\n  color: var\(--text-muted\);([\s\S]*?)\n\}/);
@@ -826,10 +873,12 @@ const concordanceCollocationScoreColumnCssMatch = styles.match(
 assert(concordanceCollocationScoreColumnCssMatch, "Concordance collocation measure-score column CSS should exist");
 const concordanceCollocationScoreColumnCss = concordanceCollocationScoreColumnCssMatch[1];
 assert(
-  concordanceCollocationScoreColumnCss.includes("width: 24%;")
-    && styles.includes(".concordance-collocations-table-wrap {\n  max-width: 980px;")
-    && styles.includes(".concordance-collocations-table {\n  width: 100%;\n  min-width: 760px;"),
-  "Concordance collocation measure-score column should remain proportioned inside the capped collocations table",
+  concordanceCollocationScoreColumnCss.includes("width: 20%;")
+    && styles.includes(".concordance-collocations-table-wrap {\n  max-width: none;")
+    && styles.includes(".concordance-collocations-table {\n  width: 100%;\n  min-width: 1040px;")
+    && styles.includes(".concordance-collocations-table > thead > tr > th:nth-child(5)")
+    && styles.includes("width: 28%;"),
+  "Concordance collocation score and position columns should remain legible in the six-column table",
 );
 const concordanceAnalyseShellOverrides = styles.match(/\.analyse-workbench\.is-concordance-active \.analyse-content \{([\s\S]*?)\n\}/g) ?? [];
 assert(
@@ -868,11 +917,11 @@ assert(
   "Concordance lines should keep vertical scrolling inside the table wrap and reserve horizontal overflow for narrow viewports",
 );
 assert(
-  concordanceCollocationsTableWrapCss.includes("max-width: 980px;")
+  concordanceCollocationsTableWrapCss.includes("max-width: none;")
     && concordanceCollocationsTableWrapCss.includes("max-height: min(58vh, 680px);")
     && concordanceCollocationsTableWrapCss.includes("overflow-x: auto;")
     && concordanceCollocationsTableWrapCss.includes("overflow-y: auto;"),
-  "Concordance collocations table wrap should cap width and height while retaining horizontal overflow",
+  "Concordance collocations table wrap should use the card width, cap height, and retain horizontal overflow",
 );
 assert(
   concordanceDistributionTableWrapCss.includes("max-width: 1000px;")
@@ -948,10 +997,32 @@ assert(
 assert(
   styles.includes(".concordance-collocation-score-track")
     && styles.includes(".concordance-collocation-score-fill")
-    && styles.includes("--concordance-score-bar")
-    && styles.includes("background: var(--concordance-score-bar);")
+    && styles.includes(".concordance-collocation-score-track.is-positive .concordance-collocation-score-fill")
+    && styles.includes(".concordance-collocation-score-track.is-negative .concordance-collocation-score-fill")
+    && styles.includes(".concordance-collocation-score-fill.is-ramp-5 { background: var(--cw-plot-ramp-5); }")
+    && styles.includes(".concordance-position-glyph")
+    && styles.includes("grid-template-columns: repeat(5, minmax(3px, 1fr)) auto repeat(5, minmax(3px, 1fr));")
+    && html.includes("Bar length and colour are relative within the currently loaded collocate set; they do not represent statistical significance.")
+    && !styles.includes("--concordance-score-bar")
     && styles.includes(".concordance-collocation-row:hover td")
     && styles.includes(".concordance-document-spread-header")
     && !styles.includes(".concordance-document-spread-toggle"),
-  "Collocate Profile should render muted association bars, and Distribution should render directly without a collapsible toggle",
+  "Collocate Profile should render honest signed strength bars and ten-bin position evidence, while Distribution remains directly visible",
+);
+assert(
+  styles.includes("@media (max-width: 980px) {\n  .concordance-controls > label:first-child")
+    && styles.includes("@media (max-width: 760px) {\n  .concordance-section,")
+    && styles.includes(".concordance-controls {\n    display: grid;\n    grid-template-columns: repeat(2, minmax(0, 1fr));")
+    && styles.includes(".concordance-collocations-table {\n    min-width: 880px;")
+    && styles.includes(".concordance-position-glyph {\n    min-width: 130px;")
+    && styles.includes("@media (max-width: 640px) {\n  .concordance-controls")
+    && styles.includes(".concordance-table {\n    min-width: 640px;")
+    && styles.includes(".concordance-collocations-table {\n    min-width: 760px;")
+    && styles.includes(".concordance-search-actions button:focus-visible")
+    && styles.includes("outline: 2px solid var(--cw-interaction-focus-ring);")
+    && styles.includes("text-decoration-style: double;")
+    && styles.includes("text-decoration-style: dotted;")
+    && styles.includes(".concordance-kwic-pair {\n  color: var(--cw-kwic-pair);")
+    && workbench.includes("return signed && value > 0 ? `+${formatted}` : formatted;"),
+  "Concordance should wrap at medium and narrow widths with internal table scrolling, visible focus, and non-colour sort, pair, and score-direction cues",
 );

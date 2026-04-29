@@ -3,6 +3,7 @@ import {
   CONCORDANCE_COLLOCATION_DEFAULT_FLOOR,
   CONCORDANCE_COLLOCATION_DEFAULT_SPAN,
   CONCORDANCE_COLLOCATION_LIMIT,
+  CONCORDANCE_COLLOCATION_INITIAL_ROWS,
   CONCORDANCE_COLLOCATION_MEASURE_OPTIONS,
   CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE,
   CONCORDANCE_COLLOCATION_STALE_MESSAGE,
@@ -19,16 +20,24 @@ import {
   clampConcordanceCollocationSpan,
   clampConcordancePageSize,
   clampConcordanceWindow,
+  concordanceCollocatesCardStatsText,
   concordanceCollocationDirectionLabel,
   concordanceCollocationExplanation,
   concordanceCollocationMeasureLabel,
   concordanceCollocationScore,
-  concordanceCollocationScoreBarPercent,
+  concordanceCollocationStrengthBar,
   concordanceCollocationSortHeaderLabel,
   concordanceContextTokenSegments,
+  concordanceDistributionCardStatsText,
+  concordanceDistributionMagnitudePercent,
+  concordanceCollocatePositionGlyph,
+  concordanceContextSortLevels,
   concordanceExpansionViewModel,
   concordanceIsSparse,
+  concordanceLinesCardStatsText,
   concordanceRangePercent,
+  concordanceMiddleEllipsis,
+  concordancePositionGlyphAccessibleText,
   concordanceRowExpansionKey,
   concordanceRowText,
   concordanceSortLabel,
@@ -37,10 +46,15 @@ import {
   formatConcordanceProgress,
   normaliseConcordanceQuery,
   toggleConcordanceExpansionKey,
+  nextConcordanceCollocateDisplayCount,
 } from "../src/concordance.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+function assertDeepEqual(actual: unknown, expected: unknown, message = "Values should match"): void {
+  assert(JSON.stringify(actual) === JSON.stringify(expected), message);
 }
 
 assert(normaliseConcordanceQuery("  alpha ") === "alpha", "Concordance query should be trimmed");
@@ -75,7 +89,8 @@ assert(
 );
 assert(CONCORDANCE_COLLOCATION_DEFAULT_SPAN === 5, "Default collocation span should be +/-5");
 assert(CONCORDANCE_COLLOCATION_DEFAULT_FLOOR === 5, "Default collocation floors should be 5");
-assert(CONCORDANCE_COLLOCATION_LIMIT === 100, "Collocation results should request the default top 100");
+assert(CONCORDANCE_COLLOCATION_LIMIT === 500, "Collocation results should request the bounded top 500");
+assert(CONCORDANCE_COLLOCATION_INITIAL_ROWS === 10, "Collocates should initially show 10 rows");
 assert(
   CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE === "The collocate profile has not been computed yet.",
   "Collocate Profile should expose an explicit not-computed state",
@@ -87,6 +102,26 @@ assert(
 assert(CONCORDANCE_EXPANSION_WINDOW === 40, "Expansion should request the default wide KWIC window");
 assert(concordanceSortLabel("left1") === "1L", "Left sort labels should use KWIC shorthand");
 assert(concordanceSortLabel("right3") === "3R", "Right sort labels should use KWIC shorthand");
+assertDeepEqual(
+  concordanceContextSortLevels("left1", 5, 5).left,
+  [null, null, 3, 2, 1],
+  "left1 should colour L1, L2, L3 from the end of left context",
+);
+assertDeepEqual(concordanceContextSortLevels("left2", 5, 5).left, [null, null, 3, 1, 2]);
+assertDeepEqual(concordanceContextSortLevels("left3", 5, 5).left, [null, null, 1, 2, 3]);
+assertDeepEqual(concordanceContextSortLevels("right1", 5, 5).right, [1, 2, 3, null, null]);
+assertDeepEqual(concordanceContextSortLevels("right2", 5, 5).right, [2, 1, 3, null, null]);
+assertDeepEqual(concordanceContextSortLevels("right3", 5, 5).right, [3, 2, 1, null, null]);
+for (const sort of ["filePosition", "node"] as const) {
+  assertDeepEqual(concordanceContextSortLevels(sort, 3, 3), {
+    left: [null, null, null],
+    right: [null, null, null],
+  });
+}
+assert(
+  concordanceMiddleEllipsis("a-very-long-document-filename.txt", 16) === "a-very-l…ame.txt",
+  "Long file names should retain recognisable start and end text",
+);
 assert(concordanceCollocationMeasureLabel("g2") === "log-likelihood", "Measure labels should be readable");
 assert(concordanceCollocationDirectionLabel("both") === "both sides", "Both-side direction should be readable");
 assert(
@@ -188,6 +223,64 @@ assert(!summaryMetrics.includes("good movie"), "Summary metrics should omit the 
 assert(summaryMetrics.includes("24 hits"), "Summary metrics should include hit count");
 assert(concordanceRangePercent({ documentsWithHits: 3, selectedDocumentsTotal: 12 }) === 25, "Range percent should divide hits by selected files");
 assert(concordanceRangePercent({ documentsWithHits: 3, selectedDocumentsTotal: 0 }) === 0, "Range percent should guard zero selected files");
+assert(concordanceDistributionMagnitudePercent(10, 40) === 25, "Distribution bars should scale against the payload maximum");
+assert(concordanceDistributionMagnitudePercent(40, 40) === 100, "The maximum distribution count should fill its bar");
+assert(concordanceDistributionMagnitudePercent(80, 40) === 100, "Distribution bars should clamp unexpected values");
+assert(concordanceDistributionMagnitudePercent(4, 0) === 0, "Distribution bars should guard an empty maximum");
+const linesStats = concordanceLinesCardStatsText({
+  windowTokens: 5,
+  sortKey: "filePosition",
+  shown: 100,
+  totalHits: 8412,
+  contextFilter: null,
+});
+assert(
+  linesStats === `window 5L–5R · file/position · showing 100 of ${(8412).toLocaleString()}`,
+  "Lines stats should compose window, sort, and result counts truthfully",
+);
+assert(
+  concordanceLinesCardStatsText({
+    windowTokens: 9,
+    sortKey: "right2",
+    shown: 25,
+    totalHits: 60,
+    contextFilter: "pair",
+  }) === "window 9L–9R · 2R · context “pair” · showing 25 of 60",
+  "Filtered Lines stats should expose the local context filter without changing shared query copy",
+);
+assert(
+  concordanceCollocatesCardStatsText({
+    span: 5,
+    direction: "both",
+    measure: "logDice",
+    minimumFrequency: 5,
+    shown: 10,
+    loadedRows: 214,
+    totalCandidates: 214,
+  }) === "span 5L–5R · logDice · min freq 5 · showing 10 of 214",
+  "Uncapped Collocates stats should use the qualifying total directly",
+);
+assert(
+  concordanceCollocatesCardStatsText({
+    span: 2,
+    direction: "left",
+    measure: "mi",
+    minimumFrequency: 5,
+    shown: 35,
+    loadedRows: 500,
+    totalCandidates: 2143,
+  }) === `span 2L · MI · min freq 5 · showing 35 of 500 available rows · ${(2143).toLocaleString()} qualifying collocates`,
+  "Capped Collocates stats should distinguish loaded rows from all qualifying candidates",
+);
+assert(
+  concordanceDistributionCardStatsText({
+    documentsWithHits: 47,
+    selectedDocumentsTotal: 529,
+    shown: 10,
+    totalDocuments: 47,
+  }) === "47 of 529 documents with hits · showing 10 of 47",
+  "Distribution stats should distinguish selected documents, hit documents, and page rows",
+);
 assert(
   concordanceIsSparse({ totalHits: 19, documentsWithHits: 12, selectedDocumentsTotal: 12 }),
   "Thin hit counts should be sparse",
@@ -210,13 +303,61 @@ const collocates = [
   { surface: "gamma", o11: 4, o12: 11, o21: 1, o22: 41, collocateFrequency: 5, mi: null, mi3: null, tScore: null, zScore: null, g2: null, logDice: null, logRatio: null },
 ];
 assert(concordanceCollocationScore(collocates[0], "mi") === 2, "Score lookup should use selected measure");
-assert(concordanceCollocationScoreBarPercent(-1, "logDice") === 0, "logDice bars should clamp below zero");
-assert(concordanceCollocationScoreBarPercent(7, "logDice") === 50, "logDice bars should use a fixed 0-14 scale");
-assert(concordanceCollocationScoreBarPercent(20, "logDice") === 100, "logDice bars should clamp above 14");
-assert(concordanceCollocationScoreBarPercent(null, "logDice") === null, "Null association scores should not render bars");
+assertDeepEqual(concordanceCollocationStrengthBar(5, "logDice", [1, 5, 10]), {
+  signed: false,
+  direction: "nonNegative",
+  magnitudePercent: 50,
+  ramp: 3,
+});
+assertDeepEqual(concordanceCollocationStrengthBar(4, "mi", [-8, 0, 4]), {
+  signed: true,
+  direction: "positive",
+  magnitudePercent: 50,
+  ramp: 3,
+});
+assertDeepEqual(concordanceCollocationStrengthBar(-8, "mi", [-8, 0, 4]), {
+  signed: true,
+  direction: "negative",
+  magnitudePercent: 100,
+  ramp: 5,
+});
+assertDeepEqual(concordanceCollocationStrengthBar(0, "tScore", [-2, 0, 1]), {
+  signed: true,
+  direction: "zero",
+  magnitudePercent: 0,
+  ramp: 1,
+});
 assert(
-  concordanceCollocationScoreBarPercent(4, "mi", [2, 4, 6]) === 50,
-  "Unbounded association bars should be relative to the visible scores",
+  concordanceCollocationStrengthBar(4, "mi", [-8, 0, 4])?.magnitudePercent
+    === concordanceCollocationStrengthBar(4, "mi", [-8, 0, 4, 2, 1])?.magnitudePercent,
+  "Strength scaling should remain stable when only the visible row count changes",
+);
+assert(nextConcordanceCollocateDisplayCount(10, 100) === 35);
+assert(nextConcordanceCollocateDisplayCount(35, 100) === 60);
+assert(nextConcordanceCollocateDisplayCount(60, 100) === 85);
+assert(nextConcordanceCollocateDisplayCount(85, 90) === 90);
+
+const positionBins = concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 5, "both");
+assertDeepEqual(positionBins.map((bin) => bin.label), ["L5", "L4", "L3", "L2", "L1", "R1", "R2", "R3", "R4", "R5"]);
+assert(positionBins[9]!.intensity === 1 && positionBins[0]!.intensity === 0.5);
+assertDeepEqual(
+  concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 2, "left").map((bin) => bin.active),
+  [false, false, false, true, true, false, false, false, false, false],
+);
+assertDeepEqual(
+  concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 2, "right").map((bin) => bin.active),
+  [false, false, false, false, false, true, true, false, false, false],
+  "Right-only profiles should activate R1 and R2 for a two-token span",
+);
+assert(
+  concordanceCollocatePositionGlyph([0, 0, 0, 0, 0], [0, 0, 0, 0, 0], 5, "both")
+    .every((bin) => bin.intensity === 0),
+  "All-zero positional profiles should remain finite",
+);
+assert(
+  concordancePositionGlyphAccessibleText("alpha", positionBins).includes("L5 5")
+    && concordancePositionGlyphAccessibleText("alpha", positionBins).includes("R5 10"),
+  "Exact positional counts should remain available without hover",
 );
 
 const row = {
