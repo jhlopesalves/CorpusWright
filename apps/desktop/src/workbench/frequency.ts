@@ -1531,7 +1531,7 @@ export function applyFrequencyFileScope(): void {
   void refreshFrequencyPage();
   if (normaliseConcordanceQuery(dom.concordanceQueryInput.value).length > 0) {
     markConcordanceCollocationsForAggregationChange();
-    void refreshConcordance(true, true);
+    void refreshConcordance();
   } else {
     renderConcordance();
     markConcordanceCollocationsForAggregationChange();
