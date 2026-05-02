@@ -9498,7 +9498,20 @@ mark.search-match.current-match {
   }
 
   .concordance-position-glyph {
-    min-width: 130px;
+    gap: 1px;
+    height: 40px;
+  }
+
+  .concordance-position-column {
+    width: 14rem;
+  }
+
+  .concordance-position-axis-full {
+    display: none;
+  }
+
+  .concordance-position-axis-compact {
+    display: inline;
   }
 
   .concordance-collocate-evidence {
@@ -9525,24 +9538,12 @@ mark.search-match.current-match {
     grid-column: 1;
   }
 
-  .concordance-table {
-    min-width: 640px;
-  }
-
-  .concordance-table tr {
-    grid-template-columns: minmax(6.5rem, 8rem) minmax(0, 1fr) max-content minmax(0, 1fr);
+  .concordance-collocations-table-wrap {
+    overflow-x: auto;
   }
 
   .concordance-collocations-table {
     min-width: 760px;
-  }
-
-  .concordance-position-glyph {
-    min-width: 118px;
-  }
-
-  .concordance-distribution-table {
-    min-width: 700px;
   }
 
   .concordance-collocate-evidence-list-head,
