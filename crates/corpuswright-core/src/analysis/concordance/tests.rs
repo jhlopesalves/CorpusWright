@@ -344,7 +344,7 @@ fn kwic_sorts_full_hit_set_before_pagination() {
         "alpha z alpha a alpha m",
     )];
     let mut query = concordance_query("alpha");
-    query.sort_key = ConcordanceSortKey::Right1;
+    query.sort_keys = vec![ConcordanceSortKey::Right1];
     query.offset = 1;
     query.limit = 1;
 
@@ -356,10 +356,86 @@ fn kwic_sorts_full_hit_set_before_pagination() {
 }
 
 #[test]
+fn kwic_uses_explicit_primary_secondary_tertiary_order() {
+    let documents = vec![concordance_document(
+        0,
+        "doc.txt",
+        "alpha a a c gap alpha a a b",
+    )];
+    let mut query = concordance_query("alpha");
+    query.sort_keys = vec![
+        ConcordanceSortKey::Right1,
+        ConcordanceSortKey::Right2,
+        ConcordanceSortKey::Right3,
+    ];
+
+    let result = concordance_for(&documents, query).unwrap();
+
+    assert_eq!(
+        included_rows(&result)
+            .iter()
+            .map(|row| row.token_index)
+            .collect::<Vec<_>>(),
+        [5, 0]
+    );
+    assert_eq!(
+        result.sort_keys,
+        [
+            ConcordanceSortKey::Right1,
+            ConcordanceSortKey::Right2,
+            ConcordanceSortKey::Right3,
+        ]
+    );
+}
+
+#[test]
+fn kwic_rejects_empty_duplicate_and_mixed_special_sort_lists() {
+    let documents = vec![concordance_document(0, "doc.txt", "alpha beta")];
+    for sort_keys in [
+        vec![],
+        vec![ConcordanceSortKey::Right1, ConcordanceSortKey::Right1],
+        vec![ConcordanceSortKey::FilePosition, ConcordanceSortKey::Right1],
+        vec![
+            ConcordanceSortKey::Right1,
+            ConcordanceSortKey::Right2,
+            ConcordanceSortKey::Right3,
+            ConcordanceSortKey::Left1,
+        ],
+    ] {
+        let mut query = concordance_query("alpha");
+        query.sort_keys = sort_keys;
+        assert_eq!(
+            concordance_for(&documents, query),
+            Err(ConcordanceError::InvalidSortKeys)
+        );
+    }
+}
+
+#[test]
+fn kwic_context_sort_uses_file_position_as_final_tie_breaker() {
+    let documents = vec![
+        concordance_document(1, "b.txt", "alpha same"),
+        concordance_document(0, "a.txt", "alpha same"),
+    ];
+    let mut query = concordance_query("alpha");
+    query.sort_keys = vec![ConcordanceSortKey::Right1];
+
+    let result = concordance_for(&documents, query).unwrap();
+
+    assert_eq!(
+        included_rows(&result)
+            .iter()
+            .map(|row| row.document_index)
+            .collect::<Vec<_>>(),
+        [0, 1]
+    );
+}
+
+#[test]
 fn kwic_left_sort_uses_missing_context_last() {
     let documents = vec![concordance_document(0, "doc.txt", "alpha b a alpha")];
     let mut query = concordance_query("alpha");
-    query.sort_key = ConcordanceSortKey::Left1;
+    query.sort_keys = vec![ConcordanceSortKey::Left1];
 
     let result = concordance_for(&documents, query).unwrap();
 
@@ -389,6 +465,23 @@ fn kwic_file_position_sort_ties_by_document_and_offset() {
             .map(|row| (row.document_index, row.token_index))
             .collect::<Vec<_>>(),
         [(0, 1), (1, 0), (1, 2)]
+    );
+}
+
+#[test]
+fn kwic_node_sort_orders_matched_surface_forms() {
+    let documents = vec![concordance_document(0, "a.txt", "alpha ALPHA Alpha")];
+    let mut query = concordance_query("alpha");
+    query.sort_keys = vec![ConcordanceSortKey::Node];
+
+    let result = concordance_for(&documents, query).unwrap();
+
+    assert_eq!(
+        included_rows(&result)
+            .iter()
+            .map(|row| row.node.as_str())
+            .collect::<Vec<_>>(),
+        ["ALPHA", "Alpha", "alpha"]
     );
 }
 
@@ -471,15 +564,18 @@ fn routed_index_sort_keys_match_scan_beyond_visible_window() {
         concordance_document(0, "a.txt", "z b alpha c y alpha d"),
         concordance_document(1, "b.txt", "a q alpha b r alpha c"),
     ];
-    for sort_key in [
-        ConcordanceSortKey::Node,
-        ConcordanceSortKey::Left1,
-        ConcordanceSortKey::Left2,
-        ConcordanceSortKey::Right1,
-        ConcordanceSortKey::Right2,
+    for sort_keys in [
+        vec![ConcordanceSortKey::Node],
+        vec![ConcordanceSortKey::Left1],
+        vec![ConcordanceSortKey::Left2, ConcordanceSortKey::Right1],
+        vec![
+            ConcordanceSortKey::Right3,
+            ConcordanceSortKey::Right2,
+            ConcordanceSortKey::Right1,
+        ],
     ] {
         let mut query = parity_concordance_query("alpha", false);
-        query.sort_key = sort_key;
+        query.sort_keys = sort_keys.clone();
         query.window_tokens = 1;
         let mut scan_context = ConcordanceSearchContext::default();
         let scan = routed_concordance_for(
@@ -499,7 +595,7 @@ fn routed_index_sort_keys_match_scan_beyond_visible_window() {
         .unwrap();
 
         assert_eq!(index.backend_used, ConcordanceBackendUsed::Index);
-        assert_eq!(index.result, scan.result, "{sort_key:?}");
+        assert_eq!(index.result, scan.result, "{sort_keys:?}");
     }
 }
 
@@ -710,7 +806,7 @@ fn million_hit_query_retains_and_materialises_only_requested_page() {
         &"common ".repeat(1_000_000),
     )];
     let mut query = parity_concordance_query("common", false);
-    query.sort_key = ConcordanceSortKey::Node;
+    query.sort_keys = vec![ConcordanceSortKey::Node];
     query.window_tokens = 1;
     query.limit = 100;
     let config = TokenizationConfig::default();
@@ -749,7 +845,7 @@ fn million_hit_query_retains_and_materialises_only_requested_page() {
 fn retained_sort_depth_above_budget_is_a_typed_error() {
     let documents = vec![concordance_document(0, "a.txt", "alpha beta alpha")];
     let mut query = parity_concordance_query("alpha", false);
-    query.sort_key = ConcordanceSortKey::Left1;
+    query.sort_keys = vec![ConcordanceSortKey::Left1];
     query.offset = 100_000;
     query.limit = 500;
     let mut context = ConcordanceSearchContext::default();
@@ -1005,19 +1101,31 @@ fn kwic_distribution_counts_and_paginates_after_sorting() {
         concordance_document(2, "b.txt", "beta beta"),
     ];
     let mut query = concordance_query("alpha");
-    query.distribution_offset = 1;
+    query.distribution_offset = 0;
     query.distribution_limit = 1;
 
-    let result = concordance_for(&documents, query).unwrap();
+    let first_result = concordance_for(&documents, query.clone()).unwrap();
+    query.distribution_offset = 1;
+    let second_result = concordance_for(&documents, query).unwrap();
 
-    let distribution = included_distribution(&result);
-    assert_eq!(distribution.total_documents, 3);
-    assert_eq!(distribution.offset, 1);
-    assert_eq!(distribution.items.len(), 1);
-    assert_eq!(distribution.items[0].display_name, "c.txt");
-    assert_eq!(distribution.items[0].count, 1);
-    assert_eq!(distribution.items[0].token_count, 2);
-    assert_eq!(distribution.max_count, 2);
+    let first = included_distribution(&first_result);
+    let second = included_distribution(&second_result);
+    assert_eq!(first_result.selected_documents_total, 3);
+    assert_eq!(first_result.documents_with_hits, 2);
+    assert_eq!(first.total_documents, 2);
+    assert_eq!(first.offset, 0);
+    assert_eq!(first.items.len(), 1);
+    assert_eq!(first.items[0].display_name, "a.txt");
+    assert_eq!(second.total_documents, 2);
+    assert_eq!(second.offset, 1);
+    assert_eq!(second.items.len(), 1);
+    assert_eq!(second.items[0].display_name, "c.txt");
+    assert_eq!(second.items[0].count, 1);
+    assert_eq!(second.items[0].token_count, 2);
+    assert_close(first.max_rate_per_10k, 2.0 / 3.0 * 10_000.0);
+    assert_close(second.max_rate_per_10k, first.max_rate_per_10k);
+    assert!(first.items.iter().all(|item| item.count > 0));
+    assert!(second.items.iter().all(|item| item.count > 0));
 }
 
 #[test]
@@ -1274,7 +1382,7 @@ fn benchmark_concordance_scale() {
         context_filter: None,
         context_filter_direction:
             crate::analysis::concordance::ConcordanceContextFilterDirection::Both,
-        sort_key: ConcordanceSortKey::Node,
+        sort_keys: vec![ConcordanceSortKey::Node],
         window_tokens: 5,
         offset: 0,
         limit: 100,

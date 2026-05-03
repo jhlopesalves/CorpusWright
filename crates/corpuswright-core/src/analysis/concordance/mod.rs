@@ -60,6 +60,14 @@ pub enum ConcordanceSortKey {
     Right3,
 }
 
+fn default_concordance_sort_keys() -> Vec<ConcordanceSortKey> {
+    vec![
+        ConcordanceSortKey::Right1,
+        ConcordanceSortKey::Right2,
+        ConcordanceSortKey::Right3,
+    ]
+}
+
 /// Side of the node that a context filter may match.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
@@ -85,8 +93,8 @@ pub struct ConcordanceQuery {
     pub context_filter_direction: ConcordanceContextFilterDirection,
     #[serde(default)]
     pub case_sensitive: bool,
-    #[serde(default)]
-    pub sort_key: ConcordanceSortKey,
+    #[serde(default = "default_concordance_sort_keys")]
+    pub sort_keys: Vec<ConcordanceSortKey>,
     pub window_tokens: usize,
     pub offset: usize,
     pub limit: usize,
@@ -166,8 +174,7 @@ pub struct ConcordanceDistributionPage {
     pub offset: usize,
     pub limit: usize,
     pub items: Vec<ConcordanceDistributionItem>,
-    #[ts(type = "number")]
-    pub max_count: u64,
+    pub max_rate_per_10k: f64,
 }
 
 /// Bounded surface-token concordance response.
@@ -178,7 +185,7 @@ pub struct ConcordanceResult {
     pub query: String,
     pub context_filter: Option<String>,
     pub case_sensitive: bool,
-    pub sort_key: ConcordanceSortKey,
+    pub sort_keys: Vec<ConcordanceSortKey>,
     pub window_tokens: usize,
     pub total_hits: usize,
     pub documents_with_hits: usize,
@@ -450,6 +457,7 @@ struct ConcordanceIndexCacheEntry {
 pub enum ConcordanceError {
     EmptyQuery,
     NoResultViewsRequested,
+    InvalidSortKeys,
     InvalidDocumentIdentity,
     InvalidHitIdentity,
     AnalysisMemoryLimitExceeded {
@@ -468,6 +476,9 @@ impl std::fmt::Display for ConcordanceError {
             Self::NoResultViewsRequested => {
                 formatter.write_str("At least one concordance result view must be requested.")
             }
+            Self::InvalidSortKeys => formatter.write_str(
+                "Concordance sorting requires one to three unique context keys, or File/position or Node on its own.",
+            ),
             Self::InvalidDocumentIdentity => {
                 formatter.write_str("The concordance document no longer matches the result.")
             }
@@ -660,6 +671,7 @@ struct CompactConcordanceHit {
     document_id: usize,
     token_index: usize,
     node_token_length: usize,
+    node_key: Option<u32>,
     left_keys: [Option<u32>; 3],
     right_keys: [Option<u32>; 3],
 }
@@ -669,6 +681,7 @@ struct CandidateConcordanceHit<'key> {
     document_id: usize,
     token_index: usize,
     node_token_length: usize,
+    node_key: Option<&'key str>,
     left_keys: [Option<&'key str>; 3],
     right_keys: [Option<&'key str>; 3],
 }
@@ -718,7 +731,7 @@ impl SortSymbolArena {
 
 struct BoundedConcordanceCollector {
     include_rows: bool,
-    sort_key: ConcordanceSortKey,
+    sort_keys: Vec<ConcordanceSortKey>,
     offset: usize,
     limit: usize,
     retained_depth: usize,
@@ -732,14 +745,14 @@ struct BoundedConcordanceCollector {
 impl BoundedConcordanceCollector {
     fn new(
         include_rows: bool,
-        sort_key: ConcordanceSortKey,
+        sort_keys: &[ConcordanceSortKey],
         offset: usize,
         limit: usize,
         limits: SurfaceIndexResourceLimits,
     ) -> Result<Self, ConcordanceError> {
         let retained_depth = if !include_rows {
             0
-        } else if sort_key == ConcordanceSortKey::FilePosition {
+        } else if sort_keys == [ConcordanceSortKey::FilePosition] {
             limit
         } else {
             offset.checked_add(limit).ok_or({
@@ -766,7 +779,7 @@ impl BoundedConcordanceCollector {
             })?;
         Ok(Self {
             include_rows,
-            sort_key,
+            sort_keys: sort_keys.to_vec(),
             offset,
             limit,
             retained_depth,
@@ -792,7 +805,7 @@ impl BoundedConcordanceCollector {
         if self.retained_depth == 0 {
             return Ok(());
         }
-        if self.sort_key == ConcordanceSortKey::FilePosition {
+        if self.sort_keys == [ConcordanceSortKey::FilePosition] {
             if hit_index >= self.offset && self.heap.len() < self.limit {
                 let compact = self.compact_candidate(candidate, false)?;
                 self.heap.push(compact);
@@ -836,6 +849,14 @@ impl BoundedConcordanceCollector {
             document_id: candidate.document_id,
             token_index: candidate.token_index,
             node_token_length: candidate.node_token_length,
+            node_key: if include_keys {
+                candidate
+                    .node_key
+                    .map(|key| self.arena.intern(key))
+                    .transpose()?
+            } else {
+                None
+            },
             left_keys,
             right_keys,
         })
@@ -851,7 +872,7 @@ impl BoundedConcordanceCollector {
         left: &CompactConcordanceHit,
         right: &CompactConcordanceHit,
     ) -> Ordering {
-        compare_compact_hit_keys(left, right, self.sort_key, &self.arena)
+        compare_compact_hit_keys(left, right, &self.sort_keys, &self.arena)
             .then_with(|| left.document_id.cmp(&right.document_id))
             .then_with(|| left.token_index.cmp(&right.token_index))
     }
@@ -861,7 +882,7 @@ impl BoundedConcordanceCollector {
         left: &CandidateConcordanceHit<'_>,
         right: &CompactConcordanceHit,
     ) -> Ordering {
-        compare_candidate_hit_keys(left, right, self.sort_key, &self.arena)
+        compare_candidate_hit_keys(left, right, &self.sort_keys, &self.arena)
             .then_with(|| left.document_id.cmp(&right.document_id))
             .then_with(|| left.token_index.cmp(&right.token_index))
     }
@@ -905,6 +926,9 @@ impl BoundedConcordanceCollector {
         }
         let old = std::mem::take(&mut self.arena);
         for hit in &mut self.heap {
+            if let Some(old_id) = hit.node_key {
+                hit.node_key = Some(self.arena.intern(old.value(old_id))?);
+            }
             for key in hit.left_keys.iter_mut().chain(hit.right_keys.iter_mut()) {
                 if let Some(old_id) = *key {
                     *key = Some(self.arena.intern(old.value(old_id))?);
@@ -922,11 +946,11 @@ impl BoundedConcordanceCollector {
         BTreeMap<usize, u64>,
         ConcordanceExecutionStats,
     ) {
-        if self.include_rows && self.sort_key != ConcordanceSortKey::FilePosition {
-            let sort_key = self.sort_key;
+        if self.include_rows && self.sort_keys != [ConcordanceSortKey::FilePosition] {
+            let sort_keys = &self.sort_keys;
             let arena = &self.arena;
             self.heap.sort_by(|left, right| {
-                compare_compact_hit_keys(left, right, sort_key, arena)
+                compare_compact_hit_keys(left, right, sort_keys, arena)
                     .then_with(|| left.document_id.cmp(&right.document_id))
                     .then_with(|| left.token_index.cmp(&right.token_index))
             });
@@ -946,14 +970,6 @@ impl BoundedConcordanceCollector {
     }
 }
 
-fn context_key_order(primary_index: usize) -> [usize; 3] {
-    match primary_index {
-        0 => [0, 1, 2],
-        1 => [1, 0, 2],
-        _ => [2, 1, 0],
-    }
-}
-
 fn sort_key_context(sort_key: ConcordanceSortKey) -> Option<(bool, usize)> {
     match sort_key {
         ConcordanceSortKey::Left1 => Some((true, 0)),
@@ -966,16 +982,33 @@ fn sort_key_context(sort_key: ConcordanceSortKey) -> Option<(bool, usize)> {
     }
 }
 
+fn has_context_sort(sort_keys: &[ConcordanceSortKey]) -> bool {
+    sort_keys
+        .iter()
+        .copied()
+        .any(|key| sort_key_context(key).is_some())
+}
+
 fn compare_compact_hit_keys(
     left: &CompactConcordanceHit,
     right: &CompactConcordanceHit,
-    sort_key: ConcordanceSortKey,
+    sort_keys: &[ConcordanceSortKey],
     arena: &SortSymbolArena,
 ) -> Ordering {
-    let Some((left_side, primary)) = sort_key_context(sort_key) else {
-        return Ordering::Equal;
-    };
-    for index in context_key_order(primary) {
+    for sort_key in sort_keys {
+        if *sort_key == ConcordanceSortKey::Node {
+            let ordering = compare_optional_context(
+                left.node_key.map(|id| arena.value(id)),
+                right.node_key.map(|id| arena.value(id)),
+            );
+            if ordering != Ordering::Equal {
+                return ordering;
+            }
+            continue;
+        }
+        let Some((left_side, index)) = sort_key_context(*sort_key) else {
+            continue;
+        };
         let left = if left_side {
             left.left_keys[index]
         } else {
@@ -1000,13 +1033,21 @@ fn compare_compact_hit_keys(
 fn compare_candidate_hit_keys(
     left: &CandidateConcordanceHit<'_>,
     right: &CompactConcordanceHit,
-    sort_key: ConcordanceSortKey,
+    sort_keys: &[ConcordanceSortKey],
     arena: &SortSymbolArena,
 ) -> Ordering {
-    let Some((left_side, primary)) = sort_key_context(sort_key) else {
-        return Ordering::Equal;
-    };
-    for index in context_key_order(primary) {
+    for sort_key in sort_keys {
+        if *sort_key == ConcordanceSortKey::Node {
+            let ordering =
+                compare_optional_context(left.node_key, right.node_key.map(|id| arena.value(id)));
+            if ordering != Ordering::Equal {
+                return ordering;
+            }
+            continue;
+        }
+        let Some((left_side, index)) = sort_key_context(*sort_key) else {
+            continue;
+        };
         let left = if left_side {
             left.left_keys[index]
         } else {
@@ -1084,6 +1125,7 @@ fn concordance_distribution_page(
 ) -> ConcordanceDistributionPage {
     let mut items = document_stats
         .into_iter()
+        .filter(|stats| stats.hit_count > 0)
         .map(|stats| ConcordanceDistributionItem {
             document_id: stats.document_id,
             source_path: stats.source_path,
@@ -1103,15 +1145,16 @@ fn concordance_distribution_page(
         })
         .collect::<Vec<_>>();
     items.sort_by(|left, right| {
-        let left_has_hits = left.count > 0;
-        let right_has_hits = right.count > 0;
-        right_has_hits
-            .cmp(&left_has_hits)
-            .then_with(|| right.count.cmp(&left.count))
+        right
+            .count
+            .cmp(&left.count)
             .then_with(|| left.display_name.cmp(&right.display_name))
             .then_with(|| left.document_id.cmp(&right.document_id))
     });
-    let max_count = items.iter().map(|item| item.count).max().unwrap_or(0);
+    let max_rate_per_10k = items
+        .iter()
+        .map(|item| item.rate_per_10k)
+        .fold(0.0_f64, f64::max);
     let total_documents = items.len();
     let offset = offset.min(total_documents);
     ConcordanceDistributionPage {
@@ -1119,7 +1162,7 @@ fn concordance_distribution_page(
         offset,
         limit,
         items: items.into_iter().skip(offset).take(limit).collect(),
-        max_count,
+        max_rate_per_10k,
     }
 }
 
@@ -1276,7 +1319,7 @@ where
     });
     let mut collector = BoundedConcordanceCollector::new(
         query.include_rows,
-        query.sort_key,
+        &query.sort_keys,
         query.offset,
         limit,
         SurfaceIndexResourceLimits::default(),
@@ -1375,7 +1418,7 @@ where
             query: query_tokens.join(" "),
             context_filter: context_filter_tokens.map(|tokens| tokens.join(" ")),
             case_sensitive: query.case_sensitive,
-            sort_key: query.sort_key,
+            sort_keys: query.sort_keys.clone(),
             window_tokens,
             total_hits,
             documents_with_hits: document_counts.len(),
@@ -1407,11 +1450,31 @@ fn selection_includes_document_id(
 }
 
 fn validate_concordance_result_views(query: &ConcordanceQuery) -> Result<(), ConcordanceError> {
-    if query.include_rows || query.include_distribution {
-        Ok(())
-    } else {
-        Err(ConcordanceError::NoResultViewsRequested)
+    if !query.include_rows && !query.include_distribution {
+        return Err(ConcordanceError::NoResultViewsRequested);
     }
+    if query.sort_keys.is_empty() || query.sort_keys.len() > 3 {
+        return Err(ConcordanceError::InvalidSortKeys);
+    }
+    if query
+        .sort_keys
+        .iter()
+        .enumerate()
+        .any(|(index, key)| query.sort_keys[..index].contains(key))
+    {
+        return Err(ConcordanceError::InvalidSortKeys);
+    }
+    if query.sort_keys.len() > 1
+        && query.sort_keys.iter().any(|key| {
+            matches!(
+                key,
+                ConcordanceSortKey::FilePosition | ConcordanceSortKey::Node
+            )
+        })
+    {
+        return Err(ConcordanceError::InvalidSortKeys);
+    }
+    Ok(())
 }
 
 fn search_concordance_documents_index(
@@ -1469,7 +1532,7 @@ fn search_concordance_documents_index_from_store(
     let resolved_context_filter = context_filter_tokens.map(|tokens| tokens.join(" "));
     let mut collector = BoundedConcordanceCollector::new(
         query.include_rows,
-        query.sort_key,
+        &query.sort_keys,
         query.offset,
         limit,
         SurfaceIndexResourceLimits::default(),
@@ -1513,27 +1576,46 @@ fn search_concordance_documents_index_from_store(
                     })
                 })
         };
-        let (left_keys, right_keys) =
-            if query.include_rows && sort_key_context(query.sort_key).is_some() {
-                (
-                    [
-                        key_at(candidate.token_ordinal_in_document.checked_sub(1))?,
-                        key_at(candidate.token_ordinal_in_document.checked_sub(2))?,
-                        key_at(candidate.token_ordinal_in_document.checked_sub(3))?,
-                    ],
-                    [
-                        key_at(Some(node_end))?,
-                        key_at(node_end.checked_add(1))?,
-                        key_at(node_end.checked_add(2))?,
-                    ],
-                )
-            } else {
-                ([None; 3], [None; 3])
-            };
+        let (left_keys, right_keys) = if query.include_rows && has_context_sort(&query.sort_keys) {
+            (
+                [
+                    key_at(candidate.token_ordinal_in_document.checked_sub(1))?,
+                    key_at(candidate.token_ordinal_in_document.checked_sub(2))?,
+                    key_at(candidate.token_ordinal_in_document.checked_sub(3))?,
+                ],
+                [
+                    key_at(Some(node_end))?,
+                    key_at(node_end.checked_add(1))?,
+                    key_at(node_end.checked_add(2))?,
+                ],
+            )
+        } else {
+            ([None; 3], [None; 3])
+        };
+        let node_key = if query.include_rows && query.sort_keys == [ConcordanceSortKey::Node] {
+            Some(
+                records[candidate.token_ordinal_in_document..node_end]
+                    .iter()
+                    .map(|record| {
+                        store.surface_for_record(record).ok_or({
+                            ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
+                                document_id: candidate.document_id,
+                                token_ordinal_in_document: candidate.token_ordinal_in_document,
+                                node_token_length: candidate.node_token_length,
+                            })
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .join(" "),
+            )
+        } else {
+            None
+        };
         collector.record(CandidateConcordanceHit {
             document_id: candidate.document_id,
             token_index: candidate.token_ordinal_in_document,
             node_token_length: candidate.node_token_length,
+            node_key: node_key.as_deref(),
             left_keys,
             right_keys,
         })
@@ -1642,7 +1724,7 @@ fn search_concordance_documents_index_from_store(
             query: resolved_query,
             context_filter: resolved_context_filter,
             case_sensitive: query.case_sensitive,
-            sort_key: query.sort_key,
+            sort_keys: query.sort_keys.clone(),
             window_tokens,
             total_hits,
             documents_with_hits: document_counts.len(),
@@ -1876,7 +1958,7 @@ fn search_concordance_documents_scan_with_stats(
     let mut selected_tokens_total = 0u64;
     let mut collector = BoundedConcordanceCollector::new(
         query.include_rows,
-        query.sort_key,
+        &query.sort_keys,
         query.offset,
         limit,
         SurfaceIndexResourceLimits::default(),
@@ -1979,7 +2061,7 @@ fn search_concordance_documents_scan_with_stats(
             query: query_tokens.join(" "),
             context_filter: context_filter_tokens.map(|tokens| tokens.join(" ")),
             case_sensitive: query.case_sensitive,
-            sort_key: query.sort_key,
+            sort_keys: query.sort_keys.clone(),
             window_tokens,
             total_hits,
             documents_with_hits: document_counts.len(),
@@ -2129,7 +2211,7 @@ fn process_streaming_scan_candidate(
     }
 
     let (left_owned, right_owned) =
-        if collector.include_rows && sort_key_context(collector.sort_key).is_some() {
+        if collector.include_rows && has_context_sort(&collector.sort_keys) {
             let key_at = |index: Option<usize>| {
                 index
                     .and_then(|index| streaming_scan_token(buffer, buffer_start, index))
@@ -2150,10 +2232,22 @@ fn process_streaming_scan_candidate(
         } else {
             ([None, None, None], [None, None, None])
         };
+    let node_key = if collector.include_rows && collector.sort_keys == [ConcordanceSortKey::Node] {
+        Some(
+            (token_index..node_end)
+                .filter_map(|index| streaming_scan_token(buffer, buffer_start, index))
+                .map(|token| token.surface)
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+    } else {
+        None
+    };
     collector.record(CandidateConcordanceHit {
         document_id,
         token_index,
         node_token_length: query_keys.len(),
+        node_key: node_key.as_deref(),
         left_keys: left_owned.each_ref().map(|key| key.as_deref()),
         right_keys: right_owned.each_ref().map(|key| key.as_deref()),
     })
