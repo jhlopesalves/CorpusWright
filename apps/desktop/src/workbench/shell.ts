@@ -20,7 +20,7 @@ import {
 import { isOverviewStopword } from "../overview-stopwords";
 import {
   createOverviewFigure,
-  createSegmentedControl,
+  createOverviewSegmentedControl,
   replaceFigureSvg,
 } from "../plots/figure";
 import {
@@ -97,6 +97,7 @@ import {
   handleConcordanceCollocationPresentationControlChange,
   handleConcordanceCollocationSortClick,
   handleConcordanceCollocationsShowMore,
+  handleConcordancePositionProfileModeClick,
   syncConcordanceCollocationStopwordsToggle,
 } from "./concordance/collocations";
 import {
@@ -109,7 +110,6 @@ import {
 } from "./concordance/lines";
 import {
   handleConcordanceCaseChange,
-  handleConcordanceCardAction,
   handleClearConcordanceLinesContextFilter,
   handleConcordanceQueryInput,
   initialiseConcordanceState,
@@ -1179,7 +1179,7 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
     }),
     yMode === "rate" ? "rate per million" : "raw count",
   );
-  const controls = createSegmentedControl(
+  const controls = createOverviewSegmentedControl(
     "Rank-frequency y axis",
     [
       { value: "rate", label: "per M" },
@@ -1396,18 +1396,6 @@ function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | nul
   const highDispersionThreshold = corpus.dispersion.plane?.highDispersionThreshold ?? HIGH_DISPERSION_THRESHOLD;
   let stopwordsHidden = false;
   let figure: HTMLElement | null = null;
-  const controls = document.createElement("div");
-  controls.setAttribute("role", "group");
-  controls.setAttribute("aria-label", "Dispersion roster filtering");
-  const showAllButton = document.createElement("button");
-  const hideStopwordsButton = document.createElement("button");
-  for (const button of [showAllButton, hideStopwordsButton]) {
-    button.type = "button";
-    button.className = "cw-overview-figure-action";
-  }
-  showAllButton.textContent = "All frequent types";
-  hideStopwordsButton.textContent = "Hide stopwords";
-  controls.append(showAllButton, hideStopwordsButton);
   const shownEntries = () => stopwordsHidden
     ? entries.filter((entry) => !isOverviewStopword(entry.token, activeProjectLanguageCode()))
     : entries;
@@ -1427,22 +1415,23 @@ function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | nul
     }),
   );
   const refresh = () => {
-    showAllButton.setAttribute("aria-pressed", String(!stopwordsHidden));
-    hideStopwordsButton.setAttribute("aria-pressed", String(stopwordsHidden));
     if (figure) replaceFigureSvg(figure, renderSvg(), {
       subtitle: subtitle(),
       captionStats: captionStats(),
     });
   };
-  showAllButton.addEventListener("click", () => {
-    stopwordsHidden = false;
-    refresh();
-  });
-  hideStopwordsButton.addEventListener("click", () => {
-    stopwordsHidden = true;
-    refresh();
-  });
-  refresh();
+  const controls = createOverviewSegmentedControl(
+    "Stopword mode",
+    [
+      { value: "all", label: "All frequent types" },
+      { value: "hidden", label: "Hide stopwords" },
+    ],
+    "all",
+    (value) => {
+      stopwordsHidden = value === "hidden";
+      refresh();
+    },
+  );
   figure = createOverviewFigure({
     id: "overview-dispersion-roster",
     title: "Dispersion roster",
@@ -2011,7 +2000,6 @@ export function initWorkbenchSwitcher(): void {
     void handleBuildAnalysisCorpus();
   });
   dom.analyseToolsList.addEventListener("click", handleAnalysisToolClick);
-  dom.concordanceSection.addEventListener("click", handleConcordanceCardAction);
   dom.concordanceSearchButton.addEventListener("click", runConcordanceSearch);
   dom.concordanceCancelButton.addEventListener("click", () => {
     void cancelConcordance();
@@ -2025,7 +2013,9 @@ export function initWorkbenchSwitcher(): void {
   });
   dom.concordanceWindowInput.addEventListener("change", handleConcordanceWindowChange);
   dom.concordanceCaseSensitiveInput.addEventListener("change", handleConcordanceCaseChange);
-  dom.concordanceSortSelect.addEventListener("change", handleConcordanceSortChange);
+  dom.concordanceSort1Select.addEventListener("change", () => handleConcordanceSortChange(1));
+  dom.concordanceSort2Select.addEventListener("change", () => handleConcordanceSortChange(2));
+  dom.concordanceSort3Select.addEventListener("change", () => handleConcordanceSortChange(3));
   dom.concordancePageSizeInput.addEventListener("change", handleConcordancePageSizeChange);
   dom.concordanceFilesButton.addEventListener("click", openFrequencyFilesModal);
   dom.concordancePagePreviousButton.addEventListener("click", showPreviousConcordancePage);
@@ -2037,6 +2027,7 @@ export function initWorkbenchSwitcher(): void {
   dom.concordanceCollocationMinO11Input.addEventListener("change", handleConcordanceCollocationPresentationControlChange);
   dom.concordanceCollocationMinFreqInput.addEventListener("change", handleConcordanceCollocationPresentationControlChange);
   dom.concordanceCollocationsTableHead.addEventListener("click", handleConcordanceCollocationSortClick);
+  dom.concordanceCollocationsTableHead.addEventListener("click", handleConcordancePositionProfileModeClick);
   dom.concordanceCollocationsMoreButton.addEventListener("click", handleConcordanceCollocationsShowMore);
   document.addEventListener("keydown", handleConcordanceExpansionEscape);
   syncConcordanceCollocationStopwordsToggle();

@@ -14,13 +14,15 @@ import {
   concordanceMiddleEllipsis,
   concordanceRowExpansionKey,
   concordanceRowText,
+  concordanceSortSequence,
   CONCORDANCE_COLUMNS,
   CONCORDANCE_EXPANSION_WINDOW,
   CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,
-  DEFAULT_CONCORDANCE_SORT_KEY,
+  DEFAULT_CONCORDANCE_SORT_KEYS,
   toggleConcordanceExpansionKey,
   type ConcordanceExpansionStateSnapshot,
+  type ConcordanceContextSortKey,
 } from "../../concordance";
 import { dom } from "../../dom";
 import { effectiveCleaningConfig } from "../../effective-cleaning-config";
@@ -33,7 +35,7 @@ import {
 } from "./shared";
 
 let concordanceOffset = 0;
-let concordanceSortKey: ConcordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;
+let concordanceSortKeys: ConcordanceSortKey[] = [...DEFAULT_CONCORDANCE_SORT_KEYS];
 let concordanceExpansionKey: string | null = null;
 let concordanceExpansionPending = false;
 let concordanceExpansionFailure: string | null = null;
@@ -50,16 +52,29 @@ function currentConcordancePageSize(): number {
   return pageSize;
 }
 
-function currentConcordanceSortKey(): ConcordanceSortKey {
-  return dom.concordanceSortSelect.value as ConcordanceSortKey;
+function syncConcordanceSortControls(): void {
+  dom.concordanceSort1Select.value = concordanceSortKeys[0] ?? DEFAULT_CONCORDANCE_SORT_KEYS[0]!;
+  dom.concordanceSort2Select.value = concordanceSortKeys[1] ?? "";
+  dom.concordanceSort3Select.value = concordanceSortKeys[2] ?? "";
+  const contextual = concordanceSortKeys[0] !== "filePosition" && concordanceSortKeys[0] !== "node";
+  dom.concordanceSort2Select.disabled = !contextual;
+  dom.concordanceSort3Select.disabled = !contextual;
+}
+
+function currentConcordanceSortKeys(): ConcordanceSortKey[] {
+  return concordanceSortSequence(
+    dom.concordanceSort1Select.value as ConcordanceSortKey,
+    dom.concordanceSort2Select.value as ConcordanceContextSortKey | "",
+    dom.concordanceSort3Select.value as ConcordanceContextSortKey | "",
+  );
 }
 
 export function currentConcordanceLineOffset(): number {
   return concordanceOffset;
 }
 
-export function currentConcordanceLineSortKey(): ConcordanceSortKey {
-  return concordanceSortKey;
+export function currentConcordanceLineSortKeys(): ConcordanceSortKey[] {
+  return [...concordanceSortKeys];
 }
 
 export function currentConcordanceLineWindow(): number {
@@ -78,19 +93,21 @@ export function setConcordanceLineOffset(offset: number): void {
   concordanceOffset = offset;
 }
 
-export function syncConcordanceLineSortKeyFromControl(): ConcordanceSortKey {
-  concordanceSortKey = currentConcordanceSortKey();
-  return concordanceSortKey;
+export function syncConcordanceLineSortKeysFromControl(): ConcordanceSortKey[] {
+  concordanceSortKeys = currentConcordanceSortKeys();
+  syncConcordanceSortControls();
+  return [...concordanceSortKeys];
 }
 
 export function resetConcordanceLinesCorpusState(): void {
   concordanceOffset = 0;
-  concordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;
+  concordanceSortKeys = [...DEFAULT_CONCORDANCE_SORT_KEYS];
   concordanceExpansionKey = null;
   concordanceExpansionPending = false;
   concordanceExpansionFailure = null;
   concordanceExpansionResult = null;
   concordanceExpansionGeneration += 1;
+  syncConcordanceSortControls();
 }
 
 function currentConcordanceExpansionState(): ConcordanceExpansionStateSnapshot {
@@ -191,14 +208,14 @@ function appendConcordanceKwicCells(
   caseSensitive: boolean,
 ): void {
   const sortLevels = concordanceContextSortLevels(
-    concordanceSortKey,
+    concordanceSortKeys,
     row.leftContext.length,
     row.rightContext.length,
   );
   const file = document.createElement("td");
-  file.className = "concordance-file";
+  file.className = "concordance-file cw-result-table-file";
   file.title = row.displayName || row.sourcePath;
-  file.textContent = concordanceMiddleEllipsis(row.displayName || row.sourcePath);
+  file.textContent = concordanceMiddleEllipsis(row.displayName || row.sourcePath, 16);
 
   const appendContext = (
     cell: HTMLTableCellElement,
@@ -228,18 +245,18 @@ function appendConcordanceKwicCells(
   };
 
   const left = document.createElement("td");
-  left.className = "concordance-left";
+  left.className = "concordance-left cw-result-table-kwic";
   appendContext(left, row.leftContext, sortLevels.left);
 
   const nodeCell = document.createElement("td");
-  nodeCell.className = "concordance-node-cell";
+  nodeCell.className = "concordance-node-cell cw-result-table-kwic";
   const node = document.createElement("mark");
   node.className = "concordance-node";
   node.textContent = row.node;
   nodeCell.appendChild(node);
 
   const right = document.createElement("td");
-  right.className = "concordance-right";
+  right.className = "concordance-right cw-result-table-kwic";
   appendContext(right, row.rightContext, sortLevels.right);
 
   item.append(file, left, nodeCell, right);
@@ -285,11 +302,11 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
   const header = document.createElement("div");
   header.className = "concordance-expansion-header";
   const file = document.createElement("span");
-  file.className = "concordance-expansion-file";
+  file.className = "concordance-expansion-file cw-result-table-file";
   file.textContent = row.displayName || row.sourcePath;
   const close = document.createElement("button");
   close.type = "button";
-  close.className = "secondary-btn concordance-expansion-close";
+  close.className = "quiet-btn concordance-expansion-close";
   close.textContent = "Close";
   close.addEventListener("click", () => {
     collapseConcordanceExpansion();
@@ -300,7 +317,7 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
 
   if (expansion.status === "ready") {
     const context = document.createElement("p");
-    context.className = "concordance-expansion-context";
+    context.className = "concordance-expansion-context cw-result-table-kwic";
     const left = document.createElement("span");
     left.className = "concordance-expansion-left";
     if (concordanceExpansionResult !== null) {
@@ -347,10 +364,6 @@ export function renderConcordanceLines(
   result: ConcordanceResult | null,
   emptyMessage = CONCORDANCE_NO_QUERY_MESSAGE,
 ): void {
-  dom.concordanceSortLegend.classList.toggle(
-    "hidden",
-    concordanceSortKey === "filePosition" || concordanceSortKey === "node",
-  );
   if (!result) {
     renderConcordanceTableState(emptyMessage);
     dom.concordancePagePreviousButton.disabled = true;
@@ -406,8 +419,10 @@ export function showNextConcordancePage(): void {
   void refreshConcordanceLines();
 }
 
-export function handleConcordanceSortChange(): void {
-  concordanceSortKey = currentConcordanceSortKey();
+export function handleConcordanceSortChange(level: 1 | 2 | 3): void {
+  void level;
+  concordanceSortKeys = currentConcordanceSortKeys();
+  syncConcordanceSortControls();
   collapseConcordanceExpansion();
   resetConcordanceLineOffset();
   void refreshConcordanceLines();

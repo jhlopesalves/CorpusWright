@@ -38,67 +38,68 @@ export function renderConcordanceDistribution(
   panel.appendChild(panelHeader);
 
   if (result && result.totalHits > 0) {
-    const metrics = document.createElement("div");
-    metrics.className = "concordance-distribution-metrics";
-
-    const hitMetric = document.createElement("div");
-    hitMetric.className = "concordance-distribution-metric";
-    const hitLabel = document.createElement("span");
-    hitLabel.className = "concordance-distribution-metric-label";
-    hitLabel.textContent = "Hits";
-    const hitValue = document.createElement("strong");
-    hitValue.textContent = formatNumber(result.totalHits);
-    hitMetric.append(hitLabel, hitValue);
-
-    const rangeMetric = document.createElement("div");
-    rangeMetric.className = "concordance-distribution-metric";
-    const rangeLabel = document.createElement("span");
-    rangeLabel.className = "concordance-distribution-metric-label";
-    rangeLabel.textContent = "Range";
-    const rangeValue = document.createElement("strong");
-    rangeValue.textContent =
-      `${formatNumber(result.documentsWithHits)} / ${formatNumber(result.selectedDocumentsTotal)} files · ${formatFixedNumber(concordanceRangePercent(result), 1)}%`;
-    rangeMetric.append(rangeLabel, rangeValue);
-
-    const topFileMetric = document.createElement("div");
-    topFileMetric.className = "concordance-distribution-metric";
-    const topFileLabel = document.createElement("span");
-    topFileLabel.className = "concordance-distribution-metric-label";
-    topFileLabel.textContent = "Top file";
-    const topFileValue = document.createElement("strong");
-    topFileValue.textContent = `${formatFixedNumber(result.topDocumentShare * 100, 1)}%`;
-    topFileMetric.append(topFileLabel, topFileValue);
-
-    const dispersionMetric = document.createElement("div");
-    dispersionMetric.className = "concordance-distribution-metric";
-    const dispersionLabel = document.createElement("span");
-    dispersionLabel.className = "concordance-distribution-metric-label";
-    dispersionLabel.textContent = "Dispersion";
-    const dispersionValue = document.createElement("strong");
-    dispersionValue.textContent = `DP ${formatFixedNumber(result.dp, 2)} · ${result.dispersionLabel}`;
-    dispersionMetric.append(dispersionLabel, dispersionValue);
-
-    metrics.append(hitMetric, rangeMetric, topFileMetric, dispersionMetric);
-    panel.appendChild(metrics);
+    const summary = document.createElement("p");
+    summary.className = "concordance-distribution-summary";
+    const primary = document.createElement("strong");
+    primary.textContent = `${formatNumber(result.totalHits)} hits`;
+    summary.append(
+      primary,
+      document.createTextNode(
+        ` across ${formatNumber(result.documentsWithHits)} of ${formatNumber(result.selectedDocumentsTotal)} documents (${formatFixedNumber(concordanceRangePercent(result), 1)}%). DP = ${formatFixedNumber(result.dp, 2)}; the leading document contains ${formatFixedNumber(result.topDocumentShare * 100, 1)}% of all hits.`,
+      ),
+    );
+    panel.appendChild(summary);
 
     const reading = document.createElement("p");
-    reading.className = "concordance-distribution-reading";
+    reading.className = "concordance-distribution-reading cw-result-table-note";
     reading.textContent =
       "Concentration in a few documents may suggest topic, genre, or source dependence; broad reach may suggest more corpus-general use.";
     panel.appendChild(reading);
   }
 
   const tableWrap = document.createElement("div");
-  tableWrap.className = "concordance-distribution-table-wrap";
+  tableWrap.className = "concordance-distribution-table-wrap cw-result-table-wrap";
 
   const table = document.createElement("table");
-  table.className = "concordance-distribution-table";
+  table.className = "concordance-distribution-table cw-result-table";
+  const columns = document.createElement("colgroup");
+  for (const className of [
+    "concordance-distribution-file-column",
+    "concordance-distribution-hits-column",
+    "concordance-distribution-tokens-column",
+    "concordance-distribution-rate-column",
+    "concordance-distribution-share-column",
+  ]) {
+    const column = document.createElement("col");
+    column.className = className;
+    columns.appendChild(column);
+  }
+  table.appendChild(columns);
 
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  for (const label of ["File", "Occurrences", "Tokens", "Hits per 10k", "Share of hits"]) {
+  const headerLabels = [
+    { label: "File" },
+    { label: "Hits" },
+    { label: "Document tokens" },
+    { label: "Hits per 10k", note: "bar = rate across hit-bearing documents" },
+    { label: "Share of hits" },
+  ];
+  for (const { label, note } of headerLabels) {
     const cell = document.createElement("th");
-    cell.textContent = label;
+    const heading = document.createElement("span");
+    heading.className = "concordance-distribution-heading";
+    const primary = document.createElement("span");
+    primary.className = "concordance-distribution-heading-primary";
+    primary.textContent = label;
+    heading.appendChild(primary);
+    if (note) {
+      const sublabel = document.createElement("span");
+      sublabel.className = "concordance-distribution-heading-note";
+      sublabel.textContent = note;
+      heading.appendChild(sublabel);
+    }
+    cell.appendChild(heading);
     header.appendChild(cell);
   }
   head.appendChild(header);
@@ -120,39 +121,43 @@ export function renderConcordanceDistribution(
   } else {
     for (const item of distribution.items) {
       const row = document.createElement("tr");
+      row.className = "concordance-distribution-row";
 
       const file = document.createElement("td");
-      file.className = "concordance-distribution-file";
+      file.className = "concordance-distribution-file cw-result-table-file";
       file.title = item.displayName || item.sourcePath;
       file.textContent = item.displayName || item.sourcePath;
 
       const count = document.createElement("td");
-      count.className = "numeric concordance-distribution-occurrences";
-      const countValue = document.createElement("span");
-      countValue.className = "concordance-distribution-count";
-      countValue.textContent = formatNumber(item.count);
-      const countTrack = document.createElement("span");
-      countTrack.className = "concordance-distribution-bar-track";
-      countTrack.setAttribute("aria-hidden", "true");
-      const countBar = document.createElement("span");
-      countBar.className = "concordance-distribution-bar";
-      countBar.style.setProperty(
-        "--distribution-bar-width",
-        `${concordanceDistributionMagnitudePercent(item.count, distribution.maxCount)}%`,
-      );
-      countTrack.appendChild(countBar);
-      count.append(countValue, countTrack);
+      count.className = "numeric cw-result-table-numeric concordance-distribution-occurrences";
+      count.textContent = formatNumber(item.count);
 
       const tokens = document.createElement("td");
-      tokens.className = "numeric";
+      tokens.className = "numeric cw-result-table-numeric";
       tokens.textContent = formatNumber(item.tokenCount);
 
       const rate = document.createElement("td");
-      rate.className = "numeric";
-      rate.textContent = formatFixedNumber(item.ratePer10k, 2);
+      rate.className = "numeric cw-result-table-numeric concordance-distribution-rate";
+      const rateValue = document.createElement("span");
+      rateValue.className = "concordance-distribution-rate-value";
+      rateValue.textContent = formatFixedNumber(item.ratePer10k, 2);
+      const rateDescription = `${rateValue.textContent} hits per 10,000 document tokens; bar scaled to the highest rate across all hit-bearing documents`;
+      rate.title = rateDescription;
+      rate.setAttribute("aria-label", rateDescription);
+      const rateTrack = document.createElement("span");
+      rateTrack.className = "concordance-distribution-rate-track";
+      rateTrack.setAttribute("aria-hidden", "true");
+      const rateBar = document.createElement("span");
+      rateBar.className = "concordance-distribution-rate-bar";
+      rateBar.style.setProperty(
+        "--distribution-rate-width",
+        `${concordanceDistributionMagnitudePercent(item.ratePer10k, distribution.maxRatePer10k)}%`,
+      );
+      rateTrack.appendChild(rateBar);
+      rate.append(rateValue, rateTrack);
 
       const share = document.createElement("td");
-      share.className = "numeric";
+      share.className = "numeric cw-result-table-numeric";
       const shareOfHits = result.totalHits > 0 ? item.count / result.totalHits * 100 : 0;
       share.textContent = `${formatFixedNumber(shareOfHits, 1)}%`;
 
@@ -167,7 +172,7 @@ export function renderConcordanceDistribution(
 
   if (result && result.totalHits > 0 && distribution) {
     const pagination = document.createElement("div");
-    pagination.className = "analysis-pagination";
+    pagination.className = "analysis-pagination cw-result-table-pagination";
     const previous = document.createElement("button");
     previous.type = "button";
     previous.className = "secondary-btn";
@@ -178,6 +183,7 @@ export function renderConcordanceDistribution(
       void refreshConcordanceDistribution();
     });
     const status = document.createElement("span");
+    status.className = "cw-result-table-pagination-status";
     const first = distribution.totalDocuments === 0 ? 0 : distribution.offset + 1;
     const last = Math.min(
       distribution.totalDocuments,
