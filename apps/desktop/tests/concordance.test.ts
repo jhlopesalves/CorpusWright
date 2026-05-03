@@ -1,5 +1,7 @@
 import {
   CONCORDANCE_COLUMNS,
+  CONCORDANCE_DEFAULT_PAGE_SIZE,
+  CONCORDANCE_DEFAULT_WINDOW,
   CONCORDANCE_COLLOCATION_DEFAULT_FLOOR,
   CONCORDANCE_COLLOCATION_DEFAULT_SPAN,
   CONCORDANCE_COLLOCATION_LIMIT,
@@ -15,12 +17,13 @@ import {
   CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,
   CONCORDANCE_SORT_OPTIONS,
-  DEFAULT_CONCORDANCE_SORT_KEY,
+  DEFAULT_CONCORDANCE_SORT_KEYS,
   clampConcordanceCollocationFloor,
   clampConcordanceCollocationSpan,
   clampConcordancePageSize,
   clampConcordanceWindow,
   concordanceCollocatesCardStatsText,
+  concordanceCollocateEvidenceDomId,
   concordanceCollocationDirectionLabel,
   concordanceCollocationExplanation,
   concordanceCollocationMeasureLabel,
@@ -30,17 +33,18 @@ import {
   concordanceContextTokenSegments,
   concordanceDistributionCardStatsText,
   concordanceDistributionMagnitudePercent,
-  concordanceCollocatePositionGlyph,
+  concordanceCollocatePositionProfile,
   concordanceContextSortLevels,
   concordanceExpansionViewModel,
   concordanceIsSparse,
   concordanceLinesCardStatsText,
   concordanceRangePercent,
   concordanceMiddleEllipsis,
-  concordancePositionGlyphAccessibleText,
+  concordancePositionProfileDomain,
   concordanceRowExpansionKey,
   concordanceRowText,
   concordanceSortLabel,
+  concordanceSortSequence,
   concordanceSummaryMetricsText,
   concordanceSummaryText,
   formatConcordanceProgress,
@@ -58,18 +62,22 @@ function assertDeepEqual(actual: unknown, expected: unknown, message = "Values s
 }
 
 assert(normaliseConcordanceQuery("  alpha ") === "alpha", "Concordance query should be trimmed");
-assert(clampConcordanceWindow(Number.NaN) === 5, "Invalid windows should fall back to the default");
-assert(clampConcordanceWindow(0) === 5, "Zero windows should fall back to the default");
+assert(clampConcordanceWindow(Number.NaN) === 10, "Invalid windows should fall back to the default");
+assert(clampConcordanceWindow(0) === 10, "Zero windows should fall back to the default");
 assert(clampConcordanceWindow(24) === 20, "Windows should be capped at the hard maximum");
 assert(clampConcordanceWindow(3.8) === 3, "Windows should use whole tokens");
-assert(clampConcordancePageSize(0) === 100, "Invalid page sizes should fall back to the default");
-assert(clampConcordancePageSize(12) === 25, "Page sizes should respect the minimum");
+assert(clampConcordanceWindow(5) === 5, "An explicit five-token window should remain unchanged");
+assert(clampConcordanceWindow(15) === 15, "An explicit fifteen-token window should remain unchanged");
+assert(clampConcordancePageSize(0) === 24, "Invalid page sizes should fall back to the default");
+assert(clampConcordancePageSize(12) === 12, "Explicit page sizes should be preserved");
 assert(clampConcordancePageSize(900) === 500, "Page sizes should respect the maximum");
 assert(clampConcordanceCollocationSpan(Number.NaN) === 5, "Invalid collocation spans should fall back");
 assert(clampConcordanceCollocationSpan(24) === 20, "Collocation spans should be capped");
 assert(clampConcordanceCollocationFloor(-1) === 5, "Invalid collocation floors should fall back");
 assert(clampConcordanceCollocationFloor(3.8) === 3, "Collocation floors should use whole counts");
-assert(DEFAULT_CONCORDANCE_SORT_KEY === "filePosition", "Default sort should be file/position");
+assertDeepEqual(DEFAULT_CONCORDANCE_SORT_KEYS, ["right1", "right2", "right3"], "Default sort should be 1R / 2R / 3R");
+assert(CONCORDANCE_DEFAULT_WINDOW === 10, "Default KWIC context should be ten tokens per side");
+assert(CONCORDANCE_DEFAULT_PAGE_SIZE === 24, "Default KWIC page size should be 24 rows");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_MEASURE === "logDice", "Default collocation measure should be logDice");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY === "association", "Default collocation sort should be association");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION === "desc", "Default collocation sort should descend");
@@ -103,17 +111,20 @@ assert(CONCORDANCE_EXPANSION_WINDOW === 40, "Expansion should request the defaul
 assert(concordanceSortLabel("left1") === "1L", "Left sort labels should use KWIC shorthand");
 assert(concordanceSortLabel("right3") === "3R", "Right sort labels should use KWIC shorthand");
 assertDeepEqual(
-  concordanceContextSortLevels("left1", 5, 5).left,
-  [null, null, 3, 2, 1],
-  "left1 should colour L1, L2, L3 from the end of left context",
+  concordanceSortSequence("right3", "right2", "right1"),
+  ["right3", "right2", "right1"],
+  "The three visible controls should compile into their exact explicit order",
 );
-assertDeepEqual(concordanceContextSortLevels("left2", 5, 5).left, [null, null, 3, 1, 2]);
-assertDeepEqual(concordanceContextSortLevels("left3", 5, 5).left, [null, null, 1, 2, 3]);
-assertDeepEqual(concordanceContextSortLevels("right1", 5, 5).right, [1, 2, 3, null, null]);
-assertDeepEqual(concordanceContextSortLevels("right2", 5, 5).right, [2, 1, 3, null, null]);
-assertDeepEqual(concordanceContextSortLevels("right3", 5, 5).right, [3, 2, 1, null, null]);
+assertDeepEqual(concordanceSortSequence("filePosition", "right1", "right2"), ["filePosition"]);
+assertDeepEqual(concordanceSortSequence("node", "left1", "left2"), ["node"]);
+assertDeepEqual(concordanceSortSequence("right1", "right1", "right2"), ["right1", "right2"]);
+assertDeepEqual(
+  concordanceContextSortLevels(["left1", "left3", "right2"], 5, 5),
+  { left: [null, null, 2, null, 1], right: [null, 3, null, null, null] },
+  "Only exact selected positions should receive their explicit priority colour",
+);
 for (const sort of ["filePosition", "node"] as const) {
-  assertDeepEqual(concordanceContextSortLevels(sort, 3, 3), {
+  assertDeepEqual(concordanceContextSortLevels([sort], 3, 3), {
     left: [null, null, null],
     right: [null, null, null],
   });
@@ -187,6 +198,16 @@ assert(
   CONCORDANCE_COLUMNS.join("|") === "File|Left context|Node|Right context",
   "KWIC table should expose the standard columns",
 );
+const difficultCollocateSurfaces = ["can't", "can-t", "cant", "A", "a", "é", "é", "’", "'", "東京"];
+const difficultCollocateIds = difficultCollocateSurfaces.map(concordanceCollocateEvidenceDomId);
+assert(
+  new Set(difficultCollocateIds).size === difficultCollocateSurfaces.length,
+  "Evidence IDs should distinguish punctuation, case, Unicode, and visually similar surfaces",
+);
+assert(
+  concordanceCollocateEvidenceDomId("can't") === concordanceCollocateEvidenceDomId("can't"),
+  "Evidence IDs should be deterministic for the same returned surface",
+);
 assert(
   CONCORDANCE_NO_QUERY_MESSAGE === "Enter a word or phrase to see concordance lines.",
   "No-query copy should match the alpha prompt",
@@ -229,7 +250,7 @@ assert(concordanceDistributionMagnitudePercent(80, 40) === 100, "Distribution ba
 assert(concordanceDistributionMagnitudePercent(4, 0) === 0, "Distribution bars should guard an empty maximum");
 const linesStats = concordanceLinesCardStatsText({
   windowTokens: 5,
-  sortKey: "filePosition",
+  sortKeys: ["filePosition"],
   shown: 100,
   totalHits: 8412,
   contextFilter: null,
@@ -241,12 +262,12 @@ assert(
 assert(
   concordanceLinesCardStatsText({
     windowTokens: 9,
-    sortKey: "right2",
+    sortKeys: ["right3", "right2", "right1"],
     shown: 25,
     totalHits: 60,
     contextFilter: "pair",
-  }) === "window 9L–9R · 2R · context “pair” · showing 25 of 60",
-  "Filtered Lines stats should expose the local context filter without changing shared query copy",
+  }) === "window 9L–9R · 3R / 2R / 1R · context “pair” · showing 25 of 60",
+  "Filtered Lines stats should expose the full sort sequence and local context filter",
 );
 assert(
   concordanceCollocatesCardStatsText({
@@ -307,25 +328,21 @@ assertDeepEqual(concordanceCollocationStrengthBar(5, "logDice", [1, 5, 10]), {
   signed: false,
   direction: "nonNegative",
   magnitudePercent: 50,
-  ramp: 3,
 });
 assertDeepEqual(concordanceCollocationStrengthBar(4, "mi", [-8, 0, 4]), {
   signed: true,
   direction: "positive",
   magnitudePercent: 50,
-  ramp: 3,
 });
 assertDeepEqual(concordanceCollocationStrengthBar(-8, "mi", [-8, 0, 4]), {
   signed: true,
   direction: "negative",
   magnitudePercent: 100,
-  ramp: 5,
 });
 assertDeepEqual(concordanceCollocationStrengthBar(0, "tScore", [-2, 0, 1]), {
   signed: true,
   direction: "zero",
   magnitudePercent: 0,
-  ramp: 1,
 });
 assert(
   concordanceCollocationStrengthBar(4, "mi", [-8, 0, 4])?.magnitudePercent
@@ -337,28 +354,20 @@ assert(nextConcordanceCollocateDisplayCount(35, 100) === 60);
 assert(nextConcordanceCollocateDisplayCount(60, 100) === 85);
 assert(nextConcordanceCollocateDisplayCount(85, 90) === 90);
 
-const positionBins = concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 5, "both");
-assertDeepEqual(positionBins.map((bin) => bin.label), ["L5", "L4", "L3", "L2", "L1", "R1", "R2", "R3", "R4", "R5"]);
-assert(positionBins[9]!.intensity === 1 && positionBins[0]!.intensity === 0.5);
-assertDeepEqual(
-  concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 2, "left").map((bin) => bin.active),
-  [false, false, false, true, true, false, false, false, false, false],
+const positionRows = [
+  { positionCounts: { left: [5, 0], right: [5, 0] } },
+  { positionCounts: { left: [2, 8], right: [0, 0] } },
+];
+const positionDomain = concordancePositionProfileDomain(positionRows, 2, "both", "shape");
+const positionProfile = concordanceCollocatePositionProfile(
+  positionRows[0]!.positionCounts,
+  2,
+  "both",
+  "shape",
+  positionDomain,
 );
-assertDeepEqual(
-  concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 2, "right").map((bin) => bin.active),
-  [false, false, false, false, false, true, true, false, false, false],
-  "Right-only profiles should activate R1 and R2 for a two-token span",
-);
-assert(
-  concordanceCollocatePositionGlyph([0, 0, 0, 0, 0], [0, 0, 0, 0, 0], 5, "both")
-    .every((bin) => bin.intensity === 0),
-  "All-zero positional profiles should remain finite",
-);
-assert(
-  concordancePositionGlyphAccessibleText("alpha", positionBins).includes("L5 5")
-    && concordancePositionGlyphAccessibleText("alpha", positionBins).includes("R5 10"),
-  "Exact positional counts should remain available without hover",
-);
+assertDeepEqual(positionProfile.bins.map((bin) => bin.label), ["2L", "1L", "1R", "2R"]);
+assert(positionProfile.bins[1]!.share === 0.5 && positionProfile.bins[1]!.ratio < 1);
 
 const row = {
   documentIndex: 2,
