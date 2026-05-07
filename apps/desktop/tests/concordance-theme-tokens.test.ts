@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { loadStyleGraph } from "../scripts/style-graph.mjs";
 
-const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const styles = (await loadStyleGraph(new URL("../src/styles.css", import.meta.url))).css;
 const requiredTokens = [
   "--cw-kwic-sort-1",
   "--cw-kwic-sort-2",
