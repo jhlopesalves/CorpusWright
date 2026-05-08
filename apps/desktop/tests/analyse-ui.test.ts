@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { loadStyleGraph } from "../scripts/style-graph.mjs";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -7,7 +8,7 @@ function assert(condition: unknown, message: string): asserts condition {
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const analysis = readFileSync(new URL("../src/analysis.ts", import.meta.url), "utf8");
 const workbench = readWorkbenchSources();
-const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const styles = (await loadStyleGraph(new URL("../src/styles.css", import.meta.url))).css;
 const generatedConcordanceQuery = readFileSync(new URL("../src/generated/ConcordanceQuery.ts", import.meta.url), "utf8");
 const generatedConcordanceContextFilterDirection = readFileSync(
   new URL("../src/generated/ConcordanceContextFilterDirection.ts", import.meta.url),
