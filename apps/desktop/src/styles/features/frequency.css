@@ -45,7 +45,7 @@
   color: var(--text-muted);
   font: inherit;
   font-size: 0.84rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   cursor: pointer;
 }
 
@@ -92,7 +92,7 @@
   gap: 4px;
   color: var(--text-muted);
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
 }
 
 .frequency-query-control {
@@ -104,19 +104,7 @@
   width: 100%;
   height: 34px;
   padding: 5px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--bg-color);
-  color: var(--text-color);
-  font-family: inherit;
   font-size: 0.88rem;
-  box-sizing: border-box;
-}
-
-.frequency-controls input:not([type="checkbox"]):focus,
-.frequency-controls select:focus {
-  outline: 1px solid var(--accent-color);
-  border-color: var(--accent-color);
 }
 
 #frequency-search-input {
@@ -141,73 +129,6 @@
 
 #frequency-rate-scale {
   width: 100%;
-}
-
-.frequency-toggle {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  gap: 8px;
-  padding: 5px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--panel-bg);
-  color: var(--text-color);
-  font-size: 0.86rem;
-  font-weight: 500;
-  box-sizing: border-box;
-  cursor: pointer;
-  user-select: none;
-}
-
-.frequency-toggle:hover {
-  background: var(--cw-interaction-bg-hover);
-}
-
-.frequency-toggle input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.frequency-toggle-track {
-  position: relative;
-  flex: 0 0 auto;
-  width: 30px;
-  height: 16px;
-  border-radius: 999px;
-  background: var(--border-color);
-}
-
-.frequency-toggle-track::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--bg-color);
-  transition: transform 0.12s ease, background 0.12s ease;
-}
-
-.frequency-toggle input:checked + .frequency-toggle-track {
-  background: var(--accent-color);
-}
-
-.frequency-toggle input:checked + .frequency-toggle-track::after {
-  transform: translateX(14px);
-  background: var(--cw-text-inverse);
-}
-
-.frequency-toggle input:focus-visible + .frequency-toggle-track {
-  outline: 1px solid var(--accent-color);
-  outline-offset: 2px;
 }
 
 .frequency-file-scope-control button {
@@ -243,17 +164,12 @@
 .frequency-table-wrap {
   max-height: min(58vh, 680px);
   overflow: auto;
-  border: 1px solid var(--cw-result-table-border);
-  border-radius: 4px;
-  background: var(--cw-result-table-surface);
 }
 
 .frequency-table {
   width: 100%;
   min-width: 820px;
-  border-collapse: collapse;
   table-layout: fixed;
-  font-size: 0.85rem;
 }
 
 .frequency-table:has(.frequency-col-rate) {
@@ -264,22 +180,17 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--cw-result-table-header-surface);
-  border-bottom: 1px solid var(--cw-result-table-separator);
 }
 
 .frequency-table th,
 .frequency-table td {
   padding: 7px 10px;
-  border-bottom: 1px solid var(--cw-result-table-separator);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .frequency-table th {
-  color: var(--cw-result-table-header-text);
-  font-weight: 500;
   text-align: left;
 }
 
@@ -315,35 +226,15 @@
 
 .frequency-table td.numeric {
   text-align: right;
-  font-variant-numeric: tabular-nums;
-  font-weight: 400;
 }
 
 .frequency-term-row {
   cursor: pointer;
 }
 
-.frequency-term-row:nth-child(even) td {
-  background: var(--cw-result-table-row-alt-surface);
-}
-
-.frequency-term-row:hover td,
-.frequency-term-row:focus-visible td {
-  background: var(--cw-result-table-hover-surface);
-}
-
-.frequency-term-row[aria-expanded="true"] td {
-  background: var(--cw-result-table-active-surface);
-}
-
 .frequency-term-row:focus-visible {
   outline: 1px solid var(--accent-color);
   outline-offset: -2px;
-}
-
-.frequency-token-cell {
-  font-family: var(--cw-font-ui);
-  font-weight: 600;
 }
 
 .frequency-token-content {
@@ -420,7 +311,6 @@
 .frequency-dp-value {
   display: inline-block;
   min-width: 42px;
-  font-weight: 400;
 }
 
 .frequency-dp-track,
@@ -447,8 +337,7 @@
 }
 
 .frequency-table .frequency-detail-row td {
-  padding: 0 12px 12px 34px !important;
-  background: var(--cw-result-table-active-surface);
+  padding: 0 12px 12px 34px;
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
@@ -465,7 +354,7 @@
   margin: 0 0 8px;
   color: var(--text-color);
   font-size: 0.86rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
 }
 
 .frequency-distribution-row {
@@ -487,7 +376,7 @@
 .frequency-distribution-header {
   color: var(--cw-result-table-header-text);
   font-size: 0.76rem;
-  font-weight: 500;
+  font-weight: var(--cw-weight-medium);
 }
 
 .frequency-distribution-file {
@@ -512,7 +401,7 @@
 }
 
 .frequency-empty {
-  padding: 18px 10px !important;
+  padding: 18px 10px;
   text-align: center;
 }
 
@@ -529,7 +418,7 @@
   gap: 5px;
   color: var(--text-muted);
   font-size: 0.82rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
 }
 
 .frequency-files-search input {
