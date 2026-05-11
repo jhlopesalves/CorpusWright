@@ -139,7 +139,7 @@ export async function updatePreview(): Promise<void> {
   if (sourcesNeedingExtraction.length > 0) {
     renderTextExtractionRequiredCards(dom.previewContent, sourcesNeedingExtraction, "original");
     renderTextExtractionRequiredCards(dom.processedPreviewContent, sourcesNeedingExtraction, "processed");
-    dom.previewLoadingOverlay.style.display = "none";
+    dom.previewLoadingOverlay.classList.add("hidden");
     dom.statusBar.textContent = "Text has not been extracted yet.";
     return;
   }
@@ -147,7 +147,7 @@ export async function updatePreview(): Promise<void> {
   state.currentPreviewOffset = 0;
 
   dom.previewLoadingText.textContent = "Loading preview...";
-  dom.previewLoadingOverlay.style.display = "flex";
+  dom.previewLoadingOverlay.classList.remove("hidden");
   dom.statusBar.textContent = "Previewing...";
 
   await fetchAndRenderPreviewChunk(selectedIndices, state.currentPreviewOffset, false, myVersion, myPreviewGeneration);
@@ -190,7 +190,7 @@ async function renderSelectedProjectSourcePreviewViewport(
   }
   if (showBlockingOverlay) {
     dom.previewLoadingText.textContent = "Preparing preview...";
-    dom.previewLoadingOverlay.style.display = "flex";
+    dom.previewLoadingOverlay.classList.remove("hidden");
   }
   dom.statusBar.textContent = "Previewing selected sources...";
   let requestSucceeded = false;
@@ -244,7 +244,7 @@ async function renderSelectedProjectSourcePreviewViewport(
     dom.statusBar.textContent = "Error loading source preview.";
   } finally {
     if (request === projectSourcePreviewRequest) {
-      dom.previewLoadingOverlay.style.display = "none";
+      dom.previewLoadingOverlay.classList.add("hidden");
       projectSourcePreviewLoading = false;
       const activeScroll = dom.previewContent.parentElement?.classList.contains("active")
         ? dom.previewContent.parentElement
@@ -498,7 +498,6 @@ function createProjectSourceDetailCard(source: ProjectSource, mode: "original" |
 
   const body = document.createElement("div");
   body.className = "file-card-body";
-  body.style.minHeight = "auto";
   for (const line of projectSourceDetailLines(source, mode)) {
     const paragraph = document.createElement("p");
     paragraph.textContent = line;
@@ -646,7 +645,6 @@ function renderTextExtractionRequiredCards(
 
     const body = document.createElement("div");
     body.className = "file-card-body";
-    body.style.minHeight = "auto";
     body.textContent = mode === "processed"
       ? source.status === "failed"
         ? "Processed text is not available because source review or text extraction failed. Review the source status before processing."
@@ -719,7 +717,7 @@ async function fetchAndRenderPreviewChunk(
     }
     dom.statusBar.textContent = "Error loading preview.";
   } finally {
-    dom.previewLoadingOverlay.style.display = "none";
+    dom.previewLoadingOverlay.classList.add("hidden");
     state.isFetchingPreview = false;
   }
 }
@@ -957,7 +955,6 @@ function renderPreviewCards(
           body.innerHTML = highlightPreviewText(text, state.currentSearchQuery);
           observer.unobserve(body);
 
-          body.style.minHeight = "auto";
         }
       });
     }, { rootMargin: "200px 0px" });
@@ -1049,7 +1046,7 @@ function renderPreviewCards(
 
     const body = document.createElement("div");
     body.className = "file-card-body";
-    body.style.minHeight = "100px";
+    body.classList.add("file-card-body--pending");
     body.dataset.originalText = file.text;
 
     previewObserver!.observe(body);
@@ -1068,7 +1065,6 @@ function renderPreviewCards(
   if (offset + files.length < totalFiles) {
     const sentinel = document.createElement("div");
     sentinel.className = "chunk-sentinel";
-    sentinel.style.height = "10px";
     container.appendChild(sentinel);
 
     if (!chunkSentinelObserver) {
