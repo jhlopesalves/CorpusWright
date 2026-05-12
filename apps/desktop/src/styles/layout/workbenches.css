@@ -1,1 +1,26 @@
-/* layout/workbenches.css is reserved for its named visual responsibility. */
+/* Major Prepare and Analyse workspace sizing, overflow, and shell behavior. */
+
+.project-workspace,
+.prepare-workbench {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.project-workspace,
+.prepare-workbench {
+  overflow: hidden;
+}
+
+.prepare-workbench {
+  display: flex;
+}
+
+.analyse-workbench {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  background: var(--bg-color);
+}

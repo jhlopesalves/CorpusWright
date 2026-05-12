@@ -1,3 +1,5 @@
+/* Shared figure frames, figure chrome, and export-safe text hierarchy. */
+
 .analysis-panel h3,
 .document-length-distribution h4 {
   margin: 0;
@@ -39,7 +41,7 @@
   margin: 0;
   color: var(--text-color);
   font-size: 1.08rem;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
   line-height: 1.25;
 }
 
@@ -72,7 +74,7 @@
   border-radius: 4px;
   background: var(--panel-bg);
   color: var(--text-color);
-  font: 600 0.78rem/1.2 var(--cw-font-ui);
+  font: var(--cw-weight-semibold) 0.78rem/1.2 var(--cw-font-ui);
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
@@ -146,6 +148,14 @@
   height: auto;
   color: var(--text-color);
   font-family: var(--cw-font-ui);
+}
+
+.cw-plot-export-mount {
+  position: absolute;
+  inset: 0 auto auto -100000px;
+  width: var(--cw-plot-export-width);
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .cw-plot-figure-title {
