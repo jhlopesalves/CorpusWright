@@ -37,11 +37,11 @@ assert(state.includes("window: CONCORDANCE_DEFAULT_WINDOW"));
 
 assert.match(
   html,
-  /id="concordance-lines-controls" class="concordance-card-controls concordance-lines-controls">/,
+  /id="concordance-lines-controls" class="[^"]*\bconcordance-card-controls\b[^"]*\bconcordance-lines-controls\b[^"]*">/,
 );
 assert.match(
   html,
-  /id="concordance-lines-panel" class="concordance-card concordance-kwic-panel"/,
+  /id="concordance-lines-panel" class="[^"]*\bconcordance-card\b[^"]*\bconcordance-kwic-panel\b[^"]*\bcw-panel\b/,
 );
 const kwicPanelCss = styles.match(/\.concordance-kwic-panel \{([\s\S]*?)\n\}/)?.[1] ?? "";
 assert(
@@ -62,23 +62,20 @@ assert(
   "KWIC and Collocates wrappers should consume the shared result-table shell",
 );
 assert(
-  styles.includes(".concordance-table-wrap,\n.concordance-collocations-table-wrap,\n.concordance-distribution-table-wrap {\n  border: 1px solid var(--cw-result-table-border);\n  border-radius: 4px;\n  background: var(--cw-result-table-surface);"),
-  "Concordance table wrappers should use the shared border and surface tokens",
+  styles.includes(".cw-result-table-wrap {\n  border: 1px solid var(--cw-result-table-border);\n  border-radius: 4px;\n  background: var(--cw-result-table-surface);"),
+  "Concordance table wrappers should inherit the shared border and surface owner",
 );
 assert(
-  styles.includes(".concordance-table th {\n  height: 22px;\n  background: var(--cw-result-table-header-surface);")
-    && styles.includes(".concordance-collocations-table > thead > tr > th {\n  background: var(--cw-result-table-header-surface);"),
-  "KWIC and Collocates headers must share the result-table header surface",
+  styles.includes(".cw-result-table th {\n  background: var(--cw-result-table-header-surface);"),
+  "KWIC and Collocates headers must inherit the shared result-table header surface",
 );
 assert(
-  styles.includes(".concordance-table th {\n  height: 22px;\n  background: var(--cw-result-table-header-surface);\n  border-bottom: 1px solid var(--cw-result-table-separator);")
-    && styles.includes(".concordance-collocations-table > thead > tr > th {\n  background: var(--cw-result-table-header-surface);\n  border-bottom: 1px solid var(--cw-result-table-separator);"),
-  "KWIC and Collocates header separators must share the semantic separator",
+  styles.includes(".cw-result-table th,\n.cw-result-table td {\n  border-bottom: 1px solid var(--cw-result-table-separator);"),
+  "KWIC and Collocates header separators must inherit the semantic separator",
 );
 assert(
-  styles.includes(".concordance-row:nth-of-type(even) td {\n  background: var(--cw-result-table-row-alt-surface);")
-    && styles.includes(".concordance-collocation-row:nth-child(even) td {\n  background: var(--cw-result-table-row-alt-surface);"),
-  "KWIC and Collocates zebra rows must use the same surface token",
+  styles.includes(".cw-result-table tbody tr:nth-child(even) > td {\n  background: var(--cw-result-table-row-alt-surface);"),
+  "KWIC and Collocates zebra rows must inherit one surface owner",
 );
 assert(
   styles.includes(".concordance-context-token.is-sort-level-1")
@@ -89,7 +86,7 @@ assert(
 );
 assert.match(
   html,
-  /id="concordance-collocates-controls" class="concordance-card-controls concordance-collocation-controls">/,
+  /id="concordance-collocates-controls" class="[^"]*\bconcordance-card-controls\b[^"]*\bconcordance-collocation-controls\b[^"]*">/,
 );
 for (const label of ["Window", "Sort 1", "Sort 2", "Sort 3", "Rows", "Span", "Direction", "Measure", "Min co-occurrence", "Min corpus frequency", "Stopwords"]) {
   assert(new RegExp(`<span[^>]*>[^<]*(?:<i[^>]*></i>)?${label}</span>`).test(html), `${label} must remain visible`);
@@ -137,7 +134,7 @@ for (const width of ["6rem", "7rem", "11rem", "15rem"]) {
 assert(styles.includes("padding: 5px 7px;"));
 assert(!collocations.includes('node.textContent = "NODE"'));
 assert(!collocations.includes("is-ramp-"));
-assert(styles.includes(".concordance-collocation-row:nth-child(even) td"));
+assert(styles.includes(".cw-result-table tbody tr:nth-child(even) > td"));
 assert(!styles.includes("min-width: 1040px"));
 assert(!styles.includes("text-decoration-style: double;"));
 assert(!styles.includes("text-decoration-style: dotted;"));
