@@ -41,9 +41,6 @@ export async function exportProcessedCorpus(): Promise<void> {
   const targetDir = `${selected}${selected.endsWith(separator) ? "" : separator}${exportDirName}`;
 
   dom.statusBar.textContent = "Saving processed corpus... 0%";
-  dom.menuSaveCorpus.style.pointerEvents = "none";
-  dom.menuSaveCorpus.style.opacity = "0.5";
-  document.body.style.cursor = "wait";
   document.body.classList.add("is-exporting");
 
   await new Promise(requestAnimationFrame);
@@ -77,9 +74,6 @@ export async function exportProcessedCorpus(): Promise<void> {
     console.error("Save error", error);
   } finally {
     if (unlisten) unlisten();
-    dom.menuSaveCorpus.style.pointerEvents = "auto";
-    dom.menuSaveCorpus.style.opacity = "1";
-    document.body.style.cursor = "default";
     document.body.classList.remove("is-exporting");
   }
 }
