@@ -77,12 +77,12 @@
 .stage-tab-title {
   display: block;
   font-size: 0.92rem;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
   line-height: 1.2;
 }
 
 .stage-tab.active .stage-tab-title {
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
 }
 
 .stage-tab-future,
