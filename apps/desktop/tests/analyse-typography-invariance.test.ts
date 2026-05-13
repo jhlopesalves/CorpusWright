@@ -79,10 +79,11 @@ for (const selector of [
   '.analyse-tool-item[aria-current="page"]',
 ]) {
   const body = ruleBody(selector);
-  assert.match(body, /font-weight:\s*700/);
+  assert.match(body, /font-weight:\s*var\(--cw-weight-bold\)/);
   assert.doesNotMatch(
     body,
     /font-weight:\s*(?:[1-9]50)/,
     `${selector} must use an available face rather than a synthetic intermediate weight`,
   );
 }
+assert.match(styles, /--cw-weight-bold:\s*700/);
