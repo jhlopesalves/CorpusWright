@@ -4,7 +4,7 @@
 }
 
 .menu-item {
-  font-size: 0.9rem;
+  font-size: var(--cw-type-control-size);
   color: var(--text-color);
   cursor: pointer;
   padding: 4px 8px;
@@ -76,7 +76,7 @@
 
 .stage-tab-title {
   display: block;
-  font-size: 0.92rem;
+  font-size: var(--cw-type-control-size);
   font-weight: var(--cw-weight-bold);
   line-height: 1.2;
 }
@@ -120,7 +120,7 @@
 
 .dropdown-item {
   padding: 8px 16px;
-  font-size: 0.9rem;
+  font-size: var(--cw-type-control-size);
   color: var(--text-color);
   cursor: pointer;
   user-select: none;
@@ -181,7 +181,7 @@
 
 .source-actions .dropdown-item {
   padding: 7px 14px;
-  font-size: 0.85rem;
+  font-size: var(--cw-type-control-size);
   color: var(--text-color);
   cursor: pointer;
   user-select: none;
@@ -223,7 +223,7 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: var(--cw-type-control-size);
   font-family: inherit;
   border-bottom: 2px solid transparent;
   transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
