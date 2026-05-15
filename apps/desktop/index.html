@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CorpusAid</title>
+  <link rel="icon" type="image/svg+xml" href="/ico.svg" />
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+
+<body>
+  <div id="app">
+    <nav class="app-bar">
+      <div class="app-title">CorpusAid</div>
+      <div class="menu-items">
+        <div class="dropdown">
+          <span class="menu-item" tabindex="0">File</span>
+          <div class="dropdown-content">
+            <div class="dropdown-item" id="menu-open-files" tabindex="0">Open Files</div>
+            <div class="dropdown-item" id="menu-open-dir" tabindex="0">Open Folder</div>
+          </div>
+        </div>
+        <div class="dropdown">
+          <span class="menu-item" tabindex="0">Process</span>
+          <div class="dropdown-content">
+            <div class="dropdown-item" id="menu-processing-params" tabindex="0">Processing Parameters</div>
+          </div>
+        </div>
+        <div class="dropdown">
+          <span class="menu-item" tabindex="0">Help</span>
+          <div class="dropdown-content">
+          </div>
+        </div>
+      </div>
+      <div class="top-right-controls">
+        <button id="theme-toggle" class="icon-btn" title="Toggle Theme" aria-label="Toggle Theme">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+        </button>
+      </div>
+    </nav>
+
+    <main>
+      <aside class="left-panel">
+        <h2>Corpus</h2>
+        <div class="status-line" id="files-status">0 loaded | 0 selected</div>
+        <input id="search-input" type="text" placeholder="Search/filter..." />
+        <div class="list-controls-bar">
+          <label class="select-all-label" title="Select all filtered files">
+            <input type="checkbox" id="select-all-checkbox" /> Select All
+          </label>
+        </div>
+        <div class="file-list-container">
+          <ul id="file-list"></ul>
+        </div>
+      </aside>
+    </main>
+    <footer id="status-bar">Ready</footer>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
+</html>

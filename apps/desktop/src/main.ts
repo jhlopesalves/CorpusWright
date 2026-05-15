@@ -469,3 +469,324 @@ async function handleSaveConfig(): Promise<void> {
 }
 
 // Initialize
+function init() {
+  menuOpenDir.addEventListener("click", handleOpenDir);
+  menuOpenFiles.addEventListener("click", handleOpenFiles);
+  // Initialise virtual scrolling for file list
+  initVirtualScroll();
+
+  themeToggle.addEventListener("click", () => {
+    const current = document.documentElement.dataset.theme;
+    document.documentElement.dataset.theme = current === "light" ? "dark" : "light";
+  });
+  searchInput.addEventListener("input", handleSearch);
+  selectAllCheckbox.addEventListener("change", (e) => {
+    const isChecked = (e.target as HTMLInputElement).checked;
+    if (isChecked) {
+      visibleFiles.forEach(vf => selectedCorpusIndices.add(vf.corpusIndex));
+    } else {
+      selectedCorpusIndices.clear();
+    }
+    previewGeneration += 1;
+    activePreviewGeneration = previewGeneration;
+    renderVisibleItems();
+    filesStatus.textContent = `${allFiles.length} loaded | ${selectedCorpusIndices.size} selected`;
+
+  });
+  // Accessibility: Escape to close modals and menus
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (!settingsModal.classList.contains("hidden")) {
+        settingsModal.classList.add("hidden");
+      }
+
+      document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('is-open'));
+    }
+  });
+
+  // Menu Dropdown Click Handling
+  const dropdowns = document.querySelectorAll('.dropdown');
+
+  dropdowns.forEach(dropdown => {
+    const menuLabel = dropdown.querySelector('.menu-item');
+    menuLabel?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = dropdown.classList.contains('is-open');
+      dropdowns.forEach(d => d.classList.remove('is-open'));
+      if (!isOpen) {
+        dropdown.classList.add('is-open');
+      }
+    });
+  });
+
+  document.addEventListener('click', () => {
+    dropdowns.forEach(d => d.classList.remove('is-open'));
+  });
+
+  const dropdownItems = document.querySelectorAll('.dropdown-item');
+  dropdownItems.forEach(item => {
+    item.addEventListener('click', () => {
+      dropdowns.forEach(d => d.classList.remove('is-open'));
+    });
+  });
+
+  // Sidebar Resizing Logic
+  const splitter = document.getElementById("sidebar-splitter");
+  const leftPanel = document.querySelector(".left-panel") as HTMLElement;
+  let isResizing = false;
+
+  if (splitter && leftPanel) {
+    splitter.addEventListener("mousedown", (e) => {
+      isResizing = true;
+      splitter.classList.add("active");
+      document.body.style.cursor = "col-resize";
+      e.preventDefault();
+    });
+
+    document.addEventListener("mousemove", (e) => {
+      if (!isResizing) return;
+      e.preventDefault();
+
+      let newWidth = e.clientX;
+      const maxW = Math.min(640, window.innerWidth * 0.55);
+
+      if (newWidth < 240) newWidth = 240;
+      if (newWidth > maxW) newWidth = maxW;
+
+      leftPanel.style.width = `${newWidth}px`;
+    });
+
+    document.addEventListener("mouseup", () => {
+      if (isResizing) {
+        isResizing = false;
+        splitter.classList.remove("active");
+        document.body.style.cursor = "default";
+      }
+    });
+  }
+
+}
+function clearStateForLoad() {
+  currentCorpusVersion = 0;
+  allFiles = [];
+  visibleFiles = [];
+  selectedCorpusIndices.clear();
+  updateFileList();
+}
+async function handleOpenDir() {
+  const selected = await open({
+    directory: true,
+    multiple: false,
+  });
+  if (selected === null || Array.isArray(selected)) {
+    statusBar.textContent = "Open directory cancelled.";
+    return;
+  }
+
+  try {
+    statusBar.textContent = "Scanning...";
+    clearStateForLoad();
+
+    const result = await invoke<CorpusLoadResult>("scan_directory_command", { path: selected });
+
+    currentCorpusVersion = result.corpusVersion;
+    currentCorpusRoot = result.report.root;
+    allFiles = result.report.files;
+    visibleFiles = allFiles.map((record, i) => ({ corpusIndex: i, record }));
+
+    updateFileList();
+    statusBar.textContent = `Loaded ${allFiles.length} files.`;
+  } catch (error) {
+    statusBar.textContent = `Error: ${error}`;
+    console.error(error);
+  }
+}
+async function handleOpenFiles() {
+  const selected = await open({
+    multiple: true,
+    filters: [{ name: "Supported Documents", extensions: ["txt", "html", "htm", "docx", "pdf"] }]
+  });
+  if (selected === null || !Array.isArray(selected)) {
+    statusBar.textContent = "Open files cancelled.";
+    return;
+  }
+
+  try {
+    statusBar.textContent = "Loading files...";
+    clearStateForLoad();
+
+    const result = await invoke<CorpusLoadResult>("load_files_command", { paths: selected });
+
+    currentCorpusVersion = result.corpusVersion;
+    currentCorpusRoot = result.report.root;
+    allFiles = result.report.files;
+    visibleFiles = allFiles.map((record, i) => ({ corpusIndex: i, record }));
+
+    updateFileList();
+    statusBar.textContent = `Loaded ${allFiles.length} files.`;
+  } catch (error) {
+    statusBar.textContent = `Error: ${error}`;
+    console.error(error);
+  }
+}
+function handleSearch() {
+  const query = searchInput.value.toLowerCase();
+  visibleFiles = allFiles
+    .map((record, corpusIndex) => ({ corpusIndex, record }))
+    .filter(({ record }) => !query || record.relative_path.toLowerCase().includes(query));
+  selectedCorpusIndices.clear();
+  previewGeneration += 1;
+  activePreviewGeneration = previewGeneration;
+
+  const container = document.querySelector('.file-list-container') as HTMLElement;
+  if (container) {
+    container.scrollTop = 0;
+    vsScrollTop = 0;
+  }
+
+  updateFileList();
+}
+function initVirtualScroll() {
+  const container = document.querySelector('.file-list-container') as HTMLElement;
+  if (!container) return;
+
+  // Create sentinel div that sets the total scrollable height
+  let sentinel = container.querySelector('.virtual-scroll-sentinel') as HTMLElement;
+  if (!sentinel) {
+    sentinel = document.createElement('div');
+    sentinel.className = 'virtual-scroll-sentinel';
+    container.insertBefore(sentinel, fileList);
+  }
+
+  container.addEventListener('scroll', () => {
+    vsScrollTop = container.scrollTop;
+    renderVisibleItems();
+  });
+
+  // Track container resize
+  const ro = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      vsContainerHeight = entry.contentRect.height;
+    }
+    renderVisibleItems();
+  });
+  ro.observe(container);
+  vsContainerHeight = container.clientHeight;
+}
+function updateFileList() {
+  filesStatus.textContent = `${allFiles.length} loaded | ${selectedCorpusIndices.size} selected`;
+
+  // Update sentinel height to reflect total list size
+  const container = document.querySelector('.file-list-container') as HTMLElement;
+  const sentinel = container?.querySelector('.virtual-scroll-sentinel') as HTMLElement;
+  if (sentinel) {
+    sentinel.style.height = `${visibleFiles.length * ITEM_HEIGHT}px`;
+  }
+
+  renderVisibleItems();
+}
+function renderVisibleItems() {
+  const totalItems = visibleFiles.length;
+
+  // Calculate which items are visible
+  const startIdx = Math.max(0, Math.floor(vsScrollTop / ITEM_HEIGHT) - OVERSCAN);
+  const visibleCount = Math.ceil(vsContainerHeight / ITEM_HEIGHT) + 2 * OVERSCAN;
+  const endIdx = Math.min(totalItems, startIdx + visibleCount);
+
+  // Position the UL using transform (avoids layout thrashing)
+  fileList.style.transform = `translateY(${startIdx * ITEM_HEIGHT}px)`;
+  fileList.innerHTML = '';
+
+  const fragment = document.createDocumentFragment();
+  for (let i = startIdx; i < endIdx; i++) {
+    const { corpusIndex, record } = visibleFiles[i];
+    const li = document.createElement('li');
+    const parts = record.relative_path.split(/[/\\]/);
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'file-checkbox';
+    checkbox.checked = selectedCorpusIndices.has(corpusIndex);
+
+    const span = document.createElement('span');
+    span.className = 'file-name';
+    span.textContent = parts[parts.length - 1];
+
+    li.appendChild(checkbox);
+    li.appendChild(span);
+    li.title = record.relative_path;
+
+    if (selectedCorpusIndices.has(corpusIndex)) {
+      li.classList.add('selected');
+    }
+
+    checkbox.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleFileSelect(e, i, true);
+    });
+
+    li.addEventListener('click', (e) => {
+      handleFileSelect(e, i, false);
+    });
+
+    fragment.appendChild(li);
+  }
+
+  fileList.appendChild(fragment);
+}
+function handleFileSelect(event: MouseEvent, visibleIndex: number, isCheckboxClick: boolean = false) {
+  const corpusIndex = visibleFiles[visibleIndex].corpusIndex;
+
+  if (isCheckboxClick) {
+    if (event.shiftKey && lastSelectedCorpusIndex !== null) {
+      const lastVis = visibleFiles.findIndex(vf => vf.corpusIndex === lastSelectedCorpusIndex);
+      if (lastVis !== -1) {
+        const startVis = Math.min(lastVis, visibleIndex);
+        const endVis = Math.max(lastVis, visibleIndex);
+        for (let vi = startVis; vi <= endVis; vi++) {
+          selectedCorpusIndices.add(visibleFiles[vi].corpusIndex);
+        }
+      }
+    } else {
+      if (selectedCorpusIndices.has(corpusIndex)) {
+        selectedCorpusIndices.delete(corpusIndex);
+      } else {
+        selectedCorpusIndices.add(corpusIndex);
+      }
+    }
+  } else {
+    if (event.ctrlKey || event.metaKey) {
+      if (selectedCorpusIndices.has(corpusIndex)) {
+        selectedCorpusIndices.delete(corpusIndex);
+      } else {
+        selectedCorpusIndices.add(corpusIndex);
+      }
+    } else if (event.shiftKey && lastSelectedCorpusIndex !== null) {
+      const lastVis = visibleFiles.findIndex(vf => vf.corpusIndex === lastSelectedCorpusIndex);
+      selectedCorpusIndices.clear();
+      if (lastVis !== -1) {
+        const startVis = Math.min(lastVis, visibleIndex);
+        const endVis = Math.max(lastVis, visibleIndex);
+        for (let vi = startVis; vi <= endVis; vi++) {
+          selectedCorpusIndices.add(visibleFiles[vi].corpusIndex);
+        }
+      }
+    } else {
+      selectedCorpusIndices.clear();
+      selectedCorpusIndices.add(corpusIndex);
+    }
+  }
+
+  // Update shift-click anchor — after a normal click or shift-click, anchor is the clicked item
+  lastSelectedCorpusIndex = corpusIndex;
+
+  // Invalidate current preview session
+  previewGeneration += 1;
+  activePreviewGeneration = previewGeneration;
+
+  // Re-render only visible items (virtual scroll handles this efficiently)
+  renderVisibleItems();
+
+  filesStatus.textContent = `${allFiles.length} loaded | ${selectedCorpusIndices.size} selected`;
+}
+document.addEventListener('DOMContentLoaded', init);
