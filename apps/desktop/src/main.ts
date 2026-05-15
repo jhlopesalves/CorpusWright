@@ -477,6 +477,8 @@ function init() {
 
   menuOpenDir.addEventListener("click", handleOpenDir);
   menuOpenFiles.addEventListener("click", handleOpenFiles);
+  menuSaveCorpus.addEventListener("click", handleExport);
+
   // Initialise virtual scrolling for file list
   initVirtualScroll();
 
@@ -782,6 +784,7 @@ function init() {
   }
 
 }
+
 function clearStateForLoad() {
   currentCorpusVersion = 0;
   allFiles = [];
@@ -1595,4 +1598,91 @@ function updateSearchUI() {
  * Sanitise a folder name for safe filesystem use.
  * Replaces Windows-invalid filename characters and control characters with '_',
  * trims trailing dots/whitespace.
+ */
+function sanitizeFolderName(name: string): string {
+  return name.replace(/[<>:"\/\\|?*\x00-\x1f]/g, '_')
+    .replace(/\.+$/, '')
+    .trim() || "CorpusAid";
+}
+
+async function handleExport() {
+  if (allFiles.length === 0) {
+    statusBar.textContent = "No files loaded. Open a corpus before saving.";
+    return;
+  }
+
+
+
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    defaultPath: currentCorpusRoot ? currentCorpusRoot : undefined,
+  });
+  if (selected === null || Array.isArray(selected)) {
+    statusBar.textContent = "Save cancelled.";
+    return;
+  }
+
+const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  // Derive corpus name from currentCorpusRoot basename
+  let corpusName = "";
+  if (currentCorpusRoot) {
+    const parts = currentCorpusRoot.replace(/\\/g, '/').split('/');
+    const basename = parts[parts.length - 1] || "";
+    corpusName = sanitizeFolderName(basename);
+  }
+  const exportDirName = corpusName
+    ? `${corpusName}_corpusaid_processed_${timestamp}`
+    : `CorpusAid_processed_${timestamp}`;
+  const separator = selected.includes("\\") ? "\\" : "/";
+  const targetDir = `${selected}${selected.endsWith(separator) ? "" : separator}${exportDirName}`;
+
+  statusBar.textContent = "Saving processed corpus... 0%";
+  menuSaveCorpus.style.pointerEvents = "none";
+  menuSaveCorpus.style.opacity = "0.5";
+  document.body.style.cursor = "wait";
+  document.body.classList.add("is-exporting");
+
+  // Yield to browser to paint busy state
+  await new Promise(requestAnimationFrame);
+  await new Promise(resolve => setTimeout(resolve, 50));
+
+  // Listen for progress events from backend
+  let unlisten: UnlistenFn | null = null;
+  try {
+    unlisten = await listen<{ current: number; total: number; current_file: string }>("export-progress", (event) => {
+      const { current, total, current_file } = event.payload;
+      const pct = Math.round((current / total) * 100);
+      statusBar.textContent = `Saving... ${pct}% (${current}/${total}) — ${current_file}`;
+    });
+
+    const myVersion = currentCorpusVersion;
+    const indices = Array.from(
+      { length: allFiles.length },
+      (_, corpusIndex) => corpusIndex
+    );
+
+    const report: ExportReport = await invoke("export_corpus_command", {
+      indices,
+      corpusVersion: myVersion,
+      outputDir: targetDir,
+      cleaningConfig: activeCleaningConfig
+    });
+
+    if (myVersion !== currentCorpusVersion) return;
+
+    statusBar.textContent = `Saved processed corpus: ${report.files_exported} files written to ${targetDir}`;
+  } catch (error) {
+    statusBar.textContent = `Save error: ${error}`;
+    console.error("Save error", error);
+  } finally {
+    if (unlisten) unlisten();
+    menuSaveCorpus.style.pointerEvents = "auto";
+    menuSaveCorpus.style.opacity = "1";
+    document.body.style.cursor = "default";
+    document.body.classList.remove("is-exporting");
+  }
+}
 document.addEventListener('DOMContentLoaded', init);
