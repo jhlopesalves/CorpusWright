@@ -480,6 +480,21 @@ function init() {
     document.documentElement.dataset.theme = current === "light" ? "dark" : "light";
   });
   searchInput.addEventListener("input", handleSearch);
+  previewTabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      const target = tab.getAttribute("data-target");
+      previewTabs.forEach(t => {
+        t.classList.remove("active");
+        t.setAttribute("aria-selected", "false");
+      });
+      previewTabContents.forEach(c => c.classList.remove("active"));
+
+      tab.classList.add("active");
+      tab.setAttribute("aria-selected", "true");
+      document.getElementById(target!)?.classList.add("active");
+
+    });
+  });
   selectAllCheckbox.addEventListener("change", (e) => {
     const isChecked = (e.target as HTMLInputElement).checked;
     if (isChecked) {
@@ -492,6 +507,36 @@ function init() {
     renderVisibleItems();
     filesStatus.textContent = `${allFiles.length} loaded | ${selectedCorpusIndices.size} selected`;
 
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = window.setTimeout(updatePreview, 150);
+  });
+
+  previewCapInput.addEventListener("input", (e) => {
+    const valStr = (e.target as HTMLInputElement).value;
+    if (!valStr) return; // ignore empty
+    const val = parseInt(valStr, 10);
+
+    if (val > 500) {
+      previewCapWarning.style.display = "block";
+    } else {
+      previewCapWarning.style.display = "none";
+    }
+
+    if (!isNaN(val) && val > 0) {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => {
+        selectedCorpusIndices.clear();
+        const limit = Math.min(val, visibleFiles.length);
+        for (let i = 0; i < limit; i++) {
+          selectedCorpusIndices.add(visibleFiles[i].corpusIndex);
+        }
+        previewGeneration += 1;
+        activePreviewGeneration = previewGeneration;
+        renderVisibleItems();
+        filesStatus.textContent = `${allFiles.length} loaded | ${selectedCorpusIndices.size} selected`;
+        updatePreview();
+      }, 500);
+    }
   });
   // Accessibility: Escape to close modals and menus
   document.addEventListener("keydown", (e) => {
@@ -571,6 +616,8 @@ function clearStateForLoad() {
   allFiles = [];
   visibleFiles = [];
   selectedCorpusIndices.clear();
+  previewContent.textContent = "Select files from the left panel to preview their contents.";
+  processedPreviewContent.textContent = "Select files from the left panel to preview processed text.";
   updateFileList();
 }
 
@@ -740,6 +787,7 @@ async function updateWordCount() {
     console.error("Failed to compute word count", err);
   }
 }
+
 function handleSearch() {
   const query = searchInput.value.toLowerCase();
   visibleFiles = allFiles
@@ -757,6 +805,7 @@ function handleSearch() {
 
   updateFileList();
 }
+
 function initVirtualScroll() {
   const container = document.querySelector('.file-list-container') as HTMLElement;
   if (!container) return;
@@ -784,6 +833,7 @@ function initVirtualScroll() {
   ro.observe(container);
   vsContainerHeight = container.clientHeight;
 }
+
 function updateFileList() {
   filesStatus.textContent = `${allFiles.length} loaded | ${selectedCorpusIndices.size} selected`;
 
@@ -795,7 +845,9 @@ function updateFileList() {
   }
 
   renderVisibleItems();
+  updatePreview();
 }
+
 function renderVisibleItems() {
   const totalItems = visibleFiles.length;
 
@@ -845,6 +897,7 @@ function renderVisibleItems() {
 
   fileList.appendChild(fragment);
 }
+
 function handleFileSelect(event: MouseEvent, visibleIndex: number, isCheckboxClick: boolean = false) {
   const corpusIndex = visibleFiles[visibleIndex].corpusIndex;
 
@@ -899,5 +952,251 @@ function handleFileSelect(event: MouseEvent, visibleIndex: number, isCheckboxCli
   renderVisibleItems();
 
   filesStatus.textContent = `${allFiles.length} loaded | ${selectedCorpusIndices.size} selected`;
+
+  // Debounce preview
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+  }
+  debounceTimer = window.setTimeout(updatePreview, 150);
+}
+
+
+async function updatePreview() {
+  const myVersion = currentCorpusVersion;
+  const myPreviewGeneration = ++previewGeneration;
+  activePreviewGeneration = myPreviewGeneration;
+
+  if (selectedCorpusIndices.size === 0) {
+    if (myVersion !== currentCorpusVersion) return;
+    previewContent.innerHTML = "Select files from the left panel to preview their contents.";
+    processedPreviewContent.innerHTML = "Select files from the left panel to preview processed text.";
+    statusBar.textContent = `Loaded ${allFiles.length} files.`;
+    return;
+  }
+
+  const selectedIndices = Array.from(selectedCorpusIndices);
+  currentPreviewOffset = 0;
+
+  // Show loading overlay
+  previewLoadingOverlay.style.display = 'flex';
+  statusBar.textContent = `Previewing processed text...`;
+
+  await fetchAndRenderPreviewChunk(selectedIndices, currentPreviewOffset, false, myVersion, myPreviewGeneration);
+}
+
+async function fetchAndRenderPreviewChunk(indices: number[], offset: number, append: boolean, myVersion: number, myPreviewGeneration: number) {
+  if (isFetchingPreview) return;
+  isFetchingPreview = true;
+
+  const chunkIndices = indices.slice(offset, offset + PREVIEW_CHUNK_SIZE);
+  if (chunkIndices.length === 0) {
+    isFetchingPreview = false;
+    return;
+  }
+
+  const maxChars = indices.length === 1 ? 10000000 : 5000;
+
+  try {
+    const [original, processed] = await Promise.all([
+      invoke<CombinedPreview>("preview_files_command", {
+        indices: chunkIndices,
+        corpusVersion: myVersion,
+        maxCharsPerFile: maxChars,
+        includePaths: true,
+        maxFiles: chunkIndices.length
+      }),
+      invoke<CombinedPreview>("preview_processed_files_command", {
+        indices: chunkIndices,
+        corpusVersion: myVersion,
+        maxCharsPerFile: maxChars,
+        includePaths: true,
+        maxFiles: chunkIndices.length,
+        cleaningConfig: activeCleaningConfig
+      })
+    ]);
+
+    if (myVersion !== currentCorpusVersion || myPreviewGeneration !== activePreviewGeneration) return;
+
+    renderPreviewCards(previewContent, original.files, append, offset, indices.length);
+    renderPreviewCards(processedPreviewContent, processed.files, append, offset, indices.length);
+
+    highlightRenderedCards(); // Highlighting
+
+    statusBar.textContent = `Processed preview ready for ${indices.length} selected files. (Loaded ${offset + chunkIndices.length})`;
+    currentPreviewOffset += chunkIndices.length;
+  } catch (error) {
+    if (myVersion !== currentCorpusVersion || myPreviewGeneration !== activePreviewGeneration) return;
+    if (!append) {
+      previewContent.textContent = `Error loading preview: ${error}`;
+      processedPreviewContent.textContent = `Error loading preview: ${error}`;
+    }
+    statusBar.textContent = `Error loading preview.`;
+  } finally {
+    previewLoadingOverlay.style.display = 'none';
+    isFetchingPreview = false;
+  }
+}
+
+function escapeHtml(unsafe: string) {
+  const map: Record<string, string> = {};
+  map["&"] = String.fromCharCode(38, 97, 109, 112, 59);
+  map["<"] = String.fromCharCode(38, 108, 116, 59);
+  map[">"] = String.fromCharCode(38, 103, 116, 59);
+  map['"'] = String.fromCharCode(38, 113, 117, 111, 116, 59);
+  map["'"] = String.fromCharCode(38, 35, 48, 51, 57, 59);
+  return unsafe.replace(/[&<>"']/g, (ch) => map[ch] || ch);
+}
+
+/**
+ * Renders preview text as escaped plain text with optional search highlighting.
+ * Tabs are rendered inline (expanded via CSS tab-size) — no table or column inference.
+ */
+function highlightPreviewText(text: string, query: string): string {
+  const lines = text.split('\n');
+  let outHtml = "";
+
+  const processStr = (s: string) => {
+    if (!query) return escapeHtml(s);
+    const lowerS = s.toLowerCase();
+    const lowerQ = query.toLowerCase();
+    let idx = 0;
+    let newHtml = "";
+    while (true) {
+      const found = lowerS.indexOf(lowerQ, idx);
+      if (found === -1) {
+        newHtml += escapeHtml(s.substring(idx));
+        break;
+      }
+      newHtml += escapeHtml(s.substring(idx, found));
+      newHtml += `<mark class="search-match">${escapeHtml(s.substring(found, found + lowerQ.length))}</mark>`;
+      idx = found + lowerQ.length;
+    }
+    return newHtml;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    outHtml += `${processStr(lines[i])}${i < lines.length - 1 ? '\n' : ''}`;
+  }
+
+  return outHtml;
+}
+
+let previewObserver: IntersectionObserver | null = null;
+let chunkSentinelObserver: IntersectionObserver | null = null;
+
+function renderPreviewCards(container: HTMLDivElement, files: FilePreview[], append: boolean, offset: number, totalFiles: number) {
+  if (!append) {
+    container.innerHTML = "";
+  }
+
+  // Remove existing sentinel if any
+  const existingSentinel = container.querySelector('.chunk-sentinel');
+  if (existingSentinel) existingSentinel.remove();
+
+  if (!previewObserver) {
+    previewObserver = new IntersectionObserver((entries, observer) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const body = entry.target as HTMLElement;
+          const text = body.dataset.originalText || "";
+          body.innerHTML = highlightPreviewText(text, currentSearchQuery);
+          observer.unobserve(body);
+
+          // Remove min-height after content is loaded
+          body.style.minHeight = 'auto';
+        }
+      });
+    }, { rootMargin: '200px 0px' });
+  }
+
+  files.forEach((file, index) => {
+    const card = document.createElement("div");
+    card.className = "file-card";
+
+    const header = document.createElement("div");
+    header.className = "file-card-header";
+
+    const titleArea = document.createElement("div");
+    titleArea.className = "file-card-title-area";
+
+    const fileNum = document.createElement("div");
+    fileNum.className = "file-card-num";
+    fileNum.textContent = `File ${offset + index + 1} of ${totalFiles}`;
+
+    const filename = document.createElement("div");
+    filename.className = "file-card-title";
+    const parts = file.relative_path.split(/[\/]/);
+    filename.textContent = parts[parts.length - 1];
+
+    const path = document.createElement("div");
+    path.className = "file-card-path";
+    path.textContent = file.source_path;
+
+    titleArea.appendChild(fileNum);
+    titleArea.appendChild(filename);
+    titleArea.appendChild(path);
+
+    const badges = document.createElement("div");
+    badges.className = "file-card-badges";
+
+    if (file.truncated) {
+      const truncBadge = document.createElement("span");
+      truncBadge.className = "badge";
+      truncBadge.textContent = "Preview capped";
+      badges.appendChild(truncBadge);
+      header.appendChild(badges);
+    }
+
+    header.appendChild(titleArea);
+
+    const body = document.createElement("div");
+    body.className = "file-card-body";
+    // Set a min-height so that cards aren't all 0 height initially
+    body.style.minHeight = '100px';
+    (body as any).dataset.originalText = file.text;
+
+    // Instead of rendering immediately, just append and observe
+    previewObserver!.observe(body);
+
+    card.appendChild(header);
+    card.appendChild(body);
+    container.appendChild(card);
+  });
+
+  if (offset + files.length < totalFiles) {
+    const sentinel = document.createElement('div');
+    sentinel.className = 'chunk-sentinel';
+    sentinel.style.height = '10px';
+    container.appendChild(sentinel);
+
+    if (!chunkSentinelObserver) {
+      chunkSentinelObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const myVersion = currentCorpusVersion;
+            const myPreviewGeneration = activePreviewGeneration;
+            const selectedIndices = Array.from(selectedCorpusIndices);
+            fetchAndRenderPreviewChunk(selectedIndices, currentPreviewOffset, true, myVersion, myPreviewGeneration);
+          }
+        });
+      }, { rootMargin: '400px 0px' });
+    }
+    chunkSentinelObserver.observe(sentinel);
+  }
+}
+function highlightRenderedCards() {
+  // No-op: search highlighting is now handled by renderSearchHit().
+  // This function is kept to avoid breaking existing callers but does nothing
+  // related to search hit navigation. It only restores original preview text
+  // when no search query is active.
+  const activeTabContent = document.querySelector(".right-panel .tab-content.active .preview-cards-container");
+  if (!activeTabContent) return;
+  const bodies = activeTabContent.querySelectorAll(".file-card-body");
+  if (!currentSearchQuery) {
+    bodies.forEach((body: any) => {
+      const text = body.dataset.originalText || "";
+      body.innerHTML = highlightPreviewText(text, "");
+    });
+  }
 }
 document.addEventListener('DOMContentLoaded', init);

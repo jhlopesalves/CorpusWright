@@ -60,6 +60,12 @@
           <label class="select-all-label" title="Select all filtered files">
             <input type="checkbox" id="select-all-checkbox" /> Select All
           </label>
+          <div class="preview-cap-control" title="Automatically select and preview the first N files">
+            <label for="preview-cap-input">Preview Top:</label>
+            <input type="number" id="preview-cap-input" placeholder="e.g. 50" min="1" />
+          </div>
+        </div>
+        <div id="preview-cap-warning" class="warning-text" style="display: none;">Warning: High limits may cause lag.
         </div>
         <div class="file-list-container">
           <ul id="file-list"></ul>
@@ -68,7 +74,32 @@
           <!-- Summary card goes here -->
         </div>
       </aside>
+      <div class="sidebar-splitter" id="sidebar-splitter"></div>
+      <section class="right-panel">
+
+        <div class="tabs">
+          <button class="tab active" data-target="original-text">Original Text</button>
+          <button class="tab" data-target="processed-text">Processed Text</button>
+        </div>
+
+
+        <div id="preview-loading-overlay" class="loading-overlay" style="display: none;">
+          <div class="spinner"></div>
+          <span id="preview-loading-text">Loading...</span>
+        </div>
+
+        <div class="tab-content active" id="original-text">
+          <div id="preview-content" class="preview-cards-container">Select files from the left panel to preview their
+            contents.</div>
+        </div>
+
+        <div class="tab-content" id="processed-text">
+          <div id="processed-preview-content" class="preview-cards-container">Select files from the left panel to
+            preview processed text.</div>
+        </div>
+      </section>
     </main>
+
     <footer id="status-bar">Ready</footer>
   </div>
   <script type="module" src="/src/main.ts"></script>
