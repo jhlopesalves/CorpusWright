@@ -1,12 +1,30 @@
 :root {
+  --cw-type-workspace-title-size: 1.8rem;
+  --cw-type-page-title-size: 1.55rem;
+  --cw-type-dialog-title-size: 1.15rem;
+  --cw-type-icon-size: 1.3rem;
+  --cw-type-subsection-heading-size: 1.1rem;
+  --cw-type-section-heading-size: 1rem;
+  --cw-type-section-label-size: 0.78rem;
   --cw-type-body-size: 1rem;
+  --cw-type-body-compact-size: 0.9rem;
+  --cw-type-ui-size: 0.85rem;
+  --cw-type-control-size: 0.86rem;
   --cw-type-help-size: 0.82rem;
   --cw-type-compact-size: 0.78rem;
+  --cw-type-caption-size: 0.78rem;
+  --cw-type-micro-size: 0.7rem;
+  --cw-type-micrographic-size: 0.625rem;
+  --cw-type-code-size: 0.8125rem;
+  --cw-type-status-size: 0.85rem;
   --cw-type-table-header-size: 0.85rem;
   --cw-type-table-body-size: 0.85rem;
-  --cw-type-section-label-size: 0.78rem;
-  --cw-type-section-heading-size: 1rem;
-  --cw-type-page-title-size: 1.55rem;
+  --cw-type-plot-title-size: 1.08rem;
+  --cw-type-plot-subtitle-size: 0.84rem;
+  --cw-type-plot-label-size: 0.75rem;
+  --cw-type-plot-tick-size: 0.72rem;
+  --cw-type-plot-tooltip-size: 0.7rem;
+  --cw-type-plot-micro-size: 0.625rem;
   --cw-weight-regular: 400;
   --cw-weight-medium: 500;
   --cw-weight-semibold: 600;
@@ -15,6 +33,7 @@
 
 html {
   font-size: var(--cw-font-size-base);
+  font-synthesis: none;
 }
 
 body {
@@ -59,8 +78,8 @@ pre {
   tab-size: 4;
   -moz-tab-size: 4;
   font-family: var(--cw-font-mono);
-  font-size: 13px;
-  font-weight: 400;
+  font-size: var(--cw-type-code-size);
+  font-weight: var(--cw-weight-regular);
   line-height: 1.55;
   letter-spacing: 0;
   color: var(--text-color);
