@@ -573,6 +573,7 @@ function clearStateForLoad() {
   selectedCorpusIndices.clear();
   updateFileList();
 }
+
 async function handleOpenDir() {
   const selected = await open({
     directory: true,
@@ -594,13 +595,17 @@ async function handleOpenDir() {
     allFiles = result.report.files;
     visibleFiles = allFiles.map((record, i) => ({ corpusIndex: i, record }));
 
+    renderSummary(result.report.summary);
     updateFileList();
+
     statusBar.textContent = `Loaded ${allFiles.length} files.`;
+    updateWordCount();
   } catch (error) {
     statusBar.textContent = `Error: ${error}`;
     console.error(error);
   }
 }
+
 async function handleOpenFiles() {
   const selected = await open({
     multiple: true,
@@ -622,11 +627,117 @@ async function handleOpenFiles() {
     allFiles = result.report.files;
     visibleFiles = allFiles.map((record, i) => ({ corpusIndex: i, record }));
 
+    renderSummary(result.report.summary);
     updateFileList();
+
     statusBar.textContent = `Loaded ${allFiles.length} files.`;
+    updateWordCount();
   } catch (error) {
     statusBar.textContent = `Error: ${error}`;
     console.error(error);
+  }
+}
+
+function renderSummary(summary: CorpusSummary) {
+  const totalFiles = summary.files_supported;
+  const sizeMB = summary.total_size_bytes / (1024 * 1024);
+  const avgSizeBytes = totalFiles > 0 ? summary.total_size_bytes / totalFiles : 0;
+
+  let avgSizeStr = "0 MB";
+  if (avgSizeBytes > 0) {
+    if (avgSizeBytes < 1024 * 1024) {
+      avgSizeStr = (avgSizeBytes / 1024).toFixed(2) + " KB";
+    } else {
+      avgSizeStr = (avgSizeBytes / (1024 * 1024)).toFixed(2) + " MB";
+    }
+  }
+
+  corpusSummary.innerHTML = `
+    <div class="summary-header">Corpus Summary</div>
+    <div class="summary-grid">
+      <div class="summary-metric">
+        <div class="summary-value">${totalFiles}</div>
+        <div class="summary-label">Total Files</div>
+      </div>
+      <div class="summary-metric">
+        <div class="summary-value">${sizeMB.toFixed(2)} MB</div>
+        <div class="summary-label">Total Size</div>
+      </div>
+      <div class="summary-metric">
+        <div class="summary-value">${avgSizeStr}</div>
+        <div class="summary-label">Average File</div>
+      </div>
+      <div class="summary-metric">
+        <div class="summary-value" id="summary-total-words">Calculating...</div>
+        <div class="summary-label" id="summary-word-label">Cleaned Token Count</div>
+      </div>
+      <div class="summary-metric full-width">
+        <div class="summary-value" id="summary-avg-words">Calculating...</div>
+        <div class="summary-label">Avg Words / File</div>
+      </div>
+    </div>
+    <div class="summary-diagnostics">
+      Types: TXT ${summary.document_type_counts.text}, HTML ${summary.document_type_counts.html}, DOCX ${summary.document_type_counts.docx}, PDF ${summary.document_type_counts.pdf}
+    </div>
+  `;
+}
+
+async function updateWordCount() {
+  const myWordCountGeneration = ++wordCountGeneration;
+  const myVersion = currentCorpusVersion;
+  const totalWordsEl = document.getElementById('summary-total-words');
+  const avgWordsEl = document.getElementById('summary-avg-words');
+  const wordLabelEl = document.getElementById('summary-word-label');
+  if (!totalWordsEl || !avgWordsEl) return;
+
+  if (allFiles.length === 0) {
+    totalWordsEl.textContent = '0';
+    avgWordsEl.textContent = '0';
+    return;
+  }
+
+  // Process word count in batches for progressive feedback
+  const BATCH_SIZE = 500;
+  let totalWords = 0;
+  const totalFiles = allFiles.length;
+
+  totalWordsEl.textContent = 'Counting...';
+  avgWordsEl.textContent = 'Counting...';
+  if (wordLabelEl) wordLabelEl.textContent = 'Known Cleaned Tokens';
+
+  try {
+    for (let offset = 0; offset < totalFiles; offset += BATCH_SIZE) {
+      const batchSize = Math.min(BATCH_SIZE, totalFiles - offset);
+      const batchIndices = Array.from({ length: batchSize }, (_, batchIndex) => offset + batchIndex);
+      const batchWords = await invoke<number>("compute_word_count_command", {
+        indices: batchIndices,
+        corpusVersion: myVersion,
+        cleaningConfig: activeCleaningConfig
+      });
+      totalWords += batchWords;
+
+      // Progressive update
+      const processed = Math.min(offset + BATCH_SIZE, totalFiles);
+      const avgWords = totalWords / processed;
+      if (myVersion !== currentCorpusVersion || myWordCountGeneration !== wordCountGeneration) return;
+      totalWordsEl.textContent = `${totalWords.toLocaleString()} (${processed}/${totalFiles} files)`;
+      avgWordsEl.textContent = avgWords.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    }
+
+    if (myVersion !== currentCorpusVersion || myWordCountGeneration !== wordCountGeneration) return;
+    // Final display
+    if (wordLabelEl) {
+      wordLabelEl.textContent = 'Cleaned Token Count';
+      wordLabelEl.title = 'Counts whitespace-separated tokens after cleaning. PDF OCR is not used for this count.';
+    }
+    const avgWords = totalWords / totalFiles;
+    totalWordsEl.textContent = totalWords.toLocaleString();
+    avgWordsEl.textContent = avgWords.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  } catch (err) {
+    if (myVersion !== currentCorpusVersion || myWordCountGeneration !== wordCountGeneration) return;
+    totalWordsEl.textContent = 'Error';
+    avgWordsEl.textContent = 'Error';
+    console.error("Failed to compute word count", err);
   }
 }
 function handleSearch() {
