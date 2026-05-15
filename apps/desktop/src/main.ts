@@ -505,7 +505,61 @@ function init() {
     tempRemovePatterns = [];
     renderCustomRemovals();
   });
+
+  previewSearchInput.addEventListener("input", () => {
+    currentSearchQuery = previewSearchInput.value;
+    searchGeneration += 1;          // immediately invalidate any in-flight search
+    pendingSearchNavigation = 0;    // cancel queued navigation
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = window.setTimeout(() => {
+      executeGlobalSearch();
+    }, 250);
+  });
+
+  previewSearchInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (!currentSearchQuery) return;
+
+    const dir = e.shiftKey ? -1 : 1;
+
+    // Flush debounce
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = undefined;
+    }
+
+    if (isSearching) {
+      // Search in flight — queue for after it completes
+      // Invalidate current search if query changed
+      if (currentSearchQuery !== lastSearchedQuery) {
+        searchGeneration += 1;
+      }
+      pendingSearchAfterCurrent = true;
+      pendingSearchNavigation = dir;
+      return;
+    }
+
+    // Not currently searching
+    if (currentSearchQuery !== lastSearchedQuery) {
+      // Fresh query — run search, land on first match (no double-jump)
+      searchGeneration += 1;
+      pendingSearchNavigation = 0;
+      executeGlobalSearch();
+      return;
+    }
+
+    // Already searched — navigate directly through backend hits
+    if (lastSearchResult && lastSearchResult.hits.length > 0) {
+      navigateSearch(dir);
+    }
+  });
+
+  searchPrev.addEventListener("click", () => navigateSearch(-1));
+  searchNext.addEventListener("click", () => navigateSearch(1));
+
   searchInput.addEventListener("input", handleSearch);
+
   previewTabs.forEach(tab => {
     tab.addEventListener("click", () => {
       const target = tab.getAttribute("data-target");
@@ -519,6 +573,15 @@ function init() {
       tab.setAttribute("aria-selected", "true");
       document.getElementById(target!)?.classList.add("active");
 
+      // Reset search state for new tab content
+      searchGeneration += 1;
+      currentMatchIndex = -1;
+      lastSearchResult = null;
+      pendingSearchNavigation = 0;
+      pendingSearchAfterCurrent = false;
+      if (searchDebounceTimer) { clearTimeout(searchDebounceTimer); searchDebounceTimer = undefined; }
+
+      executeGlobalSearch();
     });
   });
 
@@ -643,6 +706,9 @@ function init() {
       }, 500);
     }
   });
+
+
+
   // Accessibility: Escape to close modals and menus
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
@@ -1289,6 +1355,161 @@ function renderPreviewCards(container: HTMLDivElement, files: FilePreview[], app
     chunkSentinelObserver.observe(sentinel);
   }
 }
+
+async function executeGlobalSearch() {
+  if (isSearching) return;
+
+  if (!currentSearchQuery) {
+    lastSearchedQuery = "";
+    lastSearchResult = null;
+    currentMatchIndex = -1;
+    pendingSearchNavigation = 0;
+    pendingSearchAfterCurrent = false;
+    // Restore normal preview
+    if (selectedCorpusIndices.size > 0) {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(updatePreview, 50);
+    } else {
+      const activeTabContent = document.querySelector(".right-panel .tab-content.active .preview-cards-container");
+      if (activeTabContent) {
+        const container = activeTabContent as HTMLDivElement;
+        container.innerHTML = "Select files from the left panel to preview their contents.";
+      }
+    }
+    updateSearchUI();
+    return;
+  }
+
+  const query = currentSearchQuery.trim();
+  const mySearchGen = ++searchGeneration;
+  isSearching = true;
+  updateSearchUI(); // shows "Searching..."
+
+  let resultAccepted = false;
+  let myVersion = currentCorpusVersion;
+
+  try {
+    myVersion = currentCorpusVersion;
+    const isProcessed = document.querySelector(".right-panel .tab.active")?.getAttribute("data-target") === "processed-text";
+    const indices = Array.from(selectedCorpusIndices);
+
+    const result = await invoke<SearchResult>("search_corpus_command", {
+      indices,
+      corpusVersion: myVersion,
+      query: query,
+      isProcessed: isProcessed,
+      cleaningConfig: activeCleaningConfig,
+      maxHits: 1000
+    });
+
+    // Accept result only if search generation and corpus version still match
+    if (mySearchGen === searchGeneration && myVersion === currentCorpusVersion) {
+      lastSearchResult = result;
+      lastSearchedQuery = query;
+      resultAccepted = true;
+    }
+  } catch (err) {
+    if (mySearchGen === searchGeneration) {
+      console.error("Search failed", err);
+    }
+  } finally {
+    isSearching = false;
+  }
+
+  // Handle Enter-pressed-while-we-were-searching
+  if (pendingSearchAfterCurrent) {
+    pendingSearchAfterCurrent = false;
+    if (currentSearchQuery !== lastSearchedQuery) {
+      // User typed a newer query while we were searching — run it now
+      executeGlobalSearch();
+      return;
+    }
+    // Same query — apply queued navigation
+    if (pendingSearchNavigation !== 0 && lastSearchResult && lastSearchResult.hits.length > 0) {
+      const navDir = pendingSearchNavigation;
+      pendingSearchNavigation = 0;
+      navigateSearch(navDir);
+    }
+    return;
+  }
+
+  if (!resultAccepted) return;
+
+  // Apply any pending navigation (from Enter while search was running)
+  if (pendingSearchNavigation !== 0 && lastSearchResult && lastSearchResult.hits.length > 0) {
+    const navDir = pendingSearchNavigation;
+    pendingSearchNavigation = 0;
+    navigateSearch(navDir);
+  }
+
+  // Show the first result
+  if (lastSearchResult && lastSearchResult.hits.length > 0) {
+    currentMatchIndex = 0;
+    renderSearchHit();
+  }
+  updateSearchUI();
+}
+
+function renderSearchHit() {
+  if (!lastSearchResult || currentMatchIndex < 0 || currentMatchIndex >= lastSearchResult.hits.length) return;
+
+  const hit = lastSearchResult.hits[currentMatchIndex];
+  const isProcessed = document.querySelector(".right-panel .tab.active")?.getAttribute("data-target") === "processed-text";
+  const containerId = isProcessed ? "processed-preview-content" : "preview-content";
+  const container = document.getElementById(containerId) as HTMLDivElement;
+  if (!container) return;
+
+  // Clear container and render focused hit
+  container.innerHTML = "";
+
+  const card = document.createElement("div");
+  card.className = "file-card";
+
+  const header = document.createElement("div");
+  header.className = "file-card-header";
+
+  const titleArea = document.createElement("div");
+  titleArea.className = "file-card-title-area";
+
+  const fileNum = document.createElement("div");
+  fileNum.className = "file-card-num";
+  const { returned_hits, total_matches, truncated } = lastSearchResult;
+  let countStr = `Hit ${currentMatchIndex + 1} of ${returned_hits}`;
+  if (truncated) {
+    countStr += ` (${total_matches.toLocaleString()} total matches in selected files)`;
+  } else if (total_matches > returned_hits) {
+    countStr += ` of ${total_matches.toLocaleString()} in selected files`;
+  }
+  fileNum.textContent = countStr;
+
+  const filename = document.createElement("div");
+  filename.className = "file-card-title";
+  filename.textContent = hit.relative_path;
+
+  titleArea.appendChild(fileNum);
+  titleArea.appendChild(filename);
+  header.appendChild(titleArea);
+  card.appendChild(header);
+
+  const body = document.createElement("div");
+  body.className = "file-card-body";
+  body.style.minHeight = 'auto';
+
+  // Build context snippet using DOM nodes (safe, no HTML injection)
+  const before = document.createTextNode(hit.context_before);
+  const mark = document.createElement("mark");
+  mark.className = "search-match current-match";
+  mark.textContent = hit.match_text;
+  const after = document.createTextNode(hit.context_after);
+
+  body.appendChild(before);
+  body.appendChild(mark);
+  body.appendChild(after);
+  card.appendChild(body);
+
+  container.appendChild(card);
+}
+
 function highlightRenderedCards() {
   // No-op: search highlighting is now handled by renderSearchHit().
   // This function is kept to avoid breaking existing callers but does nothing
@@ -1304,4 +1525,74 @@ function highlightRenderedCards() {
     });
   }
 }
+
+async function navigateSearch(dir: number) {
+  // Navigate backend-returned hits, not DOM marks
+  if (!lastSearchResult || lastSearchResult.hits.length === 0) return;
+
+  // Clear previous visual highlight
+  const activeTabContent = document.querySelector(".right-panel .tab-content.active .preview-cards-container");
+  if (activeTabContent) {
+    const prevMarks = activeTabContent.querySelectorAll("mark.current-match");
+    prevMarks.forEach(m => m.classList.remove("current-match"));
+  }
+
+  currentMatchIndex += dir;
+
+  // Wrap around
+  if (currentMatchIndex < 0) currentMatchIndex = lastSearchResult.hits.length - 1;
+  if (currentMatchIndex >= lastSearchResult.hits.length) currentMatchIndex = 0;
+
+  renderSearchHit();
+  updateSearchUI();
+}
+
+function updateSearchUI() {
+  if (!currentSearchQuery) {
+    previewMatchCount.textContent = "";
+    searchPrev.disabled = true;
+    searchNext.disabled = true;
+    return;
+  }
+
+  if (isSearching) {
+    previewMatchCount.textContent = "Searching...";
+    searchPrev.disabled = true;
+    searchNext.disabled = true;
+    return;
+  }
+
+  if (!lastSearchResult) {
+    previewMatchCount.textContent = "";
+    searchPrev.disabled = true;
+    searchNext.disabled = true;
+    return;
+  }
+
+  const { hits, returned_hits, total_matches, truncated } = lastSearchResult;
+
+  if (hits.length === 0) {
+    previewMatchCount.textContent = "0 matches in selected files";
+    searchPrev.disabled = true;
+    searchNext.disabled = true;
+    return;
+  }
+
+  let text = `${currentMatchIndex + 1}/${returned_hits}`;
+  if (truncated) {
+    text += ` shown, ${total_matches.toLocaleString()} total in selected files`;
+  } else if (total_matches > returned_hits) {
+    text += ` of ${total_matches.toLocaleString()} in selected files`;
+  } else {
+    text += ` in selected files`;
+  }
+  previewMatchCount.textContent = text;
+  searchPrev.disabled = false;
+  searchNext.disabled = false;
+}
+
+/**
+ * Sanitise a folder name for safe filesystem use.
+ * Replaces Windows-invalid filename characters and control characters with '_',
+ * trims trailing dots/whitespace.
 document.addEventListener('DOMContentLoaded', init);

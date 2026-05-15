@@ -731,6 +731,59 @@ pre {
   background: transparent;
 }
 
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  background-color: var(--panel-bg);
+  border-bottom: 1px solid var(--border-color);
+  gap: 16px;
+}
+
+.search-container {
+  display: flex;
+  align-items: center;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 8px;
+  gap: 8px;
+  min-width: 280px;
+  max-width: 520px;
+  flex: 1;
+}
+
+.search-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.search-container input {
+  background: transparent;
+  border: none;
+  color: var(--text-color);
+  outline: none;
+  flex: 1;
+  font-family: inherit;
+  font-size: 0.9rem;
+  min-width: 50px;
+}
+
+.match-count {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 110px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.search-nav {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .preview-cards-container {
   display: flex;
   flex-direction: column;
