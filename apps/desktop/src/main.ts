@@ -470,6 +470,11 @@ async function handleSaveConfig(): Promise<void> {
 
 // Initialize
 function init() {
+  // Sync checkboxes and strategy dropdown to initial activeCleaningConfig state (all false/unchecked)
+  syncCheckboxesFromConfig(activeCleaningConfig);
+  selTableExtraction.value = activeCleaningConfig.table_extraction_strategy;
+  selPdfEmbeddedTextStrategy.value = activeCleaningConfig.pdf_embedded_text_strategy;
+
   menuOpenDir.addEventListener("click", handleOpenDir);
   menuOpenFiles.addEventListener("click", handleOpenFiles);
   // Initialise virtual scrolling for file list
@@ -478,6 +483,27 @@ function init() {
   themeToggle.addEventListener("click", () => {
     const current = document.documentElement.dataset.theme;
     document.documentElement.dataset.theme = current === "light" ? "dark" : "light";
+  });
+
+  btnAddCustomRemoval.addEventListener("click", () => {
+    const val = customRemovalInput.value;
+    if (val) {
+      tempRemovePatterns.push(val);
+      customRemovalInput.value = "";
+      renderCustomRemovals();
+    }
+  });
+
+  customRemovalInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      btnAddCustomRemoval.click();
+    }
+  });
+
+  btnClearCustomRemovals.addEventListener("click", () => {
+    tempRemovePatterns = [];
+    renderCustomRemovals();
   });
   searchInput.addEventListener("input", handleSearch);
   previewTabs.forEach(tab => {
@@ -494,6 +520,85 @@ function init() {
       document.getElementById(target!)?.classList.add("active");
 
     });
+  });
+
+  settingsTabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      const target = tab.getAttribute("data-target");
+      settingsTabs.forEach(t => {
+        t.classList.remove("active");
+        t.setAttribute("aria-selected", "false");
+      });
+      settingsTabContents.forEach(c => c.classList.remove("active"));
+
+      tab.classList.add("active");
+      tab.setAttribute("aria-selected", "true");
+      document.getElementById(target!)?.classList.add("active");
+    });
+  });
+
+  // Config load/save buttons
+  btnLoadConfig.addEventListener("click", handleLoadConfig);
+  btnSaveConfig.addEventListener("click", handleSaveConfig);
+
+  menuProcessingParams.addEventListener("click", () => {
+    // Clear any previous modal status
+    setModalConfigStatus("");
+    // Populate draft state from active config
+    syncCheckboxesFromConfig(activeCleaningConfig);
+    selTableExtraction.value = activeCleaningConfig.table_extraction_strategy;
+    selPdfEmbeddedTextStrategy.value = activeCleaningConfig.pdf_embedded_text_strategy;
+    tempRemovePatterns = [...activeCleaningConfig.remove_patterns];
+    tempReplacePatterns = [...activeCleaningConfig.replace_patterns];
+    renderCustomRemovals();
+
+    // Reset modal to General tab by default when opened
+    settingsTabs.forEach(t => {
+      t.classList.remove("active");
+      t.setAttribute("aria-selected", "false");
+    });
+    settingsTabContents.forEach(c => c.classList.remove("active"));
+    const generalTab = document.querySelector('#settings-modal .tab[data-target="tab-general"]');
+    if (generalTab) {
+      generalTab.classList.add("active");
+      generalTab.setAttribute("aria-selected", "true");
+    }
+    document.getElementById("tab-general")?.classList.add("active");
+
+    settingsModal.classList.remove("hidden");
+  });
+
+  function closeSettingsModal(): void {
+    setModalConfigStatus("");
+    settingsModal.classList.add("hidden");
+  }
+
+  cancelSettingsBtn.addEventListener("click", closeSettingsModal);
+
+  const btnCloseSettingsModalTop = document.getElementById("btn-close-settings-modal-top") as HTMLButtonElement;
+  if (btnCloseSettingsModalTop) {
+    btnCloseSettingsModalTop.addEventListener("click", closeSettingsModal);
+  }
+
+  applySettingsBtn.addEventListener("click", () => {
+    // Save draft state to active config
+    readCheckboxesIntoConfig(activeCleaningConfig);
+    activeCleaningConfig.table_extraction_strategy = selTableExtraction.value as TableExtractionStrategy;
+    activeCleaningConfig.pdf_embedded_text_strategy = selPdfEmbeddedTextStrategy.value as PdfEmbeddedTextStrategy;
+    activeCleaningConfig.remove_patterns = [...tempRemovePatterns];
+    activeCleaningConfig.replace_patterns = [...tempReplacePatterns];
+
+    setModalConfigStatus("");
+    settingsModal.classList.add("hidden");
+
+    // Recompute word count with the updated cleaning config
+    updateWordCount();
+
+    // Refresh preview if files are selected
+    if (selectedCorpusIndices.size > 0) {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(updatePreview, 150);
+    }
   });
   selectAllCheckbox.addEventListener("change", (e) => {
     const isChecked = (e.target as HTMLInputElement).checked;
