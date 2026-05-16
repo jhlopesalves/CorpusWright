@@ -3,6 +3,7 @@ use super::input::AnalysisInputSource;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use ts_rs::TS;
 
 pub(super) const OVERVIEW_DOCUMENT_LIMIT: usize = 20;
 const FREQUENT_TERM_THRESHOLD: u64 = 10;
@@ -173,10 +174,20 @@ pub struct CorpusOverviewFrequencyConcentration {
     pub top_1000_coverage: Option<f64>,
     pub top_10000_coverage: Option<f64>,
     pub cumulative_coverage: Vec<CumulativeCoveragePoint>,
+    pub exact_target_crossings: Vec<CoverageTargetCrossing>,
     pub shannon_entropy_bits: Option<f64>,
     pub evenness_j: Option<f64>,
     pub effective_vocabulary_entropy: Option<f64>,
     pub reading: String,
+}
+
+/// Exact first rank whose cumulative token share reaches a requested target.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverageTargetCrossing {
+    pub target_share: f64,
+    pub first_rank: usize,
+    pub actual_cumulative_share: f64,
 }
 
 /// Cumulative token share covered by the top k ranked types.
@@ -755,6 +766,35 @@ pub(super) fn cumulative_coverage_checkpoints(
         }
     }
     points
+}
+
+fn exact_coverage_target_crossings(
+    frequencies: &[u64],
+    total_tokens: u64,
+) -> Vec<CoverageTargetCrossing> {
+    if frequencies.is_empty() || total_tokens == 0 {
+        return Vec::new();
+    }
+    const TARGETS: [f64; 4] = [0.50, 0.80, 0.90, 0.95];
+    let mut cumulative = 0u64;
+    let mut target_index = 0usize;
+    let mut crossings = Vec::with_capacity(TARGETS.len());
+    for (index, frequency) in frequencies.iter().enumerate() {
+        cumulative = cumulative.saturating_add(*frequency);
+        let share = cumulative as f64 / total_tokens as f64;
+        while target_index < TARGETS.len() && share >= TARGETS[target_index] {
+            crossings.push(CoverageTargetCrossing {
+                target_share: TARGETS[target_index],
+                first_rank: index + 1,
+                actual_cumulative_share: share,
+            });
+            target_index += 1;
+        }
+        if target_index == TARGETS.len() {
+            break;
+        }
+    }
+    crossings
 }
 
 fn coverage_checkpoint_ladder(vocabulary_size: usize) -> Vec<usize> {
@@ -1674,6 +1714,7 @@ pub(super) fn build_overview(
     let top_1000_coverage = coverage_at(&frequencies, 1_000, total_tokens);
     let top_10000_coverage = coverage_at(&frequencies, 10_000, total_tokens);
     let cumulative_coverage = cumulative_coverage_checkpoints(&frequencies, total_tokens);
+    let exact_target_crossings = exact_coverage_target_crossings(&frequencies, total_tokens);
     let (shannon_entropy_bits, evenness_j, effective_vocabulary_entropy) =
         entropy_metrics(&frequencies, total_tokens);
     let (frequency_spectrum, frequency_spectrum_truncated, frequency_spectrum_total) =
@@ -1933,6 +1974,7 @@ pub(super) fn build_overview(
             top_1000_coverage,
             top_10000_coverage,
             cumulative_coverage,
+            exact_target_crossings,
             shannon_entropy_bits,
             evenness_j,
             effective_vocabulary_entropy,
