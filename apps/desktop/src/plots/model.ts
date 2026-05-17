@@ -1762,8 +1762,14 @@ export function buildDispersionGeometry(options: {
       pinned: options.pinnedKeys?.has(key) ?? false,
       tooltipTitle: bucket.label,
       tooltipRows: [
-        `${formatInteger(bucket.count)} types`,
-        bucket.share === null ? "" : `${formatPercent(bucket.share)} of vocabulary`,
+        `${formatInteger(bucket.count)} ${typeLabel}`,
+        `${formatPercent(share)} of vocabulary`,
+        options.totalDocuments && bucket.lowerBound !== undefined
+          ? `Reach: ${reach} of ${formatInteger(options.totalDocuments)} ${documentLabel}`
+          : `Reach: ${documentBounds.documents}`,
+        examples.length
+          ? `Examples: ${examples.join(", ")}${remainingExamples > 0 ? ` +${formatInteger(remainingExamples)} more` : ""}`
+          : "",
       ].filter(Boolean),
     };
   });
@@ -1772,168 +1778,248 @@ export function buildDispersionGeometry(options: {
     y1: point.y,
     x2: point.x,
     y2: point.y,
-    className: `cw-plot-lollipop-stem cw-plot-ramp-${point.rampIndex}`,
+    className: `cw-plot-lollipop-stem cw-plot-ramp-${point.rampIndex} ${point.className ?? ""}`.trim(),
   }));
-  const distinctPoint = points.find((point) => point.datum.highlighted);
-  const previousPoint = distinctPoint ? points[points.indexOf(distinctPoint) - 1] : undefined;
-  const dividers = distinctPoint && previousPoint
-    ? [{
-        x1: box.margin.left,
-        y1: (distinctPoint.y + previousPoint.y) / 2,
-        x2: box.width - box.margin.right,
-        y2: (distinctPoint.y + previousPoint.y) / 2,
-        className: "cw-plot-reference-line",
-      }]
-    : [];
-  const dotAndStemObstacles = [
-    ...pointLabelObstacles(points, 8),
-    ...lineLabelObstacles(stems, 5),
-  ];
-  const rowLabels = placeLabels(
-    points.map((point) => ({
-      x: box.margin.left - 10,
-      y: point.y + 4,
-      text: point.datum.label,
-      className: point.datum.highlighted ? "cw-plot-label-strong" : "cw-plot-label-muted",
-      candidates: [
-        { dx: 0, dy: 0, anchor: "end" },
-        { dx: -4, dy: 0, anchor: "end" },
-        { dx: 0, dy: -8, anchor: "end" },
-        { dx: 0, dy: 10, anchor: "end" },
-      ],
-    })),
-    dotAndStemObstacles,
-    {
-      left: 10,
-      top: box.margin.top - 8,
-      right: box.margin.left - 8,
-      bottom: box.height - box.margin.bottom + 8,
-    },
+  const dividers: PlotLineGeometry[] = [];
+  const rowLabelX = box.margin.left - 12;
+  const rowLabels: PlotLabelGeometry[] = points.map((point) => ({
+    x: rowLabelX,
+    y: point.y + 4,
+    text: options.reachLabels === "percentage"
+      ? dispersionReachBounds(point.datum, options.totalDocuments).percentage
+      : dispersionReachBounds(point.datum, options.totalDocuments).documents,
+    anchor: "end",
+    className: "cw-plot-label-muted cw-plot-axis-row-label",
+  }));
+  const valueLabels = options.labelsMode === "off" ? [] : placeDispersionProfileEndpointLabels(
+    points,
+    box,
+    totalTypes,
+    options.labelsMode ?? "countsShares",
   );
-  const countLabels = placeLabels(
-    points.map((point) => ({
-      x: Math.min(point.x + 10, box.width - box.margin.right - 10),
-      y: point.y + 4,
-      text: point.datum.detail ?? formatInteger(point.datum.count),
-      className: "cw-plot-label-mono",
-      candidates: [
-        { dx: 0, dy: 0, anchor: "start" },
-        { dx: 10, dy: -8, anchor: "start" },
-        { dx: 10, dy: 10, anchor: "start" },
-        { dx: -10, dy: -8, anchor: "end" },
-        { dx: -10, dy: 10, anchor: "end" },
-      ],
-    })),
-    [
-      ...dotAndStemObstacles,
-      ...lineLabelObstacles(dividers, 4),
-      ...rowLabels.map((label) => ({ kind: "box" as const, box: estimateLabelBox(label) })),
-    ],
-    plotLabelBounds(box),
-  );
-  const exclusivePoints = points.filter((point) => !point.datum.highlighted);
-  const countedTypes = exclusivePoints.reduce((total, point) => total + point.datum.count, 0);
-  let compositionX = box.margin.left;
-  const compositionSegments = exclusivePoints.map((point, index) => {
-    const remainingWidth = box.width - box.margin.right - compositionX;
-    const share = point.datum.share ?? (countedTypes > 0 ? point.datum.count / countedTypes : 0);
-    const width = index === exclusivePoints.length - 1
-      ? remainingWidth
-      : Math.max(0, box.innerWidth * share);
-    const segment = {
-      x: compositionX,
-      y: compositionBarY,
-      width,
-      height: compositionBarHeight,
-      label: share >= 0.055 ? `${formatPercent(share, 0)}` : null,
-      datum: point.datum,
-      rampIndex: point.rampIndex,
-      tooltipTitle: point.datum.label,
-      tooltipRows: [
-        `${formatInteger(point.datum.count)} types`,
-        `${formatPercent(share)} of vocabulary`,
-      ],
-    };
-    compositionX += width;
-    return segment;
-  });
+  const countedTypes = points.reduce((total, point) => total + point.datum.count, 0);
+  const compositionStrip = points.length >= 2 && countedTypes > 0
+    ? buildCompositionStripGeometry({
+        total: countedTypes,
+        x: 32,
+        y: 18,
+        width: box.width - 32 - box.margin.right,
+        height: 22,
+        segments: points.map((point) => {
+          const bucket = point.datum;
+          return {
+            key: point.key!,
+            label: dispersionReachBounds(bucket, options.totalDocuments).documents,
+            count: bucket.count,
+            rampIndex: point.rampIndex,
+            className: point.className,
+            tooltipRows: point.tooltipRows,
+          };
+        }),
+        pinnedKeys: options.pinnedKeys,
+      })
+    : null;
+  const calloutExamples = options.cumulativeCallout?.examples.slice(0, 3) ?? [];
+  const cumulativeCallout = options.cumulativeCallout ? {
+    x: box.margin.left,
+    y: calloutY,
+    width: box.innerWidth,
+    height: 42,
+    title: `${formatInteger(options.cumulativeCallout.count)} types occur in at least 90% of documents`,
+    detail: `Cumulative threshold, not an exclusive band${calloutExamples.length ? ` · examples: ${calloutExamples.join(", ")}` : ""}`,
+  } : null;
   return {
     box,
     xScale,
-    xTicks: logTicks(xScale),
+    xTicks: xScale.kind === "log"
+      ? logTicks(xScale)
+      : linearTicks(xScale, 6).map((tick) => ({ ...tick, label: formatPercent(tick.value) })),
     points,
     stems,
     dividers,
-    compositionSegments,
-    labels: [...rowLabels, ...countLabels],
+    compositionStrip,
+    labels: [...rowLabels, ...valueLabels],
+    cumulativeCallout,
+    xAxisLabel: options.xMode === "share" ? "Share of vocabulary" : "Type count (log scale)",
   };
+}
+
+function placeDispersionProfileEndpointLabels(
+  points: Array<PlotPointGeometry<DispersionBucketDatum>>,
+  box: PlotBox,
+  totalTypes: number,
+  labelsMode: "counts" | "countsShares",
+): PlotLabelGeometry[] {
+  const bounds = plotLabelBounds(box);
+  return points.map((point) => {
+    const text = labelsMode === "countsShares"
+      ? `${formatInteger(point.datum.count)} · ${formatPercent(point.datum.share ?? (totalTypes > 0 ? point.datum.count / totalTypes : 0))}`
+      : formatInteger(point.datum.count);
+    const shared = {
+      y: point.y - 7,
+      text,
+      className: "cw-plot-label-mono cw-plot-profile-endpoint-label",
+      key: point.key,
+      pinned: point.pinned,
+      priority: point.pinned ? 100 : 30,
+    };
+    const preferred: PlotLabelGeometry = {
+      ...shared,
+      x: point.x - 10,
+      anchor: "end",
+    };
+    const preferredBox = estimateLabelBox(preferred);
+    if (!boxLeavesBounds(preferredBox, bounds)) return preferred;
+    const rightSide: PlotLabelGeometry = {
+      ...shared,
+      x: point.x + 10,
+      anchor: "start",
+    };
+    return clampLabelToBounds(rightSide, bounds);
+  });
+}
+
+export function dispersionReachBounds(
+  bucket: DispersionBucketDatum,
+  totalDocuments = 0,
+): { documents: string; percentage: string } {
+  const lower = bucket.lowerBound ?? 0;
+  const upper = bucket.upperBound ?? null;
+  const documents = lower > 0
+    ? (upper === null ? `${formatInteger(lower)}+ documents` : lower === upper ? `${formatInteger(lower)} ${lower === 1 ? "document" : "documents"}` : `${formatInteger(lower)}–${formatInteger(upper)} documents`)
+    : bucket.label;
+  if (totalDocuments <= 0 || lower <= 0) return { documents, percentage: "percentage unavailable" };
+  const lowShare = lower / totalDocuments;
+  const highShare = upper === null ? 1 : Math.min(1, upper / totalDocuments);
+  const percentage = upper !== null && lower === upper
+    ? `${formatPercent(lowShare, 0)} of documents`
+    : `${formatPercent(lowShare, 0)}–${formatPercent(highShare, 0)} of documents`;
+  return { documents, percentage };
 }
 
 export function buildDispersionPlaneGeometry(options: {
   plane: DispersionPlanePayload;
   totalTypes: number;
-  showWitnessLabels?: boolean;
+  totalTokens?: number;
+  frequencyMode?: "raw" | "perMillion";
+  densityMode?: "log" | "linear";
+  examplesMode?: "labelled" | "points" | "off";
+  marginalsVisible?: boolean;
+  thresholdsVisible?: boolean;
+  pinnedKeys?: ReadonlySet<string>;
   box?: PlotBox;
 }): DispersionPlaneGeometry {
   const plane = options.plane;
-  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 420, {
-    top: 34,
-    right: 48,
-    bottom: 62,
-    left: 112,
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 430, {
+    top: 94,
+    right: 108,
+    bottom: 70,
+    left: 164,
   });
   const freqLog10Max = Math.max(0, plane.freqLog10Max);
-  const xScale = createScale("linear", [0, freqLog10Max], [
+  const frequencyMode = options.frequencyMode ?? "raw";
+  const frequencyOffset = frequencyMode === "perMillion" && options.totalTokens
+    ? Math.log10(1_000_000 / options.totalTokens)
+    : 0;
+  const xScale = createScale("linear", [frequencyOffset, freqLog10Max + frequencyOffset], [
     box.margin.left,
     box.width - box.margin.right,
   ]);
   const yScale = createScale("linear", [0, 1], [box.height - box.margin.bottom, box.margin.top]);
-  const cells = buildDispersionPlaneCells(plane, xScale, yScale);
+  const densityMode = options.densityMode ?? "log";
+  const cells = buildDispersionPlaneCells(
+    plane,
+    xScale,
+    yScale,
+    densityMode,
+    frequencyOffset,
+    options.totalTypes,
+    options.totalTokens,
+    frequencyMode,
+  );
   const thresholdY = scaleValue(yScale, plane.highDispersionThreshold);
-  const thresholdLine = {
-    x1: box.margin.left,
-    y1: thresholdY,
-    x2: box.width - box.margin.right,
-    y2: thresholdY,
-    className: "cw-plot-threshold-line",
-  };
-  const thresholdLabel = {
-    x: box.width - box.margin.right - 4,
-    y: thresholdY - 8,
-    text: `DP ${formatFixed(plane.highDispersionThreshold, 1)} · high-dispersion threshold`,
-    anchor: "end" as const,
-    className: "cw-plot-label-mono cw-plot-label-muted",
-    fontSize: 10.5,
-  };
-  const witnesses = plane.witnesses.map((witness) => {
-    const rawX = Math.log10(Math.max(1, witness.frequency));
+  const frequencyThresholdX = scaleValue(xScale, Math.log10(1_000) + frequencyOffset);
+  const thresholdLines: PlotLineGeometry[] = options.thresholdsVisible === false ? [] : [
+    {
+      x1: box.margin.left,
+      y1: thresholdY,
+      x2: box.width - box.margin.right,
+      y2: thresholdY,
+      className: "cw-plot-threshold-line",
+    },
+    ...(freqLog10Max >= 3 ? [{
+      x1: frequencyThresholdX,
+      y1: box.margin.top,
+      x2: frequencyThresholdX,
+      y2: box.height - box.margin.bottom,
+      className: "cw-plot-threshold-line",
+    }] : []),
+  ];
+  const thresholdLabels: PlotLabelGeometry[] = options.thresholdsVisible === false ? [] : [
+    {
+      x: box.width - box.margin.right - 4,
+      y: thresholdY - 8,
+      text: `DP ${formatFixed(plane.highDispersionThreshold, 2)}`,
+      anchor: "end" as const,
+      className: "cw-plot-label-mono cw-plot-label-muted",
+      fontSize: 10.5,
+    },
+    ...(freqLog10Max >= 3 ? [{
+      x: frequencyThresholdX + 6,
+      y: box.margin.top + 14,
+      text: "Raw frequency 1,000",
+      anchor: "start" as const,
+      className: "cw-plot-label-mono cw-plot-label-muted",
+      fontSize: 10.5,
+    }] : []),
+  ];
+  const examplesMode = options.examplesMode ?? "labelled";
+  const witnesses = (examplesMode === "off" ? [] : plane.witnesses).map((witness) => {
+    const rawX = Math.log10(Math.max(1, witness.frequency)) + frequencyOffset;
     const rawY = clamp(witness.dp, 0, 1);
+    const key = `plane:${witness.kind}:${witness.token}`;
     return {
       x: scaleValue(xScale, rawX),
       y: scaleValue(yScale, rawY),
       rawX,
       rawY,
       datum: witness,
-      rampIndex: 4,
+      rampIndex: 2,
+      shape: "circle" as const,
+      className: "cw-plot-plane-witness-mark",
+      key,
+      pinned: options.pinnedKeys?.has(key) ?? false,
+      ariaLabel: `${witness.token}, ${witnessKindLabel(witness.kind)}`,
       tooltipTitle: witness.token,
       tooltipRows: [
         `frequency ${formatInteger(witness.frequency)}`,
+        options.totalTokens ? `rate ${formatFixed((witness.frequency / options.totalTokens) * 1_000_000, 2)} per million` : "",
         `document frequency ${formatInteger(witness.documentFrequency)}`,
         `DP ${formatFixed(witness.dp, 3)}`,
-      ],
+        `category ${witnessKindLabel(witness.kind)}`,
+      ].filter(Boolean),
     };
   });
   const denseCellObstacles = cells
-    .filter((cell) => cell.opacity >= DENSITY_CELL_LABEL_OBSTACLE_OPACITY)
+    .filter((cell) => cell.t >= DENSITY_CELL_LABEL_OBSTACLE_T)
     .map((cell) => ({ kind: "box" as const, box: { x: cell.x, y: cell.y, width: cell.width, height: cell.height } }));
   const witnessDotObstacles = pointLabelObstacles(witnesses, 9);
   const thresholdObstacles: LabelObstacle[] = [
-    { kind: "box", box: estimateLabelBox(thresholdLabel) },
-    ...lineLabelObstacles([thresholdLine], 4),
+    ...thresholdLabels.map((label) => ({ kind: "box" as const, box: estimateLabelBox(label) })),
+    ...lineLabelObstacles(thresholdLines, 4),
   ];
-  const witnessLabelRequests = options.showWitnessLabels === false
-    ? []
-    : buildDispersionPlaneWitnessLabelRequests(permanentDispersionPlaneWitnesses(witnesses));
+  const pinnedWitnesses = witnesses.filter((witness) => witness.pinned);
+  const automaticWitnesses = examplesMode === "labelled"
+    ? automaticDispersionPlaneWitnesses(
+        witnesses.filter((witness) => !witness.pinned),
+        frequencyThresholdX,
+        thresholdY,
+      )
+    : [];
+  const witnessLabelRequests = buildDispersionPlaneWitnessLabelRequests([
+    ...pinnedWitnesses,
+    ...automaticWitnesses,
+  ]);
   const preliminaryWitnessLabels = placeLabels(
     witnessLabelRequests,
     [
@@ -1943,7 +2029,7 @@ export function buildDispersionPlaneGeometry(options: {
     ],
     plotLabelBounds(box),
   );
-  const quadrantPills = buildDispersionPlaneQuadrantPills(
+  const quadrantLabels = buildDispersionPlaneQuadrantLabels(
     box,
     [
       ...witnessDotObstacles,
@@ -1951,36 +2037,51 @@ export function buildDispersionPlaneGeometry(options: {
       ...thresholdObstacles,
     ],
   );
-  const pillObstacles = quadrantPills.map((pill) => ({ kind: "box" as const, box: pill.box }));
+  const quadrantObstacles = quadrantLabels.map((label) => ({ kind: "box" as const, box: estimateLabelBox(label) }));
   const witnessObstacles = [
     ...denseCellObstacles,
     ...witnessDotObstacles,
     ...thresholdObstacles,
-    ...pillObstacles,
+    ...quadrantObstacles,
   ];
   const labels = placeLabels(
     witnessLabelRequests,
     witnessObstacles,
     plotLabelBounds(box),
   );
+  const marginalCounts = dispersionPlaneMarginalCounts(plane);
+  const marginals = options.marginalsVisible === false
+    ? { frequency: [], dp: [] }
+    : buildDispersionPlaneMarginalGeometry(marginalCounts, plane, box, xScale, yScale, frequencyOffset);
   return {
     box,
     xScale,
     yScale,
-    xTicks: dispersionPlaneDecadeTicks(freqLog10Max, xScale),
+    xTicks: dispersionPlaneDecadeTicks(freqLog10Max, xScale, frequencyOffset),
     yTicks: [0, 0.25, 0.5, 0.75, 1].map((value) => ({
       value,
       position: scaleValue(yScale, value),
-      label: formatFixed(value, 2),
+      label: value === 0 || value === 1 ? String(value) : formatFixed(value, 2),
+      accessibleLabel: value === 0 ? "0, more even" : value === 1 ? "1, more concentrated" : undefined,
       major: true,
     })),
     cells,
-    thresholdLine,
-    thresholdLabel,
-    quadrantPills,
+    frequencyMarginal: marginals.frequency,
+    dpMarginal: marginals.dp,
+    thresholdLines,
+    thresholdLabels,
+    quadrantLabels,
     witnesses,
     labels,
     witnessObstacles,
+    densityLegend: {
+      mode: densityMode,
+      minimum: plane.counts.some((count) => count > 0) ? Math.min(...plane.counts.filter((count) => count > 0)) : 0,
+      maximum: plane.maxCellCount,
+    },
+    xAxisLabel: frequencyMode === "perMillion"
+      ? "Frequency per million (log scale)"
+      : "Raw frequency (log scale)",
   };
 }
 
@@ -1995,105 +2096,312 @@ export function formatDispersionPlaneStats(
   return `${formatInteger(totalTypes)} types · grid ${formatInteger(xBins)}×${formatInteger(yBins)} · ${formatInteger(loudButLocalCount)} loud-but-local (f ≥ ${formatCompactFrequency(loudButLocalMinFrequency)}, DP ≥ ${formatFixed(highDispersionThreshold, 1)})`;
 }
 
-export function buildDispersionRosterGeometry(options: {
-  entries: DispersionRosterEntryDatum[];
-  highDispersionThreshold: number;
-  box?: PlotBox;
-}): DispersionRosterGeometry {
-  const rowCount = Math.max(1, options.entries.length);
-  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 92 + (rowCount * DISPERSION_ROSTER_ROW_PITCH), {
-    top: 34,
-    right: 48,
-    bottom: 58,
-    left: 156,
+export function buildDistributionDiagnosticGeometry(options: {
+  result: DistributionResultPayload;
+  metric: "documentLength" | "mattr";
+  view: DistributionDiagnosticView;
+  yMode: DistributionYMode;
+  qqReference: "normal" | "lognormal";
+  labelsMode?: "extremes" | "pinned" | "off";
+  mattrWindow?: number;
+  pinnedKeys?: ReadonlySet<string>;
+}): DistributionDiagnosticGeometry {
+  const hasComposition = options.metric === "mattr";
+  const box = createPlotBox(DEFAULT_PLOT_WIDTH, hasComposition ? 420 : 360, {
+    top: hasComposition ? 112 : 34,
+    right: 42,
+    bottom: 62,
+    left: 78,
   });
-  const xScale = createScale("linear", [0, 1], [
-    box.margin.left,
-    box.width - box.margin.right,
-  ]);
-  const thresholdX = scaleValue(xScale, options.highDispersionThreshold);
-  const thresholdLine = {
-    x1: thresholdX,
-    y1: box.margin.top,
-    x2: thresholdX,
-    y2: box.height - box.margin.bottom,
-    className: "cw-plot-threshold-line",
-  };
-  const thresholdLabel = {
-    x: thresholdX,
-    y: box.margin.top - 10,
-    text: `DP ${formatDpThreshold(options.highDispersionThreshold)}`,
-    anchor: "middle" as const,
-    className: "cw-plot-label-mono cw-plot-label-muted",
-    fontSize: 10.5,
-  };
-  let aboveThresholdCount = 0;
-  const rows = options.entries.map((entry, index) => {
-    const y = box.margin.top + (DISPERSION_ROSTER_ROW_PITCH / 2) + (index * DISPERSION_ROSTER_ROW_PITCH);
-    const aboveThreshold = entry.dp >= options.highDispersionThreshold;
-    if (aboveThreshold) aboveThresholdCount += 1;
-    const point = {
-      x: scaleValue(xScale, clamp(entry.dp, 0, 1)),
-      y,
-      rawX: entry.dp,
-      rawY: index,
-      datum: entry,
-      rampIndex: aboveThreshold ? 5 : 2,
-      tooltipTitle: entry.token,
-      tooltipRows: [
-        `frequency ${formatInteger(entry.frequency)}`,
-        `document frequency ${formatInteger(entry.documentFrequency)}`,
-        `DP ${formatFixed(entry.dp, 3)}`,
+  const result = options.result;
+  const effectiveXScale = options.metric === "mattr" ? "linear" : result.xScale;
+  const rawValues = [
+    result.minimum ?? 0,
+    result.maximum ?? 1,
+    ...result.histogramBins.flatMap((bin) => [bin.lowerBound, bin.upperBound]),
+  ];
+  const rawDomain = extent(effectiveXScale === "log" ? rawValues.filter((value) => value > 0) : rawValues);
+  if (effectiveXScale === "log") rawDomain[0] = Math.max(1, rawDomain[0]);
+  const xKind: PlotScaleKind = options.view === "qq" ? "linear" : effectiveXScale;
+  const qqXDomain = extent(result.qqPoints.map((point) => point.expectedQuantile));
+  const qqYDomain = extent(result.qqPoints.map((point) => point.observedValue));
+  const xScale = createScale(
+    xKind,
+    options.view === "qq" ? qqXDomain : rawDomain,
+    [box.margin.left, box.width - box.margin.right],
+  );
+  const observedHistogramMaximum = Math.max(0, ...result.histogramBins.map((bin) =>
+    options.yMode === "count" ? bin.count : bin.share
+  ));
+  const histogramMaximum = options.yMode === "share"
+    ? pleasantShareCeiling(observedHistogramMaximum)
+    : Math.max(1, observedHistogramMaximum);
+  const yScale = createScale(
+    "linear",
+    options.view === "qq" ? qqYDomain : [0, options.view === "histogram" ? histogramMaximum : 1],
+    [box.height - box.margin.bottom, box.margin.top],
+  );
+  const bars = options.view === "histogram"
+    ? result.histogramBins.map((bin, index) => {
+        const lower = effectiveXScale === "log" ? Math.max(1, bin.lowerBound) : bin.lowerBound;
+        const upper = effectiveXScale === "log" ? Math.max(lower, bin.upperBound) : bin.upperBound;
+        const x1 = scaleValue(xScale, lower);
+        const x2 = scaleValue(xScale, upper);
+        const value = options.yMode === "count" ? bin.count : bin.share;
+        const y = scaleValue(yScale, value);
+        const key = `distribution-bin:${index}:${bin.lowerBound}:${bin.upperBound}`;
+        return {
+          x: x1 + 1,
+          y,
+          width: Math.max(1, x2 - x1 - 2),
+          height: box.height - box.margin.bottom - y,
+          datum: bin,
+          key,
+          pinned: options.pinnedKeys?.has(key) ?? false,
+          tooltipTitle: `${formatDistributionValue(bin.lowerBound, options.metric)}–${formatDistributionValue(bin.upperBound, options.metric)}`,
+          tooltipRows: [
+            `${formatInteger(bin.count)} documents`,
+            formatPercent(bin.share),
+            `${formatPercent(bin.cumulativeShare)} cumulative`,
+          ],
+        };
+      })
+    : [];
+  const ecdfPoints = options.view === "ecdf"
+    ? result.ecdfPoints.map((point) => ({
+        x: scaleValue(xScale, effectiveXScale === "log" ? Math.max(1, point.value) : point.value),
+        y: scaleValue(yScale, point.cumulativeShare),
+        rawX: point.value,
+        rawY: point.cumulativeShare,
+        datum: point,
+        rampIndex: 2,
+        tooltipTitle: formatDistributionValue(point.value, options.metric),
+        tooltipRows: [
+          `${formatInteger(point.cumulativeCount)} documents`,
+          `${formatPercent(point.cumulativeShare)} cumulative`,
+          `${formatPercent(point.cumulativeShare)} percentile`,
+        ],
+        className: "cw-plot-ecdf-hit-target",
+      }))
+    : [];
+  const qqPoints = options.view === "qq"
+    ? result.qqPoints.map((point) => {
+        const key = `distribution-qq:${point.observationRank}`;
+        return {
+          x: scaleValue(xScale, point.expectedQuantile),
+          y: scaleValue(yScale, point.observedValue),
+          rawX: point.expectedQuantile,
+          rawY: point.observedValue,
+          datum: point,
+          rampIndex: 2,
+          radius: options.pinnedKeys?.has(key) ? 4.3 : 2.6,
+          key,
+          pinned: options.pinnedKeys?.has(key) ?? false,
+          className: "cw-plot-qq-point",
+          fillOpacity: options.pinnedKeys?.has(key) ? 1 : 0.84,
+          tooltipTitle: `quantile ${formatFixed(point.expectedQuantile, 2)}`,
+          tooltipRows: [
+            `observed ${formatDistributionValue(point.observedValue, options.metric, options.qqReference)}`,
+            `plotting position ${formatFixed(point.plottingPosition, 4)}`,
+          ],
+        };
+      })
+    : [];
+  const points = options.view === "qq" ? qqPoints : ecdfPoints;
+  const linePath = options.view === "ecdf" && ecdfPoints.length > 0
+    ? { d: pointsToStepPath(ecdfPoints), className: "cw-plot-line cw-plot-ecdf-line" }
+    : null;
+  const referencePath = options.view === "qq"
+    && result.qqLineIntercept !== null
+    && result.qqLineSlope !== null
+    ? {
+        d: pointsToPath(xScale.domain.map((x) => ({
+          x: scaleValue(xScale, x),
+          y: scaleValue(yScale, result.qqLineIntercept! + result.qqLineSlope! * x),
+        }))),
+        className: "cw-plot-statistical-reference-line cw-plot-qq-reference",
+      }
+    : null;
+  const medianLine = options.view !== "qq" && result.median !== null
+    ? {
+        x1: scaleValue(xScale, effectiveXScale === "log" ? Math.max(1, result.median) : result.median),
+        y1: box.margin.top,
+        x2: scaleValue(xScale, effectiveXScale === "log" ? Math.max(1, result.median) : result.median),
+        y2: box.height - box.margin.bottom,
+        className: "cw-plot-median-line",
+      }
+    : null;
+  const iqrBand = options.view === "histogram"
+    && result.firstQuartile !== null
+    && result.thirdQuartile !== null
+    ? {
+        x: scaleValue(xScale, effectiveXScale === "log" ? Math.max(1, result.firstQuartile) : result.firstQuartile),
+        y: box.margin.top,
+        width: Math.max(0, scaleValue(xScale, effectiveXScale === "log" ? Math.max(1, result.thirdQuartile) : result.thirdQuartile)
+          - scaleValue(xScale, effectiveXScale === "log" ? Math.max(1, result.firstQuartile) : result.firstQuartile)),
+        height: box.innerHeight,
+        className: "cw-plot-iqr-band",
+      }
+    : null;
+  const witnessRows = [...result.lowWitnesses, ...result.highWitnesses]
+    .filter((witness, index, rows) => rows.findIndex((row) => row.documentId === witness.documentId) === index);
+  const witnesses = options.metric === "mattr" && options.view === "histogram"
+    ? witnessRows.map((witness, index) => {
+        const key = `distribution-witness:${witness.documentId}`;
+        return {
+          x: scaleValue(xScale, witness.metricValue),
+          y: box.height - box.margin.bottom - 5,
+          rawX: witness.metricValue,
+          rawY: 0,
+          datum: witness,
+          rampIndex: 3,
+          shape: index < result.lowWitnesses.length ? "triangle" as const : "diamond" as const,
+          key,
+          pinned: options.pinnedKeys?.has(key) ?? false,
+          tooltipTitle: witness.documentName,
+          tooltipRows: [
+            `MATTR ${formatFixed(witness.metricValue, 3)}`,
+            `${formatInteger(Number(witness.tokenCount))} tokens`,
+          ],
+        };
+      })
+    : [];
+  const labels: PlotLabelGeometry[] = [];
+  if (medianLine && result.median !== null) {
+    labels.push({
+      x: medianLine.x1 + 6,
+      y: box.margin.top + 14,
+      text: `median ${formatDistributionValue(result.median, options.metric)}`,
+      anchor: "start",
+      className: "cw-plot-label-callout",
+    });
+  }
+  for (const bar of bars.filter((candidate) => candidate.pinned)) {
+    labels.push({
+      x: bar.x + bar.width / 2,
+      y: Math.max(box.margin.top + 16, bar.y - 8),
+      text: `${formatDistributionValue(bar.datum.lowerBound, options.metric)}–${formatDistributionValue(bar.datum.upperBound, options.metric)}`,
+      anchor: "middle",
+      className: "cw-plot-label-callout",
+      pinned: true,
+    });
+  }
+  for (const point of qqPoints.filter((candidate) => candidate.pinned)) {
+    labels.push({
+      x: point.x + 8,
+      y: point.y - 8,
+      text: `observed ${formatDistributionValue(point.datum.observedValue, options.metric, options.qqReference)}`,
+      anchor: "start",
+      className: "cw-plot-label-callout",
+      pinned: true,
+    });
+  }
+  const witnessLabelCandidates = witnesses.filter((point) => point.pinned);
+  labels.push(...placeLabels(
+    witnessLabelCandidates.map((witness) => ({
+      x: witness.x,
+      y: witness.y,
+      text: witness.datum.documentName,
+      className: "cw-plot-label-mono",
+      pinned: witness.pinned,
+      priority: witness.pinned ? 100 : 10,
+      candidates: [
+        { dx: 0, dy: -14, anchor: "middle" },
+        { dx: 9, dy: -18, anchor: "start" },
+        { dx: -9, dy: -18, anchor: "end" },
       ],
-    };
-    return {
-      entry,
-      y,
-      guide: {
-        x1: box.margin.left,
-        y1: y,
-        x2: box.width - box.margin.right,
-        y2: y,
-        className: "cw-plot-roster-guide",
-      },
-      point,
-      tokenLabel: {
-        x: box.margin.left - 10,
-        y: y + 4,
-        text: entry.token,
-        anchor: "end" as const,
-        className: "cw-plot-label-mono cw-plot-label-muted",
-        fontSize: 10.5,
-      },
-      aboveThreshold,
-    };
-  });
+    })),
+    pointLabelObstacles(witnesses, 7),
+    plotLabelBounds(box),
+    6,
+  ));
+  const compositionStrip = hasComposition
+    ? buildCompositionStripGeometry({
+        total: result.population + result.excludedCount,
+        x: box.margin.left,
+        y: 18,
+        width: box.innerWidth,
+        height: 22,
+        segments: [
+          { key: "mattr-eligible", label: `Used · window ${options.mattrWindow ?? 100}`, count: result.population, rampIndex: 2 },
+          { key: "mattr-excluded", label: "Excluded · shorter than window", count: result.excludedCount, rampIndex: 5, className: "is-excluded" },
+        ],
+        pinnedKeys: options.pinnedKeys,
+      })
+    : null;
+  const zeroTokenCount = options.metric === "documentLength" && effectiveXScale === "log"
+    ? Math.max(0, ...result.ecdfPoints.filter((point) => point.value === 0).map((point) => point.cumulativeCount))
+    : 0;
+  const zeroTokenSummary = zeroTokenCount > 0 && options.view !== "qq" ? {
+    count: zeroTokenCount,
+    x: 8,
+    y: box.margin.top + 8,
+    width: Math.max(54, box.margin.left - 16),
+    height: 34,
+  } : null;
+  const xTicks = options.view === "qq"
+    ? linearTicks(xScale, 6)
+    : xScale.kind === "log" ? logTicks(xScale) : linearTicks(xScale, 6);
+  const yTicks = linearTicks(yScale, 6).map((tick) => ({
+    ...tick,
+    label: options.view !== "qq" && options.yMode === "share" ? formatPercent(tick.value) : tick.label,
+  }));
   return {
     box,
+    view: options.view,
+    crosshairEnabled: options.view !== "histogram",
     xScale,
-    xTicks: [0, 0.25, 0.5, 0.75, 1].map((value) => ({
-      value,
-      position: scaleValue(xScale, value),
-      label: formatDpTick(value),
-      major: true,
-    })),
-    rows,
-    thresholdLine,
-    thresholdLabel,
-    aboveThresholdCount,
+    yScale,
+    xTicks,
+    yTicks,
+    xAxisLabel: options.view === "qq"
+      ? "Expected normal quantile"
+      : options.metric === "documentLength" ? "Tokens per document" : "Document MATTR",
+    yAxisLabel: options.view === "qq"
+      ? options.qqReference === "lognormal" ? "Observed log10 document length" : `Observed ${options.metric === "mattr" ? "MATTR" : "document length"}`
+      : options.view === "ecdf" ? "Cumulative share of documents"
+        : options.yMode === "count" ? "Documents" : "Share of documents",
+    bars,
+    linePath,
+    points,
+    witnesses,
+    referencePath,
+    medianLine,
+    iqrBand,
+    labels,
+    legend: options.view === "qq"
+      ? [
+          { label: "Observed documents", kind: "point", shape: "circle" },
+          { label: "Robust Q1/Q3 reference", kind: "line", className: "cw-plot-statistical-reference-line" },
+        ]
+      : [],
+    compositionStrip,
+    zeroTokenSummary,
   };
 }
 
-export function formatDispersionRosterStats(
-  shownCount: number,
-  shippedCount: number,
-  aboveThresholdCount: number,
-  highDispersionThreshold: number,
+export function pleasantShareCeiling(observedMaximum: number): number {
+  if (!(observedMaximum > 0)) return 0.1;
+  if (observedMaximum >= 0.95) return 1;
+  return Math.min(1, niceNumber(observedMaximum * 1.05, false));
+}
+
+function pointsToStepPath(points: Array<{ x: number; y: number }>): string {
+  return points.map((point, index) => {
+    if (index === 0) return `M${roundSvg(point.x)} ${roundSvg(point.y)}`;
+    const previous = points[index - 1]!;
+    return `L${roundSvg(point.x)} ${roundSvg(previous.y)} L${roundSvg(point.x)} ${roundSvg(point.y)}`;
+  }).join(" ");
+}
+
+function formatDistributionValue(
+  value: number,
+  metric: "documentLength" | "mattr",
+  qqReference?: "normal" | "lognormal",
 ): string {
-  const countText = shownCount === shippedCount
-    ? `top ${formatInteger(shownCount)} types by frequency`
-    : `shown ${formatInteger(shownCount)} of ${formatInteger(shippedCount)} frequent types`;
-  return `${countText} · ${formatInteger(aboveThresholdCount)} above DP ${formatDpThreshold(highDispersionThreshold)}`;
+  if (metric === "mattr") return formatFixed(value, 3);
+  if (qqReference === "lognormal") return `${formatFixed(value, 3)} log10 tokens`;
+  return `${formatInteger(value)} tokens`;
 }
 
 export function buildLengthHistogramGeometry(options: {
@@ -2236,21 +2544,6 @@ export function buildMattrDistributionGeometry(options: {
       `${formatInteger(witness.tokens)} tokens`,
     ],
   }));
-  const extremeWitnesses = [distribution.lowWitnesses[0], distribution.highWitnesses[0]]
-    .filter((witness): witness is MattrWitnessDatum => witness !== undefined)
-    .filter((witness, index, values) => values.findIndex((candidate) => candidate.name === witness.name) === index);
-  const witnessLabels = placeLabels(extremeWitnesses.map((witness) => ({
-    x: scaleValue(xScale, clamp(witness.mattr, domain[0], domain[1])),
-    y: box.height - box.margin.bottom - 8,
-    text: middleEllipsis(witness.name, 24),
-    className: "cw-plot-label-mono cw-plot-label-muted",
-    candidates: [
-      { dx: 0, dy: 0, anchor: "middle" as const },
-      { dx: 0, dy: -16, anchor: "middle" as const },
-      { dx: -8, dy: -8, anchor: "end" as const },
-      { dx: 8, dy: -8, anchor: "start" as const },
-    ],
-  })), bars.map((bar) => ({ kind: "box" as const, box: { x: bar.x, y: bar.y, width: bar.width, height: bar.height } })), plotLabelBounds(box));
   const medianLabel = medianLine === null || median === null
     ? []
     : placeLabels(
@@ -2277,7 +2570,7 @@ export function buildMattrDistributionGeometry(options: {
     yTicks: linearTicks(yScale, 5),
     bars,
     medianLine,
-    labels: [...medianLabel, ...witnessLabels],
+    labels: medianLabel,
     witnessTicks,
     domain,
   };
@@ -2392,27 +2685,40 @@ function buildDispersionPlaneCells(
   plane: DispersionPlanePayload,
   xScale: PlotScale,
   yScale: PlotScale,
+  densityMode: "log" | "linear",
+  frequencyOffset: number,
+  totalTypes: number,
+  totalTokens: number | undefined,
+  frequencyMode: "raw" | "perMillion",
 ): DispersionPlaneCellGeometry[] {
   const cells: DispersionPlaneCellGeometry[] = [];
   const maxCellCount = Math.max(1, plane.maxCellCount);
   for (let index = 0; index < plane.counts.length; index += 1) {
     const count = plane.counts[index] ?? 0;
-    if (count <= 0) continue;
     const xi = index % plane.xBins;
     const yi = Math.floor(index / plane.xBins);
     const freqLowerLog = (xi / plane.xBins) * Math.max(0, plane.freqLog10Max);
     const freqUpperLog = ((xi + 1) / plane.xBins) * Math.max(0, plane.freqLog10Max);
     const dpLower = yi / plane.yBins;
     const dpUpper = (yi + 1) / plane.yBins;
-    const x = scaleValue(xScale, freqLowerLog);
-    const x2 = scaleValue(xScale, freqUpperLog);
+    const x = scaleValue(xScale, freqLowerLog + frequencyOffset);
+    const x2 = scaleValue(xScale, freqUpperLog + frequencyOffset);
     const y = scaleValue(yScale, dpUpper);
     const y2 = scaleValue(yScale, dpLower);
-    const t = Math.log1p(count) / Math.log1p(maxCellCount);
-    const opacity = 0.12 + (0.80 * t);
-    const frequencyRange = `${formatFrequencyRangeBoundary(10 ** freqLowerLog)}-${formatFrequencyRangeBoundary(10 ** freqUpperLog)}`;
-    const dpRange = `${formatFixed(dpLower, 2)}-${formatFixed(dpUpper, 2)}`;
+    const t = densityMode === "linear"
+      ? count / maxCellCount
+      : Math.log1p(count) / Math.log1p(maxCellCount);
+    const opacity = count === 0 ? 0 : 1;
+    const rawLower = 10 ** freqLowerLog;
+    const rawUpper = 10 ** freqUpperLog;
+    const frequencyRange = `${formatFrequencyRangeBoundary(rawLower)}–${formatFrequencyRangeBoundary(rawUpper)}`;
+    const dpRange = `${formatFixed(dpLower, 2)}–${formatFixed(dpUpper, 2)}`;
+    const rateRange = totalTokens
+      ? `${formatFixed((rawLower / totalTokens) * 1_000_000, 2)}–${formatFixed((rawUpper / totalTokens) * 1_000_000, 2)}`
+      : null;
     cells.push({
+      column: xi,
+      row: yi,
       x,
       y,
       width: Math.max(1, x2 - x),
@@ -2421,11 +2727,59 @@ function buildDispersionPlaneCells(
       t,
       opacity,
       fill: densityRampFill(t),
-      tooltipTitle: `${formatInteger(count)} types · f ${frequencyRange} · DP ${dpRange}`,
-      tooltipRows: [],
+      tooltipTitle: count === 0 ? "No types in this cell" : `${formatInteger(count)} types`,
+      tooltipRows: [
+        `raw frequency ${frequencyRange}`,
+        frequencyMode === "perMillion" && rateRange ? `per million ${rateRange}` : "",
+        `DP ${dpRange}`,
+        `${formatInteger(count)} types`,
+        `${formatPercent(totalTypes > 0 ? count / totalTypes : 0)} of vocabulary`,
+        `${densityMode === "log" ? "Log" : "Linear"} density display; underlying count unchanged`,
+      ].filter(Boolean),
     });
   }
   return cells;
+}
+
+export function dispersionPlaneMarginalCounts(
+  plane: DispersionPlanePayload,
+): { frequency: number[]; dp: number[] } {
+  const frequency = new Array<number>(plane.xBins).fill(0);
+  const dp = new Array<number>(plane.yBins).fill(0);
+  plane.counts.forEach((count, index) => {
+    const xi = index % plane.xBins;
+    const yi = Math.floor(index / plane.xBins);
+    if (xi < frequency.length && yi < dp.length) {
+      frequency[xi] += count;
+      dp[yi] += count;
+    }
+  });
+  return { frequency, dp };
+}
+
+function buildDispersionPlaneMarginalGeometry(
+  counts: { frequency: number[]; dp: number[] },
+  plane: DispersionPlanePayload,
+  box: PlotBox,
+  xScale: PlotScale,
+  yScale: PlotScale,
+  frequencyOffset: number,
+): { frequency: DispersionPlaneMarginalGeometry[]; dp: DispersionPlaneMarginalGeometry[] } {
+  const maxFrequency = Math.max(1, ...counts.frequency);
+  const maxDp = Math.max(1, ...counts.dp);
+  const frequency = counts.frequency.map((count, index) => {
+    const x = scaleValue(xScale, (index / plane.xBins) * plane.freqLog10Max + frequencyOffset);
+    const x2 = scaleValue(xScale, ((index + 1) / plane.xBins) * plane.freqLog10Max + frequencyOffset);
+    const height = (count / maxFrequency) * 28;
+    return { x, y: box.margin.top - 8 - height, width: Math.max(1, x2 - x), height, count };
+  });
+  const dp = counts.dp.map((count, index) => {
+    const y = scaleValue(yScale, (index + 1) / plane.yBins);
+    const y2 = scaleValue(yScale, index / plane.yBins);
+    const width = (count / maxDp) * 44;
+    return { x: box.width - box.margin.right + 8, y, width, height: Math.max(1, y2 - y), count };
+  });
+  return { frequency, dp };
 }
 
 function buildDispersionPlaneWitnessLabelRequests(
@@ -2435,7 +2789,10 @@ function buildDispersionPlaneWitnessLabelRequests(
     x: witness.x,
     y: witness.y,
     text: witness.datum.token,
-    className: "cw-plot-label-mono",
+    className: "cw-plot-label-mono cw-plot-plane-witness-label",
+    key: witness.key,
+    pinned: witness.pinned,
+    priority: witness.pinned ? 100 : witness.datum.kind === "core" ? 40 : witness.datum.kind === "loudButLocal" ? 30 : 20,
     candidates: [
       { dx: 10, dy: -8, anchor: "start" },
       { dx: 10, dy: 14, anchor: "start" },
@@ -2447,27 +2804,43 @@ function buildDispersionPlaneWitnessLabelRequests(
   }));
 }
 
-function permanentDispersionPlaneWitnesses(
+function automaticDispersionPlaneWitnesses(
   witnesses: Array<PlotPointGeometry<DispersionWitnessDatum>>,
+  frequencyThresholdX: number,
+  thresholdY: number,
 ): Array<PlotPointGeometry<DispersionWitnessDatum>> {
-  const core = witnesses.filter((witness) => witness.datum.kind === "core").slice(0, 3);
-  const loudButLocal = witnesses.filter((witness) => witness.datum.kind === "loudButLocal").slice(0, 2);
-  const quietAndEven = witnesses.filter((witness) => witness.datum.kind === "quietAndEven").slice(0, 1);
-  return [...core, ...loudButLocal, ...quietAndEven].slice(0, 6);
+  const quadrants = new Map<string, PlotPointGeometry<DispersionWitnessDatum>>();
+  for (const witness of witnesses) {
+    const quadrant = `${witness.x >= frequencyThresholdX ? "frequent" : "rare"}-${witness.y <= thresholdY ? "concentrated" : "even"}`;
+    const current = quadrants.get(quadrant);
+    const distance = Math.hypot(witness.x - frequencyThresholdX, witness.y - thresholdY);
+    const currentDistance = current ? Math.hypot(current.x - frequencyThresholdX, current.y - thresholdY) : -1;
+    if (!current || distance > currentDistance) quadrants.set(quadrant, witness);
+  }
+  return [
+    "rare-concentrated",
+    "frequent-concentrated",
+    "rare-even",
+    "frequent-even",
+  ].flatMap((quadrant) => quadrants.get(quadrant) ?? []);
 }
 
-function buildDispersionPlaneQuadrantPills(
+function witnessKindLabel(kind: DispersionWitnessKind): string {
+  return WITNESS_KIND_CONTRACT[kind].label;
+}
+
+function buildDispersionPlaneQuadrantLabels(
   box: PlotBox,
   obstacles: LabelObstacle[],
-): DispersionPlanePillGeometry[] {
+): PlotLabelGeometry[] {
   const bounds = plotLabelBounds(box);
-  const pillLabels = placeLabels(
+  const labels = placeLabels(
     [
       {
         x: box.margin.left + 12,
         y: box.margin.top + 19,
-        text: "RARE & LOCAL",
-        className: "cw-plot-quadrant-pill-label",
+        text: "Rare · concentrated",
+        className: "cw-plot-quadrant-label",
         fontSize: 10,
         candidates: [
           { dx: 0, dy: 0, anchor: "start" },
@@ -2478,20 +2851,22 @@ function buildDispersionPlaneQuadrantPills(
       {
         x: box.width - box.margin.right - 12,
         y: box.margin.top + 19,
-        text: "LOUD BUT LOCAL",
-        className: "cw-plot-quadrant-pill-label",
+        text: "Frequent · concentrated",
+        className: "cw-plot-quadrant-label",
         fontSize: 10,
         candidates: [
           { dx: 0, dy: 0, anchor: "end" },
           { dx: 0, dy: 24, anchor: "end" },
           { dx: -18, dy: 0, anchor: "end" },
+          { dx: 0, dy: 48, anchor: "end" },
+          { dx: -18, dy: 48, anchor: "end" },
         ],
       },
       {
         x: box.margin.left + 12,
         y: box.height - box.margin.bottom - 12,
-        text: "QUIET & EVEN",
-        className: "cw-plot-quadrant-pill-label",
+        text: "Rare · even",
+        className: "cw-plot-quadrant-label",
         fontSize: 10,
         candidates: [
           { dx: 0, dy: 0, anchor: "start" },
@@ -2502,8 +2877,8 @@ function buildDispersionPlaneQuadrantPills(
       {
         x: box.width - box.margin.right - 12,
         y: box.height - box.margin.bottom - 30,
-        text: "CORE VOCABULARY",
-        className: "cw-plot-quadrant-pill-label",
+        text: "Frequent · even",
+        className: "cw-plot-quadrant-label",
         fontSize: 10,
         candidates: [
           { dx: 0, dy: 0, anchor: "end" },
@@ -2516,35 +2891,35 @@ function buildDispersionPlaneQuadrantPills(
     obstacles,
     bounds,
   );
-  return pillLabels.map((label) => {
-    const labelBox = estimateLabelBox(label);
-    const box = {
-      x: labelBox.x - QUADRANT_PILL_PADDING_X,
-      y: label.y - (QUADRANT_PILL_HEIGHT / 2) - 3,
-      width: labelBox.width + (QUADRANT_PILL_PADDING_X * 2),
-      height: QUADRANT_PILL_HEIGHT,
-    };
-    return { label, box };
-  });
+  return labels.map((label) => ({ ...label, leader: undefined }));
 }
 
-function dispersionPlaneDecadeTicks(freqLog10Max: number, scale: PlotScale): PlotTick[] {
+function dispersionPlaneDecadeTicks(
+  freqLog10Max: number,
+  scale: PlotScale,
+  frequencyOffset = 0,
+): PlotTick[] {
   const ticks: PlotTick[] = [];
   const maxPower = Math.floor(Math.max(0, freqLog10Max));
   for (let power = 0; power <= maxPower; power += 1) {
     const decade = 10 ** power;
-    const majorValue = Math.log10(decade);
-    if (majorValue <= freqLog10Max + 1e-9) {
+    const rawMajorValue = Math.log10(decade);
+    const majorValue = rawMajorValue + frequencyOffset;
+    if (rawMajorValue <= freqLog10Max + 1e-9) {
       ticks.push({
         value: majorValue,
         position: scaleValue(scale, majorValue),
-        label: formatTickNumber(decade),
+        label: formatTickNumber(10 ** majorValue),
+        accessibleLabel: frequencyOffset === 0
+          ? `${formatInteger(decade)} raw occurrences`
+          : `${formatFixed(10 ** majorValue, 2)} per million`,
         major: true,
       });
     }
     for (let multiplier = 2; multiplier <= 9; multiplier += 1) {
-      const minorValue = Math.log10(multiplier * decade);
-      if (minorValue > freqLog10Max + 1e-9) continue;
+      const rawMinorValue = Math.log10(multiplier * decade);
+      if (rawMinorValue > freqLog10Max + 1e-9) continue;
+      const minorValue = rawMinorValue + frequencyOffset;
       ticks.push({
         value: minorValue,
         position: scaleValue(scale, minorValue),
@@ -2558,30 +2933,20 @@ function dispersionPlaneDecadeTicks(freqLog10Max: number, scale: PlotScale): Plo
 
 function densityRampFill(t: number): string {
   const clamped = clamp(t, 0, 1);
-  if (clamped <= 0) return "var(--cw-plot-ramp-1)";
-  if (clamped >= 1) return "var(--cw-plot-ramp-5)";
-  const scaled = clamped * 4;
-  const lower = Math.floor(scaled) + 1;
+  if (clamped <= 0) return "var(--cw-plot-density-0, var(--cw-plot-ramp-0))";
+  if (clamped >= 1) return "var(--cw-plot-density-5, var(--cw-plot-ramp-5))";
+  const scaled = clamped * 5;
+  const lower = Math.floor(scaled);
   const upper = Math.min(5, lower + 1);
   const upperWeight = (scaled - Math.floor(scaled)) * 100;
   const lowerWeight = 100 - upperWeight;
-  return `color-mix(in srgb, var(--cw-plot-ramp-${lower}) ${formatFixed(lowerWeight, 2)}%, var(--cw-plot-ramp-${upper}) ${formatFixed(upperWeight, 2)}%)`;
+  return `color-mix(in srgb, var(--cw-plot-density-${lower}, var(--cw-plot-ramp-${lower})) ${formatFixed(lowerWeight, 2)}%, var(--cw-plot-density-${upper}, var(--cw-plot-ramp-${upper})) ${formatFixed(upperWeight, 2)}%)`;
 }
 
 function formatCompactFrequency(value: number): string {
   if (value >= 1_000_000 && value % 1_000_000 === 0) return `${formatInteger(value / 1_000_000)}M`;
   if (value >= 1_000 && value % 1_000 === 0) return `${formatInteger(value / 1_000)}k`;
   return formatInteger(value);
-}
-
-function formatDpThreshold(value: number): string {
-  return formatFixed(value, value === 0 || value === 1 ? 0 : 1);
-}
-
-function formatDpTick(value: number): string {
-  if (value === 0 || value === 1) return formatFixed(value, 0);
-  if (value === 0.5) return formatFixed(value, 1);
-  return formatFixed(value, 2);
 }
 
 function formatFrequencyRangeBoundary(value: number): string {
@@ -2686,25 +3051,8 @@ function mattrTicks(domain: [number, number], scale: PlotScale): PlotTick[] {
   return ticks;
 }
 
-function middleEllipsis(value: string, maxLength: number): string {
-  if (value.length <= maxLength) return value;
-  const keep = Math.max(1, maxLength - 1);
-  const head = Math.ceil(keep / 2);
-  const tail = Math.floor(keep / 2);
-  return `${value.slice(0, head)}…${value.slice(value.length - tail)}`;
-}
-
 function roundSvg(value: number): string {
   return Number(value.toFixed(2)).toString();
-}
-
-function rampIndex(value: number, domain: [number, number], log: boolean): number {
-  const [min, max] = domain;
-  const start = log ? Math.log10(Math.max(min, LOG_MINIMUM)) : min;
-  const end = log ? Math.log10(Math.max(max, LOG_MINIMUM)) : max;
-  const current = log ? Math.log10(Math.max(value, LOG_MINIMUM)) : value;
-  if (start === end) return 2;
-  return Math.max(0, Math.min(4, Math.floor(((current - start) / (end - start)) * 5)));
 }
 
 function lexicalSpectrumRampIndex(frequency: number): number {
@@ -2712,6 +3060,14 @@ function lexicalSpectrumRampIndex(frequency: number): number {
   if (frequency === 2) return 1;
   if (frequency <= 9) return 2;
   return 4;
+}
+
+function coverageBandForRank(rank: number): Pick<CoverageBandShare, "rampIndex" | "className"> {
+  if (rank <= 10) return { rampIndex: 5, className: "cw-plot-coverage-band-top10" };
+  if (rank <= 100) return { rampIndex: 4, className: "cw-plot-coverage-band-11-100" };
+  if (rank <= 1_000) return { rampIndex: 3, className: "cw-plot-coverage-band-101-1000" };
+  if (rank <= 10_000) return { rampIndex: 2, className: "cw-plot-coverage-band-1001-10000" };
+  return { rampIndex: 0, className: "cw-plot-coverage-band-tail" };
 }
 
 function vocabularyGrowthFitValues(
@@ -2766,6 +3122,8 @@ function fitPointsForRank(
     zipfCoefficient: number | null;
     fittedRankStart: number | null;
     fittedRankEnd: number | null;
+    yMode: "rate" | "raw";
+    totalTokens: number;
   },
   xScale: PlotScale,
   yScale: PlotScale,
@@ -2786,25 +3144,23 @@ function fitPointsForRank(
     const raw = options.zipfCoefficient === null || options.zipfExponent === null
       ? 0
       : options.zipfCoefficient * (rank ** -options.zipfExponent);
+    const value = options.yMode === "rate" && options.totalTokens > 0
+      ? raw / options.totalTokens * 1_000_000
+      : raw;
     return {
       x: scaleValue(xScale, rank),
-      y: scaleValue(yScale, raw),
+      y: scaleValue(yScale, value),
     };
   });
 }
 
-function rankFrequencyTicks(scale: PlotScale, mode: "rate" | "raw", totalTokens: number): PlotTick[] {
-  return logTicks(scale).map((tick) => ({
-    ...tick,
-    label: !tick.major || mode === "raw"
-      ? tick.label
-      : formatRatePerMillion(tick.value, totalTokens),
-  }));
+function rankCurveValue(point: RankFrequencyDatum, mode: "rate" | "raw"): number {
+  return mode === "rate" ? point.ratePerMillion : point.frequency;
 }
 
-function formatRatePerMillion(frequency: number, totalTokens: number): string {
-  if (totalTokens <= 0) return "0";
-  return formatTickNumber(frequency / totalTokens * 1_000_000);
+function formatResidualTick(value: number): string {
+  if (Math.abs(value) < 1e-12) return "0";
+  return value.toLocaleString("en-US", { maximumFractionDigits: 6, minimumFractionDigits: 4 });
 }
 
 function labelRequestForExactFrequency(
@@ -2818,7 +3174,7 @@ function labelRequestForExactFrequency(
     x: point.x,
     y: point.y,
     text,
-    className: "cw-plot-label-mono cw-plot-label-muted",
+    className: "cw-plot-label-mono cw-plot-label-muted cw-plot-spectrum-annotation",
     candidates: [
       { dx: 10, dy: 4, anchor: "start" },
       { dx: 10, dy: -10, anchor: "start" },
