@@ -1,0 +1,104 @@
+/* Live Overview figures own a stable scientific colour language. The complete
+   theme contract supplies light/dark-safe pigments; these semantic assignments
+  remain stable across appearance themes and export palette modes. */
+.cw-overview-figure,
+[data-figure-palette="theme"] {
+  --cw-plot-observed: var(--cw-plot-point);
+  --cw-plot-model-fit: var(--cw-theme-plot-model-fit);
+  --cw-plot-statistical-reference: var(--cw-theme-plot-statistical-reference);
+  --cw-plot-target: var(--cw-theme-plot-target);
+  --cw-plot-coverage-trajectory: var(--cw-theme-plot-coverage-trajectory);
+  --cw-plot-selected: var(--cw-category-mixed-text);
+  --cw-plot-attention: var(--cw-danger-text);
+  --cw-plot-density-0: var(--cw-plot-ramp-0);
+  --cw-plot-density-1: var(--cw-plot-ramp-1);
+  --cw-plot-density-2: var(--cw-plot-ramp-2);
+  --cw-plot-density-3: var(--cw-plot-ramp-3);
+  --cw-plot-density-4: var(--cw-plot-ramp-4);
+  --cw-plot-density-5: var(--cw-plot-ramp-5);
+  --cw-plot-composition-0: var(--cw-plot-ramp-0);
+  --cw-plot-composition-1: var(--cw-plot-ramp-1);
+  --cw-plot-composition-2: var(--cw-plot-ramp-2);
+  --cw-plot-composition-3: var(--cw-plot-ramp-3);
+  --cw-plot-composition-4: var(--cw-plot-ramp-4);
+  --cw-plot-composition-5: var(--cw-plot-ramp-5);
+  --cw-plot-rank-band-top10: var(--cw-plot-composition-5);
+  --cw-plot-rank-band-11-100: var(--cw-plot-composition-4);
+  --cw-plot-rank-band-101-1000: var(--cw-plot-composition-3);
+  --cw-plot-rank-band-1001-10000: var(--cw-plot-composition-2);
+  --cw-plot-rank-band-tail: var(--cw-plot-composition-0);
+  --cw-plot-composition-foreground-low: var(--panel-bg);
+  --cw-plot-profile-0: var(--cw-plot-ramp-0);
+  --cw-plot-profile-1: color-mix(in srgb, var(--cw-plot-ramp-0) 45%, var(--cw-plot-ramp-1) 55%);
+  --cw-plot-profile-2: var(--cw-plot-ramp-1);
+  --cw-plot-profile-3: color-mix(in srgb, var(--cw-plot-ramp-1) 45%, var(--cw-plot-ramp-2) 55%);
+  --cw-plot-profile-4: var(--cw-plot-ramp-2);
+  --cw-plot-profile-5: color-mix(in srgb, var(--cw-plot-ramp-2) 45%, var(--cw-plot-ramp-3) 55%);
+  --cw-plot-profile-6: var(--cw-plot-ramp-3);
+  --cw-plot-profile-7: var(--cw-plot-ramp-4);
+  --cw-plot-profile-8: color-mix(in srgb, var(--cw-plot-ramp-4) 45%, var(--cw-plot-ramp-5) 55%);
+  --cw-plot-profile-9: var(--cw-plot-ramp-5);
+  --cw-plot-profile-label: var(--panel-bg);
+  --cw-plot-callout-surface: color-mix(in srgb, var(--cw-plot-observed) 12%, var(--panel-bg));
+  --cw-plot-callout-border: color-mix(in srgb, var(--cw-plot-observed) 42%, var(--panel-bg));
+  --cw-plot-witness: var(--cw-plot-observed);
+}
+
+/* Lexical spectrum aligns marks and strips using frequency semantics */
+.cw-plot-svg[data-plot-id="overview-lexical-spectrum"] {
+  --cw-plot-ramp-0: var(--cw-viz-frequency-hapax);
+  --cw-plot-ramp-1: var(--cw-viz-frequency-dis);
+  --cw-plot-ramp-2: var(--cw-viz-frequency-mid);
+  --cw-plot-ramp-3: var(--cw-viz-frequency-repeated);
+  --cw-plot-ramp-4: var(--cw-viz-frequency-frequent);
+  --cw-plot-ramp-5: var(--cw-viz-frequency-frequent);
+}
+
+[data-figure-palette="colorBlind"] {
+  --cw-plot-observed: var(--accent-color);
+  --cw-plot-model-fit: var(--cw-theme-plot-model-fit);
+  --cw-plot-statistical-reference: var(--cw-theme-plot-statistical-reference);
+  --cw-plot-target: var(--cw-theme-plot-target);
+  --cw-plot-coverage-trajectory: var(--cw-theme-plot-coverage-trajectory);
+  --cw-plot-selected: var(--cw-category-mixed-text);
+  --cw-plot-attention: var(--cw-danger-text);
+  --cw-plot-witness: var(--accent-color);
+}
+
+[data-figure-palette="monochrome"] {
+  --cw-plot-observed: var(--text-color);
+  --cw-plot-model-fit: var(--text-color);
+  --cw-plot-statistical-reference: var(--text-muted);
+  --cw-plot-target: var(--text-color);
+  --cw-plot-coverage-trajectory: var(--text-color);
+  --cw-plot-selected: var(--text-color);
+  --cw-plot-attention: var(--text-color);
+  --cw-plot-density-0: var(--text-muted);
+  --cw-plot-density-1: var(--text-muted);
+  --cw-plot-density-2: var(--text-color);
+  --cw-plot-density-3: var(--text-color);
+  --cw-plot-density-4: var(--text-color);
+  --cw-plot-density-5: var(--text-color);
+  --cw-plot-composition-0: var(--text-muted);
+  --cw-plot-composition-1: var(--text-muted);
+  --cw-plot-composition-2: var(--text-color);
+  --cw-plot-composition-3: var(--text-color);
+  --cw-plot-composition-4: var(--text-color);
+  --cw-plot-composition-5: var(--text-color);
+  --cw-plot-rank-band-top10: var(--text-color);
+  --cw-plot-rank-band-11-100: color-mix(in srgb, var(--text-color) 82%, var(--panel-bg));
+  --cw-plot-rank-band-101-1000: color-mix(in srgb, var(--text-color) 66%, var(--panel-bg));
+  --cw-plot-rank-band-1001-10000: color-mix(in srgb, var(--text-color) 50%, var(--panel-bg));
+  --cw-plot-rank-band-tail: color-mix(in srgb, var(--text-muted) 72%, var(--panel-bg));
+  --cw-plot-profile-0: color-mix(in srgb, var(--text-muted) 88%, var(--panel-bg));
+  --cw-plot-profile-1: color-mix(in srgb, var(--text-muted) 76%, var(--panel-bg));
+  --cw-plot-profile-2: color-mix(in srgb, var(--text-muted) 64%, var(--panel-bg));
+  --cw-plot-profile-3: color-mix(in srgb, var(--text-muted) 52%, var(--panel-bg));
+  --cw-plot-profile-4: color-mix(in srgb, var(--text-color) 48%, var(--panel-bg));
+  --cw-plot-profile-5: color-mix(in srgb, var(--text-color) 58%, var(--panel-bg));
+  --cw-plot-profile-6: color-mix(in srgb, var(--text-color) 68%, var(--panel-bg));
+  --cw-plot-profile-7: color-mix(in srgb, var(--text-color) 78%, var(--panel-bg));
+  --cw-plot-profile-8: color-mix(in srgb, var(--text-color) 88%, var(--panel-bg));
+  --cw-plot-profile-9: var(--text-color);
+  --cw-plot-witness: var(--text-color);
+}
