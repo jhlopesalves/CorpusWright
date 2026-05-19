@@ -14,6 +14,28 @@ export interface SvgBounds {
   height: number;
 }
 
+export const PLOT_TOOLTIP_MAX_WIDTH = 300;
+
+export interface PlotTooltipVisualLine {
+  text: string;
+  title: boolean;
+  sourceRow: number;
+}
+
+export function wrapPlotTooltipRows(
+  rows: string[],
+  maximumContentWidth: number,
+  measure: TextWidthMeasure,
+): PlotTooltipVisualLine[] {
+  return rows.flatMap((row, sourceRow) =>
+    wrapSvgText(row, maximumContentWidth, measure).map((text) => ({
+      text,
+      title: sourceRow === 0,
+      sourceRow,
+    }))
+  );
+}
+
 export function wrapSvgText(
   value: string,
   maxWidth: number,
