@@ -1775,61 +1775,8 @@ function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null
       plane.loudButLocalMinFrequency,
       plane.highDispersionThreshold,
     ),
-    captionReading: plane.reading,
-    renderSvg,
-  });
-  return figure;
-}
-
-function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | null {
-  const entries = corpus.dispersion.roster;
-  if (entries.length === 0) return null;
-  const highDispersionThreshold = corpus.dispersion.plane?.highDispersionThreshold ?? HIGH_DISPERSION_THRESHOLD;
-  let stopwordsHidden = false;
-  let figure: HTMLElement | null = null;
-  const shownEntries = () => stopwordsHidden
-    ? entries.filter((entry) => !isOverviewStopword(entry.token, activeProjectLanguageCode()))
-    : entries;
-  const subtitle = () => stopwordsHidden
-    ? "Top-frequency types ranked against DP; stopwords are hidden."
-    : "Top-frequency types ranked against DP.";
-  const captionStats = () => {
-    const shown = shownEntries();
-    const aboveThresholdCount = shown.filter((entry) => entry.dp >= highDispersionThreshold).length;
-    return formatDispersionRosterStats(shown.length, entries.length, aboveThresholdCount, highDispersionThreshold);
-  };
-  const renderSvg = () => renderDispersionRosterSvg(
-    "overview-dispersion-roster",
-    buildDispersionRosterGeometry({
-      entries: shownEntries(),
-      highDispersionThreshold,
-    }),
-  );
-  const refresh = () => {
-    if (figure) replaceFigureSvg(figure, renderSvg(), {
-      subtitle: subtitle(),
-      captionStats: captionStats(),
-    });
-  };
-  const controls = createOverviewSegmentedControl(
-    "Stopword mode",
-    [
-      { value: "all", label: "All frequent types" },
-      { value: "hidden", label: "Hide stopwords" },
-    ],
-    "all",
-    (value) => {
-      stopwordsHidden = value === "hidden";
-      refresh();
-    },
-  );
-  figure = createOverviewFigure({
-    id: "overview-dispersion-roster",
-    title: "Dispersion roster",
-    subtitle: subtitle(),
-    controls,
-    captionStats: captionStats(),
-    captionReading: "Frequent is not the same as general: rows to the right of the line are loud in few places.",
+    captionReading: "Density colour represents the number of types in each frequency–DP region. Witnesses are deliberately selected examples, not a random sample. Lower DP indicates more even distribution; higher DP indicates concentration. Log density changes visual contrast, not counts; thresholds are descriptive orientation conventions and no significance test is performed.",
+    explanation: createFigureExplanation("dispersionPlaneDensity", "griesDp"),
     renderSvg,
   });
   return figure;
@@ -1838,29 +1785,6 @@ function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | nul
 function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Lexical spectrum");
   const spectrum = corpus.lexicalSpectrum;
-  panel.appendChild(createMetricTable([
-    { label: "Types", value: formatNumber(spectrum.types), glossaryId: "type" },
-  ]));
-  panel.appendChild(createCompositionBar("Frequency-class spectrum", spectrum.types, [
-    {
-      label: "Hapax",
-      labelSuffix: "(1)",
-      count: spectrum.hapaxCount,
-      share: spectrum.hapaxShare,
-      className: "is-hapax",
-      glossaryId: "hapax",
-    },
-    {
-      label: "Dis legomena",
-      labelSuffix: "(2)",
-      count: spectrum.disLegomenaCount,
-      share: spectrum.disLegomenaShare,
-      className: "is-dis",
-      glossaryId: "disLegomena",
-    },
-    { label: "3–9 occurrences", count: spectrum.band3To9Count, share: spectrum.band3To9Share, className: "is-mid-frequency" },
-    { label: "10+ occurrences", count: spectrum.band10plusCount, share: spectrum.band10plusShare, className: "is-frequent" },
-  ]));
   const band3To9Note = document.createElement("p");
   band3To9Note.className = "analysis-panel-note";
   band3To9Note.textContent = "3-9: recurring but still rare types.";
@@ -1916,7 +1840,6 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
       label: "MATTR",
       labelSuffix: `(window ${formatNumber(spectrum.mattrWindow)})`,
       value: mattrValue,
-      glossaryId: "mattr",
       description: "median across eligible documents",
     },
     {
@@ -1929,7 +1852,7 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
   lexicalDiversity.append(lexicalDiversityTitle, createMetricTable(diversityRows));
   panel.appendChild(lexicalDiversity);
   const mattrDistributionFigure = renderMattrDistributionFigure(corpus);
-  if (mattrDistributionFigure) panel.appendChild(mattrDistributionFigure);
+  panel.appendChild(mattrDistributionFigure);
   appendPanelReading(panel, spectrum.reading);
   return panel;
 }
@@ -1938,32 +1861,10 @@ function renderFrequencyConcentration(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Frequency concentration");
   const concentration = corpus.frequencyConcentration;
   const rows: OverviewMetricRow[] = [];
-  if (concentration.top100Coverage !== null) {
-    rows.push({
-      label: "Top 100 types cover",
-      value: formatPercent(concentration.top100Coverage),
-      glossaryId: "topNCoverage",
-    });
-  }
-  if (concentration.top1000Coverage !== null) {
-    rows.push({
-      label: "Top 1,000 types cover",
-      value: formatPercent(concentration.top1000Coverage),
-      glossaryId: "topNCoverage",
-    });
-  }
-  if (concentration.top10000Coverage !== null) {
-    rows.push({
-      label: "Top 10,000 types cover",
-      value: formatPercent(concentration.top10000Coverage),
-      glossaryId: "topNCoverage",
-    });
-  }
   if (concentration.evennessJ !== null) {
     rows.push({
       label: "Normalised entropy / evenness",
       value: formatFixedNumber(concentration.evennessJ, 3),
-      glossaryId: "normalisedEntropy",
     });
   }
   if (concentration.shannonEntropyBits !== null) {
@@ -1971,18 +1872,21 @@ function renderFrequencyConcentration(corpus: AnalysisCorpus): HTMLElement {
       label: "Shannon entropy",
       labelSuffix: "(bits)",
       value: formatFixedNumber(concentration.shannonEntropyBits, 3),
-      glossaryId: "shannonEntropy",
     });
   }
   if (concentration.effectiveVocabularyEntropy !== null) {
     rows.push({
       label: "Effective vocabulary (perplexity)",
       value: `≈ ${formatNumber(concentration.effectiveVocabularyEntropy)} types`,
-      glossaryId: "effectiveVocabulary",
     });
   }
   if (rows.length > 0) {
     panel.appendChild(createMetricTable(rows));
+    panel.appendChild(createGroupedMethodDisclosure("Frequency concentration", [
+      "shannonEntropy",
+      "normalisedEntropy",
+      "effectiveVocabulary",
+    ]));
   }
   panel.appendChild(renderCoverageFigure(corpus));
   appendPanelReading(panel, concentration.reading);
@@ -1993,30 +1897,27 @@ function renderRankFrequency(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Rank–frequency fit");
   const rank = corpus.rankFrequency;
   const rows: OverviewMetricRow[] = [
-    { label: "Sampled rank points", value: formatNumber(rank.points.length), glossaryId: "zipfFit" },
+    { label: "Sampled rank points", value: formatNumber(rank.points.length) },
   ];
   if (rank.zipfExponent !== null) {
     rows.push({
       label: "Zipf exponent",
       value: formatFixedNumber(rank.zipfExponent, 3),
-      glossaryId: "zipfFit",
     });
   }
   if (rank.zipfCoefficient !== null) {
     rows.push({
       label: "Zipf coefficient (raw-frequency scale)",
       value: formatFixedNumber(rank.zipfCoefficient, 2),
-      glossaryId: "zipfFit",
     });
   }
   if (rank.rSquared !== null) {
-    rows.push({ label: "Fit R²", value: formatFixedNumber(rank.rSquared, 3), glossaryId: "zipfFit" });
+    rows.push({ label: "Fit R²", value: formatFixedNumber(rank.rSquared, 3) });
   }
   if (rank.fittedRankStart !== null && rank.fittedRankEnd !== null) {
     rows.push({
       label: "Fitted ranks",
       value: `${formatNumber(rank.fittedRankStart)}–${formatNumber(rank.fittedRankEnd)}`,
-      glossaryId: "zipfFit",
     });
   }
   panel.appendChild(createMetricTable(rows));
@@ -2030,23 +1931,22 @@ function renderVocabularyGrowth(corpus: AnalysisCorpus): HTMLElement {
   const growth = corpus.vocabularyGrowth;
   const finalPoint = growth.points[growth.points.length - 1];
   const rows: OverviewMetricRow[] = [
-    { label: "Vocabulary-growth checkpoints", value: formatNumber(growth.points.length), glossaryId: "heapsFit" },
+    { label: "Vocabulary-growth checkpoints", value: formatNumber(growth.points.length) },
   ];
   if (finalPoint) {
     rows.push({
       label: "Final observed point",
       value: `${formatNumber(finalPoint.types)} types / ${formatNumber(finalPoint.tokens)} tokens`,
-      glossaryId: "heapsFit",
     });
   }
   if (growth.heapsK !== null) {
-    rows.push({ label: "Heaps K", value: formatFixedNumber(growth.heapsK, 3), glossaryId: "heapsFit" });
+    rows.push({ label: "Heaps K", value: formatFixedNumber(growth.heapsK, 3) });
   }
   if (growth.heapsBeta !== null) {
-    rows.push({ label: "Heaps β", value: formatFixedNumber(growth.heapsBeta, 3), glossaryId: "heapsFit" });
+    rows.push({ label: "Heaps β", value: formatFixedNumber(growth.heapsBeta, 3) });
   }
   if (growth.rSquared !== null) {
-    rows.push({ label: "Fit R²", value: formatFixedNumber(growth.rSquared, 3), glossaryId: "heapsFit" });
+    rows.push({ label: "Fit R²", value: formatFixedNumber(growth.rSquared, 3) });
   }
   panel.appendChild(createMetricTable(rows));
   panel.appendChild(renderVocabularyGrowthFigure(corpus));
@@ -2065,7 +1965,6 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
       label: "Gries DP",
       labelSuffix: "(at least 0.5, frequent types)",
       value: `${formatNumber(dispersion.highDpFrequentTypes)} of ${formatNumber(dispersion.frequentTypes)}`,
-      glossaryId: "griesDp",
       description: "How many frequent types are noticeably clumped - their DP is 0.5 or higher.",
     });
     if (dispersion.medianDp !== null) {
@@ -2078,94 +1977,6 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
     }
   }
   panel.appendChild(createMetricTable(rows));
-
-  if (corpus.totals.types > 0) {
-    const documentUnit = corpus.totals.documents === 1 ? "document" : "documents";
-    const frequencyRows: OverviewMetricRow[] = [
-      {
-        ...countWithInlineShareRow("Types in 1 document only", dispersion.dfIn1Count, dispersion.dfIn1Share),
-        glossaryId: "documentFrequencySpectrum",
-        sampleTypes: dispersion.dfIn1SampleTypes,
-        sampleTypeCount: dispersion.dfIn1Count,
-      },
-      {
-        ...countWithInlineShareRow("Types in 2–9 documents", dispersion.dfIn2To9Count, dispersion.dfIn2To9Share),
-        glossaryId: "documentFrequencySpectrum",
-        sampleTypes: dispersion.dfIn2To9SampleTypes,
-        sampleTypeCount: dispersion.dfIn2To9Count,
-      },
-      {
-        ...countWithInlineShareRow("Types in 10–99 documents", dispersion.dfIn10To99Count, dispersion.dfIn10To99Share),
-        glossaryId: "documentFrequencySpectrum",
-        sampleTypes: dispersion.dfIn10To99SampleTypes,
-        sampleTypeCount: dispersion.dfIn10To99Count,
-      },
-      {
-        ...countWithInlineShareRow("Types in 100+ documents", dispersion.dfIn100PlusCount, dispersion.dfIn100PlusShare),
-        glossaryId: "documentFrequencySpectrum",
-        sampleTypes: dispersion.dfIn100PlusSampleTypes,
-        sampleTypeCount: dispersion.dfIn100PlusCount,
-      },
-      {
-        ...countWithInlineShareRow(
-          "Types in at least 1% of documents",
-          dispersion.dfAtLeast1pctCount,
-          dispersion.dfAtLeast1pctShare,
-        ),
-        glossaryId: "documentFrequencySpectrum",
-        sampleTypes: dispersion.dfAtLeast1pctSampleTypes,
-        sampleTypeCount: dispersion.dfAtLeast1pctCount,
-      },
-      {
-        ...countWithInlineShareRow(
-          "Types in at least 10% of documents",
-          dispersion.dfAtLeast10pctCount,
-          dispersion.dfAtLeast10pctShare,
-        ),
-        glossaryId: "documentFrequencySpectrum",
-        sampleTypes: dispersion.dfAtLeast10pctSampleTypes,
-        sampleTypeCount: dispersion.dfAtLeast10pctCount,
-      },
-      {
-        ...countWithInlineShareRow(
-          "Types in at least 50% of documents",
-          dispersion.dfAtLeast50pctCount,
-          dispersion.dfAtLeast50pctShare,
-        ),
-        glossaryId: "documentFrequencySpectrum",
-        sampleTypes: dispersion.dfAtLeast50pctSampleTypes,
-        sampleTypeCount: dispersion.dfAtLeast50pctCount,
-      },
-      {
-        ...countWithInlineShareRow(
-          "Types in at least 90% of documents",
-          dispersion.dfAtLeast90pctCount,
-          dispersion.dfAtLeast90pctShare,
-        ),
-        glossaryId: "documentFrequencySpectrum",
-        sampleTypes: dispersion.dfAtLeast90pctSampleTypes,
-        sampleTypeCount: dispersion.dfAtLeast90pctCount,
-      },
-      {
-        ...countWithInlineShareRow(
-          `Types in all ${formatNumber(corpus.totals.documents)} ${documentUnit}`,
-          dispersion.dfInAllCount,
-          dispersion.dfInAllShare,
-        ),
-        glossaryId: "documentFrequencySpectrum",
-        sampleTypes: dispersion.dfInAllSampleTypes,
-        sampleTypeCount: dispersion.dfInAllCount,
-      },
-    ];
-    if (dispersion.medianDocumentsPerType !== null) {
-      frequencyRows.push({
-        label: "Median documents per type",
-        value: formatNumber(dispersion.medianDocumentsPerType, 1),
-        glossaryId: "documentFrequencySpectrum",
-      });
-    }
-    panel.appendChild(createMetricTable(frequencyRows));
-  }
 
   if (corpus.balance.largestShare !== null && corpus.balance.largestShare >= BALANCE_ATTENTION_SHARE) {
     const imbalanceWarning = document.createElement("p");
@@ -2181,8 +1992,6 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
   panel.appendChild(renderDispersionFigure(corpus));
   const planeFigure = renderDispersionPlaneFigure(corpus);
   if (planeFigure) panel.appendChild(planeFigure);
-  const rosterFigure = renderDispersionRosterFigure(corpus);
-  if (rosterFigure) panel.appendChild(rosterFigure);
 
   appendPanelReading(panel, dispersion.reading);
   return panel;
