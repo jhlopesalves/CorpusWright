@@ -2,7 +2,6 @@ import {
   buildCoverageGeometry,
   buildDispersionGeometry,
   buildDispersionPlaneGeometry,
-  buildDispersionRosterGeometry,
   buildLengthHistogramGeometry,
   buildLexicalSpectrumGeometry,
   buildMattrDistributionGeometry,
@@ -15,12 +14,12 @@ import {
   findMilestoneShare,
   formatDispersionPlaneStats,
   formatDispersionProfileStats,
-  formatDispersionRosterStats,
   formatLengthHistogramStats,
   formatMattrDistributionStats,
   formatUniversalTypeCaption,
   linearTicks,
   logTicks,
+  padPositiveLogDomain,
   placeLabels,
   scaleValue,
 } from "../src/plots/model.ts";
@@ -84,8 +83,8 @@ assert(
   "Lexical spectrum points should take their colour from the frequency class",
 );
 assert(
-  lexicalSpectrum.points.at(-1)?.fillOpacity === 0.42
-    && lexicalSpectrum.points[0]?.fillOpacity === 0.6,
+  lexicalSpectrum.points.at(-1)?.fillOpacity === 0.78
+    && lexicalSpectrum.points[0]?.fillOpacity === 0.9,
   "Frequency-singleton tail points should have lower opacity than the main sequence",
 );
 assert(
@@ -129,11 +128,22 @@ assert(
   "Rank-frequency hover should always expose both raw frequency and rate per million",
 );
 assert(
-  rankFrequencyRaw.points.filter((point) => point.excluded).length === 4
-    && rankFrequencyRaw.legend[0]?.label === "fit: ranks 4–4"
-    && rankFrequencyRaw.legend[1]?.label === "excluded: top 3 and f=1 tail",
+  rankFrequencyRaw.points.filter((point) => point.fitMembership.kind === "shown-not-fitted").length === 4
+    && rankFrequencyRaw.legend.map((item) => item.label).join(",") === "Included in fit,Zipf fit,Shown, not fitted"
+    && rankFrequencyRaw.fittedRange?.label === "Model fitted over ranks 4–4"
+    && rankFrequencyRaw.fittedRange.y >= rankFrequencyRaw.box.margin.top
+    && rankFrequencyRaw.fittedRange.y + rankFrequencyRaw.fittedRange.height <= rankFrequencyRaw.box.height - rankFrequencyRaw.box.margin.bottom,
   "Rank-frequency should explicitly disclose the fitted range and hollow exclusions",
 );
+
+for (const domain of [[1, 1], [12, 12], [1, 1_000_000], [1_000, 1_000]] as Array<[number, number]>) {
+  const padded = padPositiveLogDomain(domain);
+  const scale = createScale("log", padded, [0, 100]);
+  assert(padded[0] > 0 && padded[1] > padded[0], `Padded log domain must remain positive: ${domain}`);
+  assert(logTicks(scale).every((tick) => Number.isFinite(tick.value) && Number.isFinite(tick.position)), `Padded log ticks must remain finite: ${domain}`);
+}
+const unitCountTicks = logTicks(createScale("log", padPositiveLogDomain([1, 1]), [0, 100]));
+assert(!unitCountTicks.some((tick) => tick.major && tick.value < 1 && tick.label), "Count log padding must not label a sub-unit decade");
 assertClose(findMilestoneShare(coverage, 5) ?? 0, 0.38, "Milestone lookup should return exact shares");
 assert(findMilestoneShare(coverage, 1000) === null, "Missing milestones should stay null");
 assert(findFirstCoverageCrossing(coverage, 0.5)?.k === 10, "50% crossing should use first real checkpoint");
@@ -208,8 +218,8 @@ assert(
   "Coverage milestone labels should try the below-right empty region first",
 );
 assert(
-  geometry.labels.some((label) => label.text.startsWith("half the corpus") && label.y < geometry.halfCrossing!.y),
-  "Half-corpus label should sit above the 50% reference",
+  geometry.labels.some((label) => label.text.startsWith("50% target") && label.y < geometry.halfCrossing!.targetY),
+  "Target label should sit above the exact 50% reference",
 );
 
 const dispersionProfile = buildDispersionGeometry({
@@ -217,22 +227,17 @@ const dispersionProfile = buildDispersionGeometry({
     { key: "df-1", label: "1", count: 50, share: 0.5 },
     { key: "df-2", label: "2", count: 0, share: 0 },
     { key: "df-3-4", label: "3–4", count: 10, share: 0.1 },
-    {
-      key: "df-90pct",
-      label: "≥90% of documents",
-      count: 3,
-      share: 0.03,
-      highlighted: true,
-      detail: "3",
-    },
   ],
+  totalTypes: 60,
+  totalDocuments: 100,
+  cumulativeCallout: { count: 3, examples: ["the", "of"] },
   box: createPlotBox(500, 280, { top: 30, right: 36, bottom: 48, left: 156 }),
 });
 assert(dispersionProfile.xScale.kind === "log", "Dispersion profile should use a log count axis");
 assert(dispersionProfile.xScale.domain[0] > 0, "Dispersion log domain should stay positive");
-assert(dispersionProfile.points.length === 4, "Dispersion profile should keep one point per emitted bucket plus the overlay row");
+assert(dispersionProfile.points.length === 3, "Dispersion profile should keep one point per exclusive reach bucket");
 assert(
-  dispersionProfile.points.filter((point) => !point.datum.highlighted).length === 3,
+  dispersionProfile.points.length === 3,
   "Dispersion profile should keep all emitted reach bands without coarsening",
 );
 assert(
@@ -240,24 +245,20 @@ assert(
   "Zero-count reach bands should remain truthful rows anchored at the log-axis floor",
 );
 assert(
-  dispersionProfile.points.at(-1)?.datum.highlighted === true && dispersionProfile.dividers.length === 1,
-  "The ≥90% overlay row should be distinct and divided from the ladder",
+  dispersionProfile.cumulativeCallout?.title.startsWith("3 types occur in at least 90%")
+    && dispersionProfile.dividers.length === 0,
+  "The ≥90% result should remain a separate cumulative callout",
 );
 assert(
-  dispersionProfile.compositionSegments.length === 3
-    && dispersionProfile.compositionSegments.reduce((total, segment) => total + segment.width, 0) > 0
-    && dispersionProfile.compositionSegments.some((segment) => segment.label !== null),
+  dispersionProfile.compositionStrip?.segments.length === 3
+    && dispersionProfile.compositionStrip.segments.reduce((total, segment) => total + segment.width, 0) > 0
+    && dispersionProfile.compositionStrip.segments.some((segment) => segment.label !== null),
   "Dispersion profile should add a labelled stacked composition strip for exclusive bands",
 );
 assert(
-  dispersionProfile.stems.at(-1) !== undefined
-    && dispersionProfile.points.at(-1)?.datum.highlighted === true,
-  "Dispersion profile should preserve the distinct cumulative annotation datum for square rendering",
-);
-assert(
-  dispersionProfile.labels.some((label) => label.text === "3")
-    && !dispersionProfile.labels.some((label) => label.text.includes("the · of")),
-  "Universal type tokens must not be emitted as axis-adjacent labels",
+  !dispersionProfile.points.some((point) => point.datum.key === "df-90pct")
+    && dispersionProfile.cumulativeCallout?.detail.includes("examples: the, of"),
+  "Universal examples should belong to the separate callout, never a lollipop row",
 );
 assert(
   formatDispersionProfileStats(587_151, 13, 101)
@@ -294,12 +295,17 @@ const dispersionPlane = buildDispersionPlaneGeometry({
   totalTypes: 100,
   box: createPlotBox(720, 420, { top: 34, right: 48, bottom: 62, left: 112 }),
 });
-assert(dispersionPlane.cells.length === 3, "Dispersion plane should draw exactly one rect for each nonzero cell");
+assert(
+  dispersionPlane.cells.length === 48 * 32
+    && dispersionPlane.cells.filter((cell) => cell.count > 0).length === 3
+    && dispersionPlane.cells.filter((cell) => cell.count === 0).every((cell) => cell.opacity === 0),
+  "Dispersion plane should retain the fixed grid while leaving zero cells transparent",
+);
 const densityCell = dispersionPlane.cells.find((cell) => cell.count === 4);
 assert(densityCell !== undefined, "Dispersion plane fixture should include the count-4 density cell");
 const expectedDensityT = Math.log1p(4) / Math.log1p(9);
 assertClose(densityCell.t, expectedDensityT, "Dispersion plane density t should use the log-scaled cell count");
-assertClose(densityCell.opacity, 0.12 + (0.80 * expectedDensityT), "Dispersion plane opacity should follow the specified formula");
+assertClose(densityCell.opacity, 1, "Dispersion plane should encode density through colour while keeping positive cells fully opaque");
 const decadeTickLabels = dispersionPlane.xTicks.filter((tick) => tick.major).map((tick) => tick.label);
 assert(
   ["1", "10", "100", "1k", "10k", "100k"].every((label) => decadeTickLabels.includes(label))
@@ -316,14 +322,14 @@ assert(
   "Dispersion plane witness placement should carry point and box obstacles",
 );
 assert(
-  dispersionPlane.labels.length <= 6
-    && !dispersionPlane.labels.some((label) => label.text === "folio"),
-  "Dispersion plane should permanently label only key non-rare witness examples",
+  dispersionPlane.labels.length <= 4
+    && dispersionPlane.labels.filter((label) => label.text === "folio").length <= 1,
+  "Dispersion plane should enforce the category-specific automatic label budget",
 );
 const dispersionPlaneWithoutLabels = buildDispersionPlaneGeometry({
   plane: dispersionPlanePayload,
   totalTypes: 100,
-  showWitnessLabels: false,
+  examplesMode: "points",
   box: createPlotBox(720, 420, { top: 34, right: 48, bottom: 62, left: 112 }),
 });
 assert(
@@ -334,42 +340,6 @@ assert(
   formatDispersionPlaneStats(100, 48, 32, 2, 1_000, 0.5)
     === "100 types · grid 48×32 · 2 loud-but-local (f ≥ 1k, DP ≥ 0.5)",
   "Dispersion plane stats caption should use the exact computed template",
-);
-
-const dispersionRoster = buildDispersionRosterGeometry({
-  entries: [
-    { token: "the", frequency: 1_000, documentFrequency: 10, dp: 0.12 },
-    { token: "chapter", frequency: 900, documentFrequency: 2, dp: 0.64 },
-    { token: "boilerplate", frequency: 800, documentFrequency: 1, dp: 0.5 },
-  ],
-  highDispersionThreshold: 0.5,
-  box: createPlotBox(520, 150, { top: 34, right: 48, bottom: 58, left: 156 }),
-});
-assert(
-  dispersionRoster.rows.map((row) => row.entry.token).join(",") === "the,chapter,boilerplate",
-  "Dispersion roster should preserve descending-frequency payload order",
-);
-assert(
-  dispersionRoster.rows[0]?.point.rampIndex === 2
-    && dispersionRoster.rows[1]?.point.rampIndex === 5
-    && dispersionRoster.rows[2]?.point.rampIndex === 5,
-  "Dispersion roster should use the hottest ramp stop only at or above the DP threshold",
-);
-assert(dispersionRoster.aboveThresholdCount === 2, "Dispersion roster should count rows at or above DP 0.5");
-assertClose(
-  dispersionRoster.rows[1]!.y - dispersionRoster.rows[0]!.y,
-  22,
-  "Dispersion roster should retain a readable row pitch at the shared label scale",
-);
-assert(
-  formatDispersionRosterStats(3, 3, dispersionRoster.aboveThresholdCount, 0.5)
-    === "top 3 types by frequency · 2 above DP 0.5",
-  "Dispersion roster stats caption should report the threshold count",
-);
-assert(
-  formatDispersionRosterStats(2, 3, 1, 0.5)
-    === "shown 2 of 3 frequent types · 1 above DP 0.5",
-  "Filtered dispersion roster stats should state the shown count against the shipped count",
 );
 
 const lengthHistogram = buildLengthHistogramGeometry({
@@ -430,9 +400,8 @@ assertClose(mattrDistribution.domain[0], 0.225, "MATTR occupied domain should pa
 assertClose(mattrDistribution.domain[1], 0.4, "MATTR occupied domain should pad one bin above the last nonzero bin");
 assert(mattrDistribution.bars.length === 7, "MATTR distribution should emit one bar per visible bin in the occupied window");
 assert(
-  mattrDistribution.labels.filter((label) => label.text.includes("document") || label.text.includes("compact")).length <= 2
-    && mattrDistribution.labels.some((label) => label.text.length === 24 && label.text.includes("…")),
-  "MATTR should label only the extreme witnesses, middle-ellipsized to 24 characters",
+  mattrDistribution.labels.every((label) => !label.text.includes("document") && !label.text.includes("compact")),
+  "MATTR should retain witness ticks without automatic filenames",
 );
 assert(
   mattrDistribution.witnessTicks.length === 2
@@ -458,6 +427,6 @@ const vocabulary = buildVocabularyGrowthGeometry({
 assert(vocabulary.labels[0]?.lines?.length === 2, "Vocabulary endpoint label should render as two measured lines");
 assert(vocabulary.labels[0]?.anchor === "end", "Vocabulary endpoint label should be end anchored near the endpoint");
 assert(
-  vocabulary.fitPath !== null && vocabulary.legend.map((item) => item.label).join(",") === "observed,Heaps fit",
+  vocabulary.fitPath !== null && vocabulary.legend.map((item) => item.label).join(",") === "Observed,Heaps fit",
   "Vocabulary growth should show a distinct Heaps fitted series and legend",
 );
