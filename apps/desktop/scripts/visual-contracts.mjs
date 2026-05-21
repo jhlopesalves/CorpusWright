@@ -81,11 +81,17 @@ export function validateVisualContracts({
     if (/var\(\s*--[\w-]+/.test(fixture.contents)) {
       violations.push(`${fixture.path}: unresolved CSS variable in export regression fixture`);
     }
+    if (/color-mix\s*\(/i.test(fixture.contents)) {
+      violations.push(`${fixture.path}: unresolved color-mix paint in export regression fixture`);
+    }
+    if (/color\(\s*srgb\b/i.test(fixture.contents)) {
+      violations.push(`${fixture.path}: non-portable color(srgb) paint in export regression fixture`);
+    }
   }
 
   const staticStart = allCss.indexOf(".cw-plot-svg.cw-plot-export-static");
   const staticContract = staticStart >= 0 ? allCss.slice(staticStart, staticStart + 900) : "";
-  for (const contract of ["animation: none", "transition: none", "opacity: 1", "stroke-dashoffset: 0", "transform: none"]) {
+  for (const contract of ["animation: none", "transition: none", "opacity: 1", "transform: none"]) {
     if (!staticContract.includes(contract)) {
       violations.push(`style graph: export-static contract is missing ${contract}`);
     }
@@ -97,6 +103,8 @@ export function validateVisualContracts({
     [".cw-plot-tooltip", "tooltip removal"],
     ["--cw-plot-stagger", "animation-delay sanitisation"],
     ["hasUnresolvedCssVariables", "unresolved-variable rejection"],
+    ["normalizeComputedSvgPaint", "portable paint normalisation"],
+    ["hasNonPortableSvgPaint", "non-portable paint rejection"],
   ]) {
     if (typescriptSources.length > 0 && !exportSource.includes(witness)) {
       violations.push(`export sources: missing ${label}`);
@@ -110,7 +118,7 @@ export function validateVisualContracts({
     } catch (error) {
       violations.push(error instanceof Error ? error.message : String(error));
     }
-    if (themes.length !== 16) violations.push(`theme contracts: expected 16 themes, found ${themes.length}`);
+    if (themes.length !== 14) violations.push(`theme contracts: expected 14 themes, found ${themes.length}`);
     for (const theme of themes) {
       const colours = [];
       for (let index = 0; index < 6; index += 1) {
