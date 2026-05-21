@@ -205,6 +205,67 @@ export const overviewGlossary = {
       "Sensitive to tokenisation and casing.",
     ],
   },
+  distributionDiagnostics: {
+    id: "distribution-diagnostics",
+    label: "distribution diagnostics",
+    explanation:
+      "Histogram, empirical cumulative distribution, and Q–Q views answer different questions about a complete document-level distribution.",
+    latex: String.raw`\widehat F(x)=\frac{1}{n}\sum_{i=1}^{n}\mathbf 1(x_i\le x),\qquad p_i=\frac{i-0.5}{n}`,
+    detail:
+      "A histogram groups observations into numeric intervals and therefore depends on its binning rule. An ECDF keeps exact cumulative counts at observed values; when display points are deterministically compressed, CorpusWright retains the first and final observations and reports the compression. A Q–Q diagnostic pairs ordered observations with reference quantiles to reveal departures from a chosen reference shape.",
+    symbols: [
+      { sym: String.raw`\widehat F(x)`, def: "Empirical cumulative share at or below x." },
+      { sym: String.raw`n`, def: "Eligible documents." },
+      { sym: String.raw`p_i`, def: "Plotting position for ordered observation i." },
+      { sym: String.raw`\mathbf 1(\cdot)`, def: "Indicator equal to one when its condition is true." },
+    ],
+    interpretation:
+      "Use the histogram to see mass by interval, the ECDF to read percentiles without choosing bins, and the Q–Q view to diagnose shape. A nearly straight Q–Q pattern indicates similarity to the named reference over the displayed range; it is not a pass/fail test.",
+    limitations: [
+      "Histogram appearance changes with the bin rule and active scale.",
+      "A reference distribution is a comparison device, not a claim that the metric must follow it.",
+      "Deterministic display compression preserves endpoints and ordering but does not draw every observation.",
+    ],
+  },
+  exactLexicalSpectrum: {
+    id: "exact-lexical-spectrum",
+    label: "exact lexical spectrum",
+    explanation: "Counts how many vocabulary types occur at each exact integer frequency.",
+    latex: String.raw`V(f)=\left\lvert\{w:\operatorname{freq}(w)=f\}\right\rvert`,
+    detail:
+      "Each plotted point represents one observed integer frequency f. The horizontal axis is not a set of continuous bins: if no type occurs exactly f times, there is no point at f. Bars and smoothing would imply unsupported intervals or continuity, so CorpusWright uses points on logarithmic axes.",
+    symbols: [
+      { sym: String.raw`V(f)`, def: "Number of types occurring exactly f times." },
+      { sym: String.raw`w`, def: "One vocabulary type." },
+      { sym: String.raw`\operatorname{freq}(w)`, def: "Raw corpus frequency of type w." },
+    ],
+    interpretation:
+      "The left edge exposes hapax and dis legomena; the thinning right tail shows how few types reach large frequencies. Type share describes vocabulary composition, not the share of running tokens carried by a class.",
+    limitations: [
+      "Both axes are logarithmic, so equal screen distances represent multiplicative changes.",
+      "The display series may be deterministically bounded even though each returned point remains an exact frequency count.",
+    ],
+  },
+  dispersionPlaneDensity: {
+    id: "dispersion-plane-density",
+    label: "dispersion-plane density",
+    explanation:
+      "Counts types within cells of logarithmic raw frequency and Gries DP, separating the population field from selected lexical witnesses.",
+    latex: String.raw`c_{ij}=\left\lvert\{w:x_i\le\log_{10}f(w)<x_{i+1},\ y_j\le\mathrm{DP}(w)<y_{j+1}\}\right\rvert`,
+    detail:
+      "The cool density field represents the complete bounded grid returned by Rust. A log density display transforms colour contrast only; it never changes cell membership or raw counts. Labelled witnesses are selected deterministically to illustrate named descriptive regions and are not a random or representative sample.",
+    symbols: [
+      { sym: String.raw`c_{ij}`, def: "Type count in frequency cell i and DP cell j." },
+      { sym: String.raw`f(w)`, def: "Raw frequency of type w." },
+      { sym: String.raw`\mathrm{DP}(w)`, def: "Gries DP of type w." },
+    ],
+    interpretation:
+      "Read horizontal position as frequency, vertical position as concentration, and colour strength as the number of types in that region. Witness marks sit above the density field as evidence, not as the population itself.",
+    limitations: [
+      "The grid fixes visual resolution and should not be interpreted as natural categorical boundaries.",
+      "Thresholds and witness categories are descriptive orientation conventions, not significance tests.",
+    ],
+  },
   shannonEntropy: {
     id: "shannon-entropy",
     label: "Shannon entropy",
