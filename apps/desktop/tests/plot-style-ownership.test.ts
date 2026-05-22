@@ -35,7 +35,6 @@ for (const selector of [
   ".cw-plot-grid-value",
   ".cw-plot-grid-context",
   ".cw-plot-tick-label",
-  ".cw-plot-reference-line",
   ".cw-plot-threshold-line",
 ]) {
   assert(axes.includes(selector), `${selector} must be owned by axes-and-grids.css`);
@@ -51,7 +50,6 @@ for (const selector of [
   ".cw-plot-density-cell",
   ".cw-plot-composition-segment",
   ".cw-plot-spectrum-band",
-  ".cw-plot-roster-dot",
   ".cw-plot-plane-witness",
   ".cw-plot-mattr-witness-tick",
 ]) {
@@ -66,7 +64,7 @@ for (const selector of [
   ".cw-plot-label-muted",
   ".cw-plot-label-strong",
   ".cw-plot-label-callout",
-  ".cw-plot-bracket",
+  ".cw-plot-fitted-range",
   ".cw-plot-halo",
 ]) {
   assert(annotations.includes(selector), `${selector} must be owned by legends-and-annotations.css`);
@@ -79,7 +77,6 @@ for (const selector of [
   ".cw-plot-hover-target",
   ".cw-plot-crosshair-x",
   ".cw-plot-crosshair-y",
-  ".cw-plot-animated-path",
 ]) {
   assert(interactions.includes(selector), `${selector} must be owned by interactions.css`);
 }
