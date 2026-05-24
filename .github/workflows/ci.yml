@@ -81,6 +81,8 @@ jobs:
         run: cargo check -p corpuswright-desktop --all-targets
       - name: Run clippy on Tauri crate
         run: cargo clippy -p corpuswright-desktop --all-targets -- -D warnings
+      - name: Run Tauri tests
+        run: cargo test -p corpuswright-desktop
 
   frontend:
     name: Frontend (Vite + TypeScript)
@@ -95,6 +97,6 @@ jobs:
       - name: Install dependencies
         working-directory: apps/desktop
         run: npm ci
-      - name: Build frontend
+      - name: Check frontend
         working-directory: apps/desktop
-        run: npm run build
+        run: npm run check
