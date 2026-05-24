@@ -1,0 +1,1 @@
+export type CorpusOverviewPopulation = { sourcesInProject: number | null, includedInAnalysis: number, processedUsed: number, usingSourceTextFallback: number, emptyOrFailed: number, sourcesWithWarnings: number | null, inputSource: string, reading: string, };
