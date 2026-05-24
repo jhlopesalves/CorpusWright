@@ -1,9 +1,10 @@
 use crate::clean::CleaningConfig;
 use crate::scan::DocumentRecord;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// Text source used to construct an analysis index.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum AnalysisInputSource {
     Processed,
