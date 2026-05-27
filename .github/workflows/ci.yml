@@ -16,15 +16,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Check release metadata
         run: node scripts/check-release-consistency.cjs
+      - name: Check repository references
+        run: node scripts/check-repository-references.cjs
+      - name: Check PDFium provenance
+        run: node scripts/check-pdfium.cjs
 
   rust-core:
     name: Rust core (corpuswright-core)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -34,11 +41,7 @@ jobs:
       - name: Run clippy
         run: cargo clippy -p corpuswright-core --all-targets -- -D warnings
       - name: Install PDFium for tests
-        run: |
-          mkdir -p apps/desktop/src-tauri/resources/ocr
-          curl -L -o /tmp/pdfium-linux-x64.tgz https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-linux-x64.tgz
-          tar -xzf /tmp/pdfium-linux-x64.tgz -C /tmp
-          cp /tmp/lib/libpdfium.so apps/desktop/src-tauri/resources/ocr/libpdfium.so
+        run: node scripts/fetch-pdfium.cjs linux-x64 --output-dir apps/desktop/src-tauri/resources/ocr
       - name: Run tests
         run: cargo test -p corpuswright-core
       - name: Check generated TypeScript bindings are up to date
@@ -91,7 +94,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
       - name: Install dependencies

@@ -1,4 +1,5 @@
 {
   "version": "0.1.0-alpha.8",
-  "dateReleased": "2026-06-29"
+  "dateReleased": "2026-06-29",
+  "releaseNotes": "docs/releases/v0.1.0-alpha.8.md"
 }

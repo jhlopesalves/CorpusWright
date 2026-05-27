@@ -7,13 +7,20 @@ licences.
 ## PDFium native library
 
 - **Component:** PDFium rendering engine (native library)
-- **Source:** `github.com/bblanchon/pdfium-binaries` — prebuilt binaries
-  from Google's [PDFium](https://pdfium.googlesource.com/pdfium/) project
-- **Licence:** BSD-3-Clause
+- **Source:** [bblanchon/pdfium-binaries](https://github.com/bblanchon/pdfium-binaries),
+  release [`chromium/7869`](https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7869)
+  (tag commit `9c061bee16814c28de781335b13d5dbd3a089b39`, PDFium
+  `150.0.7869.0`), built from Google's
+  [PDFium](https://pdfium.googlesource.com/pdfium/) project
+- **Licence:** PDFium is BSD-3-Clause; the binary distribution repository is
+  MIT-licensed and its archives include notices for bundled third-party code
 - **Windows DLL SHA-256:**
   `e472f04b57181946ca1e52fa34086079599d9b733164e7ab05179b03f4d3ddcc`
 - **Location in repository:**
   `apps/desktop/src-tauri/resources/ocr/pdfium.dll`
+- **Reproducibility manifest:** `third-party/pdfium.json` records the exact
+  release asset, archive checksum, and extracted-library checksum for Windows
+  x64, Linux x64, macOS x64, and macOS arm64
 
 ## UDPipe Universal Dependencies 2.1 models
 

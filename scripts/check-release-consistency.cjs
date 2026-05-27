@@ -62,16 +62,8 @@ function reportSource(label, actual, expected) {
 }
 
 function checkNoLiveVersionCopy(metadata) {
-  const scannedFiles = [
-    "README.md",
-    "docs/404.html",
-    "docs/citation.html",
-    "docs/index.html",
-    "docs/method-and-measures.html",
-    "docs/quick-start.html",
-    "docs/roadmap.html",
-  ];
-  const liveVersionPattern = /\bv?\d+\.\d+\.\d+-alpha\.\d+\b|\balpha\.\d+\b/g;
+  const scannedFiles = listLiveDocumentation();
+  const liveVersionPattern = /\bv?\d+\.\d+\.\d+-alpha\.\d+\b|\balpha\.\d+\b/gi;
   let ok = true;
 
   for (const relativePath of scannedFiles) {
@@ -103,6 +95,57 @@ function checkNoLiveVersionCopy(metadata) {
   return ok;
 }
 
+function listLiveDocumentation() {
+  const files = ["README.md", ".github/workflows/release.yml"];
+
+  function visit(relativeDirectory) {
+    const absoluteDirectory = path.join(ROOT, relativeDirectory);
+    for (const entry of fs.readdirSync(absoluteDirectory, { withFileTypes: true })) {
+      const relativePath = path.posix.join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) {
+        if (relativePath === "docs/releases" || relativePath === "docs/archive") {
+          continue;
+        }
+        visit(relativePath);
+        continue;
+      }
+      if (!entry.isFile() || !/\.(?:html|md)$/i.test(entry.name)) {
+        continue;
+      }
+      // This is a retained historical cleanup record, not live release copy.
+      if (relativePath === "docs/release-cleanup-alpha-3.md") {
+        continue;
+      }
+      files.push(relativePath);
+    }
+  }
+
+  visit("docs");
+  return files.sort();
+}
+
+function checkReleaseNotes(metadata) {
+  const relativePath = metadata.releaseNotes;
+  const absolutePath = path.join(ROOT, relativePath);
+  if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
+    console.error(`MISMATCH: configured release notes do not exist: ${relativePath}`);
+    return false;
+  }
+
+  const content = readText(relativePath);
+  const heading = content.match(/^#\s+.*$/m)?.[0] || null;
+  const expectedHeading = `# CorpusWright v${metadata.version}`;
+  if (!heading || heading.toLowerCase() !== expectedHeading.toLowerCase()) {
+    console.error(
+      `MISMATCH: ${relativePath} heading is ${JSON.stringify(heading)}, expected "${expectedHeading}"`
+    );
+    return false;
+  }
+
+  console.log(`  OK  release notes  =>  ${relativePath}`);
+  return true;
+}
+
 function stripGeneratedCitationCopy(relativePath, text) {
   let next = text;
   next = next.replace(
@@ -125,7 +168,13 @@ function stripGeneratedCitationCopy(relativePath, text) {
   return next;
 }
 
-const metadata = getReleaseMetadata();
+let metadata;
+try {
+  metadata = getReleaseMetadata();
+} catch (error) {
+  console.error(`FATAL: invalid release-metadata.json: ${error.message}`);
+  process.exit(1);
+}
 const expected = metadata.version;
 
 if (!versionPattern().test(expected)) {
@@ -182,6 +231,7 @@ if (staleFiles.length > 0) {
 }
 
 allOk = checkNoLiveVersionCopy(metadata) && allOk;
+allOk = checkReleaseNotes(metadata) && allOk;
 
 if (!allOk) {
   console.error("\nRelease consistency check FAILED.");

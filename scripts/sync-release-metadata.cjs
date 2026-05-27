@@ -59,6 +59,15 @@ function validateMetadata(metadata) {
       `release-metadata.json dateReleased "${metadata.dateReleased}" must match YYYY-MM-DD`
     );
   }
+
+  if (
+    typeof metadata.releaseNotes !== "string" ||
+    !/^docs\/releases\/[A-Za-z0-9._-]+\.md$/.test(metadata.releaseNotes)
+  ) {
+    throw new Error(
+      `release-metadata.json releaseNotes "${metadata.releaseNotes}" must be a repository-relative Markdown path under docs/releases/`
+    );
+  }
 }
 
 function getReleaseMetadata() {

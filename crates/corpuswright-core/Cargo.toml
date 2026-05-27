@@ -3,6 +3,7 @@ name = "corpuswright-core"
 version = "0.1.0"
 edition = { workspace = true }
 authors = { workspace = true }
+publish = false
 
 [dependencies]
 aho-corasick = "1.1.4"

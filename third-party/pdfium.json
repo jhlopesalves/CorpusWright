@@ -1,0 +1,48 @@
+{
+  "component": "PDFium",
+  "upstreamRepository": "https://github.com/bblanchon/pdfium-binaries",
+  "release": "chromium/7869",
+  "releaseUrl": "https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7869",
+  "tagCommit": "9c061bee16814c28de781335b13d5dbd3a089b39",
+  "pdfiumVersion": "150.0.7869.0",
+  "license": "BSD-3-Clause",
+  "distributionLicense": "MIT",
+  "platforms": {
+    "windows-x64": {
+      "asset": "pdfium-win-x64.tgz",
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7869/pdfium-win-x64.tgz",
+      "archiveSha256": "d1a2b39c300f62daeec94f3a648a31d83d18605707bfdc5504d818d42cab13ce",
+      "libraryPath": "bin/pdfium.dll",
+      "librarySha256": "e472f04b57181946ca1e52fa34086079599d9b733164e7ab05179b03f4d3ddcc",
+      "librarySize": 7263232,
+      "resourceFile": "pdfium.dll"
+    },
+    "linux-x64": {
+      "asset": "pdfium-linux-x64.tgz",
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7869/pdfium-linux-x64.tgz",
+      "archiveSha256": "6aeb4be0f790bf309c6b1e665552351845fe921a78d21697a1a9cb8ce427bb23",
+      "libraryPath": "lib/libpdfium.so",
+      "librarySha256": "d773f1800c5b0c6920247527fadab0cd1d9b004ed6f64a8124d700066ca9c8b4",
+      "librarySize": 7717272,
+      "resourceFile": "libpdfium.so"
+    },
+    "macos-x64": {
+      "asset": "pdfium-mac-x64.tgz",
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7869/pdfium-mac-x64.tgz",
+      "archiveSha256": "00de12ca1b9729119e7fd4901cee1f0e591367f20cf98e221a446bbf55c155d2",
+      "libraryPath": "lib/libpdfium.dylib",
+      "librarySha256": "3b0c72fe8aace372966b382484eea6260331911aecdc95a4ad9dbfa571957eec",
+      "librarySize": 7542432,
+      "resourceFile": "libpdfium.dylib"
+    },
+    "macos-arm64": {
+      "asset": "pdfium-mac-arm64.tgz",
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7869/pdfium-mac-arm64.tgz",
+      "archiveSha256": "935a50329d5f72466b2058f92f2c4a8f9e541abc8f3149b1994d078dec4190e1",
+      "libraryPath": "lib/libpdfium.dylib",
+      "librarySha256": "c8c7499d45335b659b98a2041ab38916bf2787fb3a871a7e57267e3b4cfe27f3",
+      "librarySize": 7161472,
+      "resourceFile": "libpdfium.dylib"
+    }
+  }
+}
