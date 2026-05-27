@@ -1,3 +1,8 @@
+//! Applies the ordered, serialisable preparation configuration to extracted text.
+//!
+//! Rule order is part of the public result: replacements, structured removals, Unicode handling,
+//! and whitespace operations contribute to deterministic output and an auditable cleaning report.
+
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -5,9 +10,9 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unicode_normalization::UnicodeNormalization;
 
-use crate::structured_document::StructuredDocument;
-use crate::text_normalization::normalize_line_for_repeated_artifact;
-use crate::text_profile::{
+use crate::sources::structured_document::StructuredDocument;
+use crate::text::normalisation::normalize_line_for_repeated_artifact;
+use crate::text::profile::{
     TextSignalContext, classify_text_signal, profile_text_line, text_signal_reasons,
 };
 
@@ -1391,7 +1396,7 @@ pub(crate) fn clean_structured_document_impl(
                     filtered_lines.push(line.clone());
                 }
             }
-            filtered_pages.push(crate::structured_document::DocumentPage {
+            filtered_pages.push(crate::sources::structured_document::DocumentPage {
                 page_index: page.page_index,
                 lines: filtered_lines,
             });
@@ -1614,7 +1619,7 @@ fn should_remove_obvious_extraction_noise_line(line: &str) -> Option<Vec<String>
     let label = classify_text_signal(&profile, TextSignalContext::default());
     let reasons = text_signal_reasons(trimmed, &profile, label, 0.0);
 
-    crate::text_profile::obvious_extraction_noise_decisive_reasons(&profile, &reasons)
+    crate::text::profile::obvious_extraction_noise_decisive_reasons(&profile, &reasons)
 }
 
 fn effective_remove_patterns(config: &CleaningConfig) -> Vec<String> {
@@ -1939,7 +1944,7 @@ fn literals_can_overlap(left: &str, right: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::structured_document::StructuredDocument;
+    use crate::sources::structured_document::StructuredDocument;
     use serde_json::json;
 
     fn whole_line_rule(text: &str) -> RemovalRule {

@@ -1,6 +1,11 @@
-use crate::clean::{PdfOcrQuality, PdfTextSource};
-use crate::pdf_audit::{PdfAuditQuality, PdfAuditSuggestedProfile, audit_pdf_files};
-use crate::preview::FilePreview;
+//! Owns the versioned project-source manifest and every mutation of that persisted aggregate.
+//!
+//! Stable source IDs derive from project-relative identity. Queries preserve manifest order, and
+//! updates write through one schema-aware boundary so import and processing state remain coherent.
+
+use crate::corpus::preview::FilePreview;
+use crate::preparation::cleaning::{PdfOcrQuality, PdfTextSource};
+use crate::sources::pdf::audit::{PdfAuditQuality, PdfAuditSuggestedProfile, audit_pdf_files};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};

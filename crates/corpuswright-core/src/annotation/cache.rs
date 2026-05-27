@@ -2,10 +2,10 @@ use crate::analysis::{
     AnalysisCorpus, AnnotationBuildTimingCounters, AnnotationLayer, AnnotationLayerDocument,
 };
 use crate::annotation::{ANNOTATION_PIPELINE_VERSION, LemmaTable};
-use crate::decode::DECODE_POLICY_VERSION;
-use crate::hash::sha256_hex;
-use crate::scan::{DocumentRecord, DocumentType};
-use crate::tokenization::TokenizationManifest;
+use crate::corpus::{DocumentRecord, DocumentType};
+use crate::sources::decode::DECODE_POLICY_VERSION;
+use crate::support::hash::sha256_hex;
+use crate::text::tokenisation::TokenizationManifest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
@@ -589,8 +589,8 @@ pub fn load_annotation_layer_cache(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scan::DocumentType;
-    use crate::tokenization::TokenizationConfig;
+    use crate::corpus::DocumentType;
+    use crate::text::tokenisation::TokenizationConfig;
 
     struct VerifyCacheWriteEnvGuard {
         previous: u8,

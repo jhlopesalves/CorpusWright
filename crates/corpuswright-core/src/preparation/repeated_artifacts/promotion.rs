@@ -3,10 +3,10 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::clean::{
+use crate::preparation::cleaning::{
     RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope, is_valid_anywhere_literal_text,
 };
-use crate::repeated_artifacts::{RepeatedArtifactCandidate, RepeatedArtifactKind};
+use crate::preparation::repeated_artifacts::{RepeatedArtifactCandidate, RepeatedArtifactKind};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "snake_case")]
@@ -176,8 +176,10 @@ fn default_rule_label(matcher: &RemovalMatcher, scope: RemovalScope) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repeated_artifacts::{ArtifactRiskLabel, CandidateContentClass, PositionSummary};
-    use crate::text_profile::{CandidateTextProfile, CandidateTextSignalLabel};
+    use crate::preparation::repeated_artifacts::{
+        ArtifactRiskLabel, CandidateContentClass, PositionSummary,
+    };
+    use crate::text::profile::{CandidateTextProfile, CandidateTextSignalLabel};
     use serde::Deserialize;
 
     #[derive(Deserialize)]
@@ -284,7 +286,7 @@ mod tests {
     #[test]
     fn shared_typescript_characterisation_fixture_matches_rust_promotion() {
         let fixtures: Vec<PromotionFixture> = serde_json::from_str(include_str!(
-            "../tests/fixtures/repeated_artifact_promotion.json"
+            "../../../tests/fixtures/repeated_artifact_promotion.json"
         ))
         .unwrap();
 

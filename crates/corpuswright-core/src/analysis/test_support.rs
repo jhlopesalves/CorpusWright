@@ -1,11 +1,13 @@
 use super::annotation_build::build_annotation_layer_with_mapping;
 use super::build::{AnalysisBuildProduct, build_analysis_corpus_with_mapping};
 use super::*;
+use crate::analysis::concordance::index::SurfaceIndexCancellationToken;
 use crate::annotation::{UniversalPos, default_model_dir};
-use crate::clean::{CleaningConfig, RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope};
-use crate::index::SurfaceIndexCancellationToken;
-use crate::scan::{DocumentRecord, DocumentType};
-use crate::tokenization::TokenizationConfig;
+use crate::corpus::{DocumentRecord, DocumentType};
+use crate::preparation::cleaning::{
+    CleaningConfig, RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope,
+};
+use crate::text::tokenisation::TokenizationConfig;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -60,10 +62,10 @@ pub(super) fn processed_resolution(record: &DocumentRecord, text: &str) -> Analy
 
 pub(super) fn read_annotation_cache_envelope(
     cache_root: &std::path::Path,
-) -> crate::annotation_cache::AnnotationLayerCacheEnvelope {
+) -> crate::annotation::cache::AnnotationLayerCacheEnvelope {
     let cache_file = cache_root.join(format!(
         "annotation-layer.v{}.json",
-        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
     ));
     let bytes = std::fs::read(cache_file).unwrap();
     serde_json::from_slice(&bytes).unwrap()

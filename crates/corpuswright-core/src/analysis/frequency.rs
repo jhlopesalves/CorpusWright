@@ -1,3 +1,9 @@
+//! Queries surface and annotated frequencies from an existing analysis corpus.
+//!
+//! Sorting covers the complete logical result before pagination. Raw frequency, document coverage,
+//! dispersion, and normalised rate remain separate measures so callers retain the observed count
+//! behind every derived value.
+
 use super::annotation_build::{AnnotationCacheAvailability, AnnotationCacheState};
 use super::build::{
     AnalysisCorpus, AnalysisDocument, AnalysisDocumentSelection, compute_dispersion,

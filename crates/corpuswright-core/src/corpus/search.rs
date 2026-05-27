@@ -1,6 +1,6 @@
-use crate::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
-use crate::clean::CleaningConfig;
-use crate::scan::DocumentRecord;
+use crate::corpus::DocumentRecord;
+use crate::preparation::cleaning::CleaningConfig;
+use crate::sources::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -241,15 +241,15 @@ fn take_chars_after(text: &str, pos: usize, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::{
-        CacheEntry, DocumentTextMode, ExtractionCache, document_text_from_cache_entry,
-    };
-    use crate::clean::{
+    use crate::corpus::preview::{PreviewOptions, preview_processed_files};
+    use crate::corpus::{DocumentRecord, DocumentType};
+    use crate::preparation::cleaning::{
         CleaningConfig, RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope,
     };
-    use crate::pdf::PdfExtractionOptions;
-    use crate::preview::{PreviewOptions, preview_processed_files};
-    use crate::scan::{DocumentRecord, DocumentType};
+    use crate::sources::cache::{
+        CacheEntry, DocumentTextMode, ExtractionCache, document_text_from_cache_entry,
+    };
+    use crate::sources::pdf::PdfExtractionOptions;
     use std::path::PathBuf;
     use tempfile::tempdir;
 

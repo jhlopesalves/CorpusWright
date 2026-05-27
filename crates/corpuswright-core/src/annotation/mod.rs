@@ -1,14 +1,15 @@
 //! UDPipe-based annotation pipeline: lemma, UPOS, and morphology tagging.
 //!
-//! Canonical tokens from `tokenization.rs` are the only token identity. The
-//! UDPipe binding below builds a pre-tokenised sentence from those surfaces and
-//! calls the tagger directly; it never invokes UDPipe tokenisation.
+//! Canonical tokens from `text::tokenisation` define token identity. The UDPipe binding builds a
+//! pre-tokenised sentence from those surfaces and calls the tagger directly, preserving exact
+//! alignment between the surface corpus and the annotation layer.
 //!
-//! Binding path: a core-owned C ABI shim compiled against `udpipe-rs`'s
-//! vendored UDPipe public header. `udpipe-rs` is still used for model filenames
-//! and downloads, but not for tagging text.
+//! Tagging crosses a core-owned C ABI shim compiled against `udpipe-rs`'s vendored UDPipe public
+//! header. The Rust crate supplies model filenames and downloads; the shim owns the tagging call.
 
-use crate::tokenization::{Token, TokenKind};
+pub mod cache;
+
+use crate::text::tokenisation::{Token, TokenKind};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;

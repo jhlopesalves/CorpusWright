@@ -1,6 +1,6 @@
 use crate::analysis::concordance_key;
-use crate::decode::DECODE_POLICY_VERSION;
-use crate::tokenization::{TokenizationConfig, TokenizationManifest, tokenize, visit_tokens};
+use crate::sources::decode::DECODE_POLICY_VERSION;
+use crate::text::tokenisation::{TokenizationConfig, TokenizationManifest, tokenize, visit_tokens};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
@@ -1386,6 +1386,10 @@ impl<R: Read> ChecksummedReader<R> {
     }
 }
 
+/// Returns the content-addressed cache path for one complete surface-index identity.
+///
+/// Schema and file versions precede the serialised manifest in the digest. A change to document
+/// identity, tokenisation, or index representation therefore selects a new cache file.
 pub fn surface_index_cache_path(cache_root: &Path, manifest: &SurfaceIndexManifest) -> PathBuf {
     let mut key_bytes = Vec::new();
     key_bytes.extend_from_slice(b"corpuswright-surface-index-cache-key-v2\0");
@@ -1393,7 +1397,7 @@ pub fn surface_index_cache_path(cache_root: &Path, manifest: &SurfaceIndexManife
     if let Ok(manifest_bytes) = serde_json::to_vec(manifest) {
         key_bytes.extend_from_slice(&manifest_bytes);
     }
-    let key = crate::hash::sha256_hex(&key_bytes);
+    let key = crate::support::hash::sha256_hex(&key_bytes);
     cache_root.join(format!(
         "surface-index.v{}.{}.cwi",
         SURFACE_INDEX_CACHE_FILE_VERSION, key
@@ -2077,7 +2081,7 @@ mod tests {
         ConcordanceDocument, ConcordanceQuery, ConcordanceSearchContext, ConcordanceSortKey,
         search_concordance_documents, search_concordance_documents_routed,
     };
-    use crate::decode::{DecodeStrategy, SourceEncoding, decode_source_bytes};
+    use crate::sources::decode::{DecodeStrategy, SourceEncoding, decode_source_bytes};
 
     fn document_input<'text>(
         document_id: usize,
