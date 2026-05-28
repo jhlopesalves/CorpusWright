@@ -1,4 +1,13 @@
-use crate::*;
+//! Stores one loaded corpus generation and validates every command lookup against it.
+//!
+//! Reload and clear operations increment the version. Asynchronous commands carry that version,
+//! which prevents indices and paths from an earlier corpus reaching current state.
+
+use corpuswright_core::corpus::{DocumentRecord, ScanReport};
+use serde::Serialize;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 
 pub(crate) struct CorpusStateInner {
     pub(crate) version: u64,
@@ -18,6 +27,7 @@ impl CorpusStateInner {
     }
 
     pub(crate) fn load(&mut self, root: Option<PathBuf>, records: Vec<DocumentRecord>) {
+        // A new generation invalidates every index selected from the previous record vector.
         self.version += 1;
         self.root = root;
         self.record_index_by_path = records
@@ -29,6 +39,7 @@ impl CorpusStateInner {
     }
 
     pub(crate) fn clear(&mut self) {
+        // Empty state still receives a new identity so in-flight work cannot match a future load.
         self.version += 1;
         self.root = None;
         self.records.clear();
@@ -205,6 +216,11 @@ pub(crate) struct CorpusLoadResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use corpuswright_core::corpus::DocumentType;
+    use corpuswright_core::preparation::cleaning::PdfOcrQuality;
+    use corpuswright_core::project::sources::{
+        ProjectSourceExtractionRoute, ProjectSourcePdfProfile,
+    };
 
     fn pdf_record(
         name: &str,

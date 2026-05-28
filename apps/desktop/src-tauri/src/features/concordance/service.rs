@@ -1,6 +1,40 @@
-use crate::*;
+//! Routes Concordance and Collocates between scan and persisted-index backends.
+//!
+//! The service owns fallback policy, warm index contexts, parity audit, and timing evidence. Tauri
+//! commands provide records and progress sinks; analytical execution remains in the core crate.
+
+use corpuswright_core::analysis::{
+    ConcordanceBackend, ConcordanceBackendUsed, ConcordanceCollocationAggregate,
+    ConcordanceCollocationQuery, ConcordanceDocument, ConcordanceFallbackReason, ConcordanceQuery,
+    ConcordanceResult, ConcordanceRow, ConcordanceSearchContext,
+    RoutedConcordanceCollocationAggregate, RoutedConcordanceResult,
+    aggregate_concordance_collocations_routed_provider,
+    aggregate_concordance_collocations_scan_provider, search_concordance_documents,
+    search_concordance_documents_routed, search_concordance_documents_routed_provider,
+};
+use std::collections::BTreeMap;
+use std::time::{Duration, Instant};
+
+use super::state::{
+    ConcordanceDefaultIndexFailureState, ConcordanceIndexContextEntry,
+    ConcordanceIndexContextHandle, ConcordanceIndexContextKey,
+};
+
+#[cfg(test)]
+use super::state::ConcordanceIndexContextCache;
+#[cfg(test)]
+use corpuswright_core::analysis::{
+    AnalysisDocumentSelection, aggregate_concordance_collocations_documents,
+    query_concordance_collocations_from_aggregate,
+};
+#[cfg(test)]
+use std::sync::{Arc, Mutex};
 
 pub(crate) const CONCORDANCE_BACKEND_ENV: &str = "CORPUSWRIGHT_CONCORDANCE_BACKEND";
+
+fn duration_ms(duration: Duration) -> u64 {
+    duration.as_millis().try_into().unwrap_or(u64::MAX)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConcordanceBackendMode {
@@ -376,7 +410,7 @@ pub(crate) fn record_concordance_default_index_error(
 pub(crate) fn search_concordance_documents_with_warm_index(
     documents: &[ConcordanceDocument],
     query: &ConcordanceQuery,
-    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    tokenization_config: &corpuswright_core::text::tokenisation::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
 ) -> Result<RoutedConcordanceResult, corpuswright_core::analysis::ConcordanceError> {
@@ -416,7 +450,7 @@ pub(crate) fn search_concordance_documents_with_warm_index(
 pub(crate) fn search_concordance_with_warm_index_provider<Resolve, Progress>(
     document_slots: usize,
     query: &ConcordanceQuery,
-    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    tokenization_config: &corpuswright_core::text::tokenisation::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
     resolve: Resolve,
@@ -459,10 +493,10 @@ where
 pub(crate) fn aggregate_concordance_collocations_with_warm_index_provider<Resolve, Progress>(
     document_slots: usize,
     query: &ConcordanceCollocationQuery,
-    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    tokenization_config: &corpuswright_core::text::tokenisation::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
-    cancellation: &corpuswright_core::index::SurfaceIndexCancellationToken,
+    cancellation: &corpuswright_core::analysis::concordance::index::SurfaceIndexCancellationToken,
     resolve: Resolve,
     report_progress: Progress,
 ) -> Result<RoutedConcordanceCollocationAggregate, corpuswright_core::analysis::ConcordanceError>
@@ -596,7 +630,7 @@ pub(crate) fn log_concordance_default_index_previous_error_recovery(
 pub(crate) fn search_concordance_documents_strict_index_mode_with<SearchIndex>(
     documents: &[ConcordanceDocument],
     query: &ConcordanceQuery,
-    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    tokenization_config: &corpuswright_core::text::tokenisation::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
     search_index: SearchIndex,
@@ -606,7 +640,7 @@ where
         FnOnce(
             &[ConcordanceDocument],
             &ConcordanceQuery,
-            &corpuswright_core::tokenization::TokenizationConfig,
+            &corpuswright_core::text::tokenisation::TokenizationConfig,
             &ConcordanceIndexContextHandle,
             ConcordanceIndexContextKey,
         )
@@ -641,7 +675,7 @@ where
 pub(crate) fn search_concordance_documents_default_index_mode(
     documents: &[ConcordanceDocument],
     query: &ConcordanceQuery,
-    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    tokenization_config: &corpuswright_core::text::tokenisation::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
 ) -> Result<ConcordanceSearchOutcome, String> {
@@ -660,7 +694,7 @@ pub(crate) fn search_concordance_documents_default_index_mode(
 pub(crate) fn search_concordance_documents_default_index_mode_with<SearchScan, SearchIndex>(
     documents: &[ConcordanceDocument],
     query: &ConcordanceQuery,
-    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    tokenization_config: &corpuswright_core::text::tokenisation::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
     search_scan: SearchScan,
@@ -670,13 +704,13 @@ where
     SearchScan: Fn(
         &[ConcordanceDocument],
         &ConcordanceQuery,
-        &corpuswright_core::tokenization::TokenizationConfig,
+        &corpuswright_core::text::tokenisation::TokenizationConfig,
     ) -> Result<ConcordanceResult, corpuswright_core::analysis::ConcordanceError>,
     SearchIndex:
         FnOnce(
             &[ConcordanceDocument],
             &ConcordanceQuery,
-            &corpuswright_core::tokenization::TokenizationConfig,
+            &corpuswright_core::text::tokenisation::TokenizationConfig,
             &ConcordanceIndexContextHandle,
             ConcordanceIndexContextKey,
         )
@@ -832,7 +866,7 @@ pub(crate) fn log_concordance_audit_index_error(
 pub(crate) fn search_concordance_documents_audit_mode(
     documents: &[ConcordanceDocument],
     query: &ConcordanceQuery,
-    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    tokenization_config: &corpuswright_core::text::tokenisation::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
 ) -> Result<ConcordanceResult, String> {
@@ -996,10 +1030,10 @@ pub(crate) fn log_concordance_collocation_default_index_fallback_failure(
 pub(crate) fn aggregate_concordance_collocations_default_index_mode<Resolve, Progress>(
     document_slots: usize,
     query: &ConcordanceCollocationQuery,
-    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    tokenization_config: &corpuswright_core::text::tokenisation::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
-    cancellation: &corpuswright_core::index::SurfaceIndexCancellationToken,
+    cancellation: &corpuswright_core::analysis::concordance::index::SurfaceIndexCancellationToken,
     resolve: Resolve,
     report_progress: Progress,
 ) -> Result<ConcordanceCollocationAggregationOutcome, String>
@@ -1034,10 +1068,10 @@ pub(crate) fn aggregate_concordance_collocations_default_index_mode_with<
 >(
     document_slots: usize,
     query: &ConcordanceCollocationQuery,
-    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    tokenization_config: &corpuswright_core::text::tokenisation::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
-    cancellation: &corpuswright_core::index::SurfaceIndexCancellationToken,
+    cancellation: &corpuswright_core::analysis::concordance::index::SurfaceIndexCancellationToken,
     resolve: Resolve,
     report_progress: Progress,
     search_scan: SearchScan,
@@ -1049,8 +1083,8 @@ where
     SearchScan: Fn(
         usize,
         &ConcordanceCollocationQuery,
-        &corpuswright_core::tokenization::TokenizationConfig,
-        &corpuswright_core::index::SurfaceIndexCancellationToken,
+        &corpuswright_core::text::tokenisation::TokenizationConfig,
+        &corpuswright_core::analysis::concordance::index::SurfaceIndexCancellationToken,
         Resolve,
         Progress,
     ) -> Result<
@@ -1060,10 +1094,10 @@ where
     SearchIndex: FnOnce(
         usize,
         &ConcordanceCollocationQuery,
-        &corpuswright_core::tokenization::TokenizationConfig,
+        &corpuswright_core::text::tokenisation::TokenizationConfig,
         &ConcordanceIndexContextHandle,
         ConcordanceIndexContextKey,
-        &corpuswright_core::index::SurfaceIndexCancellationToken,
+        &corpuswright_core::analysis::concordance::index::SurfaceIndexCancellationToken,
         Resolve,
         Progress,
     ) -> Result<
@@ -1315,10 +1349,10 @@ pub(crate) fn log_concordance_collocation_audit_index_error(
 pub(crate) fn aggregate_concordance_collocations_audit_mode<Resolve, Progress>(
     document_slots: usize,
     query: &ConcordanceCollocationQuery,
-    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
+    tokenization_config: &corpuswright_core::text::tokenisation::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
-    cancellation: &corpuswright_core::index::SurfaceIndexCancellationToken,
+    cancellation: &corpuswright_core::analysis::concordance::index::SurfaceIndexCancellationToken,
     resolve: Resolve,
     report_progress: Progress,
 ) -> Result<ConcordanceCollocationAggregate, String>
@@ -1458,7 +1492,9 @@ mod tests {
 
     fn concordance_test_index_error() -> corpuswright_core::analysis::ConcordanceError {
         corpuswright_core::analysis::ConcordanceError::Index(
-            corpuswright_core::index::SurfaceIndexError::DuplicateDocumentId(0),
+            corpuswright_core::analysis::concordance::index::SurfaceIndexError::DuplicateDocumentId(
+                0,
+            ),
         )
     }
 
@@ -1491,7 +1527,8 @@ mod tests {
     fn concordance_default_index_uses_index_for_supported_query() {
         let documents = concordance_test_documents();
         let query = concordance_test_query("movie");
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let context = concordance_test_context();
         let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
 
@@ -1514,7 +1551,8 @@ mod tests {
     fn concordance_default_index_success_does_not_invoke_scan_route() {
         let documents = concordance_test_documents();
         let query = concordance_test_query("movie");
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let context = concordance_test_context();
         let expected = search_concordance_documents(&documents, &query, &tokenization_config)
             .expect("fixture scan should succeed");
@@ -1557,7 +1595,8 @@ mod tests {
         query.context_filter = Some("good".to_string());
         query.context_filter_direction =
             corpuswright_core::analysis::ConcordanceContextFilterDirection::Right;
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let context = concordance_test_context();
         let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
 
@@ -1580,7 +1619,8 @@ mod tests {
     fn concordance_default_index_recovers_from_index_error_and_retries_clean_rebuild() {
         let documents = concordance_test_documents();
         let query = concordance_test_query("movie");
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let context = concordance_test_context();
         let key = concordance_test_context_key(7);
         let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
@@ -1645,7 +1685,8 @@ mod tests {
     fn concordance_default_index_disables_after_repeated_index_error() {
         let documents = concordance_test_documents();
         let query = concordance_test_query("movie");
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let context = concordance_test_context();
         let key = concordance_test_context_key(7);
         let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
@@ -1708,7 +1749,8 @@ mod tests {
     fn concordance_strict_index_surfaces_injected_index_error() {
         let documents = concordance_test_documents();
         let query = concordance_test_query("movie");
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let context = concordance_test_context();
         let index_error = concordance_test_index_error();
 
@@ -1729,7 +1771,8 @@ mod tests {
     fn concordance_audit_difference_reports_first_row_identity_mismatch() {
         let documents = concordance_test_documents();
         let query = concordance_test_query("movie");
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
         let mut index = scan.clone();
         index.rows.as_mut().expect("rows requested")[0].token_index += 1;
@@ -1746,7 +1789,8 @@ mod tests {
         let documents = concordance_test_documents();
         let mut query = concordance_test_query("movie");
         query.include_rows = false;
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
         let mut index = scan.clone();
 
@@ -1776,14 +1820,16 @@ mod tests {
             5,
             corpuswright_core::analysis::ConcordanceCollocationDirection::Both,
         );
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let context = concordance_test_context();
         let key = concordance_test_context_key(7);
         let scan = aggregate_concordance_collocations_documents(
             &documents,
             &collocation_query,
             &tokenization_config,
-            corpuswright_core::index::SurfaceIndexCancellationToken::default(),
+            corpuswright_core::analysis::concordance::index::SurfaceIndexCancellationToken::default(
+            ),
         )
         .unwrap();
 
@@ -1803,7 +1849,7 @@ mod tests {
             &tokenization_config,
             &context,
             key,
-            &corpuswright_core::index::SurfaceIndexCancellationToken::default(),
+            &corpuswright_core::analysis::concordance::index::SurfaceIndexCancellationToken::default(),
             |document_index| Some(documents[document_index].clone()),
             |_| {},
         )
@@ -1835,7 +1881,8 @@ mod tests {
             5,
             corpuswright_core::analysis::ConcordanceCollocationDirection::Both,
         );
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let context = concordance_test_context();
         let scan_calls = std::cell::Cell::new(0usize);
         let index_error =
@@ -1852,7 +1899,7 @@ mod tests {
             &tokenization_config,
             &context,
             concordance_test_context_key(7),
-            &corpuswright_core::index::SurfaceIndexCancellationToken::default(),
+            &corpuswright_core::analysis::concordance::index::SurfaceIndexCancellationToken::default(),
             |document_index| Some(documents[document_index].clone()),
             |_| {},
             |_, _, _, _, _, _| {
@@ -1877,12 +1924,14 @@ mod tests {
             5,
             corpuswright_core::analysis::ConcordanceCollocationDirection::Both,
         );
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let scan = aggregate_concordance_collocations_documents(
             &documents,
             &query,
             &tokenization_config,
-            corpuswright_core::index::SurfaceIndexCancellationToken::default(),
+            corpuswright_core::analysis::concordance::index::SurfaceIndexCancellationToken::default(
+            ),
         )
         .unwrap();
         let mut index = scan.clone();
@@ -1897,7 +1946,8 @@ mod tests {
     #[test]
     fn concordance_warm_index_context_reuses_store_for_fixture_sequence() {
         let documents = concordance_test_documents();
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let context = concordance_test_context();
         let queries = [
             "movie",
@@ -1950,7 +2000,8 @@ mod tests {
     fn concordance_warm_index_context_rebuilds_when_corpus_key_changes() {
         let documents = concordance_test_documents();
         let query = concordance_test_query("movie");
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let context = concordance_test_context();
 
         let first = search_concordance_documents_with_warm_index(
@@ -1988,7 +2039,8 @@ mod tests {
         let documents = concordance_test_documents();
         let mut query = concordance_test_query("movie");
         query.context_filter = Some("good".to_string());
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let context = concordance_test_context();
         let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
 
@@ -2010,7 +2062,8 @@ mod tests {
     fn concordance_index_errors_surface_from_warm_route() {
         let documents = concordance_test_documents();
         let query = concordance_test_query("   ");
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let context = concordance_test_context();
 
         let error = search_concordance_documents_with_warm_index(

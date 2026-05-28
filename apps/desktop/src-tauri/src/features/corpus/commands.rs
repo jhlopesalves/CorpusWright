@@ -1,4 +1,19 @@
-use crate::*;
+use crate::features::analysis::state::AnalysisState;
+use crate::features::concordance::state::{
+    ConcordanceCollocationCache, ConcordanceIndexContextState,
+};
+use crate::features::pdf::state::PdfPageRangeCache;
+use crate::features::project;
+use crate::features::sources::hydrate_project_source_text_cache;
+use corpuswright_core::corpus::search::{SearchResult, search_corpus};
+use corpuswright_core::corpus::word_count::count_words_for_record;
+use corpuswright_core::corpus::{CorpusSummary, load_files, scan_directory};
+use corpuswright_core::preparation::cleaning::CleaningConfig;
+use corpuswright_core::sources::cache::ExtractionCache;
+use serde::Serialize;
+use std::path::PathBuf;
+
+use super::state::{CorpusLoadResult, CorpusState};
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -184,11 +199,7 @@ pub(crate) fn compute_word_count_command(
     let mut total_words = 0;
     let mut skipped_ocr_mode = false;
     for record in &records {
-        let outcome = corpuswright_core::word_count::count_words_for_record(
-            record,
-            &cleaning_config,
-            Some(&*cache),
-        );
+        let outcome = count_words_for_record(record, &cleaning_config, Some(&*cache));
         total_words += outcome.count as u64;
         skipped_ocr_mode |= outcome.skipped_ocr_mode;
     }
@@ -211,11 +222,7 @@ pub(crate) fn compute_word_count_window_command(
     let mut total_words = 0;
     let mut skipped_ocr_mode = false;
     for record in &records {
-        let outcome = corpuswright_core::word_count::count_words_for_record(
-            record,
-            &cleaning_config,
-            Some(&*cache),
-        );
+        let outcome = count_words_for_record(record, &cleaning_config, Some(&*cache));
         total_words += outcome.count as u64;
         skipped_ocr_mode |= outcome.skipped_ocr_mode;
     }

@@ -1,5 +1,6 @@
-use corpuswright_core::clean::PdfOcrQuality;
-use corpuswright_core::project_sources::{
+use corpuswright_core::corpus::{ScanReport, load_files, scan_directory};
+use corpuswright_core::preparation::cleaning::PdfOcrQuality;
+use corpuswright_core::project::sources::{
     ProjectSource, ProjectSourceExtractionRoute, ProjectSourceImportPolicy,
     ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest, ProjectSourcePage,
     ProjectSourcePdfHandlingOverride, ProjectSourcePdfProfile, ProjectSourceQuery,
@@ -10,7 +11,6 @@ use corpuswright_core::project_sources::{
     review_project_source_paths, save_project_source_manifest, source_manifest_path,
     update_project_source_pdf_handling, update_project_source_pdf_profiles,
 };
-use corpuswright_core::scan::{ScanReport, load_files, scan_directory};
 use corpuswright_core::{ActiveProject, CreateCorpusProjectRequest, ProjectLanguage};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -83,7 +83,7 @@ impl ProjectSourceInventoryState {
         &self,
         root: &Path,
         source_id: &str,
-    ) -> Result<Option<corpuswright_core::project_sources::ProjectSource>, String> {
+    ) -> Result<Option<corpuswright_core::project::sources::ProjectSource>, String> {
         self.with_manifest(root, |manifest| {
             manifest
                 .sources
@@ -502,7 +502,7 @@ pub(crate) fn fast_import_project_source_files_command(
 
 fn paths_require_pdf_handling(paths: &[PathBuf]) -> bool {
     paths.iter().any(|path| {
-        corpuswright_core::project_sources::kind_for_path(path) == ProjectSourceKind::Pdf
+        corpuswright_core::project::sources::kind_for_path(path) == ProjectSourceKind::Pdf
     })
 }
 

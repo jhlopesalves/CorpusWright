@@ -1,4 +1,10 @@
-use crate::*;
+use corpuswright_core::analysis::{
+    AnalysisDocumentSelection, ConcordanceCollocationAggregate,
+    ConcordanceCollocationAggregationSignature, ConcordanceSearchContext,
+};
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConcordanceCollocationCacheKey {
@@ -161,6 +167,11 @@ impl ConcordanceIndexContextCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use corpuswright_core::analysis::{
+        ConcordanceCollocationQuery, ConcordanceCollocationResult,
+        concordance_collocation_aggregation_signature,
+        query_concordance_collocations_from_aggregate,
+    };
 
     fn collocation_cache_key(
         corpus_version: u64,
@@ -224,7 +235,8 @@ mod tests {
             ConcordanceCollocationAggregationSignature,
         ) -> ConcordanceCollocationAggregate,
     ) -> ConcordanceCollocationResult {
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config =
+            corpuswright_core::text::tokenisation::TokenizationConfig::default();
         let aggregation =
             concordance_collocation_aggregation_signature(query, &tokenization_config).unwrap();
         let cache_key = ConcordanceCollocationCacheKey {

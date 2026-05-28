@@ -1,4 +1,5 @@
-use crate::*;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 pub(crate) struct AnnotationBuildState {
     pub(crate) cancel: Mutex<Option<Arc<AtomicBool>>>,

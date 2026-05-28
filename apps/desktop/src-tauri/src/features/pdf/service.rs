@@ -1,4 +1,27 @@
-use crate::*;
+//! Materialises PDF project sources with bounded parallel page batches.
+//!
+//! Each batch extracts pages independently, restores page order before progress and cache updates,
+//! and checks cancellation between bounded units of work.
+
+use crate::features::sources::modified_time_secs;
+use corpuswright_core::corpus::{DocumentRecord, DocumentType};
+use corpuswright_core::preparation::cleaning::{
+    CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource, clean_text,
+};
+use corpuswright_core::project::sources::{ProjectSourceExtractionRoute, ProjectSourcePdfProfile};
+use corpuswright_core::sources::cache::{CacheEntry, ExtractionCache};
+use corpuswright_core::sources::pdf::{
+    PdfExtractionOptions, PdfPageRangeResult, extract_pdf_page_range, pdf_page_count,
+};
+use rayon::prelude::*;
+use serde::Serialize;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
+use tauri::{Emitter, Window};
+
+use super::state::PdfPageRangeCacheKey;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProjectPdfPreparationPlanItem {
@@ -42,13 +65,11 @@ pub(crate) struct MaterializedOcrPage {
 pub(crate) fn pdf_intake_method_label(options: PdfExtractionOptions) -> String {
     match options.text_source {
         PdfTextSource::EmbeddedText => match options.strategy {
-            corpuswright_core::clean::PdfEmbeddedTextStrategy::PdfiumFlat => {
-                "embedded text".to_string()
-            }
-            corpuswright_core::clean::PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn => {
+            PdfEmbeddedTextStrategy::PdfiumFlat => "embedded text".to_string(),
+            PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn => {
                 "layout-aware embedded text".to_string()
             }
-            corpuswright_core::clean::PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental => {
+            PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental => {
                 "experimental visual columns".to_string()
             }
         },
@@ -500,7 +521,8 @@ pub(crate) fn materialize_force_ocr_pdf(
         let batch_end = next_page_index
             .saturating_add(worker_count)
             .min(total_pages);
-        // Check cancellation before spawning the parallel OCR batch
+        // Pages in a batch are independent. Rayon returns local page results, then explicit sorting
+        // restores document order before text, warnings, and progress are committed.
         if cancel.load(Ordering::Relaxed) {
             return Err(pdf_intake_cancelled_message());
         }
@@ -695,7 +717,7 @@ pub(crate) fn pdf_page_range_cache_key(
     let ocr_model_identity = match text_source {
         PdfTextSource::EmbeddedText => None,
         PdfTextSource::Ocr | PdfTextSource::ForceOcr => {
-            corpuswright_core::pdf_ocr::ocr_model_identity()
+            corpuswright_core::sources::pdf::ocr::ocr_model_identity()
         }
     };
 

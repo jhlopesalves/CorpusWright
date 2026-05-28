@@ -1,4 +1,37 @@
-use crate::*;
+use crate::features::analysis::state::AnalysisState;
+use crate::features::corpus::state::{CorpusState, project_root_cache_key};
+use crate::features::sources::concordance_document_from_record;
+use corpuswright_core::analysis::{
+    CompareExpressionsQuery, CompareExpressionsResult, ConcordanceCollocationQuery,
+    ConcordanceCollocationResult, ConcordanceExpansionQuery, ConcordanceExpansionResult,
+    ConcordanceQuery, ConcordanceResult, aggregate_concordance_collocations_scan_provider,
+    cleaning_config_signature, compare_expressions, concordance_collocation_aggregation_signature,
+    expand_concordance_context, query_concordance_collocations_from_aggregate,
+    search_concordance_documents_routed_scan_provider,
+};
+use corpuswright_core::preparation::cleaning::CleaningConfig;
+use corpuswright_core::sources::cache::ExtractionCache;
+use corpuswright_core::text::tokenisation::TokenizationConfig;
+use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
+use tauri::Emitter;
+
+use super::service::{
+    ConcordanceBackendMode, aggregate_concordance_collocations_audit_mode,
+    aggregate_concordance_collocations_with_warm_index_provider, concordance_backend_mode_from_env,
+    concordance_default_index_disabled_for_key, log_concordance_collocation_index_error,
+    log_concordance_collocation_index_result,
+    log_concordance_default_index_previous_error_recovery, log_concordance_default_index_recovery,
+    log_concordance_default_index_recovery_scan_error, log_concordance_index_error,
+    log_concordance_index_result, record_concordance_default_index_error,
+    search_concordance_documents_audit_mode, search_concordance_with_warm_index_provider,
+};
+use super::state::{
+    ConcordanceCollocationCache, ConcordanceCollocationCacheKey, ConcordanceIndexContextKey,
+    ConcordanceIndexContextState,
+};
 
 #[tauri::command]
 pub(crate) async fn search_concordance_command(
@@ -19,7 +52,7 @@ pub(crate) async fn search_concordance_command(
     let index_context = index_context.context_handle();
     let cache = cache.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let tokenization_config = TokenizationConfig::default();
         match mode {
             ConcordanceBackendMode::DefaultIndex | ConcordanceBackendMode::StrictIndex => {
                 if mode == ConcordanceBackendMode::DefaultIndex
@@ -204,12 +237,8 @@ pub(crate) async fn compare_expressions_command(
                 documents.push(document);
             }
         }
-        compare_expressions(
-            &documents,
-            &query,
-            &corpuswright_core::tokenization::TokenizationConfig::default(),
-        )
-        .map_err(|error| error.to_string())
+        compare_expressions(&documents, &query, &TokenizationConfig::default())
+            .map_err(|error| error.to_string())
     })
     .await
     .map_err(|error| format!("Compare expressions task failed: {error}"))?
@@ -227,7 +256,7 @@ pub(crate) async fn query_concordance_collocations_command(
     index_context: tauri::State<'_, ConcordanceIndexContextState>,
     app: tauri::AppHandle,
 ) -> Result<ConcordanceCollocationResult, String> {
-    let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+    let tokenization_config = TokenizationConfig::default();
     let aggregation = concordance_collocation_aggregation_signature(&query, &tokenization_config)
         .map_err(|error| error.to_string())?;
     let (records, project_root) = corpus.all_records_and_root(corpus_version)?;
@@ -254,7 +283,7 @@ pub(crate) async fn query_concordance_collocations_command(
     let cache = cache.inner().clone();
     let index_context = index_context.context_handle();
     let query_for_aggregation = query.clone();
-    let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+    let tokenization_config = TokenizationConfig::default();
     tauri::async_runtime::spawn_blocking(move || match mode {
         ConcordanceBackendMode::DefaultIndex | ConcordanceBackendMode::StrictIndex => {
             let started = Instant::now();
@@ -415,12 +444,8 @@ pub(crate) async fn expand_concordance_context_command(
         )
         .ok_or(corpuswright_core::analysis::ConcordanceError::InvalidDocumentIdentity)
         .map_err(|error| error.to_string())?;
-        expand_concordance_context(
-            &document,
-            &query,
-            &corpuswright_core::tokenization::TokenizationConfig::default(),
-        )
-        .map_err(|error| error.to_string())
+        expand_concordance_context(&document, &query, &TokenizationConfig::default())
+            .map_err(|error| error.to_string())
     })
     .await
     .map_err(|error| format!("Concordance expansion task failed: {error}"))?

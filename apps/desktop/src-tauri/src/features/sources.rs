@@ -1,4 +1,19 @@
-use crate::*;
+//! Resolves source and processed text for desktop features and persists extracted project text.
+//!
+//! Analysis, preview, and processing share this boundary so cache identity and PDF extraction
+//! options remain consistent across their separate command lifecycles.
+
+use corpuswright_core::analysis::{ConcordanceDocument, resolve_analysis_input};
+use corpuswright_core::corpus::{DocumentRecord, DocumentType};
+use corpuswright_core::preparation::cleaning::CleaningConfig;
+use corpuswright_core::project::sources::stable_project_source_id;
+use corpuswright_core::sources::cache::{
+    CacheEntry, DocumentTextMode, ExtractionCache, document_text_for_record,
+    document_text_from_cache_entry,
+};
+use corpuswright_core::sources::pdf::PdfExtractionOptions;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 pub(crate) const PROJECT_SOURCE_TEXT_CACHE_VERSION: u32 = 1;
 pub(crate) const PROJECT_SOURCE_TEXT_CACHE_DIR: &str = "source-text";
@@ -240,6 +255,9 @@ pub(crate) fn hydrate_project_source_text_cache(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use corpuswright_core::project::sources::{
+        ProjectSourceExtractionRoute, ProjectSourcePdfProfile,
+    };
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -333,10 +351,11 @@ mod tests {
         );
         assert_eq!(prepared, "keep ");
         assert_eq!(resolution.text.as_deref(), Some(prepared.as_str()));
-        let config = corpuswright_core::tokenization::TokenizationConfig::default();
-        let prepare_tokens = corpuswright_core::tokenization::tokenize(&prepared, 0, &config);
+        let config = corpuswright_core::text::tokenisation::TokenizationConfig::default();
+        let prepare_tokens = corpuswright_core::text::tokenisation::tokenize(&prepared, 0, &config);
         let analysis_text = resolution.text.as_deref().unwrap();
-        let analysis_tokens = corpuswright_core::tokenization::tokenize(analysis_text, 0, &config);
+        let analysis_tokens =
+            corpuswright_core::text::tokenisation::tokenize(analysis_text, 0, &config);
         assert_eq!(prepare_tokens, analysis_tokens);
         let _ = fs::remove_dir_all(root);
     }
