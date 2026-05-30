@@ -1,8 +1,8 @@
-import type { ProjectLanguage } from "./generated/ProjectLanguage.js";
+import type { ProjectLanguage } from "../../../generated/ProjectLanguage.js";
 
-import englishStopwords from "../../../crates/corpuswright-core/resources/stopwords/en.txt?raw";
-import frenchStopwords from "../../../crates/corpuswright-core/resources/stopwords/fr.txt?raw";
-import portugueseStopwords from "../../../crates/corpuswright-core/resources/stopwords/pt.txt?raw";
+import englishStopwords from "../../../../../../crates/corpuswright-core/resources/stopwords/en.txt?raw";
+import frenchStopwords from "../../../../../../crates/corpuswright-core/resources/stopwords/fr.txt?raw";
+import portugueseStopwords from "../../../../../../crates/corpuswright-core/resources/stopwords/pt.txt?raw";
 
 const stopwordSources: Record<ProjectLanguage, string> = {
   en: englishStopwords,

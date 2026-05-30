@@ -1,15 +1,21 @@
-import type { CleaningConfig, RemovalRule, ReplacementRule } from "./generated/CleaningConfig.js";
-import { createDefaultCleaningConfig } from "./config";
-import type { DocumentRecord } from "./generated/DocumentRecord.js";
-import type { ProjectSource } from "./generated/ProjectSource.js";
-import type { ProjectSourceSummary } from "./generated/ProjectSourceSummary.js";
-import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
-import type { SearchResult } from "./generated/SearchResult.js";
-import type { CorpusOverview } from "./analysis";
-import type { ActiveProject } from "./generated/ActiveProject.js";
+/**
+ * Application-lifetime state shared across Project, Prepare, and Analyse.
+ *
+ * Corpus versions and feature request generations guard asynchronous work. Feature controllers own
+ * mutation and reset boundaries; this module owns the aggregate identity only.
+ */
+import type { CleaningConfig, RemovalRule, ReplacementRule } from "../generated/CleaningConfig.js";
+import { createDefaultCleaningConfig } from "../features/prepare/cleaning/config";
+import type { DocumentRecord } from "../generated/DocumentRecord.js";
+import type { ProjectSource } from "../generated/ProjectSource.js";
+import type { ProjectSourceSummary } from "../generated/ProjectSourceSummary.js";
+import type { RepeatedArtifactCandidate } from "../generated/RepeatedArtifactCandidate.js";
+import type { SearchResult } from "../generated/SearchResult.js";
+import type { CorpusOverview } from "../features/analyse/api";
+import type { ActiveProject } from "../generated/ActiveProject.js";
 import type {
   VisibleFile,
-} from "./types";
+} from "../features/prepare/corpus/types";
 
 export type { ActiveProject };
 

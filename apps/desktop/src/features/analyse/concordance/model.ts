@@ -1,12 +1,18 @@
-import type { ConcordanceCollocateRow } from "./generated/ConcordanceCollocateRow.js";
-import type { ConcordanceCollocationDirection } from "./generated/ConcordanceCollocationDirection.js";
-import type { ConcordanceCollocationMeasure } from "./generated/ConcordanceCollocationMeasure.js";
-import type { ConcordanceCollocationSortKey } from "./generated/ConcordanceCollocationSortKey.js";
-import type { ConcordanceExpansionResult } from "./generated/ConcordanceExpansionResult.js";
-import type { ConcordanceProgress } from "./generated/ConcordanceProgress.js";
-import type { ConcordanceRow } from "./generated/ConcordanceRow.js";
-import type { ConcordanceSortKey } from "./generated/ConcordanceSortKey.js";
-import type { SortDirection } from "./generated/SortDirection.js";
+/**
+ * Defines Concordance query defaults, normalisation, labels, and presentation models.
+ *
+ * Backend search and collocation semantics remain Rust-owned; these helpers keep every card aligned
+ * on the same query identity and units.
+ */
+import type { ConcordanceCollocateRow } from "../../../generated/ConcordanceCollocateRow.js";
+import type { ConcordanceCollocationDirection } from "../../../generated/ConcordanceCollocationDirection.js";
+import type { ConcordanceCollocationMeasure } from "../../../generated/ConcordanceCollocationMeasure.js";
+import type { ConcordanceCollocationSortKey } from "../../../generated/ConcordanceCollocationSortKey.js";
+import type { ConcordanceExpansionResult } from "../../../generated/ConcordanceExpansionResult.js";
+import type { ConcordanceProgress } from "../../../generated/ConcordanceProgress.js";
+import type { ConcordanceRow } from "../../../generated/ConcordanceRow.js";
+import type { ConcordanceSortKey } from "../../../generated/ConcordanceSortKey.js";
+import type { SortDirection } from "../../../generated/SortDirection.js";
 
 export const CONCORDANCE_MIN_WINDOW = 1;
 export const CONCORDANCE_DEFAULT_WINDOW = 10;

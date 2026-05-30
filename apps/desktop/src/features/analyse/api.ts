@@ -1,17 +1,23 @@
+/**
+ * Authored Analyse gateway over Rust-generated IPC contracts.
+ *
+ * Generated types preserve serialised field ownership. This module supplies stable frontend names,
+ * request defaults, and Tauri invocation functions used by the workbench controllers.
+ */
 import { invoke } from "@tauri-apps/api/core";
 
-import type { AnnotatedFrequencyMode as GeneratedAnnotatedFrequencyMode } from "./generated/AnnotatedFrequencyMode.js";
-import type { AnnotatedFrequencyQuery as GeneratedAnnotatedFrequencyQuery } from "./generated/AnnotatedFrequencyQuery.js";
-import type { AnnotatedFrequencyResult as GeneratedAnnotatedFrequencyResult } from "./generated/AnnotatedFrequencyResult.js";
-import type { AnnotatedTermDistributionQuery as GeneratedAnnotatedTermDistributionQuery } from "./generated/AnnotatedTermDistributionQuery.js";
-import type { AnnotatedTermSelector as GeneratedAnnotatedTermSelector } from "./generated/AnnotatedTermSelector.js";
-import type { AnnotationCacheAvailability as GeneratedAnnotationCacheAvailability } from "./generated/AnnotationCacheAvailability.js";
-import type { AnnotationCacheBuildError as GeneratedAnnotationCacheBuildError } from "./generated/AnnotationCacheBuildError.js";
-import type { AnnotationCacheBuildReport as GeneratedAnnotationCacheBuildReport } from "./generated/AnnotationCacheBuildReport.js";
-import type { AnnotationCacheBuildProgress as GeneratedAnnotationCacheBuildProgress } from "./generated/AnnotationCacheBuildProgress.js";
-import type { AnnotationCacheState as GeneratedAnnotationCacheState } from "./generated/AnnotationCacheState.js";
-import type { AnalysisDocumentSelection as GeneratedAnalysisDocumentSelection } from "./generated/AnalysisDocumentSelection.js";
-import type { CleaningConfig } from "./generated/CleaningConfig.js";
+import type { AnnotatedFrequencyMode as GeneratedAnnotatedFrequencyMode } from "../../generated/AnnotatedFrequencyMode.js";
+import type { AnnotatedFrequencyQuery as GeneratedAnnotatedFrequencyQuery } from "../../generated/AnnotatedFrequencyQuery.js";
+import type { AnnotatedFrequencyResult as GeneratedAnnotatedFrequencyResult } from "../../generated/AnnotatedFrequencyResult.js";
+import type { AnnotatedTermDistributionQuery as GeneratedAnnotatedTermDistributionQuery } from "../../generated/AnnotatedTermDistributionQuery.js";
+import type { AnnotatedTermSelector as GeneratedAnnotatedTermSelector } from "../../generated/AnnotatedTermSelector.js";
+import type { AnnotationCacheAvailability as GeneratedAnnotationCacheAvailability } from "../../generated/AnnotationCacheAvailability.js";
+import type { AnnotationCacheBuildError as GeneratedAnnotationCacheBuildError } from "../../generated/AnnotationCacheBuildError.js";
+import type { AnnotationCacheBuildReport as GeneratedAnnotationCacheBuildReport } from "../../generated/AnnotationCacheBuildReport.js";
+import type { AnnotationCacheBuildProgress as GeneratedAnnotationCacheBuildProgress } from "../../generated/AnnotationCacheBuildProgress.js";
+import type { AnnotationCacheState as GeneratedAnnotationCacheState } from "../../generated/AnnotationCacheState.js";
+import type { AnalysisDocumentSelection as GeneratedAnalysisDocumentSelection } from "../../generated/AnalysisDocumentSelection.js";
+import type { CleaningConfig } from "../../generated/CleaningConfig.js";
 import type {
   AnalysisInputSource as GeneratedAnalysisInputSource,
   CorpusOverview as GeneratedCorpusOverview,
@@ -43,41 +49,41 @@ import type {
   RankFrequencyPoint as GeneratedRankFrequencyPoint,
   UniversalType as GeneratedUniversalType,
   VocabularyGrowthPoint as GeneratedVocabularyGrowthPoint,
-} from "./generated/CorpusOverview.js";
-import type { CoverageTargetCrossing as GeneratedCoverageTargetCrossing } from "./generated/CoverageTargetCrossing.js";
-import type { CompareExpressionsQuery as GeneratedCompareExpressionsQuery } from "./generated/CompareExpressionsQuery.js";
-import type { CompareExpressionsResult as GeneratedCompareExpressionsResult } from "./generated/CompareExpressionsResult.js";
-import type { ConcordanceContextFilterDirection as GeneratedConcordanceContextFilterDirection } from "./generated/ConcordanceContextFilterDirection.js";
-import type { ConcordanceQuery as GeneratedConcordanceQuery } from "./generated/ConcordanceQuery.js";
-import type { ConcordanceExpansionQuery as GeneratedConcordanceExpansionQuery } from "./generated/ConcordanceExpansionQuery.js";
-import type { ConcordanceExpansionResult as GeneratedConcordanceExpansionResult } from "./generated/ConcordanceExpansionResult.js";
-import type { ConcordancePhase as GeneratedConcordancePhase } from "./generated/ConcordancePhase.js";
-import type { ConcordanceProgress as GeneratedConcordanceProgress } from "./generated/ConcordanceProgress.js";
-import type { ConcordanceCollocateRow as GeneratedConcordanceCollocateRow } from "./generated/ConcordanceCollocateRow.js";
-import type { ConcordanceCollocatePositionCounts as GeneratedConcordanceCollocatePositionCounts } from "./generated/ConcordanceCollocatePositionCounts.js";
-import type { ConcordanceCollocationDirection as GeneratedConcordanceCollocationDirection } from "./generated/ConcordanceCollocationDirection.js";
-import type { ConcordanceCollocationMeasure as GeneratedConcordanceCollocationMeasure } from "./generated/ConcordanceCollocationMeasure.js";
-import type { ConcordanceCollocationQuery as GeneratedConcordanceCollocationQuery } from "./generated/ConcordanceCollocationQuery.js";
-import type { ConcordanceCollocationResult as GeneratedConcordanceCollocationResult } from "./generated/ConcordanceCollocationResult.js";
-import type { ConcordanceCollocationSortKey as GeneratedConcordanceCollocationSortKey } from "./generated/ConcordanceCollocationSortKey.js";
-import type { ConcordanceResult as GeneratedConcordanceResult } from "./generated/ConcordanceResult.js";
-import type { ConcordanceRow as GeneratedConcordanceRow } from "./generated/ConcordanceRow.js";
-import type { ConcordanceSortKey as GeneratedConcordanceSortKey } from "./generated/ConcordanceSortKey.js";
-import type { FrequencyGroupMode as GeneratedFrequencyGroupMode } from "./generated/FrequencyGroupMode.js";
-import type { FrequencyMatchMode as GeneratedFrequencyMatchMode } from "./generated/FrequencyMatchMode.js";
-import type { FrequencyPage as GeneratedFrequencyPage } from "./generated/FrequencyPage.js";
-import type { FrequencyQuery as GeneratedFrequencyQuery } from "./generated/FrequencyQuery.js";
-import type { FrequencySortKey as GeneratedFrequencySortKey } from "./generated/FrequencySortKey.js";
-import type { FrequencyTermItem as GeneratedFrequencyTermItem } from "./generated/FrequencyTermItem.js";
-import type { FrequencyTokenClass as GeneratedFrequencyTokenClass } from "./generated/FrequencyTokenClass.js";
-import type { SortDirection as GeneratedSortDirection } from "./generated/SortDirection.js";
-import type { OverviewDistributionEvidencePage as GeneratedOverviewDistributionEvidencePage } from "./generated/OverviewDistributionEvidencePage.js";
-import type { OverviewDistributionEvidenceQuery as GeneratedOverviewDistributionEvidenceQuery } from "./generated/OverviewDistributionEvidenceQuery.js";
-import type { OverviewDistributionMetric as GeneratedOverviewDistributionMetric } from "./generated/OverviewDistributionMetric.js";
-import type { OverviewDistributionQuery as GeneratedOverviewDistributionQuery } from "./generated/OverviewDistributionQuery.js";
-import type { OverviewDistributionResult as GeneratedOverviewDistributionResult } from "./generated/OverviewDistributionResult.js";
-import type { TermDistributionItem as GeneratedTermDistributionItem } from "./generated/TermDistributionItem.js";
-import type { TermDistributionPage as GeneratedTermDistributionPage } from "./generated/TermDistributionPage.js";
+} from "../../generated/CorpusOverview.js";
+import type { CoverageTargetCrossing as GeneratedCoverageTargetCrossing } from "../../generated/CoverageTargetCrossing.js";
+import type { CompareExpressionsQuery as GeneratedCompareExpressionsQuery } from "../../generated/CompareExpressionsQuery.js";
+import type { CompareExpressionsResult as GeneratedCompareExpressionsResult } from "../../generated/CompareExpressionsResult.js";
+import type { ConcordanceContextFilterDirection as GeneratedConcordanceContextFilterDirection } from "../../generated/ConcordanceContextFilterDirection.js";
+import type { ConcordanceQuery as GeneratedConcordanceQuery } from "../../generated/ConcordanceQuery.js";
+import type { ConcordanceExpansionQuery as GeneratedConcordanceExpansionQuery } from "../../generated/ConcordanceExpansionQuery.js";
+import type { ConcordanceExpansionResult as GeneratedConcordanceExpansionResult } from "../../generated/ConcordanceExpansionResult.js";
+import type { ConcordancePhase as GeneratedConcordancePhase } from "../../generated/ConcordancePhase.js";
+import type { ConcordanceProgress as GeneratedConcordanceProgress } from "../../generated/ConcordanceProgress.js";
+import type { ConcordanceCollocateRow as GeneratedConcordanceCollocateRow } from "../../generated/ConcordanceCollocateRow.js";
+import type { ConcordanceCollocatePositionCounts as GeneratedConcordanceCollocatePositionCounts } from "../../generated/ConcordanceCollocatePositionCounts.js";
+import type { ConcordanceCollocationDirection as GeneratedConcordanceCollocationDirection } from "../../generated/ConcordanceCollocationDirection.js";
+import type { ConcordanceCollocationMeasure as GeneratedConcordanceCollocationMeasure } from "../../generated/ConcordanceCollocationMeasure.js";
+import type { ConcordanceCollocationQuery as GeneratedConcordanceCollocationQuery } from "../../generated/ConcordanceCollocationQuery.js";
+import type { ConcordanceCollocationResult as GeneratedConcordanceCollocationResult } from "../../generated/ConcordanceCollocationResult.js";
+import type { ConcordanceCollocationSortKey as GeneratedConcordanceCollocationSortKey } from "../../generated/ConcordanceCollocationSortKey.js";
+import type { ConcordanceResult as GeneratedConcordanceResult } from "../../generated/ConcordanceResult.js";
+import type { ConcordanceRow as GeneratedConcordanceRow } from "../../generated/ConcordanceRow.js";
+import type { ConcordanceSortKey as GeneratedConcordanceSortKey } from "../../generated/ConcordanceSortKey.js";
+import type { FrequencyGroupMode as GeneratedFrequencyGroupMode } from "../../generated/FrequencyGroupMode.js";
+import type { FrequencyMatchMode as GeneratedFrequencyMatchMode } from "../../generated/FrequencyMatchMode.js";
+import type { FrequencyPage as GeneratedFrequencyPage } from "../../generated/FrequencyPage.js";
+import type { FrequencyQuery as GeneratedFrequencyQuery } from "../../generated/FrequencyQuery.js";
+import type { FrequencySortKey as GeneratedFrequencySortKey } from "../../generated/FrequencySortKey.js";
+import type { FrequencyTermItem as GeneratedFrequencyTermItem } from "../../generated/FrequencyTermItem.js";
+import type { FrequencyTokenClass as GeneratedFrequencyTokenClass } from "../../generated/FrequencyTokenClass.js";
+import type { SortDirection as GeneratedSortDirection } from "../../generated/SortDirection.js";
+import type { OverviewDistributionEvidencePage as GeneratedOverviewDistributionEvidencePage } from "../../generated/OverviewDistributionEvidencePage.js";
+import type { OverviewDistributionEvidenceQuery as GeneratedOverviewDistributionEvidenceQuery } from "../../generated/OverviewDistributionEvidenceQuery.js";
+import type { OverviewDistributionMetric as GeneratedOverviewDistributionMetric } from "../../generated/OverviewDistributionMetric.js";
+import type { OverviewDistributionQuery as GeneratedOverviewDistributionQuery } from "../../generated/OverviewDistributionQuery.js";
+import type { OverviewDistributionResult as GeneratedOverviewDistributionResult } from "../../generated/OverviewDistributionResult.js";
+import type { TermDistributionItem as GeneratedTermDistributionItem } from "../../generated/TermDistributionItem.js";
+import type { TermDistributionPage as GeneratedTermDistributionPage } from "../../generated/TermDistributionPage.js";
 
 export type AnalysisInputSource = GeneratedAnalysisInputSource;
 export type AnalysisBuildPhase =

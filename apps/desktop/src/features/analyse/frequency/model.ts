@@ -1,5 +1,5 @@
-import type { AnnotatedFrequencyMode } from "./generated/AnnotatedFrequencyMode.js";
-import type { AnnotationCacheState } from "./generated/AnnotationCacheState.js";
+import type { AnnotatedFrequencyMode } from "../../../generated/AnnotatedFrequencyMode.js";
+import type { AnnotationCacheState } from "../../../generated/AnnotationCacheState.js";
 
 export type FrequencyViewMode = "surface" | AnnotatedFrequencyMode;
 export type FrequencyRateScale = "off" | "per10k" | "per100k" | "perMillion";

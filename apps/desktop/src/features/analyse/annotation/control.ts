@@ -1,7 +1,7 @@
-import type { AnnotationCacheAvailability } from "./generated/AnnotationCacheAvailability.js";
-import type { AnnotationCacheState } from "./generated/AnnotationCacheState.js";
+import type { AnnotationCacheAvailability } from "../../../generated/AnnotationCacheAvailability.js";
+import type { AnnotationCacheState } from "../../../generated/AnnotationCacheState.js";
 
-import type { AnnotationCacheBuildProgress } from "./generated/AnnotationCacheBuildProgress.js";
+import type { AnnotationCacheBuildProgress } from "../../../generated/AnnotationCacheBuildProgress.js";
 
 export type AnnotationLayerTransientState =
   | {

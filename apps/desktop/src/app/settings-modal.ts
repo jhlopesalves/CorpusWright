@@ -6,23 +6,23 @@ import {
   normalisePdfTextSource,
   normaliseCleaningConfigWithMigration,
   type BooleanCleaningConfigKey,
-} from "./config";
+} from "../features/prepare/cleaning/config";
 import { dom } from "./dom";
-import { syncDraftCustomRemovalsFromConfig } from "./custom-removals";
+import { syncDraftCustomRemovalsFromConfig } from "../features/prepare/cleaning/custom-removals";
 import {
   syncDecisionsWithActiveRules,
   syncRepeatedArtifactSettingsSection,
-} from "./repeated-artifacts";
+} from "../features/prepare/repeated-artifacts/controller";
 import { state } from "./state";
-import { hasProjectSourceSelection } from "./sources";
-import { formatRemovalRuleMigrationSummary } from "./removal-rule-migration.ts";
+import { hasProjectSourceSelection } from "../features/prepare/sources";
+import { formatRemovalRuleMigrationSummary } from "../features/prepare/cleaning/removal-rule-migration.ts";
 import type {
   CleaningConfig,
   PdfEmbeddedTextStrategy,
   PdfOcrQuality,
   PdfTextSource,
   TableExtractionStrategy,
-} from "./generated/CleaningConfig.js";
+} from "../generated/CleaningConfig.js";
 
 interface CheckboxBinding {
   configKey: BooleanCleaningConfigKey;

@@ -13,7 +13,7 @@ import {
   type ConcordanceResult,
   type ConcordanceRow,
   type SortDirection,
-} from "../../analysis";
+} from "../../api";
 import {
   clampConcordanceCollocationFloor,
   clampConcordanceCollocationSpan,
@@ -45,10 +45,10 @@ import {
   toggleConcordanceExpansionKey,
   nextConcordanceCollocateDisplayCount,
   type ConcordancePositionProfileMode,
-} from "../../concordance";
-import { dom } from "../../dom";
-import { effectiveCleaningConfig } from "../../effective-cleaning-config";
-import { state } from "../../state";
+} from "../../concordance/model";
+import { dom } from "../../../../app/dom";
+import { effectiveCleaningConfig } from "../../../prepare/cleaning/effective-config";
+import { state } from "../../../../app/state";
 import { currentFrequencyDocumentScope } from "../frequency";
 import { activeProjectLanguageCode, formatFixedNumber, formatNumber } from "../shell";
 import {
