@@ -1,14 +1,20 @@
+/**
+ * Provides ID-based project-source selection, paging, status, and import helpers.
+ *
+ * Source text preserves imported evidence. Processed text belongs to the active deterministic
+ * cleaning configuration, and callers can inspect both through the shared source identity.
+ */
 import { invoke } from "@tauri-apps/api/core";
 
-import type { PdfOcrQuality } from "./generated/PdfOcrQuality.js";
-import type { ProjectSource } from "./generated/ProjectSource.js";
-import type { ProjectSourceExtractionRoute } from "./generated/ProjectSourceExtractionRoute.js";
-import type { ProjectSourceImportReview } from "./generated/ProjectSourceImportReview.js";
-import type { ProjectSourcePage } from "./generated/ProjectSourcePage.js";
-import type { ProjectSourcePdfProfile } from "./generated/ProjectSourcePdfProfile.js";
-import type { ProjectSourceStatus } from "./generated/ProjectSourceStatus.js";
-import type { ProjectSourceSelectionDescriptor } from "./generated/ProjectSourceSelectionDescriptor.js";
-import { state } from "./state";
+import type { PdfOcrQuality } from "../../generated/PdfOcrQuality.js";
+import type { ProjectSource } from "../../generated/ProjectSource.js";
+import type { ProjectSourceExtractionRoute } from "../../generated/ProjectSourceExtractionRoute.js";
+import type { ProjectSourceImportReview } from "../../generated/ProjectSourceImportReview.js";
+import type { ProjectSourcePage } from "../../generated/ProjectSourcePage.js";
+import type { ProjectSourcePdfProfile } from "../../generated/ProjectSourcePdfProfile.js";
+import type { ProjectSourceStatus } from "../../generated/ProjectSourceStatus.js";
+import type { ProjectSourceSelectionDescriptor } from "../../generated/ProjectSourceSelectionDescriptor.js";
+import { state } from "../../app/state";
 
 const PROJECT_SOURCES_UPDATED_EVENT = "corpuswright:project-sources-updated";
 

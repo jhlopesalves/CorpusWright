@@ -1,30 +1,36 @@
-import "./state";
-import "./dom";
+/**
+ * Application composition root.
+ *
+ * Initialisation order establishes shared state and DOM references before feature controllers
+ * register their callbacks. Feature modules own subsequent interaction lifecycles.
+ */
+import "./app/state";
+import "./app/dom";
 
-import { initAboutModal } from "./about-modal";
-import { initAppearanceDialog } from "./appearance";
-import { initCorpusHandlers } from "./corpus";
-import { initCustomRemovals, renderCustomRemovals } from "./custom-removals";
-import { initExport } from "./export";
+import { initAboutModal } from "./app/about-modal";
+import { initAppearanceDialog } from "./app/appearance";
+import { initCorpusHandlers } from "./features/prepare/corpus/controller";
+import { initCustomRemovals, renderCustomRemovals } from "./features/prepare/cleaning/custom-removals";
+import { initExport } from "./features/prepare/export";
 import {
   configureFileListCallbacks,
   initFileFilter,
   initSelectionControls,
   initVirtualScroll,
-} from "./file-list";
+} from "./features/prepare/corpus/file-list";
 import {
   initPreviewTabs,
   invalidatePreviewSession,
   schedulePreviewUpdate,
   updatePreview,
-} from "./preview";
-import { initProjectEntry } from "./project";
-import { initRepeatedArtifactFinder } from "./repeated-artifacts";
-import { handlePreviewTabChanged, initSearch } from "./search";
-import { initSettingsModal, syncInitialSettingsControls } from "./settings-modal";
-import { initAppChrome, initThemeToggle } from "./theme";
-import { initWorkbenchSwitcher } from "./workbench";
-import { updateWordCount } from "./word-count";
+} from "./features/prepare/preview/controller";
+import { initProjectEntry } from "./features/project/controller";
+import { initRepeatedArtifactFinder } from "./features/prepare/repeated-artifacts/controller";
+import { handlePreviewTabChanged, initSearch } from "./features/prepare/search";
+import { initSettingsModal, syncInitialSettingsControls } from "./app/settings-modal";
+import { initAppChrome, initThemeToggle } from "./app/theme";
+import { initWorkbenchSwitcher } from "./features/analyse/workbench";
+import { updateWordCount } from "./features/prepare/corpus/word-count";
 
 function init(): void {
   syncInitialSettingsControls();

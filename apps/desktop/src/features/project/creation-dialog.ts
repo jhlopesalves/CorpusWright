@@ -1,4 +1,4 @@
-import type { ProjectLanguage } from "./generated/ProjectLanguage.js";
+import type { ProjectLanguage } from "../../generated/ProjectLanguage.js";
 
 export const PROJECT_LANGUAGE_OPTIONS = ["en", "fr", "pt"] as const satisfies readonly ProjectLanguage[];
 export const PROJECT_LANGUAGE_LABELS: Record<ProjectLanguage, string> = {

@@ -1,3 +1,9 @@
+/**
+ * Coordinates project creation, opening, upgrade, and activation.
+ *
+ * Project activation resets corpus-owned feature state before source inventory and prepared text
+ * are loaded for the new root.
+ */
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -7,12 +13,12 @@ import {
   registerFilesForActiveProject,
   registerFolderForActiveProject,
   renderProjectEmptyState,
-} from "./corpus";
-import { dom } from "./dom";
-import { loadProjectSourcesForActiveProject, projectSourceTotalCount } from "./sources";
-import { state, type ActiveProject } from "./state";
-import type { CreateCorpusProjectRequest } from "./generated/CreateCorpusProjectRequest.js";
-import type { ProjectLanguage } from "./generated/ProjectLanguage.js";
+} from "../prepare/corpus/controller";
+import { dom } from "../../app/dom";
+import { loadProjectSourcesForActiveProject, projectSourceTotalCount } from "../prepare/sources";
+import { state, type ActiveProject } from "../../app/state";
+import type { CreateCorpusProjectRequest } from "../../generated/CreateCorpusProjectRequest.js";
+import type { ProjectLanguage } from "../../generated/ProjectLanguage.js";
 import {
   PROJECT_LANGUAGE_OPTIONS,
   defaultProjectNameFromPath,
@@ -20,10 +26,10 @@ import {
   projectCreationMetadataIsValid,
   projectLanguageFromValue,
   projectLanguageLabel,
-} from "./project-creation-dialog";
-import { clearDecisions, loadDecisionsForProject } from "./repeated-artifacts";
-import { formatRemovalRuleMigrationSummary } from "./removal-rule-migration.ts";
-import { hideWorkbenchSwitcher, resetWorkbenchForProject } from "./workbench";
+} from "./creation-dialog";
+import { clearDecisions, loadDecisionsForProject } from "../prepare/repeated-artifacts/controller";
+import { formatRemovalRuleMigrationSummary } from "../prepare/cleaning/removal-rule-migration.ts";
+import { hideWorkbenchSwitcher, resetWorkbenchForProject } from "../analyse/workbench";
 
 interface RecentProject {
   name: string;
