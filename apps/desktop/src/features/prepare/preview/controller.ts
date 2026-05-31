@@ -1,9 +1,15 @@
+/**
+ * Owns preview selection, debouncing, virtual viewports, and stale-response rejection.
+ *
+ * File-list and Search report changes through this boundary. Source and processed panes share one
+ * preview generation so they cannot present evidence from different corpus states.
+ */
 import { invoke } from "@tauri-apps/api/core";
 
-import { dom } from "./dom";
-import { renderVisibleItems } from "./file-list";
-import { state } from "./state";
-import { effectiveCleaningConfig } from "./effective-cleaning-config";
+import { dom } from "../../../app/dom";
+import { renderVisibleItems } from "../corpus/file-list";
+import { state } from "../../../app/state";
+import { effectiveCleaningConfig } from "../cleaning/effective-config";
 import {
   hasProjectSourceSelection,
   isProjectSourceSelected,
@@ -17,15 +23,15 @@ import {
   sourceKindLabel,
   sourceReasonDescriptions,
   sourceStatusLabel,
-} from "./sources";
-import { highlightPreviewText } from "./utils";
-import type { CombinedPreview } from "./generated/CombinedPreview.js";
-import type { FilePreview } from "./generated/FilePreview.js";
-import type { PdfPageRangePage } from "./generated/PdfPageRangePage.js";
-import type { PdfPageRangeResult } from "./generated/PdfPageRangeResult.js";
-import type { ProjectSource } from "./generated/ProjectSource.js";
-import type { ProjectSourcePreviewItem } from "./generated/ProjectSourcePreviewItem.js";
-import type { ProjectSourcePreviewViewport } from "./generated/ProjectSourcePreviewViewport.js";
+} from "../sources";
+import { highlightPreviewText } from "./text";
+import type { CombinedPreview } from "../../../generated/CombinedPreview.js";
+import type { FilePreview } from "../../../generated/FilePreview.js";
+import type { PdfPageRangePage } from "../../../generated/PdfPageRangePage.js";
+import type { PdfPageRangeResult } from "../../../generated/PdfPageRangeResult.js";
+import type { ProjectSource } from "../../../generated/ProjectSource.js";
+import type { ProjectSourcePreviewItem } from "../../../generated/ProjectSourcePreviewItem.js";
+import type { ProjectSourcePreviewViewport } from "../../../generated/ProjectSourcePreviewViewport.js";
 
 const PREVIEW_CHUNK_SIZE = 50;
 const FULL_OCR_CHUNK_SIZE = 2;
@@ -215,6 +221,8 @@ async function renderSelectedProjectSourcePreviewViewport(
         processed: true,
       }),
     ]);
+    // Request, corpus, and preview generations identify the complete rendering context. A response
+    // may update both panes only while all three identities remain current.
     if (
       request !== projectSourcePreviewRequest
       || corpusVersion !== state.currentCorpusVersion

@@ -1,29 +1,35 @@
+/**
+ * Coordinates repeated-artefact scans, review decisions, and promotion into cleaning rules.
+ *
+ * Scan progress belongs to one corpus generation. Candidate decisions are project-scoped and
+ * survive presentation changes until their source identity changes.
+ */
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import { createChevron } from "./chevron";
+import { createChevron } from "../../../shared/chevron";
 import {
   dom,
   getArtifactTextModeRadios,
   getSelectedArtifactTextMode,
-} from "./dom";
-import { state } from "./state";
+} from "../../../app/dom";
+import { state } from "../../../app/state";
 import {
   hasProjectSourceSelection,
   projectSourceSelectionCount,
   selectedProjectSources,
-} from "./sources";
-import type { RemovalRule } from "./generated/CleaningConfig.js";
-import type { CandidateTextProfile } from "./generated/CandidateTextProfile.js";
-import type { CandidateTextSignalLabel } from "./generated/CandidateTextSignalLabel.js";
-import type { PositionSummary } from "./generated/PositionSummary.js";
-import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
-import type { RepeatedArtifactScanConfig } from "./generated/RepeatedArtifactScanConfig.js";
-import type { RepeatedArtifactScanDiagnostics } from "./generated/RepeatedArtifactScanDiagnostics.js";
-import type { RepeatedArtifactScanReport } from "./generated/RepeatedArtifactScanReport.js";
-import type { RepeatedArtifactPromotion } from "./generated/RepeatedArtifactPromotion.js";
-import type { RepeatedArtifactMatcherKind } from "./generated/RepeatedArtifactMatcherKind.js";
-import type { RemovalScope } from "./generated/RemovalScope.js";
+} from "../sources";
+import type { RemovalRule } from "../../../generated/CleaningConfig.js";
+import type { CandidateTextProfile } from "../../../generated/CandidateTextProfile.js";
+import type { CandidateTextSignalLabel } from "../../../generated/CandidateTextSignalLabel.js";
+import type { PositionSummary } from "../../../generated/PositionSummary.js";
+import type { RepeatedArtifactCandidate } from "../../../generated/RepeatedArtifactCandidate.js";
+import type { RepeatedArtifactScanConfig } from "../../../generated/RepeatedArtifactScanConfig.js";
+import type { RepeatedArtifactScanDiagnostics } from "../../../generated/RepeatedArtifactScanDiagnostics.js";
+import type { RepeatedArtifactScanReport } from "../../../generated/RepeatedArtifactScanReport.js";
+import type { RepeatedArtifactPromotion } from "../../../generated/RepeatedArtifactPromotion.js";
+import type { RepeatedArtifactMatcherKind } from "../../../generated/RepeatedArtifactMatcherKind.js";
+import type { RemovalScope } from "../../../generated/RemovalScope.js";
 import {
   effectivePersistedDecisionScope,
   emptyRemovalRuleMigrationSummary,
@@ -31,13 +37,13 @@ import {
   migrateRepeatedArtifactDecisionRule,
   persistedDecisionRuleId,
   type RemovalRuleMigrationSummary,
-} from "./removal-rule-migration.ts";
+} from "../cleaning/removal-rule-migration.ts";
 import {
   formatRemovalRuleText,
   syncDraftCustomRemovalsFromConfig,
   syncRepeatedArtifactRulesSummary,
-} from "./custom-removals.js";
-import { removalRuleDuplicateKey } from "./removal-rule-utils.js";
+} from "../cleaning/custom-removals.js";
+import { removalRuleDuplicateKey } from "../cleaning/removal-rule-utils.js";
 import {
   ARTIFACT_CATEGORIES,
   ARTIFACT_CATEGORY_LABELS,
@@ -50,7 +56,7 @@ import {
   type ArtifactCategory,
   type DecisionFilter,
   type ReviewDecision,
-} from "./repeated-artifact-review.js";
+} from "./review.js";
 
 interface RepeatedArtifactCallbacks {
   renderCustomRemovals: () => void;

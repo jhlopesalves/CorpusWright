@@ -1,6 +1,6 @@
-import { dom, getFileListContainer } from "./dom";
-import type { ProjectSource } from "./generated/ProjectSource.js";
-import { state } from "./state";
+import { dom, getFileListContainer } from "../../../app/dom";
+import type { ProjectSource } from "../../../generated/ProjectSource.js";
+import { state } from "../../../app/state";
 import {
   clearProjectSourceSelection,
   forgetSelectedProjectSource,
@@ -22,7 +22,7 @@ import {
   sourceKindLabel,
   sourceReasonDescriptions,
   type ProjectSourceSelectionActionSummary,
-} from "./sources";
+} from "../sources";
 
 const ITEM_HEIGHT = 26; // px, must match CSS #file-list li height
 const SOURCE_ITEM_HEIGHT = 76; // px, must match CSS source row height

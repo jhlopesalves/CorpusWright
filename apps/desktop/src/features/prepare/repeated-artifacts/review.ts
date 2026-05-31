@@ -1,4 +1,4 @@
-import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
+import type { RepeatedArtifactCandidate } from "../../../generated/RepeatedArtifactCandidate.js";
 
 export type ArtifactCategory =
   | "page_labels"

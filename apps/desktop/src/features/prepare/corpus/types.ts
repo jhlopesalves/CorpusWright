@@ -1,5 +1,5 @@
-import type { DocumentRecord } from "./generated/DocumentRecord.js";
-import type { ScanReport } from "./generated/ScanReport.js";
+import type { DocumentRecord } from "../../../generated/DocumentRecord.js";
+import type { ScanReport } from "../../../generated/ScanReport.js";
 
 export interface CorpusLoadResult {
   report: ScanReport;

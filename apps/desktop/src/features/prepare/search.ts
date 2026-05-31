@@ -1,12 +1,18 @@
+/**
+ * Runs bounded Prepare search and coordinates result selection with Preview.
+ *
+ * Search uses the active cleaning configuration and corpus version, while Preview owns rendering
+ * and rejection of responses from earlier selections.
+ */
 import { invoke } from "@tauri-apps/api/core";
 
 import {
   dom,
   getActivePreviewCardsContainer,
   getActivePreviewTab,
-} from "./dom";
-import { state } from "./state";
-import { effectiveCleaningConfig } from "./effective-cleaning-config";
+} from "../../app/dom";
+import { state } from "../../app/state";
+import { effectiveCleaningConfig } from "./cleaning/effective-config";
 import {
   hasProjectSourceSelection,
   isPreviewableSource,
@@ -14,7 +20,7 @@ import {
   sourceForPath,
   sourceHasExtractedText,
 } from "./sources";
-import type { SearchResult } from "./generated/SearchResult.js";
+import type { SearchResult } from "../../generated/SearchResult.js";
 
 interface SearchCallbacks {
   schedulePreviewUpdate: (delay: number) => void;

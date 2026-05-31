@@ -1,12 +1,18 @@
+/**
+ * Coordinates processed-corpus export and progress presentation.
+ *
+ * The backend owns file production and manifest provenance; this controller owns destination
+ * selection, the active cleaning snapshot, and user-visible completion state.
+ */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
-import { dom } from "./dom";
-import { state } from "./state";
-import { effectiveCleaningConfig } from "./effective-cleaning-config";
-import { sanitizeFolderName } from "./utils";
-import type { ExportReport } from "./generated/ExportReport.js";
+import { dom } from "../../app/dom";
+import { state } from "../../app/state";
+import { effectiveCleaningConfig } from "./cleaning/effective-config";
+import { sanitizeFolderName } from "../project/folder-name";
+import type { ExportReport } from "../../generated/ExportReport.js";
 
 export async function exportProcessedCorpus(): Promise<void> {
   const fileCount = state.activeProject ? state.projectCorpusFileCount : state.allFiles.length;

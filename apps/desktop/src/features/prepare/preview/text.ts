@@ -37,9 +37,3 @@ export function highlightPreviewText(text: string, query: string): string {
 
   return outHtml;
 }
-
-export function sanitizeFolderName(name: string): string {
-  return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
-    .replace(/\.+$/, "")
-    .trim() || "CorpusWright";
-}
