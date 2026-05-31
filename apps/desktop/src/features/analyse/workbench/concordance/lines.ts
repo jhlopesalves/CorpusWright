@@ -4,7 +4,7 @@ import {
   type ConcordanceResult,
   type ConcordanceRow,
   type ConcordanceSortKey,
-} from "../../analysis";
+} from "../../api";
 import {
   clampConcordancePageSize,
   clampConcordanceWindow,
@@ -23,10 +23,10 @@ import {
   toggleConcordanceExpansionKey,
   type ConcordanceExpansionStateSnapshot,
   type ConcordanceContextSortKey,
-} from "../../concordance";
-import { dom } from "../../dom";
-import { effectiveCleaningConfig } from "../../effective-cleaning-config";
-import { state } from "../../state";
+} from "../../concordance/model";
+import { dom } from "../../../../app/dom";
+import { effectiveCleaningConfig } from "../../../prepare/cleaning/effective-config";
+import { state } from "../../../../app/state";
 import { formatNumber } from "../shell";
 import {
   currentConcordanceSearchResult,

@@ -1,10 +1,16 @@
+/**
+ * Coordinates corpus loading and project-source import for Prepare.
+ *
+ * Successful loads establish a new backend corpus version and invalidate previews, searches, word
+ * counts, and analysis derived from the previous generation.
+ */
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 
-import { dom } from "./dom";
+import { dom } from "../../../app/dom";
 import { updateFileList } from "./file-list";
-import { state } from "./state";
+import { state } from "../../../app/state";
 import {
   confirmFilesForActiveProjectSources,
   confirmFolderForActiveProjectSources,
@@ -27,15 +33,15 @@ import {
   reviewFolderForActiveProjectSources,
   sourceHasExtractedText,
   sourceKindLabel,
-} from "./sources";
-import type { CleaningConfig } from "./generated/CleaningConfig.js";
-import type { CorpusSummary } from "./generated/CorpusSummary.js";
-import type { PdfOcrQuality } from "./generated/PdfOcrQuality.js";
-import type { PdfAuditResult } from "./generated/PdfAuditResult.js";
-import type { PdfAuditSuggestedProfile } from "./generated/PdfAuditSuggestedProfile.js";
-import type { ProjectSourceImportReview } from "./generated/ProjectSourceImportReview.js";
-import type { ProjectSourcePdfProfile } from "./generated/ProjectSourcePdfProfile.js";
-import type { ProjectSource } from "./generated/ProjectSource.js";
+} from "../sources";
+import type { CleaningConfig } from "../../../generated/CleaningConfig.js";
+import type { CorpusSummary } from "../../../generated/CorpusSummary.js";
+import type { PdfOcrQuality } from "../../../generated/PdfOcrQuality.js";
+import type { PdfAuditResult } from "../../../generated/PdfAuditResult.js";
+import type { PdfAuditSuggestedProfile } from "../../../generated/PdfAuditSuggestedProfile.js";
+import type { ProjectSourceImportReview } from "../../../generated/ProjectSourceImportReview.js";
+import type { ProjectSourcePdfProfile } from "../../../generated/ProjectSourcePdfProfile.js";
+import type { ProjectSource } from "../../../generated/ProjectSource.js";
 import type { CorpusLoadResult, ProjectCorpusLoadResult } from "./types";
 
 interface CorpusCallbacks {

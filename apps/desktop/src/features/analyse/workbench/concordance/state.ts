@@ -1,3 +1,9 @@
+/**
+ * Defines shared and card-local Concordance workbench state.
+ *
+ * Request keys describe analytical inputs; per-card generations describe lifecycle ownership. A
+ * response is accepted only when both still match the card that requested it.
+ */
 import type {
   ConcordanceCollocationDirection,
   ConcordanceCollocationMeasure,
@@ -6,11 +12,11 @@ import type {
   ConcordanceResult,
   ConcordanceSortKey,
   SortDirection,
-} from "../../analysis";
+} from "../../api";
 import {
   CONCORDANCE_DEFAULT_PAGE_SIZE,
   CONCORDANCE_DEFAULT_WINDOW,
-} from "../../concordance.ts";
+} from "../../concordance/model.ts";
 
 export type ConcordanceCardId = "lines" | "collocates" | "distribution";
 export type ConcordanceDistributionOrdering = "hitsDescending";

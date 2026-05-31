@@ -1,11 +1,11 @@
-import type { ConcordanceResult } from "../../analysis";
+import type { ConcordanceResult } from "../../api";
 import {
   CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,
   concordanceDistributionMagnitudePercent,
   concordanceRangePercent,
-} from "../../concordance";
-import { dom } from "../../dom";
+} from "../../concordance/model";
+import { dom } from "../../../../app/dom";
 import { formatFixedNumber, formatNumber } from "../shell";
 import { refreshConcordanceDistribution } from "./shared";
 

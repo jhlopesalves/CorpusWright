@@ -1,3 +1,9 @@
+/**
+ * Coordinates Frequency query state, complete-result sorting, pagination, and rendering.
+ *
+ * Corpus construction and tokenisation remain backend responsibilities. Query generations ensure
+ * that rapid filter or scope changes cannot render an older page.
+ */
 import {
   defaultAnalysisDocumentSelection,
   queryAnnotatedFrequency,
@@ -19,10 +25,10 @@ import {
   type FrequencyTokenClass as FrequencyTokenClassFilter,
   type SortDirection,
   type TermDistributionPage,
-} from "../analysis";
-import { createChevron } from "../chevron";
-import { dom } from "../dom";
-import { effectiveCleaningConfig } from "../effective-cleaning-config";
+} from "../api";
+import { createChevron } from "../../../shared/chevron";
+import { dom } from "../../../app/dom";
+import { effectiveCleaningConfig } from "../../prepare/cleaning/effective-config";
 import {
   ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE,
   annotatedFrequencyModeEnabled,
@@ -37,8 +43,8 @@ import {
   frequencyModeLabel,
   type FrequencyRateScale,
   type FrequencyViewMode,
-} from "../frequency";
-import { state } from "../state";
+} from "../frequency/model";
+import { state } from "../../../app/state";
 import {
   activeProjectLanguageCode,
   activeProjectLanguageLabel,
@@ -53,7 +59,7 @@ import {
   resetConcordanceCorpusState,
   resetConcordanceForFrequencyScopeChange,
 } from "./concordance/shared";
-import { normaliseConcordanceQuery } from "../concordance";
+import { normaliseConcordanceQuery } from "../concordance/model";
 import { markConcordanceCollocationsForAggregationChange } from "./concordance/collocations";
 import {
   annotationCacheStateForUi,
@@ -808,6 +814,8 @@ export async function refreshFrequencyPage(resetOffset = true): Promise<void> {
   if (resetOffset) {
     frequencyPageOffset = 0;
   }
+  // One generation covers the request and its pending/error state. Every asynchronous exit checks
+  // this identity before it mutates or renders the current page.
   const generation = ++frequencyQueryGeneration;
   frequencyQueryPending = true;
   frequencyQueryFailure = null;

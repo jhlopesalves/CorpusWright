@@ -1,6 +1,6 @@
-import { dom } from "./dom";
-import { state } from "./state";
-import type { CleaningConfig, RemovalRule } from "./generated/CleaningConfig.js";
+import { dom } from "../../../app/dom";
+import { state } from "../../../app/state";
+import type { CleaningConfig, RemovalRule } from "../../../generated/CleaningConfig.js";
 
 export function formatRemovalRuleText(rule: RemovalRule): string {
   if (rule.matcher.kind === "literal") {

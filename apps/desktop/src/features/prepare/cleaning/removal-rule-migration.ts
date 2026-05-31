@@ -1,5 +1,5 @@
-import type { RemovalRule } from "./generated/CleaningConfig.js";
-import type { RemovalScope } from "./generated/RemovalScope.js";
+import type { RemovalRule } from "../../../generated/CleaningConfig.js";
+import type { RemovalScope } from "../../../generated/RemovalScope.js";
 
 export type RemovalRuleMigrationReason =
   | "anywhere_literal_interpreted_inline"

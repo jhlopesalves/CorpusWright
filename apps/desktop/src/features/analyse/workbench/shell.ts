@@ -1,3 +1,9 @@
+/**
+ * Composes the Analyse workspace, Overview evidence, and analytical feature cards.
+ *
+ * Backend modules own measures and bounded queries. This shell owns workbench navigation, figure
+ * curation, rendering recovery, and transitions between corpus generations.
+ */
 import katex from "katex";
 import "katex/dist/katex.min.css";
 
@@ -12,27 +18,27 @@ import {
   type OverviewDistributionEvidencePage,
   type OverviewDistributionMetric,
   type OverviewDistributionResult,
-} from "../analysis";
-import { BOOLEAN_CLEANING_CONFIG_KEYS } from "../config";
-import { dom } from "../dom";
-import { effectiveCleaningConfig } from "../effective-cleaning-config";
-import { DEFAULT_FREQUENCY_RATE_SCALE } from "../frequency";
+} from "../api";
+import { BOOLEAN_CLEANING_CONFIG_KEYS } from "../../prepare/cleaning/config";
+import { dom } from "../../../app/dom";
+import { effectiveCleaningConfig } from "../../prepare/cleaning/effective-config";
+import { DEFAULT_FREQUENCY_RATE_SCALE } from "../frequency/model";
 import {
   overviewGlossary,
   type OverviewGlossaryEntry,
   type OverviewGlossaryId,
-} from "../overview-glossary";
+} from "../overview/glossary";
 import {
   createOverviewFigure,
   createOverviewRangeControl,
   createOverviewSegmentedControl,
   replaceFigureSvg,
-} from "../plots/figure";
+} from "../../../plots/figure";
 import {
   FIGURE_INTERACTION_POLICIES,
   OverviewFigureController,
   type FigureControlState,
-} from "../plots/figure-workbench";
+} from "../../../plots/figure-workbench";
 import {
   buildCoverageGeometry,
   buildDispersionGeometry,
@@ -45,7 +51,7 @@ import {
   formatDispersionPlaneStats,
   formatDispersionProfileStats,
   formatUniversalTypeCaption,
-} from "../plots/model";
+} from "../../../plots/model";
 import {
   renderCoverageSvg,
   renderDispersionPlaneSvg,
@@ -55,11 +61,11 @@ import {
   renderLexicalSpectrumSvg,
   renderRankFrequencySvg,
   renderVocabularyGrowthSvg,
-} from "../plots/render";
-import type { ProjectLanguage } from "../generated/ProjectLanguage.js";
-import { projectLanguageLabel } from "../project-creation-dialog";
-import { sourceHasExtractedText } from "../sources";
-import { state, type WorkbenchId } from "../state";
+} from "../../../plots/render";
+import type { ProjectLanguage } from "../../../generated/ProjectLanguage.js";
+import { projectLanguageLabel } from "../../project/creation-dialog";
+import { sourceHasExtractedText } from "../../prepare/sources";
+import { state, type WorkbenchId } from "../../../app/state";
 import {
   analysisStatus,
   currentAnalysisNotice,

@@ -1,10 +1,16 @@
+/**
+ * Coordinates shared Concordance search across Lines and Distribution cards.
+ *
+ * One backend traversal can serve both cards. Each section retains its request key and generation,
+ * allowing independent paging while rejecting stale sections from earlier searches.
+ */
 import { listen } from "@tauri-apps/api/event";
 import {
   searchConcordance,
   type ConcordanceContextFilterDirection,
   type ConcordanceProgress,
   type ConcordanceResult,
-} from "../../analysis";
+} from "../../api";
 import {
   concordanceContextTokenSegments,
   concordanceDistributionCardStatsText,
@@ -13,10 +19,10 @@ import {
   CONCORDANCE_NO_QUERY_MESSAGE,
   formatConcordanceProgress,
   normaliseConcordanceQuery,
-} from "../../concordance";
-import { dom } from "../../dom";
-import { effectiveCleaningConfig } from "../../effective-cleaning-config";
-import { state } from "../../state";
+} from "../../concordance/model";
+import { dom } from "../../../../app/dom";
+import { effectiveCleaningConfig } from "../../../prepare/cleaning/effective-config";
+import { state } from "../../../../app/state";
 import { currentFrequencyDocumentScope, renderFrequencyScopeControl } from "../frequency";
 import {
   concordanceCollocationStatsText,
@@ -300,6 +306,8 @@ async function refreshConcordanceCards(
     return false;
   }
 
+  // Each requested section records the identity it expects. The combined response is projected only
+  // into sections whose key and generation still match after the shared traversal finishes.
   const requests = new Map<"lines" | "distribution", { generation: number; requestKey: string }>();
   for (const card of cards) {
     const request = beginConcordanceCardRequest(workbenchState, card);
