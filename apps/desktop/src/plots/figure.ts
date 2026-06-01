@@ -1,3 +1,9 @@
+/**
+ * Defines the semantic figure contract and mounts figure-level interaction state.
+ *
+ * Plot models supply data and marks, the renderer owns SVG construction, and standalone export
+ * resolves the current theme into portable paint values.
+ */
 import {
   attachPlotHover,
   serializeSvgWithResolvedTokens,
@@ -11,7 +17,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 
-import { dom } from "../dom";
+import { dom } from "../app/dom";
 import {
   figurePaletteLabel,
   type FigurePaletteMode,
