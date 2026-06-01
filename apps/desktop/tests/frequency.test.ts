@@ -10,7 +10,7 @@ import {
   frequencyRateValue,
   formatDocumentFrequency,
   frequencyModeLabel,
-} from "../src/frequency.ts";
+} from "../src/features/analyse/frequency/model.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);

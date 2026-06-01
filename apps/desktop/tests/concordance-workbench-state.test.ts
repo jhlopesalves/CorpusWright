@@ -15,7 +15,7 @@ import {
   planConcordanceSharedRequest,
   rejectConcordanceCardResponse,
   updateConcordanceSharedState,
-} from "../src/workbench/concordance/state.ts";
+} from "../src/features/analyse/workbench/concordance/state.ts";
 
 function shared(query = "target") {
   return {

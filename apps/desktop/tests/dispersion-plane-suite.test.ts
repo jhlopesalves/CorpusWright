@@ -165,7 +165,7 @@ const controller = new OverviewFigureController({
 controller.updateControls({ frequency: "perMillion", density: "linear", examples: "points", marginals: "hide", thresholds: "hide" });
 assert.deepEqual(controller.exportMetadata(), ["frequency perMillion · density linear · examples points · marginals hide · thresholds hide"]);
 
-const shell = readFileSync(new URL("../src/workbench/shell.ts", import.meta.url), "utf8");
+const shell = readFileSync(new URL("../src/features/analyse/workbench/shell.ts", import.meta.url), "utf8");
 const render = readFileSync(new URL("../src/plots/render.ts", import.meta.url), "utf8");
 const figure = readFileSync(new URL("../src/plots/figure.ts", import.meta.url), "utf8");
 const marks = readFileSync(new URL("../src/styles/plots/marks.css", import.meta.url), "utf8");

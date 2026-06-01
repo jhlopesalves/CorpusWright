@@ -174,7 +174,7 @@ const invalidLogMattr = buildDistributionDiagnosticGeometry({
 });
 assert.equal(invalidLogMattr.xScale.kind, "linear", "MATTR geometry normalises stale logarithmic state");
 
-const shell = readFileSync(new URL("../src/workbench/shell.ts", import.meta.url), "utf8");
+const shell = readFileSync(new URL("../src/features/analyse/workbench/shell.ts", import.meta.url), "utf8");
 const render = readFileSync(new URL("../src/plots/render.ts", import.meta.url), "utf8");
 const marks = readFileSync(new URL("../src/styles/plots/marks.css", import.meta.url), "utf8");
 const interactions = readFileSync(new URL("../src/styles/plots/interactions.css", import.meta.url), "utf8");
