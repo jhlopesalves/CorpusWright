@@ -17,7 +17,7 @@ const generatedCoverage = readFileSync(
   new URL("../src/generated/CoverageTargetCrossing.ts", import.meta.url),
   "utf8",
 );
-const analysis = readFileSync(new URL("../src/analysis.ts", import.meta.url), "utf8");
+const analysis = readFileSync(new URL("../src/features/analyse/api.ts", import.meta.url), "utf8");
 
 assert.match(generatedQuery, /histogramRule: OverviewHistogramRule/);
 assert.match(generatedQuery, /maximumReturnedPointCount: number/);
