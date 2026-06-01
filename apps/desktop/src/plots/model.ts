@@ -1,3 +1,9 @@
+/**
+ * Converts analytical results into the shared figure grammar.
+ *
+ * Builders preserve analytical units, deterministic ordering, and documented fitting intervals;
+ * layout and SVG rendering remain separate stages.
+ */
 export type PlotScaleKind = "linear" | "log";
 export type PlotAnchor = "start" | "middle" | "end";
 export type PlotPointShape = "circle" | "square" | "diamond" | "triangle";

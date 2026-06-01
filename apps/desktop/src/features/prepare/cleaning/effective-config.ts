@@ -1,5 +1,5 @@
-import type { CleaningConfig } from "./generated/CleaningConfig.js";
-import { state } from "./state";
+import type { CleaningConfig } from "../../../generated/CleaningConfig.js";
+import { state } from "../../../app/state";
 import { cloneRemovalRules } from "./removal-rule-utils.js";
 
 export function effectiveCleaningConfig(): CleaningConfig {

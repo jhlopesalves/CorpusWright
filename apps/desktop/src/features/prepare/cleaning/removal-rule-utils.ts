@@ -1,4 +1,4 @@
-import type { RemovalRule } from "./generated/RemovalRule.js";
+import type { RemovalRule } from "../../../generated/RemovalRule.js";
 
 export function removalRuleDuplicateKey(rule: RemovalRule): string {
   if (rule.matcher.kind === "literal") {

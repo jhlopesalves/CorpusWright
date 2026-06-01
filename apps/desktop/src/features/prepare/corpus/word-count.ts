@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import { dom, getSummaryAvgWords, getSummaryTotalWords, getSummaryWordLabel } from "./dom";
-import { state } from "./state";
-import { effectiveCleaningConfig } from "./effective-cleaning-config";
-import { refreshAnalyseWorkbench } from "./workbench";
+import { dom, getSummaryAvgWords, getSummaryTotalWords, getSummaryWordLabel } from "../../../app/dom";
+import { state } from "../../../app/state";
+import { effectiveCleaningConfig } from "../cleaning/effective-config";
+import { refreshAnalyseWorkbench } from "../../analyse/workbench";
 
 const OCR_WORD_COUNT_SKIPPED_STATUS =
   "Cleaned token count unavailable until sources are processed with cleaning settings.";
