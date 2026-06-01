@@ -1,3 +1,4 @@
+/** Validates and normalises computed paint for portable standalone SVG output. */
 export function hasUnresolvedCssVariables(serializedSvg: string): boolean {
   return /var\(\s*--[\w-]+/.test(serializedSvg);
 }
