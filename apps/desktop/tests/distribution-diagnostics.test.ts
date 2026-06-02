@@ -96,6 +96,7 @@ assert(qq.points.every((point) => point.className === "cw-plot-qq-point"));
 assert(qq.points.every((point) => point.radius === 2.6));
 assert(qq.points.every((point) => point.fillOpacity === 0.84));
 assert.equal(qq.yAxisLabel, "Observed log10 document length");
+assert(qq.yTicks.every((tick) => /^-?\d+\.\d{2}$/.test(tick.label)));
 assert.deepEqual(qq.legend.map((item) => item.label), ["Observed documents", "Robust Q1/Q3 reference"]);
 assert.equal(ecdf.points.at(-1)?.rawY, 1, "ECDF must reach its final cumulative value");
 assert(ecdf.linePath?.d.endsWith(`${ecdf.points.at(-1)?.x} ${ecdf.points.at(-1)?.y}`));

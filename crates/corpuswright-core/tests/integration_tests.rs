@@ -6,23 +6,19 @@ use corpuswright_core::{
     RepeatedArtifactScanConfig, clean_text, export_corpus, preview_file, preview_processed_files,
     scan_directory,
 };
+use corpuswright_test_support::synthetic_corpus;
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
 
 #[test]
 fn test_end_to_end_corpus_pipeline() {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let fixtures_dir = Path::new(manifest_dir).join("tests").join("fixtures");
+    let corpus = synthetic_corpus().expect("Failed to generate synthetic corpus");
+    let expected_documents = corpus.document_count();
+    let scan_report = scan_directory(corpus.root()).expect("Failed to scan directory");
 
-    let mut scan_report = scan_directory(&fixtures_dir).expect("Failed to scan directory");
-    scan_report
-        .files
-        .retain(|f| !f.source_path.to_string_lossy().contains("non-tracked"));
-    scan_report.summary.files_supported = scan_report.files.len();
-
-    assert_eq!(scan_report.summary.files_supported, 20);
-    assert_eq!(scan_report.files.len(), 20);
+    assert_eq!(scan_report.summary.files_supported, expected_documents);
+    assert_eq!(scan_report.files.len(), expected_documents);
 
     let config = CleaningConfig {
         lowercase: true,
@@ -42,7 +38,7 @@ fn test_end_to_end_corpus_pipeline() {
         preview_processed_files(&scan_report.files, &preview_options, &config, None)
             .expect("Failed to preview files");
 
-    assert_eq!(preview_result.files.len(), 20);
+    assert_eq!(preview_result.files.len(), expected_documents);
     assert!(
         preview_result
             .files
@@ -83,7 +79,7 @@ fn test_end_to_end_corpus_pipeline() {
     )
     .expect("Failed to export corpus");
 
-    assert_eq!(export_report.files_exported, 20);
+    assert_eq!(export_report.files_exported, expected_documents);
 
     let texts_dir = temp_dir.path().join("texts");
     assert!(texts_dir.exists());
@@ -102,7 +98,7 @@ fn test_end_to_end_corpus_pipeline() {
         count
     }
     let exported_files_count = count_files_recursively(&texts_dir);
-    assert_eq!(exported_files_count, 20);
+    assert_eq!(exported_files_count, expected_documents);
 
     assert!(temp_dir.path().join("manifest.json").exists());
     assert!(temp_dir.path().join("config.json").exists());
