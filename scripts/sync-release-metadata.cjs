@@ -253,21 +253,31 @@ function syncReadme(writer, metadata) {
       "README.md",
       "release badge"
     );
-    next = replaceOrThrow(
-      next,
-      /^\*\*Download (?:the experimental alpha|the latest experimental alpha):\*\* \[[^\]]+\]\([^)]+\)$/m,
-      "**Download the latest experimental alpha:** [CorpusWright releases](https://github.com/jhlopesalves/CorpusWright/releases/latest)",
-      "README.md",
-      "download link"
-    );
+    const legacyDownload = /^\*\*Download (?:the experimental alpha|the latest experimental alpha):\*\* \[[^\]]+\]\([^)]+\)$/m;
+    if (legacyDownload.test(next)) {
+      next = next.replace(
+        legacyDownload,
+        "**Download the latest experimental alpha:** [CorpusWright releases](https://github.com/jhlopesalves/CorpusWright/releases/latest)"
+      );
+    } else {
+      next = replaceOrThrow(
+        next,
+        /^\[Download CorpusWright\]\([^)]+\) ·$/m,
+        "[Download CorpusWright](https://github.com/jhlopesalves/CorpusWright/releases/latest) ·",
+        "README.md",
+        "download link"
+      );
+    }
     next = next.replace(/\bdogfood alpha\.\d+ on\b/, "dogfood the current alpha on");
-    next = replaceOrThrow(
-      next,
-      /\*\*(?:`CITATION\.cff` template|Current `CITATION\.cff`):\*\*\r?\n```yaml\r?\n[\s\S]*?\r?\n```/,
-      `**Current \`CITATION.cff\`:**\n\`\`\`yaml\n${cff}\n\`\`\``,
-      "README.md",
-      "CITATION.cff snippet"
-    );
+    const citationSnippet = /\*\*(?:`CITATION\.cff` template|Current `CITATION\.cff`):\*\*\r?\n```yaml\r?\n[\s\S]*?\r?\n```/;
+    if (citationSnippet.test(next)) {
+      next = next.replace(
+        citationSnippet,
+        `**Current \`CITATION.cff\`:**\n\`\`\`yaml\n${cff}\n\`\`\``
+      );
+    } else if (!/^\[Citation\]\(CITATION\.cff\)$/m.test(next)) {
+      throw new Error("Could not find CITATION.cff link in README.md");
+    }
     return next;
   });
 }
