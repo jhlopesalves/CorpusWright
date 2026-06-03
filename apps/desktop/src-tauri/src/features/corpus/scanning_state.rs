@@ -1,5 +1,5 @@
-use corpuswright_core::preparation::repeated_artifacts::CancellationFlag;
+use crate::runtime::cancellation::ActiveCancellation;
 
 pub(crate) struct ScanState {
-    pub(crate) cancel: CancellationFlag,
+    pub(crate) cancel: ActiveCancellation,
 }

@@ -7,6 +7,7 @@ use crate::features::corpus::state::CorpusState;
 use crate::features::pdf::service::duration_ms;
 use crate::features::project;
 use crate::features::sources::{project_annotation_cache_dir, resolve_analysis_input_for_record};
+use crate::runtime::config::DesktopRuntimeConfig;
 use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisDocumentPage,
     AnalysisDocumentSelection, AnnotatedFrequencyQuery, AnnotatedFrequencyResult,
@@ -28,7 +29,6 @@ use corpuswright_core::text::tokenisation::TokenizationConfig;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use tauri::path::BaseDirectory;
 use tauri::{Emitter, Manager, Window};
@@ -39,10 +39,17 @@ use super::state::{
     AnalysisBuildStatus, AnalysisState,
 };
 
-pub(crate) const ANNOTATION_TIMING_ENV: &str = "CORPUSWRIGHT_ANNOTATION_TIMING";
-
-pub(crate) fn annotation_timing_enabled() -> bool {
-    std::env::var(ANNOTATION_TIMING_ENV).as_deref() == Ok("1")
+fn udpipe_model_dir(window: &Window, runtime: &DesktopRuntimeConfig) -> Option<std::path::PathBuf> {
+    runtime
+        .udpipe_model_override()
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            window
+                .app_handle()
+                .path()
+                .resolve("udpipe", BaseDirectory::Resource)
+                .ok()
+        })
 }
 
 pub(crate) fn project_effective_language_overrides(
@@ -70,6 +77,7 @@ pub(crate) fn analysis_progress_payload(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub(crate) async fn build_annotation_cache_command(
     request: AnalysisBuildRequest,
@@ -78,6 +86,7 @@ pub(crate) async fn build_annotation_cache_command(
     inventory: tauri::State<'_, project::ProjectSourceInventoryState>,
     analysis: tauri::State<'_, AnalysisState>,
     annotation: tauri::State<'_, AnnotationBuildState>,
+    runtime: tauri::State<'_, DesktopRuntimeConfig>,
     window: Window,
 ) -> Result<
     corpuswright_core::analysis::AnnotationCacheBuildReport,
@@ -134,11 +143,7 @@ pub(crate) async fn build_annotation_cache_command(
             corpuswright_core::analysis::AnnotationCacheBuildError::SurfaceBuildFailed { error: e }
         })?;
 
-    let udpipe_model_dir = window
-        .app_handle()
-        .path()
-        .resolve("udpipe", BaseDirectory::Resource)
-        .ok();
+    let udpipe_model_dir = udpipe_model_dir(&window, &runtime);
 
     let analysis_options = AnalysisBuildOptions {
         built_at: jiff::Timestamp::now().to_string(),
@@ -212,6 +217,7 @@ pub(crate) async fn build_analysis_corpus_command(
     cache: tauri::State<'_, ExtractionCache>,
     analysis: tauri::State<'_, AnalysisState>,
     inventory: tauri::State<'_, project::ProjectSourceInventoryState>,
+    runtime: tauri::State<'_, DesktopRuntimeConfig>,
     window: Window,
 ) -> Result<CorpusOverview, String> {
     let (records, project_root) = match request.indices {
@@ -247,12 +253,12 @@ pub(crate) async fn build_analysis_corpus_command(
         project_effective_language_overrides(project_root.as_deref(), &records)?;
     let annotation_cache_root = project_root.as_deref().map(project_annotation_cache_dir);
 
-    analysis.cancel.store(false, Ordering::Relaxed);
+    let cancel = analysis.cancel.begin();
     // Each build receives a generation before background work begins. Progress and completion may
     // update shared state only while that generation remains current.
     let build_generation = {
         let mut inner = analysis.inner.write().unwrap();
-        inner.generation += 1;
+        inner.generation.advance();
         inner.state = AnalysisBuildStateKind::Building;
         inner.progress = None;
         inner.error = None;
@@ -261,17 +267,13 @@ pub(crate) async fn build_analysis_corpus_command(
     };
 
     let analysis_inner = analysis.inner.clone();
-    let cancel = analysis.cancel.clone();
+    let cancel_for_task = cancel.clone();
     let cache = cache.inner().clone();
     let started_at = Instant::now();
     let built_at = jiff::Timestamp::now().to_string();
     let build_signature = request.build_signature;
     let cleaning_config = request.cleaning_config;
-    let udpipe_model_dir = window
-        .app_handle()
-        .path()
-        .resolve("udpipe", BaseDirectory::Resource)
-        .ok();
+    let udpipe_model_dir = udpipe_model_dir(&window, &runtime);
     let processing_config_signature = cleaning_config_signature(&cleaning_config);
     let task = tauri::async_runtime::spawn_blocking(move || {
         let mut last_emit = Instant::now()
@@ -291,7 +293,7 @@ pub(crate) async fn build_analysis_corpus_command(
                 tokenization: TokenizationConfig::default(),
                 annotation_cache_root,
             },
-            &cancel,
+            &cancel_for_task,
             |record| {
                 Ok(resolve_analysis_input_for_record(
                     record,
@@ -321,6 +323,7 @@ pub(crate) async fn build_analysis_corpus_command(
     });
 
     let task_result = task.await;
+    analysis.cancel.finish(&cancel);
     if analysis.inner.read().unwrap().generation != build_generation {
         return Err("Analysis build cancelled.".to_string());
     }
@@ -348,6 +351,10 @@ pub(crate) async fn build_analysis_corpus_command(
         }
         Ok(Err(error)) => {
             let message = error.to_string();
+            eprintln!(
+                "[desktop-error] boundary=analysis_build code={}",
+                crate::runtime::error::classify_message(&message).code()
+            );
             let mut inner = analysis.inner.write().unwrap();
             inner.state = AnalysisBuildStateKind::Failed;
             inner.error = Some(message.clone());
@@ -355,6 +362,10 @@ pub(crate) async fn build_analysis_corpus_command(
         }
         Err(error) => {
             let message = format!("Analysis build task failed: {error}");
+            eprintln!(
+                "[desktop-error] boundary=analysis_build code={}",
+                crate::runtime::error::classify_message(&message).code()
+            );
             let mut inner = analysis.inner.write().unwrap();
             inner.state = AnalysisBuildStateKind::Failed;
             inner.error = Some(message.clone());
@@ -365,7 +376,7 @@ pub(crate) async fn build_analysis_corpus_command(
 
 #[tauri::command(async)]
 pub(crate) fn cancel_analysis_build_command(analysis: tauri::State<'_, AnalysisState>) {
-    analysis.cancel.store(true, Ordering::Relaxed);
+    analysis.cancel.cancel();
 }
 
 #[tauri::command(async)]
@@ -389,8 +400,9 @@ pub(crate) async fn query_frequency_list_command(
     query: FrequencyQuery,
     cleaning_config: CleaningConfig,
     analysis: tauri::State<'_, AnalysisState>,
+    runtime: tauri::State<'_, DesktopRuntimeConfig>,
 ) -> Result<FrequencyPage, String> {
-    let timing_enabled = annotation_timing_enabled();
+    let timing_enabled = runtime.annotation_timing();
     let started_at = Instant::now();
     if timing_enabled {
         eprintln!(
@@ -455,6 +467,7 @@ pub(crate) async fn query_annotated_frequency_command(
     cleaning_config: CleaningConfig,
     corpus: tauri::State<'_, CorpusState>,
     analysis: tauri::State<'_, AnalysisState>,
+    runtime: tauri::State<'_, DesktopRuntimeConfig>,
     window: Window,
 ) -> Result<AnnotatedFrequencyResult, String> {
     let analysis_corpus = analysis.corpus(&cleaning_config)?;
@@ -462,11 +475,7 @@ pub(crate) async fn query_annotated_frequency_command(
     let language_overrides =
         project_effective_language_overrides(project_root.as_deref(), &records)?;
     let cache_root = project_root.as_deref().map(project_annotation_cache_dir);
-    let udpipe_model_dir = window
-        .app_handle()
-        .path()
-        .resolve("udpipe", BaseDirectory::Resource)
-        .ok();
+    let udpipe_model_dir = udpipe_model_dir(&window, &runtime);
     tauri::async_runtime::spawn_blocking(move || {
         let cache = annotation_cache_availability_for_corpus(
             &analysis_corpus,
