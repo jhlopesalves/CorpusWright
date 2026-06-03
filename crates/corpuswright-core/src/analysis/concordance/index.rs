@@ -8,12 +8,9 @@ use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::Duration;
-use std::{
-    sync::Arc,
-    sync::atomic::{AtomicBool, Ordering as AtomicOrdering},
-    time::Instant,
-};
+use std::time::Instant;
 
 pub const INDEX_SCHEMA_VERSION: u32 = 4;
 pub const SURFACE_INDEX_CACHE_FILE_VERSION: u32 = 2;
@@ -27,10 +24,12 @@ const SURFACE_INDEX_MAX_RETAINED_AGGREGATE_BYTES: u64 = 2_147_483_648;
 const DEFAULT_WINDOW_TOKENS: usize = 5;
 const MAX_WINDOW_TOKENS: usize = 20;
 
-const DEFAULT_MAX_PROJECTED_RESIDENT_INDEX_BYTES: u64 = 1_073_741_824;
-const DEFAULT_MAX_STAGED_PREPARED_TEXT_BYTES: u64 = 67_108_864;
-const DEFAULT_MAX_STAGED_TOKEN_RECORDS: u64 = 1_000_000;
-const DEFAULT_MAX_RETAINED_QUERY_SORT_RECORDS: u64 = 100_000;
+pub const DEFAULT_MAX_PROJECTED_RESIDENT_INDEX_BYTES: u64 = 1_073_741_824;
+pub const DEFAULT_MAX_STAGED_PREPARED_TEXT_BYTES: u64 = 67_108_864;
+pub const DEFAULT_MAX_STAGED_TOKEN_RECORDS: u64 = 1_000_000;
+pub const DEFAULT_MAX_RETAINED_QUERY_SORT_RECORDS: u64 = 100_000;
+
+static DEFAULT_RESOURCE_LIMITS: OnceLock<SurfaceIndexResourceLimits> = OnceLock::new();
 
 #[allow(dead_code)]
 struct LegacySurfaceIndexTokenRecordLayout {
@@ -61,11 +60,20 @@ pub struct SurfaceIndexResourceLimits {
 
 impl Default for SurfaceIndexResourceLimits {
     fn default() -> Self {
-        Self::from_environment()
+        *DEFAULT_RESOURCE_LIMITS.get_or_init(Self::from_environment)
     }
 }
 
 impl SurfaceIndexResourceLimits {
+    pub const fn conservative() -> Self {
+        Self {
+            max_projected_resident_index_bytes: DEFAULT_MAX_PROJECTED_RESIDENT_INDEX_BYTES,
+            max_staged_prepared_text_bytes: DEFAULT_MAX_STAGED_PREPARED_TEXT_BYTES,
+            max_staged_token_records: DEFAULT_MAX_STAGED_TOKEN_RECORDS,
+            max_retained_query_sort_records: DEFAULT_MAX_RETAINED_QUERY_SORT_RECORDS,
+        }
+    }
+
     /// Conservative defaults can be overridden for diagnostics. Invalid values
     /// are ignored so deployment cannot accidentally disable a limit.
     pub fn from_environment() -> Self {
@@ -87,6 +95,11 @@ impl SurfaceIndexResourceLimits {
                 DEFAULT_MAX_RETAINED_QUERY_SORT_RECORDS,
             ),
         }
+    }
+
+    /// Installs the product runtime's already-validated defaults before work begins.
+    pub fn install_as_default(self) -> Result<(), Self> {
+        DEFAULT_RESOURCE_LIMITS.set(self)
     }
 }
 
@@ -154,24 +167,7 @@ pub struct SurfaceIndexBuildStats {
     pub postings_elapsed: Duration,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct SurfaceIndexCancellationToken(Arc<AtomicBool>);
-
-impl SurfaceIndexCancellationToken {
-    pub fn cancel(&self) {
-        self.0.store(true, AtomicOrdering::Release);
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.0.load(AtomicOrdering::Acquire)
-    }
-}
-
-impl From<Arc<AtomicBool>> for SurfaceIndexCancellationToken {
-    fn from(cancel: Arc<AtomicBool>) -> Self {
-        Self(cancel)
-    }
-}
+pub type SurfaceIndexCancellationToken = crate::support::cancellation::CancellationToken;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SurfaceIndexDocumentInput<'text> {
@@ -1547,7 +1543,7 @@ enum CacheReadFailure {
 }
 
 fn read_surface_index_cache(
-    file: File,
+    file: impl Read,
     expected_manifest: &SurfaceIndexManifest,
     limits: SurfaceIndexResourceLimits,
 ) -> Result<InMemoryIndexStore, CacheReadFailure> {

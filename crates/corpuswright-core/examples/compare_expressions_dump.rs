@@ -3,10 +3,12 @@ use corpuswright_core::analysis::{
     CompareExpressionsQuery, CompareExpressionsResult, ConcordanceDocument, compare_expressions,
     resolve_analysis_input,
 };
-use corpuswright_core::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
-use corpuswright_core::clean::CleaningConfig;
-use corpuswright_core::scan::scan_directory;
-use corpuswright_core::tokenization::TokenizationConfig;
+use corpuswright_core::corpus::scan_directory;
+use corpuswright_core::preparation::cleaning::CleaningConfig;
+use corpuswright_core::sources::cache::{
+    DocumentTextMode, ExtractionCache, document_text_for_record,
+};
+use corpuswright_core::text::tokenisation::TokenizationConfig;
 use std::env;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
@@ -97,7 +99,7 @@ fn parse_args() -> Result<Cli, String> {
 }
 
 fn resolve_document_text(
-    record: &corpuswright_core::scan::DocumentRecord,
+    record: &corpuswright_core::corpus::DocumentRecord,
     cleaning_config: &CleaningConfig,
     cache: &ExtractionCache,
 ) -> AnalysisInputResolution {
@@ -136,7 +138,7 @@ fn text_for_compare_resolution(resolution: AnalysisInputResolution) -> Option<St
 }
 
 fn concordance_document_from_record(
-    record: &corpuswright_core::scan::DocumentRecord,
+    record: &corpuswright_core::corpus::DocumentRecord,
     document_index: usize,
     cleaning_config: &CleaningConfig,
     cache: &ExtractionCache,

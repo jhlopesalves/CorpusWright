@@ -1,4 +1,4 @@
-use corpuswright_core::pdf_ocr::init_pdfium;
+use corpuswright_core::sources::pdf::ocr::init_pdfium;
 use lopdf::Document;
 use pdfium_render::prelude::*;
 use std::fs;
