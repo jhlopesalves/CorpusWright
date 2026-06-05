@@ -4,8 +4,7 @@
  * Project activation resets corpus-owned feature state before source inventory and prepared text
  * are loaded for the new root.
  */
-import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { invoke, open } from "./ipc";
 
 import {
   clearStateForLoad,
@@ -21,6 +20,7 @@ import type { CreateCorpusProjectRequest } from "../../generated/CreateCorpusPro
 import type { ProjectLanguage } from "../../generated/ProjectLanguage.js";
 import {
   PROJECT_LANGUAGE_OPTIONS,
+  bindProjectCreationMetadataControls,
   defaultProjectNameFromPath,
   normaliseProjectDescription,
   projectCreationMetadataIsValid,
@@ -620,12 +620,20 @@ export function initProjectEntry(): void {
   dom.menuCloseProject.addEventListener("click", () => {
     handleCloseProject();
   });
-  dom.projectCreateName.addEventListener("input", () => {
-    updateProjectCreationConfirmState();
-  });
-  dom.projectCreateLanguage.addEventListener("change", () => {
-    updateProjectCreationConfirmState();
-  });
+  bindProjectCreationMetadataControls(
+    {
+      name: dom.projectCreateName,
+      language: dom.projectCreateLanguage,
+      confirm: dom.projectCreateConfirm,
+      cancel: dom.projectCreateCancel,
+      status: dom.projectCreateStatus,
+    },
+    () => {
+      const choice = selectedProjectCreationChoice();
+      if (choice) closeProjectCreationDialog(choice);
+    },
+    () => closeProjectCreationDialog(null),
+  );
   dom.projectLanguageUpgradeSelect.addEventListener("change", () => {
     updateProjectLanguageUpgradeConfirmState();
   });
@@ -635,17 +643,8 @@ export function initProjectEntry(): void {
   dom.projectCreateAddFolder.addEventListener("click", () => {
     chooseProjectCreationFolder();
   });
-  dom.projectCreateCancel.addEventListener("click", () => {
-    closeProjectCreationDialog(null);
-  });
   dom.projectCreateCloseTop.addEventListener("click", () => {
     closeProjectCreationDialog(null);
-  });
-  dom.projectCreateConfirm.addEventListener("click", () => {
-    const choice = selectedProjectCreationChoice();
-    if (choice) {
-      closeProjectCreationDialog(choice);
-    }
   });
   dom.projectLanguageUpgradeCancel.addEventListener("click", () => {
     closeProjectLanguageUpgradeDialog(null);

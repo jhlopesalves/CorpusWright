@@ -9,8 +9,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:browser-test": "tsc && VITE_BROWSER_WORKFLOW=1 vite build",
     "test": "cd ../.. && node --experimental-strip-types --test apps/desktop/tests/*.test.ts",
-    "check": "npm run build && npm run test && npm run check:theme-tokens && npm run check:theme-contrast && npm run check:style-ownership && npm run check:visual-contracts",
+    "test:dom": "vitest run",
+    "test:browser": "npm run build:browser-test && start-test preview http://127.0.0.1:4173 'wdio run wdio.browser.conf.ts'",
+    "test:native": "wdio run wdio.native.conf.ts",
+    "check": "npm run build && npm run test && npm run test:dom && npm run check:theme-tokens && npm run check:theme-contrast && npm run check:style-ownership && npm run check:visual-contracts",
     "check:theme-tokens": "node scripts/check-theme-tokens.mjs",
     "check:theme-contrast": "node scripts/check-theme-contrast.mjs",
     "check:style-ownership": "node scripts/check-style-ownership.mjs",
@@ -32,7 +36,19 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@wdio/cli": "^9.29.1",
+    "@wdio/local-runner": "^9.29.1",
+    "@wdio/mocha-framework": "^9.29.1",
+    "@wdio/spec-reporter": "^9.29.1",
+    "@wdio/tauri-service": "^1.2.0",
+    "happy-dom": "^20.10.6",
+    "start-server-and-test": "^3.0.11",
     "typescript": "~5.6.2",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "@wdio/native-utils": "^2.5.0",
+    "serialize-javascript": "^7.0.5"
   }
 }
