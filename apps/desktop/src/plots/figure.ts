@@ -14,8 +14,7 @@ import {
   type SvgBounds,
   type SvgViewBox,
 } from "./figure-text";
-import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
+import { invoke, save } from "./export-ipc";
 
 import { dom } from "../app/dom";
 import {

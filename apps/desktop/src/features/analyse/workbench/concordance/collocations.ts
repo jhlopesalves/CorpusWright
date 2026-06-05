@@ -13,7 +13,7 @@ import {
   type ConcordanceResult,
   type ConcordanceRow,
   type SortDirection,
-} from "../../api";
+} from "../../ipc";
 import {
   clampConcordanceCollocationFloor,
   clampConcordanceCollocationSpan,
