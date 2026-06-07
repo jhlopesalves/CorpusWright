@@ -7,6 +7,9 @@ license = { workspace = true }
 edition = { workspace = true }
 publish = false
 
+[features]
+native-smoke = []
+
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.

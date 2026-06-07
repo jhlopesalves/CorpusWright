@@ -17,6 +17,12 @@ const workflowPaths = [
   join(repositoryRoot, ".github", "workflows", "release.yml"),
 ];
 const hashPattern = /^[0-9a-f]{64}$/;
+const expectedResourceFiles = {
+  "windows-x64": "pdfium.dll",
+  "linux-x64": "libpdfium.so",
+  "macos-x64": "libpdfium.dylib",
+  "macos-arm64": "libpdfium.dylib",
+};
 
 function fail(message) {
   throw new Error(message);
@@ -55,6 +61,11 @@ function main() {
     }
     for (const field of ["asset", "url", "libraryPath", "resourceFile"]) {
       requireString(platform[field], `${platformKey}.${field}`);
+    }
+    if (platform.resourceFile !== expectedResourceFiles[platformKey]) {
+      fail(
+        `${platformKey}.resourceFile must be ${expectedResourceFiles[platformKey]}, received ${platform.resourceFile}`,
+      );
     }
     for (const field of ["archiveSha256", "librarySha256"]) {
       if (!hashPattern.test(platform[field] || "")) {
