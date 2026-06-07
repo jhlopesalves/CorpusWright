@@ -11,7 +11,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 serde_json = "1"
-corpuswright-core = { path = "../crates/corpuswright-core", features = ["fuzzing"] }
+corpuswright-core = { path = "../crates/corpuswright-core", default-features = false, features = ["fuzzing"] }
 
 [[bin]]
 name = "source_parsers"

@@ -13,11 +13,13 @@ use crate::text::tokenisation::{Token, TokenKind};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+#[cfg(feature = "native-annotation")]
 use std::ffi::{CStr, CString, c_char};
 use std::fs::File;
 use std::io::Read;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+#[cfg(feature = "native-annotation")]
 use std::ptr::NonNull;
 use std::time::{Duration, Instant};
 use ts_rs::TS;
@@ -306,7 +308,7 @@ pub fn model_identity(
     let udpipe_name = language_to_udpipe_name(language);
     let model_name = bundled_model_filename(language)
         .map(str::to_string)
-        .unwrap_or_else(|| udpipe_rs::model_filename(&udpipe_name));
+        .unwrap_or_else(|| udpipe_model_filename(&udpipe_name));
 
     let path = model_dir.join(&model_name);
 
@@ -315,16 +317,19 @@ pub fn model_identity(
     Ok((language.to_string(), model_name, udpipe_name, sha256))
 }
 
+#[cfg(feature = "native-annotation")]
 #[repr(C)]
 struct CwUdpipeModel {
     _private: [u8; 0],
 }
 
+#[cfg(feature = "native-annotation")]
 #[repr(C)]
 struct CwUdpipeTaggedResult {
     _private: [u8; 0],
 }
 
+#[cfg(feature = "native-annotation")]
 #[repr(C)]
 struct CwUdpipeWord {
     form: *const c_char,
@@ -336,6 +341,7 @@ struct CwUdpipeWord {
     id: i32,
 }
 
+#[cfg(feature = "native-annotation")]
 unsafe extern "C" {
     fn cw_udpipe_model_load(model_path: *const c_char) -> *mut CwUdpipeModel;
     fn cw_udpipe_model_free(model: *mut CwUdpipeModel);
@@ -351,6 +357,7 @@ unsafe extern "C" {
     fn cw_udpipe_get_error() -> *const c_char;
 }
 
+#[cfg(feature = "native-annotation")]
 struct NativeModel {
     ptr: NonNull<CwUdpipeModel>,
 }
@@ -366,8 +373,10 @@ struct NativeModel {
 // grants Send only, allowing the owned handle to be transferred between
 // threads. NativeModel remains !Sync and must not be shared for
 // concurrent access.
+#[cfg(feature = "native-annotation")]
 unsafe impl Send for NativeModel {}
 
+#[cfg(feature = "native-annotation")]
 impl NativeModel {
     fn load(path: &Path) -> Result<Self, AnnotationError> {
         let path_string = path.to_string_lossy();
@@ -424,6 +433,7 @@ impl NativeModel {
     }
 }
 
+#[cfg(feature = "native-annotation")]
 impl Drop for NativeModel {
     fn drop(&mut self) {
         // SAFETY: `ptr` was returned non-null by the load function, is uniquely owned by this
@@ -433,10 +443,12 @@ impl Drop for NativeModel {
     }
 }
 
+#[cfg(feature = "native-annotation")]
 struct NativeTaggedResult {
     ptr: NonNull<CwUdpipeTaggedResult>,
 }
 
+#[cfg(feature = "native-annotation")]
 impl NativeTaggedResult {
     fn tagged_words(&self) -> Result<(Vec<TaggedWord>, usize), AnnotationError> {
         // SAFETY: the tagged-result handle is non-null, owned by `self`, and remains alive for
@@ -473,6 +485,7 @@ impl NativeTaggedResult {
     }
 }
 
+#[cfg(feature = "native-annotation")]
 impl Drop for NativeTaggedResult {
     fn drop(&mut self) {
         // SAFETY: `ptr` is the uniquely owned non-null result returned by the tagging function;
@@ -481,6 +494,7 @@ impl Drop for NativeTaggedResult {
     }
 }
 
+#[cfg(feature = "native-annotation")]
 fn c_string(ptr: *const c_char, field: &str) -> Result<String, AnnotationError> {
     if ptr.is_null() {
         return Err(AnnotationError::TaggingFailed {
@@ -494,6 +508,7 @@ fn c_string(ptr: *const c_char, field: &str) -> Result<String, AnnotationError> 
         .into_owned())
 }
 
+#[cfg(feature = "native-annotation")]
 fn last_udpipe_error() -> String {
     // SAFETY: this no-argument shim function returns either null or a pointer into thread-local
     // NUL-terminated error storage. We copy the message immediately on the calling thread.
@@ -506,6 +521,28 @@ fn last_udpipe_error() -> String {
     unsafe { CStr::from_ptr(ptr) }
         .to_string_lossy()
         .into_owned()
+}
+
+#[cfg(not(feature = "native-annotation"))]
+struct NativeModel;
+
+#[cfg(not(feature = "native-annotation"))]
+impl NativeModel {
+    fn load(path: &Path) -> Result<Self, AnnotationError> {
+        Err(AnnotationError::ModelLoadFailed {
+            path: path.to_path_buf(),
+            error: "native annotation is disabled in this build".to_string(),
+        })
+    }
+
+    fn tag_pretokenized_words(
+        &self,
+        _tokens: &[&str],
+    ) -> Result<(Vec<TaggedWord>, usize), AnnotationError> {
+        Err(AnnotationError::TaggingFailed {
+            error: "native annotation is disabled in this build".to_string(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -683,7 +720,7 @@ impl ModelManager {
     pub fn model_path(&self, language: &str) -> PathBuf {
         let model_name = bundled_model_filename(language)
             .map(str::to_string)
-            .unwrap_or_else(|| udpipe_rs::model_filename(&language_to_udpipe_name(language)));
+            .unwrap_or_else(|| udpipe_model_filename(&language_to_udpipe_name(language)));
         self.model_dir.join(model_name)
     }
 
@@ -783,6 +820,17 @@ fn language_to_udpipe_name(iso: &str) -> String {
     }
 }
 
+fn udpipe_model_filename(language: &str) -> String {
+    #[cfg(feature = "native-annotation")]
+    {
+        udpipe_rs::model_filename(language)
+    }
+    #[cfg(not(feature = "native-annotation"))]
+    {
+        format!("{language}-ud-2.5-191206.udpipe")
+    }
+}
+
 /// Returns the udpipe-rs model name for a given ISO 639-1 code.
 pub fn udpipe_model_name(iso: &str) -> String {
     language_to_udpipe_name(iso)
@@ -828,26 +876,35 @@ pub fn download_model_if_missing(language_iso: &str, model_dir: &Path) -> Result
     }
 
     let udpipe_name = language_to_udpipe_name(language_iso);
-    let model_path = model_dir.join(udpipe_rs::model_filename(&udpipe_name));
+    let model_path = model_dir.join(udpipe_model_filename(&udpipe_name));
 
     if model_path.exists() {
         return Ok(model_path);
     }
 
-    std::fs::create_dir_all(model_dir)
-        .map_err(|e| format!("Failed to create model directory: {e}"))?;
+    #[cfg(feature = "native-annotation")]
+    {
+        std::fs::create_dir_all(model_dir)
+            .map_err(|e| format!("Failed to create model directory: {e}"))?;
+        udpipe_rs::download_model(&udpipe_name, model_dir)
+            .map_err(|e| format!("Failed to download model for {language_iso}: {e}"))?;
 
-    udpipe_rs::download_model(&udpipe_name, model_dir)
-        .map_err(|e| format!("Failed to download model for {language_iso}: {e}"))?;
+        if !model_path.exists() {
+            return Err(format!(
+                "Model download claimed success but file missing: {}",
+                model_path.display()
+            ));
+        }
 
-    if !model_path.exists() {
-        return Err(format!(
-            "Model download claimed success but file missing: {}",
-            model_path.display()
-        ));
+        Ok(model_path)
     }
 
-    Ok(model_path)
+    #[cfg(not(feature = "native-annotation"))]
+    {
+        Err(format!(
+            "Cannot download UDPipe model for {language_iso}: native annotation is disabled in this build"
+        ))
+    }
 }
 
 // ---------------------------------------------------------------------------
