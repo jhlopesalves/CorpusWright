@@ -16,6 +16,10 @@ mod win32 {
     }
 
     pub fn set_titlebar_color(hwnd: *mut c_void, color: u32) {
+        // SAFETY: `hwnd` originates from Tauri's live Windows window handle and is used only for
+        // this synchronous Win32 call. `pv_attribute` points to a properly aligned `u32` that
+        // remains alive for the call, and `cbAttribute` exactly matches its size. DWM neither
+        // owns nor retains either pointer; the call may fail, but cannot transfer ownership.
         unsafe {
             let pv_attribute = &color as *const u32 as *const c_void;
             let _ = DwmSetWindowAttribute(
