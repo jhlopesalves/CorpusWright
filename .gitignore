@@ -160,11 +160,3 @@ pdf_test.pdf
 
 # Local maintainer knowledge base
 /.maintainer/
-
-# Local agents notes
-AGENTS.md
-.agents/
-cargo
-cd
-npm
-.markdowns

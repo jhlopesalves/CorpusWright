@@ -185,6 +185,10 @@ fn check(args: &[String]) -> Result<()> {
 
 fn repository_policy() -> Result<()> {
     run_named(
+        "public repository policy",
+        node(&["scripts/check-public-repository-policy.cjs"]),
+    )?;
+    run_named(
         "repository data policy",
         node(&["scripts/check-repository-data.cjs"]),
     )?;
@@ -550,6 +554,10 @@ fn release_preflight() -> Result<()> {
     run_named(
         "release metadata consistency",
         node(&["scripts/check-release-consistency.cjs"]),
+    )?;
+    run_named(
+        "public repository policy regression tests",
+        node(&["--test", "scripts/check-public-repository-policy.test.cjs"]),
     )?;
     run_named(
         "repository reference regression tests",
