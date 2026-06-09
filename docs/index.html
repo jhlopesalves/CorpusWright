@@ -12,13 +12,13 @@
   <meta property="og:title" content="CorpusWright - local-first corpus workbench">
   <meta property="og:description" content="CorpusWright is a local-first workbench for preparing, describing, and exploring a corpus.">
   <meta property="og:url" content="https://jhlopesalves.github.io/CorpusWright/">
-  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon-32.png">
+  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="CorpusWright - local-first corpus workbench">
   <meta name="twitter:description" content="CorpusWright is a local-first workbench for preparing, describing, and exploring a corpus.">
-  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon-32.png">
+  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
   <link rel="stylesheet" href="assets/site.css">
-  <link rel="icon" href="assets/icon-32.png">
+  <link rel="icon" href="assets/icon.png">
   <script>
     (function () {
       var stored = localStorage.getItem('theme');
@@ -69,7 +69,7 @@
     <section class="hero">
       <div class="shell">
         <div class="hero-split">
-          <img class="hero-logo" src="assets/icon-32.png" alt="CorpusWright logo">
+          <img class="hero-logo" src="assets/icon.png" alt="CorpusWright logo">
           <div>
             <h1>A local-first corpus tool, built in Rust.</h1>
             <p class="lede">CorpusWright is a local-first desktop workbench for preparing, inspecting, and exploring text corpora, with frequency lists, KWIC concordances, collocates, document-spread diagnostics, and reproducible records of every processing step.</p>
@@ -197,36 +197,6 @@ keywords:
         syncToggle();
       });
 
-      var tabs = Array.prototype.slice.call(document.querySelectorAll('.shot-tab'));
-      var panels = Array.prototype.slice.call(document.querySelectorAll('.shot-panel'));
-
-      function show(i) {
-        tabs.forEach(function (t, n) {
-          t.setAttribute('aria-selected', n === i ? 'true' : 'false');
-          t.tabIndex = n === i ? 0 : -1;
-        });
-        panels.forEach(function (p, n) {
-          if (n === i) { p.removeAttribute('hidden'); } else { p.setAttribute('hidden', ''); }
-        });
-      }
-
-      tabs.forEach(function (t, i) {
-        t.addEventListener('click', function () { show(i); });
-      });
-
-      var tablist = document.querySelector('.shot-tabs');
-      tablist.addEventListener('keydown', function (e) {
-        var cur = tabs.indexOf(document.activeElement);
-        if (cur < 0) return;
-        var nx = null;
-        if (e.key === 'ArrowRight') nx = (cur + 1) % tabs.length;
-        else if (e.key === 'ArrowLeft') nx = (cur - 1 + tabs.length) % tabs.length;
-        else if (e.key === 'Home') nx = 0;
-        else if (e.key === 'End') nx = tabs.length - 1;
-        if (nx !== null) { e.preventDefault(); tabs[nx].focus(); show(nx); }
-      });
-
-      show(0);
     })();
   </script>
 </body>

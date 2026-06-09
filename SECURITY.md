@@ -10,6 +10,8 @@ evolving.
 
 Please report suspected vulnerabilities privately through
 [GitHub Security Advisories](https://github.com/jhlopesalves/CorpusWright/security/advisories/new).
+If the advisory form is unavailable, email the maintainer at
+[jhlopesalves@gmail.com](mailto:jhlopesalves@gmail.com).
 Do not open a public issue for an unpatched vulnerability.
 
 Include the affected version or commit, operating system, a minimal reproduction using synthetic
