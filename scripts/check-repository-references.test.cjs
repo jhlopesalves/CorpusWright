@@ -12,7 +12,7 @@ const {
 test("external documentation references are not resolved as repository paths", () => {
   assert.equal(isExternalReference("https://example.com/guide.md"), true);
   assert.equal(isExternalReference("mailto:security@example.com"), true);
-  assert.equal(isExternalReference("../SECURITY.md"), false);
+  assert.equal(isExternalReference("../README.md"), false);
 });
 
 test("references split local targets from anchors and queries", () => {

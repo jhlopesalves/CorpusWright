@@ -127,11 +127,7 @@ function stripGeneratedCitationCopy(relativePath, text) {
     ""
   );
   next = next.replace(
-    /<pre class="code" id="home-citation-cff"><code class="mono">[\s\S]*?<\/code><\/pre>/g,
-    ""
-  );
-  next = next.replace(
-    /<pre class="code" id="citation-(?:bibtex|cff)"><code class="mono">[\s\S]*?<\/code><\/pre>/g,
+    /<pre class="code" id="citation-bibtex"><code class="mono">[\s\S]*?<\/code><\/pre>/g,
     ""
   );
 

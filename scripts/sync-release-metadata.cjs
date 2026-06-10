@@ -39,10 +39,6 @@ function htmlEscape(text) {
     .replaceAll(">", "&gt;");
 }
 
-function escapeRegExp(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function versionPattern() {
   return /^\d+\.\d+\.\d+-alpha\.\d+$/;
 }
@@ -86,15 +82,14 @@ function buildCitationCff(metadata) {
 message: "If you use CorpusWright in your research or teaching, please cite it as below."
 title: CorpusWright
 abstract: >-
-  A desktop corpus-linguistics workbench with a Rust core for cleaning,
-  inspecting, and analysing research corpora with statistical and
-  methodological rigour. Local-first, auditable, and analysis-aware.
+  A desktop corpus-linguistics workbench with a Rust core for preparing,
+  inspecting, and analysing text corpora. Corpus data is processed locally,
+  and cleaned-corpus exports include preparation settings and file checksums.
 type: software
 authors:
   - family-names: Lopes
-    given-names: Jhonatan Henrique
+    given-names: Jhonatan H.
     orcid: "https://orcid.org/0009-0008-4914-0262"
-    email: jhlopesalves@gmail.com
 repository-code: "${REPOSITORY_URL}"
 url: "${WEBSITE_URL}"
 version: ${metadata.version}
@@ -113,7 +108,7 @@ keywords:
 function buildBibtex(metadata) {
   const year = releaseYear(metadata);
   return `@software{lopes_corpuswright_${year},
-  author  = {Lopes, Jhonatan Henrique},
+  author  = {Lopes, Jhonatan H.},
   title   = {CorpusWright},
   year    = {${year}},
   version = {${metadata.version}},
@@ -122,37 +117,11 @@ function buildBibtex(metadata) {
 }`;
 }
 
-function buildCffPre(id, metadata) {
-  return `<pre class="code" id="${id}"><code class="mono">${htmlEscape(
-    buildCitationCff(metadata).trimEnd()
-  )}</code></pre>`;
-}
-
 function replaceOrThrow(content, pattern, replacement, relativePath, label) {
   if (!pattern.test(content)) {
     throw new Error(`Could not find ${label} in ${relativePath}`);
   }
   return content.replace(pattern, () => replacement);
-}
-
-function replaceAll(content, pattern, replacement) {
-  return content.replace(pattern, () => replacement);
-}
-
-function upsertPreBlock(content, id, block, insertBeforePattern, relativePath) {
-  const prePattern = new RegExp(
-    `<pre class="code" id="${escapeRegExp(id)}"><code class="mono">[\\s\\S]*?<\\/code><\\/pre>`
-  );
-
-  if (prePattern.test(content)) {
-    return content.replace(prePattern, () => block);
-  }
-
-  if (!insertBeforePattern.test(content)) {
-    throw new Error(`Could not place ${id} in ${relativePath}`);
-  }
-
-  return content.replace(insertBeforePattern, `${block}\n\n$&`);
 }
 
 function createWriter(options) {
@@ -283,7 +252,7 @@ function stripFooterVersion(writer, relativePath) {
   );
 }
 
-function syncIndex(writer, metadata) {
+function syncIndex(writer) {
   syncText(writer, "docs/index.html", (content) => {
     let next = content;
     next = replaceOrThrow(
@@ -296,16 +265,9 @@ function syncIndex(writer, metadata) {
     next = replaceOrThrow(
       next,
       /<p>If you use CorpusWright[\s\S]*?(?:APA and BibTeX templates|APA and BibTeX examples)\.<\/p>/,
-      '<p>If you use CorpusWright in your research or teaching, please cite it. The repository contains the machine-readable <code>CITATION.cff</code> metadata below; the <a href="citation.html">full citation guidance</a> also provides APA and BibTeX examples.</p>',
+      '<p>If you use CorpusWright in your research or teaching, please cite it when appropriate. The repository provides the authoritative machine-readable <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a>; the <a href="citation.html">citation guidance</a> gives APA and BibTeX examples.</p>',
       "docs/index.html",
       "citation paragraph"
-    );
-    next = upsertPreBlock(
-      next,
-      "home-citation-cff",
-      buildCffPre("home-citation-cff", metadata),
-      /<\/div>\r?\n\s*<\/section>\r?\n\s*<\/main>/,
-      "docs/index.html"
     );
     return next;
   });
@@ -375,28 +337,6 @@ function syncCitationPage(writer, metadata) {
       "docs/citation.html",
       "BibTeX citation"
     );
-    const cffSection = `<h3 style="margin-top: 36px;">Machine-readable CITATION.cff</h3>
-        <p class="muted">Copy this block when you need the citation metadata directly, or let GitHub read it from the repository.</p>
-        ${buildCffPre("citation-cff", metadata)}`;
-    const automaticHeading =
-      '<h3 style="margin-top: 36px;">Automatic extraction from GitHub</h3>';
-
-    const existingCffSection =
-      /<h3 style="margin-top: 36px;">Machine-readable CITATION\.cff<\/h3>[\s\S]*?<h3 style="margin-top: 36px;">Automatic extraction from GitHub<\/h3>/;
-    if (existingCffSection.test(next)) {
-      next = next.replace(
-        existingCffSection,
-        `${cffSection}\n\n        ${automaticHeading}`
-      );
-    } else {
-      next = replaceOrThrow(
-        next,
-        /<h3 style="margin-top: 36px;">Automatic extraction from GitHub<\/h3>/,
-        `${cffSection}\n\n        ${automaticHeading}`,
-        "docs/citation.html",
-        "machine-readable CITATION.cff section"
-      );
-    }
     return next;
   });
 }
@@ -444,7 +384,7 @@ function syncReleaseMetadata(options = {}) {
   );
 
   syncReadme(writer, metadata);
-  syncIndex(writer, metadata);
+  syncIndex(writer);
   syncQuickStart(writer);
   syncTechnicalDocs(writer);
   syncRoadmap(writer);

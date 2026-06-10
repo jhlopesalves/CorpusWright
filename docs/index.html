@@ -72,7 +72,7 @@
           <img class="hero-logo" src="assets/icon.png" alt="CorpusWright logo">
           <div>
             <h1>A local-first corpus tool, built in Rust.</h1>
-            <p class="lede">CorpusWright is a local-first desktop workbench for preparing, inspecting, and exploring text corpora, with frequency lists, KWIC concordances, collocates, document-spread diagnostics, and reproducible records of every processing step.</p>
+            <p class="lede">CorpusWright is a local-first desktop workbench for preparing, inspecting, and exploring text corpora, with frequency lists, KWIC concordances, collocate and document-spread views. Cleaned-corpus exports record the cleaning and tokenisation configuration.</p>
             <div class="hero-downloads">
               <div class="dl-list">
                 <p class="dl-heading">Downloads</p>
@@ -93,22 +93,22 @@
         <div class="intro-split">
           <div class="principle-list">
             <div class="principle">
-              <h3>Reproducible</h3>
-              <p>Every export ships a manifest: cleaning configuration, tokeniser settings, and SHA-256 checksums of
-                every source and processed file.</p>
+              <h3>Preparation records</h3>
+              <p>Cleaned-corpus exports include a manifest with the cleaning configuration, tokeniser settings and
+                SHA-256 checksums for the included source and processed files.</p>
             </div>
             <div class="principle">
               <h3>Statistical profile</h3>
-              <p>A full statistical profile of your corpus: frequency, diversity, dispersion, concentration and
-                distributional shape, with every measure defined and clearly explained.</p>
+              <p>The corpus overview reports frequency, diversity, dispersion, concentration and distributional-shape
+                measures. Definitions and interpretation notes accompany the principal measures.</p>
             </div>
             <div class="principle">
               <h3>Transparent</h3>
-              <p>Every statistic comes with its formula, an interpretation and its limitations.</p>
+              <p>The concepts guide presents formulas, interpretations and limitations for the principal reported statistics.</p>
             </div>
             <div class="principle">
               <h3>Built in Rust</h3>
-              <p>A native Rust core keeps analysis local and deterministic, with reproducible outputs and explicit manifests.</p>
+              <p>A native Rust core performs corpus preparation and analysis on the user's machine.</p>
             </div>
           </div>
         </div>
@@ -128,8 +128,7 @@
           </a>
           <a class="card" href="roadmap.html">
             <h3>Roadmap</h3>
-            <p>What works today and what is coming: the Explore workbench with KWIC and concordance, collocations, and
-              pattern search.</p><span class="card-link">See the roadmap &#x2192;</span>
+            <p>What the latest published alpha contains, its current limits, and broad areas being considered.</p><span class="card-link">See the roadmap &#x2192;</span>
           </a>
         </div>
       </div>
@@ -140,32 +139,7 @@
         <div class="section-lead">
           <h2>Citation</h2>
         </div>
-        <p>If you use CorpusWright in your research or teaching, please cite it. The repository contains the machine-readable <code>CITATION.cff</code> metadata below; the <a href="citation.html">full citation guidance</a> also provides APA and BibTeX examples.</p>
-      <pre class="code" id="home-citation-cff"><code class="mono">cff-version: 1.2.0
-message: "If you use CorpusWright in your research or teaching, please cite it as below."
-title: CorpusWright
-abstract: &gt;-
-  A desktop corpus-linguistics workbench with a Rust core for cleaning,
-  inspecting, and analysing research corpora with statistical and
-  methodological rigour. Local-first, auditable, and analysis-aware.
-type: software
-authors:
-  - family-names: Lopes
-    given-names: Jhonatan Henrique
-    orcid: "https://orcid.org/0009-0008-4914-0262"
-    email: jhlopesalves@gmail.com
-repository-code: "https://github.com/jhlopesalves/CorpusWright"
-url: "https://jhlopesalves.github.io/CorpusWright/"
-version: 0.1.0-alpha.8
-date-released: "2026-06-29"
-license: MIT
-keywords:
-  - corpus linguistics
-  - text processing
-  - concordance
-  - KWIC
-  - reproducibility
-  - Rust</code></pre>
+        <p>If you use CorpusWright in your research or teaching, please cite it when appropriate. The repository provides the authoritative machine-readable <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a>; the <a href="citation.html">citation guidance</a> gives APA and BibTeX examples.</p>
 
 </div>
     </section>

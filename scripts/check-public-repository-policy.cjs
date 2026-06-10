@@ -10,7 +10,6 @@ const ROOT = path.resolve(__dirname, "..");
 
 const MARKDOWN_ALLOWLIST = new Set([
   "README.md",
-  "SECURITY.md",
   "THIRD_PARTY_NOTICES.md",
   "apps/desktop/src-tauri/resources/ocr/README.md",
   "apps/desktop/src-tauri/resources/udpipe/README.md",

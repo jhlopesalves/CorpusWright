@@ -63,8 +63,8 @@
   <div class="shell">
     <div class="section-lead">
       <p class="eyebrow">Roadmap</p>
-      <h1>Current alpha and planned work</h1>
-      <p class="lede">The current public alpha covers preprocessing, frequency views, KWIC concordances, collocates, document-spread diagnostics, and safer text decoding. A surface positional index now exists as internal infrastructure; the next step is to route the analysis paths through it behind parity checks.</p>
+      <h1>Published alpha, current limits and planned areas</h1>
+      <p class="lede">The sections below distinguish capabilities in the latest published alpha from practical limits and broader areas being considered for later work.</p>
     </div>
   </div>
 </section>
@@ -72,65 +72,41 @@
 <section class="section">
   <div class="shell grid">
     <article class="card">
-      <h3>Current alpha</h3>
+      <h3>Latest published alpha</h3>
       <ul class="checklist">
-        <li>Local project folders</li>
-        <li>Text extraction from supported formats</li>
-        <li>Cleaning settings and processed previews</li>
-        <li>Repeated artefact finder</li>
-        <li>Structured custom removals</li>
-        <li>Corpus Overview / Frequency List</li>
-        <li>Surface and phrase KWIC search</li>
-        <li>KWIC sorting and source preview</li>
-        <li>Document spread diagnostics</li>
-        <li>Collocates alpha with raw counts, corpus frequency, and logDice</li>
-        <li>Strict UTF-8 decoding with Windows-1252 recovery</li>
+        <li>Local project folders and a source inventory</li>
+        <li>Text extraction from supported TXT, HTML, DOCX and PDF sources</li>
+        <li>Configurable cleaning with original and processed previews</li>
+        <li>Repeated-artefact review and structured removal rules</li>
+        <li>Cleaned-text export with configuration and manifest records</li>
+        <li>Corpus overview and surface-frequency views</li>
+        <li>Surface-word and phrase concordances with sorting and source-context preview</li>
+        <li>Document-spread and collocate views, including raw counts, corpus frequency and logDice</li>
+        <li>Strict UTF-8 decoding with Windows-1252 recovery for invalid text input</li>
       </ul>
     </article>
     <article class="card">
-      <h3>Internal groundwork</h3>
+      <h3>Known alpha limits</h3>
       <ul class="checklist">
-        <li>Landed: surface positional index, case-sensitive parity, and an index-backed Concordance route</li>
-        <li>In progress: a developer-only scan, index, and audit dogfood mode that is not present in public builds</li>
+        <li>The interface and project format may change between alpha releases</li>
+        <li>PDF and OCR results depend on source quality and the selected extraction route</li>
+        <li>Concordance does not yet provide CQL, N-gram browsing, or lemma/POS and annotation-aware queries</li>
+        <li>Analysis export and copy workflows remain limited</li>
+        <li>CorpusWright does not provide remote corpus hosting</li>
+        <li>Unsigned application builds may prompt operating-system warnings</li>
       </ul>
     </article>
     <article class="card">
-      <h3>Next / near-term</h3>
-      <ul class="checklist">
-        <li>Dogfood the current alpha on the IMDB and Portuguese corpora</li>
-        <li>Exercise the index-backed Concordance route against the scan engine under parity checks</li>
-        <li>Decide the default Concordance backend once parity holds on real corpora</li>
-        <li>Write the frontend Analyse workspace state-model brief</li>
-        <li>Shape the future single-workspace Concordance interaction model</li>
-      </ul>
-    </article>
-    <article class="card">
-      <h3>Future</h3>
+      <h3>Planned areas</h3>
       <ul class="checklist">
         <li>N-grams</li>
-        <li>CQL-lite</li>
-        <li>Lemma/POS KWIC</li>
-        <li>Annotation-aware Concordance</li>
-        <li>Richer Collocates</li>
+        <li>CQL-lite and other structured queries</li>
+        <li>Lemma/POS and annotation-aware search</li>
+        <li>Richer collocation and evidence views</li>
         <li>Export and copy workflows</li>
       </ul>
+      <p>These are broad directions rather than a release schedule; their scope may change.</p>
     </article>
-  </div>
-</section>
-
-<section class="section">
-  <div class="shell">
-    <div class="section-lead">
-      <h2>Known alpha limits</h2>
-      <p>These are the boundaries of the current public alpha.</p>
-    </div>
-    <div class="principles">
-      <p><span class="term">Concordance and Collocates:</span> functional alpha features, not the final workflow design.</p>
-      <p><span class="term">Indexing:</span> current public alpha builds still run the scan and cached analysis paths; the surface positional index is internal groundwork and is not yet the default in released builds.</p>
-      <p><span class="term">Queries:</span> there is no CQL, no N-grams, no lemma/POS KWIC, and no annotation-aware Concordance yet.</p>
-      <p><span class="term">Hosting:</span> CorpusWright is local-first. It does not provide remote corpus hosting.</p>
-      <p><span class="term">Packaging:</span> Windows builds may still show unsigned-app warnings.</p>
-    </div>
   </div>
 </section>
 

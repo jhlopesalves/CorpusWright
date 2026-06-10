@@ -57,14 +57,14 @@ test("project links cannot target removed Markdown", () => {
   assert.equal(
     projectMarkdownPath(
       "docs/technical-docs.html",
-      "https://github.com/jhlopesalves/CorpusWright/blob/main/SECURITY.md",
+      "https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md",
     ),
-    "SECURITY.md",
+    "THIRD_PARTY_NOTICES.md",
   );
   assert.deepEqual(
     inspectRepositorySnapshot([
       ["README.md", "[removed](docs/removed.md)"],
-      ["SECURITY.md", "# Security"],
+      ["THIRD_PARTY_NOTICES.md", "# Notices"],
     ]),
     ["README.md: documentation link points to removed Markdown: docs/removed.md"],
   );

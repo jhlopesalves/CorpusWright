@@ -78,21 +78,21 @@
           <section class="learn-section">
             <h2 id="stance">Where CorpusWright stands</h2>
 
-            <p>CorpusWright is built on one position: the description of a corpus is not a preliminary step taken before statistical analysis; it is the first stage of statistical analysis. The data-science tradition has a name for this stage: exploratory data analysis (Tukey, 1977), the work of understanding a dataset's structure, its distribution, and its limits before any confirmatory claim is made. CorpusWright's response is not an argument but a default: the descriptive diagnostics are computed for every corpus, in the same way, every time - whether or not anyone planned to look at them.</p>
+            <p>CorpusWright is built on one position: the description of a corpus is not a preliminary step taken before statistical analysis; it is the first stage of statistical analysis. The data-science tradition has a name for this stage: exploratory data analysis (Tukey, 1977), the work of understanding a dataset's structure, its distribution, and its limits before any confirmatory claim is made. CorpusWright's response is to place descriptive diagnostics in the analysis workflow, where they can be examined before later claims are made.</p>
 
-            <p>The position is not novel, and the project does not claim it as its own. It is the ordinary discipline of open science - reproducible results, transparent methods, findings that carry their provenance, claims held to organised scepticism - applied consistently to one corner of linguistics where it is applied unevenly. In practice, that discipline means five things:</p>
+            <p>The position is not novel, and the project does not claim it as its own. The project draws on ordinary open-science practices - reproducible results, transparent methods, findings that carry their provenance, and claims held to organised scepticism - in corpus preparation and analysis. In practice, that discipline means five things:</p>
 
             <ul>
-              <li><strong>Deterministic.</strong> The same corpus and the same configuration give the same results, every time. A saved cleaning configuration is part of the research record: it can be inspected, shared, and re-applied without relying on anyone's recollection of manual steps.</li>
+              <li><strong>Deterministic.</strong> For the same supported inputs and cleaning configuration, the cleaning rules produce the same processed text. A saved cleaning configuration is part of the research record: it can be inspected, shared, and re-applied without relying on anyone's recollection of manual steps.</li>
               <li><strong>Conservative.</strong> Where a cleaning decision is uncertain, the original text is preserved. Detected noise is evidence, not an instruction; it becomes a cleaning rule only after explicit review. The tool would rather under-clean than silently discard what cannot be recovered.</li>
-              <li><strong>Auditable.</strong> Extraction warnings, cleaning rules, and the provenance of every count - the tokeniser version, and for annotated counts the model and its version - remain inspectable, because changing the tokeniser or the tagger changes the counts.</li>
-              <li><strong>Local-first.</strong> Private corpora stay on your own machine. Nothing is uploaded anywhere.</li>
+              <li><strong>Auditable.</strong> Extraction warnings, cleaning rules and export metadata remain inspectable, because changing tokenisation or annotation choices can change the counts.</li>
+              <li><strong>Local-first.</strong> Corpus data is processed locally and is not sent to a hosted CorpusWright analysis service.</li>
               <li><strong>Statistically restrained.</strong> Frequencies are reported as what they are, without overstatement; measures respect corpus design, dispersion, document-level variation, and their own uncertainty.</li>
             </ul>
 
-            <h3>Nothing new, made routine</h3>
+            <h3>Established methods in the workflow</h3>
 
-            <p>None of the mathematics in CorpusWright is new: Zipf’s law dates to Zipf (1949), Shannon entropy to Shannon (1948), and the principles of careful corpus design are older still. What is new is the delivery: a local-first tool that computes these diagnostics by default, in the same way, every time.</p>
+            <p>The project does not claim novelty for established measures such as Zipf’s law (Zipf, 1949) or Shannon entropy (Shannon, 1948), nor for the principles of careful corpus design. Its purpose is to place corpus preparation and descriptive diagnostics in one local workflow and make the relevant settings available for review.</p>
           </section>
 
           <section class="learn-section">
