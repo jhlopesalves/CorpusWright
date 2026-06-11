@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(export)]
 pub enum DocumentType {
     Text,
     Html,
@@ -11,15 +13,18 @@ pub enum DocumentType {
     Pdf,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct DocumentRecord {
     pub source_path: PathBuf,
     pub relative_path: PathBuf,
     pub document_type: DocumentType,
+    #[ts(type = "number")]
     pub size_bytes: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default, TS)]
+#[ts(export)]
 pub struct DocumentTypeCounts {
     pub text: usize,
     pub html: usize,
@@ -27,23 +32,27 @@ pub struct DocumentTypeCounts {
     pub pdf: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct CorpusSummary {
     pub root: PathBuf,
     pub files_discovered: usize,
     pub files_supported: usize,
     pub files_ignored: usize,
+    #[ts(type = "number")]
     pub total_size_bytes: u64,
     pub document_type_counts: DocumentTypeCounts,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct ScanReport {
     pub root: PathBuf,
     pub files: Vec<DocumentRecord>,
     pub files_discovered: usize,
     pub files_supported: usize,
     pub files_ignored: usize,
+    #[ts(type = "number")]
     pub total_size_bytes: u64,
     pub summary: CorpusSummary,
 }

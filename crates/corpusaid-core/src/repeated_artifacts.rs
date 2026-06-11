@@ -17,13 +17,15 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
+use ts_rs::TS;
 
 /// Maximum distinct raw variants tracked per candidate key.
 /// Beyond this cap, `raw_variant_overflow` is set to true.
 const RAW_VARIANT_TRACK_CAP: usize = 200;
 
 /// Configuration options for the repeated artifact scan.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct RepeatedArtifactScanConfig {
     /// Use processed (cleaned) text instead of original extracted text.
     /// Processed scans may be slower because they apply current extraction and cleanup settings.
@@ -77,8 +79,9 @@ impl Default for RepeatedArtifactScanConfig {
 }
 
 /// The types of candidates that can be detected.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(export)]
 pub enum RepeatedArtifactKind {
     ExactLine,
     NormalizedLine,
@@ -89,8 +92,9 @@ pub enum RepeatedArtifactKind {
 }
 
 /// Risk labels that are advisory reviews rather than absolute truths.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(export)]
 pub enum ArtifactRiskLabel {
     StrongHeaderFooterCandidate,
     PossibleBoilerplate,
@@ -101,8 +105,9 @@ pub enum ArtifactRiskLabel {
 
 /// Content-class label for a candidate, based on character composition.
 /// Used to filter candidates and warn users about risky groupings.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(export)]
 pub enum CandidateContentClass {
     /// Predominantly alphabetic text (prose, headings).
     TextDominant,
@@ -115,7 +120,8 @@ pub enum CandidateContentClass {
 }
 
 /// Counts of candidate occurrences by estimated layout positions.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct PositionSummary {
     pub top_count: usize,
     pub middle_count: usize,
@@ -124,7 +130,8 @@ pub struct PositionSummary {
 }
 
 /// A specific example instance of a repeated candidate.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct RepeatedArtifactExample {
     pub file_name: String,
     pub file_path: String,
@@ -136,7 +143,8 @@ pub struct RepeatedArtifactExample {
 }
 
 /// A candidate group returned to the frontend.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct RepeatedArtifactCandidate {
     pub candidate_id: String,
     pub kind: RepeatedArtifactKind,
@@ -164,7 +172,8 @@ pub struct RepeatedArtifactCandidate {
 
 /// Diagnostics collected during a repeated artifact scan.
 /// Returned alongside candidates in `RepeatedArtifactScanReport`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct RepeatedArtifactScanDiagnostics {
     pub files_requested: usize,
     pub files_scanned: usize,
@@ -181,7 +190,8 @@ pub struct RepeatedArtifactScanDiagnostics {
 }
 
 /// Scan report containing both candidates and diagnostics.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct RepeatedArtifactScanReport {
     pub candidates: Vec<RepeatedArtifactCandidate>,
     pub diagnostics: RepeatedArtifactScanDiagnostics,

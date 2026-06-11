@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
+use ts_rs::TS;
 
 /// Configuration options for generating file previews.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -26,8 +27,9 @@ impl Default for PreviewOptions {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(export)]
 pub enum PreviewWarningKind {
     InvalidUtf8,
     Truncated,
@@ -36,7 +38,8 @@ pub enum PreviewWarningKind {
     ExtractionError,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct PreviewWarning {
     pub source_path: Option<PathBuf>,
     pub relative_path: Option<PathBuf>,
@@ -44,19 +47,22 @@ pub struct PreviewWarning {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct FilePreview {
     pub source_path: PathBuf,
     pub relative_path: PathBuf,
     pub document_type: DocumentType,
     pub text: String,
+    #[ts(type = "number")]
     pub source_size_bytes: u64,
     pub included_char_count: usize,
     pub truncated: bool,
     pub warnings: Vec<PreviewWarning>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct CombinedPreview {
     pub files: Vec<FilePreview>,
     pub combined_text: String,

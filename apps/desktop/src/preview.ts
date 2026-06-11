@@ -3,7 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { dom } from "./dom";
 import { state } from "./state";
 import { highlightPreviewText } from "./utils";
-import type { CombinedPreview, FilePreview } from "./types";
+import type { CombinedPreview } from "./generated/CombinedPreview.js";
+import type { FilePreview } from "./generated/FilePreview.js";
 
 const PREVIEW_CHUNK_SIZE = 50;
 

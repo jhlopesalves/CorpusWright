@@ -5,7 +5,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { dom } from "./dom";
 import { state } from "./state";
 import { sanitizeFolderName } from "./utils";
-import type { ExportReport } from "./types";
+import type { ExportReport } from "./generated/ExportReport.js";
 
 async function handleExport(): Promise<void> {
   if (state.allFiles.length === 0) {
