@@ -1,0 +1,25 @@
+[package]
+name = "corpus_preview"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "corpus_preview"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.21" }
+walkdir = "2"
+chardetng = "0.1"
+encoding_rs = "0.8"
+html2text = "0.17"
+unicode-segmentation = "1.11"
+quick-xml = "0.36"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+pdf-extract = "0.10"
+
+[features]
+default = ["pyo3/extension-module"]
+
+[build-dependencies]
+pyo3-build-config = "0.21"

@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CorpusAid</title>
+  <link rel="icon" type="image/svg+xml" href="/ico.svg" />
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+
+<body>
+  <div id="app">
+    <nav class="app-bar">
+      <div class="app-title">CorpusAid</div>
+      <div class="menu-items">
+        <div class="dropdown">
+          <span class="menu-item" tabindex="0">File</span>
+          <div class="dropdown-content">
+            <div class="dropdown-item" id="menu-open-files" tabindex="0">Open Files</div>
+            <div class="dropdown-item" id="menu-open-dir" tabindex="0">Open Folder</div>
+            <div class="dropdown-item" id="menu-save-corpus" tabindex="0">Save Processed Corpus</div>
+          </div>
+        </div>
+        <div class="dropdown">
+          <span class="menu-item" tabindex="0">Process</span>
+          <div class="dropdown-content">
+            <div class="dropdown-item" id="menu-processing-params" tabindex="0">Processing Parameters</div>
+            <div class="dropdown-item" id="menu-repeated-artifact-finder" tabindex="0">Repeated Artefact Finder</div>
+          </div>
+        </div>
+        <div class="dropdown">
+          <span class="menu-item" tabindex="0">Help</span>
+          <div class="dropdown-content">
+          </div>
+        </div>
+      </div>
+      <div class="top-right-controls">
+        <button id="theme-toggle" class="icon-btn" title="Toggle Theme" aria-label="Toggle Theme">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+        </button>
+      </div>
+    </nav>
+
+    <main>
+      <aside class="left-panel">
+        <h2>Corpus</h2>
+        <div class="status-line" id="files-status">0 loaded | 0 selected</div>
+        <input id="search-input" type="text" placeholder="Search/filter..." />
+        <div class="list-controls-bar">
+          <label class="select-all-label" title="Select all filtered files">
+            <input type="checkbox" id="select-all-checkbox" /> Select All
+          </label>
+          <div class="preview-cap-control" title="Automatically select and preview the first N files">
+            <label for="preview-cap-input">Preview Top:</label>
+            <input type="number" id="preview-cap-input" placeholder="e.g. 50" min="1" />
+          </div>
+        </div>
+        <div id="preview-cap-warning" class="warning-text" style="display: none;">Warning: High limits may cause lag.
+        </div>
+        <div class="file-list-container">
+          <ul id="file-list"></ul>
+        </div>
+        <div class="corpus-summary" id="corpus-summary">
+          <!-- Summary card goes here -->
+        </div>
+      </aside>
+      <div class="sidebar-splitter" id="sidebar-splitter"></div>
+      <section class="right-panel">
+
+        <div class="tabs">
+          <button class="tab active" data-target="original-text">Original Text</button>
+          <button class="tab" data-target="processed-text">Processed Text</button>
+        </div>
+
+        <div class="preview-toolbar">
+          <div class="search-container">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" class="search-icon">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="preview-search-input" placeholder="Search in active preview..." />
+            <span class="match-count" id="preview-match-count"></span>
+            <div class="search-nav">
+              <button id="search-prev" class="icon-btn search-nav-btn" aria-label="Previous match" title="Previous"><svg
+                  viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="15 18 9 12 15 6"></polyline>
+                </svg></button>
+              <button id="search-next" class="icon-btn search-nav-btn" aria-label="Next match" title="Next"><svg
+                  viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg></button>
+            </div>
+          </div>
+        </div>
+
+        <div id="preview-loading-overlay" class="loading-overlay" style="display: none;">
+          <div class="spinner"></div>
+          <span id="preview-loading-text">Loading...</span>
+        </div>
+
+        <div class="tab-content active" id="original-text">
+          <div id="preview-content" class="preview-cards-container">Select files from the left panel to preview their
+            contents.</div>
+        </div>
+
+        <div class="tab-content" id="processed-text">
+          <div id="processed-preview-content" class="preview-cards-container">Select files from the left panel to
+            preview processed text.</div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="status-bar">Ready</footer>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="modal-content">
+        <button
+          id="btn-close-settings-modal-top"
+          class="modal-close-btn"
+          type="button"
+          aria-label="Close Processing Parameters"
+        >
+          &times;
+        </button>
+        <h2 id="settings-title">Processing Parameters</h2>
+        <p class="modal-description">These settings affect processed previews and exported text. Source files are never
+          modified.</p>
+        <div class="modal-config-toolbar">
+          <button type="button" id="btn-load-config">Load Config...</button>
+          <button type="button" id="btn-save-config">Save Config...</button>
+          <span id="modal-config-status" class="modal-config-status"></span>
+        </div>
+        <div class="tabs">
+          <button class="tab settings-tab active" data-target="tab-general" type="button" role="tab"
+            aria-selected="true">General</button>
+          <button class="tab settings-tab" data-target="tab-line-page" type="button" role="tab"
+            aria-selected="false">Line & Page</button>
+          <button class="tab settings-tab" data-target="tab-extraction" type="button" role="tab"
+            aria-selected="false">Extraction</button>
+          <button class="tab settings-tab" data-target="tab-custom-removals" type="button" role="tab"
+            aria-selected="false">Custom Removals</button>
+        </div>
+
+        <div id="tab-general" class="tab-content settings-tab-content active" role="tabpanel">
+          <div class="cleaning-controls-vertical">
+            <strong style="font-size: 0.95rem; color: var(--text-color);">Basic Cleaning</strong>
+            <label><input type="checkbox" id="chk-lowercase" /> Lowercase</label>
+            <label><input type="checkbox" id="chk-normalize" /> Normalize line endings</label>
+            <label><input type="checkbox" id="chk-trim" /> Trim lines</label>
+            <label><input type="checkbox" id="chk-collapse" /> Collapse blank lines</label>
+
+            <hr style="margin: 4px 0; border: none; border-top: 1px solid var(--border-color);" />
+
+            <strong style="font-size: 0.95rem; color: var(--text-color);">Encoding</strong>
+            <label><input type="checkbox" id="chk-normalize-unicode" /> Normalize Unicode</label>
+            <label><input type="checkbox" id="chk-replace-diacritics" /> Replace diacritics</label>
+          </div>
+        </div>
+
+        <div id="tab-line-page" class="tab-content settings-tab-content" role="tabpanel">
+          <div class="cleaning-controls-vertical">
+            <label><input type="checkbox" id="chk-join-line-breaks" /> Join line breaks</label>
+            <label><input type="checkbox" id="chk-normalize-irregular-line-breaks" /> Normalize irregular line
+              breaks</label>
+            <label><input type="checkbox" id="chk-remove-standalone-page-numbers" /> Remove standalone page
+              numbers</label>
+            <label><input type="checkbox" id="chk-remove-standalone-roman-page-numbers" /> Remove standalone Roman
+              numeral page numbers</label>
+            <label><input type="checkbox" id="chk-remove-page-indicators" /> Remove page indicators</label>
+            <label><input type="checkbox" id="chk-remove-page-delimiters" /> Remove page delimiters</label>
+          </div>
+        </div>
+
+        <div id="tab-extraction" class="tab-content settings-tab-content" role="tabpanel">
+          <div class="cleaning-controls-vertical extraction-accordion">
+            <details open>
+              <summary>HTML Extraction</summary>
+              <label><input type="checkbox" id="chk-extract-html" /> Extract HTML to Plain Text</label>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 10px 0; padding-left: 24px;">
+                HTML files are extracted to readable plain text before normal cleaning is applied. Strips tags, decodes
+                entities, and preserves spacing.
+              </p>
+            </details>
+
+            <details open>
+              <summary>Table Extraction Strategy</summary>
+              <div style="padding-left: 0; margin-top: 4px;">
+                <select id="sel-table-extraction" class="settings-select"
+                  style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
+                  <option value="TabSeparated">Tab-Separated (Preserve grid with tabs and newlines)</option>
+                  <option value="FlattenParagraphs">Flatten to Paragraphs (Remove grid structure)</option>
+                  <option value="Ignore">Ignore Tables (Strip all table content)</option>
+                </select>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
+                  Defines how tabular data (e.g., DOCX tables) should be transformed into plain text.
+                </p>
+              </div>
+            </details>
+
+            <details open>
+              <summary>PDF Embedded Text Strategy</summary>
+              <div style="padding-left: 0; margin-top: 4px;">
+                <select id="sel-pdf-embedded-text-strategy" class="settings-select"
+                  style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
+                  <option value="PdfiumFlat">Flat text order</option>
+                  <option value="PdfiumVisualSingleColumn">Visual single column</option>
+                  <option value="PdfiumVisualColumnsExperimental">Visual columns experimental</option>
+                </select>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
+                  Controls how raw PDF text is reconstructed from the character stream. Reload preview after changing.
+                </p>
+              </div>
+            </details>
+
+            <details>
+              <summary>DOCX Extraction</summary>
+              <label><input type="checkbox" id="chk-remove-headers" /> Strip Headers</label>
+              <label><input type="checkbox" id="chk-remove-footers" /> Strip Footers</label>
+              <label><input type="checkbox" id="chk-remove-footnotes" /> Strip Footnotes</label>
+              <label><input type="checkbox" id="chk-remove-endnotes" /> Strip Endnotes</label>
+              <label><input type="checkbox" id="chk-remove-comments" /> Strip Comments</label>
+              <label><input type="checkbox" id="chk-remove-toc" /> Strip Table of Contents</label>
+            </details>
+
+            <details>
+              <summary>PDF Cleanup</summary>
+              <label><input type="checkbox" id="chk-remove-repeated-pdf-headers-footers" /> Remove repeated PDF
+                headers/footers</label>
+              <label><input type="checkbox" id="chk-remove-pdf-page-labels" /> Remove PDF page labels/page numbers</label>
+              <label><input type="checkbox" id="chk-remove-pdf-symbol-heavy-artifacts" /> Remove symbol-heavy PDF
+                graphical artefacts</label>
+              <label><input type="checkbox" id="chk-remove-pdf-code-like-blocks" /> Remove code-like PDF blocks</label>
+              <label><input type="checkbox" id="chk-remove-pdf-formula-like-lines" /> Remove formula/math-heavy PDF
+                lines</label>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 10px 0; padding-left: 24px;">
+                PDF cleanup options are conservative and apply only to PDF-derived text. These options may remove
+                meaningful programming, statistical, or mathematical examples. Inspect processed preview before export.
+              </p>
+            </details>
+          </div>
+        </div>
+
+        <div id="tab-custom-removals" class="tab-content settings-tab-content" role="tabpanel">
+          <div class="cleaning-controls-vertical">
+            <strong style="font-size: 0.95rem; color: var(--text-color);">Exact Sequences to Remove</strong>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 10px 0;">
+              Add literal sequences to strip from the text. Great for removing specific HTML tags like
+              <code><br /></code> or repetitive branding.
+            </p>
+
+            <div class="custom-removals-input-group">
+              <input type="text" id="custom-removal-input" placeholder="Type exact sequence here..."
+                class="settings-input" />
+              <button type="button" id="btn-add-custom-removal" class="primary-btn"
+                style="padding: 8px 16px;">Add</button>
+            </div>
+
+            <div class="custom-removals-header">
+              <span style="font-size: 0.85rem; color: var(--text-muted);" id="custom-removals-count">0 items</span>
+              <button type="button" id="btn-clear-custom-removals" class="btn-text text-danger"
+                style="font-size: 0.85rem;">Clear All</button>
+            </div>
+
+            <div id="custom-removals-list" class="custom-removals-list">
+              <!-- Pills will be rendered here dynamically -->
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button id="cancel-settings-btn">Cancel</button>
+          <button id="apply-settings-btn" class="primary-btn">Apply</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Repeated Artefact Finder Modal -->
+    <div id="repeated-artifact-modal" class="modal hidden" role="dialog" aria-modal="true"
+      aria-labelledby="repeated-artifact-title">
+      <div class="modal-content"
+        style="width: min(96vw, 1500px); max-width: 96vw; height: min(92vh, 950px); display: flex; flex-direction: column;">
+        <button
+          id="btn-close-artifact-modal-top"
+          class="modal-close-btn"
+          type="button"
+          aria-label="Close Repeated Artefact Finder"
+        >
+          &times;
+        </button>
+        <h2 id="repeated-artifact-title">Repeated Artefact Finder</h2>
+        <p class="modal-description" style="margin-bottom: 12px;">Scan the corpus to find repeated lines or blocks of
+          lines (likely boilerplate, headers/footers, or graphical noise). <strong>Diagnostic only — no files are modified.</strong></p>
+
+        <div class="repeated-artifact-config"
+          style="display: flex; gap: 20px; margin-bottom: 15px; flex-wrap: wrap; background: var(--bg-color); padding: 12px; border-radius: 4px; border: 1px solid var(--border-color);">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <strong>Analyze Text Mode:</strong>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
+              <input type="radio" name="artifact-text-mode" value="original" checked /> Original extracted text
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
+              <input type="radio" name="artifact-text-mode" value="processed" /> Processed text with current settings
+            </label>
+            <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Original extracted text: scans extracted/raw text before current processing rules.</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Processed text with current settings: scans text after current Processing Parameters and Custom Removals have been applied.</span>
+            <div id="artifact-processed-warning" style="display: none; font-size: 0.8rem; color: #d4a017; background: rgba(212, 160, 23, 0.08); padding: 6px 8px; border-radius: 4px; border-left: 3px solid #d4a017; margin-top: 4px;"></div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <strong>Candidate Types:</strong>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
+              <input type="checkbox" id="chk-artifact-exact" checked /> Exact repeated lines
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
+              <input type="checkbox" id="chk-artifact-norm" checked /> Normalised repeated lines
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
+              <input type="checkbox" id="chk-artifact-inline" checked /> Repeated inline artefacts
+            </label>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <strong>Candidate Content:</strong>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
+              <input type="checkbox" id="chk-artifact-text" checked /> Text
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
+              <input type="checkbox" id="chk-artifact-mixed" checked /> Mixed text + numbers
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
+              <input type="checkbox" id="chk-artifact-numeric" /> Numbers / numeric output
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
+              <input type="checkbox" id="chk-artifact-symbol" checked /> Symbols / noise
+            </label>
+            <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Numeric-dominant may group unrelated tables, formulas, or statistical output.</span>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <strong>Block Detection:</strong>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
+              <input type="checkbox" id="chk-artifact-2line" /> Repeated 2-line blocks
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
+              <input type="checkbox" id="chk-artifact-3line" /> Repeated 3-line blocks
+            </label>
+            <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">2-line/3-line block detection is more expensive. Enable only when needed.</span>
+          </div>
+
+          <div
+            style="display: grid; grid-template-columns: auto auto; gap: 8px; align-items: center; font-size: 0.9rem;">
+            <label for="num-artifact-min-occ">Min Occurrences:</label>
+            <input type="number" id="num-artifact-min-occ" value="5" min="2"
+              style="width: 60px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 2px 4px; border-radius: 2px;" />
+
+            <label for="num-artifact-min-files">Min Files:</label>
+            <input type="number" id="num-artifact-min-files" value="1" min="1"
+              style="width: 60px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 2px 4px; border-radius: 2px;" />
+
+            <label for="num-artifact-max-cand">Max Candidates:</label>
+            <input type="number" id="num-artifact-max-cand" value="100" min="10"
+              style="width: 60px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 2px 4px; border-radius: 2px;" />
+
+            <label for="num-artifact-max-examples">Max Examples:</label>
+            <input type="number" id="num-artifact-max-examples" value="25" min="1" max="100"
+              style="width: 60px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 2px 4px; border-radius: 2px;" />
+          </div>
+
+          <div style="display: flex; align-items: flex-end; gap: 8px;">
+            <button type="button" id="btn-run-artifact-scan" class="primary-btn"
+              style="padding: 6px 16px; border-radius: 4px; height: fit-content; font-size: 0.9rem;">Run Scan</button>
+            <button type="button" id="btn-cancel-artifact-scan" class="primary-btn" style="display: none; padding: 6px 16px; border-radius: 4px; height: fit-content; font-size: 0.9rem;">Cancel</button>
+            <span id="lbl-artifact-scan-time" style="font-size: 0.8rem; color: var(--text-muted); display: none;"></span>
+          </div>
+        </div>
+
+        <div id="artifact-scan-diagnostics" class="artifact-scan-diagnostics hidden"></div>
+
+        <div style="display: flex; flex: 1; min-height: 0; gap: 16px;">
+          <!-- Left Pane: Candidates Table -->
+          <div
+            style="flex: 1.4; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-color);">
+            <div
+              style="padding: 8px; font-weight: 600; border-bottom: 1px solid var(--border-color); background: var(--panel-bg); display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;">
+              <span>Suspicious Candidates</span>
+              <span id="lbl-artifact-results-count"
+                style="font-size: 0.85rem; font-weight: normal; color: var(--text-muted);">0 found</span>
+            </div>
+            <div class="repeated-artifact-table-container" style="flex: 1; overflow-y: auto;">
+              <table style="width: 100%; table-layout: auto; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+                <thead>
+                  <tr
+                    style="position: sticky; top: 0; background: var(--panel-bg); border-bottom: 1px solid var(--border-color); z-index: 10; font-size: 0.85rem; color: var(--text-muted);">
+                    <th style="padding: 8px; width: 30px;">Select</th>
+                    <th style="padding: 8px; min-width: 140px;">Candidate / Pattern</th>
+                    <th style="padding: 8px; width: 55px;">Kind</th>
+                    <th style="padding: 8px; width: 55px;">Content</th>
+                    <th style="padding: 8px; width: 45px;">Occs</th>
+                    <th style="padding: 8px; width: 45px;">Files</th>
+                    <th style="padding: 8px; width: 60px;">Position</th>
+                    <th style="padding: 8px; width: 80px;">Risk</th>
+                  </tr>
+                </thead>
+                <tbody id="tbl-artifact-candidates">
+                  <tr>
+                    <td colspan="8" style="padding: 20px; text-align: center; color: var(--text-muted);">Configure
+                      options above and click Run Scan to begin.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Right Pane: Candidate Details & Examples -->
+          <div
+            style="flex: 1; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-color);">
+            <div
+              style="padding: 8px; font-weight: 600; border-bottom: 1px solid var(--border-color); background: var(--panel-bg); font-size: 0.9rem;">
+              Candidate Detail & Examples
+            </div>
+            <div id="artifact-details-content"
+              style="flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px;">
+              <div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Select a
+                candidate to view occurrences and details.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-actions" style="margin-top: 16px; justify-content: flex-end;">
+          <span id="lbl-artifact-add-status" style="font-size: 0.85rem; color: var(--text-muted); margin-right: auto;"></span>
+          <button type="button" id="btn-add-selected-removals" class="primary-btn" disabled style="padding: 6px 16px; border-radius: 4px; font-size: 0.9rem;">Add Selected to Custom Removals</button>
+          <button type="button" id="btn-close-artifact-modal" class="primary-btn" style="padding: 6px 16px; border-radius: 4px; font-size: 0.9rem;">Close</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
+</html>

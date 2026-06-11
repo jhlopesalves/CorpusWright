@@ -1,0 +1,145 @@
+# --- Python Bytecode & Build Artifacts ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+*.so
+
+# --- Virtual Environments ---
+.venv/
+venv/
+env/
+ENV/
+.env/
+.env.*
+.conda/
+*.pyenv
+.pyenv*
+pyvenv.cfg
+.python-version
+__pypackages__/
+
+# --- Packaging / Distribution ---
+build/
+dist/
+site/
+develop-eggs/
+downloads/
+.eggs/
+eggs/
+lib/
+lib64/
+include/
+parts/
+var/
+wheels/
+share/python-wheels/
+pip-wheel-metadata/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+CorpusAid.onefile-build/
+CorpusAid.build/
+CorpusAid.dist/
+CorpuScript.build/
+CorpuScript.dist/
+CorpuScript/
+CorpuScript-backup.git/
+Nuitka/
+bin/
+
+# --- Tooling & Caches ---
+.mypy_cache/
+.pytest_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+.hypothesis/
+.nox/
+.tox/
+.ipynb_checkpoints/
+.coverage
+.coverage.*
+.cache/
+
+# --- Installer Output ---
+InstallerOutput/
+output/
+setup/
+
+# --- Logs & Runtime Artifacts ---
+logs/
+legacy/pyside/src/logs/
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# --- Databases & Large Data ---
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.code-workspace
+.history/
+
+# --- OS Generated ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+
+# --- Executables & Binaries ---
+*.exe
+*.dll
+*.msi
+*.app
+*.dmg
+*.iso
+
+# --- Rust Preview Module ---
+legacy/pyside/rust_preview/target/
+legacy/pyside/rust_preview/.cargo/
+legacy/pyside/rust_preview/.rustup/
+
+# --- Miscellaneous ---
+.svn/
+*.orig
+*.spec
+*.bmp
+setup_icon.ico
+AGENTS.md
+smoke.html
+smoke.txt
+pdf_test.pdf
+
+# Rust build artefacts
+target/
+**/target/
+crates/**/target/
+apps/**/src-tauri/target/
+
+# Node/Web artefacts
+apps/**/node_modules/
+apps/**/dist/
+
+# Local/private corpus data
+coragrarian/
+**/coragrarian/
+**/coragrarian/**
+
+.local-corpora/
+local-corpora/
+manual-corpora/
+sample-corpora-local/
+crates/corpusaid-core/tests/fixtures/non-tracked/
