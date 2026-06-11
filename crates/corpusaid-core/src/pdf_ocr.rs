@@ -6,6 +6,18 @@ use std::sync::OnceLock;
 static OCR_ENGINE: OnceLock<OcrEngine> = OnceLock::new();
 static PDFIUM_LIBRARY: OnceLock<Pdfium> = OnceLock::new();
 
+/// Returns true if PDFium can be initialized on the current platform.
+/// Useful for guarding tests that depend on the native PDFium library.
+#[cfg(test)]
+pub(crate) fn pdfium_available() -> bool {
+    // Quick check without caching: try to bind to the library
+    Pdfium::bind_to_system_library()
+        .or_else(|_| {
+            Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./ocr/"))
+        })
+        .is_ok()
+}
+
 pub fn init_pdfium() -> anyhow::Result<&'static Pdfium> {
     if let Some(p) = PDFIUM_LIBRARY.get() {
         return Ok(p);
