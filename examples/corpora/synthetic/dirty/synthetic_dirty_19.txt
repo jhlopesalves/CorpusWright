@@ -1,0 +1,20 @@
+THIS IS UPPERCASE TEXT.
+
+Page 19
+This sentence has <br> HTML tags and irregular
+line
+breaks.
+
+a
+b
+--- Page 19 ---
+
+Here is a lone roman numeral:
+ix
+
+Here is a standalone arabic number:
+1234
+
+And some   diacritics: áéíóú.
+
+End of dirty file.

@@ -1,0 +1,12 @@
+[build-system]
+requires = ["maturin>=1,<2"]
+build-backend = "maturin"
+
+[project]
+name = "corpus-preview"
+version = "0.1.0"
+description = "Optional Rust native preview helpers for CorpusAid."
+requires-python = ">=3.9"
+
+[tool.maturin]
+module-name = "corpus_preview"

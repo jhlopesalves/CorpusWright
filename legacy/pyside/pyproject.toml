@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "corpusaid"
+version = "0.1.0"
+description = "Desktop corpus preprocessing workbench with an emerging document ingestion layer."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "PySide6>=6.3.0",
+    "beautifulsoup4>=4.9.3",
+    "charset-normalizer>=2.0.0",
+    "spacy>=3.0.0",
+]
+
+[project.scripts]
+corpusaid = "corpusaid.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["CorpusAid"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["corpusaid*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "integration: exercises non-ingestion app boundaries without launching the GUI",
+    "native: requires the compiled corpus_preview PyO3 extension",
+]

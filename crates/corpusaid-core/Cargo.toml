@@ -1,0 +1,30 @@
+[package]
+name = "corpusaid-core"
+version = "0.1.0"
+edition = { workspace = true }
+authors = { workspace = true }
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+lazy_static = "1.5.0"
+regex = "1.12.3"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = "0.10"
+unicode-normalization = "0.1.25"
+html2text = "0.13"
+zip = "8.6.0"
+quick-xml = "0.36.1"
+lopdf = "0.41.0"
+rayon = { workspace = true }
+pdfium-render = "0.9.1"
+ocrs = "0.12.2"
+rten = "0.24.0"
+rten-tensor = "0.24.0"
+image = "0.25.10"
+ndarray = "0.17.2"
+anyhow = "1.0.102"
+ts-rs = "10"
+
+[dev-dependencies]
+tempfile = "3.10"
