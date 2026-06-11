@@ -1,0 +1,1 @@
+export type RepeatedArtifactExample = { file_name: string, file_path: string, line_number: number | null, page_number: number | null, context_before: string | null, matched_text: string, context_after: string | null, };
