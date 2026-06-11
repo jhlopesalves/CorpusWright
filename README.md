@@ -1,6 +1,5 @@
 # CorpusAid
 
-[![CI](https://github.com/jhlopesalves/CorpusAid/actions/workflows/ci.yml/badge.svg)](https://github.com/jhlopesalves/CorpusAid/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
 ![Tauri](https://img.shields.io/badge/Tauri-24C8DB?logo=tauri&logoColor=white)
