@@ -1794,6 +1794,9 @@ mod tests {
 
     #[test]
     fn test_approximate_positions_for_inferred_pdf() {
+        if !crate::pdf_ocr::pdfium_available() {
+            return;
+        }
         let pages = vec![
             vec![
                 "Page1Line1",
@@ -2124,6 +2127,9 @@ mod tests {
 
     #[test]
     fn test_pdf_no_ocr_by_default() {
+        if !crate::pdf_ocr::pdfium_available() {
+            return;
+        }
         let pages = vec![vec!["Header", "Body line 1", "Body line 2", "Footer"]];
         let bytes = create_test_pdf(&pages);
 
