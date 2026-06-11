@@ -143,3 +143,4 @@ local-corpora/
 manual-corpora/
 sample-corpora-local/
 crates/corpusaid-core/tests/fixtures/non-tracked/
+codex_plan.txt
