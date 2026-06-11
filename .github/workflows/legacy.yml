@@ -1,0 +1,81 @@
+name: Legacy CI
+
+on:
+  push:
+    paths:
+      - "legacy/**"
+      - ".github/workflows/legacy.yml"
+  pull_request:
+    paths:
+      - "legacy/**"
+      - ".github/workflows/legacy.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-tests:
+    name: Python tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install project
+        working-directory: legacy/pyside
+        run: python -m pip install -e ".[dev]"
+      - name: Run pytest
+        working-directory: legacy/pyside
+        run: python -m pytest -q
+      - name: Compile Python sources
+        working-directory: legacy/pyside
+        run: python -m compileall src
+
+  rust-preview:
+    name: Rust preview crate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        working-directory: legacy/pyside/rust_preview
+        run: cargo fmt --check
+      - name: Check Rust crate
+        working-directory: legacy/pyside/rust_preview
+        run: cargo check --no-default-features
+      - name: Run Rust tests
+        working-directory: legacy/pyside/rust_preview
+        run: cargo test --no-default-features
+
+  native-extension:
+    name: Native extension import (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Python tooling
+        working-directory: legacy/pyside
+        run: python -m pip install -e ".[dev]" maturin
+      - name: Build native extension wheel
+        working-directory: legacy/pyside
+        run: maturin build --manifest-path rust_preview/Cargo.toml --release --out dist
+      - name: Install native extension wheel
+        working-directory: legacy/pyside
+        run: python -c "import glob, subprocess, sys; wheels = glob.glob('dist/*.whl'); assert wheels, 'no wheel built'; subprocess.check_call([sys.executable, '-m', 'pip', 'install', wheels[0]])"
+      - name: Verify native extension import
+        working-directory: legacy/pyside
+        run: python -c "import corpus_preview; assert hasattr(corpus_preview, 'scan_directory'); assert hasattr(corpus_preview, 'extract_html_text'); assert hasattr(corpus_preview, 'extract_docx_text'); assert hasattr(corpus_preview, 'extract_pdf_text')"
+      - name: Run native extension tests
+        working-directory: legacy/pyside
+        run: python -m pytest -q -m native tests/test_native_ingestion.py
