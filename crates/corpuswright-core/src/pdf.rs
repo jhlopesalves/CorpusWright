@@ -298,6 +298,79 @@ impl std::fmt::Display for PdfExtractionError {
     }
 }
 
+fn finalize_lopdf_fallback_text(
+    mut text: String,
+    page_count: usize,
+    max_chars: Option<usize>,
+    mut warnings: Vec<String>,
+) -> ExtractedPdf {
+    if let Some(limit) = max_chars {
+        text = text.chars().take(limit).collect();
+    }
+
+    warnings.push("PDF backend: lopdf fallback (degraded).".to_string());
+
+    let (quality, _) = crate::pdf_quality::evaluate(&text);
+    match quality {
+        crate::pdf_quality::ExtractionQuality::Good => {
+            warnings.push(
+                "PDFium is unavailable; used degraded lopdf embedded-text extraction.".to_string(),
+            );
+        }
+        crate::pdf_quality::ExtractionQuality::Suspicious => {
+            warnings.push(
+                "PDFium is unavailable; degraded lopdf extraction produced suspicious text quality."
+                    .to_string(),
+            );
+        }
+        crate::pdf_quality::ExtractionQuality::Poor => {
+            warnings.push(
+                "PDFium is unavailable and degraded PDF extraction produced low-quality text. OCR/PDFium extraction is required for this PDF."
+                    .to_string(),
+            );
+            text.clear();
+        }
+        crate::pdf_quality::ExtractionQuality::Empty => {
+            warnings.push(
+                "PDFium is unavailable and degraded PDF extraction produced no text.".to_string(),
+            );
+        }
+    }
+
+    ExtractedPdf {
+        text,
+        warnings,
+        page_count,
+    }
+}
+
+fn extract_with_lopdf_fallback(
+    doc: &Document,
+    page_numbers: &[u32],
+    max_chars: Option<usize>,
+    warnings: Vec<String>,
+    pdfium_error: &str,
+) -> Result<ExtractedPdf, PdfExtractionError> {
+    if page_numbers.is_empty() {
+        return Err(PdfExtractionError::InvalidFormat(
+            "PDF has no pages.".to_string(),
+        ));
+    }
+
+    match doc.extract_text(page_numbers) {
+        Ok(text) => Ok(finalize_lopdf_fallback_text(
+            text,
+            page_numbers.len(),
+            max_chars,
+            warnings,
+        )),
+        Err(lopdf_err) => Err(PdfExtractionError::InvalidFormat(format!(
+            "Failed to initialize PDFium ({}) and lopdf fallback also failed: {}",
+            pdfium_error, lopdf_err
+        ))),
+    }
+}
+
 pub fn reconstruct_visual_single_column(mut char_infos: Vec<CharInfo>) -> String {
     if char_infos.is_empty() {
         return String::new();
@@ -416,31 +489,19 @@ pub fn extract_pdf(
     let pdfium = match crate::pdf_ocr::init_pdfium() {
         Ok(p) => p,
         Err(e) => {
+            let pdfium_error = e.to_string();
             warnings.push(format!(
                 "PDFium native library not available; OCR fallback is disabled and PDF extraction may be limited. ({})",
-                e
+                pdfium_error
             ));
-            // Attempt lopdf-based embedded text extraction as a degraded fallback
             let page_numbers: Vec<u32> = doc.get_pages().keys().copied().collect();
-            if page_numbers.is_empty() {
-                return Err(PdfExtractionError::InvalidFormat(
-                    "PDF has no pages.".to_string(),
-                ));
-            }
-            return match doc.extract_text(&page_numbers) {
-                Ok(text) => {
-                    let page_count = page_numbers.len();
-                    Ok(ExtractedPdf {
-                        text,
-                        warnings,
-                        page_count,
-                    })
-                }
-                Err(lopdf_err) => Err(PdfExtractionError::InvalidFormat(format!(
-                    "Failed to initialize PDFium ({}) and lopdf fallback also failed: {}",
-                    e, lopdf_err
-                ))),
-            };
+            return extract_with_lopdf_fallback(
+                &doc,
+                &page_numbers,
+                max_chars,
+                warnings,
+                &pdfium_error,
+            );
         }
     };
 
@@ -463,6 +524,7 @@ pub fn extract_pdf(
     };
 
     warnings.push("PDF reading order is not guaranteed. Formatting may be lost.".to_string());
+    warnings.push("PDF backend: PDFium.".to_string());
 
     let mut all_text = String::new();
     let mut has_any_text = false;
@@ -1613,6 +1675,42 @@ mod tests {
         let invalid = b"This is not a PDF file.";
         let result = extract_pdf(invalid, None, PdfExtractionOptions::raw_default());
         assert!(matches!(result, Err(PdfExtractionError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn lopdf_fallback_accepts_readable_text_with_warning() {
+        let text = "This is readable embedded text from a small synthetic PDF. It has enough ordinary words to be treated as usable fallback output.".to_string();
+
+        let extracted = finalize_lopdf_fallback_text(text.clone(), 1, None, Vec::new());
+
+        assert_eq!(extracted.text, text);
+        assert!(
+            extracted
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("PDF backend: lopdf fallback"))
+        );
+        assert!(
+            extracted
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("used degraded lopdf"))
+        );
+    }
+
+    #[test]
+    fn lopdf_fallback_suppresses_low_quality_garbage() {
+        let text = "!\" #$%\n&\"'\"\n\"! () \" *\n(+ ,- .( /01( #".to_string();
+
+        let extracted = finalize_lopdf_fallback_text(text, 1, None, Vec::new());
+
+        assert!(extracted.text.is_empty());
+        assert!(
+            extracted
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("low-quality text"))
+        );
     }
 
     #[test]
