@@ -3,21 +3,12 @@
 [![Release](https://img.shields.io/github/v/release/jhlopesalves/CorpusWright?include_prereleases&label=release)](https://github.com/jhlopesalves/CorpusWright/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tauri](https://img.shields.io/badge/Tauri-24C8DB?logo=tauri&logoColor=white)
-![Local-first](https://img.shields.io/badge/local--first-desktop-blue)
-![Corpus linguistics](https://img.shields.io/badge/corpus-linguistics-purple)
-
-
 
 **Download the experimental alpha:** [CorpusWright v0.1.0-alpha.3](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.3)
 
 > CorpusWright is currently experimental alpha software. Windows and macOS builds are available through GitHub Releases, but they may be unsigned and may trigger operating-system security warnings.
 
 **CorpusWright** is a desktop workbench for preparing research corpora for analysis.
-
-It helps researchers load PDF, DOCX, TXT, and HTML files; inspect original and processed text; configure reproducible cleaning rules; search across selected documents; detect repeated artefacts such as headers, footers, boilerplate, page labels, and layout noise; and export cleaned UTF-8 text with metadata for downstream corpus-linguistic work.
 
 The current version is a **Rust/Tauri rewrite** of an earlier PySide6 prototype. The legacy PySide application is preserved in the repository for historical continuity, but active development now focuses on the Rust/Tauri desktop app.
 
@@ -55,11 +46,11 @@ It uses:
 ## Repository layout
 
 ```text
-crates/corpuswright-core/      Rust library crate: extraction, cleaning, search, export, repeated artefacts
-apps/desktop/              Tauri v2 desktop application with TypeScript/Vite frontend
-legacy/pyside/             Original PySide6 implementation, preserved for reference
-docs/                      Design notes and reference documentation
-examples/                  Example corpora and usage material, when available
+crates/corpuswright-core/   Rust library crate: extraction, cleaning, search, export, repeated artefacts
+apps/desktop/               Tauri v2 desktop application with TypeScript/Vite frontend
+legacy/pyside/              Original PySide6 implementation, preserved for reference
+docs/                       Design notes and reference documentation
+examples/                   Example corpora and usage material, when available
 ```
 
 ## Why this project exists
