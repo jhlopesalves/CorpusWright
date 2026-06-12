@@ -1,9 +1,11 @@
 # CorpusWright
 
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
 ![Tauri](https://img.shields.io/badge/Tauri-24C8DB?logo=tauri&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+[![CI](https://github.com/jhlopesalves/CorpusAid/actions/workflows/ci.yml/badge.svg)](https://github.com/jhlopesalves/CorpusAid/actions/workflows/ci.yml)
 ![Status](https://img.shields.io/badge/status-active%20development-blue)
 
 **CorpusWright** is a desktop workbench for preparing research corpora for analysis.
