@@ -1,4 +1,4 @@
-use corpusaid_core::{PreviewOptions, preview_files, scan_directory};
+use corpuswright_core::{PreviewOptions, preview_files, scan_directory};
 use std::env;
 use std::process;
 

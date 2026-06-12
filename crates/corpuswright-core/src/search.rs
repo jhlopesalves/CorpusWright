@@ -362,7 +362,7 @@ mod tests {
     #[test]
     fn regex_special_chars_treated_literally() {
         let text = "the cost is $5.00 + tax (approx.)";
-        let tmp = std::env::temp_dir().join("corpusaid_test_special.txt");
+        let tmp = std::env::temp_dir().join("corpuswright_test_special.txt");
         std::fs::write(&tmp, text).unwrap();
         let records = [make_record(text, tmp.to_str().unwrap())];
         // Patch source_path so search reads our temp file
@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn case_insensitive_search_works() {
         let text = "Hello WORLD hello world HELLO";
-        let tmp = std::env::temp_dir().join("corpusaid_test_case.txt");
+        let tmp = std::env::temp_dir().join("corpuswright_test_case.txt");
         std::fs::write(&tmp, text).unwrap();
         let record = DocumentRecord {
             source_path: tmp.clone(),
@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn context_strings_are_non_empty() {
         let text = "abcdefghijklmnopqrstuvwxyz0123456789";
-        let tmp = std::env::temp_dir().join("corpusaid_test_ctx.txt");
+        let tmp = std::env::temp_dir().join("corpuswright_test_ctx.txt");
         std::fs::write(&tmp, text).unwrap();
         let record = DocumentRecord {
             source_path: tmp.clone(),
@@ -469,7 +469,7 @@ mod tests {
     fn context_respects_boundary() {
         // Very short string – context should fit within bounds
         let text = "short";
-        let tmp = std::env::temp_dir().join("corpusaid_test_short.txt");
+        let tmp = std::env::temp_dir().join("corpuswright_test_short.txt");
         std::fs::write(&tmp, text).unwrap();
         let record = DocumentRecord {
             source_path: tmp.clone(),

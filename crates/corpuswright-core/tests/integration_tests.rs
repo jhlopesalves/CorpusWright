@@ -1,4 +1,4 @@
-use corpusaid_core::{
+use corpuswright_core::{
     CleaningConfig, ExportOptions, PreviewOptions, clean_text, export_corpus,
     preview_processed_files, scan_directory,
 };

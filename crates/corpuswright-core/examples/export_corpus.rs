@@ -1,4 +1,4 @@
-use corpusaid_core::{CleaningConfig, ExportOptions, export_corpus, scan_directory};
+use corpuswright_core::{CleaningConfig, ExportOptions, export_corpus, scan_directory};
 use std::env;
 use std::path::PathBuf;
 use std::process;

@@ -41,12 +41,12 @@ It uses:
 * **Rust** for extraction, cleaning, search, export, repeated artefact detection, and cache-backed corpus operations;
 * **Tauri v2** for the desktop shell and Rust/TypeScript bridge;
 * **TypeScript + Vite** for the frontend;
-* a Rust core crate, `corpusaid-core`, shared by the desktop app and tests.
+* a Rust core crate, `corpuswright-core`, shared by the desktop app and tests.
 
 ## Repository layout
 
 ```text
-crates/corpusaid-core/      Rust library crate: extraction, cleaning, search, export, repeated artefacts
+crates/corpuswright-core/      Rust library crate: extraction, cleaning, search, export, repeated artefacts
 apps/desktop/              Tauri v2 desktop application with TypeScript/Vite frontend
 legacy/pyside/             Original PySide6 implementation, preserved for reference
 docs/                      Design notes and reference documentation
@@ -90,13 +90,13 @@ npm run build
 From the repository root:
 
 ```bash
-cargo test -p corpusaid-core
+cargo test -p corpuswright-core
 ```
 
 ### Tauri backend check
 
 ```bash
-cargo check -p corpusaid-desktop --all-targets
+cargo check -p corpuswright-desktop --all-targets
 ```
 
 ## Development status
