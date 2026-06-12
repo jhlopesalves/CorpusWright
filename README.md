@@ -4,6 +4,13 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 
+![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Tauri](https://img.shields.io/badge/Tauri-24C8DB?logo=tauri&logoColor=white)
+![Local-first](https://img.shields.io/badge/local--first-desktop-blue)
+![Corpus linguistics](https://img.shields.io/badge/corpus-linguistics-purple)
+
+
 **Download the experimental alpha:** [CorpusWright v0.1.0-alpha.3](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.3)
 
 > CorpusWright is currently experimental alpha software. Windows and macOS builds are available through GitHub Releases, but they may be unsigned and may trigger operating-system security warnings.
