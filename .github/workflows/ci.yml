@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   rust-core:
-    name: Rust core (corpusaid-core)
+    name: Rust core (corpuswright-core)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +21,7 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all --check
       - name: Run clippy
-        run: cargo clippy -p corpusaid-core --all-targets -- -D warnings
+        run: cargo clippy -p corpuswright-core --all-targets -- -D warnings
       - name: Install PDFium for tests
         run: |
           mkdir -p apps/desktop/src-tauri/resources/ocr
@@ -29,11 +29,11 @@ jobs:
           tar -xzf /tmp/pdfium-linux-x64.tgz -C /tmp
           cp /tmp/lib/libpdfium.so apps/desktop/src-tauri/resources/ocr/libpdfium.so
       - name: Run tests
-        run: cargo test -p corpusaid-core
+        run: cargo test -p corpuswright-core
       - name: Check generated TypeScript bindings are up to date
         run: |
           echo "::group::Regenerating TypeScript bindings"
-          cargo run -p corpusaid-core --example export_ts
+          cargo run -p corpuswright-core --example export_ts
           echo "::endgroup::"
 
           echo "::group::Checking for stale generated files"
@@ -41,7 +41,7 @@ jobs:
             echo "ERROR: Generated TypeScript bindings are out of date."
             echo ""
             echo "Run the following command locally and commit the updated files:"
-            echo "  cargo run -p corpusaid-core --example export_ts"
+            echo "  cargo run -p corpuswright-core --example export_ts"
             echo ""
             echo "Changed generated files:"
             git status --short -- apps/desktop/src/generated/
@@ -54,7 +54,7 @@ jobs:
           echo "::endgroup::"
 
   tauri-check:
-    name: Tauri check (corpusaid-desktop)
+    name: Tauri check (corpuswright-desktop)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,9 +67,9 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Check Tauri crate
-        run: cargo check -p corpusaid-desktop --all-targets
+        run: cargo check -p corpuswright-desktop --all-targets
       - name: Run clippy on Tauri crate
-        run: cargo clippy -p corpusaid-desktop --all-targets -- -D warnings
+        run: cargo clippy -p corpuswright-desktop --all-targets -- -D warnings
 
   frontend:
     name: Frontend (Vite + TypeScript)

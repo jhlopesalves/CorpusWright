@@ -793,7 +793,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "corpusaid-core"
+name = "corpuswright-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -820,10 +820,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "corpusaid-desktop"
+name = "corpuswright-desktop"
 version = "0.1.0"
 dependencies = [
- "corpusaid-core",
+ "corpuswright-core",
  "rayon",
  "serde",
  "serde_json",

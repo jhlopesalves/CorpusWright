@@ -1,5 +1,5 @@
 [package]
-name = "corpusaid-desktop"
+name = "corpuswright-desktop"
 version = "0.1.0"
 description = "CorpusWright — corpus preprocessing and cleaning desktop app"
 authors = { workspace = true }
@@ -20,6 +20,6 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-corpusaid-core = { path = "../../../crates/corpusaid-core" }
+corpuswright-core = { path = "../../../crates/corpuswright-core" }
 tauri-plugin-dialog = "2.7.1"
 rayon = { workspace = true }
