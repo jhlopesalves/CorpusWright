@@ -1,11 +1,11 @@
 # Repeated Artefact Finder
 
-The **Repeated Artefact Finder** is a corpus-wide diagnostic tool in CorpusWright designed to surface repetitive text lines and blocks (such as headers, footers, copyright boilerplate, extraction artifacts, and symbol-heavy noise) across your documents.
+The **Repeated Artefact Finder** is a corpus-wide diagnostic tool in CorpusWright designed to surface repetitive text lines and blocks (such as headers, footers, copyright boilerplate, extraction artefacts, and symbol-heavy noise) across your documents.
 
-> **v1 is diagnostic only.** This tool helps you *identify* potential artifacts so you can make informed decisions.
+> **Diagnostic only.** This tool helps you *identify* potential artefacts so you can make informed decisions.
 > - It does **not** modify any files.
 > - There is no automatic deletion.
-> - The red "Remove Artefacts" button has been removed for v1.
+> - There is no automatic deletion button.
 > - To remove a pattern, copy its text and add it to **Settings > Custom Removals** manually.
 
 ---
@@ -39,13 +39,13 @@ The default scan is intentionally conservative to be fast and predictable:
 | 2-line blocks | **Disabled** | Opt-in — multiplies candidate space |
 | 3-line blocks | **Disabled** | Opt-in — multiplies candidate space further |
 | Min occurrences | 5 | Filters out rare noise |
-| Min files | 2 | Requires corpus-wide presence (use ≥2 for cross-document artifacts) |
+| Min files | 2 | Requires corpus-wide presence (use ≥2 for cross-document artefacts) |
 | Max candidates | 100 | Keeps results manageable |
 | Max examples/candidate | 5 | Caps memory per candidate |
 | Min line chars | 4 | Skips very short noise lines |
 | Max line chars | 300 | Skips very long lines (paragraphs, code blocks) |
 
-### Content-class filters (new in this pass)
+### Content-class filters
 
 Each candidate is classified by its character composition into one of four content classes:
 
@@ -56,7 +56,7 @@ Each candidate is classified by its character composition into one of four conte
 | **Numeric** | **Disabled** | Mostly digits and numeric formatting | `32.01 46.83`, `[0.386, 1.378]` |
 | **Symbol / noise** | Enabled | Non-alphanumeric markers | `● ● ● ●`, `------`, `********` |
 
-**Numeric-dominant candidates are disabled by default** because they can group unrelated statistical output, tables, formulas, axis ticks, or coefficients — making them appear as repeated artifacts when they are not.
+**Numeric-dominant candidates are disabled by default** because they can group unrelated statistical output, tables, formulas, axis ticks, or coefficients — making them appear as repeated artefacts when they are not.
 
 Enabling numeric output will show these candidates with a caution banner:
 > "Numeric-dominant candidate — review carefully. These may group unrelated tables, formulas, axis ticks, or statistical output."
@@ -75,7 +75,7 @@ To avoid duplicate-looking rows, a `NormalizedLine` candidate with only one raw 
 
 ### Why 2-line/3-line blocks are disabled by default
 
-2-line and 3-line block detection can massively increase the candidate space. For a file with N valid lines, 2-line blocks produce up to N-1 additional candidates and 3-line blocks produce up to N-2. Across a corpus of thousands of files, this can cause pathological growth. Enable blocks only when you need to find multi-line artifacts.
+2-line and 3-line block detection can massively increase the candidate space. For a file with N valid lines, 2-line blocks produce up to N-1 additional candidates and 3-line blocks produce up to N-2. Across a corpus of thousands of files, this can cause pathological growth. Enable blocks only when you need to find multi-line artefacts.
 
 ---
 
@@ -117,7 +117,7 @@ The finder labels each candidate based on heuristics to guide your review. These
 
 ---
 
-## Layout & Position Estimation (Honesty)
+## Layout & Position Estimation
 
 To categorize headers and footers, the tool estimates layout positions:
 
@@ -205,7 +205,7 @@ If processed scan returns zero candidates and Custom Removals are active, this i
 
 ### Why processed scans may return fewer results
 
-When you run a processed-mode scan, the scanner applies your current `CleaningConfig` (including `remove_patterns`) before analysing the text. If you have already added `<br />` to Custom Removals, the processed scan will correctly scan text where `<br />` has already been removed. This is technically valid behaviour, but the UI now explains it clearly:
+When you run a processed-mode scan, the scanner applies your current `CleaningConfig` (including `remove_patterns`) before analysing the text. If you have already added `<br />` to Custom Removals, the processed scan will correctly scan text where `<br />` has already been removed. This is expected behaviour. The UI displays contextual messages:
 
 - A warning banner appears when processed mode is selected and Custom Removals are active.
 - If processed mode returns zero candidates with active removals, a friendly note explains why.
