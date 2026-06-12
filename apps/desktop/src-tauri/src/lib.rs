@@ -13,7 +13,8 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
-use tauri::{Emitter, Window};
+use tauri::path::BaseDirectory;
+use tauri::{Emitter, Manager, Window};
 
 /// Managed Tauri state for scan cancellation.
 struct ScanState {
@@ -399,6 +400,16 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            if let Ok(pdfium_path) = app
+                .path()
+                .resolve("ocr/pdfium.dll", BaseDirectory::Resource)
+                && let Some(ocr_dir) = pdfium_path.parent()
+            {
+                let _ = corpuswright_core::pdf_ocr::set_ocr_resource_dir(ocr_dir.to_path_buf());
+            }
+            Ok(())
+        })
         .manage(ScanState {
             cancel: Arc::new(AtomicBool::new(false)),
         })
