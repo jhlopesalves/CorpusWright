@@ -306,11 +306,7 @@ pub fn preview_file(
         warnings.push(PreviewWarning {
             source_path: Some(record.source_path.clone()),
             relative_path: Some(record.relative_path.clone()),
-            kind: if w.contains("Failed") {
-                PreviewWarningKind::ExtractionError
-            } else {
-                PreviewWarningKind::ExtractionWarning
-            },
+            kind: preview_extraction_warning_kind(&w),
             message: w,
         });
     }
@@ -532,11 +528,7 @@ pub fn preview_processed_files(
                 .map(|w| PreviewWarning {
                     source_path: Some(record.source_path.clone()),
                     relative_path: Some(record.relative_path.clone()),
-                    kind: if w.contains("Failed") {
-                        PreviewWarningKind::ExtractionError
-                    } else {
-                        PreviewWarningKind::ExtractionWarning
-                    },
+                    kind: preview_extraction_warning_kind(&w),
                     message: w,
                 })
                 .collect();
@@ -607,6 +599,17 @@ fn build_combined_preview_text(files: &[FilePreview], include_paths: bool) -> St
     }
 
     combined
+}
+
+fn preview_extraction_warning_kind(message: &str) -> PreviewWarningKind {
+    if message.contains("Failed")
+        || message.contains("low-quality text")
+        || message.contains("required for this PDF")
+    {
+        PreviewWarningKind::ExtractionError
+    } else {
+        PreviewWarningKind::ExtractionWarning
+    }
 }
 
 pub struct BoundedRead {
@@ -852,6 +855,20 @@ mod tests {
                 .warnings
                 .iter()
                 .any(|warning| warning.kind == PreviewWarningKind::InvalidUtf8)
+        );
+    }
+
+    #[test]
+    fn degraded_pdf_quality_warning_is_preview_extraction_error() {
+        assert_eq!(
+            preview_extraction_warning_kind(
+                "PDFium is unavailable and degraded PDF extraction produced low-quality text. OCR/PDFium extraction is required for this PDF."
+            ),
+            PreviewWarningKind::ExtractionError
+        );
+        assert_eq!(
+            preview_extraction_warning_kind("PDF backend: PDFium."),
+            PreviewWarningKind::ExtractionWarning
         );
     }
 
