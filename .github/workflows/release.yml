@@ -53,6 +53,23 @@ jobs:
         working-directory: apps/desktop
         run: npm ci
 
+      - name: Ensure platform PDFium library
+        shell: bash
+        run: |
+          mkdir -p apps/desktop/src-tauri/resources/ocr
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            # Linux: download libpdfium.so (the Git-tracked .rten files are already present)
+            curl -sL -o /tmp/pdfium-linux-x64.tgz https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-linux-x64.tgz
+            tar -xzf /tmp/pdfium-linux-x64.tgz -C /tmp
+            cp /tmp/lib/libpdfium.so apps/desktop/src-tauri/resources/ocr/libpdfium.so
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            # macOS: download appropriate arch
+            arch_suffix="${{ matrix.rust-targets == 'aarch64-apple-darwin' && 'arm64' || 'x64' }}"
+            curl -sL -o /tmp/pdfium-mac.tgz "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-mac-${arch_suffix}.tgz"
+            tar -xzf /tmp/pdfium-mac.tgz -C /tmp
+            cp /tmp/lib/libpdfium.dylib apps/desktop/src-tauri/resources/ocr/libpdfium.dylib
+          fi
+
       - name: Build Tauri artifacts and update draft prerelease
         uses: tauri-apps/tauri-action@v0.6.2
         env:

@@ -136,3 +136,4 @@ It represents the first working implementation of CorpusWright and is kept for h
 ## License
 
 CorpusWright is released under the MIT License.
+Bundled third-party components are documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

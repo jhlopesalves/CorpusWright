@@ -107,6 +107,9 @@ ehthumbs.db
 *.dmg
 *.iso
 
+# Exception: PDFium native library required for PDF rendering/OCR
+!apps/desktop/src-tauri/resources/ocr/pdfium.dll
+
 # --- Rust Preview Module ---
 legacy/pyside/rust_preview/target/
 legacy/pyside/rust_preview/.cargo/
