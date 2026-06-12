@@ -1,4 +1,4 @@
-//! Rust core for the CorpusAid desktop application.
+//! Rust core for the CorpusWright desktop application.
 //!
 //! This crate is UI-agnostic and Tauri-ready. It provides:
 //!

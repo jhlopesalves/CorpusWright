@@ -222,7 +222,7 @@ fn export_corpus_command(
     let records = corpus.records_for_indices(&indices, corpus_version)?;
     let total = records.len();
     let options = ExportOptions {
-        app_name: "CorpusAid".to_string(),
+        app_name: "CorpusWright".to_string(),
         app_version: None,
         overwrite: false,
     };

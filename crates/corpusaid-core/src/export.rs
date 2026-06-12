@@ -23,7 +23,7 @@ pub struct ExportOptions {
 impl Default for ExportOptions {
     fn default() -> Self {
         Self {
-            app_name: "CorpusAid".to_string(),
+            app_name: "CorpusWright".to_string(),
             app_version: None,
             overwrite: false,
         }

@@ -1,4 +1,4 @@
-# CorpusAid
+# CorpusWright
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
@@ -6,15 +6,15 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
 ![Status](https://img.shields.io/badge/status-active%20development-blue)
 
-**CorpusAid** is a desktop workbench for preparing research corpora for analysis.
+**CorpusWright** is a desktop workbench for preparing research corpora for analysis.
 
 It helps researchers load PDF, DOCX, TXT, and HTML files; inspect original and processed text; configure reproducible cleaning rules; search across selected documents; detect repeated artefacts such as headers, footers, boilerplate, page labels, and layout noise; and export cleaned UTF-8 text with metadata for downstream corpus-linguistic work.
 
 The current version is a **Rust/Tauri rewrite** of an earlier PySide6 prototype. The legacy PySide application is preserved in the repository for historical continuity, but active development now focuses on the Rust/Tauri desktop app.
 
-## What CorpusAid does
+## What CorpusWright does
 
-CorpusAid is designed for the practical, often messy stage before corpus analysis: getting documents into a clean, inspectable, reproducible text form.
+CorpusWright is designed for the practical, often messy stage before corpus analysis: getting documents into a clean, inspectable, reproducible text form.
 
 Core features include:
 
@@ -59,7 +59,7 @@ Corpus linguistics often starts with a frustrating reality: texts are messy.
 
 PDFs come with running headers, page numbers, broken line wraps, OCR errors, tables, and all sorts of layout artefacts that end up mixed into the extracted text. DOCX files can bring their own issues, such as headers, footers, comments, footnotes, and formatting structures that are not always relevant to the corpus itself.
 
-CorpusAid was built to make that preparation stage easier. The goal is to give researchers a practical way to inspect documents, clean unwanted noise, identify repeated artefacts, and export texts in a form that is ready for further analysis.
+CorpusWright was built to make that preparation stage easier. The goal is to give researchers a practical way to inspect documents, clean unwanted noise, identify repeated artefacts, and export texts in a form that is ready for further analysis.
 
 ## Build and run
 
@@ -101,7 +101,7 @@ cargo check -p corpusaid-desktop --all-targets
 
 ## Development status
 
-CorpusAid is under active development.
+CorpusWright is under active development.
 
 The current Rust/Tauri version includes the main corpus loading, preview, cleaning, search, export, repeated artefact detection, and extraction-cache architecture. Some areas are still evolving, especially user-facing polish, packaging, documentation, and corpus-linguistic analysis features.
 
@@ -122,8 +122,8 @@ The original PySide6-based version is preserved in:
 legacy/pyside/
 ```
 
-It represents the first working implementation of CorpusAid and is kept for historical reference. The Rust/Tauri application is now the active version.
+It represents the first working implementation of CorpusWright and is kept for historical reference. The Rust/Tauri application is now the active version.
 
 ## License
 
-CorpusAid is released under the MIT License.
+CorpusWright is released under the MIT License.

@@ -33,7 +33,7 @@ fn main() {
             };
 
             let options = ExportOptions {
-                app_name: "CorpusAid2 Example".to_string(),
+                app_name: "CorpusWright Example".to_string(),
                 app_version: Some("0.1.0".to_string()),
                 overwrite: true,
             };

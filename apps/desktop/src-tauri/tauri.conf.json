@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "CorpusAid",
+  "productName": "CorpusWright",
   "version": "0.1.0",
   "identifier": "com.jhlopesalves.corpusaid",
   "mainBinaryName": "corpusaid-desktop",
@@ -14,7 +14,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "CorpusAid",
+        "title": "CorpusWright",
         "width": 1200,
         "height": 800
       }
