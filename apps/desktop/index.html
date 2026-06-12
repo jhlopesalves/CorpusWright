@@ -32,6 +32,7 @@
         <div class="dropdown">
           <span class="menu-item" tabindex="0">Help</span>
           <div class="dropdown-content">
+            <div class="dropdown-item" id="menu-about-corpuswright" tabindex="0">About CorpusWright</div>
           </div>
         </div>
       </div>
@@ -126,6 +127,41 @@
     </main>
 
     <footer id="status-bar">Ready</footer>
+
+    <!-- About Modal -->
+    <div id="about-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="about-title"
+      aria-describedby="about-description">
+      <div class="modal-content about-modal-content">
+        <button
+          id="btn-close-about-modal-top"
+          class="modal-close-btn"
+          type="button"
+          aria-label="Close About CorpusWright"
+        >
+          &times;
+        </button>
+        <h2 id="about-title">CorpusWright</h2>
+        <p id="about-description" class="modal-description">
+          A free and open-source desktop workbench for preparing, cleaning, inspecting, and exporting text corpora.
+        </p>
+
+        <div class="about-details">
+          <p><strong>Version:</strong> 0.1.0-alpha.1</p>
+          <p><strong>Created and maintained by:</strong> Jhonatan H. Lopes</p>
+          <p><strong>Contact:</strong> <span class="selectable-text">jhlopesalves@gmail.com</span></p>
+          <p><strong>Repository:</strong> <span class="selectable-text">https://github.com/jhlopesalves/corpuswright</span></p>
+          <p>Released as free and open-source software under the MIT License.</p>
+        </div>
+
+        <p class="about-alpha-note">
+          This is experimental alpha software. Please report issues through the GitHub repository.
+        </p>
+
+        <div class="modal-actions">
+          <button id="btn-close-about-modal" class="primary-btn" type="button">Close</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Settings Modal -->
     <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
