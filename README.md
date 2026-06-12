@@ -11,7 +11,7 @@
 
 
 
-**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.2](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.2)
+**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.3](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.3)
 
 > CorpusWright is currently experimental alpha software. Windows and macOS builds are available through GitHub Releases, but they may be unsigned and may trigger operating-system security warnings.
 

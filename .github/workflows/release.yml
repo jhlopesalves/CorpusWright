@@ -78,14 +78,14 @@ jobs:
         with:
           projectPath: apps/desktop
           tauriScript: npm run tauri
-          tagName: v0.1.0-alpha.2
-          releaseName: CorpusWright v0.1.0-alpha.2
+          tagName: v0.1.0-alpha.3
+          releaseName: CorpusWright v0.1.0-alpha.3
           releaseBody: |
             Experimental alpha release for manual inspection.
 
-            This prerelease supersedes v0.1.0-alpha.1.
+            This prerelease supersedes v0.1.0-alpha.2.
 
-            Important: v0.1.0-alpha.1 Windows installer may fail to preview/extract PDF text because the packaged build was missing the PDFium native library. This alpha.2 fixes that bug and also makes PDF extraction resilient when PDFium is unavailable by falling back to lopdf-based embedded text extraction.
+            Important: v0.1.0-alpha.2 Windows installer may fall back to degraded PDF extraction because packaged OCR/PDFium resources were not bundled into the installed app. This alpha.3 fixes installed resource packaging and prevents low-quality degraded PDF fallback output from being presented as normal extracted text.
 
             Windows and macOS builds may be unsigned or ad-hoc signed. Windows may show SmartScreen warnings. macOS may require users to allow the app from Privacy & Security settings.
 
