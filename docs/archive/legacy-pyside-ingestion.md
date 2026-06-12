@@ -1,3 +1,5 @@
+> **Archived document.** This file describes the legacy PySide prototype, not the current Rust/Tauri application.
+
 # Document Ingestion
 
 The archived PySide prototype has an ingestion layer in
