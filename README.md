@@ -1,6 +1,6 @@
 # CorpusWright
-[![CI](https://github.com/jhlopesalves/corpuswright/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jhlopesalves/corpuswright/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/jhlopesalves/corpuswright?include_prereleases&label=release)](https://github.com/jhlopesalves/corpuswright/releases)
+[![CI](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jhlopesalves/CorpusWright?include_prereleases&label=release)](https://github.com/jhlopesalves/CorpusWright/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
@@ -11,7 +11,7 @@
 
 
 
-**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.1](https://github.com/jhlopesalves/corpuswright/releases/tag/v0.1.0-alpha.1)
+**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.2](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.2)
 
 > CorpusWright is currently experimental alpha software. Windows and macOS builds are available through GitHub Releases, but they may be unsigned and may trigger operating-system security warnings.
 
