@@ -1,6 +1,7 @@
 use corpuswright_core::cache::ExtractionCache;
-use corpuswright_core::clean::CleaningConfig;
+use corpuswright_core::clean::{CleaningConfig, PdfOcrQuality, PdfTextSource, clean_text};
 use corpuswright_core::export::{ExportError, ExportOptions, ExportReport, export_corpus};
+use corpuswright_core::pdf::{PdfExtractionOptions, PdfPageRangeResult, extract_pdf_page_range};
 use corpuswright_core::pdf_audit::{PdfAuditResult, audit_pdf_files};
 use corpuswright_core::preview::{
     CombinedPreview, PreviewOptions, preview_files, preview_processed_files,
@@ -11,6 +12,7 @@ use corpuswright_core::repeated_artifacts::{
 use corpuswright_core::scan::{DocumentRecord, ScanReport, load_files, scan_directory};
 use corpuswright_core::search::{SearchResult, search_corpus};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
@@ -51,6 +53,44 @@ impl CorpusStateInner {
 
 struct CorpusState {
     inner: RwLock<CorpusStateInner>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PdfPageRangeCacheKey {
+    source_path: PathBuf,
+    size_bytes: u64,
+    modified_time_secs: Option<u64>,
+    start_page_index: usize,
+    page_count: usize,
+    max_chars_per_page: Option<usize>,
+    text_source: PdfTextSource,
+    ocr_quality: PdfOcrQuality,
+    cleaning_config_json: String,
+    ocr_model_identity: Option<String>,
+}
+
+struct PdfPageRangeCache {
+    inner: RwLock<HashMap<PdfPageRangeCacheKey, PdfPageRangeResult>>,
+}
+
+impl PdfPageRangeCache {
+    fn new() -> Self {
+        Self {
+            inner: RwLock::new(HashMap::new()),
+        }
+    }
+
+    fn get(&self, key: &PdfPageRangeCacheKey) -> Option<PdfPageRangeResult> {
+        self.inner.read().unwrap().get(key).cloned()
+    }
+
+    fn insert(&self, key: PdfPageRangeCacheKey, result: PdfPageRangeResult) {
+        self.inner.write().unwrap().insert(key, result);
+    }
+
+    fn clear(&self) {
+        self.inner.write().unwrap().clear();
+    }
 }
 
 impl CorpusState {
@@ -107,8 +147,10 @@ fn scan_directory_command(
     path: String,
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
+    page_cache: tauri::State<'_, PdfPageRangeCache>,
 ) -> Result<CorpusLoadResult, String> {
     cache.clear();
+    page_cache.clear();
     let report = scan_directory(&path).map_err(|e| format!("{:?}", e))?;
     let version = {
         let mut inner = corpus_state.inner.write().unwrap();
@@ -126,8 +168,10 @@ fn load_files_command(
     paths: Vec<String>,
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
+    page_cache: tauri::State<'_, PdfPageRangeCache>,
 ) -> Result<CorpusLoadResult, String> {
     cache.clear();
+    page_cache.clear();
     let path_bufs = paths.into_iter().map(PathBuf::from).collect();
     let report = load_files(path_bufs).map_err(|e| format!("{:?}", e))?;
     let version = {
@@ -151,8 +195,10 @@ fn audit_pdf_files_command(paths: Vec<String>) -> Result<Vec<PdfAuditResult>, St
 fn clear_corpus_command(
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
+    page_cache: tauri::State<'_, PdfPageRangeCache>,
 ) -> Result<(), String> {
     cache.clear();
+    page_cache.clear();
     corpus_state.inner.write().unwrap().clear();
     Ok(())
 }
@@ -219,6 +265,135 @@ fn preview_processed_files_command(
     };
     preview_processed_files(&records, &options, &cleaning_config, Some(&*cache))
         .map_err(|e| format!("{:?}", e))
+}
+
+fn modified_time_secs(path: &Path) -> Option<u64> {
+    std::fs::metadata(path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|modified| {
+            modified
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .map(|duration| duration.as_secs())
+        })
+}
+
+fn pdf_page_range_cache_key(
+    record: &DocumentRecord,
+    start_page_index: usize,
+    page_count: usize,
+    max_chars_per_page: Option<usize>,
+    text_source: PdfTextSource,
+    ocr_quality: PdfOcrQuality,
+    cleaning_config: &CleaningConfig,
+) -> PdfPageRangeCacheKey {
+    let cleaning_config_json =
+        serde_json::to_string(cleaning_config).unwrap_or_else(|_| format!("{cleaning_config:?}"));
+    let ocr_model_identity = match text_source {
+        PdfTextSource::EmbeddedText => None,
+        PdfTextSource::Ocr | PdfTextSource::ForceOcr => {
+            corpuswright_core::pdf_ocr::ocr_model_identity()
+        }
+    };
+
+    PdfPageRangeCacheKey {
+        source_path: record.source_path.clone(),
+        size_bytes: record.size_bytes,
+        modified_time_secs: modified_time_secs(&record.source_path),
+        start_page_index,
+        page_count,
+        max_chars_per_page,
+        text_source,
+        ocr_quality,
+        cleaning_config_json,
+        ocr_model_identity,
+    }
+}
+
+fn apply_cleaning_to_page_range(
+    result: &mut PdfPageRangeResult,
+    cleaning_config: &CleaningConfig,
+    max_chars_per_page: Option<usize>,
+) {
+    for page in &mut result.pages {
+        if page.error.is_none() {
+            page.text = clean_text(&page.text, cleaning_config);
+        }
+
+        let char_count = page.text.chars().count();
+        if let Some(limit) = max_chars_per_page
+            && char_count > limit
+        {
+            page.text = page.text.chars().take(limit).collect();
+            page.warnings.push(format!(
+                "Page {} text was truncated to {} characters after cleaning.",
+                page.page_number, limit
+            ));
+        }
+        page.char_count = page.text.chars().count();
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command(async)]
+fn extract_pdf_page_range_command(
+    index: usize,
+    corpus_version: u64,
+    corpus: tauri::State<'_, CorpusState>,
+    cleaning_config: CleaningConfig,
+    start_page_index: usize,
+    page_count: usize,
+    pdf_text_source: PdfTextSource,
+    ocr_quality: PdfOcrQuality,
+    max_chars_per_page: Option<usize>,
+    page_cache: tauri::State<'_, PdfPageRangeCache>,
+) -> Result<PdfPageRangeResult, String> {
+    if page_count == 0 {
+        return Err("Page count must be greater than zero.".to_string());
+    }
+
+    let records = corpus.records_for_indices(&[index], corpus_version)?;
+    let record = records
+        .first()
+        .ok_or_else(|| "Selected file is no longer available.".to_string())?;
+    if record.document_type != corpuswright_core::DocumentType::Pdf {
+        return Err("Full OCR preview is available for PDF files only.".to_string());
+    }
+
+    let mut extraction_config = cleaning_config;
+    extraction_config.pdf_text_source = pdf_text_source;
+    extraction_config.pdf_ocr_quality = ocr_quality;
+
+    let key = pdf_page_range_cache_key(
+        record,
+        start_page_index,
+        page_count,
+        max_chars_per_page,
+        pdf_text_source,
+        ocr_quality,
+        &extraction_config,
+    );
+
+    if let Some(result) = page_cache.get(&key) {
+        return Ok(result);
+    }
+
+    let bytes = std::fs::read(&record.source_path)
+        .map_err(|error| format!("Failed to read PDF: {error}"))?;
+    let options = PdfExtractionOptions::from_cleaning_config(&extraction_config);
+    let mut result = extract_pdf_page_range(
+        &bytes,
+        start_page_index,
+        page_count,
+        options,
+        max_chars_per_page,
+    )
+    .map_err(|error| format!("PDF page extraction failed: {error}"))?;
+
+    apply_cleaning_to_page_range(&mut result, &extraction_config, max_chars_per_page);
+    page_cache.insert(key, result.clone());
+    Ok(result)
 }
 
 #[tauri::command(async)]
@@ -428,6 +603,7 @@ pub fn run() {
             inner: RwLock::new(CorpusStateInner::empty()),
         })
         .manage(ExtractionCache::new())
+        .manage(PdfPageRangeCache::new())
         .invoke_handler(tauri::generate_handler![
             scan_directory_command,
             load_files_command,
@@ -436,6 +612,7 @@ pub fn run() {
             search_corpus_command,
             preview_files_command,
             preview_processed_files_command,
+            extract_pdf_page_range_command,
             export_corpus_command,
             compute_word_count_command,
             scan_repeated_artifacts_command,
