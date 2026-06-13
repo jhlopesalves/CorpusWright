@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import { dom } from "./dom";
@@ -98,6 +99,24 @@ const profileDisplayNames: Record<PdfIntakeProfileId, string> = {
 let pdfIntakeSelectedPaths: string[] = [];
 let pdfIntakeManualProfileOverride = false;
 let settingPdfIntakeProfile = false;
+let pdfIntakeMaterializing = false;
+let pdfIntakeCancelRequested = false;
+let pdfIntakeProgressUnlisten: UnlistenFn | null = null;
+
+interface PdfIntakeMaterializationProgress {
+  currentFile: string;
+  currentFileIndex: number;
+  totalFiles: number;
+  currentPage: number;
+  totalPages: number | null;
+  profile: string;
+  method: string;
+  status: string;
+  elapsedMs: number;
+  estimatedRemainingMs: number | null;
+  pagesPerMinute: number | null;
+  latestWarning: string | null;
+}
 
 function clearStateForLoad(): void {
   state.currentCorpusVersion = 0;
@@ -130,25 +149,125 @@ function setPdfIntakeProfileId(profileId: PdfIntakeProfileId): void {
 function resetPdfIntakeSession(): void {
   pdfIntakeSelectedPaths = [];
   pdfIntakeManualProfileOverride = false;
+  pdfIntakeCancelRequested = false;
+  dom.pdfIntakeModal.classList.remove("pdf-intake-processing");
   setPdfIntakeProfileId("standard");
   dom.pdfIntakeStatus.textContent = "";
   dom.pdfIntakeAuditSummary.textContent = "";
   dom.pdfIntakeAuditResults.replaceChildren();
   dom.pdfIntakeAuditPanel.classList.add("hidden");
+  resetPdfIntakeMaterializationProgress();
   dom.loadPdfIntakeFilesBtn.classList.add("hidden");
   dom.loadPdfIntakeFilesBtn.disabled = true;
   dom.choosePdfIntakeFilesBtn.disabled = false;
   dom.choosePdfIntakeFilesBtn.textContent = "Choose PDFs...";
+  dom.cancelPdfIntakeBtn.textContent = "Cancel";
+  dom.cancelPdfIntakeBtn.disabled = false;
+  dom.btnClosePdfIntakeModalTop.disabled = false;
 }
 
 function closePdfIntakeModal(): void {
+  if (pdfIntakeMaterializing) {
+    return;
+  }
   dom.pdfIntakeStatus.textContent = "";
   dom.pdfIntakeModal.classList.add("hidden");
+}
+
+function resetPdfIntakeMaterializationProgress(): void {
+  dom.pdfIntakeMaterializationPanel.classList.add("hidden");
+  dom.pdfIntakeMaterializationProfile.textContent = "";
+  dom.pdfIntakeMaterializationMethod.textContent = "";
+  dom.pdfIntakeMaterializationFile.textContent = "";
+  dom.pdfIntakeMaterializationPage.textContent = "";
+  dom.pdfIntakeMaterializationElapsed.textContent = "";
+  dom.pdfIntakeMaterializationRemaining.textContent = "";
+  dom.pdfIntakeMaterializationSpeed.textContent = "";
+  dom.pdfIntakeMaterializationProgressFill.style.width = "0%";
+  dom.pdfIntakeMaterializationWarning.textContent = "";
+  dom.pdfIntakeMaterializationWarningRow.classList.add("hidden");
+}
+
+function formatDurationMs(ms: number | null): string {
+  if (ms === null || !Number.isFinite(ms)) return "Calculating";
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  }
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function renderPdfIntakeMaterializationProgress(progress: PdfIntakeMaterializationProgress): void {
+  const totalPages = progress.totalPages === null ? "?" : progress.totalPages.toLocaleString();
+  const currentPage = progress.currentPage.toLocaleString();
+  dom.pdfIntakeMaterializationPanel.classList.remove("hidden");
+  dom.pdfIntakeMaterializationProfile.textContent = progress.profile;
+  dom.pdfIntakeMaterializationMethod.textContent = progress.method;
+  dom.pdfIntakeMaterializationFile.textContent =
+    `${progress.currentFileIndex.toLocaleString()} / ${progress.totalFiles.toLocaleString()} - ${progress.currentFile}`;
+  dom.pdfIntakeMaterializationPage.textContent = `${currentPage} / ${totalPages}`;
+  dom.pdfIntakeMaterializationElapsed.textContent = formatDurationMs(progress.elapsedMs);
+  dom.pdfIntakeMaterializationRemaining.textContent = formatDurationMs(progress.estimatedRemainingMs);
+  dom.pdfIntakeMaterializationSpeed.textContent =
+    progress.pagesPerMinute === null ? "Calculating" : `${progress.pagesPerMinute.toFixed(1)} pages/min`;
+  const progressPercent = progress.totalPages === null || progress.totalPages === 0
+    ? 0
+    : Math.min(100, Math.max(0, (progress.currentPage / progress.totalPages) * 100));
+  dom.pdfIntakeMaterializationProgressFill.style.width = `${progressPercent}%`;
+  if (progress.latestWarning) {
+    dom.pdfIntakeMaterializationWarning.textContent = progress.latestWarning;
+    dom.pdfIntakeMaterializationWarningRow.classList.remove("hidden");
+  } else {
+    dom.pdfIntakeMaterializationWarning.textContent = "";
+    dom.pdfIntakeMaterializationWarningRow.classList.add("hidden");
+  }
+  dom.pdfIntakeStatus.textContent = progress.status;
+  dom.statusBar.textContent =
+    `${progress.status} ${progress.currentFileIndex}/${progress.totalFiles}: ${progress.currentFile} (${currentPage}/${totalPages})`;
+}
+
+async function listenForPdfIntakeProgress(): Promise<void> {
+  if (pdfIntakeProgressUnlisten) {
+    pdfIntakeProgressUnlisten();
+    pdfIntakeProgressUnlisten = null;
+  }
+  pdfIntakeProgressUnlisten = await listen<PdfIntakeMaterializationProgress>(
+    "pdf-intake-materialization-progress",
+    (event) => renderPdfIntakeMaterializationProgress(event.payload),
+  );
+}
+
+function stopListeningForPdfIntakeProgress(): void {
+  if (pdfIntakeProgressUnlisten) {
+    pdfIntakeProgressUnlisten();
+    pdfIntakeProgressUnlisten = null;
+  }
 }
 
 function openPdfIntakeModal(): void {
   resetPdfIntakeSession();
   dom.pdfIntakeModal.classList.remove("hidden");
+}
+
+async function handleCancelPdfIntake(): Promise<void> {
+  if (!pdfIntakeMaterializing) {
+    closePdfIntakeModal();
+    return;
+  }
+
+  pdfIntakeCancelRequested = true;
+  dom.cancelPdfIntakeBtn.disabled = true;
+  dom.pdfIntakeStatus.textContent = "Cancelling after the current materialisation step...";
+  dom.statusBar.textContent = "Cancelling PDF intake after the current materialisation step...";
+  try {
+    await invoke("cancel_pdf_intake_materialization_command");
+  } catch (error) {
+    dom.pdfIntakeStatus.textContent = `Cancel error: ${error}`;
+    dom.statusBar.textContent = `Cancel error: ${error}`;
+  }
 }
 
 function isPdfPath(path: string): boolean {
@@ -211,17 +330,31 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
   }
 
   const profile = pdfIntakeProfiles[selectedPdfIntakeProfileId()];
+  const materializationConfig: CleaningConfig = { ...state.activeCleaningConfig };
+  profile.apply(materializationConfig);
 
   try {
-    dom.pdfIntakeStatus.textContent = "Loading PDFs...";
-    dom.statusBar.textContent = "Loading PDFs...";
+    pdfIntakeMaterializing = true;
+    pdfIntakeCancelRequested = false;
+    dom.pdfIntakeModal.classList.add("pdf-intake-processing");
+    resetPdfIntakeMaterializationProgress();
+    await listenForPdfIntakeProgress();
+    dom.pdfIntakeStatus.textContent = "Preparing PDF materialisation...";
+    dom.statusBar.textContent = "Preparing PDF materialisation...";
     dom.choosePdfIntakeFilesBtn.disabled = true;
     dom.loadPdfIntakeFilesBtn.disabled = true;
+    dom.cancelPdfIntakeBtn.textContent = "Cancel materialisation";
+    dom.cancelPdfIntakeBtn.disabled = false;
+    dom.btnClosePdfIntakeModalTop.disabled = true;
     clearStateForLoad();
 
-    const result = await invoke<CorpusLoadResult>("load_files_command", { paths: pdfIntakeSelectedPaths });
+    const result = await invoke<CorpusLoadResult>("load_pdf_intake_files_command", {
+      paths: pdfIntakeSelectedPaths,
+      cleaningConfig: materializationConfig,
+      profile: profile.statusLabel,
+    });
 
-    profile.apply(state.activeCleaningConfig);
+    Object.assign(state.activeCleaningConfig, materializationConfig);
     state.currentCorpusVersion = result.corpusVersion;
     state.currentCorpusRoot = result.report.root;
     state.allFiles = result.report.files;
@@ -229,18 +362,28 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
 
     renderSummary(result.report.summary);
     updateFileList();
+    pdfIntakeMaterializing = false;
     closePdfIntakeModal();
 
     const fileLabel = state.allFiles.length === 1 ? "PDF file" : "PDF files";
-    dom.statusBar.textContent = `Loaded ${state.allFiles.length} ${fileLabel} with ${profile.statusLabel}.`;
+    dom.statusBar.textContent = `Loaded ${state.allFiles.length} ${fileLabel} with materialised ${profile.statusLabel}.`;
     callbacks.updateWordCount();
   } catch (error) {
-    dom.pdfIntakeStatus.textContent = `Error: ${error}`;
-    dom.statusBar.textContent = `Error: ${error}`;
+    const message = pdfIntakeCancelRequested
+      ? "PDF intake cancelled. No half-materialised corpus was loaded."
+      : `Error: ${error}`;
+    dom.pdfIntakeStatus.textContent = message;
+    dom.statusBar.textContent = message;
     console.error(error);
   } finally {
+    stopListeningForPdfIntakeProgress();
+    pdfIntakeMaterializing = false;
+    dom.pdfIntakeModal.classList.remove("pdf-intake-processing");
     dom.choosePdfIntakeFilesBtn.disabled = false;
     dom.loadPdfIntakeFilesBtn.disabled = pdfIntakeSelectedPaths.length === 0;
+    dom.cancelPdfIntakeBtn.textContent = "Cancel";
+    dom.cancelPdfIntakeBtn.disabled = false;
+    dom.btnClosePdfIntakeModalTop.disabled = false;
   }
 }
 
@@ -474,8 +617,12 @@ export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
   dom.menuOpenDir.addEventListener("click", handleOpenDir);
   dom.menuOpenFiles.addEventListener("click", handleOpenFiles);
   dom.menuOpenPdfIntake.addEventListener("click", openPdfIntakeModal);
-  dom.cancelPdfIntakeBtn.addEventListener("click", closePdfIntakeModal);
-  dom.btnClosePdfIntakeModalTop.addEventListener("click", closePdfIntakeModal);
+  dom.cancelPdfIntakeBtn.addEventListener("click", () => {
+    handleCancelPdfIntake();
+  });
+  dom.btnClosePdfIntakeModalTop.addEventListener("click", () => {
+    handleCancelPdfIntake();
+  });
   dom.choosePdfIntakeFilesBtn.addEventListener("click", handleChoosePdfIntakeFiles);
   dom.loadPdfIntakeFilesBtn.addEventListener("click", handleLoadPdfIntakeFiles);
   document.querySelectorAll<HTMLInputElement>('input[name="pdf-intake-profile"]').forEach((input) => {

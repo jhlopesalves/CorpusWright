@@ -1,26 +1,37 @@
-use corpuswright_core::cache::ExtractionCache;
+use corpuswright_core::cache::{CacheEntry, ExtractionCache};
 use corpuswright_core::clean::{CleaningConfig, PdfOcrQuality, PdfTextSource, clean_text};
 use corpuswright_core::export::{ExportError, ExportOptions, ExportReport, export_corpus};
-use corpuswright_core::pdf::{PdfExtractionOptions, PdfPageRangeResult, extract_pdf_page_range};
+use corpuswright_core::pdf::{
+    PdfExtractionOptions, PdfPageRangeResult, extract_pdf_page_range, pdf_page_count,
+};
 use corpuswright_core::pdf_audit::{PdfAuditResult, audit_pdf_files};
 use corpuswright_core::preview::{
-    CombinedPreview, PreviewOptions, preview_files, preview_processed_files,
+    CombinedPreview, PreviewOptions, preview_files_with_config, preview_processed_files,
 };
 use corpuswright_core::repeated_artifacts::{
     CancellationFlag, RepeatedArtifactScanConfig, RepeatedArtifactScanReport,
 };
-use corpuswright_core::scan::{DocumentRecord, ScanReport, load_files, scan_directory};
+use corpuswright_core::scan::{
+    DocumentRecord, DocumentType, ScanReport, load_files, scan_directory,
+};
 use corpuswright_core::search::{SearchResult, search_corpus};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 use tauri::path::BaseDirectory;
 use tauri::{Emitter, Manager, Window};
 
+use rayon::prelude::*;
+
 struct ScanState {
     cancel: CancellationFlag,
+}
+
+struct PdfIntakeState {
+    cancel: Arc<AtomicBool>,
 }
 
 struct CorpusStateInner {
@@ -129,6 +140,38 @@ struct CorpusLoadResult {
 }
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PdfIntakeMaterializationProgress {
+    current_file: String,
+    current_file_index: usize,
+    total_files: usize,
+    current_page: usize,
+    total_pages: Option<usize>,
+    profile: String,
+    method: String,
+    status: String,
+    elapsed_ms: u64,
+    estimated_remaining_ms: Option<u64>,
+    pages_per_minute: Option<f64>,
+    latest_warning: Option<String>,
+}
+
+struct PdfIntakePageTiming {
+    page_number: usize,
+    page_total_ms: u64,
+    postprocess_ms: u64,
+    chars_extracted: usize,
+    warnings: Vec<String>,
+    render_clamped: bool,
+}
+
+struct MaterializedOcrPage {
+    page_index: usize,
+    text: Option<String>,
+    timing: PdfIntakePageTiming,
+}
+
+#[derive(Clone, Serialize)]
 struct ExportProgress {
     current: usize,
     total: usize,
@@ -191,6 +234,561 @@ fn audit_pdf_files_command(paths: Vec<String>) -> Result<Vec<PdfAuditResult>, St
     Ok(audit_pdf_files(path_bufs))
 }
 
+fn pdf_intake_method_label(options: PdfExtractionOptions) -> String {
+    match options.text_source {
+        PdfTextSource::EmbeddedText => match options.strategy {
+            corpuswright_core::clean::PdfEmbeddedTextStrategy::PdfiumFlat => {
+                "embedded text".to_string()
+            }
+            corpuswright_core::clean::PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn => {
+                "layout-heavy embedded text".to_string()
+            }
+            corpuswright_core::clean::PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental => {
+                "experimental visual columns".to_string()
+            }
+        },
+        PdfTextSource::Ocr => "OCR rescue".to_string(),
+        PdfTextSource::ForceOcr => "force OCR".to_string(),
+    }
+}
+
+fn pdf_intake_file_name(record: &DocumentRecord) -> String {
+    record
+        .relative_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| record.relative_path.to_string_lossy().to_string())
+}
+
+// Recognition is serialised by the shared OCR engine lock, so extra workers
+// mainly add render/init contention until a multi-engine path is proven faster.
+const DEFAULT_OCR_WORKERS: usize = 1;
+const MAX_INTERNAL_OCR_WORKERS: usize = 4;
+
+fn configured_ocr_worker_count() -> usize {
+    let available = std::thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(DEFAULT_OCR_WORKERS)
+        .max(1);
+    let default_workers = DEFAULT_OCR_WORKERS.min(available).max(1);
+
+    std::env::var("CORPUSWRIGHT_OCR_WORKERS")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .map(|value| value.min(MAX_INTERNAL_OCR_WORKERS).min(available).max(1))
+        .unwrap_or(default_workers)
+}
+
+fn duration_ms(duration: Duration) -> u64 {
+    duration.as_millis().min(u128::from(u64::MAX)) as u64
+}
+
+fn intake_progress_metrics(
+    started_at: Instant,
+    completed_pages: usize,
+    total_pages: Option<usize>,
+) -> (u64, Option<u64>, Option<f64>) {
+    let elapsed = started_at.elapsed();
+    let elapsed_ms = duration_ms(elapsed);
+    if completed_pages == 0 || elapsed_ms == 0 {
+        return (elapsed_ms, None, None);
+    }
+
+    let elapsed_minutes = elapsed.as_secs_f64() / 60.0;
+    let pages_per_minute = if elapsed_minutes > 0.0 {
+        Some(completed_pages as f64 / elapsed_minutes)
+    } else {
+        None
+    };
+    let estimated_remaining_ms = total_pages.map(|total| {
+        let remaining = total.saturating_sub(completed_pages);
+        if remaining == 0 {
+            0
+        } else {
+            let per_page = elapsed.as_secs_f64() / completed_pages as f64;
+            duration_ms(Duration::from_secs_f64(per_page * remaining as f64))
+        }
+    });
+
+    (elapsed_ms, estimated_remaining_ms, pages_per_minute)
+}
+
+fn latest_page_warning(page_timing: &PdfIntakePageTiming) -> Option<String> {
+    page_timing.warnings.last().cloned().or_else(|| {
+        page_timing.render_clamped.then(|| {
+            format!(
+                "OCR render size was clamped on page {}.",
+                page_timing.page_number
+            )
+        })
+    })
+}
+
+fn log_pdf_intake_timing_summary(
+    record: &DocumentRecord,
+    profile: &str,
+    method: &str,
+    worker_count: usize,
+    total_elapsed: Duration,
+    timings: &[PdfIntakePageTiming],
+) {
+    if timings.is_empty() {
+        eprintln!(
+            "PDF intake timing: file={} profile={} method={} workers={} pages=0 total_ms={}",
+            pdf_intake_file_name(record),
+            profile,
+            method,
+            worker_count,
+            duration_ms(total_elapsed)
+        );
+        return;
+    }
+
+    let total_page_ms: u64 = timings.iter().map(|timing| timing.page_total_ms).sum();
+    let total_chars: usize = timings.iter().map(|timing| timing.chars_extracted).sum();
+    let warning_count: usize = timings.iter().map(|timing| timing.warnings.len()).sum();
+    let clamped_pages = timings
+        .iter()
+        .filter(|timing| timing.render_clamped)
+        .count();
+    let average_page_ms = total_page_ms as f64 / timings.len() as f64;
+    let average_chars = total_chars as f64 / timings.len() as f64;
+    let pages_per_minute = timings.len() as f64 / (total_elapsed.as_secs_f64() / 60.0).max(0.001);
+    let slowest_pages = {
+        let mut sorted: Vec<&PdfIntakePageTiming> = timings.iter().collect();
+        sorted.sort_by_key(|timing| std::cmp::Reverse(timing.page_total_ms));
+        sorted
+            .into_iter()
+            .take(5)
+            .map(|timing| {
+                format!(
+                    "p{}={}ms/{}chars",
+                    timing.page_number, timing.page_total_ms, timing.chars_extracted
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let total_postprocess_ms: u64 = timings.iter().map(|timing| timing.postprocess_ms).sum();
+
+    eprintln!(
+        "PDF intake timing: file={} profile={} method={} workers={} pages={} total_ms={} pages_per_minute={:.2} avg_page_ms={:.1} avg_chars_per_page={:.1} postprocess_ms={} warnings={} clamped_pages={} slowest=[{}] render_ocr_split=unavailable",
+        pdf_intake_file_name(record),
+        profile,
+        method,
+        worker_count,
+        timings.len(),
+        duration_ms(total_elapsed),
+        pages_per_minute,
+        average_page_ms,
+        average_chars,
+        total_postprocess_ms,
+        warning_count,
+        clamped_pages,
+        slowest_pages
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_pdf_intake_progress(
+    window: &Window,
+    record: &DocumentRecord,
+    file_index: usize,
+    total_files: usize,
+    current_page: usize,
+    total_pages: Option<usize>,
+    profile: &str,
+    method: &str,
+    status: &str,
+    elapsed_ms: u64,
+    estimated_remaining_ms: Option<u64>,
+    pages_per_minute: Option<f64>,
+    latest_warning: Option<String>,
+) {
+    let _ = window.emit(
+        "pdf-intake-materialization-progress",
+        PdfIntakeMaterializationProgress {
+            current_file: pdf_intake_file_name(record),
+            current_file_index: file_index + 1,
+            total_files,
+            current_page,
+            total_pages,
+            profile: profile.to_string(),
+            method: method.to_string(),
+            status: status.to_string(),
+            elapsed_ms,
+            estimated_remaining_ms,
+            pages_per_minute,
+            latest_warning,
+        },
+    );
+}
+
+fn pdf_intake_cancelled_message() -> String {
+    "PDF intake cancelled before materialisation completed. No corpus was loaded.".to_string()
+}
+
+fn extract_materialized_ocr_page(
+    bytes: &[u8],
+    page_index: usize,
+    options: PdfExtractionOptions,
+) -> Result<MaterializedOcrPage, String> {
+    let page_started_at = Instant::now();
+    let result = extract_pdf_page_range(bytes, page_index, 1, options, None)
+        .map_err(|error| format!("PDF materialisation failed: {error}"))?;
+    let mut warnings = result.warnings;
+    let page_number = page_index + 1;
+    let mut render_clamped = false;
+    let mut text = None;
+    let mut chars_extracted = 0;
+
+    let postprocess_started_at = Instant::now();
+    match result.pages.into_iter().next() {
+        Some(page) => {
+            render_clamped = page.render_clamped;
+            warnings.extend(page.warnings);
+            if let Some(page_error) = page.error {
+                let message = format!(
+                    "Page {} extraction failed during materialisation: {}",
+                    page.page_number, page_error
+                );
+                warnings.push(message);
+            } else {
+                let trimmed = page.text.trim();
+                chars_extracted = trimmed.chars().count();
+                if !trimmed.is_empty() {
+                    text = Some(trimmed.to_string());
+                }
+            }
+        }
+        None => {
+            let message = format!("Page {page_number} extraction returned no page result.");
+            warnings.push(message);
+        }
+    }
+    let postprocess_ms = duration_ms(postprocess_started_at.elapsed());
+
+    Ok(MaterializedOcrPage {
+        page_index,
+        text,
+        timing: PdfIntakePageTiming {
+            page_number,
+            page_total_ms: duration_ms(page_started_at.elapsed()),
+            postprocess_ms,
+            chars_extracted,
+            warnings,
+            render_clamped,
+        },
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn materialize_force_ocr_pdf(
+    window: &Window,
+    record: &DocumentRecord,
+    file_index: usize,
+    total_files: usize,
+    profile: &str,
+    options: PdfExtractionOptions,
+    cleaning_config: &CleaningConfig,
+    cache: &ExtractionCache,
+    cancel: &AtomicBool,
+) -> Result<(), String> {
+    let method = pdf_intake_method_label(options);
+    let bytes = std::fs::read(&record.source_path)
+        .map_err(|error| format!("Failed to read PDF: {error}"))?;
+
+    let total_pages =
+        pdf_page_count(&bytes).map_err(|error| format!("PDF materialisation failed: {error}"))?;
+    let started_at = Instant::now();
+    let worker_count = configured_ocr_worker_count();
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(worker_count)
+        .build()
+        .map_err(|error| format!("Failed to configure OCR workers: {error}"))?;
+
+    let mut page_texts = Vec::new();
+    let mut warnings = Vec::new();
+    let mut timings = Vec::with_capacity(total_pages);
+    let mut latest_warning = None;
+    let mut completed_pages = 0;
+
+    emit_pdf_intake_progress(
+        window,
+        record,
+        file_index,
+        total_files,
+        0,
+        Some(total_pages),
+        profile,
+        &method,
+        "Materialising raw OCR text...",
+        0,
+        None,
+        None,
+        None,
+    );
+
+    let mut next_page_index = 0;
+    while next_page_index < total_pages {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(pdf_intake_cancelled_message());
+        }
+
+        let batch_end = next_page_index
+            .saturating_add(worker_count)
+            .min(total_pages);
+        let mut batch_results = pool.install(|| {
+            (next_page_index..batch_end)
+                .into_par_iter()
+                .map(|page_index| extract_materialized_ocr_page(&bytes, page_index, options))
+                .collect::<Result<Vec<_>, _>>()
+        })?;
+        batch_results.sort_by_key(|page| page.page_index);
+
+        for page_result in batch_results {
+            if let Some(page_warning) = latest_page_warning(&page_result.timing) {
+                latest_warning = Some(page_warning);
+            }
+            if let Some(text) = page_result.text {
+                page_texts.push(text);
+            }
+            let page_warnings = page_result.timing.warnings.clone();
+            warnings.extend(page_warnings);
+            timings.push(page_result.timing);
+            completed_pages += 1;
+
+            let (elapsed_ms, estimated_remaining_ms, pages_per_minute) =
+                intake_progress_metrics(started_at, completed_pages, Some(total_pages));
+            emit_pdf_intake_progress(
+                window,
+                record,
+                file_index,
+                total_files,
+                completed_pages,
+                Some(total_pages),
+                profile,
+                &method,
+                "Materialising raw OCR text...",
+                elapsed_ms,
+                estimated_remaining_ms,
+                pages_per_minute,
+                latest_warning.clone(),
+            );
+
+            if cancel.load(Ordering::Relaxed) {
+                return Err(pdf_intake_cancelled_message());
+            }
+        }
+
+        next_page_index = batch_end;
+    }
+
+    if cancel.load(Ordering::Relaxed) {
+        return Err(pdf_intake_cancelled_message());
+    }
+
+    cache.insert_extracted(
+        record,
+        Some(options),
+        cleaning_config,
+        CacheEntry {
+            extracted_text: page_texts.join("\n\n"),
+            warnings,
+            page_count: Some(total_pages),
+        },
+    );
+
+    log_pdf_intake_timing_summary(
+        record,
+        profile,
+        &method,
+        worker_count,
+        started_at.elapsed(),
+        &timings,
+    );
+
+    let (elapsed_ms, estimated_remaining_ms, pages_per_minute) =
+        intake_progress_metrics(started_at, completed_pages, Some(total_pages));
+    emit_pdf_intake_progress(
+        window,
+        record,
+        file_index,
+        total_files,
+        completed_pages,
+        Some(total_pages),
+        profile,
+        &method,
+        "Materialised raw OCR text.",
+        elapsed_ms,
+        estimated_remaining_ms,
+        pages_per_minute,
+        latest_warning,
+    );
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn materialize_pdf_record(
+    window: &Window,
+    record: &DocumentRecord,
+    file_index: usize,
+    total_files: usize,
+    profile: &str,
+    cleaning_config: &CleaningConfig,
+    cache: &ExtractionCache,
+    cancel: &AtomicBool,
+) -> Result<(), String> {
+    let options = PdfExtractionOptions::raw_from_cleaning_config(cleaning_config);
+    if options.text_source == PdfTextSource::ForceOcr {
+        return materialize_force_ocr_pdf(
+            window,
+            record,
+            file_index,
+            total_files,
+            profile,
+            options,
+            cleaning_config,
+            cache,
+            cancel,
+        );
+    }
+
+    let method = pdf_intake_method_label(options);
+    let started_at = Instant::now();
+    let total_pages = std::fs::read(&record.source_path)
+        .ok()
+        .and_then(|bytes| pdf_page_count(&bytes).ok());
+    emit_pdf_intake_progress(
+        window,
+        record,
+        file_index,
+        total_files,
+        0,
+        total_pages,
+        profile,
+        &method,
+        "Materialising raw extracted text...",
+        0,
+        None,
+        None,
+        None,
+    );
+
+    if cancel.load(Ordering::Relaxed) {
+        return Err(pdf_intake_cancelled_message());
+    }
+
+    let entry = cache
+        .get_or_extract(record, Some(options), cleaning_config)
+        .map_err(|error| format!("PDF materialisation failed: {error}"))?;
+    let completed_pages = entry.page_count.or(total_pages).unwrap_or(0);
+    let latest_warning = entry.warnings.last().cloned();
+    cache.insert_extracted(record, Some(options), cleaning_config, entry);
+    let (elapsed_ms, estimated_remaining_ms, pages_per_minute) =
+        intake_progress_metrics(started_at, completed_pages, Some(completed_pages));
+
+    emit_pdf_intake_progress(
+        window,
+        record,
+        file_index,
+        total_files,
+        completed_pages,
+        Some(completed_pages),
+        profile,
+        &method,
+        "Materialised raw extracted text.",
+        elapsed_ms,
+        estimated_remaining_ms,
+        pages_per_minute,
+        latest_warning,
+    );
+
+    if cancel.load(Ordering::Relaxed) {
+        return Err(pdf_intake_cancelled_message());
+    }
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command(async)]
+fn load_pdf_intake_files_command(
+    window: Window,
+    paths: Vec<String>,
+    cleaning_config: CleaningConfig,
+    profile: String,
+    corpus_state: tauri::State<'_, CorpusState>,
+    cache: tauri::State<'_, ExtractionCache>,
+    page_cache: tauri::State<'_, PdfPageRangeCache>,
+    intake_state: tauri::State<'_, PdfIntakeState>,
+) -> Result<CorpusLoadResult, String> {
+    if paths.is_empty() {
+        return Err("Choose at least one PDF.".to_string());
+    }
+
+    intake_state.cancel.store(false, Ordering::Relaxed);
+    cache.clear();
+    page_cache.clear();
+    corpus_state.inner.write().unwrap().clear();
+
+    let path_bufs = paths.into_iter().map(PathBuf::from).collect();
+    let report = load_files(path_bufs).map_err(|e| format!("{:?}", e))?;
+    if report
+        .files
+        .iter()
+        .any(|record| record.document_type != DocumentType::Pdf)
+    {
+        cache.clear();
+        return Err("PDF intake accepts PDF files only.".to_string());
+    }
+
+    let total_files = report.files.len();
+    for (file_index, record) in report.files.iter().enumerate() {
+        if intake_state.cancel.load(Ordering::Relaxed) {
+            cache.clear();
+            page_cache.clear();
+            return Err(pdf_intake_cancelled_message());
+        }
+
+        if let Err(error) = materialize_pdf_record(
+            &window,
+            record,
+            file_index,
+            total_files,
+            &profile,
+            &cleaning_config,
+            &cache,
+            &intake_state.cancel,
+        ) {
+            cache.clear();
+            page_cache.clear();
+            return Err(error);
+        }
+    }
+
+    let version = {
+        let mut inner = corpus_state.inner.write().unwrap();
+        inner.load(None, report.files.clone());
+        inner.version
+    };
+    Ok(CorpusLoadResult {
+        report,
+        corpus_version: version,
+    })
+}
+
+#[tauri::command(async)]
+fn cancel_pdf_intake_materialization_command(
+    intake_state: tauri::State<'_, PdfIntakeState>,
+) -> Result<(), String> {
+    intake_state.cancel.store(true, Ordering::Relaxed);
+    Ok(())
+}
+
 #[tauri::command(async)]
 fn clear_corpus_command(
     corpus_state: tauri::State<'_, CorpusState>,
@@ -226,6 +824,7 @@ fn search_corpus_command(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command(async)]
 fn preview_files_command(
     indices: Vec<usize>,
@@ -234,6 +833,7 @@ fn preview_files_command(
     max_chars_per_file: usize,
     include_paths: bool,
     max_files: Option<usize>,
+    cleaning_config: CleaningConfig,
     cache: tauri::State<'_, ExtractionCache>,
 ) -> Result<CombinedPreview, String> {
     let records = corpus.records_for_indices(&indices, corpus_version)?;
@@ -242,7 +842,8 @@ fn preview_files_command(
         include_paths,
         max_files,
     };
-    preview_files(&records, &options, Some(&*cache)).map_err(|e| format!("{:?}", e))
+    preview_files_with_config(&records, &options, &cleaning_config, Some(&*cache))
+        .map_err(|e| format!("{:?}", e))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -599,6 +1200,9 @@ pub fn run() {
         .manage(ScanState {
             cancel: Arc::new(AtomicBool::new(false)),
         })
+        .manage(PdfIntakeState {
+            cancel: Arc::new(AtomicBool::new(false)),
+        })
         .manage(CorpusState {
             inner: RwLock::new(CorpusStateInner::empty()),
         })
@@ -608,6 +1212,8 @@ pub fn run() {
             scan_directory_command,
             load_files_command,
             audit_pdf_files_command,
+            load_pdf_intake_files_command,
+            cancel_pdf_intake_materialization_command,
             clear_corpus_command,
             search_corpus_command,
             preview_files_command,

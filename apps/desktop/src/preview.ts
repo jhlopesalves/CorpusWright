@@ -99,7 +99,8 @@ async function fetchAndRenderPreviewChunk(
         corpusVersion: myVersion,
         maxCharsPerFile: maxChars,
         includePaths: true,
-        maxFiles: chunkIndices.length
+        maxFiles: chunkIndices.length,
+        cleaningConfig: state.activeCleaningConfig
       }),
       invoke<CombinedPreview>("preview_processed_files_command", {
         indices: chunkIndices,

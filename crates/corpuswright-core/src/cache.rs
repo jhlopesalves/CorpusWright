@@ -164,6 +164,22 @@ pub struct CacheEntry {
     pub page_count: Option<usize>,
 }
 
+/// Text mode requested by downstream tools.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentTextMode {
+    /// Raw materialised or extracted text.
+    Original,
+    /// Text after PDF cleanup, optional HTML extraction, and normal cleaning.
+    Processed,
+}
+
+/// Text resolved through the canonical extraction/cache path.
+pub struct DocumentText {
+    pub text: String,
+    pub warnings: Vec<String>,
+    pub page_count: Option<usize>,
+}
+
 /// Thread-safe, size-limited cache for extracted text.
 pub struct ExtractionCache {
     inner: RwLock<CacheInner>,
@@ -270,6 +286,52 @@ impl ExtractionCache {
         Ok(extracted)
     }
 
+    /// Inserts an already extracted entry for the given record and options.
+    pub fn insert_extracted(
+        &self,
+        record: &DocumentRecord,
+        pdf_options: Option<PdfExtractionOptions>,
+        cleaning_config: &CleaningConfig,
+        entry: CacheEntry,
+    ) {
+        let entry_bytes = entry.extracted_text.len();
+        let key = ExtractionKey::from_record(record, pdf_options, cleaning_config);
+        let mut inner = self.inner.write().unwrap();
+
+        if let Some(existing) = inner.entries.remove(&key) {
+            inner.total_bytes = inner
+                .total_bytes
+                .saturating_sub(existing.extracted_text.len());
+            inner.order.retain(|existing_key| existing_key != &key);
+        }
+
+        if entry_bytes > self.max_total_bytes {
+            inner.entries.clear();
+            inner.order.clear();
+            inner.total_bytes = 0;
+            inner.entries.insert(key.clone(), entry);
+            inner.order.push_back(key);
+            inner.total_bytes = entry_bytes;
+            return;
+        }
+
+        while inner.total_bytes + entry_bytes > self.max_total_bytes {
+            if let Some(evict_key) = inner.order.pop_front() {
+                if let Some(evicted) = inner.entries.remove(&evict_key) {
+                    inner.total_bytes = inner
+                        .total_bytes
+                        .saturating_sub(evicted.extracted_text.len());
+                }
+            } else {
+                break;
+            }
+        }
+
+        inner.entries.insert(key.clone(), entry);
+        inner.order.push_back(key);
+        inner.total_bytes += entry_bytes;
+    }
+
     /// Read-only cache lookup. Returns `Some` if a matching entry exists,
     /// `None` otherwise. Never performs extraction or I/O.
     ///
@@ -309,6 +371,98 @@ impl ExtractionCache {
         inner.order.clear();
         inner.total_bytes = 0;
     }
+}
+
+fn docx_config_for_document_text(
+    record: &DocumentRecord,
+    mode: DocumentTextMode,
+    cleaning_config: &CleaningConfig,
+) -> CleaningConfig {
+    match (record.document_type.clone(), mode) {
+        (DocumentType::Docx, DocumentTextMode::Processed) => cleaning_config.clone(),
+        (DocumentType::Docx, DocumentTextMode::Original) => CleaningConfig::default(),
+        _ => cleaning_config.clone(),
+    }
+}
+
+fn missing_materialised_ocr_message() -> String {
+    "OCR text is not materialised for this PDF. Re-run special PDF intake or materialise OCR before scanning repeated artefacts.".to_string()
+}
+
+fn apply_document_processing(
+    record: &DocumentRecord,
+    text: String,
+    cleaning_config: &CleaningConfig,
+    warnings: &mut Vec<String>,
+) -> String {
+    let mut processed = if record.document_type == DocumentType::Pdf {
+        let (pdf_cleaned, mut cleanup_warnings) =
+            crate::pdf::clean_extracted_pdf_text(&text, cleaning_config);
+        warnings.append(&mut cleanup_warnings);
+        pdf_cleaned
+    } else {
+        text
+    };
+
+    if cleaning_config.extract_html {
+        processed = crate::html::extract_html(&processed);
+    }
+
+    crate::clean::clean_text(&processed, cleaning_config)
+}
+
+/// Returns document text through the same raw extraction cache used by
+/// materialised PDF intake.
+///
+/// OCR-mode PDFs require a matching cache entry. This prevents downstream
+/// tools from silently falling back to embedded PDF text after special PDF
+/// intake has already materialised OCR text.
+pub fn document_text_for_record(
+    record: &DocumentRecord,
+    cleaning_config: &CleaningConfig,
+    mode: DocumentTextMode,
+    cache: Option<&ExtractionCache>,
+) -> Result<DocumentText, String> {
+    let pdf_options = if record.document_type == DocumentType::Pdf {
+        Some(PdfExtractionOptions::raw_from_cleaning_config(
+            cleaning_config,
+        ))
+    } else {
+        None
+    };
+    let extraction_config = docx_config_for_document_text(record, mode, cleaning_config);
+
+    let raw_entry = if record.document_type == DocumentType::Pdf
+        && pdf_options.is_some_and(|options| options.text_source != PdfTextSource::EmbeddedText)
+    {
+        let cache = cache.ok_or_else(missing_materialised_ocr_message)?;
+        cache
+            .try_get(record, pdf_options, &extraction_config)
+            .ok_or_else(missing_materialised_ocr_message)?
+    } else if let Some(cache) = cache {
+        cache.get_or_extract(record, pdf_options, &extraction_config)?
+    } else {
+        extract_text_from_record(record, pdf_options, &extraction_config)?
+    };
+
+    let CacheEntry {
+        extracted_text,
+        mut warnings,
+        page_count,
+    } = raw_entry;
+
+    let text = match mode {
+        DocumentTextMode::Original => extracted_text,
+        DocumentTextMode::Processed => {
+            apply_document_processing(record, extracted_text, cleaning_config, &mut warnings)
+        }
+    };
+
+    Ok(DocumentText {
+        text,
+        warnings,
+        page_count,
+    })
 }
 
 impl Default for ExtractionCache {

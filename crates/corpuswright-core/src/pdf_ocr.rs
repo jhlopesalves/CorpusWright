@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex, OnceLock, RwLock};
 
 static OCR_ENGINE: OnceLock<OcrEngine> = OnceLock::new();
+static OCR_ENGINE_INIT_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static OCR_ENGINE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static PDFIUM_LIBRARY: OnceLock<Pdfium> = OnceLock::new();
 static OCR_RESOURCE_DIR: LazyLock<RwLock<Option<PathBuf>>> = LazyLock::new(|| RwLock::new(None));
@@ -280,6 +281,12 @@ pub fn init_pdfium() -> anyhow::Result<&'static Pdfium> {
 }
 
 fn init_ocr_engine() -> anyhow::Result<&'static OcrEngine> {
+    if let Some(engine) = OCR_ENGINE.get() {
+        return Ok(engine);
+    }
+
+    let _init_lock = OCR_ENGINE_INIT_LOCK.lock().unwrap();
+
     if let Some(engine) = OCR_ENGINE.get() {
         return Ok(engine);
     }

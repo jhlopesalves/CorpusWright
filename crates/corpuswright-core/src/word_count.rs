@@ -46,7 +46,7 @@ pub fn count_words_for_record(
     cache: Option<&ExtractionCache>,
 ) -> WordCountOutcome {
     let pdf_options = if record.document_type == DocumentType::Pdf {
-        Some(crate::pdf::PdfExtractionOptions::from_cleaning_config(
+        Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
             cleaning_config,
         ))
     } else {
@@ -59,8 +59,10 @@ pub fn count_words_for_record(
         if let Some(entry) =
             cache.and_then(|cache| cache.try_get(record, pdf_options, cleaning_config))
         {
+            let source_text =
+                apply_pdf_cleaning_for_word_count(&entry.extracted_text, cleaning_config);
             return WordCountOutcome::count(count_words_in_processed_text(
-                &entry.extracted_text,
+                &source_text,
                 cleaning_config,
             ));
         }
@@ -86,7 +88,7 @@ pub fn count_words_for_record(
                 && let Ok(extracted) = crate::pdf::extract_pdf(
                     &bytes,
                     None,
-                    crate::pdf::PdfExtractionOptions::from_cleaning_config(cleaning_config),
+                    crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(cleaning_config),
                 )
             {
                 extracted.text
@@ -103,7 +105,18 @@ pub fn count_words_for_record(
         }
     };
 
+    let source_text = if record.document_type == DocumentType::Pdf {
+        apply_pdf_cleaning_for_word_count(&source_text, cleaning_config)
+    } else {
+        source_text
+    };
+
     WordCountOutcome::count(count_words_in_processed_text(&source_text, cleaning_config))
+}
+
+fn apply_pdf_cleaning_for_word_count(raw: &str, cleaning_config: &CleaningConfig) -> String {
+    let (text, _) = crate::pdf::clean_extracted_pdf_text(raw, cleaning_config);
+    text
 }
 
 /// Counts words after optional HTML extraction and `clean_text`.

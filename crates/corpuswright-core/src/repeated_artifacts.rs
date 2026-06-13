@@ -8,9 +8,8 @@
 //! - Uses a two-pass strategy: count first, collect examples only for survivors.
 //! - Parallel workers build local maps; merged after per-file processing to avoid global lock contention.
 
-use crate::cache::ExtractionCache;
-use crate::clean::{CleaningConfig, PdfOcrQuality, PdfTextSource};
-use crate::pdf::PdfExtractionOptions;
+use crate::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
+use crate::clean::CleaningConfig;
 use crate::scan::{DocumentRecord, DocumentType};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -258,6 +257,7 @@ struct Phase1Result {
     ft: FileText,
     local_map: HashMap<(RepeatedArtifactKind, String), LocalCandidateStats>,
     extraction_failed: bool,
+    fatal_error: Option<String>,
 }
 
 /// Single file's pre-processed text ready for scanning.
@@ -713,143 +713,48 @@ fn detect_inline_artifacts(
     map
 }
 
-/// Build the PDF extraction options used by repeated artefact scanning.
-///
-/// When `analyse_processed_text` is true, uses the user's config for cleanup flags
-/// and extraction options; otherwise uses PdfiumFlat and all cleanup flags disabled.
-fn build_repeated_artifact_pdf_options(
-    analyse_processed_text: bool,
-    cleaning_config: &CleaningConfig,
-) -> PdfExtractionOptions {
-    if analyse_processed_text {
-        PdfExtractionOptions::from_cleaning_config(cleaning_config)
-    } else {
-        PdfExtractionOptions {
-            strategy: crate::clean::PdfEmbeddedTextStrategy::PdfiumFlat,
-            text_source: PdfTextSource::EmbeddedText,
-            ocr_quality: PdfOcrQuality::Balanced,
-            remove_repeated_headers_footers: false,
-            remove_page_labels: false,
-            remove_symbol_heavy_artifacts: false,
-            remove_code_like_blocks: false,
-            remove_formula_like_lines: false,
-        }
-    }
-}
-
-/// Build the DOCX extraction config used by repeated artefact scanning.
-fn build_repeated_artifact_docx_config(
-    analyse_processed_text: bool,
-    cleaning_config: &CleaningConfig,
-) -> CleaningConfig {
-    if analyse_processed_text {
-        cleaning_config.clone()
-    } else {
-        CleaningConfig::default()
-    }
-}
-
-/// Apply post-extraction processing (HTML extraction + cleaning) that is
-/// currently done after text extraction when `analyse_processed_text` is true.
-/// This preserves the exact same ordering as the non-cache path.
-fn apply_scan_post_processing(raw_text: &str, cleaning_config: &CleaningConfig) -> String {
-    let temp = if cleaning_config.extract_html {
-        crate::html::extract_html(raw_text)
-    } else {
-        raw_text.to_string()
-    };
-    crate::clean::clean_text(&temp, cleaning_config)
-}
-
 /// Internal struct describing extraction status for a single file.
 struct ExtractedScanText {
     text: String,
     extraction_failed: bool,
+    fatal_error: Option<String>,
 }
 
 /// Extracts text and records whether extraction failed (vs. succeeded with possibly empty text).
 ///
-/// If a cache is provided, uses `cache.get_or_extract` to avoid re-extracting documents
-/// that have been previously extracted with compatible options. Post-extraction cleaning
-/// is applied *after* cache retrieval to preserve the existing order (cache stores raw
-/// extracted text only).
+/// If a cache is provided, uses the shared document text helper so repeated
+/// artefact scans see the same materialised OCR text as preview, search, word
+/// count, and export.
 fn get_document_text_with_status(
     record: &DocumentRecord,
     analyse_processed_text: bool,
     cleaning_config: &CleaningConfig,
     cache: Option<&ExtractionCache>,
 ) -> ExtractedScanText {
-    if let Some(cache) = cache {
-        let pdf_opts = if record.document_type == DocumentType::Pdf {
-            Some(build_repeated_artifact_pdf_options(
-                analyse_processed_text,
-                cleaning_config,
-            ))
-        } else {
-            None
-        };
-        let docx_config =
-            build_repeated_artifact_docx_config(analyse_processed_text, cleaning_config);
+    let mode = if analyse_processed_text {
+        DocumentTextMode::Processed
+    } else {
+        DocumentTextMode::Original
+    };
 
-        match cache.get_or_extract(record, pdf_opts, &docx_config) {
-            Ok(entry) => {
-                let processed_text = if analyse_processed_text {
-                    apply_scan_post_processing(&entry.extracted_text, cleaning_config)
-                } else {
-                    entry.extracted_text
-                };
-                return ExtractedScanText {
-                    text: processed_text,
-                    extraction_failed: false,
-                };
-            }
-            Err(_) => {
-                return ExtractedScanText {
-                    text: String::new(),
-                    extraction_failed: true,
-                };
-            }
-        }
-    }
-
-    let source_bytes = match std::fs::read(&record.source_path) {
-        Ok(b) => b,
-        Err(_) => {
-            return ExtractedScanText {
+    match document_text_for_record(record, cleaning_config, mode, cache) {
+        Ok(document_text) => ExtractedScanText {
+            text: document_text.text,
+            extraction_failed: false,
+            fatal_error: None,
+        },
+        Err(error) => {
+            let fatal_error = if error.contains("OCR text is not materialised") {
+                Some(error)
+            } else {
+                None
+            };
+            ExtractedScanText {
                 text: String::new(),
                 extraction_failed: true,
-            };
-        }
-    };
-
-    let (raw_text, extraction_failed) = match record.document_type {
-        DocumentType::Docx => {
-            let cfg = build_repeated_artifact_docx_config(analyse_processed_text, cleaning_config);
-            match crate::docx::extract_docx(&source_bytes, &cfg) {
-                Ok(extracted) => (extracted.text, false),
-                Err(_) => (String::new(), true),
+                fatal_error,
             }
         }
-        DocumentType::Pdf => {
-            let pdf_opts =
-                build_repeated_artifact_pdf_options(analyse_processed_text, cleaning_config);
-            match crate::pdf::extract_pdf(&source_bytes, None, pdf_opts) {
-                Ok(extracted) => (extracted.text, false),
-                Err(_) => (String::new(), true),
-            }
-        }
-        _ => (String::from_utf8_lossy(&source_bytes).into_owned(), false),
-    };
-
-    let processed_text = if analyse_processed_text {
-        apply_scan_post_processing(&raw_text, cleaning_config)
-    } else {
-        raw_text
-    };
-
-    ExtractedScanText {
-        text: processed_text,
-        extraction_failed,
     }
 }
 
@@ -932,6 +837,7 @@ fn phase1_scan_file(
             ft: build_file_text(file_idx, record, ""),
             local_map: HashMap::new(),
             extraction_failed: false,
+            fatal_error: None,
         };
     }
 
@@ -947,6 +853,7 @@ fn phase1_scan_file(
             ft: build_file_text(file_idx, record, ""),
             local_map: HashMap::new(),
             extraction_failed: false,
+            fatal_error: None,
         };
     }
 
@@ -963,6 +870,7 @@ fn phase1_scan_file(
         ft,
         local_map: map,
         extraction_failed: extracted.extraction_failed,
+        fatal_error: extracted.fatal_error,
     }
 }
 
@@ -1462,6 +1370,13 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
 
     if cancel.load(Ordering::Relaxed) {
         return Err("Scan cancelled.".to_string());
+    }
+
+    if let Some(error) = phase_results
+        .iter()
+        .find_map(|result| result.fatal_error.as_ref())
+    {
+        return Err(error.clone());
     }
 
     let files_scanned = phase_results.len();
@@ -2953,5 +2868,115 @@ mod tests {
                 page_norm.raw_variants
             );
         }
+    }
+
+    fn make_pdf_record(name: &str, temp_dir: &std::path::Path) -> DocumentRecord {
+        let bytes = b"%PDF-1.4\n% synthetic placeholder for cached OCR regression\n";
+        let file_path = temp_dir.join(name);
+        std::fs::write(&file_path, bytes).unwrap();
+        DocumentRecord {
+            source_path: file_path,
+            relative_path: PathBuf::from(name),
+            document_type: DocumentType::Pdf,
+            size_bytes: bytes.len() as u64,
+        }
+    }
+
+    fn force_ocr_cleaning_config() -> CleaningConfig {
+        CleaningConfig {
+            pdf_text_source: crate::clean::PdfTextSource::ForceOcr,
+            pdf_ocr_quality: crate::clean::PdfOcrQuality::HighQuality,
+            ..CleaningConfig::default()
+        }
+    }
+
+    #[test]
+    fn test_repeated_artifacts_original_mode_uses_materialised_ocr_cache() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let doc = make_pdf_record("cached-ocr.pdf", temp_dir.path());
+        let cleaning_config = force_ocr_cleaning_config();
+        let cache = ExtractionCache::new();
+        cache.insert_extracted(
+            &doc,
+            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                &cleaning_config,
+            )),
+            &cleaning_config,
+            crate::cache::CacheEntry {
+                extracted_text: "Header\nbody line\nHeader\nother body line\nHeader".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(1),
+            },
+        );
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 2,
+            min_files: 1,
+            min_line_chars: 3,
+            include_inline_artifacts: false,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let report = scan_repeated_artifacts_report_with_cancel_and_cache(
+            &[doc],
+            &config,
+            &cleaning_config,
+            Some(&cache),
+            &no_cancellation(),
+        )
+        .expect("scan should use cached OCR text");
+
+        assert_eq!(report.diagnostics.files_empty_after_extraction, 0);
+        assert!(report.diagnostics.total_raw_lines > 0);
+        assert!(report.candidates.iter().any(|candidate| {
+            candidate.kind == RepeatedArtifactKind::ExactLine && candidate.display_text == "Header"
+        }));
+    }
+
+    #[test]
+    fn test_repeated_artifacts_processed_mode_cleans_materialised_ocr_cache() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let doc = make_pdf_record("processed-cached-ocr.pdf", temp_dir.path());
+        let mut cleaning_config = force_ocr_cleaning_config();
+        cleaning_config.remove_patterns = vec!["Header".to_string()];
+        let cache = ExtractionCache::new();
+        cache.insert_extracted(
+            &doc,
+            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                &cleaning_config,
+            )),
+            &cleaning_config,
+            crate::cache::CacheEntry {
+                extracted_text: "Header\nKept line\nHeader\nKept line\nHeader".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(1),
+            },
+        );
+
+        let config = RepeatedArtifactScanConfig {
+            analyse_processed_text: true,
+            min_occurrences: 2,
+            min_files: 1,
+            min_line_chars: 3,
+            include_inline_artifacts: false,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let report = scan_repeated_artifacts_report_with_cancel_and_cache(
+            &[doc],
+            &config,
+            &cleaning_config,
+            Some(&cache),
+            &no_cancellation(),
+        )
+        .expect("processed scan should use cleaned cached OCR text");
+
+        assert!(report.candidates.iter().any(|candidate| {
+            candidate.kind == RepeatedArtifactKind::ExactLine
+                && candidate.display_text == "Kept line"
+        }));
+        assert!(!report.candidates.iter().any(|candidate| {
+            candidate.kind == RepeatedArtifactKind::ExactLine && candidate.display_text == "Header"
+        }));
     }
 }
