@@ -102,4 +102,4 @@ The first working version was built with PySide6 and lives in `legacy/pyside/`. 
 
 ## License
 
-MIT. Bundled third-party components are listed in [THIRD_PARTY_](https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md)[NOTICES.md](http://NOTICES.md).
+MIT. Bundled third-party components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

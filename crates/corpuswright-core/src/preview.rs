@@ -452,10 +452,7 @@ pub fn preview_processed_files(
                     }
                 }
             } else if record.document_type == DocumentType::Pdf {
-                let pdf_options = PdfExtractionOptions {
-                    use_ocr: true,
-                    ..PdfExtractionOptions::from_cleaning_config(cleaning_config)
-                };
+                let pdf_options = PdfExtractionOptions::from_cleaning_config(cleaning_config);
                 let cache_hit =
                     cache.and_then(|c| c.try_get(record, Some(pdf_options), cleaning_config));
                 if let Some(entry) = cache_hit {

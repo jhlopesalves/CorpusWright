@@ -715,23 +715,14 @@ fn detect_inline_artifacts(
 
 /// Build the PDF extraction options used by repeated artefact scanning.
 ///
-/// OCR is always `false` regardless of `cleaning_config`.
 /// When `analyse_processed_text` is true, uses the user's config for cleanup flags
-/// and strategy; otherwise uses PdfiumFlat and all cleanup flags disabled.
+/// and extraction options; otherwise uses PdfiumFlat and all cleanup flags disabled.
 fn build_repeated_artifact_pdf_options(
     analyse_processed_text: bool,
     cleaning_config: &CleaningConfig,
 ) -> PdfExtractionOptions {
     if analyse_processed_text {
-        PdfExtractionOptions {
-            strategy: cleaning_config.pdf_embedded_text_strategy,
-            use_ocr: false,
-            remove_repeated_headers_footers: cleaning_config.remove_repeated_pdf_headers_footers,
-            remove_page_labels: cleaning_config.remove_pdf_page_labels,
-            remove_symbol_heavy_artifacts: cleaning_config.remove_pdf_symbol_heavy_artifacts,
-            remove_code_like_blocks: cleaning_config.remove_pdf_code_like_blocks,
-            remove_formula_like_lines: cleaning_config.remove_pdf_formula_like_lines,
-        }
+        PdfExtractionOptions::from_cleaning_config(cleaning_config)
     } else {
         PdfExtractionOptions {
             strategy: crate::clean::PdfEmbeddedTextStrategy::PdfiumFlat,

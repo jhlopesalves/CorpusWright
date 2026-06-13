@@ -595,6 +595,62 @@ pre {
   margin-left: auto;
 }
 
+.pdf-intake-modal-content {
+  width: min(90vw, 560px);
+}
+
+.pdf-intake-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pdf-intake-profile {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+  cursor: pointer;
+}
+
+.pdf-intake-profile:hover,
+.pdf-intake-profile:focus-within {
+  border-color: var(--accent-color);
+}
+
+.pdf-intake-profile input {
+  margin-top: 3px;
+}
+
+.pdf-intake-profile-title,
+.pdf-intake-profile-help {
+  display: block;
+}
+
+.pdf-intake-profile-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.pdf-intake-profile-help {
+  margin-top: 3px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.pdf-intake-status {
+  margin-right: auto;
+  align-self: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

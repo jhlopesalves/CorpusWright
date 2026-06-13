@@ -1,6 +1,7 @@
 import type {
   CleaningConfig,
   PdfEmbeddedTextStrategy,
+  PdfTextSource,
   TableExtractionStrategy,
 } from "./generated/CleaningConfig.js";
 
@@ -43,6 +44,8 @@ export const ALLOWED_PDF_EMBEDDED_TEXT_STRATEGIES = [
   "PdfiumVisualColumnsExperimental",
 ] as const;
 
+export const ALLOWED_PDF_TEXT_SOURCES = ["EmbeddedText", "Ocr"] as const;
+
 export function createDefaultCleaningConfig(): CleaningConfig {
   return {
     join_line_breaks: false,
@@ -67,6 +70,7 @@ export function createDefaultCleaningConfig(): CleaningConfig {
     remove_table_of_contents: false,
     remove_patterns: [],
     replace_patterns: [],
+    pdf_text_source: "EmbeddedText",
     pdf_embedded_text_strategy: "PdfiumFlat",
     remove_repeated_pdf_headers_footers: false,
     remove_pdf_page_labels: false,
@@ -74,6 +78,13 @@ export function createDefaultCleaningConfig(): CleaningConfig {
     remove_pdf_code_like_blocks: false,
     remove_pdf_formula_like_lines: false
   };
+}
+
+export function isPdfTextSource(value: unknown): value is PdfTextSource {
+  return (
+    typeof value === "string" &&
+    (ALLOWED_PDF_TEXT_SOURCES as readonly string[]).includes(value)
+  );
 }
 
 export function isPdfEmbeddedTextStrategy(value: unknown): value is PdfEmbeddedTextStrategy {
@@ -106,6 +117,10 @@ export function normaliseCleaningConfig(raw: unknown): CleaningConfig {
 
   if (isPdfEmbeddedTextStrategy(obj.pdf_embedded_text_strategy)) {
     config.pdf_embedded_text_strategy = obj.pdf_embedded_text_strategy;
+  }
+
+  if (isPdfTextSource(obj.pdf_text_source)) {
+    config.pdf_text_source = obj.pdf_text_source;
   }
 
   if (Array.isArray(obj.remove_patterns) && obj.remove_patterns.every((p: unknown) => typeof p === "string")) {

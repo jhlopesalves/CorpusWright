@@ -19,6 +19,7 @@
           <div class="dropdown-content">
             <div class="dropdown-item" id="menu-open-files" tabindex="0">Open Files</div>
             <div class="dropdown-item" id="menu-open-dir" tabindex="0">Open Folder</div>
+            <div class="dropdown-item" id="menu-open-pdf-intake" tabindex="0">Open Scanned or Complex PDFs...</div>
             <div class="dropdown-item" id="menu-save-corpus" tabindex="0">Save Processed Corpus</div>
           </div>
         </div>
@@ -163,6 +164,60 @@
       </div>
     </div>
 
+    <!-- PDF Intake Modal -->
+    <div id="pdf-intake-modal" class="modal hidden" role="dialog" aria-modal="true"
+      aria-labelledby="pdf-intake-title" aria-describedby="pdf-intake-description">
+      <div class="modal-content pdf-intake-modal-content">
+        <button
+          id="btn-close-pdf-intake-modal-top"
+          class="modal-close-btn"
+          type="button"
+          aria-label="Close PDF Intake"
+        >
+          &times;
+        </button>
+        <h2 id="pdf-intake-title">Open Scanned or Complex PDFs</h2>
+        <p id="pdf-intake-description" class="modal-description">
+          Choose a slower, inspection-oriented PDF workflow. Preview before export: OCR may contain errors, layout
+          reconstruction is imperfect, and multi-column extraction is experimental. Source files are never modified.
+        </p>
+
+        <div class="pdf-intake-profiles" role="radiogroup" aria-label="PDF intake profile">
+          <label class="pdf-intake-profile" for="pdf-intake-standard">
+            <input type="radio" id="pdf-intake-standard" name="pdf-intake-profile" value="standard" checked />
+            <span>
+              <span class="pdf-intake-profile-title">Standard embedded-text PDF</span>
+              <span class="pdf-intake-profile-help">Fastest. Use when the PDF already contains selectable text.</span>
+            </span>
+          </label>
+
+          <label class="pdf-intake-profile" for="pdf-intake-layout">
+            <input type="radio" id="pdf-intake-layout" name="pdf-intake-profile" value="layout" />
+            <span>
+              <span class="pdf-intake-profile-title">Layout-heavy PDF</span>
+              <span class="pdf-intake-profile-help">Uses visual ordering and conservative PDF cleanup for awkward line
+                wraps, headers, footers, and page labels.</span>
+            </span>
+          </label>
+
+          <label class="pdf-intake-profile" for="pdf-intake-ocr">
+            <input type="radio" id="pdf-intake-ocr" name="pdf-intake-profile" value="ocr" />
+            <span>
+              <span class="pdf-intake-profile-title">Scanned / OCR rescue PDF</span>
+              <span class="pdf-intake-profile-help">Attempts OCR for scanned or image-based PDFs. Slower, and recognition
+                errors are possible.</span>
+            </span>
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <span id="pdf-intake-status" class="pdf-intake-status"></span>
+          <button id="cancel-pdf-intake-btn" type="button">Cancel</button>
+          <button id="choose-pdf-intake-files-btn" class="primary-btn" type="button">Choose PDFs...</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Settings Modal -->
     <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <div class="modal-content">
@@ -245,6 +300,21 @@
                 </select>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
                   Defines how tabular data (e.g., DOCX tables) should be transformed into plain text.
+                </p>
+              </div>
+            </details>
+
+            <details open>
+              <summary>PDF Text Source</summary>
+              <div style="padding-left: 0; margin-top: 4px;">
+                <select id="sel-pdf-text-source" class="settings-select"
+                  style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
+                  <option value="EmbeddedText">Embedded text</option>
+                  <option value="Ocr">OCR</option>
+                </select>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
+                  Embedded text is faster and best for born-digital PDFs. OCR is slower and intended for
+                  scanned/image-based PDFs.
                 </p>
               </div>
             </details>
