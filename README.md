@@ -1,6 +1,6 @@
 # CorpusWright
 [![CI](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/jhlopesalves/CorpusWright?include_prereleases&label=release)](https://github.com/jhlopesalves/CorpusWright/releases)
+[![Release](https://img.shields.io/badge/release-v0.1.0--alpha.3-blue)](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.3)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 
