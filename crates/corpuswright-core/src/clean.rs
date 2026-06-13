@@ -43,6 +43,16 @@ pub enum PdfTextSource {
     #[default]
     EmbeddedText,
     Ocr,
+    ForceOcr,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
+#[ts(export)]
+pub enum PdfOcrQuality {
+    Fast,
+    #[default]
+    Balanced,
+    HighQuality,
 }
 
 /// Configuration options for text cleaning operations.
@@ -74,6 +84,9 @@ pub struct CleaningConfig {
     /// PDF text source used before normal text cleaning is applied.
     #[serde(default)]
     pub pdf_text_source: PdfTextSource,
+    /// OCR render quality used when PDF OCR runs.
+    #[serde(default)]
+    pub pdf_ocr_quality: PdfOcrQuality,
     /// PDF extraction strategy.
     /// NOTE: This is an extraction-layer option specifying how raw PDF text
     /// is reconstructed from the character stream, NOT a text-cleaning/sanitization transformation.
@@ -480,6 +493,7 @@ mod tests {
             TableExtractionStrategy::TabSeparated
         );
         assert_eq!(config.pdf_text_source, PdfTextSource::EmbeddedText);
+        assert_eq!(config.pdf_ocr_quality, PdfOcrQuality::Balanced);
         assert_eq!(
             config.pdf_embedded_text_strategy,
             PdfEmbeddedTextStrategy::PdfiumFlat
@@ -493,6 +507,15 @@ mod tests {
 
         let config: CleaningConfig = serde_json::from_value(value).unwrap();
         assert_eq!(config.pdf_text_source, PdfTextSource::EmbeddedText);
+    }
+
+    #[test]
+    fn test_cleaning_config_deserializes_missing_pdf_ocr_quality() {
+        let mut value = serde_json::to_value(CleaningConfig::default()).unwrap();
+        value.as_object_mut().unwrap().remove("pdf_ocr_quality");
+
+        let config: CleaningConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(config.pdf_ocr_quality, PdfOcrQuality::Balanced);
     }
 
     #[test]

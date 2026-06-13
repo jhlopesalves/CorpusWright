@@ -9,7 +9,7 @@
 //! - Parallel workers build local maps; merged after per-file processing to avoid global lock contention.
 
 use crate::cache::ExtractionCache;
-use crate::clean::CleaningConfig;
+use crate::clean::{CleaningConfig, PdfOcrQuality, PdfTextSource};
 use crate::pdf::PdfExtractionOptions;
 use crate::scan::{DocumentRecord, DocumentType};
 use rayon::prelude::*;
@@ -726,7 +726,8 @@ fn build_repeated_artifact_pdf_options(
     } else {
         PdfExtractionOptions {
             strategy: crate::clean::PdfEmbeddedTextStrategy::PdfiumFlat,
-            use_ocr: false,
+            text_source: PdfTextSource::EmbeddedText,
+            ocr_quality: PdfOcrQuality::Balanced,
             remove_repeated_headers_footers: false,
             remove_page_labels: false,
             remove_symbol_heavy_artifacts: false,

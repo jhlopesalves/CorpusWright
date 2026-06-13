@@ -19,7 +19,9 @@
 //!   are evicted until within the limit.
 //! - Cache is cleared on corpus reload / clear.
 
-use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, TableExtractionStrategy};
+use crate::clean::{
+    CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource, TableExtractionStrategy,
+};
 use crate::pdf::PdfExtractionOptions;
 use crate::scan::{DocumentRecord, DocumentType};
 use std::collections::{HashMap, VecDeque};
@@ -36,7 +38,8 @@ pub const DEFAULT_MAX_ENTRY_BYTES: usize = 10 * 1024 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PdfOptionsKey {
     pub strategy: PdfEmbeddedTextStrategy,
-    pub use_ocr: bool,
+    pub text_source: PdfTextSource,
+    pub ocr_quality: PdfOcrQuality,
     pub remove_repeated_headers_footers: bool,
     pub remove_page_labels: bool,
     pub remove_symbol_heavy_artifacts: bool,
@@ -48,7 +51,8 @@ impl From<PdfExtractionOptions> for PdfOptionsKey {
     fn from(opts: PdfExtractionOptions) -> Self {
         Self {
             strategy: opts.strategy,
-            use_ocr: opts.use_ocr,
+            text_source: opts.text_source,
+            ocr_quality: opts.ocr_quality,
             remove_repeated_headers_footers: opts.remove_repeated_headers_footers,
             remove_page_labels: opts.remove_page_labels,
             remove_symbol_heavy_artifacts: opts.remove_symbol_heavy_artifacts,
@@ -449,7 +453,8 @@ mod tests {
         let _cache = ExtractionCache::new();
 
         let opts_a = PdfExtractionOptions {
-            use_ocr: false,
+            text_source: PdfTextSource::EmbeddedText,
+            ocr_quality: PdfOcrQuality::Balanced,
             remove_code_like_blocks: false,
             remove_formula_like_lines: false,
             remove_page_labels: false,
@@ -458,13 +463,35 @@ mod tests {
             strategy: PdfEmbeddedTextStrategy::PdfiumFlat,
         };
         let opts_b = PdfExtractionOptions {
-            use_ocr: true,
+            text_source: PdfTextSource::Ocr,
+            ..opts_a
+        };
+        let opts_c = PdfExtractionOptions {
+            text_source: PdfTextSource::ForceOcr,
+            ..opts_a
+        };
+        let opts_d = PdfExtractionOptions {
+            text_source: PdfTextSource::ForceOcr,
+            ocr_quality: PdfOcrQuality::HighQuality,
             ..opts_a
         };
 
         let key_a = ExtractionKey::from_record(&record, Some(opts_a), &CleaningConfig::default());
         let key_b = ExtractionKey::from_record(&record, Some(opts_b), &CleaningConfig::default());
-        assert_ne!(key_a, key_b, "PDF options with different OCR should differ");
+        let key_c = ExtractionKey::from_record(&record, Some(opts_c), &CleaningConfig::default());
+        let key_d = ExtractionKey::from_record(&record, Some(opts_d), &CleaningConfig::default());
+        assert_ne!(
+            key_a, key_b,
+            "Embedded text and OCR rescue cache keys should differ"
+        );
+        assert_ne!(
+            key_b, key_c,
+            "OCR rescue and force OCR cache keys should differ"
+        );
+        assert_ne!(
+            key_c, key_d,
+            "OCR quality presets should be part of the cache key"
+        );
 
         let key_a2 = ExtractionKey::from_record(&record, Some(opts_a), &CleaningConfig::default());
         assert_eq!(key_a, key_a2, "Same PDF options should match");
@@ -546,10 +573,7 @@ mod tests {
         std::fs::write(&path, b"%PDF-1.4").unwrap();
 
         let cache = ExtractionCache::new();
-        let pdf_opts = PdfExtractionOptions {
-            use_ocr: false,
-            ..PdfExtractionOptions::raw_default()
-        };
+        let pdf_opts = PdfExtractionOptions::raw_default();
 
         let result = cache.get_or_extract(&record, Some(pdf_opts), &CleaningConfig::default());
         // The minimal PDF may fail before cache metadata exists; either outcome is acceptable here.

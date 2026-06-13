@@ -95,6 +95,13 @@ struct ExportProgress {
     current_file: String,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WordCountBatchResult {
+    total_words: u64,
+    skipped_ocr_mode: bool,
+}
+
 #[tauri::command(async)]
 fn scan_directory_command(
     path: String,
@@ -277,19 +284,23 @@ fn compute_word_count_command(
     corpus: tauri::State<'_, CorpusState>,
     cleaning_config: CleaningConfig,
     cache: tauri::State<'_, ExtractionCache>,
-) -> Result<u64, String> {
+) -> Result<WordCountBatchResult, String> {
     let records = corpus.records_for_indices(&indices, corpus_version)?;
-    let total_words: u64 = records
-        .iter()
-        .map(|record| {
-            corpuswright_core::word_count::count_words_for_record(
-                record,
-                &cleaning_config,
-                Some(&*cache),
-            ) as u64
-        })
-        .sum();
-    Ok(total_words)
+    let mut total_words = 0;
+    let mut skipped_ocr_mode = false;
+    for record in &records {
+        let outcome = corpuswright_core::word_count::count_words_for_record(
+            record,
+            &cleaning_config,
+            Some(&*cache),
+        );
+        total_words += outcome.count as u64;
+        skipped_ocr_mode |= outcome.skipped_ocr_mode;
+    }
+    Ok(WordCountBatchResult {
+        total_words,
+        skipped_ocr_mode,
+    })
 }
 
 #[tauri::command(async)]

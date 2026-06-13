@@ -26,6 +26,7 @@ pub enum PdfAuditSuggestedProfile {
     Standard,
     LayoutHeavy,
     OcrRescue,
+    ForceOcr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -113,15 +114,15 @@ fn audit_pdf_file(path: &Path, environment: &PdfAuditEnvironment) -> PdfAuditRes
 
     match quality {
         PdfAuditQuality::Empty => warnings.push(
-            "This PDF appears to contain little or no embedded text. OCR rescue is recommended."
+            "This PDF appears to contain little or no embedded text. Force OCR is recommended."
                 .to_string(),
         ),
         PdfAuditQuality::Poor => warnings.push(
-            "Embedded text was found, but extraction quality looks poor. OCR rescue is recommended and preview should be inspected."
+            "Embedded text was found, but extraction quality looks very poor. Force OCR is recommended and preview should be inspected."
                 .to_string(),
         ),
         PdfAuditQuality::Suspicious => warnings.push(
-            "Embedded text was found, but extraction quality looks suspicious. Try Layout-heavy PDF or OCR rescue and inspect the preview."
+            "Embedded text was found, but extraction quality looks suspicious. Try OCR rescue or Layout-heavy PDF and inspect the preview."
                 .to_string(),
         ),
         PdfAuditQuality::Good | PdfAuditQuality::Unknown => {}
@@ -129,16 +130,18 @@ fn audit_pdf_file(path: &Path, environment: &PdfAuditEnvironment) -> PdfAuditRes
 
     if !environment.ocr_model_resources_available {
         warnings.push(
-            "OCR model files are unavailable; OCR rescue may not run until the OCR resources are installed."
+            "OCR model files are unavailable; OCR profiles may not run until the OCR resources are installed."
                 .to_string(),
         );
     }
 
-    if suggested_profile == PdfAuditSuggestedProfile::OcrRescue
-        && environment.ocr_model_resources_available
+    if matches!(
+        suggested_profile,
+        PdfAuditSuggestedProfile::OcrRescue | PdfAuditSuggestedProfile::ForceOcr
+    ) && environment.ocr_model_resources_available
     {
         warnings.push(
-            "OCR rescue is suggested, but this audit only checks OCR model files and does not verify full OCR usability."
+            "An OCR profile is suggested, but this audit only checks OCR model files and does not verify full OCR usability."
                 .to_string(),
         );
     }
@@ -308,13 +311,13 @@ fn suggested_profile_for_quality(
 ) -> PdfAuditSuggestedProfile {
     match quality {
         PdfAuditQuality::Good => PdfAuditSuggestedProfile::Standard,
-        PdfAuditQuality::Suspicious => PdfAuditSuggestedProfile::LayoutHeavy,
-        PdfAuditQuality::Poor | PdfAuditQuality::Empty => PdfAuditSuggestedProfile::OcrRescue,
+        PdfAuditQuality::Suspicious => PdfAuditSuggestedProfile::OcrRescue,
+        PdfAuditQuality::Poor | PdfAuditQuality::Empty => PdfAuditSuggestedProfile::ForceOcr,
         PdfAuditQuality::Unknown => {
             if embedded_text_chars == 0 {
-                PdfAuditSuggestedProfile::OcrRescue
+                PdfAuditSuggestedProfile::ForceOcr
             } else {
-                PdfAuditSuggestedProfile::LayoutHeavy
+                PdfAuditSuggestedProfile::OcrRescue
             }
         }
     }
@@ -368,15 +371,15 @@ mod tests {
         );
         assert_eq!(
             suggested_profile_for_quality(&PdfAuditQuality::Suspicious, 100),
-            PdfAuditSuggestedProfile::LayoutHeavy
+            PdfAuditSuggestedProfile::OcrRescue
         );
         assert_eq!(
             suggested_profile_for_quality(&PdfAuditQuality::Empty, 0),
-            PdfAuditSuggestedProfile::OcrRescue
+            PdfAuditSuggestedProfile::ForceOcr
         );
         assert_eq!(
             suggested_profile_for_quality(&PdfAuditQuality::Poor, 100),
-            PdfAuditSuggestedProfile::OcrRescue
+            PdfAuditSuggestedProfile::ForceOcr
         );
     }
 

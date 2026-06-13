@@ -18,7 +18,7 @@ let callbacks: CorpusCallbacks = {
   updateWordCount: () => {},
 };
 
-type PdfIntakeProfileId = "standard" | "layout" | "ocr";
+type PdfIntakeProfileId = "standard" | "layout" | "ocr" | "force-ocr";
 type PdfAuditSeverity = PdfAuditSuggestedProfile;
 
 interface PdfIntakeProfile {
@@ -31,6 +31,7 @@ const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
     statusLabel: "standard embedded-text profile",
     apply: (config) => {
       config.pdf_text_source = "EmbeddedText";
+      config.pdf_ocr_quality = "Balanced";
       config.pdf_embedded_text_strategy = "PdfiumFlat";
       config.remove_repeated_pdf_headers_footers = false;
       config.remove_pdf_page_labels = false;
@@ -43,6 +44,7 @@ const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
     statusLabel: "layout-heavy profile",
     apply: (config) => {
       config.pdf_text_source = "EmbeddedText";
+      config.pdf_ocr_quality = "Balanced";
       config.pdf_embedded_text_strategy = "PdfiumVisualSingleColumn";
       config.remove_repeated_pdf_headers_footers = true;
       config.remove_pdf_page_labels = true;
@@ -55,6 +57,20 @@ const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
     statusLabel: "scanned/OCR rescue profile",
     apply: (config) => {
       config.pdf_text_source = "Ocr";
+      config.pdf_ocr_quality = "Balanced";
+      config.pdf_embedded_text_strategy = "PdfiumFlat";
+      config.remove_repeated_pdf_headers_footers = true;
+      config.remove_pdf_page_labels = true;
+      config.remove_pdf_symbol_heavy_artifacts = false;
+      config.remove_pdf_code_like_blocks = false;
+      config.remove_pdf_formula_like_lines = false;
+    },
+  },
+  "force-ocr": {
+    statusLabel: "force OCR/high-quality profile",
+    apply: (config) => {
+      config.pdf_text_source = "ForceOcr";
+      config.pdf_ocr_quality = "HighQuality";
       config.pdf_embedded_text_strategy = "PdfiumFlat";
       config.remove_repeated_pdf_headers_footers = true;
       config.remove_pdf_page_labels = true;
@@ -69,12 +85,14 @@ const auditProfileToIntakeProfile: Record<PdfAuditSuggestedProfile, PdfIntakePro
   standard: "standard",
   layout_heavy: "layout",
   ocr_rescue: "ocr",
+  force_ocr: "force-ocr",
 };
 
 const profileDisplayNames: Record<PdfIntakeProfileId, string> = {
   standard: "Standard",
   layout: "Layout-heavy",
   ocr: "OCR rescue",
+  "force-ocr": "Force OCR",
 };
 
 let pdfIntakeSelectedPaths: string[] = [];
@@ -93,7 +111,7 @@ function clearStateForLoad(): void {
 
 function selectedPdfIntakeProfileId(): PdfIntakeProfileId {
   const selected = document.querySelector<HTMLInputElement>('input[name="pdf-intake-profile"]:checked');
-  if (selected?.value === "layout" || selected?.value === "ocr") {
+  if (selected?.value === "layout" || selected?.value === "ocr" || selected?.value === "force-ocr") {
     return selected.value;
   }
   return "standard";
@@ -235,7 +253,9 @@ function renderPdfAuditLoading(fileCount: number): void {
 function batchSuggestedProfile(results: PdfAuditResult[]): PdfIntakeProfileId {
   let strongest: PdfAuditSeverity = "standard";
   for (const result of results) {
-    if (result.suggested_profile === "ocr_rescue") {
+    if (result.suggested_profile === "force_ocr") {
+      strongest = "force_ocr";
+    } else if (result.suggested_profile === "ocr_rescue" && strongest !== "force_ocr") {
       strongest = "ocr_rescue";
     } else if (result.suggested_profile === "layout_heavy" && strongest === "standard") {
       strongest = "layout_heavy";
