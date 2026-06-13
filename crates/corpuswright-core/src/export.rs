@@ -149,6 +149,7 @@ pub fn export_corpus(
                 DocumentType::Docx => Some("docx_zip_wordprocessingml".to_string()),
                 DocumentType::Pdf => match cleaning_config.pdf_text_source {
                     PdfTextSource::Ocr => Some("pdf_ocr_rescue".to_string()),
+                    PdfTextSource::ForceOcr => Some("pdf_force_ocr".to_string()),
                     PdfTextSource::EmbeddedText => match cleaning_config.pdf_embedded_text_strategy
                     {
                         PdfEmbeddedTextStrategy::PdfiumFlat => Some("pdfium_flat".to_string()),

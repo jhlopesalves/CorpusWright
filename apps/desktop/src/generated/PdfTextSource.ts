@@ -1,1 +1,1 @@
-export type PdfTextSource = "EmbeddedText" | "Ocr";
+export type PdfTextSource = "EmbeddedText" | "Ocr" | "ForceOcr";

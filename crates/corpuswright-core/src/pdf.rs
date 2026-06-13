@@ -1,15 +1,19 @@
-use crate::clean::{PdfEmbeddedTextStrategy, PdfTextSource};
+use crate::clean::{PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource};
 use lopdf::Document;
 use regex::Regex;
 use std::sync::{LazyLock, Mutex};
 
 pub static PDFIUM_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+const PDF_OCR_PREVIEW_CHAR_CAP: usize = 5_000;
+const PDF_OCR_PREVIEW_PAGE_CAP: usize = 3;
+
 /// Named options for PDF extraction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PdfExtractionOptions {
     pub strategy: PdfEmbeddedTextStrategy,
-    pub use_ocr: bool,
+    pub text_source: PdfTextSource,
+    pub ocr_quality: PdfOcrQuality,
     pub remove_repeated_headers_footers: bool,
     pub remove_page_labels: bool,
     pub remove_symbol_heavy_artifacts: bool,
@@ -22,7 +26,8 @@ impl PdfExtractionOptions {
     pub fn from_cleaning_config(config: &crate::clean::CleaningConfig) -> Self {
         Self {
             strategy: config.pdf_embedded_text_strategy,
-            use_ocr: matches!(config.pdf_text_source, PdfTextSource::Ocr),
+            text_source: config.pdf_text_source,
+            ocr_quality: config.pdf_ocr_quality,
             remove_repeated_headers_footers: config.remove_repeated_pdf_headers_footers,
             remove_page_labels: config.remove_pdf_page_labels,
             remove_symbol_heavy_artifacts: config.remove_pdf_symbol_heavy_artifacts,
@@ -35,12 +40,52 @@ impl PdfExtractionOptions {
     pub fn raw_default() -> Self {
         Self {
             strategy: PdfEmbeddedTextStrategy::PdfiumFlat,
-            use_ocr: false,
+            text_source: PdfTextSource::EmbeddedText,
+            ocr_quality: PdfOcrQuality::Balanced,
             remove_repeated_headers_footers: false,
             remove_page_labels: false,
             remove_symbol_heavy_artifacts: false,
             remove_code_like_blocks: false,
             remove_formula_like_lines: false,
+        }
+    }
+}
+
+fn capped_ocr_chars_for_preview(max_chars: Option<usize>) -> Option<usize> {
+    max_chars.map(|limit| limit.min(PDF_OCR_PREVIEW_CHAR_CAP))
+}
+
+fn warn_about_ocr_preview_cap(warnings: &mut Vec<String>, max_chars: Option<usize>) {
+    if let Some(cap) = capped_ocr_chars_for_preview(max_chars) {
+        warnings.push(format!(
+            "OCR preview was capped to at most {} characters and {} pages. Search and export may process more text and take much longer.",
+            cap, PDF_OCR_PREVIEW_PAGE_CAP
+        ));
+    }
+}
+
+fn run_pdf_ocr(
+    bytes: &[u8],
+    max_chars: Option<usize>,
+    ocr_quality: PdfOcrQuality,
+    warnings: &mut Vec<String>,
+    success_warning: &str,
+) -> Option<String> {
+    warn_about_ocr_preview_cap(warnings, max_chars);
+    match crate::pdf_ocr::extract_text_via_ocr(
+        bytes,
+        capped_ocr_chars_for_preview(max_chars),
+        max_chars.map(|_| PDF_OCR_PREVIEW_PAGE_CAP),
+        ocr_quality,
+    ) {
+        Ok(ocr) => {
+            warnings.extend(ocr.warnings);
+            warnings.push(success_warning.to_string());
+            Some(ocr.text)
+        }
+        Err(e) => {
+            warnings.push(format!("Experimental OCR failed: {}", e));
+            None
         }
     }
 }
@@ -450,7 +495,8 @@ pub fn extract_pdf(
 ) -> Result<ExtractedPdf, PdfExtractionError> {
     let PdfExtractionOptions {
         strategy,
-        use_ocr,
+        text_source,
+        ocr_quality,
         remove_repeated_headers_footers,
         remove_page_labels,
         remove_symbol_heavy_artifacts,
@@ -487,6 +533,17 @@ pub fn extract_pdf(
                 "PDFium native library not available; OCR fallback is disabled and PDF extraction may be limited. ({})",
                 pdfium_error
             ));
+            if text_source == PdfTextSource::ForceOcr {
+                warnings.push(
+                    "Force OCR was selected, but PDFium is unavailable; embedded-text fallback was not used for this OCR mode."
+                        .to_string(),
+                );
+                return Ok(ExtractedPdf {
+                    text: String::new(),
+                    warnings,
+                    page_count: doc.get_pages().len(),
+                });
+            }
             let page_numbers: Vec<u32> = doc.get_pages().keys().copied().collect();
             return extract_with_lopdf_fallback(
                 &doc,
@@ -518,6 +575,26 @@ pub fn extract_pdf(
 
     warnings.push("PDF reading order is not guaranteed. Formatting may be lost.".to_string());
     warnings.push("PDF backend: PDFium.".to_string());
+
+    if text_source == PdfTextSource::ForceOcr {
+        let text = run_pdf_ocr(
+            bytes,
+            max_chars,
+            ocr_quality,
+            &mut warnings,
+            "Used experimental Force OCR to extract PDF text from rendered pages.",
+        )
+        .unwrap_or_default();
+        if text.trim().is_empty() {
+            warnings.push("Force OCR completed but produced no text.".to_string());
+        }
+
+        return Ok(ExtractedPdf {
+            text,
+            warnings,
+            page_count,
+        });
+    }
 
     let mut all_text = String::new();
     let mut has_any_text = false;
@@ -941,21 +1018,20 @@ pub fn extract_pdf(
         warnings.push("PDF embedded-text extraction appears low quality. The output contains unusually many symbols or non-word fragments.".to_string());
     }
 
-    if use_ocr && (!has_any_text || is_poor_quality) {
-        // Cap OCR fallback length for large previews to prevent UI freezing.
-        // Export passes None, so it remains uncapped.
-        let ocr_max_chars = max_chars.map(|limit| if limit > 2000 { 1000 } else { limit });
-
-        match crate::pdf_ocr::extract_text_via_ocr(bytes, ocr_max_chars) {
-            Ok(ocr_text) => {
-                all_text = ocr_text;
-                warnings
-                    .push("Used experimental OCR to extract text from scanned pages.".to_string());
-            }
-            Err(e) => {
-                warnings.push(format!("Experimental OCR failed: {}", e));
-            }
+    if text_source == PdfTextSource::Ocr
+        && (!has_any_text || is_poor_quality)
+        && let Some(ocr_text) = run_pdf_ocr(
+            bytes,
+            max_chars,
+            ocr_quality,
+            &mut warnings,
+            "Used experimental OCR rescue to extract text from scanned pages.",
+        )
+    {
+        if ocr_text.trim().is_empty() {
+            warnings.push("OCR rescue completed but produced no text.".to_string());
         }
+        all_text = ocr_text;
     }
 
     Ok(ExtractedPdf {
@@ -1301,7 +1377,7 @@ fn classify_pdf_line(line: &str) -> PdfLineKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, PdfTextSource};
+    use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource};
     use lopdf::content::{Content, Operation};
     use lopdf::{Document, Object, Stream, StringFormat, dictionary};
 
@@ -1309,6 +1385,7 @@ mod tests {
     fn test_pdf_extraction_options_from_cleaning_config() {
         let config = CleaningConfig {
             pdf_text_source: PdfTextSource::Ocr,
+            pdf_ocr_quality: PdfOcrQuality::HighQuality,
             pdf_embedded_text_strategy: PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn,
             remove_repeated_pdf_headers_footers: true,
             remove_pdf_page_labels: true,
@@ -1322,7 +1399,8 @@ mod tests {
             options.strategy,
             PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn
         );
-        assert!(options.use_ocr);
+        assert_eq!(options.text_source, PdfTextSource::Ocr);
+        assert_eq!(options.ocr_quality, PdfOcrQuality::HighQuality);
         assert!(options.remove_repeated_headers_footers);
         assert!(options.remove_page_labels);
         assert!(!options.remove_symbol_heavy_artifacts);
@@ -1333,14 +1411,16 @@ mod tests {
     #[test]
     fn test_pdf_extraction_options_default_to_embedded_text() {
         let options = PdfExtractionOptions::from_cleaning_config(&CleaningConfig::default());
-        assert!(!options.use_ocr);
+        assert_eq!(options.text_source, PdfTextSource::EmbeddedText);
+        assert_eq!(options.ocr_quality, PdfOcrQuality::Balanced);
     }
 
     #[test]
     fn test_pdf_extraction_options_raw_default() {
         let options = PdfExtractionOptions::raw_default();
         assert_eq!(options.strategy, PdfEmbeddedTextStrategy::PdfiumFlat);
-        assert!(!options.use_ocr);
+        assert_eq!(options.text_source, PdfTextSource::EmbeddedText);
+        assert_eq!(options.ocr_quality, PdfOcrQuality::Balanced);
         assert!(!options.remove_repeated_headers_footers);
         assert!(!options.remove_page_labels);
         assert!(!options.remove_symbol_heavy_artifacts);

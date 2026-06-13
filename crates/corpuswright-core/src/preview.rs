@@ -1,5 +1,5 @@
 use crate::cache::ExtractionCache;
-use crate::clean::{CleaningConfig, clean_text};
+use crate::clean::{CleaningConfig, PdfOcrQuality, PdfTextSource, clean_text};
 use crate::pdf::PdfExtractionOptions;
 use crate::scan::{DocumentRecord, DocumentType};
 use rayon::prelude::*;
@@ -182,7 +182,8 @@ pub fn preview_file(
         }
     } else if record.document_type == DocumentType::Pdf {
         let pdf_options = PdfExtractionOptions {
-            use_ocr: true,
+            text_source: PdfTextSource::Ocr,
+            ocr_quality: PdfOcrQuality::Balanced,
             ..PdfExtractionOptions::raw_default()
         };
         if let Some(cache) = cache {
@@ -213,7 +214,8 @@ pub fn preview_file(
                     &bytes,
                     Some(options.max_chars_per_file),
                     PdfExtractionOptions {
-                        use_ocr: true,
+                        text_source: PdfTextSource::Ocr,
+                        ocr_quality: PdfOcrQuality::Balanced,
                         ..PdfExtractionOptions::raw_default()
                     },
                 ) {
@@ -256,7 +258,8 @@ pub fn preview_file(
                 &bytes,
                 Some(options.max_chars_per_file),
                 PdfExtractionOptions {
-                    use_ocr: true,
+                    text_source: PdfTextSource::Ocr,
+                    ocr_quality: PdfOcrQuality::Balanced,
                     ..PdfExtractionOptions::raw_default()
                 },
             ) {

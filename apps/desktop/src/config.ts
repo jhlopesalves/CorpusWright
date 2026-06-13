@@ -1,6 +1,7 @@
 import type {
   CleaningConfig,
   PdfEmbeddedTextStrategy,
+  PdfOcrQuality,
   PdfTextSource,
   TableExtractionStrategy,
 } from "./generated/CleaningConfig.js";
@@ -44,7 +45,9 @@ export const ALLOWED_PDF_EMBEDDED_TEXT_STRATEGIES = [
   "PdfiumVisualColumnsExperimental",
 ] as const;
 
-export const ALLOWED_PDF_TEXT_SOURCES = ["EmbeddedText", "Ocr"] as const;
+export const ALLOWED_PDF_TEXT_SOURCES = ["EmbeddedText", "Ocr", "ForceOcr"] as const;
+
+export const ALLOWED_PDF_OCR_QUALITIES = ["Fast", "Balanced", "HighQuality"] as const;
 
 export function createDefaultCleaningConfig(): CleaningConfig {
   return {
@@ -71,6 +74,7 @@ export function createDefaultCleaningConfig(): CleaningConfig {
     remove_patterns: [],
     replace_patterns: [],
     pdf_text_source: "EmbeddedText",
+    pdf_ocr_quality: "Balanced",
     pdf_embedded_text_strategy: "PdfiumFlat",
     remove_repeated_pdf_headers_footers: false,
     remove_pdf_page_labels: false,
@@ -84,6 +88,13 @@ export function isPdfTextSource(value: unknown): value is PdfTextSource {
   return (
     typeof value === "string" &&
     (ALLOWED_PDF_TEXT_SOURCES as readonly string[]).includes(value)
+  );
+}
+
+export function isPdfOcrQuality(value: unknown): value is PdfOcrQuality {
+  return (
+    typeof value === "string" &&
+    (ALLOWED_PDF_OCR_QUALITIES as readonly string[]).includes(value)
   );
 }
 
@@ -121,6 +132,10 @@ export function normaliseCleaningConfig(raw: unknown): CleaningConfig {
 
   if (isPdfTextSource(obj.pdf_text_source)) {
     config.pdf_text_source = obj.pdf_text_source;
+  }
+
+  if (isPdfOcrQuality(obj.pdf_ocr_quality)) {
+    config.pdf_ocr_quality = obj.pdf_ocr_quality;
   }
 
   if (Array.isArray(obj.remove_patterns) && obj.remove_patterns.every((p: unknown) => typeof p === "string")) {

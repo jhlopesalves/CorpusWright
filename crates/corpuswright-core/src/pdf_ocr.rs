@@ -1,3 +1,4 @@
+use crate::clean::PdfOcrQuality;
 use ocrs::{OcrEngine, OcrEngineParams};
 use pdfium_render::prelude::*;
 use rten::Model;
@@ -7,6 +8,88 @@ use std::sync::{LazyLock, OnceLock, RwLock};
 static OCR_ENGINE: OnceLock<OcrEngine> = OnceLock::new();
 static PDFIUM_LIBRARY: OnceLock<Pdfium> = OnceLock::new();
 static OCR_RESOURCE_DIR: LazyLock<RwLock<Option<PathBuf>>> = LazyLock::new(|| RwLock::new(None));
+
+#[derive(Debug, Clone)]
+pub struct OcrExtraction {
+    pub text: String,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Clone, Copy)]
+struct OcrRenderPreset {
+    dpi: f64,
+    max_dimension: i32,
+    max_pixels: u64,
+}
+
+fn render_preset(quality: PdfOcrQuality) -> OcrRenderPreset {
+    match quality {
+        PdfOcrQuality::Fast => OcrRenderPreset {
+            dpi: 150.0,
+            max_dimension: 2_400,
+            max_pixels: 6_000_000,
+        },
+        PdfOcrQuality::Balanced => OcrRenderPreset {
+            dpi: 200.0,
+            max_dimension: 3_200,
+            max_pixels: 10_000_000,
+        },
+        PdfOcrQuality::HighQuality => OcrRenderPreset {
+            dpi: 300.0,
+            max_dimension: 4_096,
+            max_pixels: 14_000_000,
+        },
+    }
+}
+
+fn render_config_for_page(
+    page: &PdfPage<'_>,
+    quality: PdfOcrQuality,
+    page_number: usize,
+) -> (PdfRenderConfig, Option<String>) {
+    let preset = render_preset(quality);
+    let page_width_points = f64::from(page.width().value).max(1.0);
+    let page_height_points = f64::from(page.height().value).max(1.0);
+    let desired_width = (page_width_points / 72.0 * preset.dpi).round().max(1.0);
+    let desired_height = (page_height_points / 72.0 * preset.dpi).round().max(1.0);
+
+    let dimension_scale = (f64::from(preset.max_dimension) / desired_width)
+        .min(f64::from(preset.max_dimension) / desired_height)
+        .min(1.0);
+    let desired_pixels = desired_width * desired_height;
+    let pixel_scale = if desired_pixels > preset.max_pixels as f64 {
+        (preset.max_pixels as f64 / desired_pixels).sqrt()
+    } else {
+        1.0
+    };
+    let scale = dimension_scale.min(pixel_scale).min(1.0);
+
+    let target_width = (desired_width * scale)
+        .round()
+        .max(1.0)
+        .min(f64::from(preset.max_dimension)) as i32;
+    let target_height = (desired_height * scale)
+        .round()
+        .max(1.0)
+        .min(f64::from(preset.max_dimension)) as i32;
+
+    let warning = if scale < 0.999 {
+        Some(format!(
+            "OCR render size was clamped on page {} from {}x{} to about {}x{} pixels to limit memory use.",
+            page_number, desired_width as u64, desired_height as u64, target_width, target_height
+        ))
+    } else {
+        None
+    };
+
+    let render_config = PdfRenderConfig::new()
+        .set_target_width(target_width)
+        .set_maximum_width(preset.max_dimension)
+        .set_maximum_height(preset.max_dimension)
+        .set_clear_color(PdfColor::WHITE);
+
+    (render_config, warning)
+}
 
 /// Overrides the OCR/PDFium resource directory used by core extraction.
 ///
@@ -210,7 +293,12 @@ fn init_ocr_engine() -> anyhow::Result<&'static OcrEngine> {
     Ok(OCR_ENGINE.get().unwrap())
 }
 
-pub fn extract_text_via_ocr(bytes: &[u8], max_chars: Option<usize>) -> anyhow::Result<String> {
+pub fn extract_text_via_ocr(
+    bytes: &[u8],
+    max_chars: Option<usize>,
+    max_pages: Option<usize>,
+    quality: PdfOcrQuality,
+) -> anyhow::Result<OcrExtraction> {
     let pdfium = init_pdfium()?;
     let engine = init_ocr_engine()?;
 
@@ -219,13 +307,18 @@ pub fn extract_text_via_ocr(bytes: &[u8], max_chars: Option<usize>) -> anyhow::R
         pdfium.load_pdf_from_byte_slice(bytes, None)?
     };
     let mut all_text = String::new();
+    let mut warnings = Vec::new();
 
     let page_count = {
         let _lock = crate::pdf::PDFIUM_LOCK.lock().unwrap();
         document.pages().len() as usize
     };
 
-    for page_index in 0..page_count {
+    let pages_to_process = max_pages
+        .map(|limit| limit.min(page_count))
+        .unwrap_or(page_count);
+
+    for page_index in 0..pages_to_process {
         if let Some(limit) = max_chars
             && all_text.chars().count() >= limit
         {
@@ -235,10 +328,11 @@ pub fn extract_text_via_ocr(bytes: &[u8], max_chars: Option<usize>) -> anyhow::R
         let image = {
             let _lock = crate::pdf::PDFIUM_LOCK.lock().unwrap();
             let page = document.pages().get(page_index as i32)?;
-            // Render to roughly 200 DPI
-            let render_config = PdfRenderConfig::new()
-                .set_target_width(1200)
-                .set_clear_color(PdfColor::WHITE);
+            let (render_config, render_warning) =
+                render_config_for_page(&page, quality, page_index + 1);
+            if let Some(warning) = render_warning {
+                warnings.push(warning);
+            }
 
             let bitmap = page.render_with_config(&render_config)?;
             bitmap.as_image()?
@@ -272,7 +366,10 @@ pub fn extract_text_via_ocr(bytes: &[u8], max_chars: Option<usize>) -> anyhow::R
         }
     }
 
-    Ok(all_text)
+    Ok(OcrExtraction {
+        text: all_text,
+        warnings,
+    })
 }
 
 #[cfg(test)]

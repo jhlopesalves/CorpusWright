@@ -203,9 +203,17 @@
           <label class="pdf-intake-profile" for="pdf-intake-ocr">
             <input type="radio" id="pdf-intake-ocr" name="pdf-intake-profile" value="ocr" />
             <span>
-              <span class="pdf-intake-profile-title">Scanned / OCR rescue PDF</span>
+              <span class="pdf-intake-profile-title">OCR rescue PDF</span>
               <span class="pdf-intake-profile-help">Attempts OCR for scanned or image-based PDFs. Slower, and recognition
                 errors are possible.</span>
+            </span>
+          </label>
+
+          <label class="pdf-intake-profile" for="pdf-intake-force-ocr">
+            <input type="radio" id="pdf-intake-force-ocr" name="pdf-intake-profile" value="force-ocr" />
+            <span>
+              <span class="pdf-intake-profile-title">Force OCR (slow)</span>
+              <span class="pdf-intake-profile-help">Ignores embedded PDF text and OCRs rendered pages at high quality.</span>
             </span>
           </label>
         </div>
@@ -317,11 +325,27 @@
                 <select id="sel-pdf-text-source" class="settings-select"
                   style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
                   <option value="EmbeddedText">Embedded text</option>
-                  <option value="Ocr">OCR</option>
+                  <option value="Ocr">OCR rescue</option>
+                  <option value="ForceOcr">Force OCR (slow)</option>
                 </select>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
-                  Embedded text is faster and best for born-digital PDFs. OCR is slower and intended for
-                  scanned/image-based PDFs.
+                  Embedded text is fastest. OCR rescue only OCRs when embedded text looks empty or poor. Force OCR
+                  ignores embedded text and can be much slower.
+                </p>
+              </div>
+            </details>
+
+            <details open>
+              <summary>PDF OCR Quality</summary>
+              <div style="padding-left: 0; margin-top: 4px;">
+                <select id="sel-pdf-ocr-quality" class="settings-select"
+                  style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
+                  <option value="Fast">Fast</option>
+                  <option value="Balanced">Balanced</option>
+                  <option value="HighQuality">High quality</option>
+                </select>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
+                  Higher quality renders larger page images for OCR and may take much longer on scanned PDFs.
                 </p>
               </div>
             </details>
