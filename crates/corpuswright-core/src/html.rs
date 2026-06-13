@@ -13,18 +13,14 @@ lazy_static! {
 /// - Ignoring `<script>`, `<style>`, and `<noscript>` elements.
 /// - Formatting block elements with sensible spacing.
 pub fn extract_html(html: &str) -> String {
-    // html2text automatically ignores <script> and <style> but leaves <noscript>.
-    // We strip <noscript> manually before extraction to strictly comply with requirements.
+    // html2text ignores <script> and <style> but emits <noscript> contents.
     let cleaned_html = NOSCRIPT_RE.replace_all(html, "");
 
     // Extract text wrapping at 100_000 to avoid hard-wrapping lines in normal paragraphs.
-    // The library uses `html5ever` internally which gracefully handles malformed HTML.
+    // html2text parses via html5ever, so malformed markup follows HTML5 recovery rules.
     let extracted = html2text::config::with_decorator(html2text::render::TrivialDecorator::new())
         .string_from_read(cleaned_html.as_bytes(), 100_000);
 
-    // Some versions of html2text can return Result depending on features, but
-    // `html2text::from_read` in 0.13 returns a Result string, or just unwraps.
-    // From our test, we know it returns a Result that we can unwrap, but let's be safe.
     match extracted {
         Ok(text) => text.trim().to_string(),
         Err(_) => String::new(),

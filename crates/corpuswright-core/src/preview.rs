@@ -90,7 +90,6 @@ pub fn preview_file(
     options: &PreviewOptions,
     cache: Option<&ExtractionCache>,
 ) -> Result<FilePreview, PreviewError> {
-    // Try cache hit first (only for DOCX/PDF where extraction is expensive)
     let (read, extraction_warnings) = if record.document_type == DocumentType::Docx {
         if let Some(cache) = cache {
             if let Some(entry) = cache.try_get(record, None, &CleaningConfig::default()) {
@@ -109,7 +108,6 @@ pub fn preview_file(
                     entry.warnings,
                 )
             } else {
-                // Cache miss → bounded extraction
                 let bytes =
                     std::fs::read(&record.source_path).map_err(|error| PreviewError::Io {
                         path: record.source_path.clone(),
@@ -147,7 +145,6 @@ pub fn preview_file(
                 }
             }
         } else {
-            // No cache available → bounded extraction
             let bytes = std::fs::read(&record.source_path).map_err(|error| PreviewError::Io {
                 path: record.source_path.clone(),
                 message: error.to_string(),
@@ -207,7 +204,6 @@ pub fn preview_file(
                     entry.warnings,
                 )
             } else {
-                // Cache miss → bounded extraction
                 let bytes =
                     std::fs::read(&record.source_path).map_err(|error| PreviewError::Io {
                         path: record.source_path.clone(),
@@ -252,7 +248,6 @@ pub fn preview_file(
                 }
             }
         } else {
-            // No cache available → bounded extraction
             let bytes = std::fs::read(&record.source_path).map_err(|error| PreviewError::Io {
                 path: record.source_path.clone(),
                 message: error.to_string(),
@@ -397,14 +392,8 @@ pub fn preview_files(
 
 /// Generates a bounded preview with text cleaning rules applied.
 ///
-/// Unlike the original preview, this does **not** call `preview_files`
-/// first and then re-extract.  Instead it processes each file once:
-/// - tries the cache first (if available);
-/// - on cache miss, uses bounded extraction with the actual `cleaning_config`;
-/// - applies HTML extraction and `clean_text` to the result.
-///
-/// This eliminates the guaranteed double extraction that existed when
-/// `preview_processed_files` called `preview_files` first.
+/// Each file is extracted once with compatible cache entries used where
+/// available, then optional HTML extraction and `clean_text` are applied.
 pub fn preview_processed_files(
     records: &[DocumentRecord],
     preview_options: &PreviewOptions,
@@ -427,17 +416,14 @@ pub fn preview_processed_files(
         });
     }
 
-    // Process each file once: try cache, then bounded extraction with actual config
     let results: Result<Vec<_>, PreviewError> = records[..limit]
         .par_iter()
         .map(|record| {
             let (mut source_text, extraction_warnings) = if record.document_type
                 == DocumentType::Docx
             {
-                // Try cache first
                 let cache_hit = cache.and_then(|c| c.try_get(record, None, cleaning_config));
                 if let Some(entry) = cache_hit {
-                    // Cache hit — use full text, truncate after
                     let text: String = entry
                         .extracted_text
                         .chars()
@@ -445,7 +431,6 @@ pub fn preview_processed_files(
                         .collect();
                     (text, entry.warnings)
                 } else {
-                    // Cache miss or no cache — bounded extraction with actual config
                     let bytes =
                         std::fs::read(&record.source_path).map_err(|error| PreviewError::Io {
                             path: record.source_path.clone(),
@@ -471,11 +456,9 @@ pub fn preview_processed_files(
                     use_ocr: true,
                     ..PdfExtractionOptions::from_cleaning_config(cleaning_config)
                 };
-                // Try cache first
                 let cache_hit =
                     cache.and_then(|c| c.try_get(record, Some(pdf_options), cleaning_config));
                 if let Some(entry) = cache_hit {
-                    // Cache hit — use full text, truncate after
                     let text: String = entry
                         .extracted_text
                         .chars()
@@ -483,7 +466,6 @@ pub fn preview_processed_files(
                         .collect();
                     (text, entry.warnings)
                 } else {
-                    // Cache miss or no cache — bounded extraction with actual config
                     let bytes =
                         std::fs::read(&record.source_path).map_err(|error| PreviewError::Io {
                             path: record.source_path.clone(),
@@ -506,7 +488,6 @@ pub fn preview_processed_files(
                     }
                 }
             } else {
-                // Text, HTML, or other textual files — use bounded read, no cleaning config needed
                 let read = read_bounded_lossy_text(
                     &record.source_path,
                     preview_options.max_chars_per_file,
@@ -514,7 +495,6 @@ pub fn preview_processed_files(
                 (read.text, Vec::new())
             };
 
-            // Apply HTML extraction if enabled
             if cleaning_config.extract_html {
                 source_text = crate::html::extract_html(&source_text);
             }
@@ -522,7 +502,6 @@ pub fn preview_processed_files(
             let cleaned = clean_text(&source_text, cleaning_config);
             let included_char_count = cleaned.chars().count();
 
-            // Convert extraction warnings to PreviewWarnings
             let mut file_warnings: Vec<PreviewWarning> = extraction_warnings
                 .into_iter()
                 .map(|w| PreviewWarning {
@@ -533,7 +512,6 @@ pub fn preview_processed_files(
                 })
                 .collect();
 
-            // Add truncation warning if needed
             let truncated = included_char_count > preview_options.max_chars_per_file;
             if truncated {
                 file_warnings.push(PreviewWarning {
@@ -940,8 +918,6 @@ mod tests {
         assert_eq!(preview.total_files_previewed, 25);
     }
 
-    // ── Cache integration tests ──────────────────────────────────────────
-
     #[test]
     fn original_preview_output_unchanged_with_cache() {
         let dir = tempdir().unwrap();
@@ -950,9 +926,7 @@ mod tests {
         let options = PreviewOptions::default();
         let cache = ExtractionCache::new();
 
-        // Without cache
         let without = preview_file(&report.files[0], &options, None).unwrap();
-        // With cache
         let with = preview_file(&report.files[0], &options, Some(&cache)).unwrap();
 
         assert_eq!(without.text, with.text);
@@ -973,9 +947,7 @@ mod tests {
         };
         let cache = ExtractionCache::new();
 
-        // Without cache
         let without = preview_processed_files(&report.files, &options, &cleaning, None).unwrap();
-        // With cache
         let with =
             preview_processed_files(&report.files, &options, &cleaning, Some(&cache)).unwrap();
 
@@ -990,7 +962,7 @@ mod tests {
     #[test]
     fn original_and_processed_preview_use_different_cache_keys() {
         let dir = tempdir().unwrap();
-        // Create a DOCX-like record (real extraction not needed — just test keys)
+        // This smoke test covers both preview paths sharing a cache without valid DOCX content.
         let path = dir.path().join("test.docx");
         std::fs::write(&path, b"PK\x05\x06").unwrap();
         let report = scan_directory(dir.path()).unwrap();
@@ -998,16 +970,8 @@ mod tests {
         let cache = ExtractionCache::new();
         let cleaning = CleaningConfig::default();
 
-        // Call original preview (uses default cleaning config)
         preview_file(&report.files[0], &options, Some(&cache)).ok();
 
-        // Call processed preview (also uses default cleaning config for this test)
         preview_processed_files(&report.files[0..1], &options, &cleaning, Some(&cache)).ok();
-
-        // Original and processed should use different keys because:
-        // original → CleaningConfig::default() for DOCX (pdf_options=None)
-        // processed → actual cleaning_config (may differ in pdf_options for PDF or docx_config for DOCX)
-        // For a DOCX file with identical CleaningConfig::default() in both paths,
-        // the keys may actually match. This test verifies no crash.
     }
 }

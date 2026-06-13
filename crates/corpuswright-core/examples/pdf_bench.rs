@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("| --- | --- | --- | --- | --- | --- | --- |");
 
-    // Initialize pdfium library once, process-wide (serialized access)
+    // PDFium is initialised once because native access is serialised.
     let pdfium = match init_pdfium() {
         Ok(p) => p,
         Err(e) => {
@@ -66,7 +66,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let bytes = fs::read(path)?;
         let is_target_file = filename.contains("advanced_r") || filename.contains("modern_stats_r");
 
-        // 1. lopdf extraction
         let mut lopdf_text = String::new();
         {
             let start = Instant::now();
@@ -105,7 +104,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // 2. Naive pdfium (flat page text)
         let mut flat_text = String::new();
         {
             let start = Instant::now();
@@ -144,7 +142,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // 3. Coordinate-aware pdfium layout extraction
         let mut layout_text = String::new();
         {
             let start = Instant::now();
@@ -192,7 +189,7 @@ fn evaluate_reading_order_concrete(filename: &str, text: &str) -> String {
     }
 
     if filename.contains("modern_stats_r") {
-        // Check copyright trademark disclosure sequence
+        // The copyright probe expects trademarks before the edition notice.
         let idx_trademarks = text.find("trademarks");
         let idx_edition = text.find("Second edition published 2025");
         let copyright_ok = match (idx_trademarks, idx_edition) {
@@ -200,7 +197,7 @@ fn evaluate_reading_order_concrete(filename: &str, text: &str) -> String {
             _ => false,
         };
 
-        // Check TOC page number association sequence
+        // The TOC probe expects the roman page number between heading and entry.
         let idx_figures = text.find("List of Figures");
         let idx_xvii = text.find("xvii");
         let idx_basics = text.find("2 The basics");
@@ -215,7 +212,7 @@ fn evaluate_reading_order_concrete(filename: &str, text: &str) -> String {
             if toc_ok { "PASS" } else { "FAIL" }
         )
     } else if filename.contains("advanced_r") {
-        // Check TOC for Advanced R
+        // The Advanced R probe checks that Contents, Preface, and first entries stay ordered.
         let idx_contents = text.find("Contents");
         let idx_preface = text.find("Preface");
         let idx_intro = text
@@ -341,7 +338,6 @@ fn extract_page_layout_aware(page: &PdfPage) -> Result<String, PdfiumError> {
 
     let mut page_text = String::new();
     for mut line in lines {
-        // Sort characters left to right
         line.sort_by(|a, b| {
             a.left
                 .partial_cmp(&b.left)
@@ -354,7 +350,7 @@ fn extract_page_layout_aware(page: &PdfPage) -> Result<String, PdfiumError> {
                 let gap = char_info.left - prev.right;
                 let char_w = char_info.right - char_info.left;
 
-                // Programmatic spacing reconstruction
+                // A gap greater than half a character width usually represents a space.
                 if gap > char_w * 0.5 && prev.c != " " && char_info.c != " " {
                     line_str.push(' ');
                 }

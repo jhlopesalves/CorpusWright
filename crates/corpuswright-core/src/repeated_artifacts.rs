@@ -1,6 +1,5 @@
-//! Corpus-wide repeated artifact scanner to identify boilerplate, headers, footers, or graphical noise.
+//! Corpus-wide repeated artefact scanner for boilerplate, headers, footers, and graphical noise.
 //!
-//! v1 design:
 //! - Default scan uses original extracted text for speed and avoids OCR.
 //! - Exact lines, normalised lines, and known inline artefacts are enabled by default.
 //! - Numeric-dominant candidates are disabled by default because statistical output can group dangerously.
@@ -23,7 +22,7 @@ use ts_rs::TS;
 /// Beyond this cap, `raw_variant_overflow` is set to true.
 const RAW_VARIANT_TRACK_CAP: usize = 200;
 
-/// Configuration options for the repeated artifact scan.
+/// Configuration options for the repeated artefact scan.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[ts(export)]
 pub struct RepeatedArtifactScanConfig {
@@ -115,7 +114,7 @@ pub enum CandidateContentClass {
     MixedTextNumbers,
     /// Predominantly digits and numeric punctuation (e.g. "32.01 46.83").
     NumericDominant,
-    /// Predominantly symbols/noise markers (e.g. "● ● ● ●", "------").
+    /// Predominantly symbols/noise markers (e.g. "****", "------").
     SymbolNoiseDominant,
 }
 
@@ -170,7 +169,7 @@ pub struct RepeatedArtifactCandidate {
     pub examples: Vec<RepeatedArtifactExample>,
 }
 
-/// Diagnostics collected during a repeated artifact scan.
+/// Diagnostics collected during a repeated artefact scan.
 /// Returned alongside candidates in `RepeatedArtifactScanReport`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[ts(export)]
@@ -204,10 +203,7 @@ enum LinePosition {
     Bottom,
 }
 
-// ---- Internal structures for the two-pass scan ----
-
-/// Shared cancellation flag type. Wraps an `AtomicBool` behind `Arc`.
-/// Set to `true` to request cancellation.
+/// Shared cancellation flag cloned into parallel scan workers.
 pub type CancellationFlag = std::sync::Arc<AtomicBool>;
 
 /// No-op cancellation flag that never triggers.
@@ -256,8 +252,8 @@ struct CountEntry {
     raw_variant_overflow: bool,
 }
 
-/// Structured per-file result from phase 1.
-/// Every file produces one of these (no filter_map dropping).
+/// Structured per-file result from the parallel aggregation pass.
+/// Failed extraction still produces one of these so diagnostics can account for the file.
 struct Phase1Result {
     ft: FileText,
     local_map: HashMap<(RepeatedArtifactKind, String), LocalCandidateStats>,
@@ -280,8 +276,6 @@ struct FileText {
     page_line_info: Vec<(Option<usize>, usize, usize)>,
 }
 
-// ---- Utility functions ----
-
 /// Returns true if the line should be skipped before any candidate processing.
 /// Filters: empty, whitespace-only, too short, too long.
 #[inline]
@@ -294,7 +288,7 @@ fn should_skip_line(text: &str, min_chars: usize, max_chars: usize) -> bool {
     char_count < min_chars || char_count > max_chars
 }
 
-/// Detects punctuation for candidate normalization.
+/// Detects punctuation for candidate normalisation.
 fn is_punctuation(c: char) -> bool {
     matches!(
         c,
@@ -318,7 +312,7 @@ fn is_punctuation(c: char) -> bool {
     )
 }
 
-/// Normalizes a line deterministically for candidate grouping.
+/// Normalises a line deterministically for candidate grouping.
 /// Strips surrounding punctuation, lowercases, collapses whitespace, and replaces digit runs with '#'.
 fn normalize_line(s: &str) -> String {
     let trimmed = s.trim();
@@ -514,7 +508,6 @@ fn classify_risk(
 ) -> ArtifactRiskLabel {
     let lower_key = normalized_key.trim().to_lowercase();
 
-    // 1. Common Academic Headings
     let common_headings = [
         "abstract",
         "introduction",
@@ -530,7 +523,6 @@ fn classify_risk(
         return ArtifactRiskLabel::CommonSectionHeadingReviewCarefully;
     }
 
-    // 2. Symbol/Noise
     let char_len = display_text.chars().count();
     let non_alphanumeric_count = display_text
         .chars()
@@ -545,7 +537,6 @@ fn classify_risk(
         return ArtifactRiskLabel::SymbolOrNoiseCandidate;
     }
 
-    // 3. Strong Header/Footer
     let pos_ratio = if occurrence_count > 0 {
         (top_count + bottom_count) as f64 / occurrence_count as f64
     } else {
@@ -555,7 +546,6 @@ fn classify_risk(
         return ArtifactRiskLabel::StrongHeaderFooterCandidate;
     }
 
-    // 4. Possible Boilerplate
     if file_count >= 2 {
         return ArtifactRiskLabel::PossibleBoilerplate;
     }
@@ -565,12 +555,8 @@ fn classify_risk(
 
 /// Classifies a text line's content into one of four categories.
 ///
-/// Classification rules (applied in order):
-/// 1. If >=50% non-alphanumeric symbols → SymbolNoiseDominant
-/// 2. If >=60% digits (and >0 digits) → NumericDominant
-/// 3. If both alphabetic and digits exist, and alphabetic ratio >= digit ratio → MixedTextNumbers
-/// 4. If digit count > alpha count (below 60% threshold) → NumericDominant
-/// 5. Default → TextDominant
+/// Rules are applied in order: at least 50% symbols, at least 60% digits,
+/// mixed text and numbers, digit-dominant, then text-dominant.
 pub fn classify_content(text: &str) -> CandidateContentClass {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -594,27 +580,22 @@ pub fn classify_content(text: &str) -> CandidateContentClass {
     let digit_ratio = digit_count / total;
     let alpha_ratio = alpha_count / total;
 
-    // 1. Symbol/noise dominant
     if symbol_ratio >= 0.50 {
         return CandidateContentClass::SymbolNoiseDominant;
     }
 
-    // 2. Numeric dominant
     if digit_ratio >= 0.60 && digit_count > 0.0 {
         return CandidateContentClass::NumericDominant;
     }
 
-    // 3. Mixed text + numbers: some of both, alphabetic >= digit
     if alpha_ratio > 0.0 && digit_count > 0.0 && alpha_ratio >= digit_ratio {
         return CandidateContentClass::MixedTextNumbers;
     }
 
-    // 4. Digit-dominant but below 60% threshold — still numeric-dominant if digits dominate alpha
     if digit_count > alpha_count && digit_ratio > 0.0 {
         return CandidateContentClass::NumericDominant;
     }
 
-    // 5. Mostly text
     CandidateContentClass::TextDominant
 }
 
@@ -671,8 +652,6 @@ fn dominant_content_class_3(
     TextDominant
 }
 
-// ---- Inline artefact detection ----
-
 /// Known inline markup/conversion patterns.
 const KNOWN_INLINE_PATTERNS: &[&str] = &[
     "<br/>", "<br>", "<br />", "<BR/>", "<BR>", "<BR />", "&nbsp;", "&amp;", "&lt;", "&gt;",
@@ -724,7 +703,7 @@ fn detect_inline_artifacts(
                 }
 
                 if entry.example_refs.len() < config.max_examples_per_candidate {
-                    // For inline, store (line_idx, char_pos) — char_pos used as context offset
+                    // Inline examples use the second slot as a character offset.
                     entry.example_refs.push((line_idx, abs_pos));
                 }
             }
@@ -808,7 +787,6 @@ fn get_document_text_with_status(
     cleaning_config: &CleaningConfig,
     cache: Option<&ExtractionCache>,
 ) -> ExtractedScanText {
-    // ── Cache path ───────────────────────────────────────────────────────
     if let Some(cache) = cache {
         let pdf_opts = if record.document_type == DocumentType::Pdf {
             Some(build_repeated_artifact_pdf_options(
@@ -842,7 +820,6 @@ fn get_document_text_with_status(
         }
     }
 
-    // ── Direct extraction path (no cache) ────────────────────────────────
     let source_bytes = match std::fs::read(&record.source_path) {
         Ok(b) => b,
         Err(_) => {
@@ -917,7 +894,7 @@ fn build_file_text(file_idx: usize, record: &DocumentRecord, text: &str) -> File
 
     let total_lines = raw_lines.len();
 
-    // Build page_line_info aligned with raw_lines
+    // This vector must stay aligned with raw_lines for page-aware positioning.
     let mut page_line_info: Vec<(Option<usize>, usize, usize)> =
         Vec::with_capacity(raw_lines.len());
     if is_pdf {
@@ -946,8 +923,10 @@ fn build_file_text(file_idx: usize, record: &DocumentRecord, text: &str) -> File
     }
 }
 
-/// Phase 1 (parallel): each file builds an aggregated local map.
-/// Returns Phase1Result (never None — always produces a structured result).
+/// Builds the per-file scan result used by the parallel aggregation pass.
+///
+/// A result is returned even when extraction fails so diagnostics stay aligned
+/// with the requested records.
 fn phase1_scan_file(
     record: &DocumentRecord,
     file_idx: usize,
@@ -956,7 +935,6 @@ fn phase1_scan_file(
     cache: Option<&ExtractionCache>,
     cancel: &CancellationFlag,
 ) -> Phase1Result {
-    // Check cancellation before extraction
     if cancel.load(Ordering::Relaxed) {
         return Phase1Result {
             ft: build_file_text(file_idx, record, ""),
@@ -972,7 +950,6 @@ fn phase1_scan_file(
         cache,
     );
 
-    // Check cancellation after extraction
     if cancel.load(Ordering::Relaxed) {
         return Phase1Result {
             ft: build_file_text(file_idx, record, ""),
@@ -985,7 +962,6 @@ fn phase1_scan_file(
 
     let mut map = phase1_aggregate(&ft, config);
 
-    // Detect inline artefacts and merge into the same local map
     let inline_map = detect_inline_artifacts(&ft, config);
     for ((kind, key), inline_stats) in inline_map {
         map.insert((kind, key), inline_stats);
@@ -1012,8 +988,7 @@ fn phase1_aggregate(
         return map;
     }
 
-    // First pass: pre-compute valid entries with content class.
-    // Normalise once per line; reuse for exact + normalised.
+    // Normalising once per line avoids repeated work across candidate paths.
     let mut valid_entries: Vec<(
         usize,
         String,
@@ -1030,7 +1005,6 @@ fn phase1_aggregate(
         valid_entries.push((idx, raw.to_string(), norm, cc));
     }
 
-    // Helper to insert/update a local aggregated entry.
     let mut upsert = |kind: RepeatedArtifactKind,
                       key: String,
                       norm_key: String,
@@ -1058,15 +1032,13 @@ fn phase1_aggregate(
             LinePosition::Middle => entry.middle_count += 1,
             LinePosition::Bottom => entry.bottom_count += 1,
         }
-        // Set display text on first occurrence
         if entry.display_text.is_empty() {
             entry.display_text = display.clone();
         }
-        // Bounded examples
         if entry.example_refs.len() < config.max_examples_per_candidate {
             entry.example_refs.push((rs, re));
         }
-        // Track distinct raw variants using a bounded set.
+        // Raw variants are capped to keep large normalised groups bounded.
         if entry.raw_variants.len() < RAW_VARIANT_TRACK_CAP {
             entry.raw_variants.insert(display.clone());
         } else if !entry.raw_variants.contains(&display) {
@@ -1074,7 +1046,6 @@ fn phase1_aggregate(
         }
     };
 
-    // --- Exact lines (filter by content class) ---
     if config.include_exact_lines {
         for &(idx, ref line, ref norm, cc) in &valid_entries {
             if !should_include_content_class(cc, config) {
@@ -1094,7 +1065,6 @@ fn phase1_aggregate(
         }
     }
 
-    // --- Normalised lines (reuse norm from valid_entries) ---
     // SAFETY: NumericDominant lines are NOT used for normalised grouping
     // unless explicitly enabled (include_numeric_dominant).
     if config.include_normalized_lines {
@@ -1102,7 +1072,6 @@ fn phase1_aggregate(
             if norm.is_empty() {
                 continue;
             }
-            // Skip numeric-dominant lines for normalised grouping unless enabled
             if cc == CandidateContentClass::NumericDominant && !config.include_numeric_dominant {
                 continue;
             }
@@ -1120,7 +1089,6 @@ fn phase1_aggregate(
         }
     }
 
-    // --- 2-line blocks (opt-in) ---
     if config.include_two_line_blocks && valid_entries.len() >= 2 {
         for w in valid_entries.windows(2) {
             let (i0, ref l0, ref n0, cc0) = w[0];
@@ -1134,7 +1102,6 @@ fn phase1_aggregate(
             }
             let text_block = format!("{}\n{}", l0, l1);
             let norm_block = format!("{}\n{}", n0, n1);
-            // Classify block: use the dominant class of its lines
             let block_cc = dominant_content_class(cc0, cc1);
             if !should_include_content_class(block_cc, config) {
                 continue;
@@ -1153,7 +1120,6 @@ fn phase1_aggregate(
         }
     }
 
-    // --- 3-line blocks (opt-in) ---
     if config.include_three_line_blocks && valid_entries.len() >= 3 {
         for w in valid_entries.windows(3) {
             let (i0, ref l0, ref n0, cc0) = w[0];
@@ -1191,19 +1157,16 @@ fn phase1_aggregate(
     map
 }
 
-/// Phase 2: merge local aggregated maps into global CountEntry map.
+/// Merges per-file candidate maps into global candidate counts.
 fn phase2_merge(
     all_maps: Vec<HashMap<(RepeatedArtifactKind, String), LocalCandidateStats>>,
     config: &RepeatedArtifactScanConfig,
 ) -> HashMap<(RepeatedArtifactKind, String), CountEntry> {
     let mut global: HashMap<(RepeatedArtifactKind, String), CountEntry> = HashMap::new();
 
-    // Track file index for compact file IDs
-    // Because each local map belongs to exactly one file, we can
-    // increment file_count once per key per local map without per-occurrence checks.
+    // Each local map belongs to one file, so a key is counted once per map.
     for (_file_idx, local_map) in all_maps.into_iter().enumerate() {
         for ((kind, key), stats) in local_map {
-            // Only one entry per key per file now — merge directly.
             let entry = global
                 .entry((kind, key.clone()))
                 .or_insert_with(|| CountEntry {
@@ -1228,16 +1191,11 @@ fn phase2_merge(
             entry.bottom_count += stats.bottom_count;
             entry.unknown_count += stats.unknown_count;
 
-            // File counting: each local map = one file. Just push if not already tracked.
             let fid = _file_idx as u32;
-            // Since keys appear at most once per file, we can just push unconditionally
-            // because each local_map corresponds to a different _file_idx.
-            // But to be safe, avoid duplicates (shouldn't happen, but be robust).
             if !entry.file_ids.contains(&fid) {
                 entry.file_ids.push(fid);
             }
 
-            // Merge example refs (bounded)
             for (rs, re) in &stats.example_refs {
                 if entry.example_refs.len() < config.max_examples_per_candidate {
                     entry.example_refs.push((fid, *rs, *re));
@@ -1245,7 +1203,7 @@ fn phase2_merge(
             }
 
             // Merge distinct raw variants from local stats into global entry.
-            // Use capped set semantics: insert up to RAW_VARIANT_TRACK_CAP, then set overflow.
+            // The overflow flag preserves "more existed" without retaining every variant.
             for variant in &stats.raw_variants {
                 if entry.raw_variants.len() < RAW_VARIANT_TRACK_CAP {
                     entry.raw_variants.insert(variant.clone());
@@ -1262,8 +1220,7 @@ fn phase2_merge(
     global
 }
 
-/// Phase 3: filter, score, rank, deduplicate, collect final examples.
-/// Returns (candidates, diagnostics_counts).
+/// Filters, scores, ranks, deduplicates, and attaches examples.
 fn phase3_finalize(
     global: HashMap<(RepeatedArtifactKind, String), CountEntry>,
     file_texts: &[FileText],
@@ -1271,7 +1228,6 @@ fn phase3_finalize(
 ) -> Vec<RepeatedArtifactCandidate> {
     let mut scored: Vec<(f64, RepeatedArtifactCandidate)> = Vec::new();
 
-    // Collect all entries first, then deduplicate norm vs exact.
     let mut entries: Vec<CountEntry> = global
         .into_values()
         .filter(|e| {
@@ -1279,7 +1235,7 @@ fn phase3_finalize(
         })
         .collect();
 
-    // Dedup: remove NormalizedLine entries that add no value.
+    // Keep normalised entries only when they add variants beyond exact matches.
     if config.include_normalized_lines && config.include_exact_lines {
         let mut i = 0;
         while i < entries.len() {
@@ -1312,7 +1268,6 @@ fn phase3_finalize(
         }
     }
 
-    // Now score and build candidates
     for entry in entries {
         let file_count = entry.file_ids.len();
         let score = calculate_suspicion_score(
@@ -1335,14 +1290,11 @@ fn phase3_finalize(
 
         let candidate_id = compute_stable_id(&entry.kind, &entry.candidate_key);
 
-        // Determine content class from the display text
         let content_class = classify_content(&entry.display_text);
 
         let raw_variant_count = entry.raw_variants.len();
         let raw_variant_count_is_capped = entry.raw_variant_overflow;
 
-        // Collect examples from file_texts using stored refs.
-        // Different handling for inline vs line/block candidates.
         let is_inline = entry.kind == RepeatedArtifactKind::InlineArtifact;
         let examples: Vec<RepeatedArtifactExample> = entry
             .example_refs
@@ -1351,7 +1303,6 @@ fn phase3_finalize(
                 let ft = file_texts.get(fid as usize)?;
 
                 if is_inline {
-                    // rs = line_idx, re = char position within line
                     let line_idx = rs;
                     let char_pos = re;
                     let line = ft.raw_lines.get(line_idx)?;
@@ -1435,7 +1386,6 @@ fn phase3_finalize(
         ));
     }
 
-    // Sort by suspicion score descending
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
     scored
@@ -1511,8 +1461,7 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
         });
     }
 
-    // Phase 1: parallel extraction + per-file aggregation.
-    // Every file produces a Phase1Result (no filter_map, no dropping).
+    // Every record produces a Phase1Result so diagnostics stay aligned.
     let phase_results: Vec<Phase1Result> = records
         .par_iter()
         .enumerate()
@@ -1523,7 +1472,6 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
         return Err("Scan cancelled.".to_string());
     }
 
-    // Count extraction diagnostics
     let files_scanned = phase_results.len();
     let files_failed_extraction = phase_results.iter().filter(|r| r.extraction_failed).count();
 
@@ -1553,14 +1501,12 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
         return Err("Scan cancelled.".to_string());
     }
 
-    // Phase 2: merge
     let global = phase2_merge(all_maps, config);
 
     if cancel.load(Ordering::Relaxed) {
         return Err("Scan cancelled.".to_string());
     }
 
-    // --- Filtering stage counts for diagnostics ---
     let total_candidate_keys_before_filtering = global.len();
 
     let after_min_occurrences: Vec<(RepeatedArtifactKind, String)> = global
@@ -1579,7 +1525,6 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
         .collect();
     let candidates_after_min_files = after_min_files.len();
 
-    // Phase 3: finalize
     let candidates = phase3_finalize(global, &file_texts, config);
     let final_candidates = candidates.len();
 
@@ -1874,8 +1819,6 @@ mod tests {
         assert_eq!(risk, ArtifactRiskLabel::CommonSectionHeadingReviewCarefully);
     }
 
-    // ---- Performance / synthetic stress tests ----
-
     #[test]
     fn test_many_unique_lines_no_explosion() {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -2068,8 +2011,6 @@ mod tests {
         assert!(!should_skip_line("  hello  ", 3, 300));
     }
 
-    // ---- Dedup / normalisation tests ----
-
     #[test]
     fn test_norm_dedup_removes_single_variant_norm() {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -2198,8 +2139,6 @@ mod tests {
             "default max_line_chars should be <= 300"
         );
     }
-
-    // ---- Content classification tests ----
 
     #[test]
     fn test_classify_numeric_decimal() {
@@ -2445,8 +2384,6 @@ mod tests {
         }
     }
 
-    // ---- Inline artefact detection tests ----
-
     #[test]
     fn test_br_tag_detected_as_inline() {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -2560,8 +2497,6 @@ mod tests {
         assert_eq!(nbsp.unwrap().file_count, 3);
     }
 
-    // ---- Candidate ID tests ----
-
     #[test]
     fn test_inline_candidate_ids_distinct() {
         let id1 = compute_stable_id(&RepeatedArtifactKind::InlineArtifact, "<br />");
@@ -2601,8 +2536,6 @@ mod tests {
             "distinct inline patterns must produce distinct candidate IDs"
         );
     }
-
-    // ---- UTF-8 context safety tests ----
 
     #[test]
     fn test_safe_context_before_non_ascii() {
@@ -2662,8 +2595,6 @@ mod tests {
         );
     }
 
-    // ---- Raw variant count tests ----
-
     #[test]
     fn test_normalized_raw_variant_count_is_distinct() {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -2696,7 +2627,7 @@ mod tests {
     #[test]
     fn test_raw_variant_count_capped_flag() {
         let temp_dir = tempfile::tempdir().unwrap();
-        // Generate more unique variants than RAW_VARIANT_TRACK_CAP (200) to trigger overflow.
+        // The overflow branch needs more variants than RAW_VARIANT_TRACK_CAP can retain.
         let variant_count = RAW_VARIANT_TRACK_CAP + 10;
         let mut lines = Vec::with_capacity(variant_count);
         for i in 1..=variant_count {
@@ -2754,8 +2685,6 @@ mod tests {
         assert_eq!(exact_cand.raw_variant_count, 1);
         assert!(!exact_cand.raw_variant_count_is_capped);
     }
-
-    // ---- Diagnostics tests ----
 
     #[test]
     fn test_scan_report_contains_diagnostics() {
@@ -2817,13 +2746,10 @@ mod tests {
         assert_eq!(report.diagnostics.total_raw_lines, 0);
     }
 
-    // ---- Cache equivalence tests ----
-
     #[test]
     fn test_repeated_artifacts_with_cache_equals_without_cache() {
         let temp_dir = tempfile::tempdir().unwrap();
 
-        // Create a few text files with repeated lines
         let content1 =
             "Header\nBody line A\nBody line B\nFooter\nHeader\nBody line C\nBody line D\nFooter\n";
         let content2 = "Header\nBody line X\nBody line Y\nFooter\nHeader\nBody line Z\nFooter\n";
@@ -2843,7 +2769,6 @@ mod tests {
         let cleaning_config = CleaningConfig::default();
         let cancel = no_cancellation();
 
-        // Run without cache
         let report_no_cache = scan_repeated_artifacts_report_with_cancel_and_cache(
             &records,
             &config,
@@ -2853,7 +2778,6 @@ mod tests {
         )
         .expect("scan without cache should succeed");
 
-        // Run with cache (first call populates)
         let cache = ExtractionCache::new();
         let report_with_cache_first = scan_repeated_artifacts_report_with_cancel_and_cache(
             &records,
@@ -2864,7 +2788,6 @@ mod tests {
         )
         .expect("scan with cache (first) should succeed");
 
-        // Run with cache again (should be cache hits)
         let report_with_cache_second = scan_repeated_artifacts_report_with_cancel_and_cache(
             &records,
             &config,
@@ -2874,7 +2797,6 @@ mod tests {
         )
         .expect("scan with cache (second) should succeed");
 
-        // Compare candidates: same count
         assert_eq!(
             report_no_cache.candidates.len(),
             report_with_cache_first.candidates.len(),
@@ -2886,8 +2808,7 @@ mod tests {
             "candidate count should match between cache and no-cache (second)"
         );
 
-        // Compare deterministic fields of each candidate
-        // Sort by candidate_id for deterministic comparison (order may differ due to Rayon)
+        // Rayon can produce different candidate order, so compare by stable ID.
         let mut no_cache_sorted: Vec<_> = report_no_cache.candidates.iter().collect();
         no_cache_sorted.sort_by(|a, b| a.candidate_id.cmp(&b.candidate_id));
 
@@ -2951,7 +2872,6 @@ mod tests {
                     "content_class mismatch for candidate {} in {}",
                     nc.candidate_id, label
                 );
-                // Preserves raw_variants
                 assert_eq!(
                     nc.raw_variants, cc.raw_variants,
                     "raw_variants mismatch for candidate {} in {}",
@@ -2970,10 +2890,8 @@ mod tests {
             }
         }
 
-        // Check cache was actually used (at least some entries populated)
         assert!(!cache.is_empty(), "cache should have entries after scan");
 
-        // Verify diagnostics are equivalent (failed_extraction should be 0 for both)
         assert_eq!(
             report_no_cache.diagnostics.files_failed_extraction,
             report_with_cache_first.diagnostics.files_failed_extraction
@@ -2988,7 +2906,6 @@ mod tests {
     fn test_repeated_artifacts_with_cache_preserves_raw_variants() {
         let temp_dir = tempfile::tempdir().unwrap();
 
-        // Test with normalised candidates that have multiple raw variants
         let content_parts = ["Page 1", "Page 2", "Page 1", "Page 3", "Page 2", "Page 1"];
         let content = content_parts.join("\n");
         let doc = make_text_record("multivariant.txt", &content, temp_dir.path());
@@ -3016,7 +2933,6 @@ mod tests {
         )
         .expect("scan should succeed");
 
-        // Check that normalised "page #" candidate exists and has raw_variants
         let page_norm = report.candidates.iter().find(|c| {
             c.kind == RepeatedArtifactKind::NormalizedLine && c.normalized_key == "page #"
         });
@@ -3035,7 +2951,6 @@ mod tests {
             !page_norm.raw_variants.is_empty(),
             "raw_variants should not be empty"
         );
-        // All variants should be present (up to cap)
         for expected_variant in &["Page 1", "Page 2", "Page 3"] {
             assert!(
                 page_norm

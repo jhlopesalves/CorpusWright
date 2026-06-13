@@ -5,7 +5,7 @@ use std::sync::{LazyLock, Mutex};
 
 pub static PDFIUM_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-/// Named options for PDF extraction, replacing anonymous boolean parameters.
+/// Named options for PDF extraction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PdfExtractionOptions {
     pub strategy: PdfEmbeddedTextStrategy,
@@ -126,13 +126,11 @@ pub(crate) fn is_symbol_heavy_artifact(line: &str) -> bool {
         return false;
     }
 
-    // Graphical markers count check
     let graphical_markers_count = trimmed.chars().filter(|&c| is_graphical_marker(c)).count();
     if graphical_markers_count >= 5 {
         return true;
     }
 
-    // Dominance check
     let mut symbol_freqs = std::collections::HashMap::new();
     for &c in &non_ws_chars {
         if !c.is_alphanumeric() {
@@ -144,7 +142,6 @@ pub(crate) fn is_symbol_heavy_artifact(line: &str) -> bool {
         return true;
     }
 
-    // Obvious repeated run check
     let collapsed_line: String = trimmed.chars().filter(|c| !c.is_whitespace()).collect();
     let collapsed_chars: Vec<char> = collapsed_line.chars().collect();
     if collapsed_chars.len() >= 4 {
@@ -188,7 +185,6 @@ pub(crate) fn is_punctuation(c: char) -> bool {
 
 pub(crate) fn normalize_candidate_line(s: &str) -> String {
     let trimmed = s.trim();
-    // Strip surrounding punctuation
     let chars: Vec<char> = trimmed.chars().collect();
 
     let mut i = 0;
@@ -206,10 +202,8 @@ pub(crate) fn normalize_candidate_line(s: &str) -> String {
     let substring: String = chars[start..end].iter().collect();
     let trimmed_sub = substring.trim();
 
-    // Lowercase
     let lower = trimmed_sub.to_lowercase();
 
-    // Collapse internal whitespace and replace digit runs
     static RE_DIGITS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
     static RE_SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
 
@@ -432,7 +426,7 @@ pub fn reconstruct_visual_single_column(mut char_infos: Vec<CharInfo>) -> String
                 let gap = char_info.left - prev.right;
                 let char_w = char_info.right - char_info.left;
 
-                // Programmatic spacing reconstruction
+                // A gap greater than half a character width usually represents a space.
                 if gap > char_w * 0.5 && prev.c != " " && char_info.c != " " {
                     line_str.push(' ');
                 }
@@ -465,7 +459,7 @@ pub fn extract_pdf(
         remove_formula_like_lines,
     } = options;
 
-    // 1. Initial formats & encrypted check using lopdf
+    // lopdf is used first for format and encryption checks.
     let doc = match Document::load_mem(bytes) {
         Ok(doc) => doc,
         Err(e) => {
@@ -485,7 +479,7 @@ pub fn extract_pdf(
         );
     }
 
-    // Load in PDFium — if unavailable, fall back to lopdf embedded text extraction
+    // Fall back to lopdf when the native PDFium library is unavailable.
     let pdfium = match crate::pdf_ocr::init_pdfium() {
         Ok(p) => p,
         Err(e) => {
@@ -532,7 +526,7 @@ pub fn extract_pdf(
     let mut total_flat_chars = 0;
     let mut total_visual_chars = 0;
 
-    // Warn on two-column strategy (since it is stubbed as unsupported)
+    // The two-column strategy is still routed through single-column extraction.
     if strategy == PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental {
         warnings.push("Experimental two-column PDF extraction is currently unsupported/stubbed; falling back to visual single-column extraction.".to_string());
     }
@@ -547,7 +541,7 @@ pub fn extract_pdf(
             break;
         }
 
-        // Lock strictly to read page and extract characters once
+        // PDFium document access is serialised across the native library boundary.
         let (flat_text_page, char_infos) = {
             let _lock = PDFIUM_LOCK.lock().unwrap();
             let page = match document.pages().get(page_index as i32) {
@@ -642,7 +636,6 @@ pub fn extract_pdf(
     let mut repeated_patterns = std::collections::HashSet::new();
     let total_pages = page_lines_list.len();
 
-    // Part B: Repeated header/footer removal
     if remove_repeated_headers_footers && total_pages >= 3 {
         let n = 3;
         let mut candidate_counts = std::collections::HashMap::new();
@@ -652,10 +645,9 @@ pub fn extract_pdf(
             let top_limit = n.min(len);
             let bottom_start = top_limit.max(len.saturating_sub(n));
 
-            // Collect unique normalized candidates on this page to count page occurrences
+            // Page-level uniqueness keeps repeated lines from inflating page counts.
             let mut page_candidates = std::collections::HashSet::new();
 
-            // Top candidates
             for line in &page[0..top_limit] {
                 let norm = normalize_candidate_line(line);
                 if !norm.is_empty() {
@@ -663,7 +655,6 @@ pub fn extract_pdf(
                 }
             }
 
-            // Bottom candidates
             for line in &page[bottom_start..len] {
                 let norm = normalize_candidate_line(line);
                 if !norm.is_empty() {
@@ -676,7 +667,7 @@ pub fn extract_pdf(
             }
         }
 
-        // Find repeated patterns that meet the threshold: at least 3 pages AND at least 50% of pages
+        // Header/footer removal requires at least 3 pages and at least half of all pages.
         let threshold = 3.max(total_pages.div_ceil(2));
         for (cand, count) in candidate_counts {
             if count >= threshold {
@@ -717,7 +708,6 @@ pub fn extract_pdf(
             let mut remove = false;
 
             if is_in_candidate_zone {
-                // Check repeated header/footer
                 if remove_repeated_headers_footers && total_pages >= 3 {
                     let norm = normalize_candidate_line(&line);
                     if !norm.is_empty() && repeated_patterns.contains(&norm) {
@@ -727,14 +717,12 @@ pub fn extract_pdf(
                     }
                 }
 
-                // Check page labels/number
                 if !remove && remove_page_labels && is_page_label(&line) {
                     remove = true;
                     page_labels_removed_on_this_page = true;
                 }
             }
 
-            // Check symbol-heavy graphical artifacts
             if !remove && remove_symbol_heavy_artifacts {
                 if is_symbol_heavy_artifact(&line) {
                     remove = true;
@@ -865,7 +853,6 @@ pub fn extract_pdf(
         cleaned_pages.push(final_page_lines);
     }
 
-    // Reconstruct all_text
     for page_lines in cleaned_pages {
         let page_text = page_lines.join("\n");
         let trimmed = page_text.trim();
@@ -934,7 +921,7 @@ pub fn extract_pdf(
         ));
     }
 
-    // Diagnostics / warning for visual vs flat drop
+    // Compare layout-aware output against flat extraction as a loss signal.
     if total_flat_chars > 0 {
         let ratio = (total_visual_chars as f64) / (total_flat_chars as f64);
         if ratio < 0.7 {
@@ -1361,7 +1348,6 @@ mod tests {
     #[test]
     fn test_reconstruct_visual_single_column_preserves_line_order() {
         let chars = vec![
-            // First line: "Top line"
             CharInfo {
                 c: "T".to_string(),
                 bottom: 500.0,
@@ -1418,7 +1404,6 @@ mod tests {
                 top: 510.0,
                 right: 45.0,
             },
-            // Second line: "Bottom"
             CharInfo {
                 c: "B".to_string(),
                 bottom: 480.0,
@@ -1548,8 +1533,8 @@ mod tests {
 
     #[test]
     fn test_reconstruct_visual_single_column_right_aligned_toc() {
-        // TOC typically has text on the left, DOT leaders in the middle, and numbers on the right.
-        // Single column strategy MUST keep them on the same line.
+        // TOC rows often have left text, dot leaders, and right-aligned page numbers.
+        // Single-column extraction must keep them on the same line.
         let chars = vec![
             CharInfo {
                 c: "1".to_string(),
@@ -1600,7 +1585,7 @@ mod tests {
                 top: 110.0,
                 right: 40.0,
             },
-            // Gap representing middle DOT leaders, then the page number far to the right
+            // The wide gap stands in for dot leaders before a right-aligned page number.
             CharInfo {
                 c: "1".to_string(),
                 bottom: 100.0,
@@ -1610,7 +1595,6 @@ mod tests {
             },
         ];
         let result = reconstruct_visual_single_column(chars);
-        // It should reconstruct it on one line as "1 Intro 1"
         assert_eq!(result, "1 Intro 1");
     }
 
@@ -1802,7 +1786,6 @@ mod tests {
         assert!(is_page_label("xii"));
         assert!(is_page_label("Page iv"));
 
-        // Negative test cases
         assert!(!is_page_label(""));
         assert!(!is_page_label("12 apples"));
         assert!(!is_page_label("Chapter 12"));
@@ -1935,7 +1918,6 @@ mod tests {
 
         let bytes = create_multipage_pdf(&pages);
 
-        // 1. With repeated headers/footers removal disabled
         let result_disabled =
             extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
         assert!(result_disabled.text.contains("Repeated Header"));
@@ -1947,7 +1929,6 @@ mod tests {
                 .any(|w| w.contains("Removed repeated PDF header/footer"))
         );
 
-        // 2. With repeated headers/footers removal enabled
         let result_enabled = extract_pdf(
             &bytes,
             None,
@@ -1971,8 +1952,7 @@ mod tests {
     #[test]
     fn test_pdf_cleanup_body_line_preserved() {
         require_pdfium!();
-        // A repeated line in the body (not in top 3 or bottom 3 candidates) should not be removed
-        // We create pages with 7 lines: index 0,1,2 = top zone; index 3 = body; index 4,5,6 = bottom zone
+        // Body-zone repeats are not header/footer candidates.
         let pages = vec![
             vec![
                 "Top 1",
@@ -2023,7 +2003,6 @@ mod tests {
             },
         )
         .unwrap();
-        // The repeated body line must be preserved
         assert!(result.text.contains("Repeated Body"));
     }
 
@@ -2039,7 +2018,6 @@ mod tests {
 
         let bytes = create_multipage_pdf(&pages);
 
-        // 1. With page labels removal disabled
         let result_disabled =
             extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
         assert!(result_disabled.text.contains("1"));
@@ -2047,7 +2025,6 @@ mod tests {
         assert!(result_disabled.text.contains("- 3 -"));
         assert!(result_disabled.text.contains("page iv"));
 
-        // 2. With page labels removal enabled
         let result_enabled = extract_pdf(
             &bytes,
             None,
@@ -2084,7 +2061,7 @@ mod tests {
 
         let bytes = create_multipage_pdf(&pages);
 
-        // With fewer than 3 pages, repeated header/footer removal is conservative and does not remove anything
+        // Fewer than 3 pages is too little evidence for repeated header/footer removal.
         let result = extract_pdf(
             &bytes,
             None,
@@ -2100,20 +2077,17 @@ mod tests {
 
     #[test]
     fn test_is_symbol_heavy_artifact() {
-        // Removable cases
         assert!(is_symbol_heavy_artifact("● ● ● ● ● ● ● ● ● ● ● ● ●"));
         assert!(is_symbol_heavy_artifact("● ● ● ●"));
         assert!(is_symbol_heavy_artifact("---------"));
         assert!(is_symbol_heavy_artifact("********"));
         assert!(is_symbol_heavy_artifact("●●●●●●●●●●●●●●"));
 
-        // Preserved cases: mathematically meaningful or code-like lines
         assert!(!is_symbol_heavy_artifact("y = a + bx"));
         assert!(!is_symbol_heavy_artifact("non-parametric / parametric"));
         assert!(!is_symbol_heavy_artifact("C:\\Users\\example\\file.txt"));
         assert!(!is_symbol_heavy_artifact("x + y / z"));
 
-        // Preserved cases: labels, prose, captions, lists
         assert!(!is_symbol_heavy_artifact("Intercept, a"));
         assert!(!is_symbol_heavy_artifact("35 40 45 50 55 60"));
         assert!(!is_symbol_heavy_artifact("• This is a real bullet item."));
@@ -2148,7 +2122,6 @@ mod tests {
 
         let bytes = create_multipage_pdf(&pages);
 
-        // 1. With symbol-heavy cleanup disabled
         let result_disabled =
             extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
         assert!(result_disabled.text.contains("* * * * * * * * *"));
@@ -2159,7 +2132,6 @@ mod tests {
                 .all(|w| !w.contains("symbol-heavy PDF graphical artefact"))
         );
 
-        // 2. With symbol-heavy cleanup enabled
         let result_enabled = extract_pdf(
             &bytes,
             None,
@@ -2173,7 +2145,6 @@ mod tests {
         assert!(result_enabled.text.contains("Body Line 1"));
         assert!(result_enabled.text.contains("Another Body Line"));
 
-        // Check warnings format
         let warning = result_enabled
             .warnings
             .iter()
@@ -2209,7 +2180,6 @@ mod tests {
         ];
         let bytes = create_multipage_pdf(&pages);
 
-        // 1. With code removal disabled: everything code-like is preserved
         let result_disabled =
             extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
         assert!(result_disabled.text.contains("library(dplyr)"));
@@ -2223,7 +2193,6 @@ mod tests {
                 .any(|w| w.contains("code-like"))
         );
 
-        // 2. With code removal enabled: code blocks are removed, but mixed/prose is preserved
         let result_enabled = extract_pdf(
             &bytes,
             None,
@@ -2233,7 +2202,6 @@ mod tests {
             },
         )
         .unwrap();
-        // Preserved mixed/prose
         assert!(
             result_enabled
                 .text
@@ -2267,14 +2235,12 @@ mod tests {
         );
         assert!(result_enabled.text.contains("y = a + bx")); // formula preserved when formula option disabled!
 
-        // Removed code blocks
         assert!(!result_enabled.text.contains("library(dplyr)"));
         assert!(!result_enabled.text.contains("data <- read.csv"));
         assert!(!result_enabled.text.contains("model <- lm"));
         assert!(!result_enabled.text.contains("summary(model)"));
         assert!(!result_enabled.text.contains("plot(x, y)"));
 
-        // Warning generated
         let warning = result_enabled
             .warnings
             .iter()
@@ -2302,7 +2268,6 @@ mod tests {
         ]];
         let bytes = create_multipage_pdf(&pages);
 
-        // 1. With formula removal disabled
         let result_disabled =
             extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
         assert!(result_disabled.text.contains("y = a + bx"));
@@ -2315,7 +2280,6 @@ mod tests {
                 .any(|w| w.contains("formula-like"))
         );
 
-        // 2. With formula removal enabled: formulas removed, prose preserved
         let result_enabled = extract_pdf(
             &bytes,
             None,
@@ -2367,7 +2331,6 @@ mod tests {
                 .any(|l| l.trim() == "logit(p) = ˛†0 + ˛†1x")
         );
 
-        // Warning generated
         let warning = result_enabled
             .warnings
             .iter()
