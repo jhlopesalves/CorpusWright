@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
 use corpuswright_core::clean::{
-    CleaningConfig, PdfEmbeddedTextStrategy, ReplacementRule, TableExtractionStrategy,
+    CleaningConfig, PdfEmbeddedTextStrategy, PdfTextSource, ReplacementRule,
+    TableExtractionStrategy,
 };
 use corpuswright_core::export::{ExportReport, ExportWarning, ExportWarningKind};
 use corpuswright_core::manifest::{ExportManifest, ManifestFileRecord};
@@ -29,6 +30,14 @@ struct TypeImport {
     file: &'static str,
 }
 
+fn trim_trailing_whitespace(input: &str) -> String {
+    input
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn export_type<T: TS>(out_dir: &Path, imports: &[TypeImport], re_exports: &[&str]) {
     let mut content = String::new();
     for import in imports {
@@ -43,7 +52,10 @@ fn export_type<T: TS>(out_dir: &Path, imports: &[TypeImport], re_exports: &[&str
     if !re_exports.is_empty() {
         content.push_str(&format!("export type {{ {} }};\n\n", re_exports.join(", ")));
     }
-    content.push_str(&format!("export {}\n", T::decl().trim_end()));
+    content.push_str(&format!(
+        "export {}\n",
+        trim_trailing_whitespace(T::decl().trim_end())
+    ));
 
     let file_path = out_dir.join(format!("{}.ts", T::name()));
     fs::write(&file_path, &content)
@@ -63,6 +75,7 @@ fn main() {
     export_type::<ReplacementRule>(&out_dir, &[], &[]);
     export_type::<TableExtractionStrategy>(&out_dir, &[], &[]);
     export_type::<PdfEmbeddedTextStrategy>(&out_dir, &[], &[]);
+    export_type::<PdfTextSource>(&out_dir, &[], &[]);
     export_type::<CleaningConfig>(
         &out_dir,
         &[
@@ -78,11 +91,16 @@ fn main() {
                 name: "PdfEmbeddedTextStrategy",
                 file: "PdfEmbeddedTextStrategy",
             },
+            TypeImport {
+                name: "PdfTextSource",
+                file: "PdfTextSource",
+            },
         ],
         &[
             "ReplacementRule",
             "TableExtractionStrategy",
             "PdfEmbeddedTextStrategy",
+            "PdfTextSource",
         ],
     );
 
