@@ -621,6 +621,25 @@ pre {
 
 .pdf-intake-modal-content {
   width: min(92vw, 760px);
+  max-height: 90vh;
+  overflow: auto;
+}
+
+#pdf-intake-modal.pdf-intake-processing .modal-description,
+#pdf-intake-modal.pdf-intake-processing .pdf-intake-profiles,
+#pdf-intake-modal.pdf-intake-processing .pdf-intake-audit-panel,
+#pdf-intake-modal.pdf-intake-processing #load-pdf-intake-files-btn,
+#pdf-intake-modal.pdf-intake-processing #choose-pdf-intake-files-btn {
+  display: none;
+}
+
+#pdf-intake-modal.pdf-intake-processing .modal-actions {
+  position: sticky;
+  bottom: -24px;
+  margin: 18px -24px -24px;
+  padding: 12px 24px 16px;
+  border-top: 1px solid var(--border-color);
+  background: var(--modal-bg);
 }
 
 .pdf-intake-profiles {
@@ -760,6 +779,49 @@ pre {
   font-size: 0.82rem;
   line-height: 1.35;
   color: #d4a017;
+}
+
+.pdf-intake-materialization-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 14px;
+  background: var(--bg-color);
+}
+
+.pdf-intake-materialization-row {
+  display: grid;
+  grid-template-columns: minmax(86px, auto) minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  font-size: 0.85rem;
+}
+
+.pdf-intake-materialization-row span {
+  color: var(--text-muted);
+}
+
+.pdf-intake-materialization-row strong {
+  min-width: 0;
+  color: var(--text-color);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pdf-intake-materialization-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border-color);
+}
+
+.pdf-intake-materialization-progress div {
+  width: 0%;
+  height: 100%;
+  background: var(--accent-color);
+  transition: width 160ms ease;
 }
 
 .modal-actions {
