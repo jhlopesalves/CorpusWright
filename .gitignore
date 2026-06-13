@@ -146,3 +146,4 @@ manual-corpora/
 sample-corpora-local/
 crates/corpuswright-core/tests/fixtures/non-tracked/
 
+AGENTS.md
