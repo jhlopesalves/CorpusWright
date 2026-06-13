@@ -5,68 +5,52 @@
 
 
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tauri](https://img.shields.io/badge/Tauri-24C8DB?logo=tauri&logoColor=white)
 ![Local-first](https://img.shields.io/badge/local--first-desktop-blue)
 ![Corpus linguistics](https://img.shields.io/badge/corpus-linguistics-purple)
 
 
 **Download the experimental alpha:** [CorpusWright v0.1.0-alpha.3](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.3)
 
-> CorpusWright is currently experimental alpha software. Windows and macOS builds are available through GitHub Releases, but they may be unsigned and may trigger operating-system security warnings.
+> Experimental alpha. Windows and macOS builds are on the Releases page, but they're unsigned and your OS will probably warn you before letting them run.
 
-**CorpusWright** is a desktop workbench for preparing research corpora for analysis.
 
-The current version is a **Rust/Tauri rewrite** of an earlier PySide6 prototype. The legacy PySide application is preserved in the repository for historical continuity, but active development now focuses on the Rust/Tauri desktop app.
+CorpusWright is a Rust/Tauri rewrite of an earlier PySide6 prototype. The old PySide app is still in the repo under `legacy/pyside/` for reference, but all active development now happens in the Rust/Tauri version.
 
-## What CorpusWright does
 
-CorpusWright is designed for the practical, often messy stage before corpus analysis: getting documents into a clean, inspectable, reproducible text form.
+## Why it exists
 
-Core features include:
+Corpus work usually starts with a tedious problem: text files are _mess_ and _chaos_. PDFs arrive with running headers, page numbers, broken line wraps, OCR slip-ups, and stray table fragments baked straight into the extracted text. DOCX files smuggle in footnotes, comments, and headers you never asked for. Before you can count or analyse anything, someone has to strip all of that out - reproducibly, across a few hundred files - and doing it by hand is miserable.
 
-* loading individual files or whole folders of corpus documents;
-* extracting text from TXT, HTML, DOCX, and PDF files;
-* previewing original and processed text side by side;
-* configuring cleaning rules for whitespace, line breaks, repeated artefacts, HTML, DOCX, and PDF-specific noise;
-* searching selected documents with backend-powered hit navigation;
-* detecting repeated artefacts such as running headers, footers, page labels, boilerplate, and layout fragments;
-* expanding grouped artefact candidates into exact raw variants for Custom Removals;
-* exporting cleaned text files with manifest, warnings, and configuration artefacts;
-* preserving a reproducible cleaning configuration through JSON load/save.
+CorpusWright is my attempt to make that stage less miserable: load the documents, see exactly what was extracted, configure cleaning rules you can save and re-run, and export plain UTF-8 text that's actually ready for analysis.
 
-## Current application
+## What it does
 
-The active desktop application lives in:
+- Loads single files or whole folders — TXT, HTML, DOCX, and PDF.
+- Shows original and processed text side by side, so you can see what each rule actually changed rather than trusting it blindly.
+- Lets you configure cleaning rules for whitespace, line breaks, format-specific noise (HTML, DOCX, PDF), and your own custom removals.
+- Finds repeated artefacts — running headers, footers, page labels, boilerplate, layout fragments — across the whole corpus, then lets you promote the ones you choose into removal rules.
+- Searches across selected documents with backend-powered hit navigation.
+- Exports cleaned text alongside a manifest, a warnings file, and the exact configuration used.
 
-```text
-apps/desktop/
+Cleaning configurations save and load as JSON, so a corpus you cleaned today can be cleaned identically six months from now.
+
+## How it's built
+
+The desktop app lives in `apps/desktop/`.
+
+- **Rust** (`corpuswright-core`) does the real work: extraction, cleaning, search, export, repeated-artefact detection, and the extraction cache.
+- **Tauri v2** provides the desktop shell and the Rust ↔ TypeScript bridge.
+- **TypeScript + Vite** drive the frontend.
+
+```
+crates/corpuswright-core/   core library: extraction, cleaning, search, export, artefacts
+apps/desktop/               Tauri v2 app + TypeScript/Vite frontend
+legacy/pyside/              original PySide6 prototype, kept for reference
+docs/                       design notes and reference documentation
+examples/                   sample corpora and usage material
 ```
 
-It uses:
 
-* **Rust** for extraction, cleaning, search, export, repeated artefact detection, and cache-backed corpus operations;
-* **Tauri v2** for the desktop shell and Rust/TypeScript bridge;
-* **TypeScript + Vite** for the frontend;
-* a Rust core crate, `corpuswright-core`, shared by the desktop app and tests.
-
-## Repository layout
-
-```text
-crates/corpuswright-core/   Rust library crate: extraction, cleaning, search, export, repeated artefacts
-apps/desktop/               Tauri v2 desktop application with TypeScript/Vite frontend
-legacy/pyside/              Original PySide6 implementation, preserved for reference
-docs/                       Design notes and reference documentation
-examples/                   Example corpora and usage material, when available
-```
-
-## Why this project exists
-
-Corpus linguistics often starts with a frustrating reality: texts are messy.
-
-PDFs come with running headers, page numbers, broken line wraps, OCR errors, tables, and all sorts of layout artefacts that end up mixed into the extracted text. DOCX files can bring their own issues, such as headers, footers, comments, footnotes, and formatting structures that are not always relevant to the corpus itself.
-
-CorpusWright was built to make that preparation stage easier. The goal is to give researchers a practical way to inspect documents, clean unwanted noise, identify repeated artefacts, and export texts in a form that is ready for further analysis.
 
 ## Build and run
 
@@ -77,7 +61,7 @@ CorpusWright was built to make that preparation stage easier. The goal is to giv
 * npm
 * Tauri system dependencies for your platform
 
-### Desktop app
+Run the desktop app in development mode:
 
 ```bash
 cd apps/desktop
@@ -85,53 +69,37 @@ npm ci
 npm run tauri dev
 ```
 
-### Frontend build
+Build the frontend:
 
 ```bash
 cd apps/desktop
 npm run build
 ```
 
-### Rust tests
-
-From the repository root:
+Run the core tests and a backend check from the repository root:
 
 ```bash
 cargo test -p corpuswright-core
-```
-
-### Tauri backend check
-
-```bash
 cargo check -p corpuswright-desktop --all-targets
 ```
 
-## Development status
+## Status
 
-CorpusWright is under active development.
+This is alpha, and it behaves like alpha. The core pipeline — loading, preview, cleaning, search, export, repeated-artefact detection, extraction caching — is in place and working. The rough edges are mostly in packaging, UI polish, documentation, and the higher-level corpus-linguistic features.
 
-The current Rust/Tauri version includes the main corpus loading, preview, cleaning, search, export, repeated artefact detection, and extraction-cache architecture. Some areas are still evolving, especially user-facing polish, packaging, documentation, and corpus-linguistic analysis features.
+Next on my list:
 
-Planned or likely future work includes:
+- an original-vs-processed diff view;
+- richer export summaries;
+- frequency lists and other corpus diagnostics;
+- more TypeScript bindings generated from the Rust types;
+- a frontend tidy-up;
+- proper screenshots and documentation.
 
-* original-vs-processed diff view;
-* richer export summaries;
-* frequency lists and corpus-linguistic diagnostics;
-* more generated TypeScript bindings from Rust types;
-* frontend module clean-up and maintainability improvements;
-* improved documentation and screenshots.
+## Legacy PySide version
 
-## Legacy PySide application
-
-The original PySide6-based version is preserved in:
-
-```text
-legacy/pyside/
-```
-
-It represents the first working implementation of CorpusWright and is kept for historical reference. The Rust/Tauri application is now the active version.
+The first working version was built with PySide6 and lives in `legacy/pyside/`. It's kept for historical reference only — the Rust/Tauri app has replaced it.
 
 ## License
 
-CorpusWright is released under the MIT License.
-Bundled third-party components are documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+MIT. Bundled third-party components are listed in [THIRD_PARTY_](https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md)[NOTICES.md](http://NOTICES.md).
