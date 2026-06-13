@@ -1,5 +1,5 @@
 use crate::cache::ExtractionCache;
-use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, clean_text};
+use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, PdfTextSource, clean_text};
 use crate::manifest::{ExportManifest, ManifestFileRecord};
 use crate::scan::{DocumentRecord, DocumentType};
 use chrono::{SecondsFormat, Utc};
@@ -147,14 +147,18 @@ pub fn export_corpus(
                 DocumentType::Text => Some("plain_text".to_string()),
                 DocumentType::Html => Some("html2text".to_string()),
                 DocumentType::Docx => Some("docx_zip_wordprocessingml".to_string()),
-                DocumentType::Pdf => match cleaning_config.pdf_embedded_text_strategy {
-                    PdfEmbeddedTextStrategy::PdfiumFlat => Some("pdfium_flat".to_string()),
-                    PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn => {
-                        Some("pdfium_visual_single_column".to_string())
-                    }
-                    PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental => {
-                        Some("pdfium_visual_columns_experimental".to_string())
-                    }
+                DocumentType::Pdf => match cleaning_config.pdf_text_source {
+                    PdfTextSource::Ocr => Some("pdf_ocr_rescue".to_string()),
+                    PdfTextSource::EmbeddedText => match cleaning_config.pdf_embedded_text_strategy
+                    {
+                        PdfEmbeddedTextStrategy::PdfiumFlat => Some("pdfium_flat".to_string()),
+                        PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn => {
+                            Some("pdfium_visual_single_column".to_string())
+                        }
+                        PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental => {
+                            Some("pdfium_visual_columns_experimental".to_string())
+                        }
+                    },
                 },
             };
 
@@ -215,10 +219,8 @@ pub fn export_corpus(
                     }
                 }
             } else if record.document_type == DocumentType::Pdf {
-                let pdf_options = crate::pdf::PdfExtractionOptions {
-                    use_ocr: true,
-                    ..crate::pdf::PdfExtractionOptions::from_cleaning_config(cleaning_config)
-                };
+                let pdf_options =
+                    crate::pdf::PdfExtractionOptions::from_cleaning_config(cleaning_config);
                 if let Some(cache) = cache {
                     match cache.get_or_extract(record, Some(pdf_options), cleaning_config) {
                         Ok(entry) => {

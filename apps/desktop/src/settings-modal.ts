@@ -12,6 +12,7 @@ import { state } from "./state";
 import type {
   CleaningConfig,
   PdfEmbeddedTextStrategy,
+  PdfTextSource,
   TableExtractionStrategy,
 } from "./generated/CleaningConfig.js";
 
@@ -75,6 +76,7 @@ function buildConfigFromModalControls(): CleaningConfig {
   }
   readCheckboxesIntoConfig(config);
   config.table_extraction_strategy = dom.selTableExtraction.value as TableExtractionStrategy;
+  config.pdf_text_source = dom.selPdfTextSource.value as PdfTextSource;
   config.pdf_embedded_text_strategy = dom.selPdfEmbeddedTextStrategy.value as PdfEmbeddedTextStrategy;
   config.remove_patterns = [...state.tempRemovePatterns];
   config.replace_patterns = [...state.tempReplacePatterns];
@@ -84,6 +86,7 @@ function buildConfigFromModalControls(): CleaningConfig {
 function syncModalControlsFromConfig(config: CleaningConfig): void {
   syncCheckboxesFromConfig(config);
   dom.selTableExtraction.value = config.table_extraction_strategy;
+  dom.selPdfTextSource.value = config.pdf_text_source;
   dom.selPdfEmbeddedTextStrategy.value = config.pdf_embedded_text_strategy;
   syncDraftCustomRemovalsFromConfig(config);
 }
@@ -156,6 +159,7 @@ function closeSettingsModal(): void {
 export function syncInitialSettingsControls(): void {
   syncCheckboxesFromConfig(state.activeCleaningConfig);
   dom.selTableExtraction.value = state.activeCleaningConfig.table_extraction_strategy;
+  dom.selPdfTextSource.value = state.activeCleaningConfig.pdf_text_source;
   dom.selPdfEmbeddedTextStrategy.value = state.activeCleaningConfig.pdf_embedded_text_strategy;
 }
 
@@ -182,6 +186,7 @@ export function initSettingsModal(callbacks: SettingsModalCallbacks): void {
     setModalConfigStatus("");
     syncCheckboxesFromConfig(state.activeCleaningConfig);
     dom.selTableExtraction.value = state.activeCleaningConfig.table_extraction_strategy;
+    dom.selPdfTextSource.value = state.activeCleaningConfig.pdf_text_source;
     dom.selPdfEmbeddedTextStrategy.value = state.activeCleaningConfig.pdf_embedded_text_strategy;
     state.tempRemovePatterns = [...state.activeCleaningConfig.remove_patterns];
     state.tempReplacePatterns = [...state.activeCleaningConfig.replace_patterns];
