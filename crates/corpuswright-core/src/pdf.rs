@@ -1,7 +1,10 @@
 use crate::clean::{PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource};
 use lopdf::Document;
+use pdfium_render::prelude::*;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::sync::{LazyLock, Mutex};
+use ts_rs::TS;
 
 pub static PDFIUM_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -328,6 +331,38 @@ pub struct ExtractedPdf {
     pub page_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum PdfPageExtractionMethod {
+    Embedded,
+    Ocr,
+    ForceOcr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct PdfPageRangePage {
+    pub page_index: usize,
+    pub page_number: usize,
+    pub text: String,
+    pub char_count: usize,
+    pub method: PdfPageExtractionMethod,
+    pub warnings: Vec<String>,
+    pub render_clamped: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct PdfPageRangeResult {
+    pub page_count: usize,
+    pub start_page_index: usize,
+    pub end_page_index: usize,
+    pub pages: Vec<PdfPageRangePage>,
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug)]
 pub enum PdfExtractionError {
     InvalidFormat(String),
@@ -491,6 +526,270 @@ pub fn reconstruct_visual_single_column(mut char_infos: Vec<CharInfo>) -> String
         }
     }
     page_text
+}
+
+fn page_range_method(text_source: PdfTextSource) -> PdfPageExtractionMethod {
+    match text_source {
+        PdfTextSource::EmbeddedText => PdfPageExtractionMethod::Embedded,
+        PdfTextSource::Ocr => PdfPageExtractionMethod::Ocr,
+        PdfTextSource::ForceOcr => PdfPageExtractionMethod::ForceOcr,
+    }
+}
+
+fn apply_page_char_cap(page: &mut PdfPageRangePage, max_chars_per_page: Option<usize>) {
+    let original_char_count = page.text.chars().count();
+    if let Some(limit) = max_chars_per_page
+        && original_char_count > limit
+    {
+        page.text = page.text.chars().take(limit).collect();
+        page.warnings.push(format!(
+            "Page {} text was truncated to {} characters.",
+            page.page_number, limit
+        ));
+    }
+    page.char_count = page.text.chars().count();
+}
+
+fn validate_page_range(
+    start_page_index: usize,
+    requested_page_count: usize,
+    total_page_count: usize,
+) -> Result<std::ops::Range<usize>, PdfExtractionError> {
+    if requested_page_count == 0 {
+        return Ok(start_page_index..start_page_index);
+    }
+    if start_page_index > total_page_count {
+        return Err(PdfExtractionError::InvalidFormat(format!(
+            "Page range starts at index {start_page_index}, but the PDF has {total_page_count} pages."
+        )));
+    }
+    let end_page_index = start_page_index
+        .saturating_add(requested_page_count)
+        .min(total_page_count);
+    Ok(start_page_index..end_page_index)
+}
+
+fn extract_embedded_page_text(
+    page: &PdfPage<'_>,
+    strategy: PdfEmbeddedTextStrategy,
+) -> Result<(String, Vec<String>), String> {
+    let mut warnings = Vec::new();
+    let text_page = page.text().map_err(|error| error.to_string())?;
+    let flat_text = text_page.all();
+
+    match strategy {
+        PdfEmbeddedTextStrategy::PdfiumFlat => Ok((flat_text, warnings)),
+        PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn
+        | PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental => {
+            if strategy == PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental {
+                warnings.push("Experimental two-column PDF extraction is currently unsupported/stubbed; falling back to visual single-column extraction.".to_string());
+            }
+
+            let mut infos = Vec::new();
+            let mut last_valid_coords = None;
+            for c in text_page.chars().iter() {
+                let txt = match c.unicode_string() {
+                    Some(s) => s,
+                    None => continue,
+                };
+                if txt == "\n" || txt == "\r" || txt.as_bytes().first().is_some_and(|&b| b < 32) {
+                    continue;
+                }
+                let bounds = c.loose_bounds();
+                let (bottom, left, top, right) = match bounds {
+                    Ok(b) => {
+                        let bottom = b.bottom().value;
+                        let left = b.left().value;
+                        let top = b.top().value;
+                        let right = b.right().value;
+                        if (right - left).abs() > 0.001 || (top - bottom).abs() > 0.001 {
+                            last_valid_coords = Some((bottom, left, top, right));
+                            (bottom, left, top, right)
+                        } else if txt == " " {
+                            if let Some((b, _, t, r)) = last_valid_coords {
+                                (b, r, t, r + 0.1)
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            continue;
+                        }
+                    }
+                    Err(_) => {
+                        if txt == " " {
+                            if let Some((b, _, t, r)) = last_valid_coords {
+                                (b, r, t, r + 0.1)
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            continue;
+                        }
+                    }
+                };
+                infos.push(CharInfo {
+                    c: txt,
+                    bottom,
+                    left,
+                    top,
+                    right,
+                });
+            }
+
+            Ok((reconstruct_visual_single_column(infos), warnings))
+        }
+    }
+}
+
+fn extract_pdf_embedded_page_range(
+    bytes: &[u8],
+    start_page_index: usize,
+    requested_page_count: usize,
+    options: PdfExtractionOptions,
+) -> Result<(usize, Vec<PdfPageRangePage>), PdfExtractionError> {
+    let pdfium = crate::pdf_ocr::init_pdfium().map_err(|error| {
+        PdfExtractionError::InvalidFormat(format!("Failed to initialize PDFium: {error}"))
+    })?;
+
+    let document = {
+        let _lock = PDFIUM_LOCK.lock().unwrap();
+        pdfium
+            .load_pdf_from_byte_slice(bytes, None)
+            .map_err(|error| {
+                PdfExtractionError::InvalidFormat(format!(
+                    "Failed to load PDF with PDFium: {error:?}"
+                ))
+            })?
+    };
+
+    let page_count = {
+        let _lock = PDFIUM_LOCK.lock().unwrap();
+        document.pages().len() as usize
+    };
+
+    let range = validate_page_range(start_page_index, requested_page_count, page_count)?;
+    let mut pages = Vec::with_capacity(range.len());
+
+    for page_index in range {
+        let page_number = page_index + 1;
+        let result = {
+            let _lock = PDFIUM_LOCK.lock().unwrap();
+            match document.pages().get(page_index as i32) {
+                Ok(page) => extract_embedded_page_text(&page, options.strategy),
+                Err(error) => Err(error.to_string()),
+            }
+        };
+
+        match result {
+            Ok((text, warnings)) => pages.push(PdfPageRangePage {
+                page_index,
+                page_number,
+                char_count: text.chars().count(),
+                text,
+                method: PdfPageExtractionMethod::Embedded,
+                warnings,
+                render_clamped: false,
+                error: None,
+            }),
+            Err(error) => pages.push(PdfPageRangePage {
+                page_index,
+                page_number,
+                text: String::new(),
+                char_count: 0,
+                method: PdfPageExtractionMethod::Embedded,
+                warnings: Vec::new(),
+                render_clamped: false,
+                error: Some(error),
+            }),
+        }
+    }
+
+    Ok((page_count, pages))
+}
+
+/// Extracts a page range from a single PDF and returns page-level results.
+///
+/// The OCR modes process only the requested pages and keep failures local to
+/// the affected page. `PdfTextSource::Ocr` runs OCR directly for this
+/// inspection path; mixed embedded-text/OCR fallback remains part of the
+/// full-document extraction path.
+pub fn extract_pdf_page_range(
+    bytes: &[u8],
+    start_page_index: usize,
+    requested_page_count: usize,
+    options: PdfExtractionOptions,
+    max_chars_per_page: Option<usize>,
+) -> Result<PdfPageRangeResult, PdfExtractionError> {
+    let doc = Document::load_mem(bytes).map_err(|error| {
+        PdfExtractionError::InvalidFormat(format!("Failed to load PDF: {error}"))
+    })?;
+    let mut warnings = Vec::new();
+    if doc.is_encrypted() {
+        warnings.push(
+            "PDF is encrypted or password protected. Text extraction may fail or produce garbage."
+                .to_string(),
+        );
+    }
+
+    let method = page_range_method(options.text_source);
+    let (page_count, mut pages) = match options.text_source {
+        PdfTextSource::EmbeddedText => {
+            extract_pdf_embedded_page_range(bytes, start_page_index, requested_page_count, options)?
+        }
+        PdfTextSource::Ocr | PdfTextSource::ForceOcr => {
+            if options.text_source == PdfTextSource::Ocr {
+                warnings.push(
+                    "Page-range OCR preview runs OCR directly; mixed embedded-text fallback is not used in this path."
+                        .to_string(),
+                );
+            }
+            let (page_count, ocr_pages) = crate::pdf_ocr::extract_page_range_via_ocr(
+                bytes,
+                start_page_index,
+                requested_page_count,
+                options.ocr_quality,
+            )
+            .map_err(|error| PdfExtractionError::InvalidFormat(error.to_string()))?;
+
+            if start_page_index > page_count {
+                return Err(PdfExtractionError::InvalidFormat(format!(
+                    "Page range starts at index {start_page_index}, but the PDF has {page_count} pages."
+                )));
+            }
+
+            let pages = ocr_pages
+                .into_iter()
+                .map(|page| PdfPageRangePage {
+                    page_index: page.page_index,
+                    page_number: page.page_index + 1,
+                    char_count: page.text.chars().count(),
+                    text: page.text,
+                    method: method.clone(),
+                    warnings: page.warnings,
+                    render_clamped: page.render_clamped,
+                    error: page.error,
+                })
+                .collect::<Vec<_>>();
+            (page_count, pages)
+        }
+    };
+
+    for page in &mut pages {
+        apply_page_char_cap(page, max_chars_per_page);
+    }
+
+    let end_page_index = pages
+        .last()
+        .map(|page| page.page_index + 1)
+        .unwrap_or(start_page_index);
+
+    Ok(PdfPageRangeResult {
+        page_count,
+        start_page_index,
+        end_page_index,
+        pages,
+        warnings,
+    })
 }
 
 pub fn extract_pdf(
@@ -1976,6 +2275,50 @@ mod tests {
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
         bytes
+    }
+
+    #[test]
+    fn test_pdf_page_range_extracts_embedded_pages() {
+        require_pdfium!();
+        let bytes = create_multipage_pdf(&[
+            vec!["Page one body"],
+            vec!["Page two body"],
+            vec!["Page three body"],
+        ]);
+
+        let result =
+            extract_pdf_page_range(&bytes, 1, 2, PdfExtractionOptions::raw_default(), None)
+                .unwrap();
+
+        assert_eq!(result.page_count, 3);
+        assert_eq!(result.start_page_index, 1);
+        assert_eq!(result.end_page_index, 3);
+        assert_eq!(result.pages.len(), 2);
+        assert_eq!(result.pages[0].page_index, 1);
+        assert_eq!(result.pages[0].page_number, 2);
+        assert_eq!(result.pages[0].method, PdfPageExtractionMethod::Embedded);
+        assert!(result.pages[0].text.contains("Page two body"));
+        assert!(result.pages[0].error.is_none());
+        assert!(result.pages[1].text.contains("Page three body"));
+    }
+
+    #[test]
+    fn test_pdf_page_range_caps_page_text() {
+        require_pdfium!();
+        let bytes = create_multipage_pdf(&[vec!["abcdef"]]);
+
+        let result =
+            extract_pdf_page_range(&bytes, 0, 1, PdfExtractionOptions::raw_default(), Some(3))
+                .unwrap();
+
+        assert_eq!(result.pages[0].text.chars().count(), 3);
+        assert_eq!(result.pages[0].char_count, 3);
+        assert!(
+            result.pages[0]
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("truncated"))
+        );
     }
 
     #[test]

@@ -40,6 +40,9 @@ pub use export::{
     export_corpus,
 };
 pub use manifest::{ExportManifest, ManifestFileRecord};
+pub use pdf::{
+    PdfPageExtractionMethod, PdfPageRangePage, PdfPageRangeResult, extract_pdf_page_range,
+};
 pub use pdf_audit::{PdfAuditQuality, PdfAuditResult, PdfAuditSuggestedProfile, audit_pdf_files};
 pub use preview::{
     CombinedPreview, FilePreview, PreviewError, PreviewOptions, PreviewWarning, PreviewWarningKind,
