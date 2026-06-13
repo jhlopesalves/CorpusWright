@@ -8,11 +8,9 @@ use tempfile::TempDir;
 
 #[test]
 fn test_end_to_end_corpus_pipeline() {
-    // 1. Setup paths
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let fixtures_dir = Path::new(manifest_dir).join("tests").join("fixtures");
 
-    // 2. Scan the directory
     let mut scan_report = scan_directory(&fixtures_dir).expect("Failed to scan directory");
     scan_report
         .files
@@ -22,7 +20,6 @@ fn test_end_to_end_corpus_pipeline() {
     assert_eq!(scan_report.summary.files_supported, 20);
     assert_eq!(scan_report.files.len(), 20);
 
-    // 3. Setup aggressive cleaning config for the dirty text
     let config = CleaningConfig {
         lowercase: true,
         remove_standalone_page_numbers: true,
@@ -32,7 +29,6 @@ fn test_end_to_end_corpus_pipeline() {
         ..CleaningConfig::default()
     };
 
-    // 4. Preview files
     let preview_options = PreviewOptions {
         max_chars_per_file: 50,
         include_paths: true,
@@ -56,7 +52,6 @@ fn test_end_to_end_corpus_pipeline() {
             .any(|p| p.relative_path.to_string_lossy().contains("dirty.txt"))
     );
 
-    // Ensure the dirty preview shows the text has been cleaned (e.g. no PAGE artifacts)
     for file in &preview_result.files {
         if file.relative_path.to_string_lossy().contains("dirty.txt") {
             let processed_lower = file.text.to_lowercase();
@@ -67,7 +62,6 @@ fn test_end_to_end_corpus_pipeline() {
         }
     }
 
-    // 5. Export Corpus
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let export_options = ExportOptions {
         app_name: "IntegrationTest".to_string(),
@@ -87,11 +81,9 @@ fn test_end_to_end_corpus_pipeline() {
 
     assert_eq!(export_report.files_exported, 20);
 
-    // 6. Verify exported structure and content
     let texts_dir = temp_dir.path().join("texts");
     assert!(texts_dir.exists());
 
-    // Count all files recursively under texts_dir
     fn count_files_recursively(dir: &Path) -> usize {
         let mut count = 0;
         if let Ok(entries) = fs::read_dir(dir) {

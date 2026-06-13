@@ -1,31 +1,19 @@
-//! Word-count helper that applies the configured cleaning pipeline.
+//! Word-count helper for configured text extraction and cleaning.
 //!
-//! This module exists so `compute_word_count_command` in the Tauri layer
-//! can produce a **configured/processed** word count that matches export
-//! and preview processing as closely as feasible, rather than a raw word
-//! count that ignores the active `CleaningConfig`.
+//! Counts follow the active `CleaningConfig` so the Tauri layer aligns with
+//! export and preview processing.
 //!
-//! OCR is deliberately **disabled** for word-count (matches the pre-existing
-//! raw-count behaviour) to keep the operation fast.  If export/preview
-//! enable OCR for PDFs, the word count may slightly undercount those files,
-//! though this is typically negligible.
+//! OCR is disabled for word counts to keep the operation fast. If export or
+//! preview enables OCR for PDFs, scanned pages may be undercounted.
 
 use crate::cache::ExtractionCache;
 use crate::clean::{CleaningConfig, clean_text};
 use crate::scan::{DocumentRecord, DocumentType};
 
-/// Count words in a single document **after** applying the configured
-/// `CleaningConfig` to both extraction and post-extraction cleaning.
+/// Count words in a single document after applying the configured extraction
+/// and post-extraction cleaning.
 ///
-/// Pipeline (mirrors `export_corpus` and `preview_processed_files` closely):
-/// 1. Read source bytes.
-/// 2. Extract structured text (PDF/DOCX) with config-aware options.
-/// 3. If `cleaning_config.extract_html` is set, run HTML-to-text extraction.
-/// 4. Run `clean_text` with the full config.
-/// 5. Return `text.split_whitespace().count()`.
-///
-/// Errors (I/O, extraction failure, etc.) silently yield `0`, preserving
-/// the pre-existing error-handling behaviour of the raw word-count command.
+/// I/O and extraction errors yield `0`.
 pub fn count_words_for_record(
     record: &DocumentRecord,
     cleaning_config: &CleaningConfig,
@@ -44,7 +32,6 @@ pub fn count_words_for_record(
             Err(_) => return 0,
         }
     } else {
-        // Fallback: direct extraction (no cache available)
         if record.document_type == DocumentType::Docx {
             if let Ok(bytes) = std::fs::read(&record.source_path)
                 && let Ok(extracted) = crate::docx::extract_docx(&bytes, cleaning_config)
@@ -78,7 +65,7 @@ pub fn count_words_for_record(
     count_words_in_processed_text(&source_text, cleaning_config)
 }
 
-/// Apply HTML extraction (if enabled) and `clean_text`, then count words.
+/// Counts words after optional HTML extraction and `clean_text`.
 fn count_words_in_processed_text(raw: &str, cleaning_config: &CleaningConfig) -> usize {
     let text = if cleaning_config.extract_html {
         crate::html::extract_html(raw)
@@ -98,7 +85,6 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::tempdir;
 
-    /// Helper: build a minimal DocumentRecord backed by a real temp file.
     fn text_record(source_dir: &std::path::Path, content: &str) -> DocumentRecord {
         let path = source_dir.join("test.txt");
         fs::write(&path, content).unwrap();
@@ -110,8 +96,6 @@ mod tests {
         }
     }
 
-    /// Raw word count on "hello REMOVE world" is 3.
-    /// With custom removal "REMOVE" the configured count should be 2.
     #[test]
     fn custom_removal_reduces_word_count() {
         let dir = tempdir().unwrap();
@@ -129,7 +113,6 @@ mod tests {
         );
     }
 
-    /// Default config should produce a raw count of 3.
     #[test]
     fn default_config_gives_raw_word_count() {
         let dir = tempdir().unwrap();
@@ -143,7 +126,6 @@ mod tests {
         );
     }
 
-    /// Lowercase config should not change word count.
     #[test]
     fn lowercase_preserves_word_count() {
         let dir = tempdir().unwrap();
@@ -157,11 +139,9 @@ mod tests {
         assert_eq!(count, 2, "lowercase should not change the word count");
     }
 
-    /// Replace pattern should change word count when the pattern matches whole words.
     #[test]
     fn replace_pattern_affects_word_count() {
         let dir = tempdir().unwrap();
-        // "old" becomes "" — effectively removes "old"
         let record = text_record(dir.path(), "hello old world");
 
         let config = CleaningConfig {
@@ -175,7 +155,6 @@ mod tests {
         assert_eq!(count, 2, "expected 2 words after replacing 'old' with ''");
     }
 
-    /// Non-existent files yield 0 (preserving the pre-existing error behaviour).
     #[test]
     fn missing_file_returns_zero() {
         let record = DocumentRecord {
