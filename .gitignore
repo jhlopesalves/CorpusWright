@@ -146,11 +146,9 @@ manual-corpora/
 sample-corpora-local/
 crates/corpuswright-core/tests/fixtures/non-tracked/
 
-AGENTS.md
-
 # Accidental local backup copy of this repository
 /CorpusWright/
-AGENTS.md
+
 
 # Local agent instructions
-/AGENTS.md
+AGENTS.md
