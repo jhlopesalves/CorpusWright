@@ -1,6 +1,7 @@
 use corpuswright_core::cache::ExtractionCache;
 use corpuswright_core::clean::CleaningConfig;
 use corpuswright_core::export::{ExportError, ExportOptions, ExportReport, export_corpus};
+use corpuswright_core::pdf_audit::{PdfAuditResult, audit_pdf_files};
 use corpuswright_core::preview::{
     CombinedPreview, PreviewOptions, preview_files, preview_processed_files,
 };
@@ -131,6 +132,12 @@ fn load_files_command(
         report,
         corpus_version: version,
     })
+}
+
+#[tauri::command(async)]
+fn audit_pdf_files_command(paths: Vec<String>) -> Result<Vec<PdfAuditResult>, String> {
+    let path_bufs = paths.into_iter().map(PathBuf::from).collect();
+    Ok(audit_pdf_files(path_bufs))
 }
 
 #[tauri::command(async)]
@@ -413,6 +420,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             scan_directory_command,
             load_files_command,
+            audit_pdf_files_command,
             clear_corpus_command,
             search_corpus_command,
             preview_files_command,

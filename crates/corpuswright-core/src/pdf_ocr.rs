@@ -105,6 +105,16 @@ fn first_existing_ocr_resource_dir() -> Option<PathBuf> {
         .find(|path| path.is_dir())
 }
 
+pub fn first_existing_ocr_model_dir() -> Option<PathBuf> {
+    ocr_resource_candidates().into_iter().find(|path| {
+        path.join("text-detection.rten").is_file() && path.join("text-recognition.rten").is_file()
+    })
+}
+
+pub fn ocr_model_resources_available() -> bool {
+    first_existing_ocr_model_dir().is_some()
+}
+
 /// Returns true if PDFium can be initialized on the current platform.
 /// Useful for guarding tests that depend on the native PDFium library.
 #[cfg(test)]
