@@ -101,7 +101,7 @@ pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
     }
 
     if config.replace_diacritics {
-        // Decompose to NFD, strip combining diacritical marks, then optionally normalize back.
+        // Decompose to NFD before stripping combining diacritical marks.
         cleaned = cleaned
             .nfd()
             .filter(|c| !matches!(*c, '\u{0300}'..='\u{036f}'))
@@ -109,7 +109,7 @@ pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
     }
 
     if config.normalize_unicode {
-        // Use NFC (Normalization Form C) which is the most common composed form.
+        // NFC is the most common composed Unicode form.
         cleaned = cleaned.nfc().collect::<String>();
     }
 
@@ -377,7 +377,7 @@ mod tests {
             ..CleaningConfig::default()
         };
         let input = "Paragraph one\ncontinued.\n\nParagraph two\na\ncontinued.";
-        // 'a' is a single-character line and should be removed.
+        // Single-character lines are dropped by irregular line-break normalisation.
         let expected = "Paragraph one continued.\n\nParagraph two continued.";
         assert_eq!(clean_text(input, &config), expected);
     }
@@ -389,7 +389,7 @@ mod tests {
             .join("fixtures")
             .join("dirty.txt");
 
-        // Ensure the test works even if run from workspace root and fixture is not found easily
+        // Some ad-hoc test runs omit fixtures; this assertion only runs when the file exists.
         if !fixture_path.exists() {
             return;
         }

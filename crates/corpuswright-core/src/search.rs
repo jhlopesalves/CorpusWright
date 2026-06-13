@@ -81,7 +81,6 @@ pub fn search_corpus(
         });
     }
 
-    // Clamp max_hits to safe bounds.
     let max_hits = if max_hits == 0 {
         DEFAULT_MAX_HITS
     } else {
@@ -99,7 +98,6 @@ pub fn search_corpus(
     let mut remaining_hits = max_hits;
 
     for (index, record) in records.iter().enumerate() {
-        // ── 1. Extract full text (no char cap) ───────────────────────────
         let mut source_text = String::new();
 
         if let Some(cache) = cache {
@@ -114,7 +112,6 @@ pub fn search_corpus(
                 source_text = entry.extracted_text;
             }
         } else {
-            // Fallback: direct extraction (no cache available)
             if record.document_type == DocumentType::Docx {
                 if let Ok(bytes) = std::fs::read(&record.source_path)
                     && let Ok(extracted) = extract_docx(&bytes, cleaning_config)
@@ -141,7 +138,6 @@ pub fn search_corpus(
             continue;
         }
 
-        // ── 2. Apply processed mode if requested ─────────────────────────
         if is_processed {
             if cleaning_config.extract_html {
                 source_text = extract_html(&source_text);
@@ -152,7 +148,6 @@ pub fn search_corpus(
             }
         }
 
-        // ── 3. Count all matches in this file ────────────────────────────
         let file_match_count = re.find_iter(&source_text).count();
 
         if file_match_count == 0 {
@@ -162,7 +157,6 @@ pub fn search_corpus(
         matching_file_indices.push(index);
         total_matches += file_match_count;
 
-        // ── 4. Collect hit contexts (only while budget remains) ──────────
         if remaining_hits > 0 {
             for (file_match_index, mtch) in re.find_iter(&source_text).enumerate() {
                 if remaining_hits == 0 {
@@ -174,10 +168,8 @@ pub fn search_corpus(
 
                 let match_text = &source_text[match_start..match_end];
 
-                // Context before: up to CONTEXT_CHARS characters backwards.
                 let context_before = take_chars_before(&source_text, match_start, CONTEXT_CHARS);
 
-                // Context after: up to CONTEXT_CHARS characters forwards.
                 let context_after = take_chars_after(&source_text, match_end, CONTEXT_CHARS);
 
                 hits.push(SearchHit {
@@ -291,9 +283,6 @@ mod tests {
         }
     }
 
-    /// Helper: search in-memory text records without reading from disk.
-    /// Since search reads from files, we don't test that path here.
-    /// Instead we test the internals directly.
     fn make_records(count: usize, base_name: &str) -> Vec<DocumentRecord> {
         (0..count)
             .map(|i| make_record("", &format!("{}_{}.txt", base_name, i)))
@@ -347,7 +336,6 @@ mod tests {
         let records = make_records(1, "default");
         let result =
             search_corpus(&records, "x", false, &CleaningConfig::default(), 0, None).unwrap();
-        // max_hits=0 → DEFAULT_MAX_HITS=1000, but no files have "x" so it's fine
         assert_eq!(result.total_matches, 0);
     }
 
@@ -355,7 +343,6 @@ mod tests {
     fn max_hits_clamped_to_hard_max() {
         let result =
             search_corpus(&[], "test", false, &CleaningConfig::default(), 99999, None).unwrap();
-        // Should not crash; max_hits clamped to HARD_MAX_HITS=5000
         assert_eq!(result.total_matches, 0);
     }
 
@@ -365,13 +352,11 @@ mod tests {
         let tmp = std::env::temp_dir().join("corpuswright_test_special.txt");
         std::fs::write(&tmp, text).unwrap();
         let records = [make_record(text, tmp.to_str().unwrap())];
-        // Patch source_path so search reads our temp file
         let records = [DocumentRecord {
             source_path: tmp.clone(),
             ..records[0].clone()
         }];
 
-        // The dot should be literal, not "any char"
         let result = search_corpus(
             &records,
             "5.00",
@@ -383,7 +368,6 @@ mod tests {
         .unwrap();
         assert_eq!(result.total_matches, 1);
 
-        // Test that raw dot doesn't match extra chars
         let result2 = search_corpus(
             &records,
             "5.00x",
@@ -467,7 +451,6 @@ mod tests {
 
     #[test]
     fn context_respects_boundary() {
-        // Very short string – context should fit within bounds
         let text = "short";
         let tmp = std::env::temp_dir().join("corpuswright_test_short.txt");
         std::fs::write(&tmp, text).unwrap();
@@ -497,7 +480,6 @@ mod tests {
 
     #[test]
     fn matching_file_indices_are_correct() {
-        // This test only validates utility functions and struct shapes.
         let result = SearchResult {
             total_matches: 0,
             matching_file_indices: vec![0, 2],
@@ -512,7 +494,6 @@ mod tests {
 
     #[test]
     fn hit_has_correct_file_match_index() {
-        // The match_file_index is tested via take_chars utils
         let (before, after) = extract_context_test("xx abc yy", "abc");
         assert_eq!(before, "xx ");
         assert_eq!(after, " yy");
@@ -539,9 +520,9 @@ mod tests {
     #[test]
     fn take_chars_handles_unicode() {
         let text = "aé😀bcdé😀fg";
-        // "é" is 2 bytes, "😀" is 4 bytes.  Char boundaries must be respected.
+        // Multibyte character boundaries must be respected.
         let before = take_chars_before(text, 11, 3); // 11 = byte offset of "b"
-        // 3 chars before "b" = "😀é" (might cross multi-byte)
+        // The three characters before "b" cross multibyte boundaries.
         assert!(!before.is_empty());
 
         let after = take_chars_after(text, 11, 3);
@@ -573,7 +554,6 @@ mod tests {
         assert!(json.contains("file_match_index"));
     }
 
-    /// Helper used by context tests.
     fn extract_context_test(text: &str, query: &str) -> (String, String) {
         let re = Regex::new(&format!("(?i){}", regex::escape(query))).unwrap();
         let mtch = re.find(text).unwrap();

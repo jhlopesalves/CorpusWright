@@ -235,7 +235,6 @@ pub fn extract_docx(
         }
     }
 
-    // Clean up multiple trailing newlines and tabs
     let mut cleaned = if config.table_extraction_strategy == TableExtractionStrategy::TabSeparated {
         text.replace("\n\n\t", "\t").replace("\t\n", "\n")
     } else {
@@ -254,7 +253,6 @@ pub fn extract_docx(
         cleaned = cleaned.replace("\n\n\n", "\n\n");
     }
 
-    // Remove duplicates in warnings
     warnings.sort();
     warnings.dedup();
 

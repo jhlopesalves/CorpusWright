@@ -26,19 +26,11 @@ use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::RwLock;
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 /// Default maximum total cache size in bytes (256 MB).
 pub const DEFAULT_MAX_TOTAL_BYTES: usize = 256 * 1024 * 1024;
 
 /// Default maximum per-entry size in bytes (10 MB).
 pub const DEFAULT_MAX_ENTRY_BYTES: usize = 10 * 1024 * 1024;
-
-// ---------------------------------------------------------------------------
-// Cache key types
-// ---------------------------------------------------------------------------
 
 /// Subset of PDF extraction options used as part of the cache key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -152,10 +144,6 @@ impl ExtractionKey {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Cache entry
-// ---------------------------------------------------------------------------
-
 /// A cached extraction result, preserving metadata from the extraction step.
 ///
 /// Fields mirror the outputs of `ExtractedPdf` and `ExtractedDocx`:
@@ -171,10 +159,6 @@ pub struct CacheEntry {
     /// Number of pages (PDF only; `None` for DOCX and text files).
     pub page_count: Option<usize>,
 }
-
-// ---------------------------------------------------------------------------
-// ExtractionCache
-// ---------------------------------------------------------------------------
 
 /// Thread-safe, size-limited cache for extracted text.
 pub struct ExtractionCache {
@@ -232,7 +216,6 @@ impl ExtractionCache {
     ) -> Result<CacheEntry, String> {
         let key = ExtractionKey::from_record(record, pdf_options, cleaning_config);
 
-        // Phase 1: Fast read-lock lookup
         {
             let inner = self.inner.read().unwrap();
             if let Some(entry) = inner.entries.get(&key) {
@@ -240,26 +223,22 @@ impl ExtractionCache {
             }
         } // Read lock released
 
-        // Phase 2: Extract text without holding cache lock
         let extracted = extract_text_from_record(record, pdf_options, cleaning_config)?;
 
         let entry_bytes = extracted.extracted_text.len();
         let page_count = extracted.page_count;
         let warnings = extracted.warnings.clone();
 
-        // Skip caching if entry exceeds per-entry limit
         if entry_bytes > self.max_entry_bytes {
             return Ok(extracted);
         }
 
-        // Phase 3: Write-lock to insert (double-check to avoid races)
         let mut inner = self.inner.write().unwrap();
         if let Some(existing) = inner.entries.get(&key) {
             // Another thread inserted while we were extracting
             return Ok(existing.clone());
         }
 
-        // Evict until enough room
         while inner.total_bytes + entry_bytes > self.max_total_bytes {
             if let Some(evict_key) = inner.order.pop_front() {
                 if let Some(evicted) = inner.entries.remove(&evict_key) {
@@ -272,7 +251,7 @@ impl ExtractionCache {
             }
         }
 
-        // Insert — clone text for the stored entry, return the original
+        // Store a cloned entry so the original extraction result can be returned unchanged.
         inner.entries.insert(
             key.clone(),
             CacheEntry {
@@ -334,10 +313,6 @@ impl Default for ExtractionCache {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Extraction helper
-// ---------------------------------------------------------------------------
-
 /// Extracts text from a document record without any caching.
 ///
 /// Returns a `CacheEntry` with extracted text, warnings, and page count
@@ -382,10 +357,6 @@ fn extract_text_from_record(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -405,23 +376,17 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Key behaviour
-    // -----------------------------------------------------------------------
-
     #[test]
     fn test_cache_miss_then_hit() {
         let dir = tempdir().unwrap();
         let record = text_record(dir.path(), "hello.txt", "Hello world");
         let cache = ExtractionCache::new();
 
-        // Miss (first call)
         let entry1 = cache
             .get_or_extract(&record, None, &CleaningConfig::default())
             .unwrap();
         assert_eq!(entry1.extracted_text, "Hello world");
 
-        // Hit (second call)
         let entry2 = cache
             .get_or_extract(&record, None, &CleaningConfig::default())
             .unwrap();
@@ -444,7 +409,6 @@ mod tests {
         assert_eq!(cache.len(), 0);
         assert!(cache.is_empty());
 
-        // Should work after clear
         let entry = cache
             .get_or_extract(&record, None, &CleaningConfig::default())
             .unwrap();
@@ -474,14 +438,12 @@ mod tests {
     fn test_different_pdf_options_create_different_keys() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.pdf");
-        // Minimal valid PDF — content doesn't matter for key differentiation
         let record = DocumentRecord {
             source_path: path.clone(),
             relative_path: PathBuf::from("test.pdf"),
             document_type: DocumentType::Pdf,
             size_bytes: 0,
         };
-        // Write a minimal PDF header so extraction doesn't crash on the key test
         std::fs::write(&path, b"%PDF-1.4").unwrap();
 
         let _cache = ExtractionCache::new();
@@ -500,7 +462,6 @@ mod tests {
             ..opts_a
         };
 
-        // Both will fail extraction (invalid PDF) but their keys should differ.
         let key_a = ExtractionKey::from_record(&record, Some(opts_a), &CleaningConfig::default());
         let key_b = ExtractionKey::from_record(&record, Some(opts_b), &CleaningConfig::default());
         assert_ne!(key_a, key_b, "PDF options with different OCR should differ");
@@ -543,10 +504,6 @@ mod tests {
         assert_eq!(key_a, key_a2, "Same DOCX config should match");
     }
 
-    // -----------------------------------------------------------------------
-    // try_get tests
-    // -----------------------------------------------------------------------
-
     #[test]
     fn test_try_get_returns_none_for_empty_cache() {
         let dir = tempdir().unwrap();
@@ -566,21 +523,15 @@ mod tests {
         let record = text_record(dir.path(), "cached.txt", "Hello from cache");
         let cache = ExtractionCache::new();
 
-        // Populate via get_or_extract
         cache
             .get_or_extract(&record, None, &CleaningConfig::default())
             .unwrap();
 
-        // try_get should find it
         let entry = cache
             .try_get(&record, None, &CleaningConfig::default())
             .expect("should be a hit after get_or_extract");
         assert_eq!(entry.extracted_text, "Hello from cache");
     }
-
-    // -----------------------------------------------------------------------
-    // CacheEntry metadata tests
-    // -----------------------------------------------------------------------
 
     #[test]
     fn test_cache_entry_carries_warnings_and_page_count_for_pdf() {
@@ -600,32 +551,24 @@ mod tests {
             ..PdfExtractionOptions::raw_default()
         };
 
-        // Extraction will fail (minimal header is not a real PDF), but that's fine
         let result = cache.get_or_extract(&record, Some(pdf_opts), &CleaningConfig::default());
-        // We don't care if it succeeds or fails; we're testing CacheEntry shape
+        // The minimal PDF may fail before cache metadata exists; either outcome is acceptable here.
         if let Ok(entry) = result {
-            // If extraction somehow succeeded, verify fields
             assert!(entry.page_count.is_some() || entry.warnings.is_empty());
         }
     }
-
-    // -----------------------------------------------------------------------
-    // Size limits
-    // -----------------------------------------------------------------------
 
     #[test]
     fn test_per_entry_size_cap_skips_caching() {
         let dir = tempdir().unwrap();
         let content = "x".repeat(100);
         let record = text_record(dir.path(), "big.txt", &content);
-        // Set max entry to 50 bytes — the text (100 bytes) exceeds it
         let cache = ExtractionCache::with_limits(10_000_000, 50);
 
         let entry = cache
             .get_or_extract(&record, None, &CleaningConfig::default())
             .unwrap();
         assert_eq!(entry.extracted_text, content);
-        // Should NOT be cached
         assert_eq!(
             cache.len(),
             0,
@@ -636,8 +579,7 @@ mod tests {
     #[test]
     fn test_total_size_cap_evicts_old_entries() {
         let dir = tempdir().unwrap();
-        // Create a cache with very small total limit: 150 bytes
-        // Each entry is ~100 bytes of text, so we can fit at most 1-2.
+        // The tiny total limit forces FIFO eviction after two short entries.
         let cache = ExtractionCache::with_limits(150, 10_000_000);
 
         let record1 = text_record(dir.path(), "a.txt", &"a".repeat(80));
@@ -653,7 +595,6 @@ mod tests {
             .get_or_extract(&record2, None, &CleaningConfig::default())
             .unwrap();
 
-        // After inserting two ~80-byte entries, total ~160 > 150, so one should be evicted
         let len_after_two = cache.len();
         assert!(
             len_after_two <= 2,
@@ -672,10 +613,6 @@ mod tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // Integration with search and word-count paths
-    // -----------------------------------------------------------------------
-
     #[test]
     fn test_extract_text_basic() {
         let dir = tempdir().unwrap();
@@ -692,7 +629,6 @@ mod tests {
         let record = text_record(dir.path(), "reuse.txt", "Reusable text");
         let cache = ExtractionCache::new();
 
-        // First call: extraction + cache insert
         let e1 = cache
             .get_or_extract(&record, None, &CleaningConfig::default())
             .unwrap();
@@ -700,7 +636,6 @@ mod tests {
         assert_eq!(cache.len(), 1);
         let bytes_after_first = cache.total_bytes();
 
-        // Second call: cache hit, no re-extraction
         let e2 = cache
             .get_or_extract(&record, None, &CleaningConfig::default())
             .unwrap();

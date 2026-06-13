@@ -119,7 +119,6 @@ pub fn evaluate(text: &str) -> (ExtractionQuality, QualityMetrics) {
         average_token_length,
     };
 
-    // Heuristics to classify extraction quality
     let quality = if total_characters < 20 {
         if symbol_ratio > 0.5 || replacement_ratio > 0.1 {
             ExtractionQuality::Poor

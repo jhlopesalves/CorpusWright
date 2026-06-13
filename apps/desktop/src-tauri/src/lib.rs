@@ -16,12 +16,10 @@ use std::sync::{Arc, RwLock};
 use tauri::path::BaseDirectory;
 use tauri::{Emitter, Manager, Window};
 
-/// Managed Tauri state for scan cancellation.
 struct ScanState {
     cancel: CancellationFlag,
 }
 
-/// Inner state for the corpus, protected by RwLock.
 struct CorpusStateInner {
     version: u64,
     root: Option<PathBuf>,
@@ -50,7 +48,6 @@ impl CorpusStateInner {
     }
 }
 
-/// Public wrapper for CorpusStateInner protected by RwLock.
 struct CorpusState {
     inner: RwLock<CorpusStateInner>,
 }
@@ -228,7 +225,6 @@ fn export_corpus_command(
         overwrite: false,
     };
 
-    // Emit progress events during export
     let progress_callback = move |current: usize, file_name: &str| {
         let _ = window.emit(
             "export-progress",
@@ -276,7 +272,6 @@ fn compute_word_count_command(
     cache: tauri::State<'_, ExtractionCache>,
 ) -> Result<u64, String> {
     let records = corpus.records_for_indices(&indices, corpus_version)?;
-    // Compute configured/processed word count using the active CleaningConfig.
     let total_words: u64 = records
         .iter()
         .map(|record| {
@@ -301,7 +296,7 @@ fn scan_repeated_artifacts_command(
     cache: tauri::State<'_, ExtractionCache>,
 ) -> Result<RepeatedArtifactScanReport, String> {
     let records = corpus.records_for_indices(&indices, corpus_version)?;
-    // Reset cancellation flag for this scan
+    // A previous cancellation must not leak into the next scan.
     state.cancel.store(false, Ordering::Relaxed);
     corpuswright_core::repeated_artifacts::scan_repeated_artifacts_report_with_cancel_and_cache(
         &records,
@@ -340,7 +335,7 @@ const MAX_CONFIG_SIZE: u64 = 1_048_576; // 1 MB
 /// # Security note
 ///
 /// Users still choose the path and an injected webview caller could still read
-/// writable `.json` paths within process permissions. This is defense-in-depth,
+/// writable `.json` paths within process permissions. This is defence-in-depth,
 /// not a complete filesystem sandbox.
 #[tauri::command(async)]
 fn read_config_file_command(path: String) -> Result<String, String> {
@@ -359,7 +354,6 @@ fn read_config_file_command(path: String) -> Result<String, String> {
         ));
     }
     let content = std::fs::read_to_string(&path).map_err(|e| format!("Cannot read file: {}", e))?;
-    // Validate that the file is valid JSON before returning it.
     let _: serde_json::Value =
         serde_json::from_str(&content).map_err(|e| format!("File is not valid JSON: {}", e))?;
     Ok(content)
@@ -375,7 +369,7 @@ fn read_config_file_command(path: String) -> Result<String, String> {
 /// # Security note
 ///
 /// Users still choose the path and an injected webview caller could still write
-/// to writable `.json` paths within process permissions. This is defense-in-depth,
+/// to writable `.json` paths within process permissions. This is defence-in-depth,
 /// not a complete filesystem sandbox.
 #[tauri::command(async)]
 fn save_config_file_command(path: String, content: String) -> Result<(), String> {
@@ -389,7 +383,6 @@ fn save_config_file_command(path: String, content: String) -> Result<(), String>
             MAX_CONFIG_SIZE / 1_048_576
         ));
     }
-    // Validate that the content is valid JSON before writing it.
     let _: serde_json::Value =
         serde_json::from_str(&content).map_err(|e| format!("Content is not valid JSON: {}", e))?;
     std::fs::write(&path, &content).map_err(|e| format!("Cannot write file: {}", e))

@@ -188,7 +188,6 @@ pub fn export_corpus(
                         }
                     }
                 } else {
-                    // No cache — direct extraction
                     match crate::docx::extract_docx(&source_bytes, cleaning_config) {
                         Ok(extracted) => {
                             for w in extracted.warnings {
@@ -248,7 +247,6 @@ pub fn export_corpus(
                         }
                     }
                 } else {
-                    // No cache — direct extraction
                     match crate::pdf::extract_pdf(&source_bytes, None, pdf_options) {
                         Ok(extracted) => {
                             for w in extracted.warnings {
@@ -303,7 +301,6 @@ pub fn export_corpus(
                 });
             }
 
-            // Create parent directory if needed
             let output_path = texts_dir.join(relative_path);
             if let Some(parent) = output_path.parent() {
                 fs::create_dir_all(parent).map_err(|error| ExportError::Io {
@@ -332,7 +329,6 @@ pub fn export_corpus(
                 page_count,
             };
 
-            // Emit progress if callback is provided
             let current_count = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
             if let Some(cb) = &progress_callback {
                 let display_name = record
@@ -547,7 +543,6 @@ fn unique_output_relative_path(
     record: &DocumentRecord,
     used_paths: &mut HashSet<PathBuf>,
 ) -> PathBuf {
-    // --- Build output subdirectory from relative_path.parent() ---
     let parent = record
         .relative_path
         .parent()
@@ -564,7 +559,6 @@ fn unique_output_relative_path(
         })
         .collect();
 
-    // --- Build the output file stem (sanitised, then force .txt) ---
     let raw_stem = record
         .relative_path
         .file_stem()
@@ -572,20 +566,17 @@ fn unique_output_relative_path(
         .unwrap_or("document");
     let sane_stem = sanitize_path_component(raw_stem, "document");
 
-    // --- Assemble relative output path (relative to texts_dir) ---
     let base_path: PathBuf = if sub_dir.as_os_str().is_empty() {
         PathBuf::from(format!("{}.txt", sane_stem))
     } else {
         sub_dir.join(format!("{}.txt", sane_stem))
     };
 
-    // --- Attempt to use the base path (no suffix needed) ---
     if !used_paths.contains(&base_path) {
         used_paths.insert(base_path.clone());
         return base_path;
     }
 
-    // --- Collision: try `stem__2.txt`, `stem__3.txt`, etc. ---
     let dir_empty = sub_dir.as_os_str().is_empty();
     for n in 2..=100usize {
         let candidate = if dir_empty {
@@ -599,7 +590,6 @@ fn unique_output_relative_path(
         }
     }
 
-    // --- Safety valve: use a short hash when collisions exceed 100 ---
     let hash: String = sha256_hex(
         format!(
             "{}\n{}",
@@ -667,9 +657,6 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
-    // ----------------------------------------------------------------------
-    // Helpers
-    // ----------------------------------------------------------------------
     /// Build a DocumentRecord manually for testing naming/export logic.
     fn make_record(
         source_dir: &Path,
@@ -678,7 +665,6 @@ mod tests {
         content: &str,
     ) -> DocumentRecord {
         let source_path = source_dir.join(relative);
-        // Ensure parent directory exists
         if let Some(parent) = source_path.parent() {
             fs::create_dir_all(parent).unwrap();
         }
@@ -691,9 +677,6 @@ mod tests {
         }
     }
 
-    // ----------------------------------------------------------------------
-    // sanitize_path_component unit tests
-    // ----------------------------------------------------------------------
     #[test]
     fn sanitize_keeps_valid_unicode() {
         assert_eq!(sanitize_path_component("Linha_10", "document"), "Linha_10");
@@ -736,9 +719,6 @@ mod tests {
         assert!(s.len() <= 128);
     }
 
-    // ----------------------------------------------------------------------
-    // unique_output_relative_path unit tests
-    // ----------------------------------------------------------------------
     #[test]
     fn relative_path_plain_txt_file() {
         let rec = DocumentRecord {
@@ -790,7 +770,6 @@ mod tests {
         let rec2 = DocumentRecord {
             source_path: PathBuf::from("/tmp/two/name.txt"),
             relative_path: PathBuf::from("two/name.txt"),
-            // Different subdirs -> no collision
             document_type: DocumentType::Text,
             size_bytes: 5,
         };
@@ -803,14 +782,13 @@ mod tests {
     #[test]
     fn relative_path_collision_same_subdir() {
         let mut used = HashSet::new();
-        // Same subdir and same stem -> collision
         let rec1 = DocumentRecord {
             source_path: PathBuf::from("/tmp/sub/name.txt"),
             relative_path: PathBuf::from("sub/name.txt"),
             document_type: DocumentType::Text,
             size_bytes: 5,
         };
-        // Second with same relative_path but different source (can happen with symlinks etc.)
+        // Symlinks can surface distinct sources with the same relative path.
         let rec2 = DocumentRecord {
             source_path: PathBuf::from("/tmp/sub/name_other.txt"),
             relative_path: PathBuf::from("sub/name.txt"),
@@ -838,7 +816,6 @@ mod tests {
 
     #[test]
     fn relative_path_empty_stem_falls_back() {
-        // If file_stem returns empty or None, should fallback to "document"
         let rec = DocumentRecord {
             source_path: PathBuf::from("/tmp/.hidden"),
             relative_path: PathBuf::from(".hidden"),
@@ -850,9 +827,6 @@ mod tests {
         assert!(!out.as_os_str().is_empty());
     }
 
-    // ----------------------------------------------------------------------
-    // Integration tests for export_corpus
-    // ----------------------------------------------------------------------
     #[test]
     fn exports_one_file() {
         let source = tempdir().unwrap();
@@ -871,10 +845,8 @@ mod tests {
         .unwrap();
 
         assert_eq!(export.files_exported, 1);
-        // Output file should be texts/a.txt
         let expected_output = export.texts_dir.join("a.txt");
         assert_eq!(fs::read_to_string(&expected_output).unwrap(), "Hello");
-        // Manifest output_path should match
         assert_eq!(
             export.exported_files[0].output_path,
             PathBuf::from("texts").join("a.txt")
@@ -901,7 +873,6 @@ mod tests {
 
         assert_eq!(export.files_exported, 2);
         assert_eq!(fs::read_dir(&export.texts_dir).unwrap().count(), 2);
-        // Check filenames are source-like
         let mut names: Vec<String> = fs::read_dir(&export.texts_dir)
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
@@ -930,7 +901,6 @@ mod tests {
         )
         .unwrap();
 
-        // Different subdirs -> no collision, both are in separate folders
         assert_eq!(export.files_exported, 2);
         assert!(
             export
@@ -958,7 +928,6 @@ mod tests {
     fn writes_only_txt_files_under_texts() {
         let source = tempdir().unwrap();
         let output_parent = tempdir().unwrap();
-        // Create a subdirectory to test recursive check
         fs::create_dir(source.path().join("sub")).unwrap();
         fs::write(source.path().join("sub").join("a.html"), "<h1>A</h1>").unwrap();
         let report = scan_directory(source.path()).unwrap();
@@ -973,7 +942,6 @@ mod tests {
         )
         .unwrap();
 
-        // Walk all files under texts/ and verify .txt extension
         for entry in walkdir(export.texts_dir.as_path()) {
             let path = entry.path();
             if path.is_file() {
@@ -1130,7 +1098,6 @@ mod tests {
             None,
         );
 
-        // Should succeed — subdirectories inside the corpus root are valid export targets
         assert!(result.is_ok());
         let export = result.unwrap();
         assert_eq!(export.files_exported, 1);
@@ -1247,9 +1214,6 @@ mod tests {
         fs::remove_dir_all(&output_path).unwrap();
     }
 
-    // ----------------------------------------------------------------------
-    // New naming tests
-    // ----------------------------------------------------------------------
     #[test]
     fn exports_text_file_with_source_like_name() {
         let source = tempdir().unwrap();
@@ -1268,11 +1232,9 @@ mod tests {
         .unwrap();
 
         assert_eq!(export.files_exported, 1);
-        // Output should be texts/Linha_10.txt
         let output_path = export.texts_dir.join("Linha_10.txt");
         assert!(output_path.exists());
         assert_eq!(fs::read_to_string(output_path).unwrap(), "Hello");
-        // Manifest must match
         assert_eq!(
             export.exported_files[0].output_path,
             PathBuf::from("texts").join("Linha_10.txt")
@@ -1281,12 +1243,9 @@ mod tests {
 
     #[test]
     fn exports_non_txt_changes_extension_to_txt() {
-        // For a PDF, the output should have .txt extension
         let source = tempdir().unwrap();
         let output_parent = tempdir().unwrap();
 
-        // We can test naming directly without needing actual PDF extraction
-        // by using a DocumentRecord with DocumentType::Pdf
         let record = make_record(
             source.path(),
             "paper.pdf",
@@ -1310,7 +1269,6 @@ mod tests {
             export.exported_files[0].output_path,
             PathBuf::from("texts").join("paper.txt")
         );
-        // The file on disk should also be .txt
         assert!(export.texts_dir.join("paper.txt").exists());
     }
 
@@ -1390,10 +1348,8 @@ mod tests {
         .unwrap();
 
         assert_eq!(export.files_exported, 1);
-        // Output should be texts/CoreReviews/IMBD Corpus/Linha_10.txt
         let expected_rel = PathBuf::from("texts/CoreReviews/IMBD Corpus/Linha_10.txt");
         assert_eq!(export.exported_files[0].output_path, expected_rel);
-        // The file must actually exist on disk at that relative path under texts_dir
         assert!(
             export
                 .texts_dir
@@ -1407,13 +1363,11 @@ mod tests {
         let source = tempdir().unwrap();
         let output_parent = tempdir().unwrap();
 
-        // Create two files with same relative_path (same directory, same name)
         fs::create_dir_all(source.path().join("sub")).unwrap();
         fs::write(source.path().join("sub").join("name.txt"), "first").unwrap();
-        // Second file is different source but same relative path
         fs::write(source.path().join("sub").join("name_other.txt"), "second").unwrap();
 
-        // We need to manually construct records because scan will give different relative_paths
+        // Manual records let the export path exercise same-directory relative-path collisions.
         let rec1 = DocumentRecord {
             source_path: source.path().join("sub").join("name.txt"),
             relative_path: PathBuf::from("sub").join("name.txt"),
@@ -1440,7 +1394,6 @@ mod tests {
 
         assert_eq!(export.files_exported, 2);
 
-        // First should be name.txt, second should be name__2.txt
         let paths: Vec<&PathBuf> = export
             .exported_files
             .iter()
@@ -1449,7 +1402,6 @@ mod tests {
         assert!(paths.contains(&&PathBuf::from("texts/sub/name.txt")));
         assert!(paths.contains(&&PathBuf::from("texts/sub/name__2.txt")));
 
-        // Check on disk
         assert!(export.texts_dir.join("sub/name.txt").exists());
         assert!(export.texts_dir.join("sub/name__2.txt").exists());
         assert_eq!(
@@ -1491,7 +1443,6 @@ mod tests {
         .unwrap();
 
         assert_eq!(export.files_exported, 1);
-        // The output must have sanitised name
         let rel = export.exported_files[0].output_path.clone();
         assert_eq!(rel, PathBuf::from("texts/file_bad_name.txt"));
         assert!(export.texts_dir.join("file_bad_name.txt").exists());

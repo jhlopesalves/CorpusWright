@@ -1,10 +1,6 @@
-//! Example binary to generate TypeScript type definitions from Rust structs/enums
-//! for frontend-facing IPC/domain types.
+//! Generates TypeScript type definitions for frontend-facing IPC and domain types.
 //!
-//! Usage:
-//!   cargo run -p corpuswright-core --example export_ts
-//!
-//! This writes .ts files to apps/desktop/src/generated/.
+//! Output is written under `apps/desktop/src/generated/`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
