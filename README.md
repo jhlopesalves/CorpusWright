@@ -85,7 +85,7 @@ cargo check -p corpuswright-desktop --all-targets
 
 ## Status
 
-This is alpha, and it behaves like alpha. The core pipeline — loading, preview, cleaning, search, export, repeated-artefact detection, extraction caching — is in place and working. The rough edges are mostly in packaging, UI polish, documentation, and the higher-level corpus-linguistic features.
+This is alpha, and it behaves like alpha. The core pipeline - loading, preview, cleaning, search, export, repeated-artefact detection, extraction caching - is in place and working. The rough edges are mostly in packaging, UI polish, documentation, and the higher-level corpus-linguistic features.
 
 Next on my list:
 

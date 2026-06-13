@@ -505,8 +505,8 @@ pre {
   z-index: 1000;
 }
 
-.modal.hidden {
-  display: none;
+.hidden {
+  display: none !important;
 }
 
 .modal-content {
@@ -596,7 +596,7 @@ pre {
 }
 
 .pdf-intake-modal-content {
-  width: min(90vw, 560px);
+  width: min(92vw, 760px);
 }
 
 .pdf-intake-profiles {
@@ -649,6 +649,93 @@ pre {
   align-self: center;
   font-size: 0.85rem;
   color: var(--text-muted);
+}
+
+.pdf-intake-audit-panel {
+  margin-top: 16px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 14px;
+}
+
+.pdf-intake-audit-panel h3 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.pdf-intake-audit-summary {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.pdf-intake-audit-results {
+  display: grid;
+  gap: 8px;
+  max-height: min(34vh, 360px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.pdf-intake-audit-card {
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--border-color);
+  border-radius: 4px;
+  padding: 10px 12px;
+  background: var(--bg-color);
+}
+
+.pdf-intake-audit-card-layout_heavy {
+  border-left-color: #d4a017;
+}
+
+.pdf-intake-audit-card-ocr_rescue {
+  border-left-color: #d16969;
+}
+
+.pdf-intake-audit-card-title {
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-color);
+  overflow-wrap: anywhere;
+}
+
+.pdf-intake-audit-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 6px 12px;
+}
+
+.pdf-intake-audit-detail {
+  min-width: 0;
+}
+
+.pdf-intake-audit-detail-label,
+.pdf-intake-audit-detail-value {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.pdf-intake-audit-detail-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.pdf-intake-audit-detail-value {
+  margin-top: 2px;
+  font-size: 0.82rem;
+  color: var(--text-color);
+}
+
+.pdf-intake-audit-warnings {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: #d4a017;
 }
 
 .modal-actions {

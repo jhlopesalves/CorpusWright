@@ -6,6 +6,8 @@ import { updateFileList } from "./file-list";
 import { state } from "./state";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
 import type { CorpusSummary } from "./generated/CorpusSummary.js";
+import type { PdfAuditResult } from "./generated/PdfAuditResult.js";
+import type { PdfAuditSuggestedProfile } from "./generated/PdfAuditSuggestedProfile.js";
 import type { CorpusLoadResult } from "./types";
 
 interface CorpusCallbacks {
@@ -17,6 +19,7 @@ let callbacks: CorpusCallbacks = {
 };
 
 type PdfIntakeProfileId = "standard" | "layout" | "ocr";
+type PdfAuditSeverity = PdfAuditSuggestedProfile;
 
 interface PdfIntakeProfile {
   statusLabel: string;
@@ -62,6 +65,22 @@ const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
   },
 };
 
+const auditProfileToIntakeProfile: Record<PdfAuditSuggestedProfile, PdfIntakeProfileId> = {
+  standard: "standard",
+  layout_heavy: "layout",
+  ocr_rescue: "ocr",
+};
+
+const profileDisplayNames: Record<PdfIntakeProfileId, string> = {
+  standard: "Standard",
+  layout: "Layout-heavy",
+  ocr: "OCR rescue",
+};
+
+let pdfIntakeSelectedPaths: string[] = [];
+let pdfIntakeManualProfileOverride = false;
+let settingPdfIntakeProfile = false;
+
 function clearStateForLoad(): void {
   state.currentCorpusVersion = 0;
   state.allFiles = [];
@@ -80,13 +99,37 @@ function selectedPdfIntakeProfileId(): PdfIntakeProfileId {
   return "standard";
 }
 
+function setPdfIntakeProfileId(profileId: PdfIntakeProfileId): void {
+  const input = document.querySelector<HTMLInputElement>(`input[name="pdf-intake-profile"][value="${profileId}"]`);
+  if (!input) {
+    return;
+  }
+  settingPdfIntakeProfile = true;
+  input.checked = true;
+  settingPdfIntakeProfile = false;
+}
+
+function resetPdfIntakeSession(): void {
+  pdfIntakeSelectedPaths = [];
+  pdfIntakeManualProfileOverride = false;
+  setPdfIntakeProfileId("standard");
+  dom.pdfIntakeStatus.textContent = "";
+  dom.pdfIntakeAuditSummary.textContent = "";
+  dom.pdfIntakeAuditResults.replaceChildren();
+  dom.pdfIntakeAuditPanel.classList.add("hidden");
+  dom.loadPdfIntakeFilesBtn.classList.add("hidden");
+  dom.loadPdfIntakeFilesBtn.disabled = true;
+  dom.choosePdfIntakeFilesBtn.disabled = false;
+  dom.choosePdfIntakeFilesBtn.textContent = "Choose PDFs...";
+}
+
 function closePdfIntakeModal(): void {
   dom.pdfIntakeStatus.textContent = "";
   dom.pdfIntakeModal.classList.add("hidden");
 }
 
 function openPdfIntakeModal(): void {
-  dom.pdfIntakeStatus.textContent = "";
+  resetPdfIntakeSession();
   dom.pdfIntakeModal.classList.remove("hidden");
 }
 
@@ -95,7 +138,6 @@ function isPdfPath(path: string): boolean {
 }
 
 async function handleChoosePdfIntakeFiles(): Promise<void> {
-  const profile = pdfIntakeProfiles[selectedPdfIntakeProfileId()];
   const selected = await open({
     multiple: true,
     filters: [{ name: "PDF Documents", extensions: ["pdf"] }],
@@ -114,11 +156,52 @@ async function handleChoosePdfIntakeFiles(): Promise<void> {
   }
 
   try {
+    pdfIntakeSelectedPaths = selected;
+    dom.pdfIntakeStatus.textContent = "Auditing PDFs...";
+    dom.statusBar.textContent = "Auditing selected PDFs...";
+    dom.choosePdfIntakeFilesBtn.disabled = true;
+    dom.loadPdfIntakeFilesBtn.disabled = true;
+    renderPdfAuditLoading(selected.length);
+
+    const auditResults = await invoke<PdfAuditResult[]>("audit_pdf_files_command", { paths: selected });
+    const suggestedProfile = batchSuggestedProfile(auditResults);
+    const shouldApplySuggestion = !pdfIntakeManualProfileOverride;
+
+    if (shouldApplySuggestion) {
+      setPdfIntakeProfileId(suggestedProfile);
+    }
+
+    renderPdfAuditResults(auditResults, suggestedProfile, shouldApplySuggestion);
+    dom.pdfIntakeStatus.textContent = "Diagnostics ready.";
+    dom.statusBar.textContent = `PDF diagnostics ready. Batch/global suggestion: ${profileDisplayNames[suggestedProfile]}.`;
+    dom.loadPdfIntakeFilesBtn.classList.remove("hidden");
+    dom.loadPdfIntakeFilesBtn.disabled = false;
+    dom.choosePdfIntakeFilesBtn.textContent = "Choose different PDFs...";
+  } catch (error) {
+    dom.pdfIntakeStatus.textContent = `Audit error: ${error}`;
+    dom.statusBar.textContent = `Audit error: ${error}`;
+    console.error(error);
+  } finally {
+    dom.choosePdfIntakeFilesBtn.disabled = false;
+  }
+}
+
+async function handleLoadPdfIntakeFiles(): Promise<void> {
+  if (pdfIntakeSelectedPaths.length === 0) {
+    dom.pdfIntakeStatus.textContent = "Choose PDFs first.";
+    return;
+  }
+
+  const profile = pdfIntakeProfiles[selectedPdfIntakeProfileId()];
+
+  try {
     dom.pdfIntakeStatus.textContent = "Loading PDFs...";
     dom.statusBar.textContent = "Loading PDFs...";
+    dom.choosePdfIntakeFilesBtn.disabled = true;
+    dom.loadPdfIntakeFilesBtn.disabled = true;
     clearStateForLoad();
 
-    const result = await invoke<CorpusLoadResult>("load_files_command", { paths: selected });
+    const result = await invoke<CorpusLoadResult>("load_files_command", { paths: pdfIntakeSelectedPaths });
 
     profile.apply(state.activeCleaningConfig);
     state.currentCorpusVersion = result.corpusVersion;
@@ -137,6 +220,124 @@ async function handleChoosePdfIntakeFiles(): Promise<void> {
     dom.pdfIntakeStatus.textContent = `Error: ${error}`;
     dom.statusBar.textContent = `Error: ${error}`;
     console.error(error);
+  } finally {
+    dom.choosePdfIntakeFilesBtn.disabled = false;
+    dom.loadPdfIntakeFilesBtn.disabled = pdfIntakeSelectedPaths.length === 0;
+  }
+}
+
+function renderPdfAuditLoading(fileCount: number): void {
+  dom.pdfIntakeAuditPanel.classList.remove("hidden");
+  dom.pdfIntakeAuditSummary.textContent = `Checking ${fileCount} selected PDF${fileCount === 1 ? "" : "s"} without running OCR.`;
+  dom.pdfIntakeAuditResults.replaceChildren();
+}
+
+function batchSuggestedProfile(results: PdfAuditResult[]): PdfIntakeProfileId {
+  let strongest: PdfAuditSeverity = "standard";
+  for (const result of results) {
+    if (result.suggested_profile === "ocr_rescue") {
+      strongest = "ocr_rescue";
+    } else if (result.suggested_profile === "layout_heavy" && strongest === "standard") {
+      strongest = "layout_heavy";
+    }
+  }
+  return auditProfileToIntakeProfile[strongest];
+}
+
+function renderPdfAuditResults(
+  results: PdfAuditResult[],
+  suggestedProfile: PdfIntakeProfileId,
+  suggestionApplied: boolean,
+): void {
+  dom.pdfIntakeAuditPanel.classList.remove("hidden");
+  dom.pdfIntakeAuditResults.replaceChildren();
+
+  const currentProfile = selectedPdfIntakeProfileId();
+  const profileMessage = suggestionApplied
+    ? `The batch/global suggestion was applied: ${profileDisplayNames[suggestedProfile]}.`
+    : `The batch/global suggestion is ${profileDisplayNames[suggestedProfile]}; your selected ${profileDisplayNames[currentProfile]} profile was kept.`;
+  dom.pdfIntakeAuditSummary.textContent = `${profileMessage} Audit checks embedded text and OCR model files only; it does not run OCR or prove OCR will succeed.`;
+
+  for (const result of results) {
+    dom.pdfIntakeAuditResults.appendChild(renderPdfAuditCard(result));
+  }
+}
+
+function renderPdfAuditCard(result: PdfAuditResult): HTMLElement {
+  const card = document.createElement("div");
+  card.className = `pdf-intake-audit-card pdf-intake-audit-card-${result.suggested_profile}`;
+
+  const title = document.createElement("div");
+  title.className = "pdf-intake-audit-card-title";
+  title.textContent = result.file_name;
+  card.appendChild(title);
+
+  const details = document.createElement("div");
+  details.className = "pdf-intake-audit-details";
+  details.appendChild(renderPdfAuditDetail("Pages", formatOptionalNumber(result.page_count)));
+  details.appendChild(renderPdfAuditDetail("Sampled", result.sampled_page_count.toString()));
+  details.appendChild(renderPdfAuditDetail("Embedded text", result.embedded_text_detected ? "detected" : "not detected"));
+  details.appendChild(renderPdfAuditDetail("Sample chars", result.embedded_text_chars.toString()));
+  details.appendChild(renderPdfAuditDetail("Quality", formatAuditQuality(result.quality)));
+  details.appendChild(renderPdfAuditDetail("PDFium", result.pdfium_available ? "available" : "unavailable"));
+  details.appendChild(
+    renderPdfAuditDetail(
+      "OCR models",
+      result.ocr_model_resources_available
+        ? (result.ocr_full_usability_checked ? "available" : "available; full OCR not checked")
+        : "unavailable",
+    ),
+  );
+  details.appendChild(renderPdfAuditDetail("Fallback", result.degraded_fallback_used ? "degraded fallback used" : "not used"));
+  details.appendChild(renderPdfAuditDetail("Suggested", profileDisplayNames[auditProfileToIntakeProfile[result.suggested_profile]]));
+  card.appendChild(details);
+
+  if (result.warnings.length > 0) {
+    const warnings = document.createElement("ul");
+    warnings.className = "pdf-intake-audit-warnings";
+    for (const warning of result.warnings) {
+      const item = document.createElement("li");
+      item.textContent = warning;
+      warnings.appendChild(item);
+    }
+    card.appendChild(warnings);
+  }
+
+  return card;
+}
+
+function renderPdfAuditDetail(labelText: string, valueText: string): HTMLElement {
+  const detail = document.createElement("div");
+  detail.className = "pdf-intake-audit-detail";
+
+  const label = document.createElement("span");
+  label.className = "pdf-intake-audit-detail-label";
+  label.textContent = labelText;
+
+  const value = document.createElement("span");
+  value.className = "pdf-intake-audit-detail-value";
+  value.textContent = valueText;
+
+  detail.append(label, value);
+  return detail;
+}
+
+function formatOptionalNumber(value: number | null): string {
+  return value === null ? "unknown" : value.toString();
+}
+
+function formatAuditQuality(quality: PdfAuditResult["quality"]): string {
+  switch (quality) {
+    case "good":
+      return "good";
+    case "suspicious":
+      return "suspicious";
+    case "poor":
+      return "poor";
+    case "empty":
+      return "empty";
+    case "unknown":
+      return "unknown";
   }
 }
 
@@ -256,4 +457,12 @@ export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
   dom.cancelPdfIntakeBtn.addEventListener("click", closePdfIntakeModal);
   dom.btnClosePdfIntakeModalTop.addEventListener("click", closePdfIntakeModal);
   dom.choosePdfIntakeFilesBtn.addEventListener("click", handleChoosePdfIntakeFiles);
+  dom.loadPdfIntakeFilesBtn.addEventListener("click", handleLoadPdfIntakeFiles);
+  document.querySelectorAll<HTMLInputElement>('input[name="pdf-intake-profile"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      if (!settingPdfIntakeProfile) {
+        pdfIntakeManualProfileOverride = true;
+      }
+    });
+  });
 }
