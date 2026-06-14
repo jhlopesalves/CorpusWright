@@ -1584,3 +1584,61 @@ mark.search-match.current-match {
   margin-left: 4px;
   margin-right: 0;
 }
+
+/* Sortable column headers */
+.sort-header {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  user-select: none;
+}
+
+.sort-header:hover,
+.sort-header:focus {
+  color: var(--text-color);
+  outline: none;
+}
+
+.sort-header-right {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.sort-indicator {
+  display: inline-block;
+  font-size: 0.8rem;
+  color: var(--accent-color);
+  width: 10px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Resize handle for Candidate / Pattern column */
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  background-color: transparent;
+  z-index: 15;
+}
+
+.col-resize-handle:hover,
+.col-resize-handle.resizing {
+  background-color: var(--accent-color);
+}

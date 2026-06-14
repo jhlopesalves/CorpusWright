@@ -22,6 +22,129 @@ interface RepeatedArtifactCallbacks {
   schedulePreviewUpdate: (delay: number) => void;
 }
 
+const RISK_RANK: Record<string, number> = {
+  "strong_header_footer_candidate": 5,
+  "symbol_or_noise_candidate": 4,
+  "possible_boilerplate": 3,
+  "common_section_heading_review_carefully": 2,
+  "ambiguous": 1,
+};
+
+function formatKind(kind: string): string {
+  switch (kind) {
+    case "exact_line": return "Exact";
+    case "normalized_line": return "Pattern";
+    case "two_line_block": return "2-Block";
+    case "three_line_block": return "3-Block";
+    case "inline_artifact": return "Inline";
+    default: return kind;
+  }
+}
+
+function formatContentClass(cls: string): string {
+  switch (cls) {
+    case "text_dominant": return "Text";
+    case "mixed_text_numbers": return "Mixed";
+    case "numeric_dominant": return "Numeric";
+    case "symbol_noise_dominant": return "Symbol";
+    default: return cls;
+  }
+}
+
+function formatPosition(ps: PositionSummary): string {
+  const total = ps.top_count + ps.middle_count + ps.bottom_count;
+  if (total === 0) return "Unknown";
+  const topPct = Math.round((ps.top_count / total) * 100);
+  const botPct = Math.round((ps.bottom_count / total) * 100);
+  return `${topPct}% / ${botPct}%`;
+}
+
+function formatRiskLabel(label: string): string {
+  switch (label) {
+    case "strong_header_footer_candidate": return "Header/Footer";
+    case "possible_boilerplate": return "Boilerplate";
+    case "common_section_heading_review_carefully": return "Heading";
+    case "symbol_or_noise_candidate": return "Noise";
+    case "ambiguous": return "Review";
+    default: return label;
+  }
+}
+
+function getCandidateText(cand: RepeatedArtifactCandidate): string {
+  return cand.normalized_key && cand.kind === "normalized_line"
+    ? cand.normalized_key
+    : cand.display_text;
+}
+
+function compareStrings(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function getPositionScores(cand: RepeatedArtifactCandidate) {
+  const ps = cand.position_summary;
+  const total = ps.top_count + ps.middle_count + ps.bottom_count;
+  if (total === 0) {
+    return { primary: 0, secondary: 0, tertiary: cand.occurrence_count };
+  }
+  const top_ratio = ps.top_count / total;
+  const bottom_ratio = ps.bottom_count / total;
+
+  return {
+    primary: Math.max(top_ratio, bottom_ratio),
+    secondary: top_ratio + bottom_ratio,
+    tertiary: cand.occurrence_count
+  };
+}
+
+function comparePosition(a: RepeatedArtifactCandidate, b: RepeatedArtifactCandidate): number {
+  const scoreA = getPositionScores(a);
+  const scoreB = getPositionScores(b);
+
+  if (scoreA.primary !== scoreB.primary) {
+    return scoreA.primary - scoreB.primary;
+  }
+  if (scoreA.secondary !== scoreB.secondary) {
+    return scoreA.secondary - scoreB.secondary;
+  }
+  return scoreA.tertiary - scoreB.tertiary;
+}
+
+function compareRisk(a: RepeatedArtifactCandidate, b: RepeatedArtifactCandidate): number {
+  const rankA = RISK_RANK[a.risk_label] || 0;
+  const rankB = RISK_RANK[b.risk_label] || 0;
+  return rankA - rankB;
+}
+
+function compareCandidates(a: RepeatedArtifactCandidate, b: RepeatedArtifactCandidate, column: string): number {
+  switch (column) {
+    case "text": {
+      const textA = getCandidateText(a);
+      const textB = getCandidateText(b);
+      return compareStrings(textA, textB);
+    }
+    case "kind": {
+      return compareStrings(formatKind(a.kind), formatKind(b.kind));
+    }
+    case "content": {
+      return compareStrings(formatContentClass(a.content_class), formatContentClass(b.content_class));
+    }
+    case "occs": {
+      return a.occurrence_count - b.occurrence_count;
+    }
+    case "files": {
+      return a.file_count - b.file_count;
+    }
+    case "position": {
+      return comparePosition(a, b);
+    }
+    case "risk": {
+      return compareRisk(a, b);
+    }
+    default:
+      return 0;
+  }
+}
+
 function ruleDisplayText(rule: RemovalRule): string {
   return formatRemovalRuleText(rule);
 }
@@ -134,6 +257,10 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   let scanGeneration = 0;
   let scanTimerInterval: ReturnType<typeof setInterval> | null = null;
   let currentAbortController: AbortController | null = null;
+  let currentSortColumn: string | null = null;
+  let currentSortDirection: "asc" | "desc" = "desc";
+  let activeSelectedCandidateId: string | null = null;
+  let lastDiagnostics: RepeatedArtifactScanDiagnostics | null = null;
 
   function updateProcessedWarning(): void {
     const isProcessed = getSelectedArtifactTextMode()?.value === "processed";
@@ -223,12 +350,122 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     resetScanControls();
     dom.lblScanTime.style.display = "none";
     state.selectedCandidateIds.clear();
+    activeSelectedCandidateId = null;
+    currentSortColumn = null;
+    currentSortDirection = "desc";
+    lastDiagnostics = null;
+    updateSortIndicators();
     dom.artifactDiagnostics.classList.add("hidden");
     dom.repeatedArtifactModal.classList.add("hidden");
   }
 
   dom.btnCloseArtifactModal.addEventListener("click", closeArtifactModal);
   dom.btnCloseArtifactModalTop.addEventListener("click", closeArtifactModal);
+
+  // Setup sortable headers click listeners
+  const tableElement = dom.tblArtifactCandidates.closest("table");
+  const sortHeaders = tableElement?.querySelectorAll(".sort-header");
+  sortHeaders?.forEach((header) => {
+    header.addEventListener("click", () => {
+      const column = header.getAttribute("data-column");
+      if (!column) return;
+
+      if (currentSortColumn === column) {
+        currentSortDirection = currentSortDirection === "desc" ? "asc" : "desc";
+      } else {
+        currentSortColumn = column;
+        currentSortDirection = "desc";
+      }
+
+      updateSortIndicators();
+
+      if (state.lastScanCandidates.length > 0) {
+        renderCandidates(state.lastScanCandidates, lastDiagnostics, true);
+      }
+    });
+  });
+
+  function updateSortIndicators(): void {
+    const table = dom.tblArtifactCandidates.closest("table");
+    if (!table) return;
+    table.querySelectorAll("th").forEach((th) => {
+      const header = th.querySelector(".sort-header");
+      if (!header) return;
+      const column = header.getAttribute("data-column");
+      const indicator = header.querySelector(".sort-indicator");
+
+      if (column === currentSortColumn) {
+        th.setAttribute("aria-sort", currentSortDirection === "desc" ? "descending" : "ascending");
+        if (indicator) {
+          indicator.textContent = currentSortDirection === "desc" ? " ↓" : " ↑";
+        }
+      } else {
+        th.removeAttribute("aria-sort");
+        if (indicator) {
+          indicator.textContent = "";
+        }
+      }
+    });
+  }
+
+  // Setup resizable Candidate / Pattern column
+  const thPattern = document.getElementById("th-candidate-pattern");
+  if (thPattern) {
+    const handle = thPattern.querySelector(".col-resize-handle") as HTMLElement;
+    if (handle) {
+      let startX = 0;
+      let startWidth = 0;
+
+      const onMouseMove = (e: MouseEvent) => {
+        const deltaX = e.clientX - startX;
+        let newWidth = startWidth + deltaX;
+
+        // Enforce min (180px) and max (60% window width / 600px)
+        const minWidth = 180;
+        const maxWidth = Math.min(600, window.innerWidth * 0.6);
+        if (newWidth < minWidth) newWidth = minWidth;
+        if (newWidth > maxWidth) newWidth = maxWidth;
+
+        thPattern.style.width = `${newWidth}px`;
+        thPattern.style.minWidth = `${newWidth}px`;
+        thPattern.style.maxWidth = `${newWidth}px`;
+        localStorage.setItem("corpuswright-candidate-column-width", String(newWidth));
+      };
+
+      const onMouseUp = () => {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        handle.classList.remove("resizing");
+        document.body.style.cursor = "";
+      };
+
+      handle.addEventListener("mousedown", (e) => {
+        // Stop propagation and prevent default so dragging the handle doesn't sort
+        e.preventDefault();
+        e.stopPropagation();
+        startX = e.clientX;
+        startWidth = thPattern.getBoundingClientRect().width;
+        handle.classList.add("resizing");
+        document.body.style.cursor = "col-resize";
+
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+      });
+
+      // Prevent accidental sorting on click
+      handle.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    }
+
+    // Apply persisted/default width on init (preferably 280px default)
+    const savedWidth = localStorage.getItem("corpuswright-candidate-column-width");
+    const initialWidth = savedWidth ? parseInt(savedWidth, 10) : 280;
+    thPattern.style.width = `${initialWidth}px`;
+    thPattern.style.minWidth = `${initialWidth}px`;
+    thPattern.style.maxWidth = `${initialWidth}px`;
+  }
 
   dom.btnAddSelectedRemovals.addEventListener("click", () => {
     const count = state.selectedCandidateIds.size;
@@ -516,9 +753,16 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     radio.addEventListener("change", updateProcessedWarning);
   });
 
-  function renderCandidates(candidates: RepeatedArtifactCandidate[], diagnostics: RepeatedArtifactScanDiagnostics | null): void {
-    state.selectedCandidateIds.clear();
-    updateAddSelectedButtonState();
+  function renderCandidates(
+    candidates: RepeatedArtifactCandidate[],
+    diagnostics: RepeatedArtifactScanDiagnostics | null,
+    isSortUpdate = false
+  ): void {
+    if (!isSortUpdate) {
+      state.selectedCandidateIds.clear();
+      activeSelectedCandidateId = null;
+      updateAddSelectedButtonState();
+    }
 
     dom.tblArtifactCandidates.innerHTML = "";
     dom.lblArtifactResultsCount.textContent = `${candidates.length} found`;
@@ -551,15 +795,33 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       return;
     }
 
-    candidates.forEach((cand) => {
+    // Sort stably using comparators if a sort column is active
+    let displayCandidates = candidates;
+    if (currentSortColumn) {
+      const candidatesWithIndex = candidates.map((cand, idx) => ({ cand, idx }));
+      candidatesWithIndex.sort((a, b) => {
+        const res = compareCandidates(a.cand, b.cand, currentSortColumn!);
+        if (res !== 0) {
+          return currentSortDirection === "asc" ? res : -res;
+        }
+        return a.idx - b.idx; // stable sorting tie-breaker
+      });
+      displayCandidates = candidatesWithIndex.map(item => item.cand);
+    }
+
+    displayCandidates.forEach((cand) => {
       const tr = document.createElement("tr");
       tr.dataset.id = cand.candidate_id;
+      if (cand.candidate_id === activeSelectedCandidateId) {
+        tr.classList.add("selected");
+      }
 
       const tdCheck = document.createElement("td");
       tdCheck.style.padding = "6px 8px";
       tdCheck.style.textAlign = "center";
       const chk = document.createElement("input");
       chk.type = "checkbox";
+      chk.checked = state.selectedCandidateIds.has(cand.candidate_id);
       const isNormalized = cand.kind === "normalized_line";
       const normalizedKey = (cand.normalized_key || "").trim();
       if (isNormalized && !normalizedKey && (!cand.raw_variants || cand.raw_variants.length === 0)) {
@@ -631,6 +893,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       tr.onclick = () => {
         dom.tblArtifactCandidates.querySelectorAll("tr").forEach((r) => r.classList.remove("selected"));
         tr.classList.add("selected");
+        activeSelectedCandidateId = cand.candidate_id;
         dom.artifactDetailsContent.innerHTML = "";
         showCandidateDetails(cand);
       };
@@ -642,46 +905,6 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     if (noteContainer) {
       const existingNote = noteContainer.querySelector(".artifact-dedup-note");
       if (existingNote) existingNote.remove();
-    }
-  }
-
-  function formatKind(kind: string): string {
-    switch (kind) {
-      case "exact_line": return "Exact";
-      case "normalized_line": return "Pattern";
-      case "two_line_block": return "2-Block";
-      case "three_line_block": return "3-Block";
-      case "inline_artifact": return "Inline";
-      default: return kind;
-    }
-  }
-
-  function formatContentClass(cls: string): string {
-    switch (cls) {
-      case "text_dominant": return "Text";
-      case "mixed_text_numbers": return "Mixed";
-      case "numeric_dominant": return "Numeric";
-      case "symbol_noise_dominant": return "Symbol";
-      default: return cls;
-    }
-  }
-
-  function formatPosition(ps: PositionSummary): string {
-    const total = ps.top_count + ps.middle_count + ps.bottom_count;
-    if (total === 0) return "Unknown";
-    const topPct = Math.round((ps.top_count / total) * 100);
-    const botPct = Math.round((ps.bottom_count / total) * 100);
-    return `${topPct}% / ${botPct}%`;
-  }
-
-  function formatRiskLabel(label: string): string {
-    switch (label) {
-      case "strong_header_footer_candidate": return "Header/Footer";
-      case "possible_boilerplate": return "Boilerplate";
-      case "common_section_heading_review_carefully": return "Heading";
-      case "symbol_or_noise_candidate": return "Noise";
-      case "ambiguous": return "Review";
-      default: return label;
     }
   }
 
