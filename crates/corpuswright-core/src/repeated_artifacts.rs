@@ -3582,7 +3582,7 @@ mod tests {
 
         // Scan page-based document only
         let report_page_based = scan_repeated_artifacts_report_with_cancel_and_cache(
-            &[doc_page_based.clone()],
+            std::slice::from_ref(&doc_page_based),
             &config,
             &cleaning_config,
             Some(&cache),
@@ -3599,7 +3599,7 @@ mod tests {
 
         // Scan flat document only
         let report_flat = scan_repeated_artifacts_report_with_cancel_and_cache(
-            &[doc_flat.clone()],
+            std::slice::from_ref(&doc_flat),
             &config,
             &cleaning_config,
             Some(&cache),
