@@ -263,7 +263,7 @@ fn pdf_intake_file_name(record: &DocumentRecord) -> String {
 
 // PDFium page access and OCR recognition remain guarded, but a small pool lets
 // neighbouring pages overlap render work with the shared recogniser.
-const DEFAULT_OCR_WORKERS: usize = 4;
+const DEFAULT_OCR_WORKERS: usize = 3;
 const MAX_INTERNAL_OCR_WORKERS: usize = 5;
 
 fn configured_ocr_worker_count() -> usize {
