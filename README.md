@@ -1,6 +1,6 @@
 # CorpusWright
 [![CI](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v0.1.0--alpha.4-blue)](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.4)
+[![Release](https://img.shields.io/badge/release-v0.1.0--alpha.5-blue)](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.5)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 
@@ -9,7 +9,7 @@
 ![Corpus linguistics](https://img.shields.io/badge/corpus-linguistics-purple)
 
 
-**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.4](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.4)
+**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.5](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.5)
 
 > Experimental alpha. Windows and macOS builds are on the Releases page, but they're unsigned and your OS will probably warn you before letting them run.
 
