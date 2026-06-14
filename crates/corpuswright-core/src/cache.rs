@@ -464,7 +464,9 @@ pub fn document_text_for_record(
     let (text, page_texts) = match mode {
         DocumentTextMode::Original => (extracted_text, page_texts),
         DocumentTextMode::Processed => {
-            if record.document_type == DocumentType::Pdf && let Some(ref raw_pages) = page_texts {
+            if record.document_type == DocumentType::Pdf
+                && let Some(ref raw_pages) = page_texts
+            {
                 let mut warnings_flat = warnings.clone();
                 let original_flat_text = apply_document_processing(
                     record,
