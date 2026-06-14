@@ -1642,3 +1642,11 @@ mark.search-match.current-match {
 .col-resize-handle.resizing {
   background-color: var(--accent-color);
 }
+
+/* Styling for candidate table to ensure proper fixed layout rendering */
+#th-candidate-pattern,
+.candidate-text-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
