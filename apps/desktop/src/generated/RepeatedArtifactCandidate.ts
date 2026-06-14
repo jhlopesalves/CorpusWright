@@ -4,7 +4,7 @@ import type { ArtifactRiskLabel } from "./ArtifactRiskLabel.js";
 import type { CandidateContentClass } from "./CandidateContentClass.js";
 import type { RepeatedArtifactExample } from "./RepeatedArtifactExample.js";
 
-export type RepeatedArtifactCandidate = { candidate_id: string, kind: RepeatedArtifactKind, display_text: string, normalized_key: string, occurrence_count: number, file_count: number, example_count: number, position_summary: PositionSummary, risk_label: ArtifactRiskLabel,
+export type RepeatedArtifactCandidate = { candidate_id: string, kind: RepeatedArtifactKind, display_text: string, normalized_key: string, occurrence_count: number, file_count: number, example_count: number, position_summary: PositionSummary, position_summary_is_page_based: boolean, risk_label: ArtifactRiskLabel,
 /**
  * Content classification (text, mixed, numeric, symbol).
  */
