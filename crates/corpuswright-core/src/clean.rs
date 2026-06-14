@@ -7,6 +7,10 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::structured_document::StructuredDocument;
 use crate::text_normalization::normalize_line_for_repeated_artifact;
+use crate::text_profile::{
+    TextSignalContext, classify_text_signal, is_obvious_extraction_noise, profile_text_line,
+    text_signal_reasons,
+};
 
 lazy_static! {
     static ref RE_STANDALONE_ARABIC: Regex =
@@ -76,6 +80,9 @@ pub struct CleaningConfig {
     pub normalize_unicode: bool,
     pub replace_diacritics: bool,
     pub extract_html: bool,
+    /// Remove full lines that are overwhelmingly obvious extraction/OCR/markup noise.
+    #[serde(default)]
+    pub remove_obvious_extraction_noise: bool,
     pub table_extraction_strategy: TableExtractionStrategy,
     pub remove_headers: bool,
     pub remove_footers: bool,
@@ -213,6 +220,10 @@ pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
 
     if config.remove_standalone_roman_page_numbers {
         cleaned = RE_STANDALONE_ROMAN.replace_all(&cleaned, "").to_string();
+    }
+
+    if config.remove_obvious_extraction_noise {
+        cleaned = remove_obvious_extraction_noise_lines(&cleaned);
     }
 
     if config.normalize_irregular_line_breaks {
@@ -463,6 +474,38 @@ fn collapse_blank_lines(text: &str) -> String {
     }
 
     collapsed
+}
+
+fn remove_obvious_extraction_noise_lines(text: &str) -> String {
+    let mut cleaned = String::with_capacity(text.len());
+
+    for line in text.split_inclusive('\n') {
+        let without_newline = line.strip_suffix('\n').unwrap_or(line);
+        let content = without_newline
+            .strip_suffix('\r')
+            .unwrap_or(without_newline);
+
+        if should_remove_obvious_extraction_noise_line(content) {
+            continue;
+        }
+
+        cleaned.push_str(line);
+    }
+
+    cleaned
+}
+
+fn should_remove_obvious_extraction_noise_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    let profile = profile_text_line(trimmed, "");
+    let label = classify_text_signal(&profile, TextSignalContext::default());
+    let reasons = text_signal_reasons(trimmed, &profile, label, 0.0);
+
+    is_obvious_extraction_noise(&profile, &reasons)
 }
 
 fn effective_remove_patterns(config: &CleaningConfig) -> Vec<String> {
@@ -881,6 +924,169 @@ mod tests {
         assert_eq!(clean_text("a\n\n\n\nb", &config), "a\n\nb");
     }
 
+    fn obvious_noise_config() -> CleaningConfig {
+        CleaningConfig {
+            remove_obvious_extraction_noise: true,
+            ..CleaningConfig::default()
+        }
+    }
+
+    #[test]
+    fn obvious_extraction_noise_default_config_does_not_remove_noise_lines() {
+        let config = CleaningConfig::default();
+        assert_eq!(
+            clean_text("Alpha\n------\nBeta", &config),
+            "Alpha\n------\nBeta"
+        );
+    }
+
+    #[test]
+    fn obvious_extraction_noise_removes_repeated_symbol_lines() {
+        let config = obvious_noise_config();
+
+        assert_eq!(
+            clean_text("Alpha\n------\n________\n••••••••\nBeta", &config),
+            "Alpha\nBeta"
+        );
+    }
+
+    #[test]
+    fn obvious_extraction_noise_removes_cid_marker_lines() {
+        let config = obvious_noise_config();
+
+        assert_eq!(
+            clean_text("Alpha\ncid:14\ncid:105\nBeta", &config),
+            "Alpha\nBeta"
+        );
+    }
+
+    #[test]
+    fn obvious_extraction_noise_removes_markup_and_entity_lines() {
+        let config = obvious_noise_config();
+
+        assert_eq!(
+            clean_text("Alpha\n<br/>\n<br>\n&nbsp;\n&amp;\nBeta", &config),
+            "Alpha\nBeta"
+        );
+    }
+
+    #[test]
+    fn obvious_extraction_noise_removes_replacement_character_junk_lines() {
+        let config = obvious_noise_config();
+
+        assert_eq!(clean_text("Alpha\n����\nBeta", &config), "Alpha\nBeta");
+    }
+
+    #[test]
+    fn obvious_extraction_noise_keeps_section_headings() {
+        let config = obvious_noise_config();
+
+        let text = "Introduction\nMethods\nResults\nDiscussion\nConclusion";
+        assert_eq!(clean_text(text, &config), text);
+    }
+
+    #[test]
+    fn obvious_extraction_noise_keeps_portuguese_and_french_headings() {
+        let config = obvious_noise_config();
+
+        let text = "Resumo\nIntrodução\nRéférences";
+        assert_eq!(clean_text(text, &config), text);
+    }
+
+    #[test]
+    fn obvious_extraction_noise_keeps_page_labels() {
+        let config = obvious_noise_config();
+
+        let text = "Page 12\nPágina 3 de 10";
+        assert_eq!(clean_text(text, &config), text);
+    }
+
+    #[test]
+    fn obvious_extraction_noise_keeps_formula_and_code_like_lines() {
+        let config = obvious_noise_config();
+
+        let text = "p < .05\nχ² = 5.32\ny = mx + b\nif (x > 0) { return x; }";
+        assert_eq!(clean_text(text, &config), text);
+    }
+
+    #[test]
+    fn obvious_extraction_noise_keeps_table_and_statistical_rows() {
+        let config = obvious_noise_config();
+
+        let text = "Table 3\nMean SD N\n12.4 15.8 99.2";
+        assert_eq!(clean_text(text, &config), text);
+    }
+
+    #[test]
+    fn obvious_extraction_noise_keeps_natural_prose() {
+        let config = obvious_noise_config();
+
+        let text = "The participants answered the questionnaire.";
+        assert_eq!(clean_text(text, &config), text);
+    }
+
+    #[test]
+    fn obvious_extraction_noise_keeps_mixed_text_with_one_number() {
+        let config = obvious_noise_config();
+
+        let text = "Chapter 3";
+        assert_eq!(clean_text(text, &config), text);
+    }
+
+    #[test]
+    fn obvious_extraction_noise_is_stable_with_join_line_breaks() {
+        let config = CleaningConfig {
+            remove_obvious_extraction_noise: true,
+            join_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(clean_text("Alpha\n------\nBeta", &config), "Alpha Beta");
+    }
+
+    #[test]
+    fn obvious_extraction_noise_is_stable_with_trim_lines() {
+        let config = CleaningConfig {
+            remove_obvious_extraction_noise: true,
+            trim_lines: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text("  Alpha  \n   ________   \n  Beta  ", &config),
+            "Alpha\nBeta"
+        );
+    }
+
+    #[test]
+    fn obvious_extraction_noise_is_stable_with_collapse_blank_lines() {
+        let config = CleaningConfig {
+            remove_obvious_extraction_noise: true,
+            collapse_blank_lines: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text("Alpha\n------\n\n\nBeta", &config),
+            "Alpha\n\nBeta"
+        );
+    }
+
+    #[test]
+    fn obvious_extraction_noise_structured_document_stays_page_consistent() {
+        let document =
+            StructuredDocument::from_pages(["Alpha\n------\nBeta", "Gamma\ncid:14\nDelta"]);
+        let config = obvious_noise_config();
+
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert_eq!(cleaned.text, "Alpha\nBeta\n\nGamma\nDelta");
+        assert_eq!(
+            cleaned.page_texts,
+            Some(vec!["Alpha\nBeta".to_string(), "Gamma\nDelta".to_string()])
+        );
+    }
+
     #[test]
     fn removes_literal_patterns() {
         let config = CleaningConfig {
@@ -966,6 +1172,18 @@ mod tests {
 
         let config: CleaningConfig = serde_json::from_value(value).unwrap();
         assert!(config.removal_rules.is_empty());
+    }
+
+    #[test]
+    fn cleaning_config_deserializes_missing_obvious_noise_option() {
+        let mut value = serde_json::to_value(CleaningConfig::default()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("remove_obvious_extraction_noise");
+
+        let config: CleaningConfig = serde_json::from_value(value).unwrap();
+        assert!(!config.remove_obvious_extraction_noise);
     }
 
     #[test]

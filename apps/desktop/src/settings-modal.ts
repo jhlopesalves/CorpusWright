@@ -36,6 +36,7 @@ const cleaningCheckboxBindings: CheckboxBinding[] = [
   { configKey: "normalize_unicode",                          element: dom.chkNormalizeUnicode },
   { configKey: "replace_diacritics",                         element: dom.chkReplaceDiacritics },
   { configKey: "extract_html",                               element: dom.chkExtractHtml },
+  { configKey: "remove_obvious_extraction_noise",            element: dom.chkRemoveObviousExtractionNoise },
   { configKey: "remove_headers",                             element: dom.chkRemoveHeaders },
   { configKey: "remove_footers",                             element: dom.chkRemoveFooters },
   { configKey: "remove_footnotes",                           element: dom.chkRemoveFootnotes },

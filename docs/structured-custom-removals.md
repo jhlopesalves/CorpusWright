@@ -46,6 +46,28 @@ These page-zone scopes require page-aware cleaning metadata. When page-zone rule
 
 The structured schema also serialises `anywhere`, but literal substring removals that work anywhere in the text continue to use `remove_patterns`.
 
+## Obvious extraction/OCR noise lines
+
+`remove_obvious_extraction_noise` is an opt-in cleaning flag for full-line
+extraction, OCR, and markup artefacts that are overwhelmingly clear. It uses
+deterministic text/noise profiling inside the local cleaner and does not call
+models, embeddings, network services, or external APIs.
+
+The option removes standalone lines such as repeated punctuation or symbol
+runs, Unicode replacement-character junk, `cid:` markers, and markup fragments
+such as `<br/>`, `<br>`, `&nbsp;`, and `&amp;`. It is not a broad "remove
+non-text" control. Section headings, page labels, table or statistical rows,
+formulae, code-like lines, mixed text with numbers, and ordinary prose are
+protected.
+
+This flag complements repeated artefact review, but it does not depend on the
+Repeated Artefact Finder. Candidate review still exposes advisory text/noise
+signals, and candidates affect output only after explicit promotion to Custom
+Removals.
+
+The cleaner does not currently report a removed-line count for this flag. Export
+and preview warnings remain focused on extraction warnings and errors.
+
 ## Exact repeated artefact promotion
 
 An `exact_line` candidate promoted from the Repeated Artefact Finder becomes a

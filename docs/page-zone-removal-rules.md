@@ -67,6 +67,11 @@ promotion uses reliable page metadata and the candidate's top/middle/bottom
 summary; it does not depend on whether the text signal is natural text, page
 label, extraction noise, or ambiguous.
 
+The obvious extraction/OCR noise cleaning flag is independent of page-zone
+promotion. Enabling it does not change candidate generation, repeated artefact
+visibility, or the rules used to choose `PageTop`, `PageBottom`, and
+`PageTopOrBottom` scopes.
+
 ## Current page information in the cleaner
 
 General cleaning is performed by:
@@ -79,6 +84,14 @@ At this point the cleaner receives a flat string. `remove_structured_removal_rul
 collects enabled `RemovalScope::WholeLine` rules and removes matching lines. It
 does not know the source document type, page number, line index within a page,
 or whether a line is in the top, middle, or bottom of a page.
+
+The opt-in `remove_obvious_extraction_noise` flag also runs inside
+`clean_text`, but it is not a page-zone rule and does not remove page labels.
+It removes only full lines with overwhelming extraction/OCR/markup noise
+signals, such as repeated symbol runs, `cid:` markers, replacement-character
+junk, or standalone markup fragments. Headings, page labels, table or
+statistical rows, formulae, code-like lines, and ordinary text are protected by
+the same deterministic text/noise profiling used for candidate review.
 
 The Rust core also provides `clean_structured_document` for internal page-aware
 cleaning. It accepts a `StructuredDocument` and a `CleaningConfig`, returns the

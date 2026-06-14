@@ -49,6 +49,11 @@ Unicode alphabetic characters and decimal digits are counted with Unicode-aware
 character checks where the scanner already needs them. The profile is intended
 for review, not for deletion.
 
+The same deterministic text/noise profiling layer is also available to the
+cleaner. The cleaner's `remove_obvious_extraction_noise` flag uses a stricter
+automatic-removal predicate than the advisory repeated artefact label, and only
+for full lines with overwhelming extraction/OCR/markup noise signals.
+
 ## Text signal labels
 
 The candidate text signal is conservative. It uses the profile, existing
@@ -88,3 +93,10 @@ candidates affect output only after promotion to Custom Removals. Inline
 artefacts and block candidates continue to use their existing removal paths.
 Page-zone promotion continues to depend on reliable page metadata and the
 candidate's page-position summary, not on the text/noise signal.
+
+The processing parameter labelled "Remove obvious extraction/OCR noise" is a
+separate opt-in cleaner setting. It can remove lines such as repeated symbol
+junk, `cid:` markers, replacement-character junk, and standalone markup
+fragments without running a repeated artefact scan. It does not broadly remove
+"non-text", and it protects section headings, page labels, table/statistical
+rows, formulae, code-like lines, mixed text with numbers, and ordinary prose.
