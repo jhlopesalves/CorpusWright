@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unicode_normalization::UnicodeNormalization;
 
+use crate::text_normalization::normalize_line_for_repeated_artifact;
+
 lazy_static! {
     static ref RE_STANDALONE_ARABIC: Regex =
         Regex::new(r"(?m)^[ \t]*\d+[ \t]*(?:\r?\n|$)").unwrap();
@@ -137,6 +139,7 @@ pub enum RemovalScope {
 #[ts(export)]
 pub enum RemovalMatcher {
     Literal { text: String },
+    NormalizedLine { normalized_key: String },
 }
 
 /// Structured removal rule applied during text cleaning.
@@ -309,20 +312,41 @@ fn effective_whole_line_literals(config: &CleaningConfig) -> Vec<String> {
                 let trimmed = effective_text.trim();
                 (!trimmed.is_empty()).then(|| trimmed.to_string())
             }
+            RemovalMatcher::NormalizedLine { .. } => None,
+        })
+        .collect()
+}
+
+fn effective_whole_line_normalized_keys(config: &CleaningConfig) -> Vec<String> {
+    config
+        .removal_rules
+        .iter()
+        .filter(|rule| rule.enabled && rule.scope == RemovalScope::WholeLine)
+        .filter_map(|rule| match &rule.matcher {
+            RemovalMatcher::NormalizedLine { normalized_key } => {
+                let trimmed = normalized_key.trim();
+                (!trimmed.is_empty()).then(|| trimmed.to_string())
+            }
+            RemovalMatcher::Literal { .. } => None,
         })
         .collect()
 }
 
 fn remove_structured_removal_rules(text: String, config: &CleaningConfig) -> String {
     let whole_line_literals = effective_whole_line_literals(config);
-    if whole_line_literals.is_empty() {
+    let whole_line_normalized_keys = effective_whole_line_normalized_keys(config);
+    if whole_line_literals.is_empty() && whole_line_normalized_keys.is_empty() {
         return text;
     }
 
-    remove_whole_lines_matching_literals(&text, &whole_line_literals)
+    remove_whole_lines_matching_structured(&text, &whole_line_literals, &whole_line_normalized_keys)
 }
 
-fn remove_whole_lines_matching_literals(text: &str, literals: &[String]) -> String {
+fn remove_whole_lines_matching_structured(
+    text: &str,
+    literals: &[String],
+    normalized_keys: &[String],
+) -> String {
     let mut cleaned = String::with_capacity(text.len());
 
     for line in text.split_inclusive('\n') {
@@ -332,6 +356,12 @@ fn remove_whole_lines_matching_literals(text: &str, literals: &[String]) -> Stri
             .unwrap_or(without_newline);
         if literals.iter().any(|literal| content.trim() == literal) {
             continue;
+        }
+        if !normalized_keys.is_empty() {
+            let normalized = normalize_line_for_repeated_artifact(content.trim());
+            if normalized_keys.iter().any(|key| normalized.as_str() == key) {
+                continue;
+            }
         }
         cleaned.push_str(line);
     }
@@ -446,6 +476,19 @@ mod tests {
         }
     }
 
+    fn normalized_line_rule(normalized_key: &str) -> RemovalRule {
+        RemovalRule {
+            id: "rule-1".to_string(),
+            label: format!("Normalised whole line: {normalized_key}"),
+            source: RemovalRuleSource::PromotedRepeatedArtifact,
+            matcher: RemovalMatcher::NormalizedLine {
+                normalized_key: normalized_key.to_string(),
+            },
+            scope: RemovalScope::WholeLine,
+            enabled: true,
+        }
+    }
+
     #[test]
     fn lowercase_text() {
         let config = CleaningConfig {
@@ -542,12 +585,45 @@ mod tests {
     }
 
     #[test]
+    fn normalized_line_matcher_serializes_and_deserializes() {
+        let matcher = RemovalMatcher::NormalizedLine {
+            normalized_key: "page #".to_string(),
+        };
+
+        let value = serde_json::to_value(&matcher).unwrap();
+        assert_eq!(
+            value,
+            json!({
+                "kind": "normalized_line",
+                "normalized_key": "page #"
+            })
+        );
+
+        let decoded: RemovalMatcher = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded, matcher);
+    }
+
+    #[test]
     fn cleaning_config_deserializes_missing_removal_rules() {
         let mut value = serde_json::to_value(CleaningConfig::default()).unwrap();
         value.as_object_mut().unwrap().remove("removal_rules");
 
         let config: CleaningConfig = serde_json::from_value(value).unwrap();
         assert!(config.removal_rules.is_empty());
+    }
+
+    #[test]
+    fn cleaning_config_deserializes_normalized_line_rule() {
+        let rule = normalized_line_rule("page #");
+        let mut value = serde_json::to_value(CleaningConfig::default()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("removal_rules".to_string(), json!([rule]));
+
+        let config: CleaningConfig = serde_json::from_value(value).unwrap();
+
+        assert_eq!(config.removal_rules, vec![normalized_line_rule("page #")]);
     }
 
     #[test]
@@ -626,6 +702,51 @@ mod tests {
                 "Body<br/>\nJournal of Corpus Linguistics\nMore<br/> body",
                 &config
             ),
+            "Body\nMore body"
+        );
+    }
+
+    #[test]
+    fn whole_line_normalized_rule_removes_matching_line_family() {
+        let config = CleaningConfig {
+            removal_rules: vec![normalized_line_rule("page #")],
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text(
+                "Page 1\nThis is body text.\nPage 2\nThis mentions page 3 inside a sentence.\n   Page 44   \nMore body.",
+                &config
+            ),
+            "This is body text.\nThis mentions page 3 inside a sentence.\nMore body."
+        );
+    }
+
+    #[test]
+    fn disabled_whole_line_normalized_rule_does_nothing() {
+        let mut rule = normalized_line_rule("page #");
+        rule.enabled = false;
+        let config = CleaningConfig {
+            removal_rules: vec![rule],
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text("Page 1\nBody\nPage 2", &config),
+            "Page 1\nBody\nPage 2"
+        );
+    }
+
+    #[test]
+    fn normalized_line_rules_and_legacy_remove_patterns_can_coexist() {
+        let config = CleaningConfig {
+            remove_patterns: vec!["<br/>".to_string()],
+            removal_rules: vec![normalized_line_rule("page #")],
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text("Body<br/>\nPage 12\nMore<br/> body", &config),
             "Body\nMore body"
         );
     }

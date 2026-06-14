@@ -127,26 +127,34 @@ function isRemovalScope(value: unknown): value is RemovalRule["scope"] {
   );
 }
 
+function isRemovalMatcher(value: unknown): value is RemovalRule["matcher"] {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const matcherObj = value as Record<string, unknown>;
+  if (matcherObj.kind === "literal") {
+    return typeof matcherObj.text === "string";
+  }
+  if (matcherObj.kind === "normalized_line") {
+    return typeof matcherObj.normalized_key === "string";
+  }
+  return false;
+}
+
 function isRemovalRule(value: unknown): value is RemovalRule {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
 
   const obj = value as Record<string, unknown>;
-  const matcher = obj.matcher;
-  if (matcher === null || typeof matcher !== "object" || Array.isArray(matcher)) {
-    return false;
-  }
-  const matcherObj = matcher as Record<string, unknown>;
-
   return (
     typeof obj.id === "string" &&
     typeof obj.label === "string" &&
     isRemovalRuleSource(obj.source) &&
     isRemovalScope(obj.scope) &&
     typeof obj.enabled === "boolean" &&
-    matcherObj.kind === "literal" &&
-    typeof matcherObj.text === "string"
+    isRemovalMatcher(obj.matcher)
   );
 }
 

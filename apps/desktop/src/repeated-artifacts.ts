@@ -24,6 +24,11 @@ function ruleDisplayText(rule: RemovalRule): string {
       ? `Whole line: ${rule.matcher.text}`
       : rule.matcher.text;
   }
+  if (rule.matcher.kind === "normalized_line") {
+    return rule.scope === "whole_line"
+      ? `Normalised whole line: ${rule.matcher.normalized_key}`
+      : rule.label;
+  }
   return rule.label;
 }
 
@@ -36,15 +41,26 @@ function exactLineRuleId(candidate: RepeatedArtifactCandidate): string {
   return `repeated-artifact:whole-line:${candidate.candidate_id}`;
 }
 
+function normalizedLineRuleId(candidate: RepeatedArtifactCandidate): string {
+  return `repeated-artifact:normalized-line:${candidate.candidate_id}`;
+}
+
 function removalRuleDuplicateKey(rule: RemovalRule): string {
   if (rule.matcher.kind === "literal") {
     return `${rule.scope}\0${rule.matcher.text}`;
+  }
+  if (rule.matcher.kind === "normalized_line") {
+    return `${rule.scope}\0normalized_line\0${rule.matcher.normalized_key}`;
   }
   return `${rule.scope}\0${rule.id}`;
 }
 
 function exactLineRuleDuplicateKey(text: string): string {
   return `whole_line\0${text}`;
+}
+
+function normalizedLineRuleDuplicateKey(normalizedKey: string): string {
+  return `whole_line\0normalized_line\0${normalizedKey}`;
 }
 
 function createExactLineRemovalRule(candidate: RepeatedArtifactCandidate): RemovalRule {
@@ -55,6 +71,20 @@ function createExactLineRemovalRule(candidate: RepeatedArtifactCandidate): Remov
     matcher: {
       kind: "literal",
       text: candidate.display_text,
+    },
+    scope: "whole_line",
+    enabled: true,
+  };
+}
+
+function createNormalizedLineRemovalRule(candidate: RepeatedArtifactCandidate, normalizedKey: string): RemovalRule {
+  return {
+    id: normalizedLineRuleId(candidate),
+    label: `Normalised whole line: ${normalizedKey}`,
+    source: "promoted_repeated_artifact",
+    matcher: {
+      kind: "normalized_line",
+      normalized_key: normalizedKey,
     },
     scope: "whole_line",
     enabled: true,
@@ -173,11 +203,12 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     const existingRuleIds = new Set(state.activeCleaningConfig.removal_rules.map(rule => rule.id));
     const existingRuleKeys = new Set(state.activeCleaningConfig.removal_rules.map(removalRuleDuplicateKey));
     let literalSequencesAdded = 0;
-    let wholeLineRulesAdded = 0;
+    let exactWholeLineRulesAdded = 0;
+    let normalizedWholeLineRulesAdded = 0;
     let skippedDuplicates = 0;
-    let groupedCandidatesExpanded = 0;
-    let cappedGroupedCandidatesExpanded = 0;
-    let trackedRawVariantsAddedFromGroupedCandidates = 0;
+    let normalizedFallbackCandidates = 0;
+    let cappedNormalizedFallbackCandidates = 0;
+    let trackedRawVariantsAddedFromFallback = 0;
 
     for (const id of state.selectedCandidateIds) {
       const cand = state.lastScanCandidates.find(c => c.candidate_id === id);
@@ -198,22 +229,38 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         state.activeCleaningConfig.removal_rules.push(rule);
         existingRuleIds.add(rule.id);
         existingRuleKeys.add(ruleKey);
-        wholeLineRulesAdded++;
+        exactWholeLineRulesAdded++;
         continue;
       }
 
       if (isNormalized) {
+        const normalizedKey = (cand.normalized_key || "").trim();
+        if (normalizedKey) {
+          const rule = createNormalizedLineRemovalRule(cand, normalizedKey);
+          const ruleKey = normalizedLineRuleDuplicateKey(normalizedKey);
+          if (existingRuleIds.has(rule.id) || existingRuleKeys.has(ruleKey)) {
+            skippedDuplicates++;
+            continue;
+          }
+
+          state.activeCleaningConfig.removal_rules.push(rule);
+          existingRuleIds.add(rule.id);
+          existingRuleKeys.add(ruleKey);
+          normalizedWholeLineRulesAdded++;
+          continue;
+        }
+
         if (!cand.raw_variants || cand.raw_variants.length === 0) continue;
-        groupedCandidatesExpanded++;
+        normalizedFallbackCandidates++;
         if (cand.raw_variant_count_is_capped) {
-          cappedGroupedCandidatesExpanded++;
+          cappedNormalizedFallbackCandidates++;
         }
         for (const variant of cand.raw_variants) {
           if (!existingSet.has(variant)) {
             state.activeCleaningConfig.remove_patterns.push(variant);
             existingSet.add(variant);
             literalSequencesAdded++;
-            trackedRawVariantsAddedFromGroupedCandidates++;
+            trackedRawVariantsAddedFromFallback++;
           } else {
             skippedDuplicates++;
           }
@@ -230,7 +277,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       }
     }
 
-    if (literalSequencesAdded > 0 || wholeLineRulesAdded > 0) {
+    if (literalSequencesAdded > 0 || exactWholeLineRulesAdded > 0 || normalizedWholeLineRulesAdded > 0) {
       state.tempRemovePatterns = [...state.activeCleaningConfig.remove_patterns];
       state.tempRemovalRules = state.activeCleaningConfig.removal_rules.map((rule) => ({
         ...rule,
@@ -240,23 +287,35 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     }
 
     const statusParts: string[] = [];
-    if (wholeLineRulesAdded > 0) {
-      statusParts.push(`Added ${wholeLineRulesAdded} whole-line rule${wholeLineRulesAdded === 1 ? "" : "s"}`);
+    const addedParts: string[] = [];
+    if (exactWholeLineRulesAdded > 0) {
+      addedParts.push(`${exactWholeLineRulesAdded} whole-line rule${exactWholeLineRulesAdded === 1 ? "" : "s"}`);
+    }
+    if (normalizedWholeLineRulesAdded > 0) {
+      addedParts.push(`${normalizedWholeLineRulesAdded} normalised whole-line rule${normalizedWholeLineRulesAdded === 1 ? "" : "s"}`);
     }
     if (literalSequencesAdded > 0) {
-      statusParts.push(`Added ${literalSequencesAdded} literal sequence${literalSequencesAdded === 1 ? "" : "s"} to Custom Removals`);
+      addedParts.push(`${literalSequencesAdded} literal sequence${literalSequencesAdded === 1 ? "" : "s"}`);
     }
-    if (groupedCandidatesExpanded > 0) {
-      const addedTrackedText = trackedRawVariantsAddedFromGroupedCandidates > 0
-        ? `; ${trackedRawVariantsAddedFromGroupedCandidates} tracked raw variant${trackedRawVariantsAddedFromGroupedCandidates === 1 ? "" : "s"} added from them`
+    if (addedParts.length > 0) {
+      const lastPart = addedParts[addedParts.length - 1];
+      const leadingParts = addedParts.slice(0, -1);
+      const addedText = leadingParts.length > 0
+        ? `${leadingParts.join(", ")} and ${lastPart}`
+        : lastPart;
+      statusParts.push(`Added ${addedText} to Custom Removals`);
+    }
+    if (normalizedFallbackCandidates > 0) {
+      const addedTrackedText = trackedRawVariantsAddedFromFallback > 0
+        ? `; ${trackedRawVariantsAddedFromFallback} tracked raw variant${trackedRawVariantsAddedFromFallback === 1 ? "" : "s"} added from them`
         : "";
-      statusParts.push(`${groupedCandidatesExpanded} grouped candidate${groupedCandidatesExpanded === 1 ? "" : "s"} expanded into tracked raw variants${addedTrackedText}`);
+      statusParts.push(`${normalizedFallbackCandidates} normalised candidate${normalizedFallbackCandidates === 1 ? "" : "s"} had no normalised key and fell back to tracked raw variants${addedTrackedText}`);
     }
     if (skippedDuplicates > 0) {
       statusParts.push(`${skippedDuplicates} duplicate${skippedDuplicates === 1 ? "" : "s"} skipped`);
     }
-    if (cappedGroupedCandidatesExpanded > 0) {
-      statusParts.push(`Warning: ${cappedGroupedCandidatesExpanded} grouped candidate${cappedGroupedCandidatesExpanded === 1 ? " was" : "s were"} capped, so only the tracked variants were added; Custom Removals are literal strings, and additional untracked variants from the same family may remain`);
+    if (cappedNormalizedFallbackCandidates > 0) {
+      statusParts.push(`Warning: ${cappedNormalizedFallbackCandidates} fallback normalised candidate${cappedNormalizedFallbackCandidates === 1 ? " was" : "s were"} capped, so only the tracked variants were added`);
     }
     dom.lblArtifactAddStatus.textContent = statusParts.length > 0
       ? statusParts.join(". ") + "."
@@ -447,16 +506,19 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       const chk = document.createElement("input");
       chk.type = "checkbox";
       const isNormalized = cand.kind === "normalized_line";
-      if (isNormalized && (!cand.raw_variants || cand.raw_variants.length === 0)) {
+      const normalizedKey = (cand.normalized_key || "").trim();
+      if (isNormalized && !normalizedKey && (!cand.raw_variants || cand.raw_variants.length === 0)) {
         chk.disabled = true;
-        chk.title = "This grouped pattern has no actionable raw variants to add.";
+        chk.title = "This grouped pattern has no normalised key or actionable raw variants to add.";
       } else if (cand.kind === "exact_line") {
         chk.title = "Selecting adds a structured whole-line removal rule.";
+      } else if (isNormalized && normalizedKey) {
+        chk.title = "Selecting adds a structured normalised whole-line removal rule.";
       } else if (isNormalized) {
         const cappedNote = cand.raw_variant_count_is_capped
-          ? " This group is capped; additional untracked variants may remain after literal removal."
+          ? " This fallback group is capped; additional untracked variants may remain after literal removal."
           : "";
-        chk.title = `Selecting adds the ${cand.raw_variants.length} tracked raw variant${cand.raw_variants.length === 1 ? "" : "s"} to Custom Removals.${cappedNote}`;
+        chk.title = `Selecting falls back to adding the ${cand.raw_variants.length} tracked raw variant${cand.raw_variants.length === 1 ? "" : "s"} to Custom Removals.${cappedNote}`;
       }
       chk.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -576,6 +638,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       cand.kind === "three_line_block";
 
     const isNormalized = cand.kind === "normalized_line";
+    const normalizedKey = (cand.normalized_key || "").trim();
 
     const metaDiv = document.createElement("div");
     metaDiv.style.display = "flex";
@@ -652,14 +715,16 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       dispHeader.textContent = "Normalised grouping key";
       const dispText = document.createElement("div");
       dispText.className = "candidate-display-text";
-      dispText.textContent = cand.normalized_key || cand.display_text;
+      dispText.textContent = normalizedKey || cand.display_text;
       dispBlock.appendChild(dispHeader);
       dispBlock.appendChild(dispText);
       dom.artifactDetailsContent.appendChild(dispBlock);
 
       const normNote = document.createElement("div");
       normNote.className = "detail-note detail-note-info";
-      normNote.textContent = "This is a grouping pattern, not a literal removal string. Use the sample occurrences to inspect exact variants.";
+      normNote.textContent = normalizedKey
+        ? "Selecting this candidate creates one normalised whole-line rule. Lines are removed only when their normalised whole-line form matches this key."
+        : "This candidate has no normalised key. Selecting it falls back to tracked raw variants when they are available.";
       dom.artifactDetailsContent.appendChild(normNote);
 
       if (cand.raw_variants && cand.raw_variants.length > 0) {
@@ -670,9 +735,11 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         variantsActionDiv.style.borderRadius = "4px";
         variantsActionDiv.style.borderLeft = "3px solid #50c878";
 
-        let variantsLabel = `Selecting this candidate adds the ${cand.raw_variants.length} tracked raw variant${cand.raw_variants.length === 1 ? "" : "s"} to Custom Removals. The normalised grouping key itself is not added as a removal rule`;
+        let variantsLabel = normalizedKey
+          ? `Tracked raw variants are shown for review. Selecting this candidate adds one normalised whole-line rule for "${normalizedKey}"`
+          : `Selecting this candidate falls back to the ${cand.raw_variants.length} tracked raw variant${cand.raw_variants.length === 1 ? "" : "s"}`;
         if (cand.raw_variant_count_is_capped) {
-          variantsLabel += `, and this capped group may have additional untracked variants that literal Custom Removals will not catch`;
+          variantsLabel += ", and this diagnostic list is capped";
         }
         variantsLabel += ".";
         const variantsLabelP = document.createElement("div");
@@ -718,8 +785,10 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         dom.artifactDetailsContent.appendChild(variantsActionDiv);
       } else {
         const noVariantsNote = document.createElement("div");
-        noVariantsNote.className = "detail-note detail-note-warning";
-        noVariantsNote.textContent = "No raw variants were tracked for this candidate. It cannot be added to Custom Removals.";
+        noVariantsNote.className = normalizedKey ? "detail-note detail-note-info" : "detail-note detail-note-warning";
+        noVariantsNote.textContent = normalizedKey
+          ? "No raw variants were tracked for this candidate. The normalised whole-line rule can still use the grouping key."
+          : "No raw variants were tracked for this candidate, and it has no normalised key to add as a rule.";
         dom.artifactDetailsContent.appendChild(noVariantsNote);
       }
     }

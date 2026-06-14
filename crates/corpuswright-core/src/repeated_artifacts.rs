@@ -11,6 +11,7 @@
 use crate::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
 use crate::clean::CleaningConfig;
 use crate::scan::{DocumentRecord, DocumentType};
+use crate::text_normalization::normalize_line_for_repeated_artifact as normalize_line;
 use aho_corasick::AhoCorasick;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -290,67 +291,6 @@ fn should_skip_line(text: &str, min_chars: usize, max_chars: usize) -> bool {
     }
     let char_count = trimmed.chars().count();
     char_count < min_chars || char_count > max_chars
-}
-
-/// Detects punctuation for candidate normalisation.
-fn is_punctuation(c: char) -> bool {
-    matches!(
-        c,
-        '-' | '—'
-            | '–'
-            | '['
-            | ']'
-            | '('
-            | ')'
-            | '{'
-            | '}'
-            | '.'
-            | ','
-            | '*'
-            | '/'
-            | '\\'
-            | '_'
-            | '|'
-            | '•'
-            | '°'
-    )
-}
-
-/// Normalises a line deterministically for candidate grouping.
-/// Strips surrounding punctuation, lowercases, collapses whitespace, and replaces digit runs with '#'.
-fn normalize_line(s: &str) -> String {
-    let trimmed = s.trim();
-    let chars: Vec<char> = trimmed.chars().collect();
-
-    let mut i = 0;
-    while i < chars.len() && is_punctuation(chars[i]) {
-        i += 1;
-    }
-    let start = i;
-
-    let mut j = chars.len();
-    while j > start && is_punctuation(chars[j - 1]) {
-        j -= 1;
-    }
-    let end = j;
-
-    if start >= end {
-        return String::new();
-    }
-
-    let substring: String = chars[start..end].iter().collect();
-    let trimmed_sub = substring.trim();
-    let lower = trimmed_sub.to_lowercase();
-
-    use regex::Regex;
-    use std::sync::LazyLock;
-    static RE_DIGITS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
-    static RE_SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
-
-    let with_replaced_digits = RE_DIGITS.replace_all(&lower, "#");
-    let collapsed_spaces = RE_SPACES.replace_all(&with_replaced_digits, " ");
-
-    collapsed_spaces.trim().to_string()
 }
 
 /// Computes the layout position of a line using per-line page metadata from `FileText`.

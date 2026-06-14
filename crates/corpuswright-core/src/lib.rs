@@ -32,6 +32,7 @@ pub mod preview;
 pub mod repeated_artifacts;
 pub mod scan;
 pub mod search;
+mod text_normalization;
 pub mod word_count;
 
 pub use clean::{
