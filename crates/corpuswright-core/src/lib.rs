@@ -32,6 +32,7 @@ pub mod preview;
 pub mod repeated_artifacts;
 pub mod scan;
 pub mod search;
+pub mod structured_document;
 mod text_normalization;
 pub mod word_count;
 
@@ -63,3 +64,6 @@ pub use scan::{
     scan_directory,
 };
 pub use search::{SearchHit, SearchResult, search_corpus};
+pub use structured_document::{
+    DocumentLine, DocumentPage, PAGE_EDGE_LINE_COUNT, StructuredDocument,
+};

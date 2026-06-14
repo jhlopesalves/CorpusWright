@@ -11,6 +11,7 @@
 use crate::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
 use crate::clean::CleaningConfig;
 use crate::scan::{DocumentRecord, DocumentType};
+use crate::structured_document::StructuredDocument;
 use crate::text_normalization::normalize_line_for_repeated_artifact as normalize_line;
 use aho_corasick::AhoCorasick;
 use rayon::prelude::*;
@@ -351,19 +352,53 @@ struct Phase1Result {
 }
 
 /// Single file's pre-processed text ready for scanning.
+#[derive(Debug, Clone)]
 struct FileText {
-    file_idx: usize,
     file_name: String,
     file_path: String,
     /// All raw (untrimmed, unvalidated) lines.
     raw_lines: Vec<String>,
     /// Total lines in the file.
     total_lines: usize,
-    /// Page boundaries: for each raw line, which page (None for non-PDF).
-    page_nums: Vec<Option<usize>>,
-    /// Per-line page metadata: (page_number, line_index_within_page, total_lines_on_page).
-    /// Always aligned with raw_lines[i].
-    page_line_info: Vec<(Option<usize>, usize, usize)>,
+    /// Page and page-local line metadata used when the source has reliable page chunks.
+    document: StructuredDocument,
+    /// Flat-line index to structured page/line location.
+    line_locations: Vec<(usize, usize)>,
+    /// Non-PDF flat text uses `document` for line storage but not as reliable page metadata.
+    has_page_metadata: bool,
+}
+
+impl FileText {
+    fn document_line(&self, line_idx: usize) -> Option<&crate::structured_document::DocumentLine> {
+        let (page_idx, line_idx_in_page) = *self.line_locations.get(line_idx)?;
+        self.document
+            .pages
+            .get(page_idx)?
+            .lines
+            .get(line_idx_in_page)
+    }
+
+    fn page_number_for_line(&self, line_idx: usize) -> Option<usize> {
+        if !self.has_page_metadata {
+            return None;
+        }
+
+        self.document_line(line_idx).map(|line| line.page_index + 1)
+    }
+
+    fn lines_share_page(&self, first_line_idx: usize, second_line_idx: usize) -> bool {
+        if !self.has_page_metadata {
+            return true;
+        }
+
+        match (
+            self.document_line(first_line_idx),
+            self.document_line(second_line_idx),
+        ) {
+            (Some(first), Some(second)) => first.page_index == second.page_index,
+            _ => false,
+        }
+    }
 }
 
 /// Returns true if the line should be skipped before any candidate processing.
@@ -378,24 +413,22 @@ fn should_skip_line(text: &str, min_chars: usize, max_chars: usize) -> bool {
     char_count < min_chars || char_count > max_chars
 }
 
-/// Computes the layout position of a line using per-line page metadata from `FileText`.
-/// For PDFs (page_num is Some): uses line-in-page index and total-lines-on-page for
-/// top/bottom detection (first/last 3 lines of each page).
-/// For non-PDFs: falls back to file-level 10% rule.
+/// Computes the layout position of a line using structured page metadata when available.
+/// Short-page lines can be both top and bottom in the shared model; the scanner
+/// keeps its existing single-bucket, top-first summary behaviour.
 fn compute_position_for_line(ft: &FileText, line_idx: usize) -> LinePosition {
-    if let Some(&(page_num_opt, line_in_page, page_total)) = ft.page_line_info.get(line_idx)
-        && page_num_opt.is_some()
+    if ft.has_page_metadata
+        && let Some(line) = ft.document_line(line_idx)
     {
-        // Page-aware: first 3 / last 3 lines of this page
-        if line_in_page < 3 {
+        if line.is_page_top {
             return LinePosition::Top;
-        } else if line_in_page >= page_total.saturating_sub(3) {
+        } else if line.is_page_bottom {
             return LinePosition::Bottom;
         } else {
             return LinePosition::Middle;
         }
     }
-    // Fallback to file-level position
+
     let total_lines = ft.total_lines;
     let ten_percent = (total_lines / 10).max(1);
     if line_idx < ten_percent {
@@ -816,7 +849,7 @@ fn get_document_text_with_status(
 }
 
 /// Build a per-file `FileText` from extracted text and page info.
-fn build_file_text(file_idx: usize, record: &DocumentRecord, text: &str) -> FileText {
+fn build_file_text(record: &DocumentRecord, text: &str) -> FileText {
     let file_name = record
         .source_path
         .file_name()
@@ -825,55 +858,34 @@ fn build_file_text(file_idx: usize, record: &DocumentRecord, text: &str) -> File
     let file_path = record.relative_path.to_string_lossy().into_owned();
 
     let is_pdf = record.document_type == DocumentType::Pdf;
-
-    // Build raw lines and page boundary info.
-    // For PDFs we split on "\n\n" to approximate pages.
-    let mut raw_lines: Vec<String> = Vec::new();
-    let mut page_nums: Vec<Option<usize>> = Vec::new();
-
-    if is_pdf {
-        let page_chunks: Vec<&str> = text.split("\n\n").collect();
-        for (p_idx, chunk) in page_chunks.iter().enumerate() {
-            for line in chunk.lines() {
-                raw_lines.push(line.to_string());
-                page_nums.push(Some(p_idx + 1));
-            }
-        }
+    let document = if is_pdf {
+        StructuredDocument::from_pages(text.split("\n\n"))
     } else {
-        for line in text.lines() {
-            raw_lines.push(line.to_string());
-        }
-        page_nums.resize(raw_lines.len(), None);
-    }
-
+        StructuredDocument::from_flat_text_as_single_page(text)
+    };
+    let raw_lines = document
+        .iter_lines()
+        .map(|line| line.text.clone())
+        .collect::<Vec<_>>();
+    let line_locations = document
+        .pages
+        .iter()
+        .flat_map(|page| {
+            page.lines
+                .iter()
+                .map(|line| (page.page_index, line.line_index_in_page))
+        })
+        .collect::<Vec<_>>();
     let total_lines = raw_lines.len();
 
-    // This vector must stay aligned with raw_lines for page-aware positioning.
-    let mut page_line_info: Vec<(Option<usize>, usize, usize)> =
-        Vec::with_capacity(raw_lines.len());
-    if is_pdf {
-        let page_chunks: Vec<&str> = text.split("\n\n").collect();
-        for (p_idx, chunk) in page_chunks.iter().enumerate() {
-            let page_lines: Vec<&str> = chunk.lines().collect();
-            let total_on_page = page_lines.len();
-            for (line_in_page, _line) in page_lines.iter().enumerate() {
-                page_line_info.push((Some(p_idx + 1), line_in_page, total_on_page));
-            }
-        }
-    } else {
-        for idx in 0..raw_lines.len() {
-            page_line_info.push((None, idx, raw_lines.len()));
-        }
-    }
-
     FileText {
-        file_idx,
         file_name,
         file_path,
         raw_lines,
         total_lines,
-        page_nums,
-        page_line_info,
+        document,
+        line_locations,
+        has_page_metadata: is_pdf,
     }
 }
 
@@ -883,7 +895,6 @@ fn build_file_text(file_idx: usize, record: &DocumentRecord, text: &str) -> File
 /// with the requested records.
 fn phase1_scan_file(
     record: &DocumentRecord,
-    file_idx: usize,
     config: &RepeatedArtifactScanConfig,
     cleaning_config: &CleaningConfig,
     cache: Option<&ExtractionCache>,
@@ -891,7 +902,7 @@ fn phase1_scan_file(
 ) -> Phase1Result {
     if cancel.load(Ordering::Relaxed) {
         return Phase1Result {
-            ft: build_file_text(file_idx, record, ""),
+            ft: build_file_text(record, ""),
             local_map: HashMap::new(),
             extraction_failed: false,
             fatal_error: None,
@@ -907,14 +918,14 @@ fn phase1_scan_file(
 
     if cancel.load(Ordering::Relaxed) {
         return Phase1Result {
-            ft: build_file_text(file_idx, record, ""),
+            ft: build_file_text(record, ""),
             local_map: HashMap::new(),
             extraction_failed: false,
             fatal_error: None,
         };
     }
 
-    let ft = build_file_text(file_idx, record, &extracted.text);
+    let ft = build_file_text(record, &extracted.text);
 
     let mut map = phase1_aggregate(&ft, config);
 
@@ -1054,7 +1065,7 @@ fn phase1_aggregate(
             if i1 != i0 + 1 {
                 continue;
             }
-            if ft.page_nums.get(i0).copied().flatten() != ft.page_nums.get(i1).copied().flatten() {
+            if !ft.lines_share_page(i0, i1) {
                 continue;
             }
             let text_block = format!("{}\n{}", l0, l1);
@@ -1085,10 +1096,7 @@ fn phase1_aggregate(
             if i1 != i0 + 1 || i2 != i1 + 1 {
                 continue;
             }
-            if ft.page_nums.get(i0).copied().flatten() != ft.page_nums.get(i1).copied().flatten()
-                || ft.page_nums.get(i0).copied().flatten()
-                    != ft.page_nums.get(i2).copied().flatten()
-            {
+            if !ft.lines_share_page(i0, i1) || !ft.lines_share_page(i0, i2) {
                 continue;
             }
             let text_block = format!("{}\n{}\n{}", l0, l1, l2);
@@ -1274,7 +1282,7 @@ fn phase3_finalize(
                         file_name: ft.file_name.clone(),
                         file_path: ft.file_path.clone(),
                         line_number: Some(line_idx + 1),
-                        page_number: ft.page_nums.get(line_idx).copied().flatten(),
+                        page_number: ft.page_number_for_line(line_idx),
                         context_before,
                         matched_text,
                         context_after,
@@ -1308,7 +1316,7 @@ fn phase3_finalize(
                         file_name: ft.file_name.clone(),
                         file_path: ft.file_path.clone(),
                         line_number: Some(rs + 1),
-                        page_number: ft.page_nums.get(rs).copied().flatten(),
+                        page_number: ft.page_number_for_line(rs),
                         context_before,
                         matched_text,
                         context_after,
@@ -1426,8 +1434,7 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
     // Every record produces a Phase1Result so diagnostics stay aligned.
     let phase_results: Vec<Phase1Result> = records
         .par_iter()
-        .enumerate()
-        .map(|(idx, record)| phase1_scan_file(record, idx, config, cleaning_config, cache, cancel))
+        .map(|record| phase1_scan_file(record, config, cleaning_config, cache, cancel))
         .collect();
 
     if cancel.load(Ordering::Relaxed) {
@@ -1444,18 +1451,7 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
     let files_scanned = phase_results.len();
     let files_failed_extraction = phase_results.iter().filter(|r| r.extraction_failed).count();
 
-    let file_texts: Vec<FileText> = phase_results
-        .iter()
-        .map(|pr| FileText {
-            file_idx: pr.ft.file_idx,
-            file_name: pr.ft.file_name.clone(),
-            file_path: pr.ft.file_path.clone(),
-            raw_lines: pr.ft.raw_lines.clone(),
-            total_lines: pr.ft.total_lines,
-            page_nums: pr.ft.page_nums.clone(),
-            page_line_info: pr.ft.page_line_info.clone(),
-        })
-        .collect();
+    let file_texts: Vec<FileText> = phase_results.iter().map(|pr| pr.ft.clone()).collect();
 
     let total_raw_lines: usize = file_texts.iter().map(|ft| ft.raw_lines.len()).sum();
     let files_empty_after_extraction = file_texts
@@ -1800,6 +1796,156 @@ mod tests {
             min_line_chars: 3,
             ..RepeatedArtifactScanConfig::default()
         }
+    }
+
+    fn repeated_cached_pdf_text() -> String {
+        (1..=3)
+            .map(|page_number| {
+                [
+                    "Header".to_string(),
+                    "Body top".to_string(),
+                    "Body lead".to_string(),
+                    "Middle prose".to_string(),
+                    "Body tail".to_string(),
+                    format!("Page {page_number}"),
+                    "Footer".to_string(),
+                ]
+                .join("\n")
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
+    #[test]
+    fn test_file_text_uses_structured_document_for_pdf_pages() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let doc = make_pdf_record("structured-pages.pdf", temp_dir.path());
+        let text = repeated_cached_pdf_text();
+
+        let ft = build_file_text(&doc, &text);
+
+        assert_eq!(ft.document.pages.len(), 3);
+        assert_eq!(ft.raw_lines.len(), 21);
+        assert_eq!(ft.line_locations.len(), ft.raw_lines.len());
+        assert_eq!(ft.page_number_for_line(0), Some(1));
+        assert_eq!(ft.page_number_for_line(7), Some(2));
+        assert_eq!(ft.page_number_for_line(14), Some(3));
+
+        assert_eq!(compute_position_for_line(&ft, 0), LinePosition::Top);
+        assert_eq!(compute_position_for_line(&ft, 3), LinePosition::Middle);
+        assert_eq!(compute_position_for_line(&ft, 5), LinePosition::Bottom);
+        assert!(ft.lines_share_page(0, 6));
+        assert!(!ft.lines_share_page(6, 7));
+    }
+
+    #[test]
+    fn test_scanner_preserves_cached_pdf_exact_and_normalized_page_positions() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let doc = make_pdf_record("cached-structured-pages.pdf", temp_dir.path());
+        let cleaning_config = CleaningConfig::default();
+        let cache = ExtractionCache::new();
+        cache.insert_extracted(
+            &doc,
+            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                &cleaning_config,
+            )),
+            &cleaning_config,
+            crate::cache::CacheEntry {
+                extracted_text: repeated_cached_pdf_text(),
+                warnings: Vec::new(),
+                page_count: Some(3),
+            },
+        );
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 3,
+            min_files: 1,
+            min_line_chars: 3,
+            include_inline_artifacts: false,
+            max_candidates: 50,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let report = scan_repeated_artifacts_report_with_cancel_and_cache(
+            &[doc],
+            &config,
+            &cleaning_config,
+            Some(&cache),
+            &no_cancellation(),
+        )
+        .expect("cached PDF scan should succeed");
+
+        let header = report
+            .candidates
+            .iter()
+            .find(|candidate| {
+                candidate.kind == RepeatedArtifactKind::ExactLine
+                    && candidate.display_text == "Header"
+            })
+            .expect("expected exact Header candidate");
+        assert_eq!(header.occurrence_count, 3);
+        assert_eq!(header.file_count, 1);
+        assert_eq!(
+            header.position_summary,
+            PositionSummary {
+                top_count: 3,
+                middle_count: 0,
+                bottom_count: 0,
+                unknown_count: 0,
+            }
+        );
+        assert_eq!(
+            header.risk_label,
+            ArtifactRiskLabel::StrongHeaderFooterCandidate
+        );
+        assert_eq!(header.content_class, CandidateContentClass::TextDominant);
+        assert_eq!(header.raw_variant_count, 1);
+        assert_eq!(header.raw_variants, vec!["Header".to_string()]);
+        assert_eq!(
+            header
+                .examples
+                .iter()
+                .map(|example| example.page_number)
+                .collect::<Vec<_>>(),
+            vec![Some(1), Some(2), Some(3)]
+        );
+
+        let page_norm = report
+            .candidates
+            .iter()
+            .find(|candidate| {
+                candidate.kind == RepeatedArtifactKind::NormalizedLine
+                    && candidate.normalized_key == "page #"
+            })
+            .expect("expected normalised page # candidate");
+        assert_eq!(page_norm.occurrence_count, 3);
+        assert_eq!(
+            page_norm.position_summary,
+            PositionSummary {
+                top_count: 0,
+                middle_count: 0,
+                bottom_count: 3,
+                unknown_count: 0,
+            }
+        );
+        assert_eq!(
+            page_norm.risk_label,
+            ArtifactRiskLabel::StrongHeaderFooterCandidate
+        );
+        assert_eq!(
+            page_norm.content_class,
+            CandidateContentClass::MixedTextNumbers
+        );
+        assert_eq!(page_norm.raw_variant_count, 3);
+        assert!(!page_norm.raw_variant_count_is_capped);
+        assert_eq!(
+            page_norm.raw_variants,
+            vec![
+                "Page 1".to_string(),
+                "Page 2".to_string(),
+                "Page 3".to_string(),
+            ]
+        );
     }
 
     #[test]
