@@ -54,7 +54,7 @@ export const ALLOWED_REMOVAL_RULE_SOURCES = [
   "promoted_repeated_artifact",
   "generated_pdf_cleanup",
 ] as const;
-export const ALLOWED_REMOVAL_SCOPES = ["anywhere", "whole_line"] as const;
+export const ALLOWED_REMOVAL_SCOPES = ["anywhere", "whole_line", "page_top", "page_bottom", "page_top_or_bottom"] as const;
 
 export function createDefaultCleaningConfig(): CleaningConfig {
   return {

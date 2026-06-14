@@ -35,13 +35,16 @@ Two matcher forms are supported in the current model:
 - `RemovalMatcher::NormalizedLine { normalized_key }` matches the same
   normalised whole-line key used by the repeated artefact scanner.
 
-The active structured cleaning path is `RemovalScope::WholeLine`. Whole-line
-rules compare against the trimmed line content and remove the entire matching
-line. They do not remove text embedded inside a sentence.
+The supported structured rule scopes include:
 
-The structured schema also serialises `anywhere`, but current structured rule
-application only removes enabled `whole_line` rules. Literal substring removals
-that work anywhere in the text continue to use `remove_patterns`.
+- `RemovalScope::WholeLine`: removes the matching line anywhere in the document.
+- `RemovalScope::PageTop`: removes the matching line only when it appears in the top zone of a page (first 3 lines).
+- `RemovalScope::PageBottom`: removes the matching line only when it appears in the bottom zone of a page (last 3 lines).
+- `RemovalScope::PageTopOrBottom`: removes the matching line when it appears in either the top or bottom zone.
+
+These page-zone scopes require page-aware cleaning metadata. When page-zone rules are present, `clean_structured_document` cleans the document page-by-page and returns a flat output derived from the cleaned page representation. Flat `clean_text` ignores page-zone rules because it lacks page metadata.
+
+The structured schema also serialises `anywhere`, but literal substring removals that work anywhere in the text continue to use `remove_patterns`.
 
 ## Exact repeated artefact promotion
 
@@ -108,9 +111,7 @@ Some repeated artefact candidates still use legacy literal removals:
 - normalised candidates without an actionable normalised key fall back to
   tracked raw variants when available.
 
-Page-zone scoped Custom Removal rules are not part of current cleaning
-behaviour. The scanner reports estimated top and bottom positions for review,
-but promoted repeated artefacts still become whole-line rules.
+Page-zone scoped Custom Removal rules are supported in the core. The scanner reports estimated top and bottom positions for review, but promoted repeated artefacts still become whole-line rules by default until UI support is fully integrated.
 
 ## Reviewability and reproducibility
 

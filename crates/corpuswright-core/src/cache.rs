@@ -481,7 +481,10 @@ pub fn document_text_for_record(
                 let document = StructuredDocument::from_pages(cleaned_pages);
                 let cleaned = clean_structured_document(&document, cleaning_config);
 
-                if cleaned.page_texts.is_some() && cleaned.text == original_flat_text {
+                let is_safe = crate::clean::has_page_zone_rules(cleaning_config)
+                    || (cleaned.page_texts.is_some() && cleaned.text == original_flat_text);
+
+                if is_safe {
                     warnings.extend(pdf_warnings);
                     (cleaned.text, cleaned.page_texts)
                 } else {
@@ -1153,5 +1156,78 @@ mod tests {
             bytes_after_first,
             "cache bytes should not increase on hit"
         );
+    }
+
+    #[test]
+    fn test_processed_document_text_applies_page_zone_rules_with_page_texts() {
+        let dir = tempdir().unwrap();
+        let record = pdf_record(dir.path(), "pz-cache.pdf");
+        let cache = ExtractionCache::new();
+
+        let cleaning_config = CleaningConfig {
+            removal_rules: vec![crate::clean::RemovalRule {
+                id: "pz-rule".to_string(),
+                label: "Page Top Header".to_string(),
+                source: crate::clean::RemovalRuleSource::Manual,
+                matcher: crate::clean::RemovalMatcher::Literal {
+                    text: "HEADER".to_string(),
+                },
+                scope: crate::clean::RemovalScope::PageTop,
+                enabled: true,
+            }],
+            ..CleaningConfig::default()
+        };
+        let pdf_options = PdfExtractionOptions::raw_from_cleaning_config(&cleaning_config);
+
+        // Scenario 1: With page_texts.
+        // We have a 1-page document. "HEADER" is page top, so it should be removed.
+        cache.insert_extracted(
+            &record,
+            Some(pdf_options),
+            &cleaning_config,
+            CacheEntry {
+                extracted_text: "HEADER\nBODY".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(1),
+                page_texts: Some(vec!["HEADER\nBODY".to_string()]),
+            },
+        );
+
+        let processed_with = document_text_for_record(
+            &record,
+            &cleaning_config,
+            DocumentTextMode::Processed,
+            Some(&cache),
+        )
+        .unwrap();
+
+        assert_eq!(processed_with.text, "BODY");
+        assert_eq!(processed_with.page_texts, Some(vec!["BODY".to_string()]));
+
+        // Scenario 2: Without page_texts.
+        // The rule should have no effect because page zones are unavailable/no-op.
+        let record_no_pt = pdf_record(dir.path(), "pz-cache-no-pt.pdf");
+        cache.insert_extracted(
+            &record_no_pt,
+            Some(pdf_options),
+            &cleaning_config,
+            CacheEntry {
+                extracted_text: "HEADER\nBODY".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(1),
+                page_texts: None, // No page texts
+            },
+        );
+
+        let processed_without = document_text_for_record(
+            &record_no_pt,
+            &cleaning_config,
+            DocumentTextMode::Processed,
+            Some(&cache),
+        )
+        .unwrap();
+
+        assert_eq!(processed_without.text, "HEADER\nBODY");
+        assert!(processed_without.page_texts.is_none());
     }
 }
