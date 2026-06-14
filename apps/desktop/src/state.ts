@@ -1,4 +1,4 @@
-import type { CleaningConfig, ReplacementRule } from "./generated/CleaningConfig.js";
+import type { CleaningConfig, RemovalRule, ReplacementRule } from "./generated/CleaningConfig.js";
 import { createDefaultCleaningConfig } from "./config";
 import type { DocumentRecord } from "./generated/DocumentRecord.js";
 import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
@@ -24,6 +24,7 @@ export const state = {
   isFetchingPreview: false,
   activeCleaningConfig: createDefaultCleaningConfig() as CleaningConfig,
   tempRemovePatterns: [] as string[],
+  tempRemovalRules: [] as RemovalRule[],
   tempReplacePatterns: [] as ReplacementRule[],
   currentMatchIndex: -1,
   currentSearchQuery: "",

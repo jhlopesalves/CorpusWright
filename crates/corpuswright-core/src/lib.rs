@@ -34,7 +34,10 @@ pub mod scan;
 pub mod search;
 pub mod word_count;
 
-pub use clean::{CleaningConfig, PdfOcrQuality, PdfTextSource, ReplacementRule, clean_text};
+pub use clean::{
+    CleaningConfig, PdfOcrQuality, PdfTextSource, RemovalMatcher, RemovalRule, RemovalRuleSource,
+    RemovalScope, ReplacementRule, clean_text,
+};
 pub use export::{
     ExportError, ExportOptions, ExportReport, ExportWarning, ExportWarningKind, ExportedFileRecord,
     export_corpus,

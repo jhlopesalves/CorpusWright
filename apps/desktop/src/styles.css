@@ -998,6 +998,10 @@ pre {
   color: var(--text-color);
 }
 
+.structured-removal-pill {
+  border-color: var(--accent-color);
+}
+
 .sequence-pill-delete {
   background: none;
   border: none;

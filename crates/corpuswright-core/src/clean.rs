@@ -81,6 +81,8 @@ pub struct CleaningConfig {
     pub remove_comments: bool,
     pub remove_table_of_contents: bool,
     pub remove_patterns: Vec<String>,
+    #[serde(default)]
+    pub removal_rules: Vec<RemovalRule>,
     pub replace_patterns: Vec<ReplacementRule>,
     /// PDF text source used before normal text cleaning is applied.
     #[serde(default)]
@@ -108,6 +110,45 @@ pub struct CleaningConfig {
     /// PDF-specific post-extraction cleanup option to remove formula/math-heavy lines.
     #[serde(default)]
     pub remove_pdf_formula_like_lines: bool,
+}
+
+/// Origin of a structured removal rule.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum RemovalRuleSource {
+    Manual,
+    PromotedRepeatedArtifact,
+    GeneratedPdfCleanup,
+}
+
+/// Text area affected by a structured removal rule.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum RemovalScope {
+    Anywhere,
+    WholeLine,
+}
+
+/// Matcher used by a structured removal rule.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[ts(export)]
+pub enum RemovalMatcher {
+    Literal { text: String },
+}
+
+/// Structured removal rule applied during text cleaning.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct RemovalRule {
+    pub id: String,
+    pub label: String,
+    pub source: RemovalRuleSource,
+    pub matcher: RemovalMatcher,
+    pub scope: RemovalScope,
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -167,6 +208,7 @@ pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
         cleaned = RE_EXCESSIVE_SPACES.replace_all(&cleaned, " ").to_string();
     }
 
+    cleaned = remove_structured_removal_rules(cleaned, config);
     cleaned = remove_literal_patterns(cleaned, config);
 
     for rule in &config.replace_patterns {
@@ -250,6 +292,51 @@ fn effective_remove_patterns(config: &CleaningConfig) -> Vec<String> {
             }
         })
         .collect()
+}
+
+fn effective_whole_line_literals(config: &CleaningConfig) -> Vec<String> {
+    config
+        .removal_rules
+        .iter()
+        .filter(|rule| rule.enabled && rule.scope == RemovalScope::WholeLine)
+        .filter_map(|rule| match &rule.matcher {
+            RemovalMatcher::Literal { text } => {
+                let effective_text = if config.lowercase {
+                    text.to_lowercase()
+                } else {
+                    text.clone()
+                };
+                let trimmed = effective_text.trim();
+                (!trimmed.is_empty()).then(|| trimmed.to_string())
+            }
+        })
+        .collect()
+}
+
+fn remove_structured_removal_rules(text: String, config: &CleaningConfig) -> String {
+    let whole_line_literals = effective_whole_line_literals(config);
+    if whole_line_literals.is_empty() {
+        return text;
+    }
+
+    remove_whole_lines_matching_literals(&text, &whole_line_literals)
+}
+
+fn remove_whole_lines_matching_literals(text: &str, literals: &[String]) -> String {
+    let mut cleaned = String::with_capacity(text.len());
+
+    for line in text.split_inclusive('\n') {
+        let without_newline = line.strip_suffix('\n').unwrap_or(line);
+        let content = without_newline
+            .strip_suffix('\r')
+            .unwrap_or(without_newline);
+        if literals.iter().any(|literal| content.trim() == literal) {
+            continue;
+        }
+        cleaned.push_str(line);
+    }
+
+    cleaned
 }
 
 fn remove_literal_patterns(text: String, config: &CleaningConfig) -> String {
@@ -344,6 +431,20 @@ fn literals_can_overlap(left: &str, right: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    fn whole_line_rule(text: &str) -> RemovalRule {
+        RemovalRule {
+            id: "rule-1".to_string(),
+            label: text.to_string(),
+            source: RemovalRuleSource::PromotedRepeatedArtifact,
+            matcher: RemovalMatcher::Literal {
+                text: text.to_string(),
+            },
+            scope: RemovalScope::WholeLine,
+            enabled: true,
+        }
+    }
 
     #[test]
     fn lowercase_text() {
@@ -419,6 +520,125 @@ mod tests {
             ..CleaningConfig::default()
         };
         assert_eq!(clean_text("Header body HEADER", &config), " body ");
+    }
+
+    #[test]
+    fn removal_rule_serializes_and_deserializes() {
+        let rule = whole_line_rule("Journal of Corpus Linguistics");
+
+        let value = serde_json::to_value(&rule).unwrap();
+        assert_eq!(value["source"], json!("promoted_repeated_artifact"));
+        assert_eq!(value["scope"], json!("whole_line"));
+        assert_eq!(
+            value["matcher"],
+            json!({
+                "kind": "literal",
+                "text": "Journal of Corpus Linguistics"
+            })
+        );
+
+        let decoded: RemovalRule = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded, rule);
+    }
+
+    #[test]
+    fn cleaning_config_deserializes_missing_removal_rules() {
+        let mut value = serde_json::to_value(CleaningConfig::default()).unwrap();
+        value.as_object_mut().unwrap().remove("removal_rules");
+
+        let config: CleaningConfig = serde_json::from_value(value).unwrap();
+        assert!(config.removal_rules.is_empty());
+    }
+
+    #[test]
+    fn whole_line_literal_rule_removes_exact_line() {
+        let config = CleaningConfig {
+            removal_rules: vec![whole_line_rule("Journal of Corpus Linguistics")],
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text(
+                "This is body text.\nJournal of Corpus Linguistics\nThis is more body text.",
+                &config
+            ),
+            "This is body text.\nThis is more body text."
+        );
+    }
+
+    #[test]
+    fn whole_line_literal_rule_does_not_remove_mid_sentence_text() {
+        let config = CleaningConfig {
+            removal_rules: vec![whole_line_rule("Journal of Corpus Linguistics")],
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text(
+                "This article was published in Journal of Corpus Linguistics in 2020.",
+                &config
+            ),
+            "This article was published in Journal of Corpus Linguistics in 2020."
+        );
+    }
+
+    #[test]
+    fn whole_line_literal_rule_matches_trimmed_line_text() {
+        let config = CleaningConfig {
+            removal_rules: vec![whole_line_rule("Journal of Corpus Linguistics")],
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text(
+                "Body\n   Journal of Corpus Linguistics\t\nMore body",
+                &config
+            ),
+            "Body\nMore body"
+        );
+    }
+
+    #[test]
+    fn disabled_whole_line_literal_rule_does_nothing() {
+        let mut rule = whole_line_rule("Journal of Corpus Linguistics");
+        rule.enabled = false;
+        let config = CleaningConfig {
+            removal_rules: vec![rule],
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text("Body\nJournal of Corpus Linguistics\nMore body", &config),
+            "Body\nJournal of Corpus Linguistics\nMore body"
+        );
+    }
+
+    #[test]
+    fn legacy_remove_patterns_and_structured_rules_can_coexist() {
+        let config = CleaningConfig {
+            remove_patterns: vec!["<br/>".to_string()],
+            removal_rules: vec![whole_line_rule("Journal of Corpus Linguistics")],
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text(
+                "Body<br/>\nJournal of Corpus Linguistics\nMore<br/> body",
+                &config
+            ),
+            "Body\nMore body"
+        );
+    }
+
+    #[test]
+    fn whole_line_literal_rules_follow_lowercase_option() {
+        let config = CleaningConfig {
+            lowercase: true,
+            removal_rules: vec![whole_line_rule("HEADER")],
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(clean_text("Header\nBody", &config), "body");
     }
 
     #[test]
@@ -639,6 +859,7 @@ mod tests {
         assert!(!config.remove_endnotes);
         assert!(!config.remove_comments);
         assert!(!config.remove_table_of_contents);
+        assert!(config.removal_rules.is_empty());
         assert!(!config.remove_repeated_pdf_headers_footers);
         assert!(!config.remove_pdf_page_labels);
         assert!(!config.remove_pdf_symbol_heavy_artifacts);

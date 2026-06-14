@@ -3,6 +3,7 @@ import type {
   PdfEmbeddedTextStrategy,
   PdfOcrQuality,
   PdfTextSource,
+  RemovalRule,
   TableExtractionStrategy,
 } from "./generated/CleaningConfig.js";
 
@@ -48,6 +49,12 @@ export const ALLOWED_PDF_EMBEDDED_TEXT_STRATEGIES = [
 export const ALLOWED_PDF_TEXT_SOURCES = ["EmbeddedText", "Ocr", "ForceOcr"] as const;
 
 export const ALLOWED_PDF_OCR_QUALITIES = ["Fast", "Balanced", "HighQuality"] as const;
+export const ALLOWED_REMOVAL_RULE_SOURCES = [
+  "manual",
+  "promoted_repeated_artifact",
+  "generated_pdf_cleanup",
+] as const;
+export const ALLOWED_REMOVAL_SCOPES = ["anywhere", "whole_line"] as const;
 
 export function createDefaultCleaningConfig(): CleaningConfig {
   return {
@@ -72,6 +79,7 @@ export function createDefaultCleaningConfig(): CleaningConfig {
     remove_comments: false,
     remove_table_of_contents: false,
     remove_patterns: [],
+    removal_rules: [],
     replace_patterns: [],
     pdf_text_source: "EmbeddedText",
     pdf_ocr_quality: "Balanced",
@@ -102,6 +110,43 @@ export function isPdfEmbeddedTextStrategy(value: unknown): value is PdfEmbeddedT
   return (
     typeof value === "string" &&
     (ALLOWED_PDF_EMBEDDED_TEXT_STRATEGIES as readonly string[]).includes(value)
+  );
+}
+
+function isRemovalRuleSource(value: unknown): value is RemovalRule["source"] {
+  return (
+    typeof value === "string" &&
+    (ALLOWED_REMOVAL_RULE_SOURCES as readonly string[]).includes(value)
+  );
+}
+
+function isRemovalScope(value: unknown): value is RemovalRule["scope"] {
+  return (
+    typeof value === "string" &&
+    (ALLOWED_REMOVAL_SCOPES as readonly string[]).includes(value)
+  );
+}
+
+function isRemovalRule(value: unknown): value is RemovalRule {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const obj = value as Record<string, unknown>;
+  const matcher = obj.matcher;
+  if (matcher === null || typeof matcher !== "object" || Array.isArray(matcher)) {
+    return false;
+  }
+  const matcherObj = matcher as Record<string, unknown>;
+
+  return (
+    typeof obj.id === "string" &&
+    typeof obj.label === "string" &&
+    isRemovalRuleSource(obj.source) &&
+    isRemovalScope(obj.scope) &&
+    typeof obj.enabled === "boolean" &&
+    matcherObj.kind === "literal" &&
+    typeof matcherObj.text === "string"
   );
 }
 
@@ -140,6 +185,13 @@ export function normaliseCleaningConfig(raw: unknown): CleaningConfig {
 
   if (Array.isArray(obj.remove_patterns) && obj.remove_patterns.every((p: unknown) => typeof p === "string")) {
     config.remove_patterns = [...obj.remove_patterns];
+  }
+
+  if (Array.isArray(obj.removal_rules) && obj.removal_rules.every(isRemovalRule)) {
+    config.removal_rules = obj.removal_rules.map((rule) => ({
+      ...rule,
+      matcher: { ...rule.matcher },
+    }));
   }
 
   if (Array.isArray(obj.replace_patterns) &&

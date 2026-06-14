@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
 use corpuswright_core::clean::{
-    CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource, ReplacementRule,
-    TableExtractionStrategy,
+    CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource, RemovalMatcher,
+    RemovalRule, RemovalRuleSource, RemovalScope, ReplacementRule, TableExtractionStrategy,
 };
 use corpuswright_core::export::{ExportReport, ExportWarning, ExportWarningKind};
 use corpuswright_core::manifest::{ExportManifest, ManifestFileRecord};
@@ -75,6 +75,27 @@ fn main() {
     eprintln!("Exporting TypeScript bindings to {}", out_dir.display());
 
     export_type::<ReplacementRule>(&out_dir, &[], &[]);
+    export_type::<RemovalRuleSource>(&out_dir, &[], &[]);
+    export_type::<RemovalScope>(&out_dir, &[], &[]);
+    export_type::<RemovalMatcher>(&out_dir, &[], &[]);
+    export_type::<RemovalRule>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "RemovalRuleSource",
+                file: "RemovalRuleSource",
+            },
+            TypeImport {
+                name: "RemovalMatcher",
+                file: "RemovalMatcher",
+            },
+            TypeImport {
+                name: "RemovalScope",
+                file: "RemovalScope",
+            },
+        ],
+        &[],
+    );
     export_type::<TableExtractionStrategy>(&out_dir, &[], &[]);
     export_type::<PdfEmbeddedTextStrategy>(&out_dir, &[], &[]);
     export_type::<PdfTextSource>(&out_dir, &[], &[]);
@@ -120,6 +141,10 @@ fn main() {
                 file: "ReplacementRule",
             },
             TypeImport {
+                name: "RemovalRule",
+                file: "RemovalRule",
+            },
+            TypeImport {
                 name: "TableExtractionStrategy",
                 file: "TableExtractionStrategy",
             },
@@ -138,6 +163,7 @@ fn main() {
         ],
         &[
             "ReplacementRule",
+            "RemovalRule",
             "TableExtractionStrategy",
             "PdfEmbeddedTextStrategy",
             "PdfTextSource",
