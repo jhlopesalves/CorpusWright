@@ -91,7 +91,7 @@ fn run_pdf_ocr(
     ocr_quality: PdfOcrQuality,
     warnings: &mut Vec<String>,
     success_warning: &str,
-) -> Option<String> {
+) -> Option<crate::pdf_ocr::OcrExtraction> {
     warn_about_ocr_preview_cap(warnings, max_chars);
     match crate::pdf_ocr::extract_text_via_ocr(
         bytes,
@@ -99,10 +99,10 @@ fn run_pdf_ocr(
         max_chars.map(|_| PDF_OCR_PREVIEW_PAGE_CAP),
         ocr_quality,
     ) {
-        Ok(ocr) => {
-            warnings.extend(ocr.warnings);
+        Ok(mut ocr) => {
+            warnings.append(&mut ocr.warnings);
             warnings.push(success_warning.to_string());
-            Some(ocr.text)
+            Some(ocr)
         }
         Err(e) => {
             warnings.push(format!("Experimental OCR failed: {}", e));
@@ -342,6 +342,7 @@ pub struct ExtractedPdf {
     pub text: String,
     pub warnings: Vec<String>,
     pub page_count: usize,
+    pub page_texts: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -432,6 +433,7 @@ fn finalize_lopdf_fallback_text(
         text,
         warnings,
         page_count,
+        page_texts: None,
     }
 }
 
@@ -861,15 +863,34 @@ pub fn clean_extracted_pdf_text(raw_text: &str, config: &CleaningConfig) -> (Str
             )
         })
         .collect::<Vec<_>>();
-    let (text, warnings, _) =
+    let (text, warnings, _, _) =
         clean_pdf_page_lines(page_lines, PdfCleanupOptions::from_cleaning_config(config));
     (text, warnings)
+}
+
+fn flatten_pdf_page_texts(page_texts: &[String]) -> (String, bool) {
+    let mut all_text = String::new();
+    let mut has_any_text = false;
+
+    for page_text in page_texts {
+        let trimmed = page_text.trim();
+        if !trimmed.is_empty() {
+            has_any_text = true;
+            if !all_text.is_empty() {
+                all_text.push('\n');
+                all_text.push('\n');
+            }
+            all_text.push_str(trimmed);
+        }
+    }
+
+    (all_text, has_any_text)
 }
 
 fn clean_pdf_page_lines(
     page_lines_list: Vec<(usize, Vec<String>)>,
     options: PdfCleanupOptions,
-) -> (String, Vec<String>, bool) {
+) -> (String, Vec<String>, bool, Vec<String>) {
     let PdfCleanupOptions {
         remove_repeated_headers_footers,
         remove_page_labels,
@@ -879,8 +900,6 @@ fn clean_pdf_page_lines(
     } = options;
 
     let mut warnings = Vec::new();
-    let mut all_text = String::new();
-    let mut has_any_text = false;
     let mut repeated_patterns = std::collections::HashSet::new();
     let total_pages = page_lines_list.len();
 
@@ -1095,18 +1114,11 @@ fn clean_pdf_page_lines(
         cleaned_pages.push(final_page_lines);
     }
 
-    for page_lines in cleaned_pages {
-        let page_text = page_lines.join("\n");
-        let trimmed = page_text.trim();
-        if !trimmed.is_empty() {
-            has_any_text = true;
-            if !all_text.is_empty() {
-                all_text.push('\n');
-                all_text.push('\n');
-            }
-            all_text.push_str(trimmed);
-        }
-    }
+    let page_texts = cleaned_pages
+        .into_iter()
+        .map(|page_lines| page_lines.join("\n").trim().to_string())
+        .collect::<Vec<_>>();
+    let (all_text, has_any_text) = flatten_pdf_page_texts(&page_texts);
 
     if header_footer_removed_pages_count > 0 {
         let mut patterns_vec: Vec<String> = header_footer_removed_patterns.into_iter().collect();
@@ -1163,7 +1175,7 @@ fn clean_pdf_page_lines(
         ));
     }
 
-    (all_text, warnings, has_any_text)
+    (all_text, warnings, has_any_text, page_texts)
 }
 
 pub fn extract_pdf(
@@ -1216,6 +1228,7 @@ pub fn extract_pdf(
                     text: String::new(),
                     warnings,
                     page_count: doc.get_pages().len(),
+                    page_texts: None,
                 });
             }
             let page_numbers: Vec<u32> = doc.get_pages().keys().copied().collect();
@@ -1253,14 +1266,16 @@ pub fn extract_pdf(
     if text_source == PdfTextSource::ForceOcr {
         // OCR opens its own PDFium document; release the embedded-text handle first.
         drop(document);
-        let text = run_pdf_ocr(
+        let ocr = run_pdf_ocr(
             bytes,
             max_chars,
             ocr_quality,
             &mut warnings,
             "Used experimental Force OCR to extract PDF text from rendered pages.",
-        )
-        .unwrap_or_default();
+        );
+        let (text, page_texts) = ocr
+            .map(|ocr| (ocr.text, Some(ocr.page_texts)))
+            .unwrap_or_else(|| (String::new(), None));
         if text.trim().is_empty() {
             warnings.push("Force OCR completed but produced no text.".to_string());
         }
@@ -1269,6 +1284,7 @@ pub fn extract_pdf(
             text,
             warnings,
             page_count,
+            page_texts,
         });
     }
 
@@ -1383,7 +1399,7 @@ pub fn extract_pdf(
     }
 
     let cleanup_options = PdfCleanupOptions::from_extraction_options(options);
-    let (mut all_text, cleanup_warnings, has_any_text) =
+    let (mut all_text, cleanup_warnings, has_any_text, mut page_texts) =
         clean_pdf_page_lines(page_lines_list, cleanup_options);
     warnings.extend(cleanup_warnings);
 
@@ -1411,17 +1427,18 @@ pub fn extract_pdf(
     if text_source == PdfTextSource::Ocr && (!has_any_text || is_poor_quality) {
         // OCR opens its own PDFium document; release the embedded-text handle first.
         drop(document);
-        if let Some(ocr_text) = run_pdf_ocr(
+        if let Some(ocr) = run_pdf_ocr(
             bytes,
             max_chars,
             ocr_quality,
             &mut warnings,
             "Used experimental OCR rescue to extract text from scanned pages.",
         ) {
-            if ocr_text.trim().is_empty() {
+            if ocr.text.trim().is_empty() {
                 warnings.push("OCR rescue completed but produced no text.".to_string());
             }
-            all_text = ocr_text;
+            all_text = ocr.text;
+            page_texts = ocr.page_texts;
         }
     }
 
@@ -1429,6 +1446,7 @@ pub fn extract_pdf(
         text: all_text,
         warnings,
         page_count,
+        page_texts: Some(page_texts),
     })
 }
 
@@ -2133,6 +2151,7 @@ mod tests {
         let result = extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
         assert_eq!(result.text, "");
         assert_eq!(result.page_count, 1);
+        assert_eq!(result.page_texts, Some(vec![String::new()]));
         assert!(
             result
                 .warnings
@@ -2359,6 +2378,37 @@ mod tests {
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
         bytes
+    }
+
+    fn flatten_page_texts_for_test(page_texts: &[String]) -> String {
+        page_texts
+            .iter()
+            .map(|page| page.trim())
+            .filter(|page| !page.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
+    #[test]
+    fn test_extract_pdf_preserves_native_page_texts() {
+        require_pdfium!();
+        let bytes = create_multipage_pdf(&[
+            vec!["Page one body"],
+            vec!["Page two body"],
+            vec!["Page three body"],
+        ]);
+
+        let result = extract_pdf(&bytes, None, PdfExtractionOptions::raw_default()).unwrap();
+        let page_texts = result
+            .page_texts
+            .as_ref()
+            .expect("native PDF extraction should preserve page text");
+
+        assert_eq!(page_texts.len(), 3);
+        assert!(page_texts[0].contains("Page one body"));
+        assert!(page_texts[1].contains("Page two body"));
+        assert!(page_texts[2].contains("Page three body"));
+        assert_eq!(flatten_page_texts_for_test(page_texts), result.text);
     }
 
     #[test]
