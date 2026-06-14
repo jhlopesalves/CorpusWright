@@ -632,6 +632,52 @@ mod tests {
     }
 
     #[test]
+    fn test_processed_document_text_does_not_return_raw_page_texts() {
+        let dir = tempdir().unwrap();
+        let record = pdf_record(dir.path(), "processed-pages.pdf");
+        let cache = ExtractionCache::new();
+        let cleaning_config = CleaningConfig {
+            lowercase: true,
+            ..CleaningConfig::default()
+        };
+        let pdf_options = PdfExtractionOptions::raw_from_cleaning_config(&cleaning_config);
+
+        cache.insert_extracted(
+            &record,
+            Some(pdf_options),
+            &cleaning_config,
+            CacheEntry {
+                extracted_text: "HEADER\n\nBODY".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(2),
+                page_texts: Some(vec!["HEADER".to_string(), "BODY".to_string()]),
+            },
+        );
+
+        let original = document_text_for_record(
+            &record,
+            &cleaning_config,
+            DocumentTextMode::Original,
+            Some(&cache),
+        )
+        .unwrap();
+        assert_eq!(
+            original.page_texts,
+            Some(vec!["HEADER".to_string(), "BODY".to_string()])
+        );
+
+        let processed = document_text_for_record(
+            &record,
+            &cleaning_config,
+            DocumentTextMode::Processed,
+            Some(&cache),
+        )
+        .unwrap();
+        assert_eq!(processed.text, "header\n\nbody");
+        assert!(processed.page_texts.is_none());
+    }
+
+    #[test]
     fn test_clear_removes_entries() {
         let dir = tempdir().unwrap();
         let record = text_record(dir.path(), "a.txt", "Content");

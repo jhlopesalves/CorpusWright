@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unicode_normalization::UnicodeNormalization;
 
+use crate::structured_document::StructuredDocument;
 use crate::text_normalization::normalize_line_for_repeated_artifact;
 
 lazy_static! {
@@ -161,6 +162,15 @@ pub struct ReplacementRule {
     pub replacement: String,
 }
 
+/// Cleaned text with optional page text metadata.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CleanedStructuredDocument {
+    /// The canonical flat output produced by the existing cleaning pipeline.
+    pub text: String,
+    /// Cleaned page text when page boundaries survive cleaning unchanged.
+    pub page_texts: Option<Vec<String>>,
+}
+
 /// Processes a string according to the given cleaning rules.
 pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
     let mut cleaned = text.to_string();
@@ -238,6 +248,29 @@ pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
     }
 
     cleaned
+}
+
+/// Cleans a page-aware document without exposing stale page metadata.
+///
+/// The flat output is always the same result as `clean_text` on the document's
+/// deterministic flat text. Cleaned page text is returned only when cleaning
+/// each page independently and joining the cleaned pages produces exactly the
+/// same flat output.
+pub fn clean_structured_document(
+    document: &StructuredDocument,
+    config: &CleaningConfig,
+) -> CleanedStructuredDocument {
+    let text = clean_text(&document.to_flat_text(), config);
+    let page_texts = document
+        .pages
+        .iter()
+        .map(|page| clean_text(&page.to_text(), config))
+        .collect::<Vec<_>>();
+
+    let joined_page_texts = page_texts.join("\n\n");
+    let page_texts = (joined_page_texts == text).then_some(page_texts);
+
+    CleanedStructuredDocument { text, page_texts }
 }
 
 fn normalize_irregular_line_breaks(text: &str) -> String {
@@ -461,6 +494,7 @@ fn literals_can_overlap(left: &str, right: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::structured_document::StructuredDocument;
     use serde_json::json;
 
     fn whole_line_rule(text: &str) -> RemovalRule {
@@ -487,6 +521,178 @@ mod tests {
             scope: RemovalScope::WholeLine,
             enabled: true,
         }
+    }
+
+    fn page_texts(result: CleanedStructuredDocument) -> Vec<String> {
+        result
+            .page_texts
+            .expect("page-aware cleaning should preserve page text")
+    }
+
+    #[test]
+    fn clean_structured_document_preserves_page_count_for_page_local_config() {
+        let document = StructuredDocument::from_pages(["Title\nBody", "Title\nMore body"]);
+        let config = CleaningConfig {
+            lowercase: true,
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert_eq!(cleaned.text, "title\nbody\n\ntitle\nmore body");
+        let pages = page_texts(cleaned);
+        assert_eq!(pages, vec!["title\nbody", "title\nmore body"]);
+    }
+
+    #[test]
+    fn clean_structured_document_flat_text_matches_clean_text_for_representative_config() {
+        let document =
+            StructuredDocument::from_pages(["HEADER\n Body old drop ", "More old\nHEADER"]);
+        let config = CleaningConfig {
+            lowercase: true,
+            trim_lines: true,
+            remove_patterns: vec!["drop".to_string()],
+            removal_rules: vec![whole_line_rule("HEADER")],
+            replace_patterns: vec![ReplacementRule {
+                pattern: "old".to_string(),
+                replacement: "new".to_string(),
+            }],
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert_eq!(cleaned.text, clean_text(&document.to_flat_text(), &config));
+        assert_eq!(
+            cleaned.page_texts,
+            Some(vec!["body new".to_string(), "more new\n".to_string()])
+        );
+    }
+
+    #[test]
+    fn clean_structured_document_flat_text_matches_joined_cleaned_pages() {
+        let document = StructuredDocument::from_pages(["Alpha\nBeta", "Gamma"]);
+        let config = CleaningConfig {
+            lowercase: true,
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_structured_document(&document, &config);
+        let pages = page_texts(cleaned.clone());
+
+        assert_eq!(cleaned.text, pages.join("\n\n"));
+    }
+
+    #[test]
+    fn clean_structured_document_literal_whole_line_rules_apply_within_pages() {
+        let document = StructuredDocument::from_pages(["Header\nBody", "Header\nMore body"]);
+        let config = CleaningConfig {
+            removal_rules: vec![whole_line_rule("Header")],
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert_eq!(cleaned.text, "Body\n\nMore body");
+        assert_eq!(page_texts(cleaned), vec!["Body", "More body"]);
+    }
+
+    #[test]
+    fn clean_structured_document_normalized_whole_line_rules_apply_within_pages() {
+        let document = StructuredDocument::from_pages(["Page 1\nBody", "Page 42\nMore body"]);
+        let config = CleaningConfig {
+            removal_rules: vec![normalized_line_rule("page #")],
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert_eq!(cleaned.text, "Body\n\nMore body");
+        assert_eq!(page_texts(cleaned), vec!["Body", "More body"]);
+    }
+
+    #[test]
+    fn clean_structured_document_preserves_mid_sentence_occurrences() {
+        let document = StructuredDocument::from_pages([
+            "Header\nThis sentence mentions Header in the body.",
+            "Another Header sentence.",
+        ]);
+        let config = CleaningConfig {
+            removal_rules: vec![whole_line_rule("Header")],
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert_eq!(
+            page_texts(cleaned),
+            vec![
+                "This sentence mentions Header in the body.",
+                "Another Header sentence."
+            ]
+        );
+    }
+
+    #[test]
+    fn clean_structured_document_legacy_remove_patterns_apply_within_pages() {
+        let document = StructuredDocument::from_pages(["Keep DROP keep", "DROP body"]);
+        let config = CleaningConfig {
+            remove_patterns: vec!["DROP".to_string()],
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert_eq!(page_texts(cleaned), vec!["Keep  keep", " body"]);
+    }
+
+    #[test]
+    fn clean_structured_document_replacement_rules_apply_within_pages() {
+        let document = StructuredDocument::from_pages(["old value", "second old value"]);
+        let config = CleaningConfig {
+            replace_patterns: vec![ReplacementRule {
+                pattern: "old".to_string(),
+                replacement: "new".to_string(),
+            }],
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert_eq!(page_texts(cleaned), vec!["new value", "second new value"]);
+    }
+
+    #[test]
+    fn clean_structured_document_disabled_rules_do_nothing() {
+        let mut rule = whole_line_rule("Header");
+        rule.enabled = false;
+        let document = StructuredDocument::from_pages(["Header\nBody", "Header\nMore body"]);
+        let config = CleaningConfig {
+            removal_rules: vec![rule],
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert_eq!(
+            page_texts(cleaned),
+            vec!["Header\nBody", "Header\nMore body"]
+        );
+    }
+
+    #[test]
+    fn clean_structured_document_omits_page_texts_when_boundaries_are_not_preserved() {
+        let document = StructuredDocument::from_pages(["Alpha", "Beta"]);
+        let config = CleaningConfig {
+            join_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert_eq!(cleaned.text, clean_text(&document.to_flat_text(), &config));
+        assert_eq!(cleaned.text, "Alpha Beta");
+        assert!(cleaned.page_texts.is_none());
     }
 
     #[test]

@@ -6,10 +6,9 @@ zone. This is useful for repeated running titles, page labels, and publisher
 boilerplate that can also appear legitimately in body text.
 
 CorpusWright does not currently expose page-zone scoped `RemovalRule` behaviour.
-The core has a shared page-aware document model for internal line metadata, and
-the implementation has enough page awareness for PDF-specific cleanup and
-repeated artefact review, but not for generic structured Custom Removal
-application.
+The core has a shared page-aware document model for internal line metadata and a
+page-aware cleaning helper for page-local whole-line cleaning, but configured
+Custom Removals still expose only flat-text and whole-line behaviour.
 
 ## Current page-aware document model
 
@@ -74,11 +73,19 @@ collects enabled `RemovalScope::WholeLine` rules and removes matching lines. It
 does not know the source document type, page number, line index within a page,
 or whether a line is in the top, middle, or bottom of a page.
 
+The Rust core also provides `clean_structured_document` for internal page-aware
+cleaning. It accepts a `StructuredDocument` and a `CleaningConfig`, returns the
+same flat text that `clean_text` would return for the document's deterministic
+flat text, and includes cleaned page texts only when page-by-page cleaning joins
+back to that exact flat output. Configurations that blur page boundaries, such
+as line-break joining across page separators, return no page text metadata
+rather than stale page text.
+
 Export, preview, search, word count, and processed repeated-artefact scans all
 route text through the same broad shape: extract text, apply PDF-specific
 cleanup for PDFs when configured, then call `clean_text` for general cleaning.
-After the PDF cleanup step returns a string, structured Custom Removal rules no
-longer have page-line metadata available.
+After the PDF cleanup step returns a string, these processed paths do not expose
+cleaned page-line metadata.
 
 Frontend configuration stores `remove_patterns` and `removal_rules`, but it does
 not carry per-document page spans or line context.
@@ -119,10 +126,10 @@ document
 
 The extraction cache preserves compact page text for native PDF extraction and
 OCR extraction when that page text is available, instead of storing only a flat
-text string for downstream processing. A companion to `clean_text`, or a
-refactored cleaner, can then apply structured whole-line rules with reliable
-line context before flattening the result for display, search, word count, and
-export.
+text string for downstream processing. The page-aware cleaning helper can apply
+existing whole-line rules with reliable page-local line context, then flatten
+the result only when cleaned page text remains equivalent to the canonical flat
+cleaning output.
 
 Generic text formats should receive page-zone behaviour only when their page
 boundaries are explicit and intentionally represented. Otherwise page-zone
@@ -131,18 +138,16 @@ paragraph spacing.
 
 ## Future implementation plan
 
-1. Route preview, export, search, word count, and processed scans through a
-   common page-aware processing path for documents that have page metadata.
-2. Pass structured page-aware text into Custom Removal rule application before
-   flattening the cleaned output.
-3. Add `PageTop`, `PageBottom`, and `PageTopOrBottom` structured scopes, using
+1. Route PDF/OCR processed paths through a common page-aware processing path
+   where cleaned page text survives PDF-specific cleanup and normal cleaning.
+2. Add `PageTop`, `PageBottom`, and `PageTopOrBottom` structured scopes, using
    the same first 3 and last 3 line definition as current PDF cleanup.
-4. Apply page-zone scopes only to whole-line `Literal` and `NormalizedLine`
+3. Apply page-zone scopes only to whole-line `Literal` and `NormalizedLine`
    matchers.
-5. Keep `remove_patterns` unchanged and keep `WholeLine` behaviour unchanged.
-6. Generate TypeScript bindings for the new scope variants and update frontend
+4. Keep `remove_patterns` unchanged and keep `WholeLine` behaviour unchanged.
+5. Generate TypeScript bindings for the new scope variants and update frontend
    config validation.
-7. Add focused tests for top, bottom, top-or-bottom, middle-line preservation,
+6. Add focused tests for top, bottom, top-or-bottom, middle-line preservation,
    literal matching, normalised matching, legacy config loading, and
    serialisation.
 
