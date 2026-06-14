@@ -132,6 +132,9 @@ pub enum RemovalRuleSource {
 pub enum RemovalScope {
     Anywhere,
     WholeLine,
+    PageTop,
+    PageBottom,
+    PageTopOrBottom,
 }
 
 /// Matcher used by a structured removal rule.
@@ -256,21 +259,170 @@ pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
 /// deterministic flat text. Cleaned page text is returned only when cleaning
 /// each page independently and joining the cleaned pages produces exactly the
 /// same flat output.
+fn prepare_line_for_rule_matching(line_text: &str, config: &CleaningConfig) -> String {
+    let mut cleaned = line_text.to_string();
+
+    if config.replace_diacritics {
+        cleaned = cleaned
+            .nfd()
+            .filter(|c| !matches!(*c, '\u{0300}'..='\u{036f}'))
+            .collect::<String>();
+    }
+
+    if config.normalize_unicode {
+        cleaned = cleaned.nfc().collect::<String>();
+    }
+
+    if config.lowercase {
+        cleaned = cleaned.to_lowercase();
+    }
+
+    if config.remove_page_delimiters {
+        cleaned = RE_PAGE_DELIMITERS.replace_all(&cleaned, "").to_string();
+    }
+
+    if config.remove_page_indicators {
+        cleaned = RE_PAGE_INDICATORS.replace_all(&cleaned, "").to_string();
+    }
+
+    if config.remove_standalone_page_numbers {
+        cleaned = RE_STANDALONE_ARABIC.replace_all(&cleaned, "").to_string();
+    }
+
+    if config.remove_standalone_roman_page_numbers {
+        cleaned = RE_STANDALONE_ROMAN.replace_all(&cleaned, "").to_string();
+    }
+
+    cleaned
+}
+
+fn should_remove_line_by_rules(
+    prepared_line: &str,
+    is_top: bool,
+    is_bottom: bool,
+    config: &CleaningConfig,
+) -> bool {
+    if config.removal_rules.is_empty() {
+        return false;
+    }
+
+    for rule in &config.removal_rules {
+        if !rule.enabled {
+            continue;
+        }
+
+        let scope_applies = match rule.scope {
+            RemovalScope::WholeLine => true,
+            RemovalScope::PageTop => is_top,
+            RemovalScope::PageBottom => is_bottom,
+            RemovalScope::PageTopOrBottom => is_top || is_bottom,
+            RemovalScope::Anywhere => false,
+        };
+
+        if !scope_applies {
+            continue;
+        }
+
+        match &rule.matcher {
+            RemovalMatcher::Literal { text } => {
+                let effective_text = if config.lowercase {
+                    text.to_lowercase()
+                } else {
+                    text.clone()
+                };
+                let trimmed_rule = effective_text.trim();
+                if !trimmed_rule.is_empty() && prepared_line.trim() == trimmed_rule {
+                    return true;
+                }
+            }
+            RemovalMatcher::NormalizedLine { normalized_key } => {
+                let trimmed_rule = normalized_key.trim();
+                if !trimmed_rule.is_empty() {
+                    let normalized = normalize_line_for_repeated_artifact(prepared_line.trim());
+                    if normalized.as_str() == trimmed_rule {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    false
+}
+
+pub(crate) fn has_page_zone_rules(config: &CleaningConfig) -> bool {
+    config.removal_rules.iter().any(|rule| {
+        rule.enabled
+            && matches!(
+                rule.scope,
+                RemovalScope::PageTop
+                    | RemovalScope::PageBottom
+                    | RemovalScope::PageTopOrBottom
+            )
+    })
+}
+
+/// Cleans a page-aware document without exposing stale page metadata.
+///
+/// The flat output is always the same result as `clean_text` on the document's
+/// deterministic flat text. Cleaned page text is returned only when cleaning
+/// each page independently and joining the cleaned pages produces exactly the
+/// same flat output.
 pub fn clean_structured_document(
     document: &StructuredDocument,
     config: &CleaningConfig,
 ) -> CleanedStructuredDocument {
-    let text = clean_text(&document.to_flat_text(), config);
-    let page_texts = document
-        .pages
-        .iter()
-        .map(|page| clean_text(&page.to_text(), config))
-        .collect::<Vec<_>>();
+    if !has_page_zone_rules(config) {
+        let text = clean_text(&document.to_flat_text(), config);
+        let page_texts = document
+            .pages
+            .iter()
+            .map(|page| clean_text(&page.to_text(), config))
+            .collect::<Vec<_>>();
 
-    let joined_page_texts = page_texts.join("\n\n");
-    let page_texts = (joined_page_texts == text).then_some(page_texts);
+        let joined_page_texts = page_texts.join("\n\n");
+        let page_texts = (joined_page_texts == text).then_some(page_texts);
 
-    CleanedStructuredDocument { text, page_texts }
+        CleanedStructuredDocument { text, page_texts }
+    } else {
+        // Pre-filter the document lines by applying structured removal rules (including page-zone scopes).
+        let mut filtered_pages = Vec::with_capacity(document.pages.len());
+        for page in &document.pages {
+            let mut filtered_lines = Vec::with_capacity(page.lines.len());
+            for line in &page.lines {
+                let prepared = prepare_line_for_rule_matching(&line.text, config);
+                if !should_remove_line_by_rules(
+                    &prepared,
+                    line.is_page_top,
+                    line.is_page_bottom,
+                    config,
+                ) {
+                    filtered_lines.push(line.clone());
+                }
+            }
+            filtered_pages.push(crate::structured_document::DocumentPage {
+                page_index: page.page_index,
+                lines: filtered_lines,
+            });
+        }
+        let filtered_document = StructuredDocument {
+            pages: filtered_pages,
+        };
+
+        // Clean each page of the filtered document independently.
+        let page_texts = filtered_document
+            .pages
+            .iter()
+            .map(|page| clean_text(&page.to_text(), config))
+            .collect::<Vec<_>>();
+
+        // The authoritative flat text is derived from the cleaned page representation.
+        let text = page_texts.join("\n\n");
+        CleanedStructuredDocument {
+            text,
+            page_texts: Some(page_texts),
+        }
+    }
 }
 
 fn normalize_irregular_line_breaks(text: &str) -> String {
@@ -1244,5 +1396,201 @@ mod tests {
             ..CleaningConfig::default()
         };
         assert_eq!(clean_text("  hello  \n  world  ", &config), "hello\nworld");
+    }
+
+    fn page_zone_rule(text: &str, scope: RemovalScope) -> RemovalRule {
+        RemovalRule {
+            id: "rule-page-zone".to_string(),
+            label: format!("Page-zone rule: {text}"),
+            source: RemovalRuleSource::Manual,
+            matcher: RemovalMatcher::Literal {
+                text: text.to_string(),
+            },
+            scope,
+            enabled: true,
+        }
+    }
+
+    fn page_zone_normalized_rule(normalized_key: &str, scope: RemovalScope) -> RemovalRule {
+        RemovalRule {
+            id: "rule-page-zone-norm".to_string(),
+            label: format!("Page-zone normalized: {normalized_key}"),
+            source: RemovalRuleSource::Manual,
+            matcher: RemovalMatcher::NormalizedLine {
+                normalized_key: normalized_key.to_string(),
+            },
+            scope,
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn page_zone_scopes_serialize_and_deserialize() {
+        let rule_top = page_zone_rule("Header", RemovalScope::PageTop);
+        let value_top = serde_json::to_value(&rule_top).unwrap();
+        assert_eq!(value_top["scope"], json!("page_top"));
+        let decoded_top: RemovalRule = serde_json::from_value(value_top).unwrap();
+        assert_eq!(decoded_top, rule_top);
+
+        let rule_bottom = page_zone_rule("Footer", RemovalScope::PageBottom);
+        let value_bottom = serde_json::to_value(&rule_bottom).unwrap();
+        assert_eq!(value_bottom["scope"], json!("page_bottom"));
+        let decoded_bottom: RemovalRule = serde_json::from_value(value_bottom).unwrap();
+        assert_eq!(decoded_bottom, rule_bottom);
+
+        let rule_top_or_bottom = page_zone_rule("HeaderOrFooter", RemovalScope::PageTopOrBottom);
+        let value_tob = serde_json::to_value(&rule_top_or_bottom).unwrap();
+        assert_eq!(value_tob["scope"], json!("page_top_or_bottom"));
+        let decoded_tob: RemovalRule = serde_json::from_value(value_tob).unwrap();
+        assert_eq!(decoded_tob, rule_top_or_bottom);
+    }
+
+    #[test]
+    fn clean_text_applies_whole_line_but_ignores_page_zones() {
+        let config_wl = CleaningConfig {
+            removal_rules: vec![whole_line_rule("MatchMe")],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(
+            clean_text("Line1\nMatchMe\nLine3", &config_wl),
+            "Line1\nLine3"
+        );
+
+        let config_top = CleaningConfig {
+            removal_rules: vec![page_zone_rule("MatchMe", RemovalScope::PageTop)],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(
+            clean_text("Line1\nMatchMe\nLine3", &config_top),
+            "Line1\nMatchMe\nLine3"
+        );
+
+        let config_bottom = CleaningConfig {
+            removal_rules: vec![page_zone_rule("MatchMe", RemovalScope::PageBottom)],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(
+            clean_text("Line1\nMatchMe\nLine3", &config_bottom),
+            "Line1\nMatchMe\nLine3"
+        );
+
+        let config_tob = CleaningConfig {
+            removal_rules: vec![page_zone_rule("MatchMe", RemovalScope::PageTopOrBottom)],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(
+            clean_text("Line1\nMatchMe\nLine3", &config_tob),
+            "Line1\nMatchMe\nLine3"
+        );
+    }
+
+    #[test]
+    fn clean_structured_document_applies_page_zone_rules_correctly() {
+        let doc = StructuredDocument::from_pages(["L1\nL2\nL3\nMid\nL5\nL6\nL7"]);
+
+        let config_top = CleaningConfig {
+            removal_rules: vec![page_zone_rule("Target", RemovalScope::PageTop)],
+            ..CleaningConfig::default()
+        };
+
+        let doc_match_top = StructuredDocument::from_pages(["Target\nL2\nL3\nMid\nL5\nL6\nL7"]);
+        let cleaned_top = clean_structured_document(&doc_match_top, &config_top);
+        assert_eq!(cleaned_top.text, "L2\nL3\nMid\nL5\nL6\nL7");
+
+        let doc_match_mid = StructuredDocument::from_pages(["L1\nL2\nL3\nTarget\nL5\nL6\nL7"]);
+        let cleaned_mid = clean_structured_document(&doc_match_mid, &config_top);
+        assert_eq!(cleaned_mid.text, "L1\nL2\nL3\nTarget\nL5\nL6\nL7");
+
+        let doc_match_bot = StructuredDocument::from_pages(["L1\nL2\nL3\nMid\nL5\nL6\nTarget"]);
+        let cleaned_bot = clean_structured_document(&doc_match_bot, &config_top);
+        assert_eq!(cleaned_bot.text, "L1\nL2\nL3\nMid\nL5\nL6\nTarget");
+
+        let config_bot = CleaningConfig {
+            removal_rules: vec![page_zone_rule("Target", RemovalScope::PageBottom)],
+            ..CleaningConfig::default()
+        };
+
+        let cleaned_bot_applied = clean_structured_document(&doc_match_bot, &config_bot);
+        assert_eq!(cleaned_bot_applied.text, "L1\nL2\nL3\nMid\nL5\nL6");
+
+        let config_tob = CleaningConfig {
+            removal_rules: vec![page_zone_rule("Target", RemovalScope::PageTopOrBottom)],
+            ..CleaningConfig::default()
+        };
+
+        let cleaned_tob_top = clean_structured_document(&doc_match_top, &config_tob);
+        assert_eq!(cleaned_tob_top.text, "L2\nL3\nMid\nL5\nL6\nL7");
+
+        let cleaned_tob_bot = clean_structured_document(&doc_match_bot, &config_tob);
+        assert_eq!(cleaned_tob_bot.text, "L1\nL2\nL3\nMid\nL5\nL6");
+
+        let cleaned_tob_mid = clean_structured_document(&doc_match_mid, &config_tob);
+        assert_eq!(cleaned_tob_mid.text, "L1\nL2\nL3\nTarget\nL5\nL6\nL7");
+
+        let doc_short = StructuredDocument::from_pages(["Target\nOther"]);
+        let cleaned_short_top = clean_structured_document(&doc_short, &config_top);
+        assert_eq!(cleaned_short_top.text, "Other");
+
+        let cleaned_short_bot = clean_structured_document(&doc_short, &config_bot);
+        assert_eq!(cleaned_short_bot.text, "Other");
+    }
+
+    #[test]
+    fn matchers_and_disabled_rules_with_page_zones() {
+        let doc = StructuredDocument::from_pages(["Page 1\nBody", "Page 2\nBody"]);
+
+        let config_norm = CleaningConfig {
+            removal_rules: vec![page_zone_normalized_rule("page #", RemovalScope::PageTop)],
+            ..CleaningConfig::default()
+        };
+        let cleaned_norm = clean_structured_document(&doc, &config_norm);
+        assert_eq!(cleaned_norm.text, "Body\n\nBody");
+
+        let mut disabled_rule = page_zone_rule("Page 1", RemovalScope::PageTop);
+        disabled_rule.enabled = false;
+        let config_disabled = CleaningConfig {
+            removal_rules: vec![disabled_rule],
+            ..CleaningConfig::default()
+        };
+        let cleaned_disabled = clean_structured_document(&doc, &config_disabled);
+        assert_eq!(cleaned_disabled.text, "Page 1\nBody\n\nPage 2\nBody");
+
+        let config_coexist = CleaningConfig {
+            remove_patterns: vec!["Body".to_string()],
+            removal_rules: vec![page_zone_rule("Page 1", RemovalScope::PageTop)],
+            ..CleaningConfig::default()
+        };
+        let cleaned_coexist = clean_structured_document(&doc, &config_coexist);
+        assert_eq!(cleaned_coexist.text, "\n\nPage 2\n");
+    }
+
+    #[test]
+    fn clean_structured_document_contract_equivalence() {
+        let doc = StructuredDocument::from_pages(["Header\nBody", "Header\nMore body"]);
+
+        let config_no_pz = CleaningConfig {
+            removal_rules: vec![whole_line_rule("Header")],
+            ..CleaningConfig::default()
+        };
+        let cleaned_no_pz = clean_structured_document(&doc, &config_no_pz);
+        assert_eq!(
+            cleaned_no_pz.text,
+            clean_text(&doc.to_flat_text(), &config_no_pz)
+        );
+
+        let config_with_pz = CleaningConfig {
+            removal_rules: vec![page_zone_rule("Header", RemovalScope::PageTop)],
+            ..CleaningConfig::default()
+        };
+        let cleaned_with_pz = clean_structured_document(&doc, &config_with_pz);
+        assert_eq!(cleaned_with_pz.text, "Body\n\nMore body");
+        assert_ne!(
+            cleaned_with_pz.text,
+            clean_text(&doc.to_flat_text(), &config_with_pz)
+        );
+        assert_eq!(
+            clean_text(&doc.to_flat_text(), &config_with_pz),
+            "Header\nBody\n\nHeader\nMore body"
+        );
     }
 }
