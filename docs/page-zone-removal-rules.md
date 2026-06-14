@@ -35,10 +35,12 @@ PDF embedded-text extraction builds page-local line lists before joining the
 document into text. The PDF cleanup layer receives a
 `Vec<(usize, Vec<String>)>` representation and uses the first 3 and last 3
 lines of each page for built-in repeated header/footer and page-label cleanup.
+The extraction cache stores the resulting flat text and, when native PDF
+extraction exposes page chunks, the corresponding page text list.
 
 OCR extraction also produces page text page by page and joins non-empty pages
-with blank lines. The resulting cached text is a flat string, not a structured
-page model.
+with blank lines. Cached OCR extraction results preserve the page text list
+when OCR completes through the page-by-page path.
 
 For cached or already extracted PDF text, `clean_extracted_pdf_text` reconstructs
 page chunks by splitting on `\n\n`. That convention is intentionally used by the
@@ -48,10 +50,12 @@ metadata attached to each line.
 ## Current page information in the scanner
 
 The Repeated Artefact Finder builds a `StructuredDocument` for each scanned
-file. For PDFs it uses page chunks to estimate page number, line index within
-page, and total lines on the page. For non-PDF files it uses the structured
-document as a flat line container and falls back to a file-level position
-estimate rather than treating the single page as reliable page metadata.
+file. When extraction or the cache provides page texts, the scanner builds the
+structured document from those pages and can report page number, line index
+within the page, and total lines on the page. When only flat text is available,
+the scanner uses the structured document as a flat line container and falls back
+to a file-level position estimate rather than treating blank lines as reliable
+page metadata.
 
 That metadata is used for diagnostics and scoring. It is not saved into the
 cleaning configuration and is not passed to `clean_text` when Custom Removals
@@ -113,11 +117,12 @@ document
     top and bottom page-zone flags
 ```
 
-The extraction cache should preserve this representation for PDFs and OCR
-instead of storing only a flat text string for downstream processing. A
-companion to `clean_text`, or a refactored cleaner, can then apply structured
-whole-line rules with reliable line context before flattening the result for
-display, search, word count, and export.
+The extraction cache preserves compact page text for native PDF extraction and
+OCR extraction when that page text is available, instead of storing only a flat
+text string for downstream processing. A companion to `clean_text`, or a
+refactored cleaner, can then apply structured whole-line rules with reliable
+line context before flattening the result for display, search, word count, and
+export.
 
 Generic text formats should receive page-zone behaviour only when their page
 boundaries are explicit and intentionally represented. Otherwise page-zone
@@ -126,9 +131,10 @@ paragraph spacing.
 
 ## Future implementation plan
 
-1. Preserve page-line metadata in the PDF and OCR extraction cache.
-2. Route preview, export, search, word count, and processed scans through a
+1. Route preview, export, search, word count, and processed scans through a
    common page-aware processing path for documents that have page metadata.
+2. Pass structured page-aware text into Custom Removal rule application before
+   flattening the cleaned output.
 3. Add `PageTop`, `PageBottom`, and `PageTopOrBottom` structured scopes, using
    the same first 3 and last 3 line definition as current PDF cleanup.
 4. Apply page-zone scopes only to whole-line `Literal` and `NormalizedLine`

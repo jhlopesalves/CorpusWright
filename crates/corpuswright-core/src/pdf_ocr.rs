@@ -16,6 +16,7 @@ const PREVIEW_MAX_PIXELS: u64 = 300_000;
 #[derive(Debug, Clone)]
 pub struct OcrExtraction {
     pub text: String,
+    pub page_texts: Vec<String>,
     pub warnings: Vec<String>,
 }
 
@@ -349,6 +350,7 @@ pub fn extract_text_via_ocr(
     let pages_to_process = max_pages
         .map(|limit| limit.min(page_count))
         .unwrap_or(page_count);
+    let mut page_texts = Vec::with_capacity(pages_to_process);
 
     for page_index in 0..pages_to_process {
         if let Some(limit) = max_chars
@@ -394,6 +396,7 @@ pub fn extract_text_via_ocr(
         };
 
         let trimmed = page_text.trim();
+        page_texts.push(trimmed.to_string());
         if !trimmed.is_empty() {
             if !all_text.is_empty() {
                 all_text.push('\n');
@@ -405,6 +408,7 @@ pub fn extract_text_via_ocr(
 
     Ok(OcrExtraction {
         text: all_text,
+        page_texts,
         warnings,
     })
 }
