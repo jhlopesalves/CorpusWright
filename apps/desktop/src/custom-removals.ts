@@ -7,6 +7,11 @@ function removalRuleText(rule: RemovalRule): string {
     const prefix = rule.scope === "whole_line" ? "Whole line" : "Anywhere";
     return `${prefix}: ${rule.matcher.text}`;
   }
+  if (rule.matcher.kind === "normalized_line") {
+    return rule.scope === "whole_line"
+      ? `Normalised whole line: ${rule.matcher.normalized_key}`
+      : rule.label;
+  }
   return rule.label;
 }
 
