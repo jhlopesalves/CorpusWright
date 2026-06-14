@@ -54,10 +54,10 @@ pub use preview::{
     preview_file, preview_files, preview_processed_files,
 };
 pub use repeated_artifacts::{
-    ArtifactRiskLabel, CancellationFlag, CandidateContentClass, PositionSummary,
-    RepeatedArtifactCandidate, RepeatedArtifactExample, RepeatedArtifactKind,
-    RepeatedArtifactScanConfig, classify_content, no_cancellation, scan_repeated_artifacts,
-    scan_repeated_artifacts_with_cancel,
+    ArtifactRiskLabel, CancellationFlag, CandidateContentClass, CandidateTextProfile,
+    CandidateTextSignalLabel, PositionSummary, RepeatedArtifactCandidate, RepeatedArtifactExample,
+    RepeatedArtifactKind, RepeatedArtifactScanConfig, classify_content, no_cancellation,
+    scan_repeated_artifacts, scan_repeated_artifacts_with_cancel,
 };
 pub use scan::{
     CorpusSummary, DocumentRecord, DocumentType, DocumentTypeCounts, ScanError, ScanReport,

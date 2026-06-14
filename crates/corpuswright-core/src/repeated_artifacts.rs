@@ -208,6 +208,68 @@ pub enum CandidateContentClass {
     SymbolNoiseDominant,
 }
 
+/// Advisory character and token profile for a repeated artefact candidate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export)]
+pub struct CandidateTextProfile {
+    pub char_count: usize,
+    pub token_count: usize,
+    pub alphabetic_ratio: f64,
+    pub digit_ratio: f64,
+    pub symbol_ratio: f64,
+    pub whitespace_ratio: f64,
+    pub uppercase_ratio: f64,
+    pub average_token_length: f64,
+    pub max_repeated_char_run: usize,
+    pub suspicious_token_ratio: f64,
+    pub has_sentence_punctuation: bool,
+    pub looks_like_common_section_heading: bool,
+    pub looks_like_page_label: bool,
+    pub looks_like_table_or_numeric_row: bool,
+    pub looks_like_formula_or_code: bool,
+    pub looks_like_markup_or_extraction_noise: bool,
+}
+
+impl Default for CandidateTextProfile {
+    fn default() -> Self {
+        Self {
+            char_count: 0,
+            token_count: 0,
+            alphabetic_ratio: 0.0,
+            digit_ratio: 0.0,
+            symbol_ratio: 0.0,
+            whitespace_ratio: 0.0,
+            uppercase_ratio: 0.0,
+            average_token_length: 0.0,
+            max_repeated_char_run: 0,
+            suspicious_token_ratio: 0.0,
+            has_sentence_punctuation: false,
+            looks_like_common_section_heading: false,
+            looks_like_page_label: false,
+            looks_like_table_or_numeric_row: false,
+            looks_like_formula_or_code: false,
+            looks_like_markup_or_extraction_noise: false,
+        }
+    }
+}
+
+impl Eq for CandidateTextProfile {}
+
+/// Advisory text/noise label for candidate review.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum CandidateTextSignalLabel {
+    LikelyNaturalText,
+    LikelySectionHeading,
+    LikelyPageLabel,
+    LikelyTableOrNumericRow,
+    LikelyFormulaOrCode,
+    LikelyMarkupOrExtractionNoise,
+    #[default]
+    Ambiguous,
+}
+
 /// Counts of candidate occurrences by estimated layout positions.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[ts(export)]
@@ -247,6 +309,15 @@ pub struct RepeatedArtifactCandidate {
     pub risk_label: ArtifactRiskLabel,
     /// Content classification (text, mixed, numeric, symbol).
     pub content_class: CandidateContentClass,
+    /// Deterministic advisory text/noise profile used during candidate review.
+    #[serde(default)]
+    pub text_profile: CandidateTextProfile,
+    /// Compact advisory label derived from the text profile and existing evidence.
+    #[serde(default)]
+    pub text_signal_label: CandidateTextSignalLabel,
+    /// Stable reason codes explaining the advisory text signal.
+    #[serde(default)]
+    pub text_signal_reasons: Vec<String>,
     /// How many distinct raw text variants appear under this candidate's grouping key.
     /// For normalised candidates this shows how many distinct lines were grouped.
     pub raw_variant_count: usize,
@@ -683,6 +754,486 @@ pub fn classify_content(text: &str) -> CandidateContentClass {
     }
 
     CandidateContentClass::TextDominant
+}
+
+fn profile_candidate_text(display_text: &str, normalized_key: &str) -> CandidateTextProfile {
+    let trimmed = display_text.trim();
+    let chars = trimmed.chars().collect::<Vec<_>>();
+    let char_count = chars.len();
+    let tokens = trimmed.split_whitespace().collect::<Vec<_>>();
+    let token_count = tokens.len();
+
+    if char_count == 0 {
+        return CandidateTextProfile::default();
+    }
+
+    let alphabetic_count = chars.iter().filter(|c| c.is_alphabetic()).count();
+    let digit_count = chars.iter().filter(|c| is_decimal_digit(**c)).count();
+    let whitespace_count = chars.iter().filter(|c| c.is_whitespace()).count();
+    let symbol_count = chars
+        .iter()
+        .filter(|c| !c.is_alphabetic() && !is_decimal_digit(**c) && !c.is_whitespace())
+        .count();
+    let uppercase_count = chars.iter().filter(|c| c.is_uppercase()).count();
+    let token_char_count = tokens
+        .iter()
+        .map(|token| token.chars().count())
+        .sum::<usize>();
+    let suspicious_token_count = tokens
+        .iter()
+        .filter(|token| is_suspicious_token(token))
+        .count();
+
+    let char_total = char_count as f64;
+    let normalized = if normalized_key.trim().is_empty() {
+        normalize_line(trimmed)
+    } else {
+        normalized_key.trim().to_string()
+    };
+
+    let mut profile = CandidateTextProfile {
+        char_count,
+        token_count,
+        alphabetic_ratio: alphabetic_count as f64 / char_total,
+        digit_ratio: digit_count as f64 / char_total,
+        symbol_ratio: symbol_count as f64 / char_total,
+        whitespace_ratio: whitespace_count as f64 / char_total,
+        uppercase_ratio: if alphabetic_count > 0 {
+            uppercase_count as f64 / alphabetic_count as f64
+        } else {
+            0.0
+        },
+        average_token_length: if token_count > 0 {
+            token_char_count as f64 / token_count as f64
+        } else {
+            0.0
+        },
+        max_repeated_char_run: max_repeated_non_whitespace_char_run(trimmed),
+        suspicious_token_ratio: if token_count > 0 {
+            suspicious_token_count as f64 / token_count as f64
+        } else {
+            0.0
+        },
+        has_sentence_punctuation: chars
+            .iter()
+            .any(|c| matches!(c, '.' | '!' | '?' | '。' | '！' | '？')),
+        looks_like_common_section_heading: is_common_section_heading(&normalized),
+        looks_like_page_label: is_page_label_like(&normalized),
+        looks_like_table_or_numeric_row: false,
+        looks_like_formula_or_code: false,
+        looks_like_markup_or_extraction_noise: false,
+    };
+
+    profile.looks_like_table_or_numeric_row = looks_like_table_or_numeric_row(trimmed, &profile);
+    profile.looks_like_formula_or_code = looks_like_formula_or_code(trimmed, &profile);
+    profile.looks_like_markup_or_extraction_noise =
+        looks_like_markup_or_extraction_noise(trimmed, &profile);
+
+    profile
+}
+
+fn classify_candidate_text_signal(
+    profile: &CandidateTextProfile,
+    content_class: CandidateContentClass,
+    risk_label: ArtifactRiskLabel,
+    position_summary: &PositionSummary,
+) -> CandidateTextSignalLabel {
+    if profile.looks_like_common_section_heading
+        || risk_label == ArtifactRiskLabel::CommonSectionHeadingReviewCarefully
+    {
+        return CandidateTextSignalLabel::LikelySectionHeading;
+    }
+
+    if profile.looks_like_page_label {
+        return CandidateTextSignalLabel::LikelyPageLabel;
+    }
+
+    if profile.looks_like_markup_or_extraction_noise
+        || (risk_label == ArtifactRiskLabel::SymbolOrNoiseCandidate
+            && profile.symbol_ratio >= 0.50
+            && profile.alphabetic_ratio < 0.30)
+    {
+        return CandidateTextSignalLabel::LikelyMarkupOrExtractionNoise;
+    }
+
+    if profile.looks_like_table_or_numeric_row {
+        return CandidateTextSignalLabel::LikelyTableOrNumericRow;
+    }
+
+    if profile.looks_like_formula_or_code {
+        return CandidateTextSignalLabel::LikelyFormulaOrCode;
+    }
+
+    let edge_concentrated = page_edge_ratio(position_summary) >= 0.75;
+    if content_class == CandidateContentClass::TextDominant
+        && profile.alphabetic_ratio >= 0.65
+        && profile.symbol_ratio <= 0.15
+        && profile.token_count >= 4
+        && profile.average_token_length >= 3.0
+        && !edge_concentrated
+        && risk_label != ArtifactRiskLabel::StrongHeaderFooterCandidate
+    {
+        return CandidateTextSignalLabel::LikelyNaturalText;
+    }
+
+    CandidateTextSignalLabel::Ambiguous
+}
+
+fn candidate_text_signal_reasons(
+    display_text: &str,
+    profile: &CandidateTextProfile,
+    label: CandidateTextSignalLabel,
+    position_summary: &PositionSummary,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+
+    match label {
+        CandidateTextSignalLabel::LikelySectionHeading => {
+            push_reason(&mut reasons, "common_section_heading");
+        }
+        CandidateTextSignalLabel::LikelyPageLabel => {
+            push_reason(&mut reasons, "page_label_pattern");
+        }
+        CandidateTextSignalLabel::LikelyTableOrNumericRow => {
+            push_reason(&mut reasons, "table_or_numeric_row");
+        }
+        CandidateTextSignalLabel::LikelyFormulaOrCode => {
+            push_reason(&mut reasons, "formula_or_code_symbols");
+        }
+        CandidateTextSignalLabel::LikelyMarkupOrExtractionNoise => {
+            if is_markup_like_token(display_text) {
+                push_reason(&mut reasons, "markup_entity_or_tag");
+            }
+            if is_cid_like_marker(display_text) {
+                push_reason(&mut reasons, "cid_marker");
+            }
+            if profile.symbol_ratio >= 0.50 {
+                push_reason(&mut reasons, "high_symbol_ratio");
+            }
+        }
+        CandidateTextSignalLabel::LikelyNaturalText => {
+            push_reason(&mut reasons, "mostly_alphabetic");
+            push_reason(&mut reasons, "multi_token_text");
+        }
+        CandidateTextSignalLabel::Ambiguous => {}
+    }
+
+    if profile.digit_ratio >= 0.35 {
+        push_reason(&mut reasons, "high_digit_ratio");
+    }
+    if profile.max_repeated_char_run >= 4 {
+        push_reason(&mut reasons, "long_repeated_character_run");
+    }
+    if page_edge_ratio(position_summary) >= 0.75 {
+        push_reason(&mut reasons, "page_edge_repetition");
+    }
+
+    reasons
+}
+
+fn push_reason(reasons: &mut Vec<String>, reason: &str) {
+    if !reasons.iter().any(|existing| existing == reason) {
+        reasons.push(reason.to_string());
+    }
+}
+
+fn page_edge_ratio(position_summary: &PositionSummary) -> f64 {
+    let known_total =
+        position_summary.top_count + position_summary.middle_count + position_summary.bottom_count;
+    if known_total == 0 {
+        0.0
+    } else {
+        (position_summary.top_count + position_summary.bottom_count) as f64 / known_total as f64
+    }
+}
+
+fn max_repeated_non_whitespace_char_run(text: &str) -> usize {
+    let mut previous = None;
+    let mut current_run = 0;
+    let mut max_run = 0;
+
+    for character in text.chars().filter(|c| !c.is_whitespace()) {
+        if Some(character) == previous {
+            current_run += 1;
+        } else {
+            previous = Some(character);
+            current_run = 1;
+        }
+        max_run = max_run.max(current_run);
+    }
+
+    max_run
+}
+
+fn is_suspicious_token(token: &str) -> bool {
+    let trimmed = token.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    if is_markup_like_token(trimmed) || is_cid_like_marker(trimmed) || trimmed.contains('\u{fffd}')
+    {
+        return true;
+    }
+
+    let char_count = trimmed.chars().count();
+    let alphabetic_count = trimmed.chars().filter(|c| c.is_alphabetic()).count();
+    let digit_count = trimmed.chars().filter(|c| is_decimal_digit(*c)).count();
+    let symbol_count = trimmed
+        .chars()
+        .filter(|c| !c.is_alphabetic() && !is_decimal_digit(*c) && !c.is_whitespace())
+        .count();
+
+    (char_count >= 3 && symbol_count * 2 >= char_count)
+        || (char_count >= 4 && max_repeated_non_whitespace_char_run(trimmed) >= 4)
+        || (alphabetic_count == 0 && digit_count + symbol_count > 0)
+}
+
+fn looks_like_table_or_numeric_row(text: &str, profile: &CandidateTextProfile) -> bool {
+    let tokens = text.split_whitespace().collect::<Vec<_>>();
+    if tokens.len() < 2 {
+        return false;
+    }
+
+    let numeric_like_count = tokens
+        .iter()
+        .filter(|token| is_numeric_like_token(token))
+        .count();
+    let digit_token_count = tokens
+        .iter()
+        .filter(|token| token.chars().any(is_decimal_digit))
+        .count();
+    let statistical_pattern = has_statistical_pattern(text);
+    let column_separator_count = count_column_like_separators(text);
+    let table_header = tokens.len() >= 3
+        && tokens
+            .iter()
+            .all(|token| is_table_header_token(&strip_token_for_matching(token)));
+
+    table_header
+        || (statistical_pattern && digit_token_count > 0 && tokens.len() >= 4)
+        || (numeric_like_count >= 3 && numeric_like_count * 2 >= tokens.len())
+        || (profile.digit_ratio >= 0.45 && profile.alphabetic_ratio < 0.35 && tokens.len() >= 3)
+        || (column_separator_count >= 2 && numeric_like_count >= 2)
+}
+
+fn is_numeric_like_token(token: &str) -> bool {
+    let trimmed =
+        token.trim_matches(|c: char| matches!(c, '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';'));
+    let has_digit = trimmed.chars().any(is_decimal_digit);
+    has_digit
+        && trimmed.chars().all(|c| {
+            is_decimal_digit(c) || matches!(c, '.' | ',' | '%' | '+' | '-' | '/' | ':' | '٫' | '٬')
+        })
+}
+
+fn has_statistical_pattern(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    if lower.contains("χ²") || lower.contains("chi2") {
+        return true;
+    }
+
+    let tokens = lower.split_whitespace().collect::<Vec<_>>();
+    for (idx, token) in tokens.iter().enumerate() {
+        let trimmed = token.trim_matches(|c: char| matches!(c, ',' | ';' | '(' | ')' | '[' | ']'));
+        if matches!(
+            trimmed,
+            "p<" | "p=" | "f=" | "t=" | "z=" | "r=" | "p≤" | "p>="
+        ) || trimmed.starts_with("p<")
+            || trimmed.starts_with("p=")
+            || trimmed.starts_with("f=")
+            || trimmed.starts_with("t=")
+            || trimmed.starts_with("z=")
+            || trimmed.starts_with("r=")
+        {
+            return true;
+        }
+
+        let variable = strip_token_for_matching(trimmed);
+        if matches!(variable.as_str(), "p" | "f" | "t" | "z" | "r")
+            && let Some(next) = tokens.get(idx + 1)
+        {
+            let op = next.trim();
+            if op.starts_with('=') || op.starts_with('<') || op.starts_with('≤') {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn count_column_like_separators(text: &str) -> usize {
+    let mut count = 0;
+    let mut space_run = 0;
+
+    for character in text.chars() {
+        if character == '\t' {
+            count += 1;
+            space_run = 0;
+        } else if character == ' ' {
+            space_run += 1;
+            if space_run == 2 {
+                count += 1;
+            }
+        } else {
+            space_run = 0;
+        }
+    }
+
+    count
+}
+
+fn strip_token_for_matching(token: &str) -> String {
+    token
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase()
+}
+
+fn is_table_header_token(token: &str) -> bool {
+    matches!(
+        token,
+        "mean"
+            | "median"
+            | "mode"
+            | "sd"
+            | "se"
+            | "n"
+            | "min"
+            | "max"
+            | "df"
+            | "p"
+            | "f"
+            | "t"
+            | "z"
+            | "ci"
+            | "m"
+    )
+}
+
+fn looks_like_formula_or_code(text: &str, profile: &CandidateTextProfile) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    let operator_count = trimmed.chars().filter(|c| is_formula_operator(*c)).count();
+    let bracket_count = trimmed.chars().filter(|c| is_code_bracket(*c)).count();
+    let contains_assignment = trimmed.contains('=');
+    let contains_semicolon = trimmed.contains(';');
+    let contains_underscore = trimmed.contains('_');
+    let contains_math_symbol = trimmed.chars().any(is_math_symbol);
+    let lower = trimmed.to_lowercase();
+    let code_keyword = lower.starts_with("if ")
+        || lower.starts_with("if(")
+        || lower.starts_with("for ")
+        || lower.starts_with("for(")
+        || lower.starts_with("while ")
+        || lower.starts_with("while(")
+        || lower.contains(" return ");
+
+    if bracket_count >= 2 && (operator_count > 0 || contains_semicolon || code_keyword) {
+        return true;
+    }
+
+    if contains_semicolon && (contains_assignment || bracket_count > 0 || contains_underscore) {
+        return true;
+    }
+
+    if contains_assignment
+        && (operator_count >= 2
+            || profile.digit_ratio > 0.0
+            || contains_underscore
+            || contains_math_symbol)
+    {
+        return true;
+    }
+
+    contains_math_symbol && (operator_count > 0 || profile.digit_ratio > 0.0)
+}
+
+fn is_formula_operator(c: char) -> bool {
+    matches!(
+        c,
+        '+' | '-'
+            | '*'
+            | '/'
+            | '='
+            | '<'
+            | '>'
+            | '^'
+            | '≤'
+            | '≥'
+            | '≠'
+            | '±'
+            | '×'
+            | '÷'
+            | '≈'
+            | '∑'
+            | '√'
+            | '∫'
+            | '→'
+            | '←'
+            | '⇒'
+    )
+}
+
+fn is_code_bracket(c: char) -> bool {
+    matches!(c, '(' | ')' | '[' | ']' | '{' | '}')
+}
+
+fn is_math_symbol(c: char) -> bool {
+    matches!(c, 'χ' | 'Χ' | '²' | '³' | 'μ' | 'σ' | 'Σ' | 'π' | 'Π' | '∞')
+}
+
+fn looks_like_markup_or_extraction_noise(text: &str, profile: &CandidateTextProfile) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    is_markup_like_token(trimmed)
+        || is_cid_like_marker(trimmed)
+        || trimmed.contains('\u{fffd}')
+        || (profile.max_repeated_char_run >= 4 && profile.alphabetic_ratio < 0.25)
+        || (profile.symbol_ratio >= 0.65 && profile.alphabetic_ratio < 0.20)
+        || (profile.symbol_ratio >= 0.80 && profile.token_count <= 3)
+}
+
+fn is_markup_like_token(text: &str) -> bool {
+    let trimmed = text.trim();
+    let lower = trimmed.to_lowercase();
+
+    if KNOWN_INLINE_PATTERNS
+        .iter()
+        .any(|pattern| trimmed.eq_ignore_ascii_case(pattern))
+    {
+        return true;
+    }
+
+    let html_tag = lower.starts_with('<')
+        && lower.ends_with('>')
+        && lower.chars().count() <= 80
+        && lower.chars().any(|c| c.is_alphabetic());
+    let html_entity = lower.starts_with('&')
+        && lower.ends_with(';')
+        && lower.chars().count() <= 32
+        && lower
+            .chars()
+            .skip(1)
+            .take_while(|c| *c != ';')
+            .all(|c| c.is_alphanumeric() || c == '#');
+
+    html_tag || html_entity
+}
+
+fn is_cid_like_marker(text: &str) -> bool {
+    let lower = text.trim().to_lowercase();
+    let Some(rest) = lower.strip_prefix("cid:") else {
+        return false;
+    };
+
+    !rest.is_empty() && rest.chars().all(is_decimal_digit)
 }
 
 /// Returns true if a candidate with the given content class should be included
@@ -1265,6 +1816,25 @@ fn phase3_finalize(
         let candidate_id = compute_stable_id(&entry.kind, &entry.candidate_key);
 
         let content_class = classify_content(&entry.display_text);
+        let position_summary = PositionSummary {
+            top_count: entry.top_count,
+            middle_count: entry.middle_count,
+            bottom_count: entry.bottom_count,
+            unknown_count: entry.unknown_count,
+        };
+        let text_profile = profile_candidate_text(&entry.display_text, &entry.normalized_key);
+        let text_signal_label = classify_candidate_text_signal(
+            &text_profile,
+            content_class,
+            risk_label,
+            &position_summary,
+        );
+        let text_signal_reasons = candidate_text_signal_reasons(
+            &entry.display_text,
+            &text_profile,
+            text_signal_label,
+            &position_summary,
+        );
 
         let raw_variant_count = entry.raw_variants.len();
         let raw_variant_count_is_capped = entry.raw_variant_overflow;
@@ -1344,15 +1914,13 @@ fn phase3_finalize(
                 occurrence_count: entry.occurrence_count,
                 file_count,
                 example_count: examples.len(),
-                position_summary: PositionSummary {
-                    top_count: entry.top_count,
-                    middle_count: entry.middle_count,
-                    bottom_count: entry.bottom_count,
-                    unknown_count: entry.unknown_count,
-                },
+                position_summary,
                 position_summary_is_page_based: entry.position_summary_is_page_based,
                 risk_label,
                 content_class,
+                text_profile,
+                text_signal_label,
+                text_signal_reasons,
                 raw_variant_count,
                 raw_variant_count_is_capped,
                 raw_variants: entry.raw_variants.into_iter().collect(),
@@ -1711,6 +2279,242 @@ mod tests {
     fn test_classify_risk_boilerplate() {
         let risk = classify_risk("Copyright notice info", "copyright notice info", 5, 3, 1, 1); // < 75% top/bottom concentration
         assert_eq!(risk, ArtifactRiskLabel::PossibleBoilerplate);
+    }
+
+    fn empty_position_summary() -> PositionSummary {
+        PositionSummary {
+            top_count: 0,
+            middle_count: 0,
+            bottom_count: 0,
+            unknown_count: 0,
+        }
+    }
+
+    fn signal_for_text(
+        text: &str,
+    ) -> (CandidateTextProfile, CandidateTextSignalLabel, Vec<String>) {
+        let normalized = normalize_line(text);
+        let position_summary = empty_position_summary();
+        let profile = profile_candidate_text(text, &normalized);
+        let risk_label = classify_risk(text, &normalized, 1, 1, 0, 0);
+        let signal_label = classify_candidate_text_signal(
+            &profile,
+            classify_content(text),
+            risk_label,
+            &position_summary,
+        );
+        let reasons =
+            candidate_text_signal_reasons(text, &profile, signal_label, &position_summary);
+
+        (profile, signal_label, reasons)
+    }
+
+    #[test]
+    fn test_candidate_text_signal_recognises_natural_prose_without_noise_label() {
+        for text in [
+            "This is a normal sentence.",
+            "The participants answered the questionnaire.",
+            "Corpus linguistics provides empirical evidence.",
+        ] {
+            let (_, signal_label, _) = signal_for_text(text);
+            assert!(
+                matches!(
+                    signal_label,
+                    CandidateTextSignalLabel::LikelyNaturalText
+                        | CandidateTextSignalLabel::Ambiguous
+                ),
+                "expected prose-like text to stay natural or ambiguous: {text:?}"
+            );
+            assert_ne!(
+                signal_label,
+                CandidateTextSignalLabel::LikelyMarkupOrExtractionNoise
+            );
+        }
+    }
+
+    #[test]
+    fn test_candidate_text_signal_recognises_english_section_headings() {
+        for text in [
+            "Introduction",
+            "Methods",
+            "Results",
+            "Discussion",
+            "Conclusion",
+        ] {
+            let (_, signal_label, reasons) = signal_for_text(text);
+            assert_eq!(signal_label, CandidateTextSignalLabel::LikelySectionHeading);
+            assert!(reasons.contains(&"common_section_heading".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_candidate_text_signal_recognises_portuguese_section_headings() {
+        for text in ["Resumo", "Introdução", "Métodos", "Resultados", "Conclusão"] {
+            let (_, signal_label, reasons) = signal_for_text(text);
+            assert_eq!(signal_label, CandidateTextSignalLabel::LikelySectionHeading);
+            assert!(reasons.contains(&"common_section_heading".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_candidate_text_signal_recognises_french_section_headings() {
+        for text in ["Résumé", "Méthode", "Résultats", "Références"] {
+            let (_, signal_label, reasons) = signal_for_text(text);
+            assert_eq!(signal_label, CandidateTextSignalLabel::LikelySectionHeading);
+            assert!(reasons.contains(&"common_section_heading".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_candidate_text_signal_recognises_page_labels() {
+        for text in [
+            "Page 1",
+            "Page 12 of 42",
+            "p. 5",
+            "pag. 7",
+            "pág. 9",
+            "Página 3 de 10",
+        ] {
+            let (_, signal_label, reasons) = signal_for_text(text);
+            assert_eq!(signal_label, CandidateTextSignalLabel::LikelyPageLabel);
+            assert!(reasons.contains(&"page_label_pattern".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_candidate_text_signal_recognises_table_or_statistical_rows() {
+        for text in [
+            "12.4 15.8 99.2",
+            "2020 2021 2022 2023",
+            "p < .05   F = 7.92",
+            "Mean SD N",
+        ] {
+            let (_, signal_label, reasons) = signal_for_text(text);
+            assert_eq!(
+                signal_label,
+                CandidateTextSignalLabel::LikelyTableOrNumericRow,
+                "expected table/statistical row label for {text:?}"
+            );
+            assert!(reasons.contains(&"table_or_numeric_row".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_candidate_text_signal_recognises_formula_or_code_like_lines() {
+        for text in [
+            "y = mx + b",
+            "χ² = 5.32",
+            "if (x > 0) { return x; }",
+            "foo_bar = value + 1;",
+        ] {
+            let (_, signal_label, reasons) = signal_for_text(text);
+            assert_eq!(
+                signal_label,
+                CandidateTextSignalLabel::LikelyFormulaOrCode,
+                "expected formula/code label for {text:?}"
+            );
+            assert!(reasons.contains(&"formula_or_code_symbols".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_candidate_text_signal_recognises_markup_and_entities() {
+        for text in ["<br/>", "<br>", "&nbsp;", "&amp;"] {
+            let (_, signal_label, reasons) = signal_for_text(text);
+            assert_eq!(
+                signal_label,
+                CandidateTextSignalLabel::LikelyMarkupOrExtractionNoise
+            );
+            assert!(reasons.contains(&"markup_entity_or_tag".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_candidate_text_signal_recognises_cid_markers() {
+        for text in ["cid:14", "cid:105"] {
+            let (_, signal_label, reasons) = signal_for_text(text);
+            assert_eq!(
+                signal_label,
+                CandidateTextSignalLabel::LikelyMarkupOrExtractionNoise
+            );
+            assert!(reasons.contains(&"cid_marker".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_candidate_text_signal_recognises_symbol_heavy_junk() {
+        for text in ["------", "••••••", "______"] {
+            let (_, signal_label, reasons) = signal_for_text(text);
+            assert_eq!(
+                signal_label,
+                CandidateTextSignalLabel::LikelyMarkupOrExtractionNoise
+            );
+            assert!(reasons.contains(&"long_repeated_character_run".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_candidate_text_signal_keeps_short_text_ambiguous() {
+        let (_, signal_label, reasons) = signal_for_text("Header");
+        assert_eq!(signal_label, CandidateTextSignalLabel::Ambiguous);
+        assert!(reasons.is_empty());
+    }
+
+    #[test]
+    fn test_candidate_text_profile_counts_unicode_decimal_digits() {
+        let (profile, signal_label, reasons) = signal_for_text("１２ ３４ ٥٦");
+        assert!(
+            profile.digit_ratio > 0.60,
+            "unicode decimal digits should count in digit_ratio"
+        );
+        assert_eq!(
+            signal_label,
+            CandidateTextSignalLabel::LikelyTableOrNumericRow
+        );
+        assert!(reasons.contains(&"high_digit_ratio".to_string()));
+    }
+
+    #[test]
+    fn test_candidate_text_signal_leaves_content_class_behaviour_stable() {
+        assert_eq!(
+            classify_content("Page ٣"),
+            CandidateContentClass::MixedTextNumbers
+        );
+        assert_eq!(
+            classify_content("32.01 46.83"),
+            CandidateContentClass::NumericDominant
+        );
+        assert_eq!(
+            classify_content("Introduction"),
+            CandidateContentClass::TextDominant
+        );
+        assert_eq!(
+            classify_content("------"),
+            CandidateContentClass::SymbolNoiseDominant
+        );
+    }
+
+    #[test]
+    fn test_candidate_text_signal_reasons_include_page_edge_repetition() {
+        let normalized = normalize_line("Page 7");
+        let profile = profile_candidate_text("Page 7", &normalized);
+        let position_summary = PositionSummary {
+            top_count: 0,
+            middle_count: 0,
+            bottom_count: 3,
+            unknown_count: 0,
+        };
+        let signal_label = classify_candidate_text_signal(
+            &profile,
+            classify_content("Page 7"),
+            ArtifactRiskLabel::StrongHeaderFooterCandidate,
+            &position_summary,
+        );
+        let reasons =
+            candidate_text_signal_reasons("Page 7", &profile, signal_label, &position_summary);
+
+        assert_eq!(signal_label, CandidateTextSignalLabel::LikelyPageLabel);
+        assert!(reasons.contains(&"page_edge_repetition".to_string()));
     }
 
     fn create_test_pdf(pages_content: &[Vec<&str>]) -> Vec<u8> {
@@ -2715,6 +3519,74 @@ mod tests {
                 assert_eq!(cand.content_class, CandidateContentClass::TextDominant);
             }
         }
+    }
+
+    #[test]
+    fn test_scan_candidates_include_text_signal_fields_for_exact_normalized_and_inline() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = [
+            "Repeated Header",
+            "Page 1",
+            "body<br/>text",
+            "Repeated Header",
+            "Page 2",
+            "more<br/>text",
+            "Repeated Header",
+            "Page 3",
+        ]
+        .join("\n");
+        let doc = make_text_record("candidate_text_signal.txt", &content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 2,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+
+        let exact = result
+            .iter()
+            .find(|candidate| {
+                candidate.kind == RepeatedArtifactKind::ExactLine
+                    && candidate.display_text == "Repeated Header"
+            })
+            .expect("expected repeated exact-line candidate");
+        assert_eq!(exact.text_profile.token_count, 2);
+        assert_eq!(exact.text_signal_label, CandidateTextSignalLabel::Ambiguous);
+
+        let normalized = result
+            .iter()
+            .find(|candidate| {
+                candidate.kind == RepeatedArtifactKind::NormalizedLine
+                    && candidate.normalized_key == "page #"
+            })
+            .expect("expected repeated normalised page candidate");
+        assert_eq!(
+            normalized.text_signal_label,
+            CandidateTextSignalLabel::LikelyPageLabel
+        );
+        assert!(
+            normalized
+                .text_signal_reasons
+                .contains(&"page_label_pattern".to_string())
+        );
+
+        let inline = result
+            .iter()
+            .find(|candidate| {
+                candidate.kind == RepeatedArtifactKind::InlineArtifact
+                    && candidate.display_text == "<br/>"
+            })
+            .expect("expected repeated inline artefact candidate");
+        assert_eq!(
+            inline.text_signal_label,
+            CandidateTextSignalLabel::LikelyMarkupOrExtractionNoise
+        );
+        assert!(
+            inline
+                .text_signal_reasons
+                .contains(&"markup_entity_or_tag".to_string())
+        );
     }
 
     #[test]
