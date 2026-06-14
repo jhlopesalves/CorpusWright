@@ -580,55 +580,65 @@
           <div
             style="flex: 1.4; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-color);">
             <div
-              style="padding: 8px; font-weight: 600; border-bottom: 1px solid var(--border-color); background: var(--panel-bg); display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;">
+                  style="padding: 8px; font-weight: 600; border-bottom: 1px solid var(--border-color); background: var(--panel-bg); display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;">
               <span>Suspicious Candidates</span>
               <span id="lbl-artifact-results-count"
                 style="font-size: 0.85rem; font-weight: normal; color: var(--text-muted);">0 found</span>
             </div>
             <div class="repeated-artifact-table-container" style="flex: 1; overflow: auto;">
-              <table style="width: 100%; table-layout: auto; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+              <table style="min-width: 100%; width: max-content; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+                <colgroup>
+                  <col style="width: 50px;" />
+                  <col id="col-candidate-pattern" />
+                  <col style="width: 75px;" />
+                  <col style="width: 75px;" />
+                  <col style="width: 55px;" />
+                  <col style="width: 55px;" />
+                  <col style="width: 75px;" />
+                  <col style="width: 95px;" />
+                </colgroup>
                 <thead>
                   <tr
                     style="position: sticky; top: 0; background: var(--panel-bg); border-bottom: 1px solid var(--border-color); z-index: 10; font-size: 0.85rem; color: var(--text-muted);">
-                    <th style="padding: 8px; width: 30px;">Select</th>
-                    <th id="th-candidate-pattern" style="padding: 8px; min-width: 140px; position: relative; user-select: none;">
+                    <th style="padding: 8px; text-align: center;">Select</th>
+                    <th id="th-candidate-pattern" style="padding: 8px; position: relative; user-select: none;">
                       <button class="sort-header" data-column="text" aria-label="Sort by Candidate or Pattern">
                         <span>Candidate / Pattern</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                       <div class="col-resize-handle" title="Drag to resize"></div>
                     </th>
-                    <th style="padding: 8px; width: 55px;">
+                    <th style="padding: 8px;">
                       <button class="sort-header" data-column="kind" aria-label="Sort by Kind">
                         <span>Kind</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                     </th>
-                    <th style="padding: 8px; width: 55px;">
+                    <th style="padding: 8px;">
                       <button class="sort-header" data-column="content" aria-label="Sort by Content">
                         <span>Content</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                     </th>
-                    <th style="padding: 8px; width: 45px; text-align: right;">
+                    <th style="padding: 8px; text-align: right;">
                       <button class="sort-header sort-header-right" data-column="occs" aria-label="Sort by Occurrences">
                         <span>Occs</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                     </th>
-                    <th style="padding: 8px; width: 45px; text-align: right;">
+                    <th style="padding: 8px; text-align: right;">
                       <button class="sort-header sort-header-right" data-column="files" aria-label="Sort by Files">
                         <span>Files</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                     </th>
-                    <th style="padding: 8px; width: 60px;">
+                    <th style="padding: 8px;">
                       <button class="sort-header" data-column="position" aria-label="Sort by Position">
                         <span>Position</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                     </th>
-                    <th style="padding: 8px; width: 80px;">
+                    <th style="padding: 8px;">
                       <button class="sort-header" data-column="risk" aria-label="Sort by Risk">
                         <span>Risk</span>
                         <span class="sort-indicator" aria-hidden="true"></span>

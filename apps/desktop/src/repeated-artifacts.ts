@@ -410,13 +410,17 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
   // Setup resizable Candidate / Pattern column
   const thPattern = document.getElementById("th-candidate-pattern");
-  if (thPattern) {
+  const colPattern = document.getElementById("col-candidate-pattern") as HTMLTableColElement | null;
+
+  if (thPattern && colPattern) {
     const handle = thPattern.querySelector(".col-resize-handle") as HTMLElement;
     if (handle) {
       let startX = 0;
       let startWidth = 0;
 
-      const onMouseMove = (e: MouseEvent) => {
+      const onPointerMove = (e: PointerEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
         const deltaX = e.clientX - startX;
         let newWidth = startWidth + deltaX;
 
@@ -426,21 +430,29 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         if (newWidth < minWidth) newWidth = minWidth;
         if (newWidth > maxWidth) newWidth = maxWidth;
 
+        // Update width on the <col> element to affect the whole column
+        colPattern.style.width = `${newWidth}px`;
+
+        // Also update thPattern style to remain visually aligned
         thPattern.style.width = `${newWidth}px`;
         thPattern.style.minWidth = `${newWidth}px`;
         thPattern.style.maxWidth = `${newWidth}px`;
+
         localStorage.setItem("corpuswright-candidate-column-width", String(newWidth));
       };
 
-      const onMouseUp = () => {
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
+      const onPointerUp = (e: PointerEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handle.releasePointerCapture(e.pointerId);
+        handle.removeEventListener("pointermove", onPointerMove);
+        handle.removeEventListener("pointerup", onPointerUp);
+
         handle.classList.remove("resizing");
         document.body.style.cursor = "";
       };
 
-      handle.addEventListener("mousedown", (e) => {
-        // Stop propagation and prevent default so dragging the handle doesn't sort
+      handle.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         e.stopPropagation();
         startX = e.clientX;
@@ -448,8 +460,10 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         handle.classList.add("resizing");
         document.body.style.cursor = "col-resize";
 
-        document.addEventListener("mousemove", onMouseMove);
-        document.addEventListener("mouseup", onMouseUp);
+        // Capture pointer events on the handle itself
+        handle.setPointerCapture(e.pointerId);
+        handle.addEventListener("pointermove", onPointerMove);
+        handle.addEventListener("pointerup", onPointerUp);
       });
 
       // Prevent accidental sorting on click
@@ -462,6 +476,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     // Apply persisted/default width on init (preferably 280px default)
     const savedWidth = localStorage.getItem("corpuswright-candidate-column-width");
     const initialWidth = savedWidth ? parseInt(savedWidth, 10) : 280;
+    colPattern.style.width = `${initialWidth}px`;
     thPattern.style.width = `${initialWidth}px`;
     thPattern.style.minWidth = `${initialWidth}px`;
     thPattern.style.maxWidth = `${initialWidth}px`;
