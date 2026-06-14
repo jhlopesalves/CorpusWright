@@ -18,9 +18,9 @@ use corpuswright_core::preview::{
     CombinedPreview, FilePreview, PreviewWarning, PreviewWarningKind,
 };
 use corpuswright_core::repeated_artifacts::{
-    ArtifactRiskLabel, CandidateContentClass, PositionSummary, RepeatedArtifactCandidate,
-    RepeatedArtifactExample, RepeatedArtifactKind, RepeatedArtifactScanConfig,
-    RepeatedArtifactScanDiagnostics, RepeatedArtifactScanReport,
+    ArtifactRiskLabel, CandidateContentClass, CandidateTextProfile, CandidateTextSignalLabel,
+    PositionSummary, RepeatedArtifactCandidate, RepeatedArtifactExample, RepeatedArtifactKind,
+    RepeatedArtifactScanConfig, RepeatedArtifactScanDiagnostics, RepeatedArtifactScanReport,
 };
 use corpuswright_core::scan::{
     CorpusSummary, DocumentRecord, DocumentType, DocumentTypeCounts, ScanReport,
@@ -306,6 +306,8 @@ fn main() {
     export_type::<RepeatedArtifactKind>(&out_dir, &[], &[]);
     export_type::<ArtifactRiskLabel>(&out_dir, &[], &[]);
     export_type::<CandidateContentClass>(&out_dir, &[], &[]);
+    export_type::<CandidateTextProfile>(&out_dir, &[], &[]);
+    export_type::<CandidateTextSignalLabel>(&out_dir, &[], &[]);
     export_type::<PositionSummary>(&out_dir, &[], &[]);
     export_type::<RepeatedArtifactExample>(&out_dir, &[], &[]);
     export_type::<RepeatedArtifactCandidate>(
@@ -326,6 +328,14 @@ fn main() {
             TypeImport {
                 name: "CandidateContentClass",
                 file: "CandidateContentClass",
+            },
+            TypeImport {
+                name: "CandidateTextProfile",
+                file: "CandidateTextProfile",
+            },
+            TypeImport {
+                name: "CandidateTextSignalLabel",
+                file: "CandidateTextSignalLabel",
             },
             TypeImport {
                 name: "RepeatedArtifactExample",
