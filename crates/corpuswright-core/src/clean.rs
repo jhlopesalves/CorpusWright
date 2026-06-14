@@ -1,3 +1,4 @@
+use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -166,16 +167,7 @@ pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
         cleaned = RE_EXCESSIVE_SPACES.replace_all(&cleaned, " ").to_string();
     }
 
-    for pattern in &config.remove_patterns {
-        if !pattern.is_empty() {
-            let p = if config.lowercase {
-                pattern.to_lowercase()
-            } else {
-                pattern.to_string()
-            };
-            cleaned = cleaned.replace(&p, "");
-        }
-    }
+    cleaned = remove_literal_patterns(cleaned, config);
 
     for rule in &config.replace_patterns {
         if !rule.pattern.is_empty() {
@@ -245,6 +237,110 @@ fn collapse_blank_lines(text: &str) -> String {
     collapsed
 }
 
+fn effective_remove_patterns(config: &CleaningConfig) -> Vec<String> {
+    config
+        .remove_patterns
+        .iter()
+        .filter(|pattern| !pattern.is_empty())
+        .map(|pattern| {
+            if config.lowercase {
+                pattern.to_lowercase()
+            } else {
+                pattern.clone()
+            }
+        })
+        .collect()
+}
+
+fn remove_literal_patterns(text: String, config: &CleaningConfig) -> String {
+    let patterns = effective_remove_patterns(config);
+    if patterns.is_empty() {
+        return text;
+    }
+
+    if patterns.len() > 1
+        && can_batch_literal_removals(&patterns)
+        && let Some(cleaned) = remove_literal_patterns_batched(&text, &patterns)
+    {
+        return cleaned;
+    }
+
+    remove_literal_patterns_sequential(text, &patterns)
+}
+
+fn remove_literal_patterns_sequential(mut text: String, patterns: &[String]) -> String {
+    for pattern in patterns {
+        text = text.replace(pattern, "");
+    }
+    text
+}
+
+fn remove_literal_patterns_batched(text: &str, patterns: &[String]) -> Option<String> {
+    let automaton = literal_remove_automaton(patterns);
+    let mut cleaned = String::with_capacity(text.len());
+    let mut last_end = 0;
+    let mut found_match = false;
+
+    for mat in automaton.find_iter(text) {
+        found_match = true;
+        cleaned.push_str(&text[last_end..mat.start()]);
+        last_end = mat.end();
+    }
+
+    if !found_match {
+        return Some(text.to_string());
+    }
+
+    cleaned.push_str(&text[last_end..]);
+
+    // Deletions can join surrounding text into a later pattern. The sequential
+    // path is the reference behaviour for those cascading cases.
+    if automaton.is_match(&cleaned) {
+        None
+    } else {
+        Some(cleaned)
+    }
+}
+
+fn literal_remove_automaton(patterns: &[String]) -> AhoCorasick {
+    AhoCorasickBuilder::new()
+        .match_kind(MatchKind::LeftmostFirst)
+        .build(patterns)
+        .expect("effective removal patterns are non-empty")
+}
+
+fn can_batch_literal_removals(patterns: &[String]) -> bool {
+    for i in 0..patterns.len() {
+        for j in (i + 1)..patterns.len() {
+            let left = patterns[i].as_str();
+            let right = patterns[j].as_str();
+            if left == right
+                || left.contains(right)
+                || right.contains(left)
+                || literals_can_overlap(left, right)
+            {
+                return false;
+            }
+        }
+    }
+
+    true
+}
+
+fn literals_can_overlap(left: &str, right: &str) -> bool {
+    let max_overlap_len = left.len().min(right.len());
+    (1..max_overlap_len).any(|len| {
+        let left_suffix_matches = left.is_char_boundary(left.len() - len)
+            && right.is_char_boundary(len)
+            && left[left.len() - len..] == right[..len];
+        let right_suffix_matches = right.is_char_boundary(right.len() - len)
+            && left.is_char_boundary(len)
+            && right[right.len() - len..] == left[..len];
+
+        left_suffix_matches || right_suffix_matches
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,10 +384,70 @@ mod tests {
     #[test]
     fn removes_literal_patterns() {
         let config = CleaningConfig {
-            remove_patterns: vec!["remove".to_string()],
+            remove_patterns: vec!["remove".to_string(), "drop".to_string()],
             ..CleaningConfig::default()
         };
-        assert_eq!(clean_text("keep remove keep", &config), "keep  keep");
+        assert_eq!(
+            clean_text("keep remove keep drop keep", &config),
+            "keep  keep  keep"
+        );
+    }
+
+    #[test]
+    fn remove_patterns_ignore_empty_patterns() {
+        let config = CleaningConfig {
+            remove_patterns: vec!["".to_string(), "drop".to_string(), "".to_string()],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(clean_text("keep drop keep", &config), "keep  keep");
+    }
+
+    #[test]
+    fn remove_patterns_are_literal_not_regex() {
+        let config = CleaningConfig {
+            remove_patterns: vec!["a.c".to_string(), "[x]".to_string()],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(clean_text("a.c abc [x] x", &config), " abc  x");
+    }
+
+    #[test]
+    fn remove_patterns_follow_lowercase_option() {
+        let config = CleaningConfig {
+            lowercase: true,
+            remove_patterns: vec!["HEADER".to_string()],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(clean_text("Header body HEADER", &config), " body ");
+    }
+
+    #[test]
+    fn remove_patterns_run_after_diacritic_replacement_and_lowercase() {
+        let config = CleaningConfig {
+            replace_diacritics: true,
+            lowercase: true,
+            remove_patterns: vec!["CAFE".to_string()],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(clean_text("Café remains", &config), " remains");
+    }
+
+    #[test]
+    fn remove_patterns_preserve_sequential_subset_semantics() {
+        let config = CleaningConfig {
+            remove_patterns: vec!["aba".to_string(), "ba".to_string()],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(clean_text("ababa", &config), "");
+    }
+
+    #[test]
+    fn remove_patterns_preserve_sequential_cascading_semantics() {
+        let config = CleaningConfig {
+            remove_patterns: vec!["X".to_string(), "ab".to_string()],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(clean_text("aXb", &config), "");
     }
 
     #[test]

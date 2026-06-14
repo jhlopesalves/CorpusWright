@@ -11,10 +11,14 @@
 use crate::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
 use crate::clean::CleaningConfig;
 use crate::scan::{DocumentRecord, DocumentType};
+use aho_corasick::AhoCorasick;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    LazyLock,
+    atomic::{AtomicBool, Ordering},
+};
 use ts_rs::TS;
 
 /// Maximum distinct raw variants tracked per candidate key.
@@ -658,54 +662,61 @@ const KNOWN_INLINE_PATTERNS: &[&str] = &[
     "&quot;", "&apos;",
 ];
 
+static KNOWN_INLINE_AUTOMATON: LazyLock<AhoCorasick> =
+    LazyLock::new(|| AhoCorasick::new(KNOWN_INLINE_PATTERNS).unwrap());
+
 /// Detects inline artefacts in the given file text.
 /// Returns a per-file local aggregated map.
 fn detect_inline_artifacts(
     ft: &FileText,
     config: &RepeatedArtifactScanConfig,
 ) -> HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> {
-    let mut map: HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> = HashMap::new();
-
     if !config.include_inline_artifacts {
-        return map;
+        return HashMap::new();
     }
+
+    detect_inline_artifacts_with_automaton(ft, config, &KNOWN_INLINE_AUTOMATON)
+}
+
+fn detect_inline_artifacts_with_automaton(
+    ft: &FileText,
+    config: &RepeatedArtifactScanConfig,
+    automaton: &AhoCorasick,
+) -> HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> {
+    let mut map: HashMap<(RepeatedArtifactKind, String), LocalCandidateStats> = HashMap::new();
 
     for (line_idx, line) in ft.raw_lines.iter().enumerate() {
         if line.is_empty() {
             continue;
         }
-        for &pattern in KNOWN_INLINE_PATTERNS {
-            let mut search_start = 0;
-            while let Some(pos) = line[search_start..].find(pattern) {
-                let abs_pos = search_start + pos;
-                search_start = abs_pos + pattern.len();
 
-                let key = (RepeatedArtifactKind::InlineArtifact, pattern.to_string());
-                let entry = map.entry(key).or_insert_with(|| LocalCandidateStats {
-                    occurrence_count: 0,
-                    top_count: 0,
-                    middle_count: 0,
-                    bottom_count: 0,
-                    unknown_count: 0,
-                    normalized_key: String::new(),
-                    display_text: pattern.to_string(),
-                    example_refs: Vec::new(),
-                    raw_variants: BTreeSet::from([pattern.to_string()]),
-                    raw_variant_overflow: false,
-                });
+        for mat in automaton.find_iter(line) {
+            let pattern = KNOWN_INLINE_PATTERNS[mat.pattern().as_usize()];
+            let key = (RepeatedArtifactKind::InlineArtifact, pattern.to_string());
+            let entry = map.entry(key).or_insert_with(|| LocalCandidateStats {
+                occurrence_count: 0,
+                top_count: 0,
+                middle_count: 0,
+                bottom_count: 0,
+                unknown_count: 0,
+                normalized_key: String::new(),
+                display_text: pattern.to_string(),
+                example_refs: Vec::new(),
+                raw_variants: BTreeSet::from([pattern.to_string()]),
+                raw_variant_overflow: false,
+            });
 
-                entry.occurrence_count += 1;
-                let pos_class = compute_position_for_line(ft, line_idx);
-                match pos_class {
-                    LinePosition::Top => entry.top_count += 1,
-                    LinePosition::Middle => entry.middle_count += 1,
-                    LinePosition::Bottom => entry.bottom_count += 1,
-                }
+            entry.occurrence_count += 1;
+            let pos_class = compute_position_for_line(ft, line_idx);
+            match pos_class {
+                LinePosition::Top => entry.top_count += 1,
+                LinePosition::Middle => entry.middle_count += 1,
+                LinePosition::Bottom => entry.bottom_count += 1,
+            }
 
-                if entry.example_refs.len() < config.max_examples_per_candidate {
-                    // Inline examples use the second slot as a character offset.
-                    entry.example_refs.push((line_idx, abs_pos));
-                }
+            if entry.example_refs.len() < config.max_examples_per_candidate {
+                // Inline examples use the second slot as a byte offset.
+                entry.example_refs.push((line_idx, mat.start()));
             }
         }
     }
@@ -1204,13 +1215,13 @@ fn phase3_finalize(
 
                 if is_inline {
                     let line_idx = rs;
-                    let char_pos = re;
+                    let byte_pos = re;
                     let line = ft.raw_lines.get(line_idx)?;
                     let pattern = &entry.display_text;
                     let plen = pattern.len();
 
-                    let context_before = safe_context_before(line, char_pos, 80);
-                    let context_after = safe_context_after(line, char_pos, plen, 80);
+                    let context_before = safe_context_before(line, byte_pos, 80);
+                    let context_after = safe_context_after(line, byte_pos, plen, 80);
                     let matched_text = pattern.to_string();
 
                     Some(RepeatedArtifactExample {
@@ -2328,6 +2339,35 @@ mod tests {
             "&nbsp; should be detected as InlineArtifact"
         );
         assert_eq!(nbsp.unwrap().occurrence_count, 3);
+    }
+
+    #[test]
+    fn test_multiple_inline_artifacts_in_one_line() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "first <br/> second &nbsp; third <br /> fourth\n";
+        let doc = make_text_record("inline_multi.txt", content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 1,
+            min_files: 1,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let result = scan_repeated_artifacts(&[doc], &config, &CleaningConfig::default()).unwrap();
+
+        for expected in ["<br/>", "&nbsp;", "<br />"] {
+            let candidate = result
+                .iter()
+                .find(|c| {
+                    c.kind == RepeatedArtifactKind::InlineArtifact && c.display_text == expected
+                })
+                .unwrap_or_else(|| panic!("{} should be detected as InlineArtifact", expected));
+            assert_eq!(candidate.occurrence_count, 1);
+            assert_eq!(candidate.normalized_key, "");
+            assert_eq!(candidate.raw_variants, vec![expected.to_string()]);
+            assert_eq!(candidate.examples.len(), 1);
+            assert_eq!(candidate.examples[0].line_number, Some(1));
+            assert_eq!(candidate.examples[0].matched_text, expected);
+        }
     }
 
     #[test]
