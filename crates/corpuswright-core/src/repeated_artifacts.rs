@@ -14,6 +14,7 @@ use crate::scan::{DocumentRecord, DocumentType};
 use crate::text_normalization::normalize_line_for_repeated_artifact as normalize_line;
 use aho_corasick::AhoCorasick;
 use rayon::prelude::*;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{
@@ -25,6 +26,90 @@ use ts_rs::TS;
 /// Maximum distinct raw variants tracked per candidate key.
 /// Beyond this cap, `raw_variant_overflow` is set to true.
 const RAW_VARIANT_TRACK_CAP: usize = 200;
+
+static COMMON_SECTION_HEADING_KEYS: LazyLock<BTreeSet<String>> = LazyLock::new(|| {
+    normalized_key_set(&[
+        "abstract",
+        "introduction",
+        "method",
+        "methods",
+        "methodology",
+        "materials and methods",
+        "results",
+        "discussion",
+        "conclusion",
+        "conclusions",
+        "references",
+        "bibliography",
+        "appendix",
+        "appendices",
+        "acknowledgements",
+        "acknowledgments",
+        "resumo",
+        "introdução",
+        "introducao",
+        "método",
+        "metodo",
+        "métodos",
+        "metodos",
+        "metodologia",
+        "materiais e métodos",
+        "materiais e metodos",
+        "resultados",
+        "discussão",
+        "discussao",
+        "conclusão",
+        "conclusao",
+        "conclusões",
+        "conclusoes",
+        "referências",
+        "referencias",
+        "bibliografia",
+        "apêndice",
+        "apendice",
+        "apêndices",
+        "apendices",
+        "anexo",
+        "anexos",
+        "agradecimentos",
+        "résumé",
+        "resume",
+        "méthode",
+        "methode",
+        "méthodes",
+        "methodes",
+        "méthodologie",
+        "methodologie",
+        "matériels et méthodes",
+        "materiels et methodes",
+        "résultats",
+        "resultats",
+        "références",
+        "bibliographie",
+        "remerciements",
+        "annexe",
+        "annexes",
+    ])
+});
+
+static PAGE_LABEL_KEYS: LazyLock<BTreeSet<String>> = LazyLock::new(|| {
+    normalized_key_set(&[
+        "page 1",
+        "page 1 of 2",
+        "p 1",
+        "p. 1",
+        "pag 1",
+        "pag. 1",
+        "pág 1",
+        "pág. 1",
+        "pagina 1",
+        "página 1",
+        "pagina 1 de 2",
+        "página 1 de 2",
+    ])
+});
+
+static RE_DECIMAL_DIGIT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\p{Nd}$").unwrap());
 
 /// Configuration options for the repeated artefact scan.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -441,6 +526,31 @@ fn calculate_suspicion_score(
     occ_factor * file_factor * position_bonus * block_multiplier * len_factor * symbol_bonus
 }
 
+fn normalized_key_set(entries: &[&str]) -> BTreeSet<String> {
+    entries
+        .iter()
+        .map(|entry| normalize_line(entry))
+        .filter(|key| !key.is_empty())
+        .collect()
+}
+
+fn is_common_section_heading(normalized_key: &str) -> bool {
+    COMMON_SECTION_HEADING_KEYS.contains(normalized_key.trim())
+}
+
+fn is_page_label_like(normalized_key: &str) -> bool {
+    PAGE_LABEL_KEYS.contains(normalized_key.trim())
+}
+
+fn is_decimal_digit(c: char) -> bool {
+    if c.is_ascii_digit() {
+        return true;
+    }
+
+    let mut buf = [0; 4];
+    RE_DECIMAL_DIGIT.is_match(c.encode_utf8(&mut buf))
+}
+
 /// Classifies a candidate's risk label.
 fn classify_risk(
     display_text: &str,
@@ -452,18 +562,7 @@ fn classify_risk(
 ) -> ArtifactRiskLabel {
     let lower_key = normalized_key.trim().to_lowercase();
 
-    let common_headings = [
-        "abstract",
-        "introduction",
-        "methods",
-        "results",
-        "discussion",
-        "conclusion",
-        "references",
-        "bibliography",
-        "appendix",
-    ];
-    if common_headings.contains(&lower_key.as_str()) {
+    if is_common_section_heading(&lower_key) {
         return ArtifactRiskLabel::CommonSectionHeadingReviewCarefully;
     }
 
@@ -490,6 +589,13 @@ fn classify_risk(
         return ArtifactRiskLabel::StrongHeaderFooterCandidate;
     }
 
+    if is_page_label_like(&lower_key) && occurrence_count >= 3 {
+        if pos_ratio >= 0.50 {
+            return ArtifactRiskLabel::StrongHeaderFooterCandidate;
+        }
+        return ArtifactRiskLabel::PossibleBoilerplate;
+    }
+
     if file_count >= 2 {
         return ArtifactRiskLabel::PossibleBoilerplate;
     }
@@ -514,7 +620,7 @@ pub fn classify_content(text: &str) -> CandidateContentClass {
     }
 
     let alpha_count = chars.iter().filter(|c| c.is_alphabetic()).count() as f64;
-    let digit_count = chars.iter().filter(|c| c.is_ascii_digit()).count() as f64;
+    let digit_count = chars.iter().filter(|c| is_decimal_digit(**c)).count() as f64;
     let symbol_count = chars
         .iter()
         .filter(|c| !c.is_alphanumeric() && !c.is_whitespace())
@@ -1475,6 +1581,113 @@ mod tests {
         assert_eq!(risk, ArtifactRiskLabel::CommonSectionHeadingReviewCarefully);
     }
 
+    fn assert_common_headings(headings: &[&str]) {
+        for heading in headings {
+            let normalized = normalize_line(heading);
+            assert!(
+                is_common_section_heading(&normalized),
+                "expected {heading:?} to normalise to a common section heading"
+            );
+        }
+    }
+
+    #[test]
+    fn test_common_section_heading_helper_recognises_english_headings() {
+        assert_common_headings(&[
+            "abstract",
+            "introduction",
+            "method",
+            "methods",
+            "methodology",
+            "materials and methods",
+            "results",
+            "discussion",
+            "conclusion",
+            "conclusions",
+            "references",
+            "bibliography",
+            "appendix",
+            "appendices",
+            "acknowledgements",
+            "acknowledgments",
+        ]);
+    }
+
+    #[test]
+    fn test_common_section_heading_helper_recognises_portuguese_headings() {
+        assert_common_headings(&[
+            "introdução",
+            "metodologia",
+            "resultados",
+            "discussão",
+            "conclusão",
+            "referências",
+        ]);
+    }
+
+    #[test]
+    fn test_common_section_heading_helper_recognises_unaccented_portuguese_headings() {
+        assert_common_headings(&["introducao", "discussao", "conclusao", "referencias"]);
+    }
+
+    #[test]
+    fn test_common_section_heading_helper_recognises_french_headings() {
+        assert_common_headings(&["résumé", "méthodes", "résultats", "références"]);
+    }
+
+    #[test]
+    fn test_common_section_heading_helper_recognises_unaccented_french_headings() {
+        assert_common_headings(&["resume", "methodes", "resultats", "references"]);
+    }
+
+    #[test]
+    fn test_page_label_helper_recognises_conservative_page_forms() {
+        for normalized_key in [
+            "page #",
+            "page # of #",
+            "p #",
+            "p. #",
+            "pag #",
+            "pag. #",
+            "pág #",
+            "pág. #",
+            "pagina #",
+            "página #",
+            "pagina # de #",
+            "página # de #",
+        ] {
+            assert!(
+                is_page_label_like(normalized_key),
+                "expected {normalized_key:?} to be page-label-like"
+            );
+        }
+    }
+
+    #[test]
+    fn test_page_label_helper_rejects_ordinary_prose() {
+        for normalized_key in [
+            "this is page #",
+            "chapter #",
+            "page one",
+            "pagina de resultados",
+            "the top # lines",
+        ] {
+            assert!(
+                !is_page_label_like(normalized_key),
+                "expected {normalized_key:?} to stay outside page-label matching"
+            );
+        }
+    }
+
+    #[test]
+    fn test_classify_risk_page_labels_use_repetition_evidence() {
+        let risk = classify_risk("Página 2", "página #", 3, 1, 0, 0);
+        assert_eq!(risk, ArtifactRiskLabel::PossibleBoilerplate);
+
+        let risk = classify_risk("Pág. 2", "pág. #", 4, 1, 2, 0);
+        assert_eq!(risk, ArtifactRiskLabel::StrongHeaderFooterCandidate);
+    }
+
     #[test]
     fn test_classify_risk_noise() {
         let risk = classify_risk("### ||| ***", "### ||| ***", 5, 2, 0, 0);
@@ -2028,6 +2241,30 @@ mod tests {
         assert_eq!(
             classify_content("-5.81 28.93"),
             CandidateContentClass::NumericDominant
+        );
+    }
+
+    #[test]
+    fn test_classify_numeric_unicode_decimal_digits() {
+        assert_eq!(
+            classify_content("12 34"),
+            CandidateContentClass::NumericDominant
+        );
+        assert_eq!(
+            classify_content("１２ ３４"),
+            CandidateContentClass::NumericDominant
+        );
+        assert_eq!(
+            classify_content("٣٤ ٥٦"),
+            CandidateContentClass::NumericDominant
+        );
+        assert_eq!(
+            classify_content("Page ٣"),
+            CandidateContentClass::MixedTextNumbers
+        );
+        assert_eq!(
+            classify_content("Página ４"),
+            CandidateContentClass::MixedTextNumbers
         );
     }
 
