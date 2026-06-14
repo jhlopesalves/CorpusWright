@@ -60,6 +60,13 @@ That metadata is used for diagnostics and scoring. It is not saved into the
 cleaning configuration and is not passed to `clean_text` when Custom Removals
 are applied.
 
+Repeated artefact candidates also carry deterministic text/noise profile
+signals for review. Those signals describe the candidate's local text shape,
+while page-zone evidence describes where occurrences appear. Page-zone
+promotion uses reliable page metadata and the candidate's top/middle/bottom
+summary; it does not depend on whether the text signal is natural text, page
+label, extraction noise, or ambiguous.
+
 ## Current page information in the cleaner
 
 General cleaning is performed by:

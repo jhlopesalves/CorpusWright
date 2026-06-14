@@ -101,6 +101,21 @@ form is `page #`. It does not remove a prose sentence such as `This mentions
 page 3 inside a sentence.` because that sentence has a different normalised
 whole-line form.
 
+## Candidate text signals
+
+Repeated artefact candidates include deterministic text/noise signals for
+review. The signal describes the candidate's local text shape, such as likely
+natural text, section heading, page label, table/statistical row,
+formula/code-like line, extraction noise, or ambiguous text. The profile also
+records compact ratios for letters, digits, symbols, whitespace, token count,
+and repeated character runs.
+
+These signals are advisory. They do not suppress candidates, change candidate
+promotion, or remove text. They sit beside `CandidateContentClass`,
+`ArtifactRiskLabel`, and page-position summaries so the user can distinguish
+text/noise evidence from repeated-page-position evidence before adding a Custom
+Removal.
+
 ## Legacy candidate paths
 
 Some repeated artefact candidates still use legacy literal removals:
@@ -129,4 +144,3 @@ same saved cleaning configuration produce the same cleaned text. The app does
 not silently delete repeated artefacts just because the scanner found them; a
 candidate affects output only after the user promotes it or adds an explicit
 Custom Removal.
-

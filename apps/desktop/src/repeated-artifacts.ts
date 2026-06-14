@@ -7,6 +7,8 @@ import {
 } from "./dom";
 import { state } from "./state";
 import type { RemovalRule } from "./generated/CleaningConfig.js";
+import type { CandidateTextProfile } from "./generated/CandidateTextProfile.js";
+import type { CandidateTextSignalLabel } from "./generated/CandidateTextSignalLabel.js";
 import type { PositionSummary } from "./generated/PositionSummary.js";
 import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
 import type { RepeatedArtifactScanConfig } from "./generated/RepeatedArtifactScanConfig.js";
@@ -597,6 +599,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       const tdContent = document.createElement("td");
       tdContent.textContent = formatContentClass(cand.content_class);
       tdContent.style.fontSize = "0.8rem";
+      tdContent.title = formatTextSignalSummary(cand);
 
       const tdOcc = document.createElement("td");
       tdOcc.textContent = cand.occurrence_count.toString();
@@ -682,6 +685,74 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     }
   }
 
+  function getTextProfile(cand: RepeatedArtifactCandidate): CandidateTextProfile | null {
+    const candidate = cand as RepeatedArtifactCandidate & { text_profile?: CandidateTextProfile };
+    return candidate.text_profile ?? null;
+  }
+
+  function getTextSignalLabel(cand: RepeatedArtifactCandidate): CandidateTextSignalLabel | null {
+    const candidate = cand as RepeatedArtifactCandidate & { text_signal_label?: CandidateTextSignalLabel };
+    return candidate.text_signal_label ?? null;
+  }
+
+  function getTextSignalReasons(cand: RepeatedArtifactCandidate): string[] {
+    const candidate = cand as RepeatedArtifactCandidate & { text_signal_reasons?: string[] };
+    return Array.isArray(candidate.text_signal_reasons) ? candidate.text_signal_reasons : [];
+  }
+
+  function formatTextSignalLabel(label: CandidateTextSignalLabel | null): string {
+    switch (label) {
+      case "likely_natural_text": return "likely natural text";
+      case "likely_section_heading": return "likely section heading";
+      case "likely_page_label": return "likely page label";
+      case "likely_table_or_numeric_row": return "likely table/statistical row";
+      case "likely_formula_or_code": return "likely formula/code-like";
+      case "likely_markup_or_extraction_noise": return "likely extraction noise";
+      case "ambiguous": return "ambiguous";
+      default: return "unavailable";
+    }
+  }
+
+  function formatRatio(value: number): string {
+    return `${Math.round(value * 100)}%`;
+  }
+
+  function formatTextSignalSummary(cand: RepeatedArtifactCandidate): string {
+    const label = getTextSignalLabel(cand);
+    const profile = getTextProfile(cand);
+    const parts = [`Text signal: ${formatTextSignalLabel(label)}`];
+
+    if (profile) {
+      parts.push(`${profile.token_count} token${profile.token_count === 1 ? "" : "s"}`);
+      parts.push(`${formatRatio(profile.alphabetic_ratio)} letters`);
+      parts.push(`${formatRatio(profile.digit_ratio)} digits`);
+      parts.push(`${formatRatio(profile.symbol_ratio)} symbols`);
+      if (profile.max_repeated_char_run >= 4) {
+        parts.push("repeated character run");
+      }
+    }
+
+    return parts.join(" · ");
+  }
+
+  function formatTextSignalReason(reason: string): string {
+    switch (reason) {
+      case "common_section_heading": return "common section heading";
+      case "page_label_pattern": return "page-label pattern";
+      case "high_symbol_ratio": return "symbol-heavy";
+      case "high_digit_ratio": return "digit-heavy";
+      case "formula_or_code_symbols": return "formula/code symbols";
+      case "markup_entity_or_tag": return "markup tag or entity";
+      case "cid_marker": return "CID marker";
+      case "long_repeated_character_run": return "long repeated character run";
+      case "page_edge_repetition": return "appears at page edge";
+      case "mostly_alphabetic": return "mostly alphabetic";
+      case "multi_token_text": return "multi-token text";
+      case "table_or_numeric_row": return "table/statistical row pattern";
+      default: return reason.replace(/_/g, " ");
+    }
+  }
+
   function showCandidateDetails(cand: RepeatedArtifactCandidate): void {
     dom.artifactDetailsContent.innerHTML = "";
 
@@ -716,9 +787,23 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       metaParts.push(`<span><strong>Raw variants:</strong> ${cand.raw_variant_count} tracked${cappedNote}</span>`);
     }
     metaParts.push(`<span><strong>Risk:</strong> ${formatRiskLabel(cand.risk_label)}</span>`);
+    metaParts.push(`<span><strong>Text signal:</strong> ${formatTextSignalLabel(getTextSignalLabel(cand))}</span>`);
 
     metaDiv.innerHTML = metaParts.join("");
     dom.artifactDetailsContent.appendChild(metaDiv);
+
+    const textSignalDiv = document.createElement("div");
+    textSignalDiv.className = "detail-note detail-note-info";
+    textSignalDiv.textContent = formatTextSignalSummary(cand);
+    dom.artifactDetailsContent.appendChild(textSignalDiv);
+
+    const textSignalReasons = getTextSignalReasons(cand).map(formatTextSignalReason);
+    if (textSignalReasons.length > 0) {
+      const textSignalReasonsDiv = document.createElement("div");
+      textSignalReasonsDiv.className = "detail-note detail-note-info";
+      textSignalReasonsDiv.textContent = `Why: ${textSignalReasons.join("; ")}`;
+      dom.artifactDetailsContent.appendChild(textSignalReasonsDiv);
+    }
 
     if (cand.content_class === "numeric_dominant") {
       const numericCaution = document.createElement("div");

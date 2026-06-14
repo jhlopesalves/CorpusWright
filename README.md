@@ -28,12 +28,13 @@ CorpusWright is my attempt to make that stage less miserable: load the documents
 - Loads single files or whole folders — TXT, HTML, DOCX, and PDF.
 - Shows original and processed text side by side, so you can see what each rule actually changed rather than trusting it blindly.
 - Lets you configure cleaning rules for whitespace, line breaks, format-specific noise (HTML, DOCX, PDF), and your own custom removals.
-- Finds repeated artefacts — running headers, footers, page labels, boilerplate, layout fragments — across the whole corpus, then lets you promote the ones you choose into removal rules.
+- Finds repeated artefacts — running headers, footers, page labels, boilerplate, layout fragments — across the whole corpus, shows deterministic text/noise signals for review, then lets you promote the ones you choose into removal rules.
 - Searches across selected documents with backend-powered hit navigation.
 - Exports cleaned text alongside a manifest, a warnings file, and the exact configuration used.
 
 Cleaning configurations save and load as JSON, so a corpus you cleaned today can be cleaned identically six months from now.
 Structured Custom Removals are described in [docs/structured-custom-removals.md](docs/structured-custom-removals.md).
+Repeated artefact review signals are described in [docs/repeated-artifact-finder.md](docs/repeated-artifact-finder.md).
 
 ## How it's built
 
