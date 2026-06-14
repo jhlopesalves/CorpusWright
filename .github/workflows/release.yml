@@ -113,9 +113,9 @@ jobs:
 
             This prerelease supersedes v0.1.0-alpha.3.
 
-            Theme: Smarter artefact review and safer extraction-noise cleaning.
+            Theme: sortable repeated artefact candidates, resizable column layout, and Windows compatibility fixes.
 
-            See docs/releases/v0.1.0-alpha.4.md for the release-note draft, including known limitations and validation.
+            See docs/releases/v0.1.0-alpha.5.md for the release-note draft, including known limitations and validation.
 
             Windows and macOS builds may be unsigned or ad-hoc signed. Windows may show SmartScreen warnings. macOS may require users to allow the app from Privacy & Security settings.
 

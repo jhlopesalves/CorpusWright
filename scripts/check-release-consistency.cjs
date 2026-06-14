@@ -76,12 +76,21 @@ sources.push({
 
 // 5. Cargo.lock entry for corpuswright-desktop
 const cargoLock = readFile("Cargo.lock");
-const lockMatch = cargoLock.match(
-  /\[\[package\]\]\s+name\s*=\s*"corpuswright-desktop"\s+version\s*=\s*"([^"]+)"/m
-);
+let lockVersion = null;
+const packageBlocks = cargoLock.split(/\[\[package\]\]/);
+for (const block of packageBlocks) {
+  const nameMatch = block.match(/^\s*name\s*=\s*"([^"]+)"/m);
+  if (nameMatch && nameMatch[1] === "corpuswright-desktop") {
+    const versionMatch = block.match(/^\s*version\s*=\s*"([^"]+)"/m);
+    if (versionMatch) {
+      lockVersion = versionMatch[1];
+      break;
+    }
+  }
+}
 sources.push({
   file: "Cargo.lock",
-  version: lockMatch ? lockMatch[1] : null,
+  version: lockVersion,
 });
 
 // 6. README.md alpha download link
