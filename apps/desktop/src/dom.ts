@@ -31,6 +31,7 @@ export const dom = {
   chkNormalizeUnicode: getElement<HTMLInputElement>("chk-normalize-unicode"),
   chkReplaceDiacritics: getElement<HTMLInputElement>("chk-replace-diacritics"),
   chkExtractHtml: getElement<HTMLInputElement>("chk-extract-html"),
+  chkRemoveObviousExtractionNoise: getElement<HTMLInputElement>("chk-remove-obvious-extraction-noise"),
   selTableExtraction: getElement<HTMLSelectElement>("sel-table-extraction"),
   selPdfTextSource: getElement<HTMLSelectElement>("sel-pdf-text-source"),
   selPdfOcrQuality: getElement<HTMLSelectElement>("sel-pdf-ocr-quality"),

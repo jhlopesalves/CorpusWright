@@ -34,6 +34,7 @@ pub mod scan;
 pub mod search;
 pub mod structured_document;
 mod text_normalization;
+pub mod text_profile;
 pub mod word_count;
 
 pub use clean::{
@@ -54,10 +55,10 @@ pub use preview::{
     preview_file, preview_files, preview_processed_files,
 };
 pub use repeated_artifacts::{
-    ArtifactRiskLabel, CancellationFlag, CandidateContentClass, CandidateTextProfile,
-    CandidateTextSignalLabel, PositionSummary, RepeatedArtifactCandidate, RepeatedArtifactExample,
-    RepeatedArtifactKind, RepeatedArtifactScanConfig, classify_content, no_cancellation,
-    scan_repeated_artifacts, scan_repeated_artifacts_with_cancel,
+    ArtifactRiskLabel, CancellationFlag, CandidateContentClass, PositionSummary,
+    RepeatedArtifactCandidate, RepeatedArtifactExample, RepeatedArtifactKind,
+    RepeatedArtifactScanConfig, classify_content, no_cancellation, scan_repeated_artifacts,
+    scan_repeated_artifacts_with_cancel,
 };
 pub use scan::{
     CorpusSummary, DocumentRecord, DocumentType, DocumentTypeCounts, ScanError, ScanReport,
@@ -67,3 +68,4 @@ pub use search::{SearchHit, SearchResult, search_corpus};
 pub use structured_document::{
     DocumentLine, DocumentPage, PAGE_EDGE_LINE_COUNT, StructuredDocument,
 };
+pub use text_profile::{CandidateTextProfile, CandidateTextSignalLabel};
