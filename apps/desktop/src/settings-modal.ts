@@ -81,6 +81,10 @@ function buildConfigFromModalControls(): CleaningConfig {
   config.pdf_ocr_quality = dom.selPdfOcrQuality.value as PdfOcrQuality;
   config.pdf_embedded_text_strategy = dom.selPdfEmbeddedTextStrategy.value as PdfEmbeddedTextStrategy;
   config.remove_patterns = [...state.tempRemovePatterns];
+  config.removal_rules = state.tempRemovalRules.map((rule) => ({
+    ...rule,
+    matcher: { ...rule.matcher },
+  }));
   config.replace_patterns = [...state.tempReplacePatterns];
   return config;
 }
@@ -194,6 +198,10 @@ export function initSettingsModal(callbacks: SettingsModalCallbacks): void {
     dom.selPdfOcrQuality.value = state.activeCleaningConfig.pdf_ocr_quality;
     dom.selPdfEmbeddedTextStrategy.value = state.activeCleaningConfig.pdf_embedded_text_strategy;
     state.tempRemovePatterns = [...state.activeCleaningConfig.remove_patterns];
+    state.tempRemovalRules = state.activeCleaningConfig.removal_rules.map((rule) => ({
+      ...rule,
+      matcher: { ...rule.matcher },
+    }));
     state.tempReplacePatterns = [...state.activeCleaningConfig.replace_patterns];
     renderCustomRemovals();
 
