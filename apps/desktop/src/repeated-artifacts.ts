@@ -125,6 +125,8 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     let addedCount = 0;
     let skippedDuplicates = 0;
     let groupedCandidatesExpanded = 0;
+    let cappedGroupedCandidatesExpanded = 0;
+    let trackedRawVariantsAddedFromGroupedCandidates = 0;
 
     for (const id of state.selectedCandidateIds) {
       const cand = state.lastScanCandidates.find(c => c.candidate_id === id);
@@ -135,11 +137,15 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       if (isNormalized) {
         if (!cand.raw_variants || cand.raw_variants.length === 0) continue;
         groupedCandidatesExpanded++;
+        if (cand.raw_variant_count_is_capped) {
+          cappedGroupedCandidatesExpanded++;
+        }
         for (const variant of cand.raw_variants) {
           if (!existingSet.has(variant)) {
             state.activeCleaningConfig.remove_patterns.push(variant);
             existingSet.add(variant);
             addedCount++;
+            trackedRawVariantsAddedFromGroupedCandidates++;
           } else {
             skippedDuplicates++;
           }
@@ -164,10 +170,16 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     const statusParts: string[] = [];
     statusParts.push(`Added ${addedCount} sequence${addedCount === 1 ? "" : "s"} to Custom Removals`);
     if (groupedCandidatesExpanded > 0) {
-      statusParts.push(`(${groupedCandidatesExpanded} grouped candidate${groupedCandidatesExpanded === 1 ? "" : "s"} expanded)`);
+      const addedTrackedText = trackedRawVariantsAddedFromGroupedCandidates > 0
+        ? `; ${trackedRawVariantsAddedFromGroupedCandidates} tracked raw variant${trackedRawVariantsAddedFromGroupedCandidates === 1 ? "" : "s"} added from them`
+        : "";
+      statusParts.push(`${groupedCandidatesExpanded} grouped candidate${groupedCandidatesExpanded === 1 ? "" : "s"} expanded into tracked raw variants${addedTrackedText}`);
     }
     if (skippedDuplicates > 0) {
       statusParts.push(`${skippedDuplicates} duplicate${skippedDuplicates === 1 ? "" : "s"} skipped`);
+    }
+    if (cappedGroupedCandidatesExpanded > 0) {
+      statusParts.push(`Warning: ${cappedGroupedCandidatesExpanded} grouped candidate${cappedGroupedCandidatesExpanded === 1 ? " was" : "s were"} capped, so only the tracked variants were added; Custom Removals are literal strings, and additional untracked variants from the same family may remain`);
     }
     dom.lblArtifactAddStatus.textContent = statusParts.join(". ") + ".";
     setTimeout(() => { dom.lblArtifactAddStatus.textContent = ""; }, 5000);
@@ -360,8 +372,10 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         chk.disabled = true;
         chk.title = "This grouped pattern has no actionable raw variants to add.";
       } else if (isNormalized) {
-        const cappedNote = cand.raw_variant_count_is_capped ? ` (${cand.raw_variant_count}+ known, may be incomplete)` : "";
-        chk.title = `Selecting adds all ${cand.raw_variants.length} exact raw variant${cand.raw_variants.length === 1 ? "" : "s"} to Custom Removals${cappedNote}.`;
+        const cappedNote = cand.raw_variant_count_is_capped
+          ? " This group is capped; additional untracked variants may remain after literal removal."
+          : "";
+        chk.title = `Selecting adds the ${cand.raw_variants.length} tracked raw variant${cand.raw_variants.length === 1 ? "" : "s"} to Custom Removals.${cappedNote}`;
       }
       chk.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -492,21 +506,21 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     metaDiv.style.borderRadius = "4px";
     metaDiv.style.border = "1px solid var(--border-color)";
 
-    let rawVariantsText: string;
-    if (cand.raw_variant_count_is_capped) {
-      rawVariantsText = `${cand.raw_variant_count}+`;
-    } else {
-      rawVariantsText = String(cand.raw_variant_count);
+    const metaParts = [
+      `<span><strong>Kind:</strong> ${formatKind(cand.kind)}</span>`,
+      `<span><strong>Content:</strong> ${formatContentClass(cand.content_class)}</span>`,
+      `<span><strong>Occurrences:</strong> ${cand.occurrence_count}</span>`,
+      `<span><strong>Files:</strong> ${cand.file_count}</span>`,
+    ];
+    if (isNormalized) {
+      const cappedNote = cand.raw_variant_count_is_capped
+        ? " (capped; actual count may be higher)"
+        : "";
+      metaParts.push(`<span><strong>Raw variants:</strong> ${cand.raw_variant_count} tracked${cappedNote}</span>`);
     }
+    metaParts.push(`<span><strong>Risk:</strong> ${formatRiskLabel(cand.risk_label)}</span>`);
 
-    metaDiv.innerHTML = `
-      <span><strong>Kind:</strong> ${formatKind(cand.kind)}</span>
-      <span><strong>Content:</strong> ${formatContentClass(cand.content_class)}</span>
-      <span><strong>Occurrences:</strong> ${cand.occurrence_count}</span>
-      <span><strong>Files:</strong> ${cand.file_count}</span>
-      <span><strong>Raw variants:</strong> ${rawVariantsText}</span>
-      <span><strong>Risk:</strong> ${formatRiskLabel(cand.risk_label)}</span>
-    `;
+    metaDiv.innerHTML = metaParts.join("");
     dom.artifactDetailsContent.appendChild(metaDiv);
 
     if (cand.content_class === "numeric_dominant") {
@@ -575,9 +589,9 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         variantsActionDiv.style.borderRadius = "4px";
         variantsActionDiv.style.borderLeft = "3px solid #50c878";
 
-        let variantsLabel = `Selecting this candidate adds all ${cand.raw_variants.length} exact raw variant${cand.raw_variants.length === 1 ? "" : "s"} to Custom Removals`;
+        let variantsLabel = `Selecting this candidate adds the ${cand.raw_variants.length} tracked raw variant${cand.raw_variants.length === 1 ? "" : "s"} to Custom Removals. The normalised grouping key itself is not added as a removal rule`;
         if (cand.raw_variant_count_is_capped) {
-          variantsLabel += ` (tracking capped at ${cand.raw_variants.length} — the actual count is ${cand.raw_variant_count}+; some rare variants may not be included)`;
+          variantsLabel += `, and this capped group may have additional untracked variants that literal Custom Removals will not catch`;
         }
         variantsLabel += ".";
         const variantsLabelP = document.createElement("div");
