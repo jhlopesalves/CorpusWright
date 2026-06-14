@@ -77,7 +77,7 @@ sources.push({
 // 5. Cargo.lock entry for corpuswright-desktop
 const cargoLock = readFile("Cargo.lock");
 const lockMatch = cargoLock.match(
-  /name = "corpuswright-desktop"\nversion = "(.*?)"/m
+  /\[\[package\]\]\s+name\s*=\s*"corpuswright-desktop"\s+version\s*=\s*"([^"]+)"/m
 );
 sources.push({
   file: "Cargo.lock",
