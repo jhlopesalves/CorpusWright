@@ -136,22 +136,19 @@ boundaries are explicit and intentionally represented. Otherwise page-zone
 rules should be ignored or rejected for that input rather than guessed from
 paragraph spacing.
 
+## Current status
+
+Raw PDF/OCR page texts can be cached. The general processed cleaning path now routes text through the page-aware cleaning helper `clean_structured_document` when raw page text exists, preserving cleaned page text when it is safe to do so (i.e. when page boundaries survive cleaning unchanged and the joined cleaned pages match the processed flat text exactly).
+
+However, page-zone rule scopes (`PageTop`, `PageBottom`, and `PageTopOrBottom`) are still not active. Configured custom removals continue to apply to whole lines without zone constraints.
+
+The next future step is adding actual page-zone rule scopes.
+
 ## Future implementation plan
 
-1. Route PDF/OCR processed paths through a common page-aware processing path
-   where cleaned page text survives PDF-specific cleanup and normal cleaning.
-2. Add `PageTop`, `PageBottom`, and `PageTopOrBottom` structured scopes, using
-   the same first 3 and last 3 line definition as current PDF cleanup.
-3. Apply page-zone scopes only to whole-line `Literal` and `NormalizedLine`
-   matchers.
-4. Keep `remove_patterns` unchanged and keep `WholeLine` behaviour unchanged.
-5. Generate TypeScript bindings for the new scope variants and update frontend
-   config validation.
-6. Add focused tests for top, bottom, top-or-bottom, middle-line preservation,
-   literal matching, normalised matching, legacy config loading, and
-   serialisation.
-
-Promotion from repeated artefact candidates can remain conservative after the
-scopes exist. Exact and normalised candidates can continue to promote to
-`WholeLine` until the UI can show the page-zone decision clearly and tests cover
-the full review path.
+1. Add `PageTop`, `PageBottom`, and `PageTopOrBottom` structured scopes, using the same first 3 and last 3 line definition as current PDF cleanup.
+2. Apply page-zone scopes only to whole-line `Literal` and `NormalizedLine` matchers.
+3. Keep `remove_patterns` unchanged and keep `WholeLine` behaviour unchanged.
+4. Generate TypeScript bindings for the new scope variants and update frontend config validation.
+5. Add focused tests for top, bottom, top-or-bottom, middle-line preservation, literal matching, normalised matching, legacy config loading, and serialisation.
+Promotion from repeated artefact candidates can remain conservative after the scopes exist. Exact and normalised candidates can continue to promote to `WholeLine` until the UI can show the page-zone decision clearly and tests cover the full review path.

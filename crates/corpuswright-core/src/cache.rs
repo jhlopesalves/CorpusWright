@@ -21,9 +21,11 @@
 
 use crate::clean::{
     CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource, TableExtractionStrategy,
+    clean_structured_document,
 };
 use crate::pdf::PdfExtractionOptions;
 use crate::scan::{DocumentRecord, DocumentType};
+use crate::structured_document::StructuredDocument;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -462,9 +464,36 @@ pub fn document_text_for_record(
     let (text, page_texts) = match mode {
         DocumentTextMode::Original => (extracted_text, page_texts),
         DocumentTextMode::Processed => {
-            let text =
-                apply_document_processing(record, extracted_text, cleaning_config, &mut warnings);
-            (text, None)
+            if record.document_type == DocumentType::Pdf && let Some(ref raw_pages) = page_texts {
+                let mut warnings_flat = warnings.clone();
+                let original_flat_text = apply_document_processing(
+                    record,
+                    extracted_text.clone(),
+                    cleaning_config,
+                    &mut warnings_flat,
+                );
+
+                let (_pdf_text, pdf_warnings, cleaned_pages) =
+                    crate::pdf::clean_extracted_pdf_pages_and_text(raw_pages, cleaning_config);
+
+                let document = StructuredDocument::from_pages(cleaned_pages);
+                let cleaned = clean_structured_document(&document, cleaning_config);
+
+                if cleaned.page_texts.is_some() && cleaned.text == original_flat_text {
+                    warnings.extend(pdf_warnings);
+                    (cleaned.text, cleaned.page_texts)
+                } else {
+                    (original_flat_text, None)
+                }
+            } else {
+                let text = apply_document_processing(
+                    record,
+                    extracted_text,
+                    cleaning_config,
+                    &mut warnings,
+                );
+                (text, None)
+            }
         }
     };
 
@@ -674,7 +703,193 @@ mod tests {
         )
         .unwrap();
         assert_eq!(processed.text, "header\n\nbody");
+        // Cleaned page texts are returned (not raw uppercase ones)
+        assert_eq!(
+            processed.page_texts,
+            Some(vec!["header".to_string(), "body".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_processed_cached_text_without_page_metadata_behaves_as_before() {
+        let dir = tempdir().unwrap();
+        let record = pdf_record(dir.path(), "flat.pdf");
+        let cache = ExtractionCache::new();
+        let cleaning_config = CleaningConfig {
+            lowercase: true,
+            ..CleaningConfig::default()
+        };
+        let pdf_options = PdfExtractionOptions::raw_from_cleaning_config(&cleaning_config);
+
+        cache.insert_extracted(
+            &record,
+            Some(pdf_options),
+            &cleaning_config,
+            CacheEntry {
+                extracted_text: "HEADER\n\nBODY".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(2),
+                page_texts: None, // No page metadata
+            },
+        );
+
+        let processed = document_text_for_record(
+            &record,
+            &cleaning_config,
+            DocumentTextMode::Processed,
+            Some(&cache),
+        )
+        .unwrap();
+        assert_eq!(processed.text, "header\n\nbody");
         assert!(processed.page_texts.is_none());
+    }
+
+    #[test]
+    fn test_processed_cached_text_with_page_metadata_uses_page_aware_cleaner_and_preserves() {
+        let dir = tempdir().unwrap();
+        let record = pdf_record(dir.path(), "pages.pdf");
+        let cache = ExtractionCache::new();
+        let cleaning_config = CleaningConfig {
+            lowercase: true,
+            ..CleaningConfig::default()
+        };
+        let pdf_options = PdfExtractionOptions::raw_from_cleaning_config(&cleaning_config);
+
+        cache.insert_extracted(
+            &record,
+            Some(pdf_options),
+            &cleaning_config,
+            CacheEntry {
+                extracted_text: "HEADER\n\nBODY".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(2),
+                page_texts: Some(vec!["HEADER".to_string(), "BODY".to_string()]),
+            },
+        );
+
+        let processed = document_text_for_record(
+            &record,
+            &cleaning_config,
+            DocumentTextMode::Processed,
+            Some(&cache),
+        )
+        .unwrap();
+        assert_eq!(processed.text, "header\n\nbody");
+        assert_eq!(
+            processed.page_texts,
+            Some(vec!["header".to_string(), "body".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_cleaned_page_metadata_is_preserved_when_independently_cleaned_pages_join_exactly() {
+        let dir = tempdir().unwrap();
+        let record = pdf_record(dir.path(), "exact-join.pdf");
+        let cache = ExtractionCache::new();
+        let cleaning_config = CleaningConfig {
+            lowercase: true,
+            trim_lines: true,
+            ..CleaningConfig::default()
+        };
+        let pdf_options = PdfExtractionOptions::raw_from_cleaning_config(&cleaning_config);
+
+        cache.insert_extracted(
+            &record,
+            Some(pdf_options),
+            &cleaning_config,
+            CacheEntry {
+                extracted_text: "  ALPHA  \n\n  BETA  ".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(2),
+                page_texts: Some(vec!["  ALPHA  ".to_string(), "  BETA  ".to_string()]),
+            },
+        );
+
+        let processed = document_text_for_record(
+            &record,
+            &cleaning_config,
+            DocumentTextMode::Processed,
+            Some(&cache),
+        )
+        .unwrap();
+        assert_eq!(processed.text, "alpha\n\nbeta");
+        assert_eq!(
+            processed.page_texts,
+            Some(vec!["alpha".to_string(), "beta".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_cleaned_page_metadata_is_dropped_when_equivalence_fails() {
+        let dir = tempdir().unwrap();
+        let record = pdf_record(dir.path(), "equivalence-fail.pdf");
+        let cache = ExtractionCache::new();
+        let cleaning_config = CleaningConfig {
+            join_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+        let pdf_options = PdfExtractionOptions::raw_from_cleaning_config(&cleaning_config);
+
+        cache.insert_extracted(
+            &record,
+            Some(pdf_options),
+            &cleaning_config,
+            CacheEntry {
+                extracted_text: "Alpha\nBeta".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(2),
+                page_texts: Some(vec!["Alpha".to_string(), "Beta".to_string()]),
+            },
+        );
+
+        let processed = document_text_for_record(
+            &record,
+            &cleaning_config,
+            DocumentTextMode::Processed,
+            Some(&cache),
+        )
+        .unwrap();
+        assert_eq!(processed.text, "Alpha Beta");
+        assert!(processed.page_texts.is_none());
+    }
+
+    #[test]
+    fn test_raw_page_texts_are_never_paired_with_cleaned_flat_text() {
+        let dir = tempdir().unwrap();
+        let record = pdf_record(dir.path(), "raw-pairing-check.pdf");
+        let cache = ExtractionCache::new();
+        let cleaning_config = CleaningConfig {
+            lowercase: true,
+            ..CleaningConfig::default()
+        };
+        let pdf_options = PdfExtractionOptions::raw_from_cleaning_config(&cleaning_config);
+
+        cache.insert_extracted(
+            &record,
+            Some(pdf_options),
+            &cleaning_config,
+            CacheEntry {
+                extracted_text: "HEADER\n\nBODY".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(2),
+                page_texts: Some(vec!["HEADER".to_string(), "BODY".to_string()]),
+            },
+        );
+
+        let processed = document_text_for_record(
+            &record,
+            &cleaning_config,
+            DocumentTextMode::Processed,
+            Some(&cache),
+        )
+        .unwrap();
+
+        assert_eq!(processed.text, "header\n\nbody");
+        if let Some(pages) = processed.page_texts {
+            for page in pages {
+                assert_eq!(page, page.to_lowercase());
+            }
+        }
     }
 
     #[test]

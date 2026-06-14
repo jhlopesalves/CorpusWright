@@ -868,6 +868,28 @@ pub fn clean_extracted_pdf_text(raw_text: &str, config: &CleaningConfig) -> (Str
     (text, warnings)
 }
 
+/// Applies PDF-specific cleanup directly to a slice of raw page texts.
+pub(crate) fn clean_extracted_pdf_pages_and_text(
+    pages: &[String],
+    config: &CleaningConfig,
+) -> (String, Vec<String>, Vec<String>) {
+    let page_lines = pages
+        .iter()
+        .enumerate()
+        .map(|(index, page)| {
+            (
+                index + 1,
+                page.lines()
+                    .map(|line| line.to_string())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let (text, warnings, _, cleaned_pages) =
+        clean_pdf_page_lines(page_lines, PdfCleanupOptions::from_cleaning_config(config));
+    (text, warnings, cleaned_pages)
+}
+
 fn flatten_pdf_page_texts(page_texts: &[String]) -> (String, bool) {
     let mut all_text = String::new();
     let mut has_any_text = false;
