@@ -33,6 +33,7 @@ CorpusWright is my attempt to make that stage less miserable: load the documents
 - Exports cleaned text alongside a manifest, a warnings file, and the exact configuration used.
 
 Cleaning configurations save and load as JSON, so a corpus you cleaned today can be cleaned identically six months from now.
+Structured Custom Removals are described in [docs/structured-custom-removals.md](docs/structured-custom-removals.md).
 
 ## How it's built
 
