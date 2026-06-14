@@ -24,6 +24,7 @@ use crate::clean::{
 };
 use crate::pdf::PdfExtractionOptions;
 use crate::scan::{DocumentRecord, DocumentType};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::RwLock;
@@ -154,7 +155,8 @@ impl ExtractionKey {
 /// - `extracted_text`: the raw extracted text (before cleaning).
 /// - `warnings`: extraction warnings (e.g. PDF page extraction issues).
 /// - `page_count`: number of pages (only meaningful for PDF; `None` for others).
-#[derive(Clone)]
+/// - `page_texts`: page-local text when extraction produced reliable page chunks.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CacheEntry {
     /// The extracted text (before cleaning).
     pub extracted_text: String,
@@ -162,6 +164,10 @@ pub struct CacheEntry {
     pub warnings: Vec<String>,
     /// Number of pages (PDF only; `None` for DOCX and text files).
     pub page_count: Option<usize>,
+    /// Extracted page text for page-aware formats. Older cache entries and
+    /// flat formats do not have this metadata.
+    #[serde(default)]
+    pub page_texts: Option<Vec<String>>,
 }
 
 /// Text mode requested by downstream tools.
@@ -178,6 +184,7 @@ pub struct DocumentText {
     pub text: String,
     pub warnings: Vec<String>,
     pub page_count: Option<usize>,
+    pub page_texts: Option<Vec<String>>,
 }
 
 /// Thread-safe, size-limited cache for extracted text.
@@ -191,8 +198,17 @@ struct CacheInner {
     entries: HashMap<ExtractionKey, CacheEntry>,
     /// Insertion order for FIFO eviction.
     order: VecDeque<ExtractionKey>,
-    /// Total byte size of all cached extracted_text strings.
+    /// Approximate total byte size of cached text and page metadata.
     total_bytes: usize,
+}
+
+fn cache_entry_bytes(entry: &CacheEntry) -> usize {
+    entry.extracted_text.len()
+        + entry
+            .page_texts
+            .as_ref()
+            .map(|pages| pages.iter().map(String::len).sum::<usize>())
+            .unwrap_or(0)
 }
 
 impl ExtractionCache {
@@ -245,9 +261,7 @@ impl ExtractionCache {
 
         let extracted = extract_text_from_record(record, pdf_options, cleaning_config)?;
 
-        let entry_bytes = extracted.extracted_text.len();
-        let page_count = extracted.page_count;
-        let warnings = extracted.warnings.clone();
+        let entry_bytes = cache_entry_bytes(&extracted);
 
         if entry_bytes > self.max_entry_bytes {
             return Ok(extracted);
@@ -264,7 +278,7 @@ impl ExtractionCache {
                 if let Some(evicted) = inner.entries.remove(&evict_key) {
                     inner.total_bytes = inner
                         .total_bytes
-                        .saturating_sub(evicted.extracted_text.len());
+                        .saturating_sub(cache_entry_bytes(&evicted));
                 }
             } else {
                 break;
@@ -272,14 +286,7 @@ impl ExtractionCache {
         }
 
         // Store a cloned entry so the original extraction result can be returned unchanged.
-        inner.entries.insert(
-            key.clone(),
-            CacheEntry {
-                extracted_text: extracted.extracted_text.clone(),
-                warnings,
-                page_count,
-            },
-        );
+        inner.entries.insert(key.clone(), extracted.clone());
         inner.order.push_back(key);
         inner.total_bytes += entry_bytes;
 
@@ -294,14 +301,14 @@ impl ExtractionCache {
         cleaning_config: &CleaningConfig,
         entry: CacheEntry,
     ) {
-        let entry_bytes = entry.extracted_text.len();
+        let entry_bytes = cache_entry_bytes(&entry);
         let key = ExtractionKey::from_record(record, pdf_options, cleaning_config);
         let mut inner = self.inner.write().unwrap();
 
         if let Some(existing) = inner.entries.remove(&key) {
             inner.total_bytes = inner
                 .total_bytes
-                .saturating_sub(existing.extracted_text.len());
+                .saturating_sub(cache_entry_bytes(&existing));
             inner.order.retain(|existing_key| existing_key != &key);
         }
 
@@ -320,7 +327,7 @@ impl ExtractionCache {
                 if let Some(evicted) = inner.entries.remove(&evict_key) {
                     inner.total_bytes = inner
                         .total_bytes
-                        .saturating_sub(evicted.extracted_text.len());
+                        .saturating_sub(cache_entry_bytes(&evicted));
                 }
             } else {
                 break;
@@ -449,12 +456,15 @@ pub fn document_text_for_record(
         extracted_text,
         mut warnings,
         page_count,
+        page_texts,
     } = raw_entry;
 
-    let text = match mode {
-        DocumentTextMode::Original => extracted_text,
+    let (text, page_texts) = match mode {
+        DocumentTextMode::Original => (extracted_text, page_texts),
         DocumentTextMode::Processed => {
-            apply_document_processing(record, extracted_text, cleaning_config, &mut warnings)
+            let text =
+                apply_document_processing(record, extracted_text, cleaning_config, &mut warnings);
+            (text, None)
         }
     };
 
@@ -462,6 +472,7 @@ pub fn document_text_for_record(
         text,
         warnings,
         page_count,
+        page_texts,
     })
 }
 
@@ -493,6 +504,7 @@ fn extract_text_from_record(
                 extracted_text: extracted.text,
                 warnings: extracted.warnings,
                 page_count: Some(extracted.page_count),
+                page_texts: extracted.page_texts,
             })
         }
         DocumentType::Docx => {
@@ -502,6 +514,7 @@ fn extract_text_from_record(
                 extracted_text: extracted.text,
                 warnings: extracted.warnings,
                 page_count: None,
+                page_texts: None,
             })
         }
         _ => {
@@ -510,6 +523,7 @@ fn extract_text_from_record(
                 extracted_text: String::from_utf8_lossy(&bytes).into_owned(),
                 warnings: Vec::new(),
                 page_count: None,
+                page_texts: None,
             })
         }
     }
@@ -534,6 +548,17 @@ mod tests {
         }
     }
 
+    fn pdf_record(dir: &std::path::Path, name: &str) -> DocumentRecord {
+        let path = dir.join(name);
+        std::fs::write(&path, b"%PDF-1.4").unwrap();
+        DocumentRecord {
+            source_path: path,
+            relative_path: PathBuf::from(name),
+            document_type: DocumentType::Pdf,
+            size_bytes: 8,
+        }
+    }
+
     #[test]
     fn test_cache_miss_then_hit() {
         let dir = tempdir().unwrap();
@@ -544,12 +569,66 @@ mod tests {
             .get_or_extract(&record, None, &CleaningConfig::default())
             .unwrap();
         assert_eq!(entry1.extracted_text, "Hello world");
+        assert!(entry1.page_texts.is_none());
 
         let entry2 = cache
             .get_or_extract(&record, None, &CleaningConfig::default())
             .unwrap();
         assert_eq!(entry2.extracted_text, "Hello world");
+        assert!(entry2.page_texts.is_none());
         assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn test_cache_entry_deserializes_without_page_texts() {
+        let json = r#"{"extracted_text":"flat text","warnings":[],"page_count":2}"#;
+
+        let entry: CacheEntry = serde_json::from_str(json).unwrap();
+
+        assert_eq!(entry.extracted_text, "flat text");
+        assert_eq!(entry.page_count, Some(2));
+        assert!(entry.page_texts.is_none());
+    }
+
+    #[test]
+    fn test_cache_entry_deserializes_with_page_texts() {
+        let json = r#"{"extracted_text":"alpha\n\nbeta","warnings":[],"page_count":2,"page_texts":["alpha","beta"]}"#;
+
+        let entry: CacheEntry = serde_json::from_str(json).unwrap();
+
+        assert_eq!(entry.extracted_text, "alpha\n\nbeta");
+        assert_eq!(
+            entry.page_texts,
+            Some(vec!["alpha".to_string(), "beta".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_inserted_pdf_cache_entry_preserves_page_texts() {
+        let dir = tempdir().unwrap();
+        let record = pdf_record(dir.path(), "pages.pdf");
+        let cache = ExtractionCache::new();
+        let page_texts = vec!["alpha".to_string(), "beta".to_string()];
+        let pdf_opts = PdfExtractionOptions::raw_default();
+
+        cache.insert_extracted(
+            &record,
+            Some(pdf_opts),
+            &CleaningConfig::default(),
+            CacheEntry {
+                extracted_text: "alpha\n\nbeta".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(2),
+                page_texts: Some(page_texts.clone()),
+            },
+        );
+
+        let entry = cache
+            .try_get(&record, Some(pdf_opts), &CleaningConfig::default())
+            .expect("inserted entry should be cached");
+
+        assert_eq!(entry.extracted_text, "alpha\n\nbeta");
+        assert_eq!(entry.page_texts, Some(page_texts));
     }
 
     #[test]
@@ -595,14 +674,7 @@ mod tests {
     #[test]
     fn test_different_pdf_options_create_different_keys() {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("test.pdf");
-        let record = DocumentRecord {
-            source_path: path.clone(),
-            relative_path: PathBuf::from("test.pdf"),
-            document_type: DocumentType::Pdf,
-            size_bytes: 0,
-        };
-        std::fs::write(&path, b"%PDF-1.4").unwrap();
+        let record = pdf_record(dir.path(), "test.pdf");
 
         let _cache = ExtractionCache::new();
 
@@ -717,14 +789,7 @@ mod tests {
     #[test]
     fn test_cache_entry_carries_warnings_and_page_count_for_pdf() {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("test.pdf");
-        let record = DocumentRecord {
-            source_path: path.clone(),
-            relative_path: PathBuf::from("test.pdf"),
-            document_type: DocumentType::Pdf,
-            size_bytes: 0,
-        };
-        std::fs::write(&path, b"%PDF-1.4").unwrap();
+        let record = pdf_record(dir.path(), "test.pdf");
 
         let cache = ExtractionCache::new();
         let pdf_opts = PdfExtractionOptions::raw_default();
@@ -799,6 +864,7 @@ mod tests {
         assert_eq!(entry.extracted_text, "Hello world");
         assert!(entry.warnings.is_empty());
         assert!(entry.page_count.is_none());
+        assert!(entry.page_texts.is_none());
     }
 
     #[test]
