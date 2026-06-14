@@ -355,9 +355,7 @@ pub(crate) fn has_page_zone_rules(config: &CleaningConfig) -> bool {
         rule.enabled
             && matches!(
                 rule.scope,
-                RemovalScope::PageTop
-                    | RemovalScope::PageBottom
-                    | RemovalScope::PageTopOrBottom
+                RemovalScope::PageTop | RemovalScope::PageBottom | RemovalScope::PageTopOrBottom
             )
     })
 }

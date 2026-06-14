@@ -243,6 +243,7 @@ pub struct RepeatedArtifactCandidate {
     pub file_count: usize,
     pub example_count: usize,
     pub position_summary: PositionSummary,
+    pub position_summary_is_page_based: bool,
     pub risk_label: ArtifactRiskLabel,
     /// Content classification (text, mixed, numeric, symbol).
     pub content_class: CandidateContentClass,
@@ -318,6 +319,7 @@ struct LocalCandidateStats {
     raw_variants: BTreeSet<String>,
     /// True if more than RAW_VARIANT_TRACK_CAP distinct variants were seen.
     raw_variant_overflow: bool,
+    position_summary_is_page_based: bool,
 }
 
 /// Lightweight stats gathered during the merge phase.
@@ -340,6 +342,7 @@ struct CountEntry {
     raw_variants: BTreeSet<String>,
     /// True if more than RAW_VARIANT_TRACK_CAP distinct variants exist.
     raw_variant_overflow: bool,
+    position_summary_is_page_based: bool,
 }
 
 /// Structured per-file result from the parallel aggregation pass.
@@ -783,6 +786,7 @@ fn detect_inline_artifacts_with_automaton(
                 example_refs: Vec::new(),
                 raw_variants: BTreeSet::from([pattern.to_string()]),
                 raw_variant_overflow: false,
+                position_summary_is_page_based: ft.has_page_metadata,
             });
 
             entry.occurrence_count += 1;
@@ -995,6 +999,7 @@ fn phase1_aggregate(
             example_refs: Vec::new(),
             raw_variants: BTreeSet::new(),
             raw_variant_overflow: false,
+            position_summary_is_page_based: ft.has_page_metadata,
         });
         entry.occurrence_count += 1;
         match pos {
@@ -1150,6 +1155,7 @@ fn phase2_merge(
                     example_refs: Vec::new(),
                     raw_variants: BTreeSet::new(),
                     raw_variant_overflow: false,
+                    position_summary_is_page_based: stats.position_summary_is_page_based,
                 });
 
             entry.occurrence_count += stats.occurrence_count;
@@ -1157,6 +1163,7 @@ fn phase2_merge(
             entry.middle_count += stats.middle_count;
             entry.bottom_count += stats.bottom_count;
             entry.unknown_count += stats.unknown_count;
+            entry.position_summary_is_page_based &= stats.position_summary_is_page_based;
 
             let fid = _file_idx as u32;
             if !entry.file_ids.contains(&fid) {
@@ -1343,6 +1350,7 @@ fn phase3_finalize(
                     bottom_count: entry.bottom_count,
                     unknown_count: entry.unknown_count,
                 },
+                position_summary_is_page_based: entry.position_summary_is_page_based,
                 risk_label,
                 content_class,
                 raw_variant_count,
@@ -3519,5 +3527,108 @@ mod tests {
 
         assert!(!ft.has_page_metadata);
         assert_eq!(ft.document.pages.len(), 1);
+    }
+
+    #[test]
+    fn test_position_summary_is_page_based_flag() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let cleaning_config = CleaningConfig::default();
+        let cache = ExtractionCache::new();
+
+        // Document 1: has page texts (page based)
+        let doc_page_based = make_pdf_record("page-based.pdf", temp_dir.path());
+        cache.insert_extracted(
+            &doc_page_based,
+            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                &cleaning_config,
+            )),
+            &cleaning_config,
+            crate::cache::CacheEntry {
+                extracted_text: "Header line\nbody line\nHeader line\nother body\nHeader line"
+                    .to_string(),
+                warnings: Vec::new(),
+                page_count: Some(2),
+                page_texts: Some(vec![
+                    "Header line\nbody line".to_string(),
+                    "Header line\nother body\nHeader line".to_string(),
+                ]),
+            },
+        );
+
+        // Document 2: fallback (flat text only, not page based)
+        let doc_flat = make_pdf_record("flat-based.pdf", temp_dir.path());
+        cache.insert_extracted(
+            &doc_flat,
+            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                &cleaning_config,
+            )),
+            &cleaning_config,
+            crate::cache::CacheEntry {
+                extracted_text: "Header line\nbody line\nHeader line\nother body\nHeader line"
+                    .to_string(),
+                warnings: Vec::new(),
+                page_count: Some(2),
+                page_texts: None, // No page texts
+            },
+        );
+
+        let config = RepeatedArtifactScanConfig {
+            min_occurrences: 2,
+            min_files: 1,
+            min_line_chars: 3,
+            include_inline_artifacts: false,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        // Scan page-based document only
+        let report_page_based = scan_repeated_artifacts_report_with_cancel_and_cache(
+            &[doc_page_based.clone()],
+            &config,
+            &cleaning_config,
+            Some(&cache),
+            &no_cancellation(),
+        )
+        .unwrap();
+
+        let cand_page_based = report_page_based
+            .candidates
+            .iter()
+            .find(|c| c.display_text == "Header line")
+            .unwrap();
+        assert!(cand_page_based.position_summary_is_page_based);
+
+        // Scan flat document only
+        let report_flat = scan_repeated_artifacts_report_with_cancel_and_cache(
+            &[doc_flat.clone()],
+            &config,
+            &cleaning_config,
+            Some(&cache),
+            &no_cancellation(),
+        )
+        .unwrap();
+
+        let cand_flat = report_flat
+            .candidates
+            .iter()
+            .find(|c| c.display_text == "Header line")
+            .unwrap();
+        assert!(!cand_flat.position_summary_is_page_based);
+
+        // Scan both mixed: page-based and flat. The flag must logically AND to false.
+        let report_mixed = scan_repeated_artifacts_report_with_cancel_and_cache(
+            &[doc_page_based, doc_flat],
+            &config,
+            &cleaning_config,
+            Some(&cache),
+            &no_cancellation(),
+        )
+        .unwrap();
+
+        let cand_mixed = report_mixed
+            .candidates
+            .iter()
+            .find(|c| c.display_text == "Header line")
+            .unwrap();
+        assert!(!cand_mixed.position_summary_is_page_based);
     }
 }
