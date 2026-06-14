@@ -89,10 +89,11 @@ Finder so the user can decide whether a candidate is likely boilerplate,
 structure, data, code, markup residue, or ordinary text.
 
 Cleaning remains config-based and explicit. Exact and normalised repeated line
-candidates affect output only after promotion to Custom Removals. Inline
-artefacts and block candidates continue to use their existing removal paths.
-Page-zone promotion continues to depend on reliable page metadata and the
-candidate's page-position summary, not on the text/noise signal.
+candidates affect output only after promotion to structured Custom Removal
+rules. Inline artefacts and block candidates continue to use their existing
+removal paths. Page-zone promotion continues to depend on reliable page
+metadata and the candidate's page-position summary, not on the text/noise
+signal.
 
 The processing parameter labelled "Remove obvious extraction/OCR noise" is a
 separate opt-in cleaner setting. It can remove lines such as repeated symbol

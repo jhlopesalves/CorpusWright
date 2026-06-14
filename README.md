@@ -1,6 +1,6 @@
 # CorpusWright
 [![CI](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v0.1.0--alpha.3-blue)](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.3)
+[![Release](https://img.shields.io/badge/release-v0.1.0--alpha.4-blue)](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.4)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 
@@ -9,7 +9,7 @@
 ![Corpus linguistics](https://img.shields.io/badge/corpus-linguistics-purple)
 
 
-**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.3](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.3)
+**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.4](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.4)
 
 > Experimental alpha. Windows and macOS builds are on the Releases page, but they're unsigned and your OS will probably warn you before letting them run.
 
@@ -28,12 +28,15 @@ CorpusWright is my attempt to make that stage less miserable: load the documents
 - Loads single files or whole folders — TXT, HTML, DOCX, and PDF.
 - Shows original and processed text side by side, so you can see what each rule actually changed rather than trusting it blindly.
 - Lets you configure cleaning rules for whitespace, line breaks, format-specific noise (HTML, DOCX, PDF), obvious extraction/OCR/markup noise lines, and your own custom removals.
-- Finds repeated artefacts — running headers, footers, page labels, boilerplate, layout fragments — across the whole corpus, shows deterministic text/noise signals for review, then lets you promote the ones you choose into removal rules.
+- Reviews repeated headers, footers, page labels, boilerplate, layout fragments, and extraction artefacts across the whole corpus with deterministic text/noise signals.
+- Promotes selected exact and normalised repeated-line candidates into structured removal rules.
+- Uses page-aware repeated artefact evidence and page-zone scoped rules when reliable PDF/OCR page metadata is available; flat text paths do not invent page zones.
 - Searches across selected documents with backend-powered hit navigation.
 - Exports cleaned text alongside a manifest, a warnings file, and the exact configuration used.
 
 Cleaning configurations save and load as JSON, so a corpus you cleaned today can be cleaned identically six months from now.
 Structured Custom Removals are described in [docs/structured-custom-removals.md](docs/structured-custom-removals.md).
+Page-zone removal rules are described in [docs/page-zone-removal-rules.md](docs/page-zone-removal-rules.md).
 Repeated artefact review signals are described in [docs/repeated-artifact-finder.md](docs/repeated-artifact-finder.md).
 The obvious extraction/OCR noise option uses deterministic text/noise profiling and is disabled by default. It removes only full lines such as repeated symbol junk, `cid:` markers, replacement-character junk, and standalone markup fragments; headings, page labels, tables, formulae, code, and ordinary text are preserved.
 

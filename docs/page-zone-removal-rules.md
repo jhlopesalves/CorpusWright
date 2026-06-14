@@ -1,16 +1,16 @@
 # Page-Zone Removal Rules
 
-Page-zone scoped Custom Removals would allow a structured rule to remove a
-matching whole-line artefact only when it appears in a page header or footer
-zone. This is useful for repeated running titles, page labels, and publisher
-boilerplate that can also appear legitimately in body text.
+Page-zone scoped Custom Removals remove a matching whole-line artefact only
+when it appears in a page header or footer zone. This is useful for repeated
+running titles, page labels, and publisher boilerplate that can also appear
+legitimately in body text.
 
-CorpusWright does not currently expose page-zone scoped `RemovalRule` behaviour.
-The core has a shared page-aware document model for internal line metadata and a
-page-aware cleaning helper for page-local whole-line cleaning, but configured
-Custom Removals still expose only flat-text and whole-line behaviour.
+The supported page-zone scopes are `PageTop`, `PageBottom`, and
+`PageTopOrBottom`. They require reliable page metadata. Flat text is not
+treated as page-aware input, and blank lines are not interpreted as page
+boundaries.
 
-## Current page-aware document model
+## Page-aware document model
 
 The Rust core represents page-aware text with `StructuredDocument`,
 `DocumentPage`, and `DocumentLine`. A structured document contains pages in
@@ -28,7 +28,7 @@ line container without pretending that paragraph breaks are page breaks. The
 model can also flatten itself deterministically by joining page lines with
 single newlines and pages with blank lines.
 
-## Current page information in extraction
+## Page information in extraction
 
 PDF embedded-text extraction builds page-local line lists before joining the
 document into text. The PDF cleanup layer receives a
@@ -46,7 +46,7 @@ page chunks by splitting on `\n\n`. That convention is intentionally used by the
 PDF extraction path, but it is still a text convention rather than durable line
 metadata attached to each line.
 
-## Current page information in the scanner
+## Page information in the scanner
 
 The Repeated Artefact Finder builds a `StructuredDocument` for each scanned
 file. When extraction or the cache provides page texts, the scanner builds the
@@ -72,7 +72,7 @@ promotion. Enabling it does not change candidate generation, repeated artefact
 visibility, or the rules used to choose `PageTop`, `PageBottom`, and
 `PageTopOrBottom` scopes.
 
-## Current page information in the cleaner
+## Page information in the cleaner
 
 General cleaning is performed by:
 
@@ -107,8 +107,9 @@ cleanup for PDFs when configured, then call `clean_text` for general cleaning.
 After the PDF cleanup step returns a string, these processed paths do not expose
 cleaned page-line metadata.
 
-Frontend configuration stores `remove_patterns` and `removal_rules`, but it does
-not carry per-document page spans or line context.
+Frontend configuration stores `remove_patterns` and `removal_rules`. Page-zone
+rules are applied only in paths that can pass reliable page-line metadata to the
+cleaner.
 
 ## Why naive page zones are unsafe
 
@@ -129,9 +130,9 @@ search, and word count paths. Built-in PDF cleanup already uses the convention,
 but serialised user rules need a clearer guarantee because they may be saved and
 reused across corpora and formats.
 
-## Required architecture
+## Page-zone rule contract
 
-Page-zone Custom Removals need a page-aware rule application layer. The shared
+Page-zone Custom Removals use a page-aware rule application layer. The shared
 document model provides this shape:
 
 ```text
@@ -156,7 +157,7 @@ boundaries are explicit and intentionally represented. Otherwise page-zone
 rules should be ignored or rejected for that input rather than guessed from
 paragraph spacing.
 
-## Current status
+## Candidate promotion
 
 Page-zone rule scopes (`PageTop`, `PageBottom`, and `PageTopOrBottom`) are fully supported by both the cleaner and the repeated artefact scanner.
 

@@ -17,6 +17,10 @@ structured rules. They also remain the path for Custom Removals that are meant
 to remove text anywhere inside a line, including repeated inline artefacts such
 as conversion leftovers.
 
+Saved configurations that do not contain newer fields continue to load with
+default values. The generated TypeScript bindings include the structured rule
+types used by the desktop configuration UI.
+
 ## Structured rules
 
 Structured removals live in `removal_rules` as `RemovalRule` values. A rule has:
