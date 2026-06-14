@@ -138,8 +138,6 @@ paragraph spacing.
 
 ## Current status
 
-Page-zone rule scopes (`PageTop`, `PageBottom`, and `PageTopOrBottom`) are implemented in the core. They require page-aware cleaning metadata provided by `StructuredDocument` / `clean_structured_document`.
+Page-zone rule scopes (`PageTop`, `PageBottom`, and `PageTopOrBottom`) are fully supported by both the cleaner and the repeated artefact scanner.
 
-When a cleaning configuration contains no page-zone rules, `clean_structured_document` ensures that the flat text output matches the output of flat `clean_text`. However, when page-zone rules are present, `clean_structured_document` serves as the authoritative page-aware cleaning path, and its flat output is derived directly from the cleaned page representation. Flat `clean_text` has no access to page metadata, and therefore ignores page-zone rules.
-
-Candidate promotion and the user interface do not yet generate page-zone rules automatically. A structured rule targeting a page zone must currently be specified manually in the configuration.
+Exact and normalised repeated line candidates are promoted to page-zone rules automatically when scanning reliable, page-based inputs (e.g., cached PDF or OCR texts) and no middle occurrences are present. If a candidate appears in the body (middle count is greater than zero), or if position metadata is derived from fallback flat/file estimates (which do not represent genuine pages), the promoted rule is kept at the default `WholeLine` scope. Inline and block candidates continue to use the legacy literal removal path.

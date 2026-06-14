@@ -2,17 +2,36 @@ import { dom } from "./dom";
 import { state } from "./state";
 import type { CleaningConfig, RemovalRule } from "./generated/CleaningConfig.js";
 
-function removalRuleText(rule: RemovalRule): string {
+export function formatRemovalRuleText(rule: RemovalRule): string {
   if (rule.matcher.kind === "literal") {
-    const prefix = rule.scope === "whole_line" ? "Whole line" : "Anywhere";
-    return `${prefix}: ${rule.matcher.text}`;
+    const scopeLabel = (() => {
+      switch (rule.scope) {
+        case "whole_line": return "Whole line";
+        case "page_top": return "Page top";
+        case "page_bottom": return "Page bottom";
+        case "page_top_or_bottom": return "Page top/bottom";
+        default: return "Anywhere";
+      }
+    })();
+    return `${scopeLabel}: ${rule.matcher.text}`;
   }
   if (rule.matcher.kind === "normalized_line") {
-    return rule.scope === "whole_line"
-      ? `Normalised whole line: ${rule.matcher.normalized_key}`
-      : rule.label;
+    const scopeLabel = (() => {
+      switch (rule.scope) {
+        case "whole_line": return "Whole-line";
+        case "page_top": return "Page top";
+        case "page_bottom": return "Page bottom";
+        case "page_top_or_bottom": return "Page top/bottom";
+        default: return "Anywhere";
+      }
+    })();
+    return `${scopeLabel} family: ${rule.matcher.normalized_key}`;
   }
   return rule.label;
+}
+
+function removalRuleText(rule: RemovalRule): string {
+  return formatRemovalRuleText(rule);
 }
 
 export function renderCustomRemovals(): void {

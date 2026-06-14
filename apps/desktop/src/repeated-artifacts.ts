@@ -12,6 +12,8 @@ import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCand
 import type { RepeatedArtifactScanConfig } from "./generated/RepeatedArtifactScanConfig.js";
 import type { RepeatedArtifactScanDiagnostics } from "./generated/RepeatedArtifactScanDiagnostics.js";
 import type { RepeatedArtifactScanReport } from "./generated/RepeatedArtifactScanReport.js";
+import type { RemovalScope } from "./generated/RemovalScope.js";
+import { formatRemovalRuleText } from "./custom-removals.js";
 
 interface RepeatedArtifactCallbacks {
   renderCustomRemovals: () => void;
@@ -19,17 +21,7 @@ interface RepeatedArtifactCallbacks {
 }
 
 function ruleDisplayText(rule: RemovalRule): string {
-  if (rule.matcher.kind === "literal") {
-    return rule.scope === "whole_line"
-      ? `Whole line: ${rule.matcher.text}`
-      : rule.matcher.text;
-  }
-  if (rule.matcher.kind === "normalized_line") {
-    return rule.scope === "whole_line"
-      ? `Normalised whole line: ${rule.matcher.normalized_key}`
-      : rule.label;
-  }
-  return rule.label;
+  return formatRemovalRuleText(rule);
 }
 
 function activeCustomRemovalCount(): number {
@@ -37,12 +29,12 @@ function activeCustomRemovalCount(): number {
     state.activeCleaningConfig.removal_rules.filter(rule => rule.enabled).length;
 }
 
-function exactLineRuleId(candidate: RepeatedArtifactCandidate): string {
-  return `repeated-artifact:whole-line:${candidate.candidate_id}`;
+function exactLineRuleId(candidate: RepeatedArtifactCandidate, scope: RemovalScope): string {
+  return `repeated-artifact:${scope}:${candidate.candidate_id}`;
 }
 
-function normalizedLineRuleId(candidate: RepeatedArtifactCandidate): string {
-  return `repeated-artifact:normalized-line:${candidate.candidate_id}`;
+function normalizedLineRuleId(candidate: RepeatedArtifactCandidate, scope: RemovalScope): string {
+  return `repeated-artifact:normalized-line:${scope}:${candidate.candidate_id}`;
 }
 
 function removalRuleDuplicateKey(rule: RemovalRule): string {
@@ -55,38 +47,79 @@ function removalRuleDuplicateKey(rule: RemovalRule): string {
   return `${rule.scope}\0${rule.id}`;
 }
 
-function exactLineRuleDuplicateKey(text: string): string {
-  return `whole_line\0${text}`;
+function exactLineRuleDuplicateKey(text: string, scope: RemovalScope): string {
+  return `${scope}\0${text}`;
 }
 
-function normalizedLineRuleDuplicateKey(normalizedKey: string): string {
-  return `whole_line\0normalized_line\0${normalizedKey}`;
+function normalizedLineRuleDuplicateKey(normalizedKey: string, scope: RemovalScope): string {
+  return `${scope}\0normalized_line\0${normalizedKey}`;
 }
 
-function createExactLineRemovalRule(candidate: RepeatedArtifactCandidate): RemovalRule {
+function computeCandidateScope(candidate: RepeatedArtifactCandidate): RemovalScope {
+  if (
+    candidate.position_summary_is_page_based &&
+    candidate.position_summary.middle_count === 0
+  ) {
+    const top = candidate.position_summary.top_count;
+    const bot = candidate.position_summary.bottom_count;
+    if (top > 0 && bot === 0) {
+      return "page_top";
+    }
+    if (top === 0 && bot > 0) {
+      return "page_bottom";
+    }
+    if (top > 0 && bot > 0) {
+      return "page_top_or_bottom";
+    }
+  }
+  return "whole_line";
+}
+
+function createExactLineRemovalRule(candidate: RepeatedArtifactCandidate, scope: RemovalScope): RemovalRule {
+  const matcherText = candidate.display_text;
   return {
-    id: exactLineRuleId(candidate),
-    label: candidate.display_text,
+    id: exactLineRuleId(candidate, scope),
+    label: formatRemovalRuleText({
+      id: "",
+      label: "",
+      source: "promoted_repeated_artifact",
+      matcher: {
+        kind: "literal",
+        text: matcherText,
+      },
+      scope,
+      enabled: true,
+    }),
     source: "promoted_repeated_artifact",
     matcher: {
       kind: "literal",
-      text: candidate.display_text,
+      text: matcherText,
     },
-    scope: "whole_line",
+    scope,
     enabled: true,
   };
 }
 
-function createNormalizedLineRemovalRule(candidate: RepeatedArtifactCandidate, normalizedKey: string): RemovalRule {
+function createNormalizedLineRemovalRule(candidate: RepeatedArtifactCandidate, normalizedKey: string, scope: RemovalScope): RemovalRule {
   return {
-    id: normalizedLineRuleId(candidate),
-    label: `Normalised whole line: ${normalizedKey}`,
+    id: normalizedLineRuleId(candidate, scope),
+    label: formatRemovalRuleText({
+      id: "",
+      label: "",
+      source: "promoted_repeated_artifact",
+      matcher: {
+        kind: "normalized_line",
+        normalized_key: normalizedKey,
+      },
+      scope,
+      enabled: true,
+    }),
     source: "promoted_repeated_artifact",
     matcher: {
       kind: "normalized_line",
       normalized_key: normalizedKey,
     },
-    scope: "whole_line",
+    scope,
     enabled: true,
   };
 }
@@ -202,9 +235,12 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     const existingSet = new Set(state.activeCleaningConfig.remove_patterns);
     const existingRuleIds = new Set(state.activeCleaningConfig.removal_rules.map(rule => rule.id));
     const existingRuleKeys = new Set(state.activeCleaningConfig.removal_rules.map(removalRuleDuplicateKey));
-    let literalSequencesAdded = 0;
-    let exactWholeLineRulesAdded = 0;
-    let normalizedWholeLineRulesAdded = 0;
+    let literalRemovalsAdded = 0;
+    let pageTopRulesAdded = 0;
+    let pageBottomRulesAdded = 0;
+    let pageTopBottomRulesAdded = 0;
+    let wholeLineRulesAdded = 0;
+    let normalizedFamilyRulesAdded = 0;
     let skippedDuplicates = 0;
     let normalizedFallbackCandidates = 0;
     let cappedNormalizedFallbackCandidates = 0;
@@ -215,12 +251,13 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       if (!cand) continue;
 
       const isNormalized = cand.kind === "normalized_line";
+      const scope = computeCandidateScope(cand);
 
       if (cand.kind === "exact_line") {
         const text = cand.display_text;
         if (!text) continue;
-        const rule = createExactLineRemovalRule(cand);
-        const ruleKey = exactLineRuleDuplicateKey(text);
+        const rule = createExactLineRemovalRule(cand, scope);
+        const ruleKey = exactLineRuleDuplicateKey(text, scope);
         if (existingRuleIds.has(rule.id) || existingRuleKeys.has(ruleKey)) {
           skippedDuplicates++;
           continue;
@@ -229,15 +266,24 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         state.activeCleaningConfig.removal_rules.push(rule);
         existingRuleIds.add(rule.id);
         existingRuleKeys.add(ruleKey);
-        exactWholeLineRulesAdded++;
+
+        if (scope === "page_top") {
+          pageTopRulesAdded++;
+        } else if (scope === "page_bottom") {
+          pageBottomRulesAdded++;
+        } else if (scope === "page_top_or_bottom") {
+          pageTopBottomRulesAdded++;
+        } else {
+          wholeLineRulesAdded++;
+        }
         continue;
       }
 
       if (isNormalized) {
         const normalizedKey = (cand.normalized_key || "").trim();
         if (normalizedKey) {
-          const rule = createNormalizedLineRemovalRule(cand, normalizedKey);
-          const ruleKey = normalizedLineRuleDuplicateKey(normalizedKey);
+          const rule = createNormalizedLineRemovalRule(cand, normalizedKey, scope);
+          const ruleKey = normalizedLineRuleDuplicateKey(normalizedKey, scope);
           if (existingRuleIds.has(rule.id) || existingRuleKeys.has(ruleKey)) {
             skippedDuplicates++;
             continue;
@@ -246,7 +292,16 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
           state.activeCleaningConfig.removal_rules.push(rule);
           existingRuleIds.add(rule.id);
           existingRuleKeys.add(ruleKey);
-          normalizedWholeLineRulesAdded++;
+
+          if (scope === "page_top") {
+            pageTopRulesAdded++;
+          } else if (scope === "page_bottom") {
+            pageBottomRulesAdded++;
+          } else if (scope === "page_top_or_bottom") {
+            pageTopBottomRulesAdded++;
+          } else {
+            normalizedFamilyRulesAdded++;
+          }
           continue;
         }
 
@@ -259,7 +314,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
           if (!existingSet.has(variant)) {
             state.activeCleaningConfig.remove_patterns.push(variant);
             existingSet.add(variant);
-            literalSequencesAdded++;
+            literalRemovalsAdded++;
             trackedRawVariantsAddedFromFallback++;
           } else {
             skippedDuplicates++;
@@ -270,14 +325,15 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         if (!existingSet.has(text)) {
           state.activeCleaningConfig.remove_patterns.push(text);
           existingSet.add(text);
-          literalSequencesAdded++;
+          literalRemovalsAdded++;
         } else {
           skippedDuplicates++;
         }
       }
     }
 
-    if (literalSequencesAdded > 0 || exactWholeLineRulesAdded > 0 || normalizedWholeLineRulesAdded > 0) {
+    const rulesAdded = pageTopRulesAdded + pageBottomRulesAdded + pageTopBottomRulesAdded + wholeLineRulesAdded + normalizedFamilyRulesAdded;
+    if (literalRemovalsAdded > 0 || rulesAdded > 0) {
       state.tempRemovePatterns = [...state.activeCleaningConfig.remove_patterns];
       state.tempRemovalRules = state.activeCleaningConfig.removal_rules.map((rule) => ({
         ...rule,
@@ -288,14 +344,23 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
     const statusParts: string[] = [];
     const addedParts: string[] = [];
-    if (exactWholeLineRulesAdded > 0) {
-      addedParts.push(`${exactWholeLineRulesAdded} whole-line rule${exactWholeLineRulesAdded === 1 ? "" : "s"}`);
+    if (pageTopRulesAdded > 0) {
+      addedParts.push(`${pageTopRulesAdded} page-top rule${pageTopRulesAdded === 1 ? "" : "s"}`);
     }
-    if (normalizedWholeLineRulesAdded > 0) {
-      addedParts.push(`${normalizedWholeLineRulesAdded} normalised whole-line rule${normalizedWholeLineRulesAdded === 1 ? "" : "s"}`);
+    if (pageBottomRulesAdded > 0) {
+      addedParts.push(`${pageBottomRulesAdded} page-bottom rule${pageBottomRulesAdded === 1 ? "" : "s"}`);
     }
-    if (literalSequencesAdded > 0) {
-      addedParts.push(`${literalSequencesAdded} literal sequence${literalSequencesAdded === 1 ? "" : "s"}`);
+    if (pageTopBottomRulesAdded > 0) {
+      addedParts.push(`${pageTopBottomRulesAdded} page-top/bottom rule${pageTopBottomRulesAdded === 1 ? "" : "s"}`);
+    }
+    if (wholeLineRulesAdded > 0) {
+      addedParts.push(`${wholeLineRulesAdded} whole-line rule${wholeLineRulesAdded === 1 ? "" : "s"}`);
+    }
+    if (normalizedFamilyRulesAdded > 0) {
+      addedParts.push(`${normalizedFamilyRulesAdded} normalised family rule${normalizedFamilyRulesAdded === 1 ? "" : "s"}`);
+    }
+    if (literalRemovalsAdded > 0) {
+      addedParts.push(`${literalRemovalsAdded} literal sequence${literalRemovalsAdded === 1 ? "" : "s"}`);
     }
     if (addedParts.length > 0) {
       const lastPart = addedParts[addedParts.length - 1];
@@ -321,18 +386,6 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       ? statusParts.join(". ") + "."
       : "No new removals added.";
     setTimeout(() => { dom.lblArtifactAddStatus.textContent = ""; }, 5000);
-
-    updateProcessedWarning();
-
-    if (state.selectedCorpusIndices.size > 0) {
-      callbacks.schedulePreviewUpdate(150);
-    }
-  });
-
-  dom.btnCancelScan.addEventListener("click", () => {
-    invoke("cancel_repeated_artifacts_command").catch((e) => console.error(e));
-    dom.btnCancelScan.disabled = true;
-    dom.btnCancelScan.textContent = "Cancelling...";
   });
 
   dom.btnRunArtifactScan.addEventListener("click", async () => {
