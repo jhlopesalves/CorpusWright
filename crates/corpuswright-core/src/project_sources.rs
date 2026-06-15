@@ -1131,6 +1131,79 @@ mod tests {
     }
 
     #[test]
+    fn mixed_pdf_processing_results_update_sources_independently() {
+        let dir = tempdir().unwrap();
+        let standard_path = dir.path().join("standard.pdf");
+        let ocr_path = dir.path().join("ocr.pdf");
+        let force_path = dir.path().join("force.pdf");
+
+        let mut standard = source_for_test(standard_path.clone(), ProjectSourceKind::Pdf);
+        standard.id = stable_project_source_id(dir.path(), &standard_path);
+        standard.pdf_profile = Some(ProjectSourcePdfProfile::Standard);
+        standard.extraction_route = ProjectSourcePdfProfile::Standard.extraction_route();
+
+        let mut ocr = source_for_test(ocr_path.clone(), ProjectSourceKind::Pdf);
+        ocr.id = stable_project_source_id(dir.path(), &ocr_path);
+        ocr.pdf_profile = Some(ProjectSourcePdfProfile::OcrRescue);
+        ocr.extraction_route = ProjectSourcePdfProfile::OcrRescue.extraction_route();
+
+        let mut force = source_for_test(force_path.clone(), ProjectSourceKind::Pdf);
+        force.id = stable_project_source_id(dir.path(), &force_path);
+        force.pdf_profile = Some(ProjectSourcePdfProfile::ForceOcr);
+        force.extraction_route = ProjectSourcePdfProfile::ForceOcr.extraction_route();
+
+        save_project_source_manifest(
+            dir.path(),
+            &ProjectSourceManifest {
+                version: SOURCE_MANIFEST_VERSION,
+                sources: vec![standard, ocr, force],
+            },
+        )
+        .unwrap();
+
+        let manifest = update_project_source_processing_results(
+            dir.path(),
+            vec![
+                ProjectSourceProcessingResult {
+                    path: standard_path,
+                    failed: false,
+                    warning_count: 0,
+                    reason_codes: Vec::new(),
+                },
+                ProjectSourceProcessingResult {
+                    path: ocr_path,
+                    failed: false,
+                    warning_count: 0,
+                    reason_codes: Vec::new(),
+                },
+                ProjectSourceProcessingResult {
+                    path: force_path,
+                    failed: false,
+                    warning_count: 0,
+                    reason_codes: Vec::new(),
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(manifest.sources[0].status, ProjectSourceStatus::Processed);
+        assert_eq!(manifest.sources[0].reason_codes, vec!["processed_ok"]);
+        assert_eq!(
+            manifest.sources[1].status,
+            ProjectSourceStatus::ProcessedWithWarnings
+        );
+        assert_eq!(
+            manifest.sources[1].reason_codes,
+            vec!["ocr_review_recommended"]
+        );
+        assert_eq!(
+            manifest.sources[2].status,
+            ProjectSourceStatus::ProcessedWithWarnings
+        );
+        assert_eq!(manifest.sources[2].reason_codes, vec!["ocr_generated"]);
+    }
+
+    #[test]
     fn layout_heavy_preparation_preserves_profile_separately_from_route() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("paper.pdf");

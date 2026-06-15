@@ -597,6 +597,24 @@ function strongestIntakeProfileId(profiles: ProjectSourcePdfProfile[]): PdfIntak
   return "standard";
 }
 
+function storedHandlingStatusLabel(paths: string[]): string {
+  const sources = selectedProjectPdfSources(paths);
+  const profiles = sources.map(storedProfileForSource);
+  const uniqueProfiles = new Set(profiles);
+  if (uniqueProfiles.size === 0) {
+    return "stored handling";
+  }
+  if (uniqueProfiles.size === 1) {
+    return `stored ${profileDisplayNames[pdfProfileToIntakeProfileId(profiles[0])]} handling`;
+  }
+  return "mixed stored handling";
+}
+
+function selectedProjectSourcesUseForceOcr(paths: string[]): boolean {
+  return selectedProjectPdfSources(paths)
+    .some(source => storedProfileForSource(source) === "force_ocr");
+}
+
 function setPdfIntakeHandlingChoicesVisible(visible: boolean): void {
   dom.pdfIntakeProfiles.classList.toggle("hidden", !visible);
   dom.pdfIntakeChangeHandlingBtn.classList.toggle("hidden", visible);
@@ -615,9 +633,18 @@ function renderStoredPdfHandlingSummary(paths: string[], selectedProfileId: PdfI
     `${selectedCount.toLocaleString()} selected ${selectedCount === 1 ? "PDF" : "PDFs"}.`;
   dom.pdfIntakeStoredHandlingList.replaceChildren();
 
+  if (pdfIntakeManualProfileOverride) {
+    const item = document.createElement("li");
+    item.textContent =
+      `Apply ${profileDisplayNames[selectedProfileId]} to all ` +
+      `${selectedCount.toLocaleString()} selected ${selectedCount === 1 ? "PDF" : "PDFs"}.`;
+    dom.pdfIntakeStoredHandlingList.appendChild(item);
+    return;
+  }
+
   if (counts.size === 0) {
     const item = document.createElement("li");
-    item.textContent = `Using ${profileDisplayNames[selectedProfileId]}.`;
+    item.textContent = "Selected PDFs are not in the current project source list.";
     dom.pdfIntakeStoredHandlingList.appendChild(item);
     return;
   }
@@ -632,7 +659,11 @@ function renderStoredPdfHandlingSummary(paths: string[], selectedProfileId: PdfI
   const mappedProfiles = new Set(selectedProfiles.map(pdfProfileToIntakeProfileId));
   if (mappedProfiles.size > 1) {
     const item = document.createElement("li");
-    item.textContent = `This batch will use ${profileDisplayNames[selectedProfileId]}; change handling to choose a single different profile.`;
+    item.textContent = "This batch will preserve each source's stored handling.";
+    dom.pdfIntakeStoredHandlingList.appendChild(item);
+  } else {
+    const item = document.createElement("li");
+    item.textContent = `This batch will use stored ${profileDisplayNames[pdfProfileToIntakeProfileId(selectedProfiles[0])]}.`;
     dom.pdfIntakeStoredHandlingList.appendChild(item);
   }
 }
@@ -799,7 +830,7 @@ export async function openPdfIntakeModalForSources(paths: string[]): Promise<voi
     dom.pdfIntakeStatus.textContent = "Diagnostics ready.";
     dom.statusBar.textContent =
       `PDF diagnostics ready for ${paths.length.toLocaleString()} selected project ` +
-      `${paths.length === 1 ? "PDF" : "PDFs"}. Using stored handling: ${profileDisplayNames[selectedPdfIntakeProfileId()]}.`;
+      `${paths.length === 1 ? "PDF" : "PDFs"}. Using ${storedHandlingStatusLabel(paths)}.`;
     dom.loadPdfIntakeFilesBtn.classList.remove("hidden");
     dom.loadPdfIntakeFilesBtn.disabled = false;
   } catch (error) {
@@ -909,13 +940,21 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
 
   const selectedProfileId = selectedPdfIntakeProfileId();
   const selectedPdfCount = pdfIntakeSelectedPaths.length;
-
+  const isProjectPreparation = pdfIntakeMode === "prepare-sources" && state.activeProject !== null;
   const profile = pdfIntakeProfiles[selectedProfileId];
   const materializationConfig: CleaningConfig = { ...state.activeCleaningConfig };
-  profile.apply(materializationConfig);
+  const selectedProfileConfig: CleaningConfig = { ...state.activeCleaningConfig };
+  profile.apply(selectedProfileConfig);
+  if (!isProjectPreparation) {
+    Object.assign(materializationConfig, selectedProfileConfig);
+  }
 
-  // Determine if this session uses force OCR (for accurate cancel wording)
-  pdfIntakeIsForceOcr = selectedProfileId === "force-ocr";
+  const profileOverride = isProjectPreparation && pdfIntakeManualProfileOverride
+    ? mapToPdfProfile(selectedProfileId)
+    : null;
+  pdfIntakeIsForceOcr = isProjectPreparation
+    ? profileOverride === "force_ocr" || (profileOverride === null && selectedProjectSourcesUseForceOcr(pdfIntakeSelectedPaths))
+    : selectedProfileId === "force-ocr";
 
   // Increment session ID to invalidate any stale progress listeners
   pdfIntakeSessionId += 1;
@@ -936,24 +975,25 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
     dom.btnClosePdfIntakeModalTop.disabled = true;
     clearStateForLoad();
 
-    if (pdfIntakeMode === "prepare-sources" && state.activeProject) {
-      await invoke("update_project_source_pdf_profiles_command", {
-        rootPath: state.activeProject.rootPath,
+    const result = isProjectPreparation
+      ? await invoke<CorpusLoadResult>("prepare_project_pdf_sources_command", {
+        rootPath: state.activeProject!.rootPath,
         paths: pdfIntakeSelectedPaths,
-        profile: mapToPdfProfile(selectedProfileId),
-        ocrQuality: materializationConfig.pdf_ocr_quality,
+        cleaningConfig: materializationConfig,
+        profileOverride,
+        ocrQuality: selectedProfileConfig.pdf_ocr_quality,
+      })
+      : await invoke<CorpusLoadResult>("load_pdf_intake_files_command", {
+        paths: pdfIntakeSelectedPaths,
+        cleaningConfig: materializationConfig,
+        profile: profile.statusLabel,
       });
+
+    if (!isProjectPreparation) {
+      Object.assign(state.activeCleaningConfig, materializationConfig);
     }
 
-    const result = await invoke<CorpusLoadResult>("load_pdf_intake_files_command", {
-      paths: pdfIntakeSelectedPaths,
-      cleaningConfig: materializationConfig,
-      profile: profile.statusLabel,
-    });
-
-    Object.assign(state.activeCleaningConfig, materializationConfig);
-
-    if (pdfIntakeMode === "prepare-sources" && state.activeProject) {
+    if (isProjectPreparation) {
       const processed = await invoke<CombinedPreview>("preview_processed_files_command", {
         indices: result.report.files.map((_, i) => i),
         corpusVersion: result.corpusVersion,
@@ -977,11 +1017,16 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
 
 
     pdfIntakeMaterializing = false;
+    const projectCompletionHandlingLabel = isProjectPreparation
+      ? (profileOverride === null
+        ? storedHandlingStatusLabel(pdfIntakeSelectedPaths)
+        : `${profileDisplayNames[selectedProfileId]} handling`)
+      : "";
     closePdfIntakeModal();
 
-    if (pdfIntakeMode === "prepare-sources") {
+    if (isProjectPreparation) {
       const fileLabel = selectedPdfCount === 1 ? "selected PDF" : "selected PDFs";
-      dom.statusBar.textContent = `Prepared ${selectedPdfCount.toLocaleString()} ${fileLabel} with ${profileDisplayNames[selectedProfileId]} handling.`;
+      dom.statusBar.textContent = `Prepared ${selectedPdfCount.toLocaleString()} ${fileLabel} with ${projectCompletionHandlingLabel}.`;
     } else {
       const fileLabel = state.allFiles.length === 1 ? "PDF file" : "PDF files";
       dom.statusBar.textContent = `Loaded ${state.allFiles.length} ${fileLabel} with materialised ${profile.statusLabel}.`;
@@ -1060,9 +1105,16 @@ function renderPdfAuditResults(
   dom.pdfIntakeAuditResults.replaceChildren();
 
   const currentProfile = selectedPdfIntakeProfileId();
-  const profileMessage = suggestionApplied
-    ? `The suggested handling was applied: ${profileDisplayNames[suggestedProfile]}.`
-    : `The suggested handling is ${profileDisplayNames[suggestedProfile]}; your selected ${profileDisplayNames[currentProfile]} handling was kept.`;
+  let profileMessage: string;
+  if (pdfIntakeMode === "prepare-sources" && !pdfIntakeManualProfileOverride) {
+    profileMessage = `Stored source handling will be used. The strongest audit suggestion is ${profileDisplayNames[suggestedProfile]}.`;
+  } else if (pdfIntakeMode === "prepare-sources" && pdfIntakeManualProfileOverride) {
+    profileMessage = `The selected override will apply ${profileDisplayNames[currentProfile]} to every selected PDF.`;
+  } else {
+    profileMessage = suggestionApplied
+      ? `The suggested handling was applied: ${profileDisplayNames[suggestedProfile]}.`
+      : `The suggested handling is ${profileDisplayNames[suggestedProfile]}; your selected ${profileDisplayNames[currentProfile]} handling was kept.`;
+  }
   dom.pdfIntakeAuditSummary.textContent = `${profileMessage} Audit checks embedded text and OCR model files only; it does not run OCR or prove OCR will succeed.`;
 
   for (const result of results) {
@@ -1481,7 +1533,8 @@ export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
   dom.pdfIntakeChangeHandlingBtn.addEventListener("click", () => {
     setPdfIntakeHandlingChoicesVisible(true);
     pdfIntakeManualProfileOverride = true;
-    dom.pdfIntakeStatus.textContent = "Choose a different PDF handling profile, or keep the stored handling.";
+    renderStoredPdfHandlingSummary(pdfIntakeSelectedPaths, selectedPdfIntakeProfileId());
+    dom.pdfIntakeStatus.textContent = "Choose one PDF handling profile to apply to every selected PDF.";
   });
 
   dom.sourcePreparePdfsBtn.addEventListener("click", () => {
@@ -1506,6 +1559,9 @@ export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
     input.addEventListener("change", () => {
       if (!settingPdfIntakeProfile) {
         pdfIntakeManualProfileOverride = true;
+        if (pdfIntakeMode === "prepare-sources") {
+          renderStoredPdfHandlingSummary(pdfIntakeSelectedPaths, selectedPdfIntakeProfileId());
+        }
       }
     });
   });
