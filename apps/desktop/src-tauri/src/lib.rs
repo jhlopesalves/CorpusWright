@@ -1235,7 +1235,11 @@ pub fn run() {
             read_config_file_command,
             project::create_corpus_project_command,
             project::open_corpus_project_command,
-            project::initialise_folder_as_corpus_project_command
+            project::initialise_folder_as_corpus_project_command,
+            project::load_project_sources_command,
+            project::add_project_source_files_command,
+            project::add_project_source_folder_command,
+            project::update_project_source_processing_results_command
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

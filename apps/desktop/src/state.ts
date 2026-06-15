@@ -1,6 +1,7 @@
 import type { CleaningConfig, RemovalRule, ReplacementRule } from "./generated/CleaningConfig.js";
 import { createDefaultCleaningConfig } from "./config";
 import type { DocumentRecord } from "./generated/DocumentRecord.js";
+import type { ProjectSource } from "./generated/ProjectSource.js";
 import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
 import type { SearchResult } from "./generated/SearchResult.js";
 import type {
@@ -17,6 +18,9 @@ export interface ActiveProject {
 
 export const state = {
   activeProject: null as ActiveProject | null,
+  sourceManifestVersion: 1,
+  projectSources: [] as ProjectSource[],
+  sourceSearchQuery: "",
   currentCorpusVersion: 0,
   allFiles: [] as DocumentRecord[],
   visibleFiles: [] as VisibleFile[],

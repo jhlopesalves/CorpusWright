@@ -29,6 +29,7 @@ pub mod pdf_audit;
 pub mod pdf_ocr;
 pub mod pdf_quality;
 pub mod preview;
+pub mod project_sources;
 pub mod repeated_artifacts;
 pub mod scan;
 pub mod search;
@@ -53,6 +54,12 @@ pub use pdf_audit::{PdfAuditQuality, PdfAuditResult, PdfAuditSuggestedProfile, a
 pub use preview::{
     CombinedPreview, FilePreview, PreviewError, PreviewOptions, PreviewWarning, PreviewWarningKind,
     preview_file, preview_files, preview_processed_files,
+};
+pub use project_sources::{
+    ProjectSource, ProjectSourceKind, ProjectSourceManifest, ProjectSourceProcessingResult,
+    ProjectSourceStatus, ProjectSourceUpdate, add_project_source_paths, kind_for_path,
+    load_project_source_manifest, save_project_source_manifest, stable_project_source_id,
+    update_project_source_processing_results,
 };
 pub use repeated_artifacts::{
     ArtifactRiskLabel, CancellationFlag, CandidateContentClass, PositionSummary,

@@ -8,6 +8,7 @@ New projects use this folder shape:
 Project Name/
     .corpuswright/
         project.json
+        sources.json
         cache/
     sources/
     processed/
@@ -20,6 +21,7 @@ Opening an existing folder as a project leaves the folder contents where they ar
 Existing Folder/
     .corpuswright/
         project.json
+        sources.json
         cache/
         processed/
         exports/
@@ -45,6 +47,50 @@ The project manifest is `.corpuswright/project.json`. It is versioned and intent
 
 The manifest stores the project name, root path, creation and update timestamps, optional source roots, and optional notes. It does not store corpus metrics, OCR state, token counts, cleaning decisions, or analysis results.
 
+## Source inventory
+
+The project source inventory is `.corpuswright/sources.json`. It is versioned separately from the project manifest and stores one record for each source file registered with the project:
+
+```json
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "source_...",
+      "path": "C:\\Corpora\\Learner Essays B2\\essay_001.docx",
+      "file_name": "essay_001.docx",
+      "extension": "docx",
+      "kind": "docx",
+      "status": "ready_to_process",
+      "reason_codes": ["native_text_available"],
+      "added_at": "2026-06-15T12:00:00Z",
+      "last_checked_at": "2026-06-15T12:00:00Z",
+      "last_processed_at": null
+    }
+  ]
+}
+```
+
+Source IDs are stable hashes of the project-relative path when the file is inside the project folder, or the canonical absolute path otherwise. The ID is suitable for keeping later processing and review decisions attached to the same source file.
+
+The desktop app shows this inventory in the Source Explorer. Add Files registers selected files, Add Folder registers supported files found by the existing recursive folder scan, and duplicates are skipped by stable source ID.
+
+## Source statuses
+
+`Unprocessed` means the file is registered but has no current preflight result.
+
+`Ready to Process` means CorpusWright can attempt the normal preprocessing route. It does not mean the file is analysis-ready.
+
+`Needs OCR` means a PDF appears to need an OCR route before usable text can be produced. This is not a failure.
+
+`Processed` means the existing processed-preview path has produced text without extraction warnings.
+
+`Processed with Warnings` means processed preview produced usable output, but extraction or processing warnings should be reviewed.
+
+`Failed` means a blocker such as a missing file, unsupported type, unreadable file, encrypted PDF, PDF open failure, parser failure, OCR failure, or write failure prevents normal processing.
+
+Reason codes are machine-readable strings such as `missing_file`, `unsupported_file_type`, `pdf_no_text_layer`, `ocr_required`, `native_text_available`, `processed_ok`, `processed_with_warnings`, `low_text_density`, and `parse_failed`. The frontend turns these codes into compact labels.
+
 ## Creating a project
 
 `New Corpus Project` asks for a project folder, creates `.corpuswright/project.json`, creates the small project folders, records the project in the recent-projects list, and opens the preprocessing workspace.
@@ -69,4 +115,4 @@ The desktop frontend keeps a small recent-projects list in localStorage. Each en
 
 ## Preprocessing workspace
 
-After a project opens, CorpusWright shows the existing preprocessing screen. File loading, processed previews, export, custom removals, and repeated-artefact review continue to use the same preprocessing commands and cleaning pipeline.
+After a project opens, CorpusWright shows the preprocessing workspace with the Source Explorer in the left panel. File loading, processed previews, export, custom removals, and repeated-artefact review continue to use the same preprocessing commands and cleaning pipeline.

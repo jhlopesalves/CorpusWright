@@ -1,7 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { dom } from "./dom";
+import { renderVisibleItems } from "./file-list";
 import { state } from "./state";
+import {
+  persistProcessedPreviewStatuses,
+  primaryReasonLabel,
+  sourceForPath,
+  sourceKindLabel,
+  sourceStatusLabel,
+} from "./sources";
 import { highlightPreviewText } from "./utils";
 import type { CombinedPreview } from "./generated/CombinedPreview.js";
 import type { FilePreview } from "./generated/FilePreview.js";
@@ -116,6 +124,7 @@ async function fetchAndRenderPreviewChunk(
 
     renderPreviewCards(dom.previewContent, original.files, append, offset, indices.length);
     renderPreviewCards(dom.processedPreviewContent, processed.files, append, offset, indices.length);
+    persistProcessedPreviewStatuses(processed.files).then(renderVisibleItems);
     if (!append) {
       renderFullOcrPreviewLauncher(indices, myVersion, myPreviewGeneration);
     }
@@ -399,15 +408,38 @@ function renderPreviewCards(
     const badges = document.createElement("div");
     badges.className = "file-card-badges";
 
+    const source = sourceForPath(file.source_path);
+    if (source) {
+      const kindBadge = document.createElement("span");
+      kindBadge.className = "badge";
+      kindBadge.textContent = sourceKindLabel(source);
+      badges.appendChild(kindBadge);
+
+      const statusBadge = document.createElement("span");
+      statusBadge.className = "badge";
+      statusBadge.textContent = sourceStatusLabel(source.status);
+      badges.appendChild(statusBadge);
+
+      const reason = primaryReasonLabel(source);
+      if (reason && source.status !== "processed") {
+        const reasonBadge = document.createElement("span");
+        reasonBadge.className = "badge";
+        reasonBadge.textContent = reason;
+        badges.appendChild(reasonBadge);
+      }
+    }
+
     if (file.truncated) {
       const truncBadge = document.createElement("span");
       truncBadge.className = "badge";
       truncBadge.textContent = "Preview capped";
       badges.appendChild(truncBadge);
-      header.appendChild(badges);
     }
 
     header.appendChild(titleArea);
+    if (badges.children.length > 0) {
+      header.appendChild(badges);
+    }
 
     const body = document.createElement("div");
     body.className = "file-card-body";

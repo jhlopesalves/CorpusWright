@@ -87,9 +87,15 @@
 
     <main id="project-workspace" class="project-workspace hidden">
       <aside class="left-panel">
-        <h2>Corpus</h2>
+        <div class="source-panel-header">
+          <h2>Sources</h2>
+          <div class="source-actions">
+            <button id="source-add-files-btn" class="secondary-btn" type="button">Add Files</button>
+            <button id="source-add-folder-btn" class="secondary-btn" type="button">Add Folder</button>
+          </div>
+        </div>
         <div class="status-line" id="files-status">0 loaded | 0 selected</div>
-        <input id="search-input" type="text" placeholder="Search/filter..." />
+        <input id="search-input" type="text" placeholder="Search sources..." />
         <div class="list-controls-bar">
           <label class="select-all-label" title="Select all filtered files">
             <input type="checkbox" id="select-all-checkbox" /> Select All

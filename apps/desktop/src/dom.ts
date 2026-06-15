@@ -19,6 +19,8 @@ export const dom = {
   btnOpenFolderProject: getElement<HTMLButtonElement>("btn-open-folder-project"),
   welcomeStatus: getElement<HTMLDivElement>("welcome-status"),
   recentProjectsList: getElement<HTMLDivElement>("recent-projects-list"),
+  sourceAddFilesBtn: getElement<HTMLButtonElement>("source-add-files-btn"),
+  sourceAddFolderBtn: getElement<HTMLButtonElement>("source-add-folder-btn"),
   fileList: getElement<HTMLUListElement>("file-list"),
   searchInput: getElement<HTMLInputElement>("search-input"),
   selectAllCheckbox: getElement<HTMLInputElement>("select-all-checkbox"),

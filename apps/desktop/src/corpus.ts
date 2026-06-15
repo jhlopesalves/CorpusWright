@@ -5,6 +5,11 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { dom } from "./dom";
 import { updateFileList } from "./file-list";
 import { state } from "./state";
+import {
+  addFilesToActiveProjectSources,
+  addFolderToActiveProjectSources,
+  loadableProjectSourcePaths,
+} from "./sources";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
 import type { CorpusSummary } from "./generated/CorpusSummary.js";
 import type { PdfAuditResult } from "./generated/PdfAuditResult.js";
@@ -403,6 +408,14 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
     state.allFiles = result.report.files;
     state.visibleFiles = state.allFiles.map((record, i) => ({ corpusIndex: i, record }));
 
+    if (state.activeProject) {
+      try {
+        await addFilesToActiveProjectSources(pdfIntakeSelectedPaths);
+      } catch (error) {
+        console.error("Could not register PDF intake sources", error);
+      }
+    }
+
     renderSummary(result.report.summary);
     updateFileList();
     pdfIntakeMaterializing = false;
@@ -547,7 +560,12 @@ function formatAuditQuality(quality: PdfAuditResult["quality"]): string {
   }
 }
 
-export async function loadDirectoryPath(selected: string): Promise<void> {
+export async function loadDirectoryPath(selected: string, registerProjectSources = true): Promise<void> {
+  if (registerProjectSources && state.activeProject) {
+    await registerFolderForActiveProject(selected);
+    return;
+  }
+
   try {
     dom.statusBar.textContent = "Scanning...";
     clearStateForLoad();
@@ -574,7 +592,7 @@ export async function loadDirectoryPath(selected: string): Promise<void> {
   }
 }
 
-export async function loadFilesPaths(selected: string[]): Promise<void> {
+export async function loadFilesIntoCorpus(selected: string[]): Promise<void> {
   try {
     dom.statusBar.textContent = "Loading files...";
     clearStateForLoad();
@@ -597,6 +615,71 @@ export async function loadFilesPaths(selected: string[]): Promise<void> {
   } catch (error) {
     dom.statusBar.textContent = `Error: ${error}`;
     renderProjectEmptyState();
+    console.error(error);
+  }
+}
+
+export async function loadFilesPaths(selected: string[], registerProjectSources = true): Promise<void> {
+  if (registerProjectSources && state.activeProject) {
+    await registerFilesForActiveProject(selected);
+    return;
+  }
+
+  await loadFilesIntoCorpus(selected);
+}
+
+export async function loadCorpusFromProjectSources(): Promise<void> {
+  const paths = loadableProjectSourcePaths();
+  if (paths.length === 0) {
+    clearStateForLoad();
+    renderProjectEmptyState();
+    dom.statusBar.textContent = state.projectSources.length === 0
+      ? "This project has no source files yet."
+      : "This project has no processable source files.";
+    return;
+  }
+
+  await loadFilesIntoCorpus(paths);
+}
+
+export async function registerFilesForActiveProject(selected: string[]): Promise<void> {
+  if (!state.activeProject) {
+    await loadFilesIntoCorpus(selected);
+    return;
+  }
+
+  try {
+    dom.statusBar.textContent = "Adding source files...";
+    const update = await addFilesToActiveProjectSources(selected);
+    await loadCorpusFromProjectSources();
+    if (update) {
+      dom.statusBar.textContent =
+        `Added ${update.added_count} source${update.added_count === 1 ? "" : "s"}` +
+        ` (${update.duplicate_count} duplicate${update.duplicate_count === 1 ? "" : "s"} skipped).`;
+    }
+  } catch (error) {
+    dom.statusBar.textContent = `Error adding source files: ${error}`;
+    console.error(error);
+  }
+}
+
+export async function registerFolderForActiveProject(selected: string): Promise<void> {
+  if (!state.activeProject) {
+    await loadDirectoryPath(selected, false);
+    return;
+  }
+
+  try {
+    dom.statusBar.textContent = "Adding source folder...";
+    const update = await addFolderToActiveProjectSources(selected);
+    await loadCorpusFromProjectSources();
+    if (update) {
+      dom.statusBar.textContent =
+        `Added ${update.added_count} source${update.added_count === 1 ? "" : "s"}` +
+        ` (${update.duplicate_count} duplicate${update.duplicate_count === 1 ? "" : "s"} skipped).`;
+    }
+  } catch (error) {
+    dom.statusBar.textContent = `Error adding source folder: ${error}`;
     console.error(error);
   }
 }
@@ -673,6 +756,8 @@ function renderSummary(summary: CorpusSummary): void {
 
 export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
   callbacks = nextCallbacks;
+  dom.sourceAddFilesBtn.addEventListener("click", openFilesFromPicker);
+  dom.sourceAddFolderBtn.addEventListener("click", openDirectoryFromPicker);
   dom.menuOpenDir.addEventListener("click", openDirectoryFromPicker);
   dom.menuOpenFiles.addEventListener("click", openFilesFromPicker);
   dom.menuOpenPdfIntake.addEventListener("click", openPdfIntakeModal);

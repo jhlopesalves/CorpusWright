@@ -1,3 +1,9 @@
+use corpuswright_core::project_sources::{
+    ProjectSourceManifest, ProjectSourceProcessingResult, ProjectSourceUpdate,
+    add_project_source_paths, load_project_source_manifest, save_project_source_manifest,
+    update_project_source_processing_results,
+};
+use corpuswright_core::scan::scan_directory;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -53,6 +59,7 @@ pub(crate) fn create_corpus_project_command(root_path: String) -> Result<ActiveP
 
     let manifest = new_manifest(&root, Vec::new());
     write_manifest(&manifest_path, &manifest)?;
+    save_project_source_manifest(&root, &ProjectSourceManifest::default())?;
     Ok(active_project_from_manifest(&manifest, &manifest_path))
 }
 
@@ -92,7 +99,58 @@ pub(crate) fn initialise_folder_as_corpus_project_command(
 
     let manifest = new_manifest(&root, vec![root.clone()]);
     write_manifest(&manifest_path, &manifest)?;
+    save_project_source_manifest(&root, &ProjectSourceManifest::default())?;
     Ok(active_project_from_manifest(&manifest, &manifest_path))
+}
+
+#[tauri::command(async)]
+pub(crate) fn load_project_sources_command(
+    root_path: String,
+) -> Result<ProjectSourceManifest, String> {
+    let root = validated_project_root(&root_path)?;
+    load_project_source_manifest(root)
+}
+
+#[tauri::command(async)]
+pub(crate) fn add_project_source_files_command(
+    root_path: String,
+    paths: Vec<String>,
+) -> Result<ProjectSourceUpdate, String> {
+    let root = validated_project_root(&root_path)?;
+    let paths = paths.into_iter().map(PathBuf::from).collect();
+    add_project_source_paths(root, paths)
+}
+
+#[tauri::command(async)]
+pub(crate) fn add_project_source_folder_command(
+    root_path: String,
+    folder_path: String,
+) -> Result<ProjectSourceUpdate, String> {
+    let root = validated_project_root(&root_path)?;
+    let folder = normalise_selected_path(&folder_path)?;
+    if !folder.exists() {
+        return Err("Choose an existing folder to add source files.".to_string());
+    }
+    if !folder.is_dir() {
+        return Err("Choose a folder to add source files.".to_string());
+    }
+
+    let report = scan_directory(&folder).map_err(|error| format!("{error:?}"))?;
+    let paths = report
+        .files
+        .into_iter()
+        .map(|record| record.source_path)
+        .collect();
+    add_project_source_paths(root, paths)
+}
+
+#[tauri::command(async)]
+pub(crate) fn update_project_source_processing_results_command(
+    root_path: String,
+    results: Vec<ProjectSourceProcessingResult>,
+) -> Result<ProjectSourceManifest, String> {
+    let root = validated_project_root(&root_path)?;
+    update_project_source_processing_results(root, results)
 }
 
 fn normalise_selected_path(path: &str) -> Result<PathBuf, String> {
@@ -117,6 +175,15 @@ fn selected_manifest_path(selected: &Path) -> PathBuf {
         return selected.to_path_buf();
     }
     manifest_path_for_root(selected)
+}
+
+fn validated_project_root(root_path: &str) -> Result<PathBuf, String> {
+    let selected = normalise_selected_path(root_path)?;
+    let manifest_path = manifest_path_for_root(&selected);
+    let manifest = read_manifest(&manifest_path)?;
+    Ok(project_root_from_manifest_path(&manifest_path)
+        .map(canonical_or_original)
+        .unwrap_or(manifest.root_path))
 }
 
 fn project_root_from_manifest_path(manifest_path: &Path) -> Option<PathBuf> {
