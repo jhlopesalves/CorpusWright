@@ -68,7 +68,7 @@ export function extractionRouteLabel(route: ProjectSourceExtractionRoute): strin
   switch (route) {
     case "embedded_text": return "embedded text";
     case "ocr_if_needed": return "OCR if needed";
-    case "force_ocr": return "force OCR";
+    case "force_ocr": return "force OCR all pages";
     case "ocr_required": return "OCR required";
     case "plain_text": return "plain text";
     case "docx_extract": return "DOCX extraction";
@@ -82,8 +82,8 @@ export function pdfProfileLabel(profile: ProjectSourcePdfProfile): string {
   switch (profile) {
     case "standard": return "Standard embedded text";
     case "layout_heavy": return "Layout-heavy PDF";
-    case "ocr_rescue": return "OCR rescue";
-    case "force_ocr": return "Force OCR";
+    case "ocr_rescue": return "OCR when text is missing";
+    case "force_ocr": return "Force OCR all pages";
     case "no_automatic_ocr": return "Do not OCR automatically";
   }
 }
@@ -92,8 +92,8 @@ export function pdfProfileShortLabel(profile: ProjectSourcePdfProfile): string {
   switch (profile) {
     case "standard": return "standard embedded text";
     case "layout_heavy": return "layout-heavy";
-    case "ocr_rescue": return "OCR rescue";
-    case "force_ocr": return "force OCR";
+    case "ocr_rescue": return "OCR when text is missing";
+    case "force_ocr": return "force OCR all pages";
     case "no_automatic_ocr": return "no automatic OCR";
   }
 }
@@ -133,6 +133,8 @@ export function reasonLabel(code: string): string {
     case "ocr_failed": return "OCR failed";
     case "native_text_available": return "native text";
     case "pdf_route_undecided": return "route undecided";
+    case "ocr_planned": return "OCR planned";
+    case "force_ocr_planned": return "force OCR all pages planned";
     case "processed_ok": return "processed";
     case "processed_with_warnings": return "review";
     case "low_text_density": return "low text density";

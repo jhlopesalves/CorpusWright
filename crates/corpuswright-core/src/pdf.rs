@@ -1283,7 +1283,7 @@ pub fn extract_pdf(
             ));
             if text_source == PdfTextSource::ForceOcr {
                 warnings.push(
-                    "Force OCR was selected, but PDFium is unavailable; embedded-text fallback was not used for this OCR mode."
+                    "Force OCR all pages was selected, but PDFium is unavailable; embedded-text fallback was not used for this OCR mode."
                         .to_string(),
                 );
                 return Ok(ExtractedPdf {
@@ -1333,13 +1333,13 @@ pub fn extract_pdf(
             max_chars,
             ocr_quality,
             &mut warnings,
-            "Used experimental Force OCR to extract PDF text from rendered pages.",
+            "Used experimental force OCR on all pages to extract PDF text from rendered pages.",
         );
         let (text, page_texts) = ocr
             .map(|ocr| (ocr.text, Some(ocr.page_texts)))
             .unwrap_or_else(|| (String::new(), None));
         if text.trim().is_empty() {
-            warnings.push("Force OCR completed but produced no text.".to_string());
+            warnings.push("Force OCR all pages completed but produced no text.".to_string());
         }
 
         return Ok(ExtractedPdf {
@@ -1494,10 +1494,10 @@ pub fn extract_pdf(
             max_chars,
             ocr_quality,
             &mut warnings,
-            "Used experimental OCR rescue to extract text from scanned pages.",
+            "Used experimental OCR for missing-text pages.",
         ) {
             if ocr.text.trim().is_empty() {
-                warnings.push("OCR rescue completed but produced no text.".to_string());
+                warnings.push("OCR completed but produced no text.".to_string());
             }
             all_text = ocr.text;
             page_texts = ocr.page_texts;

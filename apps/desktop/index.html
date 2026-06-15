@@ -268,6 +268,15 @@
           reconstruction is imperfect, and source files are never modified.
         </p>
 
+        <div id="pdf-intake-stored-handling" class="pdf-intake-stored-handling hidden">
+          <div>
+            <h3>Using stored handling</h3>
+            <p id="pdf-intake-stored-handling-summary"></p>
+            <ul id="pdf-intake-stored-handling-list"></ul>
+          </div>
+          <button id="pdf-intake-change-handling-btn" class="secondary-btn" type="button">Change handling</button>
+        </div>
+
         <div class="pdf-intake-profiles" role="radiogroup" aria-label="PDF handling">
           <label class="pdf-intake-profile" for="pdf-intake-standard">
             <input type="radio" id="pdf-intake-standard" name="pdf-intake-profile" value="standard" checked />
@@ -289,8 +298,8 @@
           <label class="pdf-intake-profile" for="pdf-intake-ocr">
             <input type="radio" id="pdf-intake-ocr" name="pdf-intake-profile" value="ocr" />
             <span>
-              <span class="pdf-intake-profile-title">OCR rescue</span>
-              <span class="pdf-intake-profile-help">Attempts OCR for scanned or image-based PDFs. Slower, and recognition
+              <span class="pdf-intake-profile-title">OCR when text is missing</span>
+              <span class="pdf-intake-profile-help">Uses OCR for scanned or image-based PDFs. Slower, and recognition
                 errors are possible.</span>
             </span>
           </label>
@@ -298,7 +307,7 @@
           <label class="pdf-intake-profile" for="pdf-intake-force-ocr">
             <input type="radio" id="pdf-intake-force-ocr" name="pdf-intake-profile" value="force-ocr" />
             <span>
-              <span class="pdf-intake-profile-title">Force OCR (slow)</span>
+              <span class="pdf-intake-profile-title">Force OCR all pages</span>
               <span class="pdf-intake-profile-help">High-quality OCR. This may take a long time. Preview is capped. Inspect before export.</span>
             </span>
           </label>
@@ -457,8 +466,8 @@
                 <select id="sel-pdf-text-source" class="settings-select"
                   style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
                   <option value="EmbeddedText">Embedded text</option>
-                  <option value="Ocr">OCR rescue</option>
-                  <option value="ForceOcr">Force OCR (slow)</option>
+                  <option value="Ocr">OCR when text is missing</option>
+                  <option value="ForceOcr">Force OCR all pages</option>
                 </select>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
                   Used as a fallback for older sources and for new PDF sources without a source-level route. The Import

@@ -270,8 +270,8 @@ fn pdf_intake_method_label(options: PdfExtractionOptions) -> String {
                 "experimental visual columns".to_string()
             }
         },
-        PdfTextSource::Ocr => "OCR rescue".to_string(),
-        PdfTextSource::ForceOcr => "force OCR".to_string(),
+        PdfTextSource::Ocr => "OCR when text is missing".to_string(),
+        PdfTextSource::ForceOcr => "force OCR all pages".to_string(),
     }
 }
 

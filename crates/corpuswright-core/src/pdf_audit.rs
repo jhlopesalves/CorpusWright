@@ -114,15 +114,15 @@ fn audit_pdf_file(path: &Path, environment: &PdfAuditEnvironment) -> PdfAuditRes
 
     match quality {
         PdfAuditQuality::Empty => warnings.push(
-            "This PDF appears to contain little or no embedded text. Force OCR is recommended."
+            "This PDF appears to contain little or no embedded text. Force OCR all pages is recommended."
                 .to_string(),
         ),
         PdfAuditQuality::Poor => warnings.push(
-            "Embedded text was found, but extraction quality looks very poor. Force OCR is recommended and preview should be inspected."
+            "Embedded text was found, but extraction quality looks very poor. Force OCR all pages is recommended and preview should be inspected."
                 .to_string(),
         ),
         PdfAuditQuality::Suspicious => warnings.push(
-            "Embedded text was found, but extraction quality looks suspicious. Try OCR rescue or Layout-heavy PDF and inspect the preview."
+            "Embedded text was found, but extraction quality looks suspicious. Try OCR when text is missing or Layout-heavy PDF and inspect the preview."
                 .to_string(),
         ),
         PdfAuditQuality::Good | PdfAuditQuality::Unknown => {}

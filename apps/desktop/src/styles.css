@@ -964,6 +964,9 @@ pre {
 }
 
 .settings-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   width: 100%;
   min-height: 30px;
   padding: 5px 30px 5px 9px;
@@ -1152,6 +1155,7 @@ pre {
   .source-import-section-header,
   .source-import-group-select,
   .source-import-ocr-quality-row,
+  .pdf-intake-stored-handling,
   .source-import-list-row {
     grid-template-columns: 1fr;
   }
@@ -1162,6 +1166,7 @@ pre {
 }
 
 #pdf-intake-modal.pdf-intake-processing .modal-description,
+#pdf-intake-modal.pdf-intake-processing .pdf-intake-stored-handling,
 #pdf-intake-modal.pdf-intake-processing .pdf-intake-profiles,
 #pdf-intake-modal.pdf-intake-processing .pdf-intake-audit-panel,
 #pdf-intake-modal.pdf-intake-processing #load-pdf-intake-files-btn,
@@ -1182,6 +1187,49 @@ pre {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.pdf-intake-profiles.hidden {
+  display: none;
+}
+
+.pdf-intake-stored-handling {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+}
+
+.pdf-intake-stored-handling.hidden {
+  display: none;
+}
+
+.pdf-intake-stored-handling h3 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  color: var(--text-color);
+}
+
+.pdf-intake-stored-handling p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.pdf-intake-stored-handling ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-color);
+  font-size: 0.86rem;
+}
+
+.pdf-intake-stored-handling button {
+  white-space: nowrap;
 }
 
 .pdf-intake-profile {

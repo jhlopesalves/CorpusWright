@@ -426,6 +426,7 @@ pub fn update_project_source_pdf_profiles(
             source.extraction_route = profile.extraction_route();
             source.ocr_quality = Some(ocr_quality);
             source.last_checked_at = Some(now.clone());
+            set_pdf_source_planned_status_for_profile(source, profile);
         }
     }
 
@@ -628,14 +629,58 @@ fn apply_import_policy(
         source.ocr_quality = Some(pdf_handling.ocr_quality);
         source.pdf_profile = Some(pdf_handling.pdf_profile);
         source.extraction_route = pdf_handling.pdf_profile.extraction_route();
+        set_pdf_source_planned_status_for_profile(source, pdf_handling.pdf_profile);
     } else {
         source.ocr_quality = Some(ocr_quality);
-        source.extraction_route = match pdf_policy {
-            ProjectSourceImportPolicy::Recommended => source.extraction_route,
-            ProjectSourceImportPolicy::OcrIfNeeded => ProjectSourceExtractionRoute::OcrIfNeeded,
-            ProjectSourceImportPolicy::ForceOcr => ProjectSourceExtractionRoute::ForceOcr,
-            ProjectSourceImportPolicy::NoAutomaticOcr => ProjectSourceExtractionRoute::EmbeddedText,
+        match pdf_policy {
+            ProjectSourceImportPolicy::Recommended => {}
+            ProjectSourceImportPolicy::OcrIfNeeded => {
+                source.extraction_route = ProjectSourceExtractionRoute::OcrIfNeeded;
+            }
+            ProjectSourceImportPolicy::ForceOcr => {
+                source.pdf_profile = Some(ProjectSourcePdfProfile::ForceOcr);
+                source.extraction_route = ProjectSourceExtractionRoute::ForceOcr;
+                set_pdf_source_planned_status_for_profile(
+                    source,
+                    ProjectSourcePdfProfile::ForceOcr,
+                );
+            }
+            ProjectSourceImportPolicy::NoAutomaticOcr => {
+                source.pdf_profile = Some(ProjectSourcePdfProfile::NoAutomaticOcr);
+                source.extraction_route = ProjectSourceExtractionRoute::EmbeddedText;
+                set_pdf_source_planned_status_for_profile(
+                    source,
+                    ProjectSourcePdfProfile::NoAutomaticOcr,
+                );
+            }
         };
+    }
+}
+
+fn set_pdf_source_planned_status_for_profile(
+    source: &mut ProjectSource,
+    profile: ProjectSourcePdfProfile,
+) {
+    match profile {
+        ProjectSourcePdfProfile::OcrRescue => {
+            set_source_status(source, ProjectSourceStatus::NeedsOcr, &["ocr_planned"]);
+        }
+        ProjectSourcePdfProfile::ForceOcr => {
+            set_source_status(
+                source,
+                ProjectSourceStatus::NeedsOcr,
+                &["force_ocr_planned"],
+            );
+        }
+        ProjectSourcePdfProfile::Standard
+        | ProjectSourcePdfProfile::LayoutHeavy
+        | ProjectSourcePdfProfile::NoAutomaticOcr => {
+            set_source_status(
+                source,
+                ProjectSourceStatus::ReadyToProcess,
+                &["native_text_available"],
+            );
+        }
     }
 }
 
@@ -1134,6 +1179,8 @@ mod tests {
             ocr_rescue.sources[0].extraction_route,
             ProjectSourceExtractionRoute::OcrRequired
         );
+        assert_eq!(ocr_rescue.sources[0].status, ProjectSourceStatus::NeedsOcr);
+        assert_eq!(ocr_rescue.sources[0].reason_codes, vec!["ocr_planned"]);
 
         let force_ocr = update_project_source_pdf_profiles(
             dir.path(),
@@ -1151,10 +1198,50 @@ mod tests {
             force_ocr.sources[0].extraction_route,
             ProjectSourceExtractionRoute::ForceOcr
         );
+        assert_eq!(force_ocr.sources[0].status, ProjectSourceStatus::NeedsOcr);
+        assert_eq!(force_ocr.sources[0].reason_codes, vec!["force_ocr_planned"]);
         assert_eq!(
             force_ocr.sources[0].ocr_quality,
             Some(PdfOcrQuality::HighQuality)
         );
+    }
+
+    #[test]
+    fn imported_pdf_ocr_overrides_remain_unprocessed() {
+        let path = PathBuf::from("paper.pdf");
+        let mut ocr_source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        let ocr_override = ProjectSourcePdfHandlingOverride {
+            path: path.clone(),
+            pdf_profile: ProjectSourcePdfProfile::OcrRescue,
+            ocr_quality: PdfOcrQuality::Balanced,
+        };
+        apply_import_policy(
+            &mut ocr_source,
+            ProjectSourceImportPolicy::Recommended,
+            PdfOcrQuality::Fast,
+            Some(&ocr_override),
+        );
+
+        assert_eq!(ocr_source.status, ProjectSourceStatus::NeedsOcr);
+        assert_eq!(ocr_source.reason_codes, vec!["ocr_planned"]);
+        assert_eq!(ocr_source.last_processed_at, None);
+
+        let mut force_source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        let force_override = ProjectSourcePdfHandlingOverride {
+            path,
+            pdf_profile: ProjectSourcePdfProfile::ForceOcr,
+            ocr_quality: PdfOcrQuality::HighQuality,
+        };
+        apply_import_policy(
+            &mut force_source,
+            ProjectSourceImportPolicy::Recommended,
+            PdfOcrQuality::Fast,
+            Some(&force_override),
+        );
+
+        assert_eq!(force_source.status, ProjectSourceStatus::NeedsOcr);
+        assert_eq!(force_source.reason_codes, vec!["force_ocr_planned"]);
+        assert_eq!(force_source.last_processed_at, None);
     }
 
     #[test]
