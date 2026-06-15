@@ -2,7 +2,7 @@ use crate::clean::{PdfOcrQuality, PdfTextSource};
 use crate::pdf_audit::{PdfAuditQuality, PdfAuditSuggestedProfile, audit_pdf_files};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -57,6 +57,19 @@ pub enum ProjectSourceExtractionRoute {
     Undecided,
 }
 
+/// Selected PDF handling for a PDF project source.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum ProjectSourcePdfProfile {
+    #[default]
+    Standard,
+    LayoutHeavy,
+    OcrRescue,
+    ForceOcr,
+    NoAutomaticOcr,
+}
+
 /// Batch PDF policy applied when confirming an import review.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "snake_case")]
@@ -81,6 +94,7 @@ pub struct ProjectSource {
     pub status: ProjectSourceStatus,
     pub reason_codes: Vec<String>,
     pub extraction_route: ProjectSourceExtractionRoute,
+    pub pdf_profile: Option<ProjectSourcePdfProfile>,
     pub ocr_quality: Option<PdfOcrQuality>,
     pub added_at: String,
     pub last_checked_at: Option<String>,
@@ -97,6 +111,7 @@ struct ProjectSourceSerde {
     status: ProjectSourceStatus,
     reason_codes: Vec<String>,
     extraction_route: Option<ProjectSourceExtractionRoute>,
+    pdf_profile: Option<ProjectSourcePdfProfile>,
     ocr_quality: Option<PdfOcrQuality>,
     added_at: String,
     last_checked_at: Option<String>,
@@ -120,6 +135,7 @@ impl<'de> Deserialize<'de> for ProjectSource {
             extraction_route: helper
                 .extraction_route
                 .unwrap_or_else(|| default_extraction_route_for_kind(helper.kind)),
+            pdf_profile: helper.pdf_profile,
             ocr_quality: helper.ocr_quality,
             added_at: helper.added_at,
             last_checked_at: helper.last_checked_at,
@@ -152,6 +168,13 @@ pub struct ProjectSourceImportReview {
     pub candidates: Vec<ProjectSource>,
     pub duplicate_count: usize,
     pub ignored_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectSourcePdfHandlingOverride {
+    pub path: PathBuf,
+    pub pdf_profile: ProjectSourcePdfProfile,
+    pub ocr_quality: PdfOcrQuality,
 }
 
 /// Per-file result reported by the preprocessing preview path.
@@ -279,14 +302,46 @@ pub fn add_project_source_paths_with_policy(
     pdf_policy: ProjectSourceImportPolicy,
     ocr_quality: PdfOcrQuality,
 ) -> Result<ProjectSourceUpdate, String> {
+    add_project_source_paths_with_pdf_handling(
+        project_root,
+        paths,
+        pdf_policy,
+        ocr_quality,
+        Vec::new(),
+    )
+}
+
+/// Registers paths as project sources with source-level PDF handling choices.
+///
+/// # Errors
+///
+/// Returns an error when the existing inventory cannot be loaded or the updated
+/// inventory cannot be persisted.
+pub fn add_project_source_paths_with_pdf_handling(
+    project_root: impl AsRef<Path>,
+    paths: Vec<PathBuf>,
+    pdf_policy: ProjectSourceImportPolicy,
+    ocr_quality: PdfOcrQuality,
+    pdf_handling_overrides: Vec<ProjectSourcePdfHandlingOverride>,
+) -> Result<ProjectSourceUpdate, String> {
     let project_root = project_root.as_ref();
     let mut manifest = load_project_source_manifest(project_root)?;
     let review = build_project_source_import_review(project_root, &manifest, paths, 0);
     let duplicate_count = review.duplicate_count;
     let added_count = review.candidates.len();
+    let handling_by_source_id = pdf_handling_overrides
+        .into_iter()
+        .map(|pdf_handling| {
+            let source_path = source_path_for_storage(project_root, &pdf_handling.path);
+            let source_id = stable_project_source_id(project_root, &source_path);
+            (source_id, pdf_handling)
+        })
+        .collect::<HashMap<_, _>>();
 
     for mut source in review.candidates {
-        apply_import_policy(&mut source, pdf_policy, ocr_quality);
+        let source_id = source.id.clone();
+        let pdf_handling = handling_by_source_id.get(&source_id);
+        apply_import_policy(&mut source, pdf_policy, ocr_quality, pdf_handling);
         manifest.sources.push(source);
     }
 
@@ -329,10 +384,48 @@ pub fn update_project_source_processing_results(
                 source.status = ProjectSourceStatus::ProcessedWithWarnings;
                 source.reason_codes =
                     non_empty_or_default(result.reason_codes, "processed_with_warnings");
+            } else if let Some(reason_code) = successful_pdf_review_reason(source) {
+                source.status = ProjectSourceStatus::ProcessedWithWarnings;
+                source.reason_codes = vec![reason_code.to_string()];
             } else {
                 source.status = ProjectSourceStatus::Processed;
                 source.reason_codes = vec!["processed_ok".to_string()];
             }
+        }
+    }
+
+    save_project_source_manifest(project_root, &manifest)?;
+    Ok(manifest)
+}
+
+/// Updates the PDF profile and corresponding extraction route for specific sources.
+///
+/// # Errors
+///
+/// Returns an error when the inventory cannot be loaded or saved.
+pub fn update_project_source_pdf_profiles(
+    project_root: impl AsRef<Path>,
+    paths: Vec<PathBuf>,
+    profile: ProjectSourcePdfProfile,
+    ocr_quality: PdfOcrQuality,
+) -> Result<ProjectSourceManifest, String> {
+    let project_root = project_root.as_ref();
+    let mut manifest = load_project_source_manifest(project_root)?;
+    let now = current_timestamp();
+
+    for path in paths {
+        let source_path = source_path_for_storage(project_root, &path);
+        let source_id = stable_project_source_id(project_root, &source_path);
+        if let Some(source) = manifest
+            .sources
+            .iter_mut()
+            .find(|source| source.id == source_id)
+            .filter(|source| source.kind == ProjectSourceKind::Pdf)
+        {
+            source.pdf_profile = Some(profile);
+            source.extraction_route = profile.extraction_route();
+            source.ocr_quality = Some(ocr_quality);
+            source.last_checked_at = Some(now.clone());
         }
     }
 
@@ -444,6 +537,18 @@ impl ProjectSourceExtractionRoute {
     }
 }
 
+impl ProjectSourcePdfProfile {
+    pub fn extraction_route(self) -> ProjectSourceExtractionRoute {
+        match self {
+            Self::Standard | Self::LayoutHeavy | Self::NoAutomaticOcr => {
+                ProjectSourceExtractionRoute::EmbeddedText
+            }
+            Self::OcrRescue => ProjectSourceExtractionRoute::OcrRequired,
+            Self::ForceOcr => ProjectSourceExtractionRoute::ForceOcr,
+        }
+    }
+}
+
 pub fn default_extraction_route_for_kind(kind: ProjectSourceKind) -> ProjectSourceExtractionRoute {
     match kind {
         ProjectSourceKind::Pdf => ProjectSourceExtractionRoute::OcrIfNeeded,
@@ -501,6 +606,7 @@ fn new_project_source(source_id: String, source_path: PathBuf) -> ProjectSource 
         status: ProjectSourceStatus::Unprocessed,
         reason_codes: Vec::new(),
         extraction_route: default_extraction_route_for_kind(kind),
+        pdf_profile: None,
         ocr_quality: None,
         added_at: current_timestamp(),
         last_checked_at: None,
@@ -512,18 +618,44 @@ fn apply_import_policy(
     source: &mut ProjectSource,
     pdf_policy: ProjectSourceImportPolicy,
     ocr_quality: PdfOcrQuality,
+    pdf_handling_override: Option<&ProjectSourcePdfHandlingOverride>,
 ) {
     if source.kind != ProjectSourceKind::Pdf || source.status == ProjectSourceStatus::Failed {
         return;
     }
 
-    source.ocr_quality = Some(ocr_quality);
-    source.extraction_route = match pdf_policy {
-        ProjectSourceImportPolicy::Recommended => source.extraction_route,
-        ProjectSourceImportPolicy::OcrIfNeeded => ProjectSourceExtractionRoute::OcrIfNeeded,
-        ProjectSourceImportPolicy::ForceOcr => ProjectSourceExtractionRoute::ForceOcr,
-        ProjectSourceImportPolicy::NoAutomaticOcr => ProjectSourceExtractionRoute::EmbeddedText,
-    };
+    if let Some(pdf_handling) = pdf_handling_override {
+        source.ocr_quality = Some(pdf_handling.ocr_quality);
+        source.pdf_profile = Some(pdf_handling.pdf_profile);
+        source.extraction_route = pdf_handling.pdf_profile.extraction_route();
+    } else {
+        source.ocr_quality = Some(ocr_quality);
+        source.extraction_route = match pdf_policy {
+            ProjectSourceImportPolicy::Recommended => source.extraction_route,
+            ProjectSourceImportPolicy::OcrIfNeeded => ProjectSourceExtractionRoute::OcrIfNeeded,
+            ProjectSourceImportPolicy::ForceOcr => ProjectSourceExtractionRoute::ForceOcr,
+            ProjectSourceImportPolicy::NoAutomaticOcr => ProjectSourceExtractionRoute::EmbeddedText,
+        };
+    }
+}
+
+fn successful_pdf_review_reason(source: &ProjectSource) -> Option<&'static str> {
+    if source.kind != ProjectSourceKind::Pdf {
+        return None;
+    }
+
+    match source.pdf_profile {
+        Some(ProjectSourcePdfProfile::LayoutHeavy) => Some("layout_heavy_profile"),
+        Some(ProjectSourcePdfProfile::OcrRescue) => Some("ocr_review_recommended"),
+        Some(ProjectSourcePdfProfile::ForceOcr) => Some("ocr_generated"),
+        Some(ProjectSourcePdfProfile::Standard | ProjectSourcePdfProfile::NoAutomaticOcr) => None,
+        None => match source.extraction_route {
+            ProjectSourceExtractionRoute::OcrRequired | ProjectSourceExtractionRoute::ForceOcr => {
+                Some("ocr_review_recommended")
+            }
+            _ => None,
+        },
+    }
 }
 
 fn preflight_pdf_source(source: &mut ProjectSource) {
@@ -563,6 +695,7 @@ fn apply_pdf_audit_result_to_source(
 ) {
     match quality {
         PdfAuditQuality::Good => {
+            source.pdf_profile = Some(ProjectSourcePdfProfile::Standard);
             source.extraction_route = ProjectSourceExtractionRoute::EmbeddedText;
             set_source_status(
                 source,
@@ -571,6 +704,7 @@ fn apply_pdf_audit_result_to_source(
             );
         }
         PdfAuditQuality::Suspicious => {
+            source.pdf_profile = Some(ProjectSourcePdfProfile::OcrRescue);
             source.extraction_route = ProjectSourceExtractionRoute::OcrRequired;
             set_source_status(
                 source,
@@ -579,6 +713,7 @@ fn apply_pdf_audit_result_to_source(
             );
         }
         PdfAuditQuality::Poor => {
+            source.pdf_profile = Some(ProjectSourcePdfProfile::OcrRescue);
             source.extraction_route = ProjectSourceExtractionRoute::OcrRequired;
             set_source_status(
                 source,
@@ -587,6 +722,7 @@ fn apply_pdf_audit_result_to_source(
             );
         }
         PdfAuditQuality::Empty => {
+            source.pdf_profile = Some(ProjectSourcePdfProfile::OcrRescue);
             source.extraction_route = ProjectSourceExtractionRoute::OcrRequired;
             set_source_status(
                 source,
@@ -598,6 +734,7 @@ fn apply_pdf_audit_result_to_source(
             if matches!(suggested_profile, PdfAuditSuggestedProfile::ForceOcr)
                 || !embedded_text_detected
             {
+                source.pdf_profile = Some(ProjectSourcePdfProfile::OcrRescue);
                 source.extraction_route = ProjectSourceExtractionRoute::OcrRequired;
                 set_source_status(
                     source,
@@ -605,6 +742,7 @@ fn apply_pdf_audit_result_to_source(
                     &["pdf_no_text_layer", "ocr_required"],
                 );
             } else {
+                source.pdf_profile = Some(ProjectSourcePdfProfile::Standard);
                 source.extraction_route = ProjectSourceExtractionRoute::Undecided;
                 set_source_status(
                     source,
@@ -688,6 +826,7 @@ mod tests {
             status: ProjectSourceStatus::ReadyToProcess,
             reason_codes: vec!["native_text_available".to_string()],
             extraction_route: default_extraction_route_for_kind(kind),
+            pdf_profile: None,
             ocr_quality: None,
             added_at: "2026-01-01T00:00:00Z".to_string(),
             last_checked_at: Some("2026-01-01T00:00:00Z".to_string()),
@@ -732,6 +871,40 @@ mod tests {
         assert_eq!(
             loaded.sources[0].ocr_quality,
             Some(PdfOcrQuality::HighQuality)
+        );
+    }
+
+    #[test]
+    fn pdf_profile_serializes_and_deserializes() {
+        let json = serde_json::to_string(&ProjectSourcePdfProfile::LayoutHeavy).unwrap();
+        let profile: ProjectSourcePdfProfile = serde_json::from_str("\"ocr_rescue\"").unwrap();
+
+        assert_eq!(json, "\"layout_heavy\"");
+        assert_eq!(profile, ProjectSourcePdfProfile::OcrRescue);
+    }
+
+    #[test]
+    fn source_manifest_persists_pdf_profile() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("paper.pdf");
+        let mut source = source_for_test(path, ProjectSourceKind::Pdf);
+        source.pdf_profile = Some(ProjectSourcePdfProfile::LayoutHeavy);
+        source.extraction_route = ProjectSourcePdfProfile::LayoutHeavy.extraction_route();
+        let manifest = ProjectSourceManifest {
+            version: SOURCE_MANIFEST_VERSION,
+            sources: vec![source],
+        };
+
+        save_project_source_manifest(dir.path(), &manifest).unwrap();
+        let loaded = load_project_source_manifest(dir.path()).unwrap();
+
+        assert_eq!(
+            loaded.sources[0].pdf_profile,
+            Some(ProjectSourcePdfProfile::LayoutHeavy)
+        );
+        assert_eq!(
+            loaded.sources[0].extraction_route,
+            ProjectSourceExtractionRoute::EmbeddedText
         );
     }
 
@@ -813,6 +986,174 @@ mod tests {
                 ProjectSourceExtractionRoute::DocxExtract,
                 ProjectSourceExtractionRoute::HtmlExtract,
             ]
+        );
+        assert!(
+            loaded
+                .sources
+                .iter()
+                .all(|source| source.pdf_profile.is_none())
+        );
+    }
+
+    #[test]
+    fn pdf_profile_to_route_mapping_is_stable() {
+        assert_eq!(
+            ProjectSourcePdfProfile::Standard.extraction_route(),
+            ProjectSourceExtractionRoute::EmbeddedText
+        );
+        assert_eq!(
+            ProjectSourcePdfProfile::LayoutHeavy.extraction_route(),
+            ProjectSourceExtractionRoute::EmbeddedText
+        );
+        assert_eq!(
+            ProjectSourcePdfProfile::OcrRescue.extraction_route(),
+            ProjectSourceExtractionRoute::OcrRequired
+        );
+        assert_eq!(
+            ProjectSourcePdfProfile::ForceOcr.extraction_route(),
+            ProjectSourceExtractionRoute::ForceOcr
+        );
+        assert_eq!(
+            ProjectSourcePdfProfile::NoAutomaticOcr.extraction_route(),
+            ProjectSourceExtractionRoute::EmbeddedText
+        );
+    }
+
+    #[test]
+    fn successful_pdf_preparation_uses_profile_status_mapping() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("paper.pdf");
+        let mut source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        source.id = stable_project_source_id(dir.path(), &path);
+        source.pdf_profile = Some(ProjectSourcePdfProfile::OcrRescue);
+        source.extraction_route = ProjectSourcePdfProfile::OcrRescue.extraction_route();
+        save_project_source_manifest(
+            dir.path(),
+            &ProjectSourceManifest {
+                version: SOURCE_MANIFEST_VERSION,
+                sources: vec![source],
+            },
+        )
+        .unwrap();
+
+        let manifest = update_project_source_processing_results(
+            dir.path(),
+            vec![ProjectSourceProcessingResult {
+                path,
+                failed: false,
+                warning_count: 0,
+                reason_codes: Vec::new(),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.sources[0].status,
+            ProjectSourceStatus::ProcessedWithWarnings
+        );
+        assert_eq!(
+            manifest.sources[0].reason_codes,
+            vec!["ocr_review_recommended"]
+        );
+    }
+
+    #[test]
+    fn layout_heavy_preparation_preserves_profile_separately_from_route() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("paper.pdf");
+        let mut source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        source.id = stable_project_source_id(dir.path(), &path);
+        source.pdf_profile = Some(ProjectSourcePdfProfile::LayoutHeavy);
+        source.extraction_route = ProjectSourcePdfProfile::LayoutHeavy.extraction_route();
+        save_project_source_manifest(
+            dir.path(),
+            &ProjectSourceManifest {
+                version: SOURCE_MANIFEST_VERSION,
+                sources: vec![source],
+            },
+        )
+        .unwrap();
+
+        let manifest = update_project_source_processing_results(
+            dir.path(),
+            vec![ProjectSourceProcessingResult {
+                path,
+                failed: false,
+                warning_count: 0,
+                reason_codes: Vec::new(),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.sources[0].pdf_profile,
+            Some(ProjectSourcePdfProfile::LayoutHeavy)
+        );
+        assert_eq!(
+            manifest.sources[0].extraction_route,
+            ProjectSourceExtractionRoute::EmbeddedText
+        );
+        assert_eq!(
+            manifest.sources[0].status,
+            ProjectSourceStatus::ProcessedWithWarnings
+        );
+        assert_eq!(
+            manifest.sources[0].reason_codes,
+            vec!["layout_heavy_profile"]
+        );
+    }
+
+    #[test]
+    fn updating_pdf_profile_preserves_ocr_rescue_and_force_ocr_routes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("paper.pdf");
+        let mut source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        source.id = stable_project_source_id(dir.path(), &path);
+        save_project_source_manifest(
+            dir.path(),
+            &ProjectSourceManifest {
+                version: SOURCE_MANIFEST_VERSION,
+                sources: vec![source],
+            },
+        )
+        .unwrap();
+
+        let ocr_rescue = update_project_source_pdf_profiles(
+            dir.path(),
+            vec![path.clone()],
+            ProjectSourcePdfProfile::OcrRescue,
+            PdfOcrQuality::Balanced,
+        )
+        .unwrap();
+
+        assert_eq!(
+            ocr_rescue.sources[0].pdf_profile,
+            Some(ProjectSourcePdfProfile::OcrRescue)
+        );
+        assert_eq!(
+            ocr_rescue.sources[0].extraction_route,
+            ProjectSourceExtractionRoute::OcrRequired
+        );
+
+        let force_ocr = update_project_source_pdf_profiles(
+            dir.path(),
+            vec![path],
+            ProjectSourcePdfProfile::ForceOcr,
+            PdfOcrQuality::HighQuality,
+        )
+        .unwrap();
+
+        assert_eq!(
+            force_ocr.sources[0].pdf_profile,
+            Some(ProjectSourcePdfProfile::ForceOcr)
+        );
+        assert_eq!(
+            force_ocr.sources[0].extraction_route,
+            ProjectSourceExtractionRoute::ForceOcr
+        );
+        assert_eq!(
+            force_ocr.sources[0].ocr_quality,
+            Some(PdfOcrQuality::HighQuality)
         );
     }
 

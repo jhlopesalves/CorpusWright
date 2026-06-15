@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
 use crate::clean::PdfOcrQuality;
-use crate::project_sources::ProjectSourceExtractionRoute;
+use crate::project_sources::{ProjectSourceExtractionRoute, ProjectSourcePdfProfile};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "snake_case")]
@@ -26,6 +26,8 @@ pub struct DocumentRecord {
     pub size_bytes: u64,
     #[serde(default)]
     pub extraction_route: Option<ProjectSourceExtractionRoute>,
+    #[serde(default)]
+    pub pdf_profile: Option<ProjectSourcePdfProfile>,
     #[serde(default)]
     pub ocr_quality: Option<PdfOcrQuality>,
 }
@@ -111,6 +113,7 @@ pub fn scan_directory(root: impl AsRef<Path>) -> Result<ScanReport, ScanError> {
                     document_type,
                     size_bytes,
                     extraction_route: None,
+                    pdf_profile: None,
                     ocr_quality: None,
                 })
             } else {
@@ -177,6 +180,7 @@ pub fn load_files(paths: Vec<PathBuf>) -> Result<ScanReport, ScanError> {
                     document_type,
                     size_bytes,
                     extraction_route: None,
+                    pdf_profile: None,
                     ocr_quality: None,
                 })
             } else {

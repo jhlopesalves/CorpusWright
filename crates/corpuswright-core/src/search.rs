@@ -289,6 +289,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: text.len() as u64,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         }
     }
@@ -403,6 +404,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: text.len() as u64,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let records = [record];
@@ -434,6 +436,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: text.len() as u64,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let records = [record];
@@ -474,6 +477,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: text.len() as u64,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let records = [record];

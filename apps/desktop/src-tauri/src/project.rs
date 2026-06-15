@@ -1,9 +1,10 @@
 use corpuswright_core::clean::PdfOcrQuality;
 use corpuswright_core::project_sources::{
     ProjectSourceImportPolicy, ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest,
-    ProjectSourceProcessingResult, ProjectSourceStatus, ProjectSourceUpdate,
-    add_project_source_paths, add_project_source_paths_with_policy, load_project_source_manifest,
-    review_project_source_paths, save_project_source_manifest,
+    ProjectSourcePdfHandlingOverride, ProjectSourcePdfProfile, ProjectSourceProcessingResult,
+    ProjectSourceStatus, ProjectSourceUpdate, add_project_source_paths,
+    add_project_source_paths_with_pdf_handling, load_project_source_manifest,
+    review_project_source_paths, save_project_source_manifest, update_project_source_pdf_profiles,
     update_project_source_processing_results,
 };
 use corpuswright_core::scan::{ScanReport, load_files, scan_directory};
@@ -35,6 +36,14 @@ pub(crate) struct ActiveProject {
     manifest_path: String,
     project_version: u32,
     source_roots: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProjectSourcePdfHandlingOverrideRequest {
+    path: String,
+    pdf_profile: ProjectSourcePdfProfile,
+    ocr_quality: PdfOcrQuality,
 }
 
 #[tauri::command(async)]
@@ -154,12 +163,20 @@ pub(crate) fn add_project_source_files_command(
 pub(crate) fn confirm_project_source_files_import_command(
     root_path: String,
     paths: Vec<String>,
-    pdf_policy: ProjectSourceImportPolicy,
-    ocr_quality: PdfOcrQuality,
+    pdf_handling_overrides: Vec<ProjectSourcePdfHandlingOverrideRequest>,
 ) -> Result<ProjectSourceUpdate, String> {
     let root = validated_project_root(&root_path)?;
     let paths = paths.into_iter().map(PathBuf::from).collect();
-    add_project_source_paths_with_policy(root, paths, pdf_policy, ocr_quality)
+    add_project_source_paths_with_pdf_handling(
+        root,
+        paths,
+        ProjectSourceImportPolicy::Recommended,
+        PdfOcrQuality::Balanced,
+        pdf_handling_overrides
+            .into_iter()
+            .map(pdf_handling_override_from_request)
+            .collect(),
+    )
 }
 
 #[tauri::command(async)]
@@ -181,8 +198,7 @@ pub(crate) fn add_project_source_folder_command(
 pub(crate) fn confirm_project_source_folder_import_command(
     root_path: String,
     folder_path: String,
-    pdf_policy: ProjectSourceImportPolicy,
-    ocr_quality: PdfOcrQuality,
+    pdf_handling_overrides: Vec<ProjectSourcePdfHandlingOverrideRequest>,
 ) -> Result<ProjectSourceUpdate, String> {
     let root = validated_project_root(&root_path)?;
     let report = scan_source_folder(&folder_path)?;
@@ -191,7 +207,16 @@ pub(crate) fn confirm_project_source_folder_import_command(
         .into_iter()
         .map(|record| record.source_path)
         .collect();
-    add_project_source_paths_with_policy(root, paths, pdf_policy, ocr_quality)
+    add_project_source_paths_with_pdf_handling(
+        root,
+        paths,
+        ProjectSourceImportPolicy::Recommended,
+        PdfOcrQuality::Balanced,
+        pdf_handling_overrides
+            .into_iter()
+            .map(pdf_handling_override_from_request)
+            .collect(),
+    )
 }
 
 pub(crate) fn load_project_source_records(root_path: String) -> Result<ScanReport, String> {
@@ -215,6 +240,7 @@ pub(crate) fn load_project_source_records(root_path: String) -> Result<ScanRepor
         let key = canonical_or_original(record.source_path.clone());
         if let Some(source) = route_by_path.get(&key) {
             record.extraction_route = Some(source.extraction_route);
+            record.pdf_profile = source.pdf_profile;
             record.ocr_quality = source.ocr_quality;
         }
     }
@@ -231,6 +257,28 @@ pub(crate) fn update_project_source_processing_results_command(
 ) -> Result<ProjectSourceManifest, String> {
     let root = validated_project_root(&root_path)?;
     update_project_source_processing_results(root, results)
+}
+
+#[tauri::command(async)]
+pub(crate) fn update_project_source_pdf_profiles_command(
+    root_path: String,
+    paths: Vec<String>,
+    profile: ProjectSourcePdfProfile,
+    ocr_quality: PdfOcrQuality,
+) -> Result<ProjectSourceManifest, String> {
+    let root = validated_project_root(&root_path)?;
+    let paths = paths.into_iter().map(PathBuf::from).collect();
+    update_project_source_pdf_profiles(root, paths, profile, ocr_quality)
+}
+
+fn pdf_handling_override_from_request(
+    request: ProjectSourcePdfHandlingOverrideRequest,
+) -> ProjectSourcePdfHandlingOverride {
+    ProjectSourcePdfHandlingOverride {
+        path: PathBuf::from(request.path),
+        pdf_profile: request.pdf_profile,
+        ocr_quality: request.ocr_quality,
+    }
 }
 
 fn scan_source_folder(folder_path: &str) -> Result<ScanReport, String> {
@@ -532,8 +580,7 @@ mod tests {
         let update = confirm_project_source_files_import_command(
             path_to_string(&root),
             vec![path_to_string(&source_file)],
-            ProjectSourceImportPolicy::Recommended,
-            PdfOcrQuality::Balanced,
+            Vec::new(),
         )
         .unwrap();
         let manifest = load_project_source_manifest(&root).unwrap();

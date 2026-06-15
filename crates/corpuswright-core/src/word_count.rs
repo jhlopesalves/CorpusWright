@@ -151,6 +151,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: content.len() as u64,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         }
     }
@@ -222,6 +223,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: 0,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let config = CleaningConfig::default();
@@ -240,6 +242,7 @@ mod tests {
             document_type: DocumentType::Pdf,
             size_bytes: 8,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let config = CleaningConfig {

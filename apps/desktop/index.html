@@ -28,7 +28,7 @@
           <div class="dropdown-content">
             <div class="dropdown-item" id="menu-open-files" tabindex="0">Open Files</div>
             <div class="dropdown-item" id="menu-open-dir" tabindex="0">Open Folder</div>
-            <div class="dropdown-item" id="menu-open-pdf-intake" tabindex="0">Open Scanned or Complex PDFs...</div>
+            <div class="dropdown-item hidden" id="menu-open-pdf-intake" tabindex="0">Open Scanned or Complex PDFs...</div>
             <div class="dropdown-item" id="menu-save-corpus" tabindex="0">Save Processed Corpus</div>
           </div>
         </div>
@@ -92,6 +92,7 @@
           <div class="source-actions">
             <button id="source-add-files-btn" class="secondary-btn" type="button">Add Files</button>
             <button id="source-add-folder-btn" class="secondary-btn" type="button">Add Folder</button>
+            <button id="source-prepare-pdfs-btn" class="secondary-btn hidden" type="button">Prepare selected PDFs...</button>
           </div>
         </div>
         <div class="status-line" id="files-status">0 loaded | 0 selected</div>
@@ -214,31 +215,30 @@
         </button>
         <h2 id="source-import-title">Import Sources</h2>
         <p id="source-import-description" class="modal-description">
-          CorpusWright inspected the selected files. Choose how these sources should be imported into the project.
+          CorpusWright inspected the selected files. Importing adds them to the project and stores how PDFs should be handled. Text extraction, OCR, and cleaning run later when you process selected sources.
         </p>
 
         <p id="source-import-summary" class="source-import-summary"></p>
         <div id="source-import-groups" class="source-import-groups"></div>
 
-        <div class="source-import-controls">
-          <label for="source-import-policy">
-            <span>PDF policy for this import</span>
-            <select id="source-import-policy" class="settings-select">
-              <option value="recommended">Use recommended routes</option>
-              <option value="ocr_if_needed">Use embedded text when available; OCR only when needed</option>
-              <option value="force_ocr">Force OCR for selected PDFs</option>
-              <option value="no_automatic_ocr">Do not OCR automatically</option>
-            </select>
-          </label>
-          <label for="source-import-ocr-quality">
-            <span>OCR quality</span>
+        <section id="source-import-pdf-handling" class="source-import-pdf-handling hidden" aria-label="PDF handling">
+          <div class="source-import-section-header">
+            <h3>PDF handling</h3>
+            <button id="source-import-reset-pdf-handling" class="secondary-btn" type="button">Reset all to recommended</button>
+          </div>
+          <p id="source-import-pdf-scope" class="source-import-help"></p>
+          <div id="source-import-pdf-recommendations" class="source-import-recommendations"></div>
+          <div id="source-import-pdf-group-controls" class="source-import-pdf-group-controls"></div>
+          <label id="source-import-ocr-quality-row" class="source-import-ocr-quality-row" for="source-import-ocr-quality">
+            <span>OCR quality for OCR-based PDF handling</span>
             <select id="source-import-ocr-quality" class="settings-select">
               <option value="Fast">Fast</option>
               <option value="Balanced">Balanced</option>
               <option value="HighQuality">High quality</option>
             </select>
+            <span id="source-import-ocr-quality-help" class="source-import-help"></span>
           </label>
-        </div>
+        </section>
 
         <div id="source-import-list" class="source-import-list"></div>
 
@@ -264,15 +264,15 @@
         </button>
         <h2 id="pdf-intake-title">Open Scanned or Complex PDFs</h2>
         <p id="pdf-intake-description" class="modal-description">
-          Choose a slower, inspection-oriented PDF workflow. Preview before export: OCR may contain errors, layout
-          reconstruction is imperfect, and multi-column extraction is experimental. Source files are never modified.
+          Choose PDF handling for inspection-oriented processing. Preview before export: OCR may contain errors, layout
+          reconstruction is imperfect, and source files are never modified.
         </p>
 
-        <div class="pdf-intake-profiles" role="radiogroup" aria-label="PDF intake profile">
+        <div class="pdf-intake-profiles" role="radiogroup" aria-label="PDF handling">
           <label class="pdf-intake-profile" for="pdf-intake-standard">
             <input type="radio" id="pdf-intake-standard" name="pdf-intake-profile" value="standard" checked />
             <span>
-              <span class="pdf-intake-profile-title">Standard embedded-text PDF</span>
+              <span class="pdf-intake-profile-title">Standard embedded text</span>
               <span class="pdf-intake-profile-help">Fastest. Use when the PDF already contains selectable text.</span>
             </span>
           </label>
@@ -289,7 +289,7 @@
           <label class="pdf-intake-profile" for="pdf-intake-ocr">
             <input type="radio" id="pdf-intake-ocr" name="pdf-intake-profile" value="ocr" />
             <span>
-              <span class="pdf-intake-profile-title">OCR rescue PDF</span>
+              <span class="pdf-intake-profile-title">OCR rescue</span>
               <span class="pdf-intake-profile-help">Attempts OCR for scanned or image-based PDFs. Slower, and recognition
                 errors are possible.</span>
             </span>
@@ -312,7 +312,7 @@
 
         <div id="pdf-intake-materialization-panel" class="pdf-intake-materialization-panel hidden" aria-live="polite">
           <div class="pdf-intake-materialization-row">
-            <span>Profile</span>
+            <span>PDF handling</span>
             <strong id="pdf-intake-materialization-profile"></strong>
           </div>
           <div class="pdf-intake-materialization-row">

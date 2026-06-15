@@ -5,11 +5,11 @@ import {
   SOURCE_GROUP_ORDER,
   isLoadableSource,
   pathKey,
+  pdfHandlingLabel,
   primaryReasonLabel,
   reasonLabel,
   sourceKindLabel,
   sourceStatusLabel,
-  usefulRouteLabel,
 } from "./sources";
 
 const ITEM_HEIGHT = 26; // px, must match CSS #file-list li height
@@ -297,12 +297,12 @@ function createSourceRow(
     meta.appendChild(reasonBadge);
   }
 
-  const route = usefulRouteLabel(source);
-  if (route) {
-    const routeBadge = document.createElement("span");
-    routeBadge.className = "source-badge source-route-badge";
-    routeBadge.textContent = route;
-    meta.appendChild(routeBadge);
+  const handling = pdfHandlingLabel(source);
+  if (handling) {
+    const handlingBadge = document.createElement("span");
+    handlingBadge.className = "source-badge source-route-badge";
+    handlingBadge.textContent = handling;
+    meta.appendChild(handlingBadge);
   }
 
   textWrap.append(name, meta);
@@ -445,6 +445,7 @@ function filteredProjectSources(): ProjectSource[] {
       source.path,
       source.kind,
       source.extraction_route,
+      source.pdf_profile ?? "",
       sourceStatusLabel(source.status),
       ...source.reason_codes,
       ...source.reason_codes.map(reasonLabel),
@@ -481,9 +482,26 @@ function updateStatusLine(): void {
     dom.selectAllCheckbox.checked =
       visibleSourceCorpusIndices().length > 0 &&
       visibleSourceCorpusIndices().every(index => state.selectedCorpusIndices.has(index));
+
+    if (state.selectedCorpusIndices.size > 0) {
+      const selectedRecords = Array.from(state.selectedCorpusIndices)
+        .map(index => state.allFiles[index])
+        .filter(record => record !== undefined);
+      const allSelectedArePdfs =
+        selectedRecords.length === state.selectedCorpusIndices.size &&
+        selectedRecords.every(record => record.document_type === "pdf");
+      dom.sourcePreparePdfsBtn.classList.toggle("hidden", !allSelectedArePdfs);
+      dom.sourcePreparePdfsBtn.disabled = !allSelectedArePdfs;
+    } else {
+      dom.sourcePreparePdfsBtn.classList.add("hidden");
+      dom.sourcePreparePdfsBtn.disabled = true;
+    }
+
     return;
   }
 
+  dom.sourcePreparePdfsBtn.classList.add("hidden");
+  dom.sourcePreparePdfsBtn.disabled = true;
   dom.filesStatus.textContent = `${state.allFiles.length} loaded | ${state.selectedCorpusIndices.size} selected`;
   dom.selectAllCheckbox.checked =
     state.visibleFiles.length > 0 &&

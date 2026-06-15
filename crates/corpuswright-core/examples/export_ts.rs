@@ -19,8 +19,8 @@ use corpuswright_core::preview::{
 };
 use corpuswright_core::project_sources::{
     ProjectSource, ProjectSourceExtractionRoute, ProjectSourceImportPolicy,
-    ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest, ProjectSourceStatus,
-    ProjectSourceUpdate,
+    ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest, ProjectSourcePdfProfile,
+    ProjectSourceStatus, ProjectSourceUpdate,
 };
 use corpuswright_core::repeated_artifacts::{
     ArtifactRiskLabel, CandidateContentClass, CandidateTextProfile, CandidateTextSignalLabel,
@@ -189,6 +189,10 @@ fn main() {
                 file: "ProjectSourceExtractionRoute",
             },
             TypeImport {
+                name: "ProjectSourcePdfProfile",
+                file: "ProjectSourcePdfProfile",
+            },
+            TypeImport {
                 name: "PdfOcrQuality",
                 file: "PdfOcrQuality",
             },
@@ -222,6 +226,7 @@ fn main() {
     export_type::<ProjectSourceStatus>(&out_dir, &[], &[]);
     export_type::<ProjectSourceExtractionRoute>(&out_dir, &[], &[]);
     export_type::<ProjectSourceImportPolicy>(&out_dir, &[], &[]);
+    export_type::<ProjectSourcePdfProfile>(&out_dir, &[], &[]);
     export_type::<ProjectSource>(
         &out_dir,
         &[
@@ -240,6 +245,10 @@ fn main() {
             TypeImport {
                 name: "PdfOcrQuality",
                 file: "PdfOcrQuality",
+            },
+            TypeImport {
+                name: "ProjectSourcePdfProfile",
+                file: "ProjectSourcePdfProfile",
             },
         ],
         &[],

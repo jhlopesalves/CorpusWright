@@ -710,6 +710,7 @@ mod tests {
             document_type: doc_type,
             size_bytes: content.len() as u64,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         }
     }
@@ -764,6 +765,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: 10,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let mut used = HashSet::new();
@@ -779,6 +781,7 @@ mod tests {
             document_type: DocumentType::Pdf,
             size_bytes: 100,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let mut used = HashSet::new();
@@ -794,6 +797,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: 5,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let mut used = HashSet::new();
@@ -810,6 +814,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: 5,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let rec2 = DocumentRecord {
@@ -818,6 +823,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: 5,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let out1 = unique_output_relative_path(&rec1, &mut used);
@@ -835,6 +841,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: 5,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         // Symlinks can surface distinct sources with the same relative path.
@@ -844,6 +851,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: 5,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let out1 = unique_output_relative_path(&rec1, &mut used);
@@ -860,6 +868,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: 5,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let mut used = HashSet::new();
@@ -875,6 +884,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: 5,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let mut used = HashSet::new();
@@ -1429,6 +1439,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: 5,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let rec2 = DocumentRecord {
@@ -1437,6 +1448,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: 6,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
 
@@ -1489,6 +1501,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: 7,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
         let records = vec![record];

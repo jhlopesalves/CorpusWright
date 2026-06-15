@@ -5,18 +5,24 @@ import type { PdfOcrQuality } from "./generated/PdfOcrQuality.js";
 import type { PreviewWarning } from "./generated/PreviewWarning.js";
 import type { ProjectSource } from "./generated/ProjectSource.js";
 import type { ProjectSourceExtractionRoute } from "./generated/ProjectSourceExtractionRoute.js";
-import type { ProjectSourceImportPolicy } from "./generated/ProjectSourceImportPolicy.js";
 import type { ProjectSourceImportReview } from "./generated/ProjectSourceImportReview.js";
 import type { ProjectSourceManifest } from "./generated/ProjectSourceManifest.js";
+import type { ProjectSourcePdfProfile } from "./generated/ProjectSourcePdfProfile.js";
 import type { ProjectSourceStatus } from "./generated/ProjectSourceStatus.js";
 import type { ProjectSourceUpdate } from "./generated/ProjectSourceUpdate.js";
 import { state } from "./state";
 
-interface ProjectSourceProcessingResult {
+export interface ProjectSourceProcessingResult {
   path: string;
   failed: boolean;
   warning_count: number;
   reason_codes: string[];
+}
+
+export interface ProjectSourcePdfHandlingOverride {
+  path: string;
+  pdfProfile: ProjectSourcePdfProfile;
+  ocrQuality: PdfOcrQuality;
 }
 
 export const SOURCE_GROUP_ORDER: ProjectSourceStatus[] = [
@@ -72,6 +78,36 @@ export function extractionRouteLabel(route: ProjectSourceExtractionRoute): strin
   }
 }
 
+export function pdfProfileLabel(profile: ProjectSourcePdfProfile): string {
+  switch (profile) {
+    case "standard": return "Standard embedded text";
+    case "layout_heavy": return "Layout-heavy PDF";
+    case "ocr_rescue": return "OCR rescue";
+    case "force_ocr": return "Force OCR";
+    case "no_automatic_ocr": return "Do not OCR automatically";
+  }
+}
+
+export function pdfProfileShortLabel(profile: ProjectSourcePdfProfile): string {
+  switch (profile) {
+    case "standard": return "standard embedded text";
+    case "layout_heavy": return "layout-heavy";
+    case "ocr_rescue": return "OCR rescue";
+    case "force_ocr": return "force OCR";
+    case "no_automatic_ocr": return "no automatic OCR";
+  }
+}
+
+export function pdfHandlingLabel(source: ProjectSource): string | null {
+  if (source.kind !== "pdf") {
+    return usefulRouteLabel(source);
+  }
+  if (source.pdf_profile) {
+    return pdfProfileShortLabel(source.pdf_profile);
+  }
+  return usefulRouteLabel(source);
+}
+
 export function usefulRouteLabel(source: ProjectSource): string | null {
   switch (source.extraction_route) {
     case "embedded_text":
@@ -102,6 +138,9 @@ export function reasonLabel(code: string): string {
     case "low_text_density": return "low text density";
     case "layout_warning": return "layout warning";
     case "many_repeated_artifacts": return "repeated artefacts";
+    case "ocr_generated": return "OCR generated";
+    case "ocr_review_recommended": return "OCR review recommended";
+    case "layout_heavy_profile": return "layout-heavy handling";
     case "output_write_failed": return "write failed";
     case "parse_failed": return "parse failed";
     default: return code.replace(/_/g, " ");
@@ -165,8 +204,7 @@ export async function reviewFilesForActiveProjectSources(paths: string[]): Promi
 
 export async function confirmFilesForActiveProjectSources(
   paths: string[],
-  pdfPolicy: ProjectSourceImportPolicy,
-  ocrQuality: PdfOcrQuality,
+  pdfHandlingOverrides: ProjectSourcePdfHandlingOverride[],
 ): Promise<ProjectSourceUpdate | null> {
   if (!state.activeProject || paths.length === 0) {
     return null;
@@ -174,8 +212,7 @@ export async function confirmFilesForActiveProjectSources(
   const update = await invoke<ProjectSourceUpdate>("confirm_project_source_files_import_command", {
     rootPath: state.activeProject.rootPath,
     paths,
-    pdfPolicy,
-    ocrQuality,
+    pdfHandlingOverrides,
   });
   replaceProjectSources(update.manifest);
   return update;
@@ -205,8 +242,7 @@ export async function reviewFolderForActiveProjectSources(path: string): Promise
 
 export async function confirmFolderForActiveProjectSources(
   path: string,
-  pdfPolicy: ProjectSourceImportPolicy,
-  ocrQuality: PdfOcrQuality,
+  pdfHandlingOverrides: ProjectSourcePdfHandlingOverride[],
 ): Promise<ProjectSourceUpdate | null> {
   if (!state.activeProject) {
     return null;
@@ -214,8 +250,7 @@ export async function confirmFolderForActiveProjectSources(
   const update = await invoke<ProjectSourceUpdate>("confirm_project_source_folder_import_command", {
     rootPath: state.activeProject.rootPath,
     folderPath: path,
-    pdfPolicy,
-    ocrQuality,
+    pdfHandlingOverrides,
   });
   replaceProjectSources(update.manifest);
   return update;

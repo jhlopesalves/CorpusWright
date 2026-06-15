@@ -1265,7 +1265,8 @@ pub fn run() {
             project::add_project_source_folder_command,
             project::confirm_project_source_files_import_command,
             project::confirm_project_source_folder_import_command,
-            project::update_project_source_processing_results_command
+            project::update_project_source_processing_results_command,
+            project::update_project_source_pdf_profiles_command
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

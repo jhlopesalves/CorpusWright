@@ -2,9 +2,10 @@
 import type { PdfOcrQuality } from "./PdfOcrQuality";
 import type { ProjectSourceExtractionRoute } from "./ProjectSourceExtractionRoute";
 import type { ProjectSourceKind } from "./ProjectSourceKind";
+import type { ProjectSourcePdfProfile } from "./ProjectSourcePdfProfile";
 import type { ProjectSourceStatus } from "./ProjectSourceStatus";
 
 /**
  * A single file registered with a CorpusWright project.
  */
-export type ProjectSource = { id: string, path: string, file_name: string, extension: string | null, kind: ProjectSourceKind, status: ProjectSourceStatus, reason_codes: Array<string>, extraction_route: ProjectSourceExtractionRoute, ocr_quality: PdfOcrQuality | null, added_at: string, last_checked_at: string | null, last_processed_at: string | null, };
+export type ProjectSource = { id: string, path: string, file_name: string, extension: string | null, kind: ProjectSourceKind, status: ProjectSourceStatus, reason_codes: Array<string>, extraction_route: ProjectSourceExtractionRoute, pdf_profile: ProjectSourcePdfProfile | null, ocr_quality: PdfOcrQuality | null, added_at: string, last_checked_at: string | null, last_processed_at: string | null, };

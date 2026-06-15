@@ -6,23 +6,27 @@ import { dom } from "./dom";
 import { updateFileList } from "./file-list";
 import { state } from "./state";
 import {
-  addFilesToActiveProjectSources,
   confirmFilesForActiveProjectSources,
   confirmFolderForActiveProjectSources,
   extractionRouteLabel,
   loadableProjectSourcePaths,
+  loadProjectSourcesForActiveProject,
+  pdfProfileLabel,
+  persistProcessedPreviewStatuses,
+  type ProjectSourcePdfHandlingOverride,
   reviewFilesForActiveProjectSources,
   reviewFolderForActiveProjectSources,
   sourceKindLabel,
 } from "./sources";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
+import type { CombinedPreview } from "./generated/CombinedPreview.js";
 import type { CorpusSummary } from "./generated/CorpusSummary.js";
 import type { PdfOcrQuality } from "./generated/PdfOcrQuality.js";
 import type { PdfAuditResult } from "./generated/PdfAuditResult.js";
 import type { PdfAuditSuggestedProfile } from "./generated/PdfAuditSuggestedProfile.js";
-import type { ProjectSource } from "./generated/ProjectSource.js";
-import type { ProjectSourceImportPolicy } from "./generated/ProjectSourceImportPolicy.js";
 import type { ProjectSourceImportReview } from "./generated/ProjectSourceImportReview.js";
+import type { ProjectSourcePdfProfile } from "./generated/ProjectSourcePdfProfile.js";
+import type { ProjectSource } from "./generated/ProjectSource.js";
 import type { CorpusLoadResult } from "./types";
 
 interface CorpusCallbacks {
@@ -34,11 +38,9 @@ let callbacks: CorpusCallbacks = {
 };
 
 type PdfIntakeProfileId = "standard" | "layout" | "ocr" | "force-ocr";
-type PdfAuditSeverity = PdfAuditSuggestedProfile;
 
 interface ImportSourcesChoice {
-  pdfPolicy: ProjectSourceImportPolicy;
-  ocrQuality: PdfOcrQuality;
+  pdfHandlingOverrides: ProjectSourcePdfHandlingOverride[];
 }
 
 type ImportSourcesResolve = (choice: ImportSourcesChoice | null) => void;
@@ -50,7 +52,7 @@ interface PdfIntakeProfile {
 
 const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
   standard: {
-    statusLabel: "standard embedded-text profile",
+    statusLabel: "standard embedded-text handling",
     apply: (config) => {
       config.pdf_text_source = "EmbeddedText";
       config.pdf_ocr_quality = "Balanced";
@@ -63,7 +65,7 @@ const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
     },
   },
   layout: {
-    statusLabel: "layout-heavy profile",
+    statusLabel: "layout-heavy handling",
     apply: (config) => {
       config.pdf_text_source = "EmbeddedText";
       config.pdf_ocr_quality = "Balanced";
@@ -76,7 +78,7 @@ const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
     },
   },
   ocr: {
-    statusLabel: "scanned/OCR rescue profile",
+    statusLabel: "OCR rescue handling",
     apply: (config) => {
       config.pdf_text_source = "Ocr";
       config.pdf_ocr_quality = "Balanced";
@@ -89,7 +91,7 @@ const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
     },
   },
   "force-ocr": {
-    statusLabel: "force OCR/high-quality profile",
+    statusLabel: "force OCR handling",
     apply: (config) => {
       config.pdf_text_source = "ForceOcr";
       config.pdf_ocr_quality = "HighQuality";
@@ -111,11 +113,32 @@ const auditProfileToIntakeProfile: Record<PdfAuditSuggestedProfile, PdfIntakePro
 };
 
 const profileDisplayNames: Record<PdfIntakeProfileId, string> = {
-  standard: "Standard",
-  layout: "Layout-heavy",
+  standard: "Standard embedded text",
+  layout: "Layout-heavy PDF",
   ocr: "OCR rescue",
   "force-ocr": "Force OCR",
 };
+
+type PdfDetectionKind = "embedded_text" | "ocr_required" | "unknown";
+
+interface PendingPdfHandling {
+  source: ProjectSource;
+  detection: PdfDetectionKind;
+  recommendedProfile: ProjectSourcePdfProfile;
+  selectedProfile: ProjectSourcePdfProfile;
+}
+
+const PDF_HANDLING_OPTIONS: ProjectSourcePdfProfile[] = [
+  "standard",
+  "layout_heavy",
+  "ocr_rescue",
+  "force_ocr",
+  "no_automatic_ocr",
+];
+
+const OCR_BASED_PDF_HANDLING = new Set<ProjectSourcePdfProfile>(["ocr_rescue", "force_ocr"]);
+
+let pdfIntakeMode: "legacy" | "prepare-sources" = "legacy";
 
 let pdfIntakeSelectedPaths: string[] = [];
 let pdfIntakeManualProfileOverride = false;
@@ -124,6 +147,8 @@ let pdfIntakeMaterializing = false;
 let pdfIntakeCancelRequested = false;
 let pdfIntakeProgressUnlisten: UnlistenFn | null = null;
 let importSourcesResolve: ImportSourcesResolve | null = null;
+let activeImportCandidates: ProjectSource[] = [];
+let pendingPdfHandling = new Map<string, PendingPdfHandling>();
 
 interface PdfIntakeMaterializationProgress {
   currentFile: string;
@@ -213,8 +238,7 @@ function sourceImportSummaryLine(review: ProjectSourceImportReview): string {
 function groupedImportSources(review: ProjectSourceImportReview): Map<string, number> {
   const groups = new Map<string, number>();
   for (const source of review.candidates) {
-    const route = extractionRouteLabel(source.extraction_route);
-    const key = `${sourceKindLabel(source)}|${route}`;
+    const key = sourceKindLabel(source);
     groups.set(key, (groups.get(key) ?? 0) + 1);
   }
   return groups;
@@ -223,23 +247,214 @@ function groupedImportSources(review: ProjectSourceImportReview): Map<string, nu
 function renderImportSourcesGroups(review: ProjectSourceImportReview): void {
   dom.sourceImportGroups.replaceChildren();
   const groups = groupedImportSources(review);
-  for (const [key, count] of groups) {
-    const [kind, route] = key.split("|");
+  for (const [kind, count] of groups) {
     const row = document.createElement("div");
     row.className = "source-import-group-row";
 
     const label = document.createElement("span");
     label.textContent = kind;
 
-    const routeLabel = document.createElement("span");
-    routeLabel.textContent = route;
+    const scopeLabel = document.createElement("span");
+    scopeLabel.textContent = "Pending import";
 
     const countLabel = document.createElement("strong");
     countLabel.textContent = count.toLocaleString();
 
-    row.append(label, routeLabel, countLabel);
+    row.append(label, scopeLabel, countLabel);
     dom.sourceImportGroups.appendChild(row);
   }
+}
+
+function importPathKey(path: string): string {
+  return path.replace(/\\/g, "/").toLowerCase();
+}
+
+function pdfDetectionForSource(source: ProjectSource): PdfDetectionKind {
+  if (source.extraction_route === "embedded_text") {
+    return "embedded_text";
+  }
+  if (
+    source.status === "needs_ocr" ||
+    source.extraction_route === "ocr_required" ||
+    source.extraction_route === "force_ocr" ||
+    source.reason_codes.some(code => code === "ocr_required" || code === "pdf_no_text_layer")
+  ) {
+    return "ocr_required";
+  }
+  return "unknown";
+}
+
+function recommendedProfileForSource(source: ProjectSource): ProjectSourcePdfProfile {
+  if (source.pdf_profile) {
+    return source.pdf_profile;
+  }
+  switch (source.extraction_route) {
+    case "embedded_text":
+      return "standard";
+    case "force_ocr":
+      return "force_ocr";
+    case "ocr_required":
+    case "ocr_if_needed":
+      return "ocr_rescue";
+    default:
+      return "standard";
+  }
+}
+
+function detectionGroupLabel(detection: PdfDetectionKind, count: number): string {
+  const noun = count === 1 ? "PDF" : "PDFs";
+  switch (detection) {
+    case "embedded_text": return `Embedded-text ${noun}`;
+    case "ocr_required": return `OCR-required ${noun}`;
+    case "unknown": return `Unknown ${noun}`;
+  }
+}
+
+function detectionLabel(detection: PdfDetectionKind): string {
+  switch (detection) {
+    case "embedded_text": return "embedded text";
+    case "ocr_required": return "OCR required";
+    case "unknown": return "unknown";
+  }
+}
+
+function resetPendingPdfHandling(review: ProjectSourceImportReview): void {
+  pendingPdfHandling = new Map();
+  for (const source of review.candidates) {
+    if (source.kind !== "pdf") {
+      continue;
+    }
+    const recommendedProfile = recommendedProfileForSource(source);
+    pendingPdfHandling.set(importPathKey(source.path), {
+      source,
+      detection: pdfDetectionForSource(source),
+      recommendedProfile,
+      selectedProfile: recommendedProfile,
+    });
+  }
+}
+
+function pendingPdfHandlingItems(): PendingPdfHandling[] {
+  return Array.from(pendingPdfHandling.values());
+}
+
+function createPdfHandlingSelect(selectedProfile: ProjectSourcePdfProfile): HTMLSelectElement {
+  const select = document.createElement("select");
+  select.className = "settings-select source-import-handling-select";
+  for (const profile of PDF_HANDLING_OPTIONS) {
+    const option = document.createElement("option");
+    option.value = profile;
+    option.textContent = pdfProfileLabel(profile);
+    option.selected = profile === selectedProfile;
+    select.appendChild(option);
+  }
+  return select;
+}
+
+function renderPdfHandlingRecommendations(items: PendingPdfHandling[]): void {
+  dom.sourceImportPdfRecommendations.replaceChildren();
+
+  const title = document.createElement("h4");
+  title.textContent = "Recommended PDF handling";
+  dom.sourceImportPdfRecommendations.appendChild(title);
+
+  const counts = new Map<string, { detection: PdfDetectionKind; profile: ProjectSourcePdfProfile; count: number }>();
+  for (const item of items) {
+    const key = `${item.detection}|${item.recommendedProfile}`;
+    const current = counts.get(key) ?? {
+      detection: item.detection,
+      profile: item.recommendedProfile,
+      count: 0,
+    };
+    current.count += 1;
+    counts.set(key, current);
+  }
+
+  for (const { detection, profile, count } of counts.values()) {
+    const row = document.createElement("div");
+    row.className = "source-import-recommendation-row";
+    row.textContent = `${detectionGroupLabel(detection, count)} -> ${pdfProfileLabel(profile)}`;
+    dom.sourceImportPdfRecommendations.appendChild(row);
+  }
+}
+
+function renderPdfHandlingGroupControls(items: PendingPdfHandling[]): void {
+  dom.sourceImportPdfGroupControls.replaceChildren();
+  const groupOrder: PdfDetectionKind[] = ["embedded_text", "ocr_required", "unknown"];
+
+  for (const detection of groupOrder) {
+    const groupItems = items.filter(item => item.detection === detection);
+    if (groupItems.length === 0) {
+      continue;
+    }
+
+    const selectedProfiles = new Set(groupItems.map(item => item.selectedProfile));
+    const selectedProfile = selectedProfiles.size === 1 ? groupItems[0].selectedProfile : null;
+    const recommendedProfiles = new Set(groupItems.map(item => item.recommendedProfile));
+    const recommendedLabel = recommendedProfiles.size === 1
+      ? pdfProfileLabel(groupItems[0].recommendedProfile)
+      : "mixed recommendations";
+
+    const group = document.createElement("div");
+    group.className = "source-import-pdf-group";
+
+    const title = document.createElement("h4");
+    title.textContent = detectionGroupLabel(detection, groupItems.length);
+
+    const recommended = document.createElement("p");
+    recommended.className = "source-import-help";
+    recommended.textContent = `Recommended: ${recommendedLabel}. Applies to ${groupItems.length.toLocaleString()} pending ${groupItems.length === 1 ? "PDF" : "PDFs"}.`;
+
+    const label = document.createElement("label");
+    label.className = "source-import-group-select";
+    const labelText = document.createElement("span");
+    labelText.textContent = `Apply to all ${groupItems.length.toLocaleString()}`;
+    const select = createPdfHandlingSelect(selectedProfile ?? groupItems[0].recommendedProfile);
+    if (selectedProfile === null) {
+      const mixed = document.createElement("option");
+      mixed.value = "";
+      mixed.textContent = "Mixed handling";
+      mixed.disabled = true;
+      mixed.selected = true;
+      select.insertBefore(mixed, select.firstChild);
+    }
+    select.addEventListener("change", () => {
+      const profile = select.value as ProjectSourcePdfProfile;
+      for (const item of groupItems) {
+        item.selectedProfile = profile;
+      }
+      renderImportSourcesPdfHandling();
+      renderImportSourcesList(activeImportCandidates);
+    });
+
+    label.append(labelText, select);
+    group.append(title, recommended, label);
+    dom.sourceImportPdfGroupControls.appendChild(group);
+  }
+}
+
+function syncImportOcrQualityState(items: PendingPdfHandling[]): void {
+  const ocrCount = items.filter(item => OCR_BASED_PDF_HANDLING.has(item.selectedProfile)).length;
+  const hasOcrHandling = ocrCount > 0;
+  dom.sourceImportOcrQuality.disabled = !hasOcrHandling;
+  dom.sourceImportOcrQualityRow.classList.toggle("is-disabled", !hasOcrHandling);
+  dom.sourceImportOcrQualityHelp.textContent = hasOcrHandling
+    ? `Used when ${ocrCount.toLocaleString()} pending ${ocrCount === 1 ? "PDF uses" : "PDFs use"} OCR-based handling. OCR will run later when sources are processed.`
+    : "Not currently used because no pending PDF uses OCR-based handling.";
+}
+
+function renderImportSourcesPdfHandling(): void {
+  const items = pendingPdfHandlingItems();
+  if (items.length === 0) {
+    dom.sourceImportPdfHandling.classList.add("hidden");
+    return;
+  }
+
+  dom.sourceImportPdfHandling.classList.remove("hidden");
+  dom.sourceImportPdfScope.textContent = `Applies to ${items.length.toLocaleString()} pending ${items.length === 1 ? "PDF" : "PDFs"}.`;
+  renderPdfHandlingRecommendations(items);
+  renderPdfHandlingGroupControls(items);
+  syncImportOcrQualityState(items);
 }
 
 function renderImportSourcesList(sources: ProjectSource[]): void {
@@ -254,29 +469,52 @@ function renderImportSourcesList(sources: ProjectSource[]): void {
 
     const meta = document.createElement("span");
     meta.className = "source-import-list-meta";
-    meta.textContent = `${sourceKindLabel(source)} · ${extractionRouteLabel(source.extraction_route)}`;
+    const pdfHandling = pendingPdfHandling.get(importPathKey(source.path));
+    if (pdfHandling) {
+      meta.textContent = `Detected: ${detectionLabel(pdfHandling.detection)}`;
+      const label = document.createElement("label");
+      label.className = "source-import-row-handling";
+      const labelText = document.createElement("span");
+      labelText.textContent = "Handling";
+      const select = createPdfHandlingSelect(pdfHandling.selectedProfile);
+      select.addEventListener("change", () => {
+        pdfHandling.selectedProfile = select.value as ProjectSourcePdfProfile;
+        renderImportSourcesPdfHandling();
+        renderImportSourcesList(activeImportCandidates);
+      });
+      label.append(labelText, select);
+      row.append(name, meta, label);
+    } else {
+      meta.textContent = `${sourceKindLabel(source)} · ${extractionRouteLabel(source.extraction_route)}`;
+      row.append(name, meta);
+    }
 
-    row.append(name, meta);
     dom.sourceImportList.appendChild(row);
   }
 }
 
 function resetImportSourcesDialog(review: ProjectSourceImportReview): void {
+  activeImportCandidates = review.candidates;
+  resetPendingPdfHandling(review);
   dom.sourceImportSummary.textContent = sourceImportSummaryLine(review);
-  dom.sourceImportPolicy.value = "recommended";
   dom.sourceImportOcrQuality.value = state.activeCleaningConfig.pdf_ocr_quality;
   dom.sourceImportStatus.textContent = review.candidates.length === 0
     ? "No new sources are available to import."
     : "";
   dom.confirmSourceImportBtn.disabled = review.candidates.length === 0;
   renderImportSourcesGroups(review);
+  renderImportSourcesPdfHandling();
   renderImportSourcesList(review.candidates);
 }
 
 function selectedImportSourcesChoice(): ImportSourcesChoice {
+  const ocrQuality = dom.sourceImportOcrQuality.value as PdfOcrQuality;
   return {
-    pdfPolicy: dom.sourceImportPolicy.value as ProjectSourceImportPolicy,
-    ocrQuality: dom.sourceImportOcrQuality.value as PdfOcrQuality,
+    pdfHandlingOverrides: pendingPdfHandlingItems().map(item => ({
+      path: item.source.path,
+      pdfProfile: item.selectedProfile,
+      ocrQuality,
+    })),
   };
 }
 
@@ -321,6 +559,8 @@ function resetPdfIntakeSession(): void {
   pdfIntakeSelectedPaths = [];
   pdfIntakeManualProfileOverride = false;
   pdfIntakeCancelRequested = false;
+  dom.pdfIntakeTitle.textContent = "Open Scanned or Complex PDFs";
+  dom.pdfIntakeDescription.textContent = "Choose PDF handling for inspection-oriented processing. Preview before export: OCR may contain errors, layout reconstruction is imperfect, and source files are never modified.";
   dom.pdfIntakeModal.classList.remove("pdf-intake-processing");
   setPdfIntakeProfileId("standard");
   dom.pdfIntakeStatus.textContent = "";
@@ -330,6 +570,7 @@ function resetPdfIntakeSession(): void {
   resetPdfIntakeMaterializationProgress();
   dom.loadPdfIntakeFilesBtn.classList.add("hidden");
   dom.loadPdfIntakeFilesBtn.disabled = true;
+  dom.choosePdfIntakeFilesBtn.classList.remove("hidden");
   dom.choosePdfIntakeFilesBtn.disabled = false;
   dom.choosePdfIntakeFilesBtn.textContent = "Choose PDFs...";
   dom.cancelPdfIntakeBtn.textContent = "Cancel";
@@ -418,9 +659,48 @@ function stopListeningForPdfIntakeProgress(): void {
   }
 }
 
-function openPdfIntakeModal(): void {
+export function openPdfIntakeModal(): void {
+  pdfIntakeMode = "legacy";
   resetPdfIntakeSession();
   dom.pdfIntakeModal.classList.remove("hidden");
+  dom.loadPdfIntakeFilesBtn.textContent = "Load PDFs";
+}
+
+export async function openPdfIntakeModalForSources(paths: string[]): Promise<void> {
+  pdfIntakeMode = "prepare-sources";
+  resetPdfIntakeSession();
+  dom.pdfIntakeModal.classList.remove("hidden");
+  dom.pdfIntakeTitle.textContent = "Prepare selected PDFs";
+  dom.pdfIntakeDescription.textContent =
+    `Applies to ${paths.length.toLocaleString()} selected project ${paths.length === 1 ? "PDF" : "PDFs"}. Choose PDF handling, run diagnostics, and materialise text now.`;
+  dom.loadPdfIntakeFilesBtn.textContent = "Prepare selected PDFs";
+  dom.choosePdfIntakeFilesBtn.classList.add("hidden");
+
+  pdfIntakeSelectedPaths = paths;
+  dom.pdfIntakeStatus.textContent = "Auditing PDFs...";
+  dom.statusBar.textContent = "Auditing selected PDFs...";
+  dom.choosePdfIntakeFilesBtn.disabled = true;
+  dom.loadPdfIntakeFilesBtn.disabled = true;
+  renderPdfAuditLoading(paths.length);
+
+  try {
+    const auditResults = await invoke<PdfAuditResult[]>("audit_pdf_files_command", { paths });
+    const suggestedProfile = batchSuggestedProfile(auditResults);
+
+    setPdfIntakeProfileId(suggestedProfile);
+    renderPdfAuditResults(auditResults, suggestedProfile, true);
+
+    dom.pdfIntakeStatus.textContent = "Diagnostics ready.";
+    dom.statusBar.textContent = `PDF diagnostics ready for ${paths.length.toLocaleString()} selected project ${paths.length === 1 ? "PDF" : "PDFs"}. Suggested handling: ${profileDisplayNames[suggestedProfile]}.`;
+    dom.loadPdfIntakeFilesBtn.classList.remove("hidden");
+    dom.loadPdfIntakeFilesBtn.disabled = false;
+  } catch (error) {
+    dom.pdfIntakeStatus.textContent = `Audit error: ${error}`;
+    dom.statusBar.textContent = `Audit error: ${error}`;
+    console.error(error);
+  } finally {
+    dom.choosePdfIntakeFilesBtn.disabled = false;
+  }
 }
 
 async function handleCancelPdfIntake(): Promise<void> {
@@ -446,6 +726,10 @@ function isPdfPath(path: string): boolean {
 }
 
 async function handleChoosePdfIntakeFiles(): Promise<void> {
+  if (pdfIntakeMode !== "legacy") {
+    return;
+  }
+
   const selected = await open({
     multiple: true,
     filters: [{ name: "PDF Documents", extensions: ["pdf"] }],
@@ -481,7 +765,7 @@ async function handleChoosePdfIntakeFiles(): Promise<void> {
 
     renderPdfAuditResults(auditResults, suggestedProfile, shouldApplySuggestion);
     dom.pdfIntakeStatus.textContent = "Diagnostics ready.";
-    dom.statusBar.textContent = `PDF diagnostics ready. Batch/global suggestion: ${profileDisplayNames[suggestedProfile]}.`;
+    dom.statusBar.textContent = `PDF diagnostics ready. Suggested handling: ${profileDisplayNames[suggestedProfile]}.`;
     dom.loadPdfIntakeFilesBtn.classList.remove("hidden");
     dom.loadPdfIntakeFilesBtn.disabled = false;
     dom.choosePdfIntakeFilesBtn.textContent = "Choose different PDFs...";
@@ -494,13 +778,25 @@ async function handleChoosePdfIntakeFiles(): Promise<void> {
   }
 }
 
+function mapToPdfProfile(id: PdfIntakeProfileId): ProjectSourcePdfProfile {
+  switch (id) {
+    case "standard": return "standard";
+    case "layout": return "layout_heavy";
+    case "ocr": return "ocr_rescue";
+    case "force-ocr": return "force_ocr";
+  }
+}
+
 async function handleLoadPdfIntakeFiles(): Promise<void> {
   if (pdfIntakeSelectedPaths.length === 0) {
     dom.pdfIntakeStatus.textContent = "Choose PDFs first.";
     return;
   }
 
-  const profile = pdfIntakeProfiles[selectedPdfIntakeProfileId()];
+  const selectedProfileId = selectedPdfIntakeProfileId();
+  const selectedPdfCount = pdfIntakeSelectedPaths.length;
+
+  const profile = pdfIntakeProfiles[selectedProfileId];
   const materializationConfig: CleaningConfig = { ...state.activeCleaningConfig };
   profile.apply(materializationConfig);
 
@@ -519,6 +815,15 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
     dom.btnClosePdfIntakeModalTop.disabled = true;
     clearStateForLoad();
 
+    if (pdfIntakeMode === "prepare-sources" && state.activeProject) {
+      await invoke("update_project_source_pdf_profiles_command", {
+        rootPath: state.activeProject.rootPath,
+        paths: pdfIntakeSelectedPaths,
+        profile: mapToPdfProfile(selectedProfileId),
+        ocrQuality: materializationConfig.pdf_ocr_quality,
+      });
+    }
+
     const result = await invoke<CorpusLoadResult>("load_pdf_intake_files_command", {
       paths: pdfIntakeSelectedPaths,
       cleaningConfig: materializationConfig,
@@ -526,26 +831,40 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
     });
 
     Object.assign(state.activeCleaningConfig, materializationConfig);
-    state.currentCorpusVersion = result.corpusVersion;
-    state.currentCorpusRoot = result.report.root;
-    state.allFiles = result.report.files;
-    state.visibleFiles = state.allFiles.map((record, i) => ({ corpusIndex: i, record }));
 
-    if (state.activeProject) {
-      try {
-        await addFilesToActiveProjectSources(pdfIntakeSelectedPaths);
-      } catch (error) {
-        console.error("Could not register PDF intake sources", error);
-      }
+    if (pdfIntakeMode === "prepare-sources" && state.activeProject) {
+      const processed = await invoke<CombinedPreview>("preview_processed_files_command", {
+        indices: result.report.files.map((_, i) => i),
+        corpusVersion: result.corpusVersion,
+        maxCharsPerFile: 5000,
+        includePaths: false,
+        maxFiles: result.report.files.length,
+        cleaningConfig: materializationConfig,
+      });
+
+      await persistProcessedPreviewStatuses(processed.files);
+      await loadProjectSourcesForActiveProject();
+      await loadCorpusFromProjectSources();
+    } else {
+      state.currentCorpusVersion = result.corpusVersion;
+      state.currentCorpusRoot = result.report.root;
+      state.allFiles = result.report.files;
+      state.visibleFiles = state.allFiles.map((record, i) => ({ corpusIndex: i, record }));
+      renderSummary(result.report.summary);
+      updateFileList();
     }
 
-    renderSummary(result.report.summary);
-    updateFileList();
+
     pdfIntakeMaterializing = false;
     closePdfIntakeModal();
 
-    const fileLabel = state.allFiles.length === 1 ? "PDF file" : "PDF files";
-    dom.statusBar.textContent = `Loaded ${state.allFiles.length} ${fileLabel} with materialised ${profile.statusLabel}.`;
+    if (pdfIntakeMode === "prepare-sources") {
+      const fileLabel = selectedPdfCount === 1 ? "selected PDF" : "selected PDFs";
+      dom.statusBar.textContent = `Prepared ${selectedPdfCount.toLocaleString()} ${fileLabel} with ${profileDisplayNames[selectedProfileId]} handling.`;
+    } else {
+      const fileLabel = state.allFiles.length === 1 ? "PDF file" : "PDF files";
+      dom.statusBar.textContent = `Loaded ${state.allFiles.length} ${fileLabel} with materialised ${profile.statusLabel}.`;
+    }
     callbacks.updateWordCount();
   } catch (error) {
     const message = pdfIntakeCancelRequested
@@ -573,7 +892,7 @@ function renderPdfAuditLoading(fileCount: number): void {
 }
 
 function batchSuggestedProfile(results: PdfAuditResult[]): PdfIntakeProfileId {
-  let strongest: PdfAuditSeverity = "standard";
+  let strongest: PdfAuditSuggestedProfile = "standard";
   for (const result of results) {
     if (result.suggested_profile === "force_ocr") {
       strongest = "force_ocr";
@@ -596,8 +915,8 @@ function renderPdfAuditResults(
 
   const currentProfile = selectedPdfIntakeProfileId();
   const profileMessage = suggestionApplied
-    ? `The batch/global suggestion was applied: ${profileDisplayNames[suggestedProfile]}.`
-    : `The batch/global suggestion is ${profileDisplayNames[suggestedProfile]}; your selected ${profileDisplayNames[currentProfile]} profile was kept.`;
+    ? `The suggested handling was applied: ${profileDisplayNames[suggestedProfile]}.`
+    : `The suggested handling is ${profileDisplayNames[suggestedProfile]}; your selected ${profileDisplayNames[currentProfile]} handling was kept.`;
   dom.pdfIntakeAuditSummary.textContent = `${profileMessage} Audit checks embedded text and OCR model files only; it does not run OCR or prove OCR will succeed.`;
 
   for (const result of results) {
@@ -812,8 +1131,7 @@ export async function registerFilesForActiveProject(selected: string[]): Promise
     dom.statusBar.textContent = "Importing source files...";
     const update = await confirmFilesForActiveProjectSources(
       selected,
-      choice.pdfPolicy,
-      choice.ocrQuality,
+      choice.pdfHandlingOverrides,
     );
     await loadCorpusFromProjectSources();
     if (update) {
@@ -849,8 +1167,7 @@ export async function registerFolderForActiveProject(selected: string): Promise<
     dom.statusBar.textContent = "Importing source folder...";
     const update = await confirmFolderForActiveProjectSources(
       selected,
-      choice.pdfPolicy,
-      choice.ocrQuality,
+      choice.pdfHandlingOverrides,
     );
     await loadCorpusFromProjectSources();
     if (update) {
@@ -958,6 +1275,25 @@ export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
   });
   dom.choosePdfIntakeFilesBtn.addEventListener("click", handleChoosePdfIntakeFiles);
   dom.loadPdfIntakeFilesBtn.addEventListener("click", handleLoadPdfIntakeFiles);
+
+  dom.sourcePreparePdfsBtn.addEventListener("click", () => {
+    const selectedPaths = Array.from(state.selectedCorpusIndices)
+      .map((index) => state.allFiles[index]?.source_path)
+      .filter((path): path is string => Boolean(path && path.toLowerCase().endsWith(".pdf")));
+
+    if (selectedPaths.length > 0) {
+      openPdfIntakeModalForSources(selectedPaths);
+    }
+  });
+
+  dom.sourceImportResetPdfHandling.addEventListener("click", () => {
+    for (const item of pendingPdfHandling.values()) {
+      item.selectedProfile = item.recommendedProfile;
+    }
+    renderImportSourcesPdfHandling();
+    renderImportSourcesList(activeImportCandidates);
+  });
+
   document.querySelectorAll<HTMLInputElement>('input[name="pdf-intake-profile"]').forEach((input) => {
     input.addEventListener("change", () => {
       if (!settingPdfIntakeProfile) {

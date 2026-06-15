@@ -1997,6 +1997,7 @@ mod tests {
             document_type: DocumentType::Text,
             size_bytes: content.len() as u64,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         }
     }
@@ -2291,6 +2292,7 @@ mod tests {
             document_type: DocumentType::Pdf,
             size_bytes: 1000,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
 
@@ -2607,6 +2609,7 @@ mod tests {
             document_type: DocumentType::Pdf,
             size_bytes: 200,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         };
 
@@ -3609,6 +3612,7 @@ mod tests {
             document_type: DocumentType::Pdf,
             size_bytes: bytes.len() as u64,
             extraction_route: None,
+            pdf_profile: None,
             ocr_quality: None,
         }
     }

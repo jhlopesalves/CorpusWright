@@ -1,4 +1,5 @@
 use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource};
+use crate::project_sources::ProjectSourcePdfProfile;
 use crate::scan::{DocumentRecord, DocumentType};
 use lopdf::Document;
 use pdfium_render::prelude::*;
@@ -65,6 +66,24 @@ impl PdfExtractionOptions {
                 && let Some(text_source) = route.pdf_text_source()
             {
                 options.text_source = text_source;
+            }
+            if let Some(profile) = record.pdf_profile {
+                match profile {
+                    ProjectSourcePdfProfile::Standard | ProjectSourcePdfProfile::NoAutomaticOcr => {
+                        options.strategy = PdfEmbeddedTextStrategy::PdfiumFlat;
+                        options.text_source = PdfTextSource::EmbeddedText;
+                    }
+                    ProjectSourcePdfProfile::LayoutHeavy => {
+                        options.strategy = PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn;
+                        options.text_source = PdfTextSource::EmbeddedText;
+                    }
+                    ProjectSourcePdfProfile::OcrRescue => {
+                        options.text_source = PdfTextSource::Ocr;
+                    }
+                    ProjectSourcePdfProfile::ForceOcr => {
+                        options.text_source = PdfTextSource::ForceOcr;
+                    }
+                }
             }
             if let Some(ocr_quality) = record.ocr_quality {
                 options.ocr_quality = ocr_quality;
