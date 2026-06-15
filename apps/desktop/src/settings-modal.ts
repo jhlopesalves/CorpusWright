@@ -8,6 +8,7 @@ import {
 } from "./config";
 import { dom } from "./dom";
 import { renderCustomRemovals, syncDraftCustomRemovalsFromConfig } from "./custom-removals";
+import { syncRepeatedArtifactSettingsSection } from "./repeated-artifacts";
 import { state } from "./state";
 import type {
   CleaningConfig,
@@ -146,14 +147,14 @@ async function handleSaveConfig(): Promise<void> {
   const json = JSON.stringify(config, null, 2);
 
   const selected = await save({
-    defaultPath: "corpuswright-processing-config.json",
+    defaultPath: "corpuswright-cleaning-config.json",
     filters: [{ name: "JSON Config", extensions: ["json"] }]
   });
   if (selected === null) return;
 
   try {
     await invoke("save_config_file_command", { path: selected, content: json });
-    setModalConfigStatus("Saved processing config.");
+    setModalConfigStatus("Saved cleaning config.");
   } catch (err) {
     setModalConfigStatus(`Error saving config: ${err}`);
   }
@@ -205,6 +206,7 @@ export function initSettingsModal(callbacks: SettingsModalCallbacks): void {
     }));
     state.tempReplacePatterns = [...state.activeCleaningConfig.replace_patterns];
     renderCustomRemovals();
+    syncRepeatedArtifactSettingsSection();
 
     dom.settingsTabs.forEach(t => {
       t.classList.remove("active");

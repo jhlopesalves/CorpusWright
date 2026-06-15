@@ -15,11 +15,19 @@ import type { RepeatedArtifactScanConfig } from "./generated/RepeatedArtifactSca
 import type { RepeatedArtifactScanDiagnostics } from "./generated/RepeatedArtifactScanDiagnostics.js";
 import type { RepeatedArtifactScanReport } from "./generated/RepeatedArtifactScanReport.js";
 import type { RemovalScope } from "./generated/RemovalScope.js";
-import { formatRemovalRuleText } from "./custom-removals.js";
+import { formatRemovalRuleText, syncRepeatedArtifactRulesSummary } from "./custom-removals.js";
 
 interface RepeatedArtifactCallbacks {
   renderCustomRemovals: () => void;
   schedulePreviewUpdate: (delay: number) => void;
+}
+
+interface RepeatedArtifactScanScope {
+  canScan: boolean;
+  indices: number[];
+  buttonLabel: string;
+  helperText: string;
+  modalText: string;
 }
 
 const RISK_RANK: Record<string, number> = {
@@ -152,6 +160,80 @@ function ruleDisplayText(rule: RemovalRule): string {
 function activeCustomRemovalCount(): number {
   return state.activeCleaningConfig.remove_patterns.length +
     state.activeCleaningConfig.removal_rules.filter(rule => rule.enabled).length;
+}
+
+function sourceCountLabel(count: number, qualifier: string): string {
+  return `${count.toLocaleString()} ${qualifier} source${count === 1 ? "" : "s"}`;
+}
+
+function allSourceScopeLabel(count: number): string {
+  const qualifier = state.activeProject ? "loaded project" : "loaded";
+  return count === 1
+    ? `the only ${qualifier} source`
+    : `all ${count.toLocaleString()} ${qualifier} sources`;
+}
+
+function selectedScanIndices(): number[] {
+  return Array.from(state.selectedCorpusIndices)
+    .filter(index => state.allFiles[index] !== undefined)
+    .sort((a, b) => a - b);
+}
+
+export function getRepeatedArtifactScanScope(): RepeatedArtifactScanScope {
+  const loadedCount = state.allFiles.length;
+  if (loadedCount === 0) {
+    const helperText = state.activeProject && state.projectSources.length > 0
+      ? "This project has no processable source files to scan."
+      : "Add sources before scanning for repeated artefacts.";
+    return {
+      canScan: false,
+      indices: [],
+      buttonLabel: "Find repeated artefacts...",
+      helperText,
+      modalText: helperText,
+    };
+  }
+
+  if (state.selectedCorpusIndices.size > 0) {
+    const selected = selectedScanIndices();
+    if (selected.length === 0) {
+      return {
+        canScan: false,
+        indices: [],
+        buttonLabel: "Find repeated artefacts...",
+        helperText: "Selected sources cannot be scanned yet.",
+        modalText: "Selected sources cannot be scanned yet.",
+      };
+    }
+
+    const selectedLabel = sourceCountLabel(selected.length, "selected");
+    return {
+      canScan: true,
+      indices: selected,
+      buttonLabel: `Find repeated artefacts in ${selectedLabel}...`,
+      helperText: "The scan will use the current Source Explorer selection.",
+      modalText: `Scope: ${selectedLabel}.`,
+    };
+  }
+
+  const allIndices = Array.from({ length: loadedCount }, (_, corpusIndex) => corpusIndex);
+  const scopeLabel = allSourceScopeLabel(loadedCount);
+  return {
+    canScan: true,
+    indices: allIndices,
+    buttonLabel: `Find repeated artefacts in ${scopeLabel}...`,
+    helperText: `No sources are selected, so the scan will use ${scopeLabel}.`,
+    modalText: `Scope: ${scopeLabel}.`,
+  };
+}
+
+export function syncRepeatedArtifactSettingsSection(): RepeatedArtifactScanScope {
+  const scope = getRepeatedArtifactScanScope();
+  dom.btnFindRepeatedArtifactsSettings.textContent = scope.buttonLabel;
+  dom.btnFindRepeatedArtifactsSettings.disabled = !scope.canScan;
+  dom.repeatedArtifactScopeHelp.textContent = scope.helperText;
+  syncRepeatedArtifactRulesSummary();
+  return scope;
 }
 
 function exactLineRuleId(candidate: RepeatedArtifactCandidate, scope: RemovalScope): string {
@@ -302,10 +384,26 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     dom.btnRunArtifactScan.textContent = "Run Scan";
     dom.btnCancelScan.style.display = "none";
     if (scanTimerInterval) { clearInterval(scanTimerInterval); scanTimerInterval = null; }
+    syncRepeatedArtifactModalScope();
   }
 
   function updateAddSelectedButtonState(): void {
     dom.btnAddSelectedRemovals.disabled = state.selectedCandidateIds.size === 0;
+  }
+
+  function syncRepeatedArtifactModalScope(): RepeatedArtifactScanScope {
+    const scope = syncRepeatedArtifactSettingsSection();
+    dom.lblArtifactScanScope.textContent = scope.modalText;
+    if (dom.btnRunArtifactScan.style.display !== "none") {
+      dom.btnRunArtifactScan.disabled = !scope.canScan;
+    }
+    return scope;
+  }
+
+  function openRepeatedArtifactFinder(): void {
+    syncRepeatedArtifactModalScope();
+    dom.repeatedArtifactModal.classList.remove("hidden");
+    updateProcessedWarning();
   }
 
   function renderDiagnostics(diags: RepeatedArtifactScanDiagnostics): void {
@@ -338,9 +436,11 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     dom.artifactDiagnostics.classList.remove("hidden");
   }
 
-  dom.menuRepeatedArtifactFinder.addEventListener("click", () => {
-    dom.repeatedArtifactModal.classList.remove("hidden");
-    updateProcessedWarning();
+  dom.menuRepeatedArtifactFinder.addEventListener("click", openRepeatedArtifactFinder);
+  dom.btnFindRepeatedArtifactsSettings.addEventListener("click", () => {
+    const scope = syncRepeatedArtifactSettingsSection();
+    if (!scope.canScan) return;
+    openRepeatedArtifactFinder();
   });
 
   function closeArtifactModal(): void {
@@ -416,6 +516,8 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     const existingSet = new Set(state.activeCleaningConfig.remove_patterns);
     const existingRuleIds = new Set(state.activeCleaningConfig.removal_rules.map(rule => rule.id));
     const existingRuleKeys = new Set(state.activeCleaningConfig.removal_rules.map(removalRuleDuplicateKey));
+    const addedLiteralPatterns: string[] = [];
+    const addedRemovalRules: RemovalRule[] = [];
     let literalRemovalsAdded = 0;
     let pageTopRulesAdded = 0;
     let pageBottomRulesAdded = 0;
@@ -445,6 +547,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         }
 
         state.activeCleaningConfig.removal_rules.push(rule);
+        addedRemovalRules.push(rule);
         existingRuleIds.add(rule.id);
         existingRuleKeys.add(ruleKey);
 
@@ -471,6 +574,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
           }
 
           state.activeCleaningConfig.removal_rules.push(rule);
+          addedRemovalRules.push(rule);
           existingRuleIds.add(rule.id);
           existingRuleKeys.add(ruleKey);
 
@@ -494,6 +598,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         for (const variant of cand.raw_variants) {
           if (!existingSet.has(variant)) {
             state.activeCleaningConfig.remove_patterns.push(variant);
+            addedLiteralPatterns.push(variant);
             existingSet.add(variant);
             literalRemovalsAdded++;
             trackedRawVariantsAddedFromFallback++;
@@ -505,6 +610,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         const text = cand.display_text;
         if (!existingSet.has(text)) {
           state.activeCleaningConfig.remove_patterns.push(text);
+          addedLiteralPatterns.push(text);
           existingSet.add(text);
           literalRemovalsAdded++;
         } else {
@@ -515,12 +621,38 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
     const rulesAdded = pageTopRulesAdded + pageBottomRulesAdded + pageTopBottomRulesAdded + wholeLineRulesAdded + normalizedFamilyRulesAdded;
     if (literalRemovalsAdded > 0 || rulesAdded > 0) {
-      state.tempRemovePatterns = [...state.activeCleaningConfig.remove_patterns];
-      state.tempRemovalRules = state.activeCleaningConfig.removal_rules.map((rule) => ({
-        ...rule,
-        matcher: { ...rule.matcher },
-      }));
+      if (dom.settingsModal.classList.contains("hidden")) {
+        state.tempRemovePatterns = [...state.activeCleaningConfig.remove_patterns];
+        state.tempRemovalRules = state.activeCleaningConfig.removal_rules.map((rule) => ({
+          ...rule,
+          matcher: { ...rule.matcher },
+        }));
+      } else {
+        const tempLiteralSet = new Set(state.tempRemovePatterns);
+        for (const pattern of addedLiteralPatterns) {
+          if (!tempLiteralSet.has(pattern)) {
+            state.tempRemovePatterns.push(pattern);
+            tempLiteralSet.add(pattern);
+          }
+        }
+
+        const tempRuleIds = new Set(state.tempRemovalRules.map(rule => rule.id));
+        const tempRuleKeys = new Set(state.tempRemovalRules.map(removalRuleDuplicateKey));
+        for (const rule of addedRemovalRules) {
+          const clonedRule = {
+            ...rule,
+            matcher: { ...rule.matcher },
+          };
+          const ruleKey = removalRuleDuplicateKey(clonedRule);
+          if (!tempRuleIds.has(clonedRule.id) && !tempRuleKeys.has(ruleKey)) {
+            state.tempRemovalRules.push(clonedRule);
+            tempRuleIds.add(clonedRule.id);
+            tempRuleKeys.add(ruleKey);
+          }
+        }
+      }
       callbacks.renderCustomRemovals();
+      syncRepeatedArtifactSettingsSection();
     }
 
     const statusParts: string[] = [];
@@ -570,8 +702,9 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   });
 
   dom.btnRunArtifactScan.addEventListener("click", async () => {
-    if (state.allFiles.length === 0) {
-      alert("No files loaded in the corpus. Please open a directory or load files first.");
+    const scope = syncRepeatedArtifactModalScope();
+    if (!scope.canScan) {
+      alert(scope.helperText);
       return;
     }
 
@@ -630,10 +763,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     }, 500);
 
     const myVersion = state.currentCorpusVersion;
-    const indices = Array.from(
-      { length: state.allFiles.length },
-      (_, corpusIndex) => corpusIndex
-    );
+    const indices = scope.indices;
 
     try {
       const report = await invoke<RepeatedArtifactScanReport>("scan_repeated_artifacts_command", {
@@ -694,6 +824,8 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   radioModes.forEach(radio => {
     radio.addEventListener("change", updateProcessedWarning);
   });
+
+  syncRepeatedArtifactSettingsSection();
 
   function renderCandidates(
     candidates: RepeatedArtifactCandidate[],

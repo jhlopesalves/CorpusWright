@@ -1923,6 +1923,35 @@ mark.search-match.current-match {
   align-content: flex-start;
 }
 
+.repeated-artifacts-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.repeated-artifacts-settings p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.repeated-artifacts-settings-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-helper-text {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
 .removal-pill {
   display: inline-flex;
   align-items: center;

@@ -5,6 +5,15 @@ normalised line families, selected inline conversion artefacts, and optional
 multi-line blocks. It returns candidates for review. A candidate does not alter
 cleaned output unless the user promotes it to a Custom Removal rule.
 
+The finder is opened from the Repeated artefacts section in Cleaning Settings,
+near Custom Removals. It is a cleaning-rule discovery tool: accepted candidates
+become structured removal rules and those rules run during processed preview and
+export.
+
+The scan scope follows the Source Explorer selection. If sources are selected,
+the action scans those selected sources. If no sources are selected, the action
+label states that all loaded project sources will be scanned.
+
 ## Candidate evidence
 
 Each candidate carries several independent pieces of evidence:
@@ -95,7 +104,7 @@ removal paths. Page-zone promotion continues to depend on reliable page
 metadata and the candidate's page-position summary, not on the text/noise
 signal.
 
-The processing parameter labelled "Remove obvious extraction/OCR noise" is a
+The Cleaning Settings option labelled "Remove obvious extraction/OCR noise" is a
 separate opt-in cleaner setting. It can remove lines such as repeated symbol
 junk, `cid:` markers, replacement-character junk, and standalone markup
 fragments without running a repeated artefact scan. It does not broadly remove
