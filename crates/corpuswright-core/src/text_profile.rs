@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::sync::LazyLock;
 use ts_rs::TS;
+use unicode_normalization::UnicodeNormalization;
 
 static COMMON_SECTION_HEADING_KEYS: LazyLock<BTreeSet<String>> = LazyLock::new(|| {
     normalized_key_set(&[
@@ -169,7 +170,8 @@ pub struct TextSignalContext {
 
 /// Profiles a single line or repeated-artefact candidate using deterministic local signals.
 pub fn profile_text_line(display_text: &str, normalized_key: &str) -> CandidateTextProfile {
-    let trimmed = display_text.trim();
+    let nfc_text = display_text.trim().nfc().collect::<String>();
+    let trimmed = nfc_text.as_str();
     let chars = trimmed.chars().collect::<Vec<_>>();
     let char_count = chars.len();
     let tokens = trimmed.split_whitespace().collect::<Vec<_>>();
@@ -806,5 +808,19 @@ mod tests {
                 "expected ambiguous weak case to stay: {text:?}"
             );
         }
+    }
+
+    #[test]
+    fn nfc_and_nfd_text_profiles_are_equivalent() {
+        let nfc_text = "Introdução";
+        let nfd_text = "Introduc\u{0327}a\u{0303}o";
+
+        let profile_nfc = profile_text_line(nfc_text, "");
+        let profile_nfd = profile_text_line(nfd_text, "");
+
+        assert_eq!(profile_nfc.char_count, profile_nfd.char_count);
+        assert_eq!(profile_nfc.symbol_ratio, profile_nfd.symbol_ratio);
+        assert_eq!(profile_nfc.alphabetic_ratio, profile_nfd.alphabetic_ratio);
+        assert!(profile_nfd.looks_like_common_section_heading);
     }
 }

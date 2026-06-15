@@ -307,6 +307,44 @@ fn prepare_line_for_rule_matching(line_text: &str, config: &CleaningConfig) -> S
     cleaned
 }
 
+fn prepare_rule_text_for_matching(text: &str, config: &CleaningConfig) -> String {
+    let mut cleaned = text.to_string();
+
+    if config.replace_diacritics {
+        cleaned = cleaned
+            .nfd()
+            .filter(|c| !matches!(*c, '\u{0300}'..='\u{036f}'))
+            .collect::<String>();
+    }
+
+    if config.normalize_unicode {
+        cleaned = cleaned.nfc().collect::<String>();
+    }
+
+    if config.lowercase {
+        cleaned = cleaned.to_lowercase();
+    }
+
+    cleaned
+}
+
+fn prepare_normalized_key_for_rule_matching(key: &str, config: &CleaningConfig) -> String {
+    let mut cleaned = key.to_string();
+
+    if config.replace_diacritics {
+        cleaned = cleaned
+            .nfd()
+            .filter(|c| !matches!(*c, '\u{0300}'..='\u{036f}'))
+            .collect::<String>();
+    }
+
+    if config.normalize_unicode {
+        cleaned = cleaned.nfc().collect::<String>();
+    }
+
+    cleaned
+}
+
 fn should_remove_line_by_rules(
     prepared_line: &str,
     is_top: bool,
@@ -336,18 +374,16 @@ fn should_remove_line_by_rules(
 
         match &rule.matcher {
             RemovalMatcher::Literal { text } => {
-                let effective_text = if config.lowercase {
-                    text.to_lowercase()
-                } else {
-                    text.clone()
-                };
+                let effective_text = prepare_rule_text_for_matching(text, config);
                 let trimmed_rule = effective_text.trim();
                 if !trimmed_rule.is_empty() && prepared_line.trim() == trimmed_rule {
                     return true;
                 }
             }
             RemovalMatcher::NormalizedLine { normalized_key } => {
-                let trimmed_rule = normalized_key.trim();
+                let effective_key =
+                    prepare_normalized_key_for_rule_matching(normalized_key, config);
+                let trimmed_rule = effective_key.trim();
                 if !trimmed_rule.is_empty() {
                     let normalized = normalize_line_for_repeated_artifact(prepared_line.trim());
                     if normalized.as_str() == trimmed_rule {
@@ -381,7 +417,7 @@ pub fn clean_structured_document(
     document: &StructuredDocument,
     config: &CleaningConfig,
 ) -> CleanedStructuredDocument {
-    if !has_page_zone_rules(config) {
+    if !has_page_zone_rules(config) || !document.has_reliable_page_metadata {
         let text = clean_text(&document.to_flat_text(), config);
         let page_texts = document
             .pages
@@ -416,6 +452,7 @@ pub fn clean_structured_document(
         }
         let filtered_document = StructuredDocument {
             pages: filtered_pages,
+            has_reliable_page_metadata: document.has_reliable_page_metadata,
         };
 
         // Clean each page of the filtered document independently.
@@ -530,11 +567,7 @@ fn effective_whole_line_literals(config: &CleaningConfig) -> Vec<String> {
         .filter(|rule| rule.enabled && rule.scope == RemovalScope::WholeLine)
         .filter_map(|rule| match &rule.matcher {
             RemovalMatcher::Literal { text } => {
-                let effective_text = if config.lowercase {
-                    text.to_lowercase()
-                } else {
-                    text.clone()
-                };
+                let effective_text = prepare_rule_text_for_matching(text, config);
                 let trimmed = effective_text.trim();
                 (!trimmed.is_empty()).then(|| trimmed.to_string())
             }
@@ -550,7 +583,9 @@ fn effective_whole_line_normalized_keys(config: &CleaningConfig) -> Vec<String> 
         .filter(|rule| rule.enabled && rule.scope == RemovalScope::WholeLine)
         .filter_map(|rule| match &rule.matcher {
             RemovalMatcher::NormalizedLine { normalized_key } => {
-                let trimmed = normalized_key.trim();
+                let effective_key =
+                    prepare_normalized_key_for_rule_matching(normalized_key, config);
+                let trimmed = effective_key.trim();
                 (!trimmed.is_empty()).then(|| trimmed.to_string())
             }
             RemovalMatcher::Literal { .. } => None,
@@ -1334,6 +1369,74 @@ mod tests {
         };
 
         assert_eq!(clean_text("Header\nBody", &config), "body");
+    }
+
+    #[test]
+    fn whole_line_literal_rules_match_without_diacritics_when_disabled() {
+        let config = CleaningConfig {
+            replace_diacritics: false,
+            removal_rules: vec![whole_line_rule("Página 1")],
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(clean_text("Página 1\nBody", &config), "Body");
+        assert_eq!(clean_text("Pagina 1\nBody", &config), "Pagina 1\nBody");
+    }
+
+    #[test]
+    fn whole_line_literal_rules_match_with_diacritics_when_enabled() {
+        let config = CleaningConfig {
+            replace_diacritics: true,
+            removal_rules: vec![whole_line_rule("Página 1")],
+            ..CleaningConfig::default()
+        };
+
+        // The input has an accent, the rule has an accent.
+        assert_eq!(clean_text("Página 1\nBody", &config), "Body");
+        // The input has no accent, the rule has an accent. Both become "Pagina 1".
+        assert_eq!(clean_text("Pagina 1\nBody", &config), "Body");
+    }
+
+    #[test]
+    fn normalized_line_rules_match_with_diacritics_when_enabled() {
+        let config = CleaningConfig {
+            replace_diacritics: true,
+            removal_rules: vec![normalized_line_rule("página #")],
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(clean_text("Página 1\nBody\nPágina 2", &config), "Body\n");
+        assert_eq!(clean_text("Pagina 1\nBody\nPágina 2", &config), "Body\n");
+    }
+
+    #[test]
+    fn clean_structured_document_applies_diacritic_rules_to_page_zones() {
+        let config = CleaningConfig {
+            replace_diacritics: true,
+            removal_rules: vec![page_zone_rule("Página #", RemovalScope::PageBottom)],
+            ..CleaningConfig::default()
+        };
+
+        let doc = StructuredDocument::from_pages(["L1\nL2\nL3\nMid\nL5\nL6\nPágina #"]);
+        let cleaned = clean_structured_document(&doc, &config);
+        assert_eq!(cleaned.text, "L1\nL2\nL3\nMid\nL5\nL6");
+    }
+
+    #[test]
+    fn clean_structured_document_ignores_page_zones_when_metadata_is_unreliable() {
+        let config = CleaningConfig {
+            removal_rules: vec![page_zone_rule("Header", RemovalScope::PageTop)],
+            ..CleaningConfig::default()
+        };
+
+        let doc = StructuredDocument::from_flat_text_as_single_page("Header\nBody\nFooter");
+        // It should NOT remove the header because it's a synthetic page.
+        let cleaned = clean_structured_document(&doc, &config);
+        assert_eq!(cleaned.text, "Header\nBody\nFooter");
+
+        let reliable_doc = StructuredDocument::from_pages(["Header\nBody\nFooter"]);
+        let cleaned_reliable = clean_structured_document(&reliable_doc, &config);
+        assert_eq!(cleaned_reliable.text, "Body\nFooter");
     }
 
     #[test]
