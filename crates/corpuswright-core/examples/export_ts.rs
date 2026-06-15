@@ -18,7 +18,8 @@ use corpuswright_core::preview::{
     CombinedPreview, FilePreview, PreviewWarning, PreviewWarningKind,
 };
 use corpuswright_core::project_sources::{
-    ProjectSource, ProjectSourceKind, ProjectSourceManifest, ProjectSourceStatus,
+    ProjectSource, ProjectSourceExtractionRoute, ProjectSourceImportPolicy,
+    ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest, ProjectSourceStatus,
     ProjectSourceUpdate,
 };
 use corpuswright_core::repeated_artifacts::{
@@ -178,10 +179,20 @@ fn main() {
     export_type::<DocumentType>(&out_dir, &[], &[]);
     export_type::<DocumentRecord>(
         &out_dir,
-        &[TypeImport {
-            name: "DocumentType",
-            file: "DocumentType",
-        }],
+        &[
+            TypeImport {
+                name: "DocumentType",
+                file: "DocumentType",
+            },
+            TypeImport {
+                name: "ProjectSourceExtractionRoute",
+                file: "ProjectSourceExtractionRoute",
+            },
+            TypeImport {
+                name: "PdfOcrQuality",
+                file: "PdfOcrQuality",
+            },
+        ],
         &[],
     );
     export_type::<DocumentTypeCounts>(&out_dir, &[], &[]);
@@ -209,6 +220,8 @@ fn main() {
     );
     export_type::<ProjectSourceKind>(&out_dir, &[], &[]);
     export_type::<ProjectSourceStatus>(&out_dir, &[], &[]);
+    export_type::<ProjectSourceExtractionRoute>(&out_dir, &[], &[]);
+    export_type::<ProjectSourceImportPolicy>(&out_dir, &[], &[]);
     export_type::<ProjectSource>(
         &out_dir,
         &[
@@ -219,6 +232,14 @@ fn main() {
             TypeImport {
                 name: "ProjectSourceStatus",
                 file: "ProjectSourceStatus",
+            },
+            TypeImport {
+                name: "ProjectSourceExtractionRoute",
+                file: "ProjectSourceExtractionRoute",
+            },
+            TypeImport {
+                name: "PdfOcrQuality",
+                file: "PdfOcrQuality",
             },
         ],
         &[],
@@ -236,6 +257,14 @@ fn main() {
         &[TypeImport {
             name: "ProjectSourceManifest",
             file: "ProjectSourceManifest",
+        }],
+        &[],
+    );
+    export_type::<ProjectSourceImportReview>(
+        &out_dir,
+        &[TypeImport {
+            name: "ProjectSource",
+            file: "ProjectSource",
         }],
         &[],
     );

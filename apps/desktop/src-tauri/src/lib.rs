@@ -231,6 +231,27 @@ fn load_files_command(
 }
 
 #[tauri::command(async)]
+fn load_project_source_records_command(
+    root_path: String,
+    corpus_state: tauri::State<'_, CorpusState>,
+    cache: tauri::State<'_, ExtractionCache>,
+    page_cache: tauri::State<'_, PdfPageRangeCache>,
+) -> Result<CorpusLoadResult, String> {
+    cache.clear();
+    page_cache.clear();
+    let report = project::load_project_source_records(root_path)?;
+    let version = {
+        let mut inner = corpus_state.inner.write().unwrap();
+        inner.load(Some(report.root.clone()), report.files.clone());
+        inner.version
+    };
+    Ok(CorpusLoadResult {
+        report,
+        corpus_version: version,
+    })
+}
+
+#[tauri::command(async)]
 fn audit_pdf_files_command(paths: Vec<String>) -> Result<Vec<PdfAuditResult>, String> {
     let path_bufs = paths.into_iter().map(PathBuf::from).collect();
     Ok(audit_pdf_files(path_bufs))
@@ -1219,6 +1240,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             scan_directory_command,
             load_files_command,
+            load_project_source_records_command,
             audit_pdf_files_command,
             load_pdf_intake_files_command,
             cancel_pdf_intake_materialization_command,
@@ -1237,8 +1259,12 @@ pub fn run() {
             project::open_corpus_project_command,
             project::initialise_folder_as_corpus_project_command,
             project::load_project_sources_command,
+            project::review_project_source_files_import_command,
+            project::review_project_source_folder_import_command,
             project::add_project_source_files_command,
             project::add_project_source_folder_command,
+            project::confirm_project_source_files_import_command,
+            project::confirm_project_source_folder_import_command,
             project::update_project_source_processing_results_command
         ])
         .run(tauri::generate_context!())

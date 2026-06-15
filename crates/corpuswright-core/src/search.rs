@@ -102,7 +102,8 @@ pub fn search_corpus(
 
         if let Some(cache) = cache {
             let pdf_options = if record.document_type == DocumentType::Pdf {
-                Some(PdfExtractionOptions::raw_from_cleaning_config(
+                Some(PdfExtractionOptions::raw_from_record_and_cleaning_config(
+                    record,
                     cleaning_config,
                 ))
             } else {
@@ -123,7 +124,10 @@ pub fn search_corpus(
                     && let Ok(extracted) = extract_pdf(
                         &bytes,
                         None, // no char cap – read full text
-                        PdfExtractionOptions::raw_from_cleaning_config(cleaning_config),
+                        PdfExtractionOptions::raw_from_record_and_cleaning_config(
+                            record,
+                            cleaning_config,
+                        ),
                     )
                 {
                     source_text = extracted.text;
@@ -284,6 +288,8 @@ mod tests {
             relative_path: PathBuf::from(relative_path),
             document_type: DocumentType::Text,
             size_bytes: text.len() as u64,
+            extraction_route: None,
+            ocr_quality: None,
         }
     }
 
@@ -396,6 +402,8 @@ mod tests {
             relative_path: PathBuf::from("case.txt"),
             document_type: DocumentType::Text,
             size_bytes: text.len() as u64,
+            extraction_route: None,
+            ocr_quality: None,
         };
         let records = [record];
 
@@ -425,6 +433,8 @@ mod tests {
             relative_path: PathBuf::from("ctx.txt"),
             document_type: DocumentType::Text,
             size_bytes: text.len() as u64,
+            extraction_route: None,
+            ocr_quality: None,
         };
         let records = [record];
 
@@ -463,6 +473,8 @@ mod tests {
             relative_path: PathBuf::from("short.txt"),
             document_type: DocumentType::Text,
             size_bytes: text.len() as u64,
+            extraction_route: None,
+            ocr_quality: None,
         };
         let records = [record];
 

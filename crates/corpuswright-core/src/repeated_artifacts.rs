@@ -1996,6 +1996,8 @@ mod tests {
             relative_path: PathBuf::from(name),
             document_type: DocumentType::Text,
             size_bytes: content.len() as u64,
+            extraction_route: None,
+            ocr_quality: None,
         }
     }
 
@@ -2288,6 +2290,8 @@ mod tests {
             relative_path: PathBuf::from("dummy.pdf"),
             document_type: DocumentType::Pdf,
             size_bytes: 1000,
+            extraction_route: None,
+            ocr_quality: None,
         };
 
         let config = RepeatedArtifactScanConfig {
@@ -2602,6 +2606,8 @@ mod tests {
             relative_path: PathBuf::from("minimal.pdf"),
             document_type: DocumentType::Pdf,
             size_bytes: 200,
+            extraction_route: None,
+            ocr_quality: None,
         };
 
         let config = RepeatedArtifactScanConfig {
@@ -3602,6 +3608,8 @@ mod tests {
             relative_path: PathBuf::from(name),
             document_type: DocumentType::Pdf,
             size_bytes: bytes.len() as u64,
+            extraction_route: None,
+            ocr_quality: None,
         }
     }
 

@@ -1,10 +1,14 @@
+use corpuswright_core::clean::PdfOcrQuality;
 use corpuswright_core::project_sources::{
-    ProjectSourceManifest, ProjectSourceProcessingResult, ProjectSourceUpdate,
-    add_project_source_paths, load_project_source_manifest, save_project_source_manifest,
+    ProjectSourceImportPolicy, ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest,
+    ProjectSourceProcessingResult, ProjectSourceStatus, ProjectSourceUpdate,
+    add_project_source_paths, add_project_source_paths_with_policy, load_project_source_manifest,
+    review_project_source_paths, save_project_source_manifest,
     update_project_source_processing_results,
 };
-use corpuswright_core::scan::scan_directory;
+use corpuswright_core::scan::{ScanReport, load_files, scan_directory};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -112,6 +116,31 @@ pub(crate) fn load_project_sources_command(
 }
 
 #[tauri::command(async)]
+pub(crate) fn review_project_source_files_import_command(
+    root_path: String,
+    paths: Vec<String>,
+) -> Result<ProjectSourceImportReview, String> {
+    let root = validated_project_root(&root_path)?;
+    let paths = paths.into_iter().map(PathBuf::from).collect();
+    review_project_source_paths(root, paths, 0)
+}
+
+#[tauri::command(async)]
+pub(crate) fn review_project_source_folder_import_command(
+    root_path: String,
+    folder_path: String,
+) -> Result<ProjectSourceImportReview, String> {
+    let root = validated_project_root(&root_path)?;
+    let report = scan_source_folder(&folder_path)?;
+    let paths = report
+        .files
+        .into_iter()
+        .map(|record| record.source_path)
+        .collect();
+    review_project_source_paths(root, paths, report.files_ignored)
+}
+
+#[tauri::command(async)]
 pub(crate) fn add_project_source_files_command(
     root_path: String,
     paths: Vec<String>,
@@ -122,20 +151,24 @@ pub(crate) fn add_project_source_files_command(
 }
 
 #[tauri::command(async)]
+pub(crate) fn confirm_project_source_files_import_command(
+    root_path: String,
+    paths: Vec<String>,
+    pdf_policy: ProjectSourceImportPolicy,
+    ocr_quality: PdfOcrQuality,
+) -> Result<ProjectSourceUpdate, String> {
+    let root = validated_project_root(&root_path)?;
+    let paths = paths.into_iter().map(PathBuf::from).collect();
+    add_project_source_paths_with_policy(root, paths, pdf_policy, ocr_quality)
+}
+
+#[tauri::command(async)]
 pub(crate) fn add_project_source_folder_command(
     root_path: String,
     folder_path: String,
 ) -> Result<ProjectSourceUpdate, String> {
     let root = validated_project_root(&root_path)?;
-    let folder = normalise_selected_path(&folder_path)?;
-    if !folder.exists() {
-        return Err("Choose an existing folder to add source files.".to_string());
-    }
-    if !folder.is_dir() {
-        return Err("Choose a folder to add source files.".to_string());
-    }
-
-    let report = scan_directory(&folder).map_err(|error| format!("{error:?}"))?;
+    let report = scan_source_folder(&folder_path)?;
     let paths = report
         .files
         .into_iter()
@@ -145,12 +178,71 @@ pub(crate) fn add_project_source_folder_command(
 }
 
 #[tauri::command(async)]
+pub(crate) fn confirm_project_source_folder_import_command(
+    root_path: String,
+    folder_path: String,
+    pdf_policy: ProjectSourceImportPolicy,
+    ocr_quality: PdfOcrQuality,
+) -> Result<ProjectSourceUpdate, String> {
+    let root = validated_project_root(&root_path)?;
+    let report = scan_source_folder(&folder_path)?;
+    let paths = report
+        .files
+        .into_iter()
+        .map(|record| record.source_path)
+        .collect();
+    add_project_source_paths_with_policy(root, paths, pdf_policy, ocr_quality)
+}
+
+pub(crate) fn load_project_source_records(root_path: String) -> Result<ScanReport, String> {
+    let root = validated_project_root(&root_path)?;
+    let manifest = load_project_source_manifest(&root)?;
+    let route_by_path = manifest
+        .sources
+        .iter()
+        .map(|source| (canonical_or_original(source.path.clone()), source))
+        .collect::<HashMap<_, _>>();
+    let paths = manifest
+        .sources
+        .iter()
+        .filter(|source| source.kind != ProjectSourceKind::Unknown)
+        .filter(|source| source.status != ProjectSourceStatus::Failed)
+        .map(|source| source.path.clone())
+        .collect::<Vec<_>>();
+    let mut report = load_files(paths).map_err(|error| format!("{error:?}"))?;
+
+    for record in &mut report.files {
+        let key = canonical_or_original(record.source_path.clone());
+        if let Some(source) = route_by_path.get(&key) {
+            record.extraction_route = Some(source.extraction_route);
+            record.ocr_quality = source.ocr_quality;
+        }
+    }
+
+    report.root = root.clone();
+    report.summary.root = root;
+    Ok(report)
+}
+
+#[tauri::command(async)]
 pub(crate) fn update_project_source_processing_results_command(
     root_path: String,
     results: Vec<ProjectSourceProcessingResult>,
 ) -> Result<ProjectSourceManifest, String> {
     let root = validated_project_root(&root_path)?;
     update_project_source_processing_results(root, results)
+}
+
+fn scan_source_folder(folder_path: &str) -> Result<ScanReport, String> {
+    let folder = normalise_selected_path(folder_path)?;
+    if !folder.exists() {
+        return Err("Choose an existing folder to add source files.".to_string());
+    }
+    if !folder.is_dir() {
+        return Err("Choose a folder to add source files.".to_string());
+    }
+
+    scan_directory(&folder).map_err(|error| format!("{error:?}"))
 }
 
 fn normalise_selected_path(path: &str) -> Result<PathBuf, String> {
@@ -384,6 +476,70 @@ mod tests {
         assert!(root.join(PROJECT_DIR).join("cache").is_dir());
         assert!(root.join(PROJECT_DIR).join("processed").is_dir());
         assert!(root.join(PROJECT_DIR).join("exports").is_dir());
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn reviewing_source_files_does_not_persist_sources() {
+        let root = unique_temp_dir("review-files");
+        create_corpus_project_command(path_to_string(&root)).unwrap();
+        let source_file = root.join("essay.txt");
+        fs::write(&source_file, "sample").unwrap();
+
+        let review = review_project_source_files_import_command(
+            path_to_string(&root),
+            vec![path_to_string(&source_file)],
+        )
+        .unwrap();
+        let manifest = load_project_source_manifest(&root).unwrap();
+
+        assert_eq!(review.candidates.len(), 1);
+        assert_eq!(review.duplicate_count, 0);
+        assert!(manifest.sources.is_empty());
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn folder_import_review_reports_ignored_unsupported_files() {
+        let root = unique_temp_dir("review-folder");
+        create_corpus_project_command(path_to_string(&root)).unwrap();
+        let folder = root.join("incoming");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("essay.txt"), "sample").unwrap();
+        fs::write(folder.join("image.png"), "not a source").unwrap();
+
+        let review = review_project_source_folder_import_command(
+            path_to_string(&root),
+            path_to_string(&folder),
+        )
+        .unwrap();
+
+        assert_eq!(review.candidates.len(), 1);
+        assert_eq!(review.ignored_count, 1);
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn confirming_source_file_import_persists_sources() {
+        let root = unique_temp_dir("confirm-files");
+        create_corpus_project_command(path_to_string(&root)).unwrap();
+        let source_file = root.join("essay.txt");
+        fs::write(&source_file, "sample").unwrap();
+
+        let update = confirm_project_source_files_import_command(
+            path_to_string(&root),
+            vec![path_to_string(&source_file)],
+            ProjectSourceImportPolicy::Recommended,
+            PdfOcrQuality::Balanced,
+        )
+        .unwrap();
+        let manifest = load_project_source_manifest(&root).unwrap();
+
+        assert_eq!(update.added_count, 1);
+        assert_eq!(manifest.sources.len(), 1);
 
         cleanup(&root);
     }

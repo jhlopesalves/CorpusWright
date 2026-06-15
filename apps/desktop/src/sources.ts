@@ -1,8 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { FilePreview } from "./generated/FilePreview.js";
+import type { PdfOcrQuality } from "./generated/PdfOcrQuality.js";
 import type { PreviewWarning } from "./generated/PreviewWarning.js";
 import type { ProjectSource } from "./generated/ProjectSource.js";
+import type { ProjectSourceExtractionRoute } from "./generated/ProjectSourceExtractionRoute.js";
+import type { ProjectSourceImportPolicy } from "./generated/ProjectSourceImportPolicy.js";
+import type { ProjectSourceImportReview } from "./generated/ProjectSourceImportReview.js";
 import type { ProjectSourceManifest } from "./generated/ProjectSourceManifest.js";
 import type { ProjectSourceStatus } from "./generated/ProjectSourceStatus.js";
 import type { ProjectSourceUpdate } from "./generated/ProjectSourceUpdate.js";
@@ -54,6 +58,33 @@ export function sourceKindLabel(source: ProjectSource): string {
   }
 }
 
+export function extractionRouteLabel(route: ProjectSourceExtractionRoute): string {
+  switch (route) {
+    case "embedded_text": return "embedded text";
+    case "ocr_if_needed": return "OCR if needed";
+    case "force_ocr": return "force OCR";
+    case "ocr_required": return "OCR required";
+    case "plain_text": return "plain text";
+    case "docx_extract": return "DOCX extraction";
+    case "html_extract": return "HTML extraction";
+    case "unsupported": return "unsupported";
+    case "undecided": return "route undecided";
+  }
+}
+
+export function usefulRouteLabel(source: ProjectSource): string | null {
+  switch (source.extraction_route) {
+    case "embedded_text":
+    case "ocr_if_needed":
+    case "force_ocr":
+    case "ocr_required":
+    case "undecided":
+      return extractionRouteLabel(source.extraction_route);
+    default:
+      return null;
+  }
+}
+
 export function reasonLabel(code: string): string {
   switch (code) {
     case "missing_file": return "missing file";
@@ -65,6 +96,7 @@ export function reasonLabel(code: string): string {
     case "ocr_required": return "OCR required";
     case "ocr_failed": return "OCR failed";
     case "native_text_available": return "native text";
+    case "pdf_route_undecided": return "route undecided";
     case "processed_ok": return "processed";
     case "processed_with_warnings": return "review";
     case "low_text_density": return "low text density";
@@ -121,6 +153,34 @@ export async function addFilesToActiveProjectSources(paths: string[]): Promise<P
   return update;
 }
 
+export async function reviewFilesForActiveProjectSources(paths: string[]): Promise<ProjectSourceImportReview | null> {
+  if (!state.activeProject || paths.length === 0) {
+    return null;
+  }
+  return invoke<ProjectSourceImportReview>("review_project_source_files_import_command", {
+    rootPath: state.activeProject.rootPath,
+    paths,
+  });
+}
+
+export async function confirmFilesForActiveProjectSources(
+  paths: string[],
+  pdfPolicy: ProjectSourceImportPolicy,
+  ocrQuality: PdfOcrQuality,
+): Promise<ProjectSourceUpdate | null> {
+  if (!state.activeProject || paths.length === 0) {
+    return null;
+  }
+  const update = await invoke<ProjectSourceUpdate>("confirm_project_source_files_import_command", {
+    rootPath: state.activeProject.rootPath,
+    paths,
+    pdfPolicy,
+    ocrQuality,
+  });
+  replaceProjectSources(update.manifest);
+  return update;
+}
+
 export async function addFolderToActiveProjectSources(path: string): Promise<ProjectSourceUpdate | null> {
   if (!state.activeProject) {
     return null;
@@ -128,6 +188,34 @@ export async function addFolderToActiveProjectSources(path: string): Promise<Pro
   const update = await invoke<ProjectSourceUpdate>("add_project_source_folder_command", {
     rootPath: state.activeProject.rootPath,
     folderPath: path,
+  });
+  replaceProjectSources(update.manifest);
+  return update;
+}
+
+export async function reviewFolderForActiveProjectSources(path: string): Promise<ProjectSourceImportReview | null> {
+  if (!state.activeProject) {
+    return null;
+  }
+  return invoke<ProjectSourceImportReview>("review_project_source_folder_import_command", {
+    rootPath: state.activeProject.rootPath,
+    folderPath: path,
+  });
+}
+
+export async function confirmFolderForActiveProjectSources(
+  path: string,
+  pdfPolicy: ProjectSourceImportPolicy,
+  ocrQuality: PdfOcrQuality,
+): Promise<ProjectSourceUpdate | null> {
+  if (!state.activeProject) {
+    return null;
+  }
+  const update = await invoke<ProjectSourceUpdate>("confirm_project_source_folder_import_command", {
+    rootPath: state.activeProject.rootPath,
+    folderPath: path,
+    pdfPolicy,
+    ocrQuality,
   });
   replaceProjectSources(update.manifest);
   return update;

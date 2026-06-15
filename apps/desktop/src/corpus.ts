@@ -7,13 +7,22 @@ import { updateFileList } from "./file-list";
 import { state } from "./state";
 import {
   addFilesToActiveProjectSources,
-  addFolderToActiveProjectSources,
+  confirmFilesForActiveProjectSources,
+  confirmFolderForActiveProjectSources,
+  extractionRouteLabel,
   loadableProjectSourcePaths,
+  reviewFilesForActiveProjectSources,
+  reviewFolderForActiveProjectSources,
+  sourceKindLabel,
 } from "./sources";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
 import type { CorpusSummary } from "./generated/CorpusSummary.js";
+import type { PdfOcrQuality } from "./generated/PdfOcrQuality.js";
 import type { PdfAuditResult } from "./generated/PdfAuditResult.js";
 import type { PdfAuditSuggestedProfile } from "./generated/PdfAuditSuggestedProfile.js";
+import type { ProjectSource } from "./generated/ProjectSource.js";
+import type { ProjectSourceImportPolicy } from "./generated/ProjectSourceImportPolicy.js";
+import type { ProjectSourceImportReview } from "./generated/ProjectSourceImportReview.js";
 import type { CorpusLoadResult } from "./types";
 
 interface CorpusCallbacks {
@@ -26,6 +35,13 @@ let callbacks: CorpusCallbacks = {
 
 type PdfIntakeProfileId = "standard" | "layout" | "ocr" | "force-ocr";
 type PdfAuditSeverity = PdfAuditSuggestedProfile;
+
+interface ImportSourcesChoice {
+  pdfPolicy: ProjectSourceImportPolicy;
+  ocrQuality: PdfOcrQuality;
+}
+
+type ImportSourcesResolve = (choice: ImportSourcesChoice | null) => void;
 
 interface PdfIntakeProfile {
   statusLabel: string;
@@ -107,6 +123,7 @@ let settingPdfIntakeProfile = false;
 let pdfIntakeMaterializing = false;
 let pdfIntakeCancelRequested = false;
 let pdfIntakeProgressUnlisten: UnlistenFn | null = null;
+let importSourcesResolve: ImportSourcesResolve | null = null;
 
 interface PdfIntakeMaterializationProgress {
   currentFile: string;
@@ -174,6 +191,112 @@ function createProjectEmptyState(): HTMLElement {
 export function renderProjectEmptyState(): void {
   dom.previewContent.replaceChildren(createProjectEmptyState());
   dom.processedPreviewContent.textContent = "Add source files to preview processed text.";
+}
+
+function sourceImportSummaryLine(review: ProjectSourceImportReview): string {
+  const count = review.candidates.length;
+  const sourceLabel = count === 1 ? "source" : "sources";
+  const extras: string[] = [];
+  if (review.duplicate_count > 0) {
+    const duplicateLabel = review.duplicate_count === 1 ? "duplicate" : "duplicates";
+    extras.push(`${review.duplicate_count} ${duplicateLabel} skipped`);
+  }
+  if (review.ignored_count > 0) {
+    const ignoredLabel = review.ignored_count === 1 ? "unsupported file" : "unsupported files";
+    extras.push(`${review.ignored_count} ${ignoredLabel} ignored`);
+  }
+  return extras.length === 0
+    ? `${count} ${sourceLabel} found`
+    : `${count} ${sourceLabel} found (${extras.join(", ")})`;
+}
+
+function groupedImportSources(review: ProjectSourceImportReview): Map<string, number> {
+  const groups = new Map<string, number>();
+  for (const source of review.candidates) {
+    const route = extractionRouteLabel(source.extraction_route);
+    const key = `${sourceKindLabel(source)}|${route}`;
+    groups.set(key, (groups.get(key) ?? 0) + 1);
+  }
+  return groups;
+}
+
+function renderImportSourcesGroups(review: ProjectSourceImportReview): void {
+  dom.sourceImportGroups.replaceChildren();
+  const groups = groupedImportSources(review);
+  for (const [key, count] of groups) {
+    const [kind, route] = key.split("|");
+    const row = document.createElement("div");
+    row.className = "source-import-group-row";
+
+    const label = document.createElement("span");
+    label.textContent = kind;
+
+    const routeLabel = document.createElement("span");
+    routeLabel.textContent = route;
+
+    const countLabel = document.createElement("strong");
+    countLabel.textContent = count.toLocaleString();
+
+    row.append(label, routeLabel, countLabel);
+    dom.sourceImportGroups.appendChild(row);
+  }
+}
+
+function renderImportSourcesList(sources: ProjectSource[]): void {
+  dom.sourceImportList.replaceChildren();
+  for (const source of sources) {
+    const row = document.createElement("div");
+    row.className = "source-import-list-row";
+
+    const name = document.createElement("span");
+    name.className = "source-import-list-name";
+    name.textContent = source.file_name;
+
+    const meta = document.createElement("span");
+    meta.className = "source-import-list-meta";
+    meta.textContent = `${sourceKindLabel(source)} · ${extractionRouteLabel(source.extraction_route)}`;
+
+    row.append(name, meta);
+    dom.sourceImportList.appendChild(row);
+  }
+}
+
+function resetImportSourcesDialog(review: ProjectSourceImportReview): void {
+  dom.sourceImportSummary.textContent = sourceImportSummaryLine(review);
+  dom.sourceImportPolicy.value = "recommended";
+  dom.sourceImportOcrQuality.value = state.activeCleaningConfig.pdf_ocr_quality;
+  dom.sourceImportStatus.textContent = review.candidates.length === 0
+    ? "No new sources are available to import."
+    : "";
+  dom.confirmSourceImportBtn.disabled = review.candidates.length === 0;
+  renderImportSourcesGroups(review);
+  renderImportSourcesList(review.candidates);
+}
+
+function selectedImportSourcesChoice(): ImportSourcesChoice {
+  return {
+    pdfPolicy: dom.sourceImportPolicy.value as ProjectSourceImportPolicy,
+    ocrQuality: dom.sourceImportOcrQuality.value as PdfOcrQuality,
+  };
+}
+
+function closeImportSourcesDialog(choice: ImportSourcesChoice | null): void {
+  dom.sourceImportModal.classList.add("hidden");
+  const resolve = importSourcesResolve;
+  importSourcesResolve = null;
+  resolve?.(choice);
+}
+
+function showImportSourcesDialog(review: ProjectSourceImportReview): Promise<ImportSourcesChoice | null> {
+  if (importSourcesResolve) {
+    closeImportSourcesDialog(null);
+  }
+  resetImportSourcesDialog(review);
+  dom.sourceImportModal.classList.remove("hidden");
+
+  return new Promise((resolve) => {
+    importSourcesResolve = resolve;
+  });
 }
 
 function selectedPdfIntakeProfileId(): PdfIntakeProfileId {
@@ -629,8 +752,12 @@ export async function loadFilesPaths(selected: string[], registerProjectSources 
 }
 
 export async function loadCorpusFromProjectSources(): Promise<void> {
-  const paths = loadableProjectSourcePaths();
-  if (paths.length === 0) {
+  if (!state.activeProject) {
+    return;
+  }
+
+  const loadablePaths = loadableProjectSourcePaths();
+  if (loadablePaths.length === 0) {
     clearStateForLoad();
     renderProjectEmptyState();
     dom.statusBar.textContent = state.projectSources.length === 0
@@ -639,7 +766,28 @@ export async function loadCorpusFromProjectSources(): Promise<void> {
     return;
   }
 
-  await loadFilesIntoCorpus(paths);
+  try {
+    dom.statusBar.textContent = "Loading project sources...";
+    clearStateForLoad();
+
+    const result = await invoke<CorpusLoadResult>("load_project_source_records_command", {
+      rootPath: state.activeProject.rootPath,
+    });
+
+    state.currentCorpusVersion = result.corpusVersion;
+    state.currentCorpusRoot = result.report.root;
+    state.allFiles = result.report.files;
+    state.visibleFiles = state.allFiles.map((record, i) => ({ corpusIndex: i, record }));
+
+    renderSummary(result.report.summary);
+    updateFileList();
+    dom.statusBar.textContent = `Loaded ${state.allFiles.length} project sources.`;
+    callbacks.updateWordCount();
+  } catch (error) {
+    dom.statusBar.textContent = `Error loading project sources: ${error}`;
+    renderProjectEmptyState();
+    console.error(error);
+  }
 }
 
 export async function registerFilesForActiveProject(selected: string[]): Promise<void> {
@@ -649,16 +797,32 @@ export async function registerFilesForActiveProject(selected: string[]): Promise
   }
 
   try {
-    dom.statusBar.textContent = "Adding source files...";
-    const update = await addFilesToActiveProjectSources(selected);
+    dom.statusBar.textContent = "Inspecting selected source files...";
+    const review = await reviewFilesForActiveProjectSources(selected);
+    if (!review) {
+      return;
+    }
+
+    const choice = await showImportSourcesDialog(review);
+    if (!choice) {
+      dom.statusBar.textContent = "Source import cancelled.";
+      return;
+    }
+
+    dom.statusBar.textContent = "Importing source files...";
+    const update = await confirmFilesForActiveProjectSources(
+      selected,
+      choice.pdfPolicy,
+      choice.ocrQuality,
+    );
     await loadCorpusFromProjectSources();
     if (update) {
       dom.statusBar.textContent =
-        `Added ${update.added_count} source${update.added_count === 1 ? "" : "s"}` +
+        `Imported ${update.added_count} source${update.added_count === 1 ? "" : "s"}` +
         ` (${update.duplicate_count} duplicate${update.duplicate_count === 1 ? "" : "s"} skipped).`;
     }
   } catch (error) {
-    dom.statusBar.textContent = `Error adding source files: ${error}`;
+    dom.statusBar.textContent = `Error importing source files: ${error}`;
     console.error(error);
   }
 }
@@ -670,16 +834,32 @@ export async function registerFolderForActiveProject(selected: string): Promise<
   }
 
   try {
-    dom.statusBar.textContent = "Adding source folder...";
-    const update = await addFolderToActiveProjectSources(selected);
+    dom.statusBar.textContent = "Inspecting source folder...";
+    const review = await reviewFolderForActiveProjectSources(selected);
+    if (!review) {
+      return;
+    }
+
+    const choice = await showImportSourcesDialog(review);
+    if (!choice) {
+      dom.statusBar.textContent = "Source import cancelled.";
+      return;
+    }
+
+    dom.statusBar.textContent = "Importing source folder...";
+    const update = await confirmFolderForActiveProjectSources(
+      selected,
+      choice.pdfPolicy,
+      choice.ocrQuality,
+    );
     await loadCorpusFromProjectSources();
     if (update) {
       dom.statusBar.textContent =
-        `Added ${update.added_count} source${update.added_count === 1 ? "" : "s"}` +
+        `Imported ${update.added_count} source${update.added_count === 1 ? "" : "s"}` +
         ` (${update.duplicate_count} duplicate${update.duplicate_count === 1 ? "" : "s"} skipped).`;
     }
   } catch (error) {
-    dom.statusBar.textContent = `Error adding source folder: ${error}`;
+    dom.statusBar.textContent = `Error importing source folder: ${error}`;
     console.error(error);
   }
 }
@@ -761,6 +941,15 @@ export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
   dom.menuOpenDir.addEventListener("click", openDirectoryFromPicker);
   dom.menuOpenFiles.addEventListener("click", openFilesFromPicker);
   dom.menuOpenPdfIntake.addEventListener("click", openPdfIntakeModal);
+  dom.cancelSourceImportBtn.addEventListener("click", () => {
+    closeImportSourcesDialog(null);
+  });
+  dom.btnCloseSourceImportModalTop.addEventListener("click", () => {
+    closeImportSourcesDialog(null);
+  });
+  dom.confirmSourceImportBtn.addEventListener("click", () => {
+    closeImportSourcesDialog(selectedImportSourcesChoice());
+  });
   dom.cancelPdfIntakeBtn.addEventListener("click", () => {
     handleCancelPdfIntake();
   });

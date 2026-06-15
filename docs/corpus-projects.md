@@ -63,6 +63,8 @@ The project source inventory is `.corpuswright/sources.json`. It is versioned se
       "kind": "docx",
       "status": "ready_to_process",
       "reason_codes": ["native_text_available"],
+      "extraction_route": "docx_extract",
+      "ocr_quality": null,
       "added_at": "2026-06-15T12:00:00Z",
       "last_checked_at": "2026-06-15T12:00:00Z",
       "last_processed_at": null
@@ -73,7 +75,19 @@ The project source inventory is `.corpuswright/sources.json`. It is versioned se
 
 Source IDs are stable hashes of the project-relative path when the file is inside the project folder, or the canonical absolute path otherwise. The ID is suitable for keeping later processing and review decisions attached to the same source file.
 
-The desktop app shows this inventory in the Source Explorer. Add Files registers selected files, Add Folder registers supported files found by the existing recursive folder scan, and duplicates are skipped by stable source ID.
+The desktop app shows this inventory in the Source Explorer. Add Files and Add Folder inspect selected sources before registration, show an Import Sources review dialog, and persist the chosen source-level extraction route only after confirmation. Duplicates are skipped by stable source ID.
+
+`extraction_route` records how text should be extracted from the source before cleaning rules run. TXT uses `plain_text`, DOCX uses `docx_extract`, and HTML uses `html_extract`. PDF sources may use `embedded_text`, `ocr_if_needed`, `ocr_required`, `force_ocr`, or `undecided`. `ocr_quality` stores the OCR render quality for PDF routes that can run OCR.
+
+Older source inventories without `extraction_route` or `ocr_quality` still load. Missing routes default from the source kind: PDFs use `ocr_if_needed`, TXT uses `plain_text`, DOCX uses `docx_extract`, HTML uses `html_extract`, and unknown files use `unsupported`.
+
+## Import review
+
+After a file or folder picker returns, CorpusWright preflights the selected sources without running OCR. The Import Sources dialog shows the number of candidate sources, grouped route recommendations, duplicate and ignored-file counts, and a compact source list.
+
+The default policy is `Use recommended routes`. Preflight recommends embedded text for PDFs with usable text, OCR-required routes for PDFs with little or no text layer, and an undecided route when the audit cannot make a conservative recommendation. The batch PDF policy can instead route selected PDFs through OCR-if-needed, force OCR, or embedded text only. Cancel closes the dialog without writing `.corpuswright/sources.json`.
+
+PDF route and OCR quality are source-ingestion settings. Processing Parameters keep cleaning and fallback extraction defaults for older or unspecified sources; they do not replace routes already stored on project sources.
 
 ## Source statuses
 
@@ -115,4 +129,4 @@ The desktop frontend keeps a small recent-projects list in localStorage. Each en
 
 ## Preprocessing workspace
 
-After a project opens, CorpusWright shows the preprocessing workspace with the Source Explorer in the left panel. File loading, processed previews, export, custom removals, and repeated-artefact review continue to use the same preprocessing commands and cleaning pipeline.
+After a project opens, CorpusWright shows the preprocessing workspace with the Source Explorer in the left panel. Processed previews, search, export, word counts, custom removals, and repeated-artefact review use the source-level PDF route when one is stored, with Processing Parameters acting as fallback defaults for older or unspecified sources.

@@ -433,7 +433,8 @@ pub fn document_text_for_record(
     cache: Option<&ExtractionCache>,
 ) -> Result<DocumentText, String> {
     let pdf_options = if record.document_type == DocumentType::Pdf {
-        Some(PdfExtractionOptions::raw_from_cleaning_config(
+        Some(PdfExtractionOptions::raw_from_record_and_cleaning_config(
+            record,
             cleaning_config,
         ))
     } else {
@@ -579,6 +580,8 @@ mod tests {
             relative_path: PathBuf::from(name),
             document_type: DocumentType::Text,
             size_bytes: content.len() as u64,
+            extraction_route: None,
+            ocr_quality: None,
         }
     }
 
@@ -590,6 +593,8 @@ mod tests {
             relative_path: PathBuf::from(name),
             document_type: DocumentType::Pdf,
             size_bytes: 8,
+            extraction_route: None,
+            ocr_quality: None,
         }
     }
 
@@ -998,6 +1003,8 @@ mod tests {
             relative_path: PathBuf::from("test.docx"),
             document_type: DocumentType::Docx,
             size_bytes: 0,
+            extraction_route: None,
+            ocr_quality: None,
         };
         std::fs::write(&path, b"PK\x05\x06").unwrap(); // empty ZIP footer (won't extract, but key test is fine)
 

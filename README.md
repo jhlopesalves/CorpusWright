@@ -26,8 +26,8 @@ CorpusWright is my attempt to make that stage less miserable: load the documents
 ## What it does
 
 - Starts from a CorpusWright project folder, with a small manifest under `.corpuswright/project.json` and a recent-projects launcher.
-- Keeps a project source inventory under `.corpuswright/sources.json`, shown as a Source Explorer with processing statuses and reason badges.
-- Loads single files or whole folders — TXT, HTML, DOCX, and PDF.
+- Keeps a project source inventory under `.corpuswright/sources.json`, shown as a Source Explorer with processing statuses, route badges, and reason badges.
+- Reviews selected files or folders before import, with source-level extraction routes for TXT, HTML, DOCX, and PDF.
 - Shows original and processed text side by side, so you can see what each rule actually changed rather than trusting it blindly.
 - Lets you configure cleaning rules for whitespace, line breaks, format-specific noise (HTML, DOCX, PDF), obvious extraction/OCR/markup noise lines, and your own custom removals.
 - Reviews repeated headers, footers, page labels, boilerplate, layout fragments, and extraction artefacts across the whole corpus with deterministic text/noise signals.
@@ -43,7 +43,7 @@ Page-zone removal rules are described in [docs/page-zone-removal-rules.md](docs/
 Repeated artefact review signals are described in [docs/repeated-artifact-finder.md](docs/repeated-artifact-finder.md).
 The obvious extraction/OCR noise option uses deterministic text/noise profiling and is disabled by default. It removes only full lines such as repeated symbol junk, `cid:` markers, replacement-character junk, and standalone markup fragments; headings, page labels, tables, formulae, code, and ordinary text are preserved.
 
-The Source Explorer separates file type from processing state. `Ready to Process` means CorpusWright can attempt preprocessing; it is not an analysis-ready certificate. `Needs OCR` marks PDFs that likely need OCR rather than treating them as failed. `Processed with Warnings` means usable output was produced with review signals, and `Failed` marks a hard blocker that needs user action or a code fix.
+The Source Explorer separates file type, extraction route, and processing state. `Ready to Process` means CorpusWright can attempt preprocessing; it is not an analysis-ready certificate. `Needs OCR` marks PDFs that likely need OCR rather than treating them as failed. PDF extraction route and OCR quality are stored on imported sources where available, while Processing Parameters hold cleaning rules and fallback PDF defaults for older or unspecified sources. `Processed with Warnings` means usable output was produced with review signals, and `Failed` marks a hard blocker that needs user action or a code fix.
 
 ## How it's built
 

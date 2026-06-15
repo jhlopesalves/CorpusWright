@@ -641,6 +641,11 @@ main {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.source-route-badge {
+  border-color: rgba(80, 160, 220, 0.45);
+  color: #8ecae6;
+}
+
 .source-status-failed .source-reason-badge {
   border-color: rgba(255, 107, 107, 0.45);
   color: var(--danger-color);
@@ -950,6 +955,89 @@ pre {
   width: min(92vw, 760px);
   max-height: 90vh;
   overflow: auto;
+}
+
+.source-import-modal-content {
+  width: min(92vw, 720px);
+  max-height: min(90vh, 780px);
+  overflow-y: auto;
+}
+
+.source-import-summary {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.source-import-groups {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.source-import-group-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(160px, 1.2fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+  font-size: 0.86rem;
+}
+
+.source-import-group-row span:nth-child(2) {
+  color: var(--text-muted);
+}
+
+.source-import-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.55fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.source-import-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.source-import-list {
+  display: grid;
+  gap: 6px;
+  max-height: min(28vh, 260px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.source-import-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.84rem;
+}
+
+.source-import-list-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.source-import-list-meta,
+.source-import-status {
+  color: var(--text-muted);
+}
+
+.source-import-status {
+  margin-right: auto;
+  font-size: 0.85rem;
 }
 
 #pdf-intake-modal.pdf-intake-processing .modal-description,

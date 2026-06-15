@@ -1,4 +1,5 @@
 use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource};
+use crate::scan::{DocumentRecord, DocumentType};
 use lopdf::Document;
 use pdfium_render::prelude::*;
 use regex::Regex;
@@ -50,6 +51,26 @@ impl PdfExtractionOptions {
             ocr_quality: config.pdf_ocr_quality,
             ..Self::raw_default()
         }
+    }
+
+    /// Build extraction-only options from a record, using source-level route
+    /// metadata when present and falling back to the cleaning config otherwise.
+    pub fn raw_from_record_and_cleaning_config(
+        record: &DocumentRecord,
+        config: &CleaningConfig,
+    ) -> Self {
+        let mut options = Self::raw_from_cleaning_config(config);
+        if record.document_type == DocumentType::Pdf {
+            if let Some(route) = record.extraction_route
+                && let Some(text_source) = route.pdf_text_source()
+            {
+                options.text_source = text_source;
+            }
+            if let Some(ocr_quality) = record.ocr_quality {
+                options.ocr_quality = ocr_quality;
+            }
+        }
+        options
     }
 
     /// Default options for raw extraction: PdfiumFlat strategy, no cleanup, no OCR.

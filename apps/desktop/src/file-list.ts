@@ -9,6 +9,7 @@ import {
   reasonLabel,
   sourceKindLabel,
   sourceStatusLabel,
+  usefulRouteLabel,
 } from "./sources";
 
 const ITEM_HEIGHT = 26; // px, must match CSS #file-list li height
@@ -296,6 +297,14 @@ function createSourceRow(
     meta.appendChild(reasonBadge);
   }
 
+  const route = usefulRouteLabel(source);
+  if (route) {
+    const routeBadge = document.createElement("span");
+    routeBadge.className = "source-badge source-route-badge";
+    routeBadge.textContent = route;
+    meta.appendChild(routeBadge);
+  }
+
   textWrap.append(name, meta);
   li.append(checkbox, textWrap);
 
@@ -435,6 +444,7 @@ function filteredProjectSources(): ProjectSource[] {
       source.file_name,
       source.path,
       source.kind,
+      source.extraction_route,
       sourceStatusLabel(source.status),
       ...source.reason_codes,
       ...source.reason_codes.map(reasonLabel),

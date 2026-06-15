@@ -1,3 +1,4 @@
+use crate::clean::{PdfOcrQuality, PdfTextSource};
 use crate::pdf_audit::{PdfAuditQuality, PdfAuditSuggestedProfile, audit_pdf_files};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -39,8 +40,37 @@ pub enum ProjectSourceStatus {
     Failed,
 }
 
+/// Extraction route chosen for a project source before cleaning runs.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum ProjectSourceExtractionRoute {
+    EmbeddedText,
+    OcrIfNeeded,
+    ForceOcr,
+    OcrRequired,
+    PlainText,
+    DocxExtract,
+    HtmlExtract,
+    Unsupported,
+    #[default]
+    Undecided,
+}
+
+/// Batch PDF policy applied when confirming an import review.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum ProjectSourceImportPolicy {
+    #[default]
+    Recommended,
+    OcrIfNeeded,
+    ForceOcr,
+    NoAutomaticOcr,
+}
+
 /// A single file registered with a CorpusWright project.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, TS)]
 #[ts(export)]
 pub struct ProjectSource {
     pub id: String,
@@ -50,9 +80,52 @@ pub struct ProjectSource {
     pub kind: ProjectSourceKind,
     pub status: ProjectSourceStatus,
     pub reason_codes: Vec<String>,
+    pub extraction_route: ProjectSourceExtractionRoute,
+    pub ocr_quality: Option<PdfOcrQuality>,
     pub added_at: String,
     pub last_checked_at: Option<String>,
     pub last_processed_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProjectSourceSerde {
+    id: String,
+    path: PathBuf,
+    file_name: String,
+    extension: Option<String>,
+    kind: ProjectSourceKind,
+    status: ProjectSourceStatus,
+    reason_codes: Vec<String>,
+    extraction_route: Option<ProjectSourceExtractionRoute>,
+    ocr_quality: Option<PdfOcrQuality>,
+    added_at: String,
+    last_checked_at: Option<String>,
+    last_processed_at: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for ProjectSource {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let helper = ProjectSourceSerde::deserialize(deserializer)?;
+        Ok(Self {
+            id: helper.id,
+            path: helper.path,
+            file_name: helper.file_name,
+            extension: helper.extension,
+            kind: helper.kind,
+            status: helper.status,
+            reason_codes: helper.reason_codes,
+            extraction_route: helper
+                .extraction_route
+                .unwrap_or_else(|| default_extraction_route_for_kind(helper.kind)),
+            ocr_quality: helper.ocr_quality,
+            added_at: helper.added_at,
+            last_checked_at: helper.last_checked_at,
+            last_processed_at: helper.last_processed_at,
+        })
+    }
 }
 
 /// Versioned source inventory persisted inside project metadata.
@@ -70,6 +143,15 @@ pub struct ProjectSourceUpdate {
     pub manifest: ProjectSourceManifest,
     pub added_count: usize,
     pub duplicate_count: usize,
+}
+
+/// Source candidates inspected before they are persisted to a project.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct ProjectSourceImportReview {
+    pub candidates: Vec<ProjectSource>,
+    pub duplicate_count: usize,
+    pub ignored_count: usize,
 }
 
 /// Per-file result reported by the preprocessing preview path.
@@ -147,6 +229,26 @@ pub fn save_project_source_manifest(
         .map_err(|error| format!("Could not write project source inventory: {error}"))
 }
 
+/// Preflights paths and returns source candidates without writing the manifest.
+///
+/// # Errors
+///
+/// Returns an error when the existing inventory cannot be loaded.
+pub fn review_project_source_paths(
+    project_root: impl AsRef<Path>,
+    paths: Vec<PathBuf>,
+    ignored_count: usize,
+) -> Result<ProjectSourceImportReview, String> {
+    let project_root = project_root.as_ref();
+    let manifest = load_project_source_manifest(project_root)?;
+    Ok(build_project_source_import_review(
+        project_root,
+        &manifest,
+        paths,
+        ignored_count,
+    ))
+}
+
 /// Registers paths as project sources, runs lightweight preflight, and skips duplicates.
 ///
 /// # Errors
@@ -157,39 +259,35 @@ pub fn add_project_source_paths(
     project_root: impl AsRef<Path>,
     paths: Vec<PathBuf>,
 ) -> Result<ProjectSourceUpdate, String> {
+    add_project_source_paths_with_policy(
+        project_root,
+        paths,
+        ProjectSourceImportPolicy::Recommended,
+        PdfOcrQuality::Balanced,
+    )
+}
+
+/// Registers paths as project sources with a batch PDF import policy.
+///
+/// # Errors
+///
+/// Returns an error when the existing inventory cannot be loaded or the updated
+/// inventory cannot be persisted.
+pub fn add_project_source_paths_with_policy(
+    project_root: impl AsRef<Path>,
+    paths: Vec<PathBuf>,
+    pdf_policy: ProjectSourceImportPolicy,
+    ocr_quality: PdfOcrQuality,
+) -> Result<ProjectSourceUpdate, String> {
     let project_root = project_root.as_ref();
     let mut manifest = load_project_source_manifest(project_root)?;
-    let mut seen_ids: HashSet<String> = manifest
-        .sources
-        .iter()
-        .map(|source| source.id.clone())
-        .collect();
-    let mut added_count = 0usize;
-    let mut duplicate_count = 0usize;
+    let review = build_project_source_import_review(project_root, &manifest, paths, 0);
+    let duplicate_count = review.duplicate_count;
+    let added_count = review.candidates.len();
 
-    for path in paths {
-        let source_path = source_path_for_storage(project_root, &path);
-        let source_id = stable_project_source_id(project_root, &source_path);
-        if !seen_ids.insert(source_id.clone()) {
-            duplicate_count += 1;
-            continue;
-        }
-
-        let mut source = ProjectSource {
-            id: source_id,
-            path: source_path.clone(),
-            file_name: file_name_for_path(&source_path),
-            extension: extension_for_path(&source_path),
-            kind: kind_for_path(&source_path),
-            status: ProjectSourceStatus::Unprocessed,
-            reason_codes: Vec::new(),
-            added_at: current_timestamp(),
-            last_checked_at: None,
-            last_processed_at: None,
-        };
-        preflight_project_source(&mut source);
+    for mut source in review.candidates {
+        apply_import_policy(&mut source, pdf_policy, ocr_quality);
         manifest.sources.push(source);
-        added_count += 1;
     }
 
     manifest.sources.sort_by(|a, b| a.path.cmp(&b.path));
@@ -250,11 +348,13 @@ pub fn preflight_project_source(source: &mut ProjectSource) {
     source.last_checked_at = Some(current_timestamp());
 
     if !source.path.exists() {
+        source.extraction_route = default_extraction_route_for_kind(source.kind);
         set_source_status(source, ProjectSourceStatus::Failed, &["missing_file"]);
         return;
     }
 
     if !source.path.is_file() {
+        source.extraction_route = ProjectSourceExtractionRoute::Unsupported;
         set_source_status(
             source,
             ProjectSourceStatus::Failed,
@@ -264,6 +364,7 @@ pub fn preflight_project_source(source: &mut ProjectSource) {
     }
 
     if source.kind == ProjectSourceKind::Unknown {
+        source.extraction_route = ProjectSourceExtractionRoute::Unsupported;
         set_source_status(
             source,
             ProjectSourceStatus::Failed,
@@ -275,10 +376,12 @@ pub fn preflight_project_source(source: &mut ProjectSource) {
     match fs::File::open(&source.path) {
         Ok(_) => {}
         Err(error) if error.kind() == ErrorKind::PermissionDenied => {
+            source.extraction_route = default_extraction_route_for_kind(source.kind);
             set_source_status(source, ProjectSourceStatus::Failed, &["permission_denied"]);
             return;
         }
         Err(_) => {
+            source.extraction_route = default_extraction_route_for_kind(source.kind);
             set_source_status(source, ProjectSourceStatus::Failed, &["parse_failed"]);
             return;
         }
@@ -287,6 +390,7 @@ pub fn preflight_project_source(source: &mut ProjectSource) {
     if source.kind == ProjectSourceKind::Pdf {
         preflight_pdf_source(source);
     } else {
+        source.extraction_route = default_extraction_route_for_kind(source.kind);
         set_source_status(
             source,
             ProjectSourceStatus::ReadyToProcess,
@@ -324,59 +428,188 @@ pub fn kind_for_path(path: impl AsRef<Path>) -> ProjectSourceKind {
     }
 }
 
+impl ProjectSourceExtractionRoute {
+    /// Returns the PDF text source implied by this route, if it applies to PDF extraction.
+    pub fn pdf_text_source(self) -> Option<PdfTextSource> {
+        match self {
+            Self::EmbeddedText => Some(PdfTextSource::EmbeddedText),
+            Self::OcrIfNeeded | Self::OcrRequired => Some(PdfTextSource::Ocr),
+            Self::ForceOcr => Some(PdfTextSource::ForceOcr),
+            Self::PlainText
+            | Self::DocxExtract
+            | Self::HtmlExtract
+            | Self::Unsupported
+            | Self::Undecided => None,
+        }
+    }
+}
+
+pub fn default_extraction_route_for_kind(kind: ProjectSourceKind) -> ProjectSourceExtractionRoute {
+    match kind {
+        ProjectSourceKind::Pdf => ProjectSourceExtractionRoute::OcrIfNeeded,
+        ProjectSourceKind::Docx => ProjectSourceExtractionRoute::DocxExtract,
+        ProjectSourceKind::Txt => ProjectSourceExtractionRoute::PlainText,
+        ProjectSourceKind::Html => ProjectSourceExtractionRoute::HtmlExtract,
+        ProjectSourceKind::Unknown => ProjectSourceExtractionRoute::Unsupported,
+    }
+}
+
+fn build_project_source_import_review(
+    project_root: &Path,
+    manifest: &ProjectSourceManifest,
+    paths: Vec<PathBuf>,
+    ignored_count: usize,
+) -> ProjectSourceImportReview {
+    let mut seen_ids: HashSet<String> = manifest
+        .sources
+        .iter()
+        .map(|source| source.id.clone())
+        .collect();
+    let mut candidates = Vec::new();
+    let mut duplicate_count = 0usize;
+
+    for path in paths {
+        let source_path = source_path_for_storage(project_root, &path);
+        let source_id = stable_project_source_id(project_root, &source_path);
+        if !seen_ids.insert(source_id.clone()) {
+            duplicate_count += 1;
+            continue;
+        }
+
+        let mut source = new_project_source(source_id, source_path);
+        preflight_project_source(&mut source);
+        candidates.push(source);
+    }
+
+    candidates.sort_by(|a, b| a.path.cmp(&b.path));
+
+    ProjectSourceImportReview {
+        candidates,
+        duplicate_count,
+        ignored_count,
+    }
+}
+
+fn new_project_source(source_id: String, source_path: PathBuf) -> ProjectSource {
+    let kind = kind_for_path(&source_path);
+    ProjectSource {
+        id: source_id,
+        path: source_path.clone(),
+        file_name: file_name_for_path(&source_path),
+        extension: extension_for_path(&source_path),
+        kind,
+        status: ProjectSourceStatus::Unprocessed,
+        reason_codes: Vec::new(),
+        extraction_route: default_extraction_route_for_kind(kind),
+        ocr_quality: None,
+        added_at: current_timestamp(),
+        last_checked_at: None,
+        last_processed_at: None,
+    }
+}
+
+fn apply_import_policy(
+    source: &mut ProjectSource,
+    pdf_policy: ProjectSourceImportPolicy,
+    ocr_quality: PdfOcrQuality,
+) {
+    if source.kind != ProjectSourceKind::Pdf || source.status == ProjectSourceStatus::Failed {
+        return;
+    }
+
+    source.ocr_quality = Some(ocr_quality);
+    source.extraction_route = match pdf_policy {
+        ProjectSourceImportPolicy::Recommended => source.extraction_route,
+        ProjectSourceImportPolicy::OcrIfNeeded => ProjectSourceExtractionRoute::OcrIfNeeded,
+        ProjectSourceImportPolicy::ForceOcr => ProjectSourceExtractionRoute::ForceOcr,
+        ProjectSourceImportPolicy::NoAutomaticOcr => ProjectSourceExtractionRoute::EmbeddedText,
+    };
+}
+
 fn preflight_pdf_source(source: &mut ProjectSource) {
     let results = audit_pdf_files(vec![source.path.clone()]);
     let Some(result) = results.into_iter().next() else {
+        source.extraction_route = ProjectSourceExtractionRoute::Undecided;
         set_source_status(source, ProjectSourceStatus::Failed, &["pdf_open_failed"]);
         return;
     };
 
     let warning_text = result.warnings.join("\n").to_lowercase();
     if warning_text.contains("encrypted") || warning_text.contains("password") {
+        source.extraction_route = ProjectSourceExtractionRoute::Undecided;
         set_source_status(source, ProjectSourceStatus::Failed, &["pdf_encrypted"]);
         return;
     }
 
     if warning_text.contains("could not parse pdf") || warning_text.contains("could not read pdf") {
+        source.extraction_route = ProjectSourceExtractionRoute::Undecided;
         set_source_status(source, ProjectSourceStatus::Failed, &["pdf_open_failed"]);
         return;
     }
 
-    match result.quality {
-        PdfAuditQuality::Good => set_source_status(
-            source,
-            ProjectSourceStatus::ReadyToProcess,
-            &["native_text_available"],
-        ),
-        PdfAuditQuality::Suspicious => set_source_status(
-            source,
-            ProjectSourceStatus::NeedsOcr,
-            &["ocr_required", "low_text_density"],
-        ),
-        PdfAuditQuality::Poor => set_source_status(
-            source,
-            ProjectSourceStatus::NeedsOcr,
-            &["ocr_required", "low_text_density"],
-        ),
-        PdfAuditQuality::Empty => set_source_status(
-            source,
-            ProjectSourceStatus::NeedsOcr,
-            &["pdf_no_text_layer", "ocr_required"],
-        ),
+    apply_pdf_audit_result_to_source(
+        source,
+        result.quality,
+        result.suggested_profile,
+        result.embedded_text_detected,
+    );
+}
+
+fn apply_pdf_audit_result_to_source(
+    source: &mut ProjectSource,
+    quality: PdfAuditQuality,
+    suggested_profile: PdfAuditSuggestedProfile,
+    embedded_text_detected: bool,
+) {
+    match quality {
+        PdfAuditQuality::Good => {
+            source.extraction_route = ProjectSourceExtractionRoute::EmbeddedText;
+            set_source_status(
+                source,
+                ProjectSourceStatus::ReadyToProcess,
+                &["native_text_available"],
+            );
+        }
+        PdfAuditQuality::Suspicious => {
+            source.extraction_route = ProjectSourceExtractionRoute::OcrRequired;
+            set_source_status(
+                source,
+                ProjectSourceStatus::NeedsOcr,
+                &["ocr_required", "low_text_density"],
+            );
+        }
+        PdfAuditQuality::Poor => {
+            source.extraction_route = ProjectSourceExtractionRoute::OcrRequired;
+            set_source_status(
+                source,
+                ProjectSourceStatus::NeedsOcr,
+                &["ocr_required", "low_text_density"],
+            );
+        }
+        PdfAuditQuality::Empty => {
+            source.extraction_route = ProjectSourceExtractionRoute::OcrRequired;
+            set_source_status(
+                source,
+                ProjectSourceStatus::NeedsOcr,
+                &["pdf_no_text_layer", "ocr_required"],
+            );
+        }
         PdfAuditQuality::Unknown => {
-            if matches!(result.suggested_profile, PdfAuditSuggestedProfile::ForceOcr)
-                || !result.embedded_text_detected
+            if matches!(suggested_profile, PdfAuditSuggestedProfile::ForceOcr)
+                || !embedded_text_detected
             {
+                source.extraction_route = ProjectSourceExtractionRoute::OcrRequired;
                 set_source_status(
                     source,
                     ProjectSourceStatus::NeedsOcr,
                     &["pdf_no_text_layer", "ocr_required"],
                 );
             } else {
+                source.extraction_route = ProjectSourceExtractionRoute::Undecided;
                 set_source_status(
                     source,
                     ProjectSourceStatus::ReadyToProcess,
-                    &["native_text_available"],
+                    &["pdf_route_undecided"],
                 );
             }
         }
@@ -445,6 +678,23 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    fn source_for_test(path: PathBuf, kind: ProjectSourceKind) -> ProjectSource {
+        ProjectSource {
+            id: "source_test".to_string(),
+            path: path.clone(),
+            file_name: file_name_for_path(&path),
+            extension: extension_for_path(&path),
+            kind,
+            status: ProjectSourceStatus::ReadyToProcess,
+            reason_codes: vec!["native_text_available".to_string()],
+            extraction_route: default_extraction_route_for_kind(kind),
+            ocr_quality: None,
+            added_at: "2026-01-01T00:00:00Z".to_string(),
+            last_checked_at: Some("2026-01-01T00:00:00Z".to_string()),
+            last_processed_at: None,
+        }
+    }
+
     #[test]
     fn source_manifest_can_be_saved_and_loaded() {
         let dir = tempdir().unwrap();
@@ -461,6 +711,157 @@ mod tests {
     }
 
     #[test]
+    fn source_manifest_persists_extraction_route_and_ocr_quality() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("paper.pdf");
+        let mut source = source_for_test(path, ProjectSourceKind::Pdf);
+        source.extraction_route = ProjectSourceExtractionRoute::ForceOcr;
+        source.ocr_quality = Some(PdfOcrQuality::HighQuality);
+        let manifest = ProjectSourceManifest {
+            version: SOURCE_MANIFEST_VERSION,
+            sources: vec![source],
+        };
+
+        save_project_source_manifest(dir.path(), &manifest).unwrap();
+        let loaded = load_project_source_manifest(dir.path()).unwrap();
+
+        assert_eq!(
+            loaded.sources[0].extraction_route,
+            ProjectSourceExtractionRoute::ForceOcr
+        );
+        assert_eq!(
+            loaded.sources[0].ocr_quality,
+            Some(PdfOcrQuality::HighQuality)
+        );
+    }
+
+    #[test]
+    fn old_source_manifest_without_routes_loads_with_kind_defaults() {
+        let dir = tempdir().unwrap();
+        let manifest_path = source_manifest_path(dir.path());
+        fs::create_dir_all(manifest_path.parent().unwrap()).unwrap();
+        fs::write(
+            &manifest_path,
+            r#"{
+  "version": 1,
+  "sources": [
+    {
+      "id": "source_pdf",
+      "path": "paper.pdf",
+      "file_name": "paper.pdf",
+      "extension": "pdf",
+      "kind": "pdf",
+      "status": "ready_to_process",
+      "reason_codes": ["native_text_available"],
+      "added_at": "2026-01-01T00:00:00Z",
+      "last_checked_at": null,
+      "last_processed_at": null
+    },
+    {
+      "id": "source_txt",
+      "path": "notes.txt",
+      "file_name": "notes.txt",
+      "extension": "txt",
+      "kind": "txt",
+      "status": "ready_to_process",
+      "reason_codes": ["native_text_available"],
+      "added_at": "2026-01-01T00:00:00Z",
+      "last_checked_at": null,
+      "last_processed_at": null
+    },
+    {
+      "id": "source_docx",
+      "path": "essay.docx",
+      "file_name": "essay.docx",
+      "extension": "docx",
+      "kind": "docx",
+      "status": "ready_to_process",
+      "reason_codes": ["native_text_available"],
+      "added_at": "2026-01-01T00:00:00Z",
+      "last_checked_at": null,
+      "last_processed_at": null
+    },
+    {
+      "id": "source_html",
+      "path": "page.html",
+      "file_name": "page.html",
+      "extension": "html",
+      "kind": "html",
+      "status": "ready_to_process",
+      "reason_codes": ["native_text_available"],
+      "added_at": "2026-01-01T00:00:00Z",
+      "last_checked_at": null,
+      "last_processed_at": null
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+
+        let loaded = load_project_source_manifest(dir.path()).unwrap();
+        let routes = loaded
+            .sources
+            .iter()
+            .map(|source| source.extraction_route)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            routes,
+            vec![
+                ProjectSourceExtractionRoute::OcrIfNeeded,
+                ProjectSourceExtractionRoute::PlainText,
+                ProjectSourceExtractionRoute::DocxExtract,
+                ProjectSourceExtractionRoute::HtmlExtract,
+            ]
+        );
+    }
+
+    #[test]
+    fn pdf_audit_quality_maps_to_recommended_routes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("paper.pdf");
+        let mut good = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        apply_pdf_audit_result_to_source(
+            &mut good,
+            PdfAuditQuality::Good,
+            PdfAuditSuggestedProfile::Standard,
+            true,
+        );
+
+        let mut scanned = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        apply_pdf_audit_result_to_source(
+            &mut scanned,
+            PdfAuditQuality::Empty,
+            PdfAuditSuggestedProfile::ForceOcr,
+            false,
+        );
+
+        let mut unclear = source_for_test(path, ProjectSourceKind::Pdf);
+        apply_pdf_audit_result_to_source(
+            &mut unclear,
+            PdfAuditQuality::Unknown,
+            PdfAuditSuggestedProfile::Standard,
+            true,
+        );
+
+        assert_eq!(
+            good.extraction_route,
+            ProjectSourceExtractionRoute::EmbeddedText
+        );
+        assert_eq!(good.status, ProjectSourceStatus::ReadyToProcess);
+        assert_eq!(
+            scanned.extraction_route,
+            ProjectSourceExtractionRoute::OcrRequired
+        );
+        assert_eq!(scanned.status, ProjectSourceStatus::NeedsOcr);
+        assert_eq!(
+            unclear.extraction_route,
+            ProjectSourceExtractionRoute::Undecided
+        );
+        assert_eq!(unclear.reason_codes, vec!["pdf_route_undecided"]);
+    }
+
+    #[test]
     fn duplicate_source_paths_are_deduplicated() {
         let dir = tempdir().unwrap();
         let source = dir.path().join("essay.txt");
@@ -474,6 +875,43 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_source_import_preserves_existing_route() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("paper.pdf");
+        let mut source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        source.id = stable_project_source_id(dir.path(), &path);
+        source.extraction_route = ProjectSourceExtractionRoute::ForceOcr;
+        source.ocr_quality = Some(PdfOcrQuality::HighQuality);
+        save_project_source_manifest(
+            dir.path(),
+            &ProjectSourceManifest {
+                version: SOURCE_MANIFEST_VERSION,
+                sources: vec![source],
+            },
+        )
+        .unwrap();
+
+        let update = add_project_source_paths_with_policy(
+            dir.path(),
+            vec![path],
+            ProjectSourceImportPolicy::NoAutomaticOcr,
+            PdfOcrQuality::Fast,
+        )
+        .unwrap();
+
+        assert_eq!(update.added_count, 0);
+        assert_eq!(update.duplicate_count, 1);
+        assert_eq!(
+            update.manifest.sources[0].extraction_route,
+            ProjectSourceExtractionRoute::ForceOcr
+        );
+        assert_eq!(
+            update.manifest.sources[0].ocr_quality,
+            Some(PdfOcrQuality::HighQuality)
+        );
+    }
+
+    #[test]
     fn unsupported_extension_is_marked_failed() {
         let dir = tempdir().unwrap();
         let source = dir.path().join("image.png");
@@ -484,6 +922,10 @@ mod tests {
 
         assert_eq!(source.kind, ProjectSourceKind::Unknown);
         assert_eq!(source.status, ProjectSourceStatus::Failed);
+        assert_eq!(
+            source.extraction_route,
+            ProjectSourceExtractionRoute::Unsupported
+        );
         assert_eq!(source.reason_codes, vec!["unsupported_file_type"]);
     }
 
@@ -496,6 +938,10 @@ mod tests {
         let source = &update.manifest.sources[0];
 
         assert_eq!(source.status, ProjectSourceStatus::Failed);
+        assert_eq!(
+            source.extraction_route,
+            ProjectSourceExtractionRoute::PlainText
+        );
         assert_eq!(source.reason_codes, vec!["missing_file"]);
     }
 
@@ -514,6 +960,14 @@ mod tests {
             source.status == ProjectSourceStatus::ReadyToProcess
                 && source.reason_codes == vec!["native_text_available"]
         }));
+        let routes = update
+            .manifest
+            .sources
+            .iter()
+            .map(|source| source.extraction_route)
+            .collect::<Vec<_>>();
+        assert!(routes.contains(&ProjectSourceExtractionRoute::PlainText));
+        assert!(routes.contains(&ProjectSourceExtractionRoute::DocxExtract));
     }
 
     #[test]

@@ -156,8 +156,13 @@ function selectedFullOcrPdfIndex(indices: number[]): number | null {
   const index = indices[0];
   const record = state.allFiles[index];
   if (!record || record.document_type !== "pdf") return null;
-  if (state.activeCleaningConfig.pdf_text_source !== "ForceOcr") return null;
-  if (state.activeCleaningConfig.pdf_ocr_quality !== "HighQuality") return null;
+  const source = sourceForPath(record.source_path);
+  const sourceForcesHighQualityOcr =
+    source?.extraction_route === "force_ocr" && source.ocr_quality === "HighQuality";
+  const fallbackForcesHighQualityOcr =
+    state.activeCleaningConfig.pdf_text_source === "ForceOcr" &&
+    state.activeCleaningConfig.pdf_ocr_quality === "HighQuality";
+  if (!sourceForcesHighQualityOcr && !fallbackForcesHighQualityOcr) return null;
   return index;
 }
 

@@ -200,6 +200,56 @@
       </div>
     </div>
 
+    <!-- Source Import Modal -->
+    <div id="source-import-modal" class="modal hidden" role="dialog" aria-modal="true"
+      aria-labelledby="source-import-title" aria-describedby="source-import-description">
+      <div class="modal-content source-import-modal-content">
+        <button
+          id="btn-close-source-import-modal-top"
+          class="modal-close-btn"
+          type="button"
+          aria-label="Close Import Sources"
+        >
+          &times;
+        </button>
+        <h2 id="source-import-title">Import Sources</h2>
+        <p id="source-import-description" class="modal-description">
+          CorpusWright inspected the selected files. Choose how these sources should be imported into the project.
+        </p>
+
+        <p id="source-import-summary" class="source-import-summary"></p>
+        <div id="source-import-groups" class="source-import-groups"></div>
+
+        <div class="source-import-controls">
+          <label for="source-import-policy">
+            <span>PDF policy for this import</span>
+            <select id="source-import-policy" class="settings-select">
+              <option value="recommended">Use recommended routes</option>
+              <option value="ocr_if_needed">Use embedded text when available; OCR only when needed</option>
+              <option value="force_ocr">Force OCR for selected PDFs</option>
+              <option value="no_automatic_ocr">Do not OCR automatically</option>
+            </select>
+          </label>
+          <label for="source-import-ocr-quality">
+            <span>OCR quality</span>
+            <select id="source-import-ocr-quality" class="settings-select">
+              <option value="Fast">Fast</option>
+              <option value="Balanced">Balanced</option>
+              <option value="HighQuality">High quality</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="source-import-list" class="source-import-list"></div>
+
+        <div class="modal-actions">
+          <span id="source-import-status" class="source-import-status"></span>
+          <button id="cancel-source-import-btn" type="button">Cancel</button>
+          <button id="confirm-source-import-btn" class="primary-btn" type="button">Import Sources</button>
+        </div>
+      </div>
+    </div>
+
     <!-- PDF Intake Modal -->
     <div id="pdf-intake-modal" class="modal hidden" role="dialog" aria-modal="true"
       aria-labelledby="pdf-intake-title" aria-describedby="pdf-intake-description">
@@ -402,7 +452,7 @@
             </details>
 
             <details open>
-              <summary>PDF Text Source</summary>
+              <summary>Default PDF import policy</summary>
               <div style="padding-left: 0; margin-top: 4px;">
                 <select id="sel-pdf-text-source" class="settings-select"
                   style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
@@ -411,14 +461,14 @@
                   <option value="ForceOcr">Force OCR (slow)</option>
                 </select>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
-                  Embedded text is fastest. OCR rescue only OCRs when embedded text looks empty or poor. Force OCR
-                  ignores embedded text and can be much slower.
+                  Used as a fallback for older sources and for new PDF sources without a source-level route. The Import
+                  Sources dialog stores the route for each imported source.
                 </p>
               </div>
             </details>
 
             <details open>
-              <summary>PDF OCR Quality</summary>
+              <summary>Default OCR quality for new PDF sources</summary>
               <div style="padding-left: 0; margin-top: 4px;">
                 <select id="sel-pdf-ocr-quality" class="settings-select"
                   style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
@@ -427,7 +477,7 @@
                   <option value="HighQuality">High quality</option>
                 </select>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
-                  Higher quality renders larger page images for OCR and may take much longer on scanned PDFs.
+                  Used by PDF routes that run OCR when no source-level OCR quality has been stored.
                 </p>
               </div>
             </details>
