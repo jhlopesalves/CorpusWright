@@ -111,11 +111,11 @@ jobs:
           releaseBody: |
             Experimental alpha release for manual inspection.
 
-            This prerelease supersedes v0.1.0-alpha.3.
+            This prerelease supersedes v0.1.0-alpha.5.
 
             Theme: sortable repeated artefact candidates, resizable column layout, and Windows compatibility fixes.
 
-            See docs/releases/v0.1.0-alpha.5.md for the release-note draft, including known limitations and validation.
+            See docs/releases/v0.1.0-alpha.6.md for the release-note draft, including known limitations and validation.
 
             Windows and macOS builds may be unsigned or ad-hoc signed. Windows may show SmartScreen warnings. macOS may require users to allow the app from Privacy & Security settings.
 
