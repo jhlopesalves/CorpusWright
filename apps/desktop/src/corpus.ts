@@ -118,14 +118,57 @@ interface PdfIntakeMaterializationProgress {
   latestWarning: string | null;
 }
 
-function clearStateForLoad(): void {
+export function clearStateForLoad(): void {
   state.currentCorpusVersion = 0;
   state.allFiles = [];
   state.visibleFiles = [];
   state.selectedCorpusIndices.clear();
+  state.currentCorpusRoot = null;
+  state.lastSelectedCorpusIndex = null;
+  state.lastScanCandidates = [];
+  state.selectedCandidateIds.clear();
   dom.previewContent.textContent = "Select files from the left panel to preview their contents.";
   dom.processedPreviewContent.textContent = "Select files from the left panel to preview processed text.";
+  dom.corpusSummary.replaceChildren();
   updateFileList();
+}
+
+function createProjectEmptyState(): HTMLElement {
+  const wrapper = document.createElement("div");
+  wrapper.className = "project-empty-state";
+
+  const title = document.createElement("h2");
+  title.textContent = "This corpus project has no source files yet.";
+
+  const body = document.createElement("p");
+  body.textContent = "Add PDFs, DOCX, TXT, HTML, or plain text files to begin preparing your corpus.";
+
+  const actions = document.createElement("div");
+  actions.className = "project-empty-actions";
+
+  const addFiles = document.createElement("button");
+  addFiles.type = "button";
+  addFiles.className = "primary-btn";
+  addFiles.textContent = "Add Files";
+  addFiles.addEventListener("click", () => {
+    openFilesFromPicker();
+  });
+
+  const addFolder = document.createElement("button");
+  addFolder.type = "button";
+  addFolder.textContent = "Add Folder";
+  addFolder.addEventListener("click", () => {
+    openDirectoryFromPicker();
+  });
+
+  actions.append(addFiles, addFolder);
+  wrapper.append(title, body, actions);
+  return wrapper;
+}
+
+export function renderProjectEmptyState(): void {
+  dom.previewContent.replaceChildren(createProjectEmptyState());
+  dom.processedPreviewContent.textContent = "Add source files to preview processed text.";
 }
 
 function selectedPdfIntakeProfileId(): PdfIntakeProfileId {
@@ -504,16 +547,7 @@ function formatAuditQuality(quality: PdfAuditResult["quality"]): string {
   }
 }
 
-async function handleOpenDir(): Promise<void> {
-  const selected = await open({
-    directory: true,
-    multiple: false,
-  });
-  if (selected === null || Array.isArray(selected)) {
-    dom.statusBar.textContent = "Open directory cancelled.";
-    return;
-  }
-
+export async function loadDirectoryPath(selected: string): Promise<void> {
   try {
     dom.statusBar.textContent = "Scanning...";
     clearStateForLoad();
@@ -527,25 +561,20 @@ async function handleOpenDir(): Promise<void> {
 
     renderSummary(result.report.summary);
     updateFileList();
+    if (state.allFiles.length === 0) {
+      renderProjectEmptyState();
+    }
 
     dom.statusBar.textContent = `Loaded ${state.allFiles.length} files.`;
     callbacks.updateWordCount();
   } catch (error) {
     dom.statusBar.textContent = `Error: ${error}`;
+    renderProjectEmptyState();
     console.error(error);
   }
 }
 
-async function handleOpenFiles(): Promise<void> {
-  const selected = await open({
-    multiple: true,
-    filters: [{ name: "Supported Documents", extensions: ["txt", "html", "htm", "docx", "pdf"] }]
-  });
-  if (selected === null || !Array.isArray(selected)) {
-    dom.statusBar.textContent = "Open files cancelled.";
-    return;
-  }
-
+export async function loadFilesPaths(selected: string[]): Promise<void> {
   try {
     dom.statusBar.textContent = "Loading files...";
     clearStateForLoad();
@@ -559,13 +588,43 @@ async function handleOpenFiles(): Promise<void> {
 
     renderSummary(result.report.summary);
     updateFileList();
+    if (state.allFiles.length === 0) {
+      renderProjectEmptyState();
+    }
 
     dom.statusBar.textContent = `Loaded ${state.allFiles.length} files.`;
     callbacks.updateWordCount();
   } catch (error) {
     dom.statusBar.textContent = `Error: ${error}`;
+    renderProjectEmptyState();
     console.error(error);
   }
+}
+
+export async function openDirectoryFromPicker(): Promise<void> {
+  const selected = await open({
+    directory: true,
+    multiple: false,
+  });
+  if (selected === null || Array.isArray(selected)) {
+    dom.statusBar.textContent = "Open directory cancelled.";
+    return;
+  }
+
+  await loadDirectoryPath(selected);
+}
+
+export async function openFilesFromPicker(): Promise<void> {
+  const selected = await open({
+    multiple: true,
+    filters: [{ name: "Supported Documents", extensions: ["txt", "html", "htm", "docx", "pdf"] }]
+  });
+  if (selected === null || !Array.isArray(selected)) {
+    dom.statusBar.textContent = "Open files cancelled.";
+    return;
+  }
+
+  await loadFilesPaths(selected);
 }
 
 function renderSummary(summary: CorpusSummary): void {
@@ -614,8 +673,8 @@ function renderSummary(summary: CorpusSummary): void {
 
 export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
   callbacks = nextCallbacks;
-  dom.menuOpenDir.addEventListener("click", handleOpenDir);
-  dom.menuOpenFiles.addEventListener("click", handleOpenFiles);
+  dom.menuOpenDir.addEventListener("click", openDirectoryFromPicker);
+  dom.menuOpenFiles.addEventListener("click", openFilesFromPicker);
   dom.menuOpenPdfIntake.addEventListener("click", openPdfIntakeModal);
   dom.cancelPdfIntakeBtn.addEventListener("click", () => {
     handleCancelPdfIntake();

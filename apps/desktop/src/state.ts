@@ -7,7 +7,16 @@ import type {
   VisibleFile,
 } from "./types";
 
+export interface ActiveProject {
+  name: string;
+  rootPath: string;
+  manifestPath: string;
+  projectVersion: number;
+  sourceRoots: string[];
+}
+
 export const state = {
+  activeProject: null as ActiveProject | null,
   currentCorpusVersion: 0,
   allFiles: [] as DocumentRecord[],
   visibleFiles: [] as VisibleFile[],
