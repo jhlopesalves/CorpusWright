@@ -73,11 +73,40 @@ export async function updatePreview(): Promise<void> {
     return;
   }
 
+  // Check if any selected sources are unprocessed or need OCR
   const selectedIndices = Array.from(state.selectedCorpusIndices);
+  const unprocessedSources: { index: number; status: string; name: string }[] = [];
+
+  for (const idx of selectedIndices) {
+    const record = state.allFiles[idx];
+    if (!record) continue;
+    const source = sourceForPath(record.source_path);
+    if (!source) continue;
+    if (source.status === "unprocessed" || source.status === "needs_ocr") {
+      unprocessedSources.push({ index: idx, status: source.status, name: source.file_name });
+    }
+  }
+
+  // For the processed text tab, show status messages for unprocessed/needs-ocr sources
+  const processedTab = document.getElementById("processed-text");
+  const isProcessedTabActive = processedTab?.classList.contains("active");
+  if (unprocessedSources.length > 0 && isProcessedTabActive) {
+    let html = "";
+    for (const us of unprocessedSources) {
+      const statusMsg = us.status === "needs_ocr"
+        ? "This PDF needs OCR before text preview is available. Use Prepare selected PDFs to set up OCR handling, then process the source."
+        : "This source has not been processed yet. Process it to generate processed text.";
+      html += `<div class="file-card"><div class="file-card-header"><div class="file-card-title-area"><div class="file-card-title">${us.name}</div></div></div><div class="file-card-body" style="color: var(--text-muted); padding: 16px; font-style: italic;">${statusMsg}</div></div>`;
+    }
+    dom.processedPreviewContent.innerHTML = html;
+  }
+
+  // For original text tab, proceed to fetch preview as usual (original text may be available)
+
   state.currentPreviewOffset = 0;
 
   dom.previewLoadingOverlay.style.display = "flex";
-  dom.statusBar.textContent = "Previewing processed text...";
+  dom.statusBar.textContent = "Previewing...";
 
   await fetchAndRenderPreviewChunk(selectedIndices, state.currentPreviewOffset, false, myVersion, myPreviewGeneration);
 }

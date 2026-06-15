@@ -4,8 +4,8 @@ use corpuswright_core::project_sources::{
     ProjectSourcePdfHandlingOverride, ProjectSourcePdfProfile, ProjectSourceProcessingResult,
     ProjectSourceStatus, ProjectSourceUpdate, add_project_source_paths,
     add_project_source_paths_with_pdf_handling, load_project_source_manifest,
-    review_project_source_paths, save_project_source_manifest, update_project_source_pdf_profiles,
-    update_project_source_processing_results,
+    remove_project_source_paths, review_project_source_paths, save_project_source_manifest,
+    update_project_source_pdf_profiles, update_project_source_processing_results,
 };
 use corpuswright_core::scan::{ScanReport, load_files, scan_directory};
 use serde::{Deserialize, Serialize};
@@ -257,6 +257,16 @@ pub(crate) fn update_project_source_processing_results_command(
 ) -> Result<ProjectSourceManifest, String> {
     let root = validated_project_root(&root_path)?;
     update_project_source_processing_results(root, results)
+}
+
+#[tauri::command(async)]
+pub(crate) fn remove_project_source_paths_command(
+    root_path: String,
+    paths: Vec<String>,
+) -> Result<ProjectSourceManifest, String> {
+    let root = validated_project_root(&root_path)?;
+    let paths = paths.into_iter().map(PathBuf::from).collect();
+    remove_project_source_paths(root, paths)
 }
 
 #[tauri::command(async)]

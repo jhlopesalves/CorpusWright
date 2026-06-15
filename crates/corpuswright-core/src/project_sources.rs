@@ -434,6 +434,34 @@ pub fn update_project_source_pdf_profiles(
     Ok(manifest)
 }
 
+/// Removes specific source paths from the project inventory without touching disk files.
+///
+/// # Errors
+///
+/// Returns an error when the inventory cannot be loaded or saved.
+pub fn remove_project_source_paths(
+    project_root: impl AsRef<Path>,
+    paths: Vec<PathBuf>,
+) -> Result<ProjectSourceManifest, String> {
+    let project_root = project_root.as_ref();
+    let mut manifest = load_project_source_manifest(project_root)?;
+
+    let remove_ids: HashSet<String> = paths
+        .iter()
+        .map(|path| {
+            let source_path = source_path_for_storage(project_root, path);
+            stable_project_source_id(project_root, &source_path)
+        })
+        .collect();
+
+    manifest
+        .sources
+        .retain(|source| !remove_ids.contains(&source.id));
+
+    save_project_source_manifest(project_root, &manifest)?;
+    Ok(manifest)
+}
+
 /// Recomputes a source's kind, availability, and initial processing route.
 pub fn preflight_project_source(source: &mut ProjectSource) {
     source.file_name = file_name_for_path(&source.path);

@@ -258,6 +258,18 @@ export async function confirmFolderForActiveProjectSources(
   return update;
 }
 
+export async function removeProjectSourcePaths(paths: string[]): Promise<ProjectSourceManifest | null> {
+  if (!state.activeProject || paths.length === 0) {
+    return null;
+  }
+  const manifest = await invoke<ProjectSourceManifest>("remove_project_source_paths_command", {
+    rootPath: state.activeProject.rootPath,
+    paths,
+  });
+  replaceProjectSources(manifest);
+  return manifest;
+}
+
 export async function persistProcessedPreviewStatuses(files: FilePreview[]): Promise<void> {
   if (!state.activeProject || files.length === 0) {
     return;

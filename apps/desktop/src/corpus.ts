@@ -13,6 +13,7 @@ import {
   loadProjectSourcesForActiveProject,
   pdfProfileLabel,
   persistProcessedPreviewStatuses,
+  removeProjectSourcePaths,
   type ProjectSourcePdfHandlingOverride,
   reviewFilesForActiveProjectSources,
   reviewFolderForActiveProjectSources,
@@ -667,6 +668,7 @@ function closePdfIntakeModal(): void {
   }
   dom.pdfIntakeStatus.textContent = "";
   dom.pdfIntakeModal.classList.add("hidden");
+  resetPdfIntakeSession();
 }
 
 function resetPdfIntakeMaterializationProgress(): void {
@@ -958,18 +960,31 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
     }
     callbacks.updateWordCount();
   } catch (error) {
-    const message = pdfIntakeCancelRequested
+    const cancelled = pdfIntakeCancelRequested;
+    const message = cancelled
       ? "PDF intake cancelled. No half-materialised corpus was loaded."
       : `Error: ${error}`;
     dom.pdfIntakeStatus.textContent = message;
     dom.statusBar.textContent = message;
     console.error(error);
+
+    // Restore project sources after clearStateForLoad() if cancelled during materialisation
+    if (cancelled && pdfIntakeMode === "prepare-sources" && state.activeProject) {
+      try {
+        await loadProjectSourcesForActiveProject();
+        await loadCorpusFromProjectSources();
+        dom.statusBar.textContent = "PDF intake cancelled. Sources restored.";
+      } catch {
+        dom.statusBar.textContent = "PDF intake cancelled. Reload project sources to restore the source list.";
+      }
+    }
   } finally {
     stopListeningForPdfIntakeProgress();
     pdfIntakeMaterializing = false;
     dom.pdfIntakeModal.classList.remove("pdf-intake-processing");
+    resetPdfIntakeSession();
     dom.choosePdfIntakeFilesBtn.disabled = false;
-    dom.loadPdfIntakeFilesBtn.disabled = pdfIntakeSelectedPaths.length === 0;
+    dom.loadPdfIntakeFilesBtn.disabled = true;
     dom.cancelPdfIntakeBtn.textContent = "Cancel";
     dom.cancelPdfIntakeBtn.disabled = false;
     dom.btnClosePdfIntakeModalTop.disabled = false;
@@ -1369,13 +1384,43 @@ function renderSummary(summary: CorpusSummary): void {
   `;
 }
 
+async function handleRemoveSelectedSources(): Promise<void> {
+  if (!state.activeProject || state.selectedCorpusIndices.size === 0) {
+    return;
+  }
+
+  const selectedPaths = Array.from(state.selectedCorpusIndices)
+    .map((index) => state.allFiles[index]?.source_path)
+    .filter((path): path is string => Boolean(path));
+
+  if (selectedPaths.length === 0) {
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Remove ${selectedPaths.length} selected source${selectedPaths.length === 1 ? "" : "s"} from the project inventory?\n\nSource files on disk will not be deleted.`,
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    dom.statusBar.textContent = "Removing selected sources...";
+    await removeProjectSourcePaths(selectedPaths);
+    state.selectedCorpusIndices.clear();
+    await loadCorpusFromProjectSources();
+    dom.statusBar.textContent = `Removed ${selectedPaths.length} source${selectedPaths.length === 1 ? "" : "s"} from project inventory.`;
+  } catch (error) {
+    dom.statusBar.textContent = `Error removing sources: ${error}`;
+    console.error(error);
+  }
+}
+
 export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
   callbacks = nextCallbacks;
   dom.sourceAddFilesBtn.addEventListener("click", openFilesFromPicker);
   dom.sourceAddFolderBtn.addEventListener("click", openDirectoryFromPicker);
-  dom.menuOpenDir.addEventListener("click", openDirectoryFromPicker);
-  dom.menuOpenFiles.addEventListener("click", openFilesFromPicker);
-  dom.menuOpenPdfIntake.addEventListener("click", openPdfIntakeModal);
+  dom.sourceRemoveBtn.addEventListener("click", handleRemoveSelectedSources);
   dom.cancelSourceImportBtn.addEventListener("click", () => {
     closeImportSourcesDialog(null);
   });

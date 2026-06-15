@@ -130,3 +130,22 @@ The desktop frontend keeps a small recent-projects list in localStorage. Each en
 ## Preprocessing workspace
 
 After a project opens, CorpusWright shows the preprocessing workspace with the Source Explorer in the left panel. Processed previews, search, export, word counts, custom removals, and repeated-artefact review use the source-level PDF route when one is stored, with Processing Parameters acting as fallback defaults for older or unspecified sources.
+
+## Source import inside a project
+
+Inside a project, source import happens through the Source Explorer:
+
+- **Add Files** — registers the selected files as project sources via the Import Sources review dialog. Use this when a project is already open and you want to add individual source files.
+- **Add Folder** — scans and registers supported files from a folder as project sources via the Import Sources review dialog.
+
+These actions are available from the Source Explorer header buttons and from the project empty state. When no project is active, these actions load the files into the preprocessing workspace directly.
+
+**Open Folder as Corpus Project** (from the Project menu or Welcome screen) treats the selected folder itself as a project root, creating a new project if one does not exist. This is the correct entry point for starting a new project from an existing folder. It is not the same as Add Folder, which imports sources into an already-open project.
+
+## Removing sources from a project
+
+**Remove selected sources** (Source Explorer header) removes source entries from the project inventory (`sources.json`) without deleting the source files from disk. A confirmation dialog prevents accidental removal. After removal, the source list and preview are updated. Removal is blocked during active PDF materialisation operations.
+
+## File menu when a project is active
+
+When a project is active, the File menu contains only **Export Processed Corpus** (previously labelled Save Processed Corpus). The old `Open Files` and `Open Folder` actions that bypassed the project source inventory have been removed. Source import should be performed through the Source Explorer's Add Files / Add Folder buttons.

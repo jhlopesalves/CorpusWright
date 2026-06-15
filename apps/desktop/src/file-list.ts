@@ -376,7 +376,10 @@ function handleSourceSelect(
 ): void {
   const corpusIndexByPath = buildCorpusIndexByPath();
   const corpusIndex = corpusIndexByPath.get(pathKey(source.path));
-  if (corpusIndex === undefined || !isLoadableSource(source)) {
+  if (corpusIndex === undefined) {
+    return;
+  }
+  if (!isLoadableSource(source) && isCheckboxClick) {
     return;
   }
 
@@ -492,9 +495,13 @@ function updateStatusLine(): void {
         selectedRecords.every(record => record.document_type === "pdf");
       dom.sourcePreparePdfsBtn.classList.toggle("hidden", !allSelectedArePdfs);
       dom.sourcePreparePdfsBtn.disabled = !allSelectedArePdfs;
+      dom.sourceRemoveBtn.classList.remove("hidden");
+      dom.sourceRemoveBtn.disabled = false;
     } else {
       dom.sourcePreparePdfsBtn.classList.add("hidden");
       dom.sourcePreparePdfsBtn.disabled = true;
+      dom.sourceRemoveBtn.classList.add("hidden");
+      dom.sourceRemoveBtn.disabled = true;
     }
 
     return;
