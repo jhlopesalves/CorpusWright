@@ -148,6 +148,8 @@ let settingPdfIntakeProfile = false;
 let pdfIntakeMaterializing = false;
 let pdfIntakeCancelRequested = false;
 let pdfIntakeProgressUnlisten: UnlistenFn | null = null;
+let pdfIntakeSessionId = 0;
+let pdfIntakeIsForceOcr = false;
 let importSourcesResolve: ImportSourcesResolve | null = null;
 let activeImportCandidates: ProjectSource[] = [];
 let pendingPdfHandling = new Map<string, PendingPdfHandling>();
@@ -635,10 +637,16 @@ function renderStoredPdfHandlingSummary(paths: string[], selectedProfileId: PdfI
   }
 }
 
+/**
+ * Reset PDF intake session state back to default.
+ * This does NOT close the modal — it only resets internal state and UI elements.
+ * Safe to call multiple times.
+ */
 function resetPdfIntakeSession(): void {
   pdfIntakeSelectedPaths = [];
   pdfIntakeManualProfileOverride = false;
   pdfIntakeCancelRequested = false;
+  pdfIntakeIsForceOcr = false;
   dom.pdfIntakeTitle.textContent = "Open Scanned or Complex PDFs";
   dom.pdfIntakeDescription.textContent = "Choose PDF handling for inspection-oriented processing. Preview before export: OCR may contain errors, layout reconstruction is imperfect, and source files are never modified.";
   dom.pdfIntakeModal.classList.remove("pdf-intake-processing");
@@ -662,11 +670,11 @@ function resetPdfIntakeSession(): void {
   dom.btnClosePdfIntakeModalTop.disabled = false;
 }
 
+/**
+ * Close the PDF intake modal and reset all session state.
+ * Idempotent — safe to call multiple times.
+ */
 function closePdfIntakeModal(): void {
-  if (pdfIntakeMaterializing) {
-    return;
-  }
-  dom.pdfIntakeStatus.textContent = "";
   dom.pdfIntakeModal.classList.add("hidden");
   resetPdfIntakeSession();
 }
@@ -731,9 +739,16 @@ async function listenForPdfIntakeProgress(): Promise<void> {
     pdfIntakeProgressUnlisten();
     pdfIntakeProgressUnlisten = null;
   }
+  const currentSessionId = pdfIntakeSessionId;
   pdfIntakeProgressUnlisten = await listen<PdfIntakeMaterializationProgress>(
     "pdf-intake-materialization-progress",
-    (event) => renderPdfIntakeMaterializationProgress(event.payload),
+    (event) => {
+      // Ignore stale events from previous sessions or after cancellation
+      if (pdfIntakeSessionId !== currentSessionId || pdfIntakeCancelRequested) {
+        return;
+      }
+      renderPdfIntakeMaterializationProgress(event.payload);
+    },
   );
 }
 
@@ -804,8 +819,14 @@ async function handleCancelPdfIntake(): Promise<void> {
 
   pdfIntakeCancelRequested = true;
   dom.cancelPdfIntakeBtn.disabled = true;
-  dom.pdfIntakeStatus.textContent = "Cancelling after the current materialisation step...";
-  dom.statusBar.textContent = "Cancelling PDF intake after the current materialisation step...";
+  // Use accurate wording depending on whether force OCR is running
+  if (pdfIntakeIsForceOcr) {
+    dom.pdfIntakeStatus.textContent = "Cancelling after the current OCR batch...";
+    dom.statusBar.textContent = "Cancelling PDF intake after the current OCR batch...";
+  } else {
+    dom.pdfIntakeStatus.textContent = "Cancelling after the current PDF extraction step...";
+    dom.statusBar.textContent = "Cancelling PDF intake after the current extraction step...";
+  }
   try {
     await invoke("cancel_pdf_intake_materialization_command");
   } catch (error) {
@@ -893,6 +914,13 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
   const materializationConfig: CleaningConfig = { ...state.activeCleaningConfig };
   profile.apply(materializationConfig);
 
+  // Determine if this session uses force OCR (for accurate cancel wording)
+  pdfIntakeIsForceOcr = selectedProfileId === "force-ocr";
+
+  // Increment session ID to invalidate any stale progress listeners
+  pdfIntakeSessionId += 1;
+  const currentSessionId = pdfIntakeSessionId;
+
   try {
     pdfIntakeMaterializing = true;
     pdfIntakeCancelRequested = false;
@@ -960,6 +988,11 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
     }
     callbacks.updateWordCount();
   } catch (error) {
+    // Only act if this is still the active session
+    if (pdfIntakeSessionId !== currentSessionId) {
+      return;
+    }
+
     const cancelled = pdfIntakeCancelRequested;
     const message = cancelled
       ? "PDF intake cancelled. No half-materialised corpus was loaded."
@@ -978,11 +1011,18 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
         dom.statusBar.textContent = "PDF intake cancelled. Reload project sources to restore the source list.";
       }
     }
+
+    // Close the modal after cancellation — do NOT leave it open with profile choices visible
+    closePdfIntakeModal();
   } finally {
     stopListeningForPdfIntakeProgress();
     pdfIntakeMaterializing = false;
     dom.pdfIntakeModal.classList.remove("pdf-intake-processing");
-    resetPdfIntakeSession();
+    // Do NOT call resetPdfIntakeSession() here — closePdfIntakeModal() already resets if modal was closed,
+    // but if we didn't close (e.g. we were never materializing), reset is still safe.
+    // closePdfIntakeModal() was already called in catch or success path; if neither ran,
+    // we need to close here. Calling closePdfIntakeModal() again is idempotent.
+    closePdfIntakeModal();
     dom.choosePdfIntakeFilesBtn.disabled = false;
     dom.loadPdfIntakeFilesBtn.disabled = true;
     dom.cancelPdfIntakeBtn.textContent = "Cancel";

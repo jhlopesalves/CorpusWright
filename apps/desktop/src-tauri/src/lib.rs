@@ -563,6 +563,10 @@ fn materialize_force_ocr_pdf(
         let batch_end = next_page_index
             .saturating_add(worker_count)
             .min(total_pages);
+        // Check cancellation before spawning the parallel OCR batch
+        if cancel.load(Ordering::Relaxed) {
+            return Err(pdf_intake_cancelled_message());
+        }
         let mut batch_results = pool.install(|| {
             (next_page_index..batch_end)
                 .into_par_iter()
