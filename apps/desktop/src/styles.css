@@ -222,6 +222,201 @@ main {
   overflow: hidden;
 }
 
+.welcome-screen {
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 48px 24px;
+}
+
+.welcome-content {
+  width: min(720px, 100%);
+}
+
+.welcome-content h1 {
+  margin: 0 0 12px;
+  font-size: 1.8rem;
+  font-weight: 650;
+}
+
+.welcome-content p {
+  margin: 0;
+  max-width: 620px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.welcome-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 28px;
+}
+
+.welcome-actions button,
+.project-empty-actions button {
+  padding: 8px 14px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.welcome-actions button:hover,
+.welcome-actions button:focus,
+.project-empty-actions button:hover,
+.project-empty-actions button:focus {
+  background: var(--hover-color);
+  outline: none;
+}
+
+.welcome-status {
+  min-height: 20px;
+  margin-top: 14px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.welcome-status.is-error {
+  color: var(--danger-color);
+}
+
+.recent-projects {
+  margin-top: 36px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 18px;
+}
+
+.recent-projects h2 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.recent-projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recent-projects-empty {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 6px 0;
+}
+
+.recent-project-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recent-project-open {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 8px 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--text-color);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.recent-project-open:hover,
+.recent-project-open:focus {
+  border-bottom-color: var(--border-color);
+  outline: none;
+}
+
+.recent-project-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.recent-project-path {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.recent-project-remove {
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+
+.recent-project-remove:hover,
+.recent-project-remove:focus {
+  border-color: var(--border-color);
+  color: var(--text-color);
+  outline: none;
+}
+
+.project-context {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  max-width: min(42vw, 520px);
+  margin-right: 12px;
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
+#project-context-name {
+  color: var(--text-color);
+  font-weight: 600;
+}
+
+#project-context-path {
+  color: var(--text-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-empty-state {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  max-width: 560px;
+  margin: 0 auto;
+  color: var(--text-color);
+}
+
+.project-empty-state h2 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+}
+
+.project-empty-state p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.project-empty-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
 .left-panel {
   width: 300px;
   background-color: var(--panel-bg);
@@ -918,6 +1113,7 @@ pre {
   margin-left: auto;
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
 .icon-btn {

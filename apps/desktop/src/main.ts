@@ -17,6 +17,7 @@ import {
   schedulePreviewUpdate,
   updatePreview,
 } from "./preview";
+import { initProjectEntry } from "./project";
 import { initRepeatedArtifactFinder } from "./repeated-artifacts";
 import { handlePreviewTabChanged, initSearch } from "./search";
 import { initSettingsModal, syncInitialSettingsControls } from "./settings-modal";
@@ -29,6 +30,8 @@ function init(): void {
   initCorpusHandlers({
     updateWordCount,
   });
+
+  initProjectEntry();
 
   initExport();
 

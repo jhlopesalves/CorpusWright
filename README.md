@@ -25,6 +25,7 @@ CorpusWright is my attempt to make that stage less miserable: load the documents
 
 ## What it does
 
+- Starts from a CorpusWright project folder, with a small manifest under `.corpuswright/project.json` and a recent-projects launcher.
 - Loads single files or whole folders — TXT, HTML, DOCX, and PDF.
 - Shows original and processed text side by side, so you can see what each rule actually changed rather than trusting it blindly.
 - Lets you configure cleaning rules for whitespace, line breaks, format-specific noise (HTML, DOCX, PDF), obvious extraction/OCR/markup noise lines, and your own custom removals.
@@ -35,6 +36,7 @@ CorpusWright is my attempt to make that stage less miserable: load the documents
 - Exports cleaned text alongside a manifest, a warnings file, and the exact configuration used.
 
 Cleaning configurations save and load as JSON, so a corpus you cleaned today can be cleaned identically six months from now.
+CorpusWright project folders are described in [docs/corpus-projects.md](README.md).
 Structured Custom Removals are described in [docs/structured-custom-removals.md](README.md).
 Page-zone removal rules are described in [docs/page-zone-removal-rules.md](README.md).
 Repeated artefact review signals are described in [docs/repeated-artifact-finder.md](README.md).

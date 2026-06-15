@@ -26,6 +26,8 @@ use tauri::{Emitter, Manager, Window};
 
 use rayon::prelude::*;
 
+mod project;
+
 struct ScanState {
     cancel: CancellationFlag,
 }
@@ -1230,7 +1232,10 @@ pub fn run() {
             scan_repeated_artifacts_command,
             cancel_repeated_artifacts_command,
             save_config_file_command,
-            read_config_file_command
+            read_config_file_command,
+            project::create_corpus_project_command,
+            project::open_corpus_project_command,
+            project::initialise_folder_as_corpus_project_command
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

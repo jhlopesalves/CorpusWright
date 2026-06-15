@@ -3,6 +3,22 @@ function getElement<T extends HTMLElement>(id: string): T {
 }
 
 export const dom = {
+  welcomeScreen: getElement<HTMLElement>("welcome-screen"),
+  projectWorkspace: getElement<HTMLElement>("project-workspace"),
+  projectContext: getElement<HTMLDivElement>("project-context"),
+  projectContextName: getElement<HTMLSpanElement>("project-context-name"),
+  projectContextPath: getElement<HTMLSpanElement>("project-context-path"),
+  menuFileDropdown: getElement<HTMLDivElement>("menu-file-dropdown"),
+  menuProcessDropdown: getElement<HTMLDivElement>("menu-process-dropdown"),
+  menuNewProject: getElement<HTMLDivElement>("menu-new-project"),
+  menuOpenProject: getElement<HTMLDivElement>("menu-open-project"),
+  menuOpenFolderProject: getElement<HTMLDivElement>("menu-open-folder-project"),
+  menuCloseProject: getElement<HTMLDivElement>("menu-close-project"),
+  btnNewProject: getElement<HTMLButtonElement>("btn-new-project"),
+  btnOpenProject: getElement<HTMLButtonElement>("btn-open-project"),
+  btnOpenFolderProject: getElement<HTMLButtonElement>("btn-open-folder-project"),
+  welcomeStatus: getElement<HTMLDivElement>("welcome-status"),
+  recentProjectsList: getElement<HTMLDivElement>("recent-projects-list"),
   fileList: getElement<HTMLUListElement>("file-list"),
   searchInput: getElement<HTMLInputElement>("search-input"),
   selectAllCheckbox: getElement<HTMLInputElement>("select-all-checkbox"),
