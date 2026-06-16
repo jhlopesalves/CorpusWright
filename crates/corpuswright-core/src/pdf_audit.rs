@@ -311,13 +311,14 @@ fn suggested_profile_for_quality(
 ) -> PdfAuditSuggestedProfile {
     match quality {
         PdfAuditQuality::Good => PdfAuditSuggestedProfile::Standard,
-        PdfAuditQuality::Suspicious => PdfAuditSuggestedProfile::OcrRescue,
-        PdfAuditQuality::Poor | PdfAuditQuality::Empty => PdfAuditSuggestedProfile::ForceOcr,
+        PdfAuditQuality::Suspicious | PdfAuditQuality::Poor | PdfAuditQuality::Empty => {
+            PdfAuditSuggestedProfile::ForceOcr
+        }
         PdfAuditQuality::Unknown => {
             if embedded_text_chars == 0 {
                 PdfAuditSuggestedProfile::ForceOcr
             } else {
-                PdfAuditSuggestedProfile::OcrRescue
+                PdfAuditSuggestedProfile::Standard
             }
         }
     }
@@ -371,7 +372,7 @@ mod tests {
         );
         assert_eq!(
             suggested_profile_for_quality(&PdfAuditQuality::Suspicious, 100),
-            PdfAuditSuggestedProfile::OcrRescue
+            PdfAuditSuggestedProfile::ForceOcr
         );
         assert_eq!(
             suggested_profile_for_quality(&PdfAuditQuality::Empty, 0),
@@ -380,6 +381,14 @@ mod tests {
         assert_eq!(
             suggested_profile_for_quality(&PdfAuditQuality::Poor, 100),
             PdfAuditSuggestedProfile::ForceOcr
+        );
+        assert_eq!(
+            suggested_profile_for_quality(&PdfAuditQuality::Unknown, 0),
+            PdfAuditSuggestedProfile::ForceOcr
+        );
+        assert_eq!(
+            suggested_profile_for_quality(&PdfAuditQuality::Unknown, 100),
+            PdfAuditSuggestedProfile::Standard
         );
     }
 

@@ -46,6 +46,31 @@ An experimental strategy for two-column page layouts. Currently unsupported; fal
 
 ---
 
+## User-Facing PDF Handling Options
+
+The following PDF handling profiles are exposed to users:
+
+| Profile | Behaviour |
+|---|---|
+| `Standard embedded text` | Extracts text using PDFium's native embedded text extraction (`PdfiumFlat`). Fast, preserves reading order exactly as the PDF defines it. Recommended for born-digital PDFs with clean text layers. |
+| `Layout-heavy PDF` | Uses visual single-column reconstruction (`PdfiumVisualSingleColumn`) for complex layouts, multi-column pages, or PDFs where standard extraction scrambles text. Experimental/conservative handling for awkward embedded text. |
+| `Full OCR all pages` | Renders and OCRs every page of the PDF. Slow but reliable for scanned or image-only documents. Uses configured OCR quality (Balanced/HighQuality). |
+| `Do not OCR automatically / embedded text only` | Uses embedded text only; never performs OCR. Fastest option; works well for PDFs with known-good text layers. |
+
+### Honest contract
+
+```text
+Standard embedded text: fastest; uses selectable PDF text.
+Full OCR all pages: slow; renders and OCRs every page.
+Layout-heavy: experimental/conservative handling for awkward embedded text.
+```
+
+CorpusWright does **not** perform page-level OCR fallback. The "OCR when text is missing" approach was a whole-document fallback that could not be reliably cancelled and produced unpredictable results. It has been removed from the normal user-facing workflow.
+
+For PDFs without usable embedded text, the recommended and most predictable option is "Full OCR all pages".
+
+---
+
 ## Local Benchmarking
 
 To benchmark extraction speed, character yields, and reading order correctness:
@@ -101,7 +126,7 @@ To clean up artefacts specific to PDF documents (such as running headers, footer
      - Slashes and "of" ranges (e.g., `12 / 40`, `Page 12 of 40`);
      - Roman numeral page labels (e.g., `i`, `iv`, `xii`, `Page iv`) verified against a standard Roman numeral grammar.
   3. Matches are removed only from the top/bottom zones.
-  4. Numbers embedded inside normal prose (e.g., "Chapter 12. Introduction") are safely preserved.
+  4. Numbers embedded inside normal prose (e.g. "Chapter 12. Introduction") are safely preserved.
 
 ### 3. Symbol-Heavy Graphical Noise Removal (`remove_pdf_symbol_heavy_artifacts`)
 
@@ -138,4 +163,3 @@ To clean up artefacts specific to PDF documents (such as running headers, footer
 > [!NOTE]
 > **Extraction Backend vs. Cleanup Defaults:**
 > Required extraction choices (such as the default PDF extraction strategy `PdfiumFlat`) are active by default to ensure the format is readable. Optional post-extraction cleanup and layout-scrambling options remain strictly disabled by default.
-

@@ -38,7 +38,7 @@ let callbacks: CorpusCallbacks = {
   updateWordCount: () => {},
 };
 
-type PdfIntakeProfileId = "standard" | "layout" | "ocr" | "force-ocr";
+type PdfIntakeProfileId = "standard" | "layout" | "force-ocr";
 
 interface ImportSourcesChoice {
   pdfHandlingOverrides: ProjectSourcePdfHandlingOverride[];
@@ -79,21 +79,8 @@ const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
       config.remove_pdf_formula_like_lines = false;
     },
   },
-  ocr: {
-    statusLabel: "OCR fallback handling",
-    apply: (config) => {
-      config.pdf_text_source = "Ocr";
-      config.pdf_ocr_quality = "Balanced";
-      config.pdf_embedded_text_strategy = "PdfiumFlat";
-      config.remove_repeated_pdf_headers_footers = true;
-      config.remove_pdf_page_labels = true;
-      config.remove_pdf_symbol_heavy_artifacts = false;
-      config.remove_pdf_code_like_blocks = false;
-      config.remove_pdf_formula_like_lines = false;
-    },
-  },
   "force-ocr": {
-    statusLabel: "force OCR all pages handling",
+    statusLabel: "Full OCR all pages handling",
     apply: (config) => {
       config.pdf_text_source = "ForceOcr";
       config.pdf_ocr_quality = "HighQuality";
@@ -110,15 +97,14 @@ const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
 const auditProfileToIntakeProfile: Record<PdfAuditSuggestedProfile, PdfIntakeProfileId> = {
   standard: "standard",
   layout_heavy: "layout",
-  ocr_rescue: "ocr",
+  ocr_rescue: "force-ocr",
   force_ocr: "force-ocr",
 };
 
 const profileDisplayNames: Record<PdfIntakeProfileId, string> = {
   standard: "Standard embedded text",
   layout: "Layout-heavy PDF",
-  ocr: "Use OCR only if embedded text fails",
-  "force-ocr": "Force OCR all pages",
+  "force-ocr": "Full OCR all pages",
 };
 
 type PdfDetectionKind = "embedded_text" | "ocr_required" | "unknown";
@@ -292,16 +278,19 @@ function pdfDetectionForSource(source: ProjectSource): PdfDetectionKind {
 
 function recommendedProfileForSource(source: ProjectSource): ProjectSourcePdfProfile {
   if (source.pdf_profile) {
+    // Map legacy ocr_rescue profile to force_ocr for new recommendations
+    if (source.pdf_profile === "ocr_rescue") {
+      return "force_ocr";
+    }
     return source.pdf_profile;
   }
   switch (source.extraction_route) {
     case "embedded_text":
       return "standard";
     case "force_ocr":
-      return "force_ocr";
     case "ocr_required":
     case "ocr_if_needed":
-      return "ocr_rescue";
+      return "force_ocr";
     default:
       return "standard";
   }
@@ -549,7 +538,7 @@ function showImportSourcesDialog(review: ProjectSourceImportReview): Promise<Imp
 
 function selectedPdfIntakeProfileId(): PdfIntakeProfileId {
   const selected = document.querySelector<HTMLInputElement>('input[name="pdf-intake-profile"]:checked');
-  if (selected?.value === "layout" || selected?.value === "ocr" || selected?.value === "force-ocr") {
+  if (selected?.value === "layout" || selected?.value === "force-ocr") {
     return selected.value;
   }
   return "standard";
@@ -570,7 +559,6 @@ function pdfProfileToIntakeProfileId(profile: ProjectSourcePdfProfile): PdfIntak
     case "layout_heavy":
       return "layout";
     case "ocr_rescue":
-      return "ocr";
     case "force_ocr":
       return "force-ocr";
     case "standard":
@@ -591,11 +579,8 @@ function selectedProjectPdfSources(paths: string[]): ProjectSource[] {
 }
 
 function strongestIntakeProfileId(profiles: ProjectSourcePdfProfile[]): PdfIntakeProfileId {
-  if (profiles.includes("force_ocr")) {
+  if (profiles.includes("force_ocr") || profiles.includes("ocr_rescue")) {
     return "force-ocr";
-  }
-  if (profiles.includes("ocr_rescue")) {
-    return "ocr";
   }
   if (profiles.includes("layout_heavy")) {
     return "layout";
@@ -970,7 +955,6 @@ function mapToPdfProfile(id: PdfIntakeProfileId): ProjectSourcePdfProfile {
   switch (id) {
     case "standard": return "standard";
     case "layout": return "layout_heavy";
-    case "ocr": return "ocr_rescue";
     case "force-ocr": return "force_ocr";
   }
 }

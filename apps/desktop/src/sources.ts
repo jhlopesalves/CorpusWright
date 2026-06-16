@@ -82,7 +82,7 @@ export function sourceKindLabel(source: ProjectSource): string {
 export function extractionRouteLabel(route: ProjectSourceExtractionRoute): string {
   switch (route) {
     case "embedded_text": return "embedded text";
-    case "ocr_if_needed": return "OCR if needed";
+    case "ocr_if_needed": return "OCR if needed (legacy)";
     case "force_ocr": return "force OCR all pages";
     case "ocr_required": return "OCR required";
     case "plain_text": return "plain text";
@@ -97,9 +97,9 @@ export function pdfProfileLabel(profile: ProjectSourcePdfProfile): string {
   switch (profile) {
     case "standard": return "Standard embedded text";
     case "layout_heavy": return "Layout-heavy PDF";
-    case "ocr_rescue": return "OCR when text is missing";
-    case "force_ocr": return "Force OCR all pages";
-    case "no_automatic_ocr": return "Do not OCR automatically";
+    case "ocr_rescue": return "Full OCR all pages (legacy)";
+    case "force_ocr": return "Full OCR all pages";
+    case "no_automatic_ocr": return "Do not OCR automatically / embedded text only";
   }
 }
 
@@ -107,9 +107,9 @@ export function pdfProfileShortLabel(profile: ProjectSourcePdfProfile): string {
   switch (profile) {
     case "standard": return "standard embedded text";
     case "layout_heavy": return "layout-heavy";
-    case "ocr_rescue": return "OCR when text is missing";
-    case "force_ocr": return "force OCR all pages";
-    case "no_automatic_ocr": return "no automatic OCR";
+    case "ocr_rescue": return "full OCR all pages (legacy)";
+    case "force_ocr": return "full OCR all pages";
+    case "no_automatic_ocr": return "embedded text only";
   }
 }
 

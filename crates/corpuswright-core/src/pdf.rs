@@ -78,7 +78,7 @@ impl PdfExtractionOptions {
                         options.text_source = PdfTextSource::EmbeddedText;
                     }
                     ProjectSourcePdfProfile::OcrRescue => {
-                        options.text_source = PdfTextSource::Ocr;
+                        options.text_source = PdfTextSource::ForceOcr;
                     }
                     ProjectSourcePdfProfile::ForceOcr => {
                         options.text_source = PdfTextSource::ForceOcr;

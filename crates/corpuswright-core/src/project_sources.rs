@@ -636,7 +636,7 @@ impl ProjectSourcePdfProfile {
 
 pub fn default_extraction_route_for_kind(kind: ProjectSourceKind) -> ProjectSourceExtractionRoute {
     match kind {
-        ProjectSourceKind::Pdf => ProjectSourceExtractionRoute::OcrIfNeeded,
+        ProjectSourceKind::Pdf => ProjectSourceExtractionRoute::EmbeddedText,
         ProjectSourceKind::Docx => ProjectSourceExtractionRoute::DocxExtract,
         ProjectSourceKind::Txt => ProjectSourceExtractionRoute::PlainText,
         ProjectSourceKind::Html => ProjectSourceExtractionRoute::HtmlExtract,
@@ -833,42 +833,42 @@ fn apply_pdf_audit_result_to_source(
             );
         }
         PdfAuditQuality::Suspicious => {
-            source.pdf_profile = Some(ProjectSourcePdfProfile::OcrRescue);
-            source.extraction_route = ProjectSourceExtractionRoute::OcrRequired;
+            source.pdf_profile = Some(ProjectSourcePdfProfile::ForceOcr);
+            source.extraction_route = ProjectSourceExtractionRoute::ForceOcr;
             set_source_status(
                 source,
                 ProjectSourceStatus::NeedsOcr,
-                &["ocr_required", "low_text_density"],
+                &["force_ocr_planned", "low_text_density"],
             );
         }
         PdfAuditQuality::Poor => {
-            source.pdf_profile = Some(ProjectSourcePdfProfile::OcrRescue);
-            source.extraction_route = ProjectSourceExtractionRoute::OcrRequired;
+            source.pdf_profile = Some(ProjectSourcePdfProfile::ForceOcr);
+            source.extraction_route = ProjectSourceExtractionRoute::ForceOcr;
             set_source_status(
                 source,
                 ProjectSourceStatus::NeedsOcr,
-                &["ocr_required", "low_text_density"],
+                &["force_ocr_planned", "low_text_density"],
             );
         }
         PdfAuditQuality::Empty => {
-            source.pdf_profile = Some(ProjectSourcePdfProfile::OcrRescue);
-            source.extraction_route = ProjectSourceExtractionRoute::OcrRequired;
+            source.pdf_profile = Some(ProjectSourcePdfProfile::ForceOcr);
+            source.extraction_route = ProjectSourceExtractionRoute::ForceOcr;
             set_source_status(
                 source,
                 ProjectSourceStatus::NeedsOcr,
-                &["pdf_no_text_layer", "ocr_required"],
+                &["pdf_no_text_layer", "force_ocr_planned"],
             );
         }
         PdfAuditQuality::Unknown => {
             if matches!(suggested_profile, PdfAuditSuggestedProfile::ForceOcr)
                 || !embedded_text_detected
             {
-                source.pdf_profile = Some(ProjectSourcePdfProfile::OcrRescue);
-                source.extraction_route = ProjectSourceExtractionRoute::OcrRequired;
+                source.pdf_profile = Some(ProjectSourcePdfProfile::ForceOcr);
+                source.extraction_route = ProjectSourceExtractionRoute::ForceOcr;
                 set_source_status(
                     source,
                     ProjectSourceStatus::NeedsOcr,
-                    &["pdf_no_text_layer", "ocr_required"],
+                    &["pdf_no_text_layer", "force_ocr_planned"],
                 );
             } else {
                 source.pdf_profile = Some(ProjectSourcePdfProfile::Standard);
@@ -1110,7 +1110,7 @@ mod tests {
         assert_eq!(
             routes,
             vec![
-                ProjectSourceExtractionRoute::OcrIfNeeded,
+                ProjectSourceExtractionRoute::EmbeddedText,
                 ProjectSourceExtractionRoute::PlainText,
                 ProjectSourceExtractionRoute::DocxExtract,
                 ProjectSourceExtractionRoute::HtmlExtract,
@@ -1508,7 +1508,7 @@ mod tests {
         assert_eq!(good.status, ProjectSourceStatus::ReadyToProcess);
         assert_eq!(
             scanned.extraction_route,
-            ProjectSourceExtractionRoute::OcrRequired
+            ProjectSourceExtractionRoute::ForceOcr
         );
         assert_eq!(scanned.status, ProjectSourceStatus::NeedsOcr);
         assert_eq!(
