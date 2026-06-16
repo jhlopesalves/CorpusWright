@@ -80,7 +80,7 @@ const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
     },
   },
   ocr: {
-    statusLabel: "missing-text OCR handling",
+    statusLabel: "OCR fallback handling",
     apply: (config) => {
       config.pdf_text_source = "Ocr";
       config.pdf_ocr_quality = "Balanced";
@@ -117,7 +117,7 @@ const auditProfileToIntakeProfile: Record<PdfAuditSuggestedProfile, PdfIntakePro
 const profileDisplayNames: Record<PdfIntakeProfileId, string> = {
   standard: "Standard embedded text",
   layout: "Layout-heavy PDF",
-  ocr: "OCR when text is missing",
+  ocr: "Use OCR only if embedded text fails",
   "force-ocr": "Force OCR all pages",
 };
 
@@ -151,6 +151,7 @@ let pdfIntakeProgressUnlisten: UnlistenFn | null = null;
 let pdfIntakeSessionId = 0;
 let pdfIntakeIsForceOcr = false;
 let lastPdfIntakeProgressRenderAt = 0;
+let lastPdfIntakeRenderedFileIndex = 0;
 let importSourcesResolve: ImportSourcesResolve | null = null;
 let activeImportCandidates: ProjectSource[] = [];
 let pendingPdfHandling = new Map<string, PendingPdfHandling>();
@@ -684,6 +685,7 @@ function resetPdfIntakeSession(): void {
   pdfIntakeCancelRequested = false;
   pdfIntakeIsForceOcr = false;
   lastPdfIntakeProgressRenderAt = 0;
+  lastPdfIntakeRenderedFileIndex = 0;
   dom.pdfIntakeTitle.textContent = "Open Scanned or Complex PDFs";
   dom.pdfIntakeDescription.textContent = "Choose PDF handling for inspection-oriented processing. Preview before export: OCR may contain errors, layout reconstruction is imperfect, and source files are never modified.";
   dom.pdfIntakeModal.classList.remove("pdf-intake-processing");
@@ -799,10 +801,14 @@ async function listenForPdfIntakeProgress(): Promise<void> {
       const now = Date.now();
       const isCompletion = event.payload.totalPages !== null
         && event.payload.currentPage >= event.payload.totalPages;
-      if (!isCompletion && now - lastPdfIntakeProgressRenderAt < 1000) {
+      const isFileTransition = event.payload.currentFileIndex !== lastPdfIntakeRenderedFileIndex;
+      // Always render file transitions and completions immediately.
+      // Throttle inter-page progress to once per second to avoid flooding DOM.
+      if (!isFileTransition && !isCompletion && now - lastPdfIntakeProgressRenderAt < 1000) {
         return;
       }
       lastPdfIntakeProgressRenderAt = now;
+      lastPdfIntakeRenderedFileIndex = event.payload.currentFileIndex;
       renderPdfIntakeMaterializationProgress(event.payload);
     },
   );

@@ -295,7 +295,7 @@ fn pdf_intake_method_label(options: PdfExtractionOptions) -> String {
                 "experimental visual columns".to_string()
             }
         },
-        PdfTextSource::Ocr => "OCR when text is missing".to_string(),
+        PdfTextSource::Ocr => "OCR fallback if no usable text".to_string(),
         PdfTextSource::ForceOcr => "force OCR all pages".to_string(),
     }
 }
@@ -304,7 +304,7 @@ fn pdf_profile_label(profile: ProjectSourcePdfProfile) -> &'static str {
     match profile {
         ProjectSourcePdfProfile::Standard => "standard embedded-text handling",
         ProjectSourcePdfProfile::LayoutHeavy => "layout-heavy handling",
-        ProjectSourcePdfProfile::OcrRescue => "missing-text OCR handling",
+        ProjectSourcePdfProfile::OcrRescue => "OCR fallback handling",
         ProjectSourcePdfProfile::ForceOcr => "force OCR all pages handling",
         ProjectSourcePdfProfile::NoAutomaticOcr => "no automatic OCR handling",
     }
