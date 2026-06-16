@@ -9,8 +9,8 @@ use corpuswright_core::preview::{
     CombinedPreview, PreviewOptions, preview_files_with_config, preview_processed_files,
 };
 use corpuswright_core::project_sources::{
-    ProjectSourceExtractionResult, ProjectSourceExtractionRoute, ProjectSourcePdfProfile,
-    stable_project_source_id, update_project_source_extraction_results,
+    ProjectSourceExtractionResult, ProjectSourceExtractionRoute, ProjectSourceKind,
+    ProjectSourcePdfProfile, stable_project_source_id, update_project_source_extraction_results,
 };
 use corpuswright_core::repeated_artifacts::{
     CancellationFlag, RepeatedArtifactScanConfig, RepeatedArtifactScanReport,
@@ -588,6 +588,14 @@ fn pdf_intake_cancelled_message() -> String {
     "PDF intake cancelled before materialisation completed. No corpus was loaded.".to_string()
 }
 
+fn project_pdf_extraction_failure_reason(error: &str, cancel: &AtomicBool) -> &'static str {
+    if cancel.load(Ordering::Relaxed) || error.to_lowercase().contains("cancelled") {
+        "extraction_cancelled"
+    } else {
+        "text_extraction_failed"
+    }
+}
+
 fn extraction_reason_codes_for_warnings(warnings: &[String]) -> Vec<String> {
     let mut codes = Vec::new();
     for warning in warnings {
@@ -1001,22 +1009,31 @@ fn prepare_project_pdf_sources_command(
     }
 
     let selected_paths = paths.iter().map(PathBuf::from).collect::<Vec<_>>();
-    let project_report = project::load_project_source_records(root_path)?;
-    let project_root = project_report.root.clone();
-    let project_records_by_path = selected_record_by_path(&project_report.files);
+    let (project_root, project_sources) = project::load_project_source_inventory(root_path)?;
+    let project_sources_by_path = project_sources
+        .sources
+        .iter()
+        .map(|source| (canonical_or_original(&source.path), source))
+        .collect::<HashMap<_, _>>();
 
     let mut report = load_files(selected_paths.clone()).map_err(|error| format!("{error:?}"))?;
     for record in &mut report.files {
         let key = canonical_or_original(&record.source_path);
-        let project_record = project_records_by_path.get(&key).ok_or_else(|| {
+        let project_source = project_sources_by_path.get(&key).ok_or_else(|| {
             format!(
-                "Selected PDF source is not processable: {}",
+                "Selected PDF source is not in the project inventory: {}",
                 record.source_path.display()
             )
         })?;
-        record.extraction_route = project_record.extraction_route;
-        record.pdf_profile = project_record.pdf_profile;
-        record.ocr_quality = project_record.ocr_quality;
+        if project_source.kind != ProjectSourceKind::Pdf {
+            return Err(format!(
+                "Selected source is not a PDF: {}",
+                record.source_path.display()
+            ));
+        }
+        record.extraction_route = Some(project_source.extraction_route);
+        record.pdf_profile = project_source.pdf_profile;
+        record.ocr_quality = project_source.ocr_quality;
     }
 
     let plan = project_pdf_preparation_plan(&report.files, &selected_paths, profile_override)?;
@@ -1033,6 +1050,15 @@ fn prepare_project_pdf_sources_command(
 
     for (file_index, item) in plan.iter().enumerate() {
         if intake_state.cancel.load(Ordering::Relaxed) {
+            let _ = update_project_source_extraction_results(
+                &project_root,
+                vec![ProjectSourceExtractionResult {
+                    path: item.path.clone(),
+                    failed: true,
+                    warning_count: 1,
+                    reason_codes: vec!["extraction_cancelled".to_string()],
+                }],
+            );
             cache.clear();
             page_cache.clear();
             return Err(pdf_intake_cancelled_message());
@@ -1064,13 +1090,15 @@ fn prepare_project_pdf_sources_command(
         ) {
             Ok(entry) => entry,
             Err(error) => {
+                let reason_code =
+                    project_pdf_extraction_failure_reason(&error, &intake_state.cancel);
                 let _ = update_project_source_extraction_results(
                     &project_root,
                     vec![ProjectSourceExtractionResult {
                         path: prepared_record.source_path.clone(),
                         failed: true,
                         warning_count: 1,
-                        reason_codes: vec!["text_extraction_failed".to_string()],
+                        reason_codes: vec![reason_code.to_string()],
                     }],
                 );
                 cache.clear();
@@ -1887,6 +1915,26 @@ mod tests {
             Some(ProjectSourceExtractionRoute::EmbeddedText)
         );
         assert_eq!(options.text_source, PdfTextSource::EmbeddedText);
+    }
+
+    #[test]
+    fn project_pdf_extraction_failure_reason_distinguishes_cancellation() {
+        let cancel = AtomicBool::new(false);
+
+        assert_eq!(
+            project_pdf_extraction_failure_reason("PDF materialisation failed", &cancel),
+            "text_extraction_failed"
+        );
+        assert_eq!(
+            project_pdf_extraction_failure_reason("PDF intake cancelled", &cancel),
+            "extraction_cancelled"
+        );
+
+        cancel.store(true, Ordering::Relaxed);
+        assert_eq!(
+            project_pdf_extraction_failure_reason("OCR batch stopped", &cancel),
+            "extraction_cancelled"
+        );
     }
 
     #[test]

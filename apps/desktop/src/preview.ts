@@ -4,8 +4,12 @@ import { dom } from "./dom";
 import { renderVisibleItems } from "./file-list";
 import { state } from "./state";
 import {
+  isPreviewableSource,
+  pdfHandlingLabel,
   persistProcessedPreviewStatuses,
   primaryReasonLabel,
+  reasonLabel,
+  selectedProjectSources,
   sourceForPath,
   sourceHasExtractedText,
   sourceKindLabel,
@@ -16,6 +20,7 @@ import type { CombinedPreview } from "./generated/CombinedPreview.js";
 import type { FilePreview } from "./generated/FilePreview.js";
 import type { PdfPageRangePage } from "./generated/PdfPageRangePage.js";
 import type { PdfPageRangeResult } from "./generated/PdfPageRangeResult.js";
+import type { ProjectSource } from "./generated/ProjectSource.js";
 
 const PREVIEW_CHUNK_SIZE = 50;
 const FULL_OCR_CHUNK_SIZE = 2;
@@ -66,8 +71,18 @@ export async function updatePreview(): Promise<void> {
   const myPreviewGeneration = ++state.previewGeneration;
   state.activePreviewGeneration = myPreviewGeneration;
 
+  const hasProjectSourceSelection = state.activeProject !== null && state.selectedProjectSourceIds.size > 0;
+  const projectSources = hasProjectSourceSelection ? selectedProjectSources() : [];
+
   if (state.selectedCorpusIndices.size === 0) {
     if (myVersion !== state.currentCorpusVersion) return;
+    if (hasProjectSourceSelection && projectSources.length > 0) {
+      renderProjectSourceDetailCards(dom.previewContent, projectSources);
+      renderProjectSourceDetailCards(dom.processedPreviewContent, projectSources);
+      dom.previewLoadingOverlay.style.display = "none";
+      dom.statusBar.textContent = "Selected source text is unavailable.";
+      return;
+    }
     dom.previewContent.innerHTML = "Select files from the left panel to preview their contents.";
     dom.processedPreviewContent.innerHTML = "Select files from the left panel to preview processed text.";
     dom.statusBar.textContent = `Loaded ${state.allFiles.length} files.`;
@@ -75,6 +90,14 @@ export async function updatePreview(): Promise<void> {
   }
 
   const selectedIndices = Array.from(state.selectedCorpusIndices);
+  if (hasProjectSourceSelection && projectSources.some((source) => !isPreviewableSource(source))) {
+    renderProjectSourceDetailCards(dom.previewContent, projectSources);
+    renderProjectSourceDetailCards(dom.processedPreviewContent, projectSources);
+    dom.previewLoadingOverlay.style.display = "none";
+    dom.statusBar.textContent = "Some selected source text is unavailable.";
+    return;
+  }
+
   const sourcesNeedingExtraction: { name: string; status: string; statusLabel: string }[] = [];
 
   for (const idx of selectedIndices) {
@@ -105,6 +128,109 @@ export async function updatePreview(): Promise<void> {
   dom.statusBar.textContent = "Previewing...";
 
   await fetchAndRenderPreviewChunk(selectedIndices, state.currentPreviewOffset, false, myVersion, myPreviewGeneration);
+}
+
+function renderProjectSourceDetailCards(container: HTMLDivElement, sources: ProjectSource[]): void {
+  container.replaceChildren();
+  for (const source of sources) {
+    container.appendChild(createProjectSourceDetailCard(source));
+  }
+}
+
+function createProjectSourceDetailCard(source: ProjectSource): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "file-card";
+
+  const header = document.createElement("div");
+  header.className = "file-card-header";
+
+  const titleArea = document.createElement("div");
+  titleArea.className = "file-card-title-area";
+
+  const title = document.createElement("div");
+  title.className = "file-card-title";
+  title.textContent = source.file_name;
+
+  const path = document.createElement("div");
+  path.className = "file-card-path";
+  path.textContent = source.path;
+
+  titleArea.append(title, path);
+  header.appendChild(titleArea);
+
+  const badges = document.createElement("div");
+  badges.className = "file-card-badges";
+  for (const label of projectSourceDetailBadges(source)) {
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = label;
+    badges.appendChild(badge);
+  }
+  if (badges.children.length > 0) {
+    header.appendChild(badges);
+  }
+
+  const body = document.createElement("div");
+  body.className = "file-card-body";
+  body.style.minHeight = "auto";
+  for (const line of projectSourceDetailLines(source)) {
+    const paragraph = document.createElement("p");
+    paragraph.textContent = line;
+    body.appendChild(paragraph);
+  }
+
+  card.append(header, body);
+  return card;
+}
+
+function projectSourceDetailBadges(source: ProjectSource): string[] {
+  const labels = [
+    sourceKindLabel(source),
+    sourceStatusLabel(source.status),
+  ];
+  const reason = primaryReasonLabel(source);
+  if (reason) {
+    labels.push(reason);
+  }
+  const handling = pdfHandlingLabel(source);
+  if (handling) {
+    labels.push(handling);
+  }
+  return labels;
+}
+
+function projectSourceDetailLines(source: ProjectSource): string[] {
+  const lines: string[] = [];
+  const reasonLabels = source.reason_codes.map(reasonLabel);
+  const reasonText = reasonLabels.length > 0
+    ? `Last error: ${reasonLabels.join(", ")}.`
+    : "No detailed error was recorded.";
+
+  if (source.status === "failed") {
+    const cancelled = source.reason_codes.includes("extraction_cancelled");
+    if (cancelled) {
+      lines.push("Extraction cancelled.");
+    } else if (source.kind === "pdf") {
+      lines.push("Text extraction failed.");
+    } else {
+      lines.push("Source text is unavailable.");
+    }
+    lines.push(source.kind === "pdf"
+      ? "You can retry extraction, change PDF handling, or remove this source from the project."
+      : "You can remove this source from the project inventory.");
+    lines.push(reasonText);
+    return lines;
+  }
+
+  if (source.kind === "pdf" && !sourceHasExtractedText(source)) {
+    lines.push("Text has not been extracted yet.");
+    lines.push("Use Extract/OCR selected PDFs to materialise source text before preview or search.");
+    return lines;
+  }
+
+  lines.push("Source text is unavailable for preview.");
+  lines.push(reasonText);
+  return lines;
 }
 
 function renderTextExtractionRequiredCards(

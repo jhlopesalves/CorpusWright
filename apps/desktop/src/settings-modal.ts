@@ -235,7 +235,7 @@ export function initSettingsModal(callbacks: SettingsModalCallbacks): void {
 
     callbacks.updateWordCount();
 
-    if (state.selectedCorpusIndices.size > 0) {
+    if (state.selectedCorpusIndices.size > 0 || state.selectedProjectSourceIds.size > 0) {
       callbacks.schedulePreviewUpdate(150);
     }
   });

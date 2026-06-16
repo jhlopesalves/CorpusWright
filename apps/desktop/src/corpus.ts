@@ -13,6 +13,7 @@ import {
   loadProjectSourcesForActiveProject,
   pdfProfileLabel,
   removeProjectSourcePaths,
+  selectedProjectSourcePaths,
   type ProjectSourcePdfHandlingOverride,
   reviewFilesForActiveProjectSources,
   reviewFolderForActiveProjectSources,
@@ -161,8 +162,10 @@ export function clearStateForLoad(): void {
   state.allFiles = [];
   state.visibleFiles = [];
   state.selectedCorpusIndices.clear();
+  state.selectedProjectSourceIds.clear();
   state.currentCorpusRoot = null;
   state.lastSelectedCorpusIndex = null;
+  state.lastSelectedProjectSourceId = null;
   state.lastScanCandidates = [];
   state.selectedCandidateIds.clear();
   dom.previewContent.textContent = "Select files from the left panel to preview their contents.";
@@ -1538,13 +1541,11 @@ function renderSummary(summary: CorpusSummary): void {
 }
 
 async function handleRemoveSelectedSources(): Promise<void> {
-  if (!state.activeProject || state.selectedCorpusIndices.size === 0) {
+  if (!state.activeProject || state.selectedProjectSourceIds.size === 0) {
     return;
   }
 
-  const selectedPaths = Array.from(state.selectedCorpusIndices)
-    .map((index) => state.allFiles[index]?.source_path)
-    .filter((path): path is string => Boolean(path));
+  const selectedPaths = selectedProjectSourcePaths();
 
   if (selectedPaths.length === 0) {
     return;
@@ -1561,6 +1562,7 @@ async function handleRemoveSelectedSources(): Promise<void> {
     dom.statusBar.textContent = "Removing selected sources...";
     await removeProjectSourcePaths(selectedPaths);
     state.selectedCorpusIndices.clear();
+    state.selectedProjectSourceIds.clear();
     await loadCorpusFromProjectSources();
     dom.statusBar.textContent = `Removed ${selectedPaths.length} source${selectedPaths.length === 1 ? "" : "s"} from project inventory.`;
   } catch (error) {
@@ -1602,9 +1604,8 @@ export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
   });
 
   dom.sourcePreparePdfsBtn.addEventListener("click", () => {
-    const selectedPaths = Array.from(state.selectedCorpusIndices)
-      .map((index) => state.allFiles[index]?.source_path)
-      .filter((path): path is string => Boolean(path && path.toLowerCase().endsWith(".pdf")));
+    const selectedPaths = selectedProjectSourcePaths()
+      .filter((path) => path.toLowerCase().endsWith(".pdf"));
 
     if (selectedPaths.length > 0) {
       openPdfIntakeModalForSources(selectedPaths);

@@ -1418,6 +1418,42 @@ mod tests {
     }
 
     #[test]
+    fn source_text_extraction_can_record_cancellation_reason() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("cancelled.pdf");
+        let mut source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        source.id = stable_project_source_id(dir.path(), &path);
+        source.pdf_profile = Some(ProjectSourcePdfProfile::ForceOcr);
+        source.extraction_route = ProjectSourcePdfProfile::ForceOcr.extraction_route();
+        save_project_source_manifest(
+            dir.path(),
+            &ProjectSourceManifest {
+                version: SOURCE_MANIFEST_VERSION,
+                sources: vec![source],
+            },
+        )
+        .unwrap();
+
+        let manifest = update_project_source_extraction_results(
+            dir.path(),
+            vec![ProjectSourceExtractionResult {
+                path,
+                failed: true,
+                warning_count: 1,
+                reason_codes: vec!["extraction_cancelled".to_string()],
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(manifest.sources[0].status, ProjectSourceStatus::Failed);
+        assert_eq!(
+            manifest.sources[0].reason_codes,
+            vec!["extraction_cancelled"]
+        );
+        assert_eq!(manifest.sources[0].last_processed_at, None);
+    }
+
+    #[test]
     fn mixed_pdf_processing_results_update_sources_independently() {
         let dir = tempdir().unwrap();
         let standard_path = dir.path().join("standard.pdf");
@@ -1778,6 +1814,24 @@ mod tests {
             ProjectSourceExtractionRoute::PlainText
         );
         assert_eq!(source.reason_codes, vec!["missing_file"]);
+    }
+
+    #[test]
+    fn removing_failed_source_persists_after_reload() {
+        let dir = tempdir().unwrap();
+        let source = dir.path().join("missing.pdf");
+
+        let update = add_project_source_paths(dir.path(), vec![source.clone()]).unwrap();
+        assert_eq!(
+            update.manifest.sources[0].status,
+            ProjectSourceStatus::Failed
+        );
+
+        let manifest = remove_project_source_paths(dir.path(), vec![source]).unwrap();
+        assert!(manifest.sources.is_empty());
+
+        let reloaded = load_project_source_manifest(dir.path()).unwrap();
+        assert!(reloaded.sources.is_empty());
     }
 
     #[test]

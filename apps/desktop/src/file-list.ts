@@ -3,12 +3,13 @@ import type { ProjectSource } from "./generated/ProjectSource.js";
 import { state } from "./state";
 import {
   SOURCE_GROUP_ORDER,
-  isLoadableSource,
+  isPreviewableSource,
+  isSelectableSource,
   pathKey,
   pdfHandlingLabel,
   primaryReasonLabel,
   reasonLabel,
-  sourceForPath,
+  selectedProjectSources,
   sourceHasExtractedText,
   sourceKindLabel,
   sourceStatusLabel,
@@ -66,14 +67,21 @@ export function initFileFilter(): void {
 export function initSelectionControls(): void {
   dom.selectAllCheckbox.addEventListener("change", (e) => {
     const isChecked = (e.target as HTMLInputElement).checked;
-    const selectableIndices = sourceExplorerMode()
-      ? visibleSourceCorpusIndices()
-      : state.visibleFiles.map(vf => vf.corpusIndex);
-
-    if (isChecked) {
-      selectableIndices.forEach(index => state.selectedCorpusIndices.add(index));
+    if (sourceExplorerMode()) {
+      const selectableIds = visibleSourceIds();
+      if (isChecked) {
+        selectableIds.forEach(id => state.selectedProjectSourceIds.add(id));
+      } else {
+        state.selectedProjectSourceIds.clear();
+      }
+      syncCorpusSelectionFromProjectSources();
     } else {
-      state.selectedCorpusIndices.clear();
+      const selectableIndices = state.visibleFiles.map(vf => vf.corpusIndex);
+      if (isChecked) {
+        selectableIndices.forEach(index => state.selectedCorpusIndices.add(index));
+      } else {
+        state.selectedCorpusIndices.clear();
+      }
     }
     callbacks.invalidatePreviewSession();
     renderVisibleItems();
@@ -96,13 +104,21 @@ export function initSelectionControls(): void {
     if (!isNaN(val) && val > 0) {
       if (state.debounceTimer) clearTimeout(state.debounceTimer);
       state.debounceTimer = window.setTimeout(() => {
-        state.selectedCorpusIndices.clear();
-        const selectableIndices = sourceExplorerMode()
-          ? visibleSourceCorpusIndices()
-          : state.visibleFiles.map(vf => vf.corpusIndex);
-        const limit = Math.min(val, selectableIndices.length);
-        for (let i = 0; i < limit; i++) {
-          state.selectedCorpusIndices.add(selectableIndices[i]);
+        if (sourceExplorerMode()) {
+          state.selectedProjectSourceIds.clear();
+          const selectableIds = visibleSourceIds();
+          const limit = Math.min(val, selectableIds.length);
+          for (let i = 0; i < limit; i++) {
+            state.selectedProjectSourceIds.add(selectableIds[i]);
+          }
+          syncCorpusSelectionFromProjectSources();
+        } else {
+          state.selectedCorpusIndices.clear();
+          const selectableIndices = state.visibleFiles.map(vf => vf.corpusIndex);
+          const limit = Math.min(val, selectableIndices.length);
+          for (let i = 0; i < limit; i++) {
+            state.selectedCorpusIndices.add(selectableIndices[i]);
+          }
         }
         callbacks.invalidatePreviewSession();
         renderVisibleItems();
@@ -190,7 +206,6 @@ function renderSourceExplorerItems(): void {
 
   const fragment = document.createDocumentFragment();
   const sources = filteredProjectSources();
-  const corpusIndexByPath = buildCorpusIndexByPath();
 
   if (state.projectSources.length === 0) {
     fragment.appendChild(createSourceEmptyState());
@@ -219,8 +234,7 @@ function renderSourceExplorerItems(): void {
     fragment.appendChild(header);
 
     for (const source of groupSources) {
-      const corpusIndex = corpusIndexByPath.get(pathKey(source.path)) ?? null;
-      fragment.appendChild(createSourceRow(source, corpusIndex, sources));
+      fragment.appendChild(createSourceRow(source, sources));
     }
   }
 
@@ -259,22 +273,21 @@ function createSourceEmptyState(): HTMLLIElement {
 
 function createSourceRow(
   source: ProjectSource,
-  corpusIndex: number | null,
   visibleSources: ProjectSource[],
 ): HTMLLIElement {
   const li = document.createElement("li");
   li.className = `source-row source-status-${source.status.replace(/_/g, "-")}`;
   li.title = source.path;
 
-  if (corpusIndex !== null && state.selectedCorpusIndices.has(corpusIndex)) {
+  if (state.selectedProjectSourceIds.has(source.id)) {
     li.classList.add("selected");
   }
 
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
   checkbox.className = "file-checkbox";
-  checkbox.disabled = corpusIndex === null || !isLoadableSource(source);
-  checkbox.checked = corpusIndex !== null && state.selectedCorpusIndices.has(corpusIndex);
+  checkbox.disabled = !isSelectableSource(source);
+  checkbox.checked = state.selectedProjectSourceIds.has(source.id);
 
   const textWrap = document.createElement("span");
   textWrap.className = "source-row-text";
@@ -327,6 +340,8 @@ function handleSearch(): void {
   if (sourceExplorerMode()) {
     state.sourceSearchQuery = query;
     state.selectedCorpusIndices.clear();
+    state.selectedProjectSourceIds.clear();
+    state.lastSelectedProjectSourceId = null;
     callbacks.invalidatePreviewSession();
     resetScroll();
     updateFileList();
@@ -377,29 +392,26 @@ function handleSourceSelect(
   isCheckboxClick: boolean,
 ): void {
   const corpusIndexByPath = buildCorpusIndexByPath();
-  const corpusIndex = corpusIndexByPath.get(pathKey(source.path));
-  if (corpusIndex === undefined) {
-    return;
-  }
-  if (!isLoadableSource(source) && isCheckboxClick) {
+  if (!isSelectableSource(source)) {
     return;
   }
 
-  const visibleIndices = visibleSources
-    .map((visibleSource) => corpusIndexByPath.get(pathKey(visibleSource.path)))
-    .filter((index): index is number => index !== undefined);
+  const visibleIds = visibleSources
+    .filter(isSelectableSource)
+    .map((visibleSource) => visibleSource.id);
 
   if (isCheckboxClick) {
-    if (event.shiftKey && state.lastSelectedCorpusIndex !== null) {
-      addVisibleRange(visibleIndices, corpusIndex);
+    if (event.shiftKey && state.lastSelectedProjectSourceId !== null) {
+      addVisibleSourceRange(visibleIds, source.id);
     } else {
-      toggleCorpusIndex(corpusIndex);
+      toggleProjectSourceId(source.id);
     }
   } else {
-    applyRowSelection(event, corpusIndex, visibleIndices);
+    applySourceRowSelection(event, source.id, visibleIds);
   }
 
-  state.lastSelectedCorpusIndex = corpusIndex;
+  state.lastSelectedProjectSourceId = source.id;
+  syncCorpusSelectionFromProjectSources(corpusIndexByPath);
   callbacks.invalidatePreviewSession();
   renderVisibleItems();
   updateStatusLine();
@@ -433,6 +445,41 @@ function addVisibleRange(visibleIndices: number[], corpusIndex: number): void {
   }
 }
 
+function applySourceRowSelection(event: MouseEvent, sourceId: string, visibleIds: string[]): void {
+  if (event.ctrlKey || event.metaKey) {
+    toggleProjectSourceId(sourceId);
+  } else if (event.shiftKey && state.lastSelectedProjectSourceId !== null) {
+    state.selectedProjectSourceIds.clear();
+    addVisibleSourceRange(visibleIds, sourceId);
+  } else {
+    state.selectedProjectSourceIds.clear();
+    state.selectedProjectSourceIds.add(sourceId);
+  }
+}
+
+function addVisibleSourceRange(visibleIds: string[], sourceId: string): void {
+  const lastVisible = visibleIds.indexOf(state.lastSelectedProjectSourceId ?? "");
+  const currentVisible = visibleIds.indexOf(sourceId);
+  if (lastVisible === -1 || currentVisible === -1) {
+    state.selectedProjectSourceIds.add(sourceId);
+    return;
+  }
+
+  const start = Math.min(lastVisible, currentVisible);
+  const end = Math.max(lastVisible, currentVisible);
+  for (let index = start; index <= end; index++) {
+    state.selectedProjectSourceIds.add(visibleIds[index]);
+  }
+}
+
+function toggleProjectSourceId(sourceId: string): void {
+  if (state.selectedProjectSourceIds.has(sourceId)) {
+    state.selectedProjectSourceIds.delete(sourceId);
+  } else {
+    state.selectedProjectSourceIds.add(sourceId);
+  }
+}
+
 function toggleCorpusIndex(corpusIndex: number): void {
   if (state.selectedCorpusIndices.has(corpusIndex)) {
     state.selectedCorpusIndices.delete(corpusIndex);
@@ -459,12 +506,23 @@ function filteredProjectSources(): ProjectSource[] {
   });
 }
 
-function visibleSourceCorpusIndices(): number[] {
-  const corpusIndexByPath = buildCorpusIndexByPath();
+function visibleSourceIds(): string[] {
   return filteredProjectSources()
-    .filter(isLoadableSource)
-    .map((source) => corpusIndexByPath.get(pathKey(source.path)))
-    .filter((index): index is number => index !== undefined);
+    .filter(isSelectableSource)
+    .map((source) => source.id);
+}
+
+function syncCorpusSelectionFromProjectSources(corpusIndexByPath = buildCorpusIndexByPath()): void {
+  state.selectedCorpusIndices.clear();
+  for (const source of selectedProjectSources()) {
+    if (!isPreviewableSource(source)) {
+      continue;
+    }
+    const corpusIndex = corpusIndexByPath.get(pathKey(source.path));
+    if (corpusIndex !== undefined) {
+      state.selectedCorpusIndices.add(corpusIndex);
+    }
+  }
 }
 
 function buildCorpusIndexByPath(): Map<string, number> {
@@ -483,25 +541,25 @@ function updateStatusLine(): void {
   if (sourceExplorerMode()) {
     const sourceCount = state.projectSources.length;
     const noun = sourceCount === 1 ? "source" : "sources";
-    dom.filesStatus.textContent = `${sourceCount} ${noun} | ${state.selectedCorpusIndices.size} selected`;
+    dom.filesStatus.textContent = `${sourceCount} ${noun} | ${state.selectedProjectSourceIds.size} selected`;
+    const visibleIds = visibleSourceIds();
     dom.selectAllCheckbox.checked =
-      visibleSourceCorpusIndices().length > 0 &&
-      visibleSourceCorpusIndices().every(index => state.selectedCorpusIndices.has(index));
+      visibleIds.length > 0 &&
+      visibleIds.every(id => state.selectedProjectSourceIds.has(id));
 
-    if (state.selectedCorpusIndices.size > 0) {
-      const selectedRecords = Array.from(state.selectedCorpusIndices)
-        .map(index => state.allFiles[index])
-        .filter(record => record !== undefined);
+    if (state.selectedProjectSourceIds.size > 0) {
+      const selectedSources = selectedProjectSources();
       const allSelectedArePdfs =
-        selectedRecords.length === state.selectedCorpusIndices.size &&
-        selectedRecords.every(record => record.document_type === "pdf");
-      const selectedSources = selectedRecords
-        .map(record => sourceForPath(record.source_path))
-        .filter((source): source is ProjectSource => source !== null);
+        selectedSources.length === state.selectedProjectSourceIds.size &&
+        selectedSources.every(source => source.kind === "pdf");
+      const selectedPdfsHaveFailures = selectedSources
+        .some(source => source.kind === "pdf" && source.status === "failed");
       const selectedPdfsHaveExtractedText =
-        selectedSources.length === selectedRecords.length &&
+        selectedSources.length === state.selectedProjectSourceIds.size &&
         selectedSources.every(sourceHasExtractedText);
-      dom.sourcePreparePdfsBtn.textContent = selectedPdfsHaveExtractedText
+      dom.sourcePreparePdfsBtn.textContent = selectedPdfsHaveFailures
+        ? "Retry extraction..."
+        : selectedPdfsHaveExtractedText
         ? "Re-extract/OCR selected PDFs..."
         : "Extract/OCR selected PDFs...";
       dom.sourcePreparePdfsBtn.classList.toggle("hidden", !allSelectedArePdfs);

@@ -69,6 +69,17 @@ export function sourceNeedsTextExtraction(source: ProjectSource): boolean {
   return source.kind === "pdf" && !sourceHasExtractedText(source) && source.status !== "failed";
 }
 
+export function isSelectableSource(_source: ProjectSource): boolean {
+  return true;
+}
+
+export function isPreviewableSource(source: ProjectSource): boolean {
+  if (source.kind === "unknown" || source.status === "failed") {
+    return false;
+  }
+  return source.kind !== "pdf" || sourceHasExtractedText(source);
+}
+
 export function sourceKindLabel(source: ProjectSource): string {
   switch (source.kind) {
     case "pdf": return "PDF";
@@ -153,6 +164,7 @@ export function reasonLabel(code: string): string {
     case "text_extracted": return "text extracted";
     case "text_extracted_with_warnings": return "review";
     case "text_extraction_failed": return "text extraction failed";
+    case "extraction_cancelled": return "Extraction cancelled";
     case "processed_ok": return "processed";
     case "processed_with_warnings": return "review";
     case "low_text_density": return "low text density";
@@ -176,6 +188,14 @@ export function isLoadableSource(source: ProjectSource): boolean {
   return source.kind !== "unknown" && source.status !== "failed";
 }
 
+export function selectedProjectSources(): ProjectSource[] {
+  return state.projectSources.filter((source) => state.selectedProjectSourceIds.has(source.id));
+}
+
+export function selectedProjectSourcePaths(): string[] {
+  return selectedProjectSources().map((source) => source.path);
+}
+
 export function loadableProjectSourcePaths(): string[] {
   return state.projectSources
     .filter(isLoadableSource)
@@ -185,6 +205,12 @@ export function loadableProjectSourcePaths(): string[] {
 export function replaceProjectSources(manifest: ProjectSourceManifest): void {
   state.sourceManifestVersion = manifest.version;
   state.projectSources = manifest.sources;
+  const sourceIds = new Set(manifest.sources.map((source) => source.id));
+  for (const selectedId of state.selectedProjectSourceIds) {
+    if (!sourceIds.has(selectedId)) {
+      state.selectedProjectSourceIds.delete(selectedId);
+    }
+  }
 }
 
 export async function loadProjectSourcesForActiveProject(): Promise<ProjectSourceManifest> {

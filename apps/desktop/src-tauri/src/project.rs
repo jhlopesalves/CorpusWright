@@ -250,6 +250,14 @@ pub(crate) fn load_project_source_records(root_path: String) -> Result<ScanRepor
     Ok(report)
 }
 
+pub(crate) fn load_project_source_inventory(
+    root_path: String,
+) -> Result<(PathBuf, ProjectSourceManifest), String> {
+    let root = validated_project_root(&root_path)?;
+    let manifest = load_project_source_manifest(&root)?;
+    Ok((root, manifest))
+}
+
 #[tauri::command(async)]
 pub(crate) fn update_project_source_processing_results_command(
     root_path: String,

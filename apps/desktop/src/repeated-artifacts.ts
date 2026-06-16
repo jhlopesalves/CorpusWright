@@ -194,7 +194,10 @@ export function getRepeatedArtifactScanScope(): RepeatedArtifactScanScope {
     };
   }
 
-  if (state.selectedCorpusIndices.size > 0) {
+  const hasSelection = state.activeProject
+    ? state.selectedProjectSourceIds.size > 0
+    : state.selectedCorpusIndices.size > 0;
+  if (hasSelection) {
     const selected = selectedScanIndices();
     if (selected.length === 0) {
       return {
