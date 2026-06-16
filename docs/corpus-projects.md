@@ -77,17 +77,17 @@ Source IDs are stable hashes of the project-relative path when the file is insid
 
 The desktop app shows this inventory in the Source Explorer. Add Files and Add Folder inspect selected sources before registration, show an Import Sources review dialog, and persist the chosen source-level extraction route only after confirmation. Import only registers sources and stores PDF handling. Import and Extract Text registers sources, stores PDF handling, then runs source text extraction/OCR for the imported PDFs. Duplicates are skipped by stable source ID.
 
-`extraction_route` records how text should be extracted from the source before cleaning rules run. TXT uses `plain_text`, DOCX uses `docx_extract`, and HTML uses `html_extract`. PDF sources may use `embedded_text`, `ocr_if_needed`, `ocr_required`, `force_ocr`, or `undecided`. `ocr_quality` stores the OCR render quality for PDF routes that can run OCR.
+`extraction_route` records how text should be extracted from the source before cleaning rules run. TXT uses `plain_text`, DOCX uses `docx_extract`, and HTML uses `html_extract`. Current PDF imports use embedded text, layout-aware embedded text, full OCR all pages, or embedded text with no automatic OCR. Legacy mixed-OCR route values such as `ocr_if_needed` and `ocr_required` still load, but project sources map them to full OCR all pages. `ocr_quality` stores the OCR render quality for OCR-based PDF routes.
 
-Older source inventories without `extraction_route` or `ocr_quality` still load. Missing routes default from the source kind: PDFs use `ocr_if_needed`, TXT uses `plain_text`, DOCX uses `docx_extract`, HTML uses `html_extract`, and unknown files use `unsupported`.
+Older source inventories without `extraction_route` or `ocr_quality` still load. Missing routes default from the source kind: PDFs use `embedded_text`, TXT uses `plain_text`, DOCX uses `docx_extract`, HTML uses `html_extract`, and unknown files use `unsupported`.
 
 ## Import review
 
 After a file or folder picker returns, CorpusWright preflights the selected sources without running OCR. The Import Sources dialog shows the number of candidate sources, grouped route recommendations, duplicate and ignored-file counts, and a compact source list.
 
-Preflight recommends embedded text for PDFs with usable text, OCR-required routes for PDFs with little or no text layer, and an undecided route when the audit cannot make a conservative recommendation. Import only closes the dialog after writing `.corpuswright/sources.json`. Import and Extract Text runs the stored per-source PDF handling immediately after registration. Cancel closes the dialog without writing `.corpuswright/sources.json`.
+Preflight recommends embedded text for PDFs with usable text, Full OCR all pages for PDFs with little or no text layer, and an undecided route when the audit cannot make a conservative recommendation. Import only closes the dialog after writing `.corpuswright/sources.json`. Import and Extract Text runs the stored per-source PDF handling immediately after registration. Cancel closes the dialog without writing `.corpuswright/sources.json`.
 
-PDF route and OCR quality are source-ingestion settings. Cleaning Settings keep cleaning controls and an advanced fallback PDF defaults section for older or unspecified sources; they do not replace routes already stored on project sources.
+PDF route and OCR quality are source-ingestion settings. Cleaning Settings keep cleaning controls and an advanced fallback PDF defaults section for older or unspecified sources; they do not replace routes already stored on project sources. Advanced PDF cleanup exposes only conservative post-extraction options. Repeated headers and footers are normally handled through Repeated artefact review.
 
 ## Source statuses
 

@@ -289,37 +289,45 @@ fn pdf_intake_method_label(options: PdfExtractionOptions) -> String {
                 "embedded text".to_string()
             }
             corpuswright_core::clean::PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn => {
-                "layout-heavy embedded text".to_string()
+                "layout-aware embedded text".to_string()
             }
             corpuswright_core::clean::PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental => {
                 "experimental visual columns".to_string()
             }
         },
-        PdfTextSource::Ocr => "OCR fallback if no usable text".to_string(),
-        PdfTextSource::ForceOcr => "force OCR all pages".to_string(),
+        PdfTextSource::Ocr => "legacy mixed OCR route".to_string(),
+        PdfTextSource::ForceOcr => "full OCR all pages".to_string(),
     }
 }
 
 fn pdf_profile_label(profile: ProjectSourcePdfProfile) -> &'static str {
     match profile {
-        ProjectSourcePdfProfile::Standard => "standard embedded-text handling",
-        ProjectSourcePdfProfile::LayoutHeavy => "layout-heavy handling",
-        ProjectSourcePdfProfile::OcrRescue => "OCR fallback handling",
-        ProjectSourcePdfProfile::ForceOcr => "force OCR all pages handling",
+        ProjectSourcePdfProfile::Standard => "standard embedded text handling",
+        ProjectSourcePdfProfile::LayoutHeavy => "layout-aware embedded text handling",
+        ProjectSourcePdfProfile::OcrRescue | ProjectSourcePdfProfile::ForceOcr => {
+            "full OCR all pages handling"
+        }
         ProjectSourcePdfProfile::NoAutomaticOcr => "no automatic OCR handling",
+    }
+}
+
+fn canonical_pdf_profile(profile: ProjectSourcePdfProfile) -> ProjectSourcePdfProfile {
+    match profile {
+        ProjectSourcePdfProfile::OcrRescue => ProjectSourcePdfProfile::ForceOcr,
+        profile => profile,
     }
 }
 
 fn pdf_profile_for_record(record: &DocumentRecord) -> ProjectSourcePdfProfile {
     if let Some(profile) = record.pdf_profile {
-        return profile;
+        return canonical_pdf_profile(profile);
     }
 
     match record.extraction_route {
         Some(ProjectSourceExtractionRoute::ForceOcr) => ProjectSourcePdfProfile::ForceOcr,
         Some(
             ProjectSourceExtractionRoute::OcrIfNeeded | ProjectSourceExtractionRoute::OcrRequired,
-        ) => ProjectSourcePdfProfile::OcrRescue,
+        ) => ProjectSourcePdfProfile::ForceOcr,
         Some(ProjectSourceExtractionRoute::EmbeddedText)
         | Some(ProjectSourceExtractionRoute::PlainText)
         | Some(ProjectSourceExtractionRoute::DocxExtract)
@@ -366,7 +374,9 @@ fn project_pdf_preparation_plan(
             ));
         }
 
-        let profile = profile_override.unwrap_or_else(|| pdf_profile_for_record(record));
+        let profile = profile_override
+            .map(canonical_pdf_profile)
+            .unwrap_or_else(|| pdf_profile_for_record(record));
         items.push(ProjectPdfPreparationPlanItem {
             path: record.source_path.clone(),
             profile,
@@ -1709,7 +1719,7 @@ mod tests {
             profile_plan(&records, &["a.pdf", "b.pdf", "c.pdf"], None),
             vec![
                 ProjectSourcePdfProfile::Standard,
-                ProjectSourcePdfProfile::OcrRescue,
+                ProjectSourcePdfProfile::ForceOcr,
                 ProjectSourcePdfProfile::ForceOcr,
             ]
         );
@@ -1736,7 +1746,7 @@ mod tests {
     }
 
     #[test]
-    fn ocr_rescue_source_does_not_override_standard_sources() {
+    fn legacy_ocr_rescue_source_maps_to_full_ocr_without_overriding_standard_sources() {
         let records = vec![
             pdf_record(
                 "standard.pdf",
@@ -1750,7 +1760,7 @@ mod tests {
             profile_plan(&records, &["standard.pdf", "ocr.pdf"], None),
             vec![
                 ProjectSourcePdfProfile::Standard,
-                ProjectSourcePdfProfile::OcrRescue,
+                ProjectSourcePdfProfile::ForceOcr,
             ]
         );
     }
@@ -1846,7 +1856,7 @@ mod tests {
             text_sources,
             vec![
                 PdfTextSource::EmbeddedText,
-                PdfTextSource::Ocr,
+                PdfTextSource::ForceOcr,
                 PdfTextSource::ForceOcr,
             ]
         );

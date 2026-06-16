@@ -162,7 +162,7 @@ pub fn export_corpus(
                     .expect("PDF options are present for PDF records")
                     .text_source
                 {
-                    PdfTextSource::Ocr => Some("pdf_ocr_rescue".to_string()),
+                    PdfTextSource::Ocr => Some("pdf_legacy_mixed_ocr".to_string()),
                     PdfTextSource::ForceOcr => Some("pdf_force_ocr".to_string()),
                     PdfTextSource::EmbeddedText => match cleaning_config.pdf_embedded_text_strategy
                     {

@@ -82,8 +82,8 @@ export function sourceKindLabel(source: ProjectSource): string {
 export function extractionRouteLabel(route: ProjectSourceExtractionRoute): string {
   switch (route) {
     case "embedded_text": return "embedded text";
-    case "ocr_if_needed": return "OCR if needed (legacy)";
-    case "force_ocr": return "force OCR all pages";
+    case "ocr_if_needed": return "legacy mixed OCR route";
+    case "force_ocr": return "full OCR all pages";
     case "ocr_required": return "OCR required";
     case "plain_text": return "plain text";
     case "docx_extract": return "DOCX extraction";
@@ -96,8 +96,8 @@ export function extractionRouteLabel(route: ProjectSourceExtractionRoute): strin
 export function pdfProfileLabel(profile: ProjectSourcePdfProfile): string {
   switch (profile) {
     case "standard": return "Standard embedded text";
-    case "layout_heavy": return "Layout-heavy PDF";
-    case "ocr_rescue": return "Full OCR all pages (legacy)";
+    case "layout_heavy": return "Layout-aware embedded text (experimental)";
+    case "ocr_rescue": return "Full OCR all pages";
     case "force_ocr": return "Full OCR all pages";
     case "no_automatic_ocr": return "Do not OCR automatically / embedded text only";
   }
@@ -106,8 +106,8 @@ export function pdfProfileLabel(profile: ProjectSourcePdfProfile): string {
 export function pdfProfileShortLabel(profile: ProjectSourcePdfProfile): string {
   switch (profile) {
     case "standard": return "standard embedded text";
-    case "layout_heavy": return "layout-heavy";
-    case "ocr_rescue": return "full OCR all pages (legacy)";
+    case "layout_heavy": return "layout-aware embedded text";
+    case "ocr_rescue": return "full OCR all pages";
     case "force_ocr": return "full OCR all pages";
     case "no_automatic_ocr": return "embedded text only";
   }
@@ -149,7 +149,7 @@ export function reasonLabel(code: string): string {
     case "native_text_available": return "native text";
     case "pdf_route_undecided": return "route undecided";
     case "ocr_planned": return "OCR planned";
-    case "force_ocr_planned": return "force OCR all pages planned";
+    case "force_ocr_planned": return "full OCR all pages planned";
     case "text_extracted": return "text extracted";
     case "text_extracted_with_warnings": return "review";
     case "text_extraction_failed": return "text extraction failed";
@@ -160,7 +160,7 @@ export function reasonLabel(code: string): string {
     case "many_repeated_artifacts": return "repeated artefacts";
     case "ocr_generated": return "OCR generated";
     case "ocr_review_recommended": return "OCR review recommended";
-    case "layout_heavy_profile": return "layout-heavy handling";
+    case "layout_heavy_profile": return "layout-aware extraction";
     case "output_write_failed": return "write failed";
     case "parse_failed": return "parse failed";
     default: return code.replace(/_/g, " ");

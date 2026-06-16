@@ -67,26 +67,26 @@ const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
     },
   },
   layout: {
-    statusLabel: "layout-heavy handling",
+    statusLabel: "layout-aware embedded text handling",
     apply: (config) => {
       config.pdf_text_source = "EmbeddedText";
       config.pdf_ocr_quality = "Balanced";
       config.pdf_embedded_text_strategy = "PdfiumVisualSingleColumn";
-      config.remove_repeated_pdf_headers_footers = true;
-      config.remove_pdf_page_labels = true;
+      config.remove_repeated_pdf_headers_footers = false;
+      config.remove_pdf_page_labels = false;
       config.remove_pdf_symbol_heavy_artifacts = false;
       config.remove_pdf_code_like_blocks = false;
       config.remove_pdf_formula_like_lines = false;
     },
   },
   "force-ocr": {
-    statusLabel: "Full OCR all pages handling",
+    statusLabel: "full OCR all pages handling",
     apply: (config) => {
       config.pdf_text_source = "ForceOcr";
       config.pdf_ocr_quality = "HighQuality";
       config.pdf_embedded_text_strategy = "PdfiumFlat";
-      config.remove_repeated_pdf_headers_footers = true;
-      config.remove_pdf_page_labels = true;
+      config.remove_repeated_pdf_headers_footers = false;
+      config.remove_pdf_page_labels = false;
       config.remove_pdf_symbol_heavy_artifacts = false;
       config.remove_pdf_code_like_blocks = false;
       config.remove_pdf_formula_like_lines = false;
@@ -103,7 +103,7 @@ const auditProfileToIntakeProfile: Record<PdfAuditSuggestedProfile, PdfIntakePro
 
 const profileDisplayNames: Record<PdfIntakeProfileId, string> = {
   standard: "Standard embedded text",
-  layout: "Layout-heavy PDF",
+  layout: "Layout-aware embedded text",
   "force-ocr": "Full OCR all pages",
 };
 
@@ -119,12 +119,11 @@ interface PendingPdfHandling {
 const PDF_HANDLING_OPTIONS: ProjectSourcePdfProfile[] = [
   "standard",
   "layout_heavy",
-  "ocr_rescue",
   "force_ocr",
   "no_automatic_ocr",
 ];
 
-const OCR_BASED_PDF_HANDLING = new Set<ProjectSourcePdfProfile>(["ocr_rescue", "force_ocr"]);
+const OCR_BASED_PDF_HANDLING = new Set<ProjectSourcePdfProfile>(["force_ocr"]);
 
 let pdfIntakeMode: "legacy" | "prepare-sources" = "legacy";
 
@@ -278,11 +277,7 @@ function pdfDetectionForSource(source: ProjectSource): PdfDetectionKind {
 
 function recommendedProfileForSource(source: ProjectSource): ProjectSourcePdfProfile {
   if (source.pdf_profile) {
-    // Map legacy ocr_rescue profile to force_ocr for new recommendations
-    if (source.pdf_profile === "ocr_rescue") {
-      return "force_ocr";
-    }
-    return source.pdf_profile;
+    return canonicalPdfProfile(source.pdf_profile);
   }
   switch (source.extraction_route) {
     case "embedded_text":
@@ -294,6 +289,10 @@ function recommendedProfileForSource(source: ProjectSource): ProjectSourcePdfPro
     default:
       return "standard";
   }
+}
+
+function canonicalPdfProfile(profile: ProjectSourcePdfProfile): ProjectSourcePdfProfile {
+  return profile === "ocr_rescue" ? "force_ocr" : profile;
 }
 
 function detectionGroupLabel(detection: PdfDetectionKind, count: number): string {
@@ -568,7 +567,7 @@ function pdfProfileToIntakeProfileId(profile: ProjectSourcePdfProfile): PdfIntak
 }
 
 function storedProfileForSource(source: ProjectSource): ProjectSourcePdfProfile {
-  return source.pdf_profile ?? recommendedProfileForSource(source);
+  return canonicalPdfProfile(source.pdf_profile ?? recommendedProfileForSource(source));
 }
 
 function selectedProjectPdfSources(paths: string[]): ProjectSource[] {

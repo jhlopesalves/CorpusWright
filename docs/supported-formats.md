@@ -18,7 +18,7 @@ The exact method used depends on the format:
 - **Plain Text (`txt`)**: Extracted as plain text (`plain_text`). If invalid UTF-8 sequences are encountered, they are replaced with the Unicode replacement character ().
 - **HTML (`html`, `htm`)**: Read as raw HTML text by default. If HTML text extraction is explicitly enabled, it is parsed via an optional HTML transformation that strips HTML tags and attempts to preserve basic block-level structure.
 - **DOCX (`docx`)**: Read and extracted directly from the file structure using a required DOCX parser. Optional transformations like stripping headers, footers, footnotes, or endnotes are disabled by default.
-- **PDF (`pdf`)**: Extracted using a required PDF character-level reader. Optional post-extraction cleanup transformations, such as evidence-based repeated page-edge cleanup, conservative page-label cleanup, and symbol-noise cleanup, are disabled by default. Repeated headers and footers are normally handled through Repeated Artefact review so accepted candidates become explicit cleaning rules. OCR routes run according to stored source handling, and repeated artefact scans disable OCR.
+- **PDF (`pdf`)**: Extracted using a required PDF character-level reader. Optional post-extraction cleanup transformations, such as conservative page-label cleanup, obvious symbol-noise cleanup, code-like block cleanup, and formula-like line cleanup, are disabled by default. Repeated headers and footers are normally handled through Repeated Artefact review so accepted candidates become explicit cleaning rules. OCR routes run according to stored source handling, and repeated artefact scans disable OCR.
 
 ## Limitations and Warnings
 

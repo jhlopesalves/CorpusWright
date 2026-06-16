@@ -90,7 +90,7 @@
             <button id="source-add-files-btn" class="secondary-btn" type="button">Add Files</button>
             <button id="source-add-folder-btn" class="secondary-btn" type="button">Add Folder</button>
             <button id="source-prepare-pdfs-btn" class="secondary-btn hidden" type="button">Extract/OCR selected PDFs...</button>
-            <button id="source-remove-btn" class="secondary-btn hidden" type="button">Remove selected</button>
+            <button id="source-remove-btn" class="danger-btn hidden" type="button">Remove selected</button>
           </div>
         </div>
         <div class="status-line" id="files-status">0 loaded | 0 selected</div>
@@ -242,7 +242,7 @@
 
         <div class="modal-actions">
           <span id="source-import-status" class="source-import-status"></span>
-          <button id="cancel-source-import-btn" type="button">Cancel</button>
+          <button id="cancel-source-import-btn" class="secondary-btn" type="button">Cancel</button>
           <button id="confirm-source-import-btn" class="secondary-btn" type="button">Import only</button>
           <button id="confirm-source-import-extract-btn" class="primary-btn" type="button">Import and Extract Text</button>
         </div>
@@ -288,25 +288,15 @@
           <label class="pdf-intake-profile" for="pdf-intake-layout">
             <input type="radio" id="pdf-intake-layout" name="pdf-intake-profile" value="layout" />
             <span>
-              <span class="pdf-intake-profile-title">Layout-heavy PDF</span>
-              <span class="pdf-intake-profile-help">Uses visual ordering for awkward line wraps. Conservative cleanup
-                flags may help with obvious repeated edges and page labels; inspect preview before export.</span>
-            </span>
-          </label>
-
-          <label class="pdf-intake-profile" for="pdf-intake-ocr">
-            <input type="radio" id="pdf-intake-ocr" name="pdf-intake-profile" value="ocr" />
-            <span>
-              <span class="pdf-intake-profile-title">OCR when text is missing</span>
-              <span class="pdf-intake-profile-help">Uses OCR for scanned or image-based PDFs. Slower, and recognition
-                errors are possible.</span>
+              <span class="pdf-intake-profile-title">Layout-aware embedded text</span>
+              <span class="pdf-intake-profile-help">Experimental visual line ordering for awkward embedded text. Inspect preview before export.</span>
             </span>
           </label>
 
           <label class="pdf-intake-profile" for="pdf-intake-force-ocr">
             <input type="radio" id="pdf-intake-force-ocr" name="pdf-intake-profile" value="force-ocr" />
             <span>
-              <span class="pdf-intake-profile-title">Force OCR all pages</span>
+              <span class="pdf-intake-profile-title">Full OCR all pages</span>
               <span class="pdf-intake-profile-help">High-quality OCR. This may take a long time. Preview is capped. Inspect before export.</span>
             </span>
           </label>
@@ -358,7 +348,7 @@
 
         <div class="modal-actions">
           <span id="pdf-intake-status" class="pdf-intake-status"></span>
-          <button id="cancel-pdf-intake-btn" type="button">Cancel</button>
+          <button id="cancel-pdf-intake-btn" class="secondary-btn" type="button">Cancel</button>
           <button id="load-pdf-intake-files-btn" class="primary-btn hidden" type="button">Load PDFs</button>
           <button id="choose-pdf-intake-files-btn" class="primary-btn" type="button">Choose PDFs...</button>
         </div>
@@ -470,8 +460,7 @@
                 <select id="sel-pdf-text-source" class="settings-select"
                   style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
                   <option value="EmbeddedText">Embedded text</option>
-                  <option value="Ocr">OCR when text is missing</option>
-                  <option value="ForceOcr">Force OCR all pages</option>
+                  <option value="ForceOcr">Full OCR all pages</option>
                 </select>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
                   Applies only when no stored source-level route is available.
@@ -514,26 +503,18 @@
             </details>
 
             <details>
-              <summary>Experimental PDF cleanup</summary>
-              <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 10px 0;">
-                These conservative PDF cleanup options target obvious extraction artefacts. They may miss many real
-                headers, footers, page labels, formulae, code blocks, and layout problems. Use Repeated artefacts for
-                reviewable header/footer removal.
+              <summary>Advanced PDF cleanup</summary>
+              <p class="settings-helper-text">
+                Optional conservative cleanup for obvious extraction artefacts. Review processed text before export.
               </p>
-              <label><input type="checkbox" id="chk-remove-repeated-pdf-headers-footers" /> Try evidence-based repeated
-                header/footer cleanup</label>
-              <label><input type="checkbox" id="chk-remove-pdf-page-labels" /> Try conservative page-label cleanup</label>
-              <label><input type="checkbox" id="chk-remove-pdf-symbol-heavy-artifacts" /> Conservative symbol-noise
-                cleanup</label>
-              <label><input type="checkbox" id="chk-remove-pdf-code-like-blocks" /> Experimental code-like block
-                cleanup</label>
-              <label><input type="checkbox" id="chk-remove-pdf-formula-like-lines" /> Experimental formula-like line
-                cleanup</label>
-              <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 10px 0; padding-left: 24px;">
-                Repeated header/footer cleanup requires repeated page-edge evidence across at least three pages. Code
-                and formula cleanup may remove meaningful programming, statistical, or mathematical examples. Inspect
-                processed preview before export.
+              <input type="checkbox" id="chk-remove-repeated-pdf-headers-footers" class="hidden" />
+              <p class="settings-helper-text">
+                Repeated headers and footers are best handled with Repeated artefacts.
               </p>
+              <label><input type="checkbox" id="chk-remove-pdf-page-labels" /> Remove page labels at page edges</label>
+              <label><input type="checkbox" id="chk-remove-pdf-symbol-heavy-artifacts" /> Remove obvious symbol-noise lines</label>
+              <label><input type="checkbox" id="chk-remove-pdf-code-like-blocks" /> Remove code-like blocks</label>
+              <label><input type="checkbox" id="chk-remove-pdf-formula-like-lines" /> Remove formula-like lines</label>
             </details>
           </div>
         </div>
@@ -583,7 +564,7 @@
         </div>
 
         <div class="modal-actions">
-          <button id="cancel-settings-btn">Cancel</button>
+          <button id="cancel-settings-btn" class="secondary-btn">Cancel</button>
           <button id="apply-settings-btn" class="primary-btn">Apply</button>
         </div>
       </div>

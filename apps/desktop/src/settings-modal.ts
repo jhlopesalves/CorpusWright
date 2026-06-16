@@ -3,6 +3,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 
 import {
   BOOLEAN_CLEANING_CONFIG_KEYS,
+  normalisePdfTextSource,
   normaliseCleaningConfig,
   type BooleanCleaningConfigKey,
 } from "./config";
@@ -44,7 +45,6 @@ const cleaningCheckboxBindings: CheckboxBinding[] = [
   { configKey: "remove_endnotes",                            element: dom.chkRemoveEndnotes },
   { configKey: "remove_comments",                            element: dom.chkRemoveComments },
   { configKey: "remove_table_of_contents",                   element: dom.chkRemoveToc },
-  { configKey: "remove_repeated_pdf_headers_footers",        element: dom.chkRemoveRepeatedPdfHeadersFooters },
   { configKey: "remove_pdf_page_labels",                     element: dom.chkRemovePdfPageLabels },
   { configKey: "remove_pdf_symbol_heavy_artifacts",          element: dom.chkRemovePdfSymbolHeavyArtifacts },
   { configKey: "remove_pdf_code_like_blocks",                element: dom.chkRemovePdfCodeLikeBlocks },
@@ -79,7 +79,7 @@ function buildConfigFromModalControls(): CleaningConfig {
   }
   readCheckboxesIntoConfig(config);
   config.table_extraction_strategy = dom.selTableExtraction.value as TableExtractionStrategy;
-  config.pdf_text_source = dom.selPdfTextSource.value as PdfTextSource;
+  config.pdf_text_source = normalisePdfTextSource(dom.selPdfTextSource.value as PdfTextSource);
   config.pdf_ocr_quality = dom.selPdfOcrQuality.value as PdfOcrQuality;
   config.pdf_embedded_text_strategy = dom.selPdfEmbeddedTextStrategy.value as PdfEmbeddedTextStrategy;
   config.remove_patterns = [...state.tempRemovePatterns];
@@ -94,7 +94,7 @@ function buildConfigFromModalControls(): CleaningConfig {
 function syncModalControlsFromConfig(config: CleaningConfig): void {
   syncCheckboxesFromConfig(config);
   dom.selTableExtraction.value = config.table_extraction_strategy;
-  dom.selPdfTextSource.value = config.pdf_text_source;
+  dom.selPdfTextSource.value = normalisePdfTextSource(config.pdf_text_source);
   dom.selPdfOcrQuality.value = config.pdf_ocr_quality;
   dom.selPdfEmbeddedTextStrategy.value = config.pdf_embedded_text_strategy;
   syncDraftCustomRemovalsFromConfig(config);
@@ -168,7 +168,7 @@ function closeSettingsModal(): void {
 export function syncInitialSettingsControls(): void {
   syncCheckboxesFromConfig(state.activeCleaningConfig);
   dom.selTableExtraction.value = state.activeCleaningConfig.table_extraction_strategy;
-  dom.selPdfTextSource.value = state.activeCleaningConfig.pdf_text_source;
+  dom.selPdfTextSource.value = normalisePdfTextSource(state.activeCleaningConfig.pdf_text_source);
   dom.selPdfOcrQuality.value = state.activeCleaningConfig.pdf_ocr_quality;
   dom.selPdfEmbeddedTextStrategy.value = state.activeCleaningConfig.pdf_embedded_text_strategy;
 }
@@ -196,7 +196,7 @@ export function initSettingsModal(callbacks: SettingsModalCallbacks): void {
     setModalConfigStatus("");
     syncCheckboxesFromConfig(state.activeCleaningConfig);
     dom.selTableExtraction.value = state.activeCleaningConfig.table_extraction_strategy;
-    dom.selPdfTextSource.value = state.activeCleaningConfig.pdf_text_source;
+    dom.selPdfTextSource.value = normalisePdfTextSource(state.activeCleaningConfig.pdf_text_source);
     dom.selPdfOcrQuality.value = state.activeCleaningConfig.pdf_ocr_quality;
     dom.selPdfEmbeddedTextStrategy.value = state.activeCleaningConfig.pdf_embedded_text_strategy;
     state.tempRemovePatterns = [...state.activeCleaningConfig.remove_patterns];

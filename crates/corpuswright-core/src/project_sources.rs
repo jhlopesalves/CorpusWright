@@ -126,6 +126,19 @@ impl<'de> Deserialize<'de> for ProjectSource {
         D: serde::Deserializer<'de>,
     {
         let helper = ProjectSourceSerde::deserialize(deserializer)?;
+        let extraction_route = helper
+            .extraction_route
+            .unwrap_or_else(|| default_extraction_route_for_kind(helper.kind));
+        let legacy_pdf_handling =
+            uses_legacy_mixed_ocr_pdf_handling(helper.kind, helper.pdf_profile, extraction_route);
+        let (pdf_profile, extraction_route) =
+            normalise_loaded_pdf_handling(helper.kind, helper.pdf_profile, extraction_route);
+        let reason_codes = if legacy_pdf_handling {
+            normalise_loaded_pdf_reason_codes(helper.reason_codes)
+        } else {
+            helper.reason_codes
+        };
+
         Ok(Self {
             id: helper.id,
             path: helper.path,
@@ -133,11 +146,9 @@ impl<'de> Deserialize<'de> for ProjectSource {
             extension: helper.extension,
             kind: helper.kind,
             status: helper.status,
-            reason_codes: helper.reason_codes,
-            extraction_route: helper
-                .extraction_route
-                .unwrap_or_else(|| default_extraction_route_for_kind(helper.kind)),
-            pdf_profile: helper.pdf_profile,
+            reason_codes,
+            extraction_route,
+            pdf_profile,
             ocr_quality: helper.ocr_quality,
             added_at: helper.added_at,
             last_checked_at: helper.last_checked_at,
@@ -628,10 +639,70 @@ impl ProjectSourcePdfProfile {
             Self::Standard | Self::LayoutHeavy | Self::NoAutomaticOcr => {
                 ProjectSourceExtractionRoute::EmbeddedText
             }
-            Self::OcrRescue => ProjectSourceExtractionRoute::OcrRequired,
-            Self::ForceOcr => ProjectSourceExtractionRoute::ForceOcr,
+            Self::OcrRescue | Self::ForceOcr => ProjectSourceExtractionRoute::ForceOcr,
         }
     }
+}
+
+fn normalise_loaded_pdf_handling(
+    kind: ProjectSourceKind,
+    pdf_profile: Option<ProjectSourcePdfProfile>,
+    extraction_route: ProjectSourceExtractionRoute,
+) -> (
+    Option<ProjectSourcePdfProfile>,
+    ProjectSourceExtractionRoute,
+) {
+    if kind != ProjectSourceKind::Pdf {
+        return (pdf_profile, extraction_route);
+    }
+
+    match pdf_profile {
+        Some(ProjectSourcePdfProfile::OcrRescue) => (
+            Some(ProjectSourcePdfProfile::ForceOcr),
+            ProjectSourceExtractionRoute::ForceOcr,
+        ),
+        Some(ProjectSourcePdfProfile::ForceOcr) => (
+            Some(ProjectSourcePdfProfile::ForceOcr),
+            ProjectSourceExtractionRoute::ForceOcr,
+        ),
+        Some(profile) => (Some(profile), extraction_route),
+        None => match extraction_route {
+            ProjectSourceExtractionRoute::OcrIfNeeded
+            | ProjectSourceExtractionRoute::OcrRequired => (
+                Some(ProjectSourcePdfProfile::ForceOcr),
+                ProjectSourceExtractionRoute::ForceOcr,
+            ),
+            _ => (None, extraction_route),
+        },
+    }
+}
+
+fn uses_legacy_mixed_ocr_pdf_handling(
+    kind: ProjectSourceKind,
+    pdf_profile: Option<ProjectSourcePdfProfile>,
+    extraction_route: ProjectSourceExtractionRoute,
+) -> bool {
+    kind == ProjectSourceKind::Pdf
+        && (matches!(pdf_profile, Some(ProjectSourcePdfProfile::OcrRescue))
+            || matches!(
+                (pdf_profile, extraction_route),
+                (
+                    None,
+                    ProjectSourceExtractionRoute::OcrIfNeeded
+                        | ProjectSourceExtractionRoute::OcrRequired
+                )
+            ))
+}
+
+fn normalise_loaded_pdf_reason_codes(reason_codes: Vec<String>) -> Vec<String> {
+    reason_codes
+        .into_iter()
+        .map(|code| match code.as_str() {
+            "ocr_planned" | "ocr_required" => "force_ocr_planned".to_string(),
+            "ocr_review_recommended" => "ocr_generated".to_string(),
+            _ => code,
+        })
+        .collect()
 }
 
 pub fn default_extraction_route_for_kind(kind: ProjectSourceKind) -> ProjectSourceExtractionRoute {
@@ -718,10 +789,7 @@ fn apply_import_policy(
         source.ocr_quality = Some(ocr_quality);
         match pdf_policy {
             ProjectSourceImportPolicy::Recommended => {}
-            ProjectSourceImportPolicy::OcrIfNeeded => {
-                source.extraction_route = ProjectSourceExtractionRoute::OcrIfNeeded;
-            }
-            ProjectSourceImportPolicy::ForceOcr => {
+            ProjectSourceImportPolicy::OcrIfNeeded | ProjectSourceImportPolicy::ForceOcr => {
                 source.pdf_profile = Some(ProjectSourcePdfProfile::ForceOcr);
                 source.extraction_route = ProjectSourceExtractionRoute::ForceOcr;
                 set_pdf_source_planned_status_for_profile(
@@ -746,10 +814,7 @@ fn set_pdf_source_planned_status_for_profile(
     profile: ProjectSourcePdfProfile,
 ) {
     match profile {
-        ProjectSourcePdfProfile::OcrRescue => {
-            set_source_status(source, ProjectSourceStatus::NeedsOcr, &["ocr_planned"]);
-        }
-        ProjectSourcePdfProfile::ForceOcr => {
+        ProjectSourcePdfProfile::OcrRescue | ProjectSourcePdfProfile::ForceOcr => {
             set_source_status(
                 source,
                 ProjectSourceStatus::NeedsOcr,
@@ -775,8 +840,9 @@ fn successful_pdf_review_reason(source: &ProjectSource) -> Option<&'static str> 
 
     match source.pdf_profile {
         Some(ProjectSourcePdfProfile::LayoutHeavy) => Some("layout_heavy_profile"),
-        Some(ProjectSourcePdfProfile::OcrRescue) => Some("ocr_review_recommended"),
-        Some(ProjectSourcePdfProfile::ForceOcr) => Some("ocr_generated"),
+        Some(ProjectSourcePdfProfile::OcrRescue | ProjectSourcePdfProfile::ForceOcr) => {
+            Some("ocr_generated")
+        }
         Some(ProjectSourcePdfProfile::Standard | ProjectSourcePdfProfile::NoAutomaticOcr) => None,
         None => match source.extraction_route {
             ProjectSourceExtractionRoute::OcrRequired | ProjectSourceExtractionRoute::ForceOcr => {
@@ -1013,6 +1079,102 @@ mod tests {
     }
 
     #[test]
+    fn legacy_ocr_rescue_source_records_load_as_force_ocr() {
+        let dir = tempdir().unwrap();
+        let manifest_path = source_manifest_path(dir.path());
+        fs::create_dir_all(manifest_path.parent().unwrap()).unwrap();
+        fs::write(
+            &manifest_path,
+            r#"{
+  "version": 1,
+  "sources": [
+    {
+      "id": "source_pdf",
+      "path": "scan.pdf",
+      "file_name": "scan.pdf",
+      "extension": "pdf",
+      "kind": "pdf",
+      "status": "needs_ocr",
+      "reason_codes": ["ocr_planned"],
+      "extraction_route": "ocr_required",
+      "pdf_profile": "ocr_rescue",
+      "ocr_quality": "Balanced",
+      "added_at": "2026-01-01T00:00:00Z",
+      "last_checked_at": null,
+      "last_processed_at": null
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+
+        let loaded = load_project_source_manifest(dir.path()).unwrap();
+
+        assert_eq!(
+            loaded.sources[0].pdf_profile,
+            Some(ProjectSourcePdfProfile::ForceOcr)
+        );
+        assert_eq!(
+            loaded.sources[0].extraction_route,
+            ProjectSourceExtractionRoute::ForceOcr
+        );
+        assert_eq!(loaded.sources[0].reason_codes, vec!["force_ocr_planned"]);
+    }
+
+    #[test]
+    fn legacy_mixed_ocr_routes_without_profile_load_as_force_ocr() {
+        let dir = tempdir().unwrap();
+        let manifest_path = source_manifest_path(dir.path());
+        fs::create_dir_all(manifest_path.parent().unwrap()).unwrap();
+        fs::write(
+            &manifest_path,
+            r#"{
+  "version": 1,
+  "sources": [
+    {
+      "id": "source_pdf",
+      "path": "scan.pdf",
+      "file_name": "scan.pdf",
+      "extension": "pdf",
+      "kind": "pdf",
+      "status": "needs_ocr",
+      "reason_codes": ["ocr_required"],
+      "extraction_route": "ocr_if_needed",
+      "ocr_quality": "Balanced",
+      "added_at": "2026-01-01T00:00:00Z",
+      "last_checked_at": null,
+      "last_processed_at": null
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+
+        let loaded = load_project_source_manifest(dir.path()).unwrap();
+
+        assert_eq!(
+            loaded.sources[0].pdf_profile,
+            Some(ProjectSourcePdfProfile::ForceOcr)
+        );
+        assert_eq!(
+            loaded.sources[0].extraction_route,
+            ProjectSourceExtractionRoute::ForceOcr
+        );
+        assert_eq!(loaded.sources[0].reason_codes, vec!["force_ocr_planned"]);
+    }
+
+    #[test]
+    fn legacy_ocr_rescue_review_reason_loads_as_generated_ocr() {
+        assert_eq!(
+            normalise_loaded_pdf_reason_codes(vec![
+                "ocr_review_recommended".to_string(),
+                "low_text_density".to_string(),
+            ]),
+            vec!["ocr_generated", "low_text_density"]
+        );
+    }
+
+    #[test]
     fn source_manifest_persists_pdf_profile() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("paper.pdf");
@@ -1136,7 +1298,7 @@ mod tests {
         );
         assert_eq!(
             ProjectSourcePdfProfile::OcrRescue.extraction_route(),
-            ProjectSourceExtractionRoute::OcrRequired
+            ProjectSourceExtractionRoute::ForceOcr
         );
         assert_eq!(
             ProjectSourcePdfProfile::ForceOcr.extraction_route(),
@@ -1180,10 +1342,7 @@ mod tests {
             manifest.sources[0].status,
             ProjectSourceStatus::ProcessedWithWarnings
         );
-        assert_eq!(
-            manifest.sources[0].reason_codes,
-            vec!["ocr_review_recommended"]
-        );
+        assert_eq!(manifest.sources[0].reason_codes, vec!["ocr_generated"]);
     }
 
     #[test]
@@ -1320,10 +1479,7 @@ mod tests {
             manifest.sources[1].status,
             ProjectSourceStatus::ProcessedWithWarnings
         );
-        assert_eq!(
-            manifest.sources[1].reason_codes,
-            vec!["ocr_review_recommended"]
-        );
+        assert_eq!(manifest.sources[1].reason_codes, vec!["ocr_generated"]);
         assert_eq!(
             manifest.sources[2].status,
             ProjectSourceStatus::ProcessedWithWarnings
@@ -1378,7 +1534,7 @@ mod tests {
     }
 
     #[test]
-    fn updating_pdf_profile_preserves_ocr_rescue_and_force_ocr_routes() {
+    fn updating_pdf_profile_maps_legacy_ocr_rescue_to_force_ocr_route() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("paper.pdf");
         let mut source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
@@ -1406,10 +1562,13 @@ mod tests {
         );
         assert_eq!(
             ocr_rescue.sources[0].extraction_route,
-            ProjectSourceExtractionRoute::OcrRequired
+            ProjectSourceExtractionRoute::ForceOcr
         );
         assert_eq!(ocr_rescue.sources[0].status, ProjectSourceStatus::NeedsOcr);
-        assert_eq!(ocr_rescue.sources[0].reason_codes, vec!["ocr_planned"]);
+        assert_eq!(
+            ocr_rescue.sources[0].reason_codes,
+            vec!["force_ocr_planned"]
+        );
 
         let force_ocr = update_project_source_pdf_profiles(
             dir.path(),
@@ -1452,7 +1611,7 @@ mod tests {
         );
 
         assert_eq!(ocr_source.status, ProjectSourceStatus::NeedsOcr);
-        assert_eq!(ocr_source.reason_codes, vec!["ocr_planned"]);
+        assert_eq!(ocr_source.reason_codes, vec!["force_ocr_planned"]);
         assert_eq!(ocr_source.last_processed_at, None);
 
         let mut force_source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
@@ -1471,6 +1630,25 @@ mod tests {
         assert_eq!(force_source.status, ProjectSourceStatus::NeedsOcr);
         assert_eq!(force_source.reason_codes, vec!["force_ocr_planned"]);
         assert_eq!(force_source.last_processed_at, None);
+    }
+
+    #[test]
+    fn legacy_ocr_if_needed_import_policy_maps_to_force_ocr() {
+        let mut source = source_for_test(PathBuf::from("paper.pdf"), ProjectSourceKind::Pdf);
+
+        apply_import_policy(
+            &mut source,
+            ProjectSourceImportPolicy::OcrIfNeeded,
+            PdfOcrQuality::Balanced,
+            None,
+        );
+
+        assert_eq!(source.pdf_profile, Some(ProjectSourcePdfProfile::ForceOcr));
+        assert_eq!(
+            source.extraction_route,
+            ProjectSourceExtractionRoute::ForceOcr
+        );
+        assert_eq!(source.reason_codes, vec!["force_ocr_planned"]);
     }
 
     #[test]

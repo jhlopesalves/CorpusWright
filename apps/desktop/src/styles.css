@@ -160,6 +160,23 @@ body {
   outline: none;
 }
 
+.primary-btn,
+.secondary-btn,
+.danger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  cursor: pointer;
+  text-align: center;
+}
+
 .primary-btn {
   background: var(--accent-color) !important;
   color: white !important;
@@ -181,11 +198,6 @@ body {
   background: var(--panel-bg);
   color: var(--text-color);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
-  padding: 6px 12px;
-  font-family: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
 }
 
 .secondary-btn:hover,
@@ -214,6 +226,13 @@ body {
 .danger-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.primary-btn:focus-visible,
+.secondary-btn:focus-visible,
+.danger-btn:focus-visible {
+  outline: 1px solid var(--accent-color);
+  outline-offset: 1px;
 }
 
 main {
@@ -440,12 +459,14 @@ main {
 }
 
 .source-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
 .source-actions button {
-  flex: 1;
+  width: 100%;
+  min-height: 30px;
   padding: 5px 8px;
   font-size: 0.78rem;
 }

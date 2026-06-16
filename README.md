@@ -27,7 +27,7 @@ CorpusWright is my attempt to make that stage less miserable: load the documents
 
 - Starts from a CorpusWright project folder, with a small manifest under `.corpuswright/project.json` and a recent-projects launcher.
 - Keeps a project source inventory under `.corpuswright/sources.json`, shown as a Source Explorer with processing statuses, route badges, and reason badges.
-- Reviews selected files or folders before import, with source-level extraction routes for TXT, HTML, DOCX, and PDF.
+- Reviews selected files or folders before import, with source-level extraction routes for TXT, HTML, DOCX, and PDF. PDF imports choose between standard embedded text, layout-aware embedded text, Full OCR all pages, or embedded text with no automatic OCR.
 - Shows original and processed text side by side, so you can see what each rule actually changed rather than trusting it blindly.
 - Lets you configure cleaning rules for whitespace, line breaks, format-specific noise (HTML, DOCX, conservative PDF cleanup), obvious extraction/OCR/markup noise lines, and your own custom removals.
 - Reviews repeated headers, footers, page labels, boilerplate, layout fragments, and extraction artefacts in selected sources, or explicitly all loaded sources when no selection is active.
@@ -45,7 +45,7 @@ The obvious extraction/OCR noise option uses deterministic text/noise profiling 
 
 The Source Explorer separates file type, extraction route, source text extraction, and cleaning state. `Ready to Extract` means the source is registered and has a route, but source text has not yet been materialised. `Needs OCR` marks PDFs that likely need OCR rather than treating them as failed. `Text Extracted` and `Text Extracted with Warnings` mean original source text is available for preview and search, but cleaned output is not implied. `Processed with Warnings` is reserved for processed text that has been generated with review signals, and `Failed` marks a hard blocker that needs user action or a code fix.
 
-PDF handling and OCR quality are source import choices. Cleaning Settings keep advanced fallback defaults for older or unspecified PDF sources, plus conservative PDF cleanup flags. Repeated headers and footers are best handled through Repeated artefact review, where accepted candidates become explicit cleaning rules.
+PDF handling and OCR quality are source import choices. Cleaning Settings keep advanced fallback defaults for older or unspecified PDF sources, plus conservative PDF cleanup for obvious page labels, symbol-noise lines, code-like blocks, and formula-like lines. Repeated headers and footers are best handled through Repeated artefact review, where accepted candidates become explicit cleaning rules.
 
 ## How it's built
 

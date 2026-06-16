@@ -981,11 +981,11 @@ mod tests {
         let key_d = ExtractionKey::from_record(&record, Some(opts_d), &CleaningConfig::default());
         assert_ne!(
             key_a, key_b,
-            "Embedded text and OCR rescue cache keys should differ"
+            "Embedded text and legacy mixed OCR cache keys should differ"
         );
         assert_ne!(
             key_b, key_c,
-            "OCR rescue and force OCR cache keys should differ"
+            "Legacy mixed OCR and full OCR cache keys should differ"
         );
         assert_ne!(
             key_c, key_d,
