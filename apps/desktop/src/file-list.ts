@@ -8,6 +8,8 @@ import {
   pdfHandlingLabel,
   primaryReasonLabel,
   reasonLabel,
+  sourceForPath,
+  sourceHasExtractedText,
   sourceKindLabel,
   sourceStatusLabel,
 } from "./sources";
@@ -493,6 +495,15 @@ function updateStatusLine(): void {
       const allSelectedArePdfs =
         selectedRecords.length === state.selectedCorpusIndices.size &&
         selectedRecords.every(record => record.document_type === "pdf");
+      const selectedSources = selectedRecords
+        .map(record => sourceForPath(record.source_path))
+        .filter((source): source is ProjectSource => source !== null);
+      const selectedPdfsHaveExtractedText =
+        selectedSources.length === selectedRecords.length &&
+        selectedSources.every(sourceHasExtractedText);
+      dom.sourcePreparePdfsBtn.textContent = selectedPdfsHaveExtractedText
+        ? "Re-extract/OCR selected PDFs..."
+        : "Extract/OCR selected PDFs...";
       dom.sourcePreparePdfsBtn.classList.toggle("hidden", !allSelectedArePdfs);
       dom.sourcePreparePdfsBtn.disabled = !allSelectedArePdfs;
       dom.sourceRemoveBtn.classList.remove("hidden");

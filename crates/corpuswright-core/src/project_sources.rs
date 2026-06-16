@@ -35,6 +35,8 @@ pub enum ProjectSourceStatus {
     Unprocessed,
     ReadyToProcess,
     NeedsOcr,
+    TextExtracted,
+    TextExtractedWithWarnings,
     Processed,
     ProcessedWithWarnings,
     Failed,
@@ -180,6 +182,16 @@ pub struct ProjectSourcePdfHandlingOverride {
 /// Per-file result reported by the preprocessing preview path.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct ProjectSourceProcessingResult {
+    pub path: PathBuf,
+    pub failed: bool,
+    pub warning_count: usize,
+    #[serde(default)]
+    pub reason_codes: Vec<String>,
+}
+
+/// Per-file result reported by source text extraction/materialisation.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct ProjectSourceExtractionResult {
     pub path: PathBuf,
     pub failed: bool,
     pub warning_count: usize,
@@ -390,6 +402,50 @@ pub fn update_project_source_processing_results(
             } else {
                 source.status = ProjectSourceStatus::Processed;
                 source.reason_codes = vec!["processed_ok".to_string()];
+            }
+        }
+    }
+
+    save_project_source_manifest(project_root, &manifest)?;
+    Ok(manifest)
+}
+
+/// Applies per-file source text extraction results to the persisted source inventory.
+///
+/// # Errors
+///
+/// Returns an error when the inventory cannot be loaded or saved.
+pub fn update_project_source_extraction_results(
+    project_root: impl AsRef<Path>,
+    results: Vec<ProjectSourceExtractionResult>,
+) -> Result<ProjectSourceManifest, String> {
+    let project_root = project_root.as_ref();
+    let mut manifest = load_project_source_manifest(project_root)?;
+    let now = current_timestamp();
+
+    for result in results {
+        let source_path = source_path_for_storage(project_root, &result.path);
+        let source_id = stable_project_source_id(project_root, &source_path);
+        if let Some(source) = manifest
+            .sources
+            .iter_mut()
+            .find(|source| source.id == source_id)
+        {
+            source.last_checked_at = Some(now.clone());
+            if result.failed {
+                source.status = ProjectSourceStatus::Failed;
+                source.reason_codes =
+                    non_empty_or_default(result.reason_codes, "text_extraction_failed");
+            } else if result.warning_count > 0 {
+                source.status = ProjectSourceStatus::TextExtractedWithWarnings;
+                source.reason_codes =
+                    non_empty_or_default(result.reason_codes, "text_extracted_with_warnings");
+            } else if let Some(reason_code) = successful_pdf_review_reason(source) {
+                source.status = ProjectSourceStatus::TextExtractedWithWarnings;
+                source.reason_codes = vec![reason_code.to_string()];
+            } else {
+                source.status = ProjectSourceStatus::TextExtracted;
+                source.reason_codes = vec!["text_extracted".to_string()];
             }
         }
     }
@@ -1128,6 +1184,78 @@ mod tests {
             manifest.sources[0].reason_codes,
             vec!["ocr_review_recommended"]
         );
+    }
+
+    #[test]
+    fn source_text_extraction_marks_text_extracted_not_processed() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("paper.pdf");
+        let mut source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        source.id = stable_project_source_id(dir.path(), &path);
+        source.pdf_profile = Some(ProjectSourcePdfProfile::Standard);
+        source.extraction_route = ProjectSourcePdfProfile::Standard.extraction_route();
+        save_project_source_manifest(
+            dir.path(),
+            &ProjectSourceManifest {
+                version: SOURCE_MANIFEST_VERSION,
+                sources: vec![source],
+            },
+        )
+        .unwrap();
+
+        let manifest = update_project_source_extraction_results(
+            dir.path(),
+            vec![ProjectSourceExtractionResult {
+                path,
+                failed: false,
+                warning_count: 0,
+                reason_codes: Vec::new(),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.sources[0].status,
+            ProjectSourceStatus::TextExtracted
+        );
+        assert_eq!(manifest.sources[0].reason_codes, vec!["text_extracted"]);
+        assert_eq!(manifest.sources[0].last_processed_at, None);
+    }
+
+    #[test]
+    fn source_text_extraction_warnings_do_not_claim_processing() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("scan.pdf");
+        let mut source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        source.id = stable_project_source_id(dir.path(), &path);
+        source.pdf_profile = Some(ProjectSourcePdfProfile::ForceOcr);
+        source.extraction_route = ProjectSourcePdfProfile::ForceOcr.extraction_route();
+        save_project_source_manifest(
+            dir.path(),
+            &ProjectSourceManifest {
+                version: SOURCE_MANIFEST_VERSION,
+                sources: vec![source],
+            },
+        )
+        .unwrap();
+
+        let manifest = update_project_source_extraction_results(
+            dir.path(),
+            vec![ProjectSourceExtractionResult {
+                path,
+                failed: false,
+                warning_count: 1,
+                reason_codes: vec!["ocr_generated".to_string()],
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.sources[0].status,
+            ProjectSourceStatus::TextExtractedWithWarnings
+        );
+        assert_eq!(manifest.sources[0].reason_codes, vec!["ocr_generated"]);
+        assert_eq!(manifest.sources[0].last_processed_at, None);
     }
 
     #[test]

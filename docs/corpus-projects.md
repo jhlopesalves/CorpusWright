@@ -75,7 +75,7 @@ The project source inventory is `.corpuswright/sources.json`. It is versioned se
 
 Source IDs are stable hashes of the project-relative path when the file is inside the project folder, or the canonical absolute path otherwise. The ID is suitable for keeping later processing and review decisions attached to the same source file.
 
-The desktop app shows this inventory in the Source Explorer. Add Files and Add Folder inspect selected sources before registration, show an Import Sources review dialog, and persist the chosen source-level extraction route only after confirmation. Duplicates are skipped by stable source ID.
+The desktop app shows this inventory in the Source Explorer. Add Files and Add Folder inspect selected sources before registration, show an Import Sources review dialog, and persist the chosen source-level extraction route only after confirmation. Import only registers sources and stores PDF handling. Import and Extract Text registers sources, stores PDF handling, then runs source text extraction/OCR for the imported PDFs. Duplicates are skipped by stable source ID.
 
 `extraction_route` records how text should be extracted from the source before cleaning rules run. TXT uses `plain_text`, DOCX uses `docx_extract`, and HTML uses `html_extract`. PDF sources may use `embedded_text`, `ocr_if_needed`, `ocr_required`, `force_ocr`, or `undecided`. `ocr_quality` stores the OCR render quality for PDF routes that can run OCR.
 
@@ -85,7 +85,7 @@ Older source inventories without `extraction_route` or `ocr_quality` still load.
 
 After a file or folder picker returns, CorpusWright preflights the selected sources without running OCR. The Import Sources dialog shows the number of candidate sources, grouped route recommendations, duplicate and ignored-file counts, and a compact source list.
 
-The default policy is `Use recommended routes`. Preflight recommends embedded text for PDFs with usable text, OCR-required routes for PDFs with little or no text layer, and an undecided route when the audit cannot make a conservative recommendation. The batch PDF policy can instead route selected PDFs through OCR-if-needed, force OCR, or embedded text only. Cancel closes the dialog without writing `.corpuswright/sources.json`.
+Preflight recommends embedded text for PDFs with usable text, OCR-required routes for PDFs with little or no text layer, and an undecided route when the audit cannot make a conservative recommendation. Import only closes the dialog after writing `.corpuswright/sources.json`. Import and Extract Text runs the stored per-source PDF handling immediately after registration. Cancel closes the dialog without writing `.corpuswright/sources.json`.
 
 PDF route and OCR quality are source-ingestion settings. Cleaning Settings keep cleaning and fallback extraction defaults for older or unspecified sources; they do not replace routes already stored on project sources.
 
@@ -93,17 +93,21 @@ PDF route and OCR quality are source-ingestion settings. Cleaning Settings keep 
 
 `Unprocessed` means the file is registered but has no current preflight result.
 
-`Ready to Process` means CorpusWright can attempt the normal preprocessing route. It does not mean the file is analysis-ready.
+`Ready to Extract` means CorpusWright has a source route and can attempt source text extraction. It does not mean the file is cleaned, processed, or analysis-ready.
 
 `Needs OCR` means a PDF appears to need an OCR route before usable text can be produced. This is not a failure.
 
+`Text Extracted` means original source text has been materialised and is available for original preview and search.
+
+`Text Extracted with Warnings` means original source text has been materialised, but OCR, layout, or extraction review signals should be checked.
+
 `Processed` means the existing processed-preview path has produced text without extraction warnings.
 
-`Processed with Warnings` means processed preview produced usable output, but extraction or processing warnings should be reviewed.
+`Processed with Warnings` means processed preview produced usable cleaned output, but processing warnings should be reviewed.
 
 `Failed` means a blocker such as a missing file, unsupported type, unreadable file, encrypted PDF, PDF open failure, parser failure, OCR failure, or write failure prevents normal processing.
 
-Reason codes are machine-readable strings such as `missing_file`, `unsupported_file_type`, `pdf_no_text_layer`, `ocr_required`, `native_text_available`, `processed_ok`, `processed_with_warnings`, `low_text_density`, and `parse_failed`. The frontend turns these codes into compact labels.
+Reason codes are machine-readable strings such as `missing_file`, `unsupported_file_type`, `pdf_no_text_layer`, `ocr_required`, `native_text_available`, `text_extracted`, `text_extracted_with_warnings`, `processed_ok`, `processed_with_warnings`, `low_text_density`, and `parse_failed`. The frontend turns these codes into compact labels.
 
 ## Creating a project
 

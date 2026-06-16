@@ -28,9 +28,11 @@ export interface ProjectSourcePdfHandlingOverride {
 export const SOURCE_GROUP_ORDER: ProjectSourceStatus[] = [
   "failed",
   "needs_ocr",
-  "processed_with_warnings",
   "ready_to_process",
   "unprocessed",
+  "text_extracted_with_warnings",
+  "text_extracted",
+  "processed_with_warnings",
   "processed",
 ];
 
@@ -46,12 +48,25 @@ export function sourceForPath(path: string): ProjectSource | null {
 export function sourceStatusLabel(status: ProjectSourceStatus): string {
   switch (status) {
     case "unprocessed": return "Unprocessed";
-    case "ready_to_process": return "Ready to Process";
+    case "ready_to_process": return "Ready to Extract";
     case "needs_ocr": return "Needs OCR";
+    case "text_extracted": return "Text Extracted";
+    case "text_extracted_with_warnings": return "Text Extracted with Warnings";
     case "processed": return "Processed";
     case "processed_with_warnings": return "Processed with Warnings";
     case "failed": return "Failed";
   }
+}
+
+export function sourceHasExtractedText(source: ProjectSource): boolean {
+  return source.status === "text_extracted"
+    || source.status === "text_extracted_with_warnings"
+    || source.status === "processed"
+    || source.status === "processed_with_warnings";
+}
+
+export function sourceNeedsTextExtraction(source: ProjectSource): boolean {
+  return source.kind === "pdf" && !sourceHasExtractedText(source) && source.status !== "failed";
 }
 
 export function sourceKindLabel(source: ProjectSource): string {
@@ -135,6 +150,9 @@ export function reasonLabel(code: string): string {
     case "pdf_route_undecided": return "route undecided";
     case "ocr_planned": return "OCR planned";
     case "force_ocr_planned": return "force OCR all pages planned";
+    case "text_extracted": return "text extracted";
+    case "text_extracted_with_warnings": return "review";
+    case "text_extraction_failed": return "text extraction failed";
     case "processed_ok": return "processed";
     case "processed_with_warnings": return "review";
     case "low_text_density": return "low text density";

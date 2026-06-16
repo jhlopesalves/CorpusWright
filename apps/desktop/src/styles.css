@@ -652,6 +652,7 @@ main {
 }
 
 .source-status-needs-ocr .source-reason-badge,
+.source-status-text-extracted-with-warnings .source-reason-badge,
 .source-status-processed-with-warnings .source-reason-badge {
   border-color: rgba(212, 160, 23, 0.45);
   color: #d4a017;
@@ -1744,6 +1745,23 @@ pre {
   -moz-tab-size: 4;
   overflow-wrap: break-word;
   word-break: normal;
+}
+
+.preview-cap-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.preview-cap-note button {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  font-size: 0.78rem;
 }
 
 .full-ocr-section {

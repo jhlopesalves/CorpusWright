@@ -11,7 +11,7 @@ use crate::clean::{CleaningConfig, PdfTextSource, clean_text};
 use crate::scan::{DocumentRecord, DocumentType};
 
 pub const OCR_WORD_COUNT_SKIPPED_STATUS: &str =
-    "Token count skipped for OCR mode until OCR text is generated.";
+    "Cleaned token count unavailable until sources are processed with cleaning settings.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WordCountOutcome {

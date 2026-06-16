@@ -118,6 +118,7 @@ export const dom = {
   sourceImportStatus: getElement<HTMLSpanElement>("source-import-status"),
   cancelSourceImportBtn: getElement<HTMLButtonElement>("cancel-source-import-btn"),
   confirmSourceImportBtn: getElement<HTMLButtonElement>("confirm-source-import-btn"),
+  confirmSourceImportExtractBtn: getElement<HTMLButtonElement>("confirm-source-import-extract-btn"),
   settingsModal: getElement<HTMLDivElement>("settings-modal"),
   cancelSettingsBtn: getElement<HTMLButtonElement>("cancel-settings-btn"),
   applySettingsBtn: getElement<HTMLButtonElement>("apply-settings-btn"),

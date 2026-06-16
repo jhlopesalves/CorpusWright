@@ -56,12 +56,13 @@ pub use preview::{
     preview_file, preview_files, preview_processed_files,
 };
 pub use project_sources::{
-    ProjectSource, ProjectSourceExtractionRoute, ProjectSourceImportPolicy,
-    ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest,
+    ProjectSource, ProjectSourceExtractionResult, ProjectSourceExtractionRoute,
+    ProjectSourceImportPolicy, ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest,
     ProjectSourceProcessingResult, ProjectSourceStatus, ProjectSourceUpdate,
     add_project_source_paths, add_project_source_paths_with_policy, kind_for_path,
     load_project_source_manifest, review_project_source_paths, save_project_source_manifest,
-    stable_project_source_id, update_project_source_processing_results,
+    stable_project_source_id, update_project_source_extraction_results,
+    update_project_source_processing_results,
 };
 pub use repeated_artifacts::{
     ArtifactRiskLabel, CancellationFlag, CandidateContentClass, PositionSummary,

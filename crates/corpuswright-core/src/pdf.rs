@@ -14,7 +14,7 @@ const PDF_OCR_PREVIEW_CHAR_CAP: usize = 5_000;
 const PDF_OCR_PREVIEW_PAGE_CAP: usize = 1;
 
 /// Named options for PDF extraction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct PdfExtractionOptions {
     pub strategy: PdfEmbeddedTextStrategy,
     pub text_source: PdfTextSource,

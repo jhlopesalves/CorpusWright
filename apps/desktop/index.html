@@ -89,7 +89,7 @@
           <div class="source-actions">
             <button id="source-add-files-btn" class="secondary-btn" type="button">Add Files</button>
             <button id="source-add-folder-btn" class="secondary-btn" type="button">Add Folder</button>
-            <button id="source-prepare-pdfs-btn" class="secondary-btn hidden" type="button">Prepare selected PDFs...</button>
+            <button id="source-prepare-pdfs-btn" class="secondary-btn hidden" type="button">Extract/OCR selected PDFs...</button>
             <button id="source-remove-btn" class="secondary-btn hidden" type="button">Remove selected</button>
           </div>
         </div>
@@ -213,7 +213,7 @@
         </button>
         <h2 id="source-import-title">Import Sources</h2>
         <p id="source-import-description" class="modal-description">
-          CorpusWright inspected the selected files. Importing adds them to the project and stores how PDFs should be handled. Text extraction, OCR, and cleaning run later when you process selected sources.
+          CorpusWright inspected the selected files. Importing registers them in the project and stores how PDFs should be handled. Text extraction/OCR and cleaning are separate steps.
         </p>
 
         <p id="source-import-summary" class="source-import-summary"></p>
@@ -243,7 +243,8 @@
         <div class="modal-actions">
           <span id="source-import-status" class="source-import-status"></span>
           <button id="cancel-source-import-btn" type="button">Cancel</button>
-          <button id="confirm-source-import-btn" class="primary-btn" type="button">Import Sources</button>
+          <button id="confirm-source-import-btn" class="secondary-btn" type="button">Import only</button>
+          <button id="confirm-source-import-extract-btn" class="primary-btn" type="button">Import and Extract Text</button>
         </div>
       </div>
     </div>
@@ -339,7 +340,7 @@
             <strong id="pdf-intake-materialization-elapsed"></strong>
           </div>
           <div class="pdf-intake-materialization-row">
-            <span>Remaining</span>
+            <span>Estimated remaining</span>
             <strong id="pdf-intake-materialization-remaining"></strong>
           </div>
           <div class="pdf-intake-materialization-row">

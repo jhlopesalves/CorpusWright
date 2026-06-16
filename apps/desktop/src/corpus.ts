@@ -12,15 +12,14 @@ import {
   loadableProjectSourcePaths,
   loadProjectSourcesForActiveProject,
   pdfProfileLabel,
-  persistProcessedPreviewStatuses,
   removeProjectSourcePaths,
   type ProjectSourcePdfHandlingOverride,
   reviewFilesForActiveProjectSources,
   reviewFolderForActiveProjectSources,
+  sourceHasExtractedText,
   sourceKindLabel,
 } from "./sources";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
-import type { CombinedPreview } from "./generated/CombinedPreview.js";
 import type { CorpusSummary } from "./generated/CorpusSummary.js";
 import type { PdfOcrQuality } from "./generated/PdfOcrQuality.js";
 import type { PdfAuditResult } from "./generated/PdfAuditResult.js";
@@ -43,6 +42,7 @@ type PdfIntakeProfileId = "standard" | "layout" | "ocr" | "force-ocr";
 
 interface ImportSourcesChoice {
   pdfHandlingOverrides: ProjectSourcePdfHandlingOverride[];
+  extractTextNow: boolean;
 }
 
 type ImportSourcesResolve = (choice: ImportSourcesChoice | null) => void;
@@ -150,6 +150,7 @@ let pdfIntakeCancelRequested = false;
 let pdfIntakeProgressUnlisten: UnlistenFn | null = null;
 let pdfIntakeSessionId = 0;
 let pdfIntakeIsForceOcr = false;
+let lastPdfIntakeProgressRenderAt = 0;
 let importSourcesResolve: ImportSourcesResolve | null = null;
 let activeImportCandidates: ProjectSource[] = [];
 let pendingPdfHandling = new Map<string, PendingPdfHandling>();
@@ -443,7 +444,7 @@ function syncImportOcrQualityState(items: PendingPdfHandling[]): void {
   dom.sourceImportOcrQuality.disabled = !hasOcrHandling;
   dom.sourceImportOcrQualityRow.classList.toggle("is-disabled", !hasOcrHandling);
   dom.sourceImportOcrQualityHelp.textContent = hasOcrHandling
-    ? `Used when ${ocrCount.toLocaleString()} pending ${ocrCount === 1 ? "PDF uses" : "PDFs use"} OCR-based handling. OCR will run later when sources are processed.`
+    ? `Used when ${ocrCount.toLocaleString()} pending ${ocrCount === 1 ? "PDF uses" : "PDFs use"} OCR-based handling. OCR runs during text extraction.`
     : "Not currently used because no pending PDF uses OCR-based handling.";
 }
 
@@ -500,20 +501,24 @@ function renderImportSourcesList(sources: ProjectSource[]): void {
 function resetImportSourcesDialog(review: ProjectSourceImportReview): void {
   activeImportCandidates = review.candidates;
   resetPendingPdfHandling(review);
+  const hasPendingPdfs = pendingPdfHandlingItems().length > 0;
   dom.sourceImportSummary.textContent = sourceImportSummaryLine(review);
   dom.sourceImportOcrQuality.value = state.activeCleaningConfig.pdf_ocr_quality;
   dom.sourceImportStatus.textContent = review.candidates.length === 0
     ? "No new sources are available to import."
     : "";
   dom.confirmSourceImportBtn.disabled = review.candidates.length === 0;
+  dom.confirmSourceImportExtractBtn.disabled = review.candidates.length === 0 || !hasPendingPdfs;
+  dom.confirmSourceImportExtractBtn.classList.toggle("hidden", !hasPendingPdfs);
   renderImportSourcesGroups(review);
   renderImportSourcesPdfHandling();
   renderImportSourcesList(review.candidates);
 }
 
-function selectedImportSourcesChoice(): ImportSourcesChoice {
+function selectedImportSourcesChoice(extractTextNow: boolean): ImportSourcesChoice {
   const ocrQuality = dom.sourceImportOcrQuality.value as PdfOcrQuality;
   return {
+    extractTextNow,
     pdfHandlingOverrides: pendingPdfHandlingItems().map(item => ({
       path: item.source.path,
       pdfProfile: item.selectedProfile,
@@ -678,6 +683,7 @@ function resetPdfIntakeSession(): void {
   pdfIntakeManualProfileOverride = false;
   pdfIntakeCancelRequested = false;
   pdfIntakeIsForceOcr = false;
+  lastPdfIntakeProgressRenderAt = 0;
   dom.pdfIntakeTitle.textContent = "Open Scanned or Complex PDFs";
   dom.pdfIntakeDescription.textContent = "Choose PDF handling for inspection-oriented processing. Preview before export: OCR may contain errors, layout reconstruction is imperfect, and source files are never modified.";
   dom.pdfIntakeModal.classList.remove("pdf-intake-processing");
@@ -736,6 +742,18 @@ function formatDurationMs(ms: number | null): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function formatApproxDurationMs(ms: number | null): string {
+  if (ms === null || !Number.isFinite(ms)) return "estimating...";
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  if (totalSeconds === 0) return "complete";
+  if (totalSeconds < 60) return "less than 1 min";
+  const totalMinutes = Math.max(1, Math.round(totalSeconds / 60));
+  if (totalMinutes < 60) return `about ${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes === 0 ? `about ${hours} hr` : `about ${hours} hr ${minutes} min`;
+}
+
 function renderPdfIntakeMaterializationProgress(progress: PdfIntakeMaterializationProgress): void {
   const totalPages = progress.totalPages === null ? "?" : progress.totalPages.toLocaleString();
   const currentPage = progress.currentPage.toLocaleString();
@@ -746,9 +764,9 @@ function renderPdfIntakeMaterializationProgress(progress: PdfIntakeMaterializati
     `${progress.currentFileIndex.toLocaleString()} / ${progress.totalFiles.toLocaleString()} - ${progress.currentFile}`;
   dom.pdfIntakeMaterializationPage.textContent = `${currentPage} / ${totalPages}`;
   dom.pdfIntakeMaterializationElapsed.textContent = formatDurationMs(progress.elapsedMs);
-  dom.pdfIntakeMaterializationRemaining.textContent = formatDurationMs(progress.estimatedRemainingMs);
+  dom.pdfIntakeMaterializationRemaining.textContent = formatApproxDurationMs(progress.estimatedRemainingMs);
   dom.pdfIntakeMaterializationSpeed.textContent =
-    progress.pagesPerMinute === null ? "Calculating" : `${progress.pagesPerMinute.toFixed(1)} pages/min`;
+    progress.pagesPerMinute === null ? "estimating..." : `about ${progress.pagesPerMinute.toFixed(1)} pages/min`;
   const progressPercent = progress.totalPages === null || progress.totalPages === 0
     ? 0
     : Math.min(100, Math.max(0, (progress.currentPage / progress.totalPages) * 100));
@@ -778,6 +796,13 @@ async function listenForPdfIntakeProgress(): Promise<void> {
       if (pdfIntakeSessionId !== currentSessionId || pdfIntakeCancelRequested) {
         return;
       }
+      const now = Date.now();
+      const isCompletion = event.payload.totalPages !== null
+        && event.payload.currentPage >= event.payload.totalPages;
+      if (!isCompletion && now - lastPdfIntakeProgressRenderAt < 1000) {
+        return;
+      }
+      lastPdfIntakeProgressRenderAt = now;
       renderPdfIntakeMaterializationProgress(event.payload);
     },
   );
@@ -797,11 +822,11 @@ export function openPdfIntakeModal(): void {
   dom.loadPdfIntakeFilesBtn.textContent = "Load PDFs";
 }
 
-export async function openPdfIntakeModalForSources(paths: string[]): Promise<void> {
+export async function openPdfIntakeModalForSources(paths: string[], extractAfterDiagnostics = false): Promise<void> {
   pdfIntakeMode = "prepare-sources";
   resetPdfIntakeSession();
   dom.pdfIntakeModal.classList.remove("hidden");
-  dom.pdfIntakeTitle.textContent = "Prepare selected PDFs";
+  dom.pdfIntakeTitle.textContent = "Extract/OCR selected PDFs";
   const selectedSources = selectedProjectPdfSources(paths);
   const storedProfiles = selectedSources.map(storedProfileForSource);
   const storedProfileId = strongestIntakeProfileId(storedProfiles);
@@ -810,13 +835,17 @@ export async function openPdfIntakeModalForSources(paths: string[]): Promise<voi
   setPdfIntakeHandlingChoicesVisible(false);
   renderStoredPdfHandlingSummary(paths, storedProfileId);
   dom.pdfIntakeDescription.textContent =
-    "Stored PDF handling is selected by default. Diagnostics check the PDFs before materialisation, and source files are never modified.";
-  dom.loadPdfIntakeFilesBtn.textContent = "Run diagnostics and prepare";
+    "Using stored PDF handling. Diagnostics check embedded text availability, OCR resources, page counts, and extraction risk before text extraction.";
+  dom.loadPdfIntakeFilesBtn.textContent = "Extract text now";
   dom.choosePdfIntakeFilesBtn.classList.add("hidden");
 
   pdfIntakeSelectedPaths = paths;
-  dom.pdfIntakeStatus.textContent = "Auditing PDFs...";
-  dom.statusBar.textContent = "Auditing selected PDFs...";
+  dom.pdfIntakeStatus.textContent = extractAfterDiagnostics
+    ? "Checking PDFs before text extraction..."
+    : "Checking PDFs...";
+  dom.statusBar.textContent = extractAfterDiagnostics
+    ? "Checking selected PDFs before text extraction..."
+    : "Checking selected PDFs...";
   dom.choosePdfIntakeFilesBtn.disabled = true;
   dom.loadPdfIntakeFilesBtn.disabled = true;
   renderPdfAuditLoading(paths.length);
@@ -833,6 +862,9 @@ export async function openPdfIntakeModalForSources(paths: string[]): Promise<voi
       `${paths.length === 1 ? "PDF" : "PDFs"}. Using ${storedHandlingStatusLabel(paths)}.`;
     dom.loadPdfIntakeFilesBtn.classList.remove("hidden");
     dom.loadPdfIntakeFilesBtn.disabled = false;
+    if (extractAfterDiagnostics) {
+      await handleLoadPdfIntakeFiles();
+    }
   } catch (error) {
     dom.pdfIntakeStatus.textContent = `Audit error: ${error}`;
     dom.statusBar.textContent = `Audit error: ${error}`;
@@ -850,13 +882,18 @@ async function handleCancelPdfIntake(): Promise<void> {
 
   pdfIntakeCancelRequested = true;
   dom.cancelPdfIntakeBtn.disabled = true;
+  const isProjectExtraction = pdfIntakeMode === "prepare-sources";
   // Use accurate wording depending on whether force OCR is running
   if (pdfIntakeIsForceOcr) {
     dom.pdfIntakeStatus.textContent = "Cancelling after the current OCR batch...";
-    dom.statusBar.textContent = "Cancelling PDF intake after the current OCR batch...";
+    dom.statusBar.textContent = isProjectExtraction
+      ? "Cancelling PDF text extraction after the current OCR batch..."
+      : "Cancelling PDF intake after the current OCR batch...";
   } else {
     dom.pdfIntakeStatus.textContent = "Cancelling after the current PDF extraction step...";
-    dom.statusBar.textContent = "Cancelling PDF intake after the current extraction step...";
+    dom.statusBar.textContent = isProjectExtraction
+      ? "Cancelling PDF text extraction after the current extraction step..."
+      : "Cancelling PDF intake after the current extraction step...";
   }
   try {
     await invoke("cancel_pdf_intake_materialization_command");
@@ -966,11 +1003,15 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
     dom.pdfIntakeModal.classList.add("pdf-intake-processing");
     resetPdfIntakeMaterializationProgress();
     await listenForPdfIntakeProgress();
-    dom.pdfIntakeStatus.textContent = "Preparing PDF materialisation...";
-    dom.statusBar.textContent = "Preparing PDF materialisation...";
+    dom.pdfIntakeStatus.textContent = isProjectPreparation
+      ? "Starting text extraction..."
+      : "Preparing PDF materialisation...";
+    dom.statusBar.textContent = isProjectPreparation
+      ? "Starting PDF text extraction..."
+      : "Preparing PDF materialisation...";
     dom.choosePdfIntakeFilesBtn.disabled = true;
     dom.loadPdfIntakeFilesBtn.disabled = true;
-    dom.cancelPdfIntakeBtn.textContent = "Cancel materialisation";
+    dom.cancelPdfIntakeBtn.textContent = isProjectPreparation ? "Cancel extraction" : "Cancel materialisation";
     dom.cancelPdfIntakeBtn.disabled = false;
     dom.btnClosePdfIntakeModalTop.disabled = true;
     clearStateForLoad();
@@ -994,16 +1035,6 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
     }
 
     if (isProjectPreparation) {
-      const processed = await invoke<CombinedPreview>("preview_processed_files_command", {
-        indices: result.report.files.map((_, i) => i),
-        corpusVersion: result.corpusVersion,
-        maxCharsPerFile: 5000,
-        includePaths: false,
-        maxFiles: result.report.files.length,
-        cleaningConfig: materializationConfig,
-      });
-
-      await persistProcessedPreviewStatuses(processed.files);
       await loadProjectSourcesForActiveProject();
       await loadCorpusFromProjectSources();
     } else {
@@ -1026,7 +1057,8 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
 
     if (isProjectPreparation) {
       const fileLabel = selectedPdfCount === 1 ? "selected PDF" : "selected PDFs";
-      dom.statusBar.textContent = `Prepared ${selectedPdfCount.toLocaleString()} ${fileLabel} with ${projectCompletionHandlingLabel}.`;
+      dom.statusBar.textContent =
+        `Extracted text from ${selectedPdfCount.toLocaleString()} ${fileLabel} with ${projectCompletionHandlingLabel}.`;
     } else {
       const fileLabel = state.allFiles.length === 1 ? "PDF file" : "PDF files";
       dom.statusBar.textContent = `Loaded ${state.allFiles.length} ${fileLabel} with materialised ${profile.statusLabel}.`;
@@ -1040,20 +1072,22 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
 
     const cancelled = pdfIntakeCancelRequested;
     const message = cancelled
-      ? "PDF intake cancelled. No half-materialised corpus was loaded."
+      ? (isProjectPreparation
+        ? "PDF text extraction cancelled. No half-extracted source text was kept."
+        : "PDF intake cancelled. No half-materialised corpus was loaded.")
       : `Error: ${error}`;
     dom.pdfIntakeStatus.textContent = message;
     dom.statusBar.textContent = message;
     console.error(error);
 
-    // Restore project sources after clearStateForLoad() if cancelled during materialisation
+    // Restore project sources after clearStateForLoad() if project extraction is cancelled.
     if (cancelled && pdfIntakeMode === "prepare-sources" && state.activeProject) {
       try {
         await loadProjectSourcesForActiveProject();
         await loadCorpusFromProjectSources();
-        dom.statusBar.textContent = "PDF intake cancelled. Sources restored.";
+        dom.statusBar.textContent = "PDF text extraction cancelled. Sources restored.";
       } catch {
-        dom.statusBar.textContent = "PDF intake cancelled. Reload project sources to restore the source list.";
+        dom.statusBar.textContent = "PDF text extraction cancelled. Reload project sources to restore the source list.";
       }
     }
 
@@ -1078,7 +1112,8 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
 
 function renderPdfAuditLoading(fileCount: number): void {
   dom.pdfIntakeAuditPanel.classList.remove("hidden");
-  dom.pdfIntakeAuditSummary.textContent = `Checking ${fileCount} selected PDF${fileCount === 1 ? "" : "s"} without running OCR.`;
+  dom.pdfIntakeAuditSummary.textContent =
+    `Checking ${fileCount} selected PDF${fileCount === 1 ? "" : "s"} before text extraction.`;
   dom.pdfIntakeAuditResults.replaceChildren();
 }
 
@@ -1107,7 +1142,7 @@ function renderPdfAuditResults(
   const currentProfile = selectedPdfIntakeProfileId();
   let profileMessage: string;
   if (pdfIntakeMode === "prepare-sources" && !pdfIntakeManualProfileOverride) {
-    profileMessage = `Stored source handling will be used. The strongest audit suggestion is ${profileDisplayNames[suggestedProfile]}.`;
+    profileMessage = `Using stored PDF handling. The strongest diagnostics suggestion is ${profileDisplayNames[suggestedProfile]}.`;
   } else if (pdfIntakeMode === "prepare-sources" && pdfIntakeManualProfileOverride) {
     profileMessage = `The selected override will apply ${profileDisplayNames[currentProfile]} to every selected PDF.`;
   } else {
@@ -1115,7 +1150,8 @@ function renderPdfAuditResults(
       ? `The suggested handling was applied: ${profileDisplayNames[suggestedProfile]}.`
       : `The suggested handling is ${profileDisplayNames[suggestedProfile]}; your selected ${profileDisplayNames[currentProfile]} handling was kept.`;
   }
-  dom.pdfIntakeAuditSummary.textContent = `${profileMessage} Audit checks embedded text and OCR model files only; it does not run OCR or prove OCR will succeed.`;
+  dom.pdfIntakeAuditSummary.textContent =
+    `${profileMessage} Diagnostics check embedded text availability, OCR resources, page counts, and extraction risk before text extraction.`;
 
   for (const result of results) {
     dom.pdfIntakeAuditResults.appendChild(renderPdfAuditCard(result));
@@ -1273,6 +1309,7 @@ function importCompletionMessage(review: ProjectSourceImportReview, update: Proj
   const importedSources = update.manifest.sources.filter((source) => importedIds.has(source.id));
   const readyCount = importedSources.filter((source) => source.status === "ready_to_process").length;
   const needsOcrCount = importedSources.filter((source) => source.status === "needs_ocr").length;
+  const extractedCount = importedSources.filter(sourceHasExtractedText).length;
   const failedCount = importedSources.filter((source) => source.status === "failed").length;
   const unprocessedCount = importedSources.filter((source) => source.status === "unprocessed").length;
   const parts: string[] = [];
@@ -1282,6 +1319,9 @@ function importCompletionMessage(review: ProjectSourceImportReview, update: Proj
   }
   if (needsOcrCount > 0) {
     parts.push(`${needsOcrCount.toLocaleString()} need OCR`);
+  }
+  if (extractedCount > 0) {
+    parts.push(`${extractedCount.toLocaleString()} text extracted`);
   }
   if (unprocessedCount > 0) {
     parts.push(`${unprocessedCount.toLocaleString()} unprocessed`);
@@ -1297,6 +1337,14 @@ function importCompletionMessage(review: ProjectSourceImportReview, update: Proj
   return parts.length > 0
     ? `Imported ${importedLabel}: ${parts.join(", ")}.${duplicateLabel}`
     : `Imported ${importedLabel}.${duplicateLabel}`;
+}
+
+function importedPdfPathsForReview(review: ProjectSourceImportReview, update: ProjectSourceUpdate): string[] {
+  const importedIds = new Set(review.candidates.map((source) => source.id));
+  return update.manifest.sources
+    .filter((source) => importedIds.has(source.id))
+    .filter((source) => source.kind === "pdf" && source.status !== "failed")
+    .map((source) => source.path);
 }
 
 export async function loadCorpusFromProjectSources(): Promise<void> {
@@ -1362,9 +1410,21 @@ export async function registerFilesForActiveProject(selected: string[]): Promise
       selected,
       choice.pdfHandlingOverrides,
     );
-    await loadCorpusFromProjectSources();
     if (update) {
-      dom.statusBar.textContent = importCompletionMessage(review, update);
+      if (choice.extractTextNow) {
+        const importedPdfPaths = importedPdfPathsForReview(review, update);
+        if (importedPdfPaths.length > 0) {
+          await openPdfIntakeModalForSources(importedPdfPaths, true);
+        } else {
+          await loadCorpusFromProjectSources();
+          dom.statusBar.textContent = importCompletionMessage(review, update);
+        }
+      } else {
+        await loadCorpusFromProjectSources();
+        dom.statusBar.textContent = importCompletionMessage(review, update);
+      }
+    } else {
+      await loadCorpusFromProjectSources();
     }
   } catch (error) {
     dom.statusBar.textContent = `Error importing source files: ${error}`;
@@ -1396,9 +1456,21 @@ export async function registerFolderForActiveProject(selected: string): Promise<
       selected,
       choice.pdfHandlingOverrides,
     );
-    await loadCorpusFromProjectSources();
     if (update) {
-      dom.statusBar.textContent = importCompletionMessage(review, update);
+      if (choice.extractTextNow) {
+        const importedPdfPaths = importedPdfPathsForReview(review, update);
+        if (importedPdfPaths.length > 0) {
+          await openPdfIntakeModalForSources(importedPdfPaths, true);
+        } else {
+          await loadCorpusFromProjectSources();
+          dom.statusBar.textContent = importCompletionMessage(review, update);
+        }
+      } else {
+        await loadCorpusFromProjectSources();
+        dom.statusBar.textContent = importCompletionMessage(review, update);
+      }
+    } else {
+      await loadCorpusFromProjectSources();
     }
   } catch (error) {
     dom.statusBar.textContent = `Error importing source folder: ${error}`;
@@ -1520,7 +1592,10 @@ export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
     closeImportSourcesDialog(null);
   });
   dom.confirmSourceImportBtn.addEventListener("click", () => {
-    closeImportSourcesDialog(selectedImportSourcesChoice());
+    closeImportSourcesDialog(selectedImportSourcesChoice(false));
+  });
+  dom.confirmSourceImportExtractBtn.addEventListener("click", () => {
+    closeImportSourcesDialog(selectedImportSourcesChoice(true));
   });
   dom.cancelPdfIntakeBtn.addEventListener("click", () => {
     handleCancelPdfIntake();

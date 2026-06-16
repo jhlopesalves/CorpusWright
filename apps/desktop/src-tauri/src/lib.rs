@@ -8,7 +8,10 @@ use corpuswright_core::pdf_audit::{PdfAuditResult, audit_pdf_files};
 use corpuswright_core::preview::{
     CombinedPreview, PreviewOptions, preview_files_with_config, preview_processed_files,
 };
-use corpuswright_core::project_sources::{ProjectSourceExtractionRoute, ProjectSourcePdfProfile};
+use corpuswright_core::project_sources::{
+    ProjectSourceExtractionResult, ProjectSourceExtractionRoute, ProjectSourcePdfProfile,
+    stable_project_source_id, update_project_source_extraction_results,
+};
 use corpuswright_core::repeated_artifacts::{
     CancellationFlag, RepeatedArtifactScanConfig, RepeatedArtifactScanReport,
 };
@@ -16,7 +19,7 @@ use corpuswright_core::scan::{
     DocumentRecord, DocumentType, ScanReport, load_files, scan_directory,
 };
 use corpuswright_core::search::{SearchResult, search_corpus};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -36,6 +39,9 @@ struct ScanState {
 struct PdfIntakeState {
     cancel: Arc<AtomicBool>,
 }
+
+const PROJECT_SOURCE_TEXT_CACHE_VERSION: u32 = 1;
+const PROJECT_SOURCE_TEXT_CACHE_DIR: &str = "source-text";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProjectPdfPreparationPlanItem {
@@ -166,6 +172,16 @@ struct PdfIntakeMaterializationProgress {
     latest_warning: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedProjectSourceText {
+    version: u32,
+    source_id: String,
+    size_bytes: u64,
+    modified_time_secs: Option<u64>,
+    pdf_options: PdfExtractionOptions,
+    entry: CacheEntry,
+}
+
 struct PdfIntakePageTiming {
     page_number: usize,
     page_total_ms: u64,
@@ -248,6 +264,7 @@ fn load_project_source_records_command(
     cache.clear();
     page_cache.clear();
     let report = project::load_project_source_records(root_path)?;
+    hydrate_project_source_text_cache(&report.root, &report.files, &cache);
     let version = {
         let mut inner = corpus_state.inner.write().unwrap();
         inner.load(Some(report.root.clone()), report.files.clone());
@@ -561,6 +578,28 @@ fn pdf_intake_cancelled_message() -> String {
     "PDF intake cancelled before materialisation completed. No corpus was loaded.".to_string()
 }
 
+fn extraction_reason_codes_for_warnings(warnings: &[String]) -> Vec<String> {
+    let mut codes = Vec::new();
+    for warning in warnings {
+        let warning = warning.to_lowercase();
+        let code = if warning.contains("ocr") {
+            "ocr_generated"
+        } else if warning.contains("low-quality") || warning.contains("low quality") {
+            "low_text_density"
+        } else if warning.contains("layout") {
+            "layout_warning"
+        } else if warning.contains("repeated") {
+            "many_repeated_artifacts"
+        } else {
+            "text_extracted_with_warnings"
+        };
+        if !codes.contains(&code.to_string()) {
+            codes.push(code.to_string());
+        }
+    }
+    codes
+}
+
 fn extract_materialized_ocr_page(
     bytes: &[u8],
     page_index: usize,
@@ -626,7 +665,7 @@ fn materialize_force_ocr_pdf(
     cleaning_config: &CleaningConfig,
     cache: &ExtractionCache,
     cancel: &AtomicBool,
-) -> Result<(), String> {
+) -> Result<CacheEntry, String> {
     let method = pdf_intake_method_label(options);
     let bytes = std::fs::read(&record.source_path)
         .map_err(|error| format!("Failed to read PDF: {error}"))?;
@@ -655,7 +694,7 @@ fn materialize_force_ocr_pdf(
         Some(total_pages),
         profile,
         &method,
-        "Materialising raw OCR text...",
+        "Extracting OCR text...",
         0,
         None,
         None,
@@ -704,7 +743,7 @@ fn materialize_force_ocr_pdf(
                 Some(total_pages),
                 profile,
                 &method,
-                "Materialising raw OCR text...",
+                "Extracting OCR text...",
                 elapsed_ms,
                 estimated_remaining_ms,
                 pages_per_minute,
@@ -730,17 +769,13 @@ fn materialize_force_ocr_pdf(
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    cache.insert_extracted(
-        record,
-        Some(options),
-        cleaning_config,
-        CacheEntry {
-            extracted_text,
-            warnings,
-            page_count: Some(total_pages),
-            page_texts: Some(page_texts),
-        },
-    );
+    let entry = CacheEntry {
+        extracted_text,
+        warnings,
+        page_count: Some(total_pages),
+        page_texts: Some(page_texts),
+    };
+    cache.insert_extracted(record, Some(options), cleaning_config, entry.clone());
 
     log_pdf_intake_timing_summary(
         record,
@@ -762,14 +797,14 @@ fn materialize_force_ocr_pdf(
         Some(total_pages),
         profile,
         &method,
-        "Materialised raw OCR text.",
+        "OCR text extracted.",
         elapsed_ms,
         estimated_remaining_ms,
         pages_per_minute,
         latest_warning,
     );
 
-    Ok(())
+    Ok(entry)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -782,7 +817,7 @@ fn materialize_pdf_record(
     cleaning_config: &CleaningConfig,
     cache: &ExtractionCache,
     cancel: &AtomicBool,
-) -> Result<(), String> {
+) -> Result<CacheEntry, String> {
     let options =
         PdfExtractionOptions::raw_from_record_and_cleaning_config(record, cleaning_config);
     if options.text_source == PdfTextSource::ForceOcr {
@@ -813,7 +848,7 @@ fn materialize_pdf_record(
         total_pages,
         profile,
         &method,
-        "Materialising raw extracted text...",
+        "Extracting source text...",
         0,
         None,
         None,
@@ -829,7 +864,7 @@ fn materialize_pdf_record(
         .map_err(|error| format!("PDF materialisation failed: {error}"))?;
     let completed_pages = entry.page_count.or(total_pages).unwrap_or(0);
     let latest_warning = entry.warnings.last().cloned();
-    cache.insert_extracted(record, Some(options), cleaning_config, entry);
+    cache.insert_extracted(record, Some(options), cleaning_config, entry.clone());
     let (elapsed_ms, estimated_remaining_ms, pages_per_minute) =
         intake_progress_metrics(started_at, completed_pages, Some(completed_pages));
 
@@ -842,7 +877,7 @@ fn materialize_pdf_record(
         Some(completed_pages),
         profile,
         &method,
-        "Materialised raw extracted text.",
+        "Source text extracted.",
         elapsed_ms,
         estimated_remaining_ms,
         pages_per_minute,
@@ -853,7 +888,7 @@ fn materialize_pdf_record(
         return Err(pdf_intake_cancelled_message());
     }
 
-    Ok(())
+    Ok(entry)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -957,6 +992,7 @@ fn prepare_project_pdf_sources_command(
 
     let selected_paths = paths.iter().map(PathBuf::from).collect::<Vec<_>>();
     let project_report = project::load_project_source_records(root_path)?;
+    let project_root = project_report.root.clone();
     let project_records_by_path = selected_record_by_path(&project_report.files);
 
     let mut report = load_files(selected_paths.clone()).map_err(|error| format!("{error:?}"))?;
@@ -976,6 +1012,7 @@ fn prepare_project_pdf_sources_command(
     let plan = project_pdf_preparation_plan(&report.files, &selected_paths, profile_override)?;
     let records_by_path = selected_record_by_path(&report.files);
     let mut ordered_records = Vec::with_capacity(plan.len());
+    let mut extraction_results = Vec::with_capacity(plan.len());
     let total_files = plan.len();
     let batch_label = project_pdf_preparation_batch_label(&plan);
     if total_files == 0 {
@@ -1001,7 +1038,11 @@ fn prepare_project_pdf_sources_command(
             })?;
 
         let prepared_record = record_with_preparation_profile(record, item);
-        if let Err(error) = materialize_pdf_record(
+        let pdf_options = PdfExtractionOptions::raw_from_record_and_cleaning_config(
+            &prepared_record,
+            &cleaning_config,
+        );
+        let entry = match materialize_pdf_record(
             &window,
             &prepared_record,
             file_index,
@@ -1011,12 +1052,33 @@ fn prepare_project_pdf_sources_command(
             &cache,
             &intake_state.cancel,
         ) {
-            cache.clear();
-            page_cache.clear();
-            return Err(error);
-        }
+            Ok(entry) => entry,
+            Err(error) => {
+                let _ = update_project_source_extraction_results(
+                    &project_root,
+                    vec![ProjectSourceExtractionResult {
+                        path: prepared_record.source_path.clone(),
+                        failed: true,
+                        warning_count: 1,
+                        reason_codes: vec!["text_extraction_failed".to_string()],
+                    }],
+                );
+                cache.clear();
+                page_cache.clear();
+                return Err(error);
+            }
+        };
+        persist_project_source_text_cache(&project_root, &prepared_record, pdf_options, &entry)?;
+        extraction_results.push(ProjectSourceExtractionResult {
+            path: prepared_record.source_path.clone(),
+            failed: false,
+            warning_count: entry.warnings.len(),
+            reason_codes: extraction_reason_codes_for_warnings(&entry.warnings),
+        });
         ordered_records.push(prepared_record);
     }
+
+    update_project_source_extraction_results(&project_root, extraction_results)?;
 
     report.files = ordered_records;
     let version = {
@@ -1127,6 +1189,87 @@ fn modified_time_secs(path: &Path) -> Option<u64> {
                 .ok()
                 .map(|duration| duration.as_secs())
         })
+}
+
+fn project_source_text_cache_dir(project_root: &Path) -> PathBuf {
+    project_root
+        .join(".corpuswright")
+        .join("cache")
+        .join(PROJECT_SOURCE_TEXT_CACHE_DIR)
+}
+
+fn project_source_text_cache_path(project_root: &Path, source_id: &str) -> PathBuf {
+    project_source_text_cache_dir(project_root).join(format!("{source_id}.json"))
+}
+
+fn project_source_id_for_record(project_root: &Path, record: &DocumentRecord) -> String {
+    stable_project_source_id(project_root, &record.source_path)
+}
+
+fn persist_project_source_text_cache(
+    project_root: &Path,
+    record: &DocumentRecord,
+    pdf_options: PdfExtractionOptions,
+    entry: &CacheEntry,
+) -> Result<(), String> {
+    let source_id = project_source_id_for_record(project_root, record);
+    let cache_path = project_source_text_cache_path(project_root, &source_id);
+    if let Some(parent) = cache_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create project source text cache: {error}"))?;
+    }
+
+    let persisted = PersistedProjectSourceText {
+        version: PROJECT_SOURCE_TEXT_CACHE_VERSION,
+        source_id,
+        size_bytes: record.size_bytes,
+        modified_time_secs: modified_time_secs(&record.source_path),
+        pdf_options,
+        entry: entry.clone(),
+    };
+    let json = serde_json::to_string_pretty(&persisted)
+        .map_err(|error| format!("Could not serialise extracted source text: {error}"))?;
+    std::fs::write(cache_path, json)
+        .map_err(|error| format!("Could not write extracted source text cache: {error}"))
+}
+
+fn hydrate_project_source_text_cache(
+    project_root: &Path,
+    records: &[DocumentRecord],
+    cache: &ExtractionCache,
+) {
+    for record in records {
+        if record.document_type != DocumentType::Pdf {
+            continue;
+        }
+
+        let source_id = project_source_id_for_record(project_root, record);
+        let cache_path = project_source_text_cache_path(project_root, &source_id);
+        let Ok(json) = std::fs::read_to_string(&cache_path) else {
+            continue;
+        };
+        let Ok(persisted) = serde_json::from_str::<PersistedProjectSourceText>(&json) else {
+            eprintln!(
+                "Ignoring invalid project source text cache: {}",
+                cache_path.display()
+            );
+            continue;
+        };
+        if persisted.version != PROJECT_SOURCE_TEXT_CACHE_VERSION
+            || persisted.source_id != source_id
+            || persisted.size_bytes != record.size_bytes
+            || persisted.modified_time_secs != modified_time_secs(&record.source_path)
+        {
+            continue;
+        }
+
+        cache.insert_extracted(
+            record,
+            Some(persisted.pdf_options),
+            &CleaningConfig::default(),
+            persisted.entry,
+        );
+    }
 }
 
 fn pdf_page_range_cache_key(
@@ -1497,6 +1640,19 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "corpuswright-desktop-{label}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
 
     fn pdf_record(
         name: &str,
@@ -1510,6 +1666,20 @@ mod tests {
             size_bytes: 0,
             extraction_route: route,
             pdf_profile: profile,
+            ocr_quality: Some(PdfOcrQuality::Balanced),
+        }
+    }
+
+    fn project_pdf_record(project_root: &Path, name: &str) -> DocumentRecord {
+        let path = project_root.join(name);
+        fs::write(&path, b"%PDF-1.4 synthetic").unwrap();
+        DocumentRecord {
+            source_path: path,
+            relative_path: PathBuf::from(name),
+            document_type: DocumentType::Pdf,
+            size_bytes: 18,
+            extraction_route: Some(ProjectSourceExtractionRoute::EmbeddedText),
+            pdf_profile: Some(ProjectSourcePdfProfile::Standard),
             ocr_quality: Some(PdfOcrQuality::Balanced),
         }
     }
@@ -1707,5 +1877,33 @@ mod tests {
             Some(ProjectSourceExtractionRoute::EmbeddedText)
         );
         assert_eq!(options.text_source, PdfTextSource::EmbeddedText);
+    }
+
+    #[test]
+    fn project_source_text_cache_hydrates_extracted_pdf_text() {
+        let root = unique_temp_dir("source-text-cache");
+        fs::create_dir_all(&root).unwrap();
+        let record = project_pdf_record(&root, "paper.pdf");
+        let options = PdfExtractionOptions::raw_from_record_and_cleaning_config(
+            &record,
+            &CleaningConfig::default(),
+        );
+        let entry = CacheEntry {
+            extracted_text: "Synthetic extracted text".to_string(),
+            warnings: Vec::new(),
+            page_count: Some(1),
+            page_texts: Some(vec!["Synthetic extracted text".to_string()]),
+        };
+
+        persist_project_source_text_cache(&root, &record, options, &entry).unwrap();
+
+        let cache = ExtractionCache::new();
+        hydrate_project_source_text_cache(&root, std::slice::from_ref(&record), &cache);
+        let hydrated = cache
+            .try_get(&record, Some(options), &CleaningConfig::default())
+            .unwrap();
+
+        assert_eq!(hydrated.extracted_text, "Synthetic extracted text");
+        let _ = fs::remove_dir_all(root);
     }
 }

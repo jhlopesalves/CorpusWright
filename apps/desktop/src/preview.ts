@@ -7,6 +7,7 @@ import {
   persistProcessedPreviewStatuses,
   primaryReasonLabel,
   sourceForPath,
+  sourceHasExtractedText,
   sourceKindLabel,
   sourceStatusLabel,
 } from "./sources";
@@ -73,35 +74,30 @@ export async function updatePreview(): Promise<void> {
     return;
   }
 
-  // Check if any selected sources are unprocessed or need OCR
   const selectedIndices = Array.from(state.selectedCorpusIndices);
-  const unprocessedSources: { index: number; status: string; name: string }[] = [];
+  const sourcesNeedingExtraction: { name: string; status: string; statusLabel: string }[] = [];
 
   for (const idx of selectedIndices) {
     const record = state.allFiles[idx];
     if (!record) continue;
     const source = sourceForPath(record.source_path);
     if (!source) continue;
-    if (source.status === "unprocessed" || source.status === "needs_ocr") {
-      unprocessedSources.push({ index: idx, status: source.status, name: source.file_name });
+    if (source.kind === "pdf" && !sourceHasExtractedText(source)) {
+      sourcesNeedingExtraction.push({
+        status: source.status,
+        statusLabel: sourceStatusLabel(source.status),
+        name: source.file_name,
+      });
     }
   }
 
-  // For the processed text tab, show status messages for unprocessed/needs-ocr sources
-  const processedTab = document.getElementById("processed-text");
-  const isProcessedTabActive = processedTab?.classList.contains("active");
-  if (unprocessedSources.length > 0 && isProcessedTabActive) {
-    let html = "";
-    for (const us of unprocessedSources) {
-      const statusMsg = us.status === "needs_ocr"
-        ? "This PDF needs OCR before text preview is available. Use Prepare selected PDFs to set up OCR handling, then process the source."
-        : "This source has not been processed yet. Process it to generate processed text.";
-      html += `<div class="file-card"><div class="file-card-header"><div class="file-card-title-area"><div class="file-card-title">${us.name}</div></div></div><div class="file-card-body" style="color: var(--text-muted); padding: 16px; font-style: italic;">${statusMsg}</div></div>`;
-    }
-    dom.processedPreviewContent.innerHTML = html;
+  if (sourcesNeedingExtraction.length > 0) {
+    renderTextExtractionRequiredCards(dom.previewContent, sourcesNeedingExtraction);
+    renderTextExtractionRequiredCards(dom.processedPreviewContent, sourcesNeedingExtraction);
+    dom.previewLoadingOverlay.style.display = "none";
+    dom.statusBar.textContent = "Text has not been extracted yet.";
+    return;
   }
-
-  // For original text tab, proceed to fetch preview as usual (original text may be available)
 
   state.currentPreviewOffset = 0;
 
@@ -109,6 +105,44 @@ export async function updatePreview(): Promise<void> {
   dom.statusBar.textContent = "Previewing...";
 
   await fetchAndRenderPreviewChunk(selectedIndices, state.currentPreviewOffset, false, myVersion, myPreviewGeneration);
+}
+
+function renderTextExtractionRequiredCards(
+  container: HTMLDivElement,
+  sources: { name: string; status: string; statusLabel: string }[],
+): void {
+  container.replaceChildren();
+  for (const source of sources) {
+    const card = document.createElement("div");
+    card.className = "file-card";
+
+    const header = document.createElement("div");
+    header.className = "file-card-header";
+
+    const titleArea = document.createElement("div");
+    titleArea.className = "file-card-title-area";
+
+    const title = document.createElement("div");
+    title.className = "file-card-title";
+    title.textContent = source.name;
+
+    const status = document.createElement("div");
+    status.className = "file-card-path";
+    status.textContent = source.statusLabel;
+
+    titleArea.append(title, status);
+    header.appendChild(titleArea);
+
+    const body = document.createElement("div");
+    body.className = "file-card-body";
+    body.style.minHeight = "auto";
+    body.textContent = source.status === "failed"
+      ? "Source text is unavailable because source review or text extraction failed. Review the source status before preview or search."
+      : "Text has not been extracted yet. Use Extract/OCR selected PDFs to materialise source text before preview or search.";
+
+    card.append(header, body);
+    container.appendChild(card);
+  }
 }
 
 async function fetchAndRenderPreviewChunk(
@@ -151,8 +185,8 @@ async function fetchAndRenderPreviewChunk(
 
     if (myVersion !== state.currentCorpusVersion || myPreviewGeneration !== state.activePreviewGeneration) return;
 
-    renderPreviewCards(dom.previewContent, original.files, append, offset, indices.length);
-    renderPreviewCards(dom.processedPreviewContent, processed.files, append, offset, indices.length);
+    renderPreviewCards(dom.previewContent, original.files, append, offset, indices.length, "original");
+    renderPreviewCards(dom.processedPreviewContent, processed.files, append, offset, indices.length, "processed");
     persistProcessedPreviewStatuses(processed.files).then(renderVisibleItems);
     if (!append) {
       renderFullOcrPreviewLauncher(indices, myVersion, myPreviewGeneration);
@@ -388,7 +422,9 @@ function renderPreviewCards(
   files: FilePreview[],
   append: boolean,
   offset: number,
-  totalFiles: number
+  totalFiles: number,
+  mode: "original" | "processed",
+  loadFullAttempted = false,
 ): void {
   if (!append) {
     container.innerHTML = "";
@@ -484,6 +520,9 @@ function renderPreviewCards(
 
     card.appendChild(header);
     card.appendChild(body);
+    if (file.truncated) {
+      card.appendChild(createPreviewCapNotice(mode, totalFiles === 1 && !loadFullAttempted));
+    }
     container.appendChild(card);
   });
 
@@ -506,6 +545,67 @@ function renderPreviewCards(
       }, { rootMargin: "400px 0px" });
     }
     chunkSentinelObserver.observe(sentinel);
+  }
+}
+
+function createPreviewCapNotice(mode: "original" | "processed", canLoadFull: boolean): HTMLElement {
+  const notice = document.createElement("div");
+  notice.className = "preview-cap-note";
+
+  const message = document.createElement("span");
+  message.textContent = "Preview capped for performance.";
+  notice.appendChild(message);
+
+  if (canLoadFull) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary-btn";
+    button.textContent = "Load full text";
+    button.addEventListener("click", () => {
+      loadFullSingleSourcePreview(mode, button);
+    });
+    notice.appendChild(button);
+  }
+
+  return notice;
+}
+
+async function loadFullSingleSourcePreview(
+  mode: "original" | "processed",
+  button: HTMLButtonElement,
+): Promise<void> {
+  const indices = Array.from(state.selectedCorpusIndices);
+  if (indices.length !== 1) return;
+
+  const myVersion = state.currentCorpusVersion;
+  const myPreviewGeneration = state.activePreviewGeneration;
+  const container = mode === "processed" ? dom.processedPreviewContent : dom.previewContent;
+  button.disabled = true;
+  button.textContent = "Loading...";
+
+  try {
+    const command = mode === "processed" ? "preview_processed_files_command" : "preview_files_command";
+    const result = await invoke<CombinedPreview>(command, {
+      indices,
+      corpusVersion: myVersion,
+      maxCharsPerFile: 50_000_000,
+      includePaths: true,
+      maxFiles: 1,
+      cleaningConfig: state.activeCleaningConfig,
+    });
+
+    if (myVersion !== state.currentCorpusVersion || myPreviewGeneration !== state.activePreviewGeneration) return;
+
+    renderPreviewCards(container, result.files, false, 0, 1, mode, true);
+    highlightRenderedCards();
+    dom.statusBar.textContent = result.files[0]?.truncated
+      ? "Loaded a larger capped preview."
+      : "Loaded full text preview.";
+  } catch (error) {
+    if (myVersion !== state.currentCorpusVersion || myPreviewGeneration !== state.activePreviewGeneration) return;
+    button.disabled = false;
+    button.textContent = "Load full text";
+    dom.statusBar.textContent = `Error loading full preview: ${error}`;
   }
 }
 
