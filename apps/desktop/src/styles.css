@@ -1959,15 +1959,46 @@ mark.search-match.current-match {
 
 .repeated-artifacts-settings-action {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
   flex-wrap: wrap;
+}
+
+#btn-find-repeated-artifacts-settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 8px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  user-select: none;
+  white-space: normal;
+}
+
+#btn-find-repeated-artifacts-settings:disabled {
+  cursor: not-allowed;
 }
 
 .settings-helper-text {
   color: var(--text-muted);
   font-size: 0.85rem;
   line-height: 1.4;
+}
+
+.settings-field-label {
+  display: block;
+  margin: 10px 0 4px;
+  color: var(--text-color);
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .removal-pill {

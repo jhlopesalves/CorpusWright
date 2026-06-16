@@ -289,8 +289,8 @@
             <input type="radio" id="pdf-intake-layout" name="pdf-intake-profile" value="layout" />
             <span>
               <span class="pdf-intake-profile-title">Layout-heavy PDF</span>
-              <span class="pdf-intake-profile-help">Uses visual ordering and conservative PDF cleanup for awkward line
-                wraps, headers, footers, and page labels.</span>
+              <span class="pdf-intake-profile-help">Uses visual ordering for awkward line wraps. Conservative cleanup
+                flags may help with obvious repeated edges and page labels; inspect preview before export.</span>
             </span>
           </label>
 
@@ -390,7 +390,7 @@
           <button class="tab settings-tab" data-target="tab-line-page" type="button" role="tab"
             aria-selected="false">Line & Page</button>
           <button class="tab settings-tab" data-target="tab-extraction" type="button" role="tab"
-            aria-selected="false">Extraction</button>
+            aria-selected="false">Formats &amp; Fallbacks</button>
           <button class="tab settings-tab" data-target="tab-custom-removals" type="button" role="tab"
             aria-selected="false">Custom Removals</button>
         </div>
@@ -435,7 +435,7 @@
 
         <div id="tab-extraction" class="tab-content settings-tab-content" role="tabpanel">
           <div class="cleaning-controls-vertical extraction-accordion">
-            <details open>
+            <details>
               <summary>HTML Extraction</summary>
               <label><input type="checkbox" id="chk-extract-html" /> Extract HTML to Plain Text</label>
               <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 10px 0; padding-left: 24px;">
@@ -444,7 +444,7 @@
               </p>
             </details>
 
-            <details open>
+            <details>
               <summary>Table Extraction Strategy</summary>
               <div style="padding-left: 0; margin-top: 4px;">
                 <select id="sel-table-extraction" class="settings-select"
@@ -459,9 +459,14 @@
               </div>
             </details>
 
-            <details open>
-              <summary>Default PDF import policy</summary>
+            <details>
+              <summary>Advanced fallback PDF defaults</summary>
+              <p class="settings-helper-text">
+                Used only for older sources or sources without a stored source-level route. New PDF sources normally
+                store their PDF handling during import.
+              </p>
               <div style="padding-left: 0; margin-top: 4px;">
+                <label class="settings-field-label" for="sel-pdf-text-source">Fallback PDF text route</label>
                 <select id="sel-pdf-text-source" class="settings-select"
                   style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
                   <option value="EmbeddedText">Embedded text</option>
@@ -469,15 +474,10 @@
                   <option value="ForceOcr">Force OCR all pages</option>
                 </select>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
-                  Used as a fallback for older sources and for new PDF sources without a source-level route. The Import
-                  Sources dialog stores the route for each imported source.
+                  Applies only when no stored source-level route is available.
                 </p>
-              </div>
-            </details>
 
-            <details open>
-              <summary>Default OCR quality for new PDF sources</summary>
-              <div style="padding-left: 0; margin-top: 4px;">
+                <label class="settings-field-label" for="sel-pdf-ocr-quality">Fallback OCR quality</label>
                 <select id="sel-pdf-ocr-quality" class="settings-select"
                   style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
                   <option value="Fast">Fast</option>
@@ -485,14 +485,11 @@
                   <option value="HighQuality">High quality</option>
                 </select>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
-                  Used by PDF routes that run OCR when no source-level OCR quality has been stored.
+                  Used only when an OCR route has no stored source-level OCR quality.
                 </p>
-              </div>
-            </details>
 
-            <details open>
-              <summary>PDF Embedded Text Strategy</summary>
-              <div style="padding-left: 0; margin-top: 4px;">
+                <label class="settings-field-label" for="sel-pdf-embedded-text-strategy">Fallback embedded-text
+                  ordering</label>
                 <select id="sel-pdf-embedded-text-strategy" class="settings-select"
                   style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
                   <option value="PdfiumFlat">Flat text order</option>
@@ -500,7 +497,8 @@
                   <option value="PdfiumVisualColumnsExperimental">Visual columns experimental</option>
                 </select>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
-                  Controls how raw PDF text is reconstructed from the character stream. Reload preview after changing.
+                  Controls raw embedded PDF text reconstruction only for fallback extraction paths. Reload preview after
+                  changing.
                 </p>
               </div>
             </details>
@@ -516,18 +514,25 @@
             </details>
 
             <details>
-              <summary>PDF Cleanup</summary>
-              <label><input type="checkbox" id="chk-remove-repeated-pdf-headers-footers" /> Remove repeated PDF
-                headers/footers</label>
-              <label><input type="checkbox" id="chk-remove-pdf-page-labels" /> Remove PDF page labels/page numbers</label>
-              <label><input type="checkbox" id="chk-remove-pdf-symbol-heavy-artifacts" /> Remove symbol-heavy PDF
-                graphical artefacts</label>
-              <label><input type="checkbox" id="chk-remove-pdf-code-like-blocks" /> Remove code-like PDF blocks</label>
-              <label><input type="checkbox" id="chk-remove-pdf-formula-like-lines" /> Remove formula/math-heavy PDF
-                lines</label>
+              <summary>Experimental PDF cleanup</summary>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 10px 0;">
+                These conservative PDF cleanup options target obvious extraction artefacts. They may miss many real
+                headers, footers, page labels, formulae, code blocks, and layout problems. Use Repeated artefacts for
+                reviewable header/footer removal.
+              </p>
+              <label><input type="checkbox" id="chk-remove-repeated-pdf-headers-footers" /> Try evidence-based repeated
+                header/footer cleanup</label>
+              <label><input type="checkbox" id="chk-remove-pdf-page-labels" /> Try conservative page-label cleanup</label>
+              <label><input type="checkbox" id="chk-remove-pdf-symbol-heavy-artifacts" /> Conservative symbol-noise
+                cleanup</label>
+              <label><input type="checkbox" id="chk-remove-pdf-code-like-blocks" /> Experimental code-like block
+                cleanup</label>
+              <label><input type="checkbox" id="chk-remove-pdf-formula-like-lines" /> Experimental formula-like line
+                cleanup</label>
               <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 10px 0; padding-left: 24px;">
-                PDF cleanup options are conservative and apply only to PDF-derived text. These options may remove
-                meaningful programming, statistical, or mathematical examples. Inspect processed preview before export.
+                Repeated header/footer cleanup requires repeated page-edge evidence across at least three pages. Code
+                and formula cleanup may remove meaningful programming, statistical, or mathematical examples. Inspect
+                processed preview before export.
               </p>
             </details>
           </div>

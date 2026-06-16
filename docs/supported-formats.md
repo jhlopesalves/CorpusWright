@@ -11,14 +11,14 @@ CorpusWright currently supports the extraction of plain text from the following 
 
 CorpusWright does not modify original source files. Extraction is a read-only process, decoupled from text cleaning. The exact method used depends on the format.
 
-By default, CorpusWright uses the required format readers needed to extract text. Optional cleanup transformations such as HTML text extraction, line cleanup, Unicode normalisation, PDF cleanup, and custom removals are controlled by settings. PDF OCR fallback is handled separately: preview and export enable it automatically when embedded-text extraction is empty or poor quality.
+By default, CorpusWright uses the required format readers needed to extract text. Optional cleanup transformations such as HTML text extraction, line cleanup, Unicode normalisation, conservative PDF cleanup, and custom removals are controlled by settings. PDF/OCR routes are normally stored during source import, with fallback settings used only for older or unspecified PDF sources.
 
 The exact method used depends on the format:
 
 - **Plain Text (`txt`)**: Extracted as plain text (`plain_text`). If invalid UTF-8 sequences are encountered, they are replaced with the Unicode replacement character ().
 - **HTML (`html`, `htm`)**: Read as raw HTML text by default. If HTML text extraction is explicitly enabled, it is parsed via an optional HTML transformation that strips HTML tags and attempts to preserve basic block-level structure.
 - **DOCX (`docx`)**: Read and extracted directly from the file structure using a required DOCX parser. Optional transformations like stripping headers, footers, footnotes, or endnotes are disabled by default.
-- **PDF (`pdf`)**: Extracted using a required PDF character-level reader. Optional post-extraction cleanup transformations, such as header/footer removal, page label removal, and symbol-heavy artefact cleanup, are disabled by default. OCR fallback is enabled in preview/export extraction paths but only runs when the embedded-text result is empty or poor quality; repeated artefact scans disable OCR.
+- **PDF (`pdf`)**: Extracted using a required PDF character-level reader. Optional post-extraction cleanup transformations, such as evidence-based repeated page-edge cleanup, conservative page-label cleanup, and symbol-noise cleanup, are disabled by default. Repeated headers and footers are normally handled through Repeated Artefact review so accepted candidates become explicit cleaning rules. OCR routes run according to stored source handling, and repeated artefact scans disable OCR.
 
 ## Limitations and Warnings
 
@@ -30,7 +30,7 @@ The exact method used depends on the format:
 ### PDF
 - **Experimental**: Support for PDF is experimental.
 - **Reading Order**: The reading order of extracted text is not guaranteed, as PDF layouts define elements by coordinates rather than a structured text flow. Formatting may be lost.
-- **Scanned Documents**: By default, CorpusWright first extracts embedded selectable text. When a PDF has no embedded text or the embedded-text result is poor quality, preview/export extraction automatically rasterises pages and runs experimental OCR locally. This is significantly slower and probabilistic, but it prevents empty extractions for image-only PDFs. The Repeated Artefact Finder disables OCR during scans.
+- **Scanned Documents**: CorpusWright can rasterise pages and run experimental OCR locally for PDF sources stored with OCR-based handling. This is significantly slower and probabilistic, but it prevents empty extractions for image-only PDFs. The Repeated Artefact Finder disables OCR during scans.
 - **Encrypted PDFs**: Password-protected or encrypted PDFs are not supported and may result in an extraction error or garbage text.
 
 ### General

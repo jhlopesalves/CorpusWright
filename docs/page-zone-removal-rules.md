@@ -5,6 +5,10 @@ when it appears in a page header or footer zone. This is useful for repeated
 running titles, page labels, and publisher boilerplate that can also appear
 legitimately in body text.
 
+The Repeated Artefact Finder is the reviewable path for creating these rules
+from repeated headers and footers. CorpusWright does not invent page-zone rules
+from flat text or apply scanner candidates until the user accepts them.
+
 The supported page-zone scopes are `PageTop`, `PageBottom`, and
 `PageTopOrBottom`. They require reliable page metadata. Flat text is not
 treated as page-aware input, and blank lines are not interpreted as page

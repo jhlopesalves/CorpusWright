@@ -87,7 +87,7 @@ After a file or folder picker returns, CorpusWright preflights the selected sour
 
 Preflight recommends embedded text for PDFs with usable text, OCR-required routes for PDFs with little or no text layer, and an undecided route when the audit cannot make a conservative recommendation. Import only closes the dialog after writing `.corpuswright/sources.json`. Import and Extract Text runs the stored per-source PDF handling immediately after registration. Cancel closes the dialog without writing `.corpuswright/sources.json`.
 
-PDF route and OCR quality are source-ingestion settings. Cleaning Settings keep cleaning and fallback extraction defaults for older or unspecified sources; they do not replace routes already stored on project sources.
+PDF route and OCR quality are source-ingestion settings. Cleaning Settings keep cleaning controls and an advanced fallback PDF defaults section for older or unspecified sources; they do not replace routes already stored on project sources.
 
 ## Source statuses
 
@@ -133,7 +133,7 @@ The desktop frontend keeps a small recent-projects list in localStorage. Each en
 
 ## Preprocessing workspace
 
-After a project opens, CorpusWright shows the preprocessing workspace with the Source Explorer in the left panel. Processed previews, search, export, word counts, custom removals, and repeated-artefact review use the source-level PDF route when one is stored, with Cleaning Settings acting as fallback defaults for older or unspecified sources.
+After a project opens, CorpusWright shows the preprocessing workspace with the Source Explorer in the left panel. Processed previews, search, export, word counts, custom removals, and repeated-artefact review use the source-level PDF route when one is stored, with Cleaning Settings acting as fallback defaults only for older or unspecified sources.
 
 Repeated artefact review is part of cleaning-rule setup. The Repeated artefacts section in Cleaning Settings scans the current Source Explorer selection when sources are selected. When no source selection is active, the action label states that all loaded project sources will be scanned. Accepted candidates become the same structured Custom Removal rules used by normal cleaning and export.
 
