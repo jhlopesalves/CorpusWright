@@ -87,10 +87,30 @@
         <div class="source-panel-header">
           <h2>Sources</h2>
           <div class="source-actions">
-            <button id="source-add-files-btn" class="secondary-btn" type="button">Add Files</button>
-            <button id="source-add-folder-btn" class="secondary-btn" type="button">Add Folder</button>
-            <button id="source-prepare-pdfs-btn" class="secondary-btn hidden" type="button">Extract/OCR selected PDFs...</button>
-            <button id="source-remove-btn" class="danger-btn hidden" type="button">Remove selected</button>
+            <div class="dropdown" id="source-add-dropdown">
+              <button class="secondary-btn source-action-trigger" type="button" id="source-add-trigger">Add sources ▾</button>
+              <div class="dropdown-content">
+                <div class="dropdown-item" id="source-action-add-files" tabindex="0">Add files</div>
+                <div class="dropdown-item" id="source-action-add-folder" tabindex="0">Add folder</div>
+              </div>
+            </div>
+            <div class="dropdown" id="source-selected-dropdown">
+              <button class="secondary-btn source-action-trigger" type="button" id="source-selected-trigger" disabled>Selected actions ▾</button>
+              <div class="dropdown-content">
+                <div class="dropdown-item hidden" id="source-action-extract" tabindex="0">Extract text / OCR</div>
+                <div class="dropdown-item hidden" id="source-action-re-extract" tabindex="0">Re-extract selected PDFs</div>
+                <div class="dropdown-item hidden" id="source-action-retry" tabindex="0">Retry extraction</div>
+                <div class="dropdown-item" id="source-action-change-handling" tabindex="0">Change PDF handling</div>
+                <hr class="dropdown-divider">
+                <div class="dropdown-item danger-item" id="source-action-remove" tabindex="0">Remove from project</div>
+              </div>
+            </div>
+          </div>
+          <div class="hidden" style="display:none;">
+            <button id="source-add-files-btn" type="button"></button>
+            <button id="source-add-folder-btn" type="button"></button>
+            <button id="source-prepare-pdfs-btn" type="button"></button>
+            <button id="source-remove-btn" type="button"></button>
           </div>
         </div>
         <div class="status-line" id="files-status">0 loaded | 0 selected</div>

@@ -793,26 +793,17 @@ function createSourcePreviewNotice(
 }
 
 function sourceShouldShowReviewNotice(source: ProjectSource): boolean {
-  if (
-    source.status === "text_extracted_with_warnings" ||
-    source.status === "processed_with_warnings" ||
-    source.status === "failed" ||
-    source.status === "needs_ocr"
-  ) {
-    return true;
-  }
-
+  // Only show a review notice when there is a concrete, actionable reason.
+  // Do NOT show a generic review banner just because the status says
+  // "text_extracted_with_warnings" or "processed_with_warnings".
   return source.reason_codes.some((code) =>
     code === "ocr_generated" ||
     code === "ocr_review_recommended" ||
     code === "layout_heavy_profile" ||
     code === "layout_warning" ||
     code === "low_text_density" ||
-    code === "many_repeated_artifacts" ||
     code === "render_size_clamped" ||
-    code === "text_extracted_with_warnings" ||
-    code === "processed_with_warnings" ||
-    code === "review_recommended"
+    code === "many_repeated_artifacts"
   );
 }
 

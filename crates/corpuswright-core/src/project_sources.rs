@@ -452,13 +452,23 @@ pub fn update_project_source_extraction_results(
                 source.reason_codes =
                     non_empty_or_default(result.reason_codes, "text_extraction_failed");
             } else if result.warning_count > 0 {
-                source.status = ProjectSourceStatus::TextExtractedWithWarnings;
-                let mut reason_codes =
-                    non_empty_or_default(result.reason_codes, "text_extracted_with_warnings");
-                if let Some(reason_code) = successful_pdf_review_reason(source) {
-                    append_reason_code_once(&mut reason_codes, reason_code);
+                // If reason codes were provided upstream, use them as-is.
+                if !result.reason_codes.is_empty() {
+                    source.status = ProjectSourceStatus::TextExtractedWithWarnings;
+                    let mut reason_codes = result.reason_codes.clone();
+                    if let Some(reason_code) = successful_pdf_review_reason(source) {
+                        append_reason_code_once(&mut reason_codes, reason_code);
+                    }
+                    source.reason_codes = reason_codes;
+                } else if let Some(reason_code) = successful_pdf_review_reason(source) {
+                    // Profile-based reason (layout-heavy, OCR) is concrete enough.
+                    source.status = ProjectSourceStatus::TextExtractedWithWarnings;
+                    source.reason_codes = vec![reason_code.to_string()];
+                } else {
+                    // No concrete reason — do not show a generic warning banner.
+                    source.status = ProjectSourceStatus::TextExtracted;
+                    source.reason_codes = vec!["text_extracted".to_string()];
                 }
-                source.reason_codes = reason_codes;
             } else if let Some(reason_code) = successful_pdf_review_reason(source) {
                 source.status = ProjectSourceStatus::TextExtractedWithWarnings;
                 source.reason_codes = vec![reason_code.to_string()];
@@ -1432,7 +1442,10 @@ mod tests {
     }
 
     #[test]
-    fn source_text_extraction_warning_status_has_default_reason() {
+    fn source_text_extraction_no_concrete_warnings_does_not_show_warning_banner() {
+        // Standard embedded text extraction with warning_count > 0 but no concrete
+        // reason codes should NOT produce a generic warning — it should show as
+        // plain TextExtracted with no warning banner.
         let dir = tempdir().unwrap();
         let path = dir.path().join("warning.pdf");
         let mut source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
@@ -1459,14 +1472,12 @@ mod tests {
         )
         .unwrap();
 
+        // No concrete reason + Standard profile = TextExtracted, no warning
         assert_eq!(
             manifest.sources[0].status,
-            ProjectSourceStatus::TextExtractedWithWarnings
+            ProjectSourceStatus::TextExtracted
         );
-        assert_eq!(
-            manifest.sources[0].reason_codes,
-            vec!["text_extracted_with_warnings"]
-        );
+        assert_eq!(manifest.sources[0].reason_codes, vec!["text_extracted"]);
     }
 
     #[test]

@@ -557,21 +557,42 @@ function updateStatusLine(): void {
       const allSelectedArePdfs =
         selectedSources.length === state.selectedProjectSourceIds.size &&
         selectedSources.every(source => source.kind === "pdf");
-      const selectedPdfsHaveFailures = selectedSources
-        .some(source => source.kind === "pdf" && source.status === "failed");
-      const selectedPdfsHaveExtractedText =
+      const hasFailures = selectedSources
+        .some(source => source.status === "failed");
+      const allHaveExtractedText =
         selectedSources.length === state.selectedProjectSourceIds.size &&
         selectedSources.every(sourceHasExtractedText);
-      dom.sourcePreparePdfsBtn.textContent = selectedPdfsHaveFailures
-        ? "Retry extraction..."
-        : selectedPdfsHaveExtractedText
-        ? "Re-extract/OCR selected PDFs..."
-        : "Extract/OCR selected PDFs...";
+      const allNeedExtraction =
+        selectedSources.length === state.selectedProjectSourceIds.size &&
+        selectedSources.every(source =>
+          source.kind === "pdf" && !sourceHasExtractedText(source) && source.status !== "failed"
+        );
+
+      // Update dropdown context-sensitive items
+      dom.sourceSelectedTrigger.disabled = false;
+
+      // Toggle extraction action items based on selection state
+      dom.sourceActionExtract.classList.toggle("hidden", !(allSelectedArePdfs && allNeedExtraction));
+      dom.sourceActionReExtract.classList.toggle("hidden", !(allSelectedArePdfs && allHaveExtractedText));
+      dom.sourceActionRetry.classList.toggle("hidden", !(allSelectedArePdfs && hasFailures));
+
+      // Keep the old hidden buttons in sync for backward compatibility
+      if (allSelectedArePdfs && hasFailures) {
+        dom.sourcePreparePdfsBtn.textContent = "Retry extraction...";
+      } else if (allSelectedArePdfs && allHaveExtractedText) {
+        dom.sourcePreparePdfsBtn.textContent = "Re-extract/OCR selected PDFs...";
+      } else if (allSelectedArePdfs) {
+        dom.sourcePreparePdfsBtn.textContent = "Extract/OCR selected PDFs...";
+      }
       dom.sourcePreparePdfsBtn.classList.toggle("hidden", !allSelectedArePdfs);
       dom.sourcePreparePdfsBtn.disabled = !allSelectedArePdfs;
       dom.sourceRemoveBtn.classList.remove("hidden");
       dom.sourceRemoveBtn.disabled = false;
     } else {
+      dom.sourceSelectedTrigger.disabled = true;
+      dom.sourceActionExtract.classList.add("hidden");
+      dom.sourceActionReExtract.classList.add("hidden");
+      dom.sourceActionRetry.classList.add("hidden");
       dom.sourcePreparePdfsBtn.classList.add("hidden");
       dom.sourcePreparePdfsBtn.disabled = true;
       dom.sourceRemoveBtn.classList.add("hidden");
@@ -581,6 +602,7 @@ function updateStatusLine(): void {
     return;
   }
 
+  dom.sourceSelectedTrigger.disabled = true;
   dom.sourcePreparePdfsBtn.classList.add("hidden");
   dom.sourcePreparePdfsBtn.disabled = true;
   dom.filesStatus.textContent = `${state.allFiles.length} loaded | ${state.selectedCorpusIndices.size} selected`;

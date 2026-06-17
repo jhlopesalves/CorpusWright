@@ -195,18 +195,17 @@ export function reasonDescription(code: string): string | null {
     case "pdf_route_undecided": return "PDF diagnostics could not choose a confident extraction route.";
     case "ocr_planned":
     case "force_ocr_planned": return "Full-page OCR is planned for this PDF.";
-    case "text_extracted_with_warnings":
-    case "review_recommended": return "Text extraction reported warnings; review source text before export.";
     case "text_extraction_failed": return "Text extraction failed.";
     case "extraction_cancelled": return "Extraction was cancelled.";
-    case "processed_with_warnings": return "Processing reported warnings; review processed text before export.";
     case "low_text_density": return "Initial PDF diagnostics marked embedded text quality as suspicious.";
-    case "layout_warning": return "Layout-aware extraction reported a warning.";
+    case "layout_warning": return "Layout-aware extraction was used; inspect line order before export.";
     case "many_repeated_artifacts": return "Repeated extraction artefacts were reported.";
     case "ocr_generated":
-    case "ocr_review_recommended": return "OCR-generated text should be reviewed.";
-    case "layout_heavy_profile": return "Layout-aware embedded extraction was used.";
-    case "render_size_clamped": return "PDF render size was clamped during OCR.";
+    case "ocr_review_recommended": return "OCR-generated text should be reviewed before export.";
+    case "layout_heavy_profile": return "Layout-aware extraction was used; inspect line order before export.";
+    case "render_size_clamped": return "OCR render size was clamped; some pages may be incomplete.";
+    case "text_extracted":
+    case "processed_ok": return null;
     case "output_write_failed": return "Processed output could not be written.";
     case "parse_failed": return "The source could not be parsed.";
     default: return null;

@@ -459,16 +459,67 @@ main {
 }
 
 .source-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
   gap: 6px;
+  align-items: center;
 }
 
-.source-actions button {
-  width: 100%;
-  min-height: 30px;
-  padding: 5px 8px;
-  font-size: 0.78rem;
+.source-action-trigger {
+  font-size: 0.82rem !important;
+  padding: 4px 10px !important;
+  white-space: nowrap;
+}
+
+.source-actions .dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.source-actions .dropdown-content {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 200px;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 100;
+  padding: 4px 0;
+  margin-top: 2px;
+}
+
+.source-actions .dropdown.open .dropdown-content {
+  display: block;
+}
+
+.source-actions .dropdown-item {
+  padding: 7px 14px;
+  font-size: 0.85rem;
+  color: var(--text-color);
+  cursor: pointer;
+  user-select: none;
+}
+
+.source-actions .dropdown-item:hover,
+.source-actions .dropdown-item:focus {
+  background: var(--hover-color);
+  outline: none;
+}
+
+.source-actions .dropdown-item.danger-item {
+  color: rgba(255, 107, 107, 0.9);
+}
+
+.source-actions .dropdown-item.danger-item:hover {
+  background: rgba(255, 107, 107, 0.1);
+}
+
+.source-actions .dropdown-divider {
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid var(--border-color);
 }
 
 .status-line {
@@ -1623,18 +1674,6 @@ pre {
   color: #ff5e5e;
 }
 
-.custom-removals-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  background: var(--sidebar-bg);
-  padding: 8px;
-  border-radius: 4px;
-  border: 1px solid var(--border-color);
-  min-height: 48px;
-  max-height: 200px;
-  overflow-y: auto;
-}
 
 .sequence-pill {
   display: flex;
@@ -2036,8 +2075,8 @@ mark.search-match.current-match {
   flex-wrap: wrap;
   gap: 8px;
   min-height: 80px;
-  max-height: min(24vh, 220px);
-  padding: 12px;
+  max-height: min(30vh, 280px);
+  padding: 14px;
   background: rgba(0, 0, 0, 0.15);
   border: 1px dashed var(--border-color);
   border-radius: 6px;
@@ -2051,12 +2090,16 @@ mark.search-match.current-match {
   margin-bottom: 0;
 }
 
+#settings-modal .settings-tab-content {
+  scrollbar-gutter: stable;
+}
+
 .repeated-artifacts-settings {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 18px;
-  padding-top: 16px;
+  margin-top: 22px;
+  padding-top: 20px;
   border-top: 1px solid var(--border-color);
 }
 

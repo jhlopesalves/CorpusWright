@@ -1571,11 +1571,77 @@ async function handleRemoveSelectedSources(): Promise<void> {
   }
 }
 
+function initSourceActionDropdowns(): void {
+  // Add sources dropdown toggle
+  dom.sourceAddTrigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    dom.sourceAddDropdown.classList.toggle("open");
+    // Close the other dropdown
+    dom.sourceSelectedDropdown.classList.remove("open");
+  });
+  dom.sourceActionAddFiles.addEventListener("click", () => {
+    dom.sourceAddDropdown.classList.remove("open");
+    openFilesFromPicker();
+  });
+  dom.sourceActionAddFolder.addEventListener("click", () => {
+    dom.sourceAddDropdown.classList.remove("open");
+    openDirectoryFromPicker();
+  });
+
+  // Selected actions dropdown toggle
+  dom.sourceSelectedTrigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (dom.sourceSelectedTrigger.disabled) return;
+    dom.sourceSelectedDropdown.classList.toggle("open");
+    // Close the other dropdown
+    dom.sourceAddDropdown.classList.remove("open");
+  });
+
+  // Clicking an action item closes the dropdown
+  const selectedItems = [
+    dom.sourceActionExtract,
+    dom.sourceActionReExtract,
+    dom.sourceActionRetry,
+    dom.sourceActionChangeHandling,
+    dom.sourceActionRemove,
+  ];
+  for (const item of selectedItems) {
+    item.addEventListener("click", () => {
+      dom.sourceSelectedDropdown.classList.remove("open");
+    });
+  }
+
+  dom.sourceActionExtract.addEventListener("click", openPdfIntakeFromSelected);
+  dom.sourceActionReExtract.addEventListener("click", openPdfIntakeFromSelected);
+  dom.sourceActionRetry.addEventListener("click", openPdfIntakeFromSelected);
+  dom.sourceActionChangeHandling.addEventListener("click", openPdfIntakeFromSelected);
+  dom.sourceActionRemove.addEventListener("click", handleRemoveSelectedSources);
+
+  // Close dropdowns on outside click
+  document.addEventListener("click", (e) => {
+    if (!dom.sourceAddDropdown.contains(e.target as Node)) {
+      dom.sourceAddDropdown.classList.remove("open");
+    }
+    if (!dom.sourceSelectedDropdown.contains(e.target as Node)) {
+      dom.sourceSelectedDropdown.classList.remove("open");
+    }
+  });
+}
+
+function openPdfIntakeFromSelected(): void {
+  const selectedPaths = selectedProjectSourcePaths()
+    .filter((path) => path.toLowerCase().endsWith(".pdf"));
+  if (selectedPaths.length > 0) {
+    openPdfIntakeModalForSources(selectedPaths);
+  }
+}
+
 export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
   callbacks = nextCallbacks;
   dom.sourceAddFilesBtn.addEventListener("click", openFilesFromPicker);
   dom.sourceAddFolderBtn.addEventListener("click", openDirectoryFromPicker);
   dom.sourceRemoveBtn.addEventListener("click", handleRemoveSelectedSources);
+  initSourceActionDropdowns();
   dom.cancelSourceImportBtn.addEventListener("click", () => {
     closeImportSourcesDialog(null);
   });
