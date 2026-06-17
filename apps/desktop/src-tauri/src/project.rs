@@ -5,7 +5,8 @@ use corpuswright_core::project_sources::{
     ProjectSourceStatus, ProjectSourceUpdate, add_project_source_paths,
     add_project_source_paths_with_pdf_handling, load_project_source_manifest,
     remove_project_source_paths, review_project_source_paths, save_project_source_manifest,
-    update_project_source_pdf_profiles, update_project_source_processing_results,
+    update_project_source_pdf_handling, update_project_source_pdf_profiles,
+    update_project_source_processing_results,
 };
 use corpuswright_core::scan::{ScanReport, load_files, scan_directory};
 use serde::{Deserialize, Serialize};
@@ -287,6 +288,24 @@ pub(crate) fn update_project_source_pdf_profiles_command(
     let root = validated_project_root(&root_path)?;
     let paths = paths.into_iter().map(PathBuf::from).collect();
     update_project_source_pdf_profiles(root, paths, profile, ocr_quality)
+}
+
+/// Applies per-source PDF handling overrides to existing project sources.
+/// Unlike the bulk profile command, this preserves per-source handling choices
+/// so that re-extract can change handling at the row level.
+#[tauri::command(async)]
+pub(crate) fn update_project_source_pdf_handling_command(
+    root_path: String,
+    overrides: Vec<ProjectSourcePdfHandlingOverrideRequest>,
+) -> Result<ProjectSourceManifest, String> {
+    let root = validated_project_root(&root_path)?;
+    update_project_source_pdf_handling(
+        root,
+        overrides
+            .into_iter()
+            .map(pdf_handling_override_from_request)
+            .collect(),
+    )
 }
 
 fn pdf_handling_override_from_request(

@@ -12,6 +12,7 @@ import {
   loadableProjectSourcePaths,
   loadProjectSourcesForActiveProject,
   pdfProfileLabel,
+  pdfProfileShortLabel,
   removeProjectSourcePaths,
   selectedProjectSourcePaths,
   type ProjectSourcePdfHandlingOverride,

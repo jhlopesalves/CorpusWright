@@ -192,13 +192,32 @@ function projectSourceDetailBadges(source: ProjectSource): string[] {
     sourceKindLabel(source),
     sourceStatusLabel(source.status),
   ];
-  const reason = primaryReasonLabel(source);
-  if (reason) {
-    labels.push(reason);
-  }
   const handling = pdfHandlingLabel(source);
   if (handling) {
     labels.push(handling);
+  }
+  // Only add reason badge for concrete failures/errors, not generic warnings
+  if (source.status === "failed") {
+    const reason = primaryReasonLabel(source);
+    if (reason) {
+      labels.push(reason);
+    }
+  } else {
+    const reasonCodes = source.reason_codes;
+    const concreteCodes = reasonCodes.filter(code =>
+      code === "extraction_cancelled" ||
+      code === "text_extraction_failed" ||
+      code === "render_size_clamped" ||
+      code === "many_repeated_artifacts" ||
+      code === "ocr_generated" ||
+      code === "ocr_review_recommended" ||
+      code === "layout_heavy_profile" ||
+      code === "layout_warning" ||
+      code === "low_text_density"
+    );
+    if (concreteCodes.length > 0) {
+      labels.push(reasonLabel(concreteCodes[0]));
+    }
   }
   return labels;
 }
@@ -666,13 +685,34 @@ function renderPreviewCards(
       statusBadge.textContent = sourceStatusLabel(source.status);
       badges.appendChild(statusBadge);
 
-      const reason = primaryReasonLabel(source);
-      if (reason && source.status !== "processed") {
-        const reasonBadge = document.createElement("span");
-        reasonBadge.className = "badge";
-        reasonBadge.textContent = reason;
-        badges.appendChild(reasonBadge);
-      }
+  // Only add reason badge for concrete failures/errors, not generic warnings
+  if (source.status === "failed") {
+    const reason = primaryReasonLabel(source);
+    if (reason) {
+      const reasonBadge = document.createElement("span");
+      reasonBadge.className = "badge";
+      reasonBadge.textContent = reason;
+      badges.appendChild(reasonBadge);
+    }
+  } else {
+    const concreteCodes = source.reason_codes.filter(code =>
+      code === "extraction_cancelled" ||
+      code === "text_extraction_failed" ||
+      code === "render_size_clamped" ||
+      code === "many_repeated_artifacts" ||
+      code === "ocr_generated" ||
+      code === "ocr_review_recommended" ||
+      code === "layout_heavy_profile" ||
+      code === "layout_warning" ||
+      code === "low_text_density"
+    );
+    if (concreteCodes.length > 0) {
+      const reasonBadge = document.createElement("span");
+      reasonBadge.className = "badge";
+      reasonBadge.textContent = reasonLabel(concreteCodes[0]);
+      badges.appendChild(reasonBadge);
+    }
+  }
     }
 
     if (file.truncated) {

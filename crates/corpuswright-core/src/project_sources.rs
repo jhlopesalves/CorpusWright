@@ -519,6 +519,45 @@ pub fn update_project_source_pdf_profiles(
     Ok(manifest)
 }
 
+/// Updates stored per-source PDF handling from per-source overrides,
+/// persisting each source's pdf_profile and ocr_quality individually.
+///
+/// Unlike `update_project_source_pdf_profiles` which applies a single profile
+/// to all selected paths, this function processes per-source overrides so that
+/// row-level handling changes are preserved during re-extract.
+///
+/// # Errors
+///
+/// Returns an error when the inventory cannot be loaded or saved.
+pub fn update_project_source_pdf_handling(
+    project_root: impl AsRef<Path>,
+    overrides: Vec<ProjectSourcePdfHandlingOverride>,
+) -> Result<ProjectSourceManifest, String> {
+    let project_root = project_root.as_ref();
+    let mut manifest = load_project_source_manifest(project_root)?;
+    let now = current_timestamp();
+
+    for pdf_override in overrides {
+        let source_path = source_path_for_storage(project_root, &pdf_override.path);
+        let source_id = stable_project_source_id(project_root, &source_path);
+        if let Some(source) = manifest
+            .sources
+            .iter_mut()
+            .find(|source| source.id == source_id)
+            .filter(|source| source.kind == ProjectSourceKind::Pdf)
+        {
+            source.pdf_profile = Some(pdf_override.pdf_profile);
+            source.extraction_route = pdf_override.pdf_profile.extraction_route();
+            source.ocr_quality = Some(pdf_override.ocr_quality);
+            source.last_checked_at = Some(now.clone());
+            set_pdf_source_planned_status_for_profile(source, pdf_override.pdf_profile);
+        }
+    }
+
+    save_project_source_manifest(project_root, &manifest)?;
+    Ok(manifest)
+}
+
 /// Removes specific source paths from the project inventory without touching disk files.
 ///
 /// # Errors
@@ -2012,5 +2051,130 @@ mod tests {
 
         assert_eq!(first_id, loaded_id);
         assert_eq!(first_id, recomputed_id);
+    }
+
+    #[test]
+    fn update_project_source_pdf_handling_preserves_per_source_overrides() {
+        let dir = tempdir().unwrap();
+        let standard_path = dir.path().join("standard.pdf");
+        let ocr_path = dir.path().join("ocr.pdf");
+
+        let mut standard = source_for_test(standard_path.clone(), ProjectSourceKind::Pdf);
+        standard.id = stable_project_source_id(dir.path(), &standard_path);
+        standard.pdf_profile = Some(ProjectSourcePdfProfile::Standard);
+        standard.extraction_route = ProjectSourcePdfProfile::Standard.extraction_route();
+
+        let mut ocr = source_for_test(ocr_path.clone(), ProjectSourceKind::Pdf);
+        ocr.id = stable_project_source_id(dir.path(), &ocr_path);
+        ocr.pdf_profile = Some(ProjectSourcePdfProfile::ForceOcr);
+        ocr.extraction_route = ProjectSourcePdfProfile::ForceOcr.extraction_route();
+
+        save_project_source_manifest(
+            dir.path(),
+            &ProjectSourceManifest {
+                version: SOURCE_MANIFEST_VERSION,
+                sources: vec![standard, ocr],
+            },
+        )
+        .unwrap();
+
+        // Update only the standard source to layout_heavy, leave OCR source unchanged
+        let manifest = update_project_source_pdf_handling(
+            dir.path(),
+            vec![ProjectSourcePdfHandlingOverride {
+                path: standard_path,
+                pdf_profile: ProjectSourcePdfProfile::LayoutHeavy,
+                ocr_quality: PdfOcrQuality::Balanced,
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.sources[0].pdf_profile,
+            Some(ProjectSourcePdfProfile::LayoutHeavy)
+        );
+        assert_eq!(
+            manifest.sources[0].extraction_route,
+            ProjectSourceExtractionRoute::EmbeddedText
+        );
+        // OCR source should be unchanged
+        assert_eq!(
+            manifest.sources[1].pdf_profile,
+            Some(ProjectSourcePdfProfile::ForceOcr)
+        );
+        assert_eq!(
+            manifest.sources[1].extraction_route,
+            ProjectSourceExtractionRoute::ForceOcr
+        );
+    }
+
+    #[test]
+    fn update_project_source_pdf_handling_allows_row_level_overrides() {
+        let dir = tempdir().unwrap();
+        let path_a = dir.path().join("a.pdf");
+        let path_b = dir.path().join("b.pdf");
+
+        let mut source_a = source_for_test(path_a.clone(), ProjectSourceKind::Pdf);
+        source_a.id = stable_project_source_id(dir.path(), &path_a);
+        source_a.pdf_profile = Some(ProjectSourcePdfProfile::Standard);
+        source_a.extraction_route = ProjectSourcePdfProfile::Standard.extraction_route();
+
+        let mut source_b = source_for_test(path_b.clone(), ProjectSourceKind::Pdf);
+        source_b.id = stable_project_source_id(dir.path(), &path_b);
+        source_b.pdf_profile = Some(ProjectSourcePdfProfile::Standard);
+        source_b.extraction_route = ProjectSourcePdfProfile::Standard.extraction_route();
+
+        save_project_source_manifest(
+            dir.path(),
+            &ProjectSourceManifest {
+                version: SOURCE_MANIFEST_VERSION,
+                sources: vec![source_a, source_b],
+            },
+        )
+        .unwrap();
+
+        // Override each source with a different profile
+        let manifest = update_project_source_pdf_handling(
+            dir.path(),
+            vec![
+                ProjectSourcePdfHandlingOverride {
+                    path: path_a,
+                    pdf_profile: ProjectSourcePdfProfile::ForceOcr,
+                    ocr_quality: PdfOcrQuality::HighQuality,
+                },
+                ProjectSourcePdfHandlingOverride {
+                    path: path_b,
+                    pdf_profile: ProjectSourcePdfProfile::LayoutHeavy,
+                    ocr_quality: PdfOcrQuality::Balanced,
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.sources[0].pdf_profile,
+            Some(ProjectSourcePdfProfile::ForceOcr)
+        );
+        assert_eq!(
+            manifest.sources[0].extraction_route,
+            ProjectSourceExtractionRoute::ForceOcr
+        );
+        assert_eq!(
+            manifest.sources[0].ocr_quality,
+            Some(PdfOcrQuality::HighQuality)
+        );
+
+        assert_eq!(
+            manifest.sources[1].pdf_profile,
+            Some(ProjectSourcePdfProfile::LayoutHeavy)
+        );
+        assert_eq!(
+            manifest.sources[1].extraction_route,
+            ProjectSourceExtractionRoute::EmbeddedText
+        );
+        assert_eq!(
+            manifest.sources[1].ocr_quality,
+            Some(PdfOcrQuality::Balanced)
+        );
     }
 }
