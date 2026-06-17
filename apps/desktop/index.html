@@ -26,17 +26,14 @@
         <div class="dropdown hidden" id="menu-file-dropdown">
           <span class="menu-item" tabindex="0">File</span>
           <div class="dropdown-content">
-            <div class="dropdown-item" id="menu-open-files" tabindex="0">Open Files</div>
-            <div class="dropdown-item" id="menu-open-dir" tabindex="0">Open Folder</div>
-            <div class="dropdown-item" id="menu-open-pdf-intake" tabindex="0">Open Scanned or Complex PDFs...</div>
-            <div class="dropdown-item" id="menu-save-corpus" tabindex="0">Save Processed Corpus</div>
+            <div class="dropdown-item" id="menu-save-corpus" tabindex="0">Export Processed Corpus</div>
           </div>
         </div>
         <div class="dropdown hidden" id="menu-process-dropdown">
           <span class="menu-item" tabindex="0">Process</span>
           <div class="dropdown-content">
-            <div class="dropdown-item" id="menu-processing-params" tabindex="0">Processing Parameters</div>
-            <div class="dropdown-item" id="menu-repeated-artifact-finder" tabindex="0">Repeated Artefact Finder</div>
+            <div class="dropdown-item" id="menu-processing-params" tabindex="0">Cleaning Settings</div>
+            <div class="dropdown-item hidden" id="menu-repeated-artifact-finder" tabindex="-1">Repeated Artefact Finder</div>
           </div>
         </div>
         <div class="dropdown">
@@ -87,9 +84,37 @@
 
     <main id="project-workspace" class="project-workspace hidden">
       <aside class="left-panel">
-        <h2>Corpus</h2>
+        <div class="source-panel-header">
+          <h2>Sources</h2>
+          <div class="source-actions">
+            <div class="dropdown" id="source-add-dropdown">
+              <button class="secondary-btn source-action-trigger" type="button" id="source-add-trigger">Add sources ▾</button>
+              <div class="dropdown-content">
+                <div class="dropdown-item" id="source-action-add-files" tabindex="0">Add files</div>
+                <div class="dropdown-item" id="source-action-add-folder" tabindex="0">Add folder</div>
+              </div>
+            </div>
+            <div class="dropdown" id="source-selected-dropdown">
+              <button class="secondary-btn source-action-trigger" type="button" id="source-selected-trigger" disabled>Selected actions ▾</button>
+              <div class="dropdown-content">
+                <div class="dropdown-item hidden" id="source-action-extract" tabindex="0">Extract text / OCR</div>
+                <div class="dropdown-item hidden" id="source-action-re-extract" tabindex="0">Re-extract selected PDFs</div>
+                <div class="dropdown-item hidden" id="source-action-retry" tabindex="0">Retry extraction</div>
+                <div class="dropdown-item" id="source-action-change-handling" tabindex="0">Change PDF handling</div>
+                <hr class="dropdown-divider">
+                <div class="dropdown-item danger-item" id="source-action-remove" tabindex="0">Remove from project</div>
+              </div>
+            </div>
+          </div>
+          <div class="hidden" style="display:none;">
+            <button id="source-add-files-btn" type="button"></button>
+            <button id="source-add-folder-btn" type="button"></button>
+            <button id="source-prepare-pdfs-btn" type="button"></button>
+            <button id="source-remove-btn" type="button"></button>
+          </div>
+        </div>
         <div class="status-line" id="files-status">0 loaded | 0 selected</div>
-        <input id="search-input" type="text" placeholder="Search/filter..." />
+        <input id="search-input" type="text" placeholder="Search sources..." />
         <div class="list-controls-bar">
           <label class="select-all-label" title="Select all filtered files">
             <input type="checkbox" id="select-all-checkbox" /> Select All
@@ -194,6 +219,56 @@
       </div>
     </div>
 
+    <!-- Source Import Modal -->
+    <div id="source-import-modal" class="modal hidden" role="dialog" aria-modal="true"
+      aria-labelledby="source-import-title" aria-describedby="source-import-description">
+      <div class="modal-content source-import-modal-content">
+        <button
+          id="btn-close-source-import-modal-top"
+          class="modal-close-btn"
+          type="button"
+          aria-label="Close Import Sources"
+        >
+          &times;
+        </button>
+        <h2 id="source-import-title">Import Sources</h2>
+        <p id="source-import-description" class="modal-description">
+          CorpusWright inspected the selected files. Importing registers them in the project and stores how PDFs should be handled. Text extraction/OCR and cleaning are separate steps.
+        </p>
+
+        <p id="source-import-summary" class="source-import-summary"></p>
+        <div id="source-import-groups" class="source-import-groups"></div>
+
+        <section id="source-import-pdf-handling" class="source-import-pdf-handling hidden" aria-label="PDF handling">
+          <div class="source-import-section-header">
+            <h3>PDF handling</h3>
+            <button id="source-import-reset-pdf-handling" class="secondary-btn" type="button">Reset all to recommended</button>
+          </div>
+          <p id="source-import-pdf-scope" class="source-import-help"></p>
+          <div id="source-import-pdf-recommendations" class="source-import-recommendations"></div>
+          <div id="source-import-pdf-group-controls" class="source-import-pdf-group-controls"></div>
+          <label id="source-import-ocr-quality-row" class="source-import-ocr-quality-row" for="source-import-ocr-quality">
+            <span>OCR quality for OCR-based PDF handling</span>
+            <select id="source-import-ocr-quality" class="settings-select">
+              <option value="Fast">Fast</option>
+              <option value="Balanced">Balanced</option>
+              <option value="HighQuality">High quality</option>
+            </select>
+            <span id="source-import-ocr-quality-help" class="source-import-help"></span>
+          </label>
+        </section>
+
+        <div id="source-import-list" class="source-import-list"></div>
+
+        <div class="modal-actions">
+          <span id="source-import-status" class="source-import-status"></span>
+          <button id="cancel-source-import-btn" class="secondary-btn" type="button">Cancel</button>
+          <button id="confirm-source-import-btn" class="secondary-btn" type="button">Import only</button>
+          <button id="confirm-source-import-extract-btn" class="primary-btn" type="button">Import and Extract Text</button>
+        </div>
+      </div>
+    </div>
+
     <!-- PDF Intake Modal -->
     <div id="pdf-intake-modal" class="modal hidden" role="dialog" aria-modal="true"
       aria-labelledby="pdf-intake-title" aria-describedby="pdf-intake-description">
@@ -208,15 +283,24 @@
         </button>
         <h2 id="pdf-intake-title">Open Scanned or Complex PDFs</h2>
         <p id="pdf-intake-description" class="modal-description">
-          Choose a slower, inspection-oriented PDF workflow. Preview before export: OCR may contain errors, layout
-          reconstruction is imperfect, and multi-column extraction is experimental. Source files are never modified.
+          Choose PDF handling for inspection-oriented processing. Preview before export: OCR may contain errors, layout
+          reconstruction is imperfect, and source files are never modified.
         </p>
 
-        <div class="pdf-intake-profiles" role="radiogroup" aria-label="PDF intake profile">
+        <div id="pdf-intake-stored-handling" class="pdf-intake-stored-handling hidden">
+          <div>
+            <h3>Using stored handling</h3>
+            <p id="pdf-intake-stored-handling-summary"></p>
+            <ul id="pdf-intake-stored-handling-list"></ul>
+          </div>
+          <button id="pdf-intake-change-handling-btn" class="secondary-btn" type="button">Change handling</button>
+        </div>
+
+        <div class="pdf-intake-profiles" role="radiogroup" aria-label="PDF handling">
           <label class="pdf-intake-profile" for="pdf-intake-standard">
             <input type="radio" id="pdf-intake-standard" name="pdf-intake-profile" value="standard" checked />
             <span>
-              <span class="pdf-intake-profile-title">Standard embedded-text PDF</span>
+              <span class="pdf-intake-profile-title">Standard embedded text</span>
               <span class="pdf-intake-profile-help">Fastest. Use when the PDF already contains selectable text.</span>
             </span>
           </label>
@@ -224,25 +308,15 @@
           <label class="pdf-intake-profile" for="pdf-intake-layout">
             <input type="radio" id="pdf-intake-layout" name="pdf-intake-profile" value="layout" />
             <span>
-              <span class="pdf-intake-profile-title">Layout-heavy PDF</span>
-              <span class="pdf-intake-profile-help">Uses visual ordering and conservative PDF cleanup for awkward line
-                wraps, headers, footers, and page labels.</span>
-            </span>
-          </label>
-
-          <label class="pdf-intake-profile" for="pdf-intake-ocr">
-            <input type="radio" id="pdf-intake-ocr" name="pdf-intake-profile" value="ocr" />
-            <span>
-              <span class="pdf-intake-profile-title">OCR rescue PDF</span>
-              <span class="pdf-intake-profile-help">Attempts OCR for scanned or image-based PDFs. Slower, and recognition
-                errors are possible.</span>
+              <span class="pdf-intake-profile-title">Layout-aware embedded text</span>
+              <span class="pdf-intake-profile-help">Experimental visual line ordering for awkward embedded text. Inspect preview before export.</span>
             </span>
           </label>
 
           <label class="pdf-intake-profile" for="pdf-intake-force-ocr">
             <input type="radio" id="pdf-intake-force-ocr" name="pdf-intake-profile" value="force-ocr" />
             <span>
-              <span class="pdf-intake-profile-title">Force OCR (slow)</span>
+              <span class="pdf-intake-profile-title">Full OCR all pages</span>
               <span class="pdf-intake-profile-help">High-quality OCR. This may take a long time. Preview is capped. Inspect before export.</span>
             </span>
           </label>
@@ -256,7 +330,7 @@
 
         <div id="pdf-intake-materialization-panel" class="pdf-intake-materialization-panel hidden" aria-live="polite">
           <div class="pdf-intake-materialization-row">
-            <span>Profile</span>
+            <span>PDF handling</span>
             <strong id="pdf-intake-materialization-profile"></strong>
           </div>
           <div class="pdf-intake-materialization-row">
@@ -276,7 +350,7 @@
             <strong id="pdf-intake-materialization-elapsed"></strong>
           </div>
           <div class="pdf-intake-materialization-row">
-            <span>Remaining</span>
+            <span>Estimated remaining</span>
             <strong id="pdf-intake-materialization-remaining"></strong>
           </div>
           <div class="pdf-intake-materialization-row">
@@ -294,7 +368,7 @@
 
         <div class="modal-actions">
           <span id="pdf-intake-status" class="pdf-intake-status"></span>
-          <button id="cancel-pdf-intake-btn" type="button">Cancel</button>
+          <button id="cancel-pdf-intake-btn" class="secondary-btn" type="button">Cancel</button>
           <button id="load-pdf-intake-files-btn" class="primary-btn hidden" type="button">Load PDFs</button>
           <button id="choose-pdf-intake-files-btn" class="primary-btn" type="button">Choose PDFs...</button>
         </div>
@@ -308,12 +382,12 @@
           id="btn-close-settings-modal-top"
           class="modal-close-btn"
           type="button"
-          aria-label="Close Processing Parameters"
+          aria-label="Close Cleaning Settings"
         >
           &times;
         </button>
-        <h2 id="settings-title">Processing Parameters</h2>
-        <p class="modal-description">These settings affect processed previews and exported text. Source files are never
+        <h2 id="settings-title">Cleaning Settings</h2>
+        <p class="modal-description">These cleaning settings affect processed previews and exported text. Source files are never
           modified.</p>
         <div class="modal-config-toolbar">
           <button type="button" id="btn-load-config">Load Config...</button>
@@ -326,7 +400,7 @@
           <button class="tab settings-tab" data-target="tab-line-page" type="button" role="tab"
             aria-selected="false">Line & Page</button>
           <button class="tab settings-tab" data-target="tab-extraction" type="button" role="tab"
-            aria-selected="false">Extraction</button>
+            aria-selected="false">Formats &amp; Fallbacks</button>
           <button class="tab settings-tab" data-target="tab-custom-removals" type="button" role="tab"
             aria-selected="false">Custom Removals</button>
         </div>
@@ -371,7 +445,7 @@
 
         <div id="tab-extraction" class="tab-content settings-tab-content" role="tabpanel">
           <div class="cleaning-controls-vertical extraction-accordion">
-            <details open>
+            <details>
               <summary>HTML Extraction</summary>
               <label><input type="checkbox" id="chk-extract-html" /> Extract HTML to Plain Text</label>
               <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 10px 0; padding-left: 24px;">
@@ -380,7 +454,7 @@
               </p>
             </details>
 
-            <details open>
+            <details>
               <summary>Table Extraction Strategy</summary>
               <div style="padding-left: 0; margin-top: 4px;">
                 <select id="sel-table-extraction" class="settings-select"
@@ -395,25 +469,24 @@
               </div>
             </details>
 
-            <details open>
-              <summary>PDF Text Source</summary>
+            <details>
+              <summary>Advanced fallback PDF defaults</summary>
+              <p class="settings-helper-text">
+                Used only for older sources or sources without a stored source-level route. New PDF sources normally
+                store their PDF handling during import.
+              </p>
               <div style="padding-left: 0; margin-top: 4px;">
+                <label class="settings-field-label" for="sel-pdf-text-source">Fallback PDF text route</label>
                 <select id="sel-pdf-text-source" class="settings-select"
                   style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
                   <option value="EmbeddedText">Embedded text</option>
-                  <option value="Ocr">OCR rescue</option>
-                  <option value="ForceOcr">Force OCR (slow)</option>
+                  <option value="ForceOcr">Full OCR all pages</option>
                 </select>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
-                  Embedded text is fastest. OCR rescue only OCRs when embedded text looks empty or poor. Force OCR
-                  ignores embedded text and can be much slower.
+                  Applies only when no stored source-level route is available.
                 </p>
-              </div>
-            </details>
 
-            <details open>
-              <summary>PDF OCR Quality</summary>
-              <div style="padding-left: 0; margin-top: 4px;">
+                <label class="settings-field-label" for="sel-pdf-ocr-quality">Fallback OCR quality</label>
                 <select id="sel-pdf-ocr-quality" class="settings-select"
                   style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
                   <option value="Fast">Fast</option>
@@ -421,14 +494,11 @@
                   <option value="HighQuality">High quality</option>
                 </select>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
-                  Higher quality renders larger page images for OCR and may take much longer on scanned PDFs.
+                  Used only when an OCR route has no stored source-level OCR quality.
                 </p>
-              </div>
-            </details>
 
-            <details open>
-              <summary>PDF Embedded Text Strategy</summary>
-              <div style="padding-left: 0; margin-top: 4px;">
+                <label class="settings-field-label" for="sel-pdf-embedded-text-strategy">Fallback embedded-text
+                  ordering</label>
                 <select id="sel-pdf-embedded-text-strategy" class="settings-select"
                   style="width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color);">
                   <option value="PdfiumFlat">Flat text order</option>
@@ -436,7 +506,8 @@
                   <option value="PdfiumVisualColumnsExperimental">Visual columns experimental</option>
                 </select>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin: 6px 0 0 0;">
-                  Controls how raw PDF text is reconstructed from the character stream. Reload preview after changing.
+                  Controls raw embedded PDF text reconstruction only for fallback extraction paths. Reload preview after
+                  changing.
                 </p>
               </div>
             </details>
@@ -452,19 +523,18 @@
             </details>
 
             <details>
-              <summary>PDF Cleanup</summary>
-              <label><input type="checkbox" id="chk-remove-repeated-pdf-headers-footers" /> Remove repeated PDF
-                headers/footers</label>
-              <label><input type="checkbox" id="chk-remove-pdf-page-labels" /> Remove PDF page labels/page numbers</label>
-              <label><input type="checkbox" id="chk-remove-pdf-symbol-heavy-artifacts" /> Remove symbol-heavy PDF
-                graphical artefacts</label>
-              <label><input type="checkbox" id="chk-remove-pdf-code-like-blocks" /> Remove code-like PDF blocks</label>
-              <label><input type="checkbox" id="chk-remove-pdf-formula-like-lines" /> Remove formula/math-heavy PDF
-                lines</label>
-              <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 10px 0; padding-left: 24px;">
-                PDF cleanup options are conservative and apply only to PDF-derived text. These options may remove
-                meaningful programming, statistical, or mathematical examples. Inspect processed preview before export.
+              <summary>Advanced PDF cleanup</summary>
+              <p class="settings-helper-text">
+                Optional conservative cleanup for obvious extraction artefacts. Review processed text before export.
               </p>
+              <input type="checkbox" id="chk-remove-repeated-pdf-headers-footers" class="hidden" />
+              <p class="settings-helper-text">
+                Repeated headers and footers are best handled with Repeated artefacts.
+              </p>
+              <label><input type="checkbox" id="chk-remove-pdf-page-labels" /> Remove page labels at page edges</label>
+              <label><input type="checkbox" id="chk-remove-pdf-symbol-heavy-artifacts" /> Remove obvious symbol-noise lines</label>
+              <label><input type="checkbox" id="chk-remove-pdf-code-like-blocks" /> Remove code-like blocks</label>
+              <label><input type="checkbox" id="chk-remove-pdf-formula-like-lines" /> Remove formula-like lines</label>
             </details>
           </div>
         </div>
@@ -493,11 +563,28 @@
             <div id="custom-removals-list" class="custom-removals-list">
               <!-- Pills will be rendered here dynamically -->
             </div>
+
+            <section class="repeated-artifacts-settings" aria-labelledby="repeated-artifacts-settings-title">
+              <strong id="repeated-artifacts-settings-title">Repeated artefacts</strong>
+              <p>
+                Find repeated headers, footers, page labels, and extraction artefacts, then turn accepted candidates
+                into cleaning rules.
+              </p>
+              <div class="repeated-artifacts-settings-action">
+                <button type="button" id="btn-find-repeated-artifacts-settings" class="primary-btn">
+                  Find repeated artefacts...
+                </button>
+                <span id="repeated-artifact-scope-help" class="settings-helper-text"></span>
+              </div>
+              <p id="repeated-artifact-rules-summary" class="settings-helper-text">
+                No repeated artefact rules have been accepted yet.
+              </p>
+            </section>
           </div>
         </div>
 
         <div class="modal-actions">
-          <button id="cancel-settings-btn">Cancel</button>
+          <button id="cancel-settings-btn" class="secondary-btn">Cancel</button>
           <button id="apply-settings-btn" class="primary-btn">Apply</button>
         </div>
       </div>
@@ -531,7 +618,7 @@
               <input type="radio" name="artifact-text-mode" value="processed" /> Processed text with current settings
             </label>
             <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Original extracted text: scans extracted/raw text before current processing rules.</span>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Processed text with current settings: scans text after current Processing Parameters and Custom Removals have been applied.</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Processed text with current settings: scans text after current Cleaning Settings and Custom Removals have been applied.</span>
             <div id="artifact-processed-warning" style="display: none; font-size: 0.8rem; color: #d4a017; background: rgba(212, 160, 23, 0.08); padding: 6px 8px; border-radius: 4px; border-left: 3px solid #d4a017; margin-top: 4px;"></div>
           </div>
 
@@ -595,11 +682,14 @@
               style="width: 60px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 2px 4px; border-radius: 2px;" />
           </div>
 
-          <div style="display: flex; align-items: flex-end; gap: 8px;">
+          <div style="display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 6px;">
             <button type="button" id="btn-run-artifact-scan" class="primary-btn"
               style="padding: 6px 16px; border-radius: 4px; height: fit-content; font-size: 0.9rem;">Run Scan</button>
-            <button type="button" id="btn-cancel-artifact-scan" class="primary-btn" style="display: none; padding: 6px 16px; border-radius: 4px; height: fit-content; font-size: 0.9rem;">Cancel</button>
-            <span id="lbl-artifact-scan-time" style="font-size: 0.8rem; color: var(--text-muted); display: none;"></span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button type="button" id="btn-cancel-artifact-scan" class="primary-btn" style="display: none; padding: 6px 16px; border-radius: 4px; height: fit-content; font-size: 0.9rem;">Cancel</button>
+              <span id="lbl-artifact-scan-time" style="font-size: 0.8rem; color: var(--text-muted); display: none;"></span>
+            </div>
+            <span id="lbl-artifact-scan-scope" style="font-size: 0.75rem; color: var(--text-muted); max-width: 220px;"></span>
           </div>
         </div>
 

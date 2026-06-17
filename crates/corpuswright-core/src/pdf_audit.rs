@@ -114,15 +114,15 @@ fn audit_pdf_file(path: &Path, environment: &PdfAuditEnvironment) -> PdfAuditRes
 
     match quality {
         PdfAuditQuality::Empty => warnings.push(
-            "This PDF appears to contain little or no embedded text. Force OCR is recommended."
+            "This PDF appears to contain little or no embedded text. Full OCR all pages is recommended."
                 .to_string(),
         ),
         PdfAuditQuality::Poor => warnings.push(
-            "Embedded text was found, but extraction quality looks very poor. Force OCR is recommended and preview should be inspected."
+            "Embedded text was found, but extraction quality looks very poor. Full OCR all pages is recommended and preview should be inspected."
                 .to_string(),
         ),
         PdfAuditQuality::Suspicious => warnings.push(
-            "Embedded text was found, but extraction quality looks suspicious. Try OCR rescue or Layout-heavy PDF and inspect the preview."
+            "Embedded text was found, but extraction quality looks suspicious. Full OCR all pages may be more predictable; inspect the preview."
                 .to_string(),
         ),
         PdfAuditQuality::Good | PdfAuditQuality::Unknown => {}
@@ -135,10 +135,8 @@ fn audit_pdf_file(path: &Path, environment: &PdfAuditEnvironment) -> PdfAuditRes
         );
     }
 
-    if matches!(
-        suggested_profile,
-        PdfAuditSuggestedProfile::OcrRescue | PdfAuditSuggestedProfile::ForceOcr
-    ) && environment.ocr_model_resources_available
+    if matches!(suggested_profile, PdfAuditSuggestedProfile::ForceOcr)
+        && environment.ocr_model_resources_available
     {
         warnings.push(
             "An OCR profile is suggested, but this audit only checks OCR model files and does not verify full OCR usability."
@@ -311,13 +309,14 @@ fn suggested_profile_for_quality(
 ) -> PdfAuditSuggestedProfile {
     match quality {
         PdfAuditQuality::Good => PdfAuditSuggestedProfile::Standard,
-        PdfAuditQuality::Suspicious => PdfAuditSuggestedProfile::OcrRescue,
-        PdfAuditQuality::Poor | PdfAuditQuality::Empty => PdfAuditSuggestedProfile::ForceOcr,
+        PdfAuditQuality::Suspicious | PdfAuditQuality::Poor | PdfAuditQuality::Empty => {
+            PdfAuditSuggestedProfile::ForceOcr
+        }
         PdfAuditQuality::Unknown => {
             if embedded_text_chars == 0 {
                 PdfAuditSuggestedProfile::ForceOcr
             } else {
-                PdfAuditSuggestedProfile::OcrRescue
+                PdfAuditSuggestedProfile::Standard
             }
         }
     }
@@ -342,7 +341,7 @@ fn failed_result(
         ocr_model_resources_available,
         ocr_full_usability_checked: false,
         degraded_fallback_used: false,
-        suggested_profile: PdfAuditSuggestedProfile::OcrRescue,
+        suggested_profile: PdfAuditSuggestedProfile::Standard,
         warnings: vec![warning],
     }
 }
@@ -371,7 +370,7 @@ mod tests {
         );
         assert_eq!(
             suggested_profile_for_quality(&PdfAuditQuality::Suspicious, 100),
-            PdfAuditSuggestedProfile::OcrRescue
+            PdfAuditSuggestedProfile::ForceOcr
         );
         assert_eq!(
             suggested_profile_for_quality(&PdfAuditQuality::Empty, 0),
@@ -380,6 +379,14 @@ mod tests {
         assert_eq!(
             suggested_profile_for_quality(&PdfAuditQuality::Poor, 100),
             PdfAuditSuggestedProfile::ForceOcr
+        );
+        assert_eq!(
+            suggested_profile_for_quality(&PdfAuditQuality::Unknown, 0),
+            PdfAuditSuggestedProfile::ForceOcr
+        );
+        assert_eq!(
+            suggested_profile_for_quality(&PdfAuditQuality::Unknown, 100),
+            PdfAuditSuggestedProfile::Standard
         );
     }
 
@@ -399,6 +406,19 @@ mod tests {
                 .iter()
                 .any(|warning| warning.contains("Could not parse PDF for audit"))
         );
+    }
+
+    #[test]
+    fn failed_audit_does_not_suggest_legacy_ocr_rescue() {
+        let result = failed_result(
+            "bad.pdf".to_string(),
+            "bad.pdf".to_string(),
+            true,
+            true,
+            "Could not parse PDF for audit".to_string(),
+        );
+
+        assert_eq!(result.suggested_profile, PdfAuditSuggestedProfile::Standard);
     }
 
     #[test]
