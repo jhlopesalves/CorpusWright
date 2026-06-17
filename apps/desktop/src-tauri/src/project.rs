@@ -308,6 +308,32 @@ pub(crate) fn update_project_source_pdf_handling_command(
     )
 }
 
+#[tauri::command(async)]
+pub(crate) fn load_repeated_artifact_decisions_command(
+    root_path: String,
+) -> Result<String, String> {
+    let root = validated_project_root(&root_path)?;
+    let path = root.join(PROJECT_DIR).join("repeated-artifacts.json");
+    if !path.exists() {
+        return Ok("{}".to_string());
+    }
+    fs::read_to_string(&path).map_err(|e| format!("Could not read decisions: {e}"))
+}
+
+#[tauri::command(async)]
+pub(crate) fn save_repeated_artifact_decisions_command(
+    root_path: String,
+    content: String,
+) -> Result<(), String> {
+    let root = validated_project_root(&root_path)?;
+    let path = root.join(PROJECT_DIR).join("repeated-artifacts.json");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create project metadata folder: {error}"))?;
+    }
+    fs::write(&path, &content).map_err(|e| format!("Could not write decisions: {e}"))
+}
+
 fn pdf_handling_override_from_request(
     request: ProjectSourcePdfHandlingOverrideRequest,
 ) -> ProjectSourcePdfHandlingOverride {

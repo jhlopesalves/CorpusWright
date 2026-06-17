@@ -3911,4 +3911,96 @@ mod tests {
             .unwrap();
         assert!(!cand_mixed.position_summary_is_page_based);
     }
+
+    #[test]
+    fn test_compute_position_for_line_page_aware_and_flat() {
+        use crate::structured_document::StructuredDocument;
+
+        // Scenario 1: Page-aware file text.
+        // We construct a FileText with has_page_metadata = true.
+        let document = StructuredDocument::from_pages([
+            "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7",
+        ]);
+
+        let ft_page_aware = FileText {
+            file_name: "test.pdf".to_string(),
+            file_path: "test.pdf".to_string(),
+            raw_lines: vec![
+                "line 1".to_string(),
+                "line 2".to_string(),
+                "line 3".to_string(),
+                "line 4".to_string(),
+                "line 5".to_string(),
+                "line 6".to_string(),
+                "line 7".to_string(),
+            ],
+            total_lines: 7,
+            document,
+            line_locations: vec![(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6)],
+            has_page_metadata: true,
+        };
+
+        assert_eq!(
+            compute_position_for_line(&ft_page_aware, 0),
+            LinePosition::Top
+        );
+        assert_eq!(
+            compute_position_for_line(&ft_page_aware, 3),
+            LinePosition::Middle
+        );
+        assert_eq!(
+            compute_position_for_line(&ft_page_aware, 6),
+            LinePosition::Bottom
+        );
+
+        // Scenario 2: Flat text without page metadata (has_page_metadata = false).
+        // 20 lines total. 10% is 2 lines. So:
+        // Indices 0, 1 are Top.
+        // Indices 2..17 are Middle.
+        // Indices 18, 19 are Bottom.
+        let ft_flat = FileText {
+            file_name: "test.txt".to_string(),
+            file_path: "test.txt".to_string(),
+            raw_lines: (0..20).map(|i| format!("line {i}")).collect(),
+            total_lines: 20,
+            document: StructuredDocument::from_flat_text_as_single_page(""),
+            line_locations: Vec::new(),
+            has_page_metadata: false,
+        };
+
+        assert_eq!(compute_position_for_line(&ft_flat, 0), LinePosition::Top);
+        assert_eq!(compute_position_for_line(&ft_flat, 1), LinePosition::Top);
+        assert_eq!(compute_position_for_line(&ft_flat, 2), LinePosition::Middle);
+        assert_eq!(
+            compute_position_for_line(&ft_flat, 10),
+            LinePosition::Middle
+        );
+        assert_eq!(
+            compute_position_for_line(&ft_flat, 17),
+            LinePosition::Middle
+        );
+        assert_eq!(
+            compute_position_for_line(&ft_flat, 18),
+            LinePosition::Bottom
+        );
+        assert_eq!(
+            compute_position_for_line(&ft_flat, 19),
+            LinePosition::Bottom
+        );
+    }
+
+    #[test]
+    fn test_compute_stable_id_determinism() {
+        let key = "some test repeated string key";
+        let id1 = compute_stable_id(&RepeatedArtifactKind::ExactLine, key);
+        let id2 = compute_stable_id(&RepeatedArtifactKind::ExactLine, key);
+        let id3 = compute_stable_id(&RepeatedArtifactKind::NormalizedLine, key);
+        let id4 = compute_stable_id(&RepeatedArtifactKind::ExactLine, "other key");
+
+        assert_eq!(id1, id2);
+        assert_ne!(id1, id3);
+        assert_ne!(id1, id4);
+        assert!(id1.starts_with("exact_"));
+        assert!(id3.starts_with("norm_"));
+    }
 }

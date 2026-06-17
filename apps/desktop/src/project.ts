@@ -10,6 +10,7 @@ import {
 import { dom } from "./dom";
 import { loadProjectSourcesForActiveProject } from "./sources";
 import { state, type ActiveProject } from "./state";
+import { loadDecisionsForProject, clearDecisions } from "./repeated-artifacts";
 
 interface RecentProject {
   name: string;
@@ -112,6 +113,7 @@ function showWelcome(message = ""): void {
 
 async function activateProject(project: ActiveProject, scanSourceRoot: boolean): Promise<void> {
   state.activeProject = project;
+  await loadDecisionsForProject(project.rootPath);
   dom.welcomeScreen.classList.add("hidden");
   dom.projectWorkspace.classList.remove("hidden");
   dom.menuFileDropdown.classList.remove("hidden");
@@ -220,6 +222,7 @@ async function handleCloseProject(): Promise<void> {
   } catch (error) {
     dom.statusBar.textContent = `Close project warning: ${formatError(error)}`;
   }
+  clearDecisions();
   state.activeProject = null;
   state.projectSources = [];
   state.sourceSearchQuery = "";
