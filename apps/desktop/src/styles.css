@@ -2389,25 +2389,16 @@ mark.search-match.current-match {
   outline-offset: 1px;
 }
 
-.select-all-header-btn {
-  font-family: inherit;
-  font-size: 0.75rem;
-  padding: 2px 6px;
+/* Header checkbox for select-all in candidate table */
+#chk-select-all-tab {
   cursor: pointer;
-  border: 1px solid var(--border-color);
-  border-radius: 3px;
-  background: var(--bg-color);
-  color: var(--text-muted);
-  transition: background-color 0.12s ease, color 0.12s ease;
-  white-space: nowrap;
+  margin: 0;
+  vertical-align: middle;
+  accent-color: var(--accent-color);
 }
-.select-all-header-btn:hover {
-  background: var(--hover-color);
-  color: var(--text-color);
-}
-.select-all-header-btn:focus-visible {
-  outline: 2px solid var(--accent-color);
-  outline-offset: 1px;
+#chk-select-all-tab:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
 
 #artifact-bucket-tabs {

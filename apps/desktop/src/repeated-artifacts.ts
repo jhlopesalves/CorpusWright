@@ -641,16 +641,6 @@ function getBucketForCandidate(
   return "review";
 }
 
-/* ─── Bucket tab label helper ─────────────────────────────────────────── */
-
-const BUCKET_LABELS: Record<string, string> = {
-  suggested: "Suggested Removals",
-  review: "Review Carefully",
-  keep: "Probably Keep",
-  accepted: "Accepted Rules",
-  ignored: "Ignored / Kept",
-};
-
 /* ─── Bulk toolbar rendering ──────────────────────────────────────────── */
 
 function getFilteredCandidatesForActiveBucket(
@@ -923,18 +913,32 @@ async function bulkRevertSelected(
 
 /* ─── Update select-all header button label ───────────────────────────── */
 
-function updateSelectAllButton(
-  filteredCandidates: RepeatedArtifactCandidate[],
-  bucket: string
+function updateSelectAllCheckbox(
+  filteredCandidates: RepeatedArtifactCandidate[]
 ): void {
-  const btn = document.getElementById("btn-select-all-tab") as HTMLButtonElement;
-  if (!btn) return;
+  const chk = document.getElementById("chk-select-all-tab") as HTMLInputElement;
+  if (!chk) return;
   const count = filteredCandidates.length;
-  const label = BUCKET_LABELS[bucket] || bucket;
-  btn.textContent =
-    count > 0
-      ? `Select all ${count} ${label.toLowerCase()}`
-      : "Select all";
+  if (count === 0) {
+    chk.checked = false;
+    chk.indeterminate = false;
+    chk.disabled = true;
+    return;
+  }
+  chk.disabled = false;
+  const selectedCount = [...state.selectedCandidateIds].filter((id) =>
+    filteredCandidates.some((c) => c.candidate_id === id)
+  ).length;
+  if (selectedCount === 0) {
+    chk.checked = false;
+    chk.indeterminate = false;
+  } else if (selectedCount === count) {
+    chk.checked = true;
+    chk.indeterminate = false;
+  } else {
+    chk.checked = false;
+    chk.indeterminate = true;
+  }
 }
 
 /* ─── MAIN INIT ───────────────────────────────────────────────────────── */
@@ -1004,18 +1008,17 @@ export function initRepeatedArtifactFinder(
 
   /* ─── Select all in tab ───────────────────────────────────────────── */
 
-  const btnSelectAllTab = document.getElementById("btn-select-all-tab");
-  btnSelectAllTab?.addEventListener("click", () => {
+  const chkSelectAllTab = document.getElementById("chk-select-all-tab") as HTMLInputElement;
+  chkSelectAllTab?.addEventListener("change", () => {
     if (state.lastScanCandidates.length === 0) return;
     const filtered = getFilteredCandidatesForActiveBucket(
       state.lastScanCandidates,
       activeBucket
     );
-    if (state.selectedCandidateIds.size === filtered.length) {
-      // All selected — clear
-      clearSelection();
-    } else {
+    if (chkSelectAllTab.checked) {
       selectAllInTab(filtered);
+    } else {
+      clearSelection();
     }
     renderCandidates(state.lastScanCandidates, lastDiagnostics, true);
   });
@@ -1619,7 +1622,7 @@ export function initRepeatedArtifactFinder(
       activeBucket
     );
 
-    updateSelectAllButton(filteredCandidates, activeBucket);
+    updateSelectAllCheckbox(filteredCandidates);
     renderBulkToolbar(activeBucket, filteredCandidates);
 
     dom.tblArtifactCandidates.innerHTML = "";
@@ -1739,6 +1742,12 @@ export function initRepeatedArtifactFinder(
         }
         renderBulkToolbar(
           activeBucket,
+          getFilteredCandidatesForActiveBucket(
+            state.lastScanCandidates,
+            activeBucket
+          )
+        );
+        updateSelectAllCheckbox(
           getFilteredCandidatesForActiveBucket(
             state.lastScanCandidates,
             activeBucket
