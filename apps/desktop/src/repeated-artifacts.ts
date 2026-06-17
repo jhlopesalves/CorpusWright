@@ -15,7 +15,7 @@ import type { RepeatedArtifactScanConfig } from "./generated/RepeatedArtifactSca
 import type { RepeatedArtifactScanDiagnostics } from "./generated/RepeatedArtifactScanDiagnostics.js";
 import type { RepeatedArtifactScanReport } from "./generated/RepeatedArtifactScanReport.js";
 import type { RemovalScope } from "./generated/RemovalScope.js";
-import { formatRemovalRuleText, syncRepeatedArtifactRulesSummary } from "./custom-removals.js";
+import { formatRemovalRuleText, syncRepeatedArtifactRulesSummary, syncDraftCustomRemovalsFromConfig } from "./custom-removals.js";
 
 interface RepeatedArtifactCallbacks {
   renderCustomRemovals: () => void;
@@ -334,6 +334,167 @@ function createNormalizedLineRemovalRule(candidate: RepeatedArtifactCandidate, n
   };
 }
 
+interface DecisionEntry {
+  decision: "accepted" | "kept" | "ignored";
+  candidate_signature: string;
+  candidate_text: string;
+  scope: RemovalScope;
+  matcher_kind: string;
+  rule_id: string;
+  updated_at: string;
+}
+
+interface ProjectDecisions {
+  version: number;
+  decisions: Record<string, DecisionEntry>;
+}
+
+export let projectDecisions: ProjectDecisions = { version: 1, decisions: {} };
+
+async function loadProjectDecisions(rootPath: string): Promise<ProjectDecisions> {
+  try {
+    const raw = await invoke<string>("load_repeated_artifact_decisions_command", { rootPath });
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || parsed.version === undefined) {
+      return { version: 1, decisions: {} };
+    }
+    return parsed as ProjectDecisions;
+  } catch (err) {
+    console.error("Failed to load decisions:", err);
+    return { version: 1, decisions: {} };
+  }
+}
+
+async function saveProjectDecisions(rootPath: string, decisions: ProjectDecisions): Promise<void> {
+  try {
+    await invoke("save_repeated_artifact_decisions_command", {
+      rootPath,
+      content: JSON.stringify(decisions, null, 2),
+    });
+  } catch (err) {
+    console.error("Failed to save decisions:", err);
+  }
+}
+
+export async function loadDecisionsForProject(rootPath: string): Promise<void> {
+  projectDecisions = await loadProjectDecisions(rootPath);
+  syncAcceptedRulesIntoConfig();
+}
+
+export function clearDecisions(): void {
+  projectDecisions = { version: 1, decisions: {} };
+}
+
+export function syncAcceptedRulesIntoConfig(): void {
+  if (!state.activeProject) return;
+
+  const existingRuleIds = new Set(state.activeCleaningConfig.removal_rules.map(rule => rule.id));
+  const existingRuleKeys = new Set(state.activeCleaningConfig.removal_rules.map(removalRuleDuplicateKey));
+
+  let addedCount = 0;
+
+  for (const [candId, entry] of Object.entries(projectDecisions.decisions)) {
+    if (entry.decision !== "accepted") continue;
+
+    const ruleId = entry.rule_id || `repeated-artifact:${entry.scope}:${candId}`;
+    const duplicateKey = entry.matcher_kind === "normalized_line"
+      ? normalizedLineRuleDuplicateKey(entry.candidate_text, entry.scope)
+      : exactLineRuleDuplicateKey(entry.candidate_text, entry.scope);
+
+    if (existingRuleIds.has(ruleId) || existingRuleKeys.has(duplicateKey)) {
+      continue;
+    }
+
+    const rule: RemovalRule = {
+      id: ruleId,
+      label: formatRemovalRuleText({
+        id: "",
+        label: "",
+        source: "promoted_repeated_artifact",
+        matcher: entry.matcher_kind === "normalized_line"
+          ? { kind: "normalized_line", normalized_key: entry.candidate_text }
+          : { kind: "literal", text: entry.candidate_text },
+        scope: entry.scope,
+        enabled: true,
+      }),
+      source: "promoted_repeated_artifact",
+      matcher: entry.matcher_kind === "normalized_line"
+        ? { kind: "normalized_line", normalized_key: entry.candidate_text }
+        : { kind: "literal", text: entry.candidate_text },
+      scope: entry.scope,
+      enabled: true,
+    };
+
+    state.activeCleaningConfig.removal_rules.push(rule);
+    existingRuleIds.add(ruleId);
+    existingRuleKeys.add(duplicateKey);
+    addedCount++;
+  }
+
+  if (addedCount > 0) {
+    syncDraftCustomRemovalsFromConfig(state.activeCleaningConfig);
+  }
+}
+
+export function syncDecisionsWithActiveRules(): void {
+  if (!state.activeProject) return;
+
+  const activeRuleIds = new Set(state.activeCleaningConfig.removal_rules.map(rule => rule.id));
+  let modified = false;
+
+  for (const [candId, entry] of Object.entries(projectDecisions.decisions)) {
+    if (entry.decision === "accepted") {
+      const ruleId = entry.rule_id || `repeated-artifact:${entry.scope}:${candId}`;
+      if (!activeRuleIds.has(ruleId)) {
+        delete projectDecisions.decisions[candId];
+        modified = true;
+      }
+    }
+  }
+
+  if (modified) {
+    saveProjectDecisions(state.activeProject.rootPath, projectDecisions);
+  }
+}
+
+function removeRulesForCandidate(candidateId: string): void {
+  const suffix = ":" + candidateId;
+  state.activeCleaningConfig.removal_rules = state.activeCleaningConfig.removal_rules.filter(
+    rule => !rule.id.endsWith(suffix)
+  );
+  state.tempRemovalRules = state.tempRemovalRules.filter(
+    rule => !rule.id.endsWith(suffix)
+  );
+}
+
+function getBucketForCandidate(cand: RepeatedArtifactCandidate, decision: string | undefined): string {
+  if (decision === "accepted") {
+    return "accepted";
+  }
+  if (decision === "kept" || decision === "ignored") {
+    return "ignored";
+  }
+
+  const risk = cand.risk_label;
+  const signal = (cand as any).text_signal_label as string | undefined;
+
+  const isSuggested =
+    (risk === "strong_header_footer_candidate" || risk === "symbol_or_noise_candidate" ||
+     signal === "likely_markup_or_extraction_noise" || signal === "likely_page_label") &&
+    !(signal === "likely_natural_text" || signal === "likely_section_heading");
+
+  if (isSuggested) {
+    return "suggested";
+  }
+
+  const isKeep = (signal === "likely_natural_text" || signal === "likely_section_heading");
+  if (isKeep) {
+    return "keep";
+  }
+
+  return "review";
+}
+
 export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks): void {
   const radioModes = getArtifactTextModeRadios();
 
@@ -346,6 +507,110 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   let currentSortDirection: "asc" | "desc" = "desc";
   let activeSelectedCandidateId: string | null = null;
   let lastDiagnostics: RepeatedArtifactScanDiagnostics | null = null;
+  let activeBucket = "suggested";
+
+  let settingsExpanded = true;
+  const configPanel = document.getElementById("repeated-artifact-config-panel");
+  const arrowEl = document.getElementById("scan-settings-arrow");
+  const btnToggleScanSettings = document.getElementById("btn-toggle-scan-settings");
+  const summaryTextEl = document.getElementById("repeated-artifact-summary-text");
+
+  function setSettingsExpanded(expanded: boolean) {
+    settingsExpanded = expanded;
+    if (!configPanel || !arrowEl) return;
+    if (expanded) {
+      configPanel.classList.remove("hidden");
+      arrowEl.textContent = "▾";
+    } else {
+      configPanel.classList.add("hidden");
+      arrowEl.textContent = "▸";
+    }
+  }
+
+  btnToggleScanSettings?.addEventListener("click", () => {
+    setSettingsExpanded(!settingsExpanded);
+  });
+
+  // Tab click listeners
+  const tabsContainer = document.getElementById("artifact-bucket-tabs");
+  tabsContainer?.querySelectorAll(".tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      tabsContainer.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      activeBucket = tab.getAttribute("data-bucket") || "suggested";
+      if (state.lastScanCandidates.length > 0) {
+        renderCandidates(state.lastScanCandidates, lastDiagnostics, true);
+      }
+    });
+  });
+
+  // Accept All Suggested click listener
+  const btnAcceptAllSuggested = document.getElementById("btn-accept-all-suggested");
+  btnAcceptAllSuggested?.addEventListener("click", async () => {
+    const suggestedCandidatesToAccept = state.lastScanCandidates.filter(cand => {
+      const decision = projectDecisions.decisions[cand.candidate_id]?.decision;
+      if (decision !== undefined) return false;
+      if (getBucketForCandidate(cand, decision) !== "suggested") return false;
+      const mid = cand.position_summary?.middle_count ?? 0;
+      return mid === 0;
+    });
+
+    if (suggestedCandidatesToAccept.length === 0) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to accept all ${suggestedCandidatesToAccept.length} suggested candidates and create structured removal rules for them?`
+    );
+    if (!confirmed) return;
+
+    for (const cand of suggestedCandidatesToAccept) {
+      const chosenScope = computeCandidateScope(cand);
+
+      const rule = cand.kind === "normalized_line"
+        ? createNormalizedLineRemovalRule(cand, (cand.normalized_key || "").trim(), chosenScope)
+        : createExactLineRemovalRule(cand, chosenScope);
+
+      removeRulesForCandidate(cand.candidate_id);
+
+      state.activeCleaningConfig.removal_rules.push(rule);
+      if (dom.settingsModal.classList.contains("hidden")) {
+        state.tempRemovalRules = state.activeCleaningConfig.removal_rules.map((r) => ({
+          ...r,
+          matcher: { ...r.matcher },
+        }));
+      } else {
+        const tempRuleIds = new Set(state.tempRemovalRules.map(r => r.id));
+        const tempRuleKeys = new Set(state.tempRemovalRules.map(removalRuleDuplicateKey));
+        const ruleKey = removalRuleDuplicateKey(rule);
+        if (!tempRuleIds.has(rule.id) && !tempRuleKeys.has(ruleKey)) {
+          state.tempRemovalRules.push({
+            ...rule,
+            matcher: { ...rule.matcher },
+          });
+        }
+      }
+
+      projectDecisions.decisions[cand.candidate_id] = {
+        decision: "accepted",
+        candidate_signature: cand.candidate_id,
+        candidate_text: getCandidateText(cand),
+        scope: chosenScope,
+        matcher_kind: cand.kind === "normalized_line" ? "normalized_line" : "literal",
+        rule_id: rule.id,
+        updated_at: new Date().toISOString(),
+      };
+    }
+
+    if (state.activeProject) {
+      await saveProjectDecisions(state.activeProject.rootPath, projectDecisions);
+    }
+
+    callbacks.renderCustomRemovals();
+    syncRepeatedArtifactSettingsSection();
+
+    // Refresh UI
+    renderCandidates(state.lastScanCandidates, null, true);
+    dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Accepted all suggested candidates.</div>`;
+  });
 
   function updateProcessedWarning(): void {
     const isProcessed = getSelectedArtifactTextMode()?.value === "processed";
@@ -372,7 +637,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     const timeStr = elapsed !== undefined ? ` (${elapsed.toFixed(1)}s)` : "";
     dom.tblArtifactCandidates.innerHTML = `
       <tr>
-        <td colspan="8" style="padding: 20px; text-align: center;">
+        <td colspan="6" style="padding: 20px; text-align: center;">
           <div class="spinner" style="margin: 0 auto 10px auto; width: 24px; height: 24px;"></div>
           ${stage}${timeStr}
         </td>
@@ -407,6 +672,11 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     syncRepeatedArtifactModalScope();
     dom.repeatedArtifactModal.classList.remove("hidden");
     updateProcessedWarning();
+    if (state.lastScanCandidates && state.lastScanCandidates.length > 0) {
+      setSettingsExpanded(false);
+    } else {
+      setSettingsExpanded(true);
+    }
   }
 
   function renderDiagnostics(diags: RepeatedArtifactScanDiagnostics): void {
@@ -437,6 +707,19 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
     dom.artifactDiagnostics.textContent = text;
     dom.artifactDiagnostics.classList.remove("hidden");
+
+    if (summaryTextEl) {
+      const timeStr = dom.lblScanTime.textContent || "";
+      const finalParts = [
+        `${diags.files_scanned} files scanned`,
+        `${diags.total_raw_lines.toLocaleString()} lines`,
+        `${diags.final_candidates.toLocaleString()} candidates`
+      ];
+      if (timeStr) {
+        finalParts.push(timeStr);
+      }
+      summaryTextEl.textContent = finalParts.join(" · ");
+    }
   }
 
   dom.menuRepeatedArtifactFinder.addEventListener("click", openRepeatedArtifactFinder);
@@ -711,6 +994,10 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       return;
     }
 
+    if (summaryTextEl) {
+      summaryTextEl.textContent = "";
+    }
+
     const textMode = getSelectedArtifactTextMode()?.value || "original";
     const analyseProcessed = textMode === "processed";
 
@@ -789,6 +1076,9 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
       renderDiagnostics(report.diagnostics);
 
+      // Collapse settings panel automatically after successful scan
+      setSettingsExpanded(false);
+
       dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Select a candidate to inspect examples.</div>`;
 
       renderCandidates(report.candidates, report.diagnostics);
@@ -802,7 +1092,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         dom.lblScanTime.textContent = "Cancelled";
         dom.tblArtifactCandidates.innerHTML = `
           <tr>
-            <td colspan="8" style="padding: 20px; text-align: center; color: var(--text-muted);">Scan was cancelled.</td>
+            <td colspan="6" style="padding: 20px; text-align: center; color: var(--text-muted);">Scan was cancelled.</td>
           </tr>
         `;
       } else {
@@ -811,7 +1101,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         dom.tblArtifactCandidates.innerHTML = "";
         const errorRow = document.createElement("tr");
         const errorCell = document.createElement("td");
-        errorCell.colSpan = 8;
+        errorCell.colSpan = 6;
         errorCell.style.cssText = "padding: 20px; text-align: center; color: #ff5e5e;";
         errorCell.textContent = `Error during scan: ${errStr}`;
         errorRow.appendChild(errorCell);
@@ -830,6 +1120,57 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
   syncRepeatedArtifactSettingsSection();
 
+  function updateBucketTabs(candidates: RepeatedArtifactCandidate[]): void {
+    const counts = {
+      suggested: 0,
+      review: 0,
+      keep: 0,
+      accepted: 0,
+      ignored: 0,
+    };
+    for (const cand of candidates) {
+      const decision = projectDecisions.decisions[cand.candidate_id]?.decision;
+      const bucket = getBucketForCandidate(cand, decision);
+      counts[bucket as keyof typeof counts]++;
+    }
+
+    const tabsContainer = document.getElementById("artifact-bucket-tabs");
+    if (!tabsContainer) return;
+
+    const btnSuggested = tabsContainer.querySelector('[data-bucket="suggested"]');
+    if (btnSuggested) btnSuggested.textContent = `Suggested Removals (${counts.suggested})`;
+
+    const btnReview = tabsContainer.querySelector('[data-bucket="review"]');
+    if (btnReview) btnReview.textContent = `Review Carefully (${counts.review})`;
+
+    const btnKeep = tabsContainer.querySelector('[data-bucket="keep"]');
+    if (btnKeep) btnKeep.textContent = `Probably Keep (${counts.keep})`;
+
+    const btnAccepted = tabsContainer.querySelector('[data-bucket="accepted"]');
+    if (btnAccepted) btnAccepted.textContent = `Accepted Rules (${counts.accepted})`;
+
+    const btnIgnored = tabsContainer.querySelector('[data-bucket="ignored"]');
+    if (btnIgnored) btnIgnored.textContent = `Ignored / Kept (${counts.ignored})`;
+
+    const btnAcceptAll = document.getElementById("btn-accept-all-suggested") as HTMLButtonElement;
+    if (btnAcceptAll) {
+      const suggestedCandidatesToAccept = candidates.filter(cand => {
+        const decision = projectDecisions.decisions[cand.candidate_id]?.decision;
+        if (decision !== undefined) return false;
+        if (getBucketForCandidate(cand, decision) !== "suggested") return false;
+        const mid = cand.position_summary?.middle_count ?? 0;
+        return mid === 0;
+      });
+
+      if (activeBucket === "suggested" && suggestedCandidatesToAccept.length > 0) {
+        btnAcceptAll.classList.remove("hidden");
+        btnAcceptAll.textContent = `Accept all safe suggestions (${suggestedCandidatesToAccept.length})...`;
+      } else {
+        btnAcceptAll.classList.add("hidden");
+      }
+    }
+  }
+
   function renderCandidates(
     candidates: RepeatedArtifactCandidate[],
     diagnostics: RepeatedArtifactScanDiagnostics | null,
@@ -841,41 +1182,49 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       updateAddSelectedButtonState();
     }
 
+    updateBucketTabs(candidates);
+
+    const filteredCandidates = candidates.filter(cand => {
+      const decision = projectDecisions.decisions[cand.candidate_id]?.decision;
+      return getBucketForCandidate(cand, decision) === activeBucket;
+    });
+
     dom.tblArtifactCandidates.innerHTML = "";
-    dom.lblArtifactResultsCount.textContent = `${candidates.length} found`;
+    dom.lblArtifactResultsCount.textContent = `${filteredCandidates.length} found`;
 
-    if (candidates.length === 0) {
-      let msg: string;
-
-      if (diagnostics && diagnostics.total_raw_lines === 0) {
-        msg = "No candidates found because no text lines were extracted. Check whether the documents are scanned/image-only PDFs or whether extraction failed.";
-        if (diagnostics.files_failed_extraction > 0) {
-          msg += ` Extraction failures were reported for ${diagnostics.files_failed_extraction} file(s).`;
+    if (filteredCandidates.length === 0) {
+      let msg = "No candidates in this bucket.";
+      if (activeBucket === "suggested") {
+        if (diagnostics && diagnostics.total_raw_lines === 0) {
+          msg = "No candidates found because no text lines were extracted. Check whether the documents are scanned/image-only PDFs or whether extraction failed.";
+          if (diagnostics.files_failed_extraction > 0) {
+            msg += ` Extraction failures were reported for ${diagnostics.files_failed_extraction} file(s).`;
+          }
+        } else if (diagnostics && diagnostics.total_candidate_keys_before_filtering > 0 && diagnostics.candidates_after_min_occurrences === 0) {
+          msg = "Candidate keys were found, but none met Min Occurrences. Try lowering Min Occurrences.";
+        } else if (diagnostics && diagnostics.candidates_after_min_occurrences > 0 && diagnostics.candidates_after_min_files === 0) {
+          msg = "Candidates were found, but none appeared in enough distinct files. Try Min Files = 1 for repeated artefacts inside a single PDF/book.";
+        } else {
+          msg = "No suggested candidates meeting the thresholds.";
         }
-      } else if (diagnostics && diagnostics.total_candidate_keys_before_filtering > 0 && diagnostics.candidates_after_min_occurrences === 0) {
-        msg = "Candidate keys were found, but none met Min Occurrences. Try lowering Min Occurrences.";
-      } else if (diagnostics && diagnostics.candidates_after_min_occurrences > 0 && diagnostics.candidates_after_min_files === 0) {
-        msg = "Candidates were found, but none appeared in enough distinct files. Try Min Files = 1 for repeated artefacts inside a single PDF/book.";
-      } else {
-        msg = "No candidates found meeting the thresholds.";
-      }
 
-      if (state.scanWasProcessed && state.removalCountAtScanStart > 0) {
-        msg += " Processed scans apply current Custom Removals, so already-removed artefacts will not appear. Scan Original extracted text to rediscover raw artefacts.";
+        if (state.scanWasProcessed && state.removalCountAtScanStart > 0) {
+          msg += " Processed scans apply current Custom Removals, so already-removed artefacts will not appear. Scan Original extracted text to rediscover raw artefacts.";
+        }
       }
 
       dom.tblArtifactCandidates.innerHTML = `
         <tr>
-          <td colspan="8" style="padding: 20px; text-align: center; color: var(--text-muted);">${msg}</td>
+          <td colspan="6" style="padding: 20px; text-align: center; color: var(--text-muted);">${msg}</td>
         </tr>
       `;
       return;
     }
 
     // Sort stably using comparators if a sort column is active
-    let displayCandidates = candidates;
+    let displayCandidates = filteredCandidates;
     if (currentSortColumn) {
-      const candidatesWithIndex = candidates.map((cand, idx) => ({ cand, idx }));
+      const candidatesWithIndex = filteredCandidates.map((cand, idx) => ({ cand, idx }));
       candidatesWithIndex.sort((a, b) => {
         const res = compareCandidates(a.cand, b.cand, currentSortColumn!);
         if (res !== 0) {
@@ -927,18 +1276,36 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
       const tdText = document.createElement("td");
       tdText.className = "candidate-text-cell";
-      tdText.textContent = cand.normalized_key && cand.kind === "normalized_line"
+
+      const patternWrapper = document.createElement("div");
+      patternWrapper.className = "candidate-pattern-wrapper";
+
+      const textSpan = document.createElement("span");
+      textSpan.className = "candidate-text-display";
+      textSpan.textContent = cand.normalized_key && cand.kind === "normalized_line"
         ? cand.normalized_key
         : cand.display_text;
-      tdText.title = cand.display_text;
+      textSpan.title = cand.display_text;
 
-      const tdKind = document.createElement("td");
-      tdKind.textContent = formatKind(cand.kind);
+      const badgesDiv = document.createElement("div");
+      badgesDiv.className = "candidate-meta-badges";
 
-      const tdContent = document.createElement("td");
-      tdContent.textContent = formatContentClass(cand.content_class);
-      tdContent.style.fontSize = "0.8rem";
-      tdContent.title = formatTextSignalSummary(cand);
+      const kindChip = document.createElement("span");
+      const kindClass = cand.kind.replace("_line", "").replace("_block", "block");
+      kindChip.className = `meta-badge-chip kind-${kindClass}`;
+      kindChip.textContent = formatKind(cand.kind);
+
+      const contentChip = document.createElement("span");
+      const contentClass = cand.content_class.split("_")[0];
+      contentChip.className = `meta-badge-chip content-${contentClass}`;
+      contentChip.textContent = formatContentClass(cand.content_class);
+      contentChip.title = formatTextSignalSummary(cand);
+
+      badgesDiv.appendChild(kindChip);
+      badgesDiv.appendChild(contentChip);
+      patternWrapper.appendChild(textSpan);
+      patternWrapper.appendChild(badgesDiv);
+      tdText.appendChild(patternWrapper);
 
       const tdOcc = document.createElement("td");
       tdOcc.textContent = cand.occurrence_count.toString();
@@ -960,8 +1327,6 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
       tr.appendChild(tdCheck);
       tr.appendChild(tdText);
-      tr.appendChild(tdKind);
-      tr.appendChild(tdContent);
       tr.appendChild(tdOcc);
       tr.appendChild(tdFiles);
       tr.appendChild(tdPos);
@@ -1056,6 +1421,204 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   function showCandidateDetails(cand: RepeatedArtifactCandidate): void {
     dom.artifactDetailsContent.innerHTML = "";
 
+    const activeEntry = projectDecisions.decisions[cand.candidate_id];
+    const decision = activeEntry?.decision;
+    const activeScope = activeEntry?.scope;
+
+    const triageBar = document.createElement("div");
+    triageBar.className = "candidate-triage-bar";
+
+    const triageControls = document.createElement("div");
+    triageControls.style.cssText = "display: flex; gap: 8px; align-items: center; width: 100%;";
+
+    const acceptBtn = document.createElement("button");
+    acceptBtn.type = "button";
+    acceptBtn.className = "triage-btn accept-btn";
+    acceptBtn.textContent = "Accept";
+    if (decision === "accepted") {
+      acceptBtn.classList.add("selected");
+    }
+
+    const keepBtn = document.createElement("button");
+    keepBtn.type = "button";
+    keepBtn.className = "triage-btn keep-btn";
+    keepBtn.textContent = "Keep";
+    if (decision === "kept") {
+      keepBtn.classList.add("selected");
+    }
+
+    const ignoreBtn = document.createElement("button");
+    ignoreBtn.type = "button";
+    ignoreBtn.className = "triage-btn ignore-btn";
+    ignoreBtn.textContent = "Ignore";
+    if (decision === "ignored") {
+      ignoreBtn.classList.add("selected");
+    }
+
+    const revertBtn = document.createElement("button");
+    revertBtn.type = "button";
+    revertBtn.className = "triage-btn revert-btn";
+    revertBtn.textContent = "Revert";
+    if (decision === undefined) {
+      revertBtn.classList.add("hidden");
+    }
+
+    triageControls.appendChild(acceptBtn);
+    triageControls.appendChild(keepBtn);
+    triageControls.appendChild(ignoreBtn);
+    triageControls.appendChild(revertBtn);
+
+    const scopeContainer = document.createElement("div");
+    scopeContainer.style.cssText = "margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 0.8rem;";
+
+    const scopeLabel = document.createElement("label");
+    scopeLabel.htmlFor = "select-triage-scope";
+    scopeLabel.textContent = "Scope:";
+    scopeContainer.appendChild(scopeLabel);
+
+    const selectScope = document.createElement("select");
+    selectScope.id = "select-triage-scope";
+    selectScope.style.cssText = "background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 3px; padding: 2px 4px; font-size: 0.8rem;";
+
+    if (cand.position_summary_is_page_based) {
+      selectScope.innerHTML = `
+        <option value="whole_line">Whole Line</option>
+        <option value="page_top">Page Top</option>
+        <option value="page_bottom">Page Bottom</option>
+        <option value="page_top_or_bottom">Page Top/Bottom</option>
+      `;
+    } else {
+      selectScope.innerHTML = `
+        <option value="whole_line">Whole Line</option>
+      `;
+    }
+
+    const defaultScope = computeCandidateScope(cand);
+    selectScope.value = activeScope || defaultScope;
+
+    if (decision === "accepted") {
+      selectScope.disabled = true;
+    }
+
+    scopeContainer.appendChild(selectScope);
+    triageControls.appendChild(scopeContainer);
+    triageBar.appendChild(triageControls);
+    dom.artifactDetailsContent.appendChild(triageBar);
+
+    acceptBtn.addEventListener("click", async () => {
+      const chosenScope = selectScope.value as RemovalScope;
+      const rule = cand.kind === "normalized_line"
+        ? createNormalizedLineRemovalRule(cand, (cand.normalized_key || "").trim(), chosenScope)
+        : createExactLineRemovalRule(cand, chosenScope);
+
+      const ruleKey = removalRuleDuplicateKey(rule);
+
+      removeRulesForCandidate(cand.candidate_id);
+
+      state.activeCleaningConfig.removal_rules.push(rule);
+      if (dom.settingsModal.classList.contains("hidden")) {
+        state.tempRemovalRules = state.activeCleaningConfig.removal_rules.map((r) => ({
+          ...r,
+          matcher: { ...r.matcher },
+        }));
+      } else {
+        const tempRuleIds = new Set(state.tempRemovalRules.map(r => r.id));
+        const tempRuleKeys = new Set(state.tempRemovalRules.map(removalRuleDuplicateKey));
+        if (!tempRuleIds.has(rule.id) && !tempRuleKeys.has(ruleKey)) {
+          state.tempRemovalRules.push({
+            ...rule,
+            matcher: { ...rule.matcher },
+          });
+        }
+      }
+
+      callbacks.renderCustomRemovals();
+      syncRepeatedArtifactSettingsSection();
+
+      projectDecisions.decisions[cand.candidate_id] = {
+        decision: "accepted",
+        candidate_signature: cand.candidate_id,
+        candidate_text: getCandidateText(cand),
+        scope: chosenScope,
+        matcher_kind: cand.kind === "normalized_line" ? "normalized_line" : "literal",
+        rule_id: rule.id,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (state.activeProject) {
+        await saveProjectDecisions(state.activeProject.rootPath, projectDecisions);
+      }
+
+      renderCandidates(state.lastScanCandidates, null, true);
+      const tr = dom.tblArtifactCandidates.querySelector(`tr[data-id="${cand.candidate_id}"]`);
+      if (tr) tr.classList.add("selected");
+      showCandidateDetails(cand);
+    });
+
+    keepBtn.addEventListener("click", async () => {
+      removeRulesForCandidate(cand.candidate_id);
+
+      callbacks.renderCustomRemovals();
+      syncRepeatedArtifactSettingsSection();
+
+      projectDecisions.decisions[cand.candidate_id] = {
+        decision: "kept",
+        candidate_signature: cand.candidate_id,
+        candidate_text: getCandidateText(cand),
+        scope: defaultScope,
+        matcher_kind: cand.kind === "normalized_line" ? "normalized_line" : "literal",
+        rule_id: "",
+        updated_at: new Date().toISOString(),
+      };
+
+      if (state.activeProject) {
+        await saveProjectDecisions(state.activeProject.rootPath, projectDecisions);
+      }
+
+      renderCandidates(state.lastScanCandidates, null, true);
+      dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Candidate kept.</div>`;
+    });
+
+    ignoreBtn.addEventListener("click", async () => {
+      removeRulesForCandidate(cand.candidate_id);
+
+      callbacks.renderCustomRemovals();
+      syncRepeatedArtifactSettingsSection();
+
+      projectDecisions.decisions[cand.candidate_id] = {
+        decision: "ignored",
+        candidate_signature: cand.candidate_id,
+        candidate_text: getCandidateText(cand),
+        scope: defaultScope,
+        matcher_kind: cand.kind === "normalized_line" ? "normalized_line" : "literal",
+        rule_id: "",
+        updated_at: new Date().toISOString(),
+      };
+
+      if (state.activeProject) {
+        await saveProjectDecisions(state.activeProject.rootPath, projectDecisions);
+      }
+
+      renderCandidates(state.lastScanCandidates, null, true);
+      dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Candidate ignored.</div>`;
+    });
+
+    revertBtn.addEventListener("click", async () => {
+      removeRulesForCandidate(cand.candidate_id);
+
+      callbacks.renderCustomRemovals();
+      syncRepeatedArtifactSettingsSection();
+
+      delete projectDecisions.decisions[cand.candidate_id];
+
+      if (state.activeProject) {
+        await saveProjectDecisions(state.activeProject.rootPath, projectDecisions);
+      }
+
+      renderCandidates(state.lastScanCandidates, null, true);
+      dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Decision reverted.</div>`;
+    });
+
     const isLiteral = cand.kind === "exact_line" ||
       cand.kind === "inline_artifact" ||
       cand.kind === "two_line_block" ||
@@ -1064,33 +1627,36 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     const isNormalized = cand.kind === "normalized_line";
     const normalizedKey = (cand.normalized_key || "").trim();
 
-    const metaDiv = document.createElement("div");
-    metaDiv.style.display = "flex";
-    metaDiv.style.flexWrap = "wrap";
-    metaDiv.style.gap = "12px";
-    metaDiv.style.fontSize = "0.85rem";
-    metaDiv.style.padding = "8px";
-    metaDiv.style.background = "var(--bg-color)";
-    metaDiv.style.borderRadius = "4px";
-    metaDiv.style.border = "1px solid var(--border-color)";
+    // Summary Section
+    const summaryTitle = document.createElement("div");
+    summaryTitle.className = "detail-section-title";
+    summaryTitle.textContent = "Summary";
+    dom.artifactDetailsContent.appendChild(summaryTitle);
 
-    const metaParts = [
-      `<span><strong>Kind:</strong> ${formatKind(cand.kind)}</span>`,
-      `<span><strong>Content:</strong> ${formatContentClass(cand.content_class)}</span>`,
-      `<span><strong>Occurrences:</strong> ${cand.occurrence_count}</span>`,
-      `<span><strong>Files:</strong> ${cand.file_count}</span>`,
-    ];
+    const summaryGrid = document.createElement("div");
+    summaryGrid.className = "detail-summary-grid";
+
+    let rawVariantsLabel = "0 tracked";
     if (isNormalized) {
-      const cappedNote = cand.raw_variant_count_is_capped
-        ? " (capped; actual count may be higher)"
-        : "";
-      metaParts.push(`<span><strong>Raw variants:</strong> ${cand.raw_variant_count} tracked${cappedNote}</span>`);
+      const cappedNote = cand.raw_variant_count_is_capped ? " (capped)" : "";
+      rawVariantsLabel = `${cand.raw_variant_count} tracked${cappedNote}`;
     }
-    metaParts.push(`<span><strong>Risk:</strong> ${formatRiskLabel(cand.risk_label)}</span>`);
-    metaParts.push(`<span><strong>Text signal:</strong> ${formatTextSignalLabel(getTextSignalLabel(cand))}</span>`);
 
-    metaDiv.innerHTML = metaParts.join("");
-    dom.artifactDetailsContent.appendChild(metaDiv);
+    summaryGrid.innerHTML = `
+      <div><strong>Kind:</strong> <span>${formatKind(cand.kind)}</span></div>
+      <div><strong>Content:</strong> <span>${formatContentClass(cand.content_class)}</span></div>
+      <div><strong>Occurrences:</strong> <span>${cand.occurrence_count}</span></div>
+      <div><strong>Files:</strong> <span>${cand.file_count}</span></div>
+      <div><strong>Raw variants:</strong> <span>${rawVariantsLabel}</span></div>
+      <div><strong>Risk:</strong> <span>${formatRiskLabel(cand.risk_label)}</span></div>
+    `;
+    dom.artifactDetailsContent.appendChild(summaryGrid);
+
+    // Evidence Section
+    const evidenceTitle = document.createElement("div");
+    evidenceTitle.className = "detail-section-title";
+    evidenceTitle.textContent = "Evidence";
+    dom.artifactDetailsContent.appendChild(evidenceTitle);
 
     const textSignalDiv = document.createElement("div");
     textSignalDiv.className = "detail-note detail-note-info";
@@ -1122,7 +1688,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       dispBlock.className = "candidate-display-block";
       const dispHeader = document.createElement("div");
       dispHeader.className = "candidate-display-header";
-      dispHeader.textContent = "Candidate";
+      dispHeader.textContent = "Candidate Text";
       const dispText = document.createElement("div");
       dispText.className = "candidate-display-text";
       dispText.textContent = cand.display_text;
@@ -1150,7 +1716,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       dispBlock.className = "candidate-display-block";
       const dispHeader = document.createElement("div");
       dispHeader.className = "candidate-display-header";
-      dispHeader.textContent = "Normalised grouping key";
+      dispHeader.textContent = "Normalised Grouping Key";
       const dispText = document.createElement("div");
       dispText.className = "candidate-display-text";
       dispText.textContent = normalizedKey || cand.display_text;
@@ -1287,14 +1853,14 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     dom.artifactDetailsContent.appendChild(riskAdvisoryDiv);
 
     if (cand.examples && cand.examples.length > 0) {
-      const examplesTitle = document.createElement("strong");
-      examplesTitle.style.fontSize = "0.9rem";
-      examplesTitle.style.marginTop = "8px";
+      const examplesTitle = document.createElement("div");
+      examplesTitle.className = "detail-section-title";
       if (cand.occurrence_count > cand.examples.length) {
         examplesTitle.textContent = `Sample Occurrences (showing ${cand.examples.length} of ${cand.occurrence_count})`;
       } else {
         examplesTitle.textContent = `Sample Occurrences (showing all ${cand.examples.length})`;
       }
+      dom.artifactDetailsContent.appendChild(examplesTitle);
 
       const examplesListDiv = document.createElement("div");
       examplesListDiv.style.display = "flex";
@@ -1350,7 +1916,6 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         examplesListDiv.appendChild(card);
       });
 
-      dom.artifactDetailsContent.appendChild(examplesTitle);
       dom.artifactDetailsContent.appendChild(examplesListDiv);
     }
   }

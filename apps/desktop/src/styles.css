@@ -2203,6 +2203,244 @@ mark.search-match.current-match {
 }
 
 /* Repeated Artefact Finder Modal Styling */
+.repeated-artifact-modal-content {
+  width: min(96vw, 1600px);
+  max-width: 96vw;
+  height: min(92vh, 980px);
+  display: flex;
+  flex-direction: column;
+}
+
+.repeated-artifact-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 16px;
+}
+
+.repeated-artifact-left-pane {
+  flex: 1.4;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+}
+
+.repeated-artifact-right-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+}
+
+.repeated-artifact-batch-toolbar {
+  padding: 6px 12px;
+  display: flex;
+  justify-content: flex-end;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--panel-bg);
+  min-height: 32px;
+  align-items: center;
+}
+
+#artifact-bucket-tabs {
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--panel-bg);
+}
+#artifact-bucket-tabs .tab {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+#artifact-bucket-tabs .tab.active {
+  color: var(--text-color);
+  border-bottom: 2px solid var(--accent-color);
+}
+
+.candidate-triage-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.triage-btn {
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-weight: 500;
+  transition: all 0.15s ease;
+  line-height: 1.2;
+}
+
+.triage-btn:hover {
+  background: var(--hover-color);
+  border-color: var(--accent-color);
+}
+
+.triage-btn.accept-btn {
+  background: rgba(80, 200, 120, 0.08);
+  border-color: rgba(80, 200, 120, 0.3);
+  color: #50c878;
+}
+.triage-btn.accept-btn:hover {
+  background: rgba(80, 200, 120, 0.16);
+  border-color: #50c878;
+}
+.triage-btn.accept-btn.selected {
+  background: #50c878 !important;
+  color: #1e1e1e !important;
+  border-color: #50c878 !important;
+  font-weight: 600;
+}
+
+.triage-btn.keep-btn {
+  background: rgba(47, 128, 237, 0.08);
+  border-color: rgba(47, 128, 237, 0.3);
+  color: #2f80ed;
+}
+.triage-btn.keep-btn:hover {
+  background: rgba(47, 128, 237, 0.16);
+  border-color: #2f80ed;
+}
+.triage-btn.keep-btn.selected {
+  background: #2f80ed !important;
+  color: white !important;
+  border-color: #2f80ed !important;
+  font-weight: 600;
+}
+
+.triage-btn.ignore-btn {
+  background: transparent;
+  border-color: var(--border-color);
+  color: var(--text-muted);
+}
+.triage-btn.ignore-btn:hover {
+  background: var(--hover-color);
+  color: var(--text-color);
+}
+.triage-btn.ignore-btn.selected {
+  background: #828282 !important;
+  color: #1e1e1e !important;
+  border-color: #828282 !important;
+  font-weight: 600;
+}
+
+.triage-btn.revert-btn {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+.triage-btn.revert-btn:hover {
+  background: rgba(255, 85, 85, 0.08);
+  color: #ff5555;
+}
+
+/* Candidate table row layout */
+.candidate-pattern-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+  max-width: 100%;
+}
+
+.candidate-text-display {
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.candidate-meta-badges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.meta-badge-chip {
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.03);
+  font-weight: normal;
+  line-height: 1.2;
+}
+
+.meta-badge-chip.kind-exact {
+  border-color: rgba(80, 200, 120, 0.3);
+  background: rgba(80, 200, 120, 0.05);
+  color: #50c878;
+}
+
+.meta-badge-chip.kind-pattern {
+  border-color: rgba(47, 128, 237, 0.3);
+  background: rgba(47, 128, 237, 0.05);
+  color: #2f80ed;
+}
+
+.meta-badge-chip.content-symbol {
+  border-color: rgba(155, 81, 224, 0.3);
+  background: rgba(155, 81, 224, 0.05);
+  color: #9b51e0;
+}
+
+.meta-badge-chip.content-numeric {
+  border-color: rgba(232, 160, 0, 0.3);
+  background: rgba(232, 160, 0, 0.05);
+  color: #e8a000;
+}
+
+/* Detail panel sections */
+.detail-section-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-top: 14px;
+  margin-bottom: 6px;
+  color: var(--text-color);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 4px;
+}
+
+.detail-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 16px;
+  font-size: 0.85rem;
+  background: rgba(255, 255, 255, 0.01);
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.detail-summary-grid > div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.detail-summary-grid strong {
+  color: var(--text-muted);
+}
+
 .repeated-artifact-table-container tbody tr {
   cursor: pointer;
   border-bottom: 1px solid var(--border-color);
@@ -2442,12 +2680,7 @@ mark.search-match.current-match {
   flex-shrink: 0;
 }
 
-/* Fixed width for Candidate / Pattern column */
-.th-candidate-pattern,
 .candidate-text-cell {
-  width: 360px;
-  min-width: 180px;
-  max-width: 360px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
