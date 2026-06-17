@@ -575,6 +575,7 @@ function updateStatusLine(): void {
       dom.sourceActionExtract.classList.toggle("hidden", !(allSelectedArePdfs && allNeedExtraction));
       dom.sourceActionReExtract.classList.toggle("hidden", !(allSelectedArePdfs && allHaveExtractedText));
       dom.sourceActionRetry.classList.toggle("hidden", !(allSelectedArePdfs && hasFailures));
+      dom.sourceActionChangeHandling.classList.toggle("hidden", !allSelectedArePdfs);
 
       // Keep the old hidden buttons in sync for backward compatibility
       if (allSelectedArePdfs && hasFailures) {
@@ -593,6 +594,7 @@ function updateStatusLine(): void {
       dom.sourceActionExtract.classList.add("hidden");
       dom.sourceActionReExtract.classList.add("hidden");
       dom.sourceActionRetry.classList.add("hidden");
+      dom.sourceActionChangeHandling.classList.add("hidden");
       dom.sourcePreparePdfsBtn.classList.add("hidden");
       dom.sourcePreparePdfsBtn.disabled = true;
       dom.sourceRemoveBtn.classList.add("hidden");

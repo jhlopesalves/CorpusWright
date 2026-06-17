@@ -583,6 +583,7 @@ function resetImportSourcesDialog(review: ProjectSourceImportReview): void {
     dom.confirmSourceImportExtractBtn.classList.toggle("hidden", !hasPendingPdfs);
     dom.confirmSourceImportExtractBtn.disabled = review.candidates.length === 0 || !hasPendingPdfs;
     dom.sourceImportGroups.classList.remove("hidden");
+    dom.sourceImportResetPdfHandling.textContent = "Reset all to recommended";
   } else if (importDialogMode === "re-extract") {
     dom.sourceImportTitle.textContent = "Re-extract selected PDFs";
     dom.sourceImportDescription.textContent =
@@ -594,6 +595,7 @@ function resetImportSourcesDialog(review: ProjectSourceImportReview): void {
     dom.confirmSourceImportExtractBtn.disabled = review.candidates.length === 0;
     dom.sourceImportGroups.classList.add("hidden");
     dom.sourceImportSummary.textContent = "";
+    dom.sourceImportResetPdfHandling.textContent = "Reset all to stored";
   } else if (importDialogMode === "change-handling") {
     dom.sourceImportTitle.textContent = "Change PDF handling";
     dom.sourceImportDescription.textContent =
@@ -605,6 +607,7 @@ function resetImportSourcesDialog(review: ProjectSourceImportReview): void {
     dom.confirmSourceImportExtractBtn.classList.add("hidden");
     dom.sourceImportGroups.classList.add("hidden");
     dom.sourceImportSummary.textContent = "";
+    dom.sourceImportResetPdfHandling.textContent = "Reset all to stored";
   }
 
   renderImportSourcesGroups(review);
@@ -1742,6 +1745,12 @@ export async function openSourcePdfHandlingDialog(mode: "re-extract" | "change-h
     return;
   }
 
+  if (mode === "re-extract") {
+    const paths = selectedSources.map((s) => s.path);
+    await openPdfIntakeModalForSources(paths, true);
+    return;
+  }
+
   importDialogMode = mode;
 
   const review: ProjectSourceImportReview = {
@@ -1763,26 +1772,15 @@ export async function openSourcePdfHandlingDialog(mode: "re-extract" | "change-h
   }));
 
   try {
-    if (mode === "re-extract") {
-      dom.statusBar.textContent = "Saving handling overrides...";
-      await invoke("update_project_source_pdf_handling_command", {
-        rootPath: state.activeProject!.rootPath,
-        overrides,
-      });
+    dom.statusBar.textContent = "Saving handling overrides...";
+    await invoke("update_project_source_pdf_handling_command", {
+      rootPath: state.activeProject!.rootPath,
+      overrides,
+    });
 
-      const paths = overrides.map((o) => o.path);
-      await openPdfIntakeModalForSources(paths, true);
-    } else {
-      dom.statusBar.textContent = "Saving handling overrides...";
-      await invoke("update_project_source_pdf_handling_command", {
-        rootPath: state.activeProject!.rootPath,
-        overrides,
-      });
-
-      await loadProjectSourcesForActiveProject();
-      await loadCorpusFromProjectSources();
-      dom.statusBar.textContent = `Saved PDF handling for ${overrides.length.toLocaleString()} files.`;
-    }
+    await loadProjectSourcesForActiveProject();
+    await loadCorpusFromProjectSources();
+    dom.statusBar.textContent = `Saved PDF handling for ${overrides.length.toLocaleString()} files.`;
   } catch (error) {
     dom.statusBar.textContent = `Error: ${error}`;
     console.error(error);
