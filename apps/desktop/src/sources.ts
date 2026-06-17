@@ -162,21 +162,68 @@ export function reasonLabel(code: string): string {
     case "ocr_planned": return "OCR planned";
     case "force_ocr_planned": return "full OCR all pages planned";
     case "text_extracted": return "text extracted";
-    case "text_extracted_with_warnings": return "review";
+    case "text_extracted_with_warnings": return "review recommended";
+    case "review_recommended": return "review recommended";
     case "text_extraction_failed": return "text extraction failed";
     case "extraction_cancelled": return "Extraction cancelled";
     case "processed_ok": return "processed";
-    case "processed_with_warnings": return "review";
+    case "processed_with_warnings": return "review recommended";
     case "low_text_density": return "low text density";
     case "layout_warning": return "layout warning";
     case "many_repeated_artifacts": return "repeated artefacts";
     case "ocr_generated": return "OCR generated";
     case "ocr_review_recommended": return "OCR review recommended";
     case "layout_heavy_profile": return "layout-aware extraction";
+    case "render_size_clamped": return "render size clamped";
     case "output_write_failed": return "write failed";
     case "parse_failed": return "parse failed";
     default: return code.replace(/_/g, " ");
   }
+}
+
+export function reasonDescription(code: string): string | null {
+  switch (code) {
+    case "missing_file": return "The source file is missing.";
+    case "permission_denied": return "The source file could not be read because permission was denied.";
+    case "unsupported_file_type": return "This file type is not supported for corpus sources.";
+    case "pdf_encrypted": return "The PDF is encrypted or password protected.";
+    case "pdf_open_failed": return "The PDF could not be opened.";
+    case "pdf_no_text_layer": return "The PDF has no usable embedded text layer.";
+    case "ocr_required": return "OCR is required before source text can be previewed.";
+    case "ocr_failed": return "OCR text extraction failed.";
+    case "native_text_available": return "Native text is available for extraction.";
+    case "pdf_route_undecided": return "PDF diagnostics could not choose a confident extraction route.";
+    case "ocr_planned":
+    case "force_ocr_planned": return "Full-page OCR is planned for this PDF.";
+    case "text_extracted_with_warnings":
+    case "review_recommended": return "Text extraction reported warnings; review source text before export.";
+    case "text_extraction_failed": return "Text extraction failed.";
+    case "extraction_cancelled": return "Extraction was cancelled.";
+    case "processed_with_warnings": return "Processing reported warnings; review processed text before export.";
+    case "low_text_density": return "Initial PDF diagnostics marked embedded text quality as suspicious.";
+    case "layout_warning": return "Layout-aware extraction reported a warning.";
+    case "many_repeated_artifacts": return "Repeated extraction artefacts were reported.";
+    case "ocr_generated":
+    case "ocr_review_recommended": return "OCR-generated text should be reviewed.";
+    case "layout_heavy_profile": return "Layout-aware embedded extraction was used.";
+    case "render_size_clamped": return "PDF render size was clamped during OCR.";
+    case "output_write_failed": return "Processed output could not be written.";
+    case "parse_failed": return "The source could not be parsed.";
+    default: return null;
+  }
+}
+
+export function sourceReasonDescriptions(source: ProjectSource): string[] {
+  const descriptions: string[] = [];
+  const seen = new Set<string>();
+  for (const code of source.reason_codes) {
+    const description = reasonDescription(code);
+    if (description && !seen.has(description)) {
+      descriptions.push(description);
+      seen.add(description);
+    }
+  }
+  return descriptions;
 }
 
 export function primaryReasonLabel(source: ProjectSource): string | null {

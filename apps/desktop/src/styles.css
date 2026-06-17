@@ -901,6 +901,50 @@ pre {
   position: relative;
 }
 
+#settings-modal {
+  box-sizing: border-box;
+  padding: 4vh 12px;
+}
+
+#settings-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  width: min(92vw, 760px);
+  max-height: 90vh;
+  overflow: hidden;
+}
+
+#settings-modal .modal-description,
+#settings-modal .modal-config-toolbar,
+#settings-modal .tabs {
+  flex: 0 0 auto;
+}
+
+#settings-modal .tabs {
+  margin: 0 -24px;
+  overflow-x: auto;
+  padding: 0 24px;
+}
+
+#settings-modal .settings-tab-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 4px 14px 0;
+}
+
+#settings-modal .settings-tab-content.active {
+  display: block;
+}
+
+#settings-modal .modal-actions {
+  flex: 0 0 auto;
+  margin: 12px -24px -24px;
+  padding: 12px 24px 16px;
+  border-top: 1px solid var(--border-color);
+  background: var(--modal-bg);
+}
+
 .modal-content h2 {
   margin-top: 0;
   font-size: 1.15rem;
@@ -1743,6 +1787,8 @@ pre {
 .file-card-badges {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .badge {
@@ -1766,6 +1812,41 @@ pre {
   -moz-tab-size: 4;
   overflow-wrap: break-word;
   word-break: normal;
+}
+
+.source-preview-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.source-preview-notice strong {
+  color: var(--text-color);
+  font-size: 0.86rem;
+}
+
+.source-preview-notice span {
+  color: var(--text-muted);
+}
+
+.source-preview-notice ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-color);
+}
+
+.source-preview-notice-info {
+  background: rgba(80, 160, 220, 0.08);
+  border-left: 3px solid rgba(80, 160, 220, 0.65);
+}
+
+.source-preview-notice-warning {
+  background: rgba(212, 160, 23, 0.08);
+  border-left: 3px solid rgba(212, 160, 23, 0.75);
 }
 
 .preview-cap-note {
@@ -1955,11 +2036,19 @@ mark.search-match.current-match {
   flex-wrap: wrap;
   gap: 8px;
   min-height: 80px;
+  max-height: min(24vh, 220px);
   padding: 12px;
   background: rgba(0, 0, 0, 0.15);
   border: 1px dashed var(--border-color);
   border-radius: 6px;
   align-content: flex-start;
+  overflow-y: auto;
+}
+
+#tab-custom-removals .cleaning-controls-vertical {
+  min-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 .repeated-artifacts-settings {

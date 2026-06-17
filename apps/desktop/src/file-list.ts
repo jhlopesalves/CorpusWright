@@ -12,6 +12,7 @@ import {
   selectedProjectSources,
   sourceHasExtractedText,
   sourceKindLabel,
+  sourceReasonDescriptions,
   sourceStatusLabel,
 } from "./sources";
 
@@ -309,6 +310,10 @@ function createSourceRow(
     const reasonBadge = document.createElement("span");
     reasonBadge.className = "source-badge source-reason-badge";
     reasonBadge.textContent = reason;
+    const descriptions = sourceReasonDescriptions(source);
+    if (descriptions.length > 0) {
+      reasonBadge.title = descriptions.join("\n");
+    }
     meta.appendChild(reasonBadge);
   }
 

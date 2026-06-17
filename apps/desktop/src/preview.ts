@@ -6,13 +6,13 @@ import { state } from "./state";
 import {
   isPreviewableSource,
   pdfHandlingLabel,
-  persistProcessedPreviewStatuses,
   primaryReasonLabel,
   reasonLabel,
   selectedProjectSources,
   sourceForPath,
   sourceHasExtractedText,
   sourceKindLabel,
+  sourceReasonDescriptions,
   sourceStatusLabel,
 } from "./sources";
 import { highlightPreviewText } from "./utils";
@@ -77,8 +77,8 @@ export async function updatePreview(): Promise<void> {
   if (state.selectedCorpusIndices.size === 0) {
     if (myVersion !== state.currentCorpusVersion) return;
     if (hasProjectSourceSelection && projectSources.length > 0) {
-      renderProjectSourceDetailCards(dom.previewContent, projectSources);
-      renderProjectSourceDetailCards(dom.processedPreviewContent, projectSources);
+      renderProjectSourceDetailCards(dom.previewContent, projectSources, "original");
+      renderProjectSourceDetailCards(dom.processedPreviewContent, projectSources, "processed");
       dom.previewLoadingOverlay.style.display = "none";
       dom.statusBar.textContent = "Selected source text is unavailable.";
       return;
@@ -91,8 +91,8 @@ export async function updatePreview(): Promise<void> {
 
   const selectedIndices = Array.from(state.selectedCorpusIndices);
   if (hasProjectSourceSelection && projectSources.some((source) => !isPreviewableSource(source))) {
-    renderProjectSourceDetailCards(dom.previewContent, projectSources);
-    renderProjectSourceDetailCards(dom.processedPreviewContent, projectSources);
+    renderProjectSourceDetailCards(dom.previewContent, projectSources, "original");
+    renderProjectSourceDetailCards(dom.processedPreviewContent, projectSources, "processed");
     dom.previewLoadingOverlay.style.display = "none";
     dom.statusBar.textContent = "Some selected source text is unavailable.";
     return;
@@ -115,8 +115,8 @@ export async function updatePreview(): Promise<void> {
   }
 
   if (sourcesNeedingExtraction.length > 0) {
-    renderTextExtractionRequiredCards(dom.previewContent, sourcesNeedingExtraction);
-    renderTextExtractionRequiredCards(dom.processedPreviewContent, sourcesNeedingExtraction);
+    renderTextExtractionRequiredCards(dom.previewContent, sourcesNeedingExtraction, "original");
+    renderTextExtractionRequiredCards(dom.processedPreviewContent, sourcesNeedingExtraction, "processed");
     dom.previewLoadingOverlay.style.display = "none";
     dom.statusBar.textContent = "Text has not been extracted yet.";
     return;
@@ -130,14 +130,18 @@ export async function updatePreview(): Promise<void> {
   await fetchAndRenderPreviewChunk(selectedIndices, state.currentPreviewOffset, false, myVersion, myPreviewGeneration);
 }
 
-function renderProjectSourceDetailCards(container: HTMLDivElement, sources: ProjectSource[]): void {
+function renderProjectSourceDetailCards(
+  container: HTMLDivElement,
+  sources: ProjectSource[],
+  mode: "original" | "processed",
+): void {
   container.replaceChildren();
   for (const source of sources) {
-    container.appendChild(createProjectSourceDetailCard(source));
+    container.appendChild(createProjectSourceDetailCard(source, mode));
   }
 }
 
-function createProjectSourceDetailCard(source: ProjectSource): HTMLElement {
+function createProjectSourceDetailCard(source: ProjectSource, mode: "original" | "processed"): HTMLElement {
   const card = document.createElement("div");
   card.className = "file-card";
 
@@ -173,7 +177,7 @@ function createProjectSourceDetailCard(source: ProjectSource): HTMLElement {
   const body = document.createElement("div");
   body.className = "file-card-body";
   body.style.minHeight = "auto";
-  for (const line of projectSourceDetailLines(source)) {
+  for (const line of projectSourceDetailLines(source, mode)) {
     const paragraph = document.createElement("p");
     paragraph.textContent = line;
     body.appendChild(paragraph);
@@ -199,12 +203,42 @@ function projectSourceDetailBadges(source: ProjectSource): string[] {
   return labels;
 }
 
-function projectSourceDetailLines(source: ProjectSource): string[] {
+function projectSourceDetailLines(source: ProjectSource, mode: "original" | "processed"): string[] {
   const lines: string[] = [];
   const reasonLabels = source.reason_codes.map(reasonLabel);
+  const reasonDescriptions = sourceReasonDescriptions(source);
   const reasonText = reasonLabels.length > 0
     ? `Last error: ${reasonLabels.join(", ")}.`
     : "No detailed error was recorded.";
+
+  if (mode === "processed") {
+    if (source.status === "failed") {
+      const cancelled = source.reason_codes.includes("extraction_cancelled");
+      lines.push(cancelled
+        ? "Processed text is not available because extraction was cancelled."
+        : "Processed text is not available because text extraction failed.");
+      lines.push("Resolve the source extraction state before generating processed text.");
+      lines.push(reasonText);
+      return lines;
+    }
+
+    if (source.kind === "pdf" && !sourceHasExtractedText(source)) {
+      lines.push("Processed text has not been generated yet.");
+      lines.push("Extracted source text is available only after PDF text extraction completes.");
+      lines.push("Run extraction with the selected PDF handling before reviewing processed text.");
+      return lines;
+    }
+
+    lines.push("Processed preview is unavailable because source text is not loaded in the current corpus view.");
+    lines.push("Extracted source text is available in the Original Text tab after the source is loaded.");
+    if (reasonDescriptions.length > 0 && sourceShouldShowReviewNotice(source)) {
+      lines.push("Review recommended:");
+      for (const description of reasonDescriptions) {
+        lines.push(`- ${description}`);
+      }
+    }
+    return lines;
+  }
 
   if (source.status === "failed") {
     const cancelled = source.reason_codes.includes("extraction_cancelled");
@@ -222,6 +256,17 @@ function projectSourceDetailLines(source: ProjectSource): string[] {
     return lines;
   }
 
+  if (reasonDescriptions.length > 0 && sourceShouldShowReviewNotice(source)) {
+    lines.push(source.status === "processed_with_warnings"
+      ? "Processed text has warnings."
+      : "Text extracted with warnings.");
+    lines.push("Review recommended:");
+    for (const description of reasonDescriptions) {
+      lines.push(`- ${description}`);
+    }
+    return lines;
+  }
+
   if (source.kind === "pdf" && !sourceHasExtractedText(source)) {
     lines.push("Text has not been extracted yet.");
     lines.push("Use Extract/OCR selected PDFs to materialise source text before preview or search.");
@@ -236,6 +281,7 @@ function projectSourceDetailLines(source: ProjectSource): string[] {
 function renderTextExtractionRequiredCards(
   container: HTMLDivElement,
   sources: { name: string; status: string; statusLabel: string }[],
+  mode: "original" | "processed",
 ): void {
   container.replaceChildren();
   for (const source of sources) {
@@ -262,7 +308,11 @@ function renderTextExtractionRequiredCards(
     const body = document.createElement("div");
     body.className = "file-card-body";
     body.style.minHeight = "auto";
-    body.textContent = source.status === "failed"
+    body.textContent = mode === "processed"
+      ? source.status === "failed"
+        ? "Processed text is not available because source review or text extraction failed. Review the source status before processing."
+        : "Processed text has not been generated yet. Extracted source text is available in the Original Text tab after extraction."
+      : source.status === "failed"
       ? "Source text is unavailable because source review or text extraction failed. Review the source status before preview or search."
       : "Text has not been extracted yet. Use Extract/OCR selected PDFs to materialise source text before preview or search.";
 
@@ -313,14 +363,14 @@ async function fetchAndRenderPreviewChunk(
 
     renderPreviewCards(dom.previewContent, original.files, append, offset, indices.length, "original");
     renderPreviewCards(dom.processedPreviewContent, processed.files, append, offset, indices.length, "processed");
-    persistProcessedPreviewStatuses(processed.files).then(renderVisibleItems);
+    renderVisibleItems();
     if (!append) {
       renderFullOcrPreviewLauncher(indices, myVersion, myPreviewGeneration);
     }
 
     highlightRenderedCards();
 
-    dom.statusBar.textContent = `Processed preview ready for ${indices.length} selected files. (Loaded ${offset + chunkIndices.length})`;
+    dom.statusBar.textContent = `Preview ready for ${indices.length} selected files. (Loaded ${offset + chunkIndices.length})`;
     state.currentPreviewOffset += chunkIndices.length;
   } catch (error) {
     if (myVersion !== state.currentCorpusVersion || myPreviewGeneration !== state.activePreviewGeneration) return;
@@ -645,6 +695,9 @@ function renderPreviewCards(
     previewObserver!.observe(body);
 
     card.appendChild(header);
+    if (source) {
+      appendSourcePreviewNotices(card, source, mode);
+    }
     card.appendChild(body);
     if (file.truncated) {
       card.appendChild(createPreviewCapNotice(mode, totalFiles === 1 && !loadFullAttempted));
@@ -672,6 +725,95 @@ function renderPreviewCards(
     }
     chunkSentinelObserver.observe(sentinel);
   }
+}
+
+function appendSourcePreviewNotices(
+  card: HTMLElement,
+  source: ProjectSource,
+  mode: "original" | "processed",
+): void {
+  if (mode === "processed") {
+    card.appendChild(createSourcePreviewNotice(
+      "source-preview-notice-info",
+      "Processed preview generated with current Cleaning Settings.",
+      ["This is an on-demand preview; source files are not modified."],
+    ));
+  }
+
+  const descriptions = sourceReasonDescriptions(source);
+  if (descriptions.length === 0 || !sourceShouldShowReviewNotice(source)) {
+    return;
+  }
+
+  card.appendChild(createSourcePreviewNotice(
+    "source-preview-notice-warning",
+    source.status === "processed_with_warnings"
+      ? "Processed text has warnings"
+      : "Text extracted with warnings",
+    descriptions,
+    "Review recommended:",
+  ));
+}
+
+function createSourcePreviewNotice(
+  className: string,
+  titleText: string,
+  lines: string[],
+  listLabel?: string,
+): HTMLElement {
+  const notice = document.createElement("div");
+  notice.className = `source-preview-notice ${className}`;
+
+  const title = document.createElement("strong");
+  title.textContent = titleText;
+  notice.appendChild(title);
+
+  if (listLabel) {
+    const label = document.createElement("span");
+    label.textContent = listLabel;
+    notice.appendChild(label);
+
+    const list = document.createElement("ul");
+    for (const line of lines) {
+      const item = document.createElement("li");
+      item.textContent = line;
+      list.appendChild(item);
+    }
+    notice.appendChild(list);
+    return notice;
+  }
+
+  for (const line of lines) {
+    const paragraph = document.createElement("span");
+    paragraph.textContent = line;
+    notice.appendChild(paragraph);
+  }
+
+  return notice;
+}
+
+function sourceShouldShowReviewNotice(source: ProjectSource): boolean {
+  if (
+    source.status === "text_extracted_with_warnings" ||
+    source.status === "processed_with_warnings" ||
+    source.status === "failed" ||
+    source.status === "needs_ocr"
+  ) {
+    return true;
+  }
+
+  return source.reason_codes.some((code) =>
+    code === "ocr_generated" ||
+    code === "ocr_review_recommended" ||
+    code === "layout_heavy_profile" ||
+    code === "layout_warning" ||
+    code === "low_text_density" ||
+    code === "many_repeated_artifacts" ||
+    code === "render_size_clamped" ||
+    code === "text_extracted_with_warnings" ||
+    code === "processed_with_warnings" ||
+    code === "review_recommended"
+  );
 }
 
 function createPreviewCapNotice(mode: "original" | "processed", canLoadFull: boolean): HTMLElement {

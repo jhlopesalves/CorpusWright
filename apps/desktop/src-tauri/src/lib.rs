@@ -600,7 +600,9 @@ fn extraction_reason_codes_for_warnings(warnings: &[String]) -> Vec<String> {
     let mut codes = Vec::new();
     for warning in warnings {
         let warning = warning.to_lowercase();
-        let code = if warning.contains("ocr") {
+        let code = if warning.contains("clamped") || warning.contains("render size") {
+            "render_size_clamped"
+        } else if warning.contains("ocr") {
             "ocr_generated"
         } else if warning.contains("low-quality") || warning.contains("low quality") {
             "low_text_density"
@@ -637,6 +639,12 @@ fn extract_materialized_ocr_page(
         Some(page) => {
             render_clamped = page.render_clamped;
             warnings.extend(page.warnings);
+            if page.render_clamped {
+                warnings.push(format!(
+                    "OCR render size was clamped on page {}.",
+                    page.page_number
+                ));
+            }
             if let Some(page_error) = page.error {
                 let message = format!(
                     "Page {} extraction failed during materialisation: {}",
@@ -1934,6 +1942,26 @@ mod tests {
         assert_eq!(
             project_pdf_extraction_failure_reason("OCR batch stopped", &cancel),
             "extraction_cancelled"
+        );
+    }
+
+    #[test]
+    fn extraction_warning_messages_map_to_stable_reason_codes() {
+        let warnings = vec![
+            "OCR render size was clamped on page 2.".to_string(),
+            "Layout-aware extraction adjusted line order.".to_string(),
+            "OCR text extracted for review.".to_string(),
+            "Repeated extraction artefacts were reported.".to_string(),
+        ];
+
+        assert_eq!(
+            extraction_reason_codes_for_warnings(&warnings),
+            vec![
+                "render_size_clamped",
+                "layout_warning",
+                "ocr_generated",
+                "many_repeated_artifacts",
+            ]
         );
     }
 

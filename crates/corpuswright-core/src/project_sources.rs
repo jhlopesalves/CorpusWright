@@ -405,8 +405,12 @@ pub fn update_project_source_processing_results(
                 source.reason_codes = non_empty_or_default(result.reason_codes, "parse_failed");
             } else if result.warning_count > 0 {
                 source.status = ProjectSourceStatus::ProcessedWithWarnings;
-                source.reason_codes =
+                let mut reason_codes =
                     non_empty_or_default(result.reason_codes, "processed_with_warnings");
+                if let Some(reason_code) = successful_pdf_review_reason(source) {
+                    append_reason_code_once(&mut reason_codes, reason_code);
+                }
+                source.reason_codes = reason_codes;
             } else if let Some(reason_code) = successful_pdf_review_reason(source) {
                 source.status = ProjectSourceStatus::ProcessedWithWarnings;
                 source.reason_codes = vec![reason_code.to_string()];
@@ -449,8 +453,12 @@ pub fn update_project_source_extraction_results(
                     non_empty_or_default(result.reason_codes, "text_extraction_failed");
             } else if result.warning_count > 0 {
                 source.status = ProjectSourceStatus::TextExtractedWithWarnings;
-                source.reason_codes =
+                let mut reason_codes =
                     non_empty_or_default(result.reason_codes, "text_extracted_with_warnings");
+                if let Some(reason_code) = successful_pdf_review_reason(source) {
+                    append_reason_code_once(&mut reason_codes, reason_code);
+                }
+                source.reason_codes = reason_codes;
             } else if let Some(reason_code) = successful_pdf_review_reason(source) {
                 source.status = ProjectSourceStatus::TextExtractedWithWarnings;
                 source.reason_codes = vec![reason_code.to_string()];
@@ -970,6 +978,12 @@ fn non_empty_or_default(mut reason_codes: Vec<String>, default_code: &str) -> Ve
     }
 }
 
+fn append_reason_code_once(reason_codes: &mut Vec<String>, reason_code: &str) {
+    if !reason_codes.iter().any(|code| code == reason_code) {
+        reason_codes.push(reason_code.to_string());
+    }
+}
+
 fn current_timestamp() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
@@ -1415,6 +1429,120 @@ mod tests {
         );
         assert_eq!(manifest.sources[0].reason_codes, vec!["ocr_generated"]);
         assert_eq!(manifest.sources[0].last_processed_at, None);
+    }
+
+    #[test]
+    fn source_text_extraction_warning_status_has_default_reason() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("warning.pdf");
+        let mut source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        source.id = stable_project_source_id(dir.path(), &path);
+        source.pdf_profile = Some(ProjectSourcePdfProfile::Standard);
+        source.extraction_route = ProjectSourcePdfProfile::Standard.extraction_route();
+        save_project_source_manifest(
+            dir.path(),
+            &ProjectSourceManifest {
+                version: SOURCE_MANIFEST_VERSION,
+                sources: vec![source],
+            },
+        )
+        .unwrap();
+
+        let manifest = update_project_source_extraction_results(
+            dir.path(),
+            vec![ProjectSourceExtractionResult {
+                path,
+                failed: false,
+                warning_count: 1,
+                reason_codes: Vec::new(),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.sources[0].status,
+            ProjectSourceStatus::TextExtractedWithWarnings
+        );
+        assert_eq!(
+            manifest.sources[0].reason_codes,
+            vec!["text_extracted_with_warnings"]
+        );
+    }
+
+    #[test]
+    fn source_text_extraction_warnings_keep_pdf_review_reason() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("clamped.pdf");
+        let mut source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        source.id = stable_project_source_id(dir.path(), &path);
+        source.pdf_profile = Some(ProjectSourcePdfProfile::ForceOcr);
+        source.extraction_route = ProjectSourcePdfProfile::ForceOcr.extraction_route();
+        save_project_source_manifest(
+            dir.path(),
+            &ProjectSourceManifest {
+                version: SOURCE_MANIFEST_VERSION,
+                sources: vec![source],
+            },
+        )
+        .unwrap();
+
+        let manifest = update_project_source_extraction_results(
+            dir.path(),
+            vec![ProjectSourceExtractionResult {
+                path,
+                failed: false,
+                warning_count: 1,
+                reason_codes: vec!["render_size_clamped".to_string()],
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.sources[0].status,
+            ProjectSourceStatus::TextExtractedWithWarnings
+        );
+        assert_eq!(
+            manifest.sources[0].reason_codes,
+            vec!["render_size_clamped", "ocr_generated"]
+        );
+    }
+
+    #[test]
+    fn source_text_extraction_layout_profile_records_review_reason() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("layout.pdf");
+        let mut source = source_for_test(path.clone(), ProjectSourceKind::Pdf);
+        source.id = stable_project_source_id(dir.path(), &path);
+        source.pdf_profile = Some(ProjectSourcePdfProfile::LayoutHeavy);
+        source.extraction_route = ProjectSourcePdfProfile::LayoutHeavy.extraction_route();
+        save_project_source_manifest(
+            dir.path(),
+            &ProjectSourceManifest {
+                version: SOURCE_MANIFEST_VERSION,
+                sources: vec![source],
+            },
+        )
+        .unwrap();
+
+        let manifest = update_project_source_extraction_results(
+            dir.path(),
+            vec![ProjectSourceExtractionResult {
+                path,
+                failed: false,
+                warning_count: 0,
+                reason_codes: Vec::new(),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.sources[0].status,
+            ProjectSourceStatus::TextExtractedWithWarnings
+        );
+        assert_eq!(
+            manifest.sources[0].reason_codes,
+            vec!["layout_heavy_profile"]
+        );
     }
 
     #[test]
