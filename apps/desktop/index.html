@@ -606,21 +606,20 @@
         <p class="modal-description" style="margin-bottom: 12px;">Scan the corpus to find repeated lines or blocks of
           lines (likely boilerplate, headers/footers, or graphical noise). <strong>Diagnostic only — no files are modified.</strong></p>
 
-        <!-- Compact header toolbar -->
-        <div class="repeated-artifact-toolbar" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 12px; flex-shrink: 0;">
-          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-            <button type="button" id="btn-toggle-scan-settings" class="triage-btn" style="display: flex; align-items: center; gap: 6px; padding: 5px 10px;">
-              <span id="scan-settings-arrow">▾</span> Scan Settings
-            </button>
-            <span id="repeated-artifact-summary-text" style="font-size: 0.85rem; color: var(--text-muted);"></span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-            <span id="lbl-artifact-scan-scope" style="font-size: 0.75rem; color: var(--text-muted); max-width: 260px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-            <button type="button" id="btn-run-artifact-scan" class="primary-btn" style="padding: 6px 16px; border-radius: 4px; font-size: 0.9rem;">Run Scan</button>
-            <button type="button" id="btn-cancel-artifact-scan" class="primary-btn" style="display: none; padding: 6px 16px; border-radius: 4px; font-size: 0.9rem;">Cancel</button>
-            <span id="lbl-artifact-scan-time" style="font-size: 0.8rem; color: var(--text-muted); display: none;"></span>
-          </div>
-        </div>
+         <!-- Compact header toolbar -->
+         <div class="repeated-artifact-toolbar" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 12px; flex-shrink: 0;">
+           <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+             <button type="button" id="btn-toggle-scan-settings" class="scan-settings-toggle" style="display: flex; align-items: center; gap: 6px; padding: 5px 10px;">
+               <span id="scan-settings-arrow">▾</span> Scan Settings
+             </button>
+             <span id="repeated-artifact-summary-text" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+           </div>
+           <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+             <button type="button" id="btn-run-artifact-scan" class="primary-btn" style="padding: 6px 16px; border-radius: 4px; font-size: 0.9rem;">Run Scan</button>
+             <button type="button" id="btn-cancel-artifact-scan" class="primary-btn" style="display: none; padding: 6px 16px; border-radius: 4px; font-size: 0.9rem;">Cancel</button>
+             <span id="lbl-artifact-scan-time" style="font-size: 0.8rem; color: var(--text-muted); display: none;"></span>
+           </div>
+         </div>
 
         <!-- Collapsible scan controls -->
         <div id="repeated-artifact-config-panel" class="repeated-artifact-config"
@@ -713,10 +712,20 @@
               <button type="button" class="tab" data-bucket="accepted" style="padding: 8px 12px; font-size: 0.8rem;">Accepted Rules</button>
               <button type="button" class="tab" data-bucket="ignored" style="padding: 8px 12px; font-size: 0.8rem;">Ignored / Kept</button>
             </div>
-            <!-- Batch Action Toolbar below bucket tabs -->
-            <div class="repeated-artifact-batch-toolbar">
-              <button type="button" id="btn-accept-all-suggested" class="triage-btn hidden" style="padding: 3px 8px; font-size: 0.75rem;">Accept all safe suggestions...</button>
-            </div>
+             <!-- Batch Action Toolbar below bucket tabs -->
+             <div id="repeated-artifact-batch-toolbar" class="repeated-artifact-batch-toolbar" style="display: none;">
+               <div class="bulk-toolbar-left">
+                 <span id="bulk-selection-count" style="font-size: 0.8rem; font-weight: 600; color: var(--text-color); margin-right: 8px; white-space: nowrap;"></span>
+                 <button type="button" id="btn-bulk-accept" class="bulk-action-btn bulk-accept" style="display: none;">Accept selected</button>
+                 <button type="button" id="btn-bulk-keep" class="bulk-action-btn bulk-keep" style="display: none;">Keep selected</button>
+                 <button type="button" id="btn-bulk-ignore" class="bulk-action-btn bulk-ignore" style="display: none;">Ignore selected</button>
+                 <button type="button" id="btn-bulk-revert" class="bulk-action-btn bulk-revert" style="display: none;">Revert selected</button>
+                 <button type="button" id="btn-clear-selection" class="bulk-action-btn bulk-clear" style="display: none;">Clear selection</button>
+               </div>
+               <div class="bulk-toolbar-right">
+                 <button type="button" id="btn-accept-all-suggested" class="bulk-accept-all-suggested hidden" style="padding: 4px 10px; font-size: 0.78rem;">Accept all safe suggestions...</button>
+               </div>
+             </div>
             <div class="repeated-artifact-table-container" style="flex: 1; overflow: auto;">
               <table style="min-width: 100%; width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
                 <colgroup>
@@ -730,7 +739,9 @@
                 <thead>
                   <tr
                     style="position: sticky; top: 0; background: var(--panel-bg); border-bottom: 1px solid var(--border-color); z-index: 10; font-size: 0.85rem; color: var(--text-muted);">
-                    <th style="padding: 8px; text-align: center;">Select</th>
+                     <th style="padding: 8px; text-align: center;">
+                       <button type="button" id="btn-select-all-tab" class="select-all-header-btn" style="font-size: 0.75rem; white-space: nowrap;">Select all</button>
+                     </th>
                     <th style="padding: 8px; user-select: none;">
                       <button class="sort-header" data-column="text" aria-label="Sort by Candidate or Pattern">
                         <span>Candidate / Pattern</span>
