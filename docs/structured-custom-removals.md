@@ -163,6 +163,8 @@ Page-zone scoped Custom Removal rules are supported and automatically generated 
 
 This prevents aggressive automatic promotion to page zones on documents where structural page metadata is absent or where the candidates also exist within main body text.
 
+Repeated headers, footers, page labels, and boilerplate are normally cleaned through this review path. The scanner can suggest page-zone rules, but output changes only after the user accepts a candidate or adds an explicit removal rule.
+
 ## Reviewability and reproducibility
 
 CorpusWright cleaning remains config-based. The same source documents and the

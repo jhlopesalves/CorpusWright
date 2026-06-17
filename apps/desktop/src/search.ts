@@ -6,6 +6,12 @@ import {
   getActivePreviewTab,
 } from "./dom";
 import { state } from "./state";
+import {
+  isPreviewableSource,
+  selectedProjectSources,
+  sourceForPath,
+  sourceHasExtractedText,
+} from "./sources";
 import type { SearchResult } from "./generated/SearchResult.js";
 
 interface SearchCallbacks {
@@ -89,7 +95,7 @@ async function executeGlobalSearch(): Promise<void> {
     state.currentMatchIndex = -1;
     state.pendingSearchNavigation = 0;
     state.pendingSearchAfterCurrent = false;
-    if (state.selectedCorpusIndices.size > 0) {
+    if (state.selectedCorpusIndices.size > 0 || state.selectedProjectSourceIds.size > 0) {
       callbacks.schedulePreviewUpdate(50);
     } else {
       const activeTabContent = getActivePreviewCardsContainer();
@@ -113,6 +119,21 @@ async function executeGlobalSearch(): Promise<void> {
     myVersion = state.currentCorpusVersion;
     const isProcessed = getActivePreviewTab()?.getAttribute("data-target") === "processed-text";
     const indices = Array.from(state.selectedCorpusIndices);
+    if (state.activeProject && state.selectedProjectSourceIds.size > 0) {
+      const selectedSources = selectedProjectSources();
+      if (selectedSources.length === 0 || selectedSources.some((source) => !isPreviewableSource(source))) {
+        throw new Error("Selected source text is unavailable. Retry extraction or remove the source before searching.");
+      }
+    }
+    const blocked = indices.some((index) => {
+      const record = state.allFiles[index];
+      if (!record) return false;
+      const source = sourceForPath(record.source_path);
+      return source?.kind === "pdf" && !sourceHasExtractedText(source);
+    });
+    if (blocked) {
+      throw new Error("Text has not been extracted yet. Use Extract/OCR selected PDFs before searching this source.");
+    }
 
     const result = await invoke<SearchResult>("search_corpus_command", {
       indices,
@@ -131,6 +152,9 @@ async function executeGlobalSearch(): Promise<void> {
   } catch (err) {
     if (mySearchGen === state.searchGeneration) {
       console.error("Search failed", err);
+      dom.previewMatchCount.textContent = err instanceof Error
+        ? err.message
+        : "Search failed";
     }
   } finally {
     state.isSearching = false;

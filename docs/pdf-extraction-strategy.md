@@ -46,6 +46,31 @@ An experimental strategy for two-column page layouts. Currently unsupported; fal
 
 ---
 
+## User-Facing PDF Handling Options
+
+The following PDF handling profiles are exposed to users:
+
+| Profile | Behaviour |
+|---|---|
+| `Standard embedded text` | Extracts text using PDFium's native embedded text extraction (`PdfiumFlat`). Fast, preserves reading order exactly as the PDF defines it. Recommended for born-digital PDFs with clean text layers. |
+| `Layout-aware embedded text (experimental)` | Uses visual single-column reconstruction (`PdfiumVisualSingleColumn`) for PDFs where standard extraction scrambles line order. This is still embedded-text extraction, not OCR. |
+| `Full OCR all pages` | Renders and OCRs every page of the PDF. Slow and probabilistic, but it is the most predictable route for scanned or image-only documents. Uses configured OCR quality. |
+| `Do not OCR automatically / embedded text only` | Uses embedded text only; never performs OCR. Fastest option; works well for PDFs with known-good text layers. |
+
+### Honest contract
+
+```text
+Standard embedded text: fastest; uses selectable PDF text.
+Full OCR all pages: slow; renders and OCRs every page.
+Layout-aware embedded text: experimental visual ordering for awkward embedded text.
+```
+
+CorpusWright does **not** perform page-level conditional OCR. The legacy mixed OCR route is mapped to Full OCR all pages for project sources so normal workflows use one predictable OCR mode.
+
+For PDFs without usable embedded text, the recommended and most predictable option is "Full OCR all pages".
+
+---
+
 ## Local Benchmarking
 
 To benchmark extraction speed, character yields, and reading order correctness:
@@ -68,9 +93,11 @@ To avoid thread contention, the lock is acquired **only** during FFI calls (load
 
 ## Optional PDF Cleanup Strategy
 
-To clean up artefacts specific to PDF documents (such as running headers, footers, and page numbers/labels) without modifying the original source files, CorpusWright provides optional, deterministic, page-aware PDF post-extraction cleanup options.
+To clean up artefacts specific to PDF documents without modifying the original source files, CorpusWright provides optional, deterministic, page-aware PDF post-extraction cleanup options. The normal UI exposes only conservative options for page labels, obvious symbol-noise lines, code-like blocks, and formula-like lines. Repeated headers and footers are best handled through Repeated artefact review, where accepted candidates become explicit cleaning rules.
 
 ### 1. Repeated Header/Footer Removal (`remove_repeated_pdf_headers_footers`)
+
+This compatibility setting is still implemented in the core library, but it is not exposed as a normal Cleaning Settings checkbox. The reviewable route for repeated headers and footers is Repeated artefact review.
 
 - **Algorithm:**
   1. For each page in the PDF (or the subset of pages extracted under character limits), candidate lines are collected from the top 3 lines and the bottom 3 lines.
@@ -101,7 +128,7 @@ To clean up artefacts specific to PDF documents (such as running headers, footer
      - Slashes and "of" ranges (e.g., `12 / 40`, `Page 12 of 40`);
      - Roman numeral page labels (e.g., `i`, `iv`, `xii`, `Page iv`) verified against a standard Roman numeral grammar.
   3. Matches are removed only from the top/bottom zones.
-  4. Numbers embedded inside normal prose (e.g., "Chapter 12. Introduction") are safely preserved.
+  4. Numbers embedded inside normal prose (e.g. "Chapter 12. Introduction") are safely preserved.
 
 ### 3. Symbol-Heavy Graphical Noise Removal (`remove_pdf_symbol_heavy_artifacts`)
 
@@ -138,4 +165,3 @@ To clean up artefacts specific to PDF documents (such as running headers, footer
 > [!NOTE]
 > **Extraction Backend vs. Cleanup Defaults:**
 > Required extraction choices (such as the default PDF extraction strategy `PdfiumFlat`) are active by default to ensure the format is readable. Optional post-extraction cleanup and layout-scrambling options remain strictly disabled by default.
-

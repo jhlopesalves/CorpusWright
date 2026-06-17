@@ -8,6 +8,7 @@ New projects use this folder shape:
 Project Name/
     .corpuswright/
         project.json
+        sources.json
         cache/
     sources/
     processed/
@@ -20,6 +21,7 @@ Opening an existing folder as a project leaves the folder contents where they ar
 Existing Folder/
     .corpuswright/
         project.json
+        sources.json
         cache/
         processed/
         exports/
@@ -45,6 +47,68 @@ The project manifest is `.corpuswright/project.json`. It is versioned and intent
 
 The manifest stores the project name, root path, creation and update timestamps, optional source roots, and optional notes. It does not store corpus metrics, OCR state, token counts, cleaning decisions, or analysis results.
 
+## Source inventory
+
+The project source inventory is `.corpuswright/sources.json`. It is versioned separately from the project manifest and stores one record for each source file registered with the project:
+
+```json
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "source_...",
+      "path": "C:\\Corpora\\Learner Essays B2\\essay_001.docx",
+      "file_name": "essay_001.docx",
+      "extension": "docx",
+      "kind": "docx",
+      "status": "ready_to_process",
+      "reason_codes": ["native_text_available"],
+      "extraction_route": "docx_extract",
+      "ocr_quality": null,
+      "added_at": "2026-06-15T12:00:00Z",
+      "last_checked_at": "2026-06-15T12:00:00Z",
+      "last_processed_at": null
+    }
+  ]
+}
+```
+
+Source IDs are stable hashes of the project-relative path when the file is inside the project folder, or the canonical absolute path otherwise. The ID is suitable for keeping later processing and review decisions attached to the same source file.
+
+The desktop app shows this inventory in the Source Explorer. Add Files and Add Folder inspect selected sources before registration, show an Import Sources review dialog, and persist the chosen source-level extraction route only after confirmation. Import only registers sources and stores PDF handling. Import and Extract Text registers sources, stores PDF handling, then runs source text extraction/OCR for the imported PDFs. Duplicates are skipped by stable source ID.
+
+`extraction_route` records how text should be extracted from the source before cleaning rules run. TXT uses `plain_text`, DOCX uses `docx_extract`, and HTML uses `html_extract`. Current PDF imports use embedded text, layout-aware embedded text, full OCR all pages, or embedded text with no automatic OCR. Legacy mixed-OCR route values such as `ocr_if_needed` and `ocr_required` still load, but project sources map them to full OCR all pages. `ocr_quality` stores the OCR render quality for OCR-based PDF routes.
+
+Older source inventories without `extraction_route` or `ocr_quality` still load. Missing routes default from the source kind: PDFs use `embedded_text`, TXT uses `plain_text`, DOCX uses `docx_extract`, HTML uses `html_extract`, and unknown files use `unsupported`.
+
+## Import review
+
+After a file or folder picker returns, CorpusWright preflights the selected sources without running OCR. The Import Sources dialog shows the number of candidate sources, grouped route recommendations, duplicate and ignored-file counts, and a compact source list.
+
+Preflight recommends embedded text for PDFs with usable text, Full OCR all pages for PDFs with little or no text layer, and an undecided route when the audit cannot make a conservative recommendation. Import only closes the dialog after writing `.corpuswright/sources.json`. Import and Extract Text runs the stored per-source PDF handling immediately after registration. Cancel closes the dialog without writing `.corpuswright/sources.json`.
+
+PDF route and OCR quality are source-ingestion settings. Cleaning Settings keep cleaning controls and an advanced fallback PDF defaults section for older or unspecified sources; they do not replace routes already stored on project sources. Advanced PDF cleanup exposes only conservative post-extraction options. Repeated headers and footers are normally handled through Repeated artefact review.
+
+## Source statuses
+
+`Unprocessed` means the file is registered but has no current preflight result.
+
+`Ready to Extract` means CorpusWright has a source route and can attempt source text extraction. It does not mean the file is cleaned, processed, or analysis-ready.
+
+`Needs OCR` means a PDF appears to need an OCR route before usable text can be produced. This is not a failure.
+
+`Text Extracted` means original source text has been materialised and is available for original preview and search.
+
+`Text Extracted with Warnings` means original source text has been materialised, but OCR, layout, or extraction review signals should be checked.
+
+`Processed` means the existing processed-preview path has produced text without extraction warnings.
+
+`Processed with Warnings` means processed preview produced usable cleaned output, but processing warnings should be reviewed.
+
+`Failed` means a blocker such as a missing file, unsupported type, unreadable file, encrypted PDF, PDF open failure, parser failure, OCR failure, or write failure prevents normal processing.
+
+Reason codes are machine-readable strings such as `missing_file`, `unsupported_file_type`, `pdf_no_text_layer`, `ocr_required`, `native_text_available`, `text_extracted`, `text_extracted_with_warnings`, `processed_ok`, `processed_with_warnings`, `low_text_density`, and `parse_failed`. The frontend turns these codes into compact labels.
+
 ## Creating a project
 
 `New Corpus Project` asks for a project folder, creates `.corpuswright/project.json`, creates the small project folders, records the project in the recent-projects list, and opens the preprocessing workspace.
@@ -69,4 +133,25 @@ The desktop frontend keeps a small recent-projects list in localStorage. Each en
 
 ## Preprocessing workspace
 
-After a project opens, CorpusWright shows the existing preprocessing screen. File loading, processed previews, export, custom removals, and repeated-artefact review continue to use the same preprocessing commands and cleaning pipeline.
+After a project opens, CorpusWright shows the preprocessing workspace with the Source Explorer in the left panel. Processed previews, search, export, word counts, custom removals, and repeated-artefact review use the source-level PDF route when one is stored, with Cleaning Settings acting as fallback defaults only for older or unspecified sources.
+
+Repeated artefact review is part of cleaning-rule setup. The Repeated artefacts section in Cleaning Settings scans the current Source Explorer selection when sources are selected. When no source selection is active, the action label states that all loaded project sources will be scanned. Accepted candidates become the same structured Custom Removal rules used by normal cleaning and export.
+
+## Source import inside a project
+
+Inside a project, source import happens through the Source Explorer:
+
+- **Add Files** — registers the selected files as project sources via the Import Sources review dialog. Use this when a project is already open and you want to add individual source files.
+- **Add Folder** — scans and registers supported files from a folder as project sources via the Import Sources review dialog.
+
+These actions are available from the Source Explorer header buttons and from the project empty state. When no project is active, these actions load the files into the preprocessing workspace directly.
+
+**Open Folder as Corpus Project** (from the Project menu or Welcome screen) treats the selected folder itself as a project root, creating a new project if one does not exist. This is the correct entry point for starting a new project from an existing folder. It is not the same as Add Folder, which imports sources into an already-open project.
+
+## Removing sources from a project
+
+**Remove selected sources** (Source Explorer header) removes source entries from the project inventory (`sources.json`) without deleting the source files from disk. A confirmation dialog prevents accidental removal. After removal, the source list and preview are updated. Removal is blocked during active PDF materialisation operations.
+
+## File menu when a project is active
+
+When a project is active, the File menu contains only **Export Processed Corpus** (previously labelled Save Processed Corpus). The old `Open Files` and `Open Folder` actions that bypassed the project source inventory have been removed. Source import should be performed through the Source Explorer's Add Files / Add Folder buttons.

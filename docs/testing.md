@@ -53,6 +53,6 @@ After building, run the desktop app and verify basic functionality:
 
 1. Open the app and click **File > Open Corpus Directory**.
 2. Select the `examples/corpora/public-domain-demo/` folder.
-3. Open the **Settings > Processing Parameters** modal and toggle the options.
+3. Open the **Process > Cleaning Settings** modal and toggle the options.
 4. Check the **Processed Text** preview tab to confirm that the synthetic artefacts in the `dirty/` subfolder are properly removed.
 5. Save the processed corpus and ensure the manifest and texts are correctly exported to a temporary output folder.

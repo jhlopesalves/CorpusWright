@@ -34,6 +34,33 @@ function removalRuleText(rule: RemovalRule): string {
   return formatRemovalRuleText(rule);
 }
 
+export function countRepeatedArtifactRemovalRules(rules: RemovalRule[]): { total: number; enabled: number; disabled: number } {
+  const repeatedArtifactRules = rules.filter(rule => rule.source === "promoted_repeated_artifact");
+  const enabled = repeatedArtifactRules.filter(rule => rule.enabled).length;
+  return {
+    total: repeatedArtifactRules.length,
+    enabled,
+    disabled: repeatedArtifactRules.length - enabled,
+  };
+}
+
+export function syncRepeatedArtifactRulesSummary(): void {
+  const rules = dom.settingsModal.classList.contains("hidden")
+    ? state.activeCleaningConfig.removal_rules
+    : state.tempRemovalRules;
+  const counts = countRepeatedArtifactRemovalRules(rules);
+
+  if (counts.total === 0) {
+    dom.repeatedArtifactRulesSummary.textContent = "No repeated artefact rules have been accepted yet.";
+    return;
+  }
+
+  dom.repeatedArtifactRulesSummary.textContent =
+    `Accepted repeated artefact rules: ${counts.total.toLocaleString()}. ` +
+    `Enabled: ${counts.enabled.toLocaleString()}. ` +
+    `Disabled: ${counts.disabled.toLocaleString()}.`;
+}
+
 export function renderCustomRemovals(): void {
   dom.customRemovalsList.innerHTML = "";
   const itemCount = state.tempRemovePatterns.length + state.tempRemovalRules.length;
@@ -81,6 +108,8 @@ export function renderCustomRemovals(): void {
     pill.appendChild(delBtn);
     dom.customRemovalsList.appendChild(pill);
   });
+
+  syncRepeatedArtifactRulesSummary();
 }
 
 export function syncDraftCustomRemovalsFromConfig(config: CleaningConfig): void {

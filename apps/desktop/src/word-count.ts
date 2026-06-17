@@ -3,7 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { dom, getSummaryAvgWords, getSummaryTotalWords, getSummaryWordLabel } from "./dom";
 import { state } from "./state";
 
-const OCR_WORD_COUNT_SKIPPED_STATUS = "Token count skipped for OCR mode until OCR text is generated.";
+const OCR_WORD_COUNT_SKIPPED_STATUS =
+  "Cleaned token count unavailable until sources are processed with cleaning settings.";
 
 type WordCountBatchResult = {
   totalWords: number;
