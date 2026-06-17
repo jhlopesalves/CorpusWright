@@ -403,20 +403,30 @@ pub fn update_project_source_processing_results(
             if result.failed {
                 source.status = ProjectSourceStatus::Failed;
                 source.reason_codes = non_empty_or_default(result.reason_codes, "parse_failed");
-            } else if result.warning_count > 0 {
-                source.status = ProjectSourceStatus::ProcessedWithWarnings;
-                let mut reason_codes =
-                    non_empty_or_default(result.reason_codes, "processed_with_warnings");
-                if let Some(reason_code) = successful_pdf_review_reason(source) {
-                    append_reason_code_once(&mut reason_codes, reason_code);
-                }
-                source.reason_codes = reason_codes;
-            } else if let Some(reason_code) = successful_pdf_review_reason(source) {
-                source.status = ProjectSourceStatus::ProcessedWithWarnings;
-                source.reason_codes = vec![reason_code.to_string()];
             } else {
-                source.status = ProjectSourceStatus::Processed;
-                source.reason_codes = vec!["processed_ok".to_string()];
+                let mut concrete_reasons: Vec<String> = result
+                    .reason_codes
+                    .into_iter()
+                    .filter(|code| {
+                        code != "text_extracted_with_warnings"
+                            && code != "processed_with_warnings"
+                            && code != "review_recommended"
+                            && code != "text_extracted"
+                            && code != "processed_ok"
+                    })
+                    .collect();
+
+                if let Some(reason_code) = successful_pdf_review_reason(source) {
+                    append_reason_code_once(&mut concrete_reasons, reason_code);
+                }
+
+                if !concrete_reasons.is_empty() {
+                    source.status = ProjectSourceStatus::ProcessedWithWarnings;
+                    source.reason_codes = concrete_reasons;
+                } else {
+                    source.status = ProjectSourceStatus::Processed;
+                    source.reason_codes = Vec::new();
+                }
             }
         }
     }
@@ -451,30 +461,30 @@ pub fn update_project_source_extraction_results(
                 source.status = ProjectSourceStatus::Failed;
                 source.reason_codes =
                     non_empty_or_default(result.reason_codes, "text_extraction_failed");
-            } else if result.warning_count > 0 {
-                // If reason codes were provided upstream, use them as-is.
-                if !result.reason_codes.is_empty() {
-                    source.status = ProjectSourceStatus::TextExtractedWithWarnings;
-                    let mut reason_codes = result.reason_codes.clone();
-                    if let Some(reason_code) = successful_pdf_review_reason(source) {
-                        append_reason_code_once(&mut reason_codes, reason_code);
-                    }
-                    source.reason_codes = reason_codes;
-                } else if let Some(reason_code) = successful_pdf_review_reason(source) {
-                    // Profile-based reason (layout-heavy, OCR) is concrete enough.
-                    source.status = ProjectSourceStatus::TextExtractedWithWarnings;
-                    source.reason_codes = vec![reason_code.to_string()];
-                } else {
-                    // No concrete reason — do not show a generic warning banner.
-                    source.status = ProjectSourceStatus::TextExtracted;
-                    source.reason_codes = vec!["text_extracted".to_string()];
-                }
-            } else if let Some(reason_code) = successful_pdf_review_reason(source) {
-                source.status = ProjectSourceStatus::TextExtractedWithWarnings;
-                source.reason_codes = vec![reason_code.to_string()];
             } else {
-                source.status = ProjectSourceStatus::TextExtracted;
-                source.reason_codes = vec!["text_extracted".to_string()];
+                let mut concrete_reasons: Vec<String> = result
+                    .reason_codes
+                    .into_iter()
+                    .filter(|code| {
+                        code != "text_extracted_with_warnings"
+                            && code != "processed_with_warnings"
+                            && code != "review_recommended"
+                            && code != "text_extracted"
+                            && code != "processed_ok"
+                    })
+                    .collect();
+
+                if let Some(reason_code) = successful_pdf_review_reason(source) {
+                    append_reason_code_once(&mut concrete_reasons, reason_code);
+                }
+
+                if !concrete_reasons.is_empty() {
+                    source.status = ProjectSourceStatus::TextExtractedWithWarnings;
+                    source.reason_codes = concrete_reasons;
+                } else {
+                    source.status = ProjectSourceStatus::TextExtracted;
+                    source.reason_codes = Vec::new();
+                }
             }
         }
     }
@@ -1440,7 +1450,7 @@ mod tests {
             manifest.sources[0].status,
             ProjectSourceStatus::TextExtracted
         );
-        assert_eq!(manifest.sources[0].reason_codes, vec!["text_extracted"]);
+        assert_eq!(manifest.sources[0].reason_codes, Vec::<String>::new());
         assert_eq!(manifest.sources[0].last_processed_at, None);
     }
 
@@ -1516,7 +1526,7 @@ mod tests {
             manifest.sources[0].status,
             ProjectSourceStatus::TextExtracted
         );
-        assert_eq!(manifest.sources[0].reason_codes, vec!["text_extracted"]);
+        assert_eq!(manifest.sources[0].reason_codes, Vec::<String>::new());
     }
 
     #[test]
@@ -1688,7 +1698,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(manifest.sources[0].status, ProjectSourceStatus::Processed);
-        assert_eq!(manifest.sources[0].reason_codes, vec!["processed_ok"]);
+        assert_eq!(manifest.sources[0].reason_codes, Vec::<String>::new());
         assert_eq!(
             manifest.sources[1].status,
             ProjectSourceStatus::ProcessedWithWarnings

@@ -114,6 +114,8 @@ export const dom = {
   pdfIntakeMaterializationWarningRow: getElement<HTMLDivElement>("pdf-intake-materialization-warning-row"),
   pdfIntakeMaterializationWarning: getElement<HTMLElement>("pdf-intake-materialization-warning"),
   sourceImportModal: getElement<HTMLDivElement>("source-import-modal"),
+  sourceImportTitle: getElement<HTMLHeadingElement>("source-import-title"),
+  sourceImportDescription: getElement<HTMLParagraphElement>("source-import-description"),
   btnCloseSourceImportModalTop: getElement<HTMLButtonElement>("btn-close-source-import-modal-top"),
   sourceImportSummary: getElement<HTMLParagraphElement>("source-import-summary"),
   sourceImportGroups: getElement<HTMLDivElement>("source-import-groups"),

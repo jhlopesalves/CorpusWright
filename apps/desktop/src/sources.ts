@@ -248,9 +248,34 @@ export function loadableProjectSourcePaths(): string[] {
     .map((source) => source.path);
 }
 
+export function normalizeProjectSource(source: ProjectSource): ProjectSource {
+  const concreteReasonCodes = (source.reason_codes || []).filter(
+    (code) =>
+      code !== "text_extracted_with_warnings" &&
+      code !== "processed_with_warnings" &&
+      code !== "review_recommended" &&
+      code !== "text_extracted" &&
+      code !== "processed_ok"
+  );
+
+  let status = source.status;
+  if (status === "text_extracted_with_warnings" && concreteReasonCodes.length === 0) {
+    status = "text_extracted";
+  }
+  if (status === "processed_with_warnings" && concreteReasonCodes.length === 0) {
+    status = "processed";
+  }
+
+  return {
+    ...source,
+    status,
+    reason_codes: concreteReasonCodes,
+  };
+}
+
 export function replaceProjectSources(manifest: ProjectSourceManifest): void {
   state.sourceManifestVersion = manifest.version;
-  state.projectSources = manifest.sources;
+  state.projectSources = manifest.sources.map(normalizeProjectSource);
   const sourceIds = new Set(manifest.sources.map((source) => source.id));
   for (const selectedId of state.selectedProjectSourceIds) {
     if (!sourceIds.has(selectedId)) {
@@ -288,10 +313,14 @@ export async function reviewFilesForActiveProjectSources(paths: string[]): Promi
   if (!state.activeProject || paths.length === 0) {
     return null;
   }
-  return invoke<ProjectSourceImportReview>("review_project_source_files_import_command", {
+  const review = await invoke<ProjectSourceImportReview>("review_project_source_files_import_command", {
     rootPath: state.activeProject.rootPath,
     paths,
   });
+  if (review) {
+    review.candidates = review.candidates.map(normalizeProjectSource);
+  }
+  return review;
 }
 
 export async function confirmFilesForActiveProjectSources(
@@ -326,10 +355,14 @@ export async function reviewFolderForActiveProjectSources(path: string): Promise
   if (!state.activeProject) {
     return null;
   }
-  return invoke<ProjectSourceImportReview>("review_project_source_folder_import_command", {
+  const review = await invoke<ProjectSourceImportReview>("review_project_source_folder_import_command", {
     rootPath: state.activeProject.rootPath,
     folderPath: path,
   });
+  if (review) {
+    review.candidates = review.candidates.map(normalizeProjectSource);
+  }
+  return review;
 }
 
 export async function confirmFolderForActiveProjectSources(
@@ -419,8 +452,8 @@ function reasonCodesForWarnings(warnings: PreviewWarning[], failed: boolean): st
     }
   }
 
-  if (codes.size === 0) {
-    codes.add(failed ? "parse_failed" : "processed_with_warnings");
+  if (codes.size === 0 && failed) {
+    codes.add("parse_failed");
   }
 
   return Array.from(codes);

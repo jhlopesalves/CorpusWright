@@ -611,7 +611,7 @@ fn extraction_reason_codes_for_warnings(warnings: &[String]) -> Vec<String> {
         } else if warning.contains("repeated") {
             "many_repeated_artifacts"
         } else {
-            "text_extracted_with_warnings"
+            continue;
         };
         if !codes.contains(&code.to_string()) {
             codes.push(code.to_string());
