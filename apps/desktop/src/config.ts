@@ -101,6 +101,10 @@ export function isPdfTextSource(value: unknown): value is PdfTextSource {
   );
 }
 
+export function normalisePdfTextSource(value: PdfTextSource): PdfTextSource {
+  return value === "Ocr" ? "ForceOcr" : value;
+}
+
 export function isPdfOcrQuality(value: unknown): value is PdfOcrQuality {
   return (
     typeof value === "string" &&
@@ -186,7 +190,7 @@ export function normaliseCleaningConfig(raw: unknown): CleaningConfig {
   }
 
   if (isPdfTextSource(obj.pdf_text_source)) {
-    config.pdf_text_source = obj.pdf_text_source;
+    config.pdf_text_source = normalisePdfTextSource(obj.pdf_text_source);
   }
 
   if (isPdfOcrQuality(obj.pdf_ocr_quality)) {

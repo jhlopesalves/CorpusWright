@@ -11,7 +11,7 @@ use crate::clean::{CleaningConfig, PdfTextSource, clean_text};
 use crate::scan::{DocumentRecord, DocumentType};
 
 pub const OCR_WORD_COUNT_SKIPPED_STATUS: &str =
-    "Token count skipped for OCR mode until OCR text is generated.";
+    "Cleaned token count unavailable until sources are processed with cleaning settings.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WordCountOutcome {
@@ -46,15 +46,18 @@ pub fn count_words_for_record(
     cache: Option<&ExtractionCache>,
 ) -> WordCountOutcome {
     let pdf_options = if record.document_type == DocumentType::Pdf {
-        Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
-            cleaning_config,
-        ))
+        Some(
+            crate::pdf::PdfExtractionOptions::raw_from_record_and_cleaning_config(
+                record,
+                cleaning_config,
+            ),
+        )
     } else {
         None
     };
 
     if record.document_type == DocumentType::Pdf
-        && cleaning_config.pdf_text_source != PdfTextSource::EmbeddedText
+        && pdf_options.is_some_and(|options| options.text_source != PdfTextSource::EmbeddedText)
     {
         if let Some(entry) =
             cache.and_then(|cache| cache.try_get(record, pdf_options, cleaning_config))
@@ -88,7 +91,7 @@ pub fn count_words_for_record(
                 && let Ok(extracted) = crate::pdf::extract_pdf(
                     &bytes,
                     None,
-                    crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(cleaning_config),
+                    pdf_options.expect("PDF options are present for PDF records"),
                 )
             {
                 extracted.text
@@ -147,6 +150,9 @@ mod tests {
             relative_path: PathBuf::from("test.txt"),
             document_type: DocumentType::Text,
             size_bytes: content.len() as u64,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         }
     }
 
@@ -216,6 +222,9 @@ mod tests {
             relative_path: PathBuf::from("does_not_exist_12345.txt"),
             document_type: DocumentType::Text,
             size_bytes: 0,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
         let config = CleaningConfig::default();
         let count = count_words_for_record(&record, &config, None).count;
@@ -232,6 +241,9 @@ mod tests {
             relative_path: PathBuf::from("scan.pdf"),
             document_type: DocumentType::Pdf,
             size_bytes: 8,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
         let config = CleaningConfig {
             pdf_text_source: PdfTextSource::Ocr,

@@ -190,7 +190,8 @@ pub fn preview_file_with_config(
             }
         }
     } else if record.document_type == DocumentType::Pdf {
-        let pdf_options = PdfExtractionOptions::raw_from_cleaning_config(cleaning_config);
+        let pdf_options =
+            PdfExtractionOptions::raw_from_record_and_cleaning_config(record, cleaning_config);
         if let Some(cache) = cache {
             if let Some(entry) = cache.try_get(record, Some(pdf_options), cleaning_config) {
                 let truncated = entry.extracted_text.chars().count() > options.max_chars_per_file;
@@ -452,7 +453,10 @@ pub fn preview_processed_files(
                     }
                 }
             } else if record.document_type == DocumentType::Pdf {
-                let pdf_options = PdfExtractionOptions::raw_from_cleaning_config(cleaning_config);
+                let pdf_options = PdfExtractionOptions::raw_from_record_and_cleaning_config(
+                    record,
+                    cleaning_config,
+                );
                 let cache_hit =
                     cache.and_then(|c| c.try_get(record, Some(pdf_options), cleaning_config));
                 if let Some(entry) = cache_hit {

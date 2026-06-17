@@ -143,12 +143,26 @@ pub fn export_corpus(
             let mut warnings = Vec::new();
             let mut page_count = None;
 
+            let pdf_options = if record.document_type == DocumentType::Pdf {
+                Some(
+                    crate::pdf::PdfExtractionOptions::raw_from_record_and_cleaning_config(
+                        record,
+                        cleaning_config,
+                    ),
+                )
+            } else {
+                None
+            };
+
             let extraction_method = match record.document_type {
                 DocumentType::Text => Some("plain_text".to_string()),
                 DocumentType::Html => Some("html2text".to_string()),
                 DocumentType::Docx => Some("docx_zip_wordprocessingml".to_string()),
-                DocumentType::Pdf => match cleaning_config.pdf_text_source {
-                    PdfTextSource::Ocr => Some("pdf_ocr_rescue".to_string()),
+                DocumentType::Pdf => match pdf_options
+                    .expect("PDF options are present for PDF records")
+                    .text_source
+                {
+                    PdfTextSource::Ocr => Some("pdf_legacy_mixed_ocr".to_string()),
                     PdfTextSource::ForceOcr => Some("pdf_force_ocr".to_string()),
                     PdfTextSource::EmbeddedText => match cleaning_config.pdf_embedded_text_strategy
                     {
@@ -220,8 +234,7 @@ pub fn export_corpus(
                     }
                 }
             } else if record.document_type == DocumentType::Pdf {
-                let pdf_options =
-                    crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(cleaning_config);
+                let pdf_options = pdf_options.expect("PDF options are present for PDF records");
                 if let Some(cache) = cache {
                     match cache.get_or_extract(record, Some(pdf_options), cleaning_config) {
                         Ok(entry) => {
@@ -696,6 +709,9 @@ mod tests {
             relative_path: PathBuf::from(relative),
             document_type: doc_type,
             size_bytes: content.len() as u64,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         }
     }
 
@@ -748,6 +764,9 @@ mod tests {
             relative_path: PathBuf::from("Linha_10.txt"),
             document_type: DocumentType::Text,
             size_bytes: 10,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
         let mut used = HashSet::new();
         let out = unique_output_relative_path(&rec, &mut used);
@@ -761,6 +780,9 @@ mod tests {
             relative_path: PathBuf::from("paper.pdf"),
             document_type: DocumentType::Pdf,
             size_bytes: 100,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
         let mut used = HashSet::new();
         let out = unique_output_relative_path(&rec, &mut used);
@@ -774,6 +796,9 @@ mod tests {
             relative_path: PathBuf::from("sub/a.txt"),
             document_type: DocumentType::Text,
             size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
         let mut used = HashSet::new();
         let out = unique_output_relative_path(&rec, &mut used);
@@ -788,12 +813,18 @@ mod tests {
             relative_path: PathBuf::from("one/name.txt"),
             document_type: DocumentType::Text,
             size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
         let rec2 = DocumentRecord {
             source_path: PathBuf::from("/tmp/two/name.txt"),
             relative_path: PathBuf::from("two/name.txt"),
             document_type: DocumentType::Text,
             size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
         let out1 = unique_output_relative_path(&rec1, &mut used);
         assert_eq!(out1, PathBuf::from("one/name.txt"));
@@ -809,6 +840,9 @@ mod tests {
             relative_path: PathBuf::from("sub/name.txt"),
             document_type: DocumentType::Text,
             size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
         // Symlinks can surface distinct sources with the same relative path.
         let rec2 = DocumentRecord {
@@ -816,6 +850,9 @@ mod tests {
             relative_path: PathBuf::from("sub/name.txt"),
             document_type: DocumentType::Text,
             size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
         let out1 = unique_output_relative_path(&rec1, &mut used);
         assert_eq!(out1, PathBuf::from("sub/name.txt"));
@@ -830,6 +867,9 @@ mod tests {
             relative_path: PathBuf::from("file<bad>.txt"),
             document_type: DocumentType::Text,
             size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
         let mut used = HashSet::new();
         let out = unique_output_relative_path(&rec, &mut used);
@@ -843,6 +883,9 @@ mod tests {
             relative_path: PathBuf::from(".hidden"),
             document_type: DocumentType::Text,
             size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
         let mut used = HashSet::new();
         let out = unique_output_relative_path(&rec, &mut used);
@@ -1395,12 +1438,18 @@ mod tests {
             relative_path: PathBuf::from("sub").join("name.txt"),
             document_type: DocumentType::Text,
             size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
         let rec2 = DocumentRecord {
             source_path: source.path().join("sub").join("name_other.txt"),
             relative_path: PathBuf::from("sub").join("name.txt"), // Same relative path intentionally
             document_type: DocumentType::Text,
             size_bytes: 6,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
 
         let records = vec![rec1, rec2];
@@ -1451,6 +1500,9 @@ mod tests {
             relative_path: PathBuf::from("file<bad>:name.txt"),
             document_type: DocumentType::Text,
             size_bytes: 7,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
         };
         let records = vec![record];
 

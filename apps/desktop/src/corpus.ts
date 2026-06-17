@@ -5,10 +5,32 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { dom } from "./dom";
 import { updateFileList } from "./file-list";
 import { state } from "./state";
+import {
+  confirmFilesForActiveProjectSources,
+  confirmFolderForActiveProjectSources,
+  extractionRouteLabel,
+  loadableProjectSourcePaths,
+  loadProjectSourcesForActiveProject,
+  pdfProfileLabel,
+  pdfProfileShortLabel,
+  removeProjectSourcePaths,
+  selectedProjectSourcePaths,
+  selectedProjectSources,
+  type ProjectSourcePdfHandlingOverride,
+  reviewFilesForActiveProjectSources,
+  reviewFolderForActiveProjectSources,
+  sourceHasExtractedText,
+  sourceKindLabel,
+} from "./sources";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
 import type { CorpusSummary } from "./generated/CorpusSummary.js";
+import type { PdfOcrQuality } from "./generated/PdfOcrQuality.js";
 import type { PdfAuditResult } from "./generated/PdfAuditResult.js";
 import type { PdfAuditSuggestedProfile } from "./generated/PdfAuditSuggestedProfile.js";
+import type { ProjectSourceImportReview } from "./generated/ProjectSourceImportReview.js";
+import type { ProjectSourcePdfProfile } from "./generated/ProjectSourcePdfProfile.js";
+import type { ProjectSource } from "./generated/ProjectSource.js";
+import type { ProjectSourceUpdate } from "./generated/ProjectSourceUpdate.js";
 import type { CorpusLoadResult } from "./types";
 
 interface CorpusCallbacks {
@@ -19,8 +41,14 @@ let callbacks: CorpusCallbacks = {
   updateWordCount: () => {},
 };
 
-type PdfIntakeProfileId = "standard" | "layout" | "ocr" | "force-ocr";
-type PdfAuditSeverity = PdfAuditSuggestedProfile;
+type PdfIntakeProfileId = "standard" | "layout" | "force-ocr";
+
+interface ImportSourcesChoice {
+  pdfHandlingOverrides: ProjectSourcePdfHandlingOverride[];
+  extractTextNow: boolean;
+}
+
+type ImportSourcesResolve = (choice: ImportSourcesChoice | null) => void;
 
 interface PdfIntakeProfile {
   statusLabel: string;
@@ -29,7 +57,7 @@ interface PdfIntakeProfile {
 
 const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
   standard: {
-    statusLabel: "standard embedded-text profile",
+    statusLabel: "standard embedded-text handling",
     apply: (config) => {
       config.pdf_text_source = "EmbeddedText";
       config.pdf_ocr_quality = "Balanced";
@@ -42,39 +70,26 @@ const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
     },
   },
   layout: {
-    statusLabel: "layout-heavy profile",
+    statusLabel: "layout-aware embedded text handling",
     apply: (config) => {
       config.pdf_text_source = "EmbeddedText";
       config.pdf_ocr_quality = "Balanced";
       config.pdf_embedded_text_strategy = "PdfiumVisualSingleColumn";
-      config.remove_repeated_pdf_headers_footers = true;
-      config.remove_pdf_page_labels = true;
-      config.remove_pdf_symbol_heavy_artifacts = false;
-      config.remove_pdf_code_like_blocks = false;
-      config.remove_pdf_formula_like_lines = false;
-    },
-  },
-  ocr: {
-    statusLabel: "scanned/OCR rescue profile",
-    apply: (config) => {
-      config.pdf_text_source = "Ocr";
-      config.pdf_ocr_quality = "Balanced";
-      config.pdf_embedded_text_strategy = "PdfiumFlat";
-      config.remove_repeated_pdf_headers_footers = true;
-      config.remove_pdf_page_labels = true;
+      config.remove_repeated_pdf_headers_footers = false;
+      config.remove_pdf_page_labels = false;
       config.remove_pdf_symbol_heavy_artifacts = false;
       config.remove_pdf_code_like_blocks = false;
       config.remove_pdf_formula_like_lines = false;
     },
   },
   "force-ocr": {
-    statusLabel: "force OCR/high-quality profile",
+    statusLabel: "full OCR all pages handling",
     apply: (config) => {
       config.pdf_text_source = "ForceOcr";
       config.pdf_ocr_quality = "HighQuality";
       config.pdf_embedded_text_strategy = "PdfiumFlat";
-      config.remove_repeated_pdf_headers_footers = true;
-      config.remove_pdf_page_labels = true;
+      config.remove_repeated_pdf_headers_footers = false;
+      config.remove_pdf_page_labels = false;
       config.remove_pdf_symbol_heavy_artifacts = false;
       config.remove_pdf_code_like_blocks = false;
       config.remove_pdf_formula_like_lines = false;
@@ -85,16 +100,35 @@ const pdfIntakeProfiles: Record<PdfIntakeProfileId, PdfIntakeProfile> = {
 const auditProfileToIntakeProfile: Record<PdfAuditSuggestedProfile, PdfIntakeProfileId> = {
   standard: "standard",
   layout_heavy: "layout",
-  ocr_rescue: "ocr",
+  ocr_rescue: "force-ocr",
   force_ocr: "force-ocr",
 };
 
 const profileDisplayNames: Record<PdfIntakeProfileId, string> = {
-  standard: "Standard",
-  layout: "Layout-heavy",
-  ocr: "OCR rescue",
-  "force-ocr": "Force OCR",
+  standard: "Standard embedded text",
+  layout: "Layout-aware embedded text",
+  "force-ocr": "Full OCR all pages",
 };
+
+type PdfDetectionKind = "embedded_text" | "ocr_required" | "unknown";
+
+interface PendingPdfHandling {
+  source: ProjectSource;
+  detection: PdfDetectionKind;
+  recommendedProfile: ProjectSourcePdfProfile;
+  selectedProfile: ProjectSourcePdfProfile;
+}
+
+const PDF_HANDLING_OPTIONS: ProjectSourcePdfProfile[] = [
+  "standard",
+  "layout_heavy",
+  "force_ocr",
+  "no_automatic_ocr",
+];
+
+const OCR_BASED_PDF_HANDLING = new Set<ProjectSourcePdfProfile>(["force_ocr"]);
+
+let pdfIntakeMode: "legacy" | "prepare-sources" = "legacy";
 
 let pdfIntakeSelectedPaths: string[] = [];
 let pdfIntakeManualProfileOverride = false;
@@ -102,6 +136,14 @@ let settingPdfIntakeProfile = false;
 let pdfIntakeMaterializing = false;
 let pdfIntakeCancelRequested = false;
 let pdfIntakeProgressUnlisten: UnlistenFn | null = null;
+let pdfIntakeSessionId = 0;
+let pdfIntakeIsForceOcr = false;
+let lastPdfIntakeProgressRenderAt = 0;
+let lastPdfIntakeRenderedFileIndex = 0;
+let importSourcesResolve: ImportSourcesResolve | null = null;
+let activeImportCandidates: ProjectSource[] = [];
+let pendingPdfHandling = new Map<string, PendingPdfHandling>();
+let importDialogMode: "import" | "re-extract" | "change-handling" = "import";
 
 interface PdfIntakeMaterializationProgress {
   currentFile: string;
@@ -123,8 +165,10 @@ export function clearStateForLoad(): void {
   state.allFiles = [];
   state.visibleFiles = [];
   state.selectedCorpusIndices.clear();
+  state.selectedProjectSourceIds.clear();
   state.currentCorpusRoot = null;
   state.lastSelectedCorpusIndex = null;
+  state.lastSelectedProjectSourceId = null;
   state.lastScanCandidates = [];
   state.selectedCandidateIds.clear();
   dom.previewContent.textContent = "Select files from the left panel to preview their contents.";
@@ -171,9 +215,440 @@ export function renderProjectEmptyState(): void {
   dom.processedPreviewContent.textContent = "Add source files to preview processed text.";
 }
 
+function sourceImportSummaryLine(review: ProjectSourceImportReview): string {
+  const count = review.candidates.length;
+  const sourceLabel = count === 1 ? "source" : "sources";
+  const extras: string[] = [];
+  if (review.duplicate_count > 0) {
+    const duplicateLabel = review.duplicate_count === 1 ? "duplicate" : "duplicates";
+    extras.push(`${review.duplicate_count} ${duplicateLabel} skipped`);
+  }
+  if (review.ignored_count > 0) {
+    const ignoredLabel = review.ignored_count === 1 ? "unsupported file" : "unsupported files";
+    extras.push(`${review.ignored_count} ${ignoredLabel} ignored`);
+  }
+  return extras.length === 0
+    ? `${count} ${sourceLabel} found`
+    : `${count} ${sourceLabel} found (${extras.join(", ")})`;
+}
+
+function groupedImportSources(review: ProjectSourceImportReview): Map<string, number> {
+  const groups = new Map<string, number>();
+  for (const source of review.candidates) {
+    const key = sourceKindLabel(source);
+    groups.set(key, (groups.get(key) ?? 0) + 1);
+  }
+  return groups;
+}
+
+function renderImportSourcesGroups(review: ProjectSourceImportReview): void {
+  dom.sourceImportGroups.replaceChildren();
+  const groups = groupedImportSources(review);
+  for (const [kind, count] of groups) {
+    const row = document.createElement("div");
+    row.className = "source-import-group-row";
+
+    const label = document.createElement("span");
+    label.textContent = kind;
+
+    const scopeLabel = document.createElement("span");
+    scopeLabel.textContent = "Pending import";
+
+    const countLabel = document.createElement("strong");
+    countLabel.textContent = count.toLocaleString();
+
+    row.append(label, scopeLabel, countLabel);
+    dom.sourceImportGroups.appendChild(row);
+  }
+}
+
+function importPathKey(path: string): string {
+  return path.replace(/\\/g, "/").toLowerCase();
+}
+
+function pdfDetectionForSource(source: ProjectSource): PdfDetectionKind {
+  if (source.extraction_route === "embedded_text") {
+    return "embedded_text";
+  }
+  if (
+    source.status === "needs_ocr" ||
+    source.extraction_route === "ocr_required" ||
+    source.extraction_route === "force_ocr" ||
+    source.reason_codes.some(code => code === "ocr_required" || code === "pdf_no_text_layer")
+  ) {
+    return "ocr_required";
+  }
+  return "unknown";
+}
+
+function recommendedProfileForSource(source: ProjectSource): ProjectSourcePdfProfile {
+  if (source.pdf_profile) {
+    return canonicalPdfProfile(source.pdf_profile);
+  }
+  switch (source.extraction_route) {
+    case "embedded_text":
+      return "standard";
+    case "force_ocr":
+    case "ocr_required":
+    case "ocr_if_needed":
+      return "force_ocr";
+    default:
+      return "standard";
+  }
+}
+
+function canonicalPdfProfile(profile: ProjectSourcePdfProfile): ProjectSourcePdfProfile {
+  return profile === "ocr_rescue" ? "force_ocr" : profile;
+}
+
+function detectionGroupLabel(detection: PdfDetectionKind, count: number): string {
+  const noun = count === 1 ? "PDF" : "PDFs";
+  switch (detection) {
+    case "embedded_text": return `Embedded-text ${noun}`;
+    case "ocr_required": return `OCR-required ${noun}`;
+    case "unknown": return `Unknown ${noun}`;
+  }
+}
+
+function detectionLabel(detection: PdfDetectionKind): string {
+  switch (detection) {
+    case "embedded_text": return "embedded text";
+    case "ocr_required": return "OCR required";
+    case "unknown": return "unknown";
+  }
+}
+
+function resetPendingPdfHandling(review: ProjectSourceImportReview): void {
+  pendingPdfHandling = new Map();
+  for (const source of review.candidates) {
+    if (source.kind !== "pdf") {
+      continue;
+    }
+    const recommendedProfile = recommendedProfileForSource(source);
+    const initialProfile = (importDialogMode === "import")
+      ? recommendedProfile
+      : (source.pdf_profile ?? recommendedProfile);
+    pendingPdfHandling.set(importPathKey(source.path), {
+      source,
+      detection: pdfDetectionForSource(source),
+      recommendedProfile,
+      selectedProfile: initialProfile,
+    });
+  }
+}
+
+function pendingPdfHandlingItems(): PendingPdfHandling[] {
+  return Array.from(pendingPdfHandling.values());
+}
+
+function createPdfHandlingSelect(selectedProfile: ProjectSourcePdfProfile): HTMLSelectElement {
+  const select = document.createElement("select");
+  select.className = "settings-select source-import-handling-select";
+  for (const profile of PDF_HANDLING_OPTIONS) {
+    const option = document.createElement("option");
+    option.value = profile;
+    option.textContent = pdfProfileLabel(profile);
+    option.selected = profile === selectedProfile;
+    select.appendChild(option);
+  }
+  return select;
+}
+
+function renderPdfHandlingRecommendations(items: PendingPdfHandling[]): void {
+  dom.sourceImportPdfRecommendations.replaceChildren();
+
+  const title = document.createElement("h4");
+  title.textContent = "Recommended PDF handling";
+  dom.sourceImportPdfRecommendations.appendChild(title);
+
+  const counts = new Map<string, { detection: PdfDetectionKind; profile: ProjectSourcePdfProfile; count: number }>();
+  for (const item of items) {
+    const key = `${item.detection}|${item.recommendedProfile}`;
+    const current = counts.get(key) ?? {
+      detection: item.detection,
+      profile: item.recommendedProfile,
+      count: 0,
+    };
+    current.count += 1;
+    counts.set(key, current);
+  }
+
+  for (const { detection, profile, count } of counts.values()) {
+    const row = document.createElement("div");
+    row.className = "source-import-recommendation-row";
+    row.textContent = `${detectionGroupLabel(detection, count)} -> ${pdfProfileLabel(profile)}`;
+    dom.sourceImportPdfRecommendations.appendChild(row);
+  }
+}
+
+function renderPdfHandlingGroupControls(items: PendingPdfHandling[]): void {
+  dom.sourceImportPdfGroupControls.replaceChildren();
+  const groupOrder: PdfDetectionKind[] = ["embedded_text", "ocr_required", "unknown"];
+
+  for (const detection of groupOrder) {
+    const groupItems = items.filter(item => item.detection === detection);
+    if (groupItems.length === 0) {
+      continue;
+    }
+
+    const selectedProfiles = new Set(groupItems.map(item => item.selectedProfile));
+    const selectedProfile = selectedProfiles.size === 1 ? groupItems[0].selectedProfile : null;
+    const recommendedProfiles = new Set(groupItems.map(item => item.recommendedProfile));
+    const recommendedLabel = recommendedProfiles.size === 1
+      ? pdfProfileLabel(groupItems[0].recommendedProfile)
+      : "mixed recommendations";
+
+    const group = document.createElement("div");
+    group.className = "source-import-pdf-group";
+
+    const title = document.createElement("h4");
+    title.textContent = detectionGroupLabel(detection, groupItems.length);
+
+    const recommended = document.createElement("p");
+    recommended.className = "source-import-help";
+    recommended.textContent = `Recommended: ${recommendedLabel}. Applies to ${groupItems.length.toLocaleString()} pending ${groupItems.length === 1 ? "PDF" : "PDFs"}.`;
+
+    const label = document.createElement("label");
+    label.className = "source-import-group-select";
+    const labelText = document.createElement("span");
+    labelText.textContent = `Apply to all ${groupItems.length.toLocaleString()}`;
+    const select = createPdfHandlingSelect(selectedProfile ?? groupItems[0].recommendedProfile);
+    if (selectedProfile === null) {
+      const mixed = document.createElement("option");
+      mixed.value = "";
+      mixed.textContent = "Mixed handling";
+      mixed.disabled = true;
+      mixed.selected = true;
+      select.insertBefore(mixed, select.firstChild);
+    }
+    select.addEventListener("change", () => {
+      const profile = select.value as ProjectSourcePdfProfile;
+      for (const item of groupItems) {
+        item.selectedProfile = profile;
+      }
+      renderImportSourcesPdfHandling();
+      renderImportSourcesList(activeImportCandidates);
+    });
+
+    label.append(labelText, select);
+    group.append(title, recommended, label);
+    dom.sourceImportPdfGroupControls.appendChild(group);
+  }
+
+  if (importDialogMode !== "import") {
+    dom.sourceImportPdfGroupControls.appendChild(renderBulkHelpers(items));
+  }
+}
+
+function syncImportOcrQualityState(items: PendingPdfHandling[]): void {
+  const ocrCount = items.filter(item => OCR_BASED_PDF_HANDLING.has(item.selectedProfile)).length;
+  const hasOcrHandling = ocrCount > 0;
+  dom.sourceImportOcrQuality.disabled = !hasOcrHandling;
+  dom.sourceImportOcrQualityRow.classList.toggle("is-disabled", !hasOcrHandling);
+  dom.sourceImportOcrQualityHelp.textContent = hasOcrHandling
+    ? `Used when ${ocrCount.toLocaleString()} pending ${ocrCount === 1 ? "PDF uses" : "PDFs use"} OCR-based handling. OCR runs during text extraction.`
+    : "Not currently used because no pending PDF uses OCR-based handling.";
+}
+
+function renderBulkHelpers(items: PendingPdfHandling[]): HTMLElement {
+  const container = document.createElement("div");
+  container.className = "source-import-bulk-helpers";
+  container.style.marginTop = "12px";
+  container.style.display = "flex";
+  container.style.gap = "8px";
+  container.style.flexWrap = "wrap";
+
+  const label = document.createElement("strong");
+  label.textContent = "Bulk helpers:";
+  label.style.width = "100%";
+  container.appendChild(label);
+
+  const profiles: { name: string; value: ProjectSourcePdfProfile }[] = [
+    { name: "Set all to Standard embedded text", value: "standard" },
+    { name: "Set all to Layout-aware embedded text", value: "layout_heavy" },
+    { name: "Set all to Full OCR all pages", value: "force_ocr" },
+  ];
+
+  for (const p of profiles) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "secondary-btn";
+    btn.textContent = p.name;
+    btn.addEventListener("click", () => {
+      for (const item of items) {
+        item.selectedProfile = p.value;
+      }
+      renderImportSourcesPdfHandling();
+      renderImportSourcesList(activeImportCandidates);
+    });
+    container.appendChild(btn);
+  }
+
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.className = "secondary-btn";
+  resetBtn.textContent = "Reset to stored handling";
+  resetBtn.addEventListener("click", () => {
+    for (const item of items) {
+      item.selectedProfile = item.source.pdf_profile ?? item.recommendedProfile;
+    }
+    renderImportSourcesPdfHandling();
+    renderImportSourcesList(activeImportCandidates);
+  });
+  container.appendChild(resetBtn);
+
+  return container;
+}
+
+function renderImportSourcesPdfHandling(): void {
+  const items = pendingPdfHandlingItems();
+  if (items.length === 0) {
+    dom.sourceImportPdfHandling.classList.add("hidden");
+    return;
+  }
+
+  dom.sourceImportPdfHandling.classList.remove("hidden");
+  dom.sourceImportPdfScope.textContent = importDialogMode === "import"
+    ? `Applies to ${items.length.toLocaleString()} pending ${items.length === 1 ? "PDF" : "PDFs"}.`
+    : `Applies to ${items.length.toLocaleString()} selected ${items.length === 1 ? "PDF" : "PDFs"}.`;
+
+  if (importDialogMode === "import") {
+    dom.sourceImportPdfRecommendations.classList.remove("hidden");
+    renderPdfHandlingRecommendations(items);
+  } else {
+    dom.sourceImportPdfRecommendations.classList.add("hidden");
+  }
+
+  renderPdfHandlingGroupControls(items);
+  syncImportOcrQualityState(items);
+}
+
+function renderImportSourcesList(sources: ProjectSource[]): void {
+  dom.sourceImportList.replaceChildren();
+  for (const source of sources) {
+    const row = document.createElement("div");
+    row.className = "source-import-list-row";
+
+    const name = document.createElement("span");
+    name.className = "source-import-list-name";
+    name.textContent = source.file_name;
+
+    const meta = document.createElement("span");
+    meta.className = "source-import-list-meta";
+    const pdfHandling = pendingPdfHandling.get(importPathKey(source.path));
+    if (pdfHandling) {
+      meta.textContent = importDialogMode === "import"
+        ? `Detected: ${detectionLabel(pdfHandling.detection)}`
+        : `Stored: ${pdfProfileShortLabel(source.pdf_profile ?? "standard")}`;
+      const label = document.createElement("label");
+      label.className = "source-import-row-handling";
+      const labelText = document.createElement("span");
+      labelText.textContent = "Handling";
+      const select = createPdfHandlingSelect(pdfHandling.selectedProfile);
+      select.addEventListener("change", () => {
+        pdfHandling.selectedProfile = select.value as ProjectSourcePdfProfile;
+        renderImportSourcesPdfHandling();
+        renderImportSourcesList(activeImportCandidates);
+      });
+      label.append(labelText, select);
+      row.append(name, meta, label);
+    } else {
+      meta.textContent = `${sourceKindLabel(source)} · ${extractionRouteLabel(source.extraction_route)}`;
+      row.append(name, meta);
+    }
+
+    dom.sourceImportList.appendChild(row);
+  }
+}
+
+function resetImportSourcesDialog(review: ProjectSourceImportReview): void {
+  activeImportCandidates = review.candidates;
+  resetPendingPdfHandling(review);
+  const hasPendingPdfs = pendingPdfHandlingItems().length > 0;
+  dom.sourceImportSummary.textContent = sourceImportSummaryLine(review);
+  dom.sourceImportOcrQuality.value = state.activeCleaningConfig.pdf_ocr_quality;
+  dom.sourceImportStatus.textContent = review.candidates.length === 0
+    ? "No new sources are available to import."
+    : "";
+
+  if (importDialogMode === "import") {
+    dom.sourceImportTitle.textContent = "Import Sources";
+    dom.sourceImportDescription.textContent =
+      "CorpusWright inspected the selected files. Importing registers them in the project and stores how PDFs should be handled. Text extraction/OCR and cleaning are separate steps.";
+    dom.cancelSourceImportBtn.textContent = "Cancel";
+    dom.confirmSourceImportBtn.textContent = "Import only";
+    dom.confirmSourceImportBtn.classList.remove("hidden");
+    dom.confirmSourceImportBtn.disabled = review.candidates.length === 0;
+    dom.confirmSourceImportExtractBtn.textContent = "Import and Extract Text";
+    dom.confirmSourceImportExtractBtn.classList.toggle("hidden", !hasPendingPdfs);
+    dom.confirmSourceImportExtractBtn.disabled = review.candidates.length === 0 || !hasPendingPdfs;
+    dom.sourceImportGroups.classList.remove("hidden");
+    dom.sourceImportResetPdfHandling.textContent = "Reset all to recommended";
+  } else if (importDialogMode === "re-extract") {
+    dom.sourceImportTitle.textContent = "Re-extract selected PDFs";
+    dom.sourceImportDescription.textContent =
+      "Choose or confirm the extraction strategy for each selected PDF. CorpusWright will update extracted source text after confirmation.";
+    dom.cancelSourceImportBtn.textContent = "Cancel";
+    dom.confirmSourceImportBtn.classList.add("hidden");
+    dom.confirmSourceImportExtractBtn.textContent = "Re-extract now";
+    dom.confirmSourceImportExtractBtn.classList.remove("hidden");
+    dom.confirmSourceImportExtractBtn.disabled = review.candidates.length === 0;
+    dom.sourceImportGroups.classList.add("hidden");
+    dom.sourceImportSummary.textContent = "";
+    dom.sourceImportResetPdfHandling.textContent = "Reset all to stored";
+  } else if (importDialogMode === "change-handling") {
+    dom.sourceImportTitle.textContent = "Change PDF handling";
+    dom.sourceImportDescription.textContent =
+      "Choose the stored extraction strategy for each selected PDF. Source text will not be re-extracted until you run extraction again.";
+    dom.cancelSourceImportBtn.textContent = "Cancel";
+    dom.confirmSourceImportBtn.textContent = "Save handling";
+    dom.confirmSourceImportBtn.classList.remove("hidden");
+    dom.confirmSourceImportBtn.disabled = review.candidates.length === 0;
+    dom.confirmSourceImportExtractBtn.classList.add("hidden");
+    dom.sourceImportGroups.classList.add("hidden");
+    dom.sourceImportSummary.textContent = "";
+    dom.sourceImportResetPdfHandling.textContent = "Reset all to stored";
+  }
+
+  renderImportSourcesGroups(review);
+  renderImportSourcesPdfHandling();
+  renderImportSourcesList(review.candidates);
+}
+
+function selectedImportSourcesChoice(extractTextNow: boolean): ImportSourcesChoice {
+  const ocrQuality = dom.sourceImportOcrQuality.value as PdfOcrQuality;
+  return {
+    extractTextNow,
+    pdfHandlingOverrides: pendingPdfHandlingItems().map(item => ({
+      path: item.source.path,
+      pdfProfile: item.selectedProfile,
+      ocrQuality,
+    })),
+  };
+}
+
+function closeImportSourcesDialog(choice: ImportSourcesChoice | null): void {
+  dom.sourceImportModal.classList.add("hidden");
+  const resolve = importSourcesResolve;
+  importSourcesResolve = null;
+  resolve?.(choice);
+}
+
+function showImportSourcesDialog(review: ProjectSourceImportReview): Promise<ImportSourcesChoice | null> {
+  if (importSourcesResolve) {
+    closeImportSourcesDialog(null);
+  }
+  resetImportSourcesDialog(review);
+  dom.sourceImportModal.classList.remove("hidden");
+
+  return new Promise((resolve) => {
+    importSourcesResolve = resolve;
+  });
+}
+
 function selectedPdfIntakeProfileId(): PdfIntakeProfileId {
   const selected = document.querySelector<HTMLInputElement>('input[name="pdf-intake-profile"]:checked');
-  if (selected?.value === "layout" || selected?.value === "ocr" || selected?.value === "force-ocr") {
+  if (selected?.value === "layout" || selected?.value === "force-ocr") {
     return selected.value;
   }
   return "standard";
@@ -189,11 +664,131 @@ function setPdfIntakeProfileId(profileId: PdfIntakeProfileId): void {
   settingPdfIntakeProfile = false;
 }
 
+function pdfProfileToIntakeProfileId(profile: ProjectSourcePdfProfile): PdfIntakeProfileId {
+  switch (profile) {
+    case "layout_heavy":
+      return "layout";
+    case "ocr_rescue":
+    case "force_ocr":
+      return "force-ocr";
+    case "standard":
+    case "no_automatic_ocr":
+      return "standard";
+  }
+}
+
+function storedProfileForSource(source: ProjectSource): ProjectSourcePdfProfile {
+  return canonicalPdfProfile(source.pdf_profile ?? recommendedProfileForSource(source));
+}
+
+function selectedProjectPdfSources(paths: string[]): ProjectSource[] {
+  const selectedKeys = new Set(paths.map(importPathKey));
+  return state.projectSources.filter((source) =>
+    source.kind === "pdf" && selectedKeys.has(importPathKey(source.path))
+  );
+}
+
+function strongestIntakeProfileId(profiles: ProjectSourcePdfProfile[]): PdfIntakeProfileId {
+  if (profiles.includes("force_ocr") || profiles.includes("ocr_rescue")) {
+    return "force-ocr";
+  }
+  if (profiles.includes("layout_heavy")) {
+    return "layout";
+  }
+  return "standard";
+}
+
+function storedHandlingStatusLabel(paths: string[]): string {
+  const sources = selectedProjectPdfSources(paths);
+  const profiles = sources.map(storedProfileForSource);
+  const uniqueProfiles = new Set(profiles);
+  if (uniqueProfiles.size === 0) {
+    return "stored handling";
+  }
+  if (uniqueProfiles.size === 1) {
+    return `stored ${profileDisplayNames[pdfProfileToIntakeProfileId(profiles[0])]} handling`;
+  }
+  return "mixed stored handling";
+}
+
+function selectedProjectSourcesUseForceOcr(paths: string[]): boolean {
+  return selectedProjectPdfSources(paths)
+    .some(source => storedProfileForSource(source) === "force_ocr");
+}
+
+function setPdfIntakeHandlingChoicesVisible(visible: boolean): void {
+  dom.pdfIntakeProfiles.classList.toggle("hidden", !visible);
+  const shouldShowChangeBtn = !visible && pdfIntakeMode !== "prepare-sources";
+  dom.pdfIntakeChangeHandlingBtn.classList.toggle("hidden", !shouldShowChangeBtn);
+}
+
+function renderStoredPdfHandlingSummary(paths: string[], selectedProfileId: PdfIntakeProfileId): void {
+  const sources = selectedProjectPdfSources(paths);
+  const counts = new Map<ProjectSourcePdfProfile, number>();
+  for (const source of sources) {
+    const profile = storedProfileForSource(source);
+    counts.set(profile, (counts.get(profile) ?? 0) + 1);
+  }
+
+  const selectedCount = paths.length;
+  dom.pdfIntakeStoredHandlingSummary.textContent =
+    `${selectedCount.toLocaleString()} selected ${selectedCount === 1 ? "PDF" : "PDFs"}.`;
+  dom.pdfIntakeStoredHandlingList.replaceChildren();
+
+  if (pdfIntakeManualProfileOverride) {
+    const item = document.createElement("li");
+    item.textContent =
+      `Apply ${profileDisplayNames[selectedProfileId]} to all ` +
+      `${selectedCount.toLocaleString()} selected ${selectedCount === 1 ? "PDF" : "PDFs"}.`;
+    dom.pdfIntakeStoredHandlingList.appendChild(item);
+    return;
+  }
+
+  if (counts.size === 0) {
+    const item = document.createElement("li");
+    item.textContent = "Selected PDFs are not in the current project source list.";
+    dom.pdfIntakeStoredHandlingList.appendChild(item);
+    return;
+  }
+
+  for (const [profile, count] of counts) {
+    const item = document.createElement("li");
+    item.textContent = `${pdfProfileLabel(profile)}: ${count.toLocaleString()} ${count === 1 ? "PDF" : "PDFs"}`;
+    dom.pdfIntakeStoredHandlingList.appendChild(item);
+  }
+
+  const selectedProfiles = Array.from(counts.keys());
+  const mappedProfiles = new Set(selectedProfiles.map(pdfProfileToIntakeProfileId));
+  if (mappedProfiles.size > 1) {
+    const item = document.createElement("li");
+    item.textContent = "This batch will preserve each source's stored handling.";
+    dom.pdfIntakeStoredHandlingList.appendChild(item);
+  } else {
+    const item = document.createElement("li");
+    item.textContent = `This batch will use stored ${profileDisplayNames[pdfProfileToIntakeProfileId(selectedProfiles[0])]}.`;
+    dom.pdfIntakeStoredHandlingList.appendChild(item);
+  }
+}
+
+/**
+ * Reset PDF intake session state back to default.
+ * This does NOT close the modal — it only resets internal state and UI elements.
+ * Safe to call multiple times.
+ */
 function resetPdfIntakeSession(): void {
   pdfIntakeSelectedPaths = [];
   pdfIntakeManualProfileOverride = false;
   pdfIntakeCancelRequested = false;
+  pdfIntakeIsForceOcr = false;
+  lastPdfIntakeProgressRenderAt = 0;
+  lastPdfIntakeRenderedFileIndex = 0;
+  dom.pdfIntakeTitle.textContent = "Open Scanned or Complex PDFs";
+  dom.pdfIntakeDescription.textContent = "Choose PDF handling for inspection-oriented processing. Preview before export: OCR may contain errors, layout reconstruction is imperfect, and source files are never modified.";
   dom.pdfIntakeModal.classList.remove("pdf-intake-processing");
+  dom.pdfIntakeStoredHandling.classList.add("hidden");
+  dom.pdfIntakeStoredHandlingSummary.textContent = "";
+  dom.pdfIntakeStoredHandlingList.replaceChildren();
+  setPdfIntakeHandlingChoicesVisible(true);
   setPdfIntakeProfileId("standard");
   dom.pdfIntakeStatus.textContent = "";
   dom.pdfIntakeAuditSummary.textContent = "";
@@ -202,6 +797,7 @@ function resetPdfIntakeSession(): void {
   resetPdfIntakeMaterializationProgress();
   dom.loadPdfIntakeFilesBtn.classList.add("hidden");
   dom.loadPdfIntakeFilesBtn.disabled = true;
+  dom.choosePdfIntakeFilesBtn.classList.remove("hidden");
   dom.choosePdfIntakeFilesBtn.disabled = false;
   dom.choosePdfIntakeFilesBtn.textContent = "Choose PDFs...";
   dom.cancelPdfIntakeBtn.textContent = "Cancel";
@@ -209,12 +805,13 @@ function resetPdfIntakeSession(): void {
   dom.btnClosePdfIntakeModalTop.disabled = false;
 }
 
+/**
+ * Close the PDF intake modal and reset all session state.
+ * Idempotent — safe to call multiple times.
+ */
 function closePdfIntakeModal(): void {
-  if (pdfIntakeMaterializing) {
-    return;
-  }
-  dom.pdfIntakeStatus.textContent = "";
   dom.pdfIntakeModal.classList.add("hidden");
+  resetPdfIntakeSession();
 }
 
 function resetPdfIntakeMaterializationProgress(): void {
@@ -243,6 +840,18 @@ function formatDurationMs(ms: number | null): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function formatApproxDurationMs(ms: number | null): string {
+  if (ms === null || !Number.isFinite(ms)) return "estimating...";
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  if (totalSeconds === 0) return "complete";
+  if (totalSeconds < 60) return "less than 1 min";
+  const totalMinutes = Math.max(1, Math.round(totalSeconds / 60));
+  if (totalMinutes < 60) return `about ${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes === 0 ? `about ${hours} hr` : `about ${hours} hr ${minutes} min`;
+}
+
 function renderPdfIntakeMaterializationProgress(progress: PdfIntakeMaterializationProgress): void {
   const totalPages = progress.totalPages === null ? "?" : progress.totalPages.toLocaleString();
   const currentPage = progress.currentPage.toLocaleString();
@@ -253,9 +862,9 @@ function renderPdfIntakeMaterializationProgress(progress: PdfIntakeMaterializati
     `${progress.currentFileIndex.toLocaleString()} / ${progress.totalFiles.toLocaleString()} - ${progress.currentFile}`;
   dom.pdfIntakeMaterializationPage.textContent = `${currentPage} / ${totalPages}`;
   dom.pdfIntakeMaterializationElapsed.textContent = formatDurationMs(progress.elapsedMs);
-  dom.pdfIntakeMaterializationRemaining.textContent = formatDurationMs(progress.estimatedRemainingMs);
+  dom.pdfIntakeMaterializationRemaining.textContent = formatApproxDurationMs(progress.estimatedRemainingMs);
   dom.pdfIntakeMaterializationSpeed.textContent =
-    progress.pagesPerMinute === null ? "Calculating" : `${progress.pagesPerMinute.toFixed(1)} pages/min`;
+    progress.pagesPerMinute === null ? "estimating..." : `about ${progress.pagesPerMinute.toFixed(1)} pages/min`;
   const progressPercent = progress.totalPages === null || progress.totalPages === 0
     ? 0
     : Math.min(100, Math.max(0, (progress.currentPage / progress.totalPages) * 100));
@@ -277,9 +886,27 @@ async function listenForPdfIntakeProgress(): Promise<void> {
     pdfIntakeProgressUnlisten();
     pdfIntakeProgressUnlisten = null;
   }
+  const currentSessionId = pdfIntakeSessionId;
   pdfIntakeProgressUnlisten = await listen<PdfIntakeMaterializationProgress>(
     "pdf-intake-materialization-progress",
-    (event) => renderPdfIntakeMaterializationProgress(event.payload),
+    (event) => {
+      // Ignore stale events from previous sessions or after cancellation
+      if (pdfIntakeSessionId !== currentSessionId || pdfIntakeCancelRequested) {
+        return;
+      }
+      const now = Date.now();
+      const isCompletion = event.payload.totalPages !== null
+        && event.payload.currentPage >= event.payload.totalPages;
+      const isFileTransition = event.payload.currentFileIndex !== lastPdfIntakeRenderedFileIndex;
+      // Always render file transitions and completions immediately.
+      // Throttle inter-page progress to once per second to avoid flooding DOM.
+      if (!isFileTransition && !isCompletion && now - lastPdfIntakeProgressRenderAt < 1000) {
+        return;
+      }
+      lastPdfIntakeProgressRenderAt = now;
+      lastPdfIntakeRenderedFileIndex = event.payload.currentFileIndex;
+      renderPdfIntakeMaterializationProgress(event.payload);
+    },
   );
 }
 
@@ -290,9 +917,63 @@ function stopListeningForPdfIntakeProgress(): void {
   }
 }
 
-function openPdfIntakeModal(): void {
+export function openPdfIntakeModal(): void {
+  pdfIntakeMode = "legacy";
   resetPdfIntakeSession();
   dom.pdfIntakeModal.classList.remove("hidden");
+  dom.loadPdfIntakeFilesBtn.textContent = "Load PDFs";
+}
+
+export async function openPdfIntakeModalForSources(paths: string[], extractAfterDiagnostics = false): Promise<void> {
+  pdfIntakeMode = "prepare-sources";
+  resetPdfIntakeSession();
+  dom.pdfIntakeModal.classList.remove("hidden");
+  dom.pdfIntakeTitle.textContent = "Extract/OCR selected PDFs";
+  const selectedSources = selectedProjectPdfSources(paths);
+  const storedProfiles = selectedSources.map(storedProfileForSource);
+  const storedProfileId = strongestIntakeProfileId(storedProfiles);
+  setPdfIntakeProfileId(storedProfileId);
+  dom.pdfIntakeStoredHandling.classList.remove("hidden");
+  setPdfIntakeHandlingChoicesVisible(false);
+  renderStoredPdfHandlingSummary(paths, storedProfileId);
+  dom.pdfIntakeDescription.textContent =
+    "Using stored PDF handling. Diagnostics check embedded text availability, OCR resources, page counts, and extraction risk before text extraction.";
+  dom.loadPdfIntakeFilesBtn.textContent = "Extract text now";
+  dom.choosePdfIntakeFilesBtn.classList.add("hidden");
+
+  pdfIntakeSelectedPaths = paths;
+  dom.pdfIntakeStatus.textContent = extractAfterDiagnostics
+    ? "Checking PDFs before text extraction..."
+    : "Checking PDFs...";
+  dom.statusBar.textContent = extractAfterDiagnostics
+    ? "Checking selected PDFs before text extraction..."
+    : "Checking selected PDFs...";
+  dom.choosePdfIntakeFilesBtn.disabled = true;
+  dom.loadPdfIntakeFilesBtn.disabled = true;
+  renderPdfAuditLoading(paths.length);
+
+  try {
+    const auditResults = await invoke<PdfAuditResult[]>("audit_pdf_files_command", { paths });
+    const suggestedProfile = batchSuggestedProfile(auditResults);
+
+    renderPdfAuditResults(auditResults, suggestedProfile, false);
+
+    dom.pdfIntakeStatus.textContent = "Diagnostics ready.";
+    dom.statusBar.textContent =
+      `PDF diagnostics ready for ${paths.length.toLocaleString()} selected project ` +
+      `${paths.length === 1 ? "PDF" : "PDFs"}. Using ${storedHandlingStatusLabel(paths)}.`;
+    dom.loadPdfIntakeFilesBtn.classList.remove("hidden");
+    dom.loadPdfIntakeFilesBtn.disabled = false;
+    if (extractAfterDiagnostics) {
+      await handleLoadPdfIntakeFiles();
+    }
+  } catch (error) {
+    dom.pdfIntakeStatus.textContent = `Audit error: ${error}`;
+    dom.statusBar.textContent = `Audit error: ${error}`;
+    console.error(error);
+  } finally {
+    dom.choosePdfIntakeFilesBtn.disabled = false;
+  }
 }
 
 async function handleCancelPdfIntake(): Promise<void> {
@@ -303,8 +984,19 @@ async function handleCancelPdfIntake(): Promise<void> {
 
   pdfIntakeCancelRequested = true;
   dom.cancelPdfIntakeBtn.disabled = true;
-  dom.pdfIntakeStatus.textContent = "Cancelling after the current materialisation step...";
-  dom.statusBar.textContent = "Cancelling PDF intake after the current materialisation step...";
+  const isProjectExtraction = pdfIntakeMode === "prepare-sources";
+  // Use accurate wording depending on whether force OCR is running
+  if (pdfIntakeIsForceOcr) {
+    dom.pdfIntakeStatus.textContent = "Cancelling after the current OCR batch...";
+    dom.statusBar.textContent = isProjectExtraction
+      ? "Cancelling PDF text extraction after the current OCR batch..."
+      : "Cancelling PDF intake after the current OCR batch...";
+  } else {
+    dom.pdfIntakeStatus.textContent = "Cancelling after the current PDF extraction step...";
+    dom.statusBar.textContent = isProjectExtraction
+      ? "Cancelling PDF text extraction after the current extraction step..."
+      : "Cancelling PDF intake after the current extraction step...";
+  }
   try {
     await invoke("cancel_pdf_intake_materialization_command");
   } catch (error) {
@@ -318,6 +1010,10 @@ function isPdfPath(path: string): boolean {
 }
 
 async function handleChoosePdfIntakeFiles(): Promise<void> {
+  if (pdfIntakeMode !== "legacy") {
+    return;
+  }
+
   const selected = await open({
     multiple: true,
     filters: [{ name: "PDF Documents", extensions: ["pdf"] }],
@@ -353,7 +1049,7 @@ async function handleChoosePdfIntakeFiles(): Promise<void> {
 
     renderPdfAuditResults(auditResults, suggestedProfile, shouldApplySuggestion);
     dom.pdfIntakeStatus.textContent = "Diagnostics ready.";
-    dom.statusBar.textContent = `PDF diagnostics ready. Batch/global suggestion: ${profileDisplayNames[suggestedProfile]}.`;
+    dom.statusBar.textContent = `PDF diagnostics ready. Suggested handling: ${profileDisplayNames[suggestedProfile]}.`;
     dom.loadPdfIntakeFilesBtn.classList.remove("hidden");
     dom.loadPdfIntakeFilesBtn.disabled = false;
     dom.choosePdfIntakeFilesBtn.textContent = "Choose different PDFs...";
@@ -366,15 +1062,41 @@ async function handleChoosePdfIntakeFiles(): Promise<void> {
   }
 }
 
+function mapToPdfProfile(id: PdfIntakeProfileId): ProjectSourcePdfProfile {
+  switch (id) {
+    case "standard": return "standard";
+    case "layout": return "layout_heavy";
+    case "force-ocr": return "force_ocr";
+  }
+}
+
 async function handleLoadPdfIntakeFiles(): Promise<void> {
   if (pdfIntakeSelectedPaths.length === 0) {
     dom.pdfIntakeStatus.textContent = "Choose PDFs first.";
     return;
   }
 
-  const profile = pdfIntakeProfiles[selectedPdfIntakeProfileId()];
+  const selectedProfileId = selectedPdfIntakeProfileId();
+  const selectedPdfCount = pdfIntakeSelectedPaths.length;
+  const isProjectPreparation = pdfIntakeMode === "prepare-sources" && state.activeProject !== null;
+  const profile = pdfIntakeProfiles[selectedProfileId];
   const materializationConfig: CleaningConfig = { ...state.activeCleaningConfig };
-  profile.apply(materializationConfig);
+  const selectedProfileConfig: CleaningConfig = { ...state.activeCleaningConfig };
+  profile.apply(selectedProfileConfig);
+  if (!isProjectPreparation) {
+    Object.assign(materializationConfig, selectedProfileConfig);
+  }
+
+  const profileOverride = isProjectPreparation && pdfIntakeManualProfileOverride
+    ? mapToPdfProfile(selectedProfileId)
+    : null;
+  pdfIntakeIsForceOcr = isProjectPreparation
+    ? profileOverride === "force_ocr" || (profileOverride === null && selectedProjectSourcesUseForceOcr(pdfIntakeSelectedPaths))
+    : selectedProfileId === "force-ocr";
+
+  // Increment session ID to invalidate any stale progress listeners
+  pdfIntakeSessionId += 1;
+  const currentSessionId = pdfIntakeSessionId;
 
   try {
     pdfIntakeMaterializing = true;
@@ -382,48 +1104,107 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
     dom.pdfIntakeModal.classList.add("pdf-intake-processing");
     resetPdfIntakeMaterializationProgress();
     await listenForPdfIntakeProgress();
-    dom.pdfIntakeStatus.textContent = "Preparing PDF materialisation...";
-    dom.statusBar.textContent = "Preparing PDF materialisation...";
+    dom.pdfIntakeStatus.textContent = isProjectPreparation
+      ? "Starting text extraction..."
+      : "Preparing PDF materialisation...";
+    dom.statusBar.textContent = isProjectPreparation
+      ? "Starting PDF text extraction..."
+      : "Preparing PDF materialisation...";
     dom.choosePdfIntakeFilesBtn.disabled = true;
     dom.loadPdfIntakeFilesBtn.disabled = true;
-    dom.cancelPdfIntakeBtn.textContent = "Cancel materialisation";
+    dom.cancelPdfIntakeBtn.textContent = isProjectPreparation ? "Cancel extraction" : "Cancel materialisation";
     dom.cancelPdfIntakeBtn.disabled = false;
     dom.btnClosePdfIntakeModalTop.disabled = true;
     clearStateForLoad();
 
-    const result = await invoke<CorpusLoadResult>("load_pdf_intake_files_command", {
-      paths: pdfIntakeSelectedPaths,
-      cleaningConfig: materializationConfig,
-      profile: profile.statusLabel,
-    });
+    const result = isProjectPreparation
+      ? await invoke<CorpusLoadResult>("prepare_project_pdf_sources_command", {
+        rootPath: state.activeProject!.rootPath,
+        paths: pdfIntakeSelectedPaths,
+        cleaningConfig: materializationConfig,
+        profileOverride,
+        ocrQuality: selectedProfileConfig.pdf_ocr_quality,
+      })
+      : await invoke<CorpusLoadResult>("load_pdf_intake_files_command", {
+        paths: pdfIntakeSelectedPaths,
+        cleaningConfig: materializationConfig,
+        profile: profile.statusLabel,
+      });
 
-    Object.assign(state.activeCleaningConfig, materializationConfig);
-    state.currentCorpusVersion = result.corpusVersion;
-    state.currentCorpusRoot = result.report.root;
-    state.allFiles = result.report.files;
-    state.visibleFiles = state.allFiles.map((record, i) => ({ corpusIndex: i, record }));
+    if (!isProjectPreparation) {
+      Object.assign(state.activeCleaningConfig, materializationConfig);
+    }
 
-    renderSummary(result.report.summary);
-    updateFileList();
+    if (isProjectPreparation) {
+      await loadProjectSourcesForActiveProject();
+      await loadCorpusFromProjectSources();
+    } else {
+      state.currentCorpusVersion = result.corpusVersion;
+      state.currentCorpusRoot = result.report.root;
+      state.allFiles = result.report.files;
+      state.visibleFiles = state.allFiles.map((record, i) => ({ corpusIndex: i, record }));
+      renderSummary(result.report.summary);
+      updateFileList();
+    }
+
+
     pdfIntakeMaterializing = false;
+    const projectCompletionHandlingLabel = isProjectPreparation
+      ? (profileOverride === null
+        ? storedHandlingStatusLabel(pdfIntakeSelectedPaths)
+        : `${profileDisplayNames[selectedProfileId]} handling`)
+      : "";
     closePdfIntakeModal();
 
-    const fileLabel = state.allFiles.length === 1 ? "PDF file" : "PDF files";
-    dom.statusBar.textContent = `Loaded ${state.allFiles.length} ${fileLabel} with materialised ${profile.statusLabel}.`;
+    if (isProjectPreparation) {
+      const fileLabel = selectedPdfCount === 1 ? "selected PDF" : "selected PDFs";
+      dom.statusBar.textContent =
+        `Extracted text from ${selectedPdfCount.toLocaleString()} ${fileLabel} with ${projectCompletionHandlingLabel}.`;
+    } else {
+      const fileLabel = state.allFiles.length === 1 ? "PDF file" : "PDF files";
+      dom.statusBar.textContent = `Loaded ${state.allFiles.length} ${fileLabel} with materialised ${profile.statusLabel}.`;
+    }
     callbacks.updateWordCount();
   } catch (error) {
-    const message = pdfIntakeCancelRequested
-      ? "PDF intake cancelled. No half-materialised corpus was loaded."
+    // Only act if this is still the active session
+    if (pdfIntakeSessionId !== currentSessionId) {
+      return;
+    }
+
+    const cancelled = pdfIntakeCancelRequested;
+    const message = cancelled
+      ? (isProjectPreparation
+        ? "PDF text extraction cancelled. No half-extracted source text was kept."
+        : "PDF intake cancelled. No half-materialised corpus was loaded.")
       : `Error: ${error}`;
     dom.pdfIntakeStatus.textContent = message;
     dom.statusBar.textContent = message;
     console.error(error);
+
+    // Restore project sources after clearStateForLoad() if project extraction is cancelled.
+    if (cancelled && pdfIntakeMode === "prepare-sources" && state.activeProject) {
+      try {
+        await loadProjectSourcesForActiveProject();
+        await loadCorpusFromProjectSources();
+        dom.statusBar.textContent = "PDF text extraction cancelled. Sources restored.";
+      } catch {
+        dom.statusBar.textContent = "PDF text extraction cancelled. Reload project sources to restore the source list.";
+      }
+    }
+
+    // Close the modal after cancellation — do NOT leave it open with profile choices visible
+    closePdfIntakeModal();
   } finally {
     stopListeningForPdfIntakeProgress();
     pdfIntakeMaterializing = false;
     dom.pdfIntakeModal.classList.remove("pdf-intake-processing");
+    // Do NOT call resetPdfIntakeSession() here — closePdfIntakeModal() already resets if modal was closed,
+    // but if we didn't close (e.g. we were never materializing), reset is still safe.
+    // closePdfIntakeModal() was already called in catch or success path; if neither ran,
+    // we need to close here. Calling closePdfIntakeModal() again is idempotent.
+    closePdfIntakeModal();
     dom.choosePdfIntakeFilesBtn.disabled = false;
-    dom.loadPdfIntakeFilesBtn.disabled = pdfIntakeSelectedPaths.length === 0;
+    dom.loadPdfIntakeFilesBtn.disabled = true;
     dom.cancelPdfIntakeBtn.textContent = "Cancel";
     dom.cancelPdfIntakeBtn.disabled = false;
     dom.btnClosePdfIntakeModalTop.disabled = false;
@@ -432,12 +1213,13 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
 
 function renderPdfAuditLoading(fileCount: number): void {
   dom.pdfIntakeAuditPanel.classList.remove("hidden");
-  dom.pdfIntakeAuditSummary.textContent = `Checking ${fileCount} selected PDF${fileCount === 1 ? "" : "s"} without running OCR.`;
+  dom.pdfIntakeAuditSummary.textContent =
+    `Checking ${fileCount} selected PDF${fileCount === 1 ? "" : "s"} before text extraction.`;
   dom.pdfIntakeAuditResults.replaceChildren();
 }
 
 function batchSuggestedProfile(results: PdfAuditResult[]): PdfIntakeProfileId {
-  let strongest: PdfAuditSeverity = "standard";
+  let strongest: PdfAuditSuggestedProfile = "standard";
   for (const result of results) {
     if (result.suggested_profile === "force_ocr") {
       strongest = "force_ocr";
@@ -459,10 +1241,18 @@ function renderPdfAuditResults(
   dom.pdfIntakeAuditResults.replaceChildren();
 
   const currentProfile = selectedPdfIntakeProfileId();
-  const profileMessage = suggestionApplied
-    ? `The batch/global suggestion was applied: ${profileDisplayNames[suggestedProfile]}.`
-    : `The batch/global suggestion is ${profileDisplayNames[suggestedProfile]}; your selected ${profileDisplayNames[currentProfile]} profile was kept.`;
-  dom.pdfIntakeAuditSummary.textContent = `${profileMessage} Audit checks embedded text and OCR model files only; it does not run OCR or prove OCR will succeed.`;
+  let profileMessage: string;
+  if (pdfIntakeMode === "prepare-sources" && !pdfIntakeManualProfileOverride) {
+    profileMessage = `Using stored PDF handling. The strongest diagnostics suggestion is ${profileDisplayNames[suggestedProfile]}.`;
+  } else if (pdfIntakeMode === "prepare-sources" && pdfIntakeManualProfileOverride) {
+    profileMessage = `The selected override will apply ${profileDisplayNames[currentProfile]} to every selected PDF.`;
+  } else {
+    profileMessage = suggestionApplied
+      ? `The suggested handling was applied: ${profileDisplayNames[suggestedProfile]}.`
+      : `The suggested handling is ${profileDisplayNames[suggestedProfile]}; your selected ${profileDisplayNames[currentProfile]} handling was kept.`;
+  }
+  dom.pdfIntakeAuditSummary.textContent =
+    `${profileMessage} Diagnostics check embedded text availability, OCR resources, page counts, and extraction risk before text extraction.`;
 
   for (const result of results) {
     dom.pdfIntakeAuditResults.appendChild(renderPdfAuditCard(result));
@@ -547,7 +1337,12 @@ function formatAuditQuality(quality: PdfAuditResult["quality"]): string {
   }
 }
 
-export async function loadDirectoryPath(selected: string): Promise<void> {
+export async function loadDirectoryPath(selected: string, registerProjectSources = true): Promise<void> {
+  if (registerProjectSources && state.activeProject) {
+    await registerFolderForActiveProject(selected);
+    return;
+  }
+
   try {
     dom.statusBar.textContent = "Scanning...";
     clearStateForLoad();
@@ -574,7 +1369,7 @@ export async function loadDirectoryPath(selected: string): Promise<void> {
   }
 }
 
-export async function loadFilesPaths(selected: string[]): Promise<void> {
+export async function loadFilesIntoCorpus(selected: string[]): Promise<void> {
   try {
     dom.statusBar.textContent = "Loading files...";
     clearStateForLoad();
@@ -597,6 +1392,191 @@ export async function loadFilesPaths(selected: string[]): Promise<void> {
   } catch (error) {
     dom.statusBar.textContent = `Error: ${error}`;
     renderProjectEmptyState();
+    console.error(error);
+  }
+}
+
+export async function loadFilesPaths(selected: string[], registerProjectSources = true): Promise<void> {
+  if (registerProjectSources && state.activeProject) {
+    await registerFilesForActiveProject(selected);
+    return;
+  }
+
+  await loadFilesIntoCorpus(selected);
+}
+
+function importCompletionMessage(review: ProjectSourceImportReview, update: ProjectSourceUpdate): string {
+  const importedIds = new Set(review.candidates.map((source) => source.id));
+  const importedSources = update.manifest.sources.filter((source) => importedIds.has(source.id));
+  const readyCount = importedSources.filter((source) => source.status === "ready_to_process").length;
+  const needsOcrCount = importedSources.filter((source) => source.status === "needs_ocr").length;
+  const extractedCount = importedSources.filter(sourceHasExtractedText).length;
+  const failedCount = importedSources.filter((source) => source.status === "failed").length;
+  const unprocessedCount = importedSources.filter((source) => source.status === "unprocessed").length;
+  const parts: string[] = [];
+
+  if (readyCount > 0) {
+    parts.push(`${readyCount.toLocaleString()} ready to process`);
+  }
+  if (needsOcrCount > 0) {
+    parts.push(`${needsOcrCount.toLocaleString()} need OCR`);
+  }
+  if (extractedCount > 0) {
+    parts.push(`${extractedCount.toLocaleString()} text extracted`);
+  }
+  if (unprocessedCount > 0) {
+    parts.push(`${unprocessedCount.toLocaleString()} unprocessed`);
+  }
+  if (failedCount > 0) {
+    parts.push(`${failedCount.toLocaleString()} failed`);
+  }
+
+  const importedLabel = `${update.added_count.toLocaleString()} source${update.added_count === 1 ? "" : "s"}`;
+  const duplicateLabel = update.duplicate_count > 0
+    ? ` (${update.duplicate_count.toLocaleString()} duplicate${update.duplicate_count === 1 ? "" : "s"} skipped)`
+    : "";
+  return parts.length > 0
+    ? `Imported ${importedLabel}: ${parts.join(", ")}.${duplicateLabel}`
+    : `Imported ${importedLabel}.${duplicateLabel}`;
+}
+
+function importedPdfPathsForReview(review: ProjectSourceImportReview, update: ProjectSourceUpdate): string[] {
+  const importedIds = new Set(review.candidates.map((source) => source.id));
+  return update.manifest.sources
+    .filter((source) => importedIds.has(source.id))
+    .filter((source) => source.kind === "pdf" && source.status !== "failed")
+    .map((source) => source.path);
+}
+
+export async function loadCorpusFromProjectSources(): Promise<void> {
+  if (!state.activeProject) {
+    return;
+  }
+
+  const loadablePaths = loadableProjectSourcePaths();
+  if (loadablePaths.length === 0) {
+    clearStateForLoad();
+    renderProjectEmptyState();
+    dom.statusBar.textContent = state.projectSources.length === 0
+      ? "This project has no source files yet."
+      : "This project has no processable source files.";
+    return;
+  }
+
+  try {
+    dom.statusBar.textContent = "Loading project sources...";
+    clearStateForLoad();
+
+    const result = await invoke<CorpusLoadResult>("load_project_source_records_command", {
+      rootPath: state.activeProject.rootPath,
+    });
+
+    state.currentCorpusVersion = result.corpusVersion;
+    state.currentCorpusRoot = result.report.root;
+    state.allFiles = result.report.files;
+    state.visibleFiles = state.allFiles.map((record, i) => ({ corpusIndex: i, record }));
+
+    renderSummary(result.report.summary);
+    updateFileList();
+    dom.statusBar.textContent = `Loaded ${state.allFiles.length} project sources.`;
+    callbacks.updateWordCount();
+  } catch (error) {
+    dom.statusBar.textContent = `Error loading project sources: ${error}`;
+    renderProjectEmptyState();
+    console.error(error);
+  }
+}
+
+export async function registerFilesForActiveProject(selected: string[]): Promise<void> {
+  if (!state.activeProject) {
+    await loadFilesIntoCorpus(selected);
+    return;
+  }
+
+  try {
+    dom.statusBar.textContent = "Inspecting selected source files...";
+    const review = await reviewFilesForActiveProjectSources(selected);
+    if (!review) {
+      return;
+    }
+
+    importDialogMode = "import";
+    const choice = await showImportSourcesDialog(review);
+    if (!choice) {
+      dom.statusBar.textContent = "Source import cancelled.";
+      return;
+    }
+
+    dom.statusBar.textContent = "Importing source files...";
+    const update = await confirmFilesForActiveProjectSources(
+      selected,
+      choice.pdfHandlingOverrides,
+    );
+    if (update) {
+      if (choice.extractTextNow) {
+        const importedPdfPaths = importedPdfPathsForReview(review, update);
+        if (importedPdfPaths.length > 0) {
+          await openPdfIntakeModalForSources(importedPdfPaths, true);
+        } else {
+          await loadCorpusFromProjectSources();
+          dom.statusBar.textContent = importCompletionMessage(review, update);
+        }
+      } else {
+        await loadCorpusFromProjectSources();
+        dom.statusBar.textContent = importCompletionMessage(review, update);
+      }
+    } else {
+      await loadCorpusFromProjectSources();
+    }
+  } catch (error) {
+    dom.statusBar.textContent = `Error importing source files: ${error}`;
+    console.error(error);
+  }
+}
+
+export async function registerFolderForActiveProject(selected: string): Promise<void> {
+  if (!state.activeProject) {
+    await loadDirectoryPath(selected, false);
+    return;
+  }
+
+  try {
+    dom.statusBar.textContent = "Inspecting source folder...";
+    const review = await reviewFolderForActiveProjectSources(selected);
+    if (!review) {
+      return;
+    }
+
+    importDialogMode = "import";
+    const choice = await showImportSourcesDialog(review);
+    if (!choice) {
+      dom.statusBar.textContent = "Source import cancelled.";
+      return;
+    }
+
+    dom.statusBar.textContent = "Importing source folder...";
+    const update = await confirmFolderForActiveProjectSources(
+      selected,
+      choice.pdfHandlingOverrides,
+    );
+    if (update) {
+      if (choice.extractTextNow) {
+        const importedPdfPaths = importedPdfPathsForReview(review, update);
+        if (importedPdfPaths.length > 0) {
+          await openPdfIntakeModalForSources(importedPdfPaths, true);
+        } else {
+          await loadCorpusFromProjectSources();
+          dom.statusBar.textContent = importCompletionMessage(review, update);
+        }
+      } else {
+        await loadCorpusFromProjectSources();
+        dom.statusBar.textContent = importCompletionMessage(review, update);
+      }
+    } else {
+      await loadCorpusFromProjectSources();
+    }
+  } catch (error) {
+    dom.statusBar.textContent = `Error importing source folder: ${error}`;
     console.error(error);
   }
 }
@@ -671,11 +1651,160 @@ function renderSummary(summary: CorpusSummary): void {
   `;
 }
 
+async function handleRemoveSelectedSources(): Promise<void> {
+  if (!state.activeProject || state.selectedProjectSourceIds.size === 0) {
+    return;
+  }
+
+  const selectedPaths = selectedProjectSourcePaths();
+
+  if (selectedPaths.length === 0) {
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Remove ${selectedPaths.length} selected source${selectedPaths.length === 1 ? "" : "s"} from the project inventory?\n\nSource files on disk will not be deleted.`,
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    dom.statusBar.textContent = "Removing selected sources...";
+    await removeProjectSourcePaths(selectedPaths);
+    state.selectedCorpusIndices.clear();
+    state.selectedProjectSourceIds.clear();
+    await loadCorpusFromProjectSources();
+    dom.statusBar.textContent = `Removed ${selectedPaths.length} source${selectedPaths.length === 1 ? "" : "s"} from project inventory.`;
+  } catch (error) {
+    dom.statusBar.textContent = `Error removing sources: ${error}`;
+    console.error(error);
+  }
+}
+
+function initSourceActionDropdowns(): void {
+  // Add sources dropdown toggle
+  dom.sourceAddTrigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    dom.sourceAddDropdown.classList.toggle("open");
+    // Close the other dropdown
+    dom.sourceSelectedDropdown.classList.remove("open");
+  });
+  dom.sourceActionAddFiles.addEventListener("click", () => {
+    dom.sourceAddDropdown.classList.remove("open");
+    openFilesFromPicker();
+  });
+  dom.sourceActionAddFolder.addEventListener("click", () => {
+    dom.sourceAddDropdown.classList.remove("open");
+    openDirectoryFromPicker();
+  });
+
+  // Selected actions dropdown toggle
+  dom.sourceSelectedTrigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (dom.sourceSelectedTrigger.disabled) return;
+    dom.sourceSelectedDropdown.classList.toggle("open");
+    // Close the other dropdown
+    dom.sourceAddDropdown.classList.remove("open");
+  });
+
+  // Clicking an action item closes the dropdown
+  const selectedItems = [
+    dom.sourceActionExtract,
+    dom.sourceActionReExtract,
+    dom.sourceActionRetry,
+    dom.sourceActionChangeHandling,
+    dom.sourceActionRemove,
+  ];
+  for (const item of selectedItems) {
+    item.addEventListener("click", () => {
+      dom.sourceSelectedDropdown.classList.remove("open");
+    });
+  }
+
+  dom.sourceActionExtract.addEventListener("click", () => openSourcePdfHandlingDialog("re-extract"));
+  dom.sourceActionReExtract.addEventListener("click", () => openSourcePdfHandlingDialog("re-extract"));
+  dom.sourceActionRetry.addEventListener("click", () => openSourcePdfHandlingDialog("re-extract"));
+  dom.sourceActionChangeHandling.addEventListener("click", () => openSourcePdfHandlingDialog("change-handling"));
+  dom.sourceActionRemove.addEventListener("click", handleRemoveSelectedSources);
+
+  // Close dropdowns on outside click
+  document.addEventListener("click", (e) => {
+    if (!dom.sourceAddDropdown.contains(e.target as Node)) {
+      dom.sourceAddDropdown.classList.remove("open");
+    }
+    if (!dom.sourceSelectedDropdown.contains(e.target as Node)) {
+      dom.sourceSelectedDropdown.classList.remove("open");
+    }
+  });
+}
+
+export async function openSourcePdfHandlingDialog(mode: "re-extract" | "change-handling"): Promise<void> {
+  const selectedSources = selectedProjectSources().filter((s) => s.kind === "pdf");
+  if (selectedSources.length === 0) {
+    return;
+  }
+
+  if (mode === "re-extract") {
+    const paths = selectedSources.map((s) => s.path);
+    await openPdfIntakeModalForSources(paths, true);
+    return;
+  }
+
+  importDialogMode = mode;
+
+  const review: ProjectSourceImportReview = {
+    candidates: selectedSources,
+    duplicate_count: 0,
+    ignored_count: 0,
+  };
+
+  const choice = await showImportSourcesDialog(review);
+  if (!choice) {
+    dom.statusBar.textContent = "Action cancelled.";
+    return;
+  }
+
+  const overrides: ProjectSourcePdfHandlingOverride[] = choice.pdfHandlingOverrides.map((override) => ({
+    path: override.path,
+    pdfProfile: override.pdfProfile,
+    ocrQuality: override.ocrQuality,
+  }));
+
+  try {
+    dom.statusBar.textContent = "Saving handling overrides...";
+    await invoke("update_project_source_pdf_handling_command", {
+      rootPath: state.activeProject!.rootPath,
+      overrides,
+    });
+
+    await loadProjectSourcesForActiveProject();
+    await loadCorpusFromProjectSources();
+    dom.statusBar.textContent = `Saved PDF handling for ${overrides.length.toLocaleString()} files.`;
+  } catch (error) {
+    dom.statusBar.textContent = `Error: ${error}`;
+    console.error(error);
+  }
+}
+
 export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
   callbacks = nextCallbacks;
-  dom.menuOpenDir.addEventListener("click", openDirectoryFromPicker);
-  dom.menuOpenFiles.addEventListener("click", openFilesFromPicker);
-  dom.menuOpenPdfIntake.addEventListener("click", openPdfIntakeModal);
+  dom.sourceAddFilesBtn.addEventListener("click", openFilesFromPicker);
+  dom.sourceAddFolderBtn.addEventListener("click", openDirectoryFromPicker);
+  dom.sourceRemoveBtn.addEventListener("click", handleRemoveSelectedSources);
+  initSourceActionDropdowns();
+  dom.cancelSourceImportBtn.addEventListener("click", () => {
+    closeImportSourcesDialog(null);
+  });
+  dom.btnCloseSourceImportModalTop.addEventListener("click", () => {
+    closeImportSourcesDialog(null);
+  });
+  dom.confirmSourceImportBtn.addEventListener("click", () => {
+    closeImportSourcesDialog(selectedImportSourcesChoice(false));
+  });
+  dom.confirmSourceImportExtractBtn.addEventListener("click", () => {
+    closeImportSourcesDialog(selectedImportSourcesChoice(true));
+  });
   dom.cancelPdfIntakeBtn.addEventListener("click", () => {
     handleCancelPdfIntake();
   });
@@ -684,10 +1813,43 @@ export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
   });
   dom.choosePdfIntakeFilesBtn.addEventListener("click", handleChoosePdfIntakeFiles);
   dom.loadPdfIntakeFilesBtn.addEventListener("click", handleLoadPdfIntakeFiles);
+  dom.pdfIntakeChangeHandlingBtn.addEventListener("click", () => {
+    setPdfIntakeHandlingChoicesVisible(true);
+    pdfIntakeManualProfileOverride = true;
+    renderStoredPdfHandlingSummary(pdfIntakeSelectedPaths, selectedPdfIntakeProfileId());
+    dom.pdfIntakeStatus.textContent = "Choose one PDF handling profile to apply to every selected PDF.";
+  });
+
+  dom.sourcePreparePdfsBtn.addEventListener("click", () => {
+    const selectedPaths = selectedProjectSourcePaths()
+      .filter((path) => path.toLowerCase().endsWith(".pdf"));
+
+    if (selectedPaths.length > 0) {
+      openSourcePdfHandlingDialog("re-extract");
+    }
+  });
+
+  dom.sourceImportResetPdfHandling.addEventListener("click", () => {
+    if (importDialogMode === "import") {
+      for (const item of pendingPdfHandling.values()) {
+        item.selectedProfile = item.recommendedProfile;
+      }
+    } else {
+      for (const item of pendingPdfHandling.values()) {
+        item.selectedProfile = item.source.pdf_profile ?? item.recommendedProfile;
+      }
+    }
+    renderImportSourcesPdfHandling();
+    renderImportSourcesList(activeImportCandidates);
+  });
+
   document.querySelectorAll<HTMLInputElement>('input[name="pdf-intake-profile"]').forEach((input) => {
     input.addEventListener("change", () => {
       if (!settingPdfIntakeProfile) {
         pdfIntakeManualProfileOverride = true;
+        if (pdfIntakeMode === "prepare-sources") {
+          renderStoredPdfHandlingSummary(pdfIntakeSelectedPaths, selectedPdfIntakeProfileId());
+        }
       }
     });
   });
