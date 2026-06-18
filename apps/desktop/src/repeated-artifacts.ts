@@ -627,6 +627,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   const bulkIgnoreButton = document.getElementById("btn-bulk-ignore") as HTMLButtonElement | null;
   const bulkRevertButton = document.getElementById("btn-bulk-revert") as HTMLButtonElement | null;
   const clearSelectionButton = document.getElementById("btn-clear-selection") as HTMLButtonElement | null;
+  const applyDecisionsButton = document.getElementById("btn-apply-artifact-decisions") as HTMLButtonElement | null;
 
   function updateProcessedWarning(): void {
     const isProcessed = getSelectedArtifactTextMode()?.value === "processed";
@@ -911,6 +912,21 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     }
   }
 
+  async function applyDecisionsAndClose(): Promise<void> {
+    if (state.selectedCandidateIds.size > 0) {
+      setTransientStatus("Choose Accept, Keep, Ignore, or Revert for the selected candidates before applying.");
+      return;
+    }
+
+    await persistDecisions();
+    callbacks.renderCustomRemovals();
+    syncRepeatedArtifactSettingsSection();
+    if (state.selectedCorpusIndices.size > 0 || state.selectedProjectSourceIds.size > 0) {
+      callbacks.schedulePreviewUpdate(150);
+    }
+    closeArtifactModal();
+  }
+
   async function applyBulkAccept(): Promise<void> {
     const candidates = selectedCandidates();
     let acceptedCount = 0;
@@ -1020,6 +1036,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   bulkIgnoreButton?.addEventListener("click", () => { void applyBulkDecision("ignored"); });
   bulkRevertButton?.addEventListener("click", () => { void applyBulkRevert(); });
   clearSelectionButton?.addEventListener("click", clearSelectionAndRender);
+  applyDecisionsButton?.addEventListener("click", () => { void applyDecisionsAndClose(); });
 
   dom.btnRunArtifactScan.addEventListener("click", async () => {
     const scope = syncRepeatedArtifactModalScope();

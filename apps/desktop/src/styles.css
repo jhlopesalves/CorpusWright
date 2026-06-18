@@ -2584,9 +2584,17 @@ mark.search-match.current-match {
 }
 
 .repeated-artifact-footer {
+  gap: 8px;
   margin-top: 16px;
   justify-content: flex-end;
   flex-shrink: 0;
+}
+
+.repeated-artifact-apply-btn {
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  flex: 0 0 auto;
 }
 
 .risk-badge {
