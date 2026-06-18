@@ -34,8 +34,10 @@ impl PdfExtractionOptions {
             text_source: config.pdf_text_source,
             ocr_quality: config.pdf_ocr_quality,
             remove_repeated_headers_footers: config.remove_repeated_pdf_headers_footers,
-            remove_page_labels: config.remove_pdf_page_labels,
-            remove_symbol_heavy_artifacts: config.remove_pdf_symbol_heavy_artifacts,
+            remove_page_labels: config.remove_pdf_page_labels
+                || config.remove_isolated_page_markers,
+            remove_symbol_heavy_artifacts: config.remove_pdf_symbol_heavy_artifacts
+                || config.remove_obvious_extraction_noise,
             remove_code_like_blocks: config.remove_pdf_code_like_blocks,
             remove_formula_like_lines: config.remove_pdf_formula_like_lines,
         }
@@ -322,6 +324,10 @@ pub(crate) fn is_page_label(line: &str) -> bool {
     let s = line.trim();
     if s.is_empty() {
         return false;
+    }
+
+    if crate::clean::is_isolated_page_marker_line(s) {
+        return true;
     }
 
     static RE_ARABIC: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d+$").unwrap());
@@ -867,8 +873,10 @@ impl PdfCleanupOptions {
     fn from_cleaning_config(config: &CleaningConfig) -> Self {
         Self {
             remove_repeated_headers_footers: config.remove_repeated_pdf_headers_footers,
-            remove_page_labels: config.remove_pdf_page_labels,
-            remove_symbol_heavy_artifacts: config.remove_pdf_symbol_heavy_artifacts,
+            remove_page_labels: config.remove_pdf_page_labels
+                || config.remove_isolated_page_markers,
+            remove_symbol_heavy_artifacts: config.remove_pdf_symbol_heavy_artifacts
+                || config.remove_obvious_extraction_noise,
             remove_code_like_blocks: config.remove_pdf_code_like_blocks,
             remove_formula_like_lines: config.remove_pdf_formula_like_lines,
         }
@@ -1880,6 +1888,20 @@ mod tests {
         assert!(!options.remove_symbol_heavy_artifacts);
         assert!(options.remove_code_like_blocks);
         assert!(!options.remove_formula_like_lines);
+    }
+
+    #[test]
+    fn consolidated_cleaning_options_drive_pdf_cleanup_groups() {
+        let config = CleaningConfig {
+            remove_isolated_page_markers: true,
+            remove_obvious_extraction_noise: true,
+            ..CleaningConfig::default()
+        };
+
+        let options = PdfExtractionOptions::from_cleaning_config(&config);
+
+        assert!(options.remove_page_labels);
+        assert!(options.remove_symbol_heavy_artifacts);
     }
 
     #[test]

@@ -599,7 +599,7 @@
           <button class="tab settings-tab active" data-target="tab-general" type="button" role="tab"
             aria-selected="true">General</button>
           <button class="tab settings-tab" data-target="tab-line-page" type="button" role="tab"
-            aria-selected="false">Line & Page</button>
+            aria-selected="false">Structural Cleanup</button>
           <button class="tab settings-tab" data-target="tab-extraction" type="button" role="tab"
             aria-selected="false">Formats &amp; Fallbacks</button>
           <button class="tab settings-tab" data-target="tab-custom-removals" type="button" role="tab"
@@ -608,39 +608,54 @@
 
         <div id="tab-general" class="tab-content settings-tab-content active" role="tabpanel">
           <div class="cleaning-controls-vertical">
-            <strong style="font-size: 0.95rem; color: var(--text-color);">Basic Cleaning</strong>
-            <label><input type="checkbox" id="chk-lowercase" /> Lowercase</label>
-            <label><input type="checkbox" id="chk-normalize" /> Normalize line endings</label>
-            <label><input type="checkbox" id="chk-trim" /> Trim lines</label>
-            <label><input type="checkbox" id="chk-collapse" /> Collapse blank lines</label>
-
-            <hr style="margin: 4px 0; border: none; border-top: 1px solid var(--border-color);" />
-
-            <strong style="font-size: 0.95rem; color: var(--text-color);">Encoding</strong>
+            <strong style="font-size: 0.95rem; color: var(--text-color);">Text repair</strong>
             <label><input type="checkbox" id="chk-normalize-unicode" /> Normalize Unicode</label>
+            <p class="settings-helper-text">Composes Unicode text to NFC without removing accents or changing case.</p>
+
+            <label><input type="checkbox" id="chk-normalize-whitespace-line-endings" /> Normalize whitespace and line endings</label>
+            <p class="settings-helper-text">Normalises line endings, trims line edges, collapses excess blank lines, and smooths obvious repeated spaces or tabs.</p>
+
+            <label><input type="checkbox" id="chk-repair-wrapped-pdf-line-breaks" /> Repair wrapped PDF line breaks</label>
+            <p class="settings-helper-text">Reflows obvious soft line breaks from extracted PDF text. Review processed text when paragraph boundaries matter.</p>
+
             <label><input type="checkbox" id="chk-replace-diacritics" /> Replace diacritics</label>
+            <p class="settings-helper-text">Removes combining accent marks from processed text. This can change words and should be used only when that is intended.</p>
+
+            <label><input type="checkbox" id="chk-lowercase" /> Lowercase processed text</label>
+            <p class="settings-helper-text">Converts processed text to lowercase before analysis and export.</p>
           </div>
         </div>
 
         <div id="tab-line-page" class="tab-content settings-tab-content" role="tabpanel">
           <div class="cleaning-controls-vertical">
-            <label><input type="checkbox" id="chk-join-line-breaks" /> Join line breaks</label>
-            <label><input type="checkbox" id="chk-normalize-irregular-line-breaks" /> Normalize irregular line
-              breaks</label>
-            <label><input type="checkbox" id="chk-remove-standalone-page-numbers" /> Remove standalone page
-              numbers</label>
-            <label><input type="checkbox" id="chk-remove-standalone-roman-page-numbers" /> Remove standalone Roman
-              numeral page numbers</label>
-            <label><input type="checkbox" id="chk-remove-page-indicators" /> Remove page indicators</label>
-            <label><input type="checkbox" id="chk-remove-page-delimiters" /> Remove page delimiters</label>
-            <label
-              title="Removes only lines that look overwhelmingly like extraction artefacts, OCR junk, repeated symbols, CID markers, or markup fragments. It does not remove headings, page labels, formulae, tables, or ordinary text."><input
-                type="checkbox" id="chk-remove-obvious-extraction-noise" /> Remove obvious extraction/OCR noise</label>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 10px 0; padding-left: 24px;">
-              Removes only lines that look overwhelmingly like extraction artefacts, OCR junk, repeated symbols, CID
-              markers, or markup fragments. It does not remove headings, page labels, formulae, tables, or ordinary
-              text.
-            </p>
+            <strong style="font-size: 0.95rem; color: var(--text-color);">Deterministic structural cleanup</strong>
+
+            <label><input type="checkbox" id="chk-remove-isolated-page-markers" /> Remove isolated page markers</label>
+            <p class="settings-helper-text">Removes standalone page-number or page-label lines such as "23", "- 23 -", "Page 23", "pag. 23", "p. 23", or Roman-numeral page markers.</p>
+
+            <label><input type="checkbox" id="chk-remove-url-only-lines" /> Remove URL-only lines</label>
+            <p class="settings-helper-text">Removes lines that consist only of a URL or web address. Inline URLs inside ordinary prose are not removed.</p>
+
+            <label><input type="checkbox" id="chk-remove-email-only-lines" /> Remove email-only lines</label>
+            <p class="settings-helper-text">Removes lines that consist only of an email address. Inline email addresses inside ordinary prose are not removed.</p>
+
+            <label><input type="checkbox" id="chk-remove-doi-only-lines" /> Remove DOI-only lines</label>
+            <p class="settings-helper-text">Removes lines that consist only of a DOI such as "doi:10.1234/example" or "10.1000/xyz123".</p>
+
+            <label><input type="checkbox" id="chk-remove-obvious-extraction-noise" /> Remove obvious extraction/OCR noise lines</label>
+            <p class="settings-helper-text">Removes lines that overwhelmingly look like extraction artefacts, OCR junk, repeated symbols, markup fragments, or symbol-heavy noise.</p>
+
+            <label><input type="checkbox" id="chk-remove-figure-table-captions" /> Remove figure/table captions</label>
+            <p class="settings-helper-text">Removes caption-like lines that begin with labels such as "Figure 1", "Fig. 1", "Table 1", "Tabela 1", "Quadro 1", or "Gráfico 1".</p>
+
+            <hr style="margin: 4px 0; border: none; border-top: 1px solid var(--border-color);" />
+
+            <strong style="font-size: 0.95rem; color: var(--text-color);">Advanced structural cleanup</strong>
+            <label><input type="checkbox" id="chk-remove-pdf-code-like-blocks" /> Remove code-like blocks</label>
+            <p class="settings-helper-text">Removes PDF extraction blocks that strongly resemble code. Ordinary prose containing code terms is preserved by the conservative classifier.</p>
+
+            <label><input type="checkbox" id="chk-remove-pdf-formula-like-lines" /> Remove formula-like lines</label>
+            <p class="settings-helper-text">Removes PDF extraction lines that strongly resemble standalone formulae. Inline formula references inside prose are preserved.</p>
           </div>
         </div>
 
@@ -723,20 +738,7 @@
               <label><input type="checkbox" id="chk-remove-toc" /> Strip Table of Contents</label>
             </details>
 
-            <details>
-              <summary>Advanced PDF cleanup</summary>
-              <p class="settings-helper-text">
-                Optional conservative cleanup for obvious extraction artefacts. Review processed text before export.
-              </p>
-              <input type="checkbox" id="chk-remove-repeated-pdf-headers-footers" class="hidden" />
-              <p class="settings-helper-text">
-                Repeated headers and footers are best handled with Repeated artefacts.
-              </p>
-              <label><input type="checkbox" id="chk-remove-pdf-page-labels" /> Remove page labels at page edges</label>
-              <label><input type="checkbox" id="chk-remove-pdf-symbol-heavy-artifacts" /> Remove obvious symbol-noise lines</label>
-              <label><input type="checkbox" id="chk-remove-pdf-code-like-blocks" /> Remove code-like blocks</label>
-              <label><input type="checkbox" id="chk-remove-pdf-formula-like-lines" /> Remove formula-like lines</label>
-            </details>
+            <input type="checkbox" id="chk-remove-repeated-pdf-headers-footers" class="hidden" />
           </div>
         </div>
 
