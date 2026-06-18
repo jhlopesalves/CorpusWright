@@ -115,6 +115,7 @@ function showWelcome(message = ""): void {
 
 async function activateProject(project: ActiveProject, scanSourceRoot: boolean): Promise<void> {
   state.activeProject = project;
+  state.analysisCorpus = null;
   await loadDecisionsForProject(project.rootPath);
   dom.welcomeScreen.classList.add("hidden");
   dom.projectWorkspace.classList.remove("hidden");
@@ -227,6 +228,7 @@ async function handleCloseProject(): Promise<void> {
   }
   clearDecisions();
   state.activeProject = null;
+  state.analysisCorpus = null;
   state.projectSources = [];
   state.sourceSearchQuery = "";
   dom.searchInput.value = "";
