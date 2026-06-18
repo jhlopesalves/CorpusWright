@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 
 const PROJECT_DIR: &str = ".corpuswright";
 const MANIFEST_FILE: &str = "project.json";
+const REPEATED_ARTIFACTS_FILE: &str = "repeated-artifacts.json";
 const PROJECT_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -308,6 +309,39 @@ pub(crate) fn update_project_source_pdf_handling_command(
     )
 }
 
+#[tauri::command(async)]
+pub(crate) fn load_repeated_artifact_decisions_command(
+    root_path: String,
+) -> Result<String, String> {
+    let root = validated_project_root(&root_path)?;
+    let path = root.join(PROJECT_DIR).join(REPEATED_ARTIFACTS_FILE);
+    if !path.exists() {
+        return Ok(empty_repeated_artifact_decisions_json());
+    }
+    if !path.is_file() {
+        return Err("Repeated artefact decisions path is not a file.".to_string());
+    }
+    let content =
+        fs::read_to_string(&path).map_err(|error| format!("Could not read decisions: {error}"))?;
+    validate_repeated_artifact_decisions_json(&content)?;
+    Ok(content)
+}
+
+#[tauri::command(async)]
+pub(crate) fn save_repeated_artifact_decisions_command(
+    root_path: String,
+    content: String,
+) -> Result<(), String> {
+    validate_repeated_artifact_decisions_json(&content)?;
+    let root = validated_project_root(&root_path)?;
+    let path = root.join(PROJECT_DIR).join(REPEATED_ARTIFACTS_FILE);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create project metadata folder: {error}"))?;
+    }
+    fs::write(&path, content).map_err(|error| format!("Could not write decisions: {error}"))
+}
+
 fn pdf_handling_override_from_request(
     request: ProjectSourcePdfHandlingOverrideRequest,
 ) -> ProjectSourcePdfHandlingOverride {
@@ -372,6 +406,28 @@ fn project_root_from_manifest_path(manifest_path: &Path) -> Option<PathBuf> {
 
 fn canonical_or_original(path: PathBuf) -> PathBuf {
     path.canonicalize().unwrap_or(path)
+}
+
+fn empty_repeated_artifact_decisions_json() -> String {
+    "{\n  \"version\": 1,\n  \"decisions\": {}\n}".to_string()
+}
+
+fn validate_repeated_artifact_decisions_json(content: &str) -> Result<(), String> {
+    let value: serde_json::Value = serde_json::from_str(content)
+        .map_err(|error| format!("Repeated artefact decisions are not valid JSON: {error}"))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| "Repeated artefact decisions must be a JSON object.".to_string())?;
+    if object.get("version").and_then(serde_json::Value::as_u64) != Some(1) {
+        return Err("Repeated artefact decisions must use version 1.".to_string());
+    }
+    if !object
+        .get("decisions")
+        .is_some_and(serde_json::Value::is_object)
+    {
+        return Err("Repeated artefact decisions must contain a decisions object.".to_string());
+    }
+    Ok(())
 }
 
 fn current_timestamp() -> String {
