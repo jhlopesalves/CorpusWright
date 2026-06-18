@@ -17,6 +17,12 @@ const FUTURE_ANALYSIS_TOOLS = [
 
 const FREQUENCY_DISPLAY_LIMIT = 1_000;
 const FREQUENCY_TABLE_COLUMN_COUNT = 5;
+const FREQUENT_TERM_THRESHOLD = 10;
+const HIGH_DISPERSION_THRESHOLD = 0.5;
+const LARGE_DOCUMENT_SHARE_THRESHOLD = 0.25;
+const LOW_EFFECTIVE_DOCUMENT_SHARE_THRESHOLD = 0.6;
+const HIGH_SINGLE_CHARACTER_TYPE_SHARE_THRESHOLD = 0.1;
+const HIGH_NUMERIC_ONLY_TYPE_SHARE_THRESHOLD = 0.1;
 const TOKEN_LETTER_PATTERN = /\p{L}/u;
 const TOKEN_NUMBER_PATTERN = /\p{N}/u;
 const ENGLISH_STOPWORDS = new Set(
@@ -62,6 +68,46 @@ interface MutableScopedTerm {
 interface FrequencySearchMatcher {
   matches: (token: string) => boolean;
   error: string | null;
+}
+
+interface CorpusBalanceSummary {
+  sortedDocuments: AnalysisDocument[];
+  largestDocument: AnalysisDocument | null;
+  smallestNonEmptyDocument: AnalysisDocument | null;
+  minTokens: number | null;
+  maxTokens: number | null;
+  medianTokens: number | null;
+  q1Tokens: number | null;
+  q3Tokens: number | null;
+  iqrTokens: number | null;
+  largestDocumentShare: number | null;
+  topDocumentCount: number;
+  topDocumentShare: number | null;
+  lengthRatio: number | null;
+  effectiveDocumentCount: number | null;
+}
+
+interface LexicalNoiseSummary {
+  uniqueTypes: number;
+  hapaxLegomena: number;
+  hapaxShare: number | null;
+  disLegomena: number;
+  numericOnlyTypes: number;
+  numericOnlyShare: number | null;
+  singleCharacterTypes: number;
+  singleCharacterShare: number | null;
+  alphabeticTypes: number;
+  alphabeticShare: number | null;
+  typeTokenRatio: number | null;
+}
+
+interface DispersionSummary {
+  documentCount: number;
+  allDocumentTypes: number;
+  oneDocumentTypes: number;
+  frequentTypes: number;
+  medianFrequentDispersion: number | null;
+  highDispersionFrequentTypes: number;
 }
 
 const ANALYSIS_TOOLS: Array<{
@@ -157,8 +203,24 @@ function formatFixedNumber(value: number, fractionDigits: number): string {
   });
 }
 
+function formatPercent(value: number, fractionDigits = 1): string {
+  return `${formatFixedNumber(value * 100, fractionDigits)}%`;
+}
+
+function formatOptionalNumber(value: number | null, maximumFractionDigits = 0): string {
+  return value === null ? "n/a" : formatNumber(value, maximumFractionDigits);
+}
+
+function formatOptionalPercent(value: number | null): string {
+  return value === null ? "n/a" : formatPercent(value);
+}
+
 function inputTextSourceLabel(inputTextSource: AnalysisInputSource): string {
   return inputTextSource === "processed" ? "processed text" : "extracted text";
+}
+
+function inputTextSourceDisplayLabel(inputTextSource: AnalysisInputSource): string {
+  return inputTextSource === "processed" ? "Processed text" : "Extracted text";
 }
 
 function appendSummaryRow(labelText: string, valueText: string): void {
@@ -347,9 +409,12 @@ function renderAnalysisToolPanels(): void {
   dom.frequencySection.classList.toggle("hidden", activeAnalysisTool !== "frequency");
 }
 
-function createMetric(value: string, label: string): HTMLElement {
+function createMetric(value: string, label: string, detail?: string, title?: string): HTMLElement {
   const metric = document.createElement("div");
   metric.className = "analysis-metric";
+  if (title) {
+    metric.title = title;
+  }
 
   const valueEl = document.createElement("span");
   valueEl.className = "analysis-metric-value";
@@ -360,6 +425,12 @@ function createMetric(value: string, label: string): HTMLElement {
   labelEl.textContent = label;
 
   metric.append(valueEl, labelEl);
+  if (detail) {
+    const detailEl = document.createElement("span");
+    detailEl.className = "analysis-metric-detail";
+    detailEl.textContent = detail;
+    metric.appendChild(detailEl);
+  }
   return metric;
 }
 
@@ -367,45 +438,420 @@ function documentName(document: { relativePath: string; sourcePath: string }): s
   return document.relativePath || document.sourcePath;
 }
 
-function renderTopTermsPreview(corpus: AnalysisCorpus): HTMLElement | null {
-  const topTerms = corpus.terms.slice(0, 10);
-  if (topTerms.length === 0) {
+function createOverviewPanel(titleText: string): HTMLElement {
+  const panel = document.createElement("section");
+  panel.className = "analysis-panel";
+
+  const title = document.createElement("h3");
+  title.textContent = titleText;
+  panel.appendChild(title);
+
+  return panel;
+}
+
+function createMetricGrid(className = "analysis-metric-grid"): HTMLElement {
+  const grid = document.createElement("div");
+  grid.className = className;
+  return grid;
+}
+
+function sortedNumbers(values: number[]): number[] {
+  return [...values].sort((a, b) => a - b);
+}
+
+function percentile(sortedValues: number[], percentileValue: number): number | null {
+  if (sortedValues.length === 0) {
+    return null;
+  }
+  const position = (sortedValues.length - 1) * percentileValue;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) {
+    return sortedValues[lower];
+  }
+  const weight = position - lower;
+  return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight;
+}
+
+function median(values: number[]): number | null {
+  return percentile(sortedNumbers(values), 0.5);
+}
+
+function summariseCorpusBalance(corpus: AnalysisCorpus): CorpusBalanceSummary {
+  const sortedDocuments = [...corpus.documents].sort((a, b) =>
+    b.tokenCount - a.tokenCount || documentName(a).localeCompare(documentName(b))
+  );
+  const nonEmptyDocuments = sortedDocuments.filter((document) => document.tokenCount > 0);
+  const largestDocument = nonEmptyDocuments[0] ?? null;
+  const smallestNonEmptyDocument = nonEmptyDocuments.length > 0
+    ? nonEmptyDocuments[nonEmptyDocuments.length - 1]
+    : null;
+  const tokenCounts = corpus.documents.map((document) => document.tokenCount);
+  const sortedTokenCounts = sortedNumbers(tokenCounts);
+  const minTokens = sortedTokenCounts[0] ?? null;
+  const maxTokens = sortedTokenCounts[sortedTokenCounts.length - 1] ?? null;
+  const medianTokens = percentile(sortedTokenCounts, 0.5);
+  const q1Tokens = percentile(sortedTokenCounts, 0.25);
+  const q3Tokens = percentile(sortedTokenCounts, 0.75);
+  const iqrTokens = q1Tokens === null || q3Tokens === null ? null : q3Tokens - q1Tokens;
+  const largestDocumentShare = largestDocument && corpus.totalTokens > 0
+    ? largestDocument.tokenCount / corpus.totalTokens
+    : null;
+  const topDocumentCount = Math.min(3, sortedDocuments.length);
+  const topDocumentShare = corpus.totalTokens > 0 && topDocumentCount > 0
+    ? sortedDocuments.slice(0, topDocumentCount).reduce((sum, document) => sum + document.tokenCount, 0) / corpus.totalTokens
+    : null;
+  const lengthRatio = largestDocument && smallestNonEmptyDocument && smallestNonEmptyDocument.tokenCount > 0
+    ? largestDocument.tokenCount / smallestNonEmptyDocument.tokenCount
+    : null;
+  const hhi = corpus.totalTokens > 0
+    ? corpus.documents.reduce((sum, document) => {
+      const share = document.tokenCount / corpus.totalTokens;
+      return sum + share * share;
+    }, 0)
+    : 0;
+  const effectiveDocumentCount = hhi > 0 ? 1 / hhi : null;
+
+  return {
+    sortedDocuments,
+    largestDocument,
+    smallestNonEmptyDocument,
+    minTokens,
+    maxTokens,
+    medianTokens,
+    q1Tokens,
+    q3Tokens,
+    iqrTokens,
+    largestDocumentShare,
+    topDocumentCount,
+    topDocumentShare,
+    lengthRatio,
+    effectiveDocumentCount,
+  };
+}
+
+function isSingleCharacterType(token: string): boolean {
+  return Array.from(token).length <= 1;
+}
+
+function isNumericOnlyType(token: string): boolean {
+  return TOKEN_NUMBER_PATTERN.test(token) && !TOKEN_LETTER_PATTERN.test(token);
+}
+
+function summariseLexicalNoise(corpus: AnalysisCorpus): LexicalNoiseSummary {
+  let hapaxLegomena = 0;
+  let disLegomena = 0;
+  let numericOnlyTypes = 0;
+  let singleCharacterTypes = 0;
+  let alphabeticTypes = 0;
+
+  for (const term of corpus.terms) {
+    if (term.frequency === 1) {
+      hapaxLegomena += 1;
+    } else if (term.frequency === 2) {
+      disLegomena += 1;
+    }
+    if (isNumericOnlyType(term.token)) {
+      numericOnlyTypes += 1;
+    }
+    if (isSingleCharacterType(term.token)) {
+      singleCharacterTypes += 1;
+    }
+    if (tokenMatchesClassFilter(term.token, "includeSingles")) {
+      alphabeticTypes += 1;
+    }
+  }
+
+  const typeShare = (count: number): number | null =>
+    corpus.totalTypes > 0 ? count / corpus.totalTypes : null;
+
+  return {
+    uniqueTypes: corpus.totalTypes,
+    hapaxLegomena,
+    hapaxShare: typeShare(hapaxLegomena),
+    disLegomena,
+    numericOnlyTypes,
+    numericOnlyShare: typeShare(numericOnlyTypes),
+    singleCharacterTypes,
+    singleCharacterShare: typeShare(singleCharacterTypes),
+    alphabeticTypes,
+    alphabeticShare: typeShare(alphabeticTypes),
+    typeTokenRatio: corpus.totalTokens > 0 ? corpus.totalTypes / corpus.totalTokens : null,
+  };
+}
+
+function summariseDispersion(corpus: AnalysisCorpus): DispersionSummary {
+  const scoped = buildScopedFrequencyTerms(allFrequencyDocuments(corpus));
+  const frequentTerms = scoped.terms.filter((term) => term.frequency >= FREQUENT_TERM_THRESHOLD);
+  const frequentDispersions = corpus.documents.length >= 2
+    ? frequentTerms.map((term) => term.dispersion)
+    : [];
+
+  return {
+    documentCount: corpus.documents.length,
+    allDocumentTypes: corpus.documents.length > 0
+      ? corpus.terms.filter((term) => term.documentFrequency === corpus.documents.length).length
+      : 0,
+    oneDocumentTypes: corpus.terms.filter((term) => term.documentFrequency === 1).length,
+    frequentTypes: frequentTerms.length,
+    medianFrequentDispersion: median(frequentDispersions),
+    highDispersionFrequentTypes: corpus.documents.length >= 2
+      ? frequentTerms.filter((term) => term.dispersion >= HIGH_DISPERSION_THRESHOLD).length
+      : 0,
+  };
+}
+
+function shareDetail(share: number | null, basis = "of types"): string {
+  return share === null ? "No types available" : `${formatPercent(share)} ${basis}`;
+}
+
+function renderCorpusSnapshot(corpus: AnalysisCorpus, balance: CorpusBalanceSummary): HTMLElement {
+  const panel = createOverviewPanel("Corpus Snapshot");
+  const metrics = createMetricGrid("analysis-metric-grid analysis-snapshot-grid");
+  metrics.append(
+    createMetric(formatNumber(corpus.documents.length), "Documents analysed"),
+    createMetric(formatNumber(corpus.totalTokens), "Total tokens"),
+    createMetric(formatNumber(corpus.totalTypes), "Unique types"),
+    createMetric(inputTextSourceDisplayLabel(corpus.inputTextSource), "Input source"),
+    createMetric(formatOptionalNumber(balance.medianTokens), "Median doc length"),
+    createMetric(formatOptionalPercent(balance.largestDocumentShare), "Largest doc share"),
+  );
+  panel.appendChild(metrics);
+  return panel;
+}
+
+function renderDocumentLengthDistribution(corpus: AnalysisCorpus, balance: CorpusBalanceSummary): HTMLElement {
+  const distribution = document.createElement("div");
+  distribution.className = "document-length-distribution";
+
+  const title = document.createElement("h4");
+  title.textContent = "Document length distribution";
+  distribution.appendChild(title);
+
+  if (corpus.documents.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "analysis-empty-state";
+    empty.textContent = "No documents in the analysis corpus.";
+    distribution.appendChild(empty);
+    return distribution;
+  }
+
+  const maxTokens = balance.maxTokens ?? 0;
+  for (const documentRecord of balance.sortedDocuments) {
+    const row = document.createElement("div");
+    row.className = "document-length-row";
+    row.title = documentName(documentRecord);
+
+    const name = document.createElement("span");
+    name.className = "document-length-name";
+    name.textContent = documentName(documentRecord);
+
+    const track = document.createElement("span");
+    track.className = "document-length-track";
+    const fill = document.createElement("span");
+    fill.className = "document-length-fill";
+    const barWidth = maxTokens > 0 && documentRecord.tokenCount > 0
+      ? Math.max(3, (documentRecord.tokenCount / maxTokens) * 100)
+      : 0;
+    fill.style.setProperty("--bar-width", `${barWidth}%`);
+    track.appendChild(fill);
+
+    const tokenCount = document.createElement("span");
+    tokenCount.className = "numeric document-length-count";
+    tokenCount.textContent = formatNumber(documentRecord.tokenCount);
+
+    const share = document.createElement("span");
+    share.className = "numeric document-length-share";
+    share.textContent = corpus.totalTokens > 0
+      ? formatPercent(documentRecord.tokenCount / corpus.totalTokens)
+      : "n/a";
+
+    row.append(name, track, tokenCount, share);
+    distribution.appendChild(row);
+  }
+
+  return distribution;
+}
+
+function renderCorpusBalance(corpus: AnalysisCorpus, balance: CorpusBalanceSummary): HTMLElement {
+  const panel = createOverviewPanel("Corpus Balance");
+  panel.appendChild(renderDocumentLengthDistribution(corpus, balance));
+
+  const metrics = createMetricGrid("analysis-metric-grid analysis-diagnostic-grid");
+  metrics.append(
+    createMetric(
+      balance.largestDocument ? formatNumber(balance.largestDocument.tokenCount) : "None",
+      "Largest document",
+      balance.largestDocument ? documentName(balance.largestDocument) : "No non-empty documents",
+      balance.largestDocument ? documentName(balance.largestDocument) : undefined,
+    ),
+    createMetric(
+      balance.smallestNonEmptyDocument ? formatNumber(balance.smallestNonEmptyDocument.tokenCount) : "None",
+      "Smallest non-empty document",
+      balance.smallestNonEmptyDocument ? documentName(balance.smallestNonEmptyDocument) : "No non-empty documents",
+      balance.smallestNonEmptyDocument ? documentName(balance.smallestNonEmptyDocument) : undefined,
+    ),
+    createMetric(formatOptionalNumber(balance.medianTokens), "Median document length"),
+    createMetric(
+      formatOptionalNumber(balance.iqrTokens),
+      "IQR document length",
+      balance.q1Tokens === null || balance.q3Tokens === null
+        ? "No quartiles available"
+        : `Q1 ${formatNumber(balance.q1Tokens)} · Q3 ${formatNumber(balance.q3Tokens)}`,
+    ),
+    createMetric(
+      balance.minTokens === null || balance.maxTokens === null
+        ? "n/a"
+        : `${formatNumber(balance.minTokens)} / ${formatNumber(balance.maxTokens)}`,
+      "Min / max document length",
+    ),
+    createMetric(formatOptionalPercent(balance.largestDocumentShare), "Largest document share"),
+    createMetric(
+      formatOptionalPercent(balance.topDocumentShare),
+      balance.topDocumentCount > 0
+        ? `Top ${formatNumber(balance.topDocumentCount)} document share`
+        : "Top document share",
+    ),
+    createMetric(
+      balance.lengthRatio === null ? "n/a" : `${formatNumber(balance.lengthRatio, 1)}x`,
+      "Largest / smallest ratio",
+    ),
+    createMetric(
+      balance.effectiveDocumentCount === null
+        ? "n/a"
+        : `${formatNumber(balance.effectiveDocumentCount, 1)} of ${formatNumber(corpus.documents.length)}`,
+      "Effective document count",
+      "Based on document token-share concentration",
+    ),
+  );
+  panel.appendChild(metrics);
+  return panel;
+}
+
+function renderLexicalNoiseProfile(lexical: LexicalNoiseSummary): HTMLElement {
+  const panel = createOverviewPanel("Lexical / Noise Profile");
+  const metrics = createMetricGrid("analysis-metric-grid analysis-diagnostic-grid");
+  metrics.append(
+    createMetric(formatNumber(lexical.uniqueTypes), "Unique types"),
+    createMetric(formatNumber(lexical.hapaxLegomena), "Hapax legomena", shareDetail(lexical.hapaxShare)),
+    createMetric(formatNumber(lexical.disLegomena), "Dis legomena"),
+    createMetric(formatNumber(lexical.numericOnlyTypes), "Numeric-only types", shareDetail(lexical.numericOnlyShare)),
+    createMetric(
+      formatNumber(lexical.singleCharacterTypes),
+      "Single-character types",
+      shareDetail(lexical.singleCharacterShare),
+    ),
+    createMetric(formatNumber(lexical.alphabeticTypes), "Alphabetic types", shareDetail(lexical.alphabeticShare)),
+    createMetric(
+      lexical.typeTokenRatio === null ? "n/a" : formatFixedNumber(lexical.typeTokenRatio, 3),
+      "TTR (length-sensitive)",
+      "Type-token ratio",
+      "TTR is strongly affected by corpus size. Prefer document-level or moving-window measures for comparison.",
+    ),
+  );
+  panel.appendChild(metrics);
+  return panel;
+}
+
+function renderDispersionProfile(dispersion: DispersionSummary): HTMLElement {
+  const panel = createOverviewPanel("Dispersion Profile");
+  const metrics = createMetricGrid("analysis-metric-grid analysis-diagnostic-grid");
+  const dispersionUnavailable = dispersion.documentCount < 2 || dispersion.frequentTypes === 0;
+  metrics.append(
+    createMetric(formatNumber(dispersion.allDocumentTypes), "Types appearing in all documents"),
+    createMetric(formatNumber(dispersion.oneDocumentTypes), "Types appearing in one document only"),
+    createMetric(
+      formatNumber(dispersion.frequentTypes),
+      "Frequent types",
+      `Frequency at least ${formatNumber(FREQUENT_TERM_THRESHOLD)}`,
+    ),
+    createMetric(
+      dispersion.medianFrequentDispersion === null
+        ? "n/a"
+        : formatFixedNumber(dispersion.medianFrequentDispersion, 2),
+      "Median DP for frequent types",
+      "0 follows document sizes; 1 is highly concentrated",
+    ),
+    createMetric(
+      dispersionUnavailable ? "n/a" : formatNumber(dispersion.highDispersionFrequentTypes),
+      "High-DP frequent types",
+      `DP at least ${formatFixedNumber(HIGH_DISPERSION_THRESHOLD, 2)}`,
+    ),
+  );
+  panel.appendChild(metrics);
+
+  if (dispersion.documentCount < 2) {
+    const note = document.createElement("p");
+    note.className = "analysis-panel-note";
+    note.textContent = "Dispersion needs at least two documents.";
+    panel.appendChild(note);
+  } else if (dispersion.frequentTypes === 0) {
+    const note = document.createElement("p");
+    note.className = "analysis-panel-note";
+    note.textContent = `No terms have frequency at least ${formatNumber(FREQUENT_TERM_THRESHOLD)}.`;
+    panel.appendChild(note);
+  }
+
+  return panel;
+}
+
+function renderCorpusNotes(
+  corpus: AnalysisCorpus,
+  balance: CorpusBalanceSummary,
+  lexical: LexicalNoiseSummary,
+): HTMLElement | null {
+  const notes: string[] = [];
+
+  if (
+    balance.largestDocumentShare !== null &&
+    balance.largestDocumentShare >= LARGE_DOCUMENT_SHARE_THRESHOLD
+  ) {
+    notes.push(
+      `Large document imbalance: the largest document contains ${formatPercent(balance.largestDocumentShare)} of tokens. Interpret aggregate frequencies carefully.`,
+    );
+  }
+
+  if (
+    balance.effectiveDocumentCount !== null &&
+    corpus.documents.length > 1 &&
+    balance.effectiveDocumentCount <= LOW_EFFECTIVE_DOCUMENT_SHARE_THRESHOLD * corpus.documents.length
+  ) {
+    notes.push(
+      `High document concentration: effective document count is ${formatNumber(balance.effectiveDocumentCount, 1)} of ${formatNumber(corpus.documents.length)}.`,
+    );
+  }
+
+  if (
+    lexical.singleCharacterShare !== null &&
+    lexical.singleCharacterTypes >= 10 &&
+    lexical.singleCharacterShare >= HIGH_SINGLE_CHARACTER_TYPE_SHARE_THRESHOLD
+  ) {
+    notes.push("High single-character type share: extracted text may contain page, maths, or OCR noise.");
+  }
+
+  if (
+    lexical.numericOnlyShare !== null &&
+    lexical.numericOnlyTypes >= 10 &&
+    lexical.numericOnlyShare >= HIGH_NUMERIC_ONLY_TYPE_SHARE_THRESHOLD
+  ) {
+    notes.push("High numeric-only type share: extracted text may contain table, page, or reference noise.");
+  }
+
+  if (notes.length === 0) {
     return null;
   }
 
-  const section = document.createElement("div");
-  section.className = "top-terms-preview";
-
-  const title = document.createElement("h3");
-  title.textContent = "Top terms";
-  section.appendChild(title);
-
-  const maxFrequency = topTerms[0].frequency;
-  for (const term of topTerms) {
-    const row = document.createElement("div");
-    row.className = "top-term-row";
-
-    const token = document.createElement("span");
-    token.className = "top-term-token";
-    token.title = term.token;
-    token.textContent = term.token;
-
-    const track = document.createElement("span");
-    track.className = "term-bar-track";
-    const fill = document.createElement("span");
-    fill.className = "term-bar-fill";
-    fill.style.setProperty("--bar-width", `${Math.max(4, (term.frequency / maxFrequency) * 100)}%`);
-    track.appendChild(fill);
-
-    const count = document.createElement("span");
-    count.className = "top-term-count";
-    count.textContent = formatNumber(term.frequency);
-
-    row.append(token, track, count);
-    section.appendChild(row);
+  const panel = createOverviewPanel("Notes");
+  panel.classList.add("analysis-notes-panel");
+  const list = document.createElement("ul");
+  list.className = "analysis-notes-list";
+  for (const noteText of notes) {
+    const note = document.createElement("li");
+    note.textContent = noteText;
+    list.appendChild(note);
   }
-
-  return section;
+  panel.appendChild(list);
+  return panel;
 }
 
 function renderCorpusOverview(): void {
@@ -415,52 +861,23 @@ function renderCorpusOverview(): void {
     const empty = document.createElement("p");
     empty.className = "analysis-empty-state";
     empty.textContent = analysisNotice?.message ??
-      "Build an analysis corpus to see document counts, token totals, type counts, and top terms.";
+      "Build an analysis corpus to see corpus size, document balance, lexical/noise, and dispersion diagnostics.";
     dom.analyseOverview.appendChild(empty);
     return;
   }
 
-  const nonEmptyDocuments = corpus.documents.filter((document) => document.tokenCount > 0);
-  const largest = nonEmptyDocuments.reduce<typeof nonEmptyDocuments[number] | null>(
-    (current, document) => current === null || document.tokenCount > current.tokenCount ? document : current,
-    null,
-  );
-  const smallest = nonEmptyDocuments.reduce<typeof nonEmptyDocuments[number] | null>(
-    (current, document) => current === null || document.tokenCount < current.tokenCount ? document : current,
-    null,
-  );
-  const averageTokens = corpus.documents.length > 0
-    ? corpus.totalTokens / corpus.documents.length
-    : 0;
-  const typeTokenRatio = corpus.totalTokens > 0
-    ? corpus.totalTypes / corpus.totalTokens
-    : 0;
+  const balance = summariseCorpusBalance(corpus);
+  const lexical = summariseLexicalNoise(corpus);
+  const dispersion = summariseDispersion(corpus);
+  const notes = renderCorpusNotes(corpus, balance, lexical);
 
-  const metrics = document.createElement("div");
-  metrics.className = "analysis-metric-grid";
-  metrics.append(
-    createMetric(formatNumber(corpus.documents.length), "documents"),
-    createMetric(formatNumber(corpus.totalTokens), "total tokens"),
-    createMetric(formatNumber(corpus.totalTypes), "types"),
-    createMetric(formatNumber(averageTokens, 1), "average tokens per document"),
-    createMetric(formatFixedNumber(typeTokenRatio, 3), "type-token ratio"),
+  dom.analyseOverview.append(
+    renderCorpusSnapshot(corpus, balance),
+    ...(notes ? [notes] : []),
+    renderCorpusBalance(corpus, balance),
+    renderLexicalNoiseProfile(lexical),
+    renderDispersionProfile(dispersion),
   );
-  dom.analyseOverview.appendChild(metrics);
-
-  if (largest || smallest) {
-    const documentRange = document.createElement("div");
-    documentRange.className = "analysis-document-range";
-    documentRange.append(
-      createMetric(largest ? `${documentName(largest)} (${formatNumber(largest.tokenCount)})` : "None", "largest document"),
-      createMetric(smallest ? `${documentName(smallest)} (${formatNumber(smallest.tokenCount)})` : "None", "smallest non-empty document"),
-    );
-    dom.analyseOverview.appendChild(documentRange);
-  }
-
-  const topTerms = renderTopTermsPreview(corpus);
-  if (topTerms) {
-    dom.analyseOverview.appendChild(topTerms);
-  }
 }
 
 function resetFrequencyCorpusState(): void {
