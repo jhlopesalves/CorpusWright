@@ -931,6 +931,23 @@ main {
 .frequency-controls {
   justify-content: flex-start;
   align-items: flex-end;
+  gap: 12px 20px;
+}
+
+.frequency-control-cluster {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.frequency-query-cluster {
+  flex: 1 1 560px;
+}
+
+.frequency-display-cluster {
+  flex: 0 1 auto;
+  justify-content: flex-end;
 }
 
 .frequency-controls label,
@@ -943,9 +960,9 @@ main {
   font-weight: 600;
 }
 
-.frequency-controls input,
+.frequency-controls input:not([type="checkbox"]),
 .frequency-controls select {
-  min-height: 32px;
+  height: 34px;
   padding: 5px 8px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
@@ -953,16 +970,17 @@ main {
   color: var(--text-color);
   font-family: inherit;
   font-size: 0.88rem;
+  box-sizing: border-box;
 }
 
-.frequency-controls input:focus,
+.frequency-controls input:not([type="checkbox"]):focus,
 .frequency-controls select:focus {
   outline: 1px solid var(--accent-color);
   border-color: var(--accent-color);
 }
 
 #frequency-search-input {
-  width: min(320px, 78vw);
+  width: clamp(260px, 32vw, 420px);
 }
 
 #frequency-min-input {
@@ -973,25 +991,80 @@ main {
   width: 132px;
 }
 
-.frequency-checkbox-row {
+#frequency-token-class {
+  width: 176px;
+}
+
+.frequency-toggle {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
-  gap: 7px;
+  min-height: 34px;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--panel-bg);
   color: var(--text-color);
   font-size: 0.86rem;
   font-weight: 500;
+  box-sizing: border-box;
+  cursor: pointer;
+  user-select: none;
 }
 
-.frequency-checkbox-row input {
-  min-height: 0;
-  width: auto;
+.frequency-toggle:hover {
+  background: var(--hover-color);
+}
+
+.frequency-toggle input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   margin: 0;
-  accent-color: var(--accent-color);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.frequency-toggle-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--border-color);
+}
+
+.frequency-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg-color);
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
+.frequency-toggle input:checked + .frequency-toggle-track {
+  background: var(--accent-color);
+}
+
+.frequency-toggle input:checked + .frequency-toggle-track::after {
+  transform: translateX(14px);
+  background: #ffffff;
+}
+
+.frequency-toggle input:focus-visible + .frequency-toggle-track {
+  outline: 1px solid var(--accent-color);
+  outline-offset: 2px;
 }
 
 .frequency-file-scope-control button {
-  min-height: 32px;
+  min-width: 124px;
+  min-height: 34px;
   padding: 5px 10px;
   font-size: 0.86rem;
 }
@@ -1019,7 +1092,7 @@ main {
 
 .frequency-table {
   width: 100%;
-  min-width: 900px;
+  min-width: 840px;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 0.85rem;
@@ -1042,10 +1115,29 @@ main {
   white-space: nowrap;
 }
 
-.frequency-table th:first-child,
-.frequency-table td:first-child {
-  width: 56px;
-  text-align: center;
+.frequency-table th:nth-child(1),
+.frequency-table td:nth-child(1) {
+  width: 34%;
+}
+
+.frequency-table th:nth-child(2),
+.frequency-table td:nth-child(2) {
+  width: 110px;
+}
+
+.frequency-table th:nth-child(3),
+.frequency-table td:nth-child(3) {
+  width: 132px;
+}
+
+.frequency-table th:nth-child(4),
+.frequency-table td:nth-child(4) {
+  width: 112px;
+}
+
+.frequency-table th:nth-child(5),
+.frequency-table td:nth-child(5) {
+  width: 172px;
 }
 
 .frequency-table th {
@@ -1059,47 +1151,49 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+.frequency-term-row {
+  cursor: pointer;
+}
+
+.frequency-term-row:hover {
+  background: var(--hover-color);
+}
+
+.frequency-term-row:focus-visible {
+  outline: 1px solid var(--accent-color);
+  outline-offset: -2px;
+}
+
 .frequency-token-cell {
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, "SFMono-Regular", monospace;
 }
 
-.frequency-expand-heading {
-  width: 56px;
-}
-
-.frequency-expand-cell {
-  padding-left: 6px !important;
-  padding-right: 6px !important;
-}
-
-.frequency-expand-button {
+.frequency-token-content {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
+  max-width: 100%;
+  min-width: 0;
+  gap: 6px;
+}
+
+.frequency-token-caret {
+  flex: 0 0 14px;
   color: var(--text-muted);
-  cursor: pointer;
-  font-family: inherit;
   font-size: 0.95rem;
   line-height: 1;
-  opacity: 0.78;
+  text-align: center;
 }
 
-.frequency-term-row:hover .frequency-expand-button,
-.frequency-expand-button:focus-visible {
-  opacity: 1;
+.frequency-term-row:hover .frequency-token-caret,
+.frequency-term-row:focus-visible .frequency-token-caret {
   color: var(--text-color);
-  border-color: var(--border-color);
-  background: var(--hover-color);
 }
 
-.frequency-expand-button:focus-visible {
-  outline: 1px solid var(--accent-color);
-  outline-offset: 1px;
+.frequency-token-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .frequency-sort {
@@ -1182,15 +1276,17 @@ main {
 }
 
 .frequency-detail-row td {
-  padding: 0 10px 12px 56px !important;
+  padding: 0 12px 12px 34px !important;
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
 }
 
 .frequency-distribution-panel {
-  padding: 10px 0 6px;
+  max-width: 940px;
+  padding: 10px 12px 8px;
   border-top: 1px solid var(--border-color);
+  border-left: 2px solid var(--accent-color);
 }
 
 .frequency-distribution-panel h3 {
@@ -1202,8 +1298,8 @@ main {
 
 .frequency-distribution-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) 80px 90px minmax(120px, 0.7fr);
-  gap: 10px;
+  grid-template-columns: minmax(220px, 2fr) minmax(70px, 80px) minmax(84px, 96px) minmax(160px, 1fr);
+  gap: 12px;
   align-items: center;
   min-height: 26px;
   color: var(--text-color);
@@ -1219,6 +1315,16 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.frequency-distribution-row > span:nth-child(2),
+.frequency-distribution-row > span:nth-child(3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.frequency-distribution-row > span:nth-child(4) {
+  min-width: 0;
 }
 
 .frequency-distribution-track {
