@@ -22,6 +22,7 @@ import { initRepeatedArtifactFinder } from "./repeated-artifacts";
 import { handlePreviewTabChanged, initSearch } from "./search";
 import { initSettingsModal, syncInitialSettingsControls } from "./settings-modal";
 import { initAppChrome, initThemeToggle } from "./theme";
+import { initWorkbenchSwitcher } from "./workbench";
 import { updateWordCount } from "./word-count";
 
 function init(): void {
@@ -43,6 +44,8 @@ function init(): void {
   initVirtualScroll();
 
   initThemeToggle();
+
+  initWorkbenchSwitcher();
 
   initCustomRemovals();
 
