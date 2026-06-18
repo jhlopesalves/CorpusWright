@@ -163,6 +163,7 @@ interface PdfIntakeMaterializationProgress {
 export function clearStateForLoad(): void {
   state.currentCorpusVersion = 0;
   state.allFiles = [];
+  state.cleanedTokenCountText = null;
   state.visibleFiles = [];
   state.selectedCorpusIndices.clear();
   state.selectedProjectSourceIds.clear();

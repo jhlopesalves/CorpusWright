@@ -5,6 +5,13 @@ function getElement<T extends HTMLElement>(id: string): T {
 export const dom = {
   welcomeScreen: getElement<HTMLElement>("welcome-screen"),
   projectWorkspace: getElement<HTMLElement>("project-workspace"),
+  prepareWorkbench: getElement<HTMLElement>("prepare-workbench"),
+  analyseWorkbench: getElement<HTMLElement>("analyse-workbench"),
+  workbenchSwitcher: getElement<HTMLDivElement>("workbench-switcher"),
+  workbenchPrepare: getElement<HTMLButtonElement>("workbench-prepare"),
+  workbenchAnalyse: getElement<HTMLButtonElement>("workbench-analyse"),
+  analyseStatusDetail: getElement<HTMLParagraphElement>("analyse-status-detail"),
+  analyseProjectSummary: getElement<HTMLDListElement>("analyse-project-summary"),
   projectContext: getElement<HTMLDivElement>("project-context"),
   projectContextName: getElement<HTMLSpanElement>("project-context-name"),
   projectContextPath: getElement<HTMLSpanElement>("project-context-path"),
