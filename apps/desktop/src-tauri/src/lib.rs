@@ -1678,7 +1678,9 @@ pub fn run() {
             project::update_project_source_processing_results_command,
             project::update_project_source_pdf_profiles_command,
             project::update_project_source_pdf_handling_command,
-            project::remove_project_source_paths_command
+            project::remove_project_source_paths_command,
+            project::load_repeated_artifact_decisions_command,
+            project::save_repeated_artifact_decisions_command
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

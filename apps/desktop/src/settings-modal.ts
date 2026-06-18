@@ -9,7 +9,7 @@ import {
 } from "./config";
 import { dom } from "./dom";
 import { renderCustomRemovals, syncDraftCustomRemovalsFromConfig } from "./custom-removals";
-import { syncRepeatedArtifactSettingsSection } from "./repeated-artifacts";
+import { syncDecisionsWithActiveRules, syncRepeatedArtifactSettingsSection } from "./repeated-artifacts";
 import { state } from "./state";
 import type {
   CleaningConfig,
@@ -229,6 +229,7 @@ export function initSettingsModal(callbacks: SettingsModalCallbacks): void {
   dom.applySettingsBtn.addEventListener("click", () => {
     const nextConfig = buildConfigFromModalControls();
     Object.assign(state.activeCleaningConfig, nextConfig);
+    syncDecisionsWithActiveRules();
 
     setModalConfigStatus("");
     dom.settingsModal.classList.add("hidden");
