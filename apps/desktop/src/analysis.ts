@@ -20,6 +20,7 @@ export interface AnalysisDocument {
   sourcePath: string;
   relativePath: string;
   tokenCount: number;
+  termCounts: Record<string, number>;
 }
 
 export interface AnalysisTerm {
@@ -75,26 +76,24 @@ export function buildAnalysisCorpus(
 
   for (const document of inputDocuments) {
     const tokens = tokeniseAnalysisText(document.text);
-    const documentTokens = new Set<string>();
+    const documentTerms = new Map<string, number>();
 
     for (const token of tokens) {
-      const term = terms.get(token) ?? { frequency: 0, documentFrequency: 0 };
-      term.frequency += 1;
-      terms.set(token, term);
-      documentTokens.add(token);
+      documentTerms.set(token, (documentTerms.get(token) ?? 0) + 1);
     }
 
-    for (const token of documentTokens) {
-      const term = terms.get(token);
-      if (term) {
-        term.documentFrequency += 1;
-      }
+    for (const [token, count] of documentTerms) {
+      const term = terms.get(token) ?? { frequency: 0, documentFrequency: 0 };
+      term.frequency += count;
+      term.documentFrequency += 1;
+      terms.set(token, term);
     }
 
     documents.push({
       sourcePath: document.sourcePath,
       relativePath: document.relativePath,
       tokenCount: tokens.length,
+      termCounts: Object.fromEntries(documentTerms),
     });
   }
 
