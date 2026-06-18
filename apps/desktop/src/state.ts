@@ -8,6 +8,8 @@ import type {
   VisibleFile,
 } from "./types";
 
+export type WorkbenchId = "prepare" | "analyse";
+
 export interface ActiveProject {
   name: string;
   rootPath: string;
@@ -18,11 +20,13 @@ export interface ActiveProject {
 
 export const state = {
   activeProject: null as ActiveProject | null,
+  activeWorkbench: "prepare" as WorkbenchId,
   sourceManifestVersion: 1,
   projectSources: [] as ProjectSource[],
   sourceSearchQuery: "",
   currentCorpusVersion: 0,
   allFiles: [] as DocumentRecord[],
+  cleanedTokenCountText: null as string | null,
   visibleFiles: [] as VisibleFile[],
   selectedCorpusIndices: new Set<number>(),
   selectedProjectSourceIds: new Set<string>(),

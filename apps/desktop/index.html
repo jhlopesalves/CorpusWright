@@ -43,6 +43,29 @@
           </div>
         </div>
       </div>
+      <div id="workbench-switcher" class="workbench-switcher hidden" role="tablist" aria-label="Workbench">
+        <button
+          id="workbench-prepare"
+          class="workbench-tab active"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="prepare-workbench"
+        >
+          Prepare
+        </button>
+        <button
+          id="workbench-analyse"
+          class="workbench-tab"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="analyse-workbench"
+          tabindex="-1"
+        >
+          Analyse
+        </button>
+      </div>
       <div class="top-right-controls">
         <div id="project-context" class="project-context hidden">
           <span id="project-context-name"></span>
@@ -83,7 +106,8 @@
     </main>
 
     <main id="project-workspace" class="project-workspace hidden">
-      <aside class="left-panel">
+      <div id="prepare-workbench" class="prepare-workbench" role="tabpanel" aria-labelledby="workbench-prepare">
+        <aside class="left-panel">
         <div class="source-panel-header">
           <h2>Sources</h2>
           <div class="source-actions">
@@ -132,9 +156,9 @@
         <div class="corpus-summary" id="corpus-summary">
           <!-- Summary card goes here -->
         </div>
-      </aside>
-      <div class="sidebar-splitter" id="sidebar-splitter"></div>
-      <section class="right-panel">
+        </aside>
+        <div class="sidebar-splitter" id="sidebar-splitter"></div>
+        <section class="right-panel">
 
         <div class="tabs">
           <button class="tab active" data-target="original-text">Original Text</button>
@@ -178,6 +202,41 @@
         <div class="tab-content" id="processed-text">
           <div id="processed-preview-content" class="preview-cards-container">Select files from the left panel to
             preview processed text.</div>
+        </div>
+        </section>
+      </div>
+      <section id="analyse-workbench" class="analyse-workbench hidden" role="tabpanel" aria-labelledby="workbench-analyse">
+        <div class="analyse-content">
+          <header class="analyse-header">
+            <div>
+              <p class="analyse-eyebrow">Analyse</p>
+              <h1>Analyse Corpus</h1>
+            </div>
+            <div class="analyse-status-card" aria-live="polite">
+              <span class="analyse-status-chip">Analysis corpus: Not built</span>
+              <p id="analyse-status-detail">Analysis corpus not built yet.</p>
+            </div>
+          </header>
+
+          <p class="analyse-intro">
+            CorpusWright will eventually build a local analysis index from processed project text. This enables corpus
+            overview, frequency lists, KWIC/concordance, n-grams, and later dispersion and collocation tools.
+          </p>
+
+          <div class="analyse-action-row">
+            <button class="primary-btn" type="button" disabled>Build Analysis Corpus</button>
+            <span>Coming next</span>
+          </div>
+
+          <section class="analyse-section" aria-labelledby="analyse-current-project-title">
+            <h2 id="analyse-current-project-title">Current project</h2>
+            <dl id="analyse-project-summary" class="analyse-project-summary"></dl>
+          </section>
+
+          <section class="analyse-section" aria-labelledby="analyse-tools-title">
+            <h2 id="analyse-tools-title">Coming next</h2>
+            <ul id="analyse-tools-list" class="analyse-tools-list"></ul>
+          </section>
         </div>
       </section>
     </main>
