@@ -1,8 +1,12 @@
-use corpuswright_core::cache::{CacheEntry, ExtractionCache};
+use corpuswright_core::cache::{
+    CacheEntry, DocumentTextMode, ExtractionCache, document_text_for_record,
+};
 use corpuswright_core::clean::{CleaningConfig, PdfOcrQuality, PdfTextSource, clean_text};
 use corpuswright_core::export::{ExportError, ExportOptions, ExportReport, export_corpus};
+use corpuswright_core::html::extract_html;
 use corpuswright_core::pdf::{
-    PdfExtractionOptions, PdfPageRangeResult, extract_pdf_page_range, pdf_page_count,
+    PdfExtractionOptions, PdfPageRangeResult, clean_extracted_pdf_text, extract_pdf_page_range,
+    pdf_page_count,
 };
 use corpuswright_core::pdf_audit::{PdfAuditResult, audit_pdf_files};
 use corpuswright_core::preview::{
@@ -146,6 +150,32 @@ impl CorpusState {
         }
         Ok(result)
     }
+
+    fn records_and_root_for_indices(
+        &self,
+        indices: &[usize],
+        corpus_version: u64,
+    ) -> Result<(Vec<DocumentRecord>, Option<PathBuf>), String> {
+        let inner = self.inner.read().unwrap();
+        if inner.version != corpus_version {
+            return Err(
+                "Corpus has been reloaded. Please re-select files and try again.".to_string(),
+            );
+        }
+        let records = &inner.records;
+        let mut result = Vec::with_capacity(indices.len());
+        for &i in indices {
+            let record = records.get(i).ok_or_else(|| {
+                format!(
+                    "Index {} is out of bounds (corpus has {} records).",
+                    i,
+                    records.len()
+                )
+            })?;
+            result.push(record.clone());
+        }
+        Ok((result, inner.root.clone()))
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -209,6 +239,22 @@ struct ExportProgress {
 struct WordCountBatchResult {
     total_words: u64,
     skipped_ocr_mode: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AnalysisInputDocument {
+    source_path: String,
+    relative_path: String,
+    text: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AnalysisInputTextsResult {
+    documents: Vec<AnalysisInputDocument>,
+    skipped_documents: usize,
+    skipped_pdf_documents: usize,
 }
 
 #[tauri::command(async)]
@@ -1225,6 +1271,129 @@ fn preview_processed_files_command(
         .map_err(|e| format!("{:?}", e))
 }
 
+fn project_source_text_cache_matches_record(
+    persisted: &PersistedProjectSourceText,
+    project_root: &Path,
+    record: &DocumentRecord,
+    cleaning_config: &CleaningConfig,
+) -> bool {
+    let source_id = project_source_id_for_record(project_root, record);
+    let expected_options =
+        PdfExtractionOptions::raw_from_record_and_cleaning_config(record, cleaning_config);
+
+    persisted.version == PROJECT_SOURCE_TEXT_CACHE_VERSION
+        && persisted.source_id == source_id
+        && persisted.size_bytes == record.size_bytes
+        && persisted.modified_time_secs == modified_time_secs(&record.source_path)
+        && persisted.pdf_options.text_source == expected_options.text_source
+        && persisted.pdf_options.strategy == expected_options.strategy
+        && persisted.pdf_options.ocr_quality == expected_options.ocr_quality
+}
+
+fn read_project_source_text_cache(
+    project_root: &Path,
+    record: &DocumentRecord,
+    cleaning_config: &CleaningConfig,
+) -> Option<CacheEntry> {
+    let source_id = project_source_id_for_record(project_root, record);
+    let cache_path = project_source_text_cache_path(project_root, &source_id);
+    let json = std::fs::read_to_string(cache_path).ok()?;
+    let persisted = serde_json::from_str::<PersistedProjectSourceText>(&json).ok()?;
+    if project_source_text_cache_matches_record(&persisted, project_root, record, cleaning_config) {
+        Some(persisted.entry)
+    } else {
+        None
+    }
+}
+
+fn analysis_pdf_text(
+    record: &DocumentRecord,
+    project_root: Option<&Path>,
+    cleaning_config: &CleaningConfig,
+    use_processed_text: bool,
+    cache: &ExtractionCache,
+) -> Option<String> {
+    let pdf_options =
+        PdfExtractionOptions::raw_from_record_and_cleaning_config(record, cleaning_config);
+    let entry = project_root
+        .and_then(|root| read_project_source_text_cache(root, record, cleaning_config))
+        .or_else(|| cache.try_get(record, Some(pdf_options), cleaning_config))?;
+
+    if !use_processed_text {
+        return Some(entry.extracted_text);
+    }
+
+    let (mut text, _) = clean_extracted_pdf_text(&entry.extracted_text, cleaning_config);
+    if cleaning_config.extract_html {
+        text = extract_html(&text);
+    }
+    Some(clean_text(&text, cleaning_config))
+}
+
+#[tauri::command(async)]
+fn analysis_input_texts_command(
+    indices: Vec<usize>,
+    corpus_version: u64,
+    use_processed_text: bool,
+    cleaning_config: CleaningConfig,
+    corpus: tauri::State<'_, CorpusState>,
+    cache: tauri::State<'_, ExtractionCache>,
+) -> Result<AnalysisInputTextsResult, String> {
+    let (records, project_root) = corpus.records_and_root_for_indices(&indices, corpus_version)?;
+    let text_mode = if use_processed_text {
+        DocumentTextMode::Processed
+    } else {
+        DocumentTextMode::Original
+    };
+    let mut documents = Vec::new();
+    let mut skipped_documents = 0usize;
+    let mut skipped_pdf_documents = 0usize;
+
+    for record in records {
+        let text = if record.document_type == DocumentType::Pdf {
+            analysis_pdf_text(
+                &record,
+                project_root.as_deref(),
+                &cleaning_config,
+                use_processed_text,
+                &cache,
+            )
+        } else {
+            document_text_for_record(&record, &cleaning_config, text_mode, Some(&cache))
+                .ok()
+                .map(|document| document.text)
+        };
+
+        let Some(text) = text else {
+            skipped_documents += 1;
+            if record.document_type == DocumentType::Pdf {
+                skipped_pdf_documents += 1;
+            }
+            continue;
+        };
+
+        if text.trim().is_empty() {
+            skipped_documents += 1;
+            if record.document_type == DocumentType::Pdf {
+                skipped_pdf_documents += 1;
+            }
+            continue;
+        }
+
+        documents.push(AnalysisInputDocument {
+            source_path: record.source_path.to_string_lossy().to_string(),
+            relative_path: record.relative_path.to_string_lossy().to_string(),
+            text,
+        });
+    }
+
+    Ok(AnalysisInputTextsResult {
+        documents,
+        skipped_documents,
+        skipped_pdf_documents,
+    })
+}
+
 fn modified_time_secs(path: &Path) -> Option<u64> {
     std::fs::metadata(path)
         .ok()
@@ -1658,6 +1827,7 @@ pub fn run() {
             search_corpus_command,
             preview_files_command,
             preview_processed_files_command,
+            analysis_input_texts_command,
             extract_pdf_page_range_command,
             export_corpus_command,
             compute_word_count_command,
