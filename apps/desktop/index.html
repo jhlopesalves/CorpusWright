@@ -267,33 +267,47 @@
                   <span id="frequency-result-count" class="frequency-result-count"></span>
                 </div>
                 <div class="frequency-controls">
-                  <label for="frequency-search-input">
-                    <span>Token search</span>
-                    <input id="frequency-search-input" type="search" placeholder="Filter tokens..." autocomplete="off" />
-                  </label>
-                  <label for="frequency-match-mode">
-                    <span>Match mode</span>
-                    <select id="frequency-match-mode">
-                      <option value="contains">Contains</option>
-                      <option value="exact">Exact</option>
-                      <option value="startsWith">Starts with</option>
-                      <option value="regex">Regex</option>
-                    </select>
-                  </label>
-                  <label for="frequency-min-input">
-                    <span>Minimum frequency</span>
-                    <input id="frequency-min-input" type="number" min="1" step="1" value="1" />
-                  </label>
-                  <label class="frequency-stopword-control" for="frequency-hide-stopwords">
-                    <span>Stopwords (English)</span>
-                    <span class="frequency-checkbox-row">
-                      <input id="frequency-hide-stopwords" type="checkbox" />
-                      Hide stopwords
-                    </span>
-                  </label>
-                  <div class="frequency-file-scope-control">
-                    <span>File scope</span>
-                    <button id="frequency-files-button" type="button" class="secondary-btn">Files: 0 of 0</button>
+                  <div class="frequency-control-cluster frequency-query-cluster">
+                    <label for="frequency-search-input">
+                      <span>Token search</span>
+                      <input id="frequency-search-input" type="search" placeholder="Filter tokens..." autocomplete="off" />
+                    </label>
+                    <label for="frequency-match-mode">
+                      <span>Match mode</span>
+                      <select id="frequency-match-mode">
+                        <option value="contains">Contains</option>
+                        <option value="exact">Exact</option>
+                        <option value="startsWith">Starts with</option>
+                        <option value="regex">Regex</option>
+                      </select>
+                    </label>
+                    <label for="frequency-min-input">
+                      <span>Minimum frequency</span>
+                      <input id="frequency-min-input" type="number" min="1" step="1" value="1" />
+                    </label>
+                  </div>
+                  <div class="frequency-control-cluster frequency-display-cluster">
+                    <label for="frequency-token-class">
+                      <span>Token class</span>
+                      <select id="frequency-token-class">
+                        <option value="alphabetic" selected>Alphabetic words</option>
+                        <option value="includeSingles">Include single-character</option>
+                        <option value="includeNumerals">Include numerals</option>
+                        <option value="all">All tokens</option>
+                      </select>
+                    </label>
+                    <label class="frequency-stopword-control" for="frequency-hide-stopwords">
+                      <span>Stopwords</span>
+                      <span class="frequency-toggle">
+                        <input id="frequency-hide-stopwords" type="checkbox" />
+                        <span class="frequency-toggle-track" aria-hidden="true"></span>
+                        <span>Hide</span>
+                      </span>
+                    </label>
+                    <div class="frequency-file-scope-control">
+                      <span>File scope</span>
+                      <button id="frequency-files-button" type="button" class="secondary-btn">Files: 0 of 0</button>
+                    </div>
                   </div>
                 </div>
                 <p class="frequency-search-note">Tokens are matched against the current lowercased token index.</p>
@@ -302,7 +316,6 @@
                   <table class="frequency-table">
                     <thead id="frequency-table-head">
                       <tr>
-                        <th class="frequency-expand-heading">Expand</th>
                         <th>
                           <button type="button" class="frequency-sort" data-sort="token">Token</button>
                         </th>
@@ -322,7 +335,7 @@
                     </thead>
                     <tbody id="frequency-table-body">
                       <tr>
-                        <td colspan="6" class="frequency-empty">Build an analysis corpus to populate the frequency list.</td>
+                        <td colspan="5" class="frequency-empty">Build an analysis corpus to populate the frequency list.</td>
                       </tr>
                     </tbody>
                   </table>
