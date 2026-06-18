@@ -16,6 +16,9 @@ const FUTURE_ANALYSIS_TOOLS = [
 ];
 
 const FREQUENCY_DISPLAY_LIMIT = 1_000;
+const FREQUENCY_TABLE_COLUMN_COUNT = 5;
+const TOKEN_LETTER_PATTERN = /\p{L}/u;
+const TOKEN_NUMBER_PATTERN = /\p{N}/u;
 const ENGLISH_STOPWORDS = new Set(
   `
   a about above after again against all am an and any are as at be because been before
@@ -32,6 +35,7 @@ const ENGLISH_STOPWORDS = new Set(
 type AnalysisToolId = "overview" | "frequency";
 type FrequencySortKey = "token" | "frequency" | "range" | "rate" | "dispersion";
 type FrequencyMatchMode = "contains" | "exact" | "startsWith" | "regex";
+type FrequencyTokenClassFilter = "alphabetic" | "includeSingles" | "includeNumerals" | "all";
 type SortDirection = "asc" | "desc";
 
 interface ScopedAnalysisDocument {
@@ -592,6 +596,62 @@ function renderFrequencySearchError(message: string | null): void {
   dom.frequencySearchError.classList.toggle("hidden", message === null);
 }
 
+function currentFrequencyTokenClassFilter(): FrequencyTokenClassFilter {
+  return dom.frequencyTokenClassSelect.value as FrequencyTokenClassFilter;
+}
+
+function tokenClassSummary(filter: FrequencyTokenClassFilter): string {
+  switch (filter) {
+    case "alphabetic":
+      return "alphabetic words only";
+    case "includeSingles":
+      return "single-character tokens included";
+    case "includeNumerals":
+      return "numerals included";
+    case "all":
+      return "all token classes";
+  }
+}
+
+function tokenMatchesClassFilter(token: string, filter: FrequencyTokenClassFilter): boolean {
+  const hasLetter = TOKEN_LETTER_PATTERN.test(token);
+  const hasNumber = TOKEN_NUMBER_PATTERN.test(token);
+  const isSingleCharacter = Array.from(token).length <= 1;
+
+  switch (filter) {
+    case "alphabetic":
+      return hasLetter && !hasNumber && !isSingleCharacter;
+    case "includeSingles":
+      return hasLetter && !hasNumber;
+    case "includeNumerals":
+      return !isSingleCharacter;
+    case "all":
+      return true;
+  }
+}
+
+function frequencyDetailId(token: string): string {
+  return `frequency-detail-${encodeURIComponent(token)}`;
+}
+
+function pruneExpandedFrequencyTokens(visibleTerms: ScopedFrequencyTerm[]): void {
+  const visibleTokens = new Set(visibleTerms.map((term) => term.token));
+  for (const token of expandedFrequencyTokens) {
+    if (!visibleTokens.has(token)) {
+      expandedFrequencyTokens.delete(token);
+    }
+  }
+}
+
+function toggleFrequencyTokenExpansion(token: string): void {
+  if (expandedFrequencyTokens.has(token)) {
+    expandedFrequencyTokens.delete(token);
+  } else {
+    expandedFrequencyTokens.add(token);
+  }
+  renderFrequencyList();
+}
+
 function sortTerms(terms: ScopedFrequencyTerm[]): ScopedFrequencyTerm[] {
   const direction = frequencySortDirection === "asc" ? 1 : -1;
   return [...terms].sort((a, b) => {
@@ -637,6 +697,7 @@ function frequencySummaryText(
   totalDocumentCount: number,
   scopedTokenCount: number,
   stopwordsHidden: boolean,
+  tokenClassFilter: FrequencyTokenClassFilter,
 ): string {
   const documentScope = selectedDocumentCount === totalDocumentCount
     ? `${formatNumber(totalDocumentCount)} files`
@@ -647,7 +708,7 @@ function frequencySummaryText(
   if (stopwordsHidden) {
     parts.push("English stopwords hidden");
   }
-  parts.push(documentScope, `${formatNumber(scopedTokenCount)} tokens in scope`);
+  parts.push(tokenClassSummary(tokenClassFilter), documentScope, `${formatNumber(scopedTokenCount)} tokens in scope`);
   return parts.join(" · ");
 }
 
@@ -695,10 +756,10 @@ function createFrequencyDistributionPanel(
   const header = document.createElement("div");
   header.className = "frequency-distribution-row frequency-distribution-header";
   header.append(
-    document.createElement("span"),
+    Object.assign(document.createElement("span"), { textContent: "Document/File" }),
     Object.assign(document.createElement("span"), { textContent: "Count" }),
     Object.assign(document.createElement("span"), { textContent: "Per 10k" }),
-    document.createElement("span"),
+    Object.assign(document.createElement("span"), { textContent: "Bar" }),
   );
   panel.appendChild(header);
 
@@ -759,7 +820,7 @@ function renderFrequencyList(): void {
     dom.frequencySummary.textContent = "Build an analysis corpus to populate the frequency list.";
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 6;
+    cell.colSpan = FREQUENCY_TABLE_COLUMN_COUNT;
     cell.className = "frequency-empty";
     cell.textContent = "Build an analysis corpus to populate the frequency list.";
     row.appendChild(cell);
@@ -773,13 +834,16 @@ function renderFrequencyList(): void {
   renderFrequencySearchError(matcher.error);
   const minFrequency = Math.max(1, Number.parseInt(dom.frequencyMinInput.value, 10) || 1);
   const hideStopwords = dom.frequencyHideStopwordsInput.checked;
+  const tokenClassFilter = currentFrequencyTokenClassFilter();
   const filtered = scoped.terms.filter((term) =>
     term.frequency >= minFrequency &&
     matcher.matches(term.token) &&
+    tokenMatchesClassFilter(term.token, tokenClassFilter) &&
     (!hideStopwords || !ENGLISH_STOPWORDS.has(term.token))
   );
   const sorted = sortTerms(filtered);
   const visible = sorted.slice(0, FREQUENCY_DISPLAY_LIMIT);
+  pruneExpandedFrequencyTokens(visible);
 
   dom.frequencySummary.textContent = frequencySummaryText(
     filtered.length,
@@ -788,6 +852,7 @@ function renderFrequencyList(): void {
     corpus.documents.length,
     scoped.totalTokens,
     hideStopwords,
+    tokenClassFilter,
   );
   dom.frequencyResultCount.textContent = `Built from ${inputTextSourceLabel(corpus.inputTextSource)}`;
   if (sorted.length > visible.length) {
@@ -798,7 +863,7 @@ function renderFrequencyList(): void {
   if (visible.length === 0) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 6;
+    cell.colSpan = FREQUENCY_TABLE_COLUMN_COUNT;
     cell.className = "frequency-empty";
     cell.textContent = "No terms match the current filters.";
     row.appendChild(cell);
@@ -806,29 +871,35 @@ function renderFrequencyList(): void {
     return;
   }
 
-  visible.forEach((term, index) => {
+  for (const term of visible) {
     const isExpanded = expandedFrequencyTokens.has(term.token);
-    const detailId = `frequency-detail-${index}`;
+    const detailId = frequencyDetailId(term.token);
     const row = document.createElement("tr");
     row.className = "frequency-term-row";
-
-    const expand = document.createElement("td");
-    expand.className = "frequency-expand-cell";
-    const expandButton = document.createElement("button");
-    expandButton.type = "button";
-    expandButton.className = "frequency-expand-button";
-    expandButton.dataset.token = term.token;
-    expandButton.setAttribute("aria-expanded", isExpanded ? "true" : "false");
-    expandButton.setAttribute("aria-controls", detailId);
-    expandButton.setAttribute("aria-label", `${isExpanded ? "Collapse" : "Expand"} per-file distribution for ${term.token}`);
-    expandButton.title = `${isExpanded ? "Collapse" : "Expand"} per-file distribution`;
-    expandButton.textContent = isExpanded ? "▾" : "▸";
-    expand.appendChild(expandButton);
+    row.dataset.token = term.token;
+    row.tabIndex = 0;
+    row.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+    row.setAttribute("aria-controls", detailId);
+    row.setAttribute("aria-label", `${isExpanded ? "Collapse" : "Expand"} per-file distribution for ${term.token}`);
 
     const token = document.createElement("td");
     token.className = "frequency-token-cell";
     token.title = term.token;
-    token.textContent = term.token;
+
+    const tokenContent = document.createElement("span");
+    tokenContent.className = "frequency-token-content";
+
+    const caret = document.createElement("span");
+    caret.className = "frequency-token-caret";
+    caret.setAttribute("aria-hidden", "true");
+    caret.textContent = isExpanded ? "▾" : "▸";
+
+    const tokenText = document.createElement("span");
+    tokenText.className = "frequency-token-text";
+    tokenText.textContent = term.token;
+
+    tokenContent.append(caret, tokenText);
+    token.appendChild(tokenContent);
 
     const frequency = document.createElement("td");
     frequency.className = "numeric";
@@ -844,7 +915,7 @@ function renderFrequencyList(): void {
 
     const dispersion = createDispersionCell(term);
 
-    row.append(expand, token, frequency, documentFrequency, rate, dispersion);
+    row.append(token, frequency, documentFrequency, rate, dispersion);
     dom.frequencyTableBody.appendChild(row);
 
     if (isExpanded) {
@@ -852,12 +923,12 @@ function renderFrequencyList(): void {
       detailRow.className = "frequency-detail-row";
       const detailCell = document.createElement("td");
       detailCell.id = detailId;
-      detailCell.colSpan = 6;
+      detailCell.colSpan = FREQUENCY_TABLE_COLUMN_COUNT;
       detailCell.appendChild(createFrequencyDistributionPanel(term, scopedDocuments));
       detailRow.appendChild(detailCell);
       dom.frequencyTableBody.appendChild(detailRow);
     }
-  });
+  }
 }
 
 export function renderAnalyseWorkbench(): void {
@@ -1039,17 +1110,36 @@ function handleFrequencySortClick(event: Event): void {
 }
 
 function handleFrequencyTableClick(event: Event): void {
-  const button = (event.target as HTMLElement).closest<HTMLButtonElement>(".frequency-expand-button");
-  if (!button || !button.dataset.token) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement) || target.closest(".frequency-detail-row")) {
     return;
   }
 
-  if (expandedFrequencyTokens.has(button.dataset.token)) {
-    expandedFrequencyTokens.delete(button.dataset.token);
-  } else {
-    expandedFrequencyTokens.add(button.dataset.token);
+  const row = target.closest<HTMLTableRowElement>(".frequency-term-row");
+  if (!row?.dataset.token) {
+    return;
   }
-  renderFrequencyList();
+
+  toggleFrequencyTokenExpansion(row.dataset.token);
+}
+
+function handleFrequencyTableKeydown(event: KeyboardEvent): void {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+
+  const target = event.target;
+  if (!(target instanceof HTMLElement) || target.closest(".frequency-detail-row")) {
+    return;
+  }
+
+  const row = target.closest<HTMLTableRowElement>(".frequency-term-row");
+  if (!row?.dataset.token) {
+    return;
+  }
+
+  event.preventDefault();
+  toggleFrequencyTokenExpansion(row.dataset.token);
 }
 
 function closeFrequencyFilesModal(): void {
@@ -1195,10 +1285,12 @@ export function initWorkbenchSwitcher(): void {
   dom.frequencySearchInput.addEventListener("input", renderFrequencyList);
   dom.frequencyMatchModeSelect.addEventListener("change", renderFrequencyList);
   dom.frequencyMinInput.addEventListener("input", renderFrequencyList);
+  dom.frequencyTokenClassSelect.addEventListener("change", renderFrequencyList);
   dom.frequencyHideStopwordsInput.addEventListener("change", renderFrequencyList);
   dom.frequencyFilesButton.addEventListener("click", openFrequencyFilesModal);
   dom.frequencyTableHead.addEventListener("click", handleFrequencySortClick);
   dom.frequencyTableBody.addEventListener("click", handleFrequencyTableClick);
+  dom.frequencyTableBody.addEventListener("keydown", handleFrequencyTableKeydown);
   dom.frequencyFilesSearchInput.addEventListener("input", renderFrequencyFilesModal);
   dom.frequencyFilesList.addEventListener("change", handleFrequencyFilesListChange);
   dom.frequencyFilesSelectAllButton.addEventListener("click", selectAllFrequencyFiles);

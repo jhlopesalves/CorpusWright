@@ -27,6 +27,7 @@ export const dom = {
   frequencyMatchModeSelect: getElement<HTMLSelectElement>("frequency-match-mode"),
   frequencySearchError: getElement<HTMLDivElement>("frequency-search-error"),
   frequencyMinInput: getElement<HTMLInputElement>("frequency-min-input"),
+  frequencyTokenClassSelect: getElement<HTMLSelectElement>("frequency-token-class"),
   frequencyHideStopwordsInput: getElement<HTMLInputElement>("frequency-hide-stopwords"),
   frequencyFilesButton: getElement<HTMLButtonElement>("frequency-files-button"),
   frequencySection: getElement<HTMLElement>("frequency-list-pane"),
