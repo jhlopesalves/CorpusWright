@@ -110,10 +110,10 @@ interface DispersionSummary {
   highDispersionFrequentTypes: number;
 }
 
-interface OverviewStat {
+interface OverviewMetricRow {
   label: string;
   value: string;
-  detail?: string;
+  share?: string;
   title?: string;
 }
 
@@ -125,7 +125,10 @@ interface CompositionSegment {
 
 interface ReadingFinding {
   label: string;
+  status: string;
+  statusKind: "note" | "caution" | "fix" | "exploratory";
   text: string;
+  explanation?: string;
 }
 
 interface CorpusReading {
@@ -263,14 +266,17 @@ function formatCountWithShare(count: number, total: number): string {
   return `${formatNumber(count)} of ${formatNumber(total)} (${formatPercent(count / total)})`;
 }
 
-function joinLabels(labels: string[]): string {
-  if (labels.length <= 1) {
-    return labels[0] ?? "";
-  }
-  if (labels.length === 2) {
-    return `${labels[0]} and ${labels[1]}`;
-  }
-  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+function formatCountAndPercent(count: number, total: number): Pick<OverviewMetricRow, "value" | "share"> {
+  return {
+    value: `${formatNumber(count)} / ${formatNumber(total)}`,
+    share: total > 0 ? formatPercent(count / total) : "n/a",
+  };
+}
+
+function formatOptionalRange(start: number | null, end: number | null): string {
+  return start === null || end === null
+    ? "n/a"
+    : `${formatNumber(start)} - ${formatNumber(end)}`;
 }
 
 function inputTextSourceLabel(inputTextSource: AnalysisInputSource): string {
@@ -482,39 +488,6 @@ function createOverviewPanel(titleText: string): HTMLElement {
   return panel;
 }
 
-function createStatStrip(stats: OverviewStat[], className = ""): HTMLElement {
-  const strip = document.createElement("dl");
-  strip.className = ["analysis-stat-strip", className].filter(Boolean).join(" ");
-
-  for (const stat of stats) {
-    const item = document.createElement("div");
-    item.className = "analysis-stat";
-    if (stat.title) {
-      item.title = stat.title;
-    }
-
-    const label = document.createElement("dt");
-    label.textContent = stat.label;
-
-    const value = document.createElement("dd");
-    value.className = "analysis-stat-value";
-    value.textContent = stat.value;
-
-    item.append(label, value);
-
-    if (stat.detail) {
-      const detail = document.createElement("dd");
-      detail.className = "analysis-stat-detail";
-      detail.textContent = stat.detail;
-      item.appendChild(detail);
-    }
-
-    strip.appendChild(item);
-  }
-
-  return strip;
-}
-
 function createOverviewAction(label: string, onClick: () => void): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
@@ -522,6 +495,52 @@ function createOverviewAction(label: string, onClick: () => void): HTMLButtonEle
   button.textContent = label;
   button.addEventListener("click", onClick);
   return button;
+}
+
+function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTableElement {
+  const table = document.createElement("table");
+  table.className = ["analysis-metric-table", className].filter(Boolean).join(" ");
+
+  const body = document.createElement("tbody");
+  for (const row of rows) {
+    const item = document.createElement("tr");
+    if (row.title) {
+      item.title = row.title;
+    }
+
+    const label = document.createElement("th");
+    label.scope = "row";
+    label.textContent = row.label;
+
+    const value = document.createElement("td");
+    value.className = "numeric analysis-metric-value";
+    value.textContent = row.value;
+
+    const share = document.createElement("td");
+    share.className = "numeric analysis-metric-share";
+    if (row.share) {
+      share.textContent = row.share;
+    } else {
+      share.setAttribute("aria-hidden", "true");
+    }
+
+    item.append(label, value, share);
+    body.appendChild(item);
+  }
+
+  table.appendChild(body);
+  return table;
+}
+
+function createMetricGroup(titleText: string, rows: OverviewMetricRow[], className = ""): HTMLElement {
+  const group = document.createElement("div");
+  group.className = ["analysis-metric-group", className].filter(Boolean).join(" ");
+
+  const title = document.createElement("h4");
+  title.textContent = titleText;
+
+  group.append(title, createMetricTable(rows));
+  return group;
 }
 
 function createExplanation(text: string): HTMLParagraphElement {
@@ -773,53 +792,63 @@ function buildCorpusVerdict(
   dispersion: DispersionSummary,
 ): string {
   if (corpus.documents.length === 0) {
-    return "No analysis documents are available yet.";
+    return "No analysis documents are available.";
   }
   if (corpus.totalTokens === 0) {
-    return "Analysis data is present, but no tokens were counted.";
+    return "Corpus built, but all token counts are zero.";
   }
 
-  const cautions: string[] = [];
-  if (corpus.inputTextSource === "extracted") {
-    cautions.push("extracted text");
-  }
-  if (balanceNeedsCare(corpus, balance)) {
-    cautions.push("document balance");
-  }
-  if (extractionQualityNeedsCare(lexical)) {
-    cautions.push("extraction quality");
-  }
-  if (
+  const balanceCaution = balanceNeedsCare(corpus, balance);
+  const extractionCaution = extractionQualityNeedsCare(lexical);
+  const dispersionCaution =
     dispersion.frequentTypes > 0 &&
-    dispersion.highDispersionFrequentTypes / dispersion.frequentTypes >= 0.35
-  ) {
-    cautions.push("term concentration");
+    dispersion.highDispersionFrequentTypes / dispersion.frequentTypes >= 0.35;
+
+  if (corpus.inputTextSource === "extracted") {
+    return extractionCaution
+      ? "Usable for exploration, but uncleaned extracted text needs inspection."
+      : "Usable for exploration, but built from uncleaned extracted text.";
+  }
+  if (extractionCaution) {
+    return "Usable for exploration, but inspect extraction-quality signals.";
+  }
+  if (balanceCaution && dispersionCaution) {
+    return "Usable for exploration, but balance and dispersion need care.";
+  }
+  if (balanceCaution) {
+    return "Usable for exploration, but document balance needs care.";
+  }
+  if (dispersionCaution) {
+    return "Usable for exploration, but term dispersion needs care.";
   }
 
-  if (cautions.length > 0) {
-    return `Usable for exploration, with cautions about ${joinLabels(cautions)}.`;
-  }
-
-  return "Usable for exploratory reading; no headline caution stands out in these counts.";
+  return "Usable for exploration; no headline caution in these counts.";
 }
 
 function buildBalanceReading(corpus: AnalysisCorpus, balance: CorpusBalanceSummary): ReadingFinding {
   if (corpus.documents.length === 0) {
     return {
       label: "Balance",
-      text: "No documents are available for document-level balance checks.",
+      status: "note",
+      statusKind: "note",
+      text: "No documents available for balance checks.",
     };
   }
   if (corpus.totalTokens === 0) {
     return {
       label: "Balance",
-      text: "Documents are present, but all token counts are zero.",
+      status: "caution",
+      statusKind: "caution",
+      text: "All document token counts are zero.",
     };
   }
   if (corpus.documents.length === 1) {
     return {
       label: "Balance",
-      text: `One document supplies all ${formatNumber(corpus.totalTokens)} tokens, so document imbalance cannot be assessed.`,
+      status: "exploratory",
+      statusKind: "exploratory",
+      text: "Single-document corpus; balance cannot be assessed.",
+      explanation: `The one document supplies all ${formatNumber(corpus.totalTokens)} tokens.`,
     };
   }
 
@@ -829,41 +858,65 @@ function buildBalanceReading(corpus: AnalysisCorpus, balance: CorpusBalanceSumma
   const topShare = balance.topDocumentShare === null
     ? "n/a"
     : formatPercent(balance.topDocumentShare);
-  const core = `the largest document is ${largestShare} of tokens and the top ${formatNumber(balance.topDocumentCount)} are ${topShare}`;
+  const text = `Largest document: ${largestShare}; top ${formatNumber(balance.topDocumentCount)}: ${topShare}.`;
 
   if (balanceNeedsCare(corpus, balance)) {
     return {
       label: "Balance",
-      text: `${core}. Treat raw aggregate frequencies with care.`,
+      status: "caution",
+      statusKind: "caution",
+      text,
+      explanation: "Uneven document lengths can let a few files dominate aggregate frequencies.",
     };
   }
 
   return {
     label: "Balance",
-    text: `${core}. Document-level checks are still useful for close reading.`,
+    status: "note",
+    statusKind: "note",
+    text,
+    explanation: "Document-level checks are still useful when comparing terms across files.",
   };
 }
 
-function buildExtractionQualityReading(lexical: LexicalNoiseSummary): ReadingFinding {
+function buildExtractionQualityReading(corpus: AnalysisCorpus, lexical: LexicalNoiseSummary): ReadingFinding {
   if (lexical.uniqueTypes === 0) {
     return {
       label: "Extraction quality",
-      text: "No token types were counted, so extraction-quality indicators are unavailable.",
+      status: "note",
+      statusKind: "note",
+      text: "No token types counted.",
     };
   }
 
   const numericText = formatCountWithShare(lexical.numericOnlyTypes, lexical.uniqueTypes);
   const singleCharacterText = formatCountWithShare(lexical.singleCharacterTypes, lexical.uniqueTypes);
+  const text = `Numeric-only: ${numericText}; single-character: ${singleCharacterText}.`;
   if (extractionQualityNeedsCare(lexical)) {
     return {
       label: "Extraction quality",
-      text: `${numericText} are numeric-only and ${singleCharacterText} are single-character types; extracted text may include table, page, reference, or OCR fragments.`,
+      status: "fix available",
+      statusKind: "fix",
+      text,
+      explanation: "These token forms can come from tables, page numbers, references, formulae, or OCR leftovers.",
+    };
+  }
+  if (corpus.inputTextSource === "extracted") {
+    return {
+      label: "Extraction quality",
+      status: "exploratory",
+      statusKind: "exploratory",
+      text,
+      explanation: "The corpus is built from extracted text rather than processed text, so inspect and clean before serious analysis.",
     };
   }
 
   return {
     label: "Extraction quality",
-    text: `${numericText} are numeric-only and ${singleCharacterText} are single-character types; no high extraction-noise signal stands out here.`,
+    status: "note",
+    statusKind: "note",
+    text,
+    explanation: "Numeric-only and single-character types are useful data-quality checks, not lexical-richness measures.",
   };
 }
 
@@ -871,13 +924,18 @@ function buildLexicalRichnessSummary(lexical: LexicalNoiseSummary): ReadingFindi
   if (lexical.uniqueTypes === 0) {
     return {
       label: "Lexical richness",
+      status: "note",
+      statusKind: "note",
       text: "No token types were counted.",
     };
   }
 
   return {
     label: "Lexical richness",
-    text: `${formatCountWithShare(lexical.hapaxLegomena, lexical.uniqueTypes)} are hapax and ${formatCountWithShare(lexical.repeatedTypes, lexical.uniqueTypes)} occur three or more times. Raw TTR is length-sensitive.`,
+    status: "note",
+    statusKind: "note",
+    text: `Hapax: ${formatCountWithShare(lexical.hapaxLegomena, lexical.uniqueTypes)}; dis legomena: ${formatCountWithShare(lexical.disLegomena, lexical.uniqueTypes)}.`,
+    explanation: `Raw TTR is ${lexical.typeTokenRatio === null ? "n/a" : formatFixedNumber(lexical.typeTokenRatio, 3)} and is length-sensitive.`,
   };
 }
 
@@ -885,13 +943,17 @@ function buildDispersionReading(corpus: AnalysisCorpus, dispersion: DispersionSu
   if (corpus.documents.length < 2) {
     return {
       label: "Dispersion",
-      text: "Dispersion needs at least two documents.",
+      status: "exploratory",
+      statusKind: "exploratory",
+      text: "Needs at least two documents.",
     };
   }
   if (dispersion.frequentTypes === 0) {
     return {
       label: "Dispersion",
-      text: `No terms have frequency at least ${formatNumber(FREQUENT_TERM_THRESHOLD)}, so frequent-term concentration is not summarised.`,
+      status: "note",
+      statusKind: "note",
+      text: `No types reach frequency ${formatNumber(FREQUENT_TERM_THRESHOLD)}.`,
     };
   }
 
@@ -899,16 +961,22 @@ function buildDispersionReading(corpus: AnalysisCorpus, dispersion: DispersionSu
     dispersion.highDispersionFrequentTypes,
     dispersion.frequentTypes,
   );
-  if (dispersion.highDispersionFrequentTypes > 0) {
+  if (dispersion.highDispersionFrequentTypes / dispersion.frequentTypes >= 0.35) {
     return {
       label: "Dispersion",
-      text: `${highDpText} frequent types have DP at least ${formatFixedNumber(HIGH_DISPERSION_THRESHOLD, 2)}. Inspect concentrated terms before treating them as corpus-wide vocabulary.`,
+      status: "caution",
+      statusKind: "caution",
+      text: `High-DP frequent types: ${highDpText}.`,
+      explanation: `DP at least ${formatFixedNumber(HIGH_DISPERSION_THRESHOLD, 2)} means a frequent type is concentrated rather than evenly distributed.`,
     };
   }
 
   return {
     label: "Dispersion",
-    text: `No frequent types have DP at least ${formatFixedNumber(HIGH_DISPERSION_THRESHOLD, 2)} in this overview.`,
+    status: "note",
+    statusKind: "note",
+    text: `High-DP frequent types: ${highDpText}.`,
+    explanation: `DP at least ${formatFixedNumber(HIGH_DISPERSION_THRESHOLD, 2)} marks frequent types concentrated in fewer documents.`,
   };
 }
 
@@ -919,7 +987,7 @@ function buildCorpusReading(
   dispersion: DispersionSummary,
 ): CorpusReading {
   const actions: HTMLElement[] = [];
-  if (extractionQualityNeedsCare(lexical)) {
+  if (corpus.inputTextSource === "extracted" || extractionQualityNeedsCare(lexical)) {
     actions.push(createOverviewAction("Clean in Prepare", () => setActiveWorkbench("prepare")));
   }
   if (dispersion.frequentTypes > 0) {
@@ -930,7 +998,7 @@ function buildCorpusReading(
     verdict: buildCorpusVerdict(corpus, balance, lexical, dispersion),
     findings: [
       buildBalanceReading(corpus, balance),
-      buildExtractionQualityReading(lexical),
+      buildExtractionQualityReading(corpus, lexical),
       buildLexicalRichnessSummary(lexical),
       buildDispersionReading(corpus, dispersion),
     ],
@@ -986,14 +1054,41 @@ function renderCorpusReading(
   list.className = "analysis-reading-findings";
   for (const finding of reading.findings) {
     const item = document.createElement("li");
+    item.className = `analysis-reading-finding is-${finding.statusKind}`;
+
+    const dot = document.createElement("span");
+    dot.className = "analysis-reading-status-dot";
+    dot.setAttribute("aria-hidden", "true");
+
+    const body = document.createElement("div");
+    body.className = "analysis-reading-finding-body";
+
+    const heading = document.createElement("span");
+    heading.className = "analysis-reading-finding-heading";
 
     const label = document.createElement("strong");
-    label.textContent = `${finding.label}: `;
+    label.textContent = finding.label;
+
+    const status = document.createElement("span");
+    status.className = "analysis-reading-status";
+    status.textContent = ` - ${finding.status}`;
+
+    heading.append(label, status);
 
     const text = document.createElement("span");
+    text.className = "analysis-reading-finding-text";
     text.textContent = finding.text;
 
-    item.append(label, text);
+    body.append(heading, text);
+
+    if (overviewExplanationsVisible && finding.explanation) {
+      const explanation = document.createElement("p");
+      explanation.className = "analysis-reading-finding-explanation";
+      explanation.textContent = finding.explanation;
+      body.appendChild(explanation);
+    }
+
+    item.append(dot, body);
     list.appendChild(item);
   }
 
@@ -1011,13 +1106,12 @@ function renderCorpusReading(
 
 function renderCorpusSnapshot(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Corpus snapshot");
-  panel.appendChild(createStatStrip([
-    { label: "Documents", value: formatNumber(corpus.documents.length) },
+  panel.appendChild(createMetricTable([
     { label: "Tokens", value: formatNumber(corpus.totalTokens) },
     { label: "Unique types", value: formatNumber(corpus.totalTypes) },
-    { label: "Sources", value: formatNumber(corpus.sourceCount) },
-    { label: "Input", value: inputTextSourceDisplayLabel(corpus.inputTextSource) },
-  ], "analysis-snapshot-strip"));
+    { label: "Documents", value: formatNumber(corpus.documents.length) },
+    { label: "Input source", value: inputTextSourceDisplayLabel(corpus.inputTextSource) },
+  ], "analysis-snapshot-table"));
   return panel;
 }
 
@@ -1078,57 +1172,29 @@ function renderCorpusBalance(corpus: AnalysisCorpus, balance: CorpusBalanceSumma
   const panel = createOverviewPanel("Corpus balance");
   panel.appendChild(renderDocumentLengthDistribution(corpus, balance));
 
-  panel.appendChild(createStatStrip([
-    {
-      label: "Largest document",
-      value: balance.largestDocument ? formatNumber(balance.largestDocument.tokenCount) : "None",
-      detail: balance.largestDocument ? documentName(balance.largestDocument) : "No non-empty documents",
-      title: balance.largestDocument ? documentName(balance.largestDocument) : undefined,
-    },
-    {
-      label: "Smallest non-empty",
-      value: balance.smallestNonEmptyDocument
-        ? formatNumber(balance.smallestNonEmptyDocument.tokenCount)
-        : "None",
-      detail: balance.smallestNonEmptyDocument
-        ? documentName(balance.smallestNonEmptyDocument)
-        : "No non-empty documents",
-      title: balance.smallestNonEmptyDocument
-        ? documentName(balance.smallestNonEmptyDocument)
-        : undefined,
-    },
+  panel.appendChild(createMetricGroup("Descriptive statistics", [
     { label: "Median length", value: formatOptionalNumber(balance.medianTokens) },
+    { label: "IQR (Q1-Q3)", value: formatOptionalRange(balance.q1Tokens, balance.q3Tokens) },
+    { label: "Range (min-max)", value: formatOptionalRange(balance.minTokens, balance.maxTokens) },
     {
-      label: "IQR length",
-      value: formatOptionalNumber(balance.iqrTokens),
-      detail: balance.q1Tokens === null || balance.q3Tokens === null
-        ? "No quartiles available"
-        : `Q1 ${formatNumber(balance.q1Tokens)} / Q3 ${formatNumber(balance.q3Tokens)}`,
-    },
-    {
-      label: "Min / max",
-      value: balance.minTokens === null || balance.maxTokens === null
-        ? "n/a"
-        : `${formatNumber(balance.minTokens)} / ${formatNumber(balance.maxTokens)}`,
-    },
-    {
-      label: "Largest / smallest",
+      label: "Largest / smallest ratio",
       value: balance.lengthRatio === null ? "n/a" : `${formatNumber(balance.lengthRatio, 1)}x`,
     },
-    { label: "Largest share", value: formatOptionalPercent(balance.largestDocumentShare) },
+    { label: "Largest document share", value: formatOptionalPercent(balance.largestDocumentShare) },
     {
       label: balance.topDocumentCount > 0
-        ? `Top ${formatNumber(balance.topDocumentCount)} share`
-        : "Top document share",
+        ? `Top-${formatNumber(balance.topDocumentCount)} share`
+        : "Top-3 share",
       value: formatOptionalPercent(balance.topDocumentShare),
     },
     {
       label: "Effective documents",
       value: balance.effectiveDocumentCount === null
         ? "n/a"
-        : `${formatNumber(balance.effectiveDocumentCount, 1)} of ${formatNumber(corpus.documents.length)}`,
+        : `${formatNumber(balance.effectiveDocumentCount, 1)} / ${formatNumber(corpus.documents.length)}`,
     },
-  ], "analysis-balance-strip"));
+    { label: "Documents", value: formatNumber(corpus.documents.length) },
+  ], "analysis-balance-metrics"));
 
   if (overviewExplanationsVisible) {
     panel.appendChild(createExplanation(
@@ -1147,18 +1213,17 @@ function renderLexicalRichness(lexical: LexicalNoiseSummary): HTMLElement {
     { label: "3+ occurrences", count: lexical.repeatedTypes, className: "is-repeated" },
   ]));
 
-  panel.appendChild(createStatStrip([
+  panel.appendChild(createMetricTable([
     { label: "Unique types", value: formatNumber(lexical.uniqueTypes) },
     {
-      label: "TTR (length-sensitive)",
+      label: "Raw TTR",
       value: lexical.typeTokenRatio === null ? "n/a" : formatFixedNumber(lexical.typeTokenRatio, 3),
-      detail: "Raw type-token ratio",
     },
-  ], "analysis-compact-strip"));
+  ], "analysis-compact-table"));
 
   if (overviewExplanationsVisible) {
     panel.appendChild(createExplanation(
-      "Hapax legomena occur once; dis legomena occur twice. Raw TTR falls as corpus size grows, so it is not a fair lexical-diversity comparison across corpora of different lengths.",
+      "Hapax legomena occur once; dis legomena occur twice. Raw TTR falls as corpus size grows. The frequency-class colour ramp is neutral: no class is better than another.",
     ));
   }
 
@@ -1173,16 +1238,16 @@ function renderExtractionQuality(lexical: LexicalNoiseSummary): HTMLElement {
     { label: "Single-character", count: lexical.singleCharacterTypes, className: "is-single" },
   ]));
 
-  panel.appendChild(createStatStrip([
+  panel.appendChild(createMetricTable([
     {
       label: "Numeric-only types",
-      value: formatCountWithShare(lexical.numericOnlyTypes, lexical.uniqueTypes),
+      ...formatCountAndPercent(lexical.numericOnlyTypes, lexical.uniqueTypes),
     },
     {
       label: "Single-character types",
-      value: formatCountWithShare(lexical.singleCharacterTypes, lexical.uniqueTypes),
+      ...formatCountAndPercent(lexical.singleCharacterTypes, lexical.uniqueTypes),
     },
-  ], "analysis-compact-strip"));
+  ], "analysis-compact-table"));
 
   if (overviewExplanationsVisible) {
     panel.appendChild(createExplanation(
@@ -1204,40 +1269,39 @@ function renderDispersionProfile(corpus: AnalysisCorpus, dispersion: DispersionS
     return panel;
   }
 
-  panel.appendChild(createStatStrip([
-    {
-      label: "High-DP frequent types",
-      value: dispersion.frequentTypes === 0
-        ? "n/a"
-        : formatCountWithShare(dispersion.highDispersionFrequentTypes, dispersion.frequentTypes),
-      detail: `DP at least ${formatFixedNumber(HIGH_DISPERSION_THRESHOLD, 2)}`,
-    },
-    {
-      label: "Types in all documents",
-      value: formatCountWithShare(dispersion.allDocumentTypes, corpus.totalTypes),
-    },
+  panel.appendChild(createMetricGroup(`Across all ${formatNumber(corpus.totalTypes)} types`, [
     {
       label: "Types in one document only",
-      value: formatCountWithShare(dispersion.oneDocumentTypes, corpus.totalTypes),
+      ...formatCountAndPercent(dispersion.oneDocumentTypes, corpus.totalTypes),
     },
     {
-      label: "Frequent types",
-      value: formatCountWithShare(dispersion.frequentTypes, corpus.totalTypes),
-      detail: `Frequency at least ${formatNumber(FREQUENT_TERM_THRESHOLD)}`,
+      label: `Types in all ${formatNumber(dispersion.documentCount)} documents`,
+      ...formatCountAndPercent(dispersion.allDocumentTypes, corpus.totalTypes),
     },
     {
-      label: "Median DP for frequent types",
-      value: dispersion.medianFrequentDispersion === null
-        ? "n/a"
-        : formatFixedNumber(dispersion.medianFrequentDispersion, 2),
+      label: `Frequent types (freq >= ${formatNumber(FREQUENT_TERM_THRESHOLD)})`,
+      ...formatCountAndPercent(dispersion.frequentTypes, corpus.totalTypes),
     },
-  ], "analysis-dispersion-strip"));
+  ], "analysis-dispersion-group"));
 
   if (dispersion.frequentTypes === 0) {
     const note = document.createElement("p");
     note.className = "analysis-panel-note";
-    note.textContent = `No terms have frequency at least ${formatNumber(FREQUENT_TERM_THRESHOLD)}.`;
+    note.textContent = `No terms have frequency at least ${formatNumber(FREQUENT_TERM_THRESHOLD)}; frequent-term DP statistics are unavailable.`;
     panel.appendChild(note);
+  } else {
+    panel.appendChild(createMetricGroup(`Among the ${formatNumber(dispersion.frequentTypes)} frequent types`, [
+      {
+        label: `High-DP types (DP >= ${formatFixedNumber(HIGH_DISPERSION_THRESHOLD, 2)})`,
+        ...formatCountAndPercent(dispersion.highDispersionFrequentTypes, dispersion.frequentTypes),
+      },
+      {
+        label: "Median DP",
+        value: dispersion.medianFrequentDispersion === null
+          ? "n/a"
+          : formatFixedNumber(dispersion.medianFrequentDispersion, 2),
+      },
+    ], "analysis-dispersion-group"));
   }
 
   if (overviewExplanationsVisible) {
