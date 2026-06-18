@@ -271,15 +271,38 @@
                     <span>Token search</span>
                     <input id="frequency-search-input" type="search" placeholder="Filter tokens..." autocomplete="off" />
                   </label>
+                  <label for="frequency-match-mode">
+                    <span>Match mode</span>
+                    <select id="frequency-match-mode">
+                      <option value="contains">Contains</option>
+                      <option value="exact">Exact</option>
+                      <option value="startsWith">Starts with</option>
+                      <option value="regex">Regex</option>
+                    </select>
+                  </label>
                   <label for="frequency-min-input">
                     <span>Minimum frequency</span>
                     <input id="frequency-min-input" type="number" min="1" step="1" value="1" />
                   </label>
+                  <label class="frequency-stopword-control" for="frequency-hide-stopwords">
+                    <span>Stopwords (English)</span>
+                    <span class="frequency-checkbox-row">
+                      <input id="frequency-hide-stopwords" type="checkbox" />
+                      Hide stopwords
+                    </span>
+                  </label>
+                  <div class="frequency-file-scope-control">
+                    <span>File scope</span>
+                    <button id="frequency-files-button" type="button" class="secondary-btn">Files: 0 of 0</button>
+                  </div>
                 </div>
+                <p class="frequency-search-note">Tokens are matched against the current lowercased token index.</p>
+                <div id="frequency-search-error" class="frequency-search-error hidden" role="alert"></div>
                 <div class="frequency-table-wrap">
                   <table class="frequency-table">
                     <thead id="frequency-table-head">
                       <tr>
+                        <th class="frequency-expand-heading">Expand</th>
                         <th>
                           <button type="button" class="frequency-sort" data-sort="token">Token</button>
                         </th>
@@ -287,22 +310,25 @@
                           <button type="button" class="frequency-sort frequency-sort-right" data-sort="frequency">Frequency</button>
                         </th>
                         <th>
-                          <button type="button" class="frequency-sort frequency-sort-right" data-sort="documentFrequency">Document Frequency</button>
+                          <button type="button" class="frequency-sort frequency-sort-right" data-sort="range">Range (docs)</button>
                         </th>
                         <th>
-                          <button type="button" class="frequency-sort frequency-sort-right" data-sort="rate">Rate per 10k</button>
+                          <button type="button" class="frequency-sort frequency-sort-right" data-sort="rate">Per 10k</button>
                         </th>
-                        <th class="frequency-bar-heading">Relative</th>
+                        <th>
+                          <button type="button" class="frequency-sort frequency-sort-right" data-sort="dispersion">Dispersion (DP)</button>
+                        </th>
                       </tr>
                     </thead>
                     <tbody id="frequency-table-body">
                       <tr>
-                        <td colspan="5" class="frequency-empty">Build an analysis corpus to populate the frequency list.</td>
+                        <td colspan="6" class="frequency-empty">Build an analysis corpus to populate the frequency list.</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
                 <span id="frequency-limit-note" class="frequency-limit-note"></span>
+                <p class="frequency-explanation">Range = number of selected files the token occurs in. DP = Deviation of Proportions; 0 is evenly distributed relative to file sizes, 1 is highly concentrated.</p>
               </section>
             </div>
           </div>
@@ -311,6 +337,40 @@
     </main>
 
     <footer id="status-bar">Ready</footer>
+
+    <div id="frequency-files-modal" class="modal hidden" role="dialog" aria-modal="true"
+      aria-labelledby="frequency-files-title" aria-describedby="frequency-files-description">
+      <div class="modal-content frequency-files-modal-content">
+        <button
+          id="frequency-files-close-button"
+          class="modal-close-btn"
+          type="button"
+          aria-label="Close file scope"
+        >
+          &times;
+        </button>
+        <h2 id="frequency-files-title">Choose files</h2>
+        <p id="frequency-files-description" class="modal-description">
+          Frequency counts, rates, range, and DP use only the selected files.
+        </p>
+
+        <label class="frequency-files-search" for="frequency-files-search-input">
+          <span>Search documents</span>
+          <input id="frequency-files-search-input" type="search" autocomplete="off" />
+        </label>
+        <div class="frequency-files-actions">
+          <button id="frequency-files-select-all" class="secondary-btn" type="button">Select all</button>
+          <button id="frequency-files-clear-all" class="secondary-btn" type="button">Clear all</button>
+        </div>
+        <div id="frequency-files-list" class="frequency-files-list"></div>
+
+        <div class="modal-actions">
+          <span id="frequency-files-status" class="frequency-files-status"></span>
+          <button id="frequency-files-cancel" class="secondary-btn" type="button">Cancel</button>
+          <button id="frequency-files-apply" class="primary-btn" type="button">Apply</button>
+        </div>
+      </div>
+    </div>
 
     <!-- About Modal -->
     <div id="about-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="about-title"
