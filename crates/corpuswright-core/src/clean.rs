@@ -25,6 +25,24 @@ lazy_static! {
     .unwrap();
     static ref RE_JOIN_LINE_BREAKS: Regex = Regex::new(r"[ \t]*\r?\n[ \t]*").unwrap();
     static ref RE_EXCESSIVE_SPACES: Regex = Regex::new(r" {2,}").unwrap();
+    static ref RE_EXCESSIVE_HORIZONTAL_WHITESPACE: Regex = Regex::new(r"[ \t]{2,}").unwrap();
+    static ref RE_PAGE_MARKER_ARABIC: Regex = Regex::new(r"^\d{1,5}$").unwrap();
+    static ref RE_PAGE_MARKER_ROMAN: Regex =
+        Regex::new(r"(?i)^M{0,4}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$")
+            .unwrap();
+    static ref RE_PAGE_MARKER_LABEL: Regex =
+        Regex::new(r"(?i)^(?:page|pag\.|p\.|página)\s*(\d{1,5}|[ivxlcdm]{1,15})$")
+            .unwrap();
+    static ref RE_URL_ONLY_LINE: Regex =
+        Regex::new(r"(?i)^(?:https?://|www\.)[^\s<>]+$").unwrap();
+    static ref RE_EMAIL_ONLY_LINE: Regex =
+        Regex::new(r"(?i)^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$").unwrap();
+    static ref RE_DOI_ONLY_LINE: Regex =
+        Regex::new(r"(?i)^(?:doi:\s*)?10\.\d{4,9}/\S+$").unwrap();
+    static ref RE_FIGURE_TABLE_CAPTION_LINE: Regex = Regex::new(
+        r"(?i)^(?:figure|fig\.|table|tabela|quadro|gr[aá]fico)\s+(?:\d+|[ivxlcdm]+)(?:[\s:.\-–—].*)?$"
+    )
+    .unwrap();
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
@@ -67,6 +85,20 @@ pub enum PdfOcrQuality {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[ts(export)]
 pub struct CleaningConfig {
+    #[serde(default)]
+    pub normalize_whitespace_line_endings: bool,
+    #[serde(default)]
+    pub repair_wrapped_pdf_line_breaks: bool,
+    #[serde(default)]
+    pub remove_isolated_page_markers: bool,
+    #[serde(default)]
+    pub remove_url_only_lines: bool,
+    #[serde(default)]
+    pub remove_email_only_lines: bool,
+    #[serde(default)]
+    pub remove_doi_only_lines: bool,
+    #[serde(default)]
+    pub remove_figure_table_captions: bool,
     pub join_line_breaks: bool,
     pub normalize_irregular_line_breaks: bool,
     pub remove_standalone_page_numbers: bool,
@@ -181,11 +213,38 @@ pub struct CleanedStructuredDocument {
     pub page_texts: Option<Vec<String>>,
 }
 
+/// Result of a text-cleaning pass, including rule-level removal counts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CleanTextResult {
+    pub text: String,
+    pub report: CleaningReport,
+}
+
+/// Rule-level removal information from deterministic cleaning.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CleaningReport {
+    pub rules: Vec<CleaningRuleReport>,
+}
+
+/// Count and example information for one deterministic cleaning rule.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CleaningRuleReport {
+    pub rule_id: &'static str,
+    pub removed_count: usize,
+    pub examples: Vec<String>,
+}
+
 /// Processes a string according to the given cleaning rules.
 pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
+    clean_text_with_report(text, config).text
+}
+
+/// Processes a string and returns countable deterministic cleaning effects.
+pub fn clean_text_with_report(text: &str, config: &CleaningConfig) -> CleanTextResult {
+    let mut report = CleaningReport::default();
     let mut cleaned = text.to_string();
 
-    if config.normalize_line_endings {
+    if config.normalize_whitespace_line_endings || config.normalize_line_endings {
         cleaned = cleaned.replace("\r\n", "\n").replace('\r', "\n");
     }
 
@@ -222,11 +281,61 @@ pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
         cleaned = RE_STANDALONE_ROMAN.replace_all(&cleaned, "").to_string();
     }
 
-    if config.remove_obvious_extraction_noise {
-        cleaned = remove_obvious_extraction_noise_lines(&cleaned);
+    if config.remove_isolated_page_markers {
+        cleaned = apply_line_removal(
+            &cleaned,
+            &mut report,
+            "remove_isolated_page_markers",
+            is_isolated_page_marker_line,
+        );
     }
 
-    if config.normalize_irregular_line_breaks {
+    if config.remove_url_only_lines {
+        cleaned = apply_line_removal(
+            &cleaned,
+            &mut report,
+            "remove_url_only_lines",
+            is_url_only_line,
+        );
+    }
+
+    if config.remove_email_only_lines {
+        cleaned = apply_line_removal(
+            &cleaned,
+            &mut report,
+            "remove_email_only_lines",
+            is_email_only_line,
+        );
+    }
+
+    if config.remove_doi_only_lines {
+        cleaned = apply_line_removal(
+            &cleaned,
+            &mut report,
+            "remove_doi_only_lines",
+            is_doi_only_line,
+        );
+    }
+
+    if config.remove_figure_table_captions {
+        cleaned = apply_line_removal(
+            &cleaned,
+            &mut report,
+            "remove_figure_table_captions",
+            is_figure_table_caption_line,
+        );
+    }
+
+    if config.remove_obvious_extraction_noise {
+        cleaned = apply_line_removal(
+            &cleaned,
+            &mut report,
+            "remove_obvious_extraction_noise",
+            should_remove_obvious_extraction_noise_line,
+        );
+    }
+
+    if config.repair_wrapped_pdf_line_breaks || config.normalize_irregular_line_breaks {
         cleaned = normalize_irregular_line_breaks(&cleaned);
     }
 
@@ -249,7 +358,11 @@ pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
         }
     }
 
-    if config.trim_lines {
+    if config.normalize_whitespace_line_endings {
+        cleaned = normalize_horizontal_whitespace(&cleaned);
+    }
+
+    if config.normalize_whitespace_line_endings || config.trim_lines {
         cleaned = cleaned
             .split('\n')
             .map(str::trim)
@@ -257,11 +370,14 @@ pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
             .join("\n");
     }
 
-    if config.collapse_blank_lines {
+    if config.normalize_whitespace_line_endings || config.collapse_blank_lines {
         cleaned = collapse_blank_lines(&cleaned);
     }
 
-    cleaned
+    CleanTextResult {
+        text: cleaned,
+        report,
+    }
 }
 
 /// Cleans a page-aware document without exposing stale page metadata.
@@ -494,6 +610,17 @@ fn normalize_irregular_line_breaks(text: &str) -> String {
     paragraphs.join("\n\n")
 }
 
+fn normalize_horizontal_whitespace(text: &str) -> String {
+    text.split('\n')
+        .map(|line| {
+            RE_EXCESSIVE_HORIZONTAL_WHITESPACE
+                .replace_all(line, " ")
+                .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn collapse_blank_lines(text: &str) -> String {
     let mut collapsed = String::with_capacity(text.len());
     let mut newline_count = 0usize;
@@ -513,8 +640,33 @@ fn collapse_blank_lines(text: &str) -> String {
     collapsed
 }
 
-fn remove_obvious_extraction_noise_lines(text: &str) -> String {
+struct LineRemovalResult {
+    text: String,
+    removed_count: usize,
+    examples: Vec<String>,
+}
+
+fn apply_line_removal(
+    text: &str,
+    report: &mut CleaningReport,
+    rule_id: &'static str,
+    should_remove: fn(&str) -> bool,
+) -> String {
+    let result = remove_lines_matching(text, should_remove);
+    if result.removed_count > 0 {
+        report.rules.push(CleaningRuleReport {
+            rule_id,
+            removed_count: result.removed_count,
+            examples: result.examples,
+        });
+    }
+    result.text
+}
+
+fn remove_lines_matching(text: &str, should_remove: fn(&str) -> bool) -> LineRemovalResult {
     let mut cleaned = String::with_capacity(text.len());
+    let mut removed_count = 0usize;
+    let mut examples = Vec::new();
 
     for line in text.split_inclusive('\n') {
         let without_newline = line.strip_suffix('\n').unwrap_or(line);
@@ -522,14 +674,101 @@ fn remove_obvious_extraction_noise_lines(text: &str) -> String {
             .strip_suffix('\r')
             .unwrap_or(without_newline);
 
-        if should_remove_obvious_extraction_noise_line(content) {
+        if should_remove(content) {
+            removed_count += 1;
+            let example = content.trim();
+            if !example.is_empty() && examples.len() < 3 {
+                examples.push(example.to_string());
+            }
             continue;
         }
 
         cleaned.push_str(line);
     }
 
-    cleaned
+    LineRemovalResult {
+        text: cleaned,
+        removed_count,
+        examples,
+    }
+}
+
+pub(crate) fn is_isolated_page_marker_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.chars().count() > 40 {
+        return false;
+    }
+
+    let unframed = trim_page_marker_frame(trimmed);
+    if unframed.is_empty() {
+        return false;
+    }
+
+    is_bare_page_marker(unframed)
+}
+
+fn trim_page_marker_frame(line: &str) -> &str {
+    let mut trimmed = line.trim();
+    loop {
+        let next = trimmed
+            .trim_start_matches(['-', '—', '–'])
+            .trim()
+            .trim_end_matches(['-', '—', '–'])
+            .trim();
+        if next == trimmed {
+            return trimmed;
+        }
+        trimmed = next;
+    }
+}
+
+fn is_bare_page_marker(marker: &str) -> bool {
+    let marker = marker.trim();
+
+    RE_PAGE_MARKER_ARABIC.is_match(marker)
+        || is_conservative_roman_page_marker(marker)
+        || is_labelled_page_marker(marker)
+}
+
+fn is_conservative_roman_page_marker(marker: &str) -> bool {
+    is_roman_page_marker(marker, 2)
+}
+
+fn is_labelled_page_marker(marker: &str) -> bool {
+    let Some(captures) = RE_PAGE_MARKER_LABEL.captures(marker) else {
+        return false;
+    };
+    let marker = captures.get(1).map(|value| value.as_str()).unwrap_or("");
+    RE_PAGE_MARKER_ARABIC.is_match(marker) || is_roman_page_marker(marker, 1)
+}
+
+fn is_roman_page_marker(marker: &str, min_len: usize) -> bool {
+    let trimmed = marker.trim();
+    let roman_len = trimmed.chars().filter(|c| !c.is_whitespace()).count();
+    roman_len >= min_len
+        && roman_len <= 15
+        && trimmed.chars().all(|c| c.is_ascii_alphabetic())
+        && RE_PAGE_MARKER_ROMAN.is_match(trimmed)
+}
+
+fn is_url_only_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    !trimmed.is_empty() && RE_URL_ONLY_LINE.is_match(trimmed)
+}
+
+fn is_email_only_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    !trimmed.is_empty() && RE_EMAIL_ONLY_LINE.is_match(trimmed)
+}
+
+fn is_doi_only_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    !trimmed.is_empty() && RE_DOI_ONLY_LINE.is_match(trimmed)
+}
+
+fn is_figure_table_caption_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    !trimmed.is_empty() && RE_FIGURE_TABLE_CAPTION_LINE.is_match(trimmed)
 }
 
 fn should_remove_obvious_extraction_noise_line(line: &str) -> bool {
@@ -959,6 +1198,19 @@ mod tests {
         assert_eq!(clean_text("a\n\n\n\nb", &config), "a\n\nb");
     }
 
+    #[test]
+    fn normalizes_grouped_whitespace_and_line_endings() {
+        let config = CleaningConfig {
+            normalize_whitespace_line_endings: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text("  a  \r\n\r\n\r\n b\t\tc  ", &config),
+            "a\n\nb c"
+        );
+    }
+
     fn obvious_noise_config() -> CleaningConfig {
         CleaningConfig {
             remove_obvious_extraction_noise: true,
@@ -1219,6 +1471,28 @@ mod tests {
 
         let config: CleaningConfig = serde_json::from_value(value).unwrap();
         assert!(!config.remove_obvious_extraction_noise);
+    }
+
+    #[test]
+    fn cleaning_config_deserializes_missing_consolidated_options() {
+        let mut value = serde_json::to_value(CleaningConfig::default()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("normalize_whitespace_line_endings");
+        object.remove("repair_wrapped_pdf_line_breaks");
+        object.remove("remove_isolated_page_markers");
+        object.remove("remove_url_only_lines");
+        object.remove("remove_email_only_lines");
+        object.remove("remove_doi_only_lines");
+        object.remove("remove_figure_table_captions");
+
+        let config: CleaningConfig = serde_json::from_value(value).unwrap();
+        assert!(!config.normalize_whitespace_line_endings);
+        assert!(!config.repair_wrapped_pdf_line_breaks);
+        assert!(!config.remove_isolated_page_markers);
+        assert!(!config.remove_url_only_lines);
+        assert!(!config.remove_email_only_lines);
+        assert!(!config.remove_doi_only_lines);
+        assert!(!config.remove_figure_table_captions);
     }
 
     #[test]
@@ -1516,6 +1790,70 @@ mod tests {
     }
 
     #[test]
+    fn removes_isolated_page_markers() {
+        let config = CleaningConfig {
+            remove_isolated_page_markers: true,
+            ..CleaningConfig::default()
+        };
+        let input = [
+            "Intro",
+            "23",
+            "- 23 -",
+            "— 23 —",
+            "Page 23",
+            "page 23",
+            "p. 23",
+            "pag. 23",
+            "Pag. 23",
+            "Página 23",
+            "IV",
+            "- iv -",
+            "Body",
+        ]
+        .join("\n");
+
+        assert_eq!(clean_text(&input, &config), "Intro\nBody");
+    }
+
+    #[test]
+    fn isolated_page_markers_preserve_ordinary_prose() {
+        let config = CleaningConfig {
+            remove_isolated_page_markers: true,
+            ..CleaningConfig::default()
+        };
+        let input = [
+            "In 2020, the model changed.",
+            "Chapter 2 introduces regression.",
+            "Table 4 shows the coefficients.",
+            "The value 23 is significant.",
+            "I argue that this matters.",
+            "I",
+        ]
+        .join("\n");
+
+        assert_eq!(clean_text(&input, &config), input);
+    }
+
+    #[test]
+    fn isolated_page_marker_report_counts_examples() {
+        let config = CleaningConfig {
+            remove_isolated_page_markers: true,
+            ..CleaningConfig::default()
+        };
+
+        let result = clean_text_with_report("Title\n23\nPage 24\nBody", &config);
+
+        assert_eq!(result.text, "Title\nBody");
+        assert_eq!(result.report.rules.len(), 1);
+        assert_eq!(
+            result.report.rules[0].rule_id,
+            "remove_isolated_page_markers"
+        );
+        assert_eq!(result.report.rules[0].removed_count, 2);
+        assert_eq!(result.report.rules[0].examples, vec!["23", "Page 24"]);
+    }
+
+    #[test]
     fn removes_standalone_roman_page_numbers() {
         let config = CleaningConfig {
             remove_standalone_roman_page_numbers: true,
@@ -1554,6 +1892,65 @@ mod tests {
             clean_text("This is --- page 12 --- test", &config),
             "This is --- page 12 --- test"
         ); // only removes whole line
+    }
+
+    #[test]
+    fn removes_url_email_and_doi_only_lines() {
+        let config = CleaningConfig {
+            remove_url_only_lines: true,
+            remove_email_only_lines: true,
+            remove_doi_only_lines: true,
+            ..CleaningConfig::default()
+        };
+
+        let input = [
+            "Before",
+            "https://example.com",
+            "www.example.org/path",
+            "user@example.com",
+            "doi:10.1234/example",
+            "10.1000/xyz123",
+            "See https://example.com inline.",
+            "Contact user@example.com for details.",
+            "The DOI is 10.1000/xyz123.",
+            "After",
+        ]
+        .join("\n");
+
+        let expected = [
+            "Before",
+            "See https://example.com inline.",
+            "Contact user@example.com for details.",
+            "The DOI is 10.1000/xyz123.",
+            "After",
+        ]
+        .join("\n");
+
+        assert_eq!(clean_text(&input, &config), expected);
+    }
+
+    #[test]
+    fn removes_figure_and_table_caption_lines() {
+        let config = CleaningConfig {
+            remove_figure_table_captions: true,
+            ..CleaningConfig::default()
+        };
+
+        let input = [
+            "Before",
+            "Figure 1. Distribution of tokens",
+            "Fig. 2: Regression line",
+            "Table 3 - Coefficients",
+            "Tabela 4 Resultados",
+            "The table 3 result is discussed here.",
+            "After",
+        ]
+        .join("\n");
+
+        assert_eq!(
+            clean_text(&input, &config),
+            "Before\nThe table 3 result is discussed here.\nAfter"
+        );
     }
 
     #[test]
@@ -1638,6 +2035,13 @@ mod tests {
     #[test]
     fn test_cleaning_config_defaults() {
         let config = CleaningConfig::default();
+        assert!(!config.normalize_whitespace_line_endings);
+        assert!(!config.repair_wrapped_pdf_line_breaks);
+        assert!(!config.remove_isolated_page_markers);
+        assert!(!config.remove_url_only_lines);
+        assert!(!config.remove_email_only_lines);
+        assert!(!config.remove_doi_only_lines);
+        assert!(!config.remove_figure_table_captions);
         assert!(!config.join_line_breaks);
         assert!(!config.normalize_irregular_line_breaks);
         assert!(!config.remove_standalone_page_numbers);
