@@ -609,53 +609,94 @@
         <div id="tab-general" class="tab-content settings-tab-content active" role="tabpanel">
           <div class="cleaning-controls-vertical">
             <strong style="font-size: 0.95rem; color: var(--text-color);">Text repair</strong>
-            <label><input type="checkbox" id="chk-normalize-unicode" /> Normalize Unicode</label>
-            <p class="settings-helper-text">Composes Unicode text to NFC without removing accents or changing case.</p>
-
-            <label><input type="checkbox" id="chk-normalize-whitespace-line-endings" /> Normalize whitespace and line endings</label>
-            <p class="settings-helper-text">Normalises line endings, trims line edges, collapses excess blank lines, and smooths obvious repeated spaces or tabs.</p>
-
-            <label><input type="checkbox" id="chk-repair-wrapped-pdf-line-breaks" /> Repair wrapped PDF line breaks</label>
-            <p class="settings-helper-text">Reflows obvious soft line breaks from extracted PDF text. Review processed text when paragraph boundaries matter.</p>
-
-            <label><input type="checkbox" id="chk-replace-diacritics" /> Replace diacritics</label>
-            <p class="settings-helper-text">Removes combining accent marks from processed text. This can change words and should be used only when that is intended.</p>
-
-            <label><input type="checkbox" id="chk-lowercase" /> Lowercase processed text</label>
-            <p class="settings-helper-text">Converts processed text to lowercase before analysis and export.</p>
+            <div class="setting-row">
+              <label><input type="checkbox" id="chk-normalize-unicode" /> Normalize Unicode</label>
+              <button type="button" class="setting-help" aria-label="Show help for Normalize Unicode" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Composes Unicode text to NFC without removing accents or changing case.</span>
+              </button>
+            </div>
+            <div class="setting-row">
+              <label><input type="checkbox" id="chk-normalize-whitespace-line-endings" /> Normalize whitespace and line endings</label>
+              <button type="button" class="setting-help" aria-label="Show help for Normalize whitespace and line endings" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Normalises line endings, trims line edges, collapses excess blank lines, and smooths obvious repeated spaces or tabs.</span>
+              </button>
+            </div>
+            <div class="setting-row">
+              <label><input type="checkbox" id="chk-repair-wrapped-pdf-line-breaks" /> Repair wrapped PDF line breaks</label>
+              <button type="button" class="setting-help" aria-label="Show help for Repair wrapped PDF line breaks" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Reflows obvious soft line breaks from extracted PDF text. Review processed text when paragraph boundaries matter.</span>
+              </button>
+            </div>
+            <div class="setting-row">
+              <label><input type="checkbox" id="chk-replace-diacritics" /> Replace diacritics</label>
+              <button type="button" class="setting-help" aria-label="Show help for Replace diacritics" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Removes combining accent marks from processed text. This can change words and should be used only when that is intended.</span>
+              </button>
+            </div>
+            <div class="setting-row">
+              <label><input type="checkbox" id="chk-lowercase" /> Lowercase processed text</label>
+              <button type="button" class="setting-help" aria-label="Show help for Lowercase processed text" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Converts processed text to lowercase before analysis and export.</span>
+              </button>
+            </div>
           </div>
         </div>
 
         <div id="tab-line-page" class="tab-content settings-tab-content" role="tabpanel">
           <div class="cleaning-controls-vertical">
             <strong style="font-size: 0.95rem; color: var(--text-color);">Deterministic structural cleanup</strong>
-
-            <label><input type="checkbox" id="chk-remove-isolated-page-markers" /> Remove isolated page markers</label>
-            <p class="settings-helper-text">Removes standalone page-number or page-label lines such as "23", "- 23 -", "Page 23", "pag. 23", "p. 23", or Roman-numeral page markers.</p>
-
-            <label><input type="checkbox" id="chk-remove-url-only-lines" /> Remove URL-only lines</label>
-            <p class="settings-helper-text">Removes lines that consist only of a URL or web address. Inline URLs inside ordinary prose are not removed.</p>
-
-            <label><input type="checkbox" id="chk-remove-email-only-lines" /> Remove email-only lines</label>
-            <p class="settings-helper-text">Removes lines that consist only of an email address. Inline email addresses inside ordinary prose are not removed.</p>
-
-            <label><input type="checkbox" id="chk-remove-doi-only-lines" /> Remove DOI-only lines</label>
-            <p class="settings-helper-text">Removes lines that consist only of a DOI such as "doi:10.1234/example" or "10.1000/xyz123".</p>
-
-            <label><input type="checkbox" id="chk-remove-obvious-extraction-noise" /> Remove obvious extraction/OCR noise lines</label>
-            <p class="settings-helper-text">Removes lines that overwhelmingly look like extraction artefacts, OCR junk, repeated symbols, markup fragments, or symbol-heavy noise.</p>
-
-            <label><input type="checkbox" id="chk-remove-figure-table-captions" /> Remove figure/table captions</label>
-            <p class="settings-helper-text">Removes caption-like lines that begin with labels such as "Figure 1", "Fig. 1", "Table 1", "Tabela 1", "Quadro 1", or "Gráfico 1".</p>
+            <div class="setting-row">
+              <label><input type="checkbox" id="chk-remove-isolated-page-markers" /> Remove isolated page markers</label>
+              <button type="button" class="setting-help" aria-label="Show help for Remove isolated page markers" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Removes standalone page-number or page-label lines such as "23", "- 23 -", "Page 23", "pag. 23", "p. 23", or Roman-numeral page markers.</span>
+              </button>
+            </div>
+            <div class="setting-row">
+              <label><input type="checkbox" id="chk-remove-url-only-lines" /> Remove URL-only lines</label>
+              <button type="button" class="setting-help" aria-label="Show help for Remove URL-only lines" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Removes lines that consist only of a URL or web address. Inline URLs inside ordinary prose are not removed.</span>
+              </button>
+            </div>
+            <div class="setting-row">
+              <label><input type="checkbox" id="chk-remove-email-only-lines" /> Remove email-only lines</label>
+              <button type="button" class="setting-help" aria-label="Show help for Remove email-only lines" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Removes lines that consist only of an email address. Inline email addresses inside ordinary prose are not removed.</span>
+              </button>
+            </div>
+            <div class="setting-row">
+              <label><input type="checkbox" id="chk-remove-doi-only-lines" /> Remove DOI-only lines</label>
+              <button type="button" class="setting-help" aria-label="Show help for Remove DOI-only lines" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Removes lines that consist only of a DOI such as "doi:10.1234/example" or "10.1000/xyz123".</span>
+              </button>
+            </div>
+            <div class="setting-row">
+              <label><input type="checkbox" id="chk-remove-obvious-extraction-noise" /> Remove obvious extraction/OCR noise lines</label>
+              <button type="button" class="setting-help" aria-label="Show help for Remove obvious extraction/OCR noise lines" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Removes lines that overwhelmingly look like extraction artefacts, OCR junk, repeated symbols, markup fragments, or symbol-heavy noise.</span>
+              </button>
+            </div>
+            <div class="setting-row">
+              <label><input type="checkbox" id="chk-remove-figure-table-captions" /> Remove figure/table captions</label>
+              <button type="button" class="setting-help" aria-label="Show help for Remove figure/table captions" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Removes caption-like lines that begin with labels such as "Figure 1", "Fig. 1", "Table 1", "Tabela 1", "Quadro 1", or "Gráfico 1".</span>
+              </button>
+            </div>
 
             <hr style="margin: 4px 0; border: none; border-top: 1px solid var(--border-color);" />
 
             <strong style="font-size: 0.95rem; color: var(--text-color);">Advanced structural cleanup</strong>
-            <label><input type="checkbox" id="chk-remove-pdf-code-like-blocks" /> Remove code-like blocks</label>
-            <p class="settings-helper-text">Removes PDF extraction blocks that strongly resemble code. Ordinary prose containing code terms is preserved by the conservative classifier.</p>
-
-            <label><input type="checkbox" id="chk-remove-pdf-formula-like-lines" /> Remove formula-like lines</label>
-            <p class="settings-helper-text">Removes PDF extraction lines that strongly resemble standalone formulae. Inline formula references inside prose are preserved.</p>
+            <div class="setting-row">
+              <label><input type="checkbox" id="chk-remove-pdf-code-like-blocks" /> Remove code-like blocks</label>
+              <button type="button" class="setting-help" aria-label="Show help for Remove code-like blocks" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Removes PDF extraction blocks that strongly resemble code. Ordinary prose containing code terms is preserved by the conservative classifier.</span>
+              </button>
+            </div>
+            <div class="setting-row">
+              <label><input type="checkbox" id="chk-remove-pdf-formula-like-lines" /> Remove formula-like lines</label>
+              <button type="button" class="setting-help" aria-label="Show help for Remove formula-like lines" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Removes PDF extraction lines that strongly resemble standalone formulae. Inline formula references inside prose are preserved.</span>
+              </button>
+            </div>
           </div>
         </div>
 
