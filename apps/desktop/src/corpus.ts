@@ -180,7 +180,6 @@ export function clearStateForLoad(): void {
   state.focusedProjectSourceOffset = null;
   state.projectSourcePreviewScrollTop = 0;
   state.lastScanCandidates = [];
-  state.selectedCandidateIds.clear();
   dom.previewContent.textContent = "Select files from the left panel to preview their contents.";
   dom.processedPreviewContent.textContent = "Select files from the left panel to preview processed text.";
   dom.corpusSummary.replaceChildren();
