@@ -1,4 +1,7 @@
 :root {
+  --cw-font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --cw-font-mono: "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
+  --cw-font-math: var(--cw-font-ui);
   --bg-color: #1e1e1e;
   --panel-bg: #252526;
   --text-color: #cccccc;
@@ -9,6 +12,12 @@
   --hover-color: #2a2d2e;
   --selected-color: #37373d;
   --modal-bg: #252526;
+  --cw-interaction-bg-hover: #2f3234;
+  --cw-interaction-bg-selected-hover: #42424a;
+  --cw-interaction-border-hover: rgba(80, 160, 220, 0.48);
+  --cw-interaction-focus-ring: 0 0 0 2px rgba(0, 122, 204, 0.34);
+  --cw-interaction-shadow: none;
+  --cw-primary-hover: #0b83d5;
 }
 
 [data-theme="light"] {
@@ -22,11 +31,17 @@
   --hover-color: #e5f3ff;
   --selected-color: #cce8ff;
   --modal-bg: #ffffff;
+  --cw-interaction-bg-hover: #f8fbff;
+  --cw-interaction-bg-selected-hover: #dceeff;
+  --cw-interaction-border-hover: rgba(0, 95, 184, 0.35);
+  --cw-interaction-focus-ring: 0 0 0 2px rgba(0, 95, 184, 0.24);
+  --cw-interaction-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --cw-primary-hover: #00559f;
 }
 
 body {
   margin: 0;
-  font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--cw-font-ui);
   background-color: var(--bg-color);
   color: var(--text-color);
   height: 100vh;
@@ -70,8 +85,12 @@ body {
 
 .menu-item:hover,
 .menu-item:focus {
-  background-color: var(--hover-color);
+  background-color: var(--cw-interaction-bg-hover);
   outline: none;
+}
+
+.menu-item:focus-visible {
+  box-shadow: var(--cw-interaction-focus-ring);
 }
 
 .stage-navigator {
@@ -98,21 +117,30 @@ body {
   cursor: pointer;
   font-family: inherit;
   text-align: left;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
 
-.stage-tab:hover {
-  background: var(--hover-color);
+.stage-tab:not(:disabled):hover {
+  background: var(--cw-interaction-bg-hover);
+  border-color: var(--cw-interaction-border-hover);
+  box-shadow: var(--cw-interaction-shadow);
 }
 
 .stage-tab:focus-visible {
   outline: 2px solid var(--accent-color);
   outline-offset: 2px;
+  box-shadow: var(--cw-interaction-focus-ring);
 }
 
 .stage-tab.active {
   background: var(--selected-color);
   border-color: var(--accent-color);
   box-shadow: inset 0 -3px 0 var(--accent-color);
+}
+
+.stage-tab.active:not(:disabled):hover {
+  background: var(--cw-interaction-bg-selected-hover);
+  box-shadow: inset 0 -3px 0 var(--accent-color), var(--cw-interaction-shadow);
 }
 
 .stage-tab-title {
@@ -199,9 +227,13 @@ body {
 
 .dropdown-item:hover,
 .dropdown-item:focus {
-  background-color: var(--accent-color);
-  color: #fff;
+  background-color: var(--cw-interaction-bg-hover);
+  color: var(--text-color);
   outline: none;
+}
+
+.dropdown-item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--cw-interaction-border-hover);
 }
 
 .dropdown-divider {
@@ -254,7 +286,8 @@ body {
 
 .toolbar button:hover,
 .toolbar button:focus {
-  background: var(--hover-color);
+  background: var(--cw-interaction-bg-hover);
+  border-color: var(--cw-interaction-border-hover);
   outline: none;
 }
 
@@ -283,7 +316,7 @@ body {
 
 .primary-btn:hover,
 .primary-btn:focus {
-  background: #006bb3 !important;
+  background: var(--cw-primary-hover) !important;
   outline: none;
 }
 
@@ -300,7 +333,9 @@ body {
 
 .secondary-btn:hover,
 .secondary-btn:focus {
-  background: var(--hover-color);
+  background: var(--cw-interaction-bg-hover);
+  border-color: var(--cw-interaction-border-hover);
+  box-shadow: var(--cw-interaction-shadow);
   outline: none;
 }
 
@@ -329,8 +364,9 @@ body {
 .primary-btn:focus-visible,
 .secondary-btn:focus-visible,
 .danger-btn:focus-visible {
-  outline: 1px solid var(--accent-color);
-  outline-offset: 1px;
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  box-shadow: var(--cw-interaction-focus-ring);
 }
 
 main {
@@ -398,7 +434,9 @@ main {
 .welcome-actions button:focus,
 .project-empty-actions button:hover,
 .project-empty-actions button:focus {
-  background: var(--hover-color);
+  background: var(--cw-interaction-bg-hover);
+  border-color: var(--cw-interaction-border-hover);
+  box-shadow: var(--cw-interaction-shadow);
   outline: none;
 }
 
@@ -768,6 +806,7 @@ main {
   font-family: inherit;
   font-size: 0.86rem;
   text-align: left;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
 
 .analyse-tool-status {
@@ -777,13 +816,16 @@ main {
 }
 
 .analyse-tool-item:hover {
-  background: var(--hover-color);
+  border-color: var(--cw-interaction-border-hover);
+  background: var(--cw-interaction-bg-hover);
   color: var(--text-color);
+  box-shadow: var(--cw-interaction-shadow);
 }
 
 .analyse-tool-item:focus-visible {
   outline: 2px solid var(--accent-color);
   outline-offset: 2px;
+  box-shadow: var(--cw-interaction-focus-ring);
 }
 
 .analyse-tool-item[aria-current="page"] {
@@ -792,6 +834,11 @@ main {
   background: var(--selected-color);
   font-weight: 650;
   box-shadow: inset 3px 0 0 var(--accent-color);
+}
+
+.analyse-tool-item[aria-current="page"]:hover {
+  background: var(--cw-interaction-bg-selected-hover);
+  box-shadow: inset 3px 0 0 var(--accent-color), var(--cw-interaction-shadow);
 }
 
 .analyse-tool-item.is-future {
@@ -906,8 +953,7 @@ main {
 }
 
 .analysis-reading-finding-heading {
-  display: inline-flex;
-  flex-wrap: wrap;
+  display: inline;
   margin-right: 6px;
 }
 
@@ -1045,6 +1091,7 @@ main {
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition: color 120ms ease, box-shadow 120ms ease;
 }
 
 .analysis-glossary-term:hover {
@@ -1054,6 +1101,7 @@ main {
 .analysis-glossary-term:focus-visible {
   outline: 2px solid var(--accent-color);
   outline-offset: 3px;
+  box-shadow: var(--cw-interaction-focus-ring);
 }
 
 .analysis-glossary-caret {
@@ -1081,13 +1129,14 @@ main {
 
 .analysis-glossary-detail {
   display: grid;
-  gap: 7px;
-  padding: 9px 11px;
+  gap: 8px;
+  padding: 10px 12px;
   border-left: 2px solid var(--accent-color);
-  background: var(--hover-color);
+  background: var(--cw-interaction-bg-hover);
   color: var(--text-muted);
-  font-size: 0.78rem;
-  line-height: 1.4;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  overflow: visible;
 }
 
 .analysis-glossary-detail[hidden],
@@ -1098,18 +1147,30 @@ main {
 
 .analysis-glossary-detail p {
   margin: 0;
+  color: var(--text-color);
 }
 
 .analysis-glossary-formula {
   max-width: 100%;
   overflow-x: auto;
-  color: var(--text-color);
-  font-size: 0.96rem;
+  overflow-y: visible;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  font-family: var(--cw-font-math);
+  font-size: 0.82rem;
+  line-height: 1.35;
 }
 
 .analysis-glossary-formula .katex-display {
-  margin: 0.2em 0;
+  margin: 0;
   text-align: left;
+}
+
+.analysis-glossary-formula .katex {
+  font-size: 1em;
 }
 
 .analysis-composition-glossary {
@@ -1418,7 +1479,7 @@ main {
 }
 
 .frequency-toggle:hover {
-  background: var(--hover-color);
+  background: var(--cw-interaction-bg-hover);
 }
 
 .frequency-toggle input {
@@ -1560,7 +1621,7 @@ main {
 }
 
 .frequency-term-row:hover {
-  background: var(--hover-color);
+  background: var(--cw-interaction-bg-hover);
 }
 
 .frequency-term-row:focus-visible {
@@ -1569,7 +1630,7 @@ main {
 }
 
 .frequency-token-cell {
-  font-family: "JetBrains Mono", "Cascadia Code", Consolas, "SFMono-Regular", monospace;
+  font-family: var(--cw-font-mono);
 }
 
 .frequency-token-content {
@@ -1822,7 +1883,7 @@ main {
 
 .frequency-file-option:hover,
 .frequency-file-option:focus-within {
-  background: var(--hover-color);
+  background: var(--cw-interaction-bg-hover);
 }
 
 .frequency-file-option input {
@@ -1909,7 +1970,7 @@ main {
 }
 
 .left-panel {
-  width: 300px;
+  width: 340px;
   background-color: var(--panel-bg);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -1976,8 +2037,12 @@ main {
 
 .source-actions .dropdown-item:hover,
 .source-actions .dropdown-item:focus {
-  background: var(--hover-color);
+  background: var(--cw-interaction-bg-hover);
   outline: none;
+}
+
+.source-actions .dropdown-item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--cw-interaction-border-hover);
 }
 
 .source-actions .dropdown-item.danger-item {
@@ -2071,22 +2136,28 @@ main {
 }
 
 .file-checkbox {
+  flex: 0 0 auto;
   cursor: pointer;
   margin: 0;
 }
 
 .file-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
 }
 
 #file-list li:hover {
-  background-color: var(--hover-color);
+  background-color: var(--cw-interaction-bg-hover);
 }
 
 #file-list li.selected {
   background-color: var(--selected-color);
+}
+
+#file-list li.selected:hover {
+  background-color: var(--cw-interaction-bg-selected-hover);
 }
 
 #file-list li.focused {
@@ -2107,7 +2178,7 @@ main {
 }
 
 .file-list-container.source-explorer-mode #file-list li {
-  height: 64px;
+  height: 76px;
   white-space: normal;
 }
 
@@ -2128,7 +2199,17 @@ main {
 #file-list li.source-row {
   align-items: flex-start;
   gap: 7px;
-  padding: 6px 8px;
+  padding: 7px 8px;
+  outline: 1px solid transparent;
+  outline-offset: -1px;
+}
+
+#file-list li.source-row:hover {
+  outline-color: var(--cw-interaction-border-hover);
+}
+
+.source-row .file-checkbox {
+  margin-top: 2px;
 }
 
 .source-row-text {
@@ -2136,10 +2217,18 @@ main {
   flex: 1;
   min-width: 0;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
+  overflow: hidden;
 }
 
 .source-file-name {
+  display: block;
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.86rem;
   line-height: 1.2;
 }
@@ -2148,12 +2237,16 @@ main {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
   min-height: 16px;
 }
 
 .source-badge {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
+  max-width: 100%;
   min-height: 15px;
   padding: 1px 5px;
   border: 1px solid var(--border-color);
@@ -2162,6 +2255,7 @@ main {
   font-size: 0.66rem;
   line-height: 1.1;
   background: rgba(255, 255, 255, 0.03);
+  white-space: nowrap;
 }
 
 .source-route-badge {
@@ -2382,16 +2476,32 @@ main {
   cursor: pointer;
   font-size: 0.9rem;
   font-family: inherit;
+  border-bottom: 2px solid transparent;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.tab:hover {
+  background-color: var(--cw-interaction-bg-hover);
+  color: var(--text-color);
 }
 
 .tab:focus {
   outline: none;
-  background-color: var(--hover-color);
+  background-color: var(--cw-interaction-bg-hover);
+}
+
+.tab:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--cw-interaction-border-hover);
 }
 
 .tab.active {
   color: var(--text-color);
-  border-bottom: 2px solid var(--accent-color);
+  border-bottom-color: var(--accent-color);
+}
+
+.tab.active:hover {
+  background-color: var(--cw-interaction-bg-selected-hover);
+  border-bottom-color: var(--accent-color);
 }
 
 .tab-content {
@@ -2410,9 +2520,11 @@ pre {
   white-space: pre-wrap;
   tab-size: 4;
   -moz-tab-size: 4;
-  font-family: "JetBrains Mono", "Cascadia Code", Consolas, "SFMono-Regular", monospace;
-  font-size: 0.85rem;
-  line-height: 1.6;
+  font-family: var(--cw-font-mono);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0;
   color: var(--text-color);
   padding: 10px;
 }
@@ -2561,7 +2673,8 @@ pre {
 
 .modal-config-toolbar button:hover,
 .modal-config-toolbar button:focus {
-  background: var(--hover-color);
+  background: var(--cw-interaction-bg-hover);
+  border-color: var(--cw-interaction-border-hover);
   outline: none;
 }
 
@@ -3048,7 +3161,9 @@ pre {
 
 .modal-actions button:hover,
 .modal-actions button:focus {
-  background: var(--hover-color);
+  background: var(--cw-interaction-bg-hover);
+  border-color: var(--cw-interaction-border-hover);
+  box-shadow: var(--cw-interaction-shadow);
   outline: none;
 }
 
@@ -3074,7 +3189,7 @@ pre {
 }
 
 .modal-close-btn:hover {
-  background: var(--hover-color);
+  background: var(--cw-interaction-bg-hover);
   color: var(--text-color);
 }
 
@@ -3127,7 +3242,7 @@ pre {
 
 .icon-btn {
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-muted);
   cursor: pointer;
   display: flex;
@@ -3135,11 +3250,20 @@ pre {
   justify-content: center;
   padding: 4px;
   border-radius: 4px;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
 
 .icon-btn:hover {
-  background-color: var(--hover-color);
+  background-color: var(--cw-interaction-bg-hover);
+  border-color: var(--cw-interaction-border-hover);
   color: var(--text-color);
+  box-shadow: var(--cw-interaction-shadow);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  box-shadow: var(--cw-interaction-focus-ring);
 }
 
 /* Custom Removals */
@@ -3186,7 +3310,7 @@ pre {
   border: 1px solid var(--border-color);
   padding: 4px 8px;
   border-radius: 12px;
-  font-family: monospace;
+  font-family: var(--cw-font-mono);
   font-size: 0.85rem;
   color: var(--text-color);
 }
@@ -3345,9 +3469,11 @@ pre {
 .file-card-body {
   margin: 0;
   padding: 12px;
-  font-family: "JetBrains Mono", "Cascadia Code", Consolas, "SFMono-Regular", monospace;
-  font-size: 0.85rem;
-  line-height: 1.5;
+  font-family: var(--cw-font-mono);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0;
   color: var(--text-color);
   white-space: pre-wrap;
   tab-size: 4;
@@ -3480,8 +3606,9 @@ pre {
 .full-ocr-page-body,
 .full-ocr-page-error {
   padding: 10px;
-  font-family: "JetBrains Mono", "Cascadia Code", Consolas, "SFMono-Regular", monospace;
+  font-family: var(--cw-font-mono);
   font-size: 0.82rem;
+  font-weight: 400;
   line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: break-word;
@@ -3511,8 +3638,8 @@ mark.search-match.current-match {
 
 .left-panel {
   /* resized via JS */
-  min-width: 200px;
-  max-width: 600px;
+  min-width: 260px;
+  max-width: 680px;
 }
 
 .sidebar-splitter {
@@ -3555,7 +3682,7 @@ mark.search-match.current-match {
   color: var(--text-color);
   padding: 8px 12px;
   border-radius: 6px;
-  font-family: "Inter", sans-serif;
+  font-family: var(--cw-font-ui);
   font-size: 0.95rem;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -3768,7 +3895,7 @@ mark.search-match.current-match {
   padding: 6px 12px;
   border-radius: 16px;
   font-size: 0.85rem;
-  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-family: var(--cw-font-mono);
   color: var(--text-color);
   box-shadow: 0 2px 4px rgba(0,0,0,0.3);
   transition: background-color 0.2s, border-color 0.2s;
@@ -3861,8 +3988,9 @@ mark.search-match.current-match {
 }
 
 .scan-settings-toggle:hover {
-  background: var(--hover-color);
-  border-color: var(--accent-color);
+  background: var(--cw-interaction-bg-hover);
+  border-color: var(--cw-interaction-border-hover);
+  box-shadow: var(--cw-interaction-shadow);
 }
 
 .repeated-artifact-config {
@@ -3936,7 +4064,7 @@ mark.search-match.current-match {
 }
 
 .repeated-artifact-bucket-tabs .tab:hover {
-  background-color: var(--hover-color);
+  background-color: var(--cw-interaction-bg-hover);
   color: var(--accent-color);
 }
 
@@ -3988,7 +4116,7 @@ mark.search-match.current-match {
 }
 
 .repeated-artifact-table-container tbody tr:hover {
-  background-color: var(--hover-color);
+  background-color: var(--cw-interaction-bg-hover);
 }
 
 .repeated-artifact-table-container tbody tr.is-focused {
@@ -4005,7 +4133,7 @@ mark.search-match.current-match {
 }
 
 .repeated-artifact-table-container td.candidate-text-cell {
-  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-family: var(--cw-font-mono);
   font-size: 0.8rem;
 }
 
@@ -4023,7 +4151,7 @@ mark.search-match.current-match {
 }
 
 .candidate-text-display {
-  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-family: var(--cw-font-mono);
   font-size: 0.8rem;
   font-weight: 500;
   color: var(--text-color);
@@ -4174,7 +4302,7 @@ mark.search-match.current-match {
 }
 
 .candidate-display-text {
-  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-family: var(--cw-font-mono);
   font-size: 0.85rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -4201,7 +4329,8 @@ mark.search-match.current-match {
 }
 
 .btn-copy-candidate:hover {
-  background: var(--hover-color);
+  background: var(--cw-interaction-bg-hover);
+  border-color: var(--cw-interaction-border-hover);
 }
 
 .detail-note {
@@ -4237,7 +4366,7 @@ mark.search-match.current-match {
 }
 
 .artifact-example-body {
-  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-family: var(--cw-font-mono);
   font-size: 0.8rem;
   line-height: 1.4;
   white-space: pre-wrap;
