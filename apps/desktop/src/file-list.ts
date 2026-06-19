@@ -25,7 +25,7 @@ import {
 } from "./sources";
 
 const ITEM_HEIGHT = 26; // px, must match CSS #file-list li height
-const SOURCE_ITEM_HEIGHT = 64; // px, must match CSS source row height
+const SOURCE_ITEM_HEIGHT = 76; // px, must match CSS source row height
 const OVERSCAN = 10; // extra items rendered above/below viewport
 
 interface FileListCallbacks {
@@ -293,6 +293,7 @@ function createSourceRow(
   const name = document.createElement("span");
   name.className = "file-name source-file-name";
   name.textContent = source.file_name;
+  name.title = source.path;
 
   const meta = document.createElement("span");
   meta.className = "source-row-meta";
