@@ -1,5 +1,6 @@
 use crate::clean::{PdfOcrQuality, PdfTextSource};
 use crate::pdf_audit::{PdfAuditQuality, PdfAuditSuggestedProfile, audit_pdf_files};
+use crate::preview::FilePreview;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -215,6 +216,45 @@ pub struct ProjectSourcePage {
     pub inventory_summary: ProjectSourceSummary,
 }
 
+/// Compact description of the source set selected in the interface.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct ProjectSourceSelectionDescriptor {
+    pub all_matching: bool,
+    pub query: String,
+    pub ids: Vec<String>,
+    pub excluded_ids: Vec<String>,
+}
+
+/// Bounded inventory window resolved from a compact source selection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct ProjectSourceSelectionViewport {
+    pub total_selected: usize,
+    pub viewport_start: usize,
+    pub viewport_size: usize,
+    pub items: Vec<ProjectSource>,
+}
+
+/// One source and its bounded text for a selected-source preview viewport.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct ProjectSourcePreviewItem {
+    pub source: ProjectSource,
+    pub preview: Option<FilePreview>,
+    pub preview_error: Option<String>,
+}
+
+/// Bounded preview response for a complete logical source selection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct ProjectSourcePreviewViewport {
+    pub total_selected: usize,
+    pub viewport_start: usize,
+    pub viewport_size: usize,
+    pub items: Vec<ProjectSourcePreviewItem>,
+}
+
 /// Filters and bounds a project source inventory query.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProjectSourceQuery {
@@ -318,6 +358,47 @@ pub fn query_project_source_manifest(
         items,
         summary,
         inventory_summary,
+    }
+}
+
+/// Resolves one bounded viewport from a compact source selection.
+///
+/// The selected count covers the complete logical set, including items outside
+/// the returned viewport.
+pub fn query_project_source_selection(
+    manifest: &ProjectSourceManifest,
+    selection: &ProjectSourceSelectionDescriptor,
+    viewport_start: usize,
+    viewport_size: usize,
+) -> ProjectSourceSelectionViewport {
+    let query = selection.query.trim().to_lowercase();
+    let ids = selection.ids.iter().collect::<HashSet<_>>();
+    let excluded_ids = selection.excluded_ids.iter().collect::<HashSet<_>>();
+    let viewport_size = viewport_size.min(50);
+    let mut total_selected = 0;
+    let mut items = Vec::with_capacity(viewport_size);
+
+    for source in &manifest.sources {
+        let selected = if selection.all_matching {
+            !excluded_ids.contains(&source.id) && project_source_matches_query(source, &query)
+        } else {
+            ids.contains(&source.id)
+        };
+        if !selected {
+            continue;
+        }
+
+        if total_selected >= viewport_start && items.len() < viewport_size {
+            items.push(source.clone());
+        }
+        total_selected += 1;
+    }
+
+    ProjectSourceSelectionViewport {
+        total_selected,
+        viewport_start: viewport_start.min(total_selected),
+        viewport_size,
+        items,
     }
 }
 
@@ -1420,6 +1501,43 @@ mod tests {
 
         assert_eq!(page.total_count, 1);
         assert_eq!(page.items[0].kind, ProjectSourceKind::Txt);
+    }
+
+    #[test]
+    fn source_selection_query_keeps_full_count_with_bounded_items() {
+        let sources = (0..50_000)
+            .map(|index| {
+                let mut source = source_for_test(
+                    PathBuf::from(format!("Linha_{index}.txt")),
+                    ProjectSourceKind::Txt,
+                );
+                source.id = format!("source-{index}");
+                source
+            })
+            .collect();
+        let manifest = ProjectSourceManifest {
+            version: SOURCE_MANIFEST_VERSION,
+            sources,
+        };
+        let excluded_id = manifest.sources[10].id.clone();
+
+        let viewport = query_project_source_selection(
+            &manifest,
+            &ProjectSourceSelectionDescriptor {
+                all_matching: true,
+                query: "linha".to_string(),
+                excluded_ids: vec![excluded_id],
+                ..ProjectSourceSelectionDescriptor::default()
+            },
+            40_000,
+            12,
+        );
+
+        assert_eq!(viewport.total_selected, 49_999);
+        assert_eq!(viewport.viewport_start, 40_000);
+        assert_eq!(viewport.viewport_size, 12);
+        assert_eq!(viewport.items.len(), 12);
+        assert_eq!(viewport.items[0].file_name, "Linha_40001.txt");
     }
 
     #[test]

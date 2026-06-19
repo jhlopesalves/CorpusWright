@@ -1109,6 +1109,9 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
           : null,
         rootPath: state.allMatchingProjectSourcesSelected ? state.activeProject?.rootPath : null,
         allMatchingQuery: state.allMatchingProjectSourcesSelected ? state.sourceSearchQuery : null,
+        excludedSourceIds: state.allMatchingProjectSourcesSelected
+          ? Array.from(state.deselectedProjectSourceIds)
+          : null,
         corpusVersion: myVersion,
         config: config,
         cleaningConfig: state.activeCleaningConfig,
