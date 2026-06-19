@@ -1,9 +1,28 @@
+import { listen } from "@tauri-apps/api/event";
+
 import {
   buildAnalysisCorpus,
-  loadAnalysisInputTexts,
-  type AnalysisCorpus,
-  type AnalysisDocument,
+  cancelAnalysisBuild,
+  defaultAnalysisDocumentSelection,
+  getAnalysisBuildStatus,
+  queryAnalysisDocuments,
+  queryFrequencyList,
+  queryTermDistribution,
+  type AnalysisBalanceSummary as CorpusBalanceSummary,
+  type AnalysisBuildProgress,
+  type AnalysisDispersionSummary as DispersionSummary,
+  type AnalysisDocumentPage,
+  type AnalysisDocumentSelection,
   type AnalysisInputSource,
+  type AnalysisLexicalSummary as LexicalNoiseSummary,
+  type AnalysisOverview as AnalysisCorpus,
+  type FrequencyMatchMode,
+  type FrequencyPage,
+  type FrequencySortKey,
+  type FrequencyTermItem,
+  type FrequencyTokenClass as FrequencyTokenClassFilter,
+  type SortDirection,
+  type TermDistributionPage,
 } from "./analysis";
 import { dom } from "./dom";
 import { sourceForPath, sourceHasExtractedText } from "./sources";
@@ -15,7 +34,9 @@ const FUTURE_ANALYSIS_TOOLS = [
   "Exports",
 ];
 
-const FREQUENCY_DISPLAY_LIMIT = 1_000;
+const FREQUENCY_PAGE_SIZE = 200;
+const FREQUENCY_DOCUMENT_PAGE_SIZE = 200;
+const TERM_DISTRIBUTION_PAGE_SIZE = 100;
 const FREQUENCY_TABLE_COLUMN_COUNT = 5;
 const FREQUENT_TERM_THRESHOLD = 10;
 const HIGH_DISPERSION_THRESHOLD = 0.5;
@@ -24,91 +45,7 @@ const LOW_EFFECTIVE_DOCUMENT_SHARE_THRESHOLD = 0.6;
 const HIGH_SINGLE_CHARACTER_TYPE_SHARE_THRESHOLD = 0.1;
 const HIGH_NUMERIC_ONLY_TYPE_SHARE_THRESHOLD = 0.1;
 const OVERVIEW_EXPLANATIONS_STORAGE_KEY = "corpuswright.analysis.showExplanations";
-const TOKEN_LETTER_PATTERN = /\p{L}/u;
-const TOKEN_NUMBER_PATTERN = /\p{N}/u;
-const ENGLISH_STOPWORDS = new Set(
-  `
-  a about above after again against all am an and any are as at be because been before
-  being below between both but by can did do does doing down during each few for from
-  further had has have having he her here hers herself him himself his how i if in into
-  is it its itself just me more most my myself no nor not now of off on once only or
-  other our ours ourselves out over own same she should so some such than that the their
-  theirs them themselves then there these they this those through to too under until up
-  very was we were what when where which while who whom why will with you your yours
-  yourself yourselves
-  `.trim().split(/\s+/),
-);
-
 type AnalysisToolId = "overview" | "frequency";
-type FrequencySortKey = "token" | "frequency" | "range" | "rate" | "dispersion";
-type FrequencyMatchMode = "contains" | "exact" | "startsWith" | "regex";
-type FrequencyTokenClassFilter = "alphabetic" | "includeSingles" | "includeNumerals" | "all";
-type SortDirection = "asc" | "desc";
-
-interface ScopedAnalysisDocument {
-  document: AnalysisDocument;
-  key: string;
-  index: number;
-}
-
-interface ScopedFrequencyTerm {
-  token: string;
-  frequency: number;
-  documentFrequency: number;
-  ratePer10k: number;
-  dispersion: number;
-  documentCounts: Map<string, number>;
-}
-
-interface MutableScopedTerm {
-  frequency: number;
-  documentFrequency: number;
-  documentCounts: Map<string, number>;
-}
-
-interface FrequencySearchMatcher {
-  matches: (token: string) => boolean;
-  error: string | null;
-}
-
-interface CorpusBalanceSummary {
-  sortedDocuments: AnalysisDocument[];
-  largestDocument: AnalysisDocument | null;
-  smallestNonEmptyDocument: AnalysisDocument | null;
-  minTokens: number | null;
-  maxTokens: number | null;
-  medianTokens: number | null;
-  q1Tokens: number | null;
-  q3Tokens: number | null;
-  iqrTokens: number | null;
-  largestDocumentShare: number | null;
-  topDocumentCount: number;
-  topDocumentShare: number | null;
-  lengthRatio: number | null;
-  effectiveDocumentCount: number | null;
-}
-
-interface LexicalNoiseSummary {
-  uniqueTypes: number;
-  hapaxLegomena: number;
-  disLegomena: number;
-  repeatedTypes: number;
-  numericOnlyTypes: number;
-  numericOnlyShare: number | null;
-  singleCharacterTypes: number;
-  singleCharacterShare: number | null;
-  qualityOtherTypes: number;
-  typeTokenRatio: number | null;
-}
-
-interface DispersionSummary {
-  documentCount: number;
-  allDocumentTypes: number;
-  oneDocumentTypes: number;
-  frequentTypes: number;
-  medianFrequentDispersion: number | null;
-  highDispersionFrequentTypes: number;
-}
 
 interface OverviewMetricRow {
   label: string;
@@ -149,9 +86,27 @@ const ANALYSIS_TOOLS: Array<{
 let activeAnalysisTool: AnalysisToolId = "overview";
 let frequencySortKey: FrequencySortKey = "frequency";
 let frequencySortDirection: SortDirection = "desc";
-let frequencyDocumentScope: Set<string> | null = null;
-let frequencyScopeDraftKeys = new Set<string>();
+let frequencyDocumentScope = defaultAnalysisDocumentSelection();
+let frequencyScopeDraft = defaultAnalysisDocumentSelection();
+let frequencyPage: FrequencyPage | null = null;
+let frequencyPageOffset = 0;
+let frequencyQueryGeneration = 0;
+let frequencyQueryPending = false;
+let frequencyQueryFailure: string | null = null;
+let frequencyQueryDebounceTimer: number | null = null;
+let frequencyDocumentsPage: AnalysisDocumentPage | null = null;
+let frequencyDocumentsOffset = 0;
+let frequencyDocumentsGeneration = 0;
+let frequencyDocumentsPending = false;
+let frequencyDocumentsDebounceTimer: number | null = null;
+let frequencyDocumentsFailure: string | null = null;
 let expandedFrequencyTokens = new Set<string>();
+let termDistributionPages = new Map<string, TermDistributionPage>();
+let termDistributionGenerations = new Map<string, number>();
+let analysisBuildInProgress = false;
+let analysisBuildProgress: AnalysisBuildProgress | null = null;
+let analysisBuildGeneration = 0;
+let analysisProgressUnlisten: (() => void) | null = null;
 let analysisNotice: { kind: "info" | "warning"; message: string } | null = null;
 let overviewExplanationsVisible = readOverviewExplanationsVisible();
 
@@ -293,11 +248,11 @@ function formatOptionalRange(start: number | null, end: number | null): string {
 }
 
 function inputTextSourceLabel(inputTextSource: AnalysisInputSource): string {
-  return inputTextSource === "processed" ? "processed text" : "extracted text";
+  return inputTextSource === "processed" ? "processed text" : "native/extracted text";
 }
 
 function inputTextSourceDisplayLabel(inputTextSource: AnalysisInputSource): string {
-  return inputTextSource === "processed" ? "Processed text" : "Extracted text";
+  return inputTextSource === "processed" ? "Processed text" : "Native/extracted text";
 }
 
 function appendSummaryRow(labelText: string, valueText: string): void {
@@ -364,12 +319,21 @@ function renderAnalyseStatus(): void {
   dom.analyseStatusChip.dataset.status = status;
   dom.analyseBuildButton.textContent = corpus ? "Rebuild Analysis Corpus" : "Build Analysis Corpus";
 
+  if (analysisBuildInProgress) {
+    dom.analyseStatusChip.textContent = "Building analysis corpus";
+    dom.analyseStatusDetail.textContent = analysisBuildProgressText(analysisBuildProgress);
+    dom.analyseBuildButton.textContent = "Cancel build";
+    dom.analyseBuildButton.disabled = false;
+    dom.analyseBuildNote.textContent = analysisBuildProgressText(analysisBuildProgress);
+    return;
+  }
+
   if (status === "ready" && corpus) {
     dom.analyseStatusChip.textContent =
       `Built ${new Date(corpus.builtAt).toLocaleString()} from ${inputTextSourceLabel(corpus.inputTextSource)}`;
     dom.analyseStatusDetail.textContent =
-      `${pluralise(corpus.documents.length, "document")} - ${formatNumber(corpus.totalTokens)} tokens`;
-    dom.analyseBuildNote.textContent = "Rebuild updates the in-memory counts from current project text.";
+      `${pluralise(corpus.documentCount, "document")} - ${formatNumber(corpus.totalTokens)} tokens`;
+    dom.analyseBuildNote.textContent = "Rebuild updates the Rust analysis index from current project text.";
     return;
   }
 
@@ -385,7 +349,24 @@ function renderAnalyseStatus(): void {
   dom.analyseStatusDetail.textContent = processedCount > 0
     ? "Processed text is available. Build the analysis corpus to inspect descriptive counts."
     : "Analysis corpus not built yet.";
-  dom.analyseBuildNote.textContent = "Builds an in-memory analysis corpus from loaded project text.";
+  dom.analyseBuildNote.textContent = "Builds a Rust analysis index from loaded project text.";
+}
+
+function analysisPhaseLabel(progress: AnalysisBuildProgress): string {
+  switch (progress.currentPhase) {
+    case "loadingSources": return "loading sources";
+    case "readingFiles": return "reading files";
+    case "tokenising": return "tokenising";
+    case "computingDispersion": return "computing dispersion";
+    case "finalisingSummaries": return "finalising summaries";
+  }
+}
+
+function analysisBuildProgressText(progress: AnalysisBuildProgress | null): string {
+  if (!progress) {
+    return "Building analysis corpus...";
+  }
+  return `${formatNumber(progress.filesDone)} / ${formatNumber(progress.filesTotal)} sources · ${formatNumber(progress.tokensSeen)} tokens · ${analysisPhaseLabel(progress)}`;
 }
 
 function renderAnalysisNotice(): void {
@@ -420,7 +401,7 @@ function renderAnalysisNotice(): void {
 
   if (corpus.inputTextSource === "extracted") {
     dom.analyseInputBanner.textContent =
-      "Exploratory - built from extracted text; processed text not available yet.";
+      "Exploratory — built from extracted/native text before cleaning.";
     dom.analyseInputBanner.classList.add("warning");
     dom.analyseInputBanner.classList.remove("hidden");
   }
@@ -623,152 +604,6 @@ function createCompositionBar(
   return composition;
 }
 
-function sortedNumbers(values: number[]): number[] {
-  return [...values].sort((a, b) => a - b);
-}
-
-function percentile(sortedValues: number[], percentileValue: number): number | null {
-  if (sortedValues.length === 0) {
-    return null;
-  }
-  const position = (sortedValues.length - 1) * percentileValue;
-  const lower = Math.floor(position);
-  const upper = Math.ceil(position);
-  if (lower === upper) {
-    return sortedValues[lower];
-  }
-  const weight = position - lower;
-  return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight;
-}
-
-function median(values: number[]): number | null {
-  return percentile(sortedNumbers(values), 0.5);
-}
-
-function summariseCorpusBalance(corpus: AnalysisCorpus): CorpusBalanceSummary {
-  const sortedDocuments = [...corpus.documents].sort((a, b) =>
-    b.tokenCount - a.tokenCount || documentName(a).localeCompare(documentName(b))
-  );
-  const nonEmptyDocuments = sortedDocuments.filter((document) => document.tokenCount > 0);
-  const largestDocument = nonEmptyDocuments[0] ?? null;
-  const smallestNonEmptyDocument = nonEmptyDocuments.length > 0
-    ? nonEmptyDocuments[nonEmptyDocuments.length - 1]
-    : null;
-  const tokenCounts = corpus.documents.map((document) => document.tokenCount);
-  const sortedTokenCounts = sortedNumbers(tokenCounts);
-  const minTokens = sortedTokenCounts[0] ?? null;
-  const maxTokens = sortedTokenCounts[sortedTokenCounts.length - 1] ?? null;
-  const medianTokens = percentile(sortedTokenCounts, 0.5);
-  const q1Tokens = percentile(sortedTokenCounts, 0.25);
-  const q3Tokens = percentile(sortedTokenCounts, 0.75);
-  const iqrTokens = q1Tokens === null || q3Tokens === null ? null : q3Tokens - q1Tokens;
-  const largestDocumentShare = largestDocument && corpus.totalTokens > 0
-    ? largestDocument.tokenCount / corpus.totalTokens
-    : null;
-  const topDocumentCount = Math.min(3, sortedDocuments.length);
-  const topDocumentShare = corpus.totalTokens > 0 && topDocumentCount > 0
-    ? sortedDocuments.slice(0, topDocumentCount).reduce((sum, document) => sum + document.tokenCount, 0) / corpus.totalTokens
-    : null;
-  const lengthRatio = largestDocument && smallestNonEmptyDocument && smallestNonEmptyDocument.tokenCount > 0
-    ? largestDocument.tokenCount / smallestNonEmptyDocument.tokenCount
-    : null;
-  const hhi = corpus.totalTokens > 0
-    ? corpus.documents.reduce((sum, document) => {
-      const share = document.tokenCount / corpus.totalTokens;
-      return sum + share * share;
-    }, 0)
-    : 0;
-  const effectiveDocumentCount = hhi > 0 ? 1 / hhi : null;
-
-  return {
-    sortedDocuments,
-    largestDocument,
-    smallestNonEmptyDocument,
-    minTokens,
-    maxTokens,
-    medianTokens,
-    q1Tokens,
-    q3Tokens,
-    iqrTokens,
-    largestDocumentShare,
-    topDocumentCount,
-    topDocumentShare,
-    lengthRatio,
-    effectiveDocumentCount,
-  };
-}
-
-function isSingleCharacterType(token: string): boolean {
-  return Array.from(token).length <= 1;
-}
-
-function isNumericOnlyType(token: string): boolean {
-  return TOKEN_NUMBER_PATTERN.test(token) && !TOKEN_LETTER_PATTERN.test(token);
-}
-
-function summariseLexicalNoise(corpus: AnalysisCorpus): LexicalNoiseSummary {
-  let hapaxLegomena = 0;
-  let disLegomena = 0;
-  let numericOnlyTypes = 0;
-  let singleCharacterTypes = 0;
-  let qualityOtherTypes = 0;
-
-  for (const term of corpus.terms) {
-    if (term.frequency === 1) {
-      hapaxLegomena += 1;
-    } else if (term.frequency === 2) {
-      disLegomena += 1;
-    }
-    const singleCharacter = isSingleCharacterType(term.token);
-    const numericOnly = isNumericOnlyType(term.token);
-    if (singleCharacter) {
-      singleCharacterTypes += 1;
-    } else if (numericOnly) {
-      numericOnlyTypes += 1;
-    } else {
-      qualityOtherTypes += 1;
-    }
-  }
-
-  const typeShare = (count: number): number | null =>
-    corpus.totalTypes > 0 ? count / corpus.totalTypes : null;
-  const repeatedTypes = Math.max(0, corpus.totalTypes - hapaxLegomena - disLegomena);
-
-  return {
-    uniqueTypes: corpus.totalTypes,
-    hapaxLegomena,
-    disLegomena,
-    repeatedTypes,
-    numericOnlyTypes,
-    numericOnlyShare: typeShare(numericOnlyTypes),
-    singleCharacterTypes,
-    singleCharacterShare: typeShare(singleCharacterTypes),
-    qualityOtherTypes,
-    typeTokenRatio: corpus.totalTokens > 0 ? corpus.totalTypes / corpus.totalTokens : null,
-  };
-}
-
-function summariseDispersion(corpus: AnalysisCorpus): DispersionSummary {
-  const scoped = buildScopedFrequencyTerms(allFrequencyDocuments(corpus));
-  const frequentTerms = scoped.terms.filter((term) => term.frequency >= FREQUENT_TERM_THRESHOLD);
-  const frequentDispersions = corpus.documents.length >= 2
-    ? frequentTerms.map((term) => term.dispersion)
-    : [];
-
-  return {
-    documentCount: corpus.documents.length,
-    allDocumentTypes: corpus.documents.length > 0
-      ? corpus.terms.filter((term) => term.documentFrequency === corpus.documents.length).length
-      : 0,
-    oneDocumentTypes: corpus.terms.filter((term) => term.documentFrequency === 1).length,
-    frequentTypes: frequentTerms.length,
-    medianFrequentDispersion: median(frequentDispersions),
-    highDispersionFrequentTypes: corpus.documents.length >= 2
-      ? frequentTerms.filter((term) => term.dispersion >= HIGH_DISPERSION_THRESHOLD).length
-      : 0,
-  };
-}
-
 function setOverviewExplanationsVisible(visible: boolean): void {
   overviewExplanationsVisible = visible;
   persistOverviewExplanationsVisible(visible);
@@ -786,7 +621,7 @@ function extractionQualityNeedsCare(lexical: LexicalNoiseSummary): boolean {
 }
 
 function balanceNeedsCare(corpus: AnalysisCorpus, balance: CorpusBalanceSummary): boolean {
-  if (corpus.documents.length < 2 || corpus.totalTokens <= 0) {
+  if (corpus.documentCount < 2 || corpus.totalTokens <= 0) {
     return false;
   }
   return (
@@ -794,7 +629,7 @@ function balanceNeedsCare(corpus: AnalysisCorpus, balance: CorpusBalanceSummary)
       balance.largestDocumentShare >= LARGE_DOCUMENT_SHARE_THRESHOLD) ||
     (balance.topDocumentShare !== null && balance.topDocumentShare >= 0.5) ||
     (balance.effectiveDocumentCount !== null &&
-      balance.effectiveDocumentCount <= LOW_EFFECTIVE_DOCUMENT_SHARE_THRESHOLD * corpus.documents.length)
+      balance.effectiveDocumentCount <= LOW_EFFECTIVE_DOCUMENT_SHARE_THRESHOLD * corpus.documentCount)
   );
 }
 
@@ -804,7 +639,7 @@ function buildCorpusVerdict(
   lexical: LexicalNoiseSummary,
   dispersion: DispersionSummary,
 ): string {
-  if (corpus.documents.length === 0) {
+  if (corpus.documentCount === 0) {
     return "No analysis documents are available.";
   }
   if (corpus.totalTokens === 0) {
@@ -839,7 +674,7 @@ function buildCorpusVerdict(
 }
 
 function buildBalanceReading(corpus: AnalysisCorpus, balance: CorpusBalanceSummary): ReadingFinding {
-  if (corpus.documents.length === 0) {
+  if (corpus.documentCount === 0) {
     return {
       label: "Balance",
       status: "note",
@@ -855,7 +690,7 @@ function buildBalanceReading(corpus: AnalysisCorpus, balance: CorpusBalanceSumma
       text: "All document token counts are zero.",
     };
   }
-  if (corpus.documents.length === 1) {
+  if (corpus.documentCount === 1) {
     return {
       label: "Balance",
       status: "exploratory",
@@ -953,7 +788,7 @@ function buildLexicalRichnessSummary(lexical: LexicalNoiseSummary): ReadingFindi
 }
 
 function buildDispersionReading(corpus: AnalysisCorpus, dispersion: DispersionSummary): ReadingFinding {
-  if (corpus.documents.length < 2) {
+  if (corpus.documentCount < 2) {
     return {
       label: "Dispersion",
       status: "exploratory",
@@ -1122,7 +957,7 @@ function renderCorpusSnapshot(corpus: AnalysisCorpus): HTMLElement {
   panel.appendChild(createMetricTable([
     { label: "Tokens", value: formatNumber(corpus.totalTokens) },
     { label: "Unique types", value: formatNumber(corpus.totalTypes) },
-    { label: "Documents", value: formatNumber(corpus.documents.length) },
+    { label: "Documents", value: formatNumber(corpus.documentCount) },
     { label: "Input source", value: inputTextSourceDisplayLabel(corpus.inputTextSource) },
   ], "analysis-snapshot-table"));
   return panel;
@@ -1133,10 +968,10 @@ function renderDocumentLengthDistribution(corpus: AnalysisCorpus, balance: Corpu
   distribution.className = "document-length-distribution";
 
   const title = document.createElement("h4");
-  title.textContent = "Document length distribution";
+  title.textContent = corpus.documentLengthsTruncated ? "Longest documents" : "Document length distribution";
   distribution.appendChild(title);
 
-  if (corpus.documents.length === 0) {
+  if (corpus.documentCount === 0) {
     const empty = document.createElement("p");
     empty.className = "analysis-empty-state";
     empty.textContent = "No documents in the analysis corpus.";
@@ -1145,7 +980,7 @@ function renderDocumentLengthDistribution(corpus: AnalysisCorpus, balance: Corpu
   }
 
   const maxTokens = balance.maxTokens ?? 0;
-  for (const documentRecord of balance.sortedDocuments) {
+  for (const documentRecord of corpus.documentLengths) {
     const row = document.createElement("div");
     row.className = "document-length-row";
     row.title = documentName(documentRecord);
@@ -1178,6 +1013,13 @@ function renderDocumentLengthDistribution(corpus: AnalysisCorpus, balance: Corpu
     distribution.appendChild(row);
   }
 
+  if (corpus.documentLengthsTruncated) {
+    const note = document.createElement("p");
+    note.className = "analysis-panel-note";
+    note.textContent = `Showing the ${formatNumber(corpus.documentLengths.length)} longest documents; summary statistics cover all ${formatNumber(corpus.documentCount)} documents.`;
+    distribution.appendChild(note);
+  }
+
   return distribution;
 }
 
@@ -1204,9 +1046,9 @@ function renderCorpusBalance(corpus: AnalysisCorpus, balance: CorpusBalanceSumma
       label: "Effective documents",
       value: balance.effectiveDocumentCount === null
         ? "n/a"
-        : `${formatNumber(balance.effectiveDocumentCount, 1)} / ${formatNumber(corpus.documents.length)}`,
+        : `${formatNumber(balance.effectiveDocumentCount, 1)} / ${formatNumber(corpus.documentCount)}`,
     },
-    { label: "Documents", value: formatNumber(corpus.documents.length) },
+    { label: "Documents", value: formatNumber(corpus.documentCount) },
   ], "analysis-balance-metrics"));
 
   if (overviewExplanationsVisible) {
@@ -1338,9 +1180,9 @@ function renderCorpusOverview(): void {
     return;
   }
 
-  const balance = summariseCorpusBalance(corpus);
-  const lexical = summariseLexicalNoise(corpus);
-  const dispersion = summariseDispersion(corpus);
+  const balance = corpus.balance;
+  const lexical = corpus.lexical;
+  const dispersion = corpus.dispersion;
 
   dom.analyseOverview.append(
     renderCorpusReading(corpus, balance, lexical, dispersion),
@@ -1352,132 +1194,92 @@ function renderCorpusOverview(): void {
   );
 }
 
+function cloneFrequencySelection(selection: AnalysisDocumentSelection): AnalysisDocumentSelection {
+  return {
+    allDocuments: selection.allDocuments,
+    ids: [...selection.ids],
+    excludedIds: [...selection.excludedIds],
+  };
+}
+
+function frequencySelectionCount(selection: AnalysisDocumentSelection, totalDocuments: number): number {
+  return selection.allDocuments
+    ? Math.max(0, totalDocuments - selection.excludedIds.length)
+    : selection.ids.length;
+}
+
+function frequencySelectionIncludes(selection: AnalysisDocumentSelection, documentId: number): boolean {
+  return selection.allDocuments
+    ? !selection.excludedIds.includes(documentId)
+    : selection.ids.includes(documentId);
+}
+
+function setFrequencySelectionDocument(
+  selection: AnalysisDocumentSelection,
+  documentId: number,
+  selected: boolean,
+): void {
+  if (selection.allDocuments) {
+    const excluded = new Set(selection.excludedIds);
+    if (selected) {
+      excluded.delete(documentId);
+    } else {
+      excluded.add(documentId);
+    }
+    selection.excludedIds = [...excluded];
+    return;
+  }
+
+  const ids = new Set(selection.ids);
+  if (selected) {
+    ids.add(documentId);
+  } else {
+    ids.delete(documentId);
+  }
+  selection.ids = [...ids];
+}
+
 function resetFrequencyCorpusState(): void {
-  frequencyDocumentScope = null;
-  frequencyScopeDraftKeys = new Set<string>();
+  if (frequencyQueryDebounceTimer !== null) {
+    window.clearTimeout(frequencyQueryDebounceTimer);
+    frequencyQueryDebounceTimer = null;
+  }
+  if (frequencyDocumentsDebounceTimer !== null) {
+    window.clearTimeout(frequencyDocumentsDebounceTimer);
+    frequencyDocumentsDebounceTimer = null;
+  }
+  frequencyDocumentScope = defaultAnalysisDocumentSelection();
+  frequencyScopeDraft = defaultAnalysisDocumentSelection();
+  frequencyPage = null;
+  frequencyPageOffset = 0;
+  frequencyQueryGeneration += 1;
+  frequencyQueryPending = false;
+  frequencyQueryFailure = null;
+  frequencyDocumentsPage = null;
+  frequencyDocumentsOffset = 0;
+  frequencyDocumentsGeneration += 1;
+  frequencyDocumentsPending = false;
+  frequencyDocumentsFailure = null;
   expandedFrequencyTokens = new Set<string>();
-}
-
-function frequencyDocumentKey(document: AnalysisDocument, index: number): string {
-  return `${index}\u0000${document.sourcePath}\u0000${document.relativePath}`;
-}
-
-function allFrequencyDocuments(corpus: AnalysisCorpus): ScopedAnalysisDocument[] {
-  return corpus.documents.map((document, index) => ({
-    document,
-    index,
-    key: frequencyDocumentKey(document, index),
-  }));
-}
-
-function selectedFrequencyDocuments(corpus: AnalysisCorpus): ScopedAnalysisDocument[] {
-  const documents = allFrequencyDocuments(corpus);
-  if (!frequencyDocumentScope) {
-    return documents;
-  }
-
-  const selected = documents.filter((document) => frequencyDocumentScope?.has(document.key));
-  if (selected.length === 0 || selected.length === documents.length) {
-    frequencyDocumentScope = null;
-    return documents;
-  }
-
-  return selected;
-}
-
-function currentFrequencyScopeKeys(corpus: AnalysisCorpus): Set<string> {
-  return new Set(selectedFrequencyDocuments(corpus).map((document) => document.key));
+  termDistributionPages.clear();
+  termDistributionGenerations.clear();
 }
 
 function renderFrequencyScopeControl(corpus: AnalysisCorpus | null): void {
-  if (!corpus || corpus.documents.length === 0) {
+  if (!corpus || corpus.documentCount === 0) {
     dom.frequencyFilesButton.disabled = true;
     dom.frequencyFilesButton.textContent = "Files: 0 of 0";
     dom.frequencyFilesButton.setAttribute("aria-label", "No files available for frequency scoping");
     return;
   }
 
-  const selectedCount = selectedFrequencyDocuments(corpus).length;
-  const totalCount = corpus.documents.length;
+  const selectedCount = frequencySelectionCount(frequencyDocumentScope, corpus.documentCount);
   dom.frequencyFilesButton.disabled = false;
-  dom.frequencyFilesButton.textContent = `Files: ${formatNumber(selectedCount)} of ${formatNumber(totalCount)}`;
+  dom.frequencyFilesButton.textContent = `Files: ${formatNumber(selectedCount)} of ${formatNumber(corpus.documentCount)}`;
   dom.frequencyFilesButton.setAttribute(
     "aria-label",
-    `Frequency list file scope: ${formatNumber(selectedCount)} of ${formatNumber(totalCount)} files selected`,
+    `Frequency list file scope: ${formatNumber(selectedCount)} of ${formatNumber(corpus.documentCount)} files selected`,
   );
-}
-
-function buildScopedFrequencyTerms(scopedDocuments: ScopedAnalysisDocument[]): {
-  terms: ScopedFrequencyTerm[];
-  totalTokens: number;
-} {
-  const terms = new Map<string, MutableScopedTerm>();
-  const totalTokens = scopedDocuments.reduce((sum, document) => sum + document.document.tokenCount, 0);
-
-  for (const scopedDocument of scopedDocuments) {
-    for (const [token, count] of Object.entries(scopedDocument.document.termCounts)) {
-      if (count <= 0) {
-        continue;
-      }
-      const term = terms.get(token) ?? {
-        frequency: 0,
-        documentFrequency: 0,
-        documentCounts: new Map<string, number>(),
-      };
-      term.frequency += count;
-      term.documentFrequency += 1;
-      term.documentCounts.set(scopedDocument.key, count);
-      terms.set(token, term);
-    }
-  }
-
-  return {
-    totalTokens,
-    terms: Array.from(terms.entries(), ([token, term]) => {
-      const dispersion = totalTokens > 0 && term.frequency > 0
-        ? 0.5 * scopedDocuments.reduce((sum, scopedDocument) => {
-          const tokenCount = term.documentCounts.get(scopedDocument.key) ?? 0;
-          const observedTokenShare = tokenCount / term.frequency;
-          const documentSizeShare = scopedDocument.document.tokenCount / totalTokens;
-          return sum + Math.abs(observedTokenShare - documentSizeShare);
-        }, 0)
-        : 0;
-
-      return {
-        token,
-        frequency: term.frequency,
-        documentFrequency: term.documentFrequency,
-        ratePer10k: totalTokens > 0 ? (term.frequency / totalTokens) * 10_000 : 0,
-        dispersion,
-        documentCounts: term.documentCounts,
-      };
-    }),
-  };
-}
-
-function createFrequencySearchMatcher(): FrequencySearchMatcher {
-  const rawQuery = dom.frequencySearchInput.value.trim();
-  if (rawQuery.length === 0) {
-    return { matches: () => true, error: null };
-  }
-
-  const query = rawQuery.toLowerCase();
-  const mode = dom.frequencyMatchModeSelect.value as FrequencyMatchMode;
-  switch (mode) {
-    case "contains":
-      return { matches: (token) => token.includes(query), error: null };
-    case "exact":
-      return { matches: (token) => token === query, error: null };
-    case "startsWith":
-      return { matches: (token) => token.startsWith(query), error: null };
-    case "regex":
-      try {
-        const regex = new RegExp(query, "u");
-        return { matches: (token) => regex.test(token), error: null };
-      } catch {
-        return { matches: () => false, error: "Invalid regex pattern." };
-      }
-  }
 }
 
 function renderFrequencySearchError(message: string | null): void {
@@ -1502,70 +1304,8 @@ function tokenClassSummary(filter: FrequencyTokenClassFilter): string {
   }
 }
 
-function tokenMatchesClassFilter(token: string, filter: FrequencyTokenClassFilter): boolean {
-  const hasLetter = TOKEN_LETTER_PATTERN.test(token);
-  const hasNumber = TOKEN_NUMBER_PATTERN.test(token);
-  const isSingleCharacter = Array.from(token).length <= 1;
-
-  switch (filter) {
-    case "alphabetic":
-      return hasLetter && !hasNumber && !isSingleCharacter;
-    case "includeSingles":
-      return hasLetter && !hasNumber;
-    case "includeNumerals":
-      return !isSingleCharacter;
-    case "all":
-      return true;
-  }
-}
-
 function frequencyDetailId(token: string): string {
   return `frequency-detail-${encodeURIComponent(token)}`;
-}
-
-function pruneExpandedFrequencyTokens(visibleTerms: ScopedFrequencyTerm[]): void {
-  const visibleTokens = new Set(visibleTerms.map((term) => term.token));
-  for (const token of expandedFrequencyTokens) {
-    if (!visibleTokens.has(token)) {
-      expandedFrequencyTokens.delete(token);
-    }
-  }
-}
-
-function toggleFrequencyTokenExpansion(token: string): void {
-  if (expandedFrequencyTokens.has(token)) {
-    expandedFrequencyTokens.delete(token);
-  } else {
-    expandedFrequencyTokens.add(token);
-  }
-  renderFrequencyList();
-}
-
-function sortTerms(terms: ScopedFrequencyTerm[]): ScopedFrequencyTerm[] {
-  const direction = frequencySortDirection === "asc" ? 1 : -1;
-  return [...terms].sort((a, b) => {
-    let comparison = 0;
-    switch (frequencySortKey) {
-      case "token":
-        comparison = a.token.localeCompare(b.token);
-        break;
-      case "frequency":
-        comparison = a.frequency - b.frequency;
-        break;
-      case "range":
-        comparison = a.documentFrequency - b.documentFrequency;
-        break;
-      case "rate":
-        comparison = a.ratePer10k - b.ratePer10k;
-        break;
-      case "dispersion":
-        comparison = a.dispersion - b.dispersion;
-        break;
-    }
-    return comparison === 0
-      ? a.token.localeCompare(b.token)
-      : comparison * direction;
-  });
 }
 
 function updateFrequencySortHeaders(): void {
@@ -1579,25 +1319,19 @@ function updateFrequencySortHeaders(): void {
   });
 }
 
-function frequencySummaryText(
-  visibleTypeCount: number,
-  scopedTypeCount: number,
-  selectedDocumentCount: number,
-  totalDocumentCount: number,
-  scopedTokenCount: number,
-  stopwordsHidden: boolean,
-  tokenClassFilter: FrequencyTokenClassFilter,
-): string {
-  const documentScope = selectedDocumentCount === totalDocumentCount
-    ? `${formatNumber(totalDocumentCount)} files`
-    : `${formatNumber(selectedDocumentCount)} of ${formatNumber(totalDocumentCount)} files`;
-  const parts = [
-    `${formatNumber(visibleTypeCount)} of ${formatNumber(scopedTypeCount)} types shown`,
-  ];
-  if (stopwordsHidden) {
+function frequencySummaryText(page: FrequencyPage, tokenClassFilter: FrequencyTokenClassFilter): string {
+  const documentScope = page.selectedDocumentCount === page.totalDocumentCount
+    ? `${formatNumber(page.totalDocumentCount)} files`
+    : `${formatNumber(page.selectedDocumentCount)} of ${formatNumber(page.totalDocumentCount)} files`;
+  const parts = [`${formatNumber(page.totalTerms)} of ${formatNumber(page.scopedTotalTypes)} types shown`];
+  if (dom.frequencyHideStopwordsInput.checked) {
     parts.push("English stopwords hidden");
   }
-  parts.push(tokenClassSummary(tokenClassFilter), documentScope, `${formatNumber(scopedTokenCount)} tokens in scope`);
+  parts.push(
+    tokenClassSummary(tokenClassFilter),
+    documentScope,
+    `${formatNumber(page.scopedTotalTokens)} tokens in scope`,
+  );
   return parts.join(" · ");
 }
 
@@ -1611,7 +1345,7 @@ function dispersionLevel(dispersion: number): "low" | "medium" | "high" {
   return "high";
 }
 
-function createDispersionCell(term: ScopedFrequencyTerm): HTMLTableCellElement {
+function createDispersionCell(term: FrequencyTermItem): HTMLTableCellElement {
   const cell = document.createElement("td");
   cell.className = "numeric frequency-dp-cell";
 
@@ -1631,16 +1365,50 @@ function createDispersionCell(term: ScopedFrequencyTerm): HTMLTableCellElement {
   return cell;
 }
 
-function createFrequencyDistributionPanel(
-  term: ScopedFrequencyTerm,
-  scopedDocuments: ScopedAnalysisDocument[],
-): HTMLElement {
+async function loadTermDistribution(token: string, offset: number): Promise<void> {
+  const generation = (termDistributionGenerations.get(token) ?? 0) + 1;
+  termDistributionGenerations.set(token, generation);
+  termDistributionPages.delete(token);
+  renderFrequencyList();
+  try {
+    const page = await queryTermDistribution(
+      token,
+      frequencyDocumentScope,
+      offset,
+      TERM_DISTRIBUTION_PAGE_SIZE,
+    );
+    if (termDistributionGenerations.get(token) !== generation || !expandedFrequencyTokens.has(token)) {
+      return;
+    }
+    termDistributionPages.set(token, page);
+    renderFrequencyList();
+  } catch (error) {
+    if (termDistributionGenerations.get(token) !== generation) {
+      return;
+    }
+    analysisNotice = { kind: "warning", message: `Term distribution could not be loaded: ${error}` };
+    expandedFrequencyTokens.delete(token);
+    renderAnalysisNotice();
+    renderFrequencyList();
+  }
+}
+
+function createFrequencyDistributionPanel(term: FrequencyTermItem): HTMLElement {
   const panel = document.createElement("div");
   panel.className = "frequency-distribution-panel";
 
   const title = document.createElement("h3");
   title.textContent = "Per-file distribution (selected files)";
   panel.appendChild(title);
+
+  const page = termDistributionPages.get(term.token);
+  if (!page) {
+    const loading = document.createElement("p");
+    loading.className = "analysis-panel-note";
+    loading.textContent = "Loading distribution...";
+    panel.appendChild(loading);
+    return panel;
+  }
 
   const header = document.createElement("div");
   header.className = "frequency-distribution-row frequency-distribution-header";
@@ -1652,40 +1420,30 @@ function createFrequencyDistributionPanel(
   );
   panel.appendChild(header);
 
-  const rows = scopedDocuments.map((scopedDocument) => {
-    const count = term.documentCounts.get(scopedDocument.key) ?? 0;
-    return {
-      document: scopedDocument.document,
-      count,
-      ratePer10k: scopedDocument.document.tokenCount > 0
-        ? (count / scopedDocument.document.tokenCount) * 10_000
-        : 0,
-    };
-  });
-  const maxRate = rows.reduce((max, row) => Math.max(max, row.ratePer10k), 0);
-
-  for (const row of rows) {
+  for (const item of page.items) {
     const line = document.createElement("div");
     line.className = "frequency-distribution-row";
 
     const label = document.createElement("span");
     label.className = "frequency-distribution-file";
-    label.title = documentName(row.document);
-    label.textContent = documentName(row.document);
+    label.title = documentName(item);
+    label.textContent = documentName(item);
 
     const count = document.createElement("span");
     count.className = "numeric";
-    count.textContent = formatNumber(row.count);
+    count.textContent = formatNumber(item.count);
 
     const rate = document.createElement("span");
     rate.className = "numeric";
-    rate.textContent = formatFixedNumber(row.ratePer10k, 2);
+    rate.textContent = formatFixedNumber(item.ratePer10k, 2);
 
     const track = document.createElement("span");
     track.className = "frequency-distribution-track";
     const fill = document.createElement("span");
     fill.className = "frequency-distribution-fill";
-    const barWidth = maxRate > 0 && row.ratePer10k > 0 ? Math.max(3, (row.ratePer10k / maxRate) * 100) : 0;
+    const barWidth = page.maxRatePer10k > 0 && item.ratePer10k > 0
+      ? Math.max(3, (item.ratePer10k / page.maxRatePer10k) * 100)
+      : 0;
     fill.style.setProperty("--bar-width", `${barWidth}%`);
     track.appendChild(fill);
 
@@ -1693,20 +1451,104 @@ function createFrequencyDistributionPanel(
     panel.appendChild(line);
   }
 
+  const pagination = document.createElement("div");
+  pagination.className = "analysis-pagination";
+  const previous = document.createElement("button");
+  previous.type = "button";
+  previous.className = "secondary-btn";
+  previous.textContent = "Previous";
+  previous.disabled = page.offset === 0;
+  previous.addEventListener("click", () => {
+    void loadTermDistribution(term.token, Math.max(0, page.offset - page.limit));
+  });
+  const status = document.createElement("span");
+  const first = page.totalDocuments === 0 ? 0 : page.offset + 1;
+  const last = Math.min(page.totalDocuments, page.offset + page.items.length);
+  status.textContent = `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(page.totalDocuments)}`;
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "secondary-btn";
+  next.textContent = "Next";
+  next.disabled = page.offset + page.items.length >= page.totalDocuments;
+  next.addEventListener("click", () => {
+    void loadTermDistribution(term.token, page.offset + page.limit);
+  });
+  pagination.append(previous, status, next);
+  panel.appendChild(pagination);
   return panel;
+}
+
+async function refreshFrequencyPage(resetOffset = true): Promise<void> {
+  const corpus = state.analysisCorpus;
+  if (!corpus) {
+    return;
+  }
+  if (resetOffset) {
+    frequencyPageOffset = 0;
+  }
+  const generation = ++frequencyQueryGeneration;
+  frequencyQueryPending = true;
+  frequencyQueryFailure = null;
+  frequencyPage = null;
+  expandedFrequencyTokens.clear();
+  termDistributionPages.clear();
+  renderFrequencyList();
+
+  try {
+    const page = await queryFrequencyList({
+      selection: frequencyDocumentScope,
+      query: dom.frequencySearchInput.value.trim(),
+      matchMode: dom.frequencyMatchModeSelect.value as FrequencyMatchMode,
+      minimumFrequency: Math.max(1, Number.parseInt(dom.frequencyMinInput.value, 10) || 1),
+      tokenClass: currentFrequencyTokenClassFilter(),
+      hideStopwords: dom.frequencyHideStopwordsInput.checked,
+      sortKey: frequencySortKey,
+      sortDirection: frequencySortDirection,
+      offset: frequencyPageOffset,
+      limit: FREQUENCY_PAGE_SIZE,
+    });
+    if (frequencyQueryGeneration !== generation) {
+      return;
+    }
+    frequencyPage = page;
+    frequencyPageOffset = page.offset;
+  } catch (error) {
+    if (frequencyQueryGeneration !== generation) {
+      return;
+    }
+    frequencyQueryFailure = `${error}`;
+  } finally {
+    if (frequencyQueryGeneration === generation) {
+      frequencyQueryPending = false;
+      renderFrequencyList();
+    }
+  }
+}
+
+function scheduleFrequencyRefresh(): void {
+  if (frequencyQueryDebounceTimer !== null) {
+    window.clearTimeout(frequencyQueryDebounceTimer);
+  }
+  frequencyQueryDebounceTimer = window.setTimeout(() => {
+    frequencyQueryDebounceTimer = null;
+    void refreshFrequencyPage();
+  }, 150);
 }
 
 function renderFrequencyList(): void {
   updateFrequencySortHeaders();
   dom.frequencyTableBody.replaceChildren();
   dom.frequencyLimitNote.textContent = "";
-  renderFrequencySearchError(null);
+  renderFrequencySearchError(frequencyQueryFailure);
 
   const corpus = state.analysisCorpus;
   renderFrequencyScopeControl(corpus);
   if (!corpus) {
     dom.frequencyResultCount.textContent = "";
     dom.frequencySummary.textContent = "Build an analysis corpus to populate the frequency list.";
+    dom.frequencyPageStatus.textContent = "";
+    dom.frequencyPagePreviousButton.disabled = true;
+    dom.frequencyPageNextButton.disabled = true;
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = FREQUENCY_TABLE_COLUMN_COUNT;
@@ -1717,39 +1559,37 @@ function renderFrequencyList(): void {
     return;
   }
 
-  const scopedDocuments = selectedFrequencyDocuments(corpus);
-  const scoped = buildScopedFrequencyTerms(scopedDocuments);
-  const matcher = createFrequencySearchMatcher();
-  renderFrequencySearchError(matcher.error);
-  const minFrequency = Math.max(1, Number.parseInt(dom.frequencyMinInput.value, 10) || 1);
-  const hideStopwords = dom.frequencyHideStopwordsInput.checked;
-  const tokenClassFilter = currentFrequencyTokenClassFilter();
-  const filtered = scoped.terms.filter((term) =>
-    term.frequency >= minFrequency &&
-    matcher.matches(term.token) &&
-    tokenMatchesClassFilter(term.token, tokenClassFilter) &&
-    (!hideStopwords || !ENGLISH_STOPWORDS.has(term.token))
-  );
-  const sorted = sortTerms(filtered);
-  const visible = sorted.slice(0, FREQUENCY_DISPLAY_LIMIT);
-  pruneExpandedFrequencyTokens(visible);
-
-  dom.frequencySummary.textContent = frequencySummaryText(
-    filtered.length,
-    scoped.terms.length,
-    scopedDocuments.length,
-    corpus.documents.length,
-    scoped.totalTokens,
-    hideStopwords,
-    tokenClassFilter,
-  );
-  dom.frequencyResultCount.textContent = `Built from ${inputTextSourceLabel(corpus.inputTextSource)}`;
-  if (sorted.length > visible.length) {
-    dom.frequencyLimitNote.textContent =
-      `Showing first ${formatNumber(visible.length)} of ${formatNumber(sorted.length)} terms`;
+  if (!frequencyPage) {
+    dom.frequencySummary.textContent = frequencyQueryFailure
+      ? "Frequency query failed."
+      : "Querying the Rust analysis index...";
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = FREQUENCY_TABLE_COLUMN_COUNT;
+    cell.className = "frequency-empty";
+    cell.textContent = frequencyQueryFailure ?? "Loading frequency results...";
+    row.appendChild(cell);
+    dom.frequencyTableBody.appendChild(row);
+    dom.frequencyPageStatus.textContent = "";
+    dom.frequencyPagePreviousButton.disabled = true;
+    dom.frequencyPageNextButton.disabled = true;
+    if (activeAnalysisTool === "frequency" && !frequencyQueryPending && !frequencyQueryFailure) {
+      void refreshFrequencyPage(false);
+    }
+    return;
   }
 
-  if (visible.length === 0) {
+  const page = frequencyPage;
+  renderFrequencySearchError(page.queryError);
+  dom.frequencySummary.textContent = frequencySummaryText(page, currentFrequencyTokenClassFilter());
+  dom.frequencyResultCount.textContent = `Built from ${inputTextSourceLabel(corpus.inputTextSource)}`;
+  const first = page.totalTerms === 0 ? 0 : page.offset + 1;
+  const last = Math.min(page.totalTerms, page.offset + page.items.length);
+  dom.frequencyPageStatus.textContent = `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(page.totalTerms)}`;
+  dom.frequencyPagePreviousButton.disabled = page.offset === 0;
+  dom.frequencyPageNextButton.disabled = page.offset + page.items.length >= page.totalTerms;
+
+  if (page.items.length === 0) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = FREQUENCY_TABLE_COLUMN_COUNT;
@@ -1760,7 +1600,7 @@ function renderFrequencyList(): void {
     return;
   }
 
-  for (const term of visible) {
+  for (const term of page.items) {
     const isExpanded = expandedFrequencyTokens.has(term.token);
     const detailId = frequencyDetailId(term.token);
     const row = document.createElement("tr");
@@ -1774,37 +1614,28 @@ function renderFrequencyList(): void {
     const token = document.createElement("td");
     token.className = "frequency-token-cell";
     token.title = term.token;
-
     const tokenContent = document.createElement("span");
     tokenContent.className = "frequency-token-content";
-
     const caret = document.createElement("span");
     caret.className = "frequency-token-caret";
     caret.setAttribute("aria-hidden", "true");
     caret.textContent = isExpanded ? "▾" : "▸";
-
     const tokenText = document.createElement("span");
     tokenText.className = "frequency-token-text";
     tokenText.textContent = term.token;
-
     tokenContent.append(caret, tokenText);
     token.appendChild(tokenContent);
 
     const frequency = document.createElement("td");
     frequency.className = "numeric";
     frequency.textContent = formatNumber(term.frequency);
-
     const documentFrequency = document.createElement("td");
     documentFrequency.className = "numeric";
-    documentFrequency.textContent = `${formatNumber(term.documentFrequency)} / ${formatNumber(scopedDocuments.length)}`;
-
+    documentFrequency.textContent = `${formatNumber(term.documentFrequency)} / ${formatNumber(page.selectedDocumentCount)}`;
     const rate = document.createElement("td");
     rate.className = "numeric";
     rate.textContent = formatFixedNumber(term.ratePer10k, 2);
-
-    const dispersion = createDispersionCell(term);
-
-    row.append(token, frequency, documentFrequency, rate, dispersion);
+    row.append(token, frequency, documentFrequency, rate, createDispersionCell(term));
     dom.frequencyTableBody.appendChild(row);
 
     if (isExpanded) {
@@ -1813,13 +1644,12 @@ function renderFrequencyList(): void {
       const detailCell = document.createElement("td");
       detailCell.id = detailId;
       detailCell.colSpan = FREQUENCY_TABLE_COLUMN_COUNT;
-      detailCell.appendChild(createFrequencyDistributionPanel(term, scopedDocuments));
+      detailCell.appendChild(createFrequencyDistributionPanel(term));
       detailRow.appendChild(detailCell);
       dom.frequencyTableBody.appendChild(detailRow);
     }
   }
 }
-
 export function renderAnalyseWorkbench(): void {
   renderAnalyseStatus();
   renderAnalysisNotice();
@@ -1850,10 +1680,19 @@ function setActiveAnalysisTool(tool: AnalysisToolId): void {
   activeAnalysisTool = tool;
   renderAnalysisTools();
   renderAnalysisToolPanels();
+  if (tool === "frequency") {
+    renderFrequencyList();
+  }
   refreshStageNavigator();
 }
 
 export function resetWorkbenchForProject(): void {
+  analysisBuildGeneration += 1;
+  if (analysisBuildInProgress) {
+    void cancelAnalysisBuild();
+  }
+  analysisBuildInProgress = false;
+  analysisBuildProgress = null;
   analysisNotice = null;
   activeAnalysisTool = "overview";
   resetFrequencyCorpusState();
@@ -1862,6 +1701,12 @@ export function resetWorkbenchForProject(): void {
 }
 
 export function hideWorkbenchSwitcher(): void {
+  analysisBuildGeneration += 1;
+  if (analysisBuildInProgress) {
+    void cancelAnalysisBuild();
+  }
+  analysisBuildInProgress = false;
+  analysisBuildProgress = null;
   analysisNotice = null;
   activeAnalysisTool = "overview";
   resetFrequencyCorpusState();
@@ -1877,14 +1722,23 @@ export function refreshAnalyseWorkbench(): void {
 }
 
 async function handleBuildAnalysisCorpus(): Promise<void> {
+  if (analysisBuildInProgress) {
+    dom.analyseBuildButton.disabled = true;
+    dom.analyseBuildNote.textContent = "Cancelling analysis build...";
+    dom.statusBar.textContent = "Cancelling analysis build...";
+    try {
+      await cancelAnalysisBuild();
+    } finally {
+      dom.analyseBuildButton.disabled = false;
+    }
+    return;
+  }
+
   const indices = state.activeProject ? null : state.allFiles.map((_, index) => index);
   const inputTextSource = chooseAnalysisInputSource();
   const buildSignature = analysisBuildSignature(inputTextSource);
 
   analysisNotice = null;
-  dom.analyseBuildButton.disabled = true;
-  dom.analyseBuildNote.textContent = "Building analysis corpus...";
-  dom.statusBar.textContent = "Building analysis corpus...";
 
   if ((indices?.length ?? state.projectCorpusFileCount) === 0) {
     state.analysisCorpus = null;
@@ -1894,59 +1748,98 @@ async function handleBuildAnalysisCorpus(): Promise<void> {
       message: "No text available for analysis. Go to Prepare, extract/process sources, then return to Analyse.",
     };
     dom.statusBar.textContent = "No text available for analysis.";
-    dom.analyseBuildButton.disabled = false;
     renderAnalyseWorkbench();
     refreshStageNavigator();
     return;
   }
 
+  analysisBuildInProgress = true;
+  analysisBuildProgress = null;
+  const buildGeneration = ++analysisBuildGeneration;
+  state.analysisCorpus = null;
+  resetFrequencyCorpusState();
+  renderAnalyseWorkbench();
+  dom.statusBar.textContent = "Building analysis corpus...";
+
   try {
-    const result = await loadAnalysisInputTexts(
+    const overview = await buildAnalysisCorpus(
       indices,
       state.currentCorpusVersion,
-      inputTextSource === "processed",
+      inputTextSource,
+      buildSignature,
       state.activeCleaningConfig,
     );
-
-    if (result.documents.length === 0) {
-      state.analysisCorpus = null;
-      resetFrequencyCorpusState();
-      analysisNotice = {
-        kind: "warning",
-        message: "No text available for analysis. Go to Prepare, extract/process sources, then return to Analyse.",
-      };
-      dom.statusBar.textContent = "No text available for analysis.";
+    if (analysisBuildGeneration !== buildGeneration) {
       return;
     }
-
-    state.analysisCorpus = buildAnalysisCorpus(result.documents, inputTextSource, buildSignature);
+    state.analysisCorpus = overview;
     resetFrequencyCorpusState();
     activeAnalysisTool = "overview";
     const sourceMessage = inputTextSource === "processed"
       ? "Built from processed text."
-      : "Exploratory analysis built from extracted text because processed text is not available yet.";
-    const skipped = result.skippedDocuments > 0
-      ? ` ${pluralise(result.skippedDocuments, "document")} without usable text skipped.`
+      : "Exploratory analysis built from extracted/native text because processed text is not available yet.";
+    const skipped = overview.skippedDocuments > 0
+      ? ` ${pluralise(overview.skippedDocuments, "document")} without usable text skipped.`
       : "";
-    const skippedPdfs = result.skippedPdfDocuments > 0
-      ? ` ${pluralise(result.skippedPdfDocuments, "PDF")} had no materialised text.`
+    const skippedPdfs = overview.skippedPdfDocuments > 0
+      ? ` ${pluralise(overview.skippedPdfDocuments, "PDF")} had no materialised text.`
       : "";
     analysisNotice = skipped || skippedPdfs
       ? { kind: "warning", message: `${sourceMessage}${skipped}${skippedPdfs}`.trim() }
       : null;
-    dom.statusBar.textContent = `Analysis corpus built from ${inputTextSource} text.`;
+    dom.statusBar.textContent =
+      `Analysis corpus built from ${inputTextSource} text. ${formatNumber(overview.documentCount)} documents · ${formatNumber(overview.totalTokens)} tokens · ${formatNumber(overview.totalTypes)} types.`;
   } catch (error) {
+    if (analysisBuildGeneration !== buildGeneration) {
+      return;
+    }
     state.analysisCorpus = null;
     resetFrequencyCorpusState();
+    const message = `${error}`;
     analysisNotice = {
       kind: "warning",
-      message: `Analysis corpus could not be built: ${error}`,
+      message: message.toLowerCase().includes("cancelled")
+        ? "Analysis corpus build cancelled."
+        : `Analysis build failed: ${message}`,
     };
-    dom.statusBar.textContent = "Analysis corpus build failed.";
+    dom.statusBar.textContent = analysisNotice.message;
   } finally {
+    if (analysisBuildGeneration !== buildGeneration) {
+      return;
+    }
+    analysisBuildInProgress = false;
+    analysisBuildProgress = null;
     dom.analyseBuildButton.disabled = false;
     renderAnalyseWorkbench();
     refreshStageNavigator();
+  }
+}
+
+async function initialiseAnalysisBuildState(): Promise<void> {
+  if (analysisProgressUnlisten) {
+    analysisProgressUnlisten();
+  }
+  analysisProgressUnlisten = await listen<AnalysisBuildProgress>("analysis-build-progress", (event) => {
+    if (!analysisBuildInProgress) {
+      return;
+    }
+    analysisBuildProgress = event.payload;
+    const progressText = analysisBuildProgressText(event.payload);
+    dom.statusBar.textContent = `Building analysis corpus... ${progressText}`;
+    if (state.activeWorkbench === "analyse") {
+      renderAnalyseStatus();
+    }
+  });
+
+  try {
+    const status = await getAnalysisBuildStatus();
+    analysisBuildInProgress = status.state === "building";
+    analysisBuildProgress = status.progress;
+    if (status.state === "ready" && status.overview && !state.analysisCorpus) {
+      state.analysisCorpus = status.overview;
+    }
+  } catch {
+    // The Analyse screen remains usable even if startup status recovery is unavailable.
   }
 }
 
@@ -1995,7 +1888,37 @@ function handleFrequencySortClick(event: Event): void {
     frequencySortKey = nextKey;
     frequencySortDirection = nextKey === "token" ? "asc" : "desc";
   }
-  renderFrequencyList();
+  void refreshFrequencyPage();
+}
+
+function toggleFrequencyTokenExpansion(token: string): void {
+  if (expandedFrequencyTokens.has(token)) {
+    expandedFrequencyTokens.delete(token);
+    termDistributionGenerations.set(token, (termDistributionGenerations.get(token) ?? 0) + 1);
+    termDistributionPages.delete(token);
+    renderFrequencyList();
+    return;
+  }
+  expandedFrequencyTokens.clear();
+  termDistributionPages.clear();
+  expandedFrequencyTokens.add(token);
+  void loadTermDistribution(token, 0);
+}
+
+function showPreviousFrequencyPage(): void {
+  if (!frequencyPage || frequencyPage.offset === 0) {
+    return;
+  }
+  frequencyPageOffset = Math.max(0, frequencyPage.offset - frequencyPage.limit);
+  void refreshFrequencyPage(false);
+}
+
+function showNextFrequencyPage(): void {
+  if (!frequencyPage || frequencyPage.offset + frequencyPage.items.length >= frequencyPage.totalTerms) {
+    return;
+  }
+  frequencyPageOffset = frequencyPage.offset + frequencyPage.limit;
+  void refreshFrequencyPage(false);
 }
 
 function handleFrequencyTableClick(event: Event): void {
@@ -2035,6 +1958,52 @@ function closeFrequencyFilesModal(): void {
   dom.frequencyFilesModal.classList.add("hidden");
 }
 
+async function refreshFrequencyDocumentsPage(resetOffset = true): Promise<void> {
+  if (!state.analysisCorpus) {
+    return;
+  }
+  if (resetOffset) {
+    frequencyDocumentsOffset = 0;
+  }
+  const generation = ++frequencyDocumentsGeneration;
+  frequencyDocumentsPending = true;
+  frequencyDocumentsFailure = null;
+  frequencyDocumentsPage = null;
+  renderFrequencyFilesModal();
+  try {
+    const page = await queryAnalysisDocuments(
+      frequencyScopeDraft,
+      dom.frequencyFilesSearchInput.value,
+      frequencyDocumentsOffset,
+      FREQUENCY_DOCUMENT_PAGE_SIZE,
+    );
+    if (frequencyDocumentsGeneration !== generation) {
+      return;
+    }
+    frequencyDocumentsPage = page;
+    frequencyDocumentsOffset = page.offset;
+  } catch (error) {
+    if (frequencyDocumentsGeneration === generation) {
+      frequencyDocumentsFailure = `${error}`;
+    }
+  } finally {
+    if (frequencyDocumentsGeneration === generation) {
+      frequencyDocumentsPending = false;
+      renderFrequencyFilesModal();
+    }
+  }
+}
+
+function scheduleFrequencyDocumentsRefresh(): void {
+  if (frequencyDocumentsDebounceTimer !== null) {
+    window.clearTimeout(frequencyDocumentsDebounceTimer);
+  }
+  frequencyDocumentsDebounceTimer = window.setTimeout(() => {
+    frequencyDocumentsDebounceTimer = null;
+    void refreshFrequencyDocumentsPage();
+  }, 150);
+}
+
 function renderFrequencyFilesModal(): void {
   const corpus = state.analysisCorpus;
   dom.frequencyFilesList.replaceChildren();
@@ -2043,62 +2012,95 @@ function renderFrequencyFilesModal(): void {
     dom.frequencyFilesApplyButton.disabled = true;
     dom.frequencyFilesStatus.textContent = "Build an analysis corpus before choosing files.";
     dom.frequencyFilesStatus.classList.add("is-error");
+    dom.frequencyFilesPreviousButton.disabled = true;
+    dom.frequencyFilesNextButton.disabled = true;
+    dom.frequencyFilesPageStatus.textContent = "";
     return;
   }
 
-  const documents = allFrequencyDocuments(corpus);
-  const query = dom.frequencyFilesSearchInput.value.trim().toLowerCase();
-  const visibleDocuments = documents.filter((document) =>
-    documentName(document.document).toLowerCase().includes(query)
-  );
+  const selectedCount = frequencySelectionCount(frequencyScopeDraft, corpus.documentCount);
+  dom.frequencyFilesStatus.textContent = selectedCount === 0
+    ? "Select at least one file."
+    : `${formatNumber(selectedCount)} of ${formatNumber(corpus.documentCount)} files selected`;
+  dom.frequencyFilesStatus.classList.toggle("is-error", selectedCount === 0);
+  dom.frequencyFilesApplyButton.disabled = selectedCount === 0;
 
-  if (visibleDocuments.length === 0) {
+  if (frequencyDocumentsFailure) {
+    const failure = document.createElement("p");
+    failure.className = "frequency-files-empty";
+    failure.textContent = `Files could not be loaded: ${frequencyDocumentsFailure}`;
+    dom.frequencyFilesList.appendChild(failure);
+    dom.frequencyFilesStatus.textContent = "File query failed.";
+    dom.frequencyFilesStatus.classList.add("is-error");
+    dom.frequencyFilesPreviousButton.disabled = true;
+    dom.frequencyFilesNextButton.disabled = true;
+    dom.frequencyFilesPageStatus.textContent = "";
+    return;
+  }
+
+  const page = frequencyDocumentsPage;
+  if (!page) {
+    const loading = document.createElement("p");
+    loading.className = "frequency-files-empty";
+    loading.textContent = frequencyDocumentsPending ? "Loading files..." : "No file window loaded.";
+    dom.frequencyFilesList.appendChild(loading);
+    dom.frequencyFilesPreviousButton.disabled = true;
+    dom.frequencyFilesNextButton.disabled = true;
+    dom.frequencyFilesPageStatus.textContent = "";
+    if (!frequencyDocumentsPending) {
+      void refreshFrequencyDocumentsPage(false);
+    }
+    return;
+  }
+
+  if (page.items.length === 0) {
     const empty = document.createElement("p");
     empty.className = "frequency-files-empty";
     empty.textContent = "No files match the current search.";
     dom.frequencyFilesList.appendChild(empty);
   }
 
-  for (const scopedDocument of visibleDocuments) {
+  for (const documentRecord of page.items) {
     const label = document.createElement("label");
     label.className = "frequency-file-option";
 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
-    checkbox.dataset.documentKey = scopedDocument.key;
-    checkbox.checked = frequencyScopeDraftKeys.has(scopedDocument.key);
+    checkbox.dataset.documentId = documentRecord.id.toString();
+    checkbox.checked = frequencySelectionIncludes(frequencyScopeDraft, documentRecord.id);
 
     const name = document.createElement("span");
     name.className = "frequency-file-name";
-    name.title = documentName(scopedDocument.document);
-    name.textContent = documentName(scopedDocument.document);
+    name.title = documentName(documentRecord);
+    name.textContent = documentName(documentRecord);
 
     const tokens = document.createElement("span");
     tokens.className = "frequency-file-tokens";
-    tokens.textContent = `${formatNumber(scopedDocument.document.tokenCount)} tokens`;
+    tokens.textContent = `${formatNumber(documentRecord.tokenCount)} tokens`;
 
     label.append(checkbox, name, tokens);
     dom.frequencyFilesList.appendChild(label);
   }
 
-  const selectedCount = frequencyScopeDraftKeys.size;
-  dom.frequencyFilesStatus.textContent = selectedCount === 0
-    ? "Select at least one file."
-    : `${formatNumber(selectedCount)} of ${formatNumber(documents.length)} files selected`;
-  dom.frequencyFilesStatus.classList.toggle("is-error", selectedCount === 0);
-  dom.frequencyFilesApplyButton.disabled = selectedCount === 0;
+  const first = page.totalCount === 0 ? 0 : page.offset + 1;
+  const last = Math.min(page.totalCount, page.offset + page.items.length);
+  dom.frequencyFilesPageStatus.textContent =
+    `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(page.totalCount)}`;
+  dom.frequencyFilesPreviousButton.disabled = page.offset === 0;
+  dom.frequencyFilesNextButton.disabled = page.offset + page.items.length >= page.totalCount;
 }
 
 function openFrequencyFilesModal(): void {
-  const corpus = state.analysisCorpus;
-  if (!corpus) {
+  if (!state.analysisCorpus) {
     return;
   }
 
-  frequencyScopeDraftKeys = currentFrequencyScopeKeys(corpus);
+  frequencyScopeDraft = cloneFrequencySelection(frequencyDocumentScope);
+  frequencyDocumentsPage = null;
+  frequencyDocumentsOffset = 0;
   dom.frequencyFilesSearchInput.value = "";
-  renderFrequencyFilesModal();
   dom.frequencyFilesModal.classList.remove("hidden");
+  void refreshFrequencyDocumentsPage();
   dom.frequencyFilesSearchInput.focus();
 }
 
@@ -2109,48 +2111,60 @@ function applyFrequencyFileScope(): void {
     return;
   }
 
-  if (frequencyScopeDraftKeys.size === 0) {
+  if (frequencySelectionCount(frequencyScopeDraft, corpus.documentCount) === 0) {
     renderFrequencyFilesModal();
     return;
   }
 
-  frequencyDocumentScope = frequencyScopeDraftKeys.size === corpus.documents.length
-    ? null
-    : new Set(frequencyScopeDraftKeys);
+  frequencyDocumentScope = cloneFrequencySelection(frequencyScopeDraft);
   expandedFrequencyTokens.clear();
+  termDistributionPages.clear();
   closeFrequencyFilesModal();
-  renderFrequencyList();
+  void refreshFrequencyPage();
 }
 
 function handleFrequencyFilesListChange(event: Event): void {
   const target = event.target;
-  if (!(target instanceof HTMLInputElement) || !target.dataset.documentKey) {
+  if (!(target instanceof HTMLInputElement) || target.dataset.documentId === undefined) {
     return;
   }
-
-  if (target.checked) {
-    frequencyScopeDraftKeys.add(target.dataset.documentKey);
-  } else {
-    frequencyScopeDraftKeys.delete(target.dataset.documentKey);
+  const documentId = Number.parseInt(target.dataset.documentId, 10);
+  if (!Number.isFinite(documentId)) {
+    return;
   }
+  setFrequencySelectionDocument(frequencyScopeDraft, documentId, target.checked);
   renderFrequencyFilesModal();
 }
 
 function selectAllFrequencyFiles(): void {
-  const corpus = state.analysisCorpus;
-  if (!corpus) {
-    return;
-  }
-
-  frequencyScopeDraftKeys = new Set(allFrequencyDocuments(corpus).map((document) => document.key));
-  renderFrequencyFilesModal();
+  frequencyScopeDraft = defaultAnalysisDocumentSelection();
+  void refreshFrequencyDocumentsPage(false);
 }
 
 function clearFrequencyFiles(): void {
-  frequencyScopeDraftKeys.clear();
-  renderFrequencyFilesModal();
+  frequencyScopeDraft = { allDocuments: false, ids: [], excludedIds: [] };
+  void refreshFrequencyDocumentsPage(false);
 }
 
+function showPreviousFrequencyDocumentsPage(): void {
+  if (!frequencyDocumentsPage || frequencyDocumentsPage.offset === 0) {
+    return;
+  }
+  frequencyDocumentsOffset = Math.max(
+    0,
+    frequencyDocumentsPage.offset - frequencyDocumentsPage.limit,
+  );
+  void refreshFrequencyDocumentsPage(false);
+}
+
+function showNextFrequencyDocumentsPage(): void {
+  if (!frequencyDocumentsPage
+    || frequencyDocumentsPage.offset + frequencyDocumentsPage.items.length >= frequencyDocumentsPage.totalCount) {
+    return;
+  }
+  frequencyDocumentsOffset = frequencyDocumentsPage.offset + frequencyDocumentsPage.limit;
+  void refreshFrequencyDocumentsPage(false);
+}
 function handleFrequencyModalKeydown(event: KeyboardEvent): void {
   if (event.key === "Escape" && !dom.frequencyFilesModal.classList.contains("hidden")) {
     closeFrequencyFilesModal();
@@ -2168,26 +2182,32 @@ export function initWorkbenchSwitcher(): void {
   dom.workbenchAnalyse.addEventListener("keydown", handleWorkbenchKeydown);
 
   dom.analyseBuildButton.addEventListener("click", () => {
-    handleBuildAnalysisCorpus();
+    void handleBuildAnalysisCorpus();
   });
   dom.analyseToolsList.addEventListener("click", handleAnalysisToolClick);
-  dom.frequencySearchInput.addEventListener("input", renderFrequencyList);
-  dom.frequencyMatchModeSelect.addEventListener("change", renderFrequencyList);
-  dom.frequencyMinInput.addEventListener("input", renderFrequencyList);
-  dom.frequencyTokenClassSelect.addEventListener("change", renderFrequencyList);
-  dom.frequencyHideStopwordsInput.addEventListener("change", renderFrequencyList);
+  dom.frequencySearchInput.addEventListener("input", scheduleFrequencyRefresh);
+  dom.frequencyMatchModeSelect.addEventListener("change", () => void refreshFrequencyPage());
+  dom.frequencyMinInput.addEventListener("input", scheduleFrequencyRefresh);
+  dom.frequencyTokenClassSelect.addEventListener("change", () => void refreshFrequencyPage());
+  dom.frequencyHideStopwordsInput.addEventListener("change", () => void refreshFrequencyPage());
   dom.frequencyFilesButton.addEventListener("click", openFrequencyFilesModal);
   dom.frequencyTableHead.addEventListener("click", handleFrequencySortClick);
   dom.frequencyTableBody.addEventListener("click", handleFrequencyTableClick);
   dom.frequencyTableBody.addEventListener("keydown", handleFrequencyTableKeydown);
-  dom.frequencyFilesSearchInput.addEventListener("input", renderFrequencyFilesModal);
+  dom.frequencyPagePreviousButton.addEventListener("click", showPreviousFrequencyPage);
+  dom.frequencyPageNextButton.addEventListener("click", showNextFrequencyPage);
+  dom.frequencyFilesSearchInput.addEventListener("input", scheduleFrequencyDocumentsRefresh);
   dom.frequencyFilesList.addEventListener("change", handleFrequencyFilesListChange);
   dom.frequencyFilesSelectAllButton.addEventListener("click", selectAllFrequencyFiles);
   dom.frequencyFilesClearAllButton.addEventListener("click", clearFrequencyFiles);
+  dom.frequencyFilesPreviousButton.addEventListener("click", showPreviousFrequencyDocumentsPage);
+  dom.frequencyFilesNextButton.addEventListener("click", showNextFrequencyDocumentsPage);
   dom.frequencyFilesApplyButton.addEventListener("click", applyFrequencyFileScope);
   dom.frequencyFilesCancelButton.addEventListener("click", closeFrequencyFilesModal);
   dom.frequencyFilesCloseButton.addEventListener("click", closeFrequencyFilesModal);
   document.addEventListener("keydown", handleFrequencyModalKeydown);
+
+  void initialiseAnalysisBuildState();
 
   refreshStageNavigator();
   renderAnalysisTools();

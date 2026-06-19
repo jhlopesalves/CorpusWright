@@ -3,116 +3,228 @@ import { invoke } from "@tauri-apps/api/core";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
 
 export type AnalysisInputSource = "processed" | "extracted";
+export type AnalysisBuildPhase =
+  | "loadingSources"
+  | "readingFiles"
+  | "tokenising"
+  | "computingDispersion"
+  | "finalisingSummaries";
+export type AnalysisBuildStateKind = "notBuilt" | "building" | "ready" | "failed" | "cancelled";
+export type FrequencySortKey = "token" | "frequency" | "range" | "rate" | "dispersion";
+export type FrequencyMatchMode = "contains" | "exact" | "startsWith" | "regex";
+export type FrequencyTokenClass = "alphabetic" | "includeSingles" | "includeNumerals" | "all";
+export type SortDirection = "asc" | "desc";
 
-export interface AnalysisInputDocument {
-  sourcePath: string;
-  relativePath: string;
-  text: string;
-}
-
-export interface AnalysisInputTextsResult {
-  documents: AnalysisInputDocument[];
-  skippedDocuments: number;
-  skippedPdfDocuments: number;
-}
-
-export interface AnalysisDocument {
+export interface AnalysisDocumentSummary {
+  id: number;
   sourcePath: string;
   relativePath: string;
   tokenCount: number;
-  termCounts: Record<string, number>;
 }
 
-export interface AnalysisTerm {
+export interface AnalysisBalanceSummary {
+  largestDocument: AnalysisDocumentSummary | null;
+  smallestNonEmptyDocument: AnalysisDocumentSummary | null;
+  minTokens: number | null;
+  maxTokens: number | null;
+  medianTokens: number | null;
+  q1Tokens: number | null;
+  q3Tokens: number | null;
+  iqrTokens: number | null;
+  largestDocumentShare: number | null;
+  topDocumentCount: number;
+  topDocumentShare: number | null;
+  lengthRatio: number | null;
+  effectiveDocumentCount: number | null;
+}
+
+export interface AnalysisLexicalSummary {
+  uniqueTypes: number;
+  hapaxLegomena: number;
+  disLegomena: number;
+  repeatedTypes: number;
+  numericOnlyTypes: number;
+  numericOnlyShare: number | null;
+  singleCharacterTypes: number;
+  singleCharacterShare: number | null;
+  qualityOtherTypes: number;
+  typeTokenRatio: number | null;
+}
+
+export interface AnalysisDispersionSummary {
+  documentCount: number;
+  allDocumentTypes: number;
+  oneDocumentTypes: number;
+  frequentTypes: number;
+  medianFrequentDispersion: number | null;
+  highDispersionFrequentTypes: number;
+}
+
+export interface AnalysisOverview {
+  documentCount: number;
+  sourceCount: number;
+  totalTokens: number;
+  totalTypes: number;
+  inputTextSource: AnalysisInputSource;
+  builtAt: string;
+  buildSignature: string;
+  skippedDocuments: number;
+  skippedPdfDocuments: number;
+  balance: AnalysisBalanceSummary;
+  lexical: AnalysisLexicalSummary;
+  dispersion: AnalysisDispersionSummary;
+  documentLengths: AnalysisDocumentSummary[];
+  documentLengthsTruncated: boolean;
+}
+
+export interface AnalysisBuildProgress {
+  filesDone: number;
+  filesTotal: number;
+  tokensSeen: number;
+  typesSeen: number;
+  currentPhase: AnalysisBuildPhase;
+  elapsedMs: number;
+}
+
+export interface AnalysisBuildStatus {
+  state: AnalysisBuildStateKind;
+  progress: AnalysisBuildProgress | null;
+  error: string | null;
+  overview: AnalysisOverview | null;
+}
+
+export interface AnalysisDocumentSelection {
+  allDocuments: boolean;
+  ids: number[];
+  excludedIds: number[];
+}
+
+export interface FrequencyQuery {
+  selection: AnalysisDocumentSelection;
+  query: string;
+  matchMode: FrequencyMatchMode;
+  minimumFrequency: number;
+  tokenClass: FrequencyTokenClass;
+  hideStopwords: boolean;
+  sortKey: FrequencySortKey;
+  sortDirection: SortDirection;
+  offset: number;
+  limit: number;
+}
+
+export interface FrequencyTermItem {
   token: string;
   frequency: number;
   documentFrequency: number;
   ratePer10k: number;
+  dispersion: number;
 }
 
-export interface AnalysisCorpus {
-  documents: AnalysisDocument[];
-  sourceCount: number;
-  totalTokens: number;
-  totalTypes: number;
-  terms: AnalysisTerm[];
-  inputTextSource: AnalysisInputSource;
-  builtAt: string;
-  buildSignature: string;
+export interface FrequencyPage {
+  totalTerms: number;
+  scopedTotalTypes: number;
+  offset: number;
+  limit: number;
+  items: FrequencyTermItem[];
+  selectedDocumentCount: number;
+  totalDocumentCount: number;
+  scopedTotalTokens: number;
+  queryError: string | null;
 }
 
-interface MutableTerm {
-  frequency: number;
-  documentFrequency: number;
+export interface AnalysisDocumentPageItem extends AnalysisDocumentSummary {
+  selected: boolean;
 }
 
-export function loadAnalysisInputTexts(
-  indices: number[] | null,
-  corpusVersion: number,
-  useProcessedText: boolean,
-  cleaningConfig: CleaningConfig,
-): Promise<AnalysisInputTextsResult> {
-  return invoke<AnalysisInputTextsResult>("analysis_input_texts_command", {
-    indices,
-    corpusVersion,
-    useProcessedText,
-    cleaningConfig,
-  });
+export interface AnalysisDocumentPage {
+  totalCount: number;
+  offset: number;
+  limit: number;
+  items: AnalysisDocumentPageItem[];
+  selectedCount: number;
+  totalDocumentCount: number;
 }
 
-export function tokeniseAnalysisText(text: string): string[] {
-  const normalised = text.normalize("NFC").toLowerCase();
-  const pattern = /[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu;
-  return Array.from(normalised.matchAll(pattern), (match) => match[0]);
+export interface TermDistributionItem {
+  documentId: number;
+  sourcePath: string;
+  relativePath: string;
+  tokenCount: number;
+  count: number;
+  ratePer10k: number;
+}
+
+export interface TermDistributionPage {
+  token: string;
+  totalDocuments: number;
+  offset: number;
+  limit: number;
+  items: TermDistributionItem[];
+  maxRatePer10k: number;
+}
+
+export function defaultAnalysisDocumentSelection(): AnalysisDocumentSelection {
+  return { allDocuments: true, ids: [], excludedIds: [] };
 }
 
 export function buildAnalysisCorpus(
-  inputDocuments: AnalysisInputDocument[],
+  indices: number[] | null,
+  corpusVersion: number,
   inputTextSource: AnalysisInputSource,
   buildSignature: string,
-): AnalysisCorpus {
-  const terms = new Map<string, MutableTerm>();
-  const documents: AnalysisDocument[] = [];
+  cleaningConfig: CleaningConfig,
+): Promise<AnalysisOverview> {
+  return invoke<AnalysisOverview>("build_analysis_corpus_command", {
+    request: {
+      indices,
+      corpusVersion,
+      inputTextSource,
+      buildSignature,
+      cleaningConfig,
+    },
+  });
+}
 
-  for (const document of inputDocuments) {
-    const tokens = tokeniseAnalysisText(document.text);
-    const documentTerms = new Map<string, number>();
+export function cancelAnalysisBuild(): Promise<void> {
+  return invoke("cancel_analysis_build_command");
+}
 
-    for (const token of tokens) {
-      documentTerms.set(token, (documentTerms.get(token) ?? 0) + 1);
-    }
+export function getAnalysisBuildStatus(): Promise<AnalysisBuildStatus> {
+  return invoke<AnalysisBuildStatus>("get_analysis_build_status_command");
+}
 
-    for (const [token, count] of documentTerms) {
-      const term = terms.get(token) ?? { frequency: 0, documentFrequency: 0 };
-      term.frequency += count;
-      term.documentFrequency += 1;
-      terms.set(token, term);
-    }
+export function getAnalysisOverview(): Promise<AnalysisOverview> {
+  return invoke<AnalysisOverview>("get_analysis_overview_command");
+}
 
-    documents.push({
-      sourcePath: document.sourcePath,
-      relativePath: document.relativePath,
-      tokenCount: tokens.length,
-      termCounts: Object.fromEntries(documentTerms),
-    });
-  }
+export function queryFrequencyList(query: FrequencyQuery): Promise<FrequencyPage> {
+  return invoke<FrequencyPage>("query_frequency_list_command", { query });
+}
 
-  const totalTokens = documents.reduce((sum, document) => sum + document.tokenCount, 0);
-  const analysisTerms: AnalysisTerm[] = Array.from(terms.entries(), ([token, term]) => ({
+export function queryAnalysisDocuments(
+  selection: AnalysisDocumentSelection,
+  query: string,
+  offset: number,
+  limit: number,
+): Promise<AnalysisDocumentPage> {
+  return invoke<AnalysisDocumentPage>("query_analysis_documents_command", {
+    selection,
+    query,
+    offset,
+    limit,
+  });
+}
+
+export function queryTermDistribution(
+  token: string,
+  selection: AnalysisDocumentSelection,
+  offset: number,
+  limit: number,
+): Promise<TermDistributionPage> {
+  return invoke<TermDistributionPage>("query_term_distribution_command", {
     token,
-    frequency: term.frequency,
-    documentFrequency: term.documentFrequency,
-    ratePer10k: totalTokens > 0 ? (term.frequency / totalTokens) * 10_000 : 0,
-  })).sort((a, b) => b.frequency - a.frequency || a.token.localeCompare(b.token));
-
-  return {
-    documents,
-    sourceCount: new Set(documents.map((document) => document.sourcePath)).size,
-    totalTokens,
-    totalTypes: analysisTerms.length,
-    terms: analysisTerms,
-    inputTextSource,
-    builtAt: new Date().toISOString(),
-    buildSignature,
-  };
+    selection,
+    offset,
+    limit,
+  });
 }

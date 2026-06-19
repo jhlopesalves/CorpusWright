@@ -29,7 +29,7 @@ use crate::structured_document::StructuredDocument;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 /// Default maximum total cache size in bytes (256 MB).
 pub const DEFAULT_MAX_TOTAL_BYTES: usize = 256 * 1024 * 1024;
@@ -190,8 +190,9 @@ pub struct DocumentText {
 }
 
 /// Thread-safe, size-limited cache for extracted text.
+#[derive(Clone)]
 pub struct ExtractionCache {
-    inner: RwLock<CacheInner>,
+    inner: Arc<RwLock<CacheInner>>,
     max_total_bytes: usize,
     max_entry_bytes: usize,
 }
@@ -222,11 +223,11 @@ impl ExtractionCache {
     /// Creates a cache with explicit size limits.
     pub fn with_limits(max_total_bytes: usize, max_entry_bytes: usize) -> Self {
         Self {
-            inner: RwLock::new(CacheInner {
+            inner: Arc::new(RwLock::new(CacheInner {
                 entries: HashMap::new(),
                 order: VecDeque::new(),
                 total_bytes: 0,
-            }),
+            })),
             max_total_bytes,
             max_entry_bytes,
         }

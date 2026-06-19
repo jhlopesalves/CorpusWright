@@ -1,3 +1,9 @@
+use corpuswright_core::analysis::{
+    AnalysisBuildError, AnalysisBuildProgress, AnalysisCorpus, AnalysisDocumentPage,
+    AnalysisDocumentSelection, AnalysisInputSource, AnalysisOverview, FrequencyPage,
+    FrequencyQuery, TermDistributionPage, build_analysis_corpus, query_analysis_documents,
+    query_frequency_list, query_term_distribution,
+};
 use corpuswright_core::cache::{
     CacheEntry, DocumentTextMode, ExtractionCache, document_text_for_record,
 };
@@ -45,6 +51,106 @@ struct ScanState {
 
 struct PdfIntakeState {
     cancel: Arc<AtomicBool>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+enum AnalysisBuildStateKind {
+    NotBuilt,
+    Building,
+    Ready,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AnalysisBuildProgressPayload {
+    files_done: usize,
+    files_total: usize,
+    tokens_seen: u64,
+    types_seen: usize,
+    current_phase: corpuswright_core::analysis::AnalysisBuildPhase,
+    elapsed_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AnalysisBuildStatus {
+    state: AnalysisBuildStateKind,
+    progress: Option<AnalysisBuildProgressPayload>,
+    error: Option<String>,
+    overview: Option<AnalysisOverview>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AnalysisBuildRequest {
+    indices: Option<Vec<usize>>,
+    corpus_version: u64,
+    input_text_source: AnalysisInputSource,
+    build_signature: String,
+    cleaning_config: CleaningConfig,
+}
+
+struct AnalysisStateInner {
+    generation: u64,
+    state: AnalysisBuildStateKind,
+    progress: Option<AnalysisBuildProgressPayload>,
+    error: Option<String>,
+    corpus: Option<Arc<AnalysisCorpus>>,
+}
+
+struct AnalysisState {
+    inner: Arc<RwLock<AnalysisStateInner>>,
+    cancel: Arc<AtomicBool>,
+}
+
+impl AnalysisState {
+    fn new() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(AnalysisStateInner {
+                generation: 0,
+                state: AnalysisBuildStateKind::NotBuilt,
+                progress: None,
+                error: None,
+                corpus: None,
+            })),
+            cancel: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn corpus(&self) -> Result<Arc<AnalysisCorpus>, String> {
+        self.inner
+            .read()
+            .unwrap()
+            .corpus
+            .clone()
+            .ok_or_else(|| "Build the analysis corpus before querying it.".to_string())
+    }
+
+    fn clear(&self) {
+        self.cancel.store(true, Ordering::Relaxed);
+        let mut inner = self.inner.write().unwrap();
+        inner.generation += 1;
+        inner.state = AnalysisBuildStateKind::NotBuilt;
+        inner.progress = None;
+        inner.error = None;
+        inner.corpus = None;
+    }
+
+    fn status(&self) -> AnalysisBuildStatus {
+        let inner = self.inner.read().unwrap();
+        AnalysisBuildStatus {
+            state: inner.state,
+            progress: inner.progress.clone(),
+            error: inner.error.clone(),
+            overview: inner
+                .corpus
+                .as_ref()
+                .map(|corpus| corpus.overview().clone()),
+        }
+    }
 }
 
 const PROJECT_SOURCE_TEXT_CACHE_VERSION: u32 = 1;
@@ -347,29 +453,15 @@ struct WordCountWindowResult {
     total_count: usize,
 }
 
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AnalysisInputDocument {
-    source_path: String,
-    relative_path: String,
-    text: String,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AnalysisInputTextsResult {
-    documents: Vec<AnalysisInputDocument>,
-    skipped_documents: usize,
-    skipped_pdf_documents: usize,
-}
-
 #[tauri::command(async)]
 fn scan_directory_command(
     path: String,
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
+    analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<CorpusLoadResult, String> {
+    analysis.clear();
     cache.clear();
     page_cache.clear();
     let report = scan_directory(&path).map_err(|e| format!("{:?}", e))?;
@@ -390,7 +482,9 @@ fn load_files_command(
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
+    analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<CorpusLoadResult, String> {
+    analysis.clear();
     cache.clear();
     page_cache.clear();
     let path_bufs = paths.into_iter().map(PathBuf::from).collect();
@@ -412,7 +506,9 @@ fn load_project_source_records_command(
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
+    analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<ProjectCorpusLoadResult, String> {
+    analysis.clear();
     cache.clear();
     page_cache.clear();
     let report = project::load_project_source_records(root_path)?;
@@ -1304,7 +1400,9 @@ fn clear_corpus_command(
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
+    analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<(), String> {
+    analysis.clear();
     cache.clear();
     page_cache.clear();
     corpus_state.inner.write().unwrap().clear();
@@ -1581,71 +1679,211 @@ fn analysis_pdf_text(
     Some(clean_text(&text, cleaning_config))
 }
 
-#[tauri::command(async)]
-fn analysis_input_texts_command(
-    indices: Option<Vec<usize>>,
-    corpus_version: u64,
-    use_processed_text: bool,
-    cleaning_config: CleaningConfig,
+fn analysis_progress_payload(
+    progress: AnalysisBuildProgress,
+    started_at: Instant,
+) -> AnalysisBuildProgressPayload {
+    AnalysisBuildProgressPayload {
+        files_done: progress.files_done,
+        files_total: progress.files_total,
+        tokens_seen: progress.tokens_seen,
+        types_seen: progress.types_seen,
+        current_phase: progress.current_phase,
+        elapsed_ms: duration_ms(started_at.elapsed()),
+    }
+}
+
+#[tauri::command]
+async fn build_analysis_corpus_command(
+    request: AnalysisBuildRequest,
     corpus: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
-) -> Result<AnalysisInputTextsResult, String> {
-    let (records, project_root) = match indices {
-        Some(indices) => corpus.records_and_root_for_indices(&indices, corpus_version)?,
-        None => corpus.all_records_and_root(corpus_version)?,
+    analysis: tauri::State<'_, AnalysisState>,
+    window: Window,
+) -> Result<AnalysisOverview, String> {
+    let (records, project_root) = match request.indices {
+        Some(indices) => corpus.records_and_root_for_indices(&indices, request.corpus_version)?,
+        None => corpus.all_records_and_root(request.corpus_version)?,
     };
-    let text_mode = if use_processed_text {
+    if records.is_empty() {
+        return Err("No text is available for analysis.".to_string());
+    }
+    if analysis.inner.read().unwrap().state == AnalysisBuildStateKind::Building {
+        return Err("An analysis corpus build is already running.".to_string());
+    }
+
+    let text_mode = if request.input_text_source == AnalysisInputSource::Processed {
         DocumentTextMode::Processed
     } else {
         DocumentTextMode::Original
     };
-    let mut documents = Vec::new();
-    let mut skipped_documents = 0usize;
-    let mut skipped_pdf_documents = 0usize;
+    analysis.cancel.store(false, Ordering::Relaxed);
+    let build_generation = {
+        let mut inner = analysis.inner.write().unwrap();
+        inner.generation += 1;
+        inner.state = AnalysisBuildStateKind::Building;
+        inner.progress = None;
+        inner.error = None;
+        inner.corpus = None;
+        inner.generation
+    };
 
-    for record in records {
-        let text = if record.document_type == DocumentType::Pdf {
-            analysis_pdf_text(
-                &record,
-                project_root.as_deref(),
-                &cleaning_config,
-                use_processed_text,
-                &cache,
-            )
-        } else {
-            document_text_for_record(&record, &cleaning_config, text_mode, Some(&cache))
-                .ok()
-                .map(|document| document.text)
-        };
+    let analysis_inner = analysis.inner.clone();
+    let cancel = analysis.cancel.clone();
+    let cache = cache.inner().clone();
+    let started_at = Instant::now();
+    let built_at = jiff::Timestamp::now().to_string();
+    let input_text_source = request.input_text_source;
+    let build_signature = request.build_signature;
+    let cleaning_config = request.cleaning_config;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let mut last_emit = Instant::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap_or_else(Instant::now);
+        let mut last_phase = None;
+        build_analysis_corpus(
+            &records,
+            input_text_source,
+            built_at,
+            build_signature,
+            &cancel,
+            |record| {
+                if record.document_type == DocumentType::Pdf {
+                    Ok(analysis_pdf_text(
+                        record,
+                        project_root.as_deref(),
+                        &cleaning_config,
+                        input_text_source == AnalysisInputSource::Processed,
+                        &cache,
+                    ))
+                } else {
+                    document_text_for_record(record, &cleaning_config, text_mode, Some(&cache))
+                        .map(|document| Some(document.text))
+                }
+            },
+            |progress| {
+                let phase_changed = last_phase != Some(progress.current_phase);
+                let complete = progress.files_done == progress.files_total;
+                if !phase_changed && !complete && last_emit.elapsed() < Duration::from_millis(100) {
+                    return;
+                }
+                last_phase = Some(progress.current_phase);
+                last_emit = Instant::now();
+                let payload = analysis_progress_payload(progress, started_at);
+                let mut inner = analysis_inner.write().unwrap();
+                if inner.generation != build_generation {
+                    return;
+                }
+                inner.progress = Some(payload.clone());
+                drop(inner);
+                let _ = window.emit("analysis-build-progress", payload);
+            },
+        )
+    });
 
-        let Some(text) = text else {
-            skipped_documents += 1;
-            if record.document_type == DocumentType::Pdf {
-                skipped_pdf_documents += 1;
-            }
-            continue;
-        };
-
-        if text.trim().is_empty() {
-            skipped_documents += 1;
-            if record.document_type == DocumentType::Pdf {
-                skipped_pdf_documents += 1;
-            }
-            continue;
-        }
-
-        documents.push(AnalysisInputDocument {
-            source_path: record.source_path.to_string_lossy().to_string(),
-            relative_path: record.relative_path.to_string_lossy().to_string(),
-            text,
-        });
+    let task_result = task.await;
+    if analysis.inner.read().unwrap().generation != build_generation {
+        return Err("Analysis build cancelled.".to_string());
     }
+    match task_result {
+        Ok(Ok(corpus)) => {
+            let overview = corpus.overview().clone();
+            if overview.document_count == 0 {
+                let message = "No usable text is available for analysis.".to_string();
+                let mut inner = analysis.inner.write().unwrap();
+                inner.state = AnalysisBuildStateKind::Failed;
+                inner.error = Some(message.clone());
+                return Err(message);
+            }
+            let mut inner = analysis.inner.write().unwrap();
+            inner.state = AnalysisBuildStateKind::Ready;
+            inner.error = None;
+            inner.corpus = Some(Arc::new(corpus));
+            Ok(overview)
+        }
+        Ok(Err(AnalysisBuildError::Cancelled)) => {
+            let mut inner = analysis.inner.write().unwrap();
+            inner.state = AnalysisBuildStateKind::Cancelled;
+            inner.error = None;
+            Err("Analysis build cancelled.".to_string())
+        }
+        Ok(Err(error)) => {
+            let message = error.to_string();
+            let mut inner = analysis.inner.write().unwrap();
+            inner.state = AnalysisBuildStateKind::Failed;
+            inner.error = Some(message.clone());
+            Err(message)
+        }
+        Err(error) => {
+            let message = format!("Analysis build task failed: {error}");
+            let mut inner = analysis.inner.write().unwrap();
+            inner.state = AnalysisBuildStateKind::Failed;
+            inner.error = Some(message.clone());
+            Err(message)
+        }
+    }
+}
 
-    Ok(AnalysisInputTextsResult {
-        documents,
-        skipped_documents,
-        skipped_pdf_documents,
+#[tauri::command(async)]
+fn cancel_analysis_build_command(analysis: tauri::State<'_, AnalysisState>) {
+    analysis.cancel.store(true, Ordering::Relaxed);
+}
+
+#[tauri::command(async)]
+fn get_analysis_build_status_command(
+    analysis: tauri::State<'_, AnalysisState>,
+) -> AnalysisBuildStatus {
+    analysis.status()
+}
+
+#[tauri::command(async)]
+fn get_analysis_overview_command(
+    analysis: tauri::State<'_, AnalysisState>,
+) -> Result<AnalysisOverview, String> {
+    Ok(analysis.corpus()?.overview().clone())
+}
+
+#[tauri::command]
+async fn query_frequency_list_command(
+    query: FrequencyQuery,
+    analysis: tauri::State<'_, AnalysisState>,
+) -> Result<FrequencyPage, String> {
+    let corpus = analysis.corpus()?;
+    tauri::async_runtime::spawn_blocking(move || query_frequency_list(&corpus, &query))
+        .await
+        .map_err(|error| format!("Frequency query task failed: {error}"))
+}
+
+#[tauri::command]
+async fn query_analysis_documents_command(
+    selection: AnalysisDocumentSelection,
+    query: String,
+    offset: usize,
+    limit: usize,
+    analysis: tauri::State<'_, AnalysisState>,
+) -> Result<AnalysisDocumentPage, String> {
+    let corpus = analysis.corpus()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        query_analysis_documents(&corpus, &selection, &query, offset, limit)
     })
+    .await
+    .map_err(|error| format!("Analysis document query task failed: {error}"))
+}
+
+#[tauri::command]
+async fn query_term_distribution_command(
+    token: String,
+    selection: AnalysisDocumentSelection,
+    offset: usize,
+    limit: usize,
+    analysis: tauri::State<'_, AnalysisState>,
+) -> Result<TermDistributionPage, String> {
+    let corpus = analysis.corpus()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        query_term_distribution(&corpus, &token, &selection, offset, limit)
+    })
+    .await
+    .map_err(|error| format!("Term distribution query task failed: {error}"))
 }
 
 fn modified_time_secs(path: &Path) -> Option<u64> {
@@ -2120,6 +2358,7 @@ pub fn run() {
         .manage(PdfIntakeState {
             cancel: Arc::new(AtomicBool::new(false)),
         })
+        .manage(AnalysisState::new())
         .manage(CorpusState {
             inner: RwLock::new(CorpusStateInner::empty()),
         })
@@ -2140,7 +2379,13 @@ pub fn run() {
             preview_processed_files_command,
             read_project_source_preview_command,
             query_selected_source_preview_viewport_command,
-            analysis_input_texts_command,
+            build_analysis_corpus_command,
+            cancel_analysis_build_command,
+            get_analysis_build_status_command,
+            get_analysis_overview_command,
+            query_frequency_list_command,
+            query_analysis_documents_command,
+            query_term_distribution_command,
             extract_pdf_page_range_command,
             export_corpus_command,
             compute_word_count_command,
