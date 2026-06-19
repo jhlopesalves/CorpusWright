@@ -458,7 +458,7 @@ pub fn document_text_from_cache_entry(
                 let document = StructuredDocument::from_pages(cleaned_pages);
                 let cleaned = clean_structured_document(&document, cleaning_config);
 
-                let is_safe = crate::clean::has_page_zone_rules(cleaning_config)
+                let is_safe = crate::clean::requires_reliable_page_metadata(cleaning_config)
                     || (cleaned.page_texts.is_some() && cleaned.text == original_flat_text);
 
                 if is_safe {
