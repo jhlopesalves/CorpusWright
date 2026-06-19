@@ -529,7 +529,16 @@ function sourceExplorerMode(): boolean {
   return state.activeProject !== null;
 }
 
+function syncProcessSourcesButton(): void {
+  dom.prepareProcessSources.textContent = state.activeProject === null
+    ? "Process sources"
+    : hasProjectSourceSelection()
+      ? "Process selected sources"
+      : "Process all sources";
+}
+
 function updateStatusLine(): void {
+  syncProcessSourcesButton();
   if (sourceExplorerMode()) {
     const sourceCount = state.projectSourceQuerySummary?.total_count ?? 0;
     const selectedCount = projectSourceSelectionCount();
@@ -548,9 +557,13 @@ function updateStatusLine(): void {
         selectedSources.every(source => source.kind === "pdf");
       const hasFailures = selectedSources
         .some(source => source.status === "failed");
-      const allHaveExtractedText =
+      const hasExtractedText =
         selectedSources.length === state.selectedProjectSourceIds.size &&
-        selectedSources.every(sourceHasExtractedText);
+        selectedSources.some(sourceHasExtractedText);
+      const hasUsablePdfRoute = selectedSources
+        .some(source => source.kind === "pdf"
+          && source.extraction_route !== "unsupported"
+          && !source.reason_codes.includes("missing_file"));
       const allNeedExtraction =
         selectedSources.length === state.selectedProjectSourceIds.size &&
         selectedSources.every(source =>
@@ -562,14 +575,14 @@ function updateStatusLine(): void {
 
       // Toggle extraction action items based on selection state
       dom.sourceActionExtract.classList.toggle("hidden", !(allSelectedArePdfs && allNeedExtraction));
-      dom.sourceActionReExtract.classList.toggle("hidden", !(allSelectedArePdfs && allHaveExtractedText));
+      dom.sourceActionReExtract.classList.toggle("hidden", !(allSelectedArePdfs && hasExtractedText && hasUsablePdfRoute));
       dom.sourceActionRetry.classList.toggle("hidden", !(allSelectedArePdfs && hasFailures));
       dom.sourceActionChangeHandling.classList.toggle("hidden", !allSelectedArePdfs);
 
       // Keep the old hidden buttons in sync for backward compatibility
       if (allSelectedArePdfs && hasFailures) {
         dom.sourcePreparePdfsBtn.textContent = "Retry extraction...";
-      } else if (allSelectedArePdfs && allHaveExtractedText) {
+      } else if (allSelectedArePdfs && hasExtractedText && hasUsablePdfRoute) {
         dom.sourcePreparePdfsBtn.textContent = "Re-extract/OCR selected PDFs...";
       } else if (allSelectedArePdfs) {
         dom.sourcePreparePdfsBtn.textContent = "Extract/OCR selected PDFs...";

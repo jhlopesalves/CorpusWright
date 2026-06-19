@@ -21,7 +21,7 @@ These run identically on Windows, macOS, and Linux. Don't wrap them in `powershe
 
 ## Performance architecture contract
 
-CorpusWright is a Rust application with a TypeScript interface. The Rust code is the corpus engine. The TypeScript code is the GUI layer.
+CorpusWright is a Rust application with a TypeScript interface. Rust is the corpus engine. TypeScript is the GUI layer.
 
 Anything that scales with corpus size belongs in Rust.
 
@@ -127,7 +127,7 @@ Selected-source previews expose the complete logical selection through Rust-back
 
 ### Cleaning and processed previews
 
-Processed Text previews current cleaning settings. The Process action materialises processed output. TypeScript must not apply cleaning rules.
+Processed Text previews current cleaning settings. The Process action materialises processed output. Export writes processed output to a user-selected destination. TypeScript must not apply cleaning rules.
 
 ### Long-running work reports progress
 

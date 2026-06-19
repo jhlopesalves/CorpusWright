@@ -168,6 +168,7 @@ export function reasonLabel(code: string): string {
     case "review_recommended": return "text extracted with warnings";
     case "text_extraction_failed": return "text extraction failed";
     case "extraction_cancelled": return "Extraction cancelled";
+    case "processing_warning": return "processing warning";
     case "processed_ok": return "processed";
     case "processed_with_warnings": return "processed with warnings";
     case "low_text_density": return "low text density";
@@ -199,6 +200,7 @@ export function reasonDescription(code: string): string | null {
     case "force_ocr_planned": return "Full-page OCR is planned for this PDF.";
     case "text_extraction_failed": return "Text extraction failed.";
     case "extraction_cancelled": return "Extraction was cancelled.";
+    case "processing_warning": return "Processed text was generated with warnings.";
     case "low_text_density": return "Initial PDF diagnostics marked embedded text quality as suspicious.";
     case "layout_warning": return "Layout-aware extraction was used; inspect line order before export.";
     case "many_repeated_artifacts": return "Repeated extraction artefacts were reported.";

@@ -22,8 +22,9 @@ use corpuswright_core::preview::{
 use corpuswright_core::project_sources::{
     ProjectSource, ProjectSourceExtractionResult, ProjectSourceExtractionRoute, ProjectSourceKind,
     ProjectSourcePdfProfile, ProjectSourcePreviewItem, ProjectSourcePreviewViewport,
-    ProjectSourceSelectionDescriptor, ProjectSourceStatus, stable_project_source_id,
-    update_project_source_extraction_results,
+    ProjectSourceProcessingResult, ProjectSourceSelectionDescriptor, ProjectSourceStatus,
+    stable_project_source_id, update_project_source_extraction_results,
+    update_project_source_processing_results,
 };
 use corpuswright_core::repeated_artifacts::{
     CancellationFlag, RepeatedArtifactScanConfig, RepeatedArtifactScanReport,
@@ -435,6 +436,24 @@ struct ExportProgress {
     current: usize,
     total: usize,
     current_file: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProcessSourcesProgress {
+    current: usize,
+    total: usize,
+    current_file: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProcessSourcesReport {
+    total_count: usize,
+    processed_count: usize,
+    failed_count: usize,
+    skipped_count: usize,
+    output_dir: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -2155,6 +2174,160 @@ fn export_corpus_command(
     })
 }
 
+fn records_for_project_processing(
+    project_root: &Path,
+    selection: Option<ProjectSourceSelectionDescriptor>,
+    corpus_version: u64,
+    corpus: &CorpusState,
+    inventory: &project::ProjectSourceInventoryState,
+) -> Result<Vec<DocumentRecord>, String> {
+    match selection {
+        Some(selection) if selection.all_matching => {
+            let paths = inventory.matching_paths(
+                project_root,
+                &selection.query,
+                selection.excluded_ids.as_slice(),
+            )?;
+            corpus.records_for_paths(paths, corpus_version)
+        }
+        Some(selection) => {
+            let mut paths = Vec::with_capacity(selection.ids.len());
+            for source_id in selection.ids {
+                if let Some(source) = inventory.source_by_id(project_root, &source_id)?
+                    && source.kind != ProjectSourceKind::Unknown
+                    && source.status != ProjectSourceStatus::Failed
+                {
+                    paths.push(source.path);
+                }
+            }
+            corpus.records_for_paths(paths, corpus_version)
+        }
+        None => Ok(corpus.all_records_and_root(corpus_version)?.0),
+    }
+}
+
+fn processed_text_path(project_root: &Path, output_dir: &Path, record: &DocumentRecord) -> PathBuf {
+    let source_id = project_source_id_for_record(project_root, record);
+    output_dir.join(format!("{source_id}.txt"))
+}
+
+fn process_failure_reason(error: &str) -> &'static str {
+    if error.contains("OCR text is not materialised") {
+        "ocr_required"
+    } else {
+        "parse_failed"
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command(async)]
+fn process_project_sources_command(
+    window: Window,
+    root_path: String,
+    selection: Option<ProjectSourceSelectionDescriptor>,
+    corpus_version: u64,
+    cleaning_config: CleaningConfig,
+    corpus: tauri::State<'_, CorpusState>,
+    cache: tauri::State<'_, ExtractionCache>,
+    inventory: tauri::State<'_, project::ProjectSourceInventoryState>,
+    analysis: tauri::State<'_, AnalysisState>,
+) -> Result<ProcessSourcesReport, String> {
+    let project_root = project::validated_project_root(&root_path)?;
+    let records = records_for_project_processing(
+        &project_root,
+        selection,
+        corpus_version,
+        &corpus,
+        &inventory,
+    )?;
+    if records.is_empty() {
+        return Err("No processable project sources are available.".to_string());
+    }
+
+    let output_dir = project::processed_output_dir_for_root(&project_root)?;
+    std::fs::create_dir_all(&output_dir)
+        .map_err(|error| format!("Could not create project processed folder: {error}"))?;
+
+    let total = records.len();
+    let mut processed_count = 0;
+    let mut failed_count = 0;
+    let mut skipped_count = 0;
+    let mut processing_results = Vec::with_capacity(records.len());
+
+    for (index, record) in records.iter().enumerate() {
+        let current_file = pdf_intake_file_name(record);
+        match document_text_for_record(
+            record,
+            &cleaning_config,
+            DocumentTextMode::Processed,
+            Some(&*cache),
+        ) {
+            Ok(document) => {
+                let output_path = processed_text_path(&project_root, &output_dir, record);
+                match std::fs::write(&output_path, document.text.as_bytes()) {
+                    Ok(()) => {
+                        let warning_count = document.warnings.len();
+                        processed_count += 1;
+                        processing_results.push(ProjectSourceProcessingResult {
+                            path: record.source_path.clone(),
+                            failed: false,
+                            warning_count,
+                            reason_codes: if warning_count == 0 {
+                                vec!["processed_ok".to_string()]
+                            } else {
+                                vec!["processing_warning".to_string()]
+                            },
+                        });
+                    }
+                    Err(_) => {
+                        failed_count += 1;
+                        processing_results.push(ProjectSourceProcessingResult {
+                            path: record.source_path.clone(),
+                            failed: true,
+                            warning_count: 1,
+                            reason_codes: vec!["output_write_failed".to_string()],
+                        });
+                    }
+                }
+            }
+            Err(error) if process_failure_reason(&error) == "ocr_required" => {
+                skipped_count += 1;
+            }
+            Err(error) => {
+                failed_count += 1;
+                processing_results.push(ProjectSourceProcessingResult {
+                    path: record.source_path.clone(),
+                    failed: true,
+                    warning_count: 1,
+                    reason_codes: vec![process_failure_reason(&error).to_string()],
+                });
+            }
+        }
+
+        let _ = window.emit(
+            "process-sources-progress",
+            ProcessSourcesProgress {
+                current: index + 1,
+                total,
+                current_file,
+            },
+        );
+    }
+
+    if !processing_results.is_empty() {
+        update_project_source_processing_results(&project_root, processing_results)?;
+    }
+    analysis.clear();
+
+    Ok(ProcessSourcesReport {
+        total_count: total,
+        processed_count,
+        failed_count,
+        skipped_count,
+        output_dir: output_dir.to_string_lossy().into_owned(),
+    })
+}
+
 #[tauri::command(async)]
 fn compute_word_count_command(
     indices: Vec<usize>,
@@ -2388,6 +2561,7 @@ pub fn run() {
             query_term_distribution_command,
             extract_pdf_page_range_command,
             export_corpus_command,
+            process_project_sources_command,
             compute_word_count_command,
             compute_word_count_window_command,
             scan_repeated_artifacts_command,

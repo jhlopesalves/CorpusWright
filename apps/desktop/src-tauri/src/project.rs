@@ -648,6 +648,15 @@ pub(crate) fn validated_project_root(root_path: &str) -> Result<PathBuf, String>
         .unwrap_or(manifest.root_path))
 }
 
+pub(crate) fn processed_output_dir_for_root(root: &Path) -> Result<PathBuf, String> {
+    let manifest = read_manifest(&manifest_path_for_root(root))?;
+    if manifest.source_roots.is_empty() {
+        Ok(root.join("processed"))
+    } else {
+        Ok(root.join(PROJECT_DIR).join("processed"))
+    }
+}
+
 fn project_root_from_manifest_path(manifest_path: &Path) -> Option<PathBuf> {
     manifest_path
         .parent()
