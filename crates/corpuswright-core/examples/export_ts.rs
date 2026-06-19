@@ -20,8 +20,9 @@ use corpuswright_core::preview::{
 use corpuswright_core::project_sources::{
     ProjectSource, ProjectSourceExtractionRoute, ProjectSourceImportPolicy,
     ProjectSourceImportReview, ProjectSourceKind, ProjectSourceKindCounts, ProjectSourceManifest,
-    ProjectSourcePage, ProjectSourcePdfProfile, ProjectSourceStatus, ProjectSourceStatusCounts,
-    ProjectSourceSummary, ProjectSourceUpdate,
+    ProjectSourcePage, ProjectSourcePdfProfile, ProjectSourcePreviewItem,
+    ProjectSourcePreviewViewport, ProjectSourceSelectionDescriptor, ProjectSourceSelectionViewport,
+    ProjectSourceStatus, ProjectSourceStatusCounts, ProjectSourceSummary, ProjectSourceUpdate,
 };
 use corpuswright_core::repeated_artifacts::{
     ArtifactRiskLabel, CandidateContentClass, CandidateTextProfile, CandidateTextSignalLabel,
@@ -290,6 +291,37 @@ fn main() {
                 file: "ProjectSourceSummary",
             },
         ],
+        &[],
+    );
+    export_type::<ProjectSourceSelectionDescriptor>(&out_dir, &[], &[]);
+    export_type::<ProjectSourceSelectionViewport>(
+        &out_dir,
+        &[TypeImport {
+            name: "ProjectSource",
+            file: "ProjectSource",
+        }],
+        &[],
+    );
+    export_type::<ProjectSourcePreviewItem>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "ProjectSource",
+                file: "ProjectSource",
+            },
+            TypeImport {
+                name: "FilePreview",
+                file: "FilePreview",
+            },
+        ],
+        &[],
+    );
+    export_type::<ProjectSourcePreviewViewport>(
+        &out_dir,
+        &[TypeImport {
+            name: "ProjectSourcePreviewItem",
+            file: "ProjectSourcePreviewItem",
+        }],
         &[],
     );
     export_type::<ProjectSourceUpdate>(

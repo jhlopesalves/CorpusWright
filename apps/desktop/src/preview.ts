@@ -4,13 +4,12 @@ import { dom } from "./dom";
 import { renderVisibleItems } from "./file-list";
 import { state } from "./state";
 import {
-  isPreviewableSource,
   hasProjectSourceSelection,
+  isProjectSourceSelected,
   pdfHandlingLabel,
   primaryReasonLabel,
   reasonLabel,
-  projectSourceSelectionCount,
-  selectedProjectSources,
+  projectSourceSelectionDescriptor,
   sourceForPath,
   sourceHasExtractedText,
   sourceDisplayStatusLabel,
@@ -24,16 +23,23 @@ import type { FilePreview } from "./generated/FilePreview.js";
 import type { PdfPageRangePage } from "./generated/PdfPageRangePage.js";
 import type { PdfPageRangeResult } from "./generated/PdfPageRangeResult.js";
 import type { ProjectSource } from "./generated/ProjectSource.js";
+import type { ProjectSourcePreviewItem } from "./generated/ProjectSourcePreviewItem.js";
+import type { ProjectSourcePreviewViewport } from "./generated/ProjectSourcePreviewViewport.js";
 
 const PREVIEW_CHUNK_SIZE = 50;
 const FULL_OCR_CHUNK_SIZE = 2;
 const FULL_OCR_MAX_CHARS_PER_PAGE = 50_000;
-const MAX_PROJECT_SOURCE_PREVIEW_FILES = 10;
+const PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT = 280;
+const PROJECT_SOURCE_PREVIEW_OVERSCAN = 3;
+const PROJECT_SOURCE_PREVIEW_TEXT_CAP = 2_000;
 
 let previewObserver: IntersectionObserver | null = null;
 let chunkSentinelObserver: IntersectionObserver | null = null;
 let fullOcrRunId = 0;
 let fullOcrCancelRequested = false;
+let projectSourcePreviewActive = false;
+let projectSourcePreviewRequest = 0;
+let projectSourcePreviewTimer: number | null = null;
 
 interface PreviewCallbacks {
   onPreviewTabChanged: () => void;
@@ -51,6 +57,9 @@ export function schedulePreviewUpdate(delay: number): void {
 }
 
 export function initPreviewTabs(callbacks: PreviewCallbacks): void {
+  for (const content of [dom.previewContent, dom.processedPreviewContent]) {
+    content.parentElement?.addEventListener("scroll", handleProjectSourcePreviewScroll);
+  }
   dom.previewTabs.forEach(tab => {
     tab.addEventListener("click", () => {
       const target = tab.getAttribute("data-target");
@@ -76,21 +85,20 @@ export async function updatePreview(): Promise<void> {
   state.activePreviewGeneration = myPreviewGeneration;
 
   const hasSourceSelection = state.activeProject !== null && hasProjectSourceSelection();
-  const projectSources = hasSourceSelection ? selectedProjectSources() : [];
-  const selectedSourceCount = hasSourceSelection ? projectSourceSelectionCount() : 0;
-
   if (hasSourceSelection) {
-    if (state.allMatchingProjectSourcesSelected || selectedSourceCount > MAX_PROJECT_SOURCE_PREVIEW_FILES) {
-      renderLargeProjectSourceSelection(selectedSourceCount);
-      dom.previewLoadingOverlay.style.display = "none";
-      dom.statusBar.textContent = `${selectedSourceCount.toLocaleString()} sources selected; preview is bounded.`;
-      return;
-    }
-    if (projectSources.length > 0) {
-      await renderSelectedProjectSourcePreviews(projectSources, myVersion, myPreviewGeneration);
-      return;
-    }
+    await renderSelectedProjectSourcePreviewViewport(
+      myVersion,
+      myPreviewGeneration,
+      state.focusedProjectSourceId !== null
+        && isProjectSourceSelected(state.focusedProjectSourceId)
+        && state.focusedProjectSourceOffset !== null
+        ? state.focusedProjectSourceOffset * PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT
+        : state.projectSourcePreviewScrollTop,
+    );
+    return;
   }
+
+  leaveProjectSourcePreviewMode();
 
   if (state.selectedCorpusIndices.size === 0) {
     if (myVersion !== state.currentCorpusVersion) return;
@@ -102,14 +110,6 @@ export async function updatePreview(): Promise<void> {
   }
 
   const selectedIndices = Array.from(state.selectedCorpusIndices);
-  if (hasSourceSelection && projectSources.some((source) => !isPreviewableSource(source))) {
-    renderProjectSourceDetailCards(dom.previewContent, projectSources, "original");
-    renderProjectSourceDetailCards(dom.processedPreviewContent, projectSources, "processed");
-    dom.previewLoadingOverlay.style.display = "none";
-    dom.statusBar.textContent = "Some selected source text is unavailable.";
-    return;
-  }
-
   const sourcesNeedingExtraction: { name: string; status: string; statusLabel: string }[] = [];
 
   for (const idx of selectedIndices) {
@@ -142,87 +142,181 @@ export async function updatePreview(): Promise<void> {
   await fetchAndRenderPreviewChunk(selectedIndices, state.currentPreviewOffset, false, myVersion, myPreviewGeneration);
 }
 
-function renderLargeProjectSourceSelection(selectedCount: number): void {
-  const message = `${selectedCount.toLocaleString()} sources selected. Preview is limited for large selections. Select one source to inspect it, or use Preview Top to preview a bounded sample.`;
-  dom.previewContent.textContent = message;
-  dom.processedPreviewContent.textContent = message;
-}
-
-async function renderSelectedProjectSourcePreviews(
-  sources: ProjectSource[],
+async function renderSelectedProjectSourcePreviewViewport(
   corpusVersion: number,
   previewGeneration: number,
+  scrollTop: number,
 ): Promise<void> {
-  dom.previewContent.replaceChildren();
-  dom.processedPreviewContent.replaceChildren();
+  projectSourcePreviewActive = true;
+  const request = ++projectSourcePreviewRequest;
+  const originalScroll = dom.previewContent.parentElement;
+  const processedScroll = dom.processedPreviewContent.parentElement;
+  const viewportHeight = Math.max(
+    originalScroll?.clientHeight ?? 0,
+    processedScroll?.clientHeight ?? 0,
+    PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT,
+  );
+  const viewportStart = Math.max(
+    0,
+    Math.floor(scrollTop / PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT) - PROJECT_SOURCE_PREVIEW_OVERSCAN,
+  );
+  const viewportSize = Math.ceil(viewportHeight / PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT)
+    + 2 * PROJECT_SOURCE_PREVIEW_OVERSCAN;
+  state.projectSourcePreviewScrollTop = scrollTop;
+  if (originalScroll && Math.abs(originalScroll.scrollTop - scrollTop) > 1) {
+    originalScroll.scrollTop = scrollTop;
+  }
+  if (processedScroll && Math.abs(processedScroll.scrollTop - scrollTop) > 1) {
+    processedScroll.scrollTop = scrollTop;
+  }
   dom.previewLoadingOverlay.style.display = "flex";
   dom.statusBar.textContent = "Previewing selected sources...";
 
   try {
-    for (const source of sources.slice(0, MAX_PROJECT_SOURCE_PREVIEW_FILES)) {
-      if (!isPreviewableSource(source)) {
-        dom.previewContent.appendChild(createProjectSourceDetailCard(source, "original"));
-        dom.processedPreviewContent.appendChild(createProjectSourceDetailCard(source, "processed"));
-        continue;
-      }
-
-      const original = await invoke<CombinedPreview>("read_project_source_preview_command", {
-        rootPath: state.activeProject?.rootPath,
-        sourceId: source.id,
-        corpusVersion,
+    const requestArgs = {
+      rootPath: state.activeProject?.rootPath,
+      selection: projectSourceSelectionDescriptor(),
+      viewportStart,
+      viewportSize,
+      previewTextCap: PROJECT_SOURCE_PREVIEW_TEXT_CAP,
+      corpusVersion,
+      cleaningConfig: state.activeCleaningConfig,
+    };
+    const [original, processed] = await Promise.all([
+      invoke<ProjectSourcePreviewViewport>("query_selected_source_preview_viewport_command", {
+        ...requestArgs,
         processed: false,
-        maxChars: 250_000,
-        cleaningConfig: state.activeCleaningConfig,
-      });
-      if (
-        corpusVersion !== state.currentCorpusVersion
-        || previewGeneration !== state.activePreviewGeneration
-      ) return;
-      renderPreviewCards(dom.previewContent, original.files, true, 0, 1, "original");
-
-      const processedAvailable = source.status === "processed"
-        || source.status === "processed_with_warnings";
-      if (!processedAvailable) {
-        dom.processedPreviewContent.appendChild(createProjectSourceDetailCard(source, "processed"));
-        continue;
-      }
-      const processed = await invoke<CombinedPreview>("read_project_source_preview_command", {
-        rootPath: state.activeProject?.rootPath,
-        sourceId: source.id,
-        corpusVersion,
+      }),
+      invoke<ProjectSourcePreviewViewport>("query_selected_source_preview_viewport_command", {
+        ...requestArgs,
         processed: true,
-        maxChars: 250_000,
-        cleaningConfig: state.activeCleaningConfig,
-      });
-      if (
-        corpusVersion !== state.currentCorpusVersion
-        || previewGeneration !== state.activePreviewGeneration
-      ) return;
-      renderPreviewCards(dom.processedPreviewContent, processed.files, true, 0, 1, "processed");
-    }
-    highlightRenderedCards();
-    dom.statusBar.textContent = `Preview ready for ${sources.length.toLocaleString()} selected source${sources.length === 1 ? "" : "s"}.`;
+      }),
+    ]);
+    if (
+      request !== projectSourcePreviewRequest
+      || corpusVersion !== state.currentCorpusVersion
+      || previewGeneration !== state.activePreviewGeneration
+    ) return;
+
+    renderProjectSourcePreviewItems(dom.previewContent, original, "original");
+    renderProjectSourcePreviewItems(dom.processedPreviewContent, processed, "processed");
+    dom.statusBar.textContent = `Preview ready for ${original.total_selected.toLocaleString()} selected source${original.total_selected === 1 ? "" : "s"}.`;
   } catch (error) {
     if (
-      corpusVersion !== state.currentCorpusVersion
+      request !== projectSourcePreviewRequest
+      || corpusVersion !== state.currentCorpusVersion
       || previewGeneration !== state.activePreviewGeneration
     ) return;
     dom.previewContent.textContent = `Error loading source preview: ${error}`;
     dom.processedPreviewContent.textContent = `Error loading processed preview: ${error}`;
     dom.statusBar.textContent = "Error loading source preview.";
   } finally {
-    dom.previewLoadingOverlay.style.display = "none";
+    if (request === projectSourcePreviewRequest) {
+      dom.previewLoadingOverlay.style.display = "none";
+    }
   }
 }
 
-function renderProjectSourceDetailCards(
+function renderProjectSourcePreviewItems(
   container: HTMLDivElement,
-  sources: ProjectSource[],
+  viewport: ProjectSourcePreviewViewport,
   mode: "original" | "processed",
 ): void {
+  container.classList.add("project-source-preview-viewport");
+  container.style.height = `${viewport.total_selected * PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT}px`;
   container.replaceChildren();
-  for (const source of sources) {
-    container.appendChild(createProjectSourceDetailCard(source, mode));
+
+  const layer = document.createElement("div");
+  layer.className = "project-source-preview-layer";
+  layer.style.transform = `translateY(${viewport.viewport_start * PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT}px)`;
+  for (const [index, item] of viewport.items.entries()) {
+    layer.appendChild(createProjectSourcePreviewViewportCard(
+      item,
+      viewport.viewport_start + index,
+      viewport.total_selected,
+      mode,
+    ));
+  }
+  container.appendChild(layer);
+}
+
+function createProjectSourcePreviewViewportCard(
+  item: ProjectSourcePreviewItem,
+  sourceIndex: number,
+  totalSelected: number,
+  mode: "original" | "processed",
+): HTMLElement {
+  if (!item.preview) {
+    const card = createProjectSourceDetailCard(item.source, mode);
+    if (item.preview_error) {
+      const body = card.querySelector<HTMLElement>(".file-card-body");
+      if (body) body.textContent = `Preview unavailable: ${item.preview_error}`;
+    }
+    card.classList.add("project-source-preview-card");
+    return card;
+  }
+
+  const card = document.createElement("div");
+  card.className = "file-card project-source-preview-card";
+  const header = document.createElement("div");
+  header.className = "file-card-header";
+  const titleArea = document.createElement("div");
+  titleArea.className = "file-card-title-area";
+  const number = document.createElement("div");
+  number.className = "file-card-num";
+  number.textContent = `Source ${sourceIndex + 1} of ${totalSelected.toLocaleString()}`;
+  const title = document.createElement("div");
+  title.className = "file-card-title";
+  title.textContent = item.source.file_name;
+  const path = document.createElement("div");
+  path.className = "file-card-path";
+  path.textContent = item.source.path;
+  titleArea.append(number, title, path);
+  header.appendChild(titleArea);
+
+  const badges = document.createElement("div");
+  badges.className = "file-card-badges";
+  for (const label of projectSourceDetailBadges(item.source)) {
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = label;
+    badges.appendChild(badge);
+  }
+  header.appendChild(badges);
+
+  const body = document.createElement("div");
+  body.className = "file-card-body";
+  body.innerHTML = highlightPreviewText(item.preview.text, state.currentSearchQuery);
+  card.append(header, body);
+  return card;
+}
+
+function handleProjectSourcePreviewScroll(event: Event): void {
+  if (!projectSourcePreviewActive || !hasProjectSourceSelection()) return;
+  const target = event.currentTarget as HTMLElement;
+  if (!target.classList.contains("active")) return;
+  state.projectSourcePreviewScrollTop = target.scrollTop;
+  state.focusedProjectSourceId = null;
+  state.focusedProjectSourceOffset = null;
+  if (projectSourcePreviewTimer !== null) {
+    window.clearTimeout(projectSourcePreviewTimer);
+  }
+  projectSourcePreviewTimer = window.setTimeout(() => {
+    projectSourcePreviewTimer = null;
+    void renderSelectedProjectSourcePreviewViewport(
+      state.currentCorpusVersion,
+      state.activePreviewGeneration,
+      state.projectSourcePreviewScrollTop,
+    );
+  }, 50);
+}
+
+function leaveProjectSourcePreviewMode(): void {
+  projectSourcePreviewActive = false;
+  projectSourcePreviewRequest += 1;
+  for (const container of [dom.previewContent, dom.processedPreviewContent]) {
+    container.classList.remove("project-source-preview-viewport");
+    container.style.removeProperty("height");
   }
 }
 

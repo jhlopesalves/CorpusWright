@@ -79,8 +79,6 @@ export const dom = {
   fileList: getElement<HTMLUListElement>("file-list"),
   searchInput: getElement<HTMLInputElement>("search-input"),
   selectAllCheckbox: getElement<HTMLInputElement>("select-all-checkbox"),
-  previewCapInput: getElement<HTMLInputElement>("preview-cap-input"),
-  previewCapWarning: getElement<HTMLDivElement>("preview-cap-warning"),
   filesStatus: getElement<HTMLDivElement>("files-status"),
   corpusSummary: getElement<HTMLDivElement>("corpus-summary"),
   previewContent: getElement<HTMLDivElement>("preview-content"),

@@ -1875,29 +1875,6 @@ main {
   user-select: none;
 }
 
-.preview-cap-control {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-#preview-cap-input {
-  width: 70px;
-  padding: 2px 4px;
-  background: var(--bg-color);
-  border: 1px solid var(--border-color);
-  color: var(--text-color);
-  border-radius: 2px;
-  font-family: inherit;
-  font-size: 0.85rem;
-}
-
-.warning-text {
-  color: #ff9800;
-  font-size: 0.8rem;
-  margin-bottom: 5px;
-}
-
 .file-list-container {
   flex: 1;
   overflow-y: auto;
@@ -1954,6 +1931,10 @@ main {
 
 #file-list li.selected {
   background-color: var(--selected-color);
+}
+
+#file-list li.focused {
+  box-shadow: inset 3px 0 0 var(--accent-color);
 }
 
 .file-list-container.source-explorer-mode {
@@ -3459,6 +3440,31 @@ mark.search-match.current-match {
   color: var(--text-muted);
   font-size: 0.85rem;
   line-height: 1.4;
+}
+
+.project-source-preview-viewport {
+  display: block;
+  position: relative;
+}
+
+.project-source-preview-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  will-change: transform;
+}
+
+.project-source-preview-card {
+  height: 268px;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.project-source-preview-card .file-card-body {
+  flex: 1;
+  min-height: 0 !important;
+  overflow: auto;
 }
 
 /* --- Setting row with inline help icon --- */
