@@ -2,14 +2,17 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
 
-export type AnalysisInputSource = "processed" | "extracted";
+export type AnalysisInputSource =
+  | "processed"
+  | "processedWithSourceTextFallback"
+  | "sourceTextFallback";
 export type AnalysisBuildPhase =
   | "loadingSources"
   | "readingFiles"
   | "tokenising"
   | "computingDispersion"
   | "finalisingSummaries";
-export type AnalysisBuildStateKind = "notBuilt" | "building" | "ready" | "failed" | "cancelled";
+export type AnalysisBuildStateKind = "notBuilt" | "building" | "ready" | "stale" | "failed" | "cancelled";
 export type FrequencySortKey = "token" | "frequency" | "range" | "rate" | "dispersion";
 export type FrequencyMatchMode = "contains" | "exact" | "startsWith" | "regex";
 export type FrequencyTokenClass = "alphabetic" | "includeSingles" | "includeNumerals" | "all";
@@ -34,11 +37,11 @@ export interface CorpusOverviewTotals {
 export interface CorpusOverviewPopulation {
   sourcesInProject: number | null;
   includedInAnalysis: number;
-  processedTextAvailable: number | null;
-  usingExtractedFallback: number;
+  processedUsed: number;
+  usingSourceTextFallback: number;
   emptyOrFailed: number;
   sourcesWithWarnings: number | null;
-  inputSource: AnalysisInputSource;
+  inputSource: string;
   reading: string;
 }
 
@@ -153,6 +156,7 @@ export interface CorpusOverview {
   inputTextSource: AnalysisInputSource;
   builtAt: string;
   buildSignature: string;
+  processingConfigSignature: string;
   skippedDocuments: number;
   skippedPdfDocuments: number;
   totals: CorpusOverviewTotals;
@@ -261,7 +265,6 @@ export function defaultAnalysisDocumentSelection(): AnalysisDocumentSelection {
 export function buildAnalysisCorpus(
   indices: number[] | null,
   corpusVersion: number,
-  inputTextSource: AnalysisInputSource,
   buildSignature: string,
   cleaningConfig: CleaningConfig,
 ): Promise<CorpusOverview> {
@@ -269,7 +272,6 @@ export function buildAnalysisCorpus(
     request: {
       indices,
       corpusVersion,
-      inputTextSource,
       buildSignature,
       cleaningConfig,
     },
@@ -280,16 +282,19 @@ export function cancelAnalysisBuild(): Promise<void> {
   return invoke("cancel_analysis_build_command");
 }
 
-export function getAnalysisBuildStatus(): Promise<AnalysisBuildStatus> {
-  return invoke<AnalysisBuildStatus>("get_analysis_build_status_command");
+export function getAnalysisBuildStatus(cleaningConfig: CleaningConfig): Promise<AnalysisBuildStatus> {
+  return invoke<AnalysisBuildStatus>("get_analysis_build_status_command", { cleaningConfig });
 }
 
-export function computeCorpusOverview(): Promise<CorpusOverview> {
-  return invoke<CorpusOverview>("compute_corpus_overview_command");
+export function computeCorpusOverview(cleaningConfig: CleaningConfig): Promise<CorpusOverview> {
+  return invoke<CorpusOverview>("compute_corpus_overview_command", { cleaningConfig });
 }
 
-export function queryFrequencyList(query: FrequencyQuery): Promise<FrequencyPage> {
-  return invoke<FrequencyPage>("query_frequency_list_command", { query });
+export function queryFrequencyList(
+  query: FrequencyQuery,
+  cleaningConfig: CleaningConfig,
+): Promise<FrequencyPage> {
+  return invoke<FrequencyPage>("query_frequency_list_command", { query, cleaningConfig });
 }
 
 export function queryAnalysisDocuments(
@@ -297,12 +302,14 @@ export function queryAnalysisDocuments(
   query: string,
   offset: number,
   limit: number,
+  cleaningConfig: CleaningConfig,
 ): Promise<AnalysisDocumentPage> {
   return invoke<AnalysisDocumentPage>("query_analysis_documents_command", {
     selection,
     query,
     offset,
     limit,
+    cleaningConfig,
   });
 }
 
@@ -311,11 +318,13 @@ export function queryTermDistribution(
   selection: AnalysisDocumentSelection,
   offset: number,
   limit: number,
+  cleaningConfig: CleaningConfig,
 ): Promise<TermDistributionPage> {
   return invoke<TermDistributionPage>("query_term_distribution_command", {
     token,
     selection,
     offset,
     limit,
+    cleaningConfig,
   });
 }

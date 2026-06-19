@@ -32,7 +32,7 @@ import {
   overviewGlossary,
   type OverviewGlossaryId,
 } from "./overview-glossary";
-import { sourceForPath, sourceHasExtractedText } from "./sources";
+import { sourceHasExtractedText } from "./sources";
 import { state, type WorkbenchId } from "./state";
 
 const FUTURE_ANALYSIS_TOOLS = [
@@ -136,31 +136,11 @@ function warningSourceCount(): number {
   ).length;
 }
 
-function isProcessedSourceForAnalysis(path: string): boolean {
-  const source = sourceForPath(path);
-  return source?.status === "processed" || source?.status === "processed_with_warnings";
-}
-
-function chooseAnalysisInputSource(): AnalysisInputSource {
-  if (state.activeProject) {
-    const total = state.projectSourceSummary?.total_count ?? 0;
-    return total > 0 && processedSourceCount() === total ? "processed" : "extracted";
-  }
-  if (state.allFiles.length === 0) {
-    return "extracted";
-  }
-  const allLoadedSourcesAreProcessed = state.allFiles.every((record) =>
-    isProcessedSourceForAnalysis(record.source_path)
-  );
-  return allLoadedSourcesAreProcessed ? "processed" : "extracted";
-}
-
-function analysisBuildSignature(inputTextSource: AnalysisInputSource): string {
+function analysisBuildSignature(): string {
   return JSON.stringify({
     projectRoot: state.activeProject?.rootPath ?? null,
     corpusVersion: state.currentCorpusVersion,
     sourceManifestVersion: state.sourceManifestVersion,
-    inputTextSource,
     cleaningConfig: state.activeCleaningConfig,
   });
 }
@@ -169,7 +149,7 @@ function analysisIsStale(corpus: AnalysisCorpus | null = state.analysisCorpus): 
   if (!corpus) {
     return false;
   }
-  return corpus.buildSignature !== analysisBuildSignature(corpus.inputTextSource);
+  return corpus.buildSignature !== analysisBuildSignature();
 }
 
 function analysisStatus(): "not-built" | "ready" | "stale" {
@@ -219,11 +199,11 @@ function formatCountWithShare(count: number, share: number | null): string {
 }
 
 function inputTextSourceLabel(inputTextSource: AnalysisInputSource): string {
-  return inputTextSource === "processed" ? "processed text" : "native/extracted text";
-}
-
-function inputTextSourceDisplayLabel(inputTextSource: AnalysisInputSource): string {
-  return inputTextSource === "processed" ? "Processed text" : "Native/extracted text";
+  switch (inputTextSource) {
+    case "processed": return "processed text";
+    case "processedWithSourceTextFallback": return "processed text with source-text fallback";
+    case "sourceTextFallback": return "source-text fallback";
+  }
 }
 
 function appendSummaryRow(labelText: string, valueText: string): void {
@@ -413,9 +393,9 @@ function renderAnalysisNotice(): void {
     return;
   }
 
-  if (corpus.inputTextSource === "extracted") {
+  if (corpus.population.usingSourceTextFallback > 0) {
     dom.analyseInputBanner.textContent =
-      "Exploratory — built from extracted/native text before cleaning.";
+      `${pluralise(corpus.population.usingSourceTextFallback, "source")} used native/extracted text because processed text could not be produced.`;
     dom.analyseInputBanner.classList.add("warning");
     dom.analyseInputBanner.classList.remove("hidden");
   }
@@ -808,16 +788,14 @@ function renderAnalysisPopulation(corpus: AnalysisCorpus): HTMLElement {
     rows.push({ label: "Sources in project", value: formatNumber(population.sourcesInProject) });
   }
   rows.push({ label: "Included in analysis", value: formatNumber(population.includedInAnalysis) });
-  if (population.processedTextAvailable !== null) {
-    rows.push({
-      label: "Processed text available",
-      value: formatNumber(population.processedTextAvailable),
-    });
-  }
+  rows.push({
+    label: "Processed text used",
+    value: formatNumber(population.processedUsed),
+  });
   rows.push(
     {
-      label: "Using extracted-text fallback",
-      value: formatNumber(population.usingExtractedFallback),
+      label: "Using source-text fallback",
+      value: formatNumber(population.usingSourceTextFallback),
     },
     { label: "Empty or failed extraction", value: formatNumber(population.emptyOrFailed) },
   );
@@ -829,7 +807,7 @@ function renderAnalysisPopulation(corpus: AnalysisCorpus): HTMLElement {
   }
   rows.push({
     label: "Input to analysis",
-    value: inputTextSourceDisplayLabel(population.inputSource),
+    value: population.inputSource,
   });
 
   panel.appendChild(createMetricTable(rows));
@@ -1439,6 +1417,7 @@ async function loadTermDistribution(token: string, offset: number): Promise<void
       frequencyDocumentScope,
       offset,
       TERM_DISTRIBUTION_PAGE_SIZE,
+      state.activeCleaningConfig,
     );
     if (termDistributionGenerations.get(token) !== generation || !expandedFrequencyTokens.has(token)) {
       return;
@@ -1558,18 +1537,21 @@ async function refreshFrequencyPage(resetOffset = true): Promise<void> {
   renderFrequencyList();
 
   try {
-    const page = await queryFrequencyList({
-      selection: frequencyDocumentScope,
-      query: dom.frequencySearchInput.value.trim(),
-      matchMode: dom.frequencyMatchModeSelect.value as FrequencyMatchMode,
-      minimumFrequency: Math.max(1, Number.parseInt(dom.frequencyMinInput.value, 10) || 1),
-      tokenClass: currentFrequencyTokenClassFilter(),
-      hideStopwords: dom.frequencyHideStopwordsInput.checked,
-      sortKey: frequencySortKey,
-      sortDirection: frequencySortDirection,
-      offset: frequencyPageOffset,
-      limit: FREQUENCY_PAGE_SIZE,
-    });
+    const page = await queryFrequencyList(
+      {
+        selection: frequencyDocumentScope,
+        query: dom.frequencySearchInput.value.trim(),
+        matchMode: dom.frequencyMatchModeSelect.value as FrequencyMatchMode,
+        minimumFrequency: Math.max(1, Number.parseInt(dom.frequencyMinInput.value, 10) || 1),
+        tokenClass: currentFrequencyTokenClassFilter(),
+        hideStopwords: dom.frequencyHideStopwordsInput.checked,
+        sortKey: frequencySortKey,
+        sortDirection: frequencySortDirection,
+        offset: frequencyPageOffset,
+        limit: FREQUENCY_PAGE_SIZE,
+      },
+      state.activeCleaningConfig,
+    );
     if (frequencyQueryGeneration !== generation) {
       return;
     }
@@ -1798,8 +1780,7 @@ async function handleBuildAnalysisCorpus(): Promise<void> {
   }
 
   const indices = state.activeProject ? null : state.allFiles.map((_, index) => index);
-  const inputTextSource = chooseAnalysisInputSource();
-  const buildSignature = analysisBuildSignature(inputTextSource);
+  const buildSignature = analysisBuildSignature();
 
   analysisNotice = null;
 
@@ -1828,20 +1809,19 @@ async function handleBuildAnalysisCorpus(): Promise<void> {
     const builtOverview = await buildAnalysisCorpus(
       indices,
       state.currentCorpusVersion,
-      inputTextSource,
       buildSignature,
       state.activeCleaningConfig,
     );
     if (analysisBuildGeneration !== buildGeneration) {
       return;
     }
-    const overview = await computeCorpusOverview().catch(() => builtOverview);
+    const overview = await computeCorpusOverview(state.activeCleaningConfig).catch(() => builtOverview);
     state.analysisCorpus = overview;
     resetFrequencyCorpusState();
     activeAnalysisTool = "overview";
-    const sourceMessage = inputTextSource === "processed"
-      ? "Built from processed text."
-      : "Exploratory analysis built from extracted/native text because processed text is not available yet.";
+    const sourceMessage = overview.population.usingSourceTextFallback > 0
+      ? `Built from processed text with ${pluralise(overview.population.usingSourceTextFallback, "source")} using source-text fallback.`
+      : "Built from processed text.";
     const skipped = overview.skippedDocuments > 0
       ? ` ${pluralise(overview.skippedDocuments, "document")} without usable text skipped.`
       : "";
@@ -1852,7 +1832,7 @@ async function handleBuildAnalysisCorpus(): Promise<void> {
       ? { kind: "warning", message: `${sourceMessage}${skipped}${skippedPdfs}`.trim() }
       : null;
     dom.statusBar.textContent =
-      `Analysis corpus built from ${inputTextSource} text. ${formatNumber(overview.documentCount)} documents · ${formatNumber(overview.totalTokens)} tokens · ${formatNumber(overview.totalTypes)} types.`;
+      `Analysis corpus built from ${inputTextSourceLabel(overview.inputTextSource)}. ${formatNumber(overview.documentCount)} documents · ${formatNumber(overview.totalTokens)} tokens · ${formatNumber(overview.totalTypes)} types.`;
   } catch (error) {
     if (analysisBuildGeneration !== buildGeneration) {
       return;
@@ -1896,11 +1876,11 @@ async function initialiseAnalysisBuildState(): Promise<void> {
   });
 
   try {
-    const status = await getAnalysisBuildStatus();
+    const status = await getAnalysisBuildStatus(state.activeCleaningConfig);
     analysisBuildInProgress = status.state === "building";
     analysisBuildProgress = status.progress;
     if (status.state === "ready" && status.overview && !state.analysisCorpus) {
-      state.analysisCorpus = await computeCorpusOverview().catch(() => status.overview);
+      state.analysisCorpus = await computeCorpusOverview(state.activeCleaningConfig).catch(() => status.overview);
     }
   } catch {
     // The Analyse screen remains usable even if startup status recovery is unavailable.
@@ -2040,6 +2020,7 @@ async function refreshFrequencyDocumentsPage(resetOffset = true): Promise<void> 
       dom.frequencyFilesSearchInput.value,
       frequencyDocumentsOffset,
       FREQUENCY_DOCUMENT_PAGE_SIZE,
+      state.activeCleaningConfig,
     );
     if (frequencyDocumentsGeneration !== generation) {
       return;
