@@ -43,6 +43,7 @@ let projectSourcePreviewRequest = 0;
 let projectSourcePreviewTimer: number | null = null;
 let projectSourcePreviewEstimatedItemHeight = PROJECT_SOURCE_PREVIEW_DEFAULT_ITEM_HEIGHT;
 let projectSourcePreviewLoading = false;
+let projectSourcePreviewIdentity: string | null = null;
 let projectSourcePreviewWindow: {
   start: number;
   end: number;
@@ -159,6 +160,14 @@ async function renderSelectedProjectSourcePreviewViewport(
   projectSourcePreviewActive = true;
   const request = ++projectSourcePreviewRequest;
   projectSourcePreviewLoading = true;
+  const requestIdentity = JSON.stringify({
+    rootPath: state.activeProject?.rootPath ?? null,
+    selection: projectSourceSelectionDescriptor(),
+    corpusVersion,
+    cleaningConfig: state.activeCleaningConfig,
+  });
+  const showBlockingOverlay = projectSourcePreviewIdentity !== requestIdentity
+    || projectSourcePreviewWindow === null;
   const originalScroll = dom.previewContent.parentElement;
   const processedScroll = dom.processedPreviewContent.parentElement;
   const viewportHeight = Math.max(
@@ -174,9 +183,12 @@ async function renderSelectedProjectSourcePreviewViewport(
   if (processedScroll && Math.abs(processedScroll.scrollTop - scrollTop) > 1) {
     processedScroll.scrollTop = scrollTop;
   }
-  dom.previewLoadingText.textContent = "Preparing preview...";
-  dom.previewLoadingOverlay.style.display = "flex";
+  if (showBlockingOverlay) {
+    dom.previewLoadingText.textContent = "Preparing preview...";
+    dom.previewLoadingOverlay.style.display = "flex";
+  }
   dom.statusBar.textContent = "Previewing selected sources...";
+  let requestSucceeded = false;
 
   try {
     const requestArgs = {
@@ -211,6 +223,8 @@ async function renderSelectedProjectSourcePreviewViewport(
       end: original.viewport_start + original.items.length,
       total: original.total_selected,
     };
+    projectSourcePreviewIdentity = requestIdentity;
+    requestSucceeded = true;
     dom.statusBar.textContent = `Preview ready for ${original.total_selected.toLocaleString()} selected source${original.total_selected === 1 ? "" : "s"}.`;
   } catch (error) {
     if (
@@ -218,13 +232,29 @@ async function renderSelectedProjectSourcePreviewViewport(
       || corpusVersion !== state.currentCorpusVersion
       || previewGeneration !== state.activePreviewGeneration
     ) return;
-    dom.previewContent.textContent = `Error loading source preview: ${error}`;
-    dom.processedPreviewContent.textContent = `Error loading processed preview: ${error}`;
+    if (showBlockingOverlay) {
+      dom.previewContent.textContent = `Error loading source preview: ${error}`;
+      dom.processedPreviewContent.textContent = `Error loading processed preview: ${error}`;
+    }
     dom.statusBar.textContent = "Error loading source preview.";
   } finally {
     if (request === projectSourcePreviewRequest) {
       dom.previewLoadingOverlay.style.display = "none";
       projectSourcePreviewLoading = false;
+      const activeScroll = dom.previewContent.parentElement?.classList.contains("active")
+        ? dom.previewContent.parentElement
+        : dom.processedPreviewContent.parentElement;
+      if (
+        requestSucceeded
+        && projectSourcePreviewActive
+        && activeScroll
+        && projectSourcePreviewNeedsLoad(
+          state.projectSourcePreviewScrollTop,
+          activeScroll.clientHeight,
+        )
+      ) {
+        scheduleProjectSourcePreviewViewportLoad();
+      }
     }
   }
 }
@@ -361,6 +391,11 @@ function handleProjectSourcePreviewScroll(event: Event): void {
     || !projectSourcePreviewNeedsLoad(target.scrollTop, target.clientHeight)
   ) return;
 
+  scheduleProjectSourcePreviewViewportLoad();
+}
+
+function scheduleProjectSourcePreviewViewportLoad(): void {
+  if (projectSourcePreviewTimer !== null) window.clearTimeout(projectSourcePreviewTimer);
   projectSourcePreviewTimer = window.setTimeout(() => {
     projectSourcePreviewTimer = null;
     void renderSelectedProjectSourcePreviewViewport(
@@ -401,6 +436,11 @@ function projectSourcePreviewNeedsLoad(scrollTop: number, viewportHeight: number
 function leaveProjectSourcePreviewMode(): void {
   projectSourcePreviewActive = false;
   projectSourcePreviewLoading = false;
+  if (projectSourcePreviewTimer !== null) {
+    window.clearTimeout(projectSourcePreviewTimer);
+    projectSourcePreviewTimer = null;
+  }
+  projectSourcePreviewIdentity = null;
   projectSourcePreviewWindow = null;
   projectSourcePreviewRequest += 1;
   for (const container of [dom.previewContent, dom.processedPreviewContent]) {

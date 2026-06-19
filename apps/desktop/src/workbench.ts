@@ -1,4 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 
 import {
   buildAnalysisCorpus,
@@ -26,6 +28,10 @@ import {
 } from "./analysis";
 import { BOOLEAN_CLEANING_CONFIG_KEYS } from "./config";
 import { dom } from "./dom";
+import {
+  overviewGlossary,
+  type OverviewGlossaryId,
+} from "./overview-glossary";
 import { sourceForPath, sourceHasExtractedText } from "./sources";
 import { state, type WorkbenchId } from "./state";
 
@@ -46,6 +52,8 @@ interface OverviewMetricRow {
   value: string;
   share?: string;
   title?: string;
+  glossaryId?: OverviewGlossaryId;
+  labelSuffix?: string;
 }
 
 interface CompositionSegment {
@@ -53,6 +61,8 @@ interface CompositionSegment {
   count: number;
   share: number | null;
   className: string;
+  glossaryId?: OverviewGlossaryId;
+  labelSuffix?: string;
 }
 
 const ANALYSIS_TOOLS: Array<{
@@ -79,6 +89,7 @@ let frequencyDocumentsPage: AnalysisDocumentPage | null = null;
 let frequencyDocumentsOffset = 0;
 let frequencyDocumentsGeneration = 0;
 let frequencyDocumentsPending = false;
+let overviewGlossaryControlId = 0;
 let frequencyDocumentsDebounceTimer: number | null = null;
 let frequencyDocumentsFailure: string | null = null;
 let expandedFrequencyTokens = new Set<string>();
@@ -181,6 +192,24 @@ function formatFixedNumber(value: number, fractionDigits: number): string {
 
 function formatPercent(value: number, fractionDigits = 1): string {
   return `${formatFixedNumber(value * 100, fractionDigits)}%`;
+}
+
+function formatDocumentMetricSummary(
+  median: number,
+  minimum: number | null,
+  maximum: number | null,
+  documentsUsed: number,
+  documentsExcluded: number,
+  fractionDigits: number,
+): string {
+  const range = minimum === null || maximum === null
+    ? ""
+    : `; range ${formatFixedNumber(minimum, fractionDigits)}–${formatFixedNumber(maximum, fractionDigits)}`;
+  const used = `${formatNumber(documentsUsed)} document${documentsUsed === 1 ? "" : "s"} used`;
+  const excluded = documentsExcluded > 0
+    ? `; ${formatNumber(documentsExcluded)} excluded`
+    : "";
+  return `median ${formatFixedNumber(median, fractionDigits)}${range}; ${used}${excluded}`;
 }
 
 function formatCountWithShare(count: number, share: number | null): string {
@@ -467,6 +496,53 @@ function createOverviewPanel(titleText: string): HTMLElement {
   return panel;
 }
 
+function createGlossaryDisclosure(
+  glossaryId: OverviewGlossaryId,
+  onToggle?: (expanded: boolean) => void,
+): { button: HTMLButtonElement; panel: HTMLDivElement } {
+  const entry = overviewGlossary[glossaryId];
+  const panelId = `overview-glossary-${entry.id}-${++overviewGlossaryControlId}`;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "analysis-glossary-term";
+  button.setAttribute("aria-expanded", "false");
+  button.setAttribute("aria-controls", panelId);
+
+  const label = document.createElement("span");
+  label.textContent = entry.label;
+  const caret = document.createElement("span");
+  caret.className = "analysis-glossary-caret";
+  caret.setAttribute("aria-hidden", "true");
+  caret.textContent = "›";
+  button.append(label, caret);
+
+  const panel = document.createElement("div");
+  panel.id = panelId;
+  panel.className = "analysis-glossary-detail";
+  panel.hidden = true;
+
+  const explanation = document.createElement("p");
+  explanation.textContent = entry.explanation;
+  const formula = document.createElement("div");
+  formula.className = "analysis-glossary-formula";
+  katex.render(entry.latex, formula, {
+    displayMode: true,
+    output: "htmlAndMathml",
+    throwOnError: false,
+  });
+  panel.append(explanation, formula);
+
+  button.addEventListener("click", () => {
+    const expanded = button.getAttribute("aria-expanded") !== "true";
+    button.setAttribute("aria-expanded", String(expanded));
+    panel.hidden = !expanded;
+    onToggle?.(expanded);
+  });
+
+  return { button, panel };
+}
+
 function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTableElement {
   const table = document.createElement("table");
   table.className = ["analysis-metric-table", className].filter(Boolean).join(" ");
@@ -480,7 +556,27 @@ function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTable
 
     const label = document.createElement("th");
     label.scope = "row";
-    label.textContent = row.label;
+
+    let glossaryPanel: HTMLDivElement | null = null;
+    let glossaryRow: HTMLTableRowElement | null = null;
+    if (row.glossaryId) {
+      glossaryRow = document.createElement("tr");
+      glossaryRow.className = "analysis-glossary-row";
+      glossaryRow.hidden = true;
+      const disclosure = createGlossaryDisclosure(row.glossaryId, (expanded) => {
+        if (glossaryRow) glossaryRow.hidden = !expanded;
+      });
+      glossaryPanel = disclosure.panel;
+      label.appendChild(disclosure.button);
+      if (row.labelSuffix) {
+        const suffix = document.createElement("span");
+        suffix.className = "analysis-glossary-label-suffix";
+        suffix.textContent = ` ${row.labelSuffix}`;
+        label.appendChild(suffix);
+      }
+    } else {
+      label.textContent = row.label;
+    }
 
     const value = document.createElement("td");
     value.className = "numeric analysis-metric-value";
@@ -496,6 +592,13 @@ function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTable
 
     item.append(label, value, share);
     body.appendChild(item);
+    if (glossaryPanel && glossaryRow) {
+      const detailCell = document.createElement("td");
+      detailCell.colSpan = 3;
+      detailCell.appendChild(glossaryPanel);
+      glossaryRow.appendChild(detailCell);
+      body.appendChild(glossaryRow);
+    }
   }
 
   table.appendChild(body);
@@ -506,13 +609,20 @@ function createCompositionBar(
   title: string,
   total: number,
   segments: CompositionSegment[],
+  glossaryId?: OverviewGlossaryId,
 ): HTMLElement {
   const composition = document.createElement("div");
   composition.className = "analysis-composition";
 
   const titleEl = document.createElement("h4");
-  titleEl.textContent = title;
-  composition.appendChild(titleEl);
+  if (glossaryId) {
+    const disclosure = createGlossaryDisclosure(glossaryId);
+    titleEl.appendChild(disclosure.button);
+    composition.append(titleEl, disclosure.panel);
+  } else {
+    titleEl.textContent = title;
+    composition.appendChild(titleEl);
+  }
 
   if (total <= 0) {
     const empty = document.createElement("p");
@@ -549,12 +659,34 @@ function createCompositionBar(
     item.className = `analysis-composition-legend-item ${segment.className}`;
 
     const label = document.createElement("dt");
-    label.textContent = segment.label;
+    let glossaryDetail: HTMLDivElement | null = null;
+    let glossaryDescription: HTMLElement | null = null;
+    if (segment.glossaryId) {
+      glossaryDescription = document.createElement("dd");
+      glossaryDescription.className = "analysis-composition-glossary";
+      glossaryDescription.hidden = true;
+      const disclosure = createGlossaryDisclosure(segment.glossaryId, (expanded) => {
+        if (glossaryDescription) glossaryDescription.hidden = !expanded;
+      });
+      glossaryDetail = disclosure.panel;
+      label.appendChild(disclosure.button);
+      if (segment.labelSuffix) {
+        const suffix = document.createElement("span");
+        suffix.textContent = ` ${segment.labelSuffix}`;
+        label.appendChild(suffix);
+      }
+    } else {
+      label.textContent = segment.label;
+    }
 
     const value = document.createElement("dd");
     value.textContent = formatCountWithShare(segment.count, segment.share);
 
     item.append(label, value);
+    if (glossaryDetail && glossaryDescription) {
+      glossaryDescription.appendChild(glossaryDetail);
+      item.appendChild(glossaryDescription);
+    }
     legend.appendChild(item);
   }
 
@@ -627,7 +759,7 @@ function renderCorpusReading(corpus: AnalysisCorpus): HTMLElement {
 
     const status = document.createElement("span");
     status.className = "analysis-reading-status";
-    status.textContent = ` — ${finding.severityLabel}.`;
+    status.textContent = ` (${finding.severityLabel}).`;
 
     const text = document.createElement("span");
     text.className = "analysis-reading-finding-text";
@@ -783,18 +915,24 @@ function renderDocumentBalance(corpus: AnalysisCorpus): HTMLElement {
     rows.push({ label: "Top three share", value: formatPercent(balance.top3Share) });
   }
   if (balance.gini !== null) {
-    rows.push({ label: "Gini coefficient", value: formatFixedNumber(balance.gini, 3) });
+    rows.push({
+      label: "Gini coefficient",
+      value: formatFixedNumber(balance.gini, 3),
+      glossaryId: "giniCoefficient",
+    });
   }
   if (balance.coefficientOfVariation !== null) {
     rows.push({
       label: "Coefficient of variation",
       value: formatFixedNumber(balance.coefficientOfVariation, 3),
+      glossaryId: "coefficientOfVariation",
     });
   }
   if (balance.effectiveDocuments !== null) {
     rows.push({
       label: "Effective documents",
       value: `${formatFixedNumber(balance.effectiveDocuments, 1)} of ${formatNumber(corpus.totals.documents)}`,
+      glossaryId: "effectiveDocuments",
     });
   }
   if (rows.length > 0) {
@@ -831,17 +969,97 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
     { label: "Unique types", value: formatNumber(spectrum.types) },
   ]));
   panel.appendChild(createCompositionBar("Frequency-class spectrum", spectrum.types, [
-    { label: "Hapax (1)", count: spectrum.hapaxCount, share: spectrum.hapaxShare, className: "is-hapax" },
-    { label: "Dis legomena (2)", count: spectrum.disLegomenaCount, share: spectrum.disLegomenaShare, className: "is-dis" },
+    {
+      label: "Hapax",
+      labelSuffix: "(1)",
+      count: spectrum.hapaxCount,
+      share: spectrum.hapaxShare,
+      className: "is-hapax",
+      glossaryId: "hapax",
+    },
+    {
+      label: "Dis legomena",
+      labelSuffix: "(2)",
+      count: spectrum.disLegomenaCount,
+      share: spectrum.disLegomenaShare,
+      className: "is-dis",
+      glossaryId: "disLegomena",
+    },
     { label: "3–9 occurrences", count: spectrum.band3To9Count, share: spectrum.band3To9Share, className: "is-mid-frequency" },
     { label: "10+ occurrences", count: spectrum.band10plusCount, share: spectrum.band10plusShare, className: "is-frequent" },
   ]));
-  if (spectrum.rawTtr !== null) {
-    panel.appendChild(createMetricTable([{
-      label: "Raw type–token ratio (length-sensitive)",
-      value: formatFixedNumber(spectrum.rawTtr, 3),
-    }]));
+
+  const lexicalDiversity = document.createElement("div");
+  lexicalDiversity.className = "analysis-metric-group";
+  const lexicalDiversityTitle = document.createElement("h4");
+  lexicalDiversityTitle.textContent = "Lexical diversity";
+  let mattrValue: string;
+  if (spectrum.mattrMedian !== null) {
+    mattrValue = formatDocumentMetricSummary(
+      spectrum.mattrMedian,
+      spectrum.mattrMin,
+      spectrum.mattrMax,
+      spectrum.mattrDocsUsed,
+      spectrum.mattrDocsExcluded,
+      3,
+    );
+  } else if (corpus.totals.documents === 0) {
+    mattrValue = "not computable — no documents";
+  } else {
+    mattrValue = `not computable — documents shorter than ${formatNumber(spectrum.mattrWindow)}-token window`;
   }
+
+  let mtldValue: string;
+  if (spectrum.mtldMedian !== null) {
+    mtldValue = formatDocumentMetricSummary(
+      spectrum.mtldMedian,
+      spectrum.mtldMin,
+      spectrum.mtldMax,
+      spectrum.mtldDocsUsed,
+      spectrum.mtldDocsExcluded,
+      2,
+    );
+  } else if (corpus.totals.documents === 0) {
+    mtldValue = "not computable — no documents";
+  } else if (
+    corpus.balance.maximumTokens !== null
+    && corpus.balance.maximumTokens < spectrum.mtldMinDocumentTokens
+  ) {
+    mtldValue = `not computable — documents shorter than ${formatNumber(spectrum.mtldMinDocumentTokens)}-token minimum`;
+  } else {
+    mtldValue = "not computable — no eligible document produced a finite value";
+  }
+
+  const diversityRows: OverviewMetricRow[] = [
+    {
+      label: "Raw type–token ratio (TTR)",
+      labelSuffix: "(length-sensitive)",
+      value: spectrum.rawTtr === null
+        ? "not computable — no tokens"
+        : formatFixedNumber(spectrum.rawTtr, 3),
+      glossaryId: "rawTtr",
+    },
+    {
+      label: "MATTR",
+      labelSuffix: `(window ${formatNumber(spectrum.mattrWindow)})`,
+      value: mattrValue,
+      glossaryId: "mattr",
+    },
+    {
+      label: "MTLD",
+      value: mtldValue,
+      glossaryId: "mtld",
+    },
+  ];
+  lexicalDiversity.append(lexicalDiversityTitle, createMetricTable(diversityRows));
+  const mattrNote = document.createElement("p");
+  mattrNote.className = "analysis-panel-note";
+  mattrNote.textContent = "MATTR reduces raw TTR’s length sensitivity, but it still depends on window size, tokenisation, and casing.";
+  const mtldNote = document.createElement("p");
+  mtldNote.className = "analysis-panel-note";
+  mtldNote.textContent = `MTLD is less sensitive to text length than raw TTR, but it depends on the ${formatFixedNumber(spectrum.mtldThreshold, 3)} threshold and can be unstable for very short documents.`;
+  lexicalDiversity.append(mattrNote, mtldNote);
+  panel.appendChild(lexicalDiversity);
   appendPanelReading(panel, spectrum.reading);
   return panel;
 }
@@ -859,6 +1077,20 @@ function renderFrequencyConcentration(corpus: AnalysisCorpus): HTMLElement {
   if (concentration.top10000Coverage !== null) {
     rows.push({ label: "Top 10,000 types cover", value: formatPercent(concentration.top10000Coverage) });
   }
+  if (concentration.evennessJ !== null) {
+    rows.push({
+      label: "Normalised entropy / evenness",
+      value: formatFixedNumber(concentration.evennessJ, 3),
+      glossaryId: "normalisedEntropy",
+    });
+  }
+  if (concentration.effectiveVocabularyEntropy !== null) {
+    rows.push({
+      label: "Effective vocabulary (entropy-based)",
+      value: `≈ ${formatNumber(concentration.effectiveVocabularyEntropy)} types`,
+      glossaryId: "effectiveVocabulary",
+    });
+  }
   if (rows.length > 0) {
     panel.appendChild(createMetricTable(rows));
   }
@@ -874,11 +1106,18 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
   ];
   if (corpus.totals.documents >= 2) {
     rows.push({
-      label: "High-DP frequent types (DP ≥ 0.5)",
+      label: "Gries DP",
+      labelSuffix: "(at least 0.5, frequent types)",
       value: `${formatNumber(dispersion.highDpFrequentTypes)} of ${formatNumber(dispersion.frequentTypes)}`,
+      glossaryId: "griesDp",
     });
     if (dispersion.medianDp !== null) {
-      rows.push({ label: "Median DP of frequent types", value: formatFixedNumber(dispersion.medianDp, 2) });
+      rows.push({
+        label: "Gries DP",
+        labelSuffix: "(median, frequent types)",
+        value: formatFixedNumber(dispersion.medianDp, 2),
+        glossaryId: "griesDp",
+      });
     }
   }
   panel.appendChild(createMetricTable(rows));
@@ -906,7 +1145,12 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
       share: dispersion.dfInAllShare,
       className: "is-frequent",
     });
-    panel.appendChild(createCompositionBar("Document-frequency spectrum", corpus.totals.types, segments));
+    panel.appendChild(createCompositionBar(
+      "Document-frequency spectrum",
+      corpus.totals.types,
+      segments,
+      "documentFrequencySpectrum",
+    ));
 
     const frequencyRows: OverviewMetricRow[] = [
       countAndShareRow(
