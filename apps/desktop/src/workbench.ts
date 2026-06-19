@@ -24,6 +24,7 @@ import {
   type SortDirection,
   type TermDistributionPage,
 } from "./analysis";
+import { BOOLEAN_CLEANING_CONFIG_KEYS } from "./config";
 import { dom } from "./dom";
 import { sourceForPath, sourceHasExtractedText } from "./sources";
 import { state, type WorkbenchId } from "./state";
@@ -265,11 +266,21 @@ function appendSummaryRow(labelText: string, valueText: string): void {
   dom.analyseProjectSummary.append(label, value);
 }
 
+function prepareSourceCount(): number | null {
+  if (state.activeProject && state.projectSourceSummary === null) {
+    return null;
+  }
+  return state.projectSourceSummary?.total_count ?? state.projectSources.length;
+}
+
 function prepareStageStatus(): string {
-  const sourceCount = state.projectSourceSummary?.total_count ?? state.projectSources.length;
+  const sourceCount = prepareSourceCount();
   const extractedCount = extractedTextSourceCount();
   const warnings = warningSourceCount();
 
+  if (sourceCount === null) {
+    return state.projectSourceQueryPending ? "Sources loading..." : "Loading source summary...";
+  }
   if (sourceCount === 0) {
     return "No sources";
   }
@@ -280,6 +291,42 @@ function prepareStageStatus(): string {
     return `${pluralise(extractedCount, "source")} text available`;
   }
   return pluralise(sourceCount, "source");
+}
+
+function activeCleaningItemCount(): number {
+  const enabledBooleanRules = BOOLEAN_CLEANING_CONFIG_KEYS
+    .filter((key) => state.activeCleaningConfig[key])
+    .length;
+  const enabledStructuredRemovals = state.activeCleaningConfig.removal_rules
+    .filter((rule) => rule.enabled)
+    .length;
+  return enabledBooleanRules
+    + state.activeCleaningConfig.remove_patterns.length
+    + enabledStructuredRemovals
+    + state.activeCleaningConfig.replace_patterns.length;
+}
+
+function refreshPrepareCockpit(): void {
+  const sourceCount = prepareSourceCount();
+  const extractedCount = extractedTextSourceCount();
+  const processedCount = processedSourceCount();
+  const cleaningCount = activeCleaningItemCount();
+  const loadableCount = state.activeProject
+    ? state.projectSourceSummary?.loadable_count ?? state.projectCorpusFileCount
+    : state.allFiles.length;
+
+  dom.prepareCockpitSourceCount.textContent = sourceCount === null
+    ? (state.projectSourceQueryPending ? "Sources loading..." : "Loading source summary...")
+    : pluralise(sourceCount, "source");
+  dom.prepareCockpitCleaningSummary.textContent = cleaningCount === 0
+    ? "Cleaning defaults"
+    : pluralise(cleaningCount, "active cleaning item");
+  dom.prepareProcessingStatus.textContent = sourceCount === null
+    ? "Processing status pending"
+    : sourceCount === 0
+      ? "No sources"
+      : `${formatNumber(extractedCount)} text available | ${formatNumber(processedCount)} processed`;
+  dom.prepareProcessSources.disabled = loadableCount === 0;
 }
 
 function analyseStageStatus(): string {
@@ -293,6 +340,7 @@ function analyseStageStatus(): string {
 function refreshStageNavigator(): void {
   const analyseIsActive = state.activeWorkbench === "analyse";
   const status = analysisStatus();
+  const sourceCount = prepareSourceCount();
 
   dom.workbenchPrepare.classList.toggle("active", !analyseIsActive);
   dom.workbenchAnalyse.classList.toggle("active", analyseIsActive);
@@ -302,13 +350,14 @@ function refreshStageNavigator(): void {
   dom.workbenchAnalyse.setAttribute("aria-selected", analyseIsActive ? "true" : "false");
   dom.workbenchExport.setAttribute("aria-selected", "false");
 
-  dom.workbenchPrepare.dataset.stageState = (state.projectSourceSummary?.total_count ?? state.projectSources.length) > 0 ? "ready" : "blocked";
+  dom.workbenchPrepare.dataset.stageState = sourceCount === null ? "loading" : sourceCount > 0 ? "ready" : "blocked";
   dom.workbenchAnalyse.dataset.stageState = status === "ready" ? "ready" : status === "stale" ? "stale" : "blocked";
   dom.workbenchExport.dataset.stageState = "future";
 
   dom.stagePrepareStatus.textContent = prepareStageStatus();
   dom.stageAnalyseStatus.textContent = analyseStageStatus();
   dom.stageExportStatus.textContent = "Coming later";
+  refreshPrepareCockpit();
 }
 
 function renderAnalyseStatus(): void {
@@ -408,7 +457,7 @@ function renderAnalysisNotice(): void {
 }
 
 function renderProjectSummary(): void {
-  const sourceCount = state.projectSourceSummary?.total_count ?? state.projectSources.length;
+  const sourceCount = prepareSourceCount() ?? 0;
   const fileCount = state.activeProject ? state.projectCorpusFileCount : state.allFiles.length;
   const processedCount = processedSourceCount();
   const extractedCount = extractedTextSourceCount();
@@ -2172,6 +2221,10 @@ function handleFrequencyModalKeydown(event: KeyboardEvent): void {
 }
 
 export function initWorkbenchSwitcher(): void {
+  window.addEventListener("corpuswright:project-sources-updated", () => {
+    refreshAnalyseWorkbench();
+  });
+
   dom.workbenchPrepare.addEventListener("click", () => {
     setActiveWorkbench("prepare");
   });

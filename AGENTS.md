@@ -99,7 +99,7 @@ The frontend should render the visible window plus a small overscan buffer. It m
 
 Virtualisation is a rendering technique, not a substitute for Rust ownership. A virtualised frontend over a corpus-sized TypeScript array is only a temporary compromise. The target architecture is Rust-backed paging/windowing.
 
-Windowing and virtualisation are internal implementation details. They must not become user-facing caps. A supported large corpus must remain fully selectable, navigable, previewable, and processable. TypeScript renders only the current viewport, but the logical dataset remains complete.
+Windowing and virtualisation are internal implementation details. They must not become user-facing caps. A supported large corpus must remain fully selectable, navigable, previewable, processable, and analysable. TypeScript renders only the current viewport, but the logical dataset remains complete.
 
 ### Selection must stay compact
 
@@ -124,6 +124,10 @@ When applying an operation to a large selection, pass the descriptor to Rust and
 Preview is for inspection, not bulk loading.
 
 Selected-source previews expose the complete logical selection through Rust-backed viewports. The frontend renders only the visible source cards, and Rust returns bounded text for those cards without reading every selected file at once.
+
+### Cleaning and processed previews
+
+Processed Text previews current cleaning settings. The Process action materialises processed output. TypeScript must not apply cleaning rules.
 
 ### Long-running work reports progress
 

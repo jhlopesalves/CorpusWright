@@ -603,7 +603,7 @@ function getTextSignalLabelFromCandidate(candidate: RepeatedArtifactCandidate): 
 export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks): void {
   const radioModes = getArtifactTextModeRadios();
 
-  if (!dom.menuRepeatedArtifactFinder || !dom.repeatedArtifactModal) return;
+  if (!dom.prepareRepeatedArtifactFinder || !dom.repeatedArtifactModal) return;
 
   let scanGeneration = 0;
   let scanTimerInterval: ReturnType<typeof setInterval> | null = null;
@@ -716,7 +716,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     dom.artifactDiagnostics.classList.remove("hidden");
   }
 
-  dom.menuRepeatedArtifactFinder.addEventListener("click", openRepeatedArtifactFinder);
+  dom.prepareRepeatedArtifactFinder.addEventListener("click", openRepeatedArtifactFinder);
   dom.btnFindRepeatedArtifactsSettings.addEventListener("click", () => {
     const scope = syncRepeatedArtifactSettingsSection();
     if (!scope.canScan) return;

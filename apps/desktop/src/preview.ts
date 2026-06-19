@@ -144,6 +144,7 @@ export async function updatePreview(): Promise<void> {
 
   state.currentPreviewOffset = 0;
 
+  dom.previewLoadingText.textContent = "Loading preview...";
   dom.previewLoadingOverlay.style.display = "flex";
   dom.statusBar.textContent = "Previewing...";
 
@@ -173,6 +174,7 @@ async function renderSelectedProjectSourcePreviewViewport(
   if (processedScroll && Math.abs(processedScroll.scrollTop - scrollTop) > 1) {
     processedScroll.scrollTop = scrollTop;
   }
+  dom.previewLoadingText.textContent = "Preparing preview...";
   dom.previewLoadingOverlay.style.display = "flex";
   dom.statusBar.textContent = "Previewing selected sources...";
 
@@ -294,7 +296,11 @@ function createProjectSourcePreviewViewportCard(
     const card = createProjectSourceDetailCard(item.source, mode);
     if (item.preview_error) {
       const body = card.querySelector<HTMLElement>(".file-card-body");
-      if (body) body.textContent = `Preview unavailable: ${item.preview_error}`;
+      if (body) {
+        body.textContent = isPendingProjectSourcePreview(item.preview_error)
+          ? "Preparing preview..."
+          : `Preview unavailable: ${item.preview_error}`;
+      }
     }
     card.classList.add("project-source-preview-card");
     return card;
@@ -333,6 +339,10 @@ function createProjectSourcePreviewViewportCard(
   body.innerHTML = highlightPreviewText(item.preview.text, state.currentSearchQuery);
   card.append(header, body);
   return card;
+}
+
+function isPendingProjectSourcePreview(error: string): boolean {
+  return error.toLowerCase().includes("selected project source is not loaded");
 }
 
 function handleProjectSourcePreviewScroll(event: Event): void {
