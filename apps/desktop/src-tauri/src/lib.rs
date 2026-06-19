@@ -20,7 +20,7 @@ use corpuswright_core::repeated_artifacts::{
     CancellationFlag, RepeatedArtifactScanConfig, RepeatedArtifactScanReport,
 };
 use corpuswright_core::scan::{
-    DocumentRecord, DocumentType, ScanReport, load_files, scan_directory,
+    CorpusSummary, DocumentRecord, DocumentType, ScanReport, load_files, scan_directory,
 };
 use corpuswright_core::search::{SearchResult, search_corpus};
 use serde::{Deserialize, Serialize};
@@ -58,6 +58,7 @@ struct CorpusStateInner {
     version: u64,
     root: Option<PathBuf>,
     records: Vec<DocumentRecord>,
+    record_index_by_path: HashMap<String, usize>,
 }
 
 impl CorpusStateInner {
@@ -66,12 +67,18 @@ impl CorpusStateInner {
             version: 0,
             root: None,
             records: vec![],
+            record_index_by_path: HashMap::new(),
         }
     }
 
     fn load(&mut self, root: Option<PathBuf>, records: Vec<DocumentRecord>) {
         self.version += 1;
         self.root = root;
+        self.record_index_by_path = records
+            .iter()
+            .enumerate()
+            .map(|(index, record)| (record_path_key(&record.source_path), index))
+            .collect();
         self.records = records;
     }
 
@@ -79,6 +86,7 @@ impl CorpusStateInner {
         self.version += 1;
         self.root = None;
         self.records.clear();
+        self.record_index_by_path.clear();
     }
 }
 
@@ -176,6 +184,84 @@ impl CorpusState {
         }
         Ok((result, inner.root.clone()))
     }
+
+    fn all_records_and_root(
+        &self,
+        corpus_version: u64,
+    ) -> Result<(Vec<DocumentRecord>, Option<PathBuf>), String> {
+        let inner = self.inner.read().unwrap();
+        if inner.version != corpus_version {
+            return Err(
+                "Corpus has been reloaded. Please re-select files and try again.".to_string(),
+            );
+        }
+        Ok((inner.records.clone(), inner.root.clone()))
+    }
+
+    fn records_window(
+        &self,
+        offset: usize,
+        limit: usize,
+        corpus_version: u64,
+    ) -> Result<(Vec<DocumentRecord>, usize), String> {
+        let inner = self.inner.read().unwrap();
+        if inner.version != corpus_version {
+            return Err(
+                "Corpus has been reloaded. Please re-select files and try again.".to_string(),
+            );
+        }
+        let total = inner.records.len();
+        let start = offset.min(total);
+        let end = start.saturating_add(limit).min(total);
+        Ok((inner.records[start..end].to_vec(), total))
+    }
+
+    fn record_for_path(
+        &self,
+        path: &Path,
+        corpus_version: u64,
+    ) -> Result<Option<DocumentRecord>, String> {
+        let inner = self.inner.read().unwrap();
+        if inner.version != corpus_version {
+            return Err(
+                "Corpus has been reloaded. Please re-select the source and try again.".to_string(),
+            );
+        }
+        Ok(inner
+            .record_index_by_path
+            .get(&record_path_key(path))
+            .and_then(|index| inner.records.get(*index))
+            .cloned())
+    }
+
+    fn records_for_paths(
+        &self,
+        paths: Vec<PathBuf>,
+        corpus_version: u64,
+    ) -> Result<Vec<DocumentRecord>, String> {
+        let inner = self.inner.read().unwrap();
+        if inner.version != corpus_version {
+            return Err(
+                "Corpus has been reloaded. Please re-select files and try again.".to_string(),
+            );
+        }
+        Ok(paths
+            .into_iter()
+            .map(|path| record_path_key(&path))
+            .filter_map(|path| inner.record_index_by_path.get(&path))
+            .filter_map(|index| inner.records.get(*index))
+            .cloned()
+            .collect())
+    }
+}
+
+fn record_path_key(path: &Path) -> String {
+    let path = path.to_string_lossy().replace('\\', "/");
+    if cfg!(windows) {
+        path.to_lowercase()
+    } else {
+        path
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -183,6 +269,14 @@ impl CorpusState {
 struct CorpusLoadResult {
     report: ScanReport,
     corpus_version: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectCorpusLoadResult {
+    summary: CorpusSummary,
+    corpus_version: u64,
+    record_count: usize,
 }
 
 #[derive(Clone, Serialize)]
@@ -239,6 +333,15 @@ struct ExportProgress {
 struct WordCountBatchResult {
     total_words: u64,
     skipped_ocr_mode: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WordCountWindowResult {
+    total_words: u64,
+    skipped_ocr_mode: bool,
+    processed_count: usize,
+    total_count: usize,
 }
 
 #[derive(Clone, Serialize)]
@@ -306,7 +409,7 @@ fn load_project_source_records_command(
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
-) -> Result<CorpusLoadResult, String> {
+) -> Result<ProjectCorpusLoadResult, String> {
     cache.clear();
     page_cache.clear();
     let report = project::load_project_source_records(root_path)?;
@@ -316,9 +419,10 @@ fn load_project_source_records_command(
         inner.load(Some(report.root.clone()), report.files.clone());
         inner.version
     };
-    Ok(CorpusLoadResult {
-        report,
+    Ok(ProjectCorpusLoadResult {
+        summary: report.summary,
         corpus_version: version,
+        record_count: report.files.len(),
     })
 }
 
@@ -1207,7 +1311,10 @@ fn clear_corpus_command(
 #[allow(clippy::too_many_arguments)]
 #[tauri::command(async)]
 fn search_corpus_command(
-    indices: Vec<usize>,
+    indices: Option<Vec<usize>>,
+    source_paths: Option<Vec<String>>,
+    root_path: Option<String>,
+    all_matching_query: Option<String>,
     corpus_version: u64,
     corpus: tauri::State<'_, CorpusState>,
     query: String,
@@ -1215,8 +1322,23 @@ fn search_corpus_command(
     cleaning_config: CleaningConfig,
     max_hits: usize,
     cache: tauri::State<'_, ExtractionCache>,
+    inventory: tauri::State<'_, project::ProjectSourceInventoryState>,
 ) -> Result<SearchResult, String> {
-    let records = corpus.records_for_indices(&indices, corpus_version)?;
+    let records = if let (Some(root_path), Some(selection_query)) = (root_path, all_matching_query)
+    {
+        let root = project::validated_project_root(&root_path)?;
+        let paths = inventory.matching_paths(&root, &selection_query)?;
+        corpus.records_for_paths(paths, corpus_version)?
+    } else if let Some(paths) = source_paths {
+        corpus.records_for_paths(
+            paths.into_iter().map(PathBuf::from).collect(),
+            corpus_version,
+        )?
+    } else if let Some(indices) = indices {
+        corpus.records_for_indices(&indices, corpus_version)?
+    } else {
+        corpus.all_records_and_root(corpus_version)?.0
+    };
     search_corpus(
         &records,
         &query,
@@ -1269,6 +1391,42 @@ fn preview_processed_files_command(
     };
     preview_processed_files(&records, &options, &cleaning_config, Some(&*cache))
         .map_err(|e| format!("{:?}", e))
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command(async)]
+fn read_project_source_preview_command(
+    root_path: String,
+    source_id: String,
+    corpus_version: u64,
+    processed: bool,
+    max_chars: usize,
+    cleaning_config: CleaningConfig,
+    inventory: tauri::State<'_, project::ProjectSourceInventoryState>,
+    corpus: tauri::State<'_, CorpusState>,
+    cache: tauri::State<'_, ExtractionCache>,
+) -> Result<CombinedPreview, String> {
+    let root = project::validated_project_root(&root_path)?;
+    let source = inventory
+        .source_by_id(&root, &source_id)?
+        .ok_or_else(|| "The selected project source no longer exists.".to_string())?;
+    let record = corpus
+        .record_for_path(&source.path, corpus_version)?
+        .ok_or_else(|| "The selected project source is not loaded.".to_string())?;
+    let records = vec![record];
+    let options = PreviewOptions {
+        max_chars_per_file: max_chars.clamp(1, 250_000),
+        include_paths: true,
+        max_files: Some(1),
+    };
+
+    if processed {
+        preview_processed_files(&records, &options, &cleaning_config, Some(&*cache))
+            .map_err(|error| format!("{error:?}"))
+    } else {
+        preview_files_with_config(&records, &options, &cleaning_config, Some(&*cache))
+            .map_err(|error| format!("{error:?}"))
+    }
 }
 
 fn project_source_text_cache_matches_record(
@@ -1332,14 +1490,17 @@ fn analysis_pdf_text(
 
 #[tauri::command(async)]
 fn analysis_input_texts_command(
-    indices: Vec<usize>,
+    indices: Option<Vec<usize>>,
     corpus_version: u64,
     use_processed_text: bool,
     cleaning_config: CleaningConfig,
     corpus: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
 ) -> Result<AnalysisInputTextsResult, String> {
-    let (records, project_root) = corpus.records_and_root_for_indices(&indices, corpus_version)?;
+    let (records, project_root) = match indices {
+        Some(indices) => corpus.records_and_root_for_indices(&indices, corpus_version)?,
+        None => corpus.all_records_and_root(corpus_version)?,
+    };
     let text_mode = if use_processed_text {
         DocumentTextMode::Processed
     } else {
@@ -1607,14 +1768,17 @@ fn extract_pdf_page_range_command(
 #[tauri::command(async)]
 fn export_corpus_command(
     window: Window,
-    indices: Vec<usize>,
+    indices: Option<Vec<usize>>,
     corpus_version: u64,
     corpus: tauri::State<'_, CorpusState>,
     output_dir: String,
     cleaning_config: CleaningConfig,
     cache: tauri::State<'_, ExtractionCache>,
 ) -> Result<ExportReport, String> {
-    let records = corpus.records_for_indices(&indices, corpus_version)?;
+    let records = match indices {
+        Some(indices) => corpus.records_for_indices(&indices, corpus_version)?,
+        None => corpus.all_records_and_root(corpus_version)?.0,
+    };
     let total = records.len();
     let options = ExportOptions {
         app_name: "CorpusWright".to_string(),
@@ -1687,16 +1851,64 @@ fn compute_word_count_command(
 }
 
 #[tauri::command(async)]
+fn compute_word_count_window_command(
+    offset: usize,
+    limit: usize,
+    corpus_version: u64,
+    corpus: tauri::State<'_, CorpusState>,
+    cleaning_config: CleaningConfig,
+    cache: tauri::State<'_, ExtractionCache>,
+) -> Result<WordCountWindowResult, String> {
+    let (records, total_count) = corpus.records_window(offset, limit.min(1_000), corpus_version)?;
+    let mut total_words = 0;
+    let mut skipped_ocr_mode = false;
+    for record in &records {
+        let outcome = corpuswright_core::word_count::count_words_for_record(
+            record,
+            &cleaning_config,
+            Some(&*cache),
+        );
+        total_words += outcome.count as u64;
+        skipped_ocr_mode |= outcome.skipped_ocr_mode;
+    }
+    Ok(WordCountWindowResult {
+        total_words,
+        skipped_ocr_mode,
+        processed_count: records.len(),
+        total_count,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command(async)]
 fn scan_repeated_artifacts_command(
-    indices: Vec<usize>,
+    indices: Option<Vec<usize>>,
+    source_paths: Option<Vec<String>>,
+    root_path: Option<String>,
+    all_matching_query: Option<String>,
     corpus_version: u64,
     corpus: tauri::State<'_, CorpusState>,
     config: RepeatedArtifactScanConfig,
     cleaning_config: CleaningConfig,
     state: tauri::State<'_, ScanState>,
     cache: tauri::State<'_, ExtractionCache>,
+    inventory: tauri::State<'_, project::ProjectSourceInventoryState>,
 ) -> Result<RepeatedArtifactScanReport, String> {
-    let records = corpus.records_for_indices(&indices, corpus_version)?;
+    let records = if let (Some(root_path), Some(selection_query)) = (root_path, all_matching_query)
+    {
+        let root = project::validated_project_root(&root_path)?;
+        let paths = inventory.matching_paths(&root, &selection_query)?;
+        corpus.records_for_paths(paths, corpus_version)?
+    } else if let Some(paths) = source_paths {
+        corpus.records_for_paths(
+            paths.into_iter().map(PathBuf::from).collect(),
+            corpus_version,
+        )?
+    } else if let Some(indices) = indices {
+        corpus.records_for_indices(&indices, corpus_version)?
+    } else {
+        corpus.all_records_and_root(corpus_version)?.0
+    };
     // A previous cancellation must not leak into the next scan.
     state.cancel.store(false, Ordering::Relaxed);
     corpuswright_core::repeated_artifacts::scan_repeated_artifacts_report_with_cancel_and_cache(
@@ -1815,6 +2027,7 @@ pub fn run() {
         })
         .manage(ExtractionCache::new())
         .manage(PdfPageRangeCache::new())
+        .manage(project::ProjectSourceInventoryState::new())
         .invoke_handler(tauri::generate_handler![
             scan_directory_command,
             load_files_command,
@@ -1827,10 +2040,12 @@ pub fn run() {
             search_corpus_command,
             preview_files_command,
             preview_processed_files_command,
+            read_project_source_preview_command,
             analysis_input_texts_command,
             extract_pdf_page_range_command,
             export_corpus_command,
             compute_word_count_command,
+            compute_word_count_window_command,
             scan_repeated_artifacts_command,
             cancel_repeated_artifacts_command,
             save_config_file_command,
@@ -1838,17 +2053,15 @@ pub fn run() {
             project::create_corpus_project_command,
             project::open_corpus_project_command,
             project::initialise_folder_as_corpus_project_command,
-            project::load_project_sources_command,
+            project::query_project_sources_command,
+            project::fast_import_project_source_files_command,
+            project::fast_import_project_source_folder_command,
+            project::remove_project_source_selection_command,
             project::review_project_source_files_import_command,
             project::review_project_source_folder_import_command,
-            project::add_project_source_files_command,
-            project::add_project_source_folder_command,
             project::confirm_project_source_files_import_command,
             project::confirm_project_source_folder_import_command,
-            project::update_project_source_processing_results_command,
-            project::update_project_source_pdf_profiles_command,
             project::update_project_source_pdf_handling_command,
-            project::remove_project_source_paths_command,
             project::load_repeated_artifact_decisions_command,
             project::save_repeated_artifact_decisions_command
         ])
@@ -1887,6 +2100,37 @@ mod tests {
             pdf_profile: profile,
             ocr_quality: Some(PdfOcrQuality::Balanced),
         }
+    }
+
+    #[test]
+    fn corpus_state_resolves_records_by_path_without_frontend_indices() {
+        let first = pdf_record("first.pdf", Some(ProjectSourcePdfProfile::Standard), None);
+        let second = pdf_record("second.pdf", Some(ProjectSourcePdfProfile::ForceOcr), None);
+        let corpus = CorpusState {
+            inner: RwLock::new(CorpusStateInner::empty()),
+        };
+        corpus
+            .inner
+            .write()
+            .unwrap()
+            .load(None, vec![first.clone(), second.clone()]);
+        let corpus_version = corpus.inner.read().unwrap().version;
+
+        assert_eq!(
+            corpus
+                .record_for_path(Path::new("second.pdf"), corpus_version)
+                .unwrap(),
+            Some(second.clone())
+        );
+        assert_eq!(
+            corpus
+                .records_for_paths(
+                    vec![PathBuf::from("second.pdf"), PathBuf::from("first.pdf")],
+                    corpus_version,
+                )
+                .unwrap(),
+            vec![second, first]
+        );
     }
 
     fn project_pdf_record(project_root: &Path, name: &str) -> DocumentRecord {

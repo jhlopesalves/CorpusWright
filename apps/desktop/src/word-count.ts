@@ -10,6 +10,8 @@ const OCR_WORD_COUNT_SKIPPED_STATUS =
 type WordCountBatchResult = {
   totalWords: number;
   skippedOcrMode: boolean;
+  processedCount: number;
+  totalCount: number;
 };
 
 export async function updateWordCount(): Promise<void> {
@@ -20,7 +22,8 @@ export async function updateWordCount(): Promise<void> {
   const wordLabelEl = getSummaryWordLabel();
   if (!totalWordsEl || !avgWordsEl) return;
 
-  if (state.allFiles.length === 0) {
+  const totalFiles = state.activeProject ? state.projectCorpusFileCount : state.allFiles.length;
+  if (totalFiles === 0) {
     totalWordsEl.textContent = "0";
     avgWordsEl.textContent = "0";
     state.cleanedTokenCountText = "0";
@@ -30,20 +33,22 @@ export async function updateWordCount(): Promise<void> {
 
   const BATCH_SIZE = 500;
   let totalWords = 0;
-  const totalFiles = state.allFiles.length;
+  const countLabel = state.activeProject ? "Source Token Count" : "Cleaned Token Count";
+  const unavailableStatus = state.activeProject
+    ? "Source token count unavailable until OCR sources have materialised text."
+    : OCR_WORD_COUNT_SKIPPED_STATUS;
 
   totalWordsEl.textContent = "Counting...";
   avgWordsEl.textContent = "Counting...";
   state.cleanedTokenCountText = "Counting...";
   refreshAnalyseWorkbench();
-  if (wordLabelEl) wordLabelEl.textContent = "Known Cleaned Tokens";
+  if (wordLabelEl) wordLabelEl.textContent = countLabel;
 
   try {
     for (let offset = 0; offset < totalFiles; offset += BATCH_SIZE) {
-      const batchSize = Math.min(BATCH_SIZE, totalFiles - offset);
-      const batchIndices = Array.from({ length: batchSize }, (_, batchIndex) => offset + batchIndex);
-      const batchResult = await invoke<WordCountBatchResult>("compute_word_count_command", {
-        indices: batchIndices,
+      const batchResult = await invoke<WordCountBatchResult>("compute_word_count_window_command", {
+        offset,
+        limit: BATCH_SIZE,
         corpusVersion: myVersion,
         cleaningConfig: state.activeCleaningConfig
       });
@@ -54,26 +59,27 @@ export async function updateWordCount(): Promise<void> {
         state.cleanedTokenCountText = "Unavailable";
         refreshAnalyseWorkbench();
         if (wordLabelEl) {
-          wordLabelEl.textContent = "Cleaned Token Count";
-          wordLabelEl.title = OCR_WORD_COUNT_SKIPPED_STATUS;
+          wordLabelEl.textContent = countLabel;
+          wordLabelEl.title = unavailableStatus;
         }
-        dom.statusBar.textContent = OCR_WORD_COUNT_SKIPPED_STATUS;
+        dom.statusBar.textContent = unavailableStatus;
         return;
       }
       totalWords += batchResult.totalWords;
 
-      const processed = Math.min(offset + BATCH_SIZE, totalFiles);
+      const processed = Math.min(offset + batchResult.processedCount, batchResult.totalCount);
       const avgWords = totalWords / processed;
       if (myVersion !== state.currentCorpusVersion || myWordCountGeneration !== state.wordCountGeneration) return;
-      totalWordsEl.textContent = `${totalWords.toLocaleString()} (${processed}/${totalFiles} files)`;
+      totalWordsEl.textContent = `${totalWords.toLocaleString()} (${processed.toLocaleString()}/${totalFiles.toLocaleString()} files; counting)`;
       avgWordsEl.textContent = avgWords.toLocaleString(undefined, { maximumFractionDigits: 2 });
       state.cleanedTokenCountText = totalWordsEl.textContent;
       refreshAnalyseWorkbench();
+      dom.statusBar.textContent = `Counting source tokens: ${processed.toLocaleString()} / ${totalFiles.toLocaleString()} files`;
     }
 
     if (myVersion !== state.currentCorpusVersion || myWordCountGeneration !== state.wordCountGeneration) return;
     if (wordLabelEl) {
-      wordLabelEl.textContent = "Cleaned Token Count";
+      wordLabelEl.textContent = countLabel;
       wordLabelEl.title = "Counts whitespace-separated tokens after cleaning. OCR-mode PDFs use matching cached OCR text only.";
     }
     const avgWords = totalWords / totalFiles;

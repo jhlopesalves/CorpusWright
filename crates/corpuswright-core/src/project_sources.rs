@@ -165,6 +165,66 @@ pub struct ProjectSourceManifest {
     pub sources: Vec<ProjectSource>,
 }
 
+/// Counts project sources by their current processing status.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct ProjectSourceStatusCounts {
+    pub unprocessed: usize,
+    pub ready_to_process: usize,
+    pub needs_ocr: usize,
+    pub text_extracted: usize,
+    pub text_extracted_with_warnings: usize,
+    pub processed: usize,
+    pub processed_with_warnings: usize,
+    pub failed: usize,
+}
+
+/// Counts project sources by file kind.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct ProjectSourceKindCounts {
+    pub pdf: usize,
+    pub docx: usize,
+    pub txt: usize,
+    pub html: usize,
+    pub unknown: usize,
+}
+
+/// Aggregate information for the sources matched by an inventory query.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct ProjectSourceSummary {
+    pub total_count: usize,
+    pub loadable_count: usize,
+    pub extracted_text_count: usize,
+    pub processed_count: usize,
+    pub warning_count: usize,
+    pub status_counts: ProjectSourceStatusCounts,
+    pub kind_counts: ProjectSourceKindCounts,
+}
+
+/// Bounded source inventory response for one query window.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct ProjectSourcePage {
+    pub total_count: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub items: Vec<ProjectSource>,
+    pub summary: ProjectSourceSummary,
+    pub inventory_summary: ProjectSourceSummary,
+}
+
+/// Filters and bounds a project source inventory query.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProjectSourceQuery {
+    pub query: String,
+    pub status_filter: Option<ProjectSourceStatus>,
+    pub kind_filter: Option<ProjectSourceKind>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
 /// Result of registering one or more paths with a project source inventory.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[ts(export)]
@@ -216,6 +276,160 @@ impl Default for ProjectSourceManifest {
             version: SOURCE_MANIFEST_VERSION,
             sources: Vec::new(),
         }
+    }
+}
+
+/// Returns one bounded window from an in-memory project source inventory.
+///
+/// The summary describes every matching source, not only the returned window.
+pub fn query_project_source_manifest(
+    manifest: &ProjectSourceManifest,
+    query: &ProjectSourceQuery,
+) -> ProjectSourcePage {
+    let query_text = query.query.trim().to_lowercase();
+    let limit = query.limit.min(500);
+    let mut summary = ProjectSourceSummary::default();
+    let mut inventory_summary = ProjectSourceSummary::default();
+    let mut items = Vec::with_capacity(limit);
+
+    for source in &manifest.sources {
+        update_project_source_summary(&mut inventory_summary, source);
+        if query
+            .status_filter
+            .is_some_and(|status| source.status != status)
+            || query.kind_filter.is_some_and(|kind| source.kind != kind)
+            || !project_source_matches_query(source, &query_text)
+        {
+            continue;
+        }
+
+        let match_index = summary.total_count;
+        update_project_source_summary(&mut summary, source);
+        if match_index >= query.offset && items.len() < limit {
+            items.push(source.clone());
+        }
+    }
+
+    let offset = query.offset.min(summary.total_count);
+    ProjectSourcePage {
+        total_count: summary.total_count,
+        offset,
+        limit,
+        items,
+        summary,
+        inventory_summary,
+    }
+}
+
+/// Returns whether a source matches the free-text part of an inventory query.
+///
+/// An empty query matches every source. Callers that already normalise input to
+/// lowercase can reuse this predicate when resolving compact selections.
+pub fn project_source_matches_query(source: &ProjectSource, query: &str) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+
+    let status = match source.status {
+        ProjectSourceStatus::Unprocessed => "unprocessed",
+        ProjectSourceStatus::ReadyToProcess => "ready to process text available",
+        ProjectSourceStatus::NeedsOcr => "needs ocr",
+        ProjectSourceStatus::TextExtracted => "text extracted",
+        ProjectSourceStatus::TextExtractedWithWarnings => "text extracted with warnings",
+        ProjectSourceStatus::Processed => "processed",
+        ProjectSourceStatus::ProcessedWithWarnings => "processed with warnings",
+        ProjectSourceStatus::Failed => "failed",
+    };
+    let kind = match source.kind {
+        ProjectSourceKind::Pdf => "pdf",
+        ProjectSourceKind::Docx => "docx",
+        ProjectSourceKind::Txt => "txt text native text",
+        ProjectSourceKind::Html => "html",
+        ProjectSourceKind::Unknown => "unknown",
+    };
+    let route = match source.extraction_route {
+        ProjectSourceExtractionRoute::EmbeddedText => "embedded text",
+        ProjectSourceExtractionRoute::OcrIfNeeded => "ocr if needed",
+        ProjectSourceExtractionRoute::ForceOcr => "force ocr",
+        ProjectSourceExtractionRoute::OcrRequired => "ocr required",
+        ProjectSourceExtractionRoute::PlainText => "plain text",
+        ProjectSourceExtractionRoute::DocxExtract => "docx extract",
+        ProjectSourceExtractionRoute::HtmlExtract => "html extract",
+        ProjectSourceExtractionRoute::Unsupported => "unsupported",
+        ProjectSourceExtractionRoute::Undecided => "undecided",
+    };
+
+    source.file_name.to_lowercase().contains(query)
+        || source.path.to_string_lossy().to_lowercase().contains(query)
+        || source
+            .extension
+            .as_deref()
+            .is_some_and(|extension| extension.to_lowercase().contains(query))
+        || status.contains(query)
+        || kind.contains(query)
+        || route.contains(query)
+        || source
+            .reason_codes
+            .iter()
+            .any(|reason| reason.to_lowercase().replace('_', " ").contains(query))
+}
+
+fn update_project_source_summary(summary: &mut ProjectSourceSummary, source: &ProjectSource) {
+    summary.total_count += 1;
+    if source.kind != ProjectSourceKind::Unknown && source.status != ProjectSourceStatus::Failed {
+        summary.loadable_count += 1;
+    }
+    if matches!(
+        source.status,
+        ProjectSourceStatus::TextExtracted
+            | ProjectSourceStatus::TextExtractedWithWarnings
+            | ProjectSourceStatus::Processed
+            | ProjectSourceStatus::ProcessedWithWarnings
+    ) {
+        summary.extracted_text_count += 1;
+    }
+    if matches!(
+        source.status,
+        ProjectSourceStatus::Processed | ProjectSourceStatus::ProcessedWithWarnings
+    ) {
+        summary.processed_count += 1;
+    }
+    if matches!(
+        source.status,
+        ProjectSourceStatus::TextExtractedWithWarnings | ProjectSourceStatus::ProcessedWithWarnings
+    ) || source.reason_codes.iter().any(|reason| {
+        !matches!(
+            reason.as_str(),
+            "native_text_available"
+                | "text_extracted"
+                | "processed_ok"
+                | "ocr_planned"
+                | "force_ocr_planned"
+        )
+    }) {
+        summary.warning_count += 1;
+    }
+
+    match source.status {
+        ProjectSourceStatus::Unprocessed => summary.status_counts.unprocessed += 1,
+        ProjectSourceStatus::ReadyToProcess => summary.status_counts.ready_to_process += 1,
+        ProjectSourceStatus::NeedsOcr => summary.status_counts.needs_ocr += 1,
+        ProjectSourceStatus::TextExtracted => summary.status_counts.text_extracted += 1,
+        ProjectSourceStatus::TextExtractedWithWarnings => {
+            summary.status_counts.text_extracted_with_warnings += 1;
+        }
+        ProjectSourceStatus::Processed => summary.status_counts.processed += 1,
+        ProjectSourceStatus::ProcessedWithWarnings => {
+            summary.status_counts.processed_with_warnings += 1;
+        }
+        ProjectSourceStatus::Failed => summary.status_counts.failed += 1,
+    }
+    match source.kind {
+        ProjectSourceKind::Pdf => summary.kind_counts.pdf += 1,
+        ProjectSourceKind::Docx => summary.kind_counts.docx += 1,
+        ProjectSourceKind::Txt => summary.kind_counts.txt += 1,
+        ProjectSourceKind::Html => summary.kind_counts.html += 1,
+        ProjectSourceKind::Unknown => summary.kind_counts.unknown += 1,
     }
 }
 
@@ -292,7 +506,29 @@ pub fn review_project_source_paths(
         &manifest,
         paths,
         ignored_count,
+        None,
     ))
+}
+
+/// Registers paths while reporting how many candidates have completed preflight.
+///
+/// # Errors
+///
+/// Returns an error when the existing inventory cannot be loaded or the updated
+/// inventory cannot be persisted.
+pub fn add_project_source_paths_with_progress(
+    project_root: impl AsRef<Path>,
+    paths: Vec<PathBuf>,
+    mut progress: impl FnMut(usize, usize),
+) -> Result<ProjectSourceUpdate, String> {
+    add_project_source_paths_with_pdf_handling_and_progress(
+        project_root.as_ref(),
+        paths,
+        ProjectSourceImportPolicy::Recommended,
+        PdfOcrQuality::Balanced,
+        Vec::new(),
+        Some(&mut progress),
+    )
 }
 
 /// Registers paths as project sources, runs lightweight preflight, and skips duplicates.
@@ -347,9 +583,26 @@ pub fn add_project_source_paths_with_pdf_handling(
     ocr_quality: PdfOcrQuality,
     pdf_handling_overrides: Vec<ProjectSourcePdfHandlingOverride>,
 ) -> Result<ProjectSourceUpdate, String> {
-    let project_root = project_root.as_ref();
+    add_project_source_paths_with_pdf_handling_and_progress(
+        project_root.as_ref(),
+        paths,
+        pdf_policy,
+        ocr_quality,
+        pdf_handling_overrides,
+        None,
+    )
+}
+
+fn add_project_source_paths_with_pdf_handling_and_progress(
+    project_root: &Path,
+    paths: Vec<PathBuf>,
+    pdf_policy: ProjectSourceImportPolicy,
+    ocr_quality: PdfOcrQuality,
+    pdf_handling_overrides: Vec<ProjectSourcePdfHandlingOverride>,
+    progress: Option<&mut dyn FnMut(usize, usize)>,
+) -> Result<ProjectSourceUpdate, String> {
     let mut manifest = load_project_source_manifest(project_root)?;
-    let review = build_project_source_import_review(project_root, &manifest, paths, 0);
+    let review = build_project_source_import_review(project_root, &manifest, paths, 0, progress);
     let duplicate_count = review.duplicate_count;
     let added_count = review.candidates.len();
     let handling_by_source_id = pdf_handling_overrides
@@ -787,6 +1040,7 @@ fn build_project_source_import_review(
     manifest: &ProjectSourceManifest,
     paths: Vec<PathBuf>,
     ignored_count: usize,
+    mut progress: Option<&mut dyn FnMut(usize, usize)>,
 ) -> ProjectSourceImportReview {
     let mut seen_ids: HashSet<String> = manifest
         .sources
@@ -796,17 +1050,24 @@ fn build_project_source_import_review(
     let mut candidates = Vec::new();
     let mut duplicate_count = 0usize;
 
-    for path in paths {
+    let total = paths.len();
+    for (index, path) in paths.into_iter().enumerate() {
         let source_path = source_path_for_storage(project_root, &path);
         let source_id = stable_project_source_id(project_root, &source_path);
-        if !seen_ids.insert(source_id.clone()) {
+        if seen_ids.insert(source_id.clone()) {
+            let mut source = new_project_source(source_id, source_path);
+            preflight_project_source(&mut source);
+            candidates.push(source);
+        } else {
             duplicate_count += 1;
-            continue;
         }
 
-        let mut source = new_project_source(source_id, source_path);
-        preflight_project_source(&mut source);
-        candidates.push(source);
+        let current = index + 1;
+        if (current % 250 == 0 || current == total)
+            && let Some(report) = progress.as_deref_mut()
+        {
+            report(current, total);
+        }
     }
 
     candidates.sort_by(|a, b| a.path.cmp(&b.path));
@@ -1100,6 +1361,95 @@ mod tests {
             last_checked_at: Some("2026-01-01T00:00:00Z".to_string()),
             last_processed_at: None,
         }
+    }
+
+    #[test]
+    fn source_query_returns_bounded_window_and_full_match_summary() {
+        let sources = (0..1_000)
+            .map(|index| {
+                let kind = if index % 2 == 0 {
+                    ProjectSourceKind::Txt
+                } else {
+                    ProjectSourceKind::Html
+                };
+                source_for_test(PathBuf::from(format!("document-{index:04}.txt")), kind)
+            })
+            .collect();
+        let manifest = ProjectSourceManifest {
+            version: SOURCE_MANIFEST_VERSION,
+            sources,
+        };
+
+        let page = query_project_source_manifest(
+            &manifest,
+            &ProjectSourceQuery {
+                query: "document".to_string(),
+                kind_filter: Some(ProjectSourceKind::Txt),
+                offset: 200,
+                limit: 75,
+                ..ProjectSourceQuery::default()
+            },
+        );
+
+        assert_eq!(page.total_count, 500);
+        assert_eq!(page.offset, 200);
+        assert_eq!(page.items.len(), 75);
+        assert_eq!(page.summary.kind_counts.txt, 500);
+        assert_eq!(page.summary.kind_counts.html, 0);
+        assert_eq!(page.summary.status_counts.ready_to_process, 500);
+        assert_eq!(page.summary.warning_count, 0);
+        assert_eq!(page.inventory_summary.total_count, 1_000);
+    }
+
+    #[test]
+    fn source_query_matches_native_text_status_language() {
+        let source = source_for_test(PathBuf::from("notes.txt"), ProjectSourceKind::Txt);
+        let manifest = ProjectSourceManifest {
+            version: SOURCE_MANIFEST_VERSION,
+            sources: vec![source],
+        };
+
+        let page = query_project_source_manifest(
+            &manifest,
+            &ProjectSourceQuery {
+                query: "text available".to_string(),
+                limit: 20,
+                ..ProjectSourceQuery::default()
+            },
+        );
+
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.items[0].kind, ProjectSourceKind::Txt);
+    }
+
+    #[test]
+    fn source_registration_reports_preflight_progress() {
+        let temp = tempdir().unwrap();
+        let project_root = temp.path().join("project");
+        let source_root = temp.path().join("sources");
+        fs::create_dir_all(&project_root).unwrap();
+        fs::create_dir_all(&source_root).unwrap();
+        let paths = (0..3)
+            .map(|index| {
+                let path = source_root.join(format!("source-{index}.txt"));
+                fs::write(&path, format!("synthetic source {index}")).unwrap();
+                path
+            })
+            .collect::<Vec<_>>();
+        let mut progress = Vec::new();
+
+        let update =
+            add_project_source_paths_with_progress(&project_root, paths, |current, total| {
+                progress.push((current, total))
+            })
+            .unwrap();
+
+        assert_eq!(update.added_count, 3);
+        assert_eq!(progress, vec![(3, 3)]);
+        assert!(update.manifest.sources.iter().all(|source| {
+            source.kind == ProjectSourceKind::Txt
+                && source.status == ProjectSourceStatus::ReadyToProcess
+        }));
     }
 
     #[test]

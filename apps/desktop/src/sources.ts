@@ -1,23 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { FilePreview } from "./generated/FilePreview.js";
 import type { PdfOcrQuality } from "./generated/PdfOcrQuality.js";
-import type { PreviewWarning } from "./generated/PreviewWarning.js";
 import type { ProjectSource } from "./generated/ProjectSource.js";
 import type { ProjectSourceExtractionRoute } from "./generated/ProjectSourceExtractionRoute.js";
 import type { ProjectSourceImportReview } from "./generated/ProjectSourceImportReview.js";
-import type { ProjectSourceManifest } from "./generated/ProjectSourceManifest.js";
+import type { ProjectSourcePage } from "./generated/ProjectSourcePage.js";
 import type { ProjectSourcePdfProfile } from "./generated/ProjectSourcePdfProfile.js";
 import type { ProjectSourceStatus } from "./generated/ProjectSourceStatus.js";
-import type { ProjectSourceUpdate } from "./generated/ProjectSourceUpdate.js";
 import { state } from "./state";
-
-export interface ProjectSourceProcessingResult {
-  path: string;
-  failed: boolean;
-  warning_count: number;
-  reason_codes: string[];
-}
 
 export interface ProjectSourcePdfHandlingOverride {
   path: string;
@@ -25,16 +15,22 @@ export interface ProjectSourcePdfHandlingOverride {
   ocrQuality: PdfOcrQuality;
 }
 
-export const SOURCE_GROUP_ORDER: ProjectSourceStatus[] = [
-  "failed",
-  "needs_ocr",
-  "ready_to_process",
-  "unprocessed",
-  "text_extracted_with_warnings",
-  "text_extracted",
-  "processed_with_warnings",
-  "processed",
-];
+export interface ProjectSourceFastImportResult {
+  imported: boolean;
+  requiresPdfHandling: boolean;
+  addedCount: number;
+  duplicateCount: number;
+  ignoredCount: number;
+}
+
+export interface ProjectSourceImportResult {
+  addedCount: number;
+  duplicateCount: number;
+}
+
+export interface ProjectSourceRemovalResult {
+  removedCount: number;
+}
 
 export function pathKey(path: string): string {
   return path.replace(/\\/g, "/").toLowerCase();
@@ -42,13 +38,16 @@ export function pathKey(path: string): string {
 
 export function sourceForPath(path: string): ProjectSource | null {
   const key = pathKey(path);
-  return state.projectSources.find((source) => pathKey(source.path) === key) ?? null;
+  return state.projectSources.find((source) => pathKey(source.path) === key)
+    ?? Array.from(state.selectedProjectSourcesById.values())
+      .find((source) => pathKey(source.path) === key)
+    ?? null;
 }
 
 export function sourceStatusLabel(status: ProjectSourceStatus): string {
   switch (status) {
     case "unprocessed": return "Unprocessed";
-    case "ready_to_process": return "Ready to Extract";
+    case "ready_to_process": return "Ready to Process";
     case "needs_ocr": return "Needs OCR";
     case "text_extracted": return "Text Extracted";
     case "text_extracted_with_warnings": return "Text Extracted with Warnings";
@@ -191,7 +190,7 @@ export function reasonDescription(code: string): string | null {
     case "pdf_no_text_layer": return "The PDF has no usable embedded text layer.";
     case "ocr_required": return "OCR is required before source text can be previewed.";
     case "ocr_failed": return "OCR text extraction failed.";
-    case "native_text_available": return "Native text is available for extraction.";
+    case "native_text_available": return "Native text is available for processing.";
     case "pdf_route_undecided": return "PDF diagnostics could not choose a confident extraction route.";
     case "ocr_planned":
     case "force_ocr_planned": return "Full-page OCR is planned for this PDF.";
@@ -230,22 +229,59 @@ export function primaryReasonLabel(source: ProjectSource): string | null {
   return code ? reasonLabel(code) : null;
 }
 
-export function isLoadableSource(source: ProjectSource): boolean {
-  return source.kind !== "unknown" && source.status !== "failed";
+export function selectedProjectSources(): ProjectSource[] {
+  return Array.from(state.selectedProjectSourcesById.values());
 }
 
-export function selectedProjectSources(): ProjectSource[] {
-  return state.projectSources.filter((source) => state.selectedProjectSourceIds.has(source.id));
+export function sourceDisplayStatusLabel(source: ProjectSource): string {
+  if (source.status !== "ready_to_process") {
+    return sourceStatusLabel(source.status);
+  }
+  return source.kind === "pdf" ? "Ready to Extract" : "Text Available";
+}
+
+export function projectSourceSelectionCount(): number {
+  return state.allMatchingProjectSourcesSelected
+    ? state.projectSourceQuerySummary?.total_count ?? 0
+    : state.selectedProjectSourceIds.size;
+}
+
+export function projectSourceTotalCount(): number {
+  return state.projectSourceSummary?.total_count ?? 0;
+}
+
+export function hasProjectSourceSelection(): boolean {
+  return projectSourceSelectionCount() > 0;
+}
+
+export function isProjectSourceSelected(sourceId: string): boolean {
+  return state.allMatchingProjectSourcesSelected || state.selectedProjectSourceIds.has(sourceId);
+}
+
+export function clearProjectSourceSelection(): void {
+  state.selectedProjectSourceIds.clear();
+  state.selectedProjectSourcesById.clear();
+  state.allMatchingProjectSourcesSelected = false;
+}
+
+export function selectAllMatchingProjectSources(): void {
+  state.selectedProjectSourceIds.clear();
+  state.selectedProjectSourcesById.clear();
+  state.allMatchingProjectSourcesSelected = (state.projectSourceQuerySummary?.total_count ?? 0) > 0;
+}
+
+export function rememberSelectedProjectSource(source: ProjectSource): void {
+  state.selectedProjectSourceIds.add(source.id);
+  state.selectedProjectSourcesById.set(source.id, source);
+}
+
+export function forgetSelectedProjectSource(sourceId: string): void {
+  state.selectedProjectSourceIds.delete(sourceId);
+  state.selectedProjectSourcesById.delete(sourceId);
 }
 
 export function selectedProjectSourcePaths(): string[] {
   return selectedProjectSources().map((source) => source.path);
-}
-
-export function loadableProjectSourcePaths(): string[] {
-  return state.projectSources
-    .filter(isLoadableSource)
-    .map((source) => source.path);
 }
 
 export function normalizeProjectSource(source: ProjectSource): ProjectSource {
@@ -273,40 +309,58 @@ export function normalizeProjectSource(source: ProjectSource): ProjectSource {
   };
 }
 
-export function replaceProjectSources(manifest: ProjectSourceManifest): void {
-  state.sourceManifestVersion = manifest.version;
-  state.projectSources = manifest.sources.map(normalizeProjectSource);
-  const sourceIds = new Set(manifest.sources.map((source) => source.id));
-  for (const selectedId of state.selectedProjectSourceIds) {
-    if (!sourceIds.has(selectedId)) {
-      state.selectedProjectSourceIds.delete(selectedId);
+export async function loadProjectSourcesForActiveProject(offset = 0): Promise<ProjectSourcePage | null> {
+  if (!state.activeProject) {
+    state.projectSources = [];
+    state.projectSourceSummary = null;
+    state.projectSourceQuerySummary = null;
+    state.projectSourcePageOffset = 0;
+    return null;
+  }
+  const generation = ++state.projectSourceQueryGeneration;
+  state.projectSourceQueryPending = true;
+  try {
+    const page = await invoke<ProjectSourcePage>("query_project_sources_command", {
+      rootPath: state.activeProject.rootPath,
+      query: state.sourceSearchQuery,
+      statusFilter: null,
+      kindFilter: null,
+      offset,
+      limit: state.projectSourcePageLimit,
+    });
+    if (generation !== state.projectSourceQueryGeneration) {
+      return null;
+    }
+    state.projectSources = page.items.map(normalizeProjectSource);
+    state.projectSourceSummary = page.inventory_summary;
+    state.projectSourceQuerySummary = page.summary;
+    state.projectSourcePageOffset = page.offset;
+    return page;
+  } finally {
+    if (generation === state.projectSourceQueryGeneration) {
+      state.projectSourceQueryPending = false;
     }
   }
 }
 
-export async function loadProjectSourcesForActiveProject(): Promise<ProjectSourceManifest> {
-  if (!state.activeProject) {
-    const empty = { version: 1, sources: [] };
-    replaceProjectSources(empty);
-    return empty;
-  }
-  const manifest = await invoke<ProjectSourceManifest>("load_project_sources_command", {
-    rootPath: state.activeProject.rootPath,
-  });
-  replaceProjectSources(manifest);
-  return manifest;
-}
-
-export async function addFilesToActiveProjectSources(paths: string[]): Promise<ProjectSourceUpdate | null> {
-  if (!state.activeProject || paths.length === 0) {
-    return null;
-  }
-  const update = await invoke<ProjectSourceUpdate>("add_project_source_files_command", {
+export async function fastImportFilesToActiveProject(
+  paths: string[],
+): Promise<ProjectSourceFastImportResult | null> {
+  if (!state.activeProject || paths.length === 0) return null;
+  return invoke<ProjectSourceFastImportResult>("fast_import_project_source_files_command", {
     rootPath: state.activeProject.rootPath,
     paths,
   });
-  replaceProjectSources(update.manifest);
-  return update;
+}
+
+export async function fastImportFolderToActiveProject(
+  folderPath: string,
+): Promise<ProjectSourceFastImportResult | null> {
+  if (!state.activeProject) return null;
+  return invoke<ProjectSourceFastImportResult>("fast_import_project_source_folder_command", {
+    rootPath: state.activeProject.rootPath,
+    folderPath,
+  });
 }
 
 export async function reviewFilesForActiveProjectSources(paths: string[]): Promise<ProjectSourceImportReview | null> {
@@ -326,29 +380,15 @@ export async function reviewFilesForActiveProjectSources(paths: string[]): Promi
 export async function confirmFilesForActiveProjectSources(
   paths: string[],
   pdfHandlingOverrides: ProjectSourcePdfHandlingOverride[],
-): Promise<ProjectSourceUpdate | null> {
+): Promise<ProjectSourceImportResult | null> {
   if (!state.activeProject || paths.length === 0) {
     return null;
   }
-  const update = await invoke<ProjectSourceUpdate>("confirm_project_source_files_import_command", {
+  return invoke<ProjectSourceImportResult>("confirm_project_source_files_import_command", {
     rootPath: state.activeProject.rootPath,
     paths,
     pdfHandlingOverrides,
   });
-  replaceProjectSources(update.manifest);
-  return update;
-}
-
-export async function addFolderToActiveProjectSources(path: string): Promise<ProjectSourceUpdate | null> {
-  if (!state.activeProject) {
-    return null;
-  }
-  const update = await invoke<ProjectSourceUpdate>("add_project_source_folder_command", {
-    rootPath: state.activeProject.rootPath,
-    folderPath: path,
-  });
-  replaceProjectSources(update.manifest);
-  return update;
 }
 
 export async function reviewFolderForActiveProjectSources(path: string): Promise<ProjectSourceImportReview | null> {
@@ -368,93 +408,23 @@ export async function reviewFolderForActiveProjectSources(path: string): Promise
 export async function confirmFolderForActiveProjectSources(
   path: string,
   pdfHandlingOverrides: ProjectSourcePdfHandlingOverride[],
-): Promise<ProjectSourceUpdate | null> {
+): Promise<ProjectSourceImportResult | null> {
   if (!state.activeProject) {
     return null;
   }
-  const update = await invoke<ProjectSourceUpdate>("confirm_project_source_folder_import_command", {
+  return invoke<ProjectSourceImportResult>("confirm_project_source_folder_import_command", {
     rootPath: state.activeProject.rootPath,
     folderPath: path,
     pdfHandlingOverrides,
   });
-  replaceProjectSources(update.manifest);
-  return update;
 }
 
-export async function removeProjectSourcePaths(paths: string[]): Promise<ProjectSourceManifest | null> {
-  if (!state.activeProject || paths.length === 0) {
-    return null;
-  }
-  const manifest = await invoke<ProjectSourceManifest>("remove_project_source_paths_command", {
+export async function removeSelectedProjectSources(): Promise<ProjectSourceRemovalResult | null> {
+  if (!state.activeProject || !hasProjectSourceSelection()) return null;
+  return invoke<ProjectSourceRemovalResult>("remove_project_source_selection_command", {
     rootPath: state.activeProject.rootPath,
-    paths,
+    allMatching: state.allMatchingProjectSourcesSelected,
+    query: state.sourceSearchQuery,
+    ids: Array.from(state.selectedProjectSourceIds),
   });
-  replaceProjectSources(manifest);
-  return manifest;
-}
-
-export async function persistProcessedPreviewStatuses(files: FilePreview[]): Promise<void> {
-  if (!state.activeProject || files.length === 0) {
-    return;
-  }
-
-  const results = files
-    .filter((file) => sourceForPath(file.source_path) !== null)
-    .map((file) => processingResultForPreview(file));
-
-  if (results.length === 0) {
-    return;
-  }
-
-  try {
-    const manifest = await invoke<ProjectSourceManifest>("update_project_source_processing_results_command", {
-      rootPath: state.activeProject.rootPath,
-      results,
-    });
-    replaceProjectSources(manifest);
-  } catch (error) {
-    console.error("Could not update project source statuses", error);
-  }
-}
-
-function processingResultForPreview(file: FilePreview): ProjectSourceProcessingResult {
-  const extractionWarnings = file.warnings.filter((warning) =>
-    warning.kind === "extraction_warning" || warning.kind === "extraction_error"
-  );
-  const failed = extractionWarnings.some((warning) => warning.kind === "extraction_error");
-  return {
-    path: file.source_path,
-    failed,
-    warning_count: extractionWarnings.length,
-    reason_codes: reasonCodesForWarnings(extractionWarnings, failed),
-  };
-}
-
-function reasonCodesForWarnings(warnings: PreviewWarning[], failed: boolean): string[] {
-  if (warnings.length === 0) {
-    return [];
-  }
-
-  const codes = new Set<string>();
-  for (const warning of warnings) {
-    const message = warning.message.toLowerCase();
-    if (message.includes("ocr")) {
-      codes.add(failed ? "ocr_failed" : "ocr_required");
-    }
-    if (message.includes("low-quality") || message.includes("low quality")) {
-      codes.add("low_text_density");
-    }
-    if (message.includes("layout")) {
-      codes.add("layout_warning");
-    }
-    if (message.includes("repeated")) {
-      codes.add("many_repeated_artifacts");
-    }
-  }
-
-  if (codes.size === 0 && failed) {
-    codes.add("parse_failed");
-  }
-
-  return Array.from(codes);
 }

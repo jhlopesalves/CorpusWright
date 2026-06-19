@@ -5,12 +5,15 @@ import { renderVisibleItems } from "./file-list";
 import { state } from "./state";
 import {
   isPreviewableSource,
+  hasProjectSourceSelection,
   pdfHandlingLabel,
   primaryReasonLabel,
   reasonLabel,
+  projectSourceSelectionCount,
   selectedProjectSources,
   sourceForPath,
   sourceHasExtractedText,
+  sourceDisplayStatusLabel,
   sourceKindLabel,
   sourceReasonDescriptions,
   sourceStatusLabel,
@@ -25,6 +28,7 @@ import type { ProjectSource } from "./generated/ProjectSource.js";
 const PREVIEW_CHUNK_SIZE = 50;
 const FULL_OCR_CHUNK_SIZE = 2;
 const FULL_OCR_MAX_CHARS_PER_PAGE = 50_000;
+const MAX_PROJECT_SOURCE_PREVIEW_FILES = 10;
 
 let previewObserver: IntersectionObserver | null = null;
 let chunkSentinelObserver: IntersectionObserver | null = null;
@@ -71,26 +75,34 @@ export async function updatePreview(): Promise<void> {
   const myPreviewGeneration = ++state.previewGeneration;
   state.activePreviewGeneration = myPreviewGeneration;
 
-  const hasProjectSourceSelection = state.activeProject !== null && state.selectedProjectSourceIds.size > 0;
-  const projectSources = hasProjectSourceSelection ? selectedProjectSources() : [];
+  const hasSourceSelection = state.activeProject !== null && hasProjectSourceSelection();
+  const projectSources = hasSourceSelection ? selectedProjectSources() : [];
+  const selectedSourceCount = hasSourceSelection ? projectSourceSelectionCount() : 0;
+
+  if (hasSourceSelection) {
+    if (state.allMatchingProjectSourcesSelected || selectedSourceCount > MAX_PROJECT_SOURCE_PREVIEW_FILES) {
+      renderLargeProjectSourceSelection(selectedSourceCount);
+      dom.previewLoadingOverlay.style.display = "none";
+      dom.statusBar.textContent = `${selectedSourceCount.toLocaleString()} sources selected; preview is bounded.`;
+      return;
+    }
+    if (projectSources.length > 0) {
+      await renderSelectedProjectSourcePreviews(projectSources, myVersion, myPreviewGeneration);
+      return;
+    }
+  }
 
   if (state.selectedCorpusIndices.size === 0) {
     if (myVersion !== state.currentCorpusVersion) return;
-    if (hasProjectSourceSelection && projectSources.length > 0) {
-      renderProjectSourceDetailCards(dom.previewContent, projectSources, "original");
-      renderProjectSourceDetailCards(dom.processedPreviewContent, projectSources, "processed");
-      dom.previewLoadingOverlay.style.display = "none";
-      dom.statusBar.textContent = "Selected source text is unavailable.";
-      return;
-    }
     dom.previewContent.innerHTML = "Select files from the left panel to preview their contents.";
     dom.processedPreviewContent.innerHTML = "Select files from the left panel to preview processed text.";
-    dom.statusBar.textContent = `Loaded ${state.allFiles.length} files.`;
+    const loadedCount = state.activeProject ? state.projectCorpusFileCount : state.allFiles.length;
+    dom.statusBar.textContent = `Loaded ${loadedCount.toLocaleString()} files.`;
     return;
   }
 
   const selectedIndices = Array.from(state.selectedCorpusIndices);
-  if (hasProjectSourceSelection && projectSources.some((source) => !isPreviewableSource(source))) {
+  if (hasSourceSelection && projectSources.some((source) => !isPreviewableSource(source))) {
     renderProjectSourceDetailCards(dom.previewContent, projectSources, "original");
     renderProjectSourceDetailCards(dom.processedPreviewContent, projectSources, "processed");
     dom.previewLoadingOverlay.style.display = "none";
@@ -128,6 +140,79 @@ export async function updatePreview(): Promise<void> {
   dom.statusBar.textContent = "Previewing...";
 
   await fetchAndRenderPreviewChunk(selectedIndices, state.currentPreviewOffset, false, myVersion, myPreviewGeneration);
+}
+
+function renderLargeProjectSourceSelection(selectedCount: number): void {
+  const message = `${selectedCount.toLocaleString()} sources selected. Preview is limited for large selections. Select one source to inspect it, or use Preview Top to preview a bounded sample.`;
+  dom.previewContent.textContent = message;
+  dom.processedPreviewContent.textContent = message;
+}
+
+async function renderSelectedProjectSourcePreviews(
+  sources: ProjectSource[],
+  corpusVersion: number,
+  previewGeneration: number,
+): Promise<void> {
+  dom.previewContent.replaceChildren();
+  dom.processedPreviewContent.replaceChildren();
+  dom.previewLoadingOverlay.style.display = "flex";
+  dom.statusBar.textContent = "Previewing selected sources...";
+
+  try {
+    for (const source of sources.slice(0, MAX_PROJECT_SOURCE_PREVIEW_FILES)) {
+      if (!isPreviewableSource(source)) {
+        dom.previewContent.appendChild(createProjectSourceDetailCard(source, "original"));
+        dom.processedPreviewContent.appendChild(createProjectSourceDetailCard(source, "processed"));
+        continue;
+      }
+
+      const original = await invoke<CombinedPreview>("read_project_source_preview_command", {
+        rootPath: state.activeProject?.rootPath,
+        sourceId: source.id,
+        corpusVersion,
+        processed: false,
+        maxChars: 250_000,
+        cleaningConfig: state.activeCleaningConfig,
+      });
+      if (
+        corpusVersion !== state.currentCorpusVersion
+        || previewGeneration !== state.activePreviewGeneration
+      ) return;
+      renderPreviewCards(dom.previewContent, original.files, true, 0, 1, "original");
+
+      const processedAvailable = source.status === "processed"
+        || source.status === "processed_with_warnings";
+      if (!processedAvailable) {
+        dom.processedPreviewContent.appendChild(createProjectSourceDetailCard(source, "processed"));
+        continue;
+      }
+      const processed = await invoke<CombinedPreview>("read_project_source_preview_command", {
+        rootPath: state.activeProject?.rootPath,
+        sourceId: source.id,
+        corpusVersion,
+        processed: true,
+        maxChars: 250_000,
+        cleaningConfig: state.activeCleaningConfig,
+      });
+      if (
+        corpusVersion !== state.currentCorpusVersion
+        || previewGeneration !== state.activePreviewGeneration
+      ) return;
+      renderPreviewCards(dom.processedPreviewContent, processed.files, true, 0, 1, "processed");
+    }
+    highlightRenderedCards();
+    dom.statusBar.textContent = `Preview ready for ${sources.length.toLocaleString()} selected source${sources.length === 1 ? "" : "s"}.`;
+  } catch (error) {
+    if (
+      corpusVersion !== state.currentCorpusVersion
+      || previewGeneration !== state.activePreviewGeneration
+    ) return;
+    dom.previewContent.textContent = `Error loading source preview: ${error}`;
+    dom.processedPreviewContent.textContent = `Error loading processed preview: ${error}`;
+    dom.statusBar.textContent = "Error loading source preview.";
+  } finally {
+    dom.previewLoadingOverlay.style.display = "none";
+  }
 }
 
 function renderProjectSourceDetailCards(
@@ -190,7 +275,7 @@ function createProjectSourceDetailCard(source: ProjectSource, mode: "original" |
 function projectSourceDetailBadges(source: ProjectSource): string[] {
   const labels = [
     sourceKindLabel(source),
-    sourceStatusLabel(source.status),
+    sourceDisplayStatusLabel(source),
   ];
   const handling = pdfHandlingLabel(source);
   if (handling) {
@@ -245,6 +330,12 @@ function projectSourceDetailLines(source: ProjectSource, mode: "original" | "pro
       lines.push("Processed text has not been generated yet.");
       lines.push("Extracted source text is available only after PDF text extraction completes.");
       lines.push("Run extraction with the selected PDF handling before reviewing processed text.");
+      return lines;
+    }
+
+    if (source.status !== "processed" && source.status !== "processed_with_warnings") {
+      lines.push("Processed text has not been generated yet.");
+      lines.push("Run processing to generate processed text.");
       return lines;
     }
 
@@ -682,7 +773,7 @@ function renderPreviewCards(
 
       const statusBadge = document.createElement("span");
       statusBadge.className = "badge";
-      statusBadge.textContent = sourceStatusLabel(source.status);
+      statusBadge.textContent = sourceDisplayStatusLabel(source);
       badges.appendChild(statusBadge);
 
   // Only add reason badge for concrete failures/errors, not generic warnings

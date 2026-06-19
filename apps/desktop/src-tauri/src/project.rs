@@ -1,23 +1,109 @@
 use corpuswright_core::clean::PdfOcrQuality;
 use corpuswright_core::project_sources::{
     ProjectSourceImportPolicy, ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest,
-    ProjectSourcePdfHandlingOverride, ProjectSourcePdfProfile, ProjectSourceProcessingResult,
-    ProjectSourceStatus, ProjectSourceUpdate, add_project_source_paths,
-    add_project_source_paths_with_pdf_handling, load_project_source_manifest,
-    remove_project_source_paths, review_project_source_paths, save_project_source_manifest,
-    update_project_source_pdf_handling, update_project_source_pdf_profiles,
-    update_project_source_processing_results,
+    ProjectSourcePage, ProjectSourcePdfHandlingOverride, ProjectSourcePdfProfile,
+    ProjectSourceQuery, ProjectSourceStatus, add_project_source_paths_with_pdf_handling,
+    add_project_source_paths_with_progress, load_project_source_manifest,
+    project_source_matches_query, query_project_source_manifest, review_project_source_paths,
+    save_project_source_manifest, source_manifest_path, update_project_source_pdf_handling,
+    update_project_source_pdf_profiles,
 };
 use corpuswright_core::scan::{ScanReport, load_files, scan_directory};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
+use std::time::SystemTime;
+use tauri::{Emitter, Window};
 
 const PROJECT_DIR: &str = ".corpuswright";
 const MANIFEST_FILE: &str = "project.json";
 const REPEATED_ARTIFACTS_FILE: &str = "repeated-artifacts.json";
 const PROJECT_VERSION: u32 = 1;
+
+struct CachedProjectSourceInventory {
+    root: PathBuf,
+    modified: Option<SystemTime>,
+    file_size: u64,
+    manifest: ProjectSourceManifest,
+}
+
+pub(crate) struct ProjectSourceInventoryState {
+    inner: RwLock<Option<CachedProjectSourceInventory>>,
+}
+
+impl ProjectSourceInventoryState {
+    pub(crate) fn new() -> Self {
+        Self {
+            inner: RwLock::new(None),
+        }
+    }
+
+    fn with_manifest<T>(
+        &self,
+        root: &Path,
+        read: impl FnOnce(&ProjectSourceManifest) -> T,
+    ) -> Result<T, String> {
+        let inventory_path = source_manifest_path(root);
+        let metadata = fs::metadata(&inventory_path).ok();
+        let modified = metadata.as_ref().and_then(|value| value.modified().ok());
+        let file_size = metadata.as_ref().map_or(0, fs::Metadata::len);
+        let mut cached = self.inner.write().unwrap();
+        let needs_reload = cached.as_ref().is_none_or(|current| {
+            current.root != root || current.modified != modified || current.file_size != file_size
+        });
+        if needs_reload {
+            *cached = Some(CachedProjectSourceInventory {
+                root: root.to_path_buf(),
+                modified,
+                file_size,
+                manifest: load_project_source_manifest(root)?,
+            });
+        }
+        Ok(read(&cached.as_ref().unwrap().manifest))
+    }
+
+    fn replace(&self, root: &Path, manifest: ProjectSourceManifest) {
+        let metadata = fs::metadata(source_manifest_path(root)).ok();
+        *self.inner.write().unwrap() = Some(CachedProjectSourceInventory {
+            root: root.to_path_buf(),
+            modified: metadata.as_ref().and_then(|value| value.modified().ok()),
+            file_size: metadata.as_ref().map_or(0, fs::Metadata::len),
+            manifest,
+        });
+    }
+
+    pub(crate) fn source_by_id(
+        &self,
+        root: &Path,
+        source_id: &str,
+    ) -> Result<Option<corpuswright_core::project_sources::ProjectSource>, String> {
+        self.with_manifest(root, |manifest| {
+            manifest
+                .sources
+                .iter()
+                .find(|source| source.id == source_id)
+                .cloned()
+        })
+    }
+
+    pub(crate) fn matching_paths(&self, root: &Path, query: &str) -> Result<Vec<PathBuf>, String> {
+        let query = query.trim().to_lowercase();
+        self.with_manifest(root, |manifest| {
+            manifest
+                .sources
+                .iter()
+                .filter(|source| {
+                    source.kind != ProjectSourceKind::Unknown
+                        && source.status != ProjectSourceStatus::Failed
+                        && project_source_matches_query(source, &query)
+                })
+                .map(|source| source.path.clone())
+                .collect()
+        })
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct CorpusProjectManifest {
@@ -46,6 +132,37 @@ pub(crate) struct ProjectSourcePdfHandlingOverrideRequest {
     path: String,
     pdf_profile: ProjectSourcePdfProfile,
     ocr_quality: PdfOcrQuality,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProjectSourceFastImportResult {
+    imported: bool,
+    requires_pdf_handling: bool,
+    added_count: usize,
+    duplicate_count: usize,
+    ignored_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProjectSourceImportResult {
+    added_count: usize,
+    duplicate_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProjectSourceRemovalResult {
+    removed_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectSourceImportProgress {
+    current: usize,
+    total: usize,
+    status: &'static str,
 }
 
 #[tauri::command(async)]
@@ -118,12 +235,155 @@ pub(crate) fn initialise_folder_as_corpus_project_command(
     Ok(active_project_from_manifest(&manifest, &manifest_path))
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command(async)]
-pub(crate) fn load_project_sources_command(
+pub(crate) fn query_project_sources_command(
     root_path: String,
-) -> Result<ProjectSourceManifest, String> {
+    query: String,
+    status_filter: Option<ProjectSourceStatus>,
+    kind_filter: Option<ProjectSourceKind>,
+    offset: usize,
+    limit: usize,
+    inventory: tauri::State<'_, ProjectSourceInventoryState>,
+) -> Result<ProjectSourcePage, String> {
     let root = validated_project_root(&root_path)?;
-    load_project_source_manifest(root)
+    inventory.with_manifest(&root, |manifest| {
+        query_project_source_manifest(
+            manifest,
+            &ProjectSourceQuery {
+                query,
+                status_filter,
+                kind_filter,
+                offset,
+                limit,
+            },
+        )
+    })
+}
+
+#[tauri::command(async)]
+pub(crate) fn fast_import_project_source_files_command(
+    root_path: String,
+    paths: Vec<String>,
+    window: Window,
+    inventory: tauri::State<'_, ProjectSourceInventoryState>,
+) -> Result<ProjectSourceFastImportResult, String> {
+    let root = validated_project_root(&root_path)?;
+    let paths = paths.into_iter().map(PathBuf::from).collect::<Vec<_>>();
+    if paths_require_pdf_handling(&paths) {
+        return Ok(ProjectSourceFastImportResult {
+            imported: false,
+            requires_pdf_handling: true,
+            added_count: 0,
+            duplicate_count: 0,
+            ignored_count: 0,
+        });
+    }
+
+    let update = add_project_source_paths_with_progress(&root, paths, |current, total| {
+        let _ = window.emit(
+            "project-source-import-progress",
+            ProjectSourceImportProgress {
+                current,
+                total,
+                status: "registering",
+            },
+        );
+    })?;
+    let result = ProjectSourceFastImportResult {
+        imported: true,
+        requires_pdf_handling: false,
+        added_count: update.added_count,
+        duplicate_count: update.duplicate_count,
+        ignored_count: 0,
+    };
+    inventory.replace(&root, update.manifest);
+    Ok(result)
+}
+
+fn paths_require_pdf_handling(paths: &[PathBuf]) -> bool {
+    paths.iter().any(|path| {
+        corpuswright_core::project_sources::kind_for_path(path) == ProjectSourceKind::Pdf
+    })
+}
+
+#[tauri::command(async)]
+pub(crate) fn fast_import_project_source_folder_command(
+    root_path: String,
+    folder_path: String,
+    window: Window,
+    inventory: tauri::State<'_, ProjectSourceInventoryState>,
+) -> Result<ProjectSourceFastImportResult, String> {
+    let root = validated_project_root(&root_path)?;
+    let _ = window.emit(
+        "project-source-import-progress",
+        ProjectSourceImportProgress {
+            current: 0,
+            total: 0,
+            status: "scanning",
+        },
+    );
+    let report = scan_source_folder(&folder_path)?;
+    if report.summary.document_type_counts.pdf > 0 {
+        return Ok(ProjectSourceFastImportResult {
+            imported: false,
+            requires_pdf_handling: true,
+            added_count: 0,
+            duplicate_count: 0,
+            ignored_count: report.files_ignored,
+        });
+    }
+
+    let paths = report
+        .files
+        .into_iter()
+        .map(|record| record.source_path)
+        .collect();
+    let update = add_project_source_paths_with_progress(&root, paths, |current, total| {
+        let _ = window.emit(
+            "project-source-import-progress",
+            ProjectSourceImportProgress {
+                current,
+                total,
+                status: "registering",
+            },
+        );
+    })?;
+    let result = ProjectSourceFastImportResult {
+        imported: true,
+        requires_pdf_handling: false,
+        added_count: update.added_count,
+        duplicate_count: update.duplicate_count,
+        ignored_count: report.files_ignored,
+    };
+    inventory.replace(&root, update.manifest);
+    Ok(result)
+}
+
+#[tauri::command(async)]
+pub(crate) fn remove_project_source_selection_command(
+    root_path: String,
+    all_matching: bool,
+    query: String,
+    ids: Vec<String>,
+    inventory: tauri::State<'_, ProjectSourceInventoryState>,
+) -> Result<ProjectSourceRemovalResult, String> {
+    let root = validated_project_root(&root_path)?;
+    let mut manifest = load_project_source_manifest(&root)?;
+    let original_count = manifest.sources.len();
+    if all_matching {
+        let query = query.trim().to_lowercase();
+        manifest
+            .sources
+            .retain(|source| !project_source_matches_query(source, &query));
+    } else {
+        let ids = ids.into_iter().collect::<std::collections::HashSet<_>>();
+        manifest.sources.retain(|source| !ids.contains(&source.id));
+    }
+    let removed_count = original_count - manifest.sources.len();
+    save_project_source_manifest(&root, &manifest)?;
+    inventory.replace(&root, manifest);
+    Ok(ProjectSourceRemovalResult { removed_count })
 }
 
 #[tauri::command(async)]
@@ -152,24 +412,14 @@ pub(crate) fn review_project_source_folder_import_command(
 }
 
 #[tauri::command(async)]
-pub(crate) fn add_project_source_files_command(
-    root_path: String,
-    paths: Vec<String>,
-) -> Result<ProjectSourceUpdate, String> {
-    let root = validated_project_root(&root_path)?;
-    let paths = paths.into_iter().map(PathBuf::from).collect();
-    add_project_source_paths(root, paths)
-}
-
-#[tauri::command(async)]
 pub(crate) fn confirm_project_source_files_import_command(
     root_path: String,
     paths: Vec<String>,
     pdf_handling_overrides: Vec<ProjectSourcePdfHandlingOverrideRequest>,
-) -> Result<ProjectSourceUpdate, String> {
+) -> Result<ProjectSourceImportResult, String> {
     let root = validated_project_root(&root_path)?;
     let paths = paths.into_iter().map(PathBuf::from).collect();
-    add_project_source_paths_with_pdf_handling(
+    let update = add_project_source_paths_with_pdf_handling(
         root,
         paths,
         ProjectSourceImportPolicy::Recommended,
@@ -178,22 +428,11 @@ pub(crate) fn confirm_project_source_files_import_command(
             .into_iter()
             .map(pdf_handling_override_from_request)
             .collect(),
-    )
-}
-
-#[tauri::command(async)]
-pub(crate) fn add_project_source_folder_command(
-    root_path: String,
-    folder_path: String,
-) -> Result<ProjectSourceUpdate, String> {
-    let root = validated_project_root(&root_path)?;
-    let report = scan_source_folder(&folder_path)?;
-    let paths = report
-        .files
-        .into_iter()
-        .map(|record| record.source_path)
-        .collect();
-    add_project_source_paths(root, paths)
+    )?;
+    Ok(ProjectSourceImportResult {
+        added_count: update.added_count,
+        duplicate_count: update.duplicate_count,
+    })
 }
 
 #[tauri::command(async)]
@@ -201,7 +440,7 @@ pub(crate) fn confirm_project_source_folder_import_command(
     root_path: String,
     folder_path: String,
     pdf_handling_overrides: Vec<ProjectSourcePdfHandlingOverrideRequest>,
-) -> Result<ProjectSourceUpdate, String> {
+) -> Result<ProjectSourceImportResult, String> {
     let root = validated_project_root(&root_path)?;
     let report = scan_source_folder(&folder_path)?;
     let paths = report
@@ -209,7 +448,7 @@ pub(crate) fn confirm_project_source_folder_import_command(
         .into_iter()
         .map(|record| record.source_path)
         .collect();
-    add_project_source_paths_with_pdf_handling(
+    let update = add_project_source_paths_with_pdf_handling(
         root,
         paths,
         ProjectSourceImportPolicy::Recommended,
@@ -218,7 +457,11 @@ pub(crate) fn confirm_project_source_folder_import_command(
             .into_iter()
             .map(pdf_handling_override_from_request)
             .collect(),
-    )
+    )?;
+    Ok(ProjectSourceImportResult {
+        added_count: update.added_count,
+        duplicate_count: update.duplicate_count,
+    })
 }
 
 pub(crate) fn load_project_source_records(root_path: String) -> Result<ScanReport, String> {
@@ -260,35 +503,16 @@ pub(crate) fn load_project_source_inventory(
     Ok((root, manifest))
 }
 
-#[tauri::command(async)]
-pub(crate) fn update_project_source_processing_results_command(
-    root_path: String,
-    results: Vec<ProjectSourceProcessingResult>,
-) -> Result<ProjectSourceManifest, String> {
-    let root = validated_project_root(&root_path)?;
-    update_project_source_processing_results(root, results)
-}
-
-#[tauri::command(async)]
-pub(crate) fn remove_project_source_paths_command(
-    root_path: String,
-    paths: Vec<String>,
-) -> Result<ProjectSourceManifest, String> {
-    let root = validated_project_root(&root_path)?;
-    let paths = paths.into_iter().map(PathBuf::from).collect();
-    remove_project_source_paths(root, paths)
-}
-
-#[tauri::command(async)]
 pub(crate) fn update_project_source_pdf_profiles_command(
     root_path: String,
     paths: Vec<String>,
     profile: ProjectSourcePdfProfile,
     ocr_quality: PdfOcrQuality,
-) -> Result<ProjectSourceManifest, String> {
+) -> Result<(), String> {
     let root = validated_project_root(&root_path)?;
     let paths = paths.into_iter().map(PathBuf::from).collect();
-    update_project_source_pdf_profiles(root, paths, profile, ocr_quality)
+    update_project_source_pdf_profiles(root, paths, profile, ocr_quality)?;
+    Ok(())
 }
 
 /// Applies per-source PDF handling overrides to existing project sources.
@@ -298,7 +522,7 @@ pub(crate) fn update_project_source_pdf_profiles_command(
 pub(crate) fn update_project_source_pdf_handling_command(
     root_path: String,
     overrides: Vec<ProjectSourcePdfHandlingOverrideRequest>,
-) -> Result<ProjectSourceManifest, String> {
+) -> Result<(), String> {
     let root = validated_project_root(&root_path)?;
     update_project_source_pdf_handling(
         root,
@@ -306,7 +530,8 @@ pub(crate) fn update_project_source_pdf_handling_command(
             .into_iter()
             .map(pdf_handling_override_from_request)
             .collect(),
-    )
+    )?;
+    Ok(())
 }
 
 #[tauri::command(async)]
@@ -388,7 +613,7 @@ fn selected_manifest_path(selected: &Path) -> PathBuf {
     manifest_path_for_root(selected)
 }
 
-fn validated_project_root(root_path: &str) -> Result<PathBuf, String> {
+pub(crate) fn validated_project_root(root_path: &str) -> Result<PathBuf, String> {
     let selected = normalise_selected_path(root_path)?;
     let manifest_path = manifest_path_for_root(&selected);
     let manifest = read_manifest(&manifest_path)?;
@@ -682,5 +907,18 @@ mod tests {
         assert_eq!(manifest.sources.len(), 1);
 
         cleanup(&root);
+    }
+
+    #[test]
+    fn native_text_paths_bypass_pdf_handling() {
+        assert!(!paths_require_pdf_handling(&[
+            PathBuf::from("review.txt"),
+            PathBuf::from("notes.html"),
+            PathBuf::from("article.docx"),
+        ]));
+        assert!(paths_require_pdf_handling(&[
+            PathBuf::from("review.txt"),
+            PathBuf::from("scan.pdf"),
+        ]));
     }
 }

@@ -1961,18 +1961,16 @@ main {
 }
 
 .file-list-container.source-explorer-mode .virtual-scroll-sentinel {
-  display: none;
+  display: block;
 }
 
 .file-list-container.source-explorer-mode #file-list {
-  position: static;
-  transform: none;
-  will-change: auto;
+  position: absolute;
+  will-change: transform;
 }
 
 .file-list-container.source-explorer-mode #file-list li {
-  height: auto;
-  min-height: 32px;
+  height: 64px;
   white-space: normal;
 }
 
@@ -2047,6 +2045,7 @@ main {
 }
 
 .source-empty-state {
+  height: auto !important;
   display: flex !important;
   flex-direction: column;
   align-items: flex-start !important;

@@ -6,6 +6,11 @@ import {
   getSelectedArtifactTextMode,
 } from "./dom";
 import { state } from "./state";
+import {
+  hasProjectSourceSelection,
+  projectSourceSelectionCount,
+  selectedProjectSources,
+} from "./sources";
 import type { RemovalRule } from "./generated/CleaningConfig.js";
 import type { CandidateTextProfile } from "./generated/CandidateTextProfile.js";
 import type { CandidateTextSignalLabel } from "./generated/CandidateTextSignalLabel.js";
@@ -205,9 +210,9 @@ function selectedScanIndices(): number[] {
 }
 
 export function getRepeatedArtifactScanScope(): RepeatedArtifactScanScope {
-  const loadedCount = state.allFiles.length;
+  const loadedCount = state.activeProject ? state.projectCorpusFileCount : state.allFiles.length;
   if (loadedCount === 0) {
-    const helperText = state.activeProject && state.projectSources.length > 0
+    const helperText = state.activeProject && (state.projectSourceSummary?.total_count ?? 0) > 0
       ? "This project has no processable source files to scan."
       : "Add sources before scanning for repeated artefacts.";
     return {
@@ -220,21 +225,13 @@ export function getRepeatedArtifactScanScope(): RepeatedArtifactScanScope {
   }
 
   const hasSelection = state.activeProject
-    ? state.selectedProjectSourceIds.size > 0
+    ? hasProjectSourceSelection()
     : state.selectedCorpusIndices.size > 0;
   if (hasSelection) {
-    const selected = selectedScanIndices();
-    if (selected.length === 0) {
-      return {
-        canScan: false,
-        indices: [],
-        buttonLabel: "Find repeated artefacts...",
-        helperText: "Selected sources cannot be scanned yet.",
-        modalText: "Selected sources cannot be scanned yet.",
-      };
-    }
+    const selected = state.activeProject ? [] : selectedScanIndices();
+    const selectedCount = state.activeProject ? projectSourceSelectionCount() : selected.length;
 
-    const selectedLabel = sourceCountLabel(selected.length, "selected");
+    const selectedLabel = sourceCountLabel(selectedCount, "selected");
     return {
       canScan: true,
       indices: selected,
@@ -244,7 +241,9 @@ export function getRepeatedArtifactScanScope(): RepeatedArtifactScanScope {
     };
   }
 
-  const allIndices = Array.from({ length: loadedCount }, (_, corpusIndex) => corpusIndex);
+  const allIndices = state.activeProject
+    ? []
+    : Array.from({ length: loadedCount }, (_, corpusIndex) => corpusIndex);
   const scopeLabel = allSourceScopeLabel(loadedCount);
   return {
     canScan: true,
@@ -921,7 +920,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     await persistDecisions();
     callbacks.renderCustomRemovals();
     syncRepeatedArtifactSettingsSection();
-    if (state.selectedCorpusIndices.size > 0 || state.selectedProjectSourceIds.size > 0) {
+    if (state.selectedCorpusIndices.size > 0 || hasProjectSourceSelection()) {
       callbacks.schedulePreviewUpdate(150);
     }
     closeArtifactModal();
@@ -1100,11 +1099,16 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     }, 500);
 
     const myVersion = state.currentCorpusVersion;
-    const indices = scope.indices;
+    const indices = state.activeProject ? null : scope.indices;
 
     try {
       const report = await invoke<RepeatedArtifactScanReport>("scan_repeated_artifacts_command", {
         indices,
+        sourcePaths: state.activeProject && hasProjectSourceSelection() && !state.allMatchingProjectSourcesSelected
+          ? selectedProjectSources().map((source) => source.path)
+          : null,
+        rootPath: state.allMatchingProjectSourcesSelected ? state.activeProject?.rootPath : null,
+        allMatchingQuery: state.allMatchingProjectSourcesSelected ? state.sourceSearchQuery : null,
         corpusVersion: myVersion,
         config: config,
         cleaningConfig: state.activeCleaningConfig,
