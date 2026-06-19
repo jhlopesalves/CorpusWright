@@ -739,13 +739,13 @@ function renderCorpusReading(corpus: AnalysisCorpus): HTMLElement {
 
     const status = document.createElement("span");
     status.className = "analysis-reading-status";
-    status.textContent = ` (${finding.severityLabel}).`;
+    status.textContent = `(${finding.severityLabel})`;
 
     const text = document.createElement("span");
     text.className = "analysis-reading-finding-text";
     text.textContent = finding.text;
 
-    heading.append(label, status);
+    heading.append(label, document.createTextNode(" "), status, document.createTextNode("."));
     body.append(heading, text);
     item.append(dot, body);
     list.appendChild(item);
