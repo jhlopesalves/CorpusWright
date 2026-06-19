@@ -13,17 +13,6 @@ use crate::text_profile::{
 };
 
 lazy_static! {
-    static ref RE_STANDALONE_ARABIC: Regex =
-        Regex::new(r"(?m)^[ \t]*\d+[ \t]*(?:\r?\n|$)").unwrap();
-    static ref RE_STANDALONE_ROMAN: Regex =
-        Regex::new(r"(?im)^[ \t]*[ivxlcdm]+[ \t]*(?:\r?\n|$)").unwrap();
-    static ref RE_PAGE_INDICATORS: Regex =
-        Regex::new(r"(?i)\b(?:page|pag\.)[ \t]*(?:[0-9]+|[ivxlcdm]+)\b").unwrap();
-    static ref RE_PAGE_DELIMITERS: Regex = Regex::new(
-        r"(?im)^[ \t]*-+[ \t]*(?:page|pag\.)[ \t]*(?:[0-9]+|[ivxlcdm]+)[ \t]*-+[ \t]*(?:\r?\n|$)"
-    )
-    .unwrap();
-    static ref RE_JOIN_LINE_BREAKS: Regex = Regex::new(r"[ \t]*\r?\n[ \t]*").unwrap();
     static ref RE_EXCESSIVE_SPACES: Regex = Regex::new(r" {2,}").unwrap();
     static ref RE_EXCESSIVE_HORIZONTAL_WHITESPACE: Regex = Regex::new(r"[ \t]{2,}").unwrap();
     static ref RE_PAGE_MARKER_ARABIC: Regex = Regex::new(r"^\d{1,5}$").unwrap();
@@ -31,7 +20,7 @@ lazy_static! {
         Regex::new(r"(?i)^M{0,4}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$")
             .unwrap();
     static ref RE_PAGE_MARKER_LABEL: Regex =
-        Regex::new(r"(?i)^(?:page|pag\.|p\.|página)\s*(\d{1,5}|[ivxlcdm]{1,15})$")
+        Regex::new(r"(?i)^(?:page|pag\.|p\.|página)\s*(\d{1,5}|[ivxlcdm]{1,15})\.?$")
             .unwrap();
     static ref RE_URL_ONLY_LINE: Regex =
         Regex::new(r"(?i)^(?:https?://|www\.)[^\s<>]+$").unwrap();
@@ -44,6 +33,8 @@ lazy_static! {
     )
     .unwrap();
 }
+
+const MAX_ROMAN_PAGE_MARKER_VALUE: u32 = 399;
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[ts(export)]
@@ -265,31 +256,6 @@ pub fn clean_text_with_report(text: &str, config: &CleaningConfig) -> CleanTextR
         cleaned = cleaned.to_lowercase();
     }
 
-    if config.remove_page_delimiters {
-        cleaned = RE_PAGE_DELIMITERS.replace_all(&cleaned, "").to_string();
-    }
-
-    if config.remove_page_indicators {
-        cleaned = RE_PAGE_INDICATORS.replace_all(&cleaned, "").to_string();
-    }
-
-    if config.remove_standalone_page_numbers {
-        cleaned = RE_STANDALONE_ARABIC.replace_all(&cleaned, "").to_string();
-    }
-
-    if config.remove_standalone_roman_page_numbers {
-        cleaned = RE_STANDALONE_ROMAN.replace_all(&cleaned, "").to_string();
-    }
-
-    if config.remove_isolated_page_markers {
-        cleaned = apply_line_removal(
-            &cleaned,
-            &mut report,
-            "remove_isolated_page_markers",
-            is_isolated_page_marker_line,
-        );
-    }
-
     if config.remove_url_only_lines {
         cleaned = apply_line_removal(
             &cleaned,
@@ -335,13 +301,11 @@ pub fn clean_text_with_report(text: &str, config: &CleaningConfig) -> CleanTextR
         );
     }
 
-    if config.repair_wrapped_pdf_line_breaks || config.normalize_irregular_line_breaks {
+    if config.repair_wrapped_pdf_line_breaks
+        || config.normalize_irregular_line_breaks
+        || config.join_line_breaks
+    {
         cleaned = normalize_irregular_line_breaks(&cleaned);
-    }
-
-    if config.join_line_breaks {
-        cleaned = RE_JOIN_LINE_BREAKS.replace_all(&cleaned, " ").to_string();
-        cleaned = RE_EXCESSIVE_SPACES.replace_all(&cleaned, " ").to_string();
     }
 
     cleaned = remove_structured_removal_rules(cleaned, config);
@@ -402,22 +366,6 @@ fn prepare_line_for_rule_matching(line_text: &str, config: &CleaningConfig) -> S
 
     if config.lowercase {
         cleaned = cleaned.to_lowercase();
-    }
-
-    if config.remove_page_delimiters {
-        cleaned = RE_PAGE_DELIMITERS.replace_all(&cleaned, "").to_string();
-    }
-
-    if config.remove_page_indicators {
-        cleaned = RE_PAGE_INDICATORS.replace_all(&cleaned, "").to_string();
-    }
-
-    if config.remove_standalone_page_numbers {
-        cleaned = RE_STANDALONE_ARABIC.replace_all(&cleaned, "").to_string();
-    }
-
-    if config.remove_standalone_roman_page_numbers {
-        cleaned = RE_STANDALONE_ROMAN.replace_all(&cleaned, "").to_string();
     }
 
     cleaned
@@ -523,17 +471,341 @@ pub(crate) fn has_page_zone_rules(config: &CleaningConfig) -> bool {
     })
 }
 
+fn has_page_label_removal(config: &CleaningConfig) -> bool {
+    config.remove_standalone_page_numbers
+        || config.remove_standalone_roman_page_numbers
+        || config.remove_page_indicators
+        || config.remove_page_delimiters
+        || config.remove_isolated_page_markers
+}
+
+pub(crate) fn requires_reliable_page_metadata(config: &CleaningConfig) -> bool {
+    has_page_zone_rules(config) || has_page_label_removal(config)
+}
+
+fn without_page_label_removal(config: &CleaningConfig) -> CleaningConfig {
+    let mut config = config.clone();
+    config.remove_standalone_page_numbers = false;
+    config.remove_standalone_roman_page_numbers = false;
+    config.remove_page_indicators = false;
+    config.remove_page_delimiters = false;
+    config.remove_isolated_page_markers = false;
+    config
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PageMarkerNumber {
+    Arabic(u32),
+    Roman(u32),
+}
+
+impl PageMarkerNumber {
+    fn value(self) -> u32 {
+        match self {
+            PageMarkerNumber::Arabic(value) | PageMarkerNumber::Roman(value) => value,
+        }
+    }
+
+    fn same_numbering_system(self, other: Self) -> bool {
+        matches!(
+            (self, other),
+            (PageMarkerNumber::Arabic(_), PageMarkerNumber::Arabic(_))
+                | (PageMarkerNumber::Roman(_), PageMarkerNumber::Roman(_))
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PageMarkerCandidate {
+    number: PageMarkerNumber,
+    is_decorated: bool,
+    is_labelled: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PageMarkerLineCandidate {
+    page_position: usize,
+    line_position: usize,
+    is_top: bool,
+    is_bottom: bool,
+    marker: PageMarkerCandidate,
+}
+
+fn page_label_removal_decisions(
+    document: &StructuredDocument,
+    config: &CleaningConfig,
+) -> Vec<Vec<bool>> {
+    let mut decisions = document
+        .pages
+        .iter()
+        .map(|page| vec![false; page.lines.len()])
+        .collect::<Vec<_>>();
+
+    if !has_page_label_removal(config) {
+        return decisions;
+    }
+
+    let candidates = page_marker_line_candidates(document, config);
+    for candidate in &candidates {
+        if candidate.marker.is_decorated
+            || candidate.marker.is_labelled
+            || has_bare_page_marker_evidence(candidate, &candidates, document)
+        {
+            decisions[candidate.page_position][candidate.line_position] = true;
+        }
+    }
+
+    decisions
+}
+
+fn page_marker_line_candidates(
+    document: &StructuredDocument,
+    config: &CleaningConfig,
+) -> Vec<PageMarkerLineCandidate> {
+    let mut candidates = Vec::new();
+
+    for (page_position, page) in document.pages.iter().enumerate() {
+        for (line_position, line) in page.lines.iter().enumerate() {
+            if !line.is_page_top && !line.is_page_bottom {
+                continue;
+            }
+
+            let Some(marker) = page_marker_candidate_for_line(&line.text) else {
+                continue;
+            };
+
+            if !page_marker_allowed_by_config(marker, config) {
+                continue;
+            }
+
+            candidates.push(PageMarkerLineCandidate {
+                page_position,
+                line_position,
+                is_top: line.is_page_top,
+                is_bottom: line.is_page_bottom,
+                marker,
+            });
+        }
+    }
+
+    candidates
+}
+
+fn page_marker_allowed_by_config(marker: PageMarkerCandidate, config: &CleaningConfig) -> bool {
+    config.remove_isolated_page_markers
+        || (marker.is_labelled && config.remove_page_indicators)
+        || (marker.is_decorated && config.remove_page_delimiters)
+        || (!marker.is_labelled
+            && match marker.number {
+                PageMarkerNumber::Arabic(_) => config.remove_standalone_page_numbers,
+                PageMarkerNumber::Roman(_) => config.remove_standalone_roman_page_numbers,
+            })
+}
+
+fn has_bare_page_marker_evidence(
+    candidate: &PageMarkerLineCandidate,
+    candidates: &[PageMarkerLineCandidate],
+    document: &StructuredDocument,
+) -> bool {
+    has_monotonic_page_marker_neighbour(candidate, candidates)
+        || has_arabic_page_ordinal_evidence(candidate, document)
+}
+
+fn has_monotonic_page_marker_neighbour(
+    candidate: &PageMarkerLineCandidate,
+    candidates: &[PageMarkerLineCandidate],
+) -> bool {
+    candidates.iter().any(|other| {
+        candidate.page_position.abs_diff(other.page_position) == 1
+            && page_marker_edges_overlap(candidate, other)
+            && candidate
+                .marker
+                .number
+                .same_numbering_system(other.marker.number)
+            && candidate
+                .marker
+                .number
+                .value()
+                .abs_diff(other.marker.number.value())
+                == 1
+    })
+}
+
+fn page_marker_edges_overlap(
+    left: &PageMarkerLineCandidate,
+    right: &PageMarkerLineCandidate,
+) -> bool {
+    (left.is_top && right.is_top) || (left.is_bottom && right.is_bottom)
+}
+
+fn has_arabic_page_ordinal_evidence(
+    candidate: &PageMarkerLineCandidate,
+    document: &StructuredDocument,
+) -> bool {
+    let PageMarkerNumber::Arabic(value) = candidate.marker.number else {
+        return false;
+    };
+
+    value > 1 && value as usize == candidate.page_position + 1 && document.pages.len() > 1
+}
+
+fn page_marker_candidate_for_line(line: &str) -> Option<PageMarkerCandidate> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.chars().count() > 40 {
+        return None;
+    }
+
+    let (unframed, is_decorated) = trim_page_marker_decoration(trimmed);
+    if unframed.is_empty() {
+        return None;
+    }
+
+    if let Some(number) = labelled_page_marker_number(unframed) {
+        return Some(PageMarkerCandidate {
+            number,
+            is_decorated,
+            is_labelled: true,
+        });
+    }
+
+    let number = bare_page_marker_number(unframed)?;
+    Some(PageMarkerCandidate {
+        number,
+        is_decorated,
+        is_labelled: false,
+    })
+}
+
+fn trim_page_marker_decoration(line: &str) -> (&str, bool) {
+    let mut trimmed = line.trim();
+    let mut is_decorated = false;
+
+    loop {
+        let next = trim_one_page_marker_decoration(trimmed);
+        if next == trimmed {
+            return (trimmed, is_decorated);
+        }
+        trimmed = next;
+        is_decorated = true;
+    }
+}
+
+fn trim_one_page_marker_decoration(line: &str) -> &str {
+    let dash_trimmed = line
+        .trim_start_matches(is_page_marker_dash)
+        .trim()
+        .trim_end_matches(is_page_marker_dash)
+        .trim();
+    if dash_trimmed != line {
+        return dash_trimmed;
+    }
+
+    if let Some(inner) = line
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+    {
+        return inner.trim();
+    }
+
+    let bar_trimmed = line
+        .trim_start_matches('|')
+        .trim()
+        .trim_end_matches('|')
+        .trim();
+    if bar_trimmed != line {
+        return bar_trimmed;
+    }
+
+    if let Some(without_period) = line.strip_suffix('.') {
+        return without_period.trim_end();
+    }
+
+    line
+}
+
+fn is_page_marker_dash(character: char) -> bool {
+    matches!(character, '-' | '–' | '—')
+}
+
+fn labelled_page_marker_number(marker: &str) -> Option<PageMarkerNumber> {
+    let captures = RE_PAGE_MARKER_LABEL.captures(marker)?;
+    let marker = captures.get(1).map(|value| value.as_str()).unwrap_or("");
+    bare_page_marker_number(marker)
+}
+
+fn bare_page_marker_number(marker: &str) -> Option<PageMarkerNumber> {
+    let marker = marker.trim();
+    if RE_PAGE_MARKER_ARABIC.is_match(marker) {
+        let value = marker.parse::<u32>().ok()?;
+        if value > 0 {
+            return Some(PageMarkerNumber::Arabic(value));
+        }
+    }
+
+    roman_page_marker_value(marker).map(PageMarkerNumber::Roman)
+}
+
+fn roman_page_marker_value(marker: &str) -> Option<u32> {
+    let trimmed = marker.trim();
+    let roman_len = trimmed.chars().count();
+    if roman_len == 0 || roman_len > 15 {
+        return None;
+    }
+    if !trimmed.chars().all(is_ascii_roman_marker_char) {
+        return None;
+    }
+    if !RE_PAGE_MARKER_ROMAN.is_match(trimmed) {
+        return None;
+    }
+
+    let value = roman_numeral_value(trimmed)?;
+    (value > 0 && value <= MAX_ROMAN_PAGE_MARKER_VALUE).then_some(value)
+}
+
+fn is_ascii_roman_marker_char(character: char) -> bool {
+    matches!(
+        character,
+        'i' | 'I' | 'v' | 'V' | 'x' | 'X' | 'l' | 'L' | 'c' | 'C' | 'd' | 'D' | 'm' | 'M'
+    )
+}
+
+fn roman_numeral_value(marker: &str) -> Option<u32> {
+    let mut total = 0u32;
+    let mut previous = 0u32;
+
+    for character in marker.chars().rev() {
+        let value = match character.to_ascii_uppercase() {
+            'I' => 1,
+            'V' => 5,
+            'X' => 10,
+            'L' => 50,
+            'C' => 100,
+            'D' => 500,
+            'M' => 1000,
+            _ => return None,
+        };
+
+        if value < previous {
+            total = total.saturating_sub(value);
+        } else {
+            total = total.saturating_add(value);
+            previous = value;
+        }
+    }
+
+    Some(total)
+}
+
 /// Cleans a page-aware document without exposing stale page metadata.
 ///
-/// The flat output is always the same result as `clean_text` on the document's
-/// deterministic flat text. Cleaned page text is returned only when cleaning
-/// each page independently and joining the cleaned pages produces exactly the
-/// same flat output.
+/// Metadata-aware removals are applied before each page is cleaned. Without
+/// such removals, the flat output matches `clean_text` on the document's
+/// deterministic flat text.
 pub fn clean_structured_document(
     document: &StructuredDocument,
     config: &CleaningConfig,
 ) -> CleanedStructuredDocument {
-    if !has_page_zone_rules(config) || !document.has_reliable_page_metadata {
+    if !requires_reliable_page_metadata(config) || !document.has_reliable_page_metadata {
         let text = clean_text(&document.to_flat_text(), config);
         let page_texts = document
             .pages
@@ -546,18 +818,20 @@ pub fn clean_structured_document(
 
         CleanedStructuredDocument { text, page_texts }
     } else {
-        // Pre-filter the document lines by applying structured removal rules (including page-zone scopes).
+        let page_label_decisions = page_label_removal_decisions(document, config);
         let mut filtered_pages = Vec::with_capacity(document.pages.len());
-        for page in &document.pages {
+        for (page_position, page) in document.pages.iter().enumerate() {
             let mut filtered_lines = Vec::with_capacity(page.lines.len());
-            for line in &page.lines {
+            for (line_position, line) in page.lines.iter().enumerate() {
                 let prepared = prepare_line_for_rule_matching(&line.text, config);
-                if !should_remove_line_by_rules(
-                    &prepared,
-                    line.is_page_top,
-                    line.is_page_bottom,
-                    config,
-                ) {
+                if !page_label_decisions[page_position][line_position]
+                    && !should_remove_line_by_rules(
+                        &prepared,
+                        line.is_page_top,
+                        line.is_page_bottom,
+                        config,
+                    )
+                {
                     filtered_lines.push(line.clone());
                 }
             }
@@ -571,11 +845,11 @@ pub fn clean_structured_document(
             has_reliable_page_metadata: document.has_reliable_page_metadata,
         };
 
-        // Clean each page of the filtered document independently.
+        let page_cleaning_config = without_page_label_removal(config);
         let page_texts = filtered_document
             .pages
             .iter()
-            .map(|page| clean_text(&page.to_text(), config))
+            .map(|page| clean_text(&page.to_text(), &page_cleaning_config))
             .collect::<Vec<_>>();
 
         // The authoritative flat text is derived from the cleaned page representation.
@@ -590,24 +864,76 @@ pub fn clean_structured_document(
 fn normalize_irregular_line_breaks(text: &str) -> String {
     let norm_text = text.replace("\r\n", "\n").replace('\r', "\n");
     let mut paragraphs = Vec::new();
-    for para in norm_text.split("\n\n") {
-        let mut valid_lines = Vec::new();
-        for line in para.split('\n') {
-            let trimmed = line.trim();
-            if trimmed.chars().count() == 1 {
-                continue;
-            }
-            if !trimmed.is_empty() {
-                valid_lines.push(trimmed);
-            }
-        }
-        if !valid_lines.is_empty() {
-            let joined = valid_lines.join(" ");
-            let collapsed = RE_EXCESSIVE_SPACES.replace_all(&joined, " ").to_string();
-            paragraphs.push(collapsed);
+
+    for paragraph in norm_text.split("\n\n") {
+        let lines = paragraph
+            .split('\n')
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>();
+
+        if !lines.is_empty() {
+            paragraphs.push(reflow_paragraph_lines(&lines));
         }
     }
+
     paragraphs.join("\n\n")
+}
+
+fn reflow_paragraph_lines(lines: &[&str]) -> String {
+    let mut reflowed = String::new();
+
+    for line in lines {
+        if reflowed.is_empty() {
+            reflowed.push_str(line);
+        } else if should_dehyphenate_line_break(&reflowed, line) {
+            reflowed.pop();
+            reflowed.push_str(line);
+        } else {
+            reflowed.push(' ');
+            reflowed.push_str(line);
+        }
+    }
+
+    RE_EXCESSIVE_HORIZONTAL_WHITESPACE
+        .replace_all(&reflowed, " ")
+        .to_string()
+}
+
+fn should_dehyphenate_line_break(prefix: &str, suffix: &str) -> bool {
+    let Some(prefix_without_hyphen) = prefix.trim_end().strip_suffix('-') else {
+        return false;
+    };
+
+    let Some(prefix_fragment) = prefix_without_hyphen.split_whitespace().last() else {
+        return false;
+    };
+    let Some(suffix_fragment) = suffix.split_whitespace().next() else {
+        return false;
+    };
+
+    let prefix_len = prefix_fragment.chars().count();
+    let suffix_len = suffix_fragment.chars().count();
+    if prefix_len < 5 || suffix_len < 4 {
+        return false;
+    }
+
+    if !prefix_fragment.chars().all(char::is_alphabetic)
+        || !suffix_fragment.chars().all(char::is_alphabetic)
+    {
+        return false;
+    }
+
+    let Some(first_suffix_char) = suffix_fragment.chars().next() else {
+        return false;
+    };
+    if !first_suffix_char.is_lowercase() {
+        return false;
+    }
+
+    // Short prefixes such as "well-" are often compounds rather than line-wrap
+    // splits, and all-caps prefixes are often identifiers or acronyms.
+    prefix_fragment.chars().any(char::is_lowercase)
 }
 
 fn normalize_horizontal_whitespace(text: &str) -> String {
@@ -694,61 +1020,7 @@ fn remove_lines_matching(text: &str, should_remove: fn(&str) -> bool) -> LineRem
 }
 
 pub(crate) fn is_isolated_page_marker_line(line: &str) -> bool {
-    let trimmed = line.trim();
-    if trimmed.is_empty() || trimmed.chars().count() > 40 {
-        return false;
-    }
-
-    let unframed = trim_page_marker_frame(trimmed);
-    if unframed.is_empty() {
-        return false;
-    }
-
-    is_bare_page_marker(unframed)
-}
-
-fn trim_page_marker_frame(line: &str) -> &str {
-    let mut trimmed = line.trim();
-    loop {
-        let next = trimmed
-            .trim_start_matches(['-', '—', '–'])
-            .trim()
-            .trim_end_matches(['-', '—', '–'])
-            .trim();
-        if next == trimmed {
-            return trimmed;
-        }
-        trimmed = next;
-    }
-}
-
-fn is_bare_page_marker(marker: &str) -> bool {
-    let marker = marker.trim();
-
-    RE_PAGE_MARKER_ARABIC.is_match(marker)
-        || is_conservative_roman_page_marker(marker)
-        || is_labelled_page_marker(marker)
-}
-
-fn is_conservative_roman_page_marker(marker: &str) -> bool {
-    is_roman_page_marker(marker, 2)
-}
-
-fn is_labelled_page_marker(marker: &str) -> bool {
-    let Some(captures) = RE_PAGE_MARKER_LABEL.captures(marker) else {
-        return false;
-    };
-    let marker = captures.get(1).map(|value| value.as_str()).unwrap_or("");
-    RE_PAGE_MARKER_ARABIC.is_match(marker) || is_roman_page_marker(marker, 1)
-}
-
-fn is_roman_page_marker(marker: &str, min_len: usize) -> bool {
-    let trimmed = marker.trim();
-    let roman_len = trimmed.chars().filter(|c| !c.is_whitespace()).count();
-    roman_len >= min_len
-        && roman_len <= 15
-        && trimmed.chars().all(|c| c.is_ascii_alphabetic())
-        && RE_PAGE_MARKER_ROMAN.is_match(trimmed)
+    page_marker_candidate_for_line(line).is_some()
 }
 
 fn is_url_only_line(line: &str) -> bool {
@@ -1219,7 +1491,7 @@ mod tests {
     }
 
     #[test]
-    fn clean_structured_document_omits_page_texts_when_boundaries_are_not_preserved() {
+    fn clean_structured_document_preserves_page_texts_when_reflow_keeps_boundaries() {
         let document = StructuredDocument::from_pages(["Alpha", "Beta"]);
         let config = CleaningConfig {
             join_line_breaks: true,
@@ -1229,8 +1501,11 @@ mod tests {
         let cleaned = clean_structured_document(&document, &config);
 
         assert_eq!(cleaned.text, clean_text(&document.to_flat_text(), &config));
-        assert_eq!(cleaned.text, "Alpha Beta");
-        assert!(cleaned.page_texts.is_none());
+        assert_eq!(cleaned.text, "Alpha\n\nBeta");
+        assert_eq!(
+            cleaned.page_texts,
+            Some(vec!["Alpha".to_string(), "Beta".to_string()])
+        );
     }
 
     #[test]
@@ -1838,6 +2113,16 @@ mod tests {
     }
 
     #[test]
+    fn clean_structured_document_keeps_page_labels_when_metadata_is_unreliable() {
+        let config = all_page_label_config();
+        let doc = StructuredDocument::from_flat_text_as_single_page("1\nBody\nPage 2");
+
+        let cleaned = clean_structured_document(&doc, &config);
+
+        assert_eq!(cleaned.text, "1\nBody\nPage 2");
+    }
+
+    #[test]
     fn remove_patterns_run_after_diacritic_replacement_and_lowercase() {
         let config = CleaningConfig {
             replace_diacritics: true,
@@ -1901,57 +2186,140 @@ mod tests {
         assert_eq!(clean_text("ÁÉÍÓÚÇÜ", &config), "AEIOUCU");
     }
 
+    fn all_page_label_config() -> CleaningConfig {
+        CleaningConfig {
+            remove_standalone_page_numbers: true,
+            remove_standalone_roman_page_numbers: true,
+            remove_page_indicators: true,
+            remove_page_delimiters: true,
+            remove_isolated_page_markers: true,
+            ..CleaningConfig::default()
+        }
+    }
+
     #[test]
-    fn removes_standalone_arabic_page_numbers() {
+    fn clean_text_keeps_page_marker_candidates_without_metadata() {
+        let config = all_page_label_config();
+        let input = [
+            "12",
+            "- 12 -",
+            "[12]",
+            "12.",
+            "p. 12",
+            "Page 12",
+            "i",
+            "ii",
+            "iv",
+            "--- Page 12 ---",
+        ]
+        .join("\n");
+
+        assert_eq!(clean_text(&input, &config), input);
+        assert_eq!(clean_text_with_report(&input, &config).report.rules, vec![]);
+    }
+
+    #[test]
+    fn removes_arabic_page_labels_at_page_edges() {
+        let config = all_page_label_config();
+        let document = StructuredDocument::from_pages([
+            "- 12 -\nBody A",
+            "[12]\nBody B",
+            "12.\nBody C",
+            "p. 12\nBody D",
+            "Page 12\nBody E",
+            "pag. 12\nBody F",
+            "| 12\nBody G",
+            "12 |\nBody H",
+            "--- Page 12 ---\nBody I",
+        ]);
+
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert_eq!(
+            cleaned.text,
+            "Body A\n\nBody B\n\nBody C\n\nBody D\n\nBody E\n\nBody F\n\nBody G\n\nBody H\n\nBody I"
+        );
+    }
+
+    #[test]
+    fn removes_bare_arabic_page_numbers_with_sequence_evidence() {
         let config = CleaningConfig {
             remove_standalone_page_numbers: true,
             ..CleaningConfig::default()
         };
-        assert_eq!(clean_text("hello\n12\nworld", &config), "hello\nworld");
-        assert_eq!(clean_text("12\nworld", &config), "world");
-        assert_eq!(clean_text("hello\n1042", &config), "hello\n");
-        assert_eq!(clean_text("hello 12 world", &config), "hello 12 world"); // preserved
+        let document =
+            StructuredDocument::from_pages(["1\nAlpha", "2\nBeta", "3\nGamma", "4\nDelta"]);
+
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert_eq!(cleaned.text, "Alpha\n\nBeta\n\nGamma\n\nDelta");
     }
 
     #[test]
-    fn removes_isolated_page_markers() {
+    fn removes_bare_arabic_page_number_with_page_ordinal_evidence() {
         let config = CleaningConfig {
-            remove_isolated_page_markers: true,
+            remove_standalone_page_numbers: true,
             ..CleaningConfig::default()
         };
-        let input = [
-            "Intro",
-            "23",
-            "- 23 -",
-            "— 23 —",
-            "Page 23",
-            "page 23",
-            "p. 23",
-            "pag. 23",
-            "Pag. 23",
-            "Página 23",
-            "IV",
-            "- iv -",
-            "Body",
-        ]
-        .join("\n");
+        let mut pages = (1..=12)
+            .map(|index| format!("Body {index}"))
+            .collect::<Vec<_>>();
+        pages[11] = "12\nBody 12".to_string();
+        let document = StructuredDocument::from_pages(pages);
 
-        assert_eq!(clean_text(&input, &config), "Intro\nBody");
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert!(cleaned.text.contains("Body 12"));
+        assert!(!cleaned.text.contains("\n12\n"));
     }
 
     #[test]
-    fn isolated_page_markers_preserve_ordinary_prose() {
+    fn removes_roman_page_labels_at_page_edges() {
         let config = CleaningConfig {
-            remove_isolated_page_markers: true,
+            remove_standalone_roman_page_numbers: true,
             ..CleaningConfig::default()
         };
+        let document =
+            StructuredDocument::from_pages(["i\nPreface", "ii\nMore", "iii\nMore", "iv\nBody"]);
+
+        let cleaned = clean_structured_document(&document, &config);
+
+        assert_eq!(cleaned.text, "Preface\n\nMore\n\nMore\n\nBody");
+    }
+
+    #[test]
+    fn keeps_roman_like_body_words() {
+        let config = all_page_label_config();
+        let input = ["mix", "did", "civic", "dim", "lid", "mid", "mill"].join("\n");
+
+        assert_eq!(clean_text(&input, &config), input);
+    }
+
+    #[test]
+    fn keeps_standalone_body_numeric_lines_without_page_evidence() {
+        let config = all_page_label_config();
+        let input = ["1984", "42", "2020"].join("\n");
+
+        assert_eq!(clean_text(&input, &config), input);
+
+        let document =
+            StructuredDocument::from_pages(["Top\nIntro\nMore\n1984\n42\n2020\nEnd\nTail\nDone"]);
+        let cleaned = clean_structured_document(&document, &config);
+        assert_eq!(
+            cleaned.text,
+            "Top\nIntro\nMore\n1984\n42\n2020\nEnd\nTail\nDone"
+        );
+    }
+
+    #[test]
+    fn keeps_numbered_list_and_body_content_lines() {
+        let config = all_page_label_config();
         let input = [
-            "In 2020, the model changed.",
-            "Chapter 2 introduces regression.",
-            "Table 4 shows the coefficients.",
-            "The value 23 is significant.",
-            "I argue that this matters.",
-            "I",
+            "1. Introduction",
+            "2. Methods",
+            "12. Results",
+            "1) Introduction",
+            "(1) First point",
         ]
         .join("\n");
 
@@ -1959,63 +2327,35 @@ mod tests {
     }
 
     #[test]
-    fn isolated_page_marker_report_counts_examples() {
-        let config = CleaningConfig {
-            remove_isolated_page_markers: true,
-            ..CleaningConfig::default()
-        };
+    fn keeps_numeric_table_rows_away_from_page_edges() {
+        let config = all_page_label_config();
+        let input = "Top 1\nTop 2\nTop 3\n42\n1984\n2020\nBottom 1\nBottom 2\nBottom 3";
+        let document = StructuredDocument::from_pages([input]);
 
-        let result = clean_text_with_report("Title\n23\nPage 24\nBody", &config);
+        let cleaned = clean_structured_document(&document, &config);
 
-        assert_eq!(result.text, "Title\nBody");
-        assert_eq!(result.report.rules.len(), 1);
-        assert_eq!(
-            result.report.rules[0].rule_id,
-            "remove_isolated_page_markers"
-        );
-        assert_eq!(result.report.rules[0].removed_count, 2);
-        assert_eq!(result.report.rules[0].examples, vec!["23", "Page 24"]);
+        assert_eq!(cleaned.text, input);
     }
 
     #[test]
-    fn removes_standalone_roman_page_numbers() {
-        let config = CleaningConfig {
-            remove_standalone_roman_page_numbers: true,
-            ..CleaningConfig::default()
-        };
-        assert_eq!(clean_text("hello\niv\nworld", &config), "hello\nworld");
-        assert_eq!(clean_text("hello\nXII\nworld", &config), "hello\nworld");
-        assert_eq!(clean_text("hello\nxxi\nworld", &config), "hello\nworld");
-        assert_eq!(clean_text("civic duty", &config), "civic duty"); // ordinary word not removed
-        assert_eq!(clean_text("I\nam", &config), "am");
+    fn keeps_mid_sentence_page_references() {
+        let config = all_page_label_config();
+        let input = [
+            "see page 5 for details",
+            "as shown on p. 12",
+            "turn to Page 7 before continuing",
+        ]
+        .join("\n");
+
+        assert_eq!(clean_text(&input, &config), input);
     }
 
     #[test]
-    fn removes_page_indicators() {
-        let config = CleaningConfig {
-            remove_page_indicators: true,
-            ..CleaningConfig::default()
-        };
-        assert_eq!(clean_text("hello Page 12 world", &config), "hello  world");
-        assert_eq!(clean_text("hello pag. xvi world", &config), "hello  world");
-        assert_eq!(clean_text("Page IV", &config), "");
-    }
+    fn keeps_body_single_letter_lines_without_page_evidence() {
+        let config = all_page_label_config();
+        let input = ["a", "e", "o", "I"].join("\n");
 
-    #[test]
-    fn removes_page_delimiters() {
-        let config = CleaningConfig {
-            remove_page_delimiters: true,
-            ..CleaningConfig::default()
-        };
-        assert_eq!(
-            clean_text("hello\n--- Page 12 ---\nworld", &config),
-            "hello\nworld"
-        );
-        assert_eq!(clean_text("--- pag. xvi ---", &config), "");
-        assert_eq!(
-            clean_text("This is --- page 12 --- test", &config),
-            "This is --- page 12 --- test"
-        ); // only removes whole line
+        assert_eq!(clean_text(&input, &config), input);
     }
 
     #[test]
@@ -2078,27 +2418,98 @@ mod tests {
     }
 
     #[test]
-    fn joins_line_breaks() {
+    fn joins_line_breaks_preserves_paragraph_boundaries() {
         let config = CleaningConfig {
             join_line_breaks: true,
             ..CleaningConfig::default()
         };
-        assert_eq!(
-            clean_text("hello\nworld\n\nagain", &config),
-            "hello world again"
-        );
+        let input = "This is line one\nof the same paragraph.\n\nThis is another\nparagraph.";
+        let expected = "This is line one of the same paragraph.\n\nThis is another paragraph.";
+
+        assert_eq!(clean_text(input, &config), expected);
     }
 
     #[test]
-    fn normalizes_irregular_line_breaks() {
+    fn normalizes_irregular_line_breaks_preserves_single_character_lines() {
         let config = CleaningConfig {
             normalize_irregular_line_breaks: true,
             ..CleaningConfig::default()
         };
         let input = "Paragraph one\ncontinued.\n\nParagraph two\na\ncontinued.";
-        // Single-character lines are dropped by irregular line-break normalisation.
-        let expected = "Paragraph one continued.\n\nParagraph two continued.";
+        let expected = "Paragraph one continued.\n\nParagraph two a continued.";
+
         assert_eq!(clean_text(input, &config), expected);
+    }
+
+    #[test]
+    fn dehyphenates_simple_wrapped_words() {
+        let config = CleaningConfig {
+            join_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text("inter-\nnational\ninfor-\nmation", &config),
+            "international information"
+        );
+    }
+
+    #[test]
+    fn keeps_uppercase_hyphenated_continuations() {
+        let config = CleaningConfig {
+            join_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(clean_text("Newton-\nRaphson", &config), "Newton- Raphson");
+    }
+
+    #[test]
+    fn keeps_numeric_or_symbolic_hyphenated_continuations() {
+        let config = CleaningConfig {
+            join_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(clean_text("COVID-\n19", &config), "COVID- 19");
+        assert_eq!(clean_text("value-\n% change", &config), "value- % change");
+    }
+
+    #[test]
+    fn keeps_short_ambiguous_hyphenated_compounds() {
+        let config = CleaningConfig {
+            join_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(clean_text("well-\nbeing", &config), "well- being");
+    }
+
+    #[test]
+    fn reflow_removes_excessive_spaces() {
+        let config = CleaningConfig {
+            normalize_irregular_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(clean_text("Alpha  \n  beta", &config), "Alpha beta");
+    }
+
+    #[test]
+    fn reflow_keeps_terminal_hyphen_and_hyphen_before_blank_line() {
+        let config = CleaningConfig {
+            join_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(
+            clean_text("This remains inter-\n\nnational", &config),
+            "This remains inter-\n\nnational"
+        );
+        assert_eq!(
+            clean_text("This remains inter-", &config),
+            "This remains inter-"
+        );
     }
 
     #[test]
@@ -2130,10 +2541,10 @@ mod tests {
 
         assert!(!cleaned.contains("THIS IS UPPERCASE TEXT."));
         assert!(cleaned.contains("this is uppercase text."));
-        assert!(!cleaned.contains("page 99"));
-        assert!(!cleaned.contains("--- page 99 ---"));
-        assert!(!cleaned.contains("ix\n"));
-        assert!(!cleaned.contains("1234\n"));
+        assert!(cleaned.contains("page 99"));
+        assert!(cleaned.contains("--- page 99 ---"));
+        assert!(cleaned.contains("ix"));
+        assert!(cleaned.contains("1234"));
         assert!(!cleaned.contains("áéíóú"));
         assert!(cleaned.contains("aeiou"));
     }
