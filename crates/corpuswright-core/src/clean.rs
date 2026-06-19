@@ -832,14 +832,44 @@ fn effective_whole_line_normalized_keys(config: &CleaningConfig) -> Vec<String> 
         .collect()
 }
 
+fn effective_anywhere_literals(config: &CleaningConfig) -> Vec<String> {
+    config
+        .removal_rules
+        .iter()
+        .filter(|rule| rule.enabled && rule.scope == RemovalScope::Anywhere)
+        .filter_map(|rule| match &rule.matcher {
+            RemovalMatcher::Literal { text } => {
+                let effective_text = prepare_rule_text_for_matching(text, config);
+                (!effective_text.trim().is_empty()).then_some(effective_text)
+            }
+            RemovalMatcher::NormalizedLine { .. } => None,
+        })
+        .collect()
+}
+
 fn remove_structured_removal_rules(text: String, config: &CleaningConfig) -> String {
     let whole_line_literals = effective_whole_line_literals(config);
     let whole_line_normalized_keys = effective_whole_line_normalized_keys(config);
-    if whole_line_literals.is_empty() && whole_line_normalized_keys.is_empty() {
+    let anywhere_literals = effective_anywhere_literals(config);
+    if whole_line_literals.is_empty()
+        && whole_line_normalized_keys.is_empty()
+        && anywhere_literals.is_empty()
+    {
         return text;
     }
 
-    remove_whole_lines_matching_structured(&text, &whole_line_literals, &whole_line_normalized_keys)
+    let mut cleaned = text;
+    if !whole_line_literals.is_empty() || !whole_line_normalized_keys.is_empty() {
+        cleaned = remove_whole_lines_matching_structured(
+            &cleaned,
+            &whole_line_literals,
+            &whole_line_normalized_keys,
+        );
+    }
+    if !anywhere_literals.is_empty() {
+        cleaned = replace_anywhere_literals(cleaned, &anywhere_literals);
+    }
+    cleaned
 }
 
 fn remove_whole_lines_matching_structured(
@@ -885,14 +915,41 @@ fn remove_literal_patterns(text: String, config: &CleaningConfig) -> String {
     remove_literal_patterns_sequential(text, &patterns)
 }
 
-fn remove_literal_patterns_sequential(mut text: String, patterns: &[String]) -> String {
+fn remove_literal_patterns_sequential(text: String, patterns: &[String]) -> String {
+    replace_literal_patterns_sequential(text, patterns, "")
+}
+
+fn replace_anywhere_literals(text: String, patterns: &[String]) -> String {
+    if patterns.len() > 1
+        && can_batch_literal_removals(patterns)
+        && let Some(cleaned) = replace_literal_patterns_batched(&text, patterns, " ")
+    {
+        return cleaned;
+    }
+
+    replace_literal_patterns_sequential(text, patterns, " ")
+}
+
+fn replace_literal_patterns_sequential(
+    mut text: String,
+    patterns: &[String],
+    replacement: &str,
+) -> String {
     for pattern in patterns {
-        text = text.replace(pattern, "");
+        text = text.replace(pattern, replacement);
     }
     text
 }
 
 fn remove_literal_patterns_batched(text: &str, patterns: &[String]) -> Option<String> {
+    replace_literal_patterns_batched(text, patterns, "")
+}
+
+fn replace_literal_patterns_batched(
+    text: &str,
+    patterns: &[String],
+    replacement: &str,
+) -> Option<String> {
     let automaton = literal_remove_automaton(patterns);
     let mut cleaned = String::with_capacity(text.len());
     let mut last_end = 0;
@@ -901,6 +958,7 @@ fn remove_literal_patterns_batched(text: &str, patterns: &[String]) -> Option<St
     for mat in automaton.find_iter(text) {
         found_match = true;
         cleaned.push_str(&text[last_end..mat.start()]);
+        cleaned.push_str(replacement);
         last_end = mat.end();
     }
 
@@ -910,8 +968,8 @@ fn remove_literal_patterns_batched(text: &str, patterns: &[String]) -> Option<St
 
     cleaned.push_str(&text[last_end..]);
 
-    // Deletions can join surrounding text into a later pattern. The sequential
-    // path is the reference behaviour for those cascading cases.
+    // Rewriting can expose a later pattern. The sequential path is the
+    // reference behaviour for those cascading cases.
     if automaton.is_match(&cleaned) {
         None
     } else {
@@ -986,6 +1044,19 @@ mod tests {
                 normalized_key: normalized_key.to_string(),
             },
             scope: RemovalScope::WholeLine,
+            enabled: true,
+        }
+    }
+
+    fn anywhere_literal_rule(text: &str) -> RemovalRule {
+        RemovalRule {
+            id: "rule-1".to_string(),
+            label: format!("Anywhere: {text}"),
+            source: RemovalRuleSource::PromotedRepeatedArtifact,
+            matcher: RemovalMatcher::Literal {
+                text: text.to_string(),
+            },
+            scope: RemovalScope::Anywhere,
             enabled: true,
         }
     }
@@ -1586,6 +1657,59 @@ mod tests {
                 &config
             ),
             "Body\nMore body"
+        );
+    }
+
+    #[test]
+    fn anywhere_literal_rule_removes_inline_repeated_artifact() {
+        let config = CleaningConfig {
+            normalize_whitespace_line_endings: true,
+            removal_rules: vec![anywhere_literal_rule("<br />")],
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_text("alpha<br /><br />beta", &config);
+
+        assert_eq!(cleaned, "alpha beta");
+        assert!(!cleaned.contains("<br />"));
+    }
+
+    #[test]
+    fn anywhere_literal_rule_is_literal_not_regex() {
+        let config = CleaningConfig {
+            removal_rules: vec![anywhere_literal_rule("a.c[1]")],
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_text("keep a.c[1] keep abc1 keep", &config);
+
+        assert_eq!(cleaned, "keep   keep abc1 keep");
+    }
+
+    #[test]
+    fn disabled_anywhere_literal_rule_does_nothing() {
+        let mut rule = anywhere_literal_rule("<br />");
+        rule.enabled = false;
+        let config = CleaningConfig {
+            removal_rules: vec![rule],
+            ..CleaningConfig::default()
+        };
+
+        assert_eq!(clean_text("alpha<br />beta", &config), "alpha<br />beta");
+    }
+
+    #[test]
+    fn removing_anywhere_literal_rule_restores_inline_text() {
+        let with_rule = CleaningConfig {
+            removal_rules: vec![anywhere_literal_rule("<br />")],
+            ..CleaningConfig::default()
+        };
+        let without_rule = CleaningConfig::default();
+
+        assert!(!clean_text("alpha<br />beta", &with_rule).contains("<br />"));
+        assert_eq!(
+            clean_text("alpha<br />beta", &without_rule),
+            "alpha<br />beta"
         );
     }
 
