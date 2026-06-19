@@ -83,6 +83,19 @@ export interface CorpusOverviewLexicalSpectrum {
   band3To9Share: number | null;
   band10plusShare: number | null;
   rawTtr: number | null;
+  mattrWindow: number;
+  mattrMedian: number | null;
+  mattrMin: number | null;
+  mattrMax: number | null;
+  mattrDocsExcluded: number;
+  mattrDocsUsed: number;
+  mtldThreshold: number;
+  mtldMinDocumentTokens: number;
+  mtldMedian: number | null;
+  mtldMin: number | null;
+  mtldMax: number | null;
+  mtldDocsExcluded: number;
+  mtldDocsUsed: number;
   reading: string;
 }
 
@@ -90,6 +103,8 @@ export interface CorpusOverviewFrequencyConcentration {
   top100Coverage: number | null;
   top1000Coverage: number | null;
   top10000Coverage: number | null;
+  evennessJ: number | null;
+  effectiveVocabularyEntropy: number | null;
   reading: string;
 }
 
