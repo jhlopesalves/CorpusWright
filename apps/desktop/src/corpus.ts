@@ -18,7 +18,7 @@ import {
   hasProjectSourceSelection,
   projectSourceSelectionCount,
   removeSelectedProjectSources,
-  selectedProjectSourcePaths,
+  resolveSelectedProjectPdfPaths,
   selectedProjectSources,
   type ProjectSourceFastImportResult,
   type ProjectSourceImportResult,
@@ -1803,14 +1803,30 @@ function initSourceActionDropdowns(): void {
 }
 
 export async function openSourcePdfHandlingDialog(mode: "re-extract" | "change-handling"): Promise<void> {
-  const selectedSources = selectedProjectSources().filter((s) => s.kind === "pdf");
-  if (selectedSources.length === 0) {
+  if (mode === "re-extract") {
+    try {
+      const paths = state.allMatchingProjectSourcesSelected
+        ? await resolveSelectedProjectPdfPaths()
+        : selectedProjectSources()
+          .filter((source) => source.kind === "pdf")
+          .map((source) => source.path);
+      if (paths.length > 0) {
+        await openPdfIntakeModalForSources(paths, true);
+      }
+    } catch (error) {
+      dom.statusBar.textContent = `PDF extraction error: ${error}`;
+      console.error(error);
+    }
     return;
   }
 
-  if (mode === "re-extract") {
-    const paths = selectedSources.map((s) => s.path);
-    await openPdfIntakeModalForSources(paths, true);
+  if (state.allMatchingProjectSourcesSelected) {
+    dom.statusBar.textContent = "Select visible PDFs explicitly before changing PDF handling.";
+    return;
+  }
+
+  const selectedSources = selectedProjectSources().filter((s) => s.kind === "pdf");
+  if (selectedSources.length === 0) {
     return;
   }
 
@@ -1884,12 +1900,7 @@ export function initCorpusHandlers(nextCallbacks: CorpusCallbacks): void {
   });
 
   dom.sourcePreparePdfsBtn.addEventListener("click", () => {
-    const selectedPaths = selectedProjectSourcePaths()
-      .filter((path) => path.toLowerCase().endsWith(".pdf"));
-
-    if (selectedPaths.length > 0) {
-      openSourcePdfHandlingDialog("re-extract");
-    }
+    void openSourcePdfHandlingDialog("re-extract");
   });
 
   dom.sourceImportResetPdfHandling.addEventListener("click", () => {

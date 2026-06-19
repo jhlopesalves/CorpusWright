@@ -17,7 +17,6 @@ import {
   schedulePreviewUpdate,
   updatePreview,
 } from "./preview";
-import { initProcessSources } from "./process";
 import { initProjectEntry } from "./project";
 import { initRepeatedArtifactFinder } from "./repeated-artifacts";
 import { handlePreviewTabChanged, initSearch } from "./search";
@@ -36,11 +35,6 @@ function init(): void {
   initProjectEntry();
 
   initExport();
-
-  initProcessSources({
-    updateWordCount,
-    schedulePreviewUpdate,
-  });
 
   configureFileListCallbacks({
     updatePreview,
