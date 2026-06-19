@@ -10,11 +10,14 @@ use corpuswright_core::pdf::{
 };
 use corpuswright_core::pdf_audit::{PdfAuditResult, audit_pdf_files};
 use corpuswright_core::preview::{
-    CombinedPreview, PreviewOptions, preview_files_with_config, preview_processed_files,
+    CombinedPreview, PreviewOptions, preview_file_with_config, preview_files_with_config,
+    preview_processed_files,
 };
 use corpuswright_core::project_sources::{
     ProjectSourceExtractionResult, ProjectSourceExtractionRoute, ProjectSourceKind,
-    ProjectSourcePdfProfile, stable_project_source_id, update_project_source_extraction_results,
+    ProjectSourcePdfProfile, ProjectSourcePreviewItem, ProjectSourcePreviewViewport,
+    ProjectSourceSelectionDescriptor, ProjectSourceStatus, stable_project_source_id,
+    update_project_source_extraction_results,
 };
 use corpuswright_core::repeated_artifacts::{
     CancellationFlag, RepeatedArtifactScanConfig, RepeatedArtifactScanReport,
@@ -1315,6 +1318,7 @@ fn search_corpus_command(
     source_paths: Option<Vec<String>>,
     root_path: Option<String>,
     all_matching_query: Option<String>,
+    excluded_source_ids: Option<Vec<String>>,
     corpus_version: u64,
     corpus: tauri::State<'_, CorpusState>,
     query: String,
@@ -1327,7 +1331,11 @@ fn search_corpus_command(
     let records = if let (Some(root_path), Some(selection_query)) = (root_path, all_matching_query)
     {
         let root = project::validated_project_root(&root_path)?;
-        let paths = inventory.matching_paths(&root, &selection_query)?;
+        let paths = inventory.matching_paths(
+            &root,
+            &selection_query,
+            excluded_source_ids.as_deref().unwrap_or_default(),
+        )?;
         corpus.records_for_paths(paths, corpus_version)?
     } else if let Some(paths) = source_paths {
         corpus.records_for_paths(
@@ -1427,6 +1435,92 @@ fn read_project_source_preview_command(
         preview_files_with_config(&records, &options, &cleaning_config, Some(&*cache))
             .map_err(|error| format!("{error:?}"))
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command(async)]
+fn query_selected_source_preview_viewport_command(
+    root_path: String,
+    selection: ProjectSourceSelectionDescriptor,
+    viewport_start: usize,
+    viewport_size: usize,
+    preview_text_cap: usize,
+    processed: bool,
+    corpus_version: u64,
+    cleaning_config: CleaningConfig,
+    inventory: tauri::State<'_, project::ProjectSourceInventoryState>,
+    corpus: tauri::State<'_, CorpusState>,
+    cache: tauri::State<'_, ExtractionCache>,
+) -> Result<ProjectSourcePreviewViewport, String> {
+    let root = project::validated_project_root(&root_path)?;
+    let viewport =
+        inventory.selection_viewport(&root, &selection, viewport_start, viewport_size)?;
+    let options = PreviewOptions {
+        max_chars_per_file: preview_text_cap.clamp(1, 10_000),
+        include_paths: true,
+        max_files: Some(1),
+    };
+    let mut items = Vec::with_capacity(viewport.items.len());
+
+    for source in viewport.items {
+        let can_preview = source.kind != ProjectSourceKind::Unknown
+            && source.status != ProjectSourceStatus::Failed
+            && (source.kind != ProjectSourceKind::Pdf
+                || matches!(
+                    source.status,
+                    ProjectSourceStatus::TextExtracted
+                        | ProjectSourceStatus::TextExtractedWithWarnings
+                        | ProjectSourceStatus::Processed
+                        | ProjectSourceStatus::ProcessedWithWarnings
+                ))
+            && (!processed
+                || matches!(
+                    source.status,
+                    ProjectSourceStatus::Processed | ProjectSourceStatus::ProcessedWithWarnings
+                ));
+
+        let (preview, preview_error) = if can_preview {
+            match corpus.record_for_path(&source.path, corpus_version)? {
+                Some(record) => {
+                    let result = if processed {
+                        preview_processed_files(
+                            std::slice::from_ref(&record),
+                            &options,
+                            &cleaning_config,
+                            Some(&*cache),
+                        )
+                        .map(|combined| combined.files.into_iter().next())
+                    } else {
+                        preview_file_with_config(&record, &options, &cleaning_config, Some(&*cache))
+                            .map(Some)
+                    };
+                    match result {
+                        Ok(preview) => (preview, None),
+                        Err(error) => (None, Some(format!("{error:?}"))),
+                    }
+                }
+                None => (
+                    None,
+                    Some("The selected project source is not loaded.".to_string()),
+                ),
+            }
+        } else {
+            (None, None)
+        };
+
+        items.push(ProjectSourcePreviewItem {
+            source,
+            preview,
+            preview_error,
+        });
+    }
+
+    Ok(ProjectSourcePreviewViewport {
+        total_selected: viewport.total_selected,
+        viewport_start: viewport.viewport_start,
+        viewport_size: viewport.viewport_size,
+        items,
+    })
 }
 
 fn project_source_text_cache_matches_record(
@@ -1886,6 +1980,7 @@ fn scan_repeated_artifacts_command(
     source_paths: Option<Vec<String>>,
     root_path: Option<String>,
     all_matching_query: Option<String>,
+    excluded_source_ids: Option<Vec<String>>,
     corpus_version: u64,
     corpus: tauri::State<'_, CorpusState>,
     config: RepeatedArtifactScanConfig,
@@ -1897,7 +1992,11 @@ fn scan_repeated_artifacts_command(
     let records = if let (Some(root_path), Some(selection_query)) = (root_path, all_matching_query)
     {
         let root = project::validated_project_root(&root_path)?;
-        let paths = inventory.matching_paths(&root, &selection_query)?;
+        let paths = inventory.matching_paths(
+            &root,
+            &selection_query,
+            excluded_source_ids.as_deref().unwrap_or_default(),
+        )?;
         corpus.records_for_paths(paths, corpus_version)?
     } else if let Some(paths) = source_paths {
         corpus.records_for_paths(
@@ -2041,6 +2140,7 @@ pub fn run() {
             preview_files_command,
             preview_processed_files_command,
             read_project_source_preview_command,
+            query_selected_source_preview_viewport_command,
             analysis_input_texts_command,
             extract_pdf_page_range_command,
             export_corpus_command,

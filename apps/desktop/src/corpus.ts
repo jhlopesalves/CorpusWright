@@ -176,6 +176,9 @@ export function clearStateForLoad(): void {
   state.currentCorpusRoot = null;
   state.lastSelectedCorpusIndex = null;
   state.lastSelectedProjectSourceId = null;
+  state.focusedProjectSourceId = null;
+  state.focusedProjectSourceOffset = null;
+  state.projectSourcePreviewScrollTop = 0;
   state.lastScanCandidates = [];
   state.selectedCandidateIds.clear();
   dom.previewContent.textContent = "Select files from the left panel to preview their contents.";
