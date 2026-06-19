@@ -22,45 +22,115 @@ export interface AnalysisDocumentSummary {
   tokenCount: number;
 }
 
-export interface AnalysisBalanceSummary {
-  largestDocument: AnalysisDocumentSummary | null;
-  smallestNonEmptyDocument: AnalysisDocumentSummary | null;
-  minTokens: number | null;
-  maxTokens: number | null;
+export type CorpusOverviewFindingKind = "balance" | "extractionQuality" | "lexicalSpectrum" | "dispersion";
+export type CorpusOverviewFindingSeverity = "noIssue" | "worthALook" | "needsFixing";
+
+export interface CorpusOverviewTotals {
+  tokens: number;
+  types: number;
+  documents: number;
+}
+
+export interface CorpusOverviewPopulation {
+  sourcesInProject: number | null;
+  includedInAnalysis: number;
+  processedTextAvailable: number | null;
+  usingExtractedFallback: number;
+  emptyOrFailed: number;
+  sourcesWithWarnings: number | null;
+  inputSource: AnalysisInputSource;
+  reading: string;
+}
+
+export interface CorpusOverviewDocument {
+  name: string;
+  tokens: number;
+  share: number | null;
+  relativeLength: number | null;
+}
+
+export interface CorpusOverviewBalance {
+  largestShare: number | null;
+  top3Share: number | null;
+  gini: number | null;
+  coefficientOfVariation: number | null;
+  effectiveDocuments: number | null;
   medianTokens: number | null;
-  q1Tokens: number | null;
-  q3Tokens: number | null;
-  iqrTokens: number | null;
-  largestDocumentShare: number | null;
-  topDocumentCount: number;
-  topDocumentShare: number | null;
-  lengthRatio: number | null;
-  effectiveDocumentCount: number | null;
+  minimumTokens: number | null;
+  maximumTokens: number | null;
+  remainingDocuments: number;
+  reading: string;
 }
 
-export interface AnalysisLexicalSummary {
-  uniqueTypes: number;
-  hapaxLegomena: number;
-  disLegomena: number;
-  repeatedTypes: number;
-  numericOnlyTypes: number;
+export interface CorpusOverviewExtractionQuality {
+  wordLikeCount: number;
+  wordLikeShare: number | null;
+  numericOnlyCount: number;
   numericOnlyShare: number | null;
-  singleCharacterTypes: number;
+  singleCharacterCount: number | null;
   singleCharacterShare: number | null;
-  qualityOtherTypes: number;
-  typeTokenRatio: number | null;
+  reading: string;
 }
 
-export interface AnalysisDispersionSummary {
-  documentCount: number;
-  allDocumentTypes: number;
-  oneDocumentTypes: number;
+export interface CorpusOverviewLexicalSpectrum {
+  types: number;
+  hapaxCount: number;
+  disLegomenaCount: number;
+  band3To9Count: number;
+  band10plusCount: number;
+  hapaxShare: number | null;
+  disLegomenaShare: number | null;
+  band3To9Share: number | null;
+  band10plusShare: number | null;
+  rawTtr: number | null;
+  reading: string;
+}
+
+export interface CorpusOverviewFrequencyConcentration {
+  top100Coverage: number | null;
+  top1000Coverage: number | null;
+  top10000Coverage: number | null;
+  reading: string;
+}
+
+export interface CorpusOverviewDispersion {
   frequentTypes: number;
-  medianFrequentDispersion: number | null;
-  highDispersionFrequentTypes: number;
+  highDpFrequentTypes: number;
+  medianDp: number | null;
+  dfIn1Count: number;
+  dfIn2ToNMinus1Count: number;
+  dfInAllCount: number;
+  dfIn1Share: number | null;
+  dfIn2ToNMinus1Share: number | null;
+  dfInAllShare: number | null;
+  medianDocumentsPerType: number | null;
+  reading: string;
 }
 
-export interface AnalysisOverview {
+export interface CorpusOverviewFinding {
+  key: CorpusOverviewFindingKind;
+  severity: CorpusOverviewFindingSeverity;
+  severityLabel: string;
+  text: string;
+}
+
+export interface CorpusOverviewReading {
+  verdict: string;
+  findings: CorpusOverviewFinding[];
+}
+
+export interface CorpusOverviewBuild {
+  tokenisation: string | null;
+  caseHandling: string | null;
+  lemmatisation: string | null;
+  numberPunctuationHandling: string | null;
+  inputSource: string;
+  configVersion: string | null;
+  snapshotDate: string | null;
+  metadataAttached: boolean;
+}
+
+export interface CorpusOverview {
   documentCount: number;
   sourceCount: number;
   totalTokens: number;
@@ -70,11 +140,17 @@ export interface AnalysisOverview {
   buildSignature: string;
   skippedDocuments: number;
   skippedPdfDocuments: number;
-  balance: AnalysisBalanceSummary;
-  lexical: AnalysisLexicalSummary;
-  dispersion: AnalysisDispersionSummary;
-  documentLengths: AnalysisDocumentSummary[];
-  documentLengthsTruncated: boolean;
+  totals: CorpusOverviewTotals;
+  population: CorpusOverviewPopulation;
+  documents: CorpusOverviewDocument[];
+  documentsTruncated: boolean;
+  balance: CorpusOverviewBalance;
+  extractionQuality: CorpusOverviewExtractionQuality;
+  lexicalSpectrum: CorpusOverviewLexicalSpectrum;
+  frequencyConcentration: CorpusOverviewFrequencyConcentration;
+  dispersion: CorpusOverviewDispersion;
+  reading: CorpusOverviewReading;
+  build: CorpusOverviewBuild;
 }
 
 export interface AnalysisBuildProgress {
@@ -90,7 +166,7 @@ export interface AnalysisBuildStatus {
   state: AnalysisBuildStateKind;
   progress: AnalysisBuildProgress | null;
   error: string | null;
-  overview: AnalysisOverview | null;
+  overview: CorpusOverview | null;
 }
 
 export interface AnalysisDocumentSelection {
@@ -173,8 +249,8 @@ export function buildAnalysisCorpus(
   inputTextSource: AnalysisInputSource,
   buildSignature: string,
   cleaningConfig: CleaningConfig,
-): Promise<AnalysisOverview> {
-  return invoke<AnalysisOverview>("build_analysis_corpus_command", {
+): Promise<CorpusOverview> {
+  return invoke<CorpusOverview>("build_analysis_corpus_command", {
     request: {
       indices,
       corpusVersion,
@@ -193,8 +269,8 @@ export function getAnalysisBuildStatus(): Promise<AnalysisBuildStatus> {
   return invoke<AnalysisBuildStatus>("get_analysis_build_status_command");
 }
 
-export function getAnalysisOverview(): Promise<AnalysisOverview> {
-  return invoke<AnalysisOverview>("get_analysis_overview_command");
+export function computeCorpusOverview(): Promise<CorpusOverview> {
+  return invoke<CorpusOverview>("compute_corpus_overview_command");
 }
 
 export function queryFrequencyList(query: FrequencyQuery): Promise<FrequencyPage> {
