@@ -8,7 +8,7 @@ import {
   renderProjectEmptyState,
 } from "./corpus";
 import { dom } from "./dom";
-import { loadProjectSourcesForActiveProject } from "./sources";
+import { loadProjectSourcesForActiveProject, projectSourceTotalCount } from "./sources";
 import { state, type ActiveProject } from "./state";
 import { clearDecisions, loadDecisionsForProject } from "./repeated-artifacts";
 import { hideWorkbenchSwitcher, resetWorkbenchForProject } from "./workbench";
@@ -128,6 +128,8 @@ async function activateProject(project: ActiveProject, scanSourceRoot: boolean):
   resetWorkbenchForProject();
 
   state.projectSources = [];
+  state.projectSourceSummary = null;
+  state.projectSourceQuerySummary = null;
   state.sourceSearchQuery = "";
   dom.searchInput.value = "";
   clearStateForLoad();
@@ -135,11 +137,11 @@ async function activateProject(project: ActiveProject, scanSourceRoot: boolean):
   closeMenus();
 
   await loadProjectSourcesForActiveProject();
-  if (scanSourceRoot && project.sourceRoots.length > 0 && state.projectSources.length === 0) {
+  if (scanSourceRoot && project.sourceRoots.length > 0 && projectSourceTotalCount() === 0) {
     await registerFolderForActiveProject(project.sourceRoots[0]);
   } else {
     await loadCorpusFromProjectSources();
-    if (state.projectSources.length > 0) {
+    if (projectSourceTotalCount() > 0) {
       dom.statusBar.textContent = `Project opened: ${project.name}`;
     }
   }
@@ -230,6 +232,8 @@ async function handleCloseProject(): Promise<void> {
   state.activeProject = null;
   state.analysisCorpus = null;
   state.projectSources = [];
+  state.projectSourceSummary = null;
+  state.projectSourceQuerySummary = null;
   state.sourceSearchQuery = "";
   dom.searchInput.value = "";
   clearStateForLoad();

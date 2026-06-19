@@ -2,6 +2,7 @@ import type { CleaningConfig, RemovalRule, ReplacementRule } from "./generated/C
 import { createDefaultCleaningConfig } from "./config";
 import type { DocumentRecord } from "./generated/DocumentRecord.js";
 import type { ProjectSource } from "./generated/ProjectSource.js";
+import type { ProjectSourceSummary } from "./generated/ProjectSourceSummary.js";
 import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
 import type { SearchResult } from "./generated/SearchResult.js";
 import type { AnalysisCorpus } from "./analysis";
@@ -25,13 +26,22 @@ export const state = {
   analysisCorpus: null as AnalysisCorpus | null,
   sourceManifestVersion: 1,
   projectSources: [] as ProjectSource[],
+  projectSourceSummary: null as ProjectSourceSummary | null,
+  projectSourceQuerySummary: null as ProjectSourceSummary | null,
+  projectSourcePageOffset: 0,
+  projectSourcePageLimit: 200,
+  projectSourceQueryGeneration: 0,
+  projectSourceQueryPending: false,
   sourceSearchQuery: "",
+  projectCorpusFileCount: 0,
   currentCorpusVersion: 0,
   allFiles: [] as DocumentRecord[],
   cleanedTokenCountText: null as string | null,
   visibleFiles: [] as VisibleFile[],
   selectedCorpusIndices: new Set<number>(),
   selectedProjectSourceIds: new Set<string>(),
+  selectedProjectSourcesById: new Map<string, ProjectSource>(),
+  allMatchingProjectSourcesSelected: false,
   debounceTimer: null as number | null,
   currentCorpusRoot: null as string | null,
   lastSelectedCorpusIndex: null as number | null,

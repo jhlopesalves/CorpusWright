@@ -8,14 +8,20 @@ import { state } from "./state";
 import {
   confirmFilesForActiveProjectSources,
   confirmFolderForActiveProjectSources,
+  fastImportFilesToActiveProject,
+  fastImportFolderToActiveProject,
   extractionRouteLabel,
-  loadableProjectSourcePaths,
+  clearProjectSourceSelection,
   loadProjectSourcesForActiveProject,
   pdfProfileLabel,
   pdfProfileShortLabel,
-  removeProjectSourcePaths,
+  hasProjectSourceSelection,
+  projectSourceSelectionCount,
+  removeSelectedProjectSources,
   selectedProjectSourcePaths,
   selectedProjectSources,
+  type ProjectSourceFastImportResult,
+  type ProjectSourceImportResult,
   type ProjectSourcePdfHandlingOverride,
   reviewFilesForActiveProjectSources,
   reviewFolderForActiveProjectSources,
@@ -30,8 +36,7 @@ import type { PdfAuditSuggestedProfile } from "./generated/PdfAuditSuggestedProf
 import type { ProjectSourceImportReview } from "./generated/ProjectSourceImportReview.js";
 import type { ProjectSourcePdfProfile } from "./generated/ProjectSourcePdfProfile.js";
 import type { ProjectSource } from "./generated/ProjectSource.js";
-import type { ProjectSourceUpdate } from "./generated/ProjectSourceUpdate.js";
-import type { CorpusLoadResult } from "./types";
+import type { CorpusLoadResult, ProjectCorpusLoadResult } from "./types";
 
 interface CorpusCallbacks {
   updateWordCount: () => void;
@@ -163,10 +168,11 @@ interface PdfIntakeMaterializationProgress {
 export function clearStateForLoad(): void {
   state.currentCorpusVersion = 0;
   state.allFiles = [];
+  state.projectCorpusFileCount = 0;
   state.cleanedTokenCountText = null;
   state.visibleFiles = [];
   state.selectedCorpusIndices.clear();
-  state.selectedProjectSourceIds.clear();
+  clearProjectSourceSelection();
   state.currentCorpusRoot = null;
   state.lastSelectedCorpusIndex = null;
   state.lastSelectedProjectSourceId = null;
@@ -1406,9 +1412,8 @@ export async function loadFilesPaths(selected: string[], registerProjectSources 
   await loadFilesIntoCorpus(selected);
 }
 
-function importCompletionMessage(review: ProjectSourceImportReview, update: ProjectSourceUpdate): string {
-  const importedIds = new Set(review.candidates.map((source) => source.id));
-  const importedSources = update.manifest.sources.filter((source) => importedIds.has(source.id));
+function importCompletionMessage(review: ProjectSourceImportReview, update: ProjectSourceImportResult): string {
+  const importedSources = review.candidates;
   const readyCount = importedSources.filter((source) => source.status === "ready_to_process").length;
   const needsOcrCount = importedSources.filter((source) => source.status === "needs_ocr").length;
   const extractedCount = importedSources.filter(sourceHasExtractedText).length;
@@ -1432,19 +1437,54 @@ function importCompletionMessage(review: ProjectSourceImportReview, update: Proj
     parts.push(`${failedCount.toLocaleString()} failed`);
   }
 
-  const importedLabel = `${update.added_count.toLocaleString()} source${update.added_count === 1 ? "" : "s"}`;
-  const duplicateLabel = update.duplicate_count > 0
-    ? ` (${update.duplicate_count.toLocaleString()} duplicate${update.duplicate_count === 1 ? "" : "s"} skipped)`
+  const importedLabel = `${update.addedCount.toLocaleString()} source${update.addedCount === 1 ? "" : "s"}`;
+  const duplicateLabel = update.duplicateCount > 0
+    ? ` (${update.duplicateCount.toLocaleString()} duplicate${update.duplicateCount === 1 ? "" : "s"} skipped)`
     : "";
   return parts.length > 0
     ? `Imported ${importedLabel}: ${parts.join(", ")}.${duplicateLabel}`
     : `Imported ${importedLabel}.${duplicateLabel}`;
 }
 
-function importedPdfPathsForReview(review: ProjectSourceImportReview, update: ProjectSourceUpdate): string[] {
-  const importedIds = new Set(review.candidates.map((source) => source.id));
-  return update.manifest.sources
-    .filter((source) => importedIds.has(source.id))
+interface ProjectSourceImportProgress {
+  current: number;
+  total: number;
+  status: "scanning" | "registering";
+}
+
+async function withProjectSourceImportProgress<T>(work: () => Promise<T>): Promise<T> {
+  const unlisten = await listen<ProjectSourceImportProgress>(
+    "project-source-import-progress",
+    ({ payload }) => {
+      dom.statusBar.textContent = payload.status === "scanning"
+        ? "Scanning source folder..."
+        : `Registering sources: ${payload.current.toLocaleString()} / ${payload.total.toLocaleString()}`;
+    },
+  );
+  try {
+    return await work();
+  } finally {
+    unlisten();
+  }
+}
+
+function fastImportCompletionMessage(result: ProjectSourceFastImportResult): string {
+  const sourceLabel = `${result.addedCount.toLocaleString()} source${result.addedCount === 1 ? "" : "s"}`;
+  const details: string[] = [];
+  if (result.duplicateCount > 0) {
+    details.push(`${result.duplicateCount.toLocaleString()} duplicate${result.duplicateCount === 1 ? "" : "s"} skipped`);
+  }
+  if (result.ignoredCount > 0) {
+    details.push(`${result.ignoredCount.toLocaleString()} unsupported file${result.ignoredCount === 1 ? "" : "s"} ignored`);
+  }
+  return details.length > 0
+    ? `Imported ${sourceLabel}; ${details.join(", ")}.`
+    : `Imported ${sourceLabel}.`;
+}
+
+function importedPdfPathsForReview(review: ProjectSourceImportReview, update: ProjectSourceImportResult): string[] {
+  if (update.addedCount === 0) return [];
+  return review.candidates
     .filter((source) => source.kind === "pdf" && source.status !== "failed")
     .map((source) => source.path);
 }
@@ -1454,11 +1494,11 @@ export async function loadCorpusFromProjectSources(): Promise<void> {
     return;
   }
 
-  const loadablePaths = loadableProjectSourcePaths();
-  if (loadablePaths.length === 0) {
+  const sourceSummary = state.projectSourceSummary;
+  if (!sourceSummary || sourceSummary.loadable_count === 0) {
     clearStateForLoad();
     renderProjectEmptyState();
-    dom.statusBar.textContent = state.projectSources.length === 0
+    dom.statusBar.textContent = (sourceSummary?.total_count ?? 0) === 0
       ? "This project has no source files yet."
       : "This project has no processable source files.";
     return;
@@ -1468,18 +1508,19 @@ export async function loadCorpusFromProjectSources(): Promise<void> {
     dom.statusBar.textContent = "Loading project sources...";
     clearStateForLoad();
 
-    const result = await invoke<CorpusLoadResult>("load_project_source_records_command", {
+    const result = await invoke<ProjectCorpusLoadResult>("load_project_source_records_command", {
       rootPath: state.activeProject.rootPath,
     });
 
     state.currentCorpusVersion = result.corpusVersion;
-    state.currentCorpusRoot = result.report.root;
-    state.allFiles = result.report.files;
-    state.visibleFiles = state.allFiles.map((record, i) => ({ corpusIndex: i, record }));
+    state.currentCorpusRoot = result.summary.root;
+    state.projectCorpusFileCount = result.recordCount;
+    state.allFiles = [];
+    state.visibleFiles = [];
 
-    renderSummary(result.report.summary);
+    renderSummary(result.summary);
     updateFileList();
-    dom.statusBar.textContent = `Loaded ${state.allFiles.length} project sources.`;
+    dom.statusBar.textContent = `Loaded ${result.recordCount.toLocaleString()} project sources.`;
     callbacks.updateWordCount();
   } catch (error) {
     dom.statusBar.textContent = `Error loading project sources: ${error}`;
@@ -1496,6 +1537,15 @@ export async function registerFilesForActiveProject(selected: string[]): Promise
 
   try {
     dom.statusBar.textContent = "Inspecting selected source files...";
+    const fastImport = await withProjectSourceImportProgress(
+      () => fastImportFilesToActiveProject(selected),
+    );
+    if (fastImport?.imported) {
+      await loadProjectSourcesForActiveProject(0);
+      await loadCorpusFromProjectSources();
+      dom.statusBar.textContent = fastImportCompletionMessage(fastImport);
+      return;
+    }
     const review = await reviewFilesForActiveProjectSources(selected);
     if (!review) {
       return;
@@ -1514,6 +1564,7 @@ export async function registerFilesForActiveProject(selected: string[]): Promise
       choice.pdfHandlingOverrides,
     );
     if (update) {
+      await loadProjectSourcesForActiveProject(0);
       if (choice.extractTextNow) {
         const importedPdfPaths = importedPdfPathsForReview(review, update);
         if (importedPdfPaths.length > 0) {
@@ -1543,6 +1594,15 @@ export async function registerFolderForActiveProject(selected: string): Promise<
 
   try {
     dom.statusBar.textContent = "Inspecting source folder...";
+    const fastImport = await withProjectSourceImportProgress(
+      () => fastImportFolderToActiveProject(selected),
+    );
+    if (fastImport?.imported) {
+      await loadProjectSourcesForActiveProject(0);
+      await loadCorpusFromProjectSources();
+      dom.statusBar.textContent = fastImportCompletionMessage(fastImport);
+      return;
+    }
     const review = await reviewFolderForActiveProjectSources(selected);
     if (!review) {
       return;
@@ -1561,6 +1621,7 @@ export async function registerFolderForActiveProject(selected: string): Promise<
       choice.pdfHandlingOverrides,
     );
     if (update) {
+      await loadProjectSourcesForActiveProject(0);
       if (choice.extractTextNow) {
         const importedPdfPaths = importedPdfPathsForReview(review, update);
         if (importedPdfPaths.length > 0) {
@@ -1653,18 +1714,14 @@ function renderSummary(summary: CorpusSummary): void {
 }
 
 async function handleRemoveSelectedSources(): Promise<void> {
-  if (!state.activeProject || state.selectedProjectSourceIds.size === 0) {
+  if (!state.activeProject || !hasProjectSourceSelection()) {
     return;
   }
 
-  const selectedPaths = selectedProjectSourcePaths();
-
-  if (selectedPaths.length === 0) {
-    return;
-  }
+  const selectedCount = projectSourceSelectionCount();
 
   const confirmed = window.confirm(
-    `Remove ${selectedPaths.length} selected source${selectedPaths.length === 1 ? "" : "s"} from the project inventory?\n\nSource files on disk will not be deleted.`,
+    `Remove ${selectedCount.toLocaleString()} selected source${selectedCount === 1 ? "" : "s"} from the project inventory?\n\nSource files on disk will not be deleted.`,
   );
   if (!confirmed) {
     return;
@@ -1672,11 +1729,13 @@ async function handleRemoveSelectedSources(): Promise<void> {
 
   try {
     dom.statusBar.textContent = "Removing selected sources...";
-    await removeProjectSourcePaths(selectedPaths);
+    const result = await removeSelectedProjectSources();
     state.selectedCorpusIndices.clear();
-    state.selectedProjectSourceIds.clear();
+    clearProjectSourceSelection();
+    await loadProjectSourcesForActiveProject(0);
     await loadCorpusFromProjectSources();
-    dom.statusBar.textContent = `Removed ${selectedPaths.length} source${selectedPaths.length === 1 ? "" : "s"} from project inventory.`;
+    const removedCount = result?.removedCount ?? 0;
+    dom.statusBar.textContent = `Removed ${removedCount.toLocaleString()} source${removedCount === 1 ? "" : "s"} from project inventory.`;
   } catch (error) {
     dom.statusBar.textContent = `Error removing sources: ${error}`;
     console.error(error);

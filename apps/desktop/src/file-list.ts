@@ -2,22 +2,30 @@ import { dom, getFileListContainer } from "./dom";
 import type { ProjectSource } from "./generated/ProjectSource.js";
 import { state } from "./state";
 import {
-  SOURCE_GROUP_ORDER,
+  clearProjectSourceSelection,
+  forgetSelectedProjectSource,
+  hasProjectSourceSelection,
   isPreviewableSource,
   isSelectableSource,
+  isProjectSourceSelected,
+  loadProjectSourcesForActiveProject,
   pathKey,
   pdfHandlingLabel,
   primaryReasonLabel,
-  reasonLabel,
+  projectSourceSelectionCount,
+  rememberSelectedProjectSource,
+  selectAllMatchingProjectSources,
   selectedProjectSources,
   sourceHasExtractedText,
+  sourceDisplayStatusLabel,
   sourceKindLabel,
   sourceReasonDescriptions,
-  sourceStatusLabel,
 } from "./sources";
 
 const ITEM_HEIGHT = 26; // px, must match CSS #file-list li height
+const SOURCE_ITEM_HEIGHT = 64; // px, must match CSS source row height
 const OVERSCAN = 10; // extra items rendered above/below viewport
+const MAX_SOURCE_PREVIEW_SELECTION = 10;
 
 interface FileListCallbacks {
   updatePreview: () => void;
@@ -69,11 +77,10 @@ export function initSelectionControls(): void {
   dom.selectAllCheckbox.addEventListener("change", (e) => {
     const isChecked = (e.target as HTMLInputElement).checked;
     if (sourceExplorerMode()) {
-      const selectableIds = visibleSourceIds();
       if (isChecked) {
-        selectableIds.forEach(id => state.selectedProjectSourceIds.add(id));
+        selectAllMatchingProjectSources();
       } else {
-        state.selectedProjectSourceIds.clear();
+        clearProjectSourceSelection();
       }
       syncCorpusSelectionFromProjectSources();
     } else {
@@ -106,11 +113,11 @@ export function initSelectionControls(): void {
       if (state.debounceTimer) clearTimeout(state.debounceTimer);
       state.debounceTimer = window.setTimeout(() => {
         if (sourceExplorerMode()) {
-          state.selectedProjectSourceIds.clear();
-          const selectableIds = visibleSourceIds();
-          const limit = Math.min(val, selectableIds.length);
+          clearProjectSourceSelection();
+          const selectableSources = state.projectSources.filter(isSelectableSource);
+          const limit = Math.min(val, selectableSources.length, MAX_SOURCE_PREVIEW_SELECTION);
           for (let i = 0; i < limit; i++) {
-            state.selectedProjectSourceIds.add(selectableIds[i]);
+            rememberSelectedProjectSource(selectableSources[i]);
           }
           syncCorpusSelectionFromProjectSources();
         } else {
@@ -138,7 +145,7 @@ export function updateFileList(updatePreviewAfterRender = true): void {
   const sentinel = container?.querySelector(".virtual-scroll-sentinel") as HTMLElement;
   if (sentinel) {
     sentinel.style.height = sourceExplorerMode()
-      ? "0px"
+      ? `${(state.projectSourceQuerySummary?.total_count ?? 0) * SOURCE_ITEM_HEIGHT}px`
       : `${state.visibleFiles.length * ITEM_HEIGHT}px`;
   }
 
@@ -202,19 +209,43 @@ export function renderVisibleItems(): void {
 }
 
 function renderSourceExplorerItems(): void {
-  dom.fileList.style.transform = "";
+  const totalItems = state.projectSourceQuerySummary?.total_count ?? 0;
+  const startIdx = Math.max(0, Math.floor(state.vsScrollTop / SOURCE_ITEM_HEIGHT) - OVERSCAN);
+  const visibleCount = Math.ceil(state.vsContainerHeight / SOURCE_ITEM_HEIGHT) + 2 * OVERSCAN;
+  const pageEnd = state.projectSourcePageOffset + state.projectSources.length;
+  const desiredPageOffset = startIdx < state.projectSourcePageOffset
+    || startIdx + visibleCount > pageEnd
+    ? Math.max(0, startIdx - OVERSCAN)
+    : state.projectSourcePageOffset;
+  if (
+    desiredPageOffset !== state.projectSourcePageOffset
+    && !state.projectSourceQueryPending
+    && desiredPageOffset < totalItems
+  ) {
+    void loadProjectSourcesForActiveProject(desiredPageOffset).then(() => {
+      updateStatusLine();
+      renderVisibleItems();
+    });
+  }
+
+  const pageStart = state.projectSourcePageOffset;
+  const localStart = Math.max(0, startIdx - pageStart);
+  const localEnd = Math.min(
+    state.projectSources.length,
+    localStart + visibleCount,
+  );
+  dom.fileList.style.transform = `translateY(${(pageStart + localStart) * SOURCE_ITEM_HEIGHT}px)`;
   dom.fileList.innerHTML = "";
 
   const fragment = document.createDocumentFragment();
-  const sources = filteredProjectSources();
 
-  if (state.projectSources.length === 0) {
+  if (totalItems === 0 && !state.sourceSearchQuery) {
     fragment.appendChild(createSourceEmptyState());
     dom.fileList.appendChild(fragment);
     return;
   }
 
-  if (sources.length === 0) {
+  if (totalItems === 0) {
     const empty = document.createElement("li");
     empty.className = "source-empty-state source-empty-filtered";
     empty.textContent = "No sources match this search.";
@@ -223,20 +254,9 @@ function renderSourceExplorerItems(): void {
     return;
   }
 
-  for (const status of SOURCE_GROUP_ORDER) {
-    const groupSources = sources.filter((source) => source.status === status);
-    if (groupSources.length === 0) {
-      continue;
-    }
-
-    const header = document.createElement("li");
-    header.className = "source-group-header";
-    header.textContent = `${sourceStatusLabel(status)} (${groupSources.length})`;
-    fragment.appendChild(header);
-
-    for (const source of groupSources) {
-      fragment.appendChild(createSourceRow(source, sources));
-    }
+  const visibleSources = state.projectSources.slice(localStart, localEnd);
+  for (const source of visibleSources) {
+    fragment.appendChild(createSourceRow(source, state.projectSources));
   }
 
   dom.fileList.appendChild(fragment);
@@ -280,7 +300,7 @@ function createSourceRow(
   li.className = `source-row source-status-${source.status.replace(/_/g, "-")}`;
   li.title = source.path;
 
-  if (state.selectedProjectSourceIds.has(source.id)) {
+  if (isProjectSourceSelected(source.id)) {
     li.classList.add("selected");
   }
 
@@ -288,7 +308,7 @@ function createSourceRow(
   checkbox.type = "checkbox";
   checkbox.className = "file-checkbox";
   checkbox.disabled = !isSelectableSource(source);
-  checkbox.checked = state.selectedProjectSourceIds.has(source.id);
+  checkbox.checked = isProjectSourceSelected(source.id);
 
   const textWrap = document.createElement("span");
   textWrap.className = "source-row-text";
@@ -304,6 +324,11 @@ function createSourceRow(
   kindBadge.className = "source-badge source-kind-badge";
   kindBadge.textContent = sourceKindLabel(source);
   meta.appendChild(kindBadge);
+
+  const statusBadge = document.createElement("span");
+  statusBadge.className = "source-badge source-status-badge";
+  statusBadge.textContent = sourceDisplayStatusLabel(source);
+  meta.appendChild(statusBadge);
 
   const reason = primaryReasonLabel(source);
   if (reason) {
@@ -345,11 +370,17 @@ function handleSearch(): void {
   if (sourceExplorerMode()) {
     state.sourceSearchQuery = query;
     state.selectedCorpusIndices.clear();
-    state.selectedProjectSourceIds.clear();
+    clearProjectSourceSelection();
     state.lastSelectedProjectSourceId = null;
     callbacks.invalidatePreviewSession();
     resetScroll();
-    updateFileList();
+    updateFileList(false);
+    if (state.debounceTimer) clearTimeout(state.debounceTimer);
+    state.debounceTimer = window.setTimeout(() => {
+      void loadProjectSourcesForActiveProject(0).then(() => {
+        updateFileList();
+      });
+    }, 150);
     return;
   }
 
@@ -399,6 +430,10 @@ function handleSourceSelect(
   const corpusIndexByPath = buildCorpusIndexByPath();
   if (!isSelectableSource(source)) {
     return;
+  }
+
+  if (state.allMatchingProjectSourcesSelected) {
+    clearProjectSourceSelection();
   }
 
   const visibleIds = visibleSources
@@ -454,11 +489,12 @@ function applySourceRowSelection(event: MouseEvent, sourceId: string, visibleIds
   if (event.ctrlKey || event.metaKey) {
     toggleProjectSourceId(sourceId);
   } else if (event.shiftKey && state.lastSelectedProjectSourceId !== null) {
-    state.selectedProjectSourceIds.clear();
+    clearProjectSourceSelection();
     addVisibleSourceRange(visibleIds, sourceId);
   } else {
-    state.selectedProjectSourceIds.clear();
-    state.selectedProjectSourceIds.add(sourceId);
+    const source = state.projectSources.find((item) => item.id === sourceId);
+    clearProjectSourceSelection();
+    if (source) rememberSelectedProjectSource(source);
   }
 }
 
@@ -466,22 +502,25 @@ function addVisibleSourceRange(visibleIds: string[], sourceId: string): void {
   const lastVisible = visibleIds.indexOf(state.lastSelectedProjectSourceId ?? "");
   const currentVisible = visibleIds.indexOf(sourceId);
   if (lastVisible === -1 || currentVisible === -1) {
-    state.selectedProjectSourceIds.add(sourceId);
+    const source = state.projectSources.find((item) => item.id === sourceId);
+    if (source) rememberSelectedProjectSource(source);
     return;
   }
 
   const start = Math.min(lastVisible, currentVisible);
   const end = Math.max(lastVisible, currentVisible);
   for (let index = start; index <= end; index++) {
-    state.selectedProjectSourceIds.add(visibleIds[index]);
+    const source = state.projectSources.find((item) => item.id === visibleIds[index]);
+    if (source) rememberSelectedProjectSource(source);
   }
 }
 
 function toggleProjectSourceId(sourceId: string): void {
   if (state.selectedProjectSourceIds.has(sourceId)) {
-    state.selectedProjectSourceIds.delete(sourceId);
+    forgetSelectedProjectSource(sourceId);
   } else {
-    state.selectedProjectSourceIds.add(sourceId);
+    const source = state.projectSources.find((item) => item.id === sourceId);
+    if (source) rememberSelectedProjectSource(source);
   }
 }
 
@@ -493,32 +532,9 @@ function toggleCorpusIndex(corpusIndex: number): void {
   }
 }
 
-function filteredProjectSources(): ProjectSource[] {
-  const query = state.sourceSearchQuery.trim().toLowerCase();
-  return state.projectSources.filter((source) => {
-    if (!query) return true;
-    const haystack = [
-      source.file_name,
-      source.path,
-      source.kind,
-      source.extraction_route,
-      source.pdf_profile ?? "",
-      sourceStatusLabel(source.status),
-      ...source.reason_codes,
-      ...source.reason_codes.map(reasonLabel),
-    ].join(" ").toLowerCase();
-    return haystack.includes(query);
-  });
-}
-
-function visibleSourceIds(): string[] {
-  return filteredProjectSources()
-    .filter(isSelectableSource)
-    .map((source) => source.id);
-}
-
 function syncCorpusSelectionFromProjectSources(corpusIndexByPath = buildCorpusIndexByPath()): void {
   state.selectedCorpusIndices.clear();
+  if (state.allMatchingProjectSourcesSelected) return;
   for (const source of selectedProjectSources()) {
     if (!isPreviewableSource(source)) {
       continue;
@@ -544,17 +560,17 @@ function sourceExplorerMode(): boolean {
 
 function updateStatusLine(): void {
   if (sourceExplorerMode()) {
-    const sourceCount = state.projectSources.length;
+    const sourceCount = state.projectSourceQuerySummary?.total_count ?? 0;
+    const selectedCount = projectSourceSelectionCount();
     const noun = sourceCount === 1 ? "source" : "sources";
-    dom.filesStatus.textContent = `${sourceCount} ${noun} | ${state.selectedProjectSourceIds.size} selected`;
-    const visibleIds = visibleSourceIds();
-    dom.selectAllCheckbox.checked =
-      visibleIds.length > 0 &&
-      visibleIds.every(id => state.selectedProjectSourceIds.has(id));
+    dom.filesStatus.textContent = `${sourceCount.toLocaleString()} ${noun} | ${selectedCount.toLocaleString()} selected`;
+    dom.selectAllCheckbox.checked = state.allMatchingProjectSourcesSelected && sourceCount > 0;
+    dom.selectAllCheckbox.indeterminate = selectedCount > 0 && !state.allMatchingProjectSourcesSelected;
 
-    if (state.selectedProjectSourceIds.size > 0) {
+    if (hasProjectSourceSelection()) {
       const selectedSources = selectedProjectSources();
       const allSelectedArePdfs =
+        !state.allMatchingProjectSourcesSelected &&
         selectedSources.length === state.selectedProjectSourceIds.size &&
         selectedSources.every(source => source.kind === "pdf");
       const hasFailures = selectedSources
@@ -611,6 +627,8 @@ function updateStatusLine(): void {
   dom.selectAllCheckbox.checked =
     state.visibleFiles.length > 0 &&
     state.visibleFiles.every(vf => state.selectedCorpusIndices.has(vf.corpusIndex));
+  dom.selectAllCheckbox.indeterminate =
+    state.selectedCorpusIndices.size > 0 && !dom.selectAllCheckbox.checked;
 }
 
 function syncContainerMode(): void {

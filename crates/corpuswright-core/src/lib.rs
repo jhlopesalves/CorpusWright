@@ -57,12 +57,14 @@ pub use preview::{
 };
 pub use project_sources::{
     ProjectSource, ProjectSourceExtractionResult, ProjectSourceExtractionRoute,
-    ProjectSourceImportPolicy, ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest,
-    ProjectSourceProcessingResult, ProjectSourceStatus, ProjectSourceUpdate,
-    add_project_source_paths, add_project_source_paths_with_policy, kind_for_path,
-    load_project_source_manifest, review_project_source_paths, save_project_source_manifest,
-    stable_project_source_id, update_project_source_extraction_results,
-    update_project_source_processing_results,
+    ProjectSourceImportPolicy, ProjectSourceImportReview, ProjectSourceKind,
+    ProjectSourceKindCounts, ProjectSourceManifest, ProjectSourcePage,
+    ProjectSourceProcessingResult, ProjectSourceQuery, ProjectSourceStatus,
+    ProjectSourceStatusCounts, ProjectSourceSummary, ProjectSourceUpdate, add_project_source_paths,
+    add_project_source_paths_with_policy, add_project_source_paths_with_progress, kind_for_path,
+    load_project_source_manifest, project_source_matches_query, query_project_source_manifest,
+    review_project_source_paths, save_project_source_manifest, stable_project_source_id,
+    update_project_source_extraction_results, update_project_source_processing_results,
 };
 pub use repeated_artifacts::{
     ArtifactRiskLabel, CancellationFlag, CandidateContentClass, PositionSummary,
