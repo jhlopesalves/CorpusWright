@@ -1,18 +1,18 @@
 use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisCorpus,
-    AnalysisDocumentPage, AnalysisDocumentSelection, AnalysisInputSource, CorpusOverview,
-    CorpusOverviewContext, FrequencyPage, FrequencyQuery, TermDistributionPage,
-    build_analysis_corpus, query_analysis_documents, query_frequency_list, query_term_distribution,
+    AnalysisDocumentPage, AnalysisDocumentSelection, CorpusOverview, CorpusOverviewContext,
+    FrequencyPage, FrequencyQuery, TermDistributionPage, build_analysis_corpus,
+    cleaning_config_signature, query_analysis_documents, query_frequency_list,
+    query_term_distribution, resolve_analysis_input,
 };
 use corpuswright_core::cache::{
     CacheEntry, DocumentTextMode, ExtractionCache, document_text_for_record,
+    document_text_from_cache_entry,
 };
 use corpuswright_core::clean::{CleaningConfig, PdfOcrQuality, PdfTextSource, clean_text};
 use corpuswright_core::export::{ExportError, ExportOptions, ExportReport, export_corpus};
-use corpuswright_core::html::extract_html;
 use corpuswright_core::pdf::{
-    PdfExtractionOptions, PdfPageRangeResult, clean_extracted_pdf_text, extract_pdf_page_range,
-    pdf_page_count,
+    PdfExtractionOptions, PdfPageRangeResult, extract_pdf_page_range, pdf_page_count,
 };
 use corpuswright_core::pdf_audit::{PdfAuditResult, audit_pdf_files};
 use corpuswright_core::preview::{
@@ -60,6 +60,7 @@ enum AnalysisBuildStateKind {
     NotBuilt,
     Building,
     Ready,
+    Stale,
     Failed,
     Cancelled,
 }
@@ -89,7 +90,6 @@ struct AnalysisBuildStatus {
 struct AnalysisBuildRequest {
     indices: Option<Vec<usize>>,
     corpus_version: u64,
-    input_text_source: AnalysisInputSource,
     build_signature: String,
     cleaning_config: CleaningConfig,
 }
@@ -121,13 +121,21 @@ impl AnalysisState {
         }
     }
 
-    fn corpus(&self) -> Result<Arc<AnalysisCorpus>, String> {
-        self.inner
+    fn corpus(&self, cleaning_config: &CleaningConfig) -> Result<Arc<AnalysisCorpus>, String> {
+        let corpus = self
+            .inner
             .read()
             .unwrap()
             .corpus
             .clone()
-            .ok_or_else(|| "Build the analysis corpus before querying it.".to_string())
+            .ok_or_else(|| "Build the analysis corpus before querying it.".to_string())?;
+        if corpus.is_stale_for_cleaning_config(cleaning_config) {
+            return Err(
+                "The analysis corpus is stale because processing settings changed. Rebuild it before querying."
+                    .to_string(),
+            );
+        }
+        Ok(corpus)
     }
 
     fn clear(&self) {
@@ -140,16 +148,28 @@ impl AnalysisState {
         inner.corpus = None;
     }
 
-    fn status(&self) -> AnalysisBuildStatus {
+    fn status(&self, cleaning_config: &CleaningConfig) -> AnalysisBuildStatus {
         let inner = self.inner.read().unwrap();
+        let stale = inner
+            .corpus
+            .as_ref()
+            .is_some_and(|corpus| corpus.is_stale_for_cleaning_config(cleaning_config));
         AnalysisBuildStatus {
-            state: inner.state,
+            state: if stale {
+                AnalysisBuildStateKind::Stale
+            } else {
+                inner.state
+            },
             progress: inner.progress.clone(),
             error: inner.error.clone(),
-            overview: inner
-                .corpus
-                .as_ref()
-                .map(|corpus| corpus.overview().clone()),
+            overview: (!stale)
+                .then(|| {
+                    inner
+                        .corpus
+                        .as_ref()
+                        .map(|corpus| corpus.overview().clone())
+                })
+                .flatten(),
         }
     }
 }
@@ -1674,28 +1694,56 @@ fn read_project_source_text_cache(
     }
 }
 
-fn analysis_pdf_text(
+fn analysis_document_text(
     record: &DocumentRecord,
     project_root: Option<&Path>,
     cleaning_config: &CleaningConfig,
-    use_processed_text: bool,
+    mode: DocumentTextMode,
     cache: &ExtractionCache,
-) -> Option<String> {
-    let pdf_options =
-        PdfExtractionOptions::raw_from_record_and_cleaning_config(record, cleaning_config);
-    let entry = project_root
-        .and_then(|root| read_project_source_text_cache(root, record, cleaning_config))
-        .or_else(|| cache.try_get(record, Some(pdf_options), cleaning_config))?;
-
-    if !use_processed_text {
-        return Some(entry.extracted_text);
+) -> Result<String, String> {
+    if record.document_type == DocumentType::Pdf {
+        let pdf_options =
+            PdfExtractionOptions::raw_from_record_and_cleaning_config(record, cleaning_config);
+        if let Some(entry) = project_root
+            .and_then(|root| read_project_source_text_cache(root, record, cleaning_config))
+            .or_else(|| cache.try_get(record, Some(pdf_options), cleaning_config))
+        {
+            return Ok(document_text_from_cache_entry(record, cleaning_config, mode, entry).text);
+        }
     }
 
-    let (mut text, _) = clean_extracted_pdf_text(&entry.extracted_text, cleaning_config);
-    if cleaning_config.extract_html {
-        text = extract_html(&text);
-    }
-    Some(clean_text(&text, cleaning_config))
+    document_text_for_record(record, cleaning_config, mode, Some(cache))
+        .map(|document| document.text)
+}
+
+fn resolve_analysis_input_for_record(
+    record: &DocumentRecord,
+    project_root: Option<&Path>,
+    cleaning_config: &CleaningConfig,
+    cache: &ExtractionCache,
+) -> corpuswright_core::analysis::AnalysisInputResolution {
+    resolve_analysis_input(
+        record,
+        cleaning_config,
+        |record, cleaning_config| {
+            analysis_document_text(
+                record,
+                project_root,
+                cleaning_config,
+                DocumentTextMode::Processed,
+                cache,
+            )
+        },
+        |record, cleaning_config| {
+            analysis_document_text(
+                record,
+                project_root,
+                cleaning_config,
+                DocumentTextMode::Original,
+                cache,
+            )
+        },
+    )
 }
 
 fn analysis_progress_payload(
@@ -1736,7 +1784,6 @@ async fn build_analysis_corpus_command(
         let summary = inventory.summary(root)?;
         CorpusOverviewContext {
             sources_in_project: Some(summary.total_count),
-            processed_text_available: Some(summary.processed_count),
             sources_with_warnings: Some(summary.warning_count),
             failed_sources: summary.status_counts.failed,
             config_version: None,
@@ -1745,8 +1792,6 @@ async fn build_analysis_corpus_command(
     } else {
         CorpusOverviewContext {
             sources_in_project: Some(records.len()),
-            processed_text_available: (request.input_text_source == AnalysisInputSource::Processed)
-                .then_some(records.len()),
             sources_with_warnings: None,
             failed_sources: 0,
             config_version: None,
@@ -1754,11 +1799,6 @@ async fn build_analysis_corpus_command(
         }
     };
 
-    let text_mode = if request.input_text_source == AnalysisInputSource::Processed {
-        DocumentTextMode::Processed
-    } else {
-        DocumentTextMode::Original
-    };
     analysis.cancel.store(false, Ordering::Relaxed);
     let build_generation = {
         let mut inner = analysis.inner.write().unwrap();
@@ -1775,9 +1815,9 @@ async fn build_analysis_corpus_command(
     let cache = cache.inner().clone();
     let started_at = Instant::now();
     let built_at = jiff::Timestamp::now().to_string();
-    let input_text_source = request.input_text_source;
     let build_signature = request.build_signature;
     let cleaning_config = request.cleaning_config;
+    let processing_config_signature = cleaning_config_signature(&cleaning_config);
     let task = tauri::async_runtime::spawn_blocking(move || {
         let mut last_emit = Instant::now()
             .checked_sub(Duration::from_secs(1))
@@ -1786,25 +1826,19 @@ async fn build_analysis_corpus_command(
         build_analysis_corpus(
             &records,
             AnalysisBuildOptions {
-                input_text_source,
                 built_at,
                 build_signature,
+                processing_config_signature,
                 overview_context,
             },
             &cancel,
             |record| {
-                if record.document_type == DocumentType::Pdf {
-                    Ok(analysis_pdf_text(
-                        record,
-                        project_root.as_deref(),
-                        &cleaning_config,
-                        input_text_source == AnalysisInputSource::Processed,
-                        &cache,
-                    ))
-                } else {
-                    document_text_for_record(record, &cleaning_config, text_mode, Some(&cache))
-                        .map(|document| Some(document.text))
-                }
+                Ok(resolve_analysis_input_for_record(
+                    record,
+                    project_root.as_deref(),
+                    &cleaning_config,
+                    &cache,
+                ))
             },
             |progress| {
                 let phase_changed = last_phase != Some(progress.current_phase);
@@ -1877,23 +1911,26 @@ fn cancel_analysis_build_command(analysis: tauri::State<'_, AnalysisState>) {
 #[tauri::command(async)]
 fn get_analysis_build_status_command(
     analysis: tauri::State<'_, AnalysisState>,
+    cleaning_config: CleaningConfig,
 ) -> AnalysisBuildStatus {
-    analysis.status()
+    analysis.status(&cleaning_config)
 }
 
 #[tauri::command(async)]
 fn compute_corpus_overview_command(
     analysis: tauri::State<'_, AnalysisState>,
+    cleaning_config: CleaningConfig,
 ) -> Result<CorpusOverview, String> {
-    Ok(analysis.corpus()?.overview().clone())
+    Ok(analysis.corpus(&cleaning_config)?.overview().clone())
 }
 
 #[tauri::command]
 async fn query_frequency_list_command(
     query: FrequencyQuery,
+    cleaning_config: CleaningConfig,
     analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<FrequencyPage, String> {
-    let corpus = analysis.corpus()?;
+    let corpus = analysis.corpus(&cleaning_config)?;
     tauri::async_runtime::spawn_blocking(move || query_frequency_list(&corpus, &query))
         .await
         .map_err(|error| format!("Frequency query task failed: {error}"))
@@ -1905,9 +1942,10 @@ async fn query_analysis_documents_command(
     query: String,
     offset: usize,
     limit: usize,
+    cleaning_config: CleaningConfig,
     analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<AnalysisDocumentPage, String> {
-    let corpus = analysis.corpus()?;
+    let corpus = analysis.corpus(&cleaning_config)?;
     tauri::async_runtime::spawn_blocking(move || {
         query_analysis_documents(&corpus, &selection, &query, offset, limit)
     })
@@ -1921,9 +1959,10 @@ async fn query_term_distribution_command(
     selection: AnalysisDocumentSelection,
     offset: usize,
     limit: usize,
+    cleaning_config: CleaningConfig,
     analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<TermDistributionPage, String> {
-    let corpus = analysis.corpus()?;
+    let corpus = analysis.corpus(&cleaning_config)?;
     tauri::async_runtime::spawn_blocking(move || {
         query_term_distribution(&corpus, &token, &selection, offset, limit)
     })
@@ -2998,6 +3037,41 @@ mod tests {
             .unwrap();
 
         assert_eq!(hydrated.extracted_text, "Synthetic extracted text");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn analysis_resolver_applies_active_cleaning_to_native_text() {
+        let root = unique_temp_dir("analysis-processed-text");
+        fs::create_dir_all(&root).unwrap();
+        let source_path = root.join("source.txt");
+        fs::write(&source_path, "keep REMOVE").unwrap();
+        let record = DocumentRecord {
+            source_path: source_path.clone(),
+            relative_path: PathBuf::from("source.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: fs::metadata(&source_path).unwrap().len(),
+            extraction_route: Some(ProjectSourceExtractionRoute::PlainText),
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+        let cleaning_config = CleaningConfig {
+            remove_patterns: vec!["REMOVE".to_string()],
+            ..CleaningConfig::default()
+        };
+
+        let resolution = resolve_analysis_input_for_record(
+            &record,
+            Some(&root),
+            &cleaning_config,
+            &ExtractionCache::new(),
+        );
+
+        assert_eq!(
+            resolution.provenance,
+            corpuswright_core::analysis::AnalysisInputProvenance::Processed
+        );
+        assert_eq!(resolution.text.as_deref(), Some("keep "));
         let _ = fs::remove_dir_all(root);
     }
 }
