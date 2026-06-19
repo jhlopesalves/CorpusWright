@@ -889,6 +889,8 @@ fn reflow_paragraph_lines(lines: &[&str]) -> String {
         } else if should_dehyphenate_line_break(&reflowed, line) {
             reflowed.pop();
             reflowed.push_str(line);
+        } else if reflowed.ends_with('-') {
+            reflowed.push_str(line);
         } else {
             reflowed.push(' ');
             reflowed.push_str(line);
@@ -2461,7 +2463,7 @@ mod tests {
             ..CleaningConfig::default()
         };
 
-        assert_eq!(clean_text("Newton-\nRaphson", &config), "Newton- Raphson");
+        assert_eq!(clean_text("Newton-\nRaphson", &config), "Newton-Raphson");
     }
 
     #[test]
@@ -2471,8 +2473,8 @@ mod tests {
             ..CleaningConfig::default()
         };
 
-        assert_eq!(clean_text("COVID-\n19", &config), "COVID- 19");
-        assert_eq!(clean_text("value-\n% change", &config), "value- % change");
+        assert_eq!(clean_text("COVID-\n19", &config), "COVID-19");
+        assert_eq!(clean_text("value-\n% change", &config), "value-% change");
     }
 
     #[test]
@@ -2482,7 +2484,7 @@ mod tests {
             ..CleaningConfig::default()
         };
 
-        assert_eq!(clean_text("well-\nbeing", &config), "well- being");
+        assert_eq!(clean_text("well-\nbeing", &config), "well-being");
     }
 
     #[test]
