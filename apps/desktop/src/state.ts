@@ -71,7 +71,6 @@ export const state = {
   searchDebounceTimer: undefined as number | undefined,
   lastSearchResult: null as SearchResult | null,
   lastScanCandidates: [] as RepeatedArtifactCandidate[],
-  selectedCandidateIds: new Set<string>(),
   scanWasProcessed: false,
   removalCountAtScanStart: 0,
 };
