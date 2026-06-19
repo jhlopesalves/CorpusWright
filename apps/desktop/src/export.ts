@@ -85,5 +85,4 @@ export async function exportProcessedCorpus(): Promise<void> {
 
 export function initExport(): void {
   dom.menuSaveCorpus.addEventListener("click", exportProcessedCorpus);
-  dom.prepareProcessSources.addEventListener("click", exportProcessedCorpus);
 }

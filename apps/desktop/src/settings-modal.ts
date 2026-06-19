@@ -210,7 +210,6 @@ export function initSettingsModal(callbacks: SettingsModalCallbacks): void {
   dom.btnSaveConfig.addEventListener("click", handleSaveConfig);
 
   dom.prepareCleaningSettings.addEventListener("click", () => openSettingsModal("tab-general"));
-  dom.prepareCustomRemovals.addEventListener("click", () => openSettingsModal("tab-custom-removals"));
 
   dom.cancelSettingsBtn.addEventListener("click", closeSettingsModal);
   dom.btnCloseSettingsModalTop.addEventListener("click", closeSettingsModal);

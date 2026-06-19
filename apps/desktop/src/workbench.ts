@@ -26,7 +26,7 @@ import {
 } from "./analysis";
 import { BOOLEAN_CLEANING_CONFIG_KEYS } from "./config";
 import { dom } from "./dom";
-import { sourceForPath, sourceHasExtractedText } from "./sources";
+import { hasProjectSourceSelection, sourceForPath, sourceHasExtractedText } from "./sources";
 import { state, type WorkbenchId } from "./state";
 
 const FUTURE_ANALYSIS_TOOLS = [
@@ -326,7 +326,12 @@ function refreshPrepareCockpit(): void {
     : sourceCount === 0
       ? "No sources"
       : `${formatNumber(extractedCount)} text available | ${formatNumber(processedCount)} processed`;
-  dom.prepareProcessSources.disabled = loadableCount === 0;
+  dom.prepareProcessSources.textContent = state.activeProject === null
+    ? "Process sources"
+    : hasProjectSourceSelection()
+      ? "Process selected sources"
+      : "Process all sources";
+  dom.prepareProcessSources.disabled = state.activeProject === null || loadableCount === 0;
 }
 
 function analyseStageStatus(): string {

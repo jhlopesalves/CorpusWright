@@ -65,7 +65,6 @@ export const dom = {
   prepareCockpitCleaningSummary: getElement<HTMLSpanElement>("prepare-cockpit-cleaning-summary"),
   prepareProcessingStatus: getElement<HTMLSpanElement>("prepare-processing-status"),
   prepareCleaningSettings: getElement<HTMLButtonElement>("prepare-cleaning-settings"),
-  prepareCustomRemovals: getElement<HTMLButtonElement>("prepare-custom-removals"),
   prepareRepeatedArtifactFinder: getElement<HTMLButtonElement>("prepare-repeated-artifact-finder"),
   prepareProcessSources: getElement<HTMLButtonElement>("prepare-process-sources"),
   btnNewProject: getElement<HTMLButtonElement>("btn-new-project"),
