@@ -13,6 +13,10 @@ const OVERVIEW_DOCUMENT_LIMIT: usize = 20;
 const FREQUENT_TERM_THRESHOLD: u64 = 10;
 const HIGH_DISPERSION_THRESHOLD: f64 = 0.5;
 const MAX_QUERY_WINDOW: usize = 500;
+// These lexical-diversity parameters are provisional and should remain visible in the UI.
+const MATTR_WINDOW_TOKENS: usize = 100;
+const MTLD_TTR_THRESHOLD: f64 = 0.720;
+const MTLD_MIN_DOCUMENT_TOKENS: usize = 100;
 
 // These are provisional descriptive thresholds for orientation, not inferential tests.
 mod overview_thresholds {
@@ -178,6 +182,19 @@ pub struct CorpusOverviewLexicalSpectrum {
     pub band_3_to_9_share: Option<f64>,
     pub band_10plus_share: Option<f64>,
     pub raw_ttr: Option<f64>,
+    pub mattr_window: u32,
+    pub mattr_median: Option<f64>,
+    pub mattr_min: Option<f64>,
+    pub mattr_max: Option<f64>,
+    pub mattr_docs_excluded: u32,
+    pub mattr_docs_used: u32,
+    pub mtld_threshold: f64,
+    pub mtld_min_document_tokens: u32,
+    pub mtld_median: Option<f64>,
+    pub mtld_min: Option<f64>,
+    pub mtld_max: Option<f64>,
+    pub mtld_docs_excluded: u32,
+    pub mtld_docs_used: u32,
     pub reading: String,
 }
 
@@ -188,6 +205,8 @@ pub struct CorpusOverviewFrequencyConcentration {
     pub top_100_coverage: Option<f64>,
     pub top_1000_coverage: Option<f64>,
     pub top_10000_coverage: Option<f64>,
+    pub evenness_j: Option<f64>,
+    pub effective_vocabulary_entropy: Option<f64>,
     pub reading: String,
 }
 
@@ -319,6 +338,8 @@ pub struct CorpusOverview {
 struct AnalysisDocument {
     summary: AnalysisDocumentSummary,
     term_counts: Vec<(usize, u64)>,
+    mattr: Option<f64>,
+    mtld: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -538,6 +559,130 @@ fn median_f64(values: &mut [f64]) -> Option<f64> {
         Some((values[middle - 1] + values[middle]) / 2.0)
     } else {
         Some(values[middle])
+    }
+}
+
+fn mattr(tokens: &[String], window: usize) -> Option<f64> {
+    if window == 0 || tokens.len() < window {
+        return None;
+    }
+
+    let mut counts = HashMap::<&str, usize>::new();
+    for token in &tokens[..window] {
+        *counts.entry(token.as_str()).or_default() += 1;
+    }
+    let mut ttr_sum = counts.len() as f64 / window as f64;
+    let window_count = tokens.len() - window + 1;
+    for start in 1..window_count {
+        let outgoing = tokens[start - 1].as_str();
+        let remove_outgoing = counts.get_mut(outgoing).is_some_and(|count| {
+            *count -= 1;
+            *count == 0
+        });
+        if remove_outgoing {
+            counts.remove(outgoing);
+        }
+        *counts
+            .entry(tokens[start + window - 1].as_str())
+            .or_default() += 1;
+        ttr_sum += counts.len() as f64 / window as f64;
+    }
+    Some(ttr_sum / window_count as f64)
+}
+
+fn mtld_direction<'a>(
+    tokens: impl Iterator<Item = &'a str>,
+    token_count: usize,
+    threshold: f64,
+) -> Option<f64> {
+    if token_count == 0 || !(0.0..1.0).contains(&threshold) {
+        return None;
+    }
+
+    let mut types = HashSet::new();
+    let mut segment_tokens = 0usize;
+    let mut factors = 0.0;
+    for token in tokens {
+        segment_tokens += 1;
+        types.insert(token);
+        let ttr = types.len() as f64 / segment_tokens as f64;
+        if ttr <= threshold {
+            factors += 1.0;
+            types.clear();
+            segment_tokens = 0;
+        }
+    }
+    if segment_tokens > 0 {
+        let ttr = types.len() as f64 / segment_tokens as f64;
+        factors += (1.0 - ttr) / (1.0 - threshold);
+    }
+    (factors > 0.0)
+        .then(|| token_count as f64 / factors)
+        .filter(|value| value.is_finite())
+}
+
+fn mtld(tokens: &[String], threshold: f64) -> Option<f64> {
+    let forward = mtld_direction(tokens.iter().map(String::as_str), tokens.len(), threshold)?;
+    let backward = mtld_direction(
+        tokens.iter().rev().map(String::as_str),
+        tokens.len(),
+        threshold,
+    )?;
+    Some((forward + backward) / 2.0)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MetricSummary {
+    median: Option<f64>,
+    minimum: Option<f64>,
+    maximum: Option<f64>,
+    documents_used: usize,
+    documents_excluded: usize,
+}
+
+fn summarise_document_metric(
+    documents: &[AnalysisDocument],
+    metric: impl Fn(&AnalysisDocument) -> Option<f64>,
+) -> MetricSummary {
+    let mut values = documents
+        .iter()
+        .filter_map(metric)
+        .filter(|value| value.is_finite())
+        .collect::<Vec<_>>();
+    let documents_used = values.len();
+    let minimum = values.iter().copied().min_by(f64::total_cmp);
+    let maximum = values.iter().copied().max_by(f64::total_cmp);
+    let median = median_f64(&mut values);
+    MetricSummary {
+        median,
+        minimum,
+        maximum,
+        documents_used,
+        documents_excluded: documents.len().saturating_sub(documents_used),
+    }
+}
+
+fn entropy_metrics(
+    frequencies: &[u64],
+    total_tokens: u64,
+) -> (Option<f64>, Option<f64>, Option<f64>) {
+    if total_tokens == 0 || frequencies.len() <= 1 {
+        return (None, None, None);
+    }
+    let entropy = -frequencies
+        .iter()
+        .filter(|frequency| **frequency > 0)
+        .map(|frequency| {
+            let probability = *frequency as f64 / total_tokens as f64;
+            probability * probability.log2()
+        })
+        .sum::<f64>();
+    let evenness = (entropy / (frequencies.len() as f64).log2()).clamp(0.0, 1.0);
+    let effective_vocabulary = 2.0f64.powf(entropy);
+    if entropy.is_finite() && evenness.is_finite() && effective_vocabulary.is_finite() {
+        (Some(entropy), Some(evenness), Some(effective_vocabulary))
+    } else {
+        (None, None, None)
     }
 }
 
@@ -787,6 +932,8 @@ fn build_overview(
     let gini = gini_coefficient(&token_counts);
     let coefficient_of_variation = coefficient_of_variation(&token_counts);
     let effective_documents = effective_document_count(&token_counts, total_tokens);
+    let mattr_summary = summarise_document_metric(documents, |document| document.mattr);
+    let mtld_summary = summarise_document_metric(documents, |document| document.mtld);
     let balance_severity = balance_severity(
         documents.len(),
         total_tokens,
@@ -883,6 +1030,7 @@ fn build_overview(
     let top_100_coverage = coverage_at(&frequencies, 100, total_tokens);
     let top_1000_coverage = coverage_at(&frequencies, 1_000, total_tokens);
     let top_10000_coverage = coverage_at(&frequencies, 10_000, total_tokens);
+    let (_, evenness_j, effective_vocabulary_entropy) = entropy_metrics(&frequencies, total_tokens);
 
     let sources_in_project = metadata
         .overview_context
@@ -1104,6 +1252,21 @@ fn build_overview(
             band_3_to_9_share: type_share(band_3_to_9_count, total_types),
             band_10plus_share: type_share(band_10plus_count, total_types),
             raw_ttr: (total_tokens > 0).then(|| total_types as f64 / total_tokens as f64),
+            mattr_window: MATTR_WINDOW_TOKENS as u32,
+            mattr_median: mattr_summary.median,
+            mattr_min: mattr_summary.minimum,
+            mattr_max: mattr_summary.maximum,
+            mattr_docs_excluded: u32::try_from(mattr_summary.documents_excluded)
+                .unwrap_or(u32::MAX),
+            mattr_docs_used: u32::try_from(mattr_summary.documents_used).unwrap_or(u32::MAX),
+            mtld_threshold: MTLD_TTR_THRESHOLD,
+            mtld_min_document_tokens: MTLD_MIN_DOCUMENT_TOKENS as u32,
+            mtld_median: mtld_summary.median,
+            mtld_min: mtld_summary.minimum,
+            mtld_max: mtld_summary.maximum,
+            mtld_docs_excluded: u32::try_from(mtld_summary.documents_excluded)
+                .unwrap_or(u32::MAX),
+            mtld_docs_used: u32::try_from(mtld_summary.documents_used).unwrap_or(u32::MAX),
             reading: "A long tail dominated by rare words is expected in natural-language corpora; it is not an extraction-quality problem."
                 .to_string(),
         },
@@ -1111,6 +1274,8 @@ fn build_overview(
             top_100_coverage,
             top_1000_coverage,
             top_10000_coverage,
+            evenness_j,
+            effective_vocabulary_entropy,
             reading: "A small set of high-frequency forms can carry much of the token mass even when most types are rare."
                 .to_string(),
         },
@@ -1221,6 +1386,10 @@ where
             continue;
         };
         let tokens = tokenise(&text);
+        let document_mattr = mattr(&tokens, MATTR_WINDOW_TOKENS);
+        let document_mtld = (tokens.len() >= MTLD_MIN_DOCUMENT_TOKENS)
+            .then(|| mtld(&tokens, MTLD_TTR_THRESHOLD))
+            .flatten();
         let mut document_terms = HashMap::<String, u64>::new();
         for token in tokens {
             *document_terms.entry(token).or_default() += 1;
@@ -1254,6 +1423,8 @@ where
         documents.push(AnalysisDocument {
             summary: document_summary(record, document_id, token_count),
             term_counts: sparse_counts,
+            mattr: document_mattr,
+            mtld: document_mtld,
         });
         report_progress(AnalysisBuildProgress {
             files_done: record_index + 1,
@@ -1782,6 +1953,71 @@ mod tests {
     }
 
     #[test]
+    fn mattr_averages_known_window_ttrs() {
+        let tokens = ["a", "b", "a", "c"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+
+        let value = mattr(&tokens, 3).unwrap();
+        assert!((value - (5.0 / 6.0)).abs() < 1e-12);
+        assert_eq!(mattr(&tokens, 5), None);
+    }
+
+    #[test]
+    fn mtld_averages_forward_and_backward_runs() {
+        let tokens = ["a", "b", "a", "c", "a", "b", "d", "a", "b", "c"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+
+        let value = mtld(&tokens, 0.72).unwrap();
+        assert!((value - (545.0 / 106.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn lexical_diversity_excludes_short_documents() {
+        let short = std::iter::repeat("short")
+            .take(99)
+            .collect::<Vec<_>>()
+            .join(" ");
+        let eligible = std::iter::repeat("eligible")
+            .take(100)
+            .collect::<Vec<_>>()
+            .join(" ");
+        let corpus = corpus_for(&[
+            ("short.txt", short.as_str()),
+            ("eligible.txt", eligible.as_str()),
+        ]);
+        let lexical = &corpus.overview().lexical_spectrum;
+
+        assert_eq!(lexical.mattr_docs_used, 1);
+        assert_eq!(lexical.mattr_docs_excluded, 1);
+        assert_eq!(lexical.mtld_docs_used, 1);
+        assert_eq!(lexical.mtld_docs_excluded, 1);
+        assert_eq!(lexical.mattr_median, Some(0.01));
+        assert!(lexical.mtld_median.is_some());
+    }
+
+    #[test]
+    fn entropy_metrics_match_uniform_and_effective_vocabularies() {
+        let (entropy, evenness, effective_vocabulary) = entropy_metrics(&[1, 1, 1, 1], 4);
+        assert_eq!(entropy, Some(2.0));
+        assert_eq!(evenness, Some(1.0));
+        assert_eq!(effective_vocabulary, Some(4.0));
+
+        let (entropy, _, effective_vocabulary) = entropy_metrics(&[3, 1], 4);
+        let entropy = entropy.unwrap();
+        assert!((effective_vocabulary.unwrap() - 2.0f64.powf(entropy)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn entropy_metrics_omit_single_type_and_empty_distributions() {
+        assert_eq!(entropy_metrics(&[10], 10), (None, None, None));
+        assert_eq!(entropy_metrics(&[], 0), (None, None, None));
+    }
+
+    #[test]
     fn lexical_bands_partition_types_and_match_frequent_types() {
         let corpus = corpus_for(&[("bands.txt", "a b b c c c d d d d d d d d d d")]);
         let overview = corpus.overview();
@@ -1902,6 +2138,15 @@ mod tests {
         assert_eq!(overview.balance.coefficient_of_variation, None);
         assert_eq!(overview.balance.effective_documents, None);
         assert_eq!(overview.lexical_spectrum.raw_ttr, None);
+        assert_eq!(overview.lexical_spectrum.mattr_median, None);
+        assert_eq!(overview.lexical_spectrum.mtld_median, None);
+        assert_eq!(overview.frequency_concentration.evenness_j, None);
+        assert_eq!(
+            overview
+                .frequency_concentration
+                .effective_vocabulary_entropy,
+            None
+        );
         let json = serde_json::to_string(overview).unwrap();
         assert!(!json.contains("NaN"));
         assert!(!json.contains("Infinity"));

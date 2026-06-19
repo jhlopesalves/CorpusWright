@@ -918,7 +918,7 @@ main {
 
 .analysis-reading-status {
   color: var(--text-muted);
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .analysis-reading-finding-text {
@@ -1030,6 +1030,91 @@ main {
 .analysis-metric-share:empty {
   min-width: 0;
   padding-left: 0 !important;
+}
+
+.analysis-glossary-term {
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dotted currentColor;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.analysis-glossary-term:hover {
+  color: var(--accent-color);
+}
+
+.analysis-glossary-term:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 3px;
+}
+
+.analysis-glossary-caret {
+  display: inline-block;
+  color: var(--text-muted);
+  font-size: 0.9em;
+  transition: transform 120ms ease;
+}
+
+.analysis-glossary-term[aria-expanded="true"] .analysis-glossary-caret {
+  transform: rotate(90deg);
+}
+
+.analysis-glossary-label-suffix {
+  font-weight: 500;
+}
+
+.analysis-glossary-row {
+  border-top: 0 !important;
+}
+
+.analysis-glossary-row > td {
+  padding: 0 0 8px !important;
+}
+
+.analysis-glossary-detail {
+  display: grid;
+  gap: 7px;
+  padding: 9px 11px;
+  border-left: 2px solid var(--accent-color);
+  background: var(--hover-color);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.analysis-glossary-detail[hidden],
+.analysis-composition-glossary[hidden],
+.analysis-glossary-row[hidden] {
+  display: none;
+}
+
+.analysis-glossary-detail p {
+  margin: 0;
+}
+
+.analysis-glossary-formula {
+  max-width: 100%;
+  overflow-x: auto;
+  color: var(--text-color);
+  font-size: 0.96rem;
+}
+
+.analysis-glossary-formula .katex-display {
+  margin: 0.2em 0;
+  text-align: left;
+}
+
+.analysis-composition-glossary {
+  grid-column: 1 / -1;
+  margin-top: 5px !important;
 }
 
 .analysis-compact-table {
