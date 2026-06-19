@@ -10,6 +10,8 @@ import type { ProjectSourceStatus } from "./generated/ProjectSourceStatus.js";
 import type { ProjectSourceSelectionDescriptor } from "./generated/ProjectSourceSelectionDescriptor.js";
 import { state } from "./state";
 
+const PROJECT_SOURCES_UPDATED_EVENT = "corpuswright:project-sources-updated";
+
 export interface ProjectSourcePdfHandlingOverride {
   path: string;
   pdfProfile: ProjectSourcePdfProfile;
@@ -336,6 +338,7 @@ export async function loadProjectSourcesForActiveProject(offset = 0): Promise<Pr
   }
   const generation = ++state.projectSourceQueryGeneration;
   state.projectSourceQueryPending = true;
+  window.dispatchEvent(new CustomEvent(PROJECT_SOURCES_UPDATED_EVENT));
   try {
     const page = await invoke<ProjectSourcePage>("query_project_sources_command", {
       rootPath: state.activeProject.rootPath,
@@ -356,6 +359,7 @@ export async function loadProjectSourcesForActiveProject(offset = 0): Promise<Pr
   } finally {
     if (generation === state.projectSourceQueryGeneration) {
       state.projectSourceQueryPending = false;
+      window.dispatchEvent(new CustomEvent(PROJECT_SOURCES_UPDATED_EVENT));
     }
   }
 }

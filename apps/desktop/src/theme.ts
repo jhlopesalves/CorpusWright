@@ -5,11 +5,14 @@ import {
   getLeftPanel,
 } from "./dom";
 
+function toggleTheme(): void {
+  const current = document.documentElement.dataset.theme;
+  document.documentElement.dataset.theme = current === "light" ? "dark" : "light";
+}
+
 export function initThemeToggle(): void {
-  dom.themeToggle.addEventListener("click", () => {
-    const current = document.documentElement.dataset.theme;
-    document.documentElement.dataset.theme = current === "light" ? "dark" : "light";
-  });
+  dom.themeToggle.addEventListener("click", toggleTheme);
+  dom.menuToggleTheme.addEventListener("click", toggleTheme);
 }
 
 export function initAppChrome(): void {
