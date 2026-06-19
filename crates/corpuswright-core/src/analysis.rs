@@ -280,6 +280,15 @@ pub struct CorpusOverviewContext {
     pub metadata_attached: bool,
 }
 
+/// Configuration and snapshot metadata for one analysis build.
+#[derive(Debug, Clone)]
+pub struct AnalysisBuildOptions {
+    pub input_text_source: AnalysisInputSource,
+    pub built_at: String,
+    pub build_signature: String,
+    pub overview_context: CorpusOverviewContext,
+}
+
 /// Render-ready first-stage corpus EDA summary.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -1154,10 +1163,7 @@ fn build_overview(
 /// Builds a sparse analysis index while reading one document at a time.
 pub fn build_analysis_corpus<TextLoader, Progress>(
     records: &[DocumentRecord],
-    input_text_source: AnalysisInputSource,
-    built_at: String,
-    build_signature: String,
-    overview_context: CorpusOverviewContext,
+    options: AnalysisBuildOptions,
     cancel: &AtomicBool,
     mut load_text: TextLoader,
     mut report_progress: Progress,
@@ -1166,6 +1172,13 @@ where
     TextLoader: FnMut(&DocumentRecord) -> Result<Option<String>, String>,
     Progress: FnMut(AnalysisBuildProgress),
 {
+    let AnalysisBuildOptions {
+        input_text_source,
+        built_at,
+        build_signature,
+        overview_context,
+    } = options;
+
     report_progress(AnalysisBuildProgress {
         files_done: 0,
         files_total: records.len(),
@@ -1633,6 +1646,15 @@ mod tests {
         }
     }
 
+    fn build_options() -> AnalysisBuildOptions {
+        AnalysisBuildOptions {
+            input_text_source: AnalysisInputSource::Extracted,
+            built_at: "2026-01-01T00:00:00Z".to_string(),
+            build_signature: "signature".to_string(),
+            overview_context: CorpusOverviewContext::default(),
+        }
+    }
+
     fn corpus_for(texts: &[(&str, &str)]) -> AnalysisCorpus {
         let records = texts
             .iter()
@@ -1641,10 +1663,7 @@ mod tests {
         let text_by_name = texts.iter().copied().collect::<HashMap<_, _>>();
         build_analysis_corpus(
             &records,
-            AnalysisInputSource::Extracted,
-            "2026-01-01T00:00:00Z".to_string(),
-            "signature".to_string(),
-            CorpusOverviewContext::default(),
+            build_options(),
             &AtomicBool::new(false),
             |record| {
                 Ok(text_by_name
@@ -1794,10 +1813,7 @@ mod tests {
         let records = vec![record("coverage.txt")];
         let corpus = build_analysis_corpus(
             &records,
-            AnalysisInputSource::Extracted,
-            "2026-01-01T00:00:00Z".to_string(),
-            "signature".to_string(),
-            CorpusOverviewContext::default(),
+            build_options(),
             &AtomicBool::new(false),
             |_| Ok(Some(text.clone())),
             |_| {},
@@ -1871,10 +1887,7 @@ mod tests {
     fn empty_corpus_overview_has_no_non_finite_values() {
         let corpus = build_analysis_corpus(
             &[],
-            AnalysisInputSource::Extracted,
-            "2026-01-01T00:00:00Z".to_string(),
-            "signature".to_string(),
-            CorpusOverviewContext::default(),
+            build_options(),
             &AtomicBool::new(false),
             |_| Ok(None),
             |_| {},
@@ -1901,10 +1914,7 @@ mod tests {
             .collect::<Vec<_>>();
         let corpus = build_analysis_corpus(
             &records,
-            AnalysisInputSource::Extracted,
-            "2026-01-01T00:00:00Z".to_string(),
-            "signature".to_string(),
-            CorpusOverviewContext::default(),
+            build_options(),
             &AtomicBool::new(false),
             |_| Ok(Some("shared unique".to_string())),
             |_| {},
@@ -1924,10 +1934,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let result = build_analysis_corpus(
             &records,
-            AnalysisInputSource::Extracted,
-            "2026-01-01T00:00:00Z".to_string(),
-            "signature".to_string(),
-            CorpusOverviewContext::default(),
+            build_options(),
             &cancel,
             |_| Ok(Some("one two".to_string())),
             |progress| {

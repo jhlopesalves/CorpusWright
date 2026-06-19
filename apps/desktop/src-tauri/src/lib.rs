@@ -1,8 +1,8 @@
 use corpuswright_core::analysis::{
-    AnalysisBuildError, AnalysisBuildProgress, AnalysisCorpus, AnalysisDocumentPage,
-    AnalysisDocumentSelection, AnalysisInputSource, CorpusOverview, CorpusOverviewContext,
-    FrequencyPage, FrequencyQuery, TermDistributionPage, build_analysis_corpus,
-    query_analysis_documents, query_frequency_list, query_term_distribution,
+    AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisCorpus,
+    AnalysisDocumentPage, AnalysisDocumentSelection, AnalysisInputSource, CorpusOverview,
+    CorpusOverviewContext, FrequencyPage, FrequencyQuery, TermDistributionPage,
+    build_analysis_corpus, query_analysis_documents, query_frequency_list, query_term_distribution,
 };
 use corpuswright_core::cache::{
     CacheEntry, DocumentTextMode, ExtractionCache, document_text_for_record,
@@ -1785,10 +1785,12 @@ async fn build_analysis_corpus_command(
         let mut last_phase = None;
         build_analysis_corpus(
             &records,
-            input_text_source,
-            built_at,
-            build_signature,
-            overview_context,
+            AnalysisBuildOptions {
+                input_text_source,
+                built_at,
+                build_signature,
+                overview_context,
+            },
             &cancel,
             |record| {
                 if record.document_type == DocumentType::Pdf {
