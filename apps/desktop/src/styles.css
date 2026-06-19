@@ -3443,28 +3443,22 @@ mark.search-match.current-match {
 }
 
 .project-source-preview-viewport {
-  display: block;
-  position: relative;
+  gap: 0;
 }
 
 .project-source-preview-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  will-change: transform;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .project-source-preview-card {
-  height: 268px;
-  margin-bottom: 12px;
+  min-height: 268px;
   box-sizing: border-box;
 }
 
-.project-source-preview-card .file-card-body {
-  flex: 1;
-  min-height: 0 !important;
-  overflow: auto;
+.project-source-preview-spacer {
+  flex: 0 0 auto;
 }
 
 /* --- Setting row with inline help icon --- */

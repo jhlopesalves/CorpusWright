@@ -29,7 +29,7 @@ import type { ProjectSourcePreviewViewport } from "./generated/ProjectSourcePrev
 const PREVIEW_CHUNK_SIZE = 50;
 const FULL_OCR_CHUNK_SIZE = 2;
 const FULL_OCR_MAX_CHARS_PER_PAGE = 50_000;
-const PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT = 280;
+const PROJECT_SOURCE_PREVIEW_DEFAULT_ITEM_HEIGHT = 280;
 const PROJECT_SOURCE_PREVIEW_OVERSCAN = 3;
 const PROJECT_SOURCE_PREVIEW_TEXT_CAP = 2_000;
 
@@ -40,6 +40,7 @@ let fullOcrCancelRequested = false;
 let projectSourcePreviewActive = false;
 let projectSourcePreviewRequest = 0;
 let projectSourcePreviewTimer: number | null = null;
+let projectSourcePreviewEstimatedItemHeight = PROJECT_SOURCE_PREVIEW_DEFAULT_ITEM_HEIGHT;
 
 interface PreviewCallbacks {
   onPreviewTabChanged: () => void;
@@ -92,7 +93,7 @@ export async function updatePreview(): Promise<void> {
       state.focusedProjectSourceId !== null
         && isProjectSourceSelected(state.focusedProjectSourceId)
         && state.focusedProjectSourceOffset !== null
-        ? state.focusedProjectSourceOffset * PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT
+        ? state.focusedProjectSourceOffset * projectSourcePreviewEstimatedItemHeight
         : state.projectSourcePreviewScrollTop,
     );
     return;
@@ -154,13 +155,13 @@ async function renderSelectedProjectSourcePreviewViewport(
   const viewportHeight = Math.max(
     originalScroll?.clientHeight ?? 0,
     processedScroll?.clientHeight ?? 0,
-    PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT,
+    projectSourcePreviewEstimatedItemHeight,
   );
   const viewportStart = Math.max(
     0,
-    Math.floor(scrollTop / PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT) - PROJECT_SOURCE_PREVIEW_OVERSCAN,
+    Math.floor(scrollTop / projectSourcePreviewEstimatedItemHeight) - PROJECT_SOURCE_PREVIEW_OVERSCAN,
   );
-  const viewportSize = Math.ceil(viewportHeight / PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT)
+  const viewportSize = Math.ceil(viewportHeight / projectSourcePreviewEstimatedItemHeight)
     + 2 * PROJECT_SOURCE_PREVIEW_OVERSCAN;
   state.projectSourcePreviewScrollTop = scrollTop;
   if (originalScroll && Math.abs(originalScroll.scrollTop - scrollTop) > 1) {
@@ -223,12 +224,12 @@ function renderProjectSourcePreviewItems(
   mode: "original" | "processed",
 ): void {
   container.classList.add("project-source-preview-viewport");
-  container.style.height = `${viewport.total_selected * PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT}px`;
+  container.style.removeProperty("height");
   container.replaceChildren();
 
+  const topSpacer = createProjectSourcePreviewSpacer(viewport.viewport_start);
   const layer = document.createElement("div");
   layer.className = "project-source-preview-layer";
-  layer.style.transform = `translateY(${viewport.viewport_start * PROJECT_SOURCE_PREVIEW_ITEM_HEIGHT}px)`;
   for (const [index, item] of viewport.items.entries()) {
     layer.appendChild(createProjectSourcePreviewViewportCard(
       item,
@@ -237,7 +238,41 @@ function renderProjectSourcePreviewItems(
       mode,
     ));
   }
-  container.appendChild(layer);
+  const remainingItems = Math.max(
+    0,
+    viewport.total_selected - viewport.viewport_start - viewport.items.length,
+  );
+  const bottomSpacer = createProjectSourcePreviewSpacer(remainingItems);
+  container.append(topSpacer, layer, bottomSpacer);
+
+  if (viewport.viewport_start === 0 && container.parentElement?.classList.contains("active")) {
+    updateProjectSourcePreviewItemHeight(layer, viewport.items.length);
+  }
+}
+
+function createProjectSourcePreviewSpacer(itemCount: number): HTMLDivElement {
+  const spacer = document.createElement("div");
+  spacer.className = "project-source-preview-spacer";
+  spacer.dataset.itemCount = itemCount.toString();
+  spacer.style.height = `${itemCount * projectSourcePreviewEstimatedItemHeight}px`;
+  return spacer;
+}
+
+function updateProjectSourcePreviewItemHeight(layer: HTMLDivElement, itemCount: number): void {
+  if (itemCount === 0) return;
+  const measuredItemHeight = Math.ceil(layer.getBoundingClientRect().height / itemCount);
+  if (measuredItemHeight <= 0) return;
+
+  projectSourcePreviewEstimatedItemHeight = Math.max(
+    PROJECT_SOURCE_PREVIEW_DEFAULT_ITEM_HEIGHT,
+    measuredItemHeight,
+  );
+  for (const container of [dom.previewContent, dom.processedPreviewContent]) {
+    for (const spacer of container.querySelectorAll<HTMLElement>(".project-source-preview-spacer")) {
+      const spacerItemCount = Number.parseInt(spacer.dataset.itemCount ?? "0", 10);
+      spacer.style.height = `${spacerItemCount * projectSourcePreviewEstimatedItemHeight}px`;
+    }
+  }
 }
 
 function createProjectSourcePreviewViewportCard(
