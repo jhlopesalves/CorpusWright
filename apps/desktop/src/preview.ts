@@ -32,6 +32,7 @@ const FULL_OCR_MAX_CHARS_PER_PAGE = 50_000;
 const PROJECT_SOURCE_PREVIEW_DEFAULT_ITEM_HEIGHT = 280;
 const PROJECT_SOURCE_PREVIEW_OVERSCAN = 3;
 const PROJECT_SOURCE_PREVIEW_TEXT_CAP = 2_000;
+const PROJECT_SOURCE_PREVIEW_MAX_VIEWPORT_SIZE = 50;
 
 let previewObserver: IntersectionObserver | null = null;
 let chunkSentinelObserver: IntersectionObserver | null = null;
@@ -41,6 +42,12 @@ let projectSourcePreviewActive = false;
 let projectSourcePreviewRequest = 0;
 let projectSourcePreviewTimer: number | null = null;
 let projectSourcePreviewEstimatedItemHeight = PROJECT_SOURCE_PREVIEW_DEFAULT_ITEM_HEIGHT;
+let projectSourcePreviewLoading = false;
+let projectSourcePreviewWindow: {
+  start: number;
+  end: number;
+  total: number;
+} | null = null;
 
 interface PreviewCallbacks {
   onPreviewTabChanged: () => void;
@@ -150,6 +157,7 @@ async function renderSelectedProjectSourcePreviewViewport(
 ): Promise<void> {
   projectSourcePreviewActive = true;
   const request = ++projectSourcePreviewRequest;
+  projectSourcePreviewLoading = true;
   const originalScroll = dom.previewContent.parentElement;
   const processedScroll = dom.processedPreviewContent.parentElement;
   const viewportHeight = Math.max(
@@ -157,12 +165,7 @@ async function renderSelectedProjectSourcePreviewViewport(
     processedScroll?.clientHeight ?? 0,
     projectSourcePreviewEstimatedItemHeight,
   );
-  const viewportStart = Math.max(
-    0,
-    Math.floor(scrollTop / projectSourcePreviewEstimatedItemHeight) - PROJECT_SOURCE_PREVIEW_OVERSCAN,
-  );
-  const viewportSize = Math.ceil(viewportHeight / projectSourcePreviewEstimatedItemHeight)
-    + 2 * PROJECT_SOURCE_PREVIEW_OVERSCAN;
+  const { viewportStart, viewportSize } = projectSourcePreviewViewport(scrollTop, viewportHeight);
   state.projectSourcePreviewScrollTop = scrollTop;
   if (originalScroll && Math.abs(originalScroll.scrollTop - scrollTop) > 1) {
     originalScroll.scrollTop = scrollTop;
@@ -201,6 +204,11 @@ async function renderSelectedProjectSourcePreviewViewport(
 
     renderProjectSourcePreviewItems(dom.previewContent, original, "original");
     renderProjectSourcePreviewItems(dom.processedPreviewContent, processed, "processed");
+    projectSourcePreviewWindow = {
+      start: original.viewport_start,
+      end: original.viewport_start + original.items.length,
+      total: original.total_selected,
+    };
     dom.statusBar.textContent = `Preview ready for ${original.total_selected.toLocaleString()} selected source${original.total_selected === 1 ? "" : "s"}.`;
   } catch (error) {
     if (
@@ -214,6 +222,7 @@ async function renderSelectedProjectSourcePreviewViewport(
   } finally {
     if (request === projectSourcePreviewRequest) {
       dom.previewLoadingOverlay.style.display = "none";
+      projectSourcePreviewLoading = false;
     }
   }
 }
@@ -335,7 +344,13 @@ function handleProjectSourcePreviewScroll(event: Event): void {
   state.focusedProjectSourceOffset = null;
   if (projectSourcePreviewTimer !== null) {
     window.clearTimeout(projectSourcePreviewTimer);
+    projectSourcePreviewTimer = null;
   }
+  if (
+    projectSourcePreviewLoading
+    || !projectSourcePreviewNeedsLoad(target.scrollTop, target.clientHeight)
+  ) return;
+
   projectSourcePreviewTimer = window.setTimeout(() => {
     projectSourcePreviewTimer = null;
     void renderSelectedProjectSourcePreviewViewport(
@@ -346,8 +361,37 @@ function handleProjectSourcePreviewScroll(event: Event): void {
   }, 50);
 }
 
+function projectSourcePreviewViewport(
+  scrollTop: number,
+  viewportHeight: number,
+): { viewportStart: number; viewportSize: number } {
+  const viewportStart = Math.max(
+    0,
+    Math.floor(scrollTop / projectSourcePreviewEstimatedItemHeight) - PROJECT_SOURCE_PREVIEW_OVERSCAN,
+  );
+  const viewportSize = Math.min(
+    PROJECT_SOURCE_PREVIEW_MAX_VIEWPORT_SIZE,
+    Math.ceil(viewportHeight / projectSourcePreviewEstimatedItemHeight)
+      + 2 * PROJECT_SOURCE_PREVIEW_OVERSCAN,
+  );
+  return { viewportStart, viewportSize };
+}
+
+function projectSourcePreviewNeedsLoad(scrollTop: number, viewportHeight: number): boolean {
+  if (!projectSourcePreviewWindow) return true;
+  const { start, end, total } = projectSourcePreviewWindow;
+  if (start === 0 && end >= total) return false;
+
+  const { viewportStart, viewportSize } = projectSourcePreviewViewport(scrollTop, viewportHeight);
+  const requestedStart = Math.min(viewportStart, total);
+  const requestedEnd = Math.min(total, requestedStart + viewportSize);
+  return requestedStart < start || requestedEnd > end;
+}
+
 function leaveProjectSourcePreviewMode(): void {
   projectSourcePreviewActive = false;
+  projectSourcePreviewLoading = false;
+  projectSourcePreviewWindow = null;
   projectSourcePreviewRequest += 1;
   for (const container of [dom.previewContent, dom.processedPreviewContent]) {
     container.classList.remove("project-source-preview-viewport");
