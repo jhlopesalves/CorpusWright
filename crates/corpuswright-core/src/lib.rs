@@ -18,6 +18,7 @@
 //! - **export**: export processed UTF-8 `.txt` files with `manifest.json` and
 //!   metadata artefacts.
 
+pub mod analysis;
 pub mod cache;
 pub mod clean;
 pub mod docx;

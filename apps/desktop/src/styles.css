@@ -1599,6 +1599,22 @@ main {
   text-align: center;
 }
 
+.analysis-pagination {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-pagination .secondary-btn {
+  min-height: 30px;
+  padding: 4px 9px;
+}
+
 .frequency-files-modal-content {
   display: flex;
   flex-direction: column;
