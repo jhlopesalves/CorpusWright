@@ -103,8 +103,6 @@ function closeMenus(): void {
 function showWelcome(message = ""): void {
   dom.welcomeScreen.classList.remove("hidden");
   dom.projectWorkspace.classList.add("hidden");
-  dom.menuFileDropdown.classList.add("hidden");
-  dom.menuProcessDropdown.classList.add("hidden");
   dom.menuCloseProject.classList.add("hidden");
   dom.projectContext.classList.add("hidden");
   hideWorkbenchSwitcher();
@@ -119,21 +117,20 @@ async function activateProject(project: ActiveProject, scanSourceRoot: boolean):
   await loadDecisionsForProject(project.rootPath);
   dom.welcomeScreen.classList.add("hidden");
   dom.projectWorkspace.classList.remove("hidden");
-  dom.menuFileDropdown.classList.remove("hidden");
-  dom.menuProcessDropdown.classList.remove("hidden");
   dom.menuCloseProject.classList.remove("hidden");
   dom.projectContext.classList.remove("hidden");
   dom.projectContextName.textContent = `Project: ${project.name}`;
   dom.projectContextPath.textContent = project.rootPath;
-  resetWorkbenchForProject();
 
   state.projectSources = [];
   state.projectSourceSummary = null;
   state.projectSourceQuerySummary = null;
+  state.projectSourceQueryPending = true;
   state.sourceSearchQuery = "";
   dom.searchInput.value = "";
   clearStateForLoad();
   renderProjectEmptyState();
+  resetWorkbenchForProject();
   closeMenus();
 
   await loadProjectSourcesForActiveProject();
@@ -234,6 +231,7 @@ async function handleCloseProject(): Promise<void> {
   state.projectSources = [];
   state.projectSourceSummary = null;
   state.projectSourceQuerySummary = null;
+  state.projectSourceQueryPending = false;
   state.sourceSearchQuery = "";
   dom.searchInput.value = "";
   clearStateForLoad();

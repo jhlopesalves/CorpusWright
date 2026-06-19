@@ -8,7 +8,7 @@ import {
   type BooleanCleaningConfigKey,
 } from "./config";
 import { dom } from "./dom";
-import { renderCustomRemovals, syncDraftCustomRemovalsFromConfig } from "./custom-removals";
+import { syncDraftCustomRemovalsFromConfig } from "./custom-removals";
 import { syncDecisionsWithActiveRules, syncRepeatedArtifactSettingsSection } from "./repeated-artifacts";
 import { state } from "./state";
 import { hasProjectSourceSelection } from "./sources";
@@ -52,6 +52,8 @@ interface SettingsModalCallbacks {
   updateWordCount: () => void;
   schedulePreviewUpdate: (delay: number) => void;
 }
+
+type SettingsTabId = "tab-general" | "tab-line-page" | "tab-extraction" | "tab-custom-removals";
 
 export function syncCheckboxesFromConfig(config: CleaningConfig): void {
   for (const { configKey, element } of cleaningCheckboxBindings) {
@@ -162,6 +164,24 @@ function closeSettingsModal(): void {
   dom.settingsModal.classList.add("hidden");
 }
 
+function activateSettingsTab(targetId: SettingsTabId): void {
+  dom.settingsTabs.forEach(t => {
+    const active = t.getAttribute("data-target") === targetId;
+    t.classList.toggle("active", active);
+    t.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  dom.settingsTabContents.forEach(c => c.classList.remove("active"));
+  document.getElementById(targetId)?.classList.add("active");
+}
+
+export function openSettingsModal(targetId: SettingsTabId = "tab-general"): void {
+  setModalConfigStatus("");
+  syncModalControlsFromConfig(state.activeCleaningConfig);
+  syncRepeatedArtifactSettingsSection();
+  activateSettingsTab(targetId);
+  dom.settingsModal.classList.remove("hidden");
+}
+
 export function syncInitialSettingsControls(): void {
   syncCheckboxesFromConfig(state.activeCleaningConfig);
   dom.selTableExtraction.value = state.activeCleaningConfig.table_extraction_strategy;
@@ -189,36 +209,8 @@ export function initSettingsModal(callbacks: SettingsModalCallbacks): void {
   dom.btnLoadConfig.addEventListener("click", handleLoadConfig);
   dom.btnSaveConfig.addEventListener("click", handleSaveConfig);
 
-  dom.menuProcessingParams.addEventListener("click", () => {
-    setModalConfigStatus("");
-    syncCheckboxesFromConfig(state.activeCleaningConfig);
-    dom.selTableExtraction.value = state.activeCleaningConfig.table_extraction_strategy;
-    dom.selPdfTextSource.value = normalisePdfTextSource(state.activeCleaningConfig.pdf_text_source);
-    dom.selPdfOcrQuality.value = state.activeCleaningConfig.pdf_ocr_quality;
-    dom.selPdfEmbeddedTextStrategy.value = state.activeCleaningConfig.pdf_embedded_text_strategy;
-    state.tempRemovePatterns = [...state.activeCleaningConfig.remove_patterns];
-    state.tempRemovalRules = state.activeCleaningConfig.removal_rules.map((rule) => ({
-      ...rule,
-      matcher: { ...rule.matcher },
-    }));
-    state.tempReplacePatterns = [...state.activeCleaningConfig.replace_patterns];
-    renderCustomRemovals();
-    syncRepeatedArtifactSettingsSection();
-
-    dom.settingsTabs.forEach(t => {
-      t.classList.remove("active");
-      t.setAttribute("aria-selected", "false");
-    });
-    dom.settingsTabContents.forEach(c => c.classList.remove("active"));
-    const generalTab = document.querySelector('#settings-modal .tab[data-target="tab-general"]');
-    if (generalTab) {
-      generalTab.classList.add("active");
-      generalTab.setAttribute("aria-selected", "true");
-    }
-    document.getElementById("tab-general")?.classList.add("active");
-
-    dom.settingsModal.classList.remove("hidden");
-  });
+  dom.prepareCleaningSettings.addEventListener("click", () => openSettingsModal("tab-general"));
+  dom.prepareCustomRemovals.addEventListener("click", () => openSettingsModal("tab-custom-removals"));
 
   dom.cancelSettingsBtn.addEventListener("click", closeSettingsModal);
   dom.btnCloseSettingsModalTop.addEventListener("click", closeSettingsModal);
