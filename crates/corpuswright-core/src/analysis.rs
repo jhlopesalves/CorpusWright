@@ -9,10 +9,22 @@ use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use unicode_normalization::UnicodeNormalization;
 
-const DOCUMENT_LENGTH_WINDOW: usize = 100;
+const OVERVIEW_DOCUMENT_LIMIT: usize = 20;
 const FREQUENT_TERM_THRESHOLD: u64 = 10;
 const HIGH_DISPERSION_THRESHOLD: f64 = 0.5;
 const MAX_QUERY_WINDOW: usize = 500;
+
+// These are provisional descriptive thresholds for orientation, not inferential tests.
+mod overview_thresholds {
+    pub(super) const BALANCE_WORTH_A_LOOK: f64 = 0.15;
+    pub(super) const BALANCE_NEEDS_FIXING: f64 = 0.25;
+    pub(super) const LOW_EFFECTIVE_DOCUMENT_RATIO: f64 = 0.70;
+    pub(super) const NUMERIC_WORTH_A_LOOK: f64 = 0.05;
+    pub(super) const NUMERIC_NEEDS_FIXING: f64 = 0.20;
+    pub(super) const DISPERSION_WORTH_A_LOOK: f64 = 0.30;
+    pub(super) const DISPERSION_NEEDS_FIXING: f64 = 0.60;
+    pub(super) const DEGENERATE_TYPE_COUNT: usize = 50;
+}
 
 static TOKEN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*")
@@ -90,57 +102,188 @@ pub struct AnalysisDocumentSummary {
     pub token_count: u64,
 }
 
-/// Corpus balance metrics computed during the Rust build.
+/// Corpus totals computed during the Rust build.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct AnalysisBalanceSummary {
-    pub largest_document: Option<AnalysisDocumentSummary>,
-    pub smallest_non_empty_document: Option<AnalysisDocumentSummary>,
-    pub min_tokens: Option<f64>,
-    pub max_tokens: Option<f64>,
+pub struct CorpusOverviewTotals {
+    pub tokens: u64,
+    pub types: usize,
+    pub documents: usize,
+}
+
+/// Project and analysis population counts available for this snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusOverviewPopulation {
+    pub sources_in_project: Option<usize>,
+    pub included_in_analysis: usize,
+    pub processed_text_available: Option<usize>,
+    pub using_extracted_fallback: usize,
+    pub empty_or_failed: usize,
+    pub sources_with_warnings: Option<usize>,
+    pub input_source: AnalysisInputSource,
+    pub reading: String,
+}
+
+/// One bounded document-length row in the overview.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusOverviewDocument {
+    pub name: String,
+    pub tokens: u64,
+    pub share: Option<f64>,
+    pub relative_length: Option<f64>,
+}
+
+/// Document-level balance and concentration metrics.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusOverviewBalance {
+    pub largest_share: Option<f64>,
+    pub top3_share: Option<f64>,
+    pub gini: Option<f64>,
+    pub coefficient_of_variation: Option<f64>,
+    pub effective_documents: Option<f64>,
     pub median_tokens: Option<f64>,
-    pub q1_tokens: Option<f64>,
-    pub q3_tokens: Option<f64>,
-    pub iqr_tokens: Option<f64>,
-    pub largest_document_share: Option<f64>,
-    pub top_document_count: usize,
-    pub top_document_share: Option<f64>,
-    pub length_ratio: Option<f64>,
-    pub effective_document_count: Option<f64>,
+    pub minimum_tokens: Option<u64>,
+    pub maximum_tokens: Option<u64>,
+    pub remaining_documents: usize,
+    pub reading: String,
 }
 
-/// Lexical and extraction-quality metrics computed during the Rust build.
+/// Type-form diagnostics computed from the indexed vocabulary.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct AnalysisLexicalSummary {
-    pub unique_types: usize,
-    pub hapax_legomena: usize,
-    pub dis_legomena: usize,
-    pub repeated_types: usize,
-    pub numeric_only_types: usize,
+pub struct CorpusOverviewExtractionQuality {
+    pub word_like_count: usize,
+    pub word_like_share: Option<f64>,
+    pub numeric_only_count: usize,
     pub numeric_only_share: Option<f64>,
-    pub single_character_types: usize,
+    pub single_character_count: Option<usize>,
     pub single_character_share: Option<f64>,
-    pub quality_other_types: usize,
-    pub type_token_ratio: Option<f64>,
+    pub reading: String,
 }
 
-/// Term-dispersion metrics computed during the Rust build.
+/// Frequency-class partition of the indexed vocabulary.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct AnalysisDispersionSummary {
-    pub document_count: usize,
-    pub all_document_types: usize,
-    pub one_document_types: usize,
+pub struct CorpusOverviewLexicalSpectrum {
+    pub types: usize,
+    pub hapax_count: usize,
+    pub dis_legomena_count: usize,
+    pub band_3_to_9_count: usize,
+    pub band_10plus_count: usize,
+    pub hapax_share: Option<f64>,
+    pub dis_legomena_share: Option<f64>,
+    pub band_3_to_9_share: Option<f64>,
+    pub band_10plus_share: Option<f64>,
+    pub raw_ttr: Option<f64>,
+    pub reading: String,
+}
+
+/// Token-mass coverage at vocabulary thresholds supported by this corpus.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusOverviewFrequencyConcentration {
+    pub top_100_coverage: Option<f64>,
+    pub top_1000_coverage: Option<f64>,
+    pub top_10000_coverage: Option<f64>,
+    pub reading: String,
+}
+
+/// Vocabulary dispersion and document-frequency summaries.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusOverviewDispersion {
     pub frequent_types: usize,
-    pub median_frequent_dispersion: Option<f64>,
-    pub high_dispersion_frequent_types: usize,
+    pub high_dp_frequent_types: usize,
+    pub median_dp: Option<f64>,
+    pub df_in_1_count: usize,
+    pub df_in_2_to_n_minus_1_count: usize,
+    pub df_in_all_count: usize,
+    pub df_in_1_share: Option<f64>,
+    pub df_in_2_to_n_minus_1_share: Option<f64>,
+    pub df_in_all_share: Option<f64>,
+    pub median_documents_per_type: Option<f64>,
+    pub reading: String,
 }
 
-/// Compact overview returned after a corpus build.
+/// Overview finding category.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CorpusOverviewFindingKind {
+    Balance,
+    ExtractionQuality,
+    LexicalSpectrum,
+    Dispersion,
+}
+
+/// Descriptive attention level assigned by the overview thresholds.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase")]
+pub enum CorpusOverviewFindingSeverity {
+    NoIssue,
+    WorthALook,
+    NeedsFixing,
+}
+
+impl CorpusOverviewFindingSeverity {
+    fn label(self) -> &'static str {
+        match self {
+            Self::NoIssue => "no immediate issue",
+            Self::WorthALook => "worth a look",
+            Self::NeedsFixing => "needs fixing",
+        }
+    }
+}
+
+/// One computed finding shown in the corpus reading.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct AnalysisOverview {
+pub struct CorpusOverviewFinding {
+    pub key: CorpusOverviewFindingKind,
+    pub severity: CorpusOverviewFindingSeverity,
+    pub severity_label: String,
+    pub text: String,
+}
+
+/// Headline interpretation derived from the computed overview.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusOverviewReading {
+    pub verdict: String,
+    pub findings: Vec<CorpusOverviewFinding>,
+}
+
+/// Analysis build details that are known for this snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusOverviewBuild {
+    pub tokenisation: Option<String>,
+    pub case_handling: Option<String>,
+    pub lemmatisation: Option<String>,
+    pub number_punctuation_handling: Option<String>,
+    pub input_source: String,
+    pub config_version: Option<String>,
+    pub snapshot_date: Option<String>,
+    pub metadata_attached: bool,
+}
+
+/// Project metadata supplied by the desktop layer when an analysis is built.
+#[derive(Debug, Clone, Default)]
+pub struct CorpusOverviewContext {
+    pub sources_in_project: Option<usize>,
+    pub processed_text_available: Option<usize>,
+    pub sources_with_warnings: Option<usize>,
+    pub failed_sources: usize,
+    pub config_version: Option<String>,
+    pub metadata_attached: bool,
+}
+
+/// Render-ready first-stage corpus EDA summary.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusOverview {
     pub document_count: usize,
     pub source_count: usize,
     pub total_tokens: u64,
@@ -150,11 +293,17 @@ pub struct AnalysisOverview {
     pub build_signature: String,
     pub skipped_documents: usize,
     pub skipped_pdf_documents: usize,
-    pub balance: AnalysisBalanceSummary,
-    pub lexical: AnalysisLexicalSummary,
-    pub dispersion: AnalysisDispersionSummary,
-    pub document_lengths: Vec<AnalysisDocumentSummary>,
-    pub document_lengths_truncated: bool,
+    pub totals: CorpusOverviewTotals,
+    pub population: CorpusOverviewPopulation,
+    pub documents: Vec<CorpusOverviewDocument>,
+    pub documents_truncated: bool,
+    pub balance: CorpusOverviewBalance,
+    pub extraction_quality: CorpusOverviewExtractionQuality,
+    pub lexical_spectrum: CorpusOverviewLexicalSpectrum,
+    pub frequency_concentration: CorpusOverviewFrequencyConcentration,
+    pub dispersion: CorpusOverviewDispersion,
+    pub reading: CorpusOverviewReading,
+    pub build: CorpusOverviewBuild,
 }
 
 #[derive(Debug, Clone)]
@@ -180,6 +329,7 @@ struct AnalysisBuildMetadata {
     build_signature: String,
     skipped_documents: usize,
     skipped_pdf_documents: usize,
+    overview_context: CorpusOverviewContext,
 }
 
 /// Sparse Rust-owned analysis index.
@@ -188,12 +338,12 @@ pub struct AnalysisCorpus {
     documents: Vec<AnalysisDocument>,
     terms: Vec<AnalysisTerm>,
     term_index: HashMap<String, usize>,
-    overview: AnalysisOverview,
+    overview: CorpusOverview,
 }
 
 impl AnalysisCorpus {
     /// Returns the compact summary computed with the index.
-    pub fn overview(&self) -> &AnalysisOverview {
+    pub fn overview(&self) -> &CorpusOverview {
         &self.overview
     }
 }
@@ -423,11 +573,179 @@ fn compute_dispersion(
     0.5 * (difference + (1.0 - present_document_share).max(0.0))
 }
 
+fn gini_coefficient(values: &[u64]) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_unstable();
+    let total = sorted.iter().sum::<u64>() as f64;
+    if total == 0.0 {
+        return Some(0.0);
+    }
+    let weighted_sum = sorted
+        .iter()
+        .enumerate()
+        .map(|(index, value)| (index + 1) as f64 * *value as f64)
+        .sum::<f64>();
+    let count = sorted.len() as f64;
+    Some((2.0 * weighted_sum) / (count * total) - (count + 1.0) / count)
+}
+
+fn coefficient_of_variation(values: &[u64]) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    let mean = values.iter().sum::<u64>() as f64 / values.len() as f64;
+    if mean == 0.0 {
+        return None;
+    }
+    let variance = values
+        .iter()
+        .map(|value| {
+            let difference = *value as f64 - mean;
+            difference * difference
+        })
+        .sum::<f64>()
+        / values.len() as f64;
+    Some(variance.sqrt() / mean)
+}
+
+fn effective_document_count(values: &[u64], total_tokens: u64) -> Option<f64> {
+    if values.is_empty() || total_tokens == 0 {
+        return None;
+    }
+    let squared_shares = values
+        .iter()
+        .map(|value| {
+            let share = *value as f64 / total_tokens as f64;
+            share * share
+        })
+        .sum::<f64>();
+    (squared_shares > 0.0).then(|| 1.0 / squared_shares)
+}
+
+fn numeric_only(token: &str) -> bool {
+    // Separators are accepted only when every other scalar is numeric; this avoids
+    // classifying mixed alphanumeric identifiers as numeric extraction debris.
+    let mut has_digit = false;
+    for character in token.chars() {
+        if character.is_numeric() {
+            has_digit = true;
+        } else if !matches!(character, '.' | ',' | ':' | '-' | '/') {
+            return false;
+        }
+    }
+    has_digit
+}
+
+fn coverage_at(frequencies: &[u64], threshold: usize, total_tokens: u64) -> Option<f64> {
+    if frequencies.len() < threshold || total_tokens == 0 {
+        return None;
+    }
+    Some(frequencies.iter().take(threshold).sum::<u64>() as f64 / total_tokens as f64)
+}
+
+fn type_share(count: usize, total: usize) -> Option<f64> {
+    (total > 0).then(|| count as f64 / total as f64)
+}
+
+fn balance_severity(
+    document_count: usize,
+    total_tokens: u64,
+    largest_share: Option<f64>,
+    effective_documents: Option<f64>,
+) -> CorpusOverviewFindingSeverity {
+    use CorpusOverviewFindingSeverity::{NeedsFixing, NoIssue, WorthALook};
+    use overview_thresholds::{
+        BALANCE_NEEDS_FIXING, BALANCE_WORTH_A_LOOK, LOW_EFFECTIVE_DOCUMENT_RATIO,
+    };
+
+    if document_count == 0 || total_tokens == 0 {
+        return NeedsFixing;
+    }
+    if document_count == 1 {
+        return WorthALook;
+    }
+    let mut severity = match largest_share {
+        Some(value) if value > BALANCE_NEEDS_FIXING => NeedsFixing,
+        Some(value) if value >= BALANCE_WORTH_A_LOOK => WorthALook,
+        Some(_) => NoIssue,
+        None => NeedsFixing,
+    };
+    if effective_documents
+        .is_some_and(|value| value / (document_count as f64) < LOW_EFFECTIVE_DOCUMENT_RATIO)
+    {
+        severity = severity.max(WorthALook);
+    }
+    severity
+}
+
+fn extraction_severity(
+    total_types: usize,
+    numeric_only_share: Option<f64>,
+) -> CorpusOverviewFindingSeverity {
+    use CorpusOverviewFindingSeverity::{NeedsFixing, NoIssue, WorthALook};
+    use overview_thresholds::{NUMERIC_NEEDS_FIXING, NUMERIC_WORTH_A_LOOK};
+
+    if total_types == 0 {
+        return NeedsFixing;
+    }
+    match numeric_only_share {
+        Some(value) if value > NUMERIC_NEEDS_FIXING => NeedsFixing,
+        Some(value) if value >= NUMERIC_WORTH_A_LOOK => WorthALook,
+        _ => NoIssue,
+    }
+}
+
+fn lexical_severity(total_tokens: u64, total_types: usize) -> CorpusOverviewFindingSeverity {
+    use CorpusOverviewFindingSeverity::{NeedsFixing, NoIssue, WorthALook};
+    if total_tokens == 0 {
+        NeedsFixing
+    } else if total_types < overview_thresholds::DEGENERATE_TYPE_COUNT {
+        WorthALook
+    } else {
+        NoIssue
+    }
+}
+
+fn dispersion_severity(
+    document_count: usize,
+    frequent_types: usize,
+    median_dp: Option<f64>,
+) -> CorpusOverviewFindingSeverity {
+    use CorpusOverviewFindingSeverity::{NeedsFixing, NoIssue, WorthALook};
+    use overview_thresholds::{DISPERSION_NEEDS_FIXING, DISPERSION_WORTH_A_LOOK};
+
+    if document_count < 2 || frequent_types == 0 {
+        return NoIssue;
+    }
+    match median_dp {
+        Some(value) if value > DISPERSION_NEEDS_FIXING => NeedsFixing,
+        Some(value) if value >= DISPERSION_WORTH_A_LOOK => WorthALook,
+        Some(_) => NoIssue,
+        None => NoIssue,
+    }
+}
+
+fn finding(
+    key: CorpusOverviewFindingKind,
+    severity: CorpusOverviewFindingSeverity,
+    text: String,
+) -> CorpusOverviewFinding {
+    CorpusOverviewFinding {
+        key,
+        severity,
+        severity_label: severity.label().to_string(),
+        text,
+    }
+}
+
 fn build_overview(
     documents: &[AnalysisDocument],
     terms: &[AnalysisTerm],
     metadata: AnalysisBuildMetadata,
-) -> AnalysisOverview {
+) -> CorpusOverview {
     let total_tokens = metadata.total_tokens;
     let mut sorted_documents = documents
         .iter()
@@ -439,82 +757,61 @@ fn build_overview(
             .cmp(&left.token_count)
             .then_with(|| document_name(left).cmp(document_name(right)))
     });
-    let non_empty_documents = sorted_documents
-        .iter()
-        .filter(|document| document.token_count > 0)
-        .collect::<Vec<_>>();
-    let largest_document = non_empty_documents
-        .first()
-        .map(|document| (*document).clone());
-    let smallest_non_empty_document = non_empty_documents
-        .last()
-        .map(|document| (*document).clone());
     let mut token_counts = documents
         .iter()
         .map(|document| document.summary.token_count)
         .collect::<Vec<_>>();
     token_counts.sort_unstable();
-    let min_tokens = token_counts.first().map(|value| *value as f64);
-    let max_tokens = token_counts.last().map(|value| *value as f64);
     let median_tokens = percentile(&token_counts, 0.5);
-    let q1_tokens = percentile(&token_counts, 0.25);
-    let q3_tokens = percentile(&token_counts, 0.75);
-    let iqr_tokens = q1_tokens.zip(q3_tokens).map(|(q1, q3)| q3 - q1);
-    let largest_document_share = largest_document
-        .as_ref()
+    let largest_share = sorted_documents
+        .first()
         .filter(|_| total_tokens > 0)
         .map(|document| document.token_count as f64 / total_tokens as f64);
-    let top_document_count = sorted_documents.len().min(3);
-    let top_document_share = (total_tokens > 0 && top_document_count > 0).then(|| {
+    let top3_share = (total_tokens > 0 && !sorted_documents.is_empty()).then(|| {
         sorted_documents
             .iter()
-            .take(top_document_count)
+            .take(3)
             .map(|document| document.token_count)
             .sum::<u64>() as f64
             / total_tokens as f64
     });
-    let length_ratio = largest_document
-        .as_ref()
-        .zip(smallest_non_empty_document.as_ref())
-        .filter(|(_, smallest)| smallest.token_count > 0)
-        .map(|(largest, smallest)| largest.token_count as f64 / smallest.token_count as f64);
-    let hhi = if total_tokens > 0 {
-        documents
-            .iter()
-            .map(|document| {
-                let share = document.summary.token_count as f64 / total_tokens as f64;
-                share * share
-            })
-            .sum::<f64>()
-    } else {
-        0.0
-    };
-    let effective_document_count = (hhi > 0.0).then(|| 1.0 / hhi);
+    let gini = gini_coefficient(&token_counts);
+    let coefficient_of_variation = coefficient_of_variation(&token_counts);
+    let effective_documents = effective_document_count(&token_counts, total_tokens);
+    let balance_severity = balance_severity(
+        documents.len(),
+        total_tokens,
+        largest_share,
+        effective_documents,
+    );
 
-    let mut hapax_legomena = 0usize;
+    let mut hapax_count = 0usize;
     let mut dis_legomena = 0usize;
+    let mut band_3_to_9_count = 0usize;
+    let mut band_10plus_count = 0usize;
+    let mut word_like_count = 0usize;
     let mut numeric_only_types = 0usize;
     let mut single_character_types = 0usize;
-    let mut quality_other_types = 0usize;
     for term in terms {
         match term.frequency {
-            1 => hapax_legomena += 1,
+            1 => hapax_count += 1,
             2 => dis_legomena += 1,
-            _ => {}
+            3..=9 => band_3_to_9_count += 1,
+            _ => band_10plus_count += 1,
         }
-        let has_letter = term.token.chars().any(char::is_alphabetic);
-        let has_number = term.token.chars().any(char::is_numeric);
-        if term.token.chars().count() <= 1 {
-            single_character_types += 1;
-        } else if has_number && !has_letter {
+        if term.token.chars().any(char::is_alphabetic) {
+            word_like_count += 1;
+        }
+        if numeric_only(&term.token) {
             numeric_only_types += 1;
-        } else {
-            quality_other_types += 1;
+        }
+        // The analysis token representation is Unicode-scalar based; grapheme clusters
+        // are not available without changing the tokenizer's established contract.
+        if term.token.chars().count() == 1 {
+            single_character_types += 1;
         }
     }
     let total_types = terms.len();
-    let type_share = |count: usize| (total_types > 0).then(|| count as f64 / total_types as f64);
-    let repeated_types = total_types.saturating_sub(hapax_legomena + dis_legomena);
 
     let frequent_terms = terms
         .iter()
@@ -528,76 +825,329 @@ fn build_overview(
     } else {
         Vec::new()
     };
-    let all_document_types = if documents.is_empty() {
-        0
+    debug_assert_eq!(band_10plus_count, frequent_terms.len());
+    let document_count = documents.len();
+    let (df_in_1_count, df_in_2_to_n_minus_1_count, df_in_all_count) = if document_count == 0 {
+        (0, 0, 0)
+    } else if document_count == 1 {
+        (0, 0, total_types)
     } else {
-        terms
-            .iter()
-            .filter(|term| term.document_frequency == documents.len())
-            .count()
-    };
-
-    AnalysisOverview {
-        document_count: documents.len(),
-        source_count: metadata.source_count,
-        total_tokens,
-        total_types,
-        input_text_source: metadata.input_text_source,
-        built_at: metadata.built_at,
-        build_signature: metadata.build_signature,
-        skipped_documents: metadata.skipped_documents,
-        skipped_pdf_documents: metadata.skipped_pdf_documents,
-        balance: AnalysisBalanceSummary {
-            largest_document,
-            smallest_non_empty_document,
-            min_tokens,
-            max_tokens,
-            median_tokens,
-            q1_tokens,
-            q3_tokens,
-            iqr_tokens,
-            largest_document_share,
-            top_document_count,
-            top_document_share,
-            length_ratio,
-            effective_document_count,
-        },
-        lexical: AnalysisLexicalSummary {
-            unique_types: total_types,
-            hapax_legomena,
-            dis_legomena,
-            repeated_types,
-            numeric_only_types,
-            numeric_only_share: type_share(numeric_only_types),
-            single_character_types,
-            single_character_share: type_share(single_character_types),
-            quality_other_types,
-            type_token_ratio: (total_tokens > 0).then(|| total_types as f64 / total_tokens as f64),
-        },
-        dispersion: AnalysisDispersionSummary {
-            document_count: documents.len(),
-            all_document_types,
-            one_document_types: terms
+        (
+            terms
                 .iter()
                 .filter(|term| term.document_frequency == 1)
                 .count(),
+            terms
+                .iter()
+                .filter(|term| {
+                    term.document_frequency >= 2 && term.document_frequency < document_count
+                })
+                .count(),
+            terms
+                .iter()
+                .filter(|term| term.document_frequency == document_count)
+                .count(),
+        )
+    };
+    let mut document_frequencies = terms
+        .iter()
+        .map(|term| term.document_frequency as u64)
+        .collect::<Vec<_>>();
+    document_frequencies.sort_unstable();
+    let median_documents_per_type = percentile(&document_frequencies, 0.5);
+    let median_dp = median_f64(&mut frequent_dispersions);
+    let high_dp_frequent_types = if document_count >= 2 {
+        frequent_terms
+            .iter()
+            .filter(|term| term.dispersion >= HIGH_DISPERSION_THRESHOLD)
+            .count()
+    } else {
+        0
+    };
+    let extraction_severity =
+        extraction_severity(total_types, type_share(numeric_only_types, total_types));
+    let lexical_severity = lexical_severity(total_tokens, total_types);
+    let dispersion_severity = dispersion_severity(document_count, frequent_terms.len(), median_dp);
+
+    let mut frequencies = terms.iter().map(|term| term.frequency).collect::<Vec<_>>();
+    frequencies.sort_unstable_by(|left, right| right.cmp(left));
+    let top_100_coverage = coverage_at(&frequencies, 100, total_tokens);
+    let top_1000_coverage = coverage_at(&frequencies, 1_000, total_tokens);
+    let top_10000_coverage = coverage_at(&frequencies, 10_000, total_tokens);
+
+    let sources_in_project = metadata
+        .overview_context
+        .sources_in_project
+        .or(Some(metadata.source_count));
+    let empty_or_failed = sources_in_project.map_or_else(
+        || {
+            metadata
+                .skipped_documents
+                .saturating_add(metadata.overview_context.failed_sources)
+        },
+        |sources| sources.saturating_sub(document_count),
+    );
+    let using_extracted_fallback = if metadata.input_text_source == AnalysisInputSource::Extracted {
+        document_count
+    } else {
+        0
+    };
+    let population_reading = match sources_in_project {
+        Some(sources) if empty_or_failed == 0 && document_count == sources => format!(
+            "No empty or failed sources; the analysis population contains all {sources} project sources."
+        ),
+        Some(sources) => format!(
+            "{empty_or_failed} sources were empty or failed; analysis contains {document_count} of {sources} project sources."
+        ),
+        None => format!("Analysis contains {document_count} sources."),
+    };
+
+    let percent = |value: Option<f64>| {
+        value
+            .map(|number| format!("{:.1}%", number * 100.0))
+            .unwrap_or_else(|| "unavailable".to_string())
+    };
+    let balance_finding_text = if document_count == 0 {
+        "No documents are available for a balance assessment.".to_string()
+    } else if total_tokens == 0 {
+        "All document token counts are zero, so document balance is unavailable.".to_string()
+    } else if document_count == 1 {
+        "The analysis contains one document, so between-document balance cannot be assessed."
+            .to_string()
+    } else {
+        format!(
+            "The largest document contains {} of tokens; the top three contain {}. Effective documents: {:.1} of {}.",
+            percent(largest_share),
+            percent(top3_share),
+            effective_documents.unwrap_or(0.0),
+            document_count
+        )
+    };
+    let extraction_finding_text = if total_types == 0 {
+        "No token types are available for extraction-quality diagnostics.".to_string()
+    } else {
+        format!(
+            "Numeric-only forms account for {} of {} types; single-character forms account for {}.",
+            percent(type_share(numeric_only_types, total_types)),
+            total_types,
+            percent(type_share(single_character_types, total_types))
+        )
+    };
+    let lexical_finding_text = if total_types == 0 {
+        "No token types were counted.".to_string()
+    } else {
+        format!(
+            "{} of {} types occur once, and {} occur at least 10 times.",
+            hapax_count, total_types, band_10plus_count
+        )
+    };
+    let dispersion_finding_text = if document_count < 2 {
+        "Dispersion requires at least two documents and is not assessed here.".to_string()
+    } else if frequent_terms.is_empty() {
+        "No types occur at least 10 times, so frequent-type DP is unavailable.".to_string()
+    } else {
+        format!(
+            "Median DP is {:.2}; {} of {} frequent types have DP at least {:.1}.",
+            median_dp.unwrap_or(0.0),
+            high_dp_frequent_types,
+            frequent_terms.len(),
+            HIGH_DISPERSION_THRESHOLD
+        )
+    };
+    let findings = vec![
+        finding(
+            CorpusOverviewFindingKind::Balance,
+            balance_severity,
+            balance_finding_text,
+        ),
+        finding(
+            CorpusOverviewFindingKind::ExtractionQuality,
+            extraction_severity,
+            extraction_finding_text,
+        ),
+        finding(
+            CorpusOverviewFindingKind::LexicalSpectrum,
+            lexical_severity,
+            lexical_finding_text,
+        ),
+        finding(
+            CorpusOverviewFindingKind::Dispersion,
+            dispersion_severity,
+            dispersion_finding_text,
+        ),
+    ];
+    let highest_severity = findings
+        .iter()
+        .map(|finding| finding.severity)
+        .max()
+        .unwrap_or(CorpusOverviewFindingSeverity::NoIssue);
+    let verdict = if total_tokens == 0 {
+        "The analysis contains no tokens; inspect source extraction and processing before analysis."
+            .to_string()
+    } else {
+        match highest_severity {
+            CorpusOverviewFindingSeverity::NeedsFixing =>
+                "The corpus has diagnostics that need fixing before aggregate results are relied on."
+                    .to_string(),
+            CorpusOverviewFindingSeverity::WorthALook =>
+                "The corpus is available for exploration, with diagnostics worth inspecting alongside aggregate results."
+                    .to_string(),
+            CorpusOverviewFindingSeverity::NoIssue =>
+                "No immediate issue is indicated by these first-stage corpus diagnostics."
+                    .to_string(),
+        }
+    };
+
+    let balance_reading = if document_count < 2 {
+        "Analysis unit: the document. At least two documents are required to assess document balance."
+            .to_string()
+    } else if balance_severity == CorpusOverviewFindingSeverity::NoIssue {
+        "Analysis unit: the document. Token totals are descriptive; read aggregate frequencies alongside dispersion even when document lengths are relatively even."
+            .to_string()
+    } else {
+        "Analysis unit: the document. Token totals are descriptive, but a few documents carry a disproportionate share of the token mass; read aggregate frequencies alongside dispersion, not on their own."
+            .to_string()
+    };
+
+    let displayed_document_count = if document_count > 50 {
+        OVERVIEW_DOCUMENT_LIMIT
+    } else {
+        document_count
+    };
+    let overview_documents = sorted_documents
+        .iter()
+        .take(displayed_document_count)
+        .map(|document| CorpusOverviewDocument {
+            name: {
+                let name = document_name(document);
+                if name.is_empty() {
+                    "Unnamed source".to_string()
+                } else {
+                    name.to_string()
+                }
+            },
+            tokens: document.token_count,
+            share: (total_tokens > 0).then(|| document.token_count as f64 / total_tokens as f64),
+            relative_length: sorted_documents
+                .first()
+                .filter(|largest| largest.token_count > 0)
+                .map(|largest| document.token_count as f64 / largest.token_count as f64),
+        })
+        .collect::<Vec<_>>();
+
+    CorpusOverview {
+        document_count,
+        source_count: sources_in_project.unwrap_or(metadata.source_count),
+        total_tokens,
+        total_types,
+        input_text_source: metadata.input_text_source,
+        built_at: metadata.built_at.clone(),
+        build_signature: metadata.build_signature,
+        skipped_documents: metadata.skipped_documents,
+        skipped_pdf_documents: metadata.skipped_pdf_documents,
+        totals: CorpusOverviewTotals {
+            tokens: total_tokens,
+            types: total_types,
+            documents: document_count,
+        },
+        population: CorpusOverviewPopulation {
+            sources_in_project,
+            included_in_analysis: document_count,
+            processed_text_available: metadata.overview_context.processed_text_available,
+            using_extracted_fallback,
+            empty_or_failed,
+            sources_with_warnings: metadata.overview_context.sources_with_warnings,
+            input_source: metadata.input_text_source,
+            reading: population_reading,
+        },
+        documents: overview_documents,
+        documents_truncated: document_count > 50,
+        balance: CorpusOverviewBalance {
+            largest_share,
+            top3_share,
+            gini,
+            coefficient_of_variation,
+            effective_documents,
+            median_tokens,
+            minimum_tokens: token_counts.first().copied(),
+            maximum_tokens: token_counts.last().copied(),
+            remaining_documents: document_count.saturating_sub(displayed_document_count),
+            reading: balance_reading,
+        },
+        extraction_quality: CorpusOverviewExtractionQuality {
+            word_like_count,
+            word_like_share: type_share(word_like_count, total_types),
+            numeric_only_count: numeric_only_types,
+            numeric_only_share: type_share(numeric_only_types, total_types),
+            single_character_count: Some(single_character_types),
+            single_character_share: type_share(single_character_types, total_types),
+            reading: "Numeric-only forms may include page numbers, table fragments, formula fragments, references, or legitimate numeric examples. Inspect before removing numeric-heavy material."
+                .to_string(),
+        },
+        lexical_spectrum: CorpusOverviewLexicalSpectrum {
+            types: total_types,
+            hapax_count,
+            dis_legomena_count: dis_legomena,
+            band_3_to_9_count,
+            band_10plus_count,
+            hapax_share: type_share(hapax_count, total_types),
+            dis_legomena_share: type_share(dis_legomena, total_types),
+            band_3_to_9_share: type_share(band_3_to_9_count, total_types),
+            band_10plus_share: type_share(band_10plus_count, total_types),
+            raw_ttr: (total_tokens > 0).then(|| total_types as f64 / total_tokens as f64),
+            reading: "A long tail dominated by rare words is expected in natural-language corpora; it is not an extraction-quality problem."
+                .to_string(),
+        },
+        frequency_concentration: CorpusOverviewFrequencyConcentration {
+            top_100_coverage,
+            top_1000_coverage,
+            top_10000_coverage,
+            reading: "A small set of high-frequency forms can carry much of the token mass even when most types are rare."
+                .to_string(),
+        },
+        dispersion: CorpusOverviewDispersion {
             frequent_types: frequent_terms.len(),
-            median_frequent_dispersion: median_f64(&mut frequent_dispersions),
-            high_dispersion_frequent_types: if documents.len() >= 2 {
-                frequent_terms
-                    .iter()
-                    .filter(|term| term.dispersion >= HIGH_DISPERSION_THRESHOLD)
-                    .count()
+            high_dp_frequent_types,
+            median_dp,
+            df_in_1_count,
+            df_in_2_to_n_minus_1_count,
+            df_in_all_count,
+            df_in_1_share: type_share(df_in_1_count, total_types),
+            df_in_2_to_n_minus_1_share: type_share(
+                df_in_2_to_n_minus_1_count,
+                total_types,
+            ),
+            df_in_all_share: type_share(df_in_all_count, total_types),
+            median_documents_per_type,
+            reading: if document_count < 2 {
+                "Dispersion and document-frequency spread require at least two documents."
+                    .to_string()
             } else {
-                0
+                "Most types may occur in few documents, which is common in sparse vocabularies. Interpret this with token-mass coverage and frequent-type dispersion."
+                    .to_string()
             },
         },
-        document_lengths: sorted_documents
-            .iter()
-            .take(DOCUMENT_LENGTH_WINDOW)
-            .cloned()
-            .collect(),
-        document_lengths_truncated: sorted_documents.len() > DOCUMENT_LENGTH_WINDOW,
+        reading: CorpusOverviewReading { verdict, findings },
+        build: CorpusOverviewBuild {
+            tokenisation: Some(
+                "Unicode letters and numbers; internal apostrophes and hyphens retained"
+                    .to_string(),
+            ),
+            case_handling: Some("Unicode lowercase".to_string()),
+            lemmatisation: Some("Not applied".to_string()),
+            number_punctuation_handling: Some(
+                "Numbers retained; punctuation delimits tokens except internal apostrophes and hyphens"
+                    .to_string(),
+            ),
+            input_source: match metadata.input_text_source {
+                AnalysisInputSource::Processed => "Processed text",
+                AnalysisInputSource::Extracted => "Native/extracted text",
+            }
+            .to_string(),
+            config_version: metadata.overview_context.config_version,
+            snapshot_date: Some(metadata.built_at),
+            metadata_attached: metadata.overview_context.metadata_attached,
+        },
     }
 }
 
@@ -607,6 +1157,7 @@ pub fn build_analysis_corpus<TextLoader, Progress>(
     input_text_source: AnalysisInputSource,
     built_at: String,
     build_signature: String,
+    overview_context: CorpusOverviewContext,
     cancel: &AtomicBool,
     mut load_text: TextLoader,
     mut report_progress: Progress,
@@ -629,8 +1180,6 @@ where
     let mut total_tokens = 0u64;
     let mut skipped_documents = 0usize;
     let mut skipped_pdf_documents = 0usize;
-    let mut source_paths = HashSet::new();
-
     report_progress(AnalysisBuildProgress {
         files_done: 0,
         files_total: records.len(),
@@ -689,7 +1238,6 @@ where
         }
         sparse_counts.sort_unstable_by_key(|(term_id, _)| *term_id);
         total_tokens += token_count;
-        source_paths.insert(record.source_path.to_string_lossy().to_string());
         documents.push(AnalysisDocument {
             summary: document_summary(record, document_id, token_count),
             term_counts: sparse_counts,
@@ -733,13 +1281,14 @@ where
         &documents,
         &terms,
         AnalysisBuildMetadata {
-            source_count: source_paths.len(),
+            source_count: records.len(),
             total_tokens,
             input_text_source,
             built_at,
             build_signature,
             skipped_documents,
             skipped_pdf_documents,
+            overview_context,
         },
     );
 
@@ -1095,6 +1644,7 @@ mod tests {
             AnalysisInputSource::Extracted,
             "2026-01-01T00:00:00Z".to_string(),
             "signature".to_string(),
+            CorpusOverviewContext::default(),
             &AtomicBool::new(false),
             |record| {
                 Ok(text_by_name
@@ -1114,8 +1664,8 @@ mod tests {
         assert_eq!(overview.document_count, 2);
         assert_eq!(overview.total_tokens, 5);
         assert_eq!(overview.total_types, 3);
-        assert_eq!(overview.lexical.hapax_legomena, 1);
-        assert_eq!(overview.lexical.dis_legomena, 2);
+        assert_eq!(overview.lexical_spectrum.hapax_count, 1);
+        assert_eq!(overview.lexical_spectrum.dis_legomena_count, 2);
 
         let page = query_frequency_list(
             &corpus,
@@ -1194,10 +1744,154 @@ mod tests {
         let corpus = corpus_for(&[("empty.txt", "  \n"), ("one.txt", "word word")]);
         assert_eq!(corpus.overview().document_count, 1);
         assert_eq!(corpus.overview().skipped_documents, 1);
+        assert_eq!(corpus.overview().dispersion.median_dp, None);
+    }
+
+    #[test]
+    fn balance_statistics_match_known_distributions() {
+        assert_eq!(gini_coefficient(&[1, 1]), Some(0.0));
+        assert_eq!(gini_coefficient(&[0, 10]), Some(0.5));
+        assert_eq!(gini_coefficient(&[0, 0]), Some(0.0));
+
+        assert_eq!(coefficient_of_variation(&[1, 1]), Some(0.0));
+        assert_eq!(coefficient_of_variation(&[0, 2]), Some(1.0));
+        assert_eq!(coefficient_of_variation(&[0, 0]), None);
+
+        assert_eq!(effective_document_count(&[1, 1], 2), Some(2.0));
+        assert_eq!(effective_document_count(&[0, 2], 2), Some(1.0));
+        assert_eq!(effective_document_count(&[], 0), None);
+    }
+
+    #[test]
+    fn lexical_bands_partition_types_and_match_frequent_types() {
+        let corpus = corpus_for(&[("bands.txt", "a b b c c c d d d d d d d d d d")]);
+        let overview = corpus.overview();
+        let lexical = &overview.lexical_spectrum;
+
+        assert_eq!(lexical.hapax_count, 1);
+        assert_eq!(lexical.dis_legomena_count, 1);
+        assert_eq!(lexical.band_3_to_9_count, 1);
+        assert_eq!(lexical.band_10plus_count, 1);
         assert_eq!(
-            corpus.overview().dispersion.median_frequent_dispersion,
+            lexical.hapax_count
+                + lexical.dis_legomena_count
+                + lexical.band_3_to_9_count
+                + lexical.band_10plus_count,
+            lexical.types
+        );
+        assert_eq!(
+            lexical.band_10plus_count,
+            overview.dispersion.frequent_types
+        );
+    }
+
+    #[test]
+    fn frequency_coverage_requires_the_full_named_threshold() {
+        let text = (0..100)
+            .map(|index| format!("term{index}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let records = vec![record("coverage.txt")];
+        let corpus = build_analysis_corpus(
+            &records,
+            AnalysisInputSource::Extracted,
+            "2026-01-01T00:00:00Z".to_string(),
+            "signature".to_string(),
+            CorpusOverviewContext::default(),
+            &AtomicBool::new(false),
+            |_| Ok(Some(text.clone())),
+            |_| {},
+        )
+        .unwrap();
+
+        assert_eq!(
+            corpus.overview().frequency_concentration.top_100_coverage,
+            Some(1.0)
+        );
+        assert_eq!(
+            corpus.overview().frequency_concentration.top_1000_coverage,
             None
         );
+
+        let small = corpus_for(&[("small.txt", "alpha beta gamma")]);
+        assert_eq!(
+            small.overview().frequency_concentration.top_100_coverage,
+            None
+        );
+    }
+
+    #[test]
+    fn document_frequency_spectrum_and_median_are_computed_over_all_types() {
+        let corpus = corpus_for(&[
+            ("one.txt", "alpha shared common"),
+            ("two.txt", "beta shared common"),
+            ("three.txt", "gamma common"),
+        ]);
+        let dispersion = &corpus.overview().dispersion;
+
+        assert_eq!(dispersion.df_in_1_count, 3);
+        assert_eq!(dispersion.df_in_2_to_n_minus_1_count, 1);
+        assert_eq!(dispersion.df_in_all_count, 1);
+        assert_eq!(dispersion.median_documents_per_type, Some(1.0));
+        assert_eq!(dispersion.median_dp, None);
+    }
+
+    #[test]
+    fn severity_thresholds_use_the_documented_boundaries() {
+        use CorpusOverviewFindingSeverity::{NeedsFixing, NoIssue, WorthALook};
+
+        assert_eq!(balance_severity(10, 100, Some(0.149), Some(10.0)), NoIssue);
+        assert_eq!(
+            balance_severity(10, 100, Some(0.15), Some(10.0)),
+            WorthALook
+        );
+        assert_eq!(
+            balance_severity(10, 100, Some(0.25), Some(10.0)),
+            WorthALook
+        );
+        assert_eq!(
+            balance_severity(10, 100, Some(0.251), Some(10.0)),
+            NeedsFixing
+        );
+        assert_eq!(balance_severity(10, 100, Some(0.10), Some(6.9)), WorthALook);
+
+        assert_eq!(extraction_severity(100, Some(0.049)), NoIssue);
+        assert_eq!(extraction_severity(100, Some(0.05)), WorthALook);
+        assert_eq!(extraction_severity(100, Some(0.20)), WorthALook);
+        assert_eq!(extraction_severity(100, Some(0.201)), NeedsFixing);
+
+        assert_eq!(dispersion_severity(3, 10, Some(0.299)), NoIssue);
+        assert_eq!(dispersion_severity(3, 10, Some(0.30)), WorthALook);
+        assert_eq!(dispersion_severity(3, 10, Some(0.60)), WorthALook);
+        assert_eq!(dispersion_severity(3, 10, Some(0.601)), NeedsFixing);
+        assert_eq!(dispersion_severity(3, 0, None), NoIssue);
+    }
+
+    #[test]
+    fn empty_corpus_overview_has_no_non_finite_values() {
+        let corpus = build_analysis_corpus(
+            &[],
+            AnalysisInputSource::Extracted,
+            "2026-01-01T00:00:00Z".to_string(),
+            "signature".to_string(),
+            CorpusOverviewContext::default(),
+            &AtomicBool::new(false),
+            |_| Ok(None),
+            |_| {},
+        )
+        .unwrap();
+        let overview = corpus.overview();
+
+        assert_eq!(overview.totals.tokens, 0);
+        assert_eq!(overview.totals.types, 0);
+        assert_eq!(overview.totals.documents, 0);
+        assert_eq!(overview.balance.gini, None);
+        assert_eq!(overview.balance.coefficient_of_variation, None);
+        assert_eq!(overview.balance.effective_documents, None);
+        assert_eq!(overview.lexical_spectrum.raw_ttr, None);
+        let json = serde_json::to_string(overview).unwrap();
+        assert!(!json.contains("NaN"));
+        assert!(!json.contains("Infinity"));
     }
 
     #[test]
@@ -1210,6 +1904,7 @@ mod tests {
             AnalysisInputSource::Extracted,
             "2026-01-01T00:00:00Z".to_string(),
             "signature".to_string(),
+            CorpusOverviewContext::default(),
             &AtomicBool::new(false),
             |_| Ok(Some("shared unique".to_string())),
             |_| {},
@@ -1219,11 +1914,8 @@ mod tests {
         assert_eq!(corpus.overview().document_count, 1_000);
         assert_eq!(corpus.overview().total_tokens, 2_000);
         assert_eq!(corpus.overview().total_types, 2);
-        assert!(corpus.overview().document_lengths_truncated);
-        assert_eq!(
-            corpus.overview().document_lengths.len(),
-            DOCUMENT_LENGTH_WINDOW
-        );
+        assert!(corpus.overview().documents_truncated);
+        assert_eq!(corpus.overview().documents.len(), OVERVIEW_DOCUMENT_LIMIT);
     }
 
     #[test]
@@ -1235,6 +1927,7 @@ mod tests {
             AnalysisInputSource::Extracted,
             "2026-01-01T00:00:00Z".to_string(),
             "signature".to_string(),
+            CorpusOverviewContext::default(),
             &cancel,
             |_| Ok(Some("one two".to_string())),
             |progress| {

@@ -883,19 +883,22 @@ main {
   height: 8px;
   margin-top: 0.47em;
   border-radius: 999px;
-  background: #6f8fb5;
+  background: #4aa366;
 }
 
-.analysis-reading-finding.is-caution .analysis-reading-status-dot {
+.analysis-reading-finding.is-worth-a-look .analysis-reading-status-dot,
+.analysis-severity-legend .is-worth-a-look .analysis-reading-status-dot {
   background: #c7922b;
 }
 
-.analysis-reading-finding.is-fix .analysis-reading-status-dot {
+.analysis-reading-finding.is-needs-fixing .analysis-reading-status-dot,
+.analysis-severity-legend .is-needs-fixing .analysis-reading-status-dot {
   background: #d86a4a;
 }
 
-.analysis-reading-finding.is-exploratory .analysis-reading-status-dot {
-  background: #5a95a8;
+.analysis-reading-finding.is-no-issue .analysis-reading-status-dot,
+.analysis-severity-legend .is-no-issue .analysis-reading-status-dot {
+  background: #4aa366;
 }
 
 .analysis-reading-finding-body {
@@ -920,6 +923,28 @@ main {
 
 .analysis-reading-finding-text {
   color: var(--text-muted);
+}
+
+.analysis-severity-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 2px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  list-style: none;
+}
+
+.analysis-severity-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.analysis-severity-legend .analysis-reading-status-dot {
+  margin-top: 0;
 }
 
 .analysis-reading-finding-explanation {
@@ -1045,11 +1070,21 @@ main {
 
 .analysis-composition-segment.is-dis,
 .analysis-composition-legend-item.is-dis dt::before {
-  background: #4f8bd8;
+  background: #6f8fb5;
 }
 
 .analysis-composition-segment.is-repeated,
 .analysis-composition-legend-item.is-repeated dt::before {
+  background: #1f5fa8;
+}
+
+.analysis-composition-segment.is-mid-frequency,
+.analysis-composition-legend-item.is-mid-frequency dt::before {
+  background: #4f8bd8;
+}
+
+.analysis-composition-segment.is-frequent,
+.analysis-composition-legend-item.is-frequent dt::before {
   background: #1f5fa8;
 }
 
@@ -1163,6 +1198,21 @@ main {
   color: var(--text-muted);
   font-size: 0.82rem;
   line-height: 1.4;
+}
+
+.analysis-build-details > summary {
+  color: var(--text-color);
+  font-size: 0.9rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.analysis-build-details[open] > summary {
+  margin-bottom: 2px;
+}
+
+.analysis-build-table .analysis-metric-value {
+  max-width: 560px;
 }
 
 .frequency-section {

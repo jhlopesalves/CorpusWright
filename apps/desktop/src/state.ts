@@ -5,7 +5,7 @@ import type { ProjectSource } from "./generated/ProjectSource.js";
 import type { ProjectSourceSummary } from "./generated/ProjectSourceSummary.js";
 import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
 import type { SearchResult } from "./generated/SearchResult.js";
-import type { AnalysisOverview } from "./analysis";
+import type { CorpusOverview } from "./analysis";
 import type {
   VisibleFile,
 } from "./types";
@@ -23,7 +23,7 @@ export interface ActiveProject {
 export const state = {
   activeProject: null as ActiveProject | null,
   activeWorkbench: "prepare" as WorkbenchId,
-  analysisCorpus: null as AnalysisOverview | null,
+  analysisCorpus: null as CorpusOverview | null,
   sourceManifestVersion: 1,
   projectSources: [] as ProjectSource[],
   projectSourceSummary: null as ProjectSourceSummary | null,
