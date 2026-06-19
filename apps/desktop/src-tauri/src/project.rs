@@ -1,17 +1,17 @@
 use corpuswright_core::clean::PdfOcrQuality;
 use corpuswright_core::project_sources::{
-    ProjectSourceImportPolicy, ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest,
-    ProjectSourcePage, ProjectSourcePdfHandlingOverride, ProjectSourcePdfProfile,
-    ProjectSourceQuery, ProjectSourceSelectionDescriptor, ProjectSourceSelectionViewport,
-    ProjectSourceStatus, add_project_source_paths_with_pdf_handling,
-    add_project_source_paths_with_progress, load_project_source_manifest,
-    project_source_matches_query, query_project_source_manifest, query_project_source_selection,
-    review_project_source_paths, save_project_source_manifest, source_manifest_path,
-    update_project_source_pdf_handling, update_project_source_pdf_profiles,
+    ProjectSource, ProjectSourceExtractionRoute, ProjectSourceImportPolicy,
+    ProjectSourceImportReview, ProjectSourceKind, ProjectSourceManifest, ProjectSourcePage,
+    ProjectSourcePdfHandlingOverride, ProjectSourcePdfProfile, ProjectSourceQuery,
+    ProjectSourceSelectionDescriptor, ProjectSourceSelectionViewport, ProjectSourceStatus,
+    add_project_source_paths_with_pdf_handling, add_project_source_paths_with_progress,
+    load_project_source_manifest, project_source_matches_query, query_project_source_manifest,
+    query_project_source_selection, review_project_source_paths, save_project_source_manifest,
+    source_manifest_path, update_project_source_pdf_handling, update_project_source_pdf_profiles,
 };
 use corpuswright_core::scan::{ScanReport, load_files, scan_directory};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
@@ -187,6 +187,99 @@ struct ProjectSourceImportProgress {
     status: &'static str,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProjectSourceSelectionActionSummary {
+    total_selected: usize,
+    all_selected_are_pdfs: bool,
+    usable_pdf_count: usize,
+    extractable_pdf_count: usize,
+    reextractable_pdf_count: usize,
+    failed_pdf_count: usize,
+}
+
+fn selected_project_sources(
+    manifest: &ProjectSourceManifest,
+    selection: &ProjectSourceSelectionDescriptor,
+    mut visit: impl FnMut(&ProjectSource),
+) {
+    let query = selection.query.trim().to_lowercase();
+    let ids = selection.ids.iter().collect::<HashSet<_>>();
+    let excluded_ids = selection.excluded_ids.iter().collect::<HashSet<_>>();
+
+    for source in &manifest.sources {
+        let selected = if selection.all_matching {
+            !excluded_ids.contains(&source.id) && project_source_matches_query(source, &query)
+        } else {
+            ids.contains(&source.id)
+        };
+        if selected {
+            visit(source);
+        }
+    }
+}
+
+fn pdf_source_has_usable_route(source: &ProjectSource) -> bool {
+    source.kind == ProjectSourceKind::Pdf
+        && source.extraction_route != ProjectSourceExtractionRoute::Unsupported
+        && !source
+            .reason_codes
+            .iter()
+            .any(|code| code == "missing_file")
+}
+
+fn pdf_source_has_extracted_text(source: &ProjectSource) -> bool {
+    matches!(
+        source.status,
+        ProjectSourceStatus::TextExtracted
+            | ProjectSourceStatus::TextExtractedWithWarnings
+            | ProjectSourceStatus::Processed
+            | ProjectSourceStatus::ProcessedWithWarnings
+    )
+}
+
+fn selection_action_summary(
+    manifest: &ProjectSourceManifest,
+    selection: &ProjectSourceSelectionDescriptor,
+) -> ProjectSourceSelectionActionSummary {
+    let mut total_selected = 0;
+    let mut pdf_count = 0;
+    let mut usable_pdf_count = 0;
+    let mut extractable_pdf_count = 0;
+    let mut reextractable_pdf_count = 0;
+    let mut failed_pdf_count = 0;
+
+    selected_project_sources(manifest, selection, |source| {
+        total_selected += 1;
+        if source.kind != ProjectSourceKind::Pdf {
+            return;
+        }
+
+        pdf_count += 1;
+        if !pdf_source_has_usable_route(source) {
+            return;
+        }
+
+        usable_pdf_count += 1;
+        if pdf_source_has_extracted_text(source) {
+            reextractable_pdf_count += 1;
+        } else if source.status == ProjectSourceStatus::Failed {
+            failed_pdf_count += 1;
+        } else {
+            extractable_pdf_count += 1;
+        }
+    });
+
+    ProjectSourceSelectionActionSummary {
+        total_selected,
+        all_selected_are_pdfs: total_selected > 0 && total_selected == pdf_count,
+        usable_pdf_count,
+        extractable_pdf_count,
+        reextractable_pdf_count,
+        failed_pdf_count,
+    }
+}
+
 #[tauri::command(async)]
 pub(crate) fn create_corpus_project_command(root_path: String) -> Result<ActiveProject, String> {
     let root = normalise_selected_path(&root_path)?;
@@ -281,6 +374,55 @@ pub(crate) fn query_project_sources_command(
             },
         )
     })
+}
+
+#[tauri::command(async)]
+pub(crate) fn query_project_source_selection_action_summary_command(
+    root_path: String,
+    selection: ProjectSourceSelectionDescriptor,
+    inventory: tauri::State<'_, ProjectSourceInventoryState>,
+) -> Result<ProjectSourceSelectionActionSummary, String> {
+    let root = validated_project_root(&root_path)?;
+    inventory.with_manifest(&root, |manifest| {
+        selection_action_summary(manifest, &selection)
+    })
+}
+
+#[tauri::command(async)]
+pub(crate) fn resolve_project_source_selection_pdf_paths_command(
+    root_path: String,
+    selection: ProjectSourceSelectionDescriptor,
+    inventory: tauri::State<'_, ProjectSourceInventoryState>,
+) -> Result<Vec<String>, String> {
+    let root = validated_project_root(&root_path)?;
+    inventory.with_manifest(&root, |manifest| {
+        let mut total_selected = 0;
+        let mut non_pdf_selected = false;
+        let mut paths = Vec::new();
+
+        selected_project_sources(manifest, &selection, |source| {
+            total_selected += 1;
+            if source.kind != ProjectSourceKind::Pdf {
+                non_pdf_selected = true;
+                return;
+            }
+            if pdf_source_has_usable_route(source) {
+                paths.push(source.path.to_string_lossy().to_string());
+            }
+        });
+
+        if total_selected == 0 {
+            return Err("Select at least one PDF source.".to_string());
+        }
+        if non_pdf_selected {
+            return Err("Select PDF sources only.".to_string());
+        }
+        if paths.is_empty() {
+            return Err("No selected PDF sources can be extracted.".to_string());
+        }
+
+        Ok(paths)
+    })?
 }
 
 #[tauri::command(async)]

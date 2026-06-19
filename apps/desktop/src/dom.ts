@@ -66,7 +66,6 @@ export const dom = {
   prepareProcessingStatus: getElement<HTMLSpanElement>("prepare-processing-status"),
   prepareCleaningSettings: getElement<HTMLButtonElement>("prepare-cleaning-settings"),
   prepareRepeatedArtifactFinder: getElement<HTMLButtonElement>("prepare-repeated-artifact-finder"),
-  prepareProcessSources: getElement<HTMLButtonElement>("prepare-process-sources"),
   btnNewProject: getElement<HTMLButtonElement>("btn-new-project"),
   btnOpenProject: getElement<HTMLButtonElement>("btn-open-project"),
   btnOpenFolderProject: getElement<HTMLButtonElement>("btn-open-folder-project"),

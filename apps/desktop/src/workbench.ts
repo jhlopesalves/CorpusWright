@@ -26,7 +26,7 @@ import {
 } from "./analysis";
 import { BOOLEAN_CLEANING_CONFIG_KEYS } from "./config";
 import { dom } from "./dom";
-import { hasProjectSourceSelection, sourceForPath, sourceHasExtractedText } from "./sources";
+import { sourceForPath, sourceHasExtractedText } from "./sources";
 import { state, type WorkbenchId } from "./state";
 
 const FUTURE_ANALYSIS_TOOLS = [
@@ -309,11 +309,7 @@ function activeCleaningItemCount(): number {
 function refreshPrepareCockpit(): void {
   const sourceCount = prepareSourceCount();
   const extractedCount = extractedTextSourceCount();
-  const processedCount = processedSourceCount();
   const cleaningCount = activeCleaningItemCount();
-  const loadableCount = state.activeProject
-    ? state.projectSourceSummary?.loadable_count ?? state.projectCorpusFileCount
-    : state.allFiles.length;
 
   dom.prepareCockpitSourceCount.textContent = sourceCount === null
     ? (state.projectSourceQueryPending ? "Sources loading..." : "Loading source summary...")
@@ -322,16 +318,10 @@ function refreshPrepareCockpit(): void {
     ? "Cleaning defaults"
     : pluralise(cleaningCount, "active cleaning item");
   dom.prepareProcessingStatus.textContent = sourceCount === null
-    ? "Processing status pending"
+    ? "Preview status pending"
     : sourceCount === 0
       ? "No sources"
-      : `${formatNumber(extractedCount)} text available | ${formatNumber(processedCount)} processed`;
-  dom.prepareProcessSources.textContent = state.activeProject === null
-    ? "Process sources"
-    : hasProjectSourceSelection()
-      ? "Process selected sources"
-      : "Process all sources";
-  dom.prepareProcessSources.disabled = state.activeProject === null || loadableCount === 0;
+      : `${formatNumber(extractedCount)} text available | Processed Text previews current settings`;
 }
 
 function analyseStageStatus(): string {

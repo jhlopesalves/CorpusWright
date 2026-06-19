@@ -2572,6 +2572,8 @@ pub fn run() {
             project::open_corpus_project_command,
             project::initialise_folder_as_corpus_project_command,
             project::query_project_sources_command,
+            project::query_project_source_selection_action_summary_command,
+            project::resolve_project_source_selection_pdf_paths_command,
             project::fast_import_project_source_files_command,
             project::fast_import_project_source_folder_command,
             project::remove_project_source_selection_command,

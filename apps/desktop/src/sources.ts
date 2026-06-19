@@ -35,6 +35,15 @@ export interface ProjectSourceRemovalResult {
   removedCount: number;
 }
 
+export interface ProjectSourceSelectionActionSummary {
+  totalSelected: number;
+  allSelectedArePdfs: boolean;
+  usablePdfCount: number;
+  extractablePdfCount: number;
+  reextractablePdfCount: number;
+  failedPdfCount: number;
+}
+
 export function pathKey(path: string): string {
   return path.replace(/\\/g, "/").toLowerCase();
 }
@@ -291,6 +300,22 @@ export function projectSourceSelectionDescriptor(): ProjectSourceSelectionDescri
   };
 }
 
+export async function queryProjectSourceSelectionActionSummary(): Promise<ProjectSourceSelectionActionSummary | null> {
+  if (!state.activeProject || !hasProjectSourceSelection()) return null;
+  return invoke<ProjectSourceSelectionActionSummary>("query_project_source_selection_action_summary_command", {
+    rootPath: state.activeProject.rootPath,
+    selection: projectSourceSelectionDescriptor(),
+  });
+}
+
+export async function resolveSelectedProjectPdfPaths(): Promise<string[]> {
+  if (!state.activeProject || !hasProjectSourceSelection()) return [];
+  return invoke<string[]>("resolve_project_source_selection_pdf_paths_command", {
+    rootPath: state.activeProject.rootPath,
+    selection: projectSourceSelectionDescriptor(),
+  });
+}
+
 export function rememberSelectedProjectSource(source: ProjectSource): void {
   state.selectedProjectSourceIds.add(source.id);
   state.selectedProjectSourcesById.set(source.id, source);
@@ -299,10 +324,6 @@ export function rememberSelectedProjectSource(source: ProjectSource): void {
 export function forgetSelectedProjectSource(sourceId: string): void {
   state.selectedProjectSourceIds.delete(sourceId);
   state.selectedProjectSourcesById.delete(sourceId);
-}
-
-export function selectedProjectSourcePaths(): string[] {
-  return selectedProjectSources().map((source) => source.path);
 }
 
 export function normalizeProjectSource(source: ProjectSource): ProjectSource {

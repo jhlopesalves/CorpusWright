@@ -13,6 +13,7 @@ import {
   pdfHandlingLabel,
   primaryReasonLabel,
   projectSourceSelectionCount,
+  queryProjectSourceSelectionActionSummary,
   rememberSelectedProjectSource,
   selectAllMatchingProjectSources,
   selectedProjectSources,
@@ -20,6 +21,7 @@ import {
   sourceDisplayStatusLabel,
   sourceKindLabel,
   sourceReasonDescriptions,
+  type ProjectSourceSelectionActionSummary,
 } from "./sources";
 
 const ITEM_HEIGHT = 26; // px, must match CSS #file-list li height
@@ -37,6 +39,8 @@ let callbacks: FileListCallbacks = {
   schedulePreviewUpdate: () => {},
   invalidatePreviewSession: () => {},
 };
+
+let projectSourceActionGeneration = 0;
 
 export function configureFileListCallbacks(nextCallbacks: FileListCallbacks): void {
   callbacks = nextCallbacks;
@@ -529,16 +533,92 @@ function sourceExplorerMode(): boolean {
   return state.activeProject !== null;
 }
 
-function syncProcessSourcesButton(): void {
-  dom.prepareProcessSources.textContent = state.activeProject === null
-    ? "Process sources"
-    : hasProjectSourceSelection()
-      ? "Process selected sources"
-      : "Process all sources";
+function sourceHasUsablePdfRoute(source: ProjectSource): boolean {
+  return source.kind === "pdf"
+    && source.extraction_route !== "unsupported"
+    && !source.reason_codes.includes("missing_file");
+}
+
+function explicitSelectionActionSummary(selectedSources: ProjectSource[]): ProjectSourceSelectionActionSummary {
+  let pdfCount = 0;
+  let usablePdfCount = 0;
+  let extractablePdfCount = 0;
+  let reextractablePdfCount = 0;
+  let failedPdfCount = 0;
+
+  for (const source of selectedSources) {
+    if (source.kind !== "pdf") continue;
+    pdfCount += 1;
+    if (!sourceHasUsablePdfRoute(source)) continue;
+    usablePdfCount += 1;
+    if (sourceHasExtractedText(source)) {
+      reextractablePdfCount += 1;
+    } else if (source.status === "failed") {
+      failedPdfCount += 1;
+    } else {
+      extractablePdfCount += 1;
+    }
+  }
+
+  return {
+    totalSelected: selectedSources.length,
+    allSelectedArePdfs: selectedSources.length > 0 && selectedSources.length === pdfCount,
+    usablePdfCount,
+    extractablePdfCount,
+    reextractablePdfCount,
+    failedPdfCount,
+  };
+}
+
+function selectedPdfLabel(count: number): string {
+  return count === 1 ? "selected PDF" : `${count.toLocaleString()} selected PDFs`;
+}
+
+function hideSourceActionItems(): void {
+  dom.sourceActionExtract.classList.add("hidden");
+  dom.sourceActionReExtract.classList.add("hidden");
+  dom.sourceActionRetry.classList.add("hidden");
+  dom.sourceActionChangeHandling.classList.add("hidden");
+  dom.sourcePreparePdfsBtn.classList.add("hidden");
+  dom.sourcePreparePdfsBtn.disabled = true;
+}
+
+function applySourceActionSummary(
+  summary: ProjectSourceSelectionActionSummary | null,
+  allowChangeHandling: boolean,
+  keepLegacyPdfButton: boolean,
+): void {
+  hideSourceActionItems();
+  if (!summary?.allSelectedArePdfs) {
+    return;
+  }
+
+  const allNeedExtraction =
+    summary.usablePdfCount === summary.totalSelected
+    && summary.extractablePdfCount === summary.totalSelected;
+  const hasRetryableFailure = summary.failedPdfCount > 0;
+  const hasReextractablePdf = summary.reextractablePdfCount > 0;
+
+  dom.sourceActionExtract.classList.toggle("hidden", !allNeedExtraction);
+  dom.sourceActionReExtract.classList.toggle("hidden", !hasReextractablePdf);
+  dom.sourceActionRetry.classList.toggle("hidden", !hasRetryableFailure);
+  dom.sourceActionChangeHandling.classList.toggle("hidden", !allowChangeHandling);
+  dom.sourceActionReExtract.textContent = `Re-extract ${selectedPdfLabel(summary.totalSelected)}`;
+
+  if (keepLegacyPdfButton) {
+    if (hasRetryableFailure) {
+      dom.sourcePreparePdfsBtn.textContent = "Retry extraction...";
+    } else if (hasReextractablePdf) {
+      dom.sourcePreparePdfsBtn.textContent = "Re-extract/OCR selected PDFs...";
+    } else {
+      dom.sourcePreparePdfsBtn.textContent = "Extract/OCR selected PDFs...";
+    }
+    dom.sourcePreparePdfsBtn.classList.remove("hidden");
+    dom.sourcePreparePdfsBtn.disabled = false;
+  }
 }
 
 function updateStatusLine(): void {
-  syncProcessSourcesButton();
   if (sourceExplorerMode()) {
     const sourceCount = state.projectSourceQuerySummary?.total_count ?? 0;
     const selectedCount = projectSourceSelectionCount();
@@ -550,55 +630,30 @@ function updateStatusLine(): void {
     dom.selectAllCheckbox.indeterminate = selectedCount > 0 && !dom.selectAllCheckbox.checked;
 
     if (hasProjectSourceSelection()) {
-      const selectedSources = selectedProjectSources();
-      const allSelectedArePdfs =
-        !state.allMatchingProjectSourcesSelected &&
-        selectedSources.length === state.selectedProjectSourceIds.size &&
-        selectedSources.every(source => source.kind === "pdf");
-      const hasFailures = selectedSources
-        .some(source => source.status === "failed");
-      const hasExtractedText =
-        selectedSources.length === state.selectedProjectSourceIds.size &&
-        selectedSources.some(sourceHasExtractedText);
-      const hasUsablePdfRoute = selectedSources
-        .some(source => source.kind === "pdf"
-          && source.extraction_route !== "unsupported"
-          && !source.reason_codes.includes("missing_file"));
-      const allNeedExtraction =
-        selectedSources.length === state.selectedProjectSourceIds.size &&
-        selectedSources.every(source =>
-          source.kind === "pdf" && !sourceHasExtractedText(source) && source.status !== "failed"
-        );
-
-      // Update dropdown context-sensitive items
       dom.sourceSelectedTrigger.disabled = false;
-
-      // Toggle extraction action items based on selection state
-      dom.sourceActionExtract.classList.toggle("hidden", !(allSelectedArePdfs && allNeedExtraction));
-      dom.sourceActionReExtract.classList.toggle("hidden", !(allSelectedArePdfs && hasExtractedText && hasUsablePdfRoute));
-      dom.sourceActionRetry.classList.toggle("hidden", !(allSelectedArePdfs && hasFailures));
-      dom.sourceActionChangeHandling.classList.toggle("hidden", !allSelectedArePdfs);
-
-      // Keep the old hidden buttons in sync for backward compatibility
-      if (allSelectedArePdfs && hasFailures) {
-        dom.sourcePreparePdfsBtn.textContent = "Retry extraction...";
-      } else if (allSelectedArePdfs && hasExtractedText && hasUsablePdfRoute) {
-        dom.sourcePreparePdfsBtn.textContent = "Re-extract/OCR selected PDFs...";
-      } else if (allSelectedArePdfs) {
-        dom.sourcePreparePdfsBtn.textContent = "Extract/OCR selected PDFs...";
+      if (state.allMatchingProjectSourcesSelected) {
+        const generation = ++projectSourceActionGeneration;
+        hideSourceActionItems();
+        void queryProjectSourceSelectionActionSummary()
+          .then((summary) => {
+            if (generation !== projectSourceActionGeneration) return;
+            applySourceActionSummary(summary, false, false);
+          })
+          .catch((error) => {
+            if (generation !== projectSourceActionGeneration) return;
+            hideSourceActionItems();
+            console.error(error);
+          });
+      } else {
+        projectSourceActionGeneration += 1;
+        applySourceActionSummary(explicitSelectionActionSummary(selectedProjectSources()), true, true);
       }
-      dom.sourcePreparePdfsBtn.classList.toggle("hidden", !allSelectedArePdfs);
-      dom.sourcePreparePdfsBtn.disabled = !allSelectedArePdfs;
       dom.sourceRemoveBtn.classList.remove("hidden");
       dom.sourceRemoveBtn.disabled = false;
     } else {
+      projectSourceActionGeneration += 1;
       dom.sourceSelectedTrigger.disabled = true;
-      dom.sourceActionExtract.classList.add("hidden");
-      dom.sourceActionReExtract.classList.add("hidden");
-      dom.sourceActionRetry.classList.add("hidden");
-      dom.sourceActionChangeHandling.classList.add("hidden");
-      dom.sourcePreparePdfsBtn.classList.add("hidden");
-      dom.sourcePreparePdfsBtn.disabled = true;
+      hideSourceActionItems();
       dom.sourceRemoveBtn.classList.add("hidden");
       dom.sourceRemoveBtn.disabled = true;
     }
@@ -607,8 +662,8 @@ function updateStatusLine(): void {
   }
 
   dom.sourceSelectedTrigger.disabled = true;
-  dom.sourcePreparePdfsBtn.classList.add("hidden");
-  dom.sourcePreparePdfsBtn.disabled = true;
+  projectSourceActionGeneration += 1;
+  hideSourceActionItems();
   dom.filesStatus.textContent = `${state.allFiles.length} loaded | ${state.selectedCorpusIndices.size} selected`;
   dom.selectAllCheckbox.checked =
     state.visibleFiles.length > 0 &&
