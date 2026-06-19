@@ -421,41 +421,16 @@ fn apply_document_processing(
     crate::clean::clean_text(&processed, cleaning_config)
 }
 
-/// Returns document text through the same raw extraction cache used by
-/// materialised PDF intake.
+/// Applies original or processed text semantics to an existing raw extraction.
 ///
-/// OCR-mode PDFs require a matching cache entry. This prevents downstream
-/// tools from silently falling back to embedded PDF text after special PDF
-/// intake has already materialised OCR text.
-pub fn document_text_for_record(
+/// This keeps project-persisted PDF extractions on the same processing path as
+/// in-memory and freshly extracted source text.
+pub fn document_text_from_cache_entry(
     record: &DocumentRecord,
     cleaning_config: &CleaningConfig,
     mode: DocumentTextMode,
-    cache: Option<&ExtractionCache>,
-) -> Result<DocumentText, String> {
-    let pdf_options = if record.document_type == DocumentType::Pdf {
-        Some(PdfExtractionOptions::raw_from_record_and_cleaning_config(
-            record,
-            cleaning_config,
-        ))
-    } else {
-        None
-    };
-    let extraction_config = docx_config_for_document_text(record, mode, cleaning_config);
-
-    let raw_entry = if record.document_type == DocumentType::Pdf
-        && pdf_options.is_some_and(|options| options.text_source != PdfTextSource::EmbeddedText)
-    {
-        let cache = cache.ok_or_else(missing_materialised_ocr_message)?;
-        cache
-            .try_get(record, pdf_options, &extraction_config)
-            .ok_or_else(missing_materialised_ocr_message)?
-    } else if let Some(cache) = cache {
-        cache.get_or_extract(record, pdf_options, &extraction_config)?
-    } else {
-        extract_text_from_record(record, pdf_options, &extraction_config)?
-    };
-
+    raw_entry: CacheEntry,
+) -> DocumentText {
     let CacheEntry {
         extracted_text,
         mut warnings,
@@ -504,12 +479,55 @@ pub fn document_text_for_record(
         }
     };
 
-    Ok(DocumentText {
+    DocumentText {
         text,
         warnings,
         page_count,
         page_texts,
-    })
+    }
+}
+
+/// Returns document text through the same raw extraction cache used by
+/// materialised PDF intake.
+///
+/// OCR-mode PDFs require a matching cache entry. This prevents downstream
+/// tools from silently falling back to embedded PDF text after special PDF
+/// intake has already materialised OCR text.
+pub fn document_text_for_record(
+    record: &DocumentRecord,
+    cleaning_config: &CleaningConfig,
+    mode: DocumentTextMode,
+    cache: Option<&ExtractionCache>,
+) -> Result<DocumentText, String> {
+    let pdf_options = if record.document_type == DocumentType::Pdf {
+        Some(PdfExtractionOptions::raw_from_record_and_cleaning_config(
+            record,
+            cleaning_config,
+        ))
+    } else {
+        None
+    };
+    let extraction_config = docx_config_for_document_text(record, mode, cleaning_config);
+
+    let raw_entry = if record.document_type == DocumentType::Pdf
+        && pdf_options.is_some_and(|options| options.text_source != PdfTextSource::EmbeddedText)
+    {
+        let cache = cache.ok_or_else(missing_materialised_ocr_message)?;
+        cache
+            .try_get(record, pdf_options, &extraction_config)
+            .ok_or_else(missing_materialised_ocr_message)?
+    } else if let Some(cache) = cache {
+        cache.get_or_extract(record, pdf_options, &extraction_config)?
+    } else {
+        extract_text_from_record(record, pdf_options, &extraction_config)?
+    };
+
+    Ok(document_text_from_cache_entry(
+        record,
+        cleaning_config,
+        mode,
+        raw_entry,
+    ))
 }
 
 impl Default for ExtractionCache {
