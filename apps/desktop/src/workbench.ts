@@ -180,16 +180,25 @@ function activeAnalysisToolName(): string {
 }
 
 function processedSourceCount(): number {
+  if (state.activeProject) {
+    return state.projectSourceSummary?.processed_count ?? 0;
+  }
   return state.projectSources.filter((source) =>
     source.status === "processed" || source.status === "processed_with_warnings"
   ).length;
 }
 
 function extractedTextSourceCount(): number {
+  if (state.activeProject) {
+    return state.projectSourceSummary?.extracted_text_count ?? 0;
+  }
   return state.projectSources.filter(sourceHasExtractedText).length;
 }
 
 function warningSourceCount(): number {
+  if (state.activeProject) {
+    return state.projectSourceSummary?.warning_count ?? 0;
+  }
   return state.projectSources.filter((source) =>
     source.status === "text_extracted_with_warnings" ||
     source.status === "processed_with_warnings" ||
@@ -203,6 +212,10 @@ function isProcessedSourceForAnalysis(path: string): boolean {
 }
 
 function chooseAnalysisInputSource(): AnalysisInputSource {
+  if (state.activeProject) {
+    const total = state.projectSourceSummary?.total_count ?? 0;
+    return total > 0 && processedSourceCount() === total ? "processed" : "extracted";
+  }
   if (state.allFiles.length === 0) {
     return "extracted";
   }
@@ -298,7 +311,7 @@ function appendSummaryRow(labelText: string, valueText: string): void {
 }
 
 function prepareStageStatus(): string {
-  const sourceCount = state.projectSources.length;
+  const sourceCount = state.projectSourceSummary?.total_count ?? state.projectSources.length;
   const extractedCount = extractedTextSourceCount();
   const warnings = warningSourceCount();
 
@@ -334,7 +347,7 @@ function refreshStageNavigator(): void {
   dom.workbenchAnalyse.setAttribute("aria-selected", analyseIsActive ? "true" : "false");
   dom.workbenchExport.setAttribute("aria-selected", "false");
 
-  dom.workbenchPrepare.dataset.stageState = state.projectSources.length > 0 ? "ready" : "blocked";
+  dom.workbenchPrepare.dataset.stageState = (state.projectSourceSummary?.total_count ?? state.projectSources.length) > 0 ? "ready" : "blocked";
   dom.workbenchAnalyse.dataset.stageState = status === "ready" ? "ready" : status === "stale" ? "stale" : "blocked";
   dom.workbenchExport.dataset.stageState = "future";
 
@@ -414,8 +427,8 @@ function renderAnalysisNotice(): void {
 }
 
 function renderProjectSummary(): void {
-  const sourceCount = state.projectSources.length;
-  const fileCount = state.allFiles.length;
+  const sourceCount = state.projectSourceSummary?.total_count ?? state.projectSources.length;
+  const fileCount = state.activeProject ? state.projectCorpusFileCount : state.allFiles.length;
   const processedCount = processedSourceCount();
   const extractedCount = extractedTextSourceCount();
 
@@ -426,7 +439,7 @@ function renderProjectSummary(): void {
   appendSummaryRow("Text available", `${extractedCount.toLocaleString()} of ${sourceCount.toLocaleString()} sources`);
   appendSummaryRow("Processed sources", pluralise(processedCount, "source"));
   if (state.cleanedTokenCountText) {
-    appendSummaryRow("Cleaned token count", state.cleanedTokenCountText);
+    appendSummaryRow(state.activeProject ? "Source token count" : "Cleaned token count", state.cleanedTokenCountText);
   }
 }
 
@@ -1864,7 +1877,7 @@ export function refreshAnalyseWorkbench(): void {
 }
 
 async function handleBuildAnalysisCorpus(): Promise<void> {
-  const indices = state.allFiles.map((_, index) => index);
+  const indices = state.activeProject ? null : state.allFiles.map((_, index) => index);
   const inputTextSource = chooseAnalysisInputSource();
   const buildSignature = analysisBuildSignature(inputTextSource);
 
@@ -1873,7 +1886,7 @@ async function handleBuildAnalysisCorpus(): Promise<void> {
   dom.analyseBuildNote.textContent = "Building analysis corpus...";
   dom.statusBar.textContent = "Building analysis corpus...";
 
-  if (indices.length === 0) {
+  if ((indices?.length ?? state.projectCorpusFileCount) === 0) {
     state.analysisCorpus = null;
     resetFrequencyCorpusState();
     analysisNotice = {

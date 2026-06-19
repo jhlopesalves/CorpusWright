@@ -7,6 +7,7 @@ import {
 } from "./dom";
 import { state } from "./state";
 import {
+  hasProjectSourceSelection,
   isPreviewableSource,
   selectedProjectSources,
   sourceForPath,
@@ -95,7 +96,7 @@ async function executeGlobalSearch(): Promise<void> {
     state.currentMatchIndex = -1;
     state.pendingSearchNavigation = 0;
     state.pendingSearchAfterCurrent = false;
-    if (state.selectedCorpusIndices.size > 0 || state.selectedProjectSourceIds.size > 0) {
+    if (state.selectedCorpusIndices.size > 0 || hasProjectSourceSelection()) {
       callbacks.schedulePreviewUpdate(50);
     } else {
       const activeTabContent = getActivePreviewCardsContainer();
@@ -118,14 +119,14 @@ async function executeGlobalSearch(): Promise<void> {
   try {
     myVersion = state.currentCorpusVersion;
     const isProcessed = getActivePreviewTab()?.getAttribute("data-target") === "processed-text";
-    const indices = Array.from(state.selectedCorpusIndices);
-    if (state.activeProject && state.selectedProjectSourceIds.size > 0) {
+    const indices = state.activeProject ? null : Array.from(state.selectedCorpusIndices);
+    if (state.activeProject && hasProjectSourceSelection() && !state.allMatchingProjectSourcesSelected) {
       const selectedSources = selectedProjectSources();
       if (selectedSources.length === 0 || selectedSources.some((source) => !isPreviewableSource(source))) {
         throw new Error("Selected source text is unavailable. Retry extraction or remove the source before searching.");
       }
     }
-    const blocked = indices.some((index) => {
+    const blocked = (indices ?? []).some((index) => {
       const record = state.allFiles[index];
       if (!record) return false;
       const source = sourceForPath(record.source_path);
@@ -137,6 +138,11 @@ async function executeGlobalSearch(): Promise<void> {
 
     const result = await invoke<SearchResult>("search_corpus_command", {
       indices,
+      sourcePaths: state.activeProject && !state.allMatchingProjectSourcesSelected
+        ? selectedProjectSources().map((source) => source.path)
+        : null,
+      rootPath: state.allMatchingProjectSourcesSelected ? state.activeProject?.rootPath : null,
+      allMatchingQuery: state.allMatchingProjectSourcesSelected ? state.sourceSearchQuery : null,
       corpusVersion: myVersion,
       query: query,
       isProcessed: isProcessed,

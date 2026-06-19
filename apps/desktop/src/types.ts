@@ -6,6 +6,12 @@ export interface CorpusLoadResult {
   corpusVersion: number;
 }
 
+export interface ProjectCorpusLoadResult {
+  summary: ScanReport["summary"];
+  corpusVersion: number;
+  recordCount: number;
+}
+
 export interface VisibleFile {
   corpusIndex: number;
   record: DocumentRecord;

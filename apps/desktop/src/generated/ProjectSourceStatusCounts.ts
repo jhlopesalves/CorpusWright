@@ -1,0 +1,1 @@
+export type ProjectSourceStatusCounts = { unprocessed: number, ready_to_process: number, needs_ocr: number, text_extracted: number, text_extracted_with_warnings: number, processed: number, processed_with_warnings: number, failed: number, };
