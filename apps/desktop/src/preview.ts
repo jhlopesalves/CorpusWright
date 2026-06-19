@@ -421,20 +421,12 @@ function projectSourceDetailLines(source: ProjectSource, mode: "original" | "pro
     }
 
     if (source.kind === "pdf" && !sourceHasExtractedText(source)) {
-      lines.push("Processed text has not been generated yet.");
-      lines.push("Extracted source text is available only after PDF text extraction completes.");
+      lines.push("Processed preview is unavailable until PDF text extraction completes.");
       lines.push("Run extraction with the selected PDF handling before reviewing processed text.");
       return lines;
     }
 
-    if (source.status !== "processed" && source.status !== "processed_with_warnings") {
-      lines.push("Processed text has not been generated yet.");
-      lines.push("Run processing to generate processed text.");
-      return lines;
-    }
-
-    lines.push("Processed preview is unavailable because source text is not loaded in the current corpus view.");
-    lines.push("Extracted source text is available in the Original Text tab after the source is loaded.");
+    lines.push("Processed preview is unavailable because source text cannot be read.");
     if (reasonDescriptions.length > 0 && sourceShouldShowReviewNotice(source)) {
       lines.push("Review recommended:");
       for (const description of reasonDescriptions) {
@@ -515,7 +507,7 @@ function renderTextExtractionRequiredCards(
     body.textContent = mode === "processed"
       ? source.status === "failed"
         ? "Processed text is not available because source review or text extraction failed. Review the source status before processing."
-        : "Processed text has not been generated yet. Extracted source text is available in the Original Text tab after extraction."
+        : "Processed preview is unavailable until PDF text extraction completes."
       : source.status === "failed"
       ? "Source text is unavailable because source review or text extraction failed. Review the source status before preview or search."
       : "Text has not been extracted yet. Use Extract/OCR selected PDFs to materialise source text before preview or search.";

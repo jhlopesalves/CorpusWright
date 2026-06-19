@@ -14,7 +14,7 @@ use corpuswright_core::preview::{
     preview_processed_files,
 };
 use corpuswright_core::project_sources::{
-    ProjectSourceExtractionResult, ProjectSourceExtractionRoute, ProjectSourceKind,
+    ProjectSource, ProjectSourceExtractionResult, ProjectSourceExtractionRoute, ProjectSourceKind,
     ProjectSourcePdfProfile, ProjectSourcePreviewItem, ProjectSourcePreviewViewport,
     ProjectSourceSelectionDescriptor, ProjectSourceStatus, stable_project_source_id,
     update_project_source_extraction_results,
@@ -1437,6 +1437,19 @@ fn read_project_source_preview_command(
     }
 }
 
+fn project_source_has_previewable_text(source: &ProjectSource) -> bool {
+    source.kind != ProjectSourceKind::Unknown
+        && source.status != ProjectSourceStatus::Failed
+        && (source.kind != ProjectSourceKind::Pdf
+            || matches!(
+                source.status,
+                ProjectSourceStatus::TextExtracted
+                    | ProjectSourceStatus::TextExtractedWithWarnings
+                    | ProjectSourceStatus::Processed
+                    | ProjectSourceStatus::ProcessedWithWarnings
+            ))
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command(async)]
 fn query_selected_source_preview_viewport_command(
@@ -1463,21 +1476,7 @@ fn query_selected_source_preview_viewport_command(
     let mut items = Vec::with_capacity(viewport.items.len());
 
     for source in viewport.items {
-        let can_preview = source.kind != ProjectSourceKind::Unknown
-            && source.status != ProjectSourceStatus::Failed
-            && (source.kind != ProjectSourceKind::Pdf
-                || matches!(
-                    source.status,
-                    ProjectSourceStatus::TextExtracted
-                        | ProjectSourceStatus::TextExtractedWithWarnings
-                        | ProjectSourceStatus::Processed
-                        | ProjectSourceStatus::ProcessedWithWarnings
-                ))
-            && (!processed
-                || matches!(
-                    source.status,
-                    ProjectSourceStatus::Processed | ProjectSourceStatus::ProcessedWithWarnings
-                ));
+        let can_preview = project_source_has_previewable_text(&source);
 
         let (preview, preview_error) = if can_preview {
             match corpus.record_for_path(&source.path, corpus_version)? {
@@ -2200,6 +2199,51 @@ mod tests {
             pdf_profile: profile,
             ocr_quality: Some(PdfOcrQuality::Balanced),
         }
+    }
+
+    fn project_source_for_preview(
+        kind: ProjectSourceKind,
+        status: ProjectSourceStatus,
+    ) -> ProjectSource {
+        ProjectSource {
+            id: "source_test".to_string(),
+            path: PathBuf::from("source.txt"),
+            file_name: "source.txt".to_string(),
+            extension: Some("txt".to_string()),
+            kind,
+            status,
+            reason_codes: Vec::new(),
+            extraction_route: ProjectSourceExtractionRoute::PlainText,
+            pdf_profile: None,
+            ocr_quality: None,
+            added_at: "2026-01-01T00:00:00Z".to_string(),
+            last_checked_at: None,
+            last_processed_at: None,
+        }
+    }
+
+    #[test]
+    fn native_source_preview_does_not_require_materialised_processing() {
+        for status in [
+            ProjectSourceStatus::Unprocessed,
+            ProjectSourceStatus::ReadyToProcess,
+            ProjectSourceStatus::TextExtracted,
+            ProjectSourceStatus::Processed,
+        ] {
+            let source = project_source_for_preview(ProjectSourceKind::Txt, status);
+            assert!(project_source_has_previewable_text(&source));
+        }
+    }
+
+    #[test]
+    fn pdf_preview_still_requires_extracted_source_text() {
+        let pending =
+            project_source_for_preview(ProjectSourceKind::Pdf, ProjectSourceStatus::ReadyToProcess);
+        let extracted =
+            project_source_for_preview(ProjectSourceKind::Pdf, ProjectSourceStatus::TextExtracted);
+
+        assert!(!project_source_has_previewable_text(&pending));
+        assert!(project_source_has_previewable_text(&extracted));
     }
 
     #[test]
