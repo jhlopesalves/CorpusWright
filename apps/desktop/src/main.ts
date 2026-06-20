@@ -73,6 +73,7 @@ function init(): void {
   initRepeatedArtifactFinder({
     renderCustomRemovals,
     schedulePreviewUpdate,
+    updateWordCount,
   });
 }
 

@@ -126,6 +126,7 @@ export const dom = {
   chkRemoveEndnotes: getElement<HTMLInputElement>("chk-remove-endnotes"),
   chkRemoveComments: getElement<HTMLInputElement>("chk-remove-comments"),
   chkRemoveToc: getElement<HTMLInputElement>("chk-remove-toc"),
+  chkAutoApplyStrongHeaderFooter: getElement<HTMLInputElement>("chk-auto-apply-strong-header-footer"),
   chkRemoveRepeatedPdfHeadersFooters: getElement<HTMLInputElement>("chk-remove-repeated-pdf-headers-footers"),
   chkRemovePdfCodeLikeBlocks: getElement<HTMLInputElement>("chk-remove-pdf-code-like-blocks"),
   chkRemovePdfFormulaLikeLines: getElement<HTMLInputElement>("chk-remove-pdf-formula-like-lines"),

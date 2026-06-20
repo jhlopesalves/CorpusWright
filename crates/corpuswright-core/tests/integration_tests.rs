@@ -30,7 +30,7 @@ fn test_end_to_end_corpus_pipeline() {
     };
 
     let preview_options = PreviewOptions {
-        max_chars_per_file: 50,
+        max_chars_per_file: Some(50),
         include_paths: true,
         max_files: None,
     };

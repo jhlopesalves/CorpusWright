@@ -28,6 +28,7 @@ import {
 } from "./analysis";
 import { BOOLEAN_CLEANING_CONFIG_KEYS } from "./config";
 import { dom } from "./dom";
+import { effectiveCleaningConfig } from "./effective-cleaning-config";
 import {
   overviewGlossary,
   type OverviewGlossaryId,
@@ -141,7 +142,7 @@ function analysisBuildSignature(): string {
     projectRoot: state.activeProject?.rootPath ?? null,
     corpusVersion: state.currentCorpusVersion,
     sourceManifestVersion: state.sourceManifestVersion,
-    cleaningConfig: state.activeCleaningConfig,
+    cleaningConfig: effectiveCleaningConfig(),
   });
 }
 
@@ -244,16 +245,17 @@ function prepareStageStatus(): string {
 }
 
 function activeCleaningItemCount(): number {
+  const config = effectiveCleaningConfig();
   const enabledBooleanRules = BOOLEAN_CLEANING_CONFIG_KEYS
-    .filter((key) => state.activeCleaningConfig[key])
+    .filter((key) => config[key])
     .length;
-  const enabledStructuredRemovals = state.activeCleaningConfig.removal_rules
+  const enabledStructuredRemovals = config.removal_rules
     .filter((rule) => rule.enabled)
     .length;
   return enabledBooleanRules
-    + state.activeCleaningConfig.remove_patterns.length
+    + config.remove_patterns.length
     + enabledStructuredRemovals
-    + state.activeCleaningConfig.replace_patterns.length;
+    + config.replace_patterns.length;
 }
 
 function refreshPrepareCockpit(): void {
@@ -1417,7 +1419,7 @@ async function loadTermDistribution(token: string, offset: number): Promise<void
       frequencyDocumentScope,
       offset,
       TERM_DISTRIBUTION_PAGE_SIZE,
-      state.activeCleaningConfig,
+      effectiveCleaningConfig(),
     );
     if (termDistributionGenerations.get(token) !== generation || !expandedFrequencyTokens.has(token)) {
       return;
@@ -1550,7 +1552,7 @@ async function refreshFrequencyPage(resetOffset = true): Promise<void> {
         offset: frequencyPageOffset,
         limit: FREQUENCY_PAGE_SIZE,
       },
-      state.activeCleaningConfig,
+      effectiveCleaningConfig(),
     );
     if (frequencyQueryGeneration !== generation) {
       return;
@@ -1810,12 +1812,12 @@ async function handleBuildAnalysisCorpus(): Promise<void> {
       indices,
       state.currentCorpusVersion,
       buildSignature,
-      state.activeCleaningConfig,
+      effectiveCleaningConfig(),
     );
     if (analysisBuildGeneration !== buildGeneration) {
       return;
     }
-    const overview = await computeCorpusOverview(state.activeCleaningConfig).catch(() => builtOverview);
+    const overview = await computeCorpusOverview(effectiveCleaningConfig()).catch(() => builtOverview);
     state.analysisCorpus = overview;
     resetFrequencyCorpusState();
     activeAnalysisTool = "overview";
@@ -1876,11 +1878,11 @@ async function initialiseAnalysisBuildState(): Promise<void> {
   });
 
   try {
-    const status = await getAnalysisBuildStatus(state.activeCleaningConfig);
+    const status = await getAnalysisBuildStatus(effectiveCleaningConfig());
     analysisBuildInProgress = status.state === "building";
     analysisBuildProgress = status.progress;
     if (status.state === "ready" && status.overview && !state.analysisCorpus) {
-      state.analysisCorpus = await computeCorpusOverview(state.activeCleaningConfig).catch(() => status.overview);
+      state.analysisCorpus = await computeCorpusOverview(effectiveCleaningConfig()).catch(() => status.overview);
     }
   } catch {
     // The Analyse screen remains usable even if startup status recovery is unavailable.
@@ -2020,7 +2022,7 @@ async function refreshFrequencyDocumentsPage(resetOffset = true): Promise<void> 
       dom.frequencyFilesSearchInput.value,
       frequencyDocumentsOffset,
       FREQUENCY_DOCUMENT_PAGE_SIZE,
-      state.activeCleaningConfig,
+      effectiveCleaningConfig(),
     );
     if (frequencyDocumentsGeneration !== generation) {
       return;

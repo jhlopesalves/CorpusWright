@@ -12,7 +12,7 @@ use ts_rs::TS;
 /// Configuration options for generating file previews.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PreviewOptions {
-    pub max_chars_per_file: usize,
+    pub max_chars_per_file: Option<usize>,
     pub include_paths: bool,
     pub max_files: Option<usize>,
 }
@@ -20,7 +20,7 @@ pub struct PreviewOptions {
 impl Default for PreviewOptions {
     fn default() -> Self {
         Self {
-            max_chars_per_file: 5_000,
+            max_chars_per_file: Some(5_000),
             include_paths: true,
             max_files: None,
         }
@@ -79,11 +79,11 @@ pub enum PreviewError {
     Io { path: PathBuf, message: String },
 }
 
-/// Generates a bounded raw-text preview for a single file.
+/// Generates a raw-text preview for a single file.
 ///
 /// If a `cache` is provided and contains a matching entry, the cached
-/// extracted text is used (truncated to `max_chars_per_file`).  On a cache
-/// miss, falls back to the existing bounded extraction path.
+/// extracted text is used and the configured character limit is applied. On a
+/// cache miss, falls back to extraction with the same optional limit.
 ///
 /// Only PDF and DOCX files attempt a cache lookup.  Text/HTML files are
 /// always read via `read_bounded_lossy_text`.
@@ -104,18 +104,8 @@ pub fn preview_file_with_config(
     let (read, extraction_warnings) = if record.document_type == DocumentType::Docx {
         if let Some(cache) = cache {
             if let Some(entry) = cache.try_get(record, None, &CleaningConfig::default()) {
-                let truncated = entry.extracted_text.chars().count() > options.max_chars_per_file;
-                let text: String = entry
-                    .extracted_text
-                    .chars()
-                    .take(options.max_chars_per_file)
-                    .collect();
                 (
-                    BoundedRead {
-                        text,
-                        truncated,
-                        invalid_utf8: false,
-                    },
+                    limit_text(entry.extracted_text, options.max_chars_per_file, false),
                     entry.warnings,
                 )
             } else {
@@ -125,22 +115,10 @@ pub fn preview_file_with_config(
                         message: error.to_string(),
                     })?;
                 match crate::docx::extract_docx(&bytes, &CleaningConfig::default()) {
-                    Ok(extracted) => {
-                        let truncated = extracted.text.chars().count() > options.max_chars_per_file;
-                        let text: String = extracted
-                            .text
-                            .chars()
-                            .take(options.max_chars_per_file)
-                            .collect();
-                        (
-                            BoundedRead {
-                                text,
-                                truncated,
-                                invalid_utf8: false,
-                            },
-                            extracted.warnings,
-                        )
-                    }
+                    Ok(extracted) => (
+                        limit_text(extracted.text, options.max_chars_per_file, false),
+                        extracted.warnings,
+                    ),
                     Err(e) => {
                         let mut warnings = Vec::new();
                         warnings.push(format!("DOCX Extraction Failed: {}", e));
@@ -161,22 +139,10 @@ pub fn preview_file_with_config(
                 message: error.to_string(),
             })?;
             match crate::docx::extract_docx(&bytes, &CleaningConfig::default()) {
-                Ok(extracted) => {
-                    let truncated = extracted.text.chars().count() > options.max_chars_per_file;
-                    let text: String = extracted
-                        .text
-                        .chars()
-                        .take(options.max_chars_per_file)
-                        .collect();
-                    (
-                        BoundedRead {
-                            text,
-                            truncated,
-                            invalid_utf8: false,
-                        },
-                        extracted.warnings,
-                    )
-                }
+                Ok(extracted) => (
+                    limit_text(extracted.text, options.max_chars_per_file, false),
+                    extracted.warnings,
+                ),
                 Err(e) => {
                     let mut warnings = Vec::new();
                     warnings.push(format!("DOCX Extraction Failed: {}", e));
@@ -196,18 +162,8 @@ pub fn preview_file_with_config(
             PdfExtractionOptions::raw_from_record_and_cleaning_config(record, cleaning_config);
         if let Some(cache) = cache {
             if let Some(entry) = cache.try_get(record, Some(pdf_options), cleaning_config) {
-                let truncated = entry.extracted_text.chars().count() > options.max_chars_per_file;
-                let text: String = entry
-                    .extracted_text
-                    .chars()
-                    .take(options.max_chars_per_file)
-                    .collect();
                 (
-                    BoundedRead {
-                        text,
-                        truncated,
-                        invalid_utf8: false,
-                    },
+                    limit_text(entry.extracted_text, options.max_chars_per_file, false),
                     entry.warnings,
                 )
             } else {
@@ -216,23 +172,14 @@ pub fn preview_file_with_config(
                         path: record.source_path.clone(),
                         message: error.to_string(),
                     })?;
-                match crate::pdf::extract_pdf(&bytes, Some(options.max_chars_per_file), pdf_options)
-                {
+                match crate::pdf::extract_pdf(&bytes, options.max_chars_per_file, pdf_options) {
                     Ok(extracted) => {
-                        let truncated = extracted.text.chars().count() > options.max_chars_per_file;
-                        let text: String = extracted
-                            .text
-                            .chars()
-                            .take(options.max_chars_per_file)
-                            .collect();
-                        (
-                            BoundedRead {
-                                text,
-                                truncated,
-                                invalid_utf8: false,
-                            },
-                            extracted.warnings,
-                        )
+                        let read = limit_text(
+                            extracted.text,
+                            options.max_chars_per_file,
+                            extracted.truncated,
+                        );
+                        (read, extracted.warnings)
                     }
                     Err(e) => {
                         let mut warnings = Vec::new();
@@ -253,22 +200,14 @@ pub fn preview_file_with_config(
                 path: record.source_path.clone(),
                 message: error.to_string(),
             })?;
-            match crate::pdf::extract_pdf(&bytes, Some(options.max_chars_per_file), pdf_options) {
+            match crate::pdf::extract_pdf(&bytes, options.max_chars_per_file, pdf_options) {
                 Ok(extracted) => {
-                    let truncated = extracted.text.chars().count() > options.max_chars_per_file;
-                    let text: String = extracted
-                        .text
-                        .chars()
-                        .take(options.max_chars_per_file)
-                        .collect();
-                    (
-                        BoundedRead {
-                            text,
-                            truncated,
-                            invalid_utf8: false,
-                        },
-                        extracted.warnings,
-                    )
+                    let read = limit_text(
+                        extracted.text,
+                        options.max_chars_per_file,
+                        extracted.truncated,
+                    );
+                    (read, extracted.warnings)
                 }
                 Err(e) => {
                     let mut warnings = Vec::new();
@@ -310,14 +249,16 @@ pub fn preview_file_with_config(
         });
     }
 
-    if read.truncated {
+    if read.truncated
+        && let Some(max_chars_per_file) = options.max_chars_per_file
+    {
         warnings.push(PreviewWarning {
             source_path: Some(record.source_path.clone()),
             relative_path: Some(record.relative_path.clone()),
             kind: PreviewWarningKind::Truncated,
             message: format!(
                 "Preview was truncated to {} characters.",
-                options.max_chars_per_file
+                max_chars_per_file
             ),
         });
     }
@@ -335,9 +276,9 @@ pub fn preview_file_with_config(
     })
 }
 
-/// Generates a bounded raw text preview of the given files.
+/// Generates a raw text preview of the given files.
 ///
-/// Reads up to `max_chars_per_file` per file and combines the results.
+/// Applies the optional per-file character limit and combines the results.
 pub fn preview_files(
     records: &[DocumentRecord],
     options: &PreviewOptions,
@@ -395,7 +336,7 @@ pub fn preview_files_with_config(
     })
 }
 
-/// Generates a bounded preview with text cleaning rules applied.
+/// Generates a preview with text cleaning rules applied.
 ///
 /// Each file is extracted once with compatible cache entries used where
 /// available, then optional HTML extraction and `clean_text` are applied.
@@ -424,17 +365,19 @@ pub fn preview_processed_files(
     let results: Result<Vec<_>, PreviewError> = records[..limit]
         .par_iter()
         .map(|record| {
-            let (mut source_text, extraction_warnings) = if record.document_type
+            let (mut source_read, extraction_warnings) = if record.document_type
                 == DocumentType::Docx
             {
                 let cache_hit = cache.and_then(|c| c.try_get(record, None, cleaning_config));
                 if let Some(entry) = cache_hit {
-                    let text: String = entry
-                        .extracted_text
-                        .chars()
-                        .take(preview_options.max_chars_per_file)
-                        .collect();
-                    (text, entry.warnings)
+                    (
+                        limit_text(
+                            entry.extracted_text,
+                            preview_options.max_chars_per_file,
+                            false,
+                        ),
+                        entry.warnings,
+                    )
                 } else {
                     let bytes =
                         std::fs::read(&record.source_path).map_err(|error| PreviewError::Io {
@@ -442,16 +385,12 @@ pub fn preview_processed_files(
                             message: error.to_string(),
                         })?;
                     match crate::docx::extract_docx(&bytes, cleaning_config) {
-                        Ok(extracted) => {
-                            let text: String = extracted
-                                .text
-                                .chars()
-                                .take(preview_options.max_chars_per_file)
-                                .collect();
-                            (text, extracted.warnings)
-                        }
+                        Ok(extracted) => (
+                            limit_text(extracted.text, preview_options.max_chars_per_file, false),
+                            extracted.warnings,
+                        ),
                         Err(e) => (
-                            String::new(),
+                            empty_bounded_read(),
                             vec![format!("DOCX Extraction Failed: {}", e)],
                         ),
                     }
@@ -466,13 +405,12 @@ pub fn preview_processed_files(
                 if let Some(entry) = cache_hit {
                     let (pdf_cleaned, mut cleanup_warnings) =
                         clean_extracted_pdf_text(&entry.extracted_text, cleaning_config);
-                    let text: String = pdf_cleaned
-                        .chars()
-                        .take(preview_options.max_chars_per_file)
-                        .collect();
                     let mut warnings = entry.warnings;
                     warnings.append(&mut cleanup_warnings);
-                    (text, warnings)
+                    (
+                        limit_text(pdf_cleaned, preview_options.max_chars_per_file, false),
+                        warnings,
+                    )
                 } else {
                     let bytes =
                         std::fs::read(&record.source_path).map_err(|error| PreviewError::Io {
@@ -481,21 +419,28 @@ pub fn preview_processed_files(
                         })?;
                     match crate::pdf::extract_pdf(
                         &bytes,
-                        Some(preview_options.max_chars_per_file),
+                        preview_options.max_chars_per_file,
                         pdf_options,
                     ) {
                         Ok(extracted) => {
+                            let extraction_truncated = extracted.truncated;
                             let (pdf_cleaned, mut cleanup_warnings) =
                                 clean_extracted_pdf_text(&extracted.text, cleaning_config);
-                            let text: String = pdf_cleaned
-                                .chars()
-                                .take(preview_options.max_chars_per_file)
-                                .collect();
                             let mut warnings = extracted.warnings;
                             warnings.append(&mut cleanup_warnings);
-                            (text, warnings)
+                            (
+                                limit_text(
+                                    pdf_cleaned,
+                                    preview_options.max_chars_per_file,
+                                    extraction_truncated,
+                                ),
+                                warnings,
+                            )
                         }
-                        Err(e) => (String::new(), vec![format!("PDF Extraction Failed: {}", e)]),
+                        Err(e) => (
+                            empty_bounded_read(),
+                            vec![format!("PDF Extraction Failed: {}", e)],
+                        ),
                     }
                 }
             } else {
@@ -503,11 +448,11 @@ pub fn preview_processed_files(
                     &record.source_path,
                     preview_options.max_chars_per_file,
                 )?;
-                (read.text, Vec::new())
+                (read, Vec::new())
             };
 
             if cleaning_config.extract_html {
-                source_text = crate::html::extract_html(&source_text);
+                source_read.text = crate::html::extract_html(&source_read.text);
             }
 
             let (cleaned, cleaning_report) = {
@@ -517,7 +462,7 @@ pub fn preview_processed_files(
                     page_number: None,
                 };
                 let (text, report) = crate::clean::clean_text_with_report(
-                    &source_text,
+                    &source_read.text,
                     cleaning_config,
                     Some(&context),
                 );
@@ -536,15 +481,15 @@ pub fn preview_processed_files(
                 })
                 .collect();
 
-            let truncated = included_char_count > preview_options.max_chars_per_file;
-            if truncated {
+            let truncated = source_read.truncated;
+            if truncated && let Some(max_chars_per_file) = preview_options.max_chars_per_file {
                 file_warnings.push(PreviewWarning {
                     source_path: Some(record.source_path.clone()),
                     relative_path: Some(record.relative_path.clone()),
                     kind: PreviewWarningKind::Truncated,
                     message: format!(
                         "Preview was truncated to {} characters.",
-                        preview_options.max_chars_per_file
+                        max_chars_per_file
                     ),
                 });
             }
@@ -627,9 +572,40 @@ pub struct BoundedRead {
     pub invalid_utf8: bool,
 }
 
+fn empty_bounded_read() -> BoundedRead {
+    BoundedRead {
+        text: String::new(),
+        truncated: false,
+        invalid_utf8: false,
+    }
+}
+
+fn limit_text(text: String, max_chars: Option<usize>, extraction_truncated: bool) -> BoundedRead {
+    let Some(max_chars) = max_chars else {
+        return BoundedRead {
+            text,
+            truncated: false,
+            invalid_utf8: false,
+        };
+    };
+
+    let text_exceeds_limit = text.chars().count() > max_chars;
+    let text = if text_exceeds_limit {
+        text.chars().take(max_chars).collect()
+    } else {
+        text
+    };
+
+    BoundedRead {
+        text,
+        truncated: extraction_truncated || text_exceeds_limit,
+        invalid_utf8: false,
+    }
+}
+
 pub fn read_bounded_lossy_text(
     path: &std::path::Path,
-    max_chars: usize,
+    max_chars: Option<usize>,
 ) -> Result<BoundedRead, PreviewError> {
     const CHUNK_SIZE: usize = 8 * 1024;
 
@@ -642,7 +618,9 @@ pub fn read_bounded_lossy_text(
         .map(|metadata| metadata.len())
         .unwrap_or_default();
 
-    let target_chars = max_chars.saturating_add(1);
+    let target_chars = max_chars
+        .map(|limit| limit.saturating_add(1))
+        .unwrap_or(usize::MAX);
     let mut pending = Vec::new();
     let mut text = String::new();
     let mut chars_seen = 0usize;
@@ -682,8 +660,12 @@ pub fn read_bounded_lossy_text(
         );
     }
 
-    let truncated = chars_seen > max_chars || (!reached_eof && bytes_read < total_bytes);
-    let text = text.chars().take(max_chars).collect();
+    let truncated = max_chars
+        .is_some_and(|limit| chars_seen > limit || (!reached_eof && bytes_read < total_bytes));
+    let text = match max_chars {
+        Some(limit) => text.chars().take(limit).collect(),
+        None => text,
+    };
 
     Ok(BoundedRead {
         text,
@@ -791,6 +773,32 @@ mod tests {
     }
 
     #[test]
+    fn exhaustive_raw_preview_returns_the_complete_file_deterministically() {
+        let dir = tempdir().unwrap();
+        let full_text = format!("{}TAIL_AFTER_LIMIT", "a".repeat(6_000));
+        fs::write(dir.path().join("long.txt"), &full_text).unwrap();
+        let report = scan_directory(dir.path()).unwrap();
+        let options = PreviewOptions {
+            max_chars_per_file: None,
+            ..PreviewOptions::default()
+        };
+
+        let first = preview_file(&report.files[0], &options, None).unwrap();
+        let second = preview_file(&report.files[0], &options, None).unwrap();
+
+        assert_eq!(first.text, full_text);
+        assert_eq!(first.included_char_count, full_text.chars().count());
+        assert!(!first.truncated);
+        assert!(
+            first
+                .warnings
+                .iter()
+                .all(|warning| warning.kind != PreviewWarningKind::Truncated)
+        );
+        assert_eq!(first, second);
+    }
+
+    #[test]
     fn previews_multiple_files_with_combined_headers() {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("a.txt"), "A").unwrap();
@@ -812,7 +820,7 @@ mod tests {
         fs::write(dir.path().join("a.txt"), "abcdef").unwrap();
         let report = scan_directory(dir.path()).unwrap();
         let options = PreviewOptions {
-            max_chars_per_file: 3,
+            max_chars_per_file: Some(3),
             ..PreviewOptions::default()
         };
 
@@ -825,6 +833,28 @@ mod tests {
                 .warnings
                 .iter()
                 .any(|warning| warning.kind == PreviewWarningKind::Truncated)
+        );
+    }
+
+    #[test]
+    fn exact_character_limit_is_not_marked_truncated() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), "abc").unwrap();
+        let report = scan_directory(dir.path()).unwrap();
+        let options = PreviewOptions {
+            max_chars_per_file: Some(3),
+            ..PreviewOptions::default()
+        };
+
+        let preview = preview_file(&report.files[0], &options, None).unwrap();
+
+        assert_eq!(preview.text, "abc");
+        assert!(!preview.truncated);
+        assert!(
+            preview
+                .warnings
+                .iter()
+                .all(|warning| warning.kind != PreviewWarningKind::Truncated)
         );
     }
 
@@ -848,6 +878,42 @@ mod tests {
                 .iter()
                 .any(|warning| warning.kind == PreviewWarningKind::MaxFilesReached)
         );
+    }
+
+    #[test]
+    fn multi_file_raw_and_processed_previews_remain_bounded() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), "a".repeat(6_000)).unwrap();
+        fs::write(dir.path().join("b.txt"), "b".repeat(6_000)).unwrap();
+        let report = scan_directory(dir.path()).unwrap();
+        let options = PreviewOptions {
+            max_chars_per_file: Some(5_000),
+            max_files: Some(1),
+            ..PreviewOptions::default()
+        };
+
+        let raw = preview_files(&report.files, &options, None).unwrap();
+        let processed =
+            preview_processed_files(&report.files, &options, &CleaningConfig::default(), None)
+                .unwrap();
+
+        for preview in [&raw, &processed] {
+            assert_eq!(preview.files.len(), 1);
+            assert_eq!(preview.files[0].included_char_count, 5_000);
+            assert!(preview.files[0].truncated);
+            assert!(
+                preview
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.kind == PreviewWarningKind::Truncated)
+            );
+            assert!(
+                preview
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.kind == PreviewWarningKind::MaxFilesReached)
+            );
+        }
     }
 
     #[test]
@@ -931,6 +997,110 @@ mod tests {
                 .unwrap();
 
         assert!(preview.combined_text.contains("hello new\n\nworld"));
+    }
+
+    #[test]
+    fn exhaustive_processed_preview_cleans_text_after_the_default_limit() {
+        let dir = tempdir().unwrap();
+        let source_text = format!(
+            "{}\nREMOVE_AFTER_LIMIT\nTAIL_AFTER_LIMIT",
+            "a".repeat(6_000)
+        );
+        fs::write(dir.path().join("long.txt"), source_text).unwrap();
+        let report = scan_directory(dir.path()).unwrap();
+        let options = PreviewOptions {
+            max_chars_per_file: None,
+            ..PreviewOptions::default()
+        };
+        let cleaning = CleaningConfig {
+            removal_rules: vec![anywhere_literal_rule("REMOVE_AFTER_LIMIT")],
+            ..CleaningConfig::default()
+        };
+
+        let preview = preview_processed_files(&report.files, &options, &cleaning, None).unwrap();
+        let file = &preview.files[0];
+
+        assert!(!file.text.contains("REMOVE_AFTER_LIMIT"));
+        assert!(file.text.contains("TAIL_AFTER_LIMIT"));
+        assert!(!file.truncated);
+        assert!(
+            file.warnings
+                .iter()
+                .all(|warning| warning.kind != PreviewWarningKind::Truncated)
+        );
+        assert_eq!(
+            file.cleaning_report.as_ref().unwrap().summaries[0].occurrence_count,
+            1
+        );
+    }
+
+    #[test]
+    fn exhaustive_pdf_preview_is_not_limited_to_five_thousand_characters() {
+        let dir = tempdir().unwrap();
+        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("pdfs")
+            .join("bert.pdf");
+        fs::copy(fixture, dir.path().join("bert.pdf")).unwrap();
+        let report = scan_directory(dir.path()).unwrap();
+        let options = PreviewOptions {
+            max_chars_per_file: None,
+            ..PreviewOptions::default()
+        };
+
+        let preview = preview_file(&report.files[0], &options, None).unwrap();
+
+        assert!(preview.included_char_count > 5_000);
+        assert_eq!(preview.included_char_count, preview.text.chars().count());
+        assert!(!preview.truncated);
+        assert!(
+            preview
+                .warnings
+                .iter()
+                .all(|warning| warning.kind != PreviewWarningKind::Truncated)
+        );
+
+        let (pdf_cleaned, _) = clean_extracted_pdf_text(&preview.text, &CleaningConfig::default());
+        let late_marker = pdf_cleaned
+            .chars()
+            .skip(5_000)
+            .collect::<String>()
+            .split_whitespace()
+            .find(|word| word.chars().count() >= 10)
+            .unwrap()
+            .to_string();
+        let processed = preview_processed_files(
+            &report.files,
+            &options,
+            &CleaningConfig {
+                removal_rules: vec![anywhere_literal_rule(&late_marker)],
+                ..CleaningConfig::default()
+            },
+            None,
+        )
+        .unwrap();
+        assert!(processed.files[0].included_char_count > 5_000);
+        assert!(!processed.files[0].text.contains(&late_marker));
+        assert!(!processed.files[0].truncated);
+
+        let bounded = preview_file(
+            &report.files[0],
+            &PreviewOptions {
+                max_chars_per_file: Some(5_000),
+                ..PreviewOptions::default()
+            },
+            None,
+        )
+        .unwrap();
+        assert_eq!(bounded.included_char_count, 5_000);
+        assert!(bounded.truncated);
+        assert!(
+            bounded
+                .warnings
+                .iter()
+                .any(|warning| warning.kind == PreviewWarningKind::Truncated)
+        );
     }
 
     #[test]

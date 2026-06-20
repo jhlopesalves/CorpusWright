@@ -1494,18 +1494,42 @@ fn search_corpus_command(
     )
 }
 
+fn preview_char_limit_for_explicit_selection(
+    selected_count: usize,
+    requested_limit: Option<usize>,
+) -> Option<usize> {
+    if selected_count == 1 {
+        None
+    } else {
+        Some(requested_limit.unwrap_or(5_000).max(1))
+    }
+}
+
+fn preview_char_limit_for_project_selection(
+    selection: &ProjectSourceSelectionDescriptor,
+    requested_limit: Option<usize>,
+) -> Option<usize> {
+    if !selection.all_matching && selection.ids.len() == 1 {
+        None
+    } else {
+        Some(requested_limit.unwrap_or(2_000).clamp(1, 10_000))
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command(async)]
 fn preview_files_command(
     indices: Vec<usize>,
     corpus_version: u64,
     corpus: tauri::State<'_, CorpusState>,
-    max_chars_per_file: usize,
+    max_chars_per_file: Option<usize>,
     include_paths: bool,
     max_files: Option<usize>,
     cleaning_config: CleaningConfig,
     cache: tauri::State<'_, ExtractionCache>,
 ) -> Result<CombinedPreview, String> {
+    let max_chars_per_file =
+        preview_char_limit_for_explicit_selection(indices.len(), max_chars_per_file);
     let records = corpus.records_for_indices(&indices, corpus_version)?;
     let options = PreviewOptions {
         max_chars_per_file,
@@ -1522,12 +1546,14 @@ fn preview_processed_files_command(
     indices: Vec<usize>,
     corpus_version: u64,
     corpus: tauri::State<'_, CorpusState>,
-    max_chars_per_file: usize,
+    max_chars_per_file: Option<usize>,
     include_paths: bool,
     max_files: Option<usize>,
     cleaning_config: CleaningConfig,
     cache: tauri::State<'_, ExtractionCache>,
 ) -> Result<CombinedPreview, String> {
+    let max_chars_per_file =
+        preview_char_limit_for_explicit_selection(indices.len(), max_chars_per_file);
     let records = corpus.records_for_indices(&indices, corpus_version)?;
     let options = PreviewOptions {
         max_chars_per_file,
@@ -1560,7 +1586,7 @@ fn read_project_source_preview_command(
         .ok_or_else(|| "The selected project source is not loaded.".to_string())?;
     let records = vec![record];
     let options = PreviewOptions {
-        max_chars_per_file: max_chars.clamp(1, 250_000),
+        max_chars_per_file: Some(max_chars.clamp(1, 250_000)),
         include_paths: true,
         max_files: Some(1),
     };
@@ -1594,7 +1620,7 @@ fn query_selected_source_preview_viewport_command(
     selection: ProjectSourceSelectionDescriptor,
     viewport_start: usize,
     viewport_size: usize,
-    preview_text_cap: usize,
+    preview_text_cap: Option<usize>,
     processed: bool,
     corpus_version: u64,
     cleaning_config: CleaningConfig,
@@ -1603,10 +1629,11 @@ fn query_selected_source_preview_viewport_command(
     cache: tauri::State<'_, ExtractionCache>,
 ) -> Result<ProjectSourcePreviewViewport, String> {
     let root = project::validated_project_root(&root_path)?;
+    let max_chars_per_file = preview_char_limit_for_project_selection(&selection, preview_text_cap);
     let viewport =
         inventory.selection_viewport(&root, &selection, viewport_start, viewport_size)?;
     let options = PreviewOptions {
-        max_chars_per_file: preview_text_cap.clamp(1, 10_000),
+        max_chars_per_file,
         include_paths: true,
         max_files: Some(1),
     };
@@ -2669,6 +2696,65 @@ mod tests {
             "corpuswright-desktop-{label}-{}-{nanos}",
             std::process::id()
         ))
+    }
+
+    #[test]
+    fn explicit_single_source_preview_is_exhaustive() {
+        assert_eq!(
+            preview_char_limit_for_explicit_selection(1, Some(5_000)),
+            None
+        );
+    }
+
+    #[test]
+    fn non_single_explicit_source_previews_are_bounded() {
+        assert_eq!(
+            preview_char_limit_for_explicit_selection(0, None),
+            Some(5_000)
+        );
+        assert_eq!(
+            preview_char_limit_for_explicit_selection(2, Some(7_500)),
+            Some(7_500)
+        );
+    }
+
+    #[test]
+    fn project_preview_is_exhaustive_only_for_one_explicit_id() {
+        assert_eq!(
+            preview_char_limit_for_project_selection(
+                &ProjectSourceSelectionDescriptor::default(),
+                None,
+            ),
+            Some(2_000)
+        );
+
+        let explicit_single = ProjectSourceSelectionDescriptor {
+            ids: vec!["source-1".to_string()],
+            ..ProjectSourceSelectionDescriptor::default()
+        };
+        assert_eq!(
+            preview_char_limit_for_project_selection(&explicit_single, Some(2_000)),
+            None
+        );
+
+        let explicit_multiple = ProjectSourceSelectionDescriptor {
+            ids: vec!["source-1".to_string(), "source-2".to_string()],
+            ..ProjectSourceSelectionDescriptor::default()
+        };
+        assert_eq!(
+            preview_char_limit_for_project_selection(&explicit_multiple, None),
+            Some(2_000)
+        );
+
+        let all_matching = ProjectSourceSelectionDescriptor {
+            all_matching: true,
+            ids: vec!["source-1".to_string()],
+            ..ProjectSourceSelectionDescriptor::default()
+        };
+        assert_eq!(
+            preview_char_limit_for_project_selection(&all_matching, None),
+            Some(2_000)
+        );
     }
 
     fn pdf_record(

@@ -412,6 +412,7 @@ pub fn apply_document_processing(
         warnings,
         None,
         None,
+        false,
     )
 }
 
@@ -422,10 +423,20 @@ fn apply_document_processing_impl(
     warnings: &mut Vec<String>,
     collector: Option<&mut crate::clean::CleaningReportCollector>,
     context: Option<&crate::clean::CleaningContext<'_>>,
+    has_reliable_page_metadata: bool,
 ) -> String {
     let mut processed = if record.document_type == DocumentType::Pdf {
+        let mut pdf_cleanup_config;
+        let pdf_config = if has_reliable_page_metadata {
+            pdf_cleanup_config = cleaning_config.clone();
+            pdf_cleanup_config.remove_repeated_pdf_headers_footers = false;
+            pdf_cleanup_config.auto_apply_strong_header_footer = false;
+            &pdf_cleanup_config
+        } else {
+            cleaning_config
+        };
         let (pdf_cleaned, mut cleanup_warnings) =
-            crate::pdf::clean_extracted_pdf_text(&extracted_text, cleaning_config);
+            crate::pdf::clean_extracted_pdf_text(&extracted_text, pdf_config);
         warnings.append(&mut cleanup_warnings);
         pdf_cleaned
     } else {
@@ -476,6 +487,7 @@ pub fn document_text_from_cache_entry(
                     &mut warnings_flat,
                     None,
                     None,
+                    true,
                 );
 
                 let (_pdf_text, pdf_warnings, cleaned_pages) =
@@ -506,6 +518,7 @@ pub fn document_text_from_cache_entry(
                     &mut warnings,
                     Some(&mut collector),
                     Some(&context),
+                    false,
                 );
                 (text, None, Some(collector.finish()))
             }

@@ -1,138 +1,96 @@
-import {
-  createRepeatedArtifactRemovalRule,
-  repeatedArtifactCandidateScope,
-  repeatedArtifactMatcherKindForCandidate,
-  removeRepeatedArtifactRulesForCandidate,
-} from "../src/repeated-artifact-rules.ts";
-import type { RepeatedArtifactCandidate } from "../src/generated/RepeatedArtifactCandidate.js";
+import { readFileSync } from "node:fs";
+
+import { reconcileAutoPromotedRules } from "../src/auto-promoted-rules.ts";
+import { mergeEffectiveRemovalRules } from "../src/removal-rule-utils.ts";
+import type { AutoPromotedRepeatedArtifactRule } from "../src/generated/AutoPromotedRepeatedArtifactRule.js";
+import type { RemovalRule } from "../src/generated/RemovalRule.js";
 
 function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) {
-    throw new Error(message);
-  }
+  if (!condition) throw new Error(message);
 }
 
-function candidate(overrides: Partial<RepeatedArtifactCandidate>): RepeatedArtifactCandidate {
+function rule(
+  candidateId: string,
+  text: string,
+  source: RemovalRule["source"] = "auto_promoted_repeated_artifact"
+): RemovalRule {
   return {
-    candidate_id: "exact_0000000000000000",
-    kind: "exact_line",
-    display_text: "Header",
-    normalized_key: "header",
-    occurrence_count: 2,
-    file_count: 2,
-    example_count: 0,
-    position_summary: {
-      top_count: 0,
-      middle_count: 2,
-      bottom_count: 0,
-      unknown_count: 0,
-    },
-    position_summary_is_page_based: false,
-    risk_label: "ambiguous",
-    content_class: "text_dominant",
-    text_profile: {
-      char_count: 6,
-      token_count: 1,
-      alphabetic_ratio: 1,
-      digit_ratio: 0,
-      symbol_ratio: 0,
-      whitespace_ratio: 0,
-      uppercase_ratio: 0,
-      average_token_length: 6,
-      max_repeated_char_run: 1,
-      suspicious_token_ratio: 0,
-      has_sentence_punctuation: false,
-      looks_like_common_section_heading: false,
-      looks_like_page_label: false,
-      looks_like_table_or_numeric_row: false,
-      looks_like_formula_or_code: false,
-      looks_like_markup_or_extraction_noise: false,
-    },
-    text_signal_label: "ambiguous",
-    text_signal_reasons: [],
-    raw_variant_count: 1,
-    raw_variant_count_is_capped: false,
-    raw_variants: [],
-    examples: [],
-    ...overrides,
+    id: `repeated-artifact:page_top:${candidateId}`,
+    label: `Page top: ${text}`,
+    source,
+    matcher: { kind: "literal", text },
+    scope: "page_top",
+    enabled: true,
   };
 }
 
-const inlineCandidate = candidate({
-  candidate_id: "inline_1111111111111111",
-  kind: "inline_artifact",
-  display_text: "<br />",
-  normalized_key: "",
-});
-const inlineRule = createRepeatedArtifactRemovalRule(
-  inlineCandidate,
-  "Anywhere: <br />"
-);
-assert(inlineRule !== null, "inline candidate should produce a rule");
-assert(inlineRule.enabled, "inline candidate should produce an enabled rule");
-assert(inlineRule.scope === "anywhere", "inline candidate should use anywhere scope");
-assert(inlineRule.matcher.kind === "literal", "inline candidate should use a literal matcher");
-assert(inlineRule.matcher.text === "<br />", "inline literal text should be preserved");
-assert(
-  repeatedArtifactMatcherKindForCandidate(inlineCandidate) === "literal",
-  "inline decision should persist as a literal matcher"
-);
+function promotion(candidateId: string, text: string): AutoPromotedRepeatedArtifactRule {
+  return { candidate_id: candidateId, rule: rule(candidateId, text) };
+}
 
-const normalizedCandidate = candidate({
-  candidate_id: "normalized_2222222222222222",
-  kind: "normalized_line",
-  display_text: "Page 12",
-  normalized_key: "page #",
-});
-const normalizedRule = createRepeatedArtifactRemovalRule(
-  normalizedCandidate,
-  "Whole-line family: page #"
+const fixturePath = new URL(
+  "../../../crates/corpuswright-core/tests/fixtures/repeated_artifact_promotion.json",
+  import.meta.url
 );
-assert(normalizedRule !== null, "normalised candidate should produce a rule");
-assert(
-  repeatedArtifactCandidateScope(normalizedCandidate) === "whole_line",
-  "normalised non-page candidate should remain whole-line scoped"
-);
-assert(
-  normalizedRule.matcher.kind === "normalized_line" &&
-    normalizedRule.matcher.normalized_key === "page #",
-  "normalised candidate should preserve its normalised key"
-);
-
-const emptyInlineRule = createRepeatedArtifactRemovalRule(
-  candidate({
-    candidate_id: "inline_empty",
-    kind: "inline_artifact",
-    display_text: "",
-    normalized_key: "",
-  }),
-  "Anywhere:"
-);
-assert(emptyInlineRule === null, "empty inline candidates cannot produce rules");
-
-const multilineInlineRule = createRepeatedArtifactRemovalRule(
-  candidate({
-    candidate_id: "inline_multiline",
-    kind: "inline_artifact",
-    display_text: "line one\nline two",
-    normalized_key: "",
-  }),
-  "Inline literal with a line break"
-);
-assert(multilineInlineRule === null, "multiline inline candidates cannot produce rules");
-
-const remainingRules = removeRepeatedArtifactRulesForCandidate(
-  [
-    inlineRule,
-    {
-      ...inlineRule,
-      id: "repeated-artifact:anywhere:inline_3333333333333333",
+const characterisationFixture = JSON.parse(readFileSync(fixturePath, "utf8")) as Array<{
+  candidate_id: string;
+  expected_rule: RemovalRule | null;
+}>;
+const characterisedRules = characterisationFixture
+  .filter((entry): entry is { candidate_id: string; expected_rule: RemovalRule } => entry.expected_rule !== null)
+  .map(entry => ({
+    candidate_id: entry.candidate_id,
+    rule: {
+      ...entry.expected_rule,
+      source: "auto_promoted_repeated_artifact" as const,
+      matcher: { ...entry.expected_rule.matcher },
     },
-  ],
-  "inline_1111111111111111"
-);
-assert(remainingRules.length === 1, "unmark should remove only the selected candidate rule");
+  }));
 assert(
-  remainingRules[0].id.endsWith(":inline_3333333333333333"),
-  "unmark should keep other repeated artefact rules"
+  reconcileAutoPromotedRules(characterisedRules, [], new Set(), true).length === characterisedRules.length,
+  "the shared Rust/TypeScript characterisation fixture must remain valid runtime input"
+);
+
+const scanned = [
+  promotion("exact_b", "Header B"),
+  promotion("exact_a", "Header A"),
+];
+
+assert(
+  reconcileAutoPromotedRules(scanned, [], new Set(), false).length === 0,
+  "the disabled toggle must exclude every runtime rule"
+);
+
+const enabled = reconcileAutoPromotedRules(scanned, [], new Set(), true);
+assert(enabled.length === 2, "the enabled toggle must include scanned rules");
+assert(enabled[0].id.endsWith(":exact_a"), "runtime rules must be sorted deterministically");
+
+const dismissed = reconcileAutoPromotedRules(scanned, [], new Set(["exact_a"]), true);
+assert(dismissed.length === 1, "a dismissal must exclude only its candidate");
+assert(dismissed[0].id.endsWith(":exact_b"), "other automatic rules must remain active");
+
+const restored = reconcileAutoPromotedRules(scanned, [], new Set(), true);
+assert(restored.length === 2, "restoring a dismissal must restore the latest scanned rule");
+
+const manual = rule("exact_a", "Header A", "promoted_repeated_artifact");
+const manualWins = reconcileAutoPromotedRules(scanned, [manual], new Set(), true);
+assert(manualWins.length === 1, "a manual rule must replace its automatic duplicate");
+assert(manualWins[0].id.endsWith(":exact_b"), "unrelated automatic rules must remain");
+
+const laterScan = reconcileAutoPromotedRules(
+  [promotion("exact_c", "Header C")],
+  [],
+  new Set(),
+  true
+);
+assert(laterScan.length === 1, "a later scan must replace rather than accumulate rules");
+assert(laterScan[0].id.endsWith(":exact_c"), "the latest scan must own the runtime set");
+
+const baseRules = [manual];
+const effective = mergeEffectiveRemovalRules(baseRules, enabled, true);
+assert(baseRules.length === 1, "building effective config must not mutate saved base rules");
+assert(effective.length === 2, "effective rules must deduplicate the manual/automatic overlap");
+assert(
+  mergeEffectiveRemovalRules(baseRules, enabled, false).length === 1,
+  "disabling auto-apply must leave manual rules untouched"
 );
