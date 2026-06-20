@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { dom, getSummaryAvgWords, getSummaryTotalWords, getSummaryWordLabel } from "./dom";
 import { state } from "./state";
+import { effectiveCleaningConfig } from "./effective-cleaning-config";
 import { refreshAnalyseWorkbench } from "./workbench";
 
 const OCR_WORD_COUNT_SKIPPED_STATUS =
@@ -50,7 +51,7 @@ export async function updateWordCount(): Promise<void> {
         offset,
         limit: BATCH_SIZE,
         corpusVersion: myVersion,
-        cleaningConfig: state.activeCleaningConfig
+        cleaningConfig: effectiveCleaningConfig()
       });
       if (batchResult.skippedOcrMode) {
         if (myVersion !== state.currentCorpusVersion || myWordCountGeneration !== state.wordCountGeneration) return;

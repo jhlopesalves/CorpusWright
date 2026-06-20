@@ -836,6 +836,16 @@
                 Find repeated headers, footers, page labels, and extraction artefacts, then turn accepted candidates
                 into cleaning rules.
               </p>
+              <div class="setting-row">
+                <label>
+                  <input type="checkbox" id="chk-auto-apply-strong-header-footer" />
+                  Automatically apply strong header/footer candidates after a scan
+                </label>
+              </div>
+              <p class="settings-helper-text">
+                Applies to the next scan's exact scope. Derived rules are not accepted decisions and stop applying
+                immediately when this option is disabled.
+              </p>
               <div class="repeated-artifacts-settings-action">
                 <button type="button" id="btn-find-repeated-artifacts-settings" class="primary-btn">
                   Find repeated artefacts...
