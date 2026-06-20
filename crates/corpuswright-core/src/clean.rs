@@ -3145,4 +3145,44 @@ across to the next line.
             "Cleaned text output must remain byte-for-byte identical before and after audit refactor."
         );
     }
+
+    #[test]
+    fn clean_structured_document_characterisation_test_locks_output_byte_for_byte() {
+        let pages = [
+            "Page 1\nHeader A\nSome content here.\ncid:12\nFooter A\n",
+            "Page 2\nHeader B\nMore text.\n- 2 -\nDROP_ME\n",
+        ];
+        let doc = StructuredDocument::from_pages(pages);
+
+        let config = CleaningConfig {
+            remove_obvious_extraction_noise: true,
+            remove_standalone_page_numbers: true,
+            remove_isolated_page_markers: true,
+            remove_patterns: vec!["DROP_ME".to_string()],
+            removal_rules: vec![
+                RemovalRule {
+                    id: "header".to_string(),
+                    label: "header".to_string(),
+                    source: RemovalRuleSource::Manual,
+                    scope: RemovalScope::PageTop,
+                    matcher: RemovalMatcher::Literal {
+                        text: "Header A".to_string(),
+                    },
+                    enabled: true,
+                },
+            ],
+            normalize_whitespace_line_endings: true,
+            join_line_breaks: true,
+            ..CleaningConfig::default()
+        };
+
+        let cleaned = clean_structured_document(&doc, &config);
+
+        let expected = "Some content here. Footer A\n\nHeader B More text.";
+
+        assert_eq!(
+            cleaned.text, expected,
+            "Cleaned structured document text output must remain byte-for-byte identical before and after audit refactor."
+        );
+    }
 }
