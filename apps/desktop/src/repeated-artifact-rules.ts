@@ -1,6 +1,7 @@
 import type { RemovalRule } from "./generated/CleaningConfig.js";
 import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
 import type { RemovalScope } from "./generated/RemovalScope.js";
+import { isValidAnywhereLiteralText } from "./removal-rule-migration.ts";
 
 export type RepeatedArtifactDecisionMatcherKind = "literal" | "normalized_line";
 
@@ -66,6 +67,11 @@ export function createRepeatedArtifactRemovalRule(
   const matcher = candidate.kind === "normalized_line"
     ? { kind: "normalized_line" as const, normalized_key: ruleText }
     : { kind: "literal" as const, text: candidate.display_text };
+  if (scope === "anywhere") {
+    if (matcher.kind === "normalized_line" || !isValidAnywhereLiteralText(matcher.text)) {
+      return null;
+    }
+  }
 
   return {
     id: repeatedArtifactRuleId(candidate, scope),

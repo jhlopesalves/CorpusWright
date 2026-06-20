@@ -463,6 +463,7 @@ pub fn document_text_from_cache_entry(
             let context = crate::clean::CleaningContext {
                 source_id: Some(record.relative_path.to_str().unwrap_or("")),
                 source_label: Some(record.relative_path.to_str().unwrap_or("")),
+                page_number: None,
             };
             if record.document_type == DocumentType::Pdf
                 && let Some(ref raw_pages) = page_texts

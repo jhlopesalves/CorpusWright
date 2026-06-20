@@ -10,7 +10,7 @@ export function formatRemovalRuleText(rule: RemovalRule): string {
         case "page_top": return "Page top";
         case "page_bottom": return "Page bottom";
         case "page_top_or_bottom": return "Page top/bottom";
-        default: return "Anywhere";
+        default: return "Inline literal";
       }
     })();
     return `${scopeLabel}: ${rule.matcher.text}`;
