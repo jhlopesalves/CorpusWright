@@ -1,1 +1,1 @@
-export type CleaningOperation = "page_delimiter" | "page_indicator" | "standalone_page_label" | "obvious_extraction_noise" | "structured_removal_rule" | "literal_pattern" | "replacement_pattern" | "trim_lines" | "collapse_blank_lines" | "line_reflow" | "other";
+export type CleaningOperation = "page_delimiter" | "page_indicator" | "standalone_page_label" | "obvious_extraction_noise" | "structured_removal_rule" | "literal_pattern" | "replacement_pattern" | "trim_lines" | "collapse_blank_lines" | "line_reflow" | "normalization" | "other";

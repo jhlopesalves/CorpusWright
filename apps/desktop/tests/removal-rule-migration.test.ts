@@ -91,6 +91,21 @@ assert(
   JSON.stringify(imported.migrationSummary) === JSON.stringify(first.summary),
   "cleaning-config import must expose the shared migration summary"
 );
+assert(!imported.config.expand_ligatures, "missing ligature expansion must default to false");
+assert(
+  !imported.config.remove_invisible_controls,
+  "missing invisible/control removal must default to false"
+);
+
+const importedNormalisations = normaliseCleaningConfigWithMigration({
+  expand_ligatures: true,
+  remove_invisible_controls: true,
+});
+assert(importedNormalisations.config.expand_ligatures, "ligature expansion must import generically");
+assert(
+  importedNormalisations.config.remove_invisible_controls,
+  "invisible/control removal must import generically"
+);
 
 const inlineDecision = migrateRepeatedArtifactDecisionRule("inline_123", {
   candidate_signature: "inline_123",

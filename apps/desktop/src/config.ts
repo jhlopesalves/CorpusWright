@@ -18,6 +18,8 @@ export type BooleanCleaningConfigKey = {
 
 export const BOOLEAN_CLEANING_CONFIG_KEYS: BooleanCleaningConfigKey[] = [
   "normalize_whitespace_line_endings",
+  "expand_ligatures",
+  "remove_invisible_controls",
   "repair_wrapped_pdf_line_breaks",
   "remove_isolated_page_markers",
   "remove_url_only_lines",
@@ -72,6 +74,8 @@ export const ALLOWED_REMOVAL_SCOPES = ["anywhere", "whole_line", "page_top", "pa
 export function createDefaultCleaningConfig(): CleaningConfig {
   return {
     normalize_whitespace_line_endings: false,
+    expand_ligatures: false,
+    remove_invisible_controls: false,
     repair_wrapped_pdf_line_breaks: false,
     remove_isolated_page_markers: false,
     remove_url_only_lines: false,
