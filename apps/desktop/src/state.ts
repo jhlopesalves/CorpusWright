@@ -4,7 +4,6 @@ import type { DocumentRecord } from "./generated/DocumentRecord.js";
 import type { ProjectSource } from "./generated/ProjectSource.js";
 import type { ProjectSourceSummary } from "./generated/ProjectSourceSummary.js";
 import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
-import type { AutoPromotedRepeatedArtifactRule } from "./generated/AutoPromotedRepeatedArtifactRule.js";
 import type { SearchResult } from "./generated/SearchResult.js";
 import type { CorpusOverview } from "./analysis";
 import type {
@@ -72,8 +71,6 @@ export const state = {
   searchDebounceTimer: undefined as number | undefined,
   lastSearchResult: null as SearchResult | null,
   lastScanCandidates: [] as RepeatedArtifactCandidate[],
-  lastScanAutoPromotedRules: [] as AutoPromotedRepeatedArtifactRule[],
-  autoPromotedRemovalRules: [] as RemovalRule[],
   scanWasProcessed: false,
   removalCountAtScanStart: 0,
 };

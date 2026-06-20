@@ -27,7 +27,7 @@ use corpuswright_core::project_sources::{
     ProjectSourceStatus, ProjectSourceStatusCounts, ProjectSourceSummary, ProjectSourceUpdate,
 };
 use corpuswright_core::repeated_artifact_promotion::{
-    AutoPromotedRepeatedArtifactRule, RepeatedArtifactMatcherKind, RepeatedArtifactPromotion,
+    RepeatedArtifactMatcherKind, RepeatedArtifactPromotion,
 };
 use corpuswright_core::repeated_artifacts::{
     ArtifactRiskLabel, CandidateContentClass, CandidateTextProfile, CandidateTextSignalLabel,
@@ -573,14 +573,6 @@ fn main() {
         ],
         &[],
     );
-    export_type::<AutoPromotedRepeatedArtifactRule>(
-        &out_dir,
-        &[TypeImport {
-            name: "RemovalRule",
-            file: "RemovalRule",
-        }],
-        &[],
-    );
     export_type::<RepeatedArtifactScanDiagnostics>(&out_dir, &[], &[]);
     export_type::<RepeatedArtifactScanReport>(
         &out_dir,
@@ -596,10 +588,6 @@ fn main() {
             TypeImport {
                 name: "RepeatedArtifactPromotion",
                 file: "RepeatedArtifactPromotion",
-            },
-            TypeImport {
-                name: "AutoPromotedRepeatedArtifactRule",
-                file: "AutoPromotedRepeatedArtifactRule",
             },
         ],
         &[],

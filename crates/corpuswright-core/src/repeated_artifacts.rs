@@ -10,10 +10,7 @@
 
 use crate::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
 use crate::clean::CleaningConfig;
-use crate::repeated_artifact_promotion::{
-    AutoPromotedRepeatedArtifactRule, RepeatedArtifactPromotion, auto_promote_strong_candidates,
-    promotion_for_candidate,
-};
+use crate::repeated_artifact_promotion::{RepeatedArtifactPromotion, promotion_for_candidate};
 use crate::scan::DocumentRecord;
 use crate::structured_document::StructuredDocument;
 use crate::text_normalization::normalize_line_for_repeated_artifact as normalize_line;
@@ -219,7 +216,6 @@ pub struct RepeatedArtifactScanDiagnostics {
 pub struct RepeatedArtifactScanReport {
     pub candidates: Vec<RepeatedArtifactCandidate>,
     pub promotions: Vec<RepeatedArtifactPromotion>,
-    pub auto_promoted_rules: Vec<AutoPromotedRepeatedArtifactRule>,
     pub diagnostics: RepeatedArtifactScanDiagnostics,
 }
 
@@ -1399,7 +1395,6 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
         return Ok(RepeatedArtifactScanReport {
             candidates: Vec::new(),
             promotions: Vec::new(),
-            auto_promoted_rules: Vec::new(),
             diagnostics: RepeatedArtifactScanDiagnostics {
                 files_requested: 0,
                 files_scanned: 0,
@@ -1481,17 +1476,11 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
         .iter()
         .map(promotion_for_candidate)
         .collect::<Vec<_>>();
-    let auto_promoted_rules = if cleaning_config.auto_apply_strong_header_footer {
-        auto_promote_strong_candidates(&candidates)
-    } else {
-        Vec::new()
-    };
     let final_candidates = candidates.len();
 
     Ok(RepeatedArtifactScanReport {
         candidates,
         promotions,
-        auto_promoted_rules,
         diagnostics: RepeatedArtifactScanDiagnostics {
             files_requested,
             files_scanned,
@@ -2052,7 +2041,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_report_gates_and_deterministically_applies_strong_candidates() {
+    fn scan_report_exposes_manual_promotions_without_applying_them() {
         let temp_dir = tempfile::tempdir().unwrap();
         let records = (0..4)
             .map(|index| {
@@ -2073,42 +2062,35 @@ mod tests {
             ..RepeatedArtifactScanConfig::default()
         };
 
-        let off =
+        let report =
             scan_repeated_artifacts_report(&records, &scan_config, &CleaningConfig::default())
                 .unwrap();
-        assert_eq!(off.promotions.len(), off.candidates.len());
-        assert!(off.auto_promoted_rules.is_empty());
-
-        let enabled = CleaningConfig {
-            auto_apply_strong_header_footer: true,
-            ..CleaningConfig::default()
-        };
-        let first = scan_repeated_artifacts_report(&records, &scan_config, &enabled).unwrap();
-        let second = scan_repeated_artifacts_report(&records, &scan_config, &enabled).unwrap();
-        assert_eq!(
-            serde_json::to_string(&first).unwrap(),
-            serde_json::to_string(&second).unwrap()
-        );
-        assert!(!first.auto_promoted_rules.is_empty());
-        assert!(first.auto_promoted_rules.iter().all(|promotion| {
-            first.candidates.iter().any(|candidate| {
-                candidate.candidate_id == promotion.candidate_id
-                    && candidate.risk_label == ArtifactRiskLabel::StrongHeaderFooterCandidate
+        assert_eq!(report.promotions.len(), report.candidates.len());
+        let strong_candidate = report
+            .candidates
+            .iter()
+            .find(|candidate| {
+                candidate.risk_label == ArtifactRiskLabel::StrongHeaderFooterCandidate
+                    && candidate.display_text == "Running Header"
             })
-        }));
+            .unwrap();
+        let promotion = report
+            .promotions
+            .iter()
+            .find(|promotion| promotion.candidate_id == strong_candidate.candidate_id)
+            .unwrap();
+
+        let input = "Running Header\nBody";
+        assert_eq!(
+            crate::clean::clean_text(input, &CleaningConfig::default()),
+            input
+        );
 
         let cleaning_config = CleaningConfig {
-            removal_rules: first
-                .auto_promoted_rules
-                .iter()
-                .map(|promotion| promotion.rule.clone())
-                .collect(),
+            removal_rules: vec![promotion.rule.clone().unwrap()],
             ..CleaningConfig::default()
         };
-        assert_eq!(
-            crate::clean::clean_text("Running Header\nBody", &cleaning_config),
-            "Body"
-        );
+        assert_eq!(crate::clean::clean_text(input, &cleaning_config), "Body");
     }
 
     fn repeated_cached_pdf_text() -> String {
@@ -2138,17 +2120,14 @@ mod tests {
         let record = make_pdf_record("promotion-parity.pdf", temp_dir.path());
         let pages = repeated_cached_pdf_pages();
         let raw_text = pages.join("\n\n");
-        let enabled = CleaningConfig {
-            auto_apply_strong_header_footer: true,
-            ..CleaningConfig::default()
-        };
+        let scan_cleaning_config = CleaningConfig::default();
         let cache = ExtractionCache::new();
         cache.insert_extracted(
             &record,
             Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
-                &enabled,
+                &scan_cleaning_config,
             )),
-            &enabled,
+            &scan_cleaning_config,
             crate::cache::CacheEntry {
                 extracted_text: raw_text.clone(),
                 warnings: Vec::new(),
@@ -2167,22 +2146,37 @@ mod tests {
         let report = scan_repeated_artifacts_report_with_cancel_and_cache(
             &[record],
             &scan_config,
-            &enabled,
+            &scan_cleaning_config,
             Some(&cache),
             &no_cancellation(),
         )
         .unwrap();
+        let manually_marked_candidate_ids = report
+            .candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.risk_label == ArtifactRiskLabel::StrongHeaderFooterCandidate
+            })
+            .map(|candidate| candidate.candidate_id.as_str())
+            .collect::<std::collections::HashSet<_>>();
         let rule_config = CleaningConfig {
             removal_rules: report
-                .auto_promoted_rules
+                .promotions
                 .into_iter()
-                .map(|promotion| promotion.rule)
+                .filter(|promotion| {
+                    manually_marked_candidate_ids.contains(promotion.candidate_id.as_str())
+                })
+                .filter_map(|promotion| promotion.rule)
                 .collect(),
             ..CleaningConfig::default()
         };
         let structured = StructuredDocument::from_pages(pages);
         let promoted = crate::clean::clean_structured_document(&structured, &rule_config).text;
-        let (legacy, _) = crate::pdf::clean_extracted_pdf_text(&raw_text, &enabled);
+        let fallback_config = CleaningConfig {
+            remove_repeated_pdf_headers_footers: true,
+            ..CleaningConfig::default()
+        };
+        let (legacy, _) = crate::pdf::clean_extracted_pdf_text(&raw_text, &fallback_config);
 
         for artifact in ["Header", "Footer"] {
             assert!(!promoted.contains(artifact));

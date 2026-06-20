@@ -136,9 +136,6 @@ pub struct CleaningConfig {
     /// PDF-specific post-extraction cleanup option to remove repeated headers and footers across pages.
     #[serde(default)]
     pub remove_repeated_pdf_headers_footers: bool,
-    /// Derive strong header/footer removal rules from an explicit repeated-artefact scan.
-    #[serde(default)]
-    pub auto_apply_strong_header_footer: bool,
     /// PDF-specific post-extraction cleanup option to remove page label/page number lines from top/bottom zones.
     #[serde(default)]
     pub remove_pdf_page_labels: bool,
@@ -160,7 +157,6 @@ pub struct CleaningConfig {
 pub enum RemovalRuleSource {
     Manual,
     PromotedRepeatedArtifact,
-    AutoPromotedRepeatedArtifact,
     GeneratedPdfCleanup,
 }
 
@@ -2470,26 +2466,6 @@ mod tests {
 
         let config: CleaningConfig = serde_json::from_value(value).unwrap();
         assert!(config.removal_rules.is_empty());
-    }
-
-    #[test]
-    fn cleaning_config_deserializes_missing_auto_header_footer_option() {
-        let mut value = serde_json::to_value(CleaningConfig::default()).unwrap();
-        value
-            .as_object_mut()
-            .unwrap()
-            .remove("auto_apply_strong_header_footer");
-
-        let config: CleaningConfig = serde_json::from_value(value).unwrap();
-        assert!(!config.auto_apply_strong_header_footer);
-    }
-
-    #[test]
-    fn auto_promoted_rule_source_serializes_with_explicit_provenance() {
-        assert_eq!(
-            serde_json::to_value(RemovalRuleSource::AutoPromotedRepeatedArtifact).unwrap(),
-            json!("auto_promoted_repeated_artifact")
-        );
     }
 
     #[test]
