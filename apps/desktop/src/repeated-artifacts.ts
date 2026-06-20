@@ -21,6 +21,14 @@ import type { RepeatedArtifactScanDiagnostics } from "./generated/RepeatedArtifa
 import type { RepeatedArtifactScanReport } from "./generated/RepeatedArtifactScanReport.js";
 import type { RemovalScope } from "./generated/RemovalScope.js";
 import {
+  effectivePersistedDecisionScope,
+  emptyRemovalRuleMigrationSummary,
+  mergeRemovalRuleMigrationSummaries,
+  migrateRepeatedArtifactDecisionRule,
+  persistedDecisionRuleId,
+  type RemovalRuleMigrationSummary,
+} from "./removal-rule-migration.ts";
+import {
   formatRemovalRuleText,
   syncDraftCustomRemovalsFromConfig,
   syncRepeatedArtifactRulesSummary,
@@ -285,14 +293,19 @@ function emptyProjectDecisions(): ProjectDecisions {
   return { version: 1, decisions: {} };
 }
 
-function parseProjectDecisions(raw: string): ProjectDecisions {
+interface ParsedProjectDecisions {
+  decisions: ProjectDecisions;
+  migrationSummary: RemovalRuleMigrationSummary;
+}
+
+function parseProjectDecisions(raw: string): ParsedProjectDecisions {
   const parsed = JSON.parse(raw) as unknown;
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return emptyProjectDecisions();
+    return { decisions: emptyProjectDecisions(), migrationSummary: emptyRemovalRuleMigrationSummary() };
   }
   const object = parsed as Record<string, unknown>;
   if (object.version !== 1 || object.decisions === null || typeof object.decisions !== "object" || Array.isArray(object.decisions)) {
-    return emptyProjectDecisions();
+    return { decisions: emptyProjectDecisions(), migrationSummary: emptyRemovalRuleMigrationSummary() };
   }
 
   const decisions: Record<string, DecisionEntry> = {};
@@ -339,16 +352,22 @@ function parseProjectDecisions(raw: string): ProjectDecisions {
     };
   }
 
-  return { version: 1, decisions };
+  const projectDecisions = { version: 1 as const, decisions };
+  const migrationSummary = mergeRemovalRuleMigrationSummaries(
+    Object.entries(decisions)
+      .filter(([, entry]) => entry.decision === "accepted")
+      .map(([candidateId, entry]) => createRuleFromDecision(candidateId, entry).migrationSummary)
+  );
+  return { decisions: projectDecisions, migrationSummary };
 }
 
-async function loadProjectDecisions(rootPath: string): Promise<ProjectDecisions> {
+async function loadProjectDecisions(rootPath: string): Promise<ParsedProjectDecisions> {
   try {
     const raw = await invoke<string>("load_repeated_artifact_decisions_command", { rootPath });
     return parseProjectDecisions(raw);
   } catch (error) {
     console.error("Failed to load repeated artefact decisions:", error);
-    return emptyProjectDecisions();
+    return { decisions: emptyProjectDecisions(), migrationSummary: emptyRemovalRuleMigrationSummary() };
   }
 }
 
@@ -367,26 +386,12 @@ function isRepeatedArtifactRule(rule: RemovalRule): boolean {
   return rule.source === "promoted_repeated_artifact";
 }
 
-function isInlineDecision(candidateId: string, entry: DecisionEntry): boolean {
-  return entry.matcher_kind === "literal" && (
-    candidateId.startsWith("inline_") ||
-    entry.candidate_signature.startsWith("inline_") ||
-    entry.rule_id.includes(":inline_")
-  );
-}
-
 function effectiveDecisionScope(candidateId: string, entry: DecisionEntry): RemovalScope {
-  return isInlineDecision(candidateId, entry) ? "anywhere" : entry.scope;
+  return effectivePersistedDecisionScope(candidateId, entry);
 }
 
 function ruleIdForDecision(candidateId: string, entry: DecisionEntry, scope: RemovalScope): string {
-  if (entry.rule_id && entry.scope === scope) {
-    return entry.rule_id;
-  }
-  if (entry.matcher_kind === "normalized_line") {
-    return `repeated-artifact:normalized-line:${scope}:${candidateId}`;
-  }
-  return `repeated-artifact:${scope}:${candidateId}`;
+  return persistedDecisionRuleId(candidateId, entry, scope);
 }
 
 function removeRepeatedArtifactRulesFromConfig(): void {
@@ -394,34 +399,24 @@ function removeRepeatedArtifactRulesFromConfig(): void {
   state.tempRemovalRules = state.tempRemovalRules.filter(rule => !isRepeatedArtifactRule(rule));
 }
 
-function createRuleFromDecision(candidateId: string, entry: DecisionEntry): RemovalRule | null {
-  const candidateText = entry.candidate_text.trim();
-  if (!candidateText) return null;
-  const scope = effectiveDecisionScope(candidateId, entry);
-  const ruleId = ruleIdForDecision(candidateId, entry, scope);
-  const matcher = entry.matcher_kind === "normalized_line"
-    ? { kind: "normalized_line" as const, normalized_key: candidateText }
-    : { kind: "literal" as const, text: candidateText };
-  return {
-    id: ruleId,
-    label: formatRemovalRuleText({
-      id: "",
-      label: "",
-      source: "promoted_repeated_artifact",
-      matcher,
-      scope,
-      enabled: true,
-    }),
-    source: "promoted_repeated_artifact",
-    matcher,
-    scope,
-    enabled: true,
-  };
+interface DecisionRuleResult {
+  rule: RemovalRule | null;
+  migrationSummary: RemovalRuleMigrationSummary;
 }
 
-export async function loadDecisionsForProject(rootPath: string): Promise<void> {
-  projectDecisions = await loadProjectDecisions(rootPath);
+function createRuleFromDecision(candidateId: string, entry: DecisionEntry): DecisionRuleResult {
+  const migrated = migrateRepeatedArtifactDecisionRule(candidateId, entry);
+  if (migrated.rule) {
+    migrated.rule.label = formatRemovalRuleText(migrated.rule);
+  }
+  return { rule: migrated.rule, migrationSummary: migrated.summary };
+}
+
+export async function loadDecisionsForProject(rootPath: string): Promise<RemovalRuleMigrationSummary> {
+  const loaded = await loadProjectDecisions(rootPath);
+  projectDecisions = loaded.decisions;
   syncAcceptedRulesIntoConfig();
+  return loaded.migrationSummary;
 }
 
 export function clearDecisions(): void {
@@ -445,7 +440,7 @@ export function syncAcceptedRulesIntoConfig(): void {
       entry.rule_id = ruleId;
       migratedDecision = true;
     }
-    const rule = createRuleFromDecision(candidateId, entry);
+    const rule = createRuleFromDecision(candidateId, entry).rule;
     if (!rule) continue;
     const ruleKey = removalRuleDuplicateKey(rule);
     if (existingRuleIds.has(rule.id) || existingRuleKeys.has(ruleKey)) continue;

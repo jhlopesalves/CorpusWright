@@ -3,4 +3,4 @@ import type { CleaningOperation } from "./CleaningOperation";
 import type { RemovalRuleSource } from "./RemovalRuleSource";
 import type { RemovedTextExample } from "./RemovedTextExample";
 
-export type RemovalSummary = { operation: CleaningOperation, rule_source: RemovalRuleSource | null, reason_codes: Array<string>, source_id: string | null, source_label: string | null, occurrence_count: number, examples: Array<RemovedTextExample>, };
+export type RemovalSummary = { operation: CleaningOperation, rule_id: string | null, rule_source: RemovalRuleSource | null, reason_codes: Array<string>, source_id: string | null, source_label: string | null, occurrence_count: number, examples: Array<RemovedTextExample>, };

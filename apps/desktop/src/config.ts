@@ -6,6 +6,11 @@ import type {
   RemovalRule,
   TableExtractionStrategy,
 } from "./generated/CleaningConfig.js";
+import {
+  emptyRemovalRuleMigrationSummary,
+  migrateRemovalRules,
+  type RemovalRuleMigrationSummary,
+} from "./removal-rule-migration.ts";
 
 export type BooleanCleaningConfigKey = {
   [K in keyof CleaningConfig & string]: CleaningConfig[K] extends boolean ? K : never;
@@ -178,12 +183,18 @@ function isRemovalRule(value: unknown): value is RemovalRule {
   );
 }
 
-export function normaliseCleaningConfig(raw: unknown): CleaningConfig {
+export interface NormalisedCleaningConfigResult {
+  config: CleaningConfig;
+  migrationSummary: RemovalRuleMigrationSummary;
+}
+
+export function normaliseCleaningConfigWithMigration(raw: unknown): NormalisedCleaningConfigResult {
   if (raw === null || raw === undefined || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("Invalid config: expected a JSON object.");
   }
 
   const config = createDefaultCleaningConfig();
+  let migrationSummary = emptyRemovalRuleMigrationSummary();
   const obj = raw as Record<string, unknown>;
 
   const configAny = config as unknown as Record<string, unknown>;
@@ -242,10 +253,12 @@ export function normaliseCleaningConfig(raw: unknown): CleaningConfig {
   }
 
   if (Array.isArray(obj.removal_rules) && obj.removal_rules.every(isRemovalRule)) {
-    config.removal_rules = obj.removal_rules.map((rule) => ({
+    const migrated = migrateRemovalRules(obj.removal_rules.map((rule) => ({
       ...rule,
       matcher: { ...rule.matcher },
-    }));
+    })));
+    config.removal_rules = migrated.rules;
+    migrationSummary = migrated.summary;
   }
 
   if (Array.isArray(obj.replace_patterns) &&
@@ -259,5 +272,9 @@ export function normaliseCleaningConfig(raw: unknown): CleaningConfig {
     config.replace_patterns = [...obj.replace_patterns];
   }
 
-  return config;
+  return { config, migrationSummary };
+}
+
+export function normaliseCleaningConfig(raw: unknown): CleaningConfig {
+  return normaliseCleaningConfigWithMigration(raw).config;
 }

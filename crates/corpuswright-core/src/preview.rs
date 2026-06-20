@@ -514,6 +514,7 @@ pub fn preview_processed_files(
                 let context = crate::clean::CleaningContext {
                     source_id: Some(record.relative_path.to_str().unwrap_or("")),
                     source_label: Some(record.relative_path.to_str().unwrap_or("")),
+                    page_number: None,
                 };
                 let (text, report) = crate::clean::clean_text_with_report(
                     &source_text,
@@ -573,6 +574,11 @@ pub fn preview_processed_files(
         .iter()
         .map(|file| file.included_char_count)
         .sum::<usize>();
+    let cleaning_report = crate::clean::CleaningReport::merge(
+        files
+            .iter()
+            .filter_map(|file| file.cleaning_report.as_ref()),
+    );
 
     Ok(CombinedPreview {
         total_files_previewed: files.len(),
@@ -580,7 +586,7 @@ pub fn preview_processed_files(
         combined_text,
         total_characters_included,
         warnings: combined_warnings,
-        cleaning_report: None, // Can implement merging later if needed by UI
+        cleaning_report: Some(cleaning_report),
     })
 }
 
@@ -930,7 +936,8 @@ mod tests {
     #[test]
     fn processed_preview_applies_inline_repeated_artifact_rule() {
         let dir = tempdir().unwrap();
-        fs::write(dir.path().join("a.txt"), "alpha<br /><br />beta").unwrap();
+        fs::write(dir.path().join("a.txt"), "foo<br />bar").unwrap();
+        fs::write(dir.path().join("b.txt"), "left<br />right<br />end").unwrap();
         let report = scan_directory(dir.path()).unwrap();
         let cleaning = CleaningConfig {
             normalize_whitespace_line_endings: true,
@@ -942,8 +949,20 @@ mod tests {
             preview_processed_files(&report.files, &PreviewOptions::default(), &cleaning, None)
                 .unwrap();
 
-        assert!(preview.combined_text.contains("alpha beta"));
+        assert!(preview.combined_text.contains("foo bar"));
+        assert!(preview.combined_text.contains("left right end"));
         assert!(!preview.combined_text.contains("<br />"));
+        let file_summary = &preview.files[0].cleaning_report.as_ref().unwrap().summaries[0];
+        assert_eq!(file_summary.rule_id.as_deref(), Some("rule-1"));
+        assert_eq!(file_summary.occurrence_count, 1);
+        let combined_report = preview.cleaning_report.as_ref().unwrap();
+        let inline_summary = combined_report
+            .summaries
+            .iter()
+            .find(|summary| summary.rule_id.as_deref() == Some("rule-1"))
+            .unwrap();
+        assert_eq!(inline_summary.occurrence_count, 3);
+        assert_eq!(inline_summary.examples.len(), 3);
     }
 
     #[test]

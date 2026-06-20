@@ -4,7 +4,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   BOOLEAN_CLEANING_CONFIG_KEYS,
   normalisePdfTextSource,
-  normaliseCleaningConfig,
+  normaliseCleaningConfigWithMigration,
   type BooleanCleaningConfigKey,
 } from "./config";
 import { dom } from "./dom";
@@ -12,6 +12,7 @@ import { syncDraftCustomRemovalsFromConfig } from "./custom-removals";
 import { syncDecisionsWithActiveRules, syncRepeatedArtifactSettingsSection } from "./repeated-artifacts";
 import { state } from "./state";
 import { hasProjectSourceSelection } from "./sources";
+import { formatRemovalRuleMigrationSummary } from "./removal-rule-migration.ts";
 import type {
   CleaningConfig,
   PdfEmbeddedTextStrategy,
@@ -129,15 +130,20 @@ async function handleLoadConfig(): Promise<void> {
   }
 
   let normalised: CleaningConfig;
+  let migrationStatus = "";
   try {
-    normalised = normaliseCleaningConfig(parsed);
+    const result = normaliseCleaningConfigWithMigration(parsed);
+    normalised = result.config;
+    migrationStatus = formatRemovalRuleMigrationSummary(result.migrationSummary);
   } catch (err) {
     setModalConfigStatus(`Error: ${err}`);
     return;
   }
 
   syncModalControlsFromConfig(normalised);
-  setModalConfigStatus("Loaded config. Click Apply to use it.");
+  setModalConfigStatus(
+    `Loaded config. Click Apply to use it.${migrationStatus ? ` ${migrationStatus}` : ""}`
+  );
 }
 
 async function handleSaveConfig(): Promise<void> {
