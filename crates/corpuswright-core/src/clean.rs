@@ -258,7 +258,9 @@ impl SkippedRuleNotice {
         let mut skipped_rules = std::collections::HashSet::new();
 
         for notice in notices {
-            if notice.notice == "Requires reliable page metadata. Skipped on sources without page zones." {
+            if notice.notice
+                == "Requires reliable page metadata. Skipped on sources without page zones."
+            {
                 if let Some(ref source) = notice.source_id {
                     skipped_sources.insert(source.clone());
                 }
@@ -272,7 +274,11 @@ impl SkippedRuleNotice {
             None
         } else {
             let n = skipped_rules.len();
-            let n_str = if n == 0 { "Some".to_string() } else { n.to_string() };
+            let n_str = if n == 0 {
+                "Some".to_string()
+            } else {
+                n.to_string()
+            };
             Some(format!(
                 "{} page-zone rules were skipped because page metadata was unreliable for {} sources.",
                 n_str,
@@ -1053,7 +1059,9 @@ pub(crate) fn clean_structured_document_impl(
                 for rule in &config.removal_rules {
                     if matches!(
                         rule.scope,
-                        RemovalScope::PageTop | RemovalScope::PageBottom | RemovalScope::PageTopOrBottom
+                        RemovalScope::PageTop
+                            | RemovalScope::PageBottom
+                            | RemovalScope::PageTopOrBottom
                     ) && rule.enabled
                     {
                         col.record_skipped_rule(
@@ -3159,30 +3167,37 @@ across to the next line.
             remove_standalone_page_numbers: true,
             remove_isolated_page_markers: true,
             remove_patterns: vec!["DROP_ME".to_string()],
-            removal_rules: vec![
-                RemovalRule {
-                    id: "header".to_string(),
-                    label: "header".to_string(),
-                    source: RemovalRuleSource::Manual,
-                    scope: RemovalScope::PageTop,
-                    matcher: RemovalMatcher::Literal {
-                        text: "Header A".to_string(),
-                    },
-                    enabled: true,
+            removal_rules: vec![RemovalRule {
+                id: "header".to_string(),
+                label: "header".to_string(),
+                source: RemovalRuleSource::Manual,
+                scope: RemovalScope::PageTop,
+                matcher: RemovalMatcher::Literal {
+                    text: "Header A".to_string(),
                 },
-            ],
+                enabled: true,
+            }],
             normalize_whitespace_line_endings: true,
             join_line_breaks: true,
             ..CleaningConfig::default()
         };
 
-        let cleaned = clean_structured_document(&doc, &config);
+        let cleaned_without_audit = clean_structured_document_impl(&doc, &config, None, None);
 
-        let expected = "Some content here. Footer A\n\nHeader B More text.";
+        let mut collector = CleaningReportCollector::default();
+        let cleaned_with_audit =
+            clean_structured_document_impl(&doc, &config, Some(&mut collector), None);
 
         assert_eq!(
-            cleaned.text, expected,
-            "Cleaned structured document text output must remain byte-for-byte identical before and after audit refactor."
+            cleaned_without_audit.text, cleaned_with_audit.text,
+            "Cleaned structured document text output must remain byte-for-byte identical with or without audit collection."
+        );
+
+        // Secondary guard against regressions
+        let expected = "Some content here. Footer A\n\nHeader B More text.";
+        assert_eq!(
+            cleaned_with_audit.text, expected,
+            "Cleaned structured document text output differs from expected characterisation payload."
         );
     }
 }
