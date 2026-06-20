@@ -21,7 +21,6 @@
 
 use crate::clean::{
     CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource, TableExtractionStrategy,
-    clean_structured_document,
 };
 use crate::pdf::PdfExtractionOptions;
 use crate::scan::{DocumentRecord, DocumentType};
@@ -187,6 +186,7 @@ pub struct DocumentText {
     pub warnings: Vec<String>,
     pub page_count: Option<usize>,
     pub page_texts: Option<Vec<String>>,
+    pub cleaning_report: Option<crate::clean::CleaningReport>,
 }
 
 /// Thread-safe, size-limited cache for extracted text.
@@ -399,26 +399,44 @@ fn missing_materialised_ocr_message() -> String {
     "OCR text is not materialised for this PDF. Re-run special PDF intake or materialise OCR before scanning repeated artefacts.".to_string()
 }
 
-fn apply_document_processing(
+pub fn apply_document_processing(
     record: &DocumentRecord,
-    text: String,
+    extracted_text: String,
     cleaning_config: &CleaningConfig,
     warnings: &mut Vec<String>,
 ) -> String {
+    apply_document_processing_impl(
+        record,
+        extracted_text,
+        cleaning_config,
+        warnings,
+        None,
+        None,
+    )
+}
+
+fn apply_document_processing_impl(
+    record: &DocumentRecord,
+    extracted_text: String,
+    cleaning_config: &CleaningConfig,
+    warnings: &mut Vec<String>,
+    collector: Option<&mut crate::clean::CleaningReportCollector>,
+    context: Option<&crate::clean::CleaningContext<'_>>,
+) -> String {
     let mut processed = if record.document_type == DocumentType::Pdf {
         let (pdf_cleaned, mut cleanup_warnings) =
-            crate::pdf::clean_extracted_pdf_text(&text, cleaning_config);
+            crate::pdf::clean_extracted_pdf_text(&extracted_text, cleaning_config);
         warnings.append(&mut cleanup_warnings);
         pdf_cleaned
     } else {
-        text
+        extracted_text
     };
 
     if cleaning_config.extract_html {
         processed = crate::html::extract_html(&processed);
     }
 
-    crate::clean::clean_text(&processed, cleaning_config)
+    crate::clean::clean_text_impl(&processed, cleaning_config, context, collector)
 }
 
 /// Applies original or processed text semantics to an existing raw extraction.
@@ -438,43 +456,57 @@ pub fn document_text_from_cache_entry(
         page_texts,
     } = raw_entry;
 
-    let (text, page_texts) = match mode {
-        DocumentTextMode::Original => (extracted_text, page_texts),
+    let (text, page_texts, cleaning_report) = match mode {
+        DocumentTextMode::Original => (extracted_text, page_texts, None),
         DocumentTextMode::Processed => {
+            let mut collector = crate::clean::CleaningReportCollector::default();
+            let context = crate::clean::CleaningContext {
+                source_id: Some(record.relative_path.to_str().unwrap_or("")),
+                source_label: Some(record.relative_path.to_str().unwrap_or("")),
+            };
             if record.document_type == DocumentType::Pdf
                 && let Some(ref raw_pages) = page_texts
             {
                 let mut warnings_flat = warnings.clone();
-                let original_flat_text = apply_document_processing(
+                let original_flat_text = apply_document_processing_impl(
                     record,
                     extracted_text.clone(),
                     cleaning_config,
                     &mut warnings_flat,
+                    None,
+                    None,
                 );
 
                 let (_pdf_text, pdf_warnings, cleaned_pages) =
                     crate::pdf::clean_extracted_pdf_pages_and_text(raw_pages, cleaning_config);
 
                 let document = StructuredDocument::from_pages(cleaned_pages);
-                let cleaned = clean_structured_document(&document, cleaning_config);
+                let cleaned = crate::clean::clean_structured_document_impl(
+                    &document,
+                    cleaning_config,
+                    Some(&mut collector),
+                    Some(&context),
+                );
 
                 let is_safe = crate::clean::requires_reliable_page_metadata(cleaning_config)
                     || (cleaned.page_texts.is_some() && cleaned.text == original_flat_text);
 
                 if is_safe {
                     warnings.extend(pdf_warnings);
-                    (cleaned.text, cleaned.page_texts)
+                    (cleaned.text, cleaned.page_texts, Some(collector.finish()))
                 } else {
-                    (original_flat_text, None)
+                    (original_flat_text, None, None)
                 }
             } else {
-                let text = apply_document_processing(
+                let text = apply_document_processing_impl(
                     record,
                     extracted_text,
                     cleaning_config,
                     &mut warnings,
+                    Some(&mut collector),
+                    Some(&context),
                 );
-                (text, None)
+                (text, None, Some(collector.finish()))
             }
         }
     };
@@ -484,6 +516,7 @@ pub fn document_text_from_cache_entry(
         warnings,
         page_count,
         page_texts,
+        cleaning_report,
     }
 }
 

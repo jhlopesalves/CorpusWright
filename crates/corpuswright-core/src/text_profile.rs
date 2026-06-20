@@ -347,19 +347,36 @@ pub fn text_signal_reasons(
 
 /// Returns true only for standalone lines with overwhelming extraction/OCR/markup noise signals.
 pub fn is_obvious_extraction_noise(profile: &CandidateTextProfile, reasons: &[String]) -> bool {
+    obvious_extraction_noise_decisive_reasons(profile, reasons).is_some()
+}
+
+/// Evaluates extraction noise and returns the decisive reasons for removal if it should be removed.
+pub fn obvious_extraction_noise_decisive_reasons(
+    profile: &CandidateTextProfile,
+    reasons: &[String],
+) -> Option<Vec<String>> {
     if profile.char_count == 0 {
-        return false;
+        return None;
     }
 
+    let mut decisive = Vec::new();
     let has_cid_marker = has_reason(reasons, "cid_marker");
     let has_markup_entity_or_tag = has_reason(reasons, "markup_entity_or_tag");
-    if has_cid_marker
-        || (has_markup_entity_or_tag
-            && profile.char_count <= 12
-            && profile.token_count <= 3
-            && profile.symbol_ratio >= 0.25)
+
+    if has_cid_marker {
+        decisive.push("cid_marker".to_string());
+    }
+
+    if has_markup_entity_or_tag
+        && profile.char_count <= 12
+        && profile.token_count <= 3
+        && profile.symbol_ratio >= 0.25
     {
-        return true;
+        decisive.push("markup_entity_or_tag".to_string());
+    }
+
+    if !decisive.is_empty() {
+        return Some(decisive);
     }
 
     if profile.looks_like_common_section_heading
@@ -367,11 +384,11 @@ pub fn is_obvious_extraction_noise(profile: &CandidateTextProfile, reasons: &[St
         || profile.looks_like_table_or_numeric_row
         || profile.looks_like_formula_or_code
     {
-        return false;
+        return None;
     }
 
     if profile.alphabetic_ratio >= 0.50 {
-        return false;
+        return None;
     }
 
     if profile.token_count >= 2
@@ -379,33 +396,51 @@ pub fn is_obvious_extraction_noise(profile: &CandidateTextProfile, reasons: &[St
         && profile.average_token_length >= 2.0
         && profile.suspicious_token_ratio < 0.50
     {
-        return false;
+        return None;
     }
 
     if profile.has_sentence_punctuation && profile.alphabetic_ratio >= 0.25 {
-        return false;
+        return None;
     }
 
     let near_zero_alphabetic = profile.alphabetic_ratio <= 0.10;
+
     let has_replacement_junk = has_reason(reasons, "replacement_character_junk")
         && near_zero_alphabetic
         && profile.symbol_ratio >= 0.50;
+
     let repeated_symbol_junk = has_reason(reasons, "long_repeated_character_run")
         && near_zero_alphabetic
         && profile.max_repeated_char_run >= 4
         && profile.symbol_ratio >= 0.50;
+
     let very_high_symbol_ratio =
         profile.char_count >= 4 && near_zero_alphabetic && profile.symbol_ratio >= 0.85;
+
     let suspicious_symbol_tokens = profile.char_count >= 4
         && profile.token_count <= 3
         && near_zero_alphabetic
         && profile.suspicious_token_ratio >= 0.75
         && profile.symbol_ratio >= 0.50;
 
-    has_replacement_junk
-        || repeated_symbol_junk
-        || very_high_symbol_ratio
-        || suspicious_symbol_tokens
+    if has_replacement_junk {
+        decisive.push("replacement_character_junk".to_string());
+    }
+    if repeated_symbol_junk {
+        decisive.push("long_repeated_character_run".to_string());
+    }
+    if very_high_symbol_ratio {
+        decisive.push("very_high_symbol_ratio".to_string());
+    }
+    if suspicious_symbol_tokens {
+        decisive.push("suspicious_symbol_tokens".to_string());
+    }
+
+    if !decisive.is_empty() {
+        Some(decisive)
+    } else {
+        None
+    }
 }
 
 pub(crate) fn is_decimal_digit(c: char) -> bool {
