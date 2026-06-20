@@ -9,7 +9,7 @@ import type { TableExtractionStrategy } from "./TableExtractionStrategy";
 /**
  * Configuration options for text cleaning operations.
  */
-export type CleaningConfig = { normalize_whitespace_line_endings: boolean, repair_wrapped_pdf_line_breaks: boolean, remove_isolated_page_markers: boolean, remove_url_only_lines: boolean, remove_email_only_lines: boolean, remove_doi_only_lines: boolean, remove_figure_table_captions: boolean, join_line_breaks: boolean, normalize_irregular_line_breaks: boolean, remove_standalone_page_numbers: boolean, remove_standalone_roman_page_numbers: boolean, remove_page_indicators: boolean, remove_page_delimiters: boolean, lowercase: boolean, trim_lines: boolean, collapse_blank_lines: boolean, normalize_line_endings: boolean, normalize_unicode: boolean, replace_diacritics: boolean, extract_html: boolean, 
+export type CleaningConfig = { normalize_whitespace_line_endings: boolean, expand_ligatures: boolean, remove_invisible_controls: boolean, repair_wrapped_pdf_line_breaks: boolean, remove_isolated_page_markers: boolean, remove_url_only_lines: boolean, remove_email_only_lines: boolean, remove_doi_only_lines: boolean, remove_figure_table_captions: boolean, join_line_breaks: boolean, normalize_irregular_line_breaks: boolean, remove_standalone_page_numbers: boolean, remove_standalone_roman_page_numbers: boolean, remove_page_indicators: boolean, remove_page_delimiters: boolean, lowercase: boolean, trim_lines: boolean, collapse_blank_lines: boolean, normalize_line_endings: boolean, normalize_unicode: boolean, replace_diacritics: boolean, extract_html: boolean, 
 /**
  * Remove full lines that are overwhelmingly obvious extraction/OCR/markup noise.
  */

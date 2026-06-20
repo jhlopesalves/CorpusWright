@@ -103,6 +103,8 @@ export const dom = {
   settingsTabs: document.querySelectorAll<HTMLElement>("#settings-modal .tab"),
   settingsTabContents: document.querySelectorAll<HTMLElement>("#settings-modal .tab-content"),
   chkNormalizeWhitespaceLineEndings: getElement<HTMLInputElement>("chk-normalize-whitespace-line-endings"),
+  chkExpandLigatures: getElement<HTMLInputElement>("chk-expand-ligatures"),
+  chkRemoveInvisibleControls: getElement<HTMLInputElement>("chk-remove-invisible-controls"),
   chkRepairWrappedPdfLineBreaks: getElement<HTMLInputElement>("chk-repair-wrapped-pdf-line-breaks"),
   chkRemoveIsolatedPageMarkers: getElement<HTMLInputElement>("chk-remove-isolated-page-markers"),
   chkRemoveUrlOnlyLines: getElement<HTMLInputElement>("chk-remove-url-only-lines"),
