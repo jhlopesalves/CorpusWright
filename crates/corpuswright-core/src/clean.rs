@@ -8,8 +8,7 @@ use unicode_normalization::UnicodeNormalization;
 use crate::structured_document::StructuredDocument;
 use crate::text_normalization::normalize_line_for_repeated_artifact;
 use crate::text_profile::{
-    TextSignalContext, classify_text_signal, is_obvious_extraction_noise, profile_text_line,
-    text_signal_reasons,
+    TextSignalContext, classify_text_signal, profile_text_line, text_signal_reasons,
 };
 
 lazy_static! {
@@ -204,35 +203,253 @@ pub struct CleanedStructuredDocument {
     pub page_texts: Option<Vec<String>>,
 }
 
-/// Result of a text-cleaning pass, including rule-level removal counts.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CleanTextResult {
-    pub text: String,
-    pub report: CleaningReport,
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum CleaningOperation {
+    PageDelimiter,
+    PageIndicator,
+    StandalonePageLabel,
+    ObviousExtractionNoise,
+    StructuredRemovalRule,
+    LiteralPattern,
+    ReplacementPattern,
+    TrimLines,
+    CollapseBlankLines,
+    LineReflow,
+    Other,
 }
 
-/// Rule-level removal information from deterministic cleaning.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct RemovedTextExample {
+    pub removed_text: String,
+    pub line_number: Option<usize>,
+    pub page_number: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct RemovalSummary {
+    pub operation: CleaningOperation,
+    pub rule_source: Option<RemovalRuleSource>,
+    pub reason_codes: Vec<String>,
+    pub source_id: Option<String>,
+    pub source_label: Option<String>,
+    pub occurrence_count: usize,
+    pub examples: Vec<RemovedTextExample>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct SkippedRuleNotice {
+    pub rule_id: Option<String>,
+    pub rule_source: Option<RemovalRuleSource>,
+    pub source_id: Option<String>,
+    pub source_label: Option<String>,
+    pub notice: String,
+    pub occurrence_count: usize,
+}
+
+impl SkippedRuleNotice {
+    /// Summarises skip notices across the corpus into a human-readable warning.
+    pub fn format_corpus_summary(notices: &[SkippedRuleNotice]) -> Option<String> {
+        let mut skipped_sources = std::collections::HashSet::new();
+        let mut skipped_rules = std::collections::HashSet::new();
+
+        for notice in notices {
+            if notice.notice == "Requires reliable page metadata. Skipped on sources without page zones." {
+                if let Some(ref source) = notice.source_id {
+                    skipped_sources.insert(source.clone());
+                }
+                if let Some(ref rule) = notice.rule_id {
+                    skipped_rules.insert(rule.clone());
+                }
+            }
+        }
+
+        if skipped_sources.is_empty() {
+            None
+        } else {
+            let n = skipped_rules.len();
+            let n_str = if n == 0 { "Some".to_string() } else { n.to_string() };
+            Some(format!(
+                "{} page-zone rules were skipped because page metadata was unreliable for {} sources.",
+                n_str,
+                skipped_sources.len()
+            ))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct CleaningCount {
+    pub operation: CleaningOperation,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct ReasonCount {
+    pub reason: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
 pub struct CleaningReport {
-    pub rules: Vec<CleaningRuleReport>,
+    pub summaries: Vec<RemovalSummary>,
+    pub skipped_rules: Vec<SkippedRuleNotice>,
+    pub totals_by_operation: Vec<CleaningCount>,
+    pub totals_by_reason: Vec<ReasonCount>,
 }
 
-/// Count and example information for one deterministic cleaning rule.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CleaningRuleReport {
-    pub rule_id: &'static str,
-    pub removed_count: usize,
-    pub examples: Vec<String>,
+#[derive(Debug, Clone)]
+pub struct CleaningContext<'a> {
+    pub source_id: Option<&'a str>,
+    pub source_label: Option<&'a str>,
+}
+
+#[derive(Default)]
+pub(crate) struct CleaningReportCollector {
+    // Map to quickly group summaries: operation -> rule_source -> reason_codes -> index in summaries
+    // For simplicity we can just iterate to find an existing summary or use a HashMap.
+    // However, since we want to accumulate occurrences and capped examples, doing a linear scan might be fine for small numbers,
+    events: Vec<RemovalEvent>,
+    skipped_rules: Vec<SkippedRuleNotice>,
+}
+
+struct RemovalEvent {
+    operation: CleaningOperation,
+    rule_source: Option<RemovalRuleSource>,
+    reason_codes: Vec<String>,
+    source_id: Option<String>,
+    source_label: Option<String>,
+    example: RemovedTextExample,
+}
+
+impl CleaningReportCollector {
+    pub fn record_skipped_rule(
+        &mut self,
+        rule_id: Option<String>,
+        rule_source: Option<RemovalRuleSource>,
+        context: Option<&CleaningContext<'_>>,
+        notice: String,
+    ) {
+        let source_id = context.and_then(|c| c.source_id).map(String::from);
+        if let Some(existing) = self.skipped_rules.iter_mut().find(|r| {
+            r.rule_id == rule_id
+                && r.rule_source == rule_source
+                && r.source_id == source_id
+                && r.notice == notice
+        }) {
+            existing.occurrence_count += 1;
+        } else {
+            self.skipped_rules.push(SkippedRuleNotice {
+                rule_id,
+                rule_source,
+                source_id,
+                source_label: context.and_then(|c| c.source_label).map(String::from),
+                notice,
+                occurrence_count: 1,
+            });
+        }
+    }
+
+    pub fn record_removal(
+        &mut self,
+        operation: CleaningOperation,
+        rule_source: Option<RemovalRuleSource>,
+        reason_codes: Vec<String>,
+        context: Option<&CleaningContext>,
+        example: RemovedTextExample,
+    ) {
+        self.events.push(RemovalEvent {
+            operation,
+            rule_source,
+            reason_codes,
+            source_id: context.and_then(|c| c.source_id.map(|s| s.to_string())),
+            source_label: context.and_then(|c| c.source_label.map(|s| s.to_string())),
+            example,
+        });
+    }
+
+    pub fn finish(self) -> CleaningReport {
+        use std::collections::BTreeMap;
+        let mut summary_map: BTreeMap<String, RemovalSummary> = BTreeMap::new();
+        let mut totals_by_operation: BTreeMap<CleaningOperation, usize> = BTreeMap::new();
+        let mut totals_by_reason: BTreeMap<String, usize> = BTreeMap::new();
+
+        for event in self.events {
+            // Update operation totals
+            *totals_by_operation.entry(event.operation).or_default() += 1;
+
+            // Update reason totals
+            for reason in &event.reason_codes {
+                *totals_by_reason.entry(reason.clone()).or_default() += 1;
+            }
+
+            // Group summary
+            let key = format!(
+                "{:?}|{:?}|{:?}",
+                event.operation, event.rule_source, event.reason_codes
+            );
+            let summary = summary_map.entry(key).or_insert_with(|| RemovalSummary {
+                operation: event.operation,
+                rule_source: event.rule_source,
+                reason_codes: event.reason_codes,
+                source_id: event.source_id,
+                source_label: event.source_label,
+                occurrence_count: 0,
+                examples: Vec::new(),
+            });
+
+            summary.occurrence_count += 1;
+            if summary.examples.len() < 20 {
+                let mut truncated_text = event.example.removed_text;
+                if truncated_text.chars().count() > 200 {
+                    truncated_text = truncated_text.chars().take(197).collect::<String>() + "...";
+                }
+                summary.examples.push(RemovedTextExample {
+                    removed_text: truncated_text,
+                    line_number: event.example.line_number,
+                    page_number: event.example.page_number,
+                });
+            }
+        }
+
+        let summaries = summary_map.into_values().collect();
+        let totals_by_op = totals_by_operation
+            .into_iter()
+            .map(|(operation, count)| CleaningCount { operation, count })
+            .collect();
+        let totals_by_res = totals_by_reason
+            .into_iter()
+            .map(|(reason, count)| ReasonCount { reason, count })
+            .collect();
+
+        CleaningReport {
+            summaries,
+            skipped_rules: self.skipped_rules,
+            totals_by_operation: totals_by_op,
+            totals_by_reason: totals_by_res,
+        }
+    }
 }
 
 /// Processes a string according to the given cleaning rules.
 pub fn clean_text(text: &str, config: &CleaningConfig) -> String {
-    clean_text_with_report(text, config).text
+    clean_text_impl(text, config, None, None)
 }
 
 /// Processes a string and returns countable deterministic cleaning effects.
-pub fn clean_text_with_report(text: &str, config: &CleaningConfig) -> CleanTextResult {
-    let mut report = CleaningReport::default();
+pub(crate) fn clean_text_impl(
+    text: &str,
+    config: &CleaningConfig,
+    context: Option<&CleaningContext>,
+    mut collector: Option<&mut CleaningReportCollector>,
+) -> String {
     let mut cleaned = text.to_string();
 
     if config.normalize_whitespace_line_endings || config.normalize_line_endings {
@@ -259,44 +476,52 @@ pub fn clean_text_with_report(text: &str, config: &CleaningConfig) -> CleanTextR
     if config.remove_url_only_lines {
         cleaned = apply_line_removal(
             &cleaned,
-            &mut report,
-            "remove_url_only_lines",
-            is_url_only_line,
+            &mut collector,
+            context,
+            CleaningOperation::Other,
+            |line| is_url_only_line(line).then(|| vec!["remove_url_only_lines".to_string()]),
         );
     }
 
     if config.remove_email_only_lines {
         cleaned = apply_line_removal(
             &cleaned,
-            &mut report,
-            "remove_email_only_lines",
-            is_email_only_line,
+            &mut collector,
+            context,
+            CleaningOperation::Other,
+            |line| is_email_only_line(line).then(|| vec!["remove_email_only_lines".to_string()]),
         );
     }
 
     if config.remove_doi_only_lines {
         cleaned = apply_line_removal(
             &cleaned,
-            &mut report,
-            "remove_doi_only_lines",
-            is_doi_only_line,
+            &mut collector,
+            context,
+            CleaningOperation::Other,
+            |line| is_doi_only_line(line).then(|| vec!["remove_doi_only_lines".to_string()]),
         );
     }
 
     if config.remove_figure_table_captions {
         cleaned = apply_line_removal(
             &cleaned,
-            &mut report,
-            "remove_figure_table_captions",
-            is_figure_table_caption_line,
+            &mut collector,
+            context,
+            CleaningOperation::Other,
+            |line| {
+                is_figure_table_caption_line(line)
+                    .then(|| vec!["remove_figure_table_captions".to_string()])
+            },
         );
     }
 
     if config.remove_obvious_extraction_noise {
         cleaned = apply_line_removal(
             &cleaned,
-            &mut report,
-            "remove_obvious_extraction_noise",
+            &mut collector,
+            context,
+            CleaningOperation::ObviousExtractionNoise,
             should_remove_obvious_extraction_noise_line,
         );
     }
@@ -338,10 +563,17 @@ pub fn clean_text_with_report(text: &str, config: &CleaningConfig) -> CleanTextR
         cleaned = collapse_blank_lines(&cleaned);
     }
 
-    CleanTextResult {
-        text: cleaned,
-        report,
-    }
+    cleaned
+}
+
+pub fn clean_text_with_report(
+    text: &str,
+    config: &CleaningConfig,
+    context: Option<&CleaningContext>,
+) -> (String, CleaningReport) {
+    let mut collector = CleaningReportCollector::default();
+    let cleaned = clean_text_impl(text, config, context, Some(&mut collector));
+    (cleaned, collector.finish())
 }
 
 /// Cleans a page-aware document without exposing stale page metadata.
@@ -805,8 +1037,38 @@ pub fn clean_structured_document(
     document: &StructuredDocument,
     config: &CleaningConfig,
 ) -> CleanedStructuredDocument {
+    clean_structured_document_impl(document, config, None, None)
+}
+
+pub(crate) fn clean_structured_document_impl(
+    document: &StructuredDocument,
+    config: &CleaningConfig,
+    mut collector: Option<&mut CleaningReportCollector>,
+    context: Option<&CleaningContext<'_>>,
+) -> CleanedStructuredDocument {
     if !requires_reliable_page_metadata(config) || !document.has_reliable_page_metadata {
-        let text = clean_text(&document.to_flat_text(), config);
+        if !document.has_reliable_page_metadata {
+            #[allow(clippy::collapsible_if)]
+            if let Some(col) = collector.as_deref_mut() {
+                for rule in &config.removal_rules {
+                    if matches!(
+                        rule.scope,
+                        RemovalScope::PageTop | RemovalScope::PageBottom | RemovalScope::PageTopOrBottom
+                    ) && rule.enabled
+                    {
+                        col.record_skipped_rule(
+                            Some(rule.id.clone()),
+                            Some(rule.source),
+                            context,
+                            "Requires reliable page metadata. Skipped on sources without page zones."
+                                .to_string(),
+                        );
+                    }
+                }
+            }
+        }
+
+        let text = clean_text_impl(&document.to_flat_text(), config, context, collector);
         let page_texts = document
             .pages
             .iter()
@@ -968,33 +1230,15 @@ fn collapse_blank_lines(text: &str) -> String {
     collapsed
 }
 
-struct LineRemovalResult {
-    text: String,
-    removed_count: usize,
-    examples: Vec<String>,
-}
-
 fn apply_line_removal(
     text: &str,
-    report: &mut CleaningReport,
-    rule_id: &'static str,
-    should_remove: fn(&str) -> bool,
+    collector: &mut Option<&mut CleaningReportCollector>,
+    context: Option<&CleaningContext>,
+    operation: CleaningOperation,
+    should_remove: impl Fn(&str) -> Option<Vec<String>>,
 ) -> String {
-    let result = remove_lines_matching(text, should_remove);
-    if result.removed_count > 0 {
-        report.rules.push(CleaningRuleReport {
-            rule_id,
-            removed_count: result.removed_count,
-            examples: result.examples,
-        });
-    }
-    result.text
-}
-
-fn remove_lines_matching(text: &str, should_remove: fn(&str) -> bool) -> LineRemovalResult {
     let mut cleaned = String::with_capacity(text.len());
-    let mut removed_count = 0usize;
-    let mut examples = Vec::new();
+    let mut line_number = 1;
 
     for line in text.split_inclusive('\n') {
         let without_newline = line.strip_suffix('\n').unwrap_or(line);
@@ -1002,23 +1246,29 @@ fn remove_lines_matching(text: &str, should_remove: fn(&str) -> bool) -> LineRem
             .strip_suffix('\r')
             .unwrap_or(without_newline);
 
-        if should_remove(content) {
-            removed_count += 1;
-            let example = content.trim();
-            if !example.is_empty() && examples.len() < 3 {
-                examples.push(example.to_string());
+        if let Some(reasons) = should_remove(content) {
+            if let Some(coll) = collector.as_deref_mut() {
+                coll.record_removal(
+                    operation,
+                    None,
+                    reasons,
+                    context,
+                    RemovedTextExample {
+                        removed_text: content.trim().to_string(),
+                        line_number: Some(line_number),
+                        page_number: None,
+                    },
+                );
             }
+            line_number += 1;
             continue;
         }
 
         cleaned.push_str(line);
+        line_number += 1;
     }
 
-    LineRemovalResult {
-        text: cleaned,
-        removed_count,
-        examples,
-    }
+    cleaned
 }
 
 pub(crate) fn is_isolated_page_marker_line(line: &str) -> bool {
@@ -1045,17 +1295,17 @@ fn is_figure_table_caption_line(line: &str) -> bool {
     !trimmed.is_empty() && RE_FIGURE_TABLE_CAPTION_LINE.is_match(trimmed)
 }
 
-fn should_remove_obvious_extraction_noise_line(line: &str) -> bool {
+fn should_remove_obvious_extraction_noise_line(line: &str) -> Option<Vec<String>> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
-        return false;
+        return None;
     }
 
     let profile = profile_text_line(trimmed, "");
     let label = classify_text_signal(&profile, TextSignalContext::default());
     let reasons = text_signal_reasons(trimmed, &profile, label, 0.0);
 
-    is_obvious_extraction_noise(&profile, &reasons)
+    crate::text_profile::obvious_extraction_noise_decisive_reasons(&profile, &reasons)
 }
 
 fn effective_remove_patterns(config: &CleaningConfig) -> Vec<String> {
@@ -2217,7 +2467,10 @@ mod tests {
         .join("\n");
 
         assert_eq!(clean_text(&input, &config), input);
-        assert_eq!(clean_text_with_report(&input, &config).report.rules, vec![]);
+        assert_eq!(
+            clean_text_with_report(&input, &config, None).1.summaries,
+            vec![]
+        );
     }
 
     #[test]
@@ -2887,6 +3140,9 @@ across to the next line.
 
         let expected = "Page 1\n\nIntroduction This is a line of natural text. Some other line with a pattern inside it. Another line with a replacement new_word inside. A line with too much space. -14 _LITERAL A line that might be reflowedacross to the next line.";
 
-        assert_eq!(cleaned, expected, "Cleaned text output must remain byte-for-byte identical before and after audit refactor.");
+        assert_eq!(
+            cleaned, expected,
+            "Cleaned text output must remain byte-for-byte identical before and after audit refactor."
+        );
     }
 }
