@@ -12,9 +12,7 @@ import { syncDraftCustomRemovalsFromConfig } from "./custom-removals";
 import {
   syncDecisionsWithActiveRules,
   syncRepeatedArtifactSettingsSection,
-  syncRuntimeAutoPromotedRules,
 } from "./repeated-artifacts";
-import { clearRuntimeAutoPromotedRules } from "./effective-cleaning-config";
 import { state } from "./state";
 import { hasProjectSourceSelection } from "./sources";
 import { formatRemovalRuleMigrationSummary } from "./removal-rule-migration.ts";
@@ -52,7 +50,6 @@ const cleaningCheckboxBindings: CheckboxBinding[] = [
   { configKey: "remove_endnotes",                            element: dom.chkRemoveEndnotes },
   { configKey: "remove_comments",                            element: dom.chkRemoveComments },
   { configKey: "remove_table_of_contents",                   element: dom.chkRemoveToc },
-  { configKey: "auto_apply_strong_header_footer",            element: dom.chkAutoApplyStrongHeaderFooter },
   { configKey: "remove_pdf_code_like_blocks",                element: dom.chkRemovePdfCodeLikeBlocks },
   { configKey: "remove_pdf_formula_like_lines",              element: dom.chkRemovePdfFormulaLikeLines },
 ];
@@ -231,11 +228,7 @@ export function initSettingsModal(callbacks: SettingsModalCallbacks): void {
   dom.applySettingsBtn.addEventListener("click", () => {
     const nextConfig = buildConfigFromModalControls();
     Object.assign(state.activeCleaningConfig, nextConfig);
-    if (!state.activeCleaningConfig.auto_apply_strong_header_footer) {
-      clearRuntimeAutoPromotedRules();
-    }
     syncDecisionsWithActiveRules();
-    syncRuntimeAutoPromotedRules();
 
     setModalConfigStatus("");
     dom.settingsModal.classList.add("hidden");

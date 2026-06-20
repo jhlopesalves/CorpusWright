@@ -836,16 +836,6 @@
                 Find repeated headers, footers, page labels, and extraction artefacts, then turn accepted candidates
                 into cleaning rules.
               </p>
-              <div class="setting-row">
-                <label>
-                  <input type="checkbox" id="chk-auto-apply-strong-header-footer" />
-                  Automatically apply strong header/footer candidates after a scan
-                </label>
-              </div>
-              <p class="settings-helper-text">
-                Applies to the next scan's exact scope. Derived rules are not accepted decisions and stop applying
-                immediately when this option is disabled.
-              </p>
               <div class="repeated-artifacts-settings-action">
                 <button type="button" id="btn-find-repeated-artifacts-settings" class="primary-btn">
                   Find repeated artefacts...
@@ -981,12 +971,19 @@
               <span>Suspicious Candidates</span>
               <span id="lbl-artifact-results-count">0 found</span>
             </div>
-            <div id="artifact-bucket-tabs" class="tabs repeated-artifact-bucket-tabs">
-              <button type="button" class="tab active" data-bucket="suggested">Suggested removals</button>
-              <button type="button" class="tab" data-bucket="review">Review carefully</button>
-              <button type="button" class="tab" data-bucket="keep">Probably keep</button>
-              <button type="button" class="tab" data-bucket="accepted">Marked for removal</button>
-              <button type="button" class="tab" data-bucket="dismissed">Dismissed</button>
+            <div id="artifact-type-tabs" class="tabs repeated-artifact-type-tabs" aria-label="Artefact type">
+              <button type="button" class="tab active" data-category="page_labels">Page numbers &amp; labels</button>
+              <button type="button" class="tab" data-category="headings">Headings</button>
+              <button type="button" class="tab" data-category="headers_footers">Headers / Footers</button>
+              <button type="button" class="tab" data-category="boilerplate">Boilerplate</button>
+              <button type="button" class="tab" data-category="symbol_noise">Symbol / Noise</button>
+              <button type="button" class="tab" data-category="other">Other</button>
+            </div>
+            <div id="artifact-decision-filters" class="repeated-artifact-decision-filters" role="group" aria-label="Decision state">
+              <button type="button" class="decision-filter-chip active" data-decision-filter="all" aria-pressed="true">All</button>
+              <button type="button" class="decision-filter-chip" data-decision-filter="unreviewed" aria-pressed="false">Unreviewed</button>
+              <button type="button" class="decision-filter-chip" data-decision-filter="marked" aria-pressed="false">Marked</button>
+              <button type="button" class="decision-filter-chip" data-decision-filter="dismissed" aria-pressed="false">Dismissed</button>
             </div>
             <div class="repeated-artifact-table-container">
               <table>

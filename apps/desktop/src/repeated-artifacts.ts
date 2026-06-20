@@ -36,7 +36,19 @@ import {
   syncRepeatedArtifactRulesSummary,
 } from "./custom-removals.js";
 import { removalRuleDuplicateKey } from "./removal-rule-utils.js";
-import { reconcileAutoPromotedRules } from "./auto-promoted-rules.js";
+import {
+  ARTIFACT_CATEGORIES,
+  ARTIFACT_CATEGORY_LABELS,
+  DECISION_FILTER_LABELS,
+  categoryForCandidate,
+  compareCandidatesByEvidence,
+  decisionStateForCandidate,
+  filterCandidatesForReview,
+  riskRank,
+  type ArtifactCategory,
+  type DecisionFilter,
+  type ReviewDecision,
+} from "./repeated-artifact-review.js";
 
 interface RepeatedArtifactCallbacks {
   renderCustomRemovals: () => void;
@@ -51,9 +63,6 @@ interface RepeatedArtifactScanScope {
   helperText: string;
   modalText: string;
 }
-
-type ReviewBucket = "suggested" | "review" | "keep" | "accepted" | "dismissed";
-type ReviewDecision = "accepted" | "dismissed";
 
 interface DecisionEntry {
   decision: ReviewDecision;
@@ -72,14 +81,6 @@ interface ProjectDecisions {
 
 export let projectDecisions: ProjectDecisions = { version: 1, decisions: {} };
 let promotionsByCandidateId = new Map<string, RepeatedArtifactPromotion>();
-
-const RISK_RANK: Record<string, number> = {
-  "strong_header_footer_candidate": 5,
-  "symbol_or_noise_candidate": 4,
-  "possible_boilerplate": 3,
-  "common_section_heading_review_carefully": 2,
-  "ambiguous": 1,
-};
 
 function formatKind(kind: string): string {
   switch (kind) {
@@ -161,8 +162,8 @@ function comparePosition(a: RepeatedArtifactCandidate, b: RepeatedArtifactCandid
 }
 
 function compareRisk(a: RepeatedArtifactCandidate, b: RepeatedArtifactCandidate): number {
-  const rankA = RISK_RANK[a.risk_label] || 0;
-  const rankB = RISK_RANK[b.risk_label] || 0;
+  const rankA = riskRank(a);
+  const rankB = riskRank(b);
   return rankA - rankB;
 }
 
@@ -273,13 +274,6 @@ export function syncRepeatedArtifactSettingsSection(): RepeatedArtifactScanScope
   dom.btnFindRepeatedArtifactsSettings.disabled = !scope.canScan;
   dom.repeatedArtifactScopeHelp.textContent = scope.helperText;
   syncRepeatedArtifactRulesSummary();
-  if (state.activeCleaningConfig.auto_apply_strong_header_footer) {
-    const count = state.autoPromotedRemovalRules.length;
-    const suffix = count === 0
-      ? " Auto-apply is enabled; no runtime rules are active until a qualifying scan completes."
-      : ` Auto-applied from the latest scan: ${count.toLocaleString()}.`;
-    dom.repeatedArtifactRulesSummary.textContent += suffix;
-  }
   return scope;
 }
 
@@ -297,20 +291,6 @@ function removeRepeatedArtifactRulesForCandidate(
 ): RemovalRule[] {
   const suffix = `:${candidateId}`;
   return rules.filter(rule => !rule.id.endsWith(suffix));
-}
-
-export function syncRuntimeAutoPromotedRules(): void {
-  const dismissedCandidateIds = new Set(
-    Object.entries(projectDecisions.decisions)
-      .filter(([, entry]) => entry.decision === "dismissed")
-      .map(([candidateId]) => candidateId)
-  );
-  state.autoPromotedRemovalRules = reconcileAutoPromotedRules(
-    state.lastScanAutoPromotedRules,
-    state.activeCleaningConfig.removal_rules,
-    dismissedCandidateIds,
-    state.activeCleaningConfig.auto_apply_strong_header_footer
-  );
 }
 
 function emptyProjectDecisions(): ProjectDecisions {
@@ -446,8 +426,6 @@ export async function loadDecisionsForProject(rootPath: string): Promise<Removal
 export function clearDecisions(): void {
   projectDecisions = emptyProjectDecisions();
   promotionsByCandidateId = new Map();
-  state.lastScanAutoPromotedRules = [];
-  state.autoPromotedRemovalRules = [];
 }
 
 export function syncAcceptedRulesIntoConfig(): void {
@@ -480,7 +458,6 @@ export function syncAcceptedRulesIntoConfig(): void {
     void saveProjectDecisions(state.activeProject.rootPath, projectDecisions);
   }
   syncDraftCustomRemovalsFromConfig(state.activeCleaningConfig);
-  syncRuntimeAutoPromotedRules();
 }
 
 export function syncDecisionsWithActiveRules(): void {
@@ -501,7 +478,6 @@ export function syncDecisionsWithActiveRules(): void {
   if (changed) {
     void saveProjectDecisions(state.activeProject.rootPath, projectDecisions);
   }
-  syncRuntimeAutoPromotedRules();
 }
 
 function removeRulesForCandidate(candidateId: string): void {
@@ -568,7 +544,6 @@ function markCandidateForRemoval(candidate: RepeatedArtifactCandidate): boolean 
   const rule = addRuleForCandidate(candidate);
   if (!rule) return false;
   projectDecisions.decisions[candidate.candidate_id] = buildDecisionEntry(candidate, promotion, "accepted");
-  syncRuntimeAutoPromotedRules();
   return true;
 }
 
@@ -577,7 +552,6 @@ function unmarkCandidateForRemoval(candidate: RepeatedArtifactCandidate): boolea
   if (entry?.decision !== "accepted") return false;
   removeRulesForCandidate(candidate.candidate_id);
   delete projectDecisions.decisions[candidate.candidate_id];
-  syncRuntimeAutoPromotedRules();
   return true;
 }
 
@@ -588,7 +562,6 @@ function dismissCandidate(candidate: RepeatedArtifactCandidate): boolean {
   if (!promotion) return false;
   removeRulesForCandidate(candidate.candidate_id);
   projectDecisions.decisions[candidate.candidate_id] = buildDecisionEntry(candidate, promotion, "dismissed");
-  syncRuntimeAutoPromotedRules();
   return true;
 }
 
@@ -596,36 +569,7 @@ function restoreCandidate(candidate: RepeatedArtifactCandidate): boolean {
   const entry = projectDecisions.decisions[candidate.candidate_id];
   if (entry?.decision !== "dismissed") return false;
   delete projectDecisions.decisions[candidate.candidate_id];
-  syncRuntimeAutoPromotedRules();
   return true;
-}
-
-function getBucketForCandidate(candidate: RepeatedArtifactCandidate, decision: ReviewDecision | undefined): ReviewBucket {
-  if (decision === "accepted") return "accepted";
-  if (decision === "dismissed") return "dismissed";
-
-  const signal = getTextSignalLabelFromCandidate(candidate);
-  const isSuggested = (
-    candidate.risk_label === "strong_header_footer_candidate" ||
-    candidate.risk_label === "symbol_or_noise_candidate" ||
-    signal === "likely_markup_or_extraction_noise" ||
-    signal === "likely_page_label"
-  ) && signal !== "likely_natural_text" && signal !== "likely_section_heading";
-  if (isSuggested) return "suggested";
-
-  if (signal === "likely_natural_text" || signal === "likely_section_heading") return "keep";
-  return "review";
-}
-
-function getFilteredCandidatesForBucket(candidates: RepeatedArtifactCandidate[], bucket: ReviewBucket): RepeatedArtifactCandidate[] {
-  return candidates.filter(candidate => {
-    const decision = projectDecisions.decisions[candidate.candidate_id]?.decision;
-    return getBucketForCandidate(candidate, decision) === bucket;
-  });
-}
-
-function getTextSignalLabelFromCandidate(candidate: RepeatedArtifactCandidate): CandidateTextSignalLabel | null {
-  return candidate.text_signal_label ?? null;
 }
 
 export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks): void {
@@ -640,12 +584,14 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   let currentSortDirection: "asc" | "desc" = "desc";
   let focusedCandidateId: string | null = null;
   let lastDiagnostics: RepeatedArtifactScanDiagnostics | null = null;
-  let activeBucket: ReviewBucket = "suggested";
+  let activeCategory: ArtifactCategory = "page_labels";
+  let activeDecisionFilter: DecisionFilter = "all";
 
   const configPanel = document.getElementById("repeated-artifact-config-panel") as HTMLDivElement | null;
   const toggleScanSettingsButton = document.getElementById("btn-toggle-scan-settings") as HTMLButtonElement | null;
   const scanSettingsArrow = document.getElementById("scan-settings-arrow") as HTMLSpanElement | null;
-  const bucketTabs = document.getElementById("artifact-bucket-tabs");
+  const typeTabs = document.getElementById("artifact-type-tabs");
+  const decisionFilters = document.getElementById("artifact-decision-filters");
   const selectAllCheckbox = document.getElementById("chk-select-all-tab") as HTMLInputElement | null;
   const decisionSummary = document.getElementById("repeated-artifact-decision-summary") as HTMLSpanElement | null;
   const applyDecisionsButton = document.getElementById("btn-apply-artifact-decisions") as HTMLButtonElement | null;
@@ -753,8 +699,6 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     resetScanControls();
     dom.lblScanTime.style.display = "none";
     focusedCandidateId = null;
-    activeBucket = "suggested";
-    setActiveBucketTab();
     currentSortColumn = null;
     currentSortDirection = "desc";
     lastDiagnostics = null;
@@ -824,50 +768,70 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     }
   }
 
-  function setActiveBucketTab(): void {
-    bucketTabs?.querySelectorAll<HTMLElement>(".tab").forEach(tab => {
-      tab.classList.toggle("active", tab.dataset.bucket === activeBucket);
+  function setActiveReviewControls(): void {
+    typeTabs?.querySelectorAll<HTMLElement>(".tab").forEach(tab => {
+      tab.classList.toggle("active", tab.dataset.category === activeCategory);
+    });
+    decisionFilters?.querySelectorAll<HTMLElement>(".decision-filter-chip").forEach(chip => {
+      const isActive = chip.dataset.decisionFilter === activeDecisionFilter;
+      chip.classList.toggle("active", isActive);
+      chip.setAttribute("aria-pressed", isActive ? "true" : "false");
     });
   }
 
-  function currentBucketCandidates(): RepeatedArtifactCandidate[] {
-    return getFilteredCandidatesForBucket(state.lastScanCandidates, activeBucket);
+  function currentReviewCandidates(): RepeatedArtifactCandidate[] {
+    return filterCandidatesForReview(
+      state.lastScanCandidates,
+      activeCategory,
+      activeDecisionFilter,
+      projectDecisions.decisions
+    );
   }
 
-  function updateBucketTabs(candidates: RepeatedArtifactCandidate[]): void {
-    const counts: Record<ReviewBucket, number> = {
-      suggested: 0,
-      review: 0,
-      keep: 0,
-      accepted: 0,
-      dismissed: 0,
+  function updateReviewControls(candidates: RepeatedArtifactCandidate[]): void {
+    const categoryCounts: Record<ArtifactCategory, number> = {
+      page_labels: 0,
+      headings: 0,
+      headers_footers: 0,
+      boilerplate: 0,
+      symbol_noise: 0,
+      other: 0,
     };
 
     for (const candidate of candidates) {
-      const decision = projectDecisions.decisions[candidate.candidate_id]?.decision;
-      counts[getBucketForCandidate(candidate, decision)]++;
+      categoryCounts[categoryForCandidate(candidate)]++;
     }
 
-    const labels: Record<ReviewBucket, string> = {
-      suggested: "Suggested removals",
-      review: "Review carefully",
-      keep: "Probably keep",
-      accepted: "Marked for removal",
-      dismissed: "Dismissed",
-    };
+    typeTabs?.querySelectorAll<HTMLButtonElement>(".tab").forEach(tab => {
+      const category = tab.dataset.category as ArtifactCategory | undefined;
+      if (!category || categoryCounts[category] === undefined) return;
+      tab.textContent = `${ARTIFACT_CATEGORY_LABELS[category]} (${categoryCounts[category]})`;
+    });
 
-    bucketTabs?.querySelectorAll<HTMLButtonElement>(".tab").forEach(tab => {
-      const bucket = tab.dataset.bucket as ReviewBucket | undefined;
-      if (!bucket || counts[bucket] === undefined) return;
-      tab.textContent = `${labels[bucket]} (${counts[bucket]})`;
+    const categoryCandidates = candidates.filter(candidate => categoryForCandidate(candidate) === activeCategory);
+    const decisionCounts: Record<DecisionFilter, number> = {
+      all: categoryCandidates.length,
+      unreviewed: 0,
+      marked: 0,
+      dismissed: 0,
+    };
+    for (const candidate of categoryCandidates) {
+      const decision = projectDecisions.decisions[candidate.candidate_id]?.decision;
+      decisionCounts[decisionStateForCandidate(decision)]++;
+    }
+    decisionFilters?.querySelectorAll<HTMLButtonElement>(".decision-filter-chip").forEach(chip => {
+      const filter = chip.dataset.decisionFilter as DecisionFilter | undefined;
+      if (!filter || decisionCounts[filter] === undefined) return;
+      chip.textContent = `${DECISION_FILTER_LABELS[filter]} (${decisionCounts[filter]})`;
     });
   }
 
   function updateSelectAllCheckbox(filteredCandidates: RepeatedArtifactCandidate[]): void {
     if (!selectAllCheckbox) return;
-    const acceptableCandidates = activeBucket === "dismissed"
-      ? []
-      : filteredCandidates.filter(canAcceptCandidate);
+    const acceptableCandidates = filteredCandidates.filter(candidate => (
+      projectDecisions.decisions[candidate.candidate_id]?.decision !== "dismissed" &&
+      canAcceptCandidate(candidate)
+    ));
     const acceptedCount = acceptableCandidates.filter(candidate => (
       projectDecisions.decisions[candidate.candidate_id]?.decision === "accepted"
     )).length;
@@ -883,7 +847,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     selectAllCheckbox.indeterminate = acceptedCount > 0 && acceptedCount < acceptableCandidates.length;
   }
 
-  function syncDecisionControls(filteredCandidates = currentBucketCandidates()): void {
+  function syncDecisionControls(filteredCandidates = currentReviewCandidates()): void {
     updateSelectAllCheckbox(filteredCandidates);
     updateDecisionSummary();
   }
@@ -939,13 +903,23 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     }
   });
 
-  bucketTabs?.querySelectorAll<HTMLButtonElement>(".tab").forEach(tab => {
+  typeTabs?.querySelectorAll<HTMLButtonElement>(".tab").forEach(tab => {
     tab.addEventListener("click", () => {
-      const bucket = tab.dataset.bucket as ReviewBucket | undefined;
-      if (!bucket || bucket === activeBucket) return;
-      activeBucket = bucket;
+      const category = tab.dataset.category as ArtifactCategory | undefined;
+      if (!category || category === activeCategory) return;
+      activeCategory = category;
       focusedCandidateId = null;
-      setActiveBucketTab();
+      renderCandidates(state.lastScanCandidates, lastDiagnostics);
+      dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Select a candidate to inspect examples.</div>`;
+    });
+  });
+
+  decisionFilters?.querySelectorAll<HTMLButtonElement>(".decision-filter-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const filter = chip.dataset.decisionFilter as DecisionFilter | undefined;
+      if (!filter || filter === activeDecisionFilter) return;
+      activeDecisionFilter = filter;
+      focusedCandidateId = null;
       renderCandidates(state.lastScanCandidates, lastDiagnostics);
       dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Select a candidate to inspect examples.</div>`;
     });
@@ -953,7 +927,10 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
   selectAllCheckbox?.addEventListener("change", (event) => {
     event.stopPropagation();
-    const candidates = currentBucketCandidates().filter(canAcceptCandidate);
+    const candidates = currentReviewCandidates().filter(candidate => (
+      projectDecisions.decisions[candidate.candidate_id]?.decision !== "dismissed" &&
+      canAcceptCandidate(candidate)
+    ));
     let changedCount = 0;
     for (const candidate of candidates) {
       const changed = selectAllCheckbox.checked
@@ -1064,17 +1041,10 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       promotionsByCandidateId = new Map(
         report.promotions.map(promotion => [promotion.candidate_id, promotion])
       );
-      const previousAutoRuleIds = state.autoPromotedRemovalRules.map(rule => rule.id).join("\0");
-      state.lastScanAutoPromotedRules = report.auto_promoted_rules.map(promotion => ({
-        candidate_id: promotion.candidate_id,
-        rule: cloneRemovalRule(promotion.rule),
-      }));
-      syncRuntimeAutoPromotedRules();
-      const nextAutoRuleIds = state.autoPromotedRemovalRules.map(rule => rule.id).join("\0");
-      if (previousAutoRuleIds !== nextAutoRuleIds) {
-        callbacks.updateWordCount();
-        scheduleProcessedPreviewUpdate();
-      }
+      activeCategory = ARTIFACT_CATEGORIES.find(category => (
+        report.candidates.some(candidate => categoryForCandidate(candidate) === category)
+      )) ?? "page_labels";
+      activeDecisionFilter = "all";
       lastDiagnostics = report.diagnostics;
 
       renderDiagnostics(report.diagnostics);
@@ -1129,19 +1099,24 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       focusedCandidateId = null;
     }
 
-    updateBucketTabs(candidates);
-    setActiveBucketTab();
+    updateReviewControls(candidates);
+    setActiveReviewControls();
 
-    const filteredCandidates = getFilteredCandidatesForBucket(candidates, activeBucket);
+    const filteredCandidates = filterCandidatesForReview(
+      candidates,
+      activeCategory,
+      activeDecisionFilter,
+      projectDecisions.decisions
+    );
     syncDecisionControls(filteredCandidates);
 
     dom.tblArtifactCandidates.innerHTML = "";
     dom.lblArtifactResultsCount.textContent = `${filteredCandidates.length} shown`;
 
     if (filteredCandidates.length === 0) {
-      let msg = "No candidates in this bucket.";
+      let msg = "No candidates in this type and decision filter.";
 
-      if (activeBucket === "suggested" && candidates.length === 0) {
+      if (candidates.length === 0) {
         if (diagnostics && diagnostics.total_raw_lines === 0) {
           msg = "No candidates found because no text lines were extracted. Check whether the documents are scanned/image-only PDFs or whether extraction failed.";
           if (diagnostics.files_failed_extraction > 0) {
@@ -1152,7 +1127,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         } else if (diagnostics && diagnostics.candidates_after_min_occurrences > 0 && diagnostics.candidates_after_min_files === 0) {
           msg = "Candidates were found, but none appeared in enough distinct files. Try Min Files = 1 for repeated artefacts inside a single PDF/book.";
         } else {
-          msg = "No suggested candidates meeting the thresholds.";
+          msg = "No candidates meeting the thresholds.";
         }
 
         if (state.scanWasProcessed && state.removalCountAtScanStart > 0) {
@@ -1168,17 +1143,15 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       return;
     }
 
-    let displayCandidates = filteredCandidates;
+    let displayCandidates = [...filteredCandidates].sort(compareCandidatesByEvidence);
     if (currentSortColumn) {
-      const candidatesWithIndex = filteredCandidates.map((cand, idx) => ({ cand, idx }));
-      candidatesWithIndex.sort((a, b) => {
-        const res = compareCandidates(a.cand, b.cand, currentSortColumn!);
+      displayCandidates.sort((a, b) => {
+        const res = compareCandidates(a, b, currentSortColumn!);
         if (res !== 0) {
           return currentSortDirection === "asc" ? res : -res;
         }
-        return a.idx - b.idx;
+        return compareCandidatesByEvidence(a, b);
       });
-      displayCandidates = candidatesWithIndex.map(item => item.cand);
     }
 
     displayCandidates.forEach((cand) => {
@@ -1192,7 +1165,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       tdCheck.style.padding = "6px 8px";
       tdCheck.style.textAlign = "center";
       const decision = projectDecisions.decisions[cand.candidate_id]?.decision;
-      if (activeBucket !== "dismissed") {
+      if (decision !== "dismissed") {
         const chk = document.createElement("input");
         chk.type = "checkbox";
         chk.checked = decision === "accepted";
@@ -1248,11 +1221,11 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       contentChip.title = formatTextSignalSummary(cand);
 
       badges.append(kindChip, contentChip);
-      if (activeBucket !== "accepted") {
+      if (decision !== "accepted") {
         const decisionAction = document.createElement("button");
         decisionAction.type = "button";
         decisionAction.className = "candidate-decision-action";
-        const isDismissed = activeBucket === "dismissed";
+        const isDismissed = decision === "dismissed";
         decisionAction.textContent = isDismissed ? "Restore" : "Dismiss";
         decisionAction.title = isDismissed
           ? "Restore — show this candidate in scan results again."
@@ -1393,7 +1366,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     if (decision === "accepted") {
       decisionNote.textContent = "While this candidate is marked for removal, it acts as a repeated-artefact removal rule on processed text. Unticking removes that rule. Source files are never modified.";
     } else if (decision === "dismissed") {
-      decisionNote.textContent = "This candidate is dismissed and will not be suggested on future scans. Restore it from the Dismissed tab to review it again. Source files are never modified.";
+      decisionNote.textContent = "This candidate is dismissed. Choose the Dismissed filter in its type tab to restore it. Source files are never modified.";
     } else {
       decisionNote.textContent = "Tick the row to mark this candidate for removal from processed text. Source files are never modified.";
     }
