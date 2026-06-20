@@ -28,6 +28,8 @@ interface CheckboxBinding {
 
 const cleaningCheckboxBindings: CheckboxBinding[] = [
   { configKey: "normalize_whitespace_line_endings",          element: dom.chkNormalizeWhitespaceLineEndings },
+  { configKey: "expand_ligatures",                           element: dom.chkExpandLigatures },
+  { configKey: "remove_invisible_controls",                  element: dom.chkRemoveInvisibleControls },
   { configKey: "repair_wrapped_pdf_line_breaks",             element: dom.chkRepairWrappedPdfLineBreaks },
   { configKey: "remove_isolated_page_markers",               element: dom.chkRemoveIsolatedPageMarkers },
   { configKey: "remove_url_only_lines",                      element: dom.chkRemoveUrlOnlyLines },
