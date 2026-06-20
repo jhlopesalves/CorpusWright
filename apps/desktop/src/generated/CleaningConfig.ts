@@ -31,6 +31,10 @@ pdf_embedded_text_strategy: PdfEmbeddedTextStrategy,
  */
 remove_repeated_pdf_headers_footers: boolean,
 /**
+ * Derive strong header/footer removal rules from an explicit repeated-artefact scan.
+ */
+auto_apply_strong_header_footer: boolean,
+/**
  * PDF-specific post-extraction cleanup option to remove page label/page number lines from top/bottom zones.
  */
 remove_pdf_page_labels: boolean,

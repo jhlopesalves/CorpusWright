@@ -31,6 +31,7 @@ pub mod pdf_ocr;
 pub mod pdf_quality;
 pub mod preview;
 pub mod project_sources;
+pub mod repeated_artifact_promotion;
 pub mod repeated_artifacts;
 pub mod scan;
 pub mod search;
@@ -67,6 +68,11 @@ pub use project_sources::{
     load_project_source_manifest, project_source_matches_query, query_project_source_manifest,
     query_project_source_selection, review_project_source_paths, save_project_source_manifest,
     update_project_source_extraction_results, update_project_source_processing_results,
+};
+pub use repeated_artifact_promotion::{
+    AutoPromotedRepeatedArtifactRule, RepeatedArtifactMatcherKind, RepeatedArtifactPromotion,
+    auto_promote_strong_candidates, can_promote, candidate_matcher_kind, candidate_rule_text,
+    candidate_scope, promote_candidate, promotion_for_candidate, rule_id,
 };
 pub use repeated_artifacts::{
     ArtifactRiskLabel, CancellationFlag, CandidateContentClass, PositionSummary,

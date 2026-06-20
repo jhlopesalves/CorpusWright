@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { dom } from "./dom";
 import { renderVisibleItems } from "./file-list";
 import { state } from "./state";
+import { effectiveCleaningConfig } from "./effective-cleaning-config";
 import {
   hasProjectSourceSelection,
   isProjectSourceSelected,
@@ -160,11 +161,15 @@ async function renderSelectedProjectSourcePreviewViewport(
   projectSourcePreviewActive = true;
   const request = ++projectSourcePreviewRequest;
   projectSourcePreviewLoading = true;
+  const selection = projectSourceSelectionDescriptor();
+  const previewTextCap = !selection.all_matching && selection.ids.length === 1
+    ? null
+    : PROJECT_SOURCE_PREVIEW_TEXT_CAP;
   const requestIdentity = JSON.stringify({
     rootPath: state.activeProject?.rootPath ?? null,
-    selection: projectSourceSelectionDescriptor(),
+    selection,
     corpusVersion,
-    cleaningConfig: state.activeCleaningConfig,
+    cleaningConfig: effectiveCleaningConfig(),
   });
   const showBlockingOverlay = projectSourcePreviewIdentity !== requestIdentity
     || projectSourcePreviewWindow === null;
@@ -193,12 +198,12 @@ async function renderSelectedProjectSourcePreviewViewport(
   try {
     const requestArgs = {
       rootPath: state.activeProject?.rootPath,
-      selection: projectSourceSelectionDescriptor(),
+      selection,
       viewportStart,
       viewportSize,
-      previewTextCap: PROJECT_SOURCE_PREVIEW_TEXT_CAP,
+      previewTextCap,
       corpusVersion,
-      cleaningConfig: state.activeCleaningConfig,
+      cleaningConfig: effectiveCleaningConfig(),
     };
     const [original, processed] = await Promise.all([
       invoke<ProjectSourcePreviewViewport>("query_selected_source_preview_viewport_command", {
@@ -362,12 +367,21 @@ function createProjectSourcePreviewViewportCard(
     badge.textContent = label;
     badges.appendChild(badge);
   }
+  if (item.preview.truncated) {
+    const truncationBadge = document.createElement("span");
+    truncationBadge.className = "badge";
+    truncationBadge.textContent = "Preview capped";
+    badges.appendChild(truncationBadge);
+  }
   header.appendChild(badges);
 
   const body = document.createElement("div");
   body.className = "file-card-body";
   body.innerHTML = highlightPreviewText(item.preview.text, state.currentSearchQuery);
   card.append(header, body);
+  if (item.preview.truncated) {
+    card.appendChild(createPreviewCapNotice(mode, false));
+  }
   return card;
 }
 
@@ -662,7 +676,7 @@ async function fetchAndRenderPreviewChunk(
     return;
   }
 
-  const maxChars = indices.length === 1 ? 10000000 : 5000;
+  const maxChars = indices.length === 1 ? null : 5_000;
 
   try {
     const [original, processed] = await Promise.all([
@@ -672,7 +686,7 @@ async function fetchAndRenderPreviewChunk(
         maxCharsPerFile: maxChars,
         includePaths: true,
         maxFiles: chunkIndices.length,
-        cleaningConfig: state.activeCleaningConfig
+        cleaningConfig: effectiveCleaningConfig()
       }),
       invoke<CombinedPreview>("preview_processed_files_command", {
         indices: chunkIndices,
@@ -680,7 +694,7 @@ async function fetchAndRenderPreviewChunk(
         maxCharsPerFile: maxChars,
         includePaths: true,
         maxFiles: chunkIndices.length,
-        cleaningConfig: state.activeCleaningConfig
+        cleaningConfig: effectiveCleaningConfig()
       })
     ]);
 
@@ -822,7 +836,7 @@ async function runFullOcrPreview(
       const result = await invoke<PdfPageRangeResult>("extract_pdf_page_range_command", {
         index,
         corpusVersion,
-        cleaningConfig: state.activeCleaningConfig,
+        cleaningConfig: effectiveCleaningConfig(),
         startPageIndex,
         pageCount: FULL_OCR_CHUNK_SIZE,
         pdfTextSource: "ForceOcr",
@@ -1193,10 +1207,10 @@ async function loadFullSingleSourcePreview(
     const result = await invoke<CombinedPreview>(command, {
       indices,
       corpusVersion: myVersion,
-      maxCharsPerFile: 50_000_000,
+      maxCharsPerFile: null,
       includePaths: true,
       maxFiles: 1,
-      cleaningConfig: state.activeCleaningConfig,
+      cleaningConfig: effectiveCleaningConfig(),
     });
 
     if (myVersion !== state.currentCorpusVersion || myPreviewGeneration !== state.activePreviewGeneration) return;
