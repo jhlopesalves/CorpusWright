@@ -140,30 +140,3 @@ assert(
   normalisedDecision.summary.notices[0]?.reason === "normalized_line_anywhere_disabled",
   "project-decision migration must expose the invalid-combination reason"
 );
-
-assert(
-  !imported.config.auto_apply_strong_header_footer,
-  "missing header/footer auto-apply must default to false"
-);
-const importedAutoToggle = normaliseCleaningConfigWithMigration({
-  auto_apply_strong_header_footer: true,
-});
-assert(
-  importedAutoToggle.config.auto_apply_strong_header_footer,
-  "header/footer auto-apply must import through the boolean config contract"
-);
-
-const importedRuntimeRule = normaliseCleaningConfigWithMigration({
-  removal_rules: [
-    literalRule("manual-kept", "Manual"),
-    {
-      ...literalRule("runtime-discarded", "Automatic"),
-      source: "auto_promoted_repeated_artifact",
-    },
-  ],
-});
-assert(
-  importedRuntimeRule.config.removal_rules.length === 1 &&
-    importedRuntimeRule.config.removal_rules[0].id === "manual-kept",
-  "runtime-derived automatic rules must not be imported into saved settings"
-);

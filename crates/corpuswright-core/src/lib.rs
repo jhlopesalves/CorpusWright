@@ -70,9 +70,8 @@ pub use project_sources::{
     update_project_source_extraction_results, update_project_source_processing_results,
 };
 pub use repeated_artifact_promotion::{
-    AutoPromotedRepeatedArtifactRule, RepeatedArtifactMatcherKind, RepeatedArtifactPromotion,
-    auto_promote_strong_candidates, can_promote, candidate_matcher_kind, candidate_rule_text,
-    candidate_scope, promote_candidate, promotion_for_candidate, rule_id,
+    RepeatedArtifactMatcherKind, RepeatedArtifactPromotion, can_promote, candidate_matcher_kind,
+    candidate_rule_text, candidate_scope, promote_candidate, promotion_for_candidate, rule_id,
 };
 pub use repeated_artifacts::{
     ArtifactRiskLabel, CancellationFlag, CandidateContentClass, PositionSummary,

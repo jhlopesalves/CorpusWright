@@ -6,9 +6,7 @@ use ts_rs::TS;
 use crate::clean::{
     RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope, is_valid_anywhere_literal_text,
 };
-use crate::repeated_artifacts::{
-    ArtifactRiskLabel, RepeatedArtifactCandidate, RepeatedArtifactKind,
-};
+use crate::repeated_artifacts::{RepeatedArtifactCandidate, RepeatedArtifactKind};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "snake_case")]
@@ -28,13 +26,6 @@ pub struct RepeatedArtifactPromotion {
     pub rule_id: String,
     pub can_promote: bool,
     pub rule: Option<RemovalRule>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
-#[ts(export)]
-pub struct AutoPromotedRepeatedArtifactRule {
-    pub candidate_id: String,
-    pub rule: RemovalRule,
 }
 
 pub fn candidate_scope(candidate: &RepeatedArtifactCandidate) -> RemovalScope {
@@ -147,25 +138,6 @@ pub fn promotion_for_candidate(candidate: &RepeatedArtifactCandidate) -> Repeate
     }
 }
 
-pub fn auto_promote_strong_candidates(
-    candidates: &[RepeatedArtifactCandidate],
-) -> Vec<AutoPromotedRepeatedArtifactRule> {
-    let mut rules = candidates
-        .iter()
-        .filter(|candidate| candidate.risk_label == ArtifactRiskLabel::StrongHeaderFooterCandidate)
-        .filter_map(|candidate| {
-            let mut rule = promote_candidate(candidate, None, None)?;
-            rule.source = RemovalRuleSource::AutoPromotedRepeatedArtifact;
-            Some(AutoPromotedRepeatedArtifactRule {
-                candidate_id: candidate.candidate_id.clone(),
-                rule,
-            })
-        })
-        .collect::<Vec<_>>();
-    rules.sort_by(|left, right| left.rule.id.cmp(&right.rule.id));
-    rules
-}
-
 fn scope_name(scope: RemovalScope) -> &'static str {
     match scope {
         RemovalScope::Anywhere => "anywhere",
@@ -204,7 +176,7 @@ fn default_rule_label(matcher: &RemovalMatcher, scope: RemovalScope) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repeated_artifacts::{CandidateContentClass, PositionSummary};
+    use crate::repeated_artifacts::{ArtifactRiskLabel, CandidateContentClass, PositionSummary};
     use crate::text_profile::{CandidateTextProfile, CandidateTextSignalLabel};
     use serde::Deserialize;
 
@@ -415,43 +387,5 @@ mod tests {
                 text: "Header one\nHeader two".to_string()
             }
         );
-    }
-
-    #[test]
-    fn auto_promotion_selects_only_strong_candidates_and_is_sorted() {
-        let strong_b = candidate(
-            "exact_b",
-            RepeatedArtifactKind::ExactLine,
-            "Header B",
-            "header b",
-            positions(3, 0, 0),
-            true,
-            ArtifactRiskLabel::StrongHeaderFooterCandidate,
-        );
-        let possible = candidate(
-            "exact_possible",
-            RepeatedArtifactKind::ExactLine,
-            "Copyright",
-            "copyright",
-            positions(1, 2, 0),
-            true,
-            ArtifactRiskLabel::PossibleBoilerplate,
-        );
-        let strong_a = candidate(
-            "exact_a",
-            RepeatedArtifactKind::ExactLine,
-            "Header A",
-            "header a",
-            positions(3, 0, 0),
-            true,
-            ArtifactRiskLabel::StrongHeaderFooterCandidate,
-        );
-
-        let rules = auto_promote_strong_candidates(&[strong_b, possible, strong_a]);
-        assert_eq!(rules.len(), 2);
-        assert!(rules[0].rule.id < rules[1].rule.id);
-        assert!(rules.iter().all(|promotion| {
-            promotion.rule.source == RemovalRuleSource::AutoPromotedRepeatedArtifact
-        }));
     }
 }

@@ -4047,7 +4047,7 @@ mark.search-match.current-match {
   color: var(--text-muted);
 }
 
-.repeated-artifact-bucket-tabs {
+.repeated-artifact-type-tabs {
   border-bottom: 1px solid var(--border-color);
   background-color: var(--panel-bg);
   font-size: 0.8rem;
@@ -4056,21 +4056,54 @@ mark.search-match.current-match {
   display: flex;
 }
 
-.repeated-artifact-bucket-tabs .tab {
+.repeated-artifact-type-tabs .tab {
   padding: 8px 12px;
   font-size: 0.8rem;
   white-space: nowrap;
   cursor: pointer;
 }
 
-.repeated-artifact-bucket-tabs .tab:hover {
+.repeated-artifact-type-tabs .tab:hover {
   background-color: var(--cw-interaction-bg-hover);
   color: var(--accent-color);
 }
 
-.repeated-artifact-bucket-tabs .tab.active {
+.repeated-artifact-type-tabs .tab.active {
   color: var(--text-color);
   border-bottom: 2px solid var(--accent-color);
+}
+
+.repeated-artifact-decision-filters {
+  display: flex;
+  gap: 6px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--panel-bg);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.decision-filter-chip {
+  padding: 4px 9px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.decision-filter-chip:hover,
+.decision-filter-chip:focus-visible {
+  border-color: var(--accent-color);
+  color: var(--text-color);
+}
+
+.decision-filter-chip.active {
+  border-color: var(--accent-color);
+  background: var(--cw-interaction-bg-hover);
+  color: var(--text-color);
 }
 
 .repeated-artifact-table-container {

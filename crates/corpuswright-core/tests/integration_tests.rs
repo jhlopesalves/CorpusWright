@@ -1,6 +1,8 @@
+use corpuswright_core::cache::apply_document_processing;
+use corpuswright_core::repeated_artifacts::scan_repeated_artifacts_report;
 use corpuswright_core::{
-    CleaningConfig, ExportOptions, PreviewOptions, clean_text, export_corpus,
-    preview_processed_files, scan_directory,
+    CleaningConfig, ExportOptions, PreviewOptions, RepeatedArtifactKind,
+    RepeatedArtifactScanConfig, clean_text, export_corpus, preview_processed_files, scan_directory,
 };
 use std::fs;
 use std::path::Path;
@@ -117,4 +119,100 @@ fn test_clean_text_direct_api() {
     let cleaned = clean_text(original, &config);
 
     assert_eq!(cleaned, "hello world\nthis is normal.\n");
+}
+
+#[test]
+fn manually_marked_repeated_artifact_rule_reaches_preview_processing_and_export() {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let sources_dir = temp_dir.path().join("sources");
+    fs::create_dir_all(&sources_dir).expect("Failed to create source directory");
+    for index in 0..3 {
+        fs::write(
+            sources_dir.join(format!("doc-{index}.txt")),
+            format!("Flat Header\nBody {index}\n"),
+        )
+        .expect("Failed to write source fixture");
+    }
+
+    let scan_report = scan_directory(&sources_dir).expect("Failed to scan source fixtures");
+    let repeated_report = scan_repeated_artifacts_report(
+        &scan_report.files,
+        &RepeatedArtifactScanConfig {
+            min_occurrences: 3,
+            min_files: 1,
+            min_line_chars: 4,
+            include_inline_artifacts: false,
+            ..RepeatedArtifactScanConfig::default()
+        },
+        &CleaningConfig::default(),
+    )
+    .expect("Failed to scan repeated artefacts");
+    let candidate = repeated_report
+        .candidates
+        .iter()
+        .find(|candidate| {
+            candidate.kind == RepeatedArtifactKind::ExactLine
+                && candidate.display_text == "Flat Header"
+        })
+        .expect("Expected repeated header candidate");
+    let rule = repeated_report
+        .promotions
+        .iter()
+        .find(|promotion| promotion.candidate_id == candidate.candidate_id)
+        .and_then(|promotion| promotion.rule.clone())
+        .expect("Expected Rust promotion rule");
+    let cleaning_config = CleaningConfig {
+        removal_rules: vec![rule],
+        ..CleaningConfig::default()
+    };
+
+    let preview = preview_processed_files(
+        &scan_report.files,
+        &PreviewOptions::default(),
+        &cleaning_config,
+        None,
+    )
+    .expect("Failed to build processed preview");
+    assert!(
+        preview
+            .files
+            .iter()
+            .all(|file| !file.text.contains("Flat Header"))
+    );
+    assert!(preview.files.iter().all(|file| file.text.contains("Body")));
+
+    let raw_text = fs::read_to_string(&scan_report.files[0].source_path)
+        .expect("Failed to read processing fixture");
+    let mut warnings = Vec::new();
+    let processed = apply_document_processing(
+        &scan_report.files[0],
+        raw_text,
+        &cleaning_config,
+        &mut warnings,
+    );
+    assert!(!processed.contains("Flat Header"));
+    assert!(processed.contains("Body"));
+
+    let export_dir = temp_dir.path().join("export");
+    let export_report = export_corpus(
+        &scan_report.files,
+        &export_dir,
+        &cleaning_config,
+        &ExportOptions {
+            app_name: "ManualPromotionGuardrail".to_string(),
+            app_version: None,
+            overwrite: true,
+        },
+        None,
+        None,
+    )
+    .expect("Failed to export processed corpus");
+    assert_eq!(export_report.files_exported, 3);
+    for index in 0..3 {
+        let exported =
+            fs::read_to_string(export_dir.join("texts").join(format!("doc-{index}.txt")))
+                .expect("Failed to read exported fixture");
+        assert!(!exported.contains("Flat Header"));
+        assert!(exported.contains("Body"));
+    }
 }
