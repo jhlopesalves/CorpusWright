@@ -15,7 +15,7 @@ analyse_processed_text: boolean, include_exact_lines: boolean, include_normalize
  */
 include_inline_artifacts: boolean, 
 /**
- * 2-line block detection is more expensive; disabled by default. Opt-in only.
+ * 2-line block detection is enabled by default for recall-first review.
  */
 include_two_line_blocks: boolean, 
 /**
@@ -31,10 +31,14 @@ include_text_dominant: boolean,
  */
 include_mixed_text_numbers: boolean, 
 /**
- * Include numeric-dominant candidates (risky — may group unrelated statistical output).
+ * Include numeric-dominant candidates; the review UI separates these for dismissal.
  */
 include_numeric_dominant: boolean, 
 /**
  * Include symbol/noise-dominant candidates (extraction junk markers).
  */
-include_symbol_noise: boolean, min_occurrences: number, min_files: number, max_candidates: number, max_examples_per_candidate: number, min_line_chars: number, max_line_chars: number, };
+include_symbol_noise: boolean, min_occurrences: number, min_files: number, 
+/**
+ * Optional returned-candidate cap. `None` returns every qualifying candidate.
+ */
+max_candidates: number | null, max_examples_per_candidate: number, min_line_chars: number, max_line_chars: number, };

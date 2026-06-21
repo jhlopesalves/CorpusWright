@@ -27,7 +27,7 @@ fn main() {
 
             println!("\nGenerating preview for up to 5 files...");
             let options = PreviewOptions {
-                max_chars_per_file: 200,
+                max_chars_per_file: Some(200),
                 include_paths: true,
                 max_files: Some(5),
             };

@@ -1,15 +1,16 @@
 //! Corpus-wide repeated artefact scanner for boilerplate, headers, footers, and graphical noise.
 //!
 //! - Default scan uses original extracted text for speed and avoids OCR.
-//! - Exact lines, normalised lines, and known inline artefacts are enabled by default.
-//! - Numeric-dominant candidates are disabled by default because statistical output can group dangerously.
-//! - 2-line/3-line blocks are opt-in because they multiply the candidate space.
+//! - Exact lines, normalised lines, known inline artefacts, numeric-dominant
+//!   candidates, and 2-line blocks are enabled by default.
+//! - 3-line blocks are opt-in because they multiply the candidate space.
 //! - Processed-text scans are slower because they apply extraction/cleanup settings.
 //! - Uses a two-pass strategy: count first, collect examples only for survivors.
 //! - Parallel workers build local maps; merged after per-file processing to avoid global lock contention.
 
 use crate::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
 use crate::clean::CleaningConfig;
+use crate::repeated_artifact_promotion::{RepeatedArtifactPromotion, promotion_for_candidate};
 use crate::scan::DocumentRecord;
 use crate::structured_document::StructuredDocument;
 use crate::text_normalization::normalize_line_for_repeated_artifact as normalize_line;
@@ -45,7 +46,7 @@ pub struct RepeatedArtifactScanConfig {
     /// Detect repeated inline markup/conversion tokens (e.g. `<br/>`, `&nbsp;`).
     /// Bounded known-pattern scanning; enabled by default.
     pub include_inline_artifacts: bool,
-    /// 2-line block detection is more expensive; disabled by default. Opt-in only.
+    /// 2-line block detection is enabled by default for recall-first review.
     pub include_two_line_blocks: bool,
     /// 3-line block detection is more expensive; disabled by default. Opt-in only.
     pub include_three_line_blocks: bool,
@@ -53,13 +54,14 @@ pub struct RepeatedArtifactScanConfig {
     pub include_text_dominant: bool,
     /// Include candidates with a mix of text and numbers (e.g. "Page 12", "Chapter 5").
     pub include_mixed_text_numbers: bool,
-    /// Include numeric-dominant candidates (risky — may group unrelated statistical output).
+    /// Include numeric-dominant candidates; the review UI separates these for dismissal.
     pub include_numeric_dominant: bool,
     /// Include symbol/noise-dominant candidates (extraction junk markers).
     pub include_symbol_noise: bool,
     pub min_occurrences: usize,
     pub min_files: usize,
-    pub max_candidates: usize,
+    /// Optional returned-candidate cap. `None` returns every qualifying candidate.
+    pub max_candidates: Option<usize>,
     pub max_examples_per_candidate: usize,
     pub min_line_chars: usize,
     pub max_line_chars: usize,
@@ -72,18 +74,18 @@ impl Default for RepeatedArtifactScanConfig {
             include_exact_lines: true,
             include_normalized_lines: true,
             include_inline_artifacts: true,
-            include_two_line_blocks: false,
+            include_two_line_blocks: true,
             include_three_line_blocks: false,
             include_text_dominant: true,
             include_mixed_text_numbers: true,
-            include_numeric_dominant: false,
+            include_numeric_dominant: true,
             include_symbol_noise: true,
-            min_occurrences: 5,
+            min_occurrences: 3,
             min_files: 1,
-            max_candidates: 100,
+            max_candidates: None,
             max_examples_per_candidate: 25,
-            min_line_chars: 4,
-            max_line_chars: 300,
+            min_line_chars: 2,
+            max_line_chars: 600,
         }
     }
 }
@@ -203,6 +205,8 @@ pub struct RepeatedArtifactScanDiagnostics {
     pub total_candidate_keys_before_filtering: usize,
     pub candidates_after_min_occurrences: usize,
     pub candidates_after_min_files: usize,
+    pub candidates_before_cap: usize,
+    pub candidates_truncated: usize,
     pub final_candidates: usize,
     pub analysed_processed_text: bool,
     pub custom_removals_active: usize,
@@ -214,6 +218,7 @@ pub struct RepeatedArtifactScanDiagnostics {
 #[ts(export)]
 pub struct RepeatedArtifactScanReport {
     pub candidates: Vec<RepeatedArtifactCandidate>,
+    pub promotions: Vec<RepeatedArtifactPromotion>,
     pub diagnostics: RepeatedArtifactScanDiagnostics,
 }
 
@@ -1141,12 +1146,18 @@ fn phase2_merge(
     global
 }
 
+struct FinalizedRepeatedArtifactCandidates {
+    candidates: Vec<RepeatedArtifactCandidate>,
+    candidates_before_cap: usize,
+    candidates_truncated: usize,
+}
+
 /// Filters, scores, ranks, deduplicates, and attaches examples.
 fn phase3_finalize(
     global: HashMap<(RepeatedArtifactKind, String), CountEntry>,
     file_texts: &[FileText],
     config: &RepeatedArtifactScanConfig,
-) -> Vec<RepeatedArtifactCandidate> {
+) -> FinalizedRepeatedArtifactCandidates {
     let mut scored: Vec<(f64, RepeatedArtifactCandidate)> = Vec::new();
 
     let mut entries: Vec<CountEntry> = global
@@ -1325,13 +1336,28 @@ fn phase3_finalize(
         ));
     }
 
-    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.1.candidate_id.cmp(&b.1.candidate_id))
+    });
 
-    scored
-        .into_iter()
-        .take(config.max_candidates)
-        .map(|(_, c)| c)
-        .collect()
+    let candidates_before_cap = scored.len();
+    let candidates_truncated = config
+        .max_candidates
+        .map(|limit| candidates_before_cap.saturating_sub(limit))
+        .unwrap_or(0);
+
+    let candidates = match config.max_candidates {
+        Some(limit) => scored.into_iter().take(limit).map(|(_, c)| c).collect(),
+        None => scored.into_iter().map(|(_, c)| c).collect(),
+    };
+
+    FinalizedRepeatedArtifactCandidates {
+        candidates,
+        candidates_before_cap,
+        candidates_truncated,
+    }
 }
 
 /// Performs a corpus-wide scan for repeated lines and blocks, with optional cache.
@@ -1388,6 +1414,7 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
     if records.is_empty() {
         return Ok(RepeatedArtifactScanReport {
             candidates: Vec::new(),
+            promotions: Vec::new(),
             diagnostics: RepeatedArtifactScanDiagnostics {
                 files_requested: 0,
                 files_scanned: 0,
@@ -1397,6 +1424,8 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
                 total_candidate_keys_before_filtering: 0,
                 candidates_after_min_occurrences: 0,
                 candidates_after_min_files: 0,
+                candidates_before_cap: 0,
+                candidates_truncated: 0,
                 final_candidates: 0,
                 analysed_processed_text,
                 custom_removals_active,
@@ -1406,7 +1435,7 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
     }
 
     // Every record produces a Phase1Result so diagnostics stay aligned.
-    let phase_results: Vec<Phase1Result> = records
+    let mut phase_results: Vec<Phase1Result> = records
         .par_iter()
         .map(|record| phase1_scan_file(record, config, cleaning_config, cache, cancel))
         .collect();
@@ -1421,6 +1450,12 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
     {
         return Err(error.clone());
     }
+
+    phase_results.sort_by(|a, b| {
+        a.ft.file_path
+            .cmp(&b.ft.file_path)
+            .then_with(|| a.ft.file_name.cmp(&b.ft.file_name))
+    });
 
     let files_scanned = phase_results.len();
     let files_failed_extraction = phase_results.iter().filter(|r| r.extraction_failed).count();
@@ -1464,11 +1499,19 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
         .collect();
     let candidates_after_min_files = after_min_files.len();
 
-    let candidates = phase3_finalize(global, &file_texts, config);
+    let finalized = phase3_finalize(global, &file_texts, config);
+    let candidates_before_cap = finalized.candidates_before_cap;
+    let candidates_truncated = finalized.candidates_truncated;
+    let candidates = finalized.candidates;
+    let promotions = candidates
+        .iter()
+        .map(promotion_for_candidate)
+        .collect::<Vec<_>>();
     let final_candidates = candidates.len();
 
     Ok(RepeatedArtifactScanReport {
         candidates,
+        promotions,
         diagnostics: RepeatedArtifactScanDiagnostics {
             files_requested,
             files_scanned,
@@ -1478,6 +1521,8 @@ pub fn scan_repeated_artifacts_report_with_cancel_and_cache<'a>(
             total_candidate_keys_before_filtering,
             candidates_after_min_occurrences,
             candidates_after_min_files,
+            candidates_before_cap,
+            candidates_truncated,
             final_candidates,
             analysed_processed_text,
             custom_removals_active,
@@ -1669,6 +1714,22 @@ mod tests {
     fn test_classify_risk_header_footer() {
         let risk = classify_risk("Running Header", "running header", 10, 3, 8, 2); // 100% top/bottom concentration
         assert_eq!(risk, ArtifactRiskLabel::StrongHeaderFooterCandidate);
+    }
+
+    #[test]
+    fn test_classify_risk_header_footer_boundary() {
+        assert_eq!(
+            classify_risk("Running Header", "running header", 3, 1, 2, 1),
+            ArtifactRiskLabel::StrongHeaderFooterCandidate
+        );
+        assert_ne!(
+            classify_risk("Running Header", "running header", 2, 1, 2, 0),
+            ArtifactRiskLabel::StrongHeaderFooterCandidate
+        );
+        assert_ne!(
+            classify_risk("Running Header", "running header", 4, 1, 2, 0),
+            ArtifactRiskLabel::StrongHeaderFooterCandidate
+        );
     }
 
     #[test]
@@ -2006,10 +2067,265 @@ mod tests {
         RepeatedArtifactScanConfig {
             min_occurrences: 3,
             min_files: 1,
-            max_candidates: 100,
+            max_candidates: Some(100),
             min_line_chars: 3,
+            include_two_line_blocks: false,
             ..RepeatedArtifactScanConfig::default()
         }
+    }
+
+    fn repeated_distinct_exact_lines(count: usize, repeats: usize) -> String {
+        let mut lines = Vec::new();
+        for index in 0..count {
+            let line = format!("Repeated artifact key {index:03}");
+            for _ in 0..repeats {
+                lines.push(line.clone());
+            }
+        }
+        lines.join("\n")
+    }
+
+    #[test]
+    fn scan_report_exposes_manual_promotions_without_applying_them() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = (0..4)
+            .map(|index| {
+                make_text_record(
+                    &format!("doc-{index}.txt"),
+                    &format!(
+                        "Running Header\nBody {index} a\nBody {index} b\nBody {index} c\nBody {index} d\nBody {index} e\nBody {index} f\nBody {index} g\nBody {index} h\nBody {index} i"
+                    ),
+                    temp_dir.path(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let scan_config = RepeatedArtifactScanConfig {
+            min_occurrences: 3,
+            min_files: 1,
+            min_line_chars: 4,
+            include_inline_artifacts: false,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let report =
+            scan_repeated_artifacts_report(&records, &scan_config, &CleaningConfig::default())
+                .unwrap();
+        assert_eq!(report.promotions.len(), report.candidates.len());
+        let strong_candidate = report
+            .candidates
+            .iter()
+            .find(|candidate| {
+                candidate.risk_label == ArtifactRiskLabel::StrongHeaderFooterCandidate
+                    && candidate.display_text == "Running Header"
+            })
+            .unwrap();
+        let promotion = report
+            .promotions
+            .iter()
+            .find(|promotion| promotion.candidate_id == strong_candidate.candidate_id)
+            .unwrap();
+
+        let input = "Running Header\nBody";
+        assert_eq!(
+            crate::clean::clean_text(input, &CleaningConfig::default()),
+            input
+        );
+
+        let cleaning_config = CleaningConfig {
+            removal_rules: vec![promotion.rule.clone().unwrap()],
+            ..CleaningConfig::default()
+        };
+        assert_eq!(crate::clean::clean_text(input, &cleaning_config), "Body");
+    }
+
+    #[test]
+    fn unbounded_scan_returns_candidates_past_old_cap() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = repeated_distinct_exact_lines(150, 3);
+        let doc = make_text_record("uncapped.txt", &content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            include_normalized_lines: false,
+            include_inline_artifacts: false,
+            include_two_line_blocks: false,
+            include_three_line_blocks: false,
+            min_occurrences: 3,
+            min_files: 1,
+            max_candidates: None,
+            min_line_chars: 2,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let report =
+            scan_repeated_artifacts_report(&[doc], &config, &CleaningConfig::default()).unwrap();
+
+        assert_eq!(report.candidates.len(), 150);
+        assert_eq!(
+            report.diagnostics.total_candidate_keys_before_filtering,
+            150
+        );
+        assert_eq!(report.diagnostics.candidates_after_min_occurrences, 150);
+        assert_eq!(report.diagnostics.candidates_after_min_files, 150);
+        assert_eq!(report.diagnostics.candidates_before_cap, 150);
+        assert_eq!(report.diagnostics.candidates_truncated, 0);
+        assert_eq!(report.diagnostics.final_candidates, 150);
+    }
+
+    #[test]
+    fn explicit_candidate_cap_is_reported_in_diagnostics() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = repeated_distinct_exact_lines(150, 3);
+        let doc = make_text_record("capped.txt", &content, temp_dir.path());
+        let config = RepeatedArtifactScanConfig {
+            include_normalized_lines: false,
+            include_inline_artifacts: false,
+            include_two_line_blocks: false,
+            include_three_line_blocks: false,
+            min_occurrences: 3,
+            min_files: 1,
+            max_candidates: Some(100),
+            min_line_chars: 2,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let report =
+            scan_repeated_artifacts_report(&[doc], &config, &CleaningConfig::default()).unwrap();
+
+        assert_eq!(report.candidates.len(), 100);
+        assert_eq!(report.diagnostics.candidates_before_cap, 150);
+        assert_eq!(report.diagnostics.candidates_truncated, 50);
+        assert_eq!(report.diagnostics.final_candidates, 100);
+    }
+
+    #[test]
+    fn numeric_dominant_exact_line_surfaces_by_default() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "10\nbody a\n10\nbody b\n10\n";
+        let doc = make_text_record("numeric-default.txt", content, temp_dir.path());
+
+        let report = scan_repeated_artifacts_report(
+            &[doc],
+            &RepeatedArtifactScanConfig::default(),
+            &CleaningConfig::default(),
+        )
+        .unwrap();
+
+        assert!(report.candidates.iter().any(|candidate| {
+            candidate.kind == RepeatedArtifactKind::ExactLine
+                && candidate.display_text == "10"
+                && candidate.content_class == CandidateContentClass::NumericDominant
+        }));
+    }
+
+    #[test]
+    fn two_line_running_head_surfaces_by_default() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let block = "Chapter 5\nRecurring Title";
+        let content = [block, "Body a", block, "Body b", block].join("\n");
+        let doc = make_text_record("two-line-default.txt", &content, temp_dir.path());
+
+        let report = scan_repeated_artifacts_report(
+            &[doc],
+            &RepeatedArtifactScanConfig::default(),
+            &CleaningConfig::default(),
+        )
+        .unwrap();
+
+        assert!(report.candidates.iter().any(|candidate| {
+            candidate.kind == RepeatedArtifactKind::TwoLineBlock && candidate.display_text == block
+        }));
+    }
+
+    #[test]
+    fn default_thresholds_surface_three_two_character_hits_only() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let content = "**\nAB\n**\nAB\n**\n";
+        let doc = make_text_record("thresholds.txt", content, temp_dir.path());
+
+        let report = scan_repeated_artifacts_report(
+            &[doc],
+            &RepeatedArtifactScanConfig::default(),
+            &CleaningConfig::default(),
+        )
+        .unwrap();
+
+        assert!(report.candidates.iter().any(|candidate| {
+            candidate.kind == RepeatedArtifactKind::ExactLine && candidate.display_text == "**"
+        }));
+        assert!(!report.candidates.iter().any(|candidate| {
+            candidate.kind == RepeatedArtifactKind::ExactLine && candidate.display_text == "AB"
+        }));
+    }
+
+    #[test]
+    fn default_thresholds_surface_long_repeated_boilerplate() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let boilerplate = "L".repeat(450);
+        let content = (0..3)
+            .map(|_| boilerplate.clone())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let doc = make_text_record("long-boilerplate.txt", &content, temp_dir.path());
+
+        let report = scan_repeated_artifacts_report(
+            &[doc],
+            &RepeatedArtifactScanConfig::default(),
+            &CleaningConfig::default(),
+        )
+        .unwrap();
+
+        assert!(report.candidates.iter().any(|candidate| {
+            candidate.kind == RepeatedArtifactKind::ExactLine
+                && candidate.display_text == boilerplate
+        }));
+    }
+
+    #[test]
+    fn candidate_order_is_stable_across_input_order_and_thread_count() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let doc_a = make_text_record(
+            "a.txt",
+            "Shared Header\nAlpha body\nShared Footer\nShared Header\nShared Footer\n",
+            temp_dir.path(),
+        );
+        let doc_b = make_text_record(
+            "b.txt",
+            "Shared Footer\nBeta body\nShared Header\nShared Footer\nShared Header\n",
+            temp_dir.path(),
+        );
+        let config = RepeatedArtifactScanConfig {
+            include_normalized_lines: false,
+            include_inline_artifacts: false,
+            include_two_line_blocks: false,
+            min_occurrences: 3,
+            min_files: 1,
+            max_candidates: None,
+            ..RepeatedArtifactScanConfig::default()
+        };
+        let one_thread = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
+        let four_threads = rayon::ThreadPoolBuilder::new()
+            .num_threads(4)
+            .build()
+            .unwrap();
+
+        let candidates_one_thread = one_thread.install(|| {
+            scan_repeated_artifacts_report(
+                &[doc_a.clone(), doc_b.clone()],
+                &config,
+                &CleaningConfig::default(),
+            )
+            .unwrap()
+            .candidates
+        });
+        let candidates_four_threads_reversed = four_threads.install(|| {
+            scan_repeated_artifacts_report(&[doc_b, doc_a], &config, &CleaningConfig::default())
+                .unwrap()
+                .candidates
+        });
+
+        assert_eq!(candidates_one_thread, candidates_four_threads_reversed);
     }
 
     fn repeated_cached_pdf_text() -> String {
@@ -2031,6 +2347,78 @@ mod tests {
                 .join("\n")
             })
             .collect::<Vec<_>>()
+    }
+
+    #[test]
+    fn scanner_promotion_matches_the_legacy_pdf_header_footer_fixture() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let record = make_pdf_record("promotion-parity.pdf", temp_dir.path());
+        let pages = repeated_cached_pdf_pages();
+        let raw_text = pages.join("\n\n");
+        let scan_cleaning_config = CleaningConfig::default();
+        let cache = ExtractionCache::new();
+        cache.insert_extracted(
+            &record,
+            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                &scan_cleaning_config,
+            )),
+            &scan_cleaning_config,
+            crate::cache::CacheEntry {
+                extracted_text: raw_text.clone(),
+                warnings: Vec::new(),
+                page_count: Some(pages.len()),
+                page_texts: Some(pages.clone()),
+            },
+        );
+        let scan_config = RepeatedArtifactScanConfig {
+            min_occurrences: 3,
+            min_files: 1,
+            min_line_chars: 3,
+            include_inline_artifacts: false,
+            ..RepeatedArtifactScanConfig::default()
+        };
+
+        let report = scan_repeated_artifacts_report_with_cancel_and_cache(
+            &[record],
+            &scan_config,
+            &scan_cleaning_config,
+            Some(&cache),
+            &no_cancellation(),
+        )
+        .unwrap();
+        let manually_marked_candidate_ids = report
+            .candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.risk_label == ArtifactRiskLabel::StrongHeaderFooterCandidate
+            })
+            .map(|candidate| candidate.candidate_id.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        let rule_config = CleaningConfig {
+            removal_rules: report
+                .promotions
+                .into_iter()
+                .filter(|promotion| {
+                    manually_marked_candidate_ids.contains(promotion.candidate_id.as_str())
+                })
+                .filter_map(|promotion| promotion.rule)
+                .collect(),
+            ..CleaningConfig::default()
+        };
+        let structured = StructuredDocument::from_pages(pages);
+        let promoted = crate::clean::clean_structured_document(&structured, &rule_config).text;
+        let fallback_config = CleaningConfig {
+            remove_repeated_pdf_headers_footers: true,
+            ..CleaningConfig::default()
+        };
+        let (legacy, _) = crate::pdf::clean_extracted_pdf_text(&raw_text, &fallback_config);
+
+        for artifact in ["Header", "Footer"] {
+            assert!(!promoted.contains(artifact));
+            assert!(!legacy.contains(artifact));
+        }
+        assert!(promoted.contains("Middle prose"));
+        assert!(legacy.contains("Middle prose"));
     }
 
     #[test]
@@ -2097,7 +2485,7 @@ mod tests {
             min_files: 1,
             min_line_chars: 3,
             include_inline_artifacts: false,
-            max_candidates: 50,
+            max_candidates: Some(50),
             ..RepeatedArtifactScanConfig::default()
         };
 
@@ -2208,7 +2596,7 @@ mod tests {
             min_files: 1,
             min_line_chars: 3,
             include_inline_artifacts: false,
-            max_candidates: 50,
+            max_candidates: Some(50),
             ..RepeatedArtifactScanConfig::default()
         };
 
@@ -2428,7 +2816,7 @@ mod tests {
             include_two_line_blocks: true,
             min_occurrences: 5,
             min_files: 1,
-            max_candidates: 100,
+            max_candidates: Some(100),
             min_line_chars: 3,
             ..RepeatedArtifactScanConfig::default()
         };
@@ -2459,6 +2847,7 @@ mod tests {
         let config = RepeatedArtifactScanConfig {
             min_occurrences: 5,
             min_files: 1,
+            max_line_chars: 300,
             ..RepeatedArtifactScanConfig::default()
         };
 
@@ -2651,10 +3040,10 @@ mod tests {
     }
 
     #[test]
-    fn test_long_lines_filtered_by_short_default() {
+    fn test_default_max_line_chars_allows_long_boilerplate() {
         assert!(
-            RepeatedArtifactScanConfig::default().max_line_chars <= 300,
-            "default max_line_chars should be <= 300"
+            RepeatedArtifactScanConfig::default().max_line_chars >= 600,
+            "default max_line_chars should allow long repeated boilerplate"
         );
     }
 
@@ -2775,7 +3164,7 @@ mod tests {
     }
 
     #[test]
-    fn test_normalised_content_filter_default() {
+    fn test_numeric_dominant_normalised_surface_by_default() {
         let temp_dir = tempfile::tempdir().unwrap();
         let content = "32.01 46.83\n31.28 20.91\n40.68 1.05\n";
         let doc = make_text_record("numeric_norm.txt", content, temp_dir.path());
@@ -2789,8 +3178,8 @@ mod tests {
             .iter()
             .any(|c| c.kind == RepeatedArtifactKind::NormalizedLine);
         assert!(
-            !norm_numeric,
-            "numeric-dominant lines should not produce NormalizedLine by default"
+            norm_numeric,
+            "numeric-dominant lines should produce NormalizedLine by default"
         );
     }
 
@@ -2821,6 +3210,7 @@ mod tests {
         let content = "42.5\n42.5\n42.5\n42.5\n42.5\n";
         let doc = make_text_record("numeric_exact2.txt", content, temp_dir.path());
         let config = RepeatedArtifactScanConfig {
+            include_numeric_dominant: false,
             min_occurrences: 4,
             min_files: 1,
             ..RepeatedArtifactScanConfig::default()
@@ -2902,7 +3292,7 @@ mod tests {
     #[test]
     fn test_numeric_dominant_content_filter_default() {
         let cfg = RepeatedArtifactScanConfig::default();
-        assert!(!cfg.include_numeric_dominant);
+        assert!(cfg.include_numeric_dominant);
         assert!(cfg.include_text_dominant);
         assert!(cfg.include_mixed_text_numbers);
         assert!(cfg.include_symbol_noise);

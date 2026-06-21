@@ -389,6 +389,7 @@ pub struct ExtractedPdf {
     pub warnings: Vec<String>,
     pub page_count: usize,
     pub page_texts: Option<Vec<String>>,
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -442,6 +443,7 @@ fn finalize_lopdf_fallback_text(
     max_chars: Option<usize>,
     mut warnings: Vec<String>,
 ) -> ExtractedPdf {
+    let truncated = max_chars.is_some_and(|limit| text.chars().count() > limit);
     if let Some(limit) = max_chars {
         text = text.chars().take(limit).collect();
     }
@@ -480,6 +482,7 @@ fn finalize_lopdf_fallback_text(
         warnings,
         page_count,
         page_texts: None,
+        truncated,
     }
 }
 
@@ -911,8 +914,11 @@ pub fn clean_extracted_pdf_text(raw_text: &str, config: &CleaningConfig) -> (Str
             )
         })
         .collect::<Vec<_>>();
-    let (text, warnings, _, _) =
-        clean_pdf_page_lines(page_lines, PdfCleanupOptions::from_cleaning_config(config));
+    let (text, warnings, _, _) = clean_pdf_page_lines(
+        page_lines,
+        PdfCleanupOptions::from_cleaning_config(config),
+        false,
+    );
     (text, warnings)
 }
 
@@ -933,8 +939,11 @@ pub(crate) fn clean_extracted_pdf_pages_and_text(
             )
         })
         .collect::<Vec<_>>();
-    let (text, warnings, _, cleaned_pages) =
-        clean_pdf_page_lines(page_lines, PdfCleanupOptions::from_cleaning_config(config));
+    let (text, warnings, _, cleaned_pages) = clean_pdf_page_lines(
+        page_lines,
+        PdfCleanupOptions::from_cleaning_config(config),
+        true,
+    );
     (text, warnings, cleaned_pages)
 }
 
@@ -960,6 +969,7 @@ fn flatten_pdf_page_texts(page_texts: &[String]) -> (String, bool) {
 fn clean_pdf_page_lines(
     page_lines_list: Vec<(usize, Vec<String>)>,
     options: PdfCleanupOptions,
+    page_metadata_reliable: bool,
 ) -> (String, Vec<String>, bool, Vec<String>) {
     let PdfCleanupOptions {
         remove_repeated_headers_footers,
@@ -973,7 +983,7 @@ fn clean_pdf_page_lines(
     let mut repeated_patterns = std::collections::HashSet::new();
     let total_pages = page_lines_list.len();
 
-    if remove_repeated_headers_footers && total_pages >= 3 {
+    if remove_repeated_headers_footers && !page_metadata_reliable && total_pages >= 3 {
         let n = 3;
         let mut candidate_counts = std::collections::HashMap::new();
 
@@ -1045,7 +1055,7 @@ fn clean_pdf_page_lines(
             let mut remove = false;
 
             if is_in_candidate_zone {
-                if remove_repeated_headers_footers && total_pages >= 3 {
+                if remove_repeated_headers_footers && !page_metadata_reliable && total_pages >= 3 {
                     let norm = normalize_candidate_line(&line);
                     if !norm.is_empty() && repeated_patterns.contains(&norm) {
                         remove = true;
@@ -1299,6 +1309,7 @@ pub fn extract_pdf(
                     warnings,
                     page_count: doc.get_pages().len(),
                     page_texts: None,
+                    truncated: false,
                 });
             }
             let page_numbers: Vec<u32> = doc.get_pages().keys().copied().collect();
@@ -1343,9 +1354,12 @@ pub fn extract_pdf(
             &mut warnings,
             "Used experimental full OCR on all pages to extract PDF text from rendered pages.",
         );
-        let (text, page_texts) = ocr
-            .map(|ocr| (ocr.text, Some(ocr.page_texts)))
-            .unwrap_or_else(|| (String::new(), None));
+        let (text, page_texts, truncated) = ocr
+            .map(|ocr| {
+                let truncated = max_chars.is_some() && ocr.page_texts.len() < page_count;
+                (ocr.text, Some(ocr.page_texts), truncated)
+            })
+            .unwrap_or_else(|| (String::new(), None, false));
         if text.trim().is_empty() {
             warnings.push("Full OCR all pages completed but produced no text.".to_string());
         }
@@ -1355,6 +1369,7 @@ pub fn extract_pdf(
             warnings,
             page_count,
             page_texts,
+            truncated,
         });
     }
 
@@ -1368,11 +1383,13 @@ pub fn extract_pdf(
 
     let mut page_lines_list: Vec<(usize, Vec<String>)> = Vec::new();
     let mut current_chars_count = 0;
+    let mut truncated = false;
 
     for page_index in 0..page_count {
         if let Some(limit) = max_chars
             && current_chars_count >= limit
         {
+            truncated = true;
             break;
         }
 
@@ -1470,7 +1487,7 @@ pub fn extract_pdf(
 
     let cleanup_options = PdfCleanupOptions::from_extraction_options(options);
     let (mut all_text, cleanup_warnings, has_any_text, mut page_texts) =
-        clean_pdf_page_lines(page_lines_list, cleanup_options);
+        clean_pdf_page_lines(page_lines_list, cleanup_options, true);
     warnings.extend(cleanup_warnings);
 
     // Compare layout-aware output against flat extraction as a loss signal.
@@ -1504,6 +1521,7 @@ pub fn extract_pdf(
             &mut warnings,
             "Used experimental OCR for missing-text pages.",
         ) {
+            truncated = max_chars.is_some() && ocr.page_texts.len() < page_count;
             if ocr.text.trim().is_empty() {
                 warnings.push("OCR completed but produced no text.".to_string());
             }
@@ -1517,6 +1535,7 @@ pub fn extract_pdf(
         warnings,
         page_count,
         page_texts: Some(page_texts),
+        truncated,
     })
 }
 
@@ -2563,7 +2582,7 @@ mod tests {
     }
 
     #[test]
-    fn test_pdf_cleanup_repeated_headers_footers() {
+    fn repeated_header_footer_fallback_requires_explicit_flag_and_unreliable_metadata() {
         require_pdfium!();
         let pages = vec![
             vec![
@@ -2617,7 +2636,7 @@ mod tests {
                 .any(|w| w.contains("Removed repeated PDF header/footer"))
         );
 
-        let result_enabled = extract_pdf(
+        let result_reliable = extract_pdf(
             &bytes,
             None,
             PdfExtractionOptions {
@@ -2626,14 +2645,49 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(!result_enabled.text.contains("Repeated Header"));
-        assert!(!result_enabled.text.contains("Repeated Footer"));
-        assert!(result_enabled.text.contains("Body Line 1"));
+        assert!(result_reliable.text.contains("Repeated Header"));
+        assert!(result_reliable.text.contains("Repeated Footer"));
         assert!(
-            result_enabled
+            !result_reliable
                 .warnings
                 .iter()
                 .any(|w| w.contains("Removed repeated PDF header/footer"))
+        );
+
+        let (fallback_disabled_text, fallback_disabled_warnings) =
+            clean_extracted_pdf_text(&result_reliable.text, &CleaningConfig::default());
+        assert!(fallback_disabled_text.contains("Repeated Header"));
+        assert!(fallback_disabled_text.contains("Repeated Footer"));
+        assert!(
+            !fallback_disabled_warnings
+                .iter()
+                .any(|warning| warning.contains("Removed repeated PDF header/footer"))
+        );
+
+        let fallback_config = CleaningConfig {
+            remove_repeated_pdf_headers_footers: true,
+            ..CleaningConfig::default()
+        };
+        let (fallback_text, fallback_warnings) =
+            clean_extracted_pdf_text(&result_reliable.text, &fallback_config);
+        assert!(!fallback_text.contains("Repeated Header"));
+        assert!(!fallback_text.contains("Repeated Footer"));
+        assert!(fallback_text.contains("Body Line 1"));
+        assert!(
+            fallback_warnings
+                .iter()
+                .any(|warning| warning.contains("Removed repeated PDF header/footer"))
+        );
+
+        let reliable_pages = pages.iter().map(|page| page.join("\n")).collect::<Vec<_>>();
+        let (reliable_text, reliable_warnings, _) =
+            clean_extracted_pdf_pages_and_text(&reliable_pages, &fallback_config);
+        assert!(reliable_text.contains("Repeated Header"));
+        assert!(reliable_text.contains("Repeated Footer"));
+        assert!(
+            !reliable_warnings
+                .iter()
+                .any(|warning| warning.contains("Removed repeated PDF header/footer"))
         );
     }
 
