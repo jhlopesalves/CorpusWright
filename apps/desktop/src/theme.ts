@@ -4,15 +4,11 @@ import {
   getDropdowns,
   getLeftPanel,
 } from "./dom";
-
-function toggleTheme(): void {
-  const current = document.documentElement.dataset.theme;
-  document.documentElement.dataset.theme = current === "light" ? "dark" : "light";
-}
+import { toggleLightDarkTheme } from "./appearance";
 
 export function initThemeToggle(): void {
-  dom.themeToggle.addEventListener("click", toggleTheme);
-  dom.menuToggleTheme.addEventListener("click", toggleTheme);
+  dom.themeToggle.addEventListener("click", toggleLightDarkTheme);
+  dom.menuToggleTheme.addEventListener("click", toggleLightDarkTheme);
 }
 
 export function initAppChrome(): void {
