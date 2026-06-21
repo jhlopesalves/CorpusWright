@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import { dom } from "./dom";
 import { state } from "./state";
+import { effectiveCleaningConfig } from "./effective-cleaning-config";
 import { sanitizeFolderName } from "./utils";
 import type { ExportReport } from "./generated/ExportReport.js";
 
@@ -65,7 +66,7 @@ export async function exportProcessedCorpus(): Promise<void> {
       indices,
       corpusVersion: myVersion,
       outputDir: targetDir,
-      cleaningConfig: state.activeCleaningConfig
+      cleaningConfig: effectiveCleaningConfig()
     });
 
     if (myVersion !== state.currentCorpusVersion) return;

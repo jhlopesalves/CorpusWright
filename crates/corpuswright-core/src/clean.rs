@@ -224,6 +224,10 @@ impl<'de> Deserialize<'de> for RemovalRule {
     }
 }
 
+pub(crate) fn is_valid_anywhere_literal_text(text: &str) -> bool {
+    !text.trim().is_empty() && !text.contains(['\r', '\n'])
+}
+
 fn invalid_anywhere_rule_reason(rule: &RemovalRule) -> Option<&'static str> {
     if rule.scope != RemovalScope::Anywhere {
         return None;
@@ -236,7 +240,7 @@ fn invalid_anywhere_rule_reason(rule: &RemovalRule) -> Option<&'static str> {
         RemovalMatcher::Literal { text } if text.trim().is_empty() => {
             Some("Inline literal text cannot be empty.")
         }
-        RemovalMatcher::Literal { text } if text.contains(['\r', '\n']) => {
+        RemovalMatcher::Literal { text } if !is_valid_anywhere_literal_text(text) => {
             Some("Inline literal text cannot contain line breaks.")
         }
         RemovalMatcher::Literal { .. } => None,

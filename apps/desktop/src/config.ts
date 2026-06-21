@@ -257,10 +257,12 @@ export function normaliseCleaningConfigWithMigration(raw: unknown): NormalisedCl
   }
 
   if (Array.isArray(obj.removal_rules) && obj.removal_rules.every(isRemovalRule)) {
-    const migrated = migrateRemovalRules(obj.removal_rules.map((rule) => ({
-      ...rule,
-      matcher: { ...rule.matcher },
-    })));
+    const persistedRules = obj.removal_rules
+      .map((rule) => ({
+        ...rule,
+        matcher: { ...rule.matcher },
+      }));
+    const migrated = migrateRemovalRules(persistedRules);
     config.removal_rules = migrated.rules;
     migrationSummary = migrated.summary;
   }

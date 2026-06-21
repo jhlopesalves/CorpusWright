@@ -1,138 +1,47 @@
-import {
-  createRepeatedArtifactRemovalRule,
-  repeatedArtifactCandidateScope,
-  repeatedArtifactMatcherKindForCandidate,
-  removeRepeatedArtifactRulesForCandidate,
-} from "../src/repeated-artifact-rules.ts";
-import type { RepeatedArtifactCandidate } from "../src/generated/RepeatedArtifactCandidate.js";
+import { readFileSync } from "node:fs";
+
+import type { RemovalRule } from "../src/generated/RemovalRule.js";
+import { cloneRemovalRules } from "../src/removal-rule-utils.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) {
-    throw new Error(message);
-  }
+  if (!condition) throw new Error(message);
 }
 
-function candidate(overrides: Partial<RepeatedArtifactCandidate>): RepeatedArtifactCandidate {
-  return {
-    candidate_id: "exact_0000000000000000",
-    kind: "exact_line",
-    display_text: "Header",
-    normalized_key: "header",
-    occurrence_count: 2,
-    file_count: 2,
-    example_count: 0,
-    position_summary: {
-      top_count: 0,
-      middle_count: 2,
-      bottom_count: 0,
-      unknown_count: 0,
-    },
-    position_summary_is_page_based: false,
-    risk_label: "ambiguous",
-    content_class: "text_dominant",
-    text_profile: {
-      char_count: 6,
-      token_count: 1,
-      alphabetic_ratio: 1,
-      digit_ratio: 0,
-      symbol_ratio: 0,
-      whitespace_ratio: 0,
-      uppercase_ratio: 0,
-      average_token_length: 6,
-      max_repeated_char_run: 1,
-      suspicious_token_ratio: 0,
-      has_sentence_punctuation: false,
-      looks_like_common_section_heading: false,
-      looks_like_page_label: false,
-      looks_like_table_or_numeric_row: false,
-      looks_like_formula_or_code: false,
-      looks_like_markup_or_extraction_noise: false,
-    },
-    text_signal_label: "ambiguous",
-    text_signal_reasons: [],
-    raw_variant_count: 1,
-    raw_variant_count_is_capped: false,
-    raw_variants: [],
-    examples: [],
-    ...overrides,
-  };
-}
-
-const inlineCandidate = candidate({
-  candidate_id: "inline_1111111111111111",
-  kind: "inline_artifact",
-  display_text: "<br />",
-  normalized_key: "",
-});
-const inlineRule = createRepeatedArtifactRemovalRule(
-  inlineCandidate,
-  "Anywhere: <br />"
+const fixturePath = new URL(
+  "../../../crates/corpuswright-core/tests/fixtures/repeated_artifact_promotion.json",
+  import.meta.url
 );
-assert(inlineRule !== null, "inline candidate should produce a rule");
-assert(inlineRule.enabled, "inline candidate should produce an enabled rule");
-assert(inlineRule.scope === "anywhere", "inline candidate should use anywhere scope");
-assert(inlineRule.matcher.kind === "literal", "inline candidate should use a literal matcher");
-assert(inlineRule.matcher.text === "<br />", "inline literal text should be preserved");
+const characterisationFixture = JSON.parse(readFileSync(fixturePath, "utf8")) as Array<{
+  expected_rule: RemovalRule | null;
+}>;
+const promotableRules = characterisationFixture
+  .map(entry => entry.expected_rule)
+  .filter((rule): rule is RemovalRule => rule !== null);
+
+assert(promotableRules.length > 0, "the shared Rust promotion fixture must contain promotable rules");
 assert(
-  repeatedArtifactMatcherKindForCandidate(inlineCandidate) === "literal",
-  "inline decision should persist as a literal matcher"
+  promotableRules.every(rule => rule.source === "promoted_repeated_artifact"),
+  "manual promotion fixtures must retain promoted-repeated-artefact provenance"
 );
 
-const normalizedCandidate = candidate({
-  candidate_id: "normalized_2222222222222222",
-  kind: "normalized_line",
-  display_text: "Page 12",
-  normalized_key: "page #",
-});
-const normalizedRule = createRepeatedArtifactRemovalRule(
-  normalizedCandidate,
-  "Whole-line family: page #"
-);
-assert(normalizedRule !== null, "normalised candidate should produce a rule");
+const manualPromotedRule = promotableRules.find(rule => rule.scope === "whole_line");
+assert(manualPromotedRule !== undefined, "the fixture must cover a whole-line promoted rule");
+
+const persistedRules = [{
+  ...manualPromotedRule,
+  matcher: { ...manualPromotedRule.matcher },
+}];
+const effectiveRules = cloneRemovalRules(persistedRules);
 assert(
-  repeatedArtifactCandidateScope(normalizedCandidate) === "whole_line",
-  "normalised non-page candidate should remain whole-line scoped"
+  effectiveRules.length === 1 &&
+    JSON.stringify(effectiveRules[0]) === JSON.stringify(manualPromotedRule),
+  "effective preview/processing/export config must retain a manually promoted rule byte-for-byte"
 );
 assert(
-  normalizedRule.matcher.kind === "normalized_line" &&
-    normalizedRule.matcher.normalized_key === "page #",
-  "normalised candidate should preserve its normalised key"
+  effectiveRules !== persistedRules,
+  "building effective config must not alias the persisted rule array"
 );
-
-const emptyInlineRule = createRepeatedArtifactRemovalRule(
-  candidate({
-    candidate_id: "inline_empty",
-    kind: "inline_artifact",
-    display_text: "",
-    normalized_key: "",
-  }),
-  "Anywhere:"
-);
-assert(emptyInlineRule === null, "empty inline candidates cannot produce rules");
-
-const multilineInlineRule = createRepeatedArtifactRemovalRule(
-  candidate({
-    candidate_id: "inline_multiline",
-    kind: "inline_artifact",
-    display_text: "line one\nline two",
-    normalized_key: "",
-  }),
-  "Inline literal with a line break"
-);
-assert(multilineInlineRule === null, "multiline inline candidates cannot produce rules");
-
-const remainingRules = removeRepeatedArtifactRulesForCandidate(
-  [
-    inlineRule,
-    {
-      ...inlineRule,
-      id: "repeated-artifact:anywhere:inline_3333333333333333",
-    },
-  ],
-  "inline_1111111111111111"
-);
-assert(remainingRules.length === 1, "unmark should remove only the selected candidate rule");
 assert(
-  remainingRules[0].id.endsWith(":inline_3333333333333333"),
-  "unmark should keep other repeated artefact rules"
+  effectiveRules[0].matcher !== persistedRules[0].matcher,
+  "building effective config must not alias the persisted matcher"
 );
