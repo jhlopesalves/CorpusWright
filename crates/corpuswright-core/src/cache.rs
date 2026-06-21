@@ -399,6 +399,37 @@ fn missing_materialised_ocr_message() -> String {
     "OCR text is not materialised for this PDF. Re-run special PDF intake or materialise OCR before scanning repeated artefacts.".to_string()
 }
 
+fn prepare_document_text_for_cleaning_impl(
+    record: &DocumentRecord,
+    extracted_text: String,
+    cleaning_config: &CleaningConfig,
+    warnings: &mut Vec<String>,
+    has_reliable_page_metadata: bool,
+) -> String {
+    let mut processed = if record.document_type == DocumentType::Pdf {
+        let mut pdf_cleanup_config;
+        let pdf_config = if has_reliable_page_metadata {
+            pdf_cleanup_config = cleaning_config.clone();
+            pdf_cleanup_config.remove_repeated_pdf_headers_footers = false;
+            &pdf_cleanup_config
+        } else {
+            cleaning_config
+        };
+        let (pdf_cleaned, mut cleanup_warnings) =
+            crate::pdf::clean_extracted_pdf_text(&extracted_text, pdf_config);
+        warnings.append(&mut cleanup_warnings);
+        pdf_cleaned
+    } else {
+        extracted_text
+    };
+
+    if cleaning_config.extract_html {
+        processed = crate::html::extract_html(&processed);
+    }
+
+    processed
+}
+
 pub fn apply_document_processing(
     record: &DocumentRecord,
     extracted_text: String,
@@ -425,27 +456,13 @@ fn apply_document_processing_impl(
     context: Option<&crate::clean::CleaningContext<'_>>,
     has_reliable_page_metadata: bool,
 ) -> String {
-    let mut processed = if record.document_type == DocumentType::Pdf {
-        let mut pdf_cleanup_config;
-        let pdf_config = if has_reliable_page_metadata {
-            pdf_cleanup_config = cleaning_config.clone();
-            pdf_cleanup_config.remove_repeated_pdf_headers_footers = false;
-            &pdf_cleanup_config
-        } else {
-            cleaning_config
-        };
-        let (pdf_cleaned, mut cleanup_warnings) =
-            crate::pdf::clean_extracted_pdf_text(&extracted_text, pdf_config);
-        warnings.append(&mut cleanup_warnings);
-        pdf_cleaned
-    } else {
-        extracted_text
-    };
-
-    if cleaning_config.extract_html {
-        processed = crate::html::extract_html(&processed);
-    }
-
+    let processed = prepare_document_text_for_cleaning_impl(
+        record,
+        extracted_text,
+        cleaning_config,
+        warnings,
+        has_reliable_page_metadata,
+    );
     crate::clean::clean_text_impl(&processed, cleaning_config, context, collector)
 }
 
@@ -509,6 +526,22 @@ pub fn document_text_from_cache_entry(
                 } else {
                     (original_flat_text, None, None)
                 }
+            } else if crate::clean::requires_reliable_page_metadata(cleaning_config) {
+                let processed = prepare_document_text_for_cleaning_impl(
+                    record,
+                    extracted_text,
+                    cleaning_config,
+                    &mut warnings,
+                    false,
+                );
+                let document = StructuredDocument::from_flat_text_as_single_page(&processed);
+                let cleaned = crate::clean::clean_structured_document_impl(
+                    &document,
+                    cleaning_config,
+                    Some(&mut collector),
+                    Some(&context),
+                );
+                (cleaned.text, None, Some(collector.finish()))
             } else {
                 let text = apply_document_processing_impl(
                     record,

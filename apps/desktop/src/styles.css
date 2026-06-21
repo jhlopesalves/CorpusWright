@@ -4106,6 +4106,30 @@ mark.search-match.current-match {
   color: var(--text-color);
 }
 
+.repeated-artifact-search {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--panel-bg);
+  flex-shrink: 0;
+}
+
+.repeated-artifact-search input {
+  width: 100%;
+  min-height: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.repeated-artifact-search input:focus {
+  outline: 1px solid var(--accent-color);
+  border-color: var(--accent-color);
+}
+
 .repeated-artifact-table-container {
   flex: 1;
   overflow: auto;
@@ -4146,6 +4170,25 @@ mark.search-match.current-match {
   cursor: pointer;
   border-bottom: 1px solid var(--border-color);
   transition: background-color 0.15s ease;
+}
+
+.repeated-artifact-table-container tbody tr.artifact-candidate-row {
+  height: 58px;
+}
+
+.repeated-artifact-table-container tbody tr.artifact-virtual-spacer {
+  cursor: default;
+  border-bottom: 0;
+  transition: none;
+}
+
+.repeated-artifact-table-container tbody tr.artifact-virtual-spacer:hover {
+  background: transparent;
+}
+
+.repeated-artifact-table-container tbody tr.artifact-virtual-spacer td {
+  padding: 0;
+  border: 0;
 }
 
 .repeated-artifact-table-container tbody tr:hover {

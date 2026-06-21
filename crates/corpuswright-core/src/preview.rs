@@ -1,6 +1,6 @@
-use crate::cache::ExtractionCache;
+use crate::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
 use crate::clean::CleaningConfig;
-use crate::pdf::{PdfExtractionOptions, clean_extracted_pdf_text};
+use crate::pdf::PdfExtractionOptions;
 use crate::scan::{DocumentRecord, DocumentType};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -365,113 +365,26 @@ pub fn preview_processed_files(
     let results: Result<Vec<_>, PreviewError> = records[..limit]
         .par_iter()
         .map(|record| {
-            let (mut source_read, extraction_warnings) = if record.document_type
-                == DocumentType::Docx
-            {
-                let cache_hit = cache.and_then(|c| c.try_get(record, None, cleaning_config));
-                if let Some(entry) = cache_hit {
-                    (
-                        limit_text(
-                            entry.extracted_text,
-                            preview_options.max_chars_per_file,
-                            false,
-                        ),
-                        entry.warnings,
-                    )
-                } else {
-                    let bytes =
-                        std::fs::read(&record.source_path).map_err(|error| PreviewError::Io {
-                            path: record.source_path.clone(),
-                            message: error.to_string(),
-                        })?;
-                    match crate::docx::extract_docx(&bytes, cleaning_config) {
-                        Ok(extracted) => (
-                            limit_text(extracted.text, preview_options.max_chars_per_file, false),
-                            extracted.warnings,
-                        ),
-                        Err(e) => (
-                            empty_bounded_read(),
-                            vec![format!("DOCX Extraction Failed: {}", e)],
-                        ),
-                    }
-                }
-            } else if record.document_type == DocumentType::Pdf {
-                let pdf_options = PdfExtractionOptions::raw_from_record_and_cleaning_config(
-                    record,
-                    cleaning_config,
-                );
-                let cache_hit =
-                    cache.and_then(|c| c.try_get(record, Some(pdf_options), cleaning_config));
-                if let Some(entry) = cache_hit {
-                    let (pdf_cleaned, mut cleanup_warnings) =
-                        clean_extracted_pdf_text(&entry.extracted_text, cleaning_config);
-                    let mut warnings = entry.warnings;
-                    warnings.append(&mut cleanup_warnings);
-                    (
-                        limit_text(pdf_cleaned, preview_options.max_chars_per_file, false),
-                        warnings,
-                    )
-                } else {
-                    let bytes =
-                        std::fs::read(&record.source_path).map_err(|error| PreviewError::Io {
-                            path: record.source_path.clone(),
-                            message: error.to_string(),
-                        })?;
-                    match crate::pdf::extract_pdf(
-                        &bytes,
-                        preview_options.max_chars_per_file,
-                        pdf_options,
-                    ) {
-                        Ok(extracted) => {
-                            let extraction_truncated = extracted.truncated;
-                            let (pdf_cleaned, mut cleanup_warnings) =
-                                clean_extracted_pdf_text(&extracted.text, cleaning_config);
-                            let mut warnings = extracted.warnings;
-                            warnings.append(&mut cleanup_warnings);
-                            (
-                                limit_text(
-                                    pdf_cleaned,
-                                    preview_options.max_chars_per_file,
-                                    extraction_truncated,
-                                ),
-                                warnings,
-                            )
-                        }
-                        Err(e) => (
-                            empty_bounded_read(),
-                            vec![format!("PDF Extraction Failed: {}", e)],
-                        ),
-                    }
-                }
-            } else {
-                let read = read_bounded_lossy_text(
-                    &record.source_path,
-                    preview_options.max_chars_per_file,
-                )?;
-                (read, Vec::new())
+            let document = match document_text_for_record(
+                record,
+                cleaning_config,
+                DocumentTextMode::Processed,
+                cache,
+            ) {
+                Ok(document) => document,
+                Err(message) => crate::cache::DocumentText {
+                    text: String::new(),
+                    warnings: vec![message],
+                    page_count: None,
+                    page_texts: None,
+                    cleaning_report: Some(crate::clean::CleaningReport::default()),
+                },
             };
+            let source_read = limit_text(document.text, preview_options.max_chars_per_file, false);
+            let included_char_count = source_read.text.chars().count();
 
-            if cleaning_config.extract_html {
-                source_read.text = crate::html::extract_html(&source_read.text);
-            }
-
-            let (cleaned, cleaning_report) = {
-                let context = crate::clean::CleaningContext {
-                    source_id: Some(record.relative_path.to_str().unwrap_or("")),
-                    source_label: Some(record.relative_path.to_str().unwrap_or("")),
-                    page_number: None,
-                };
-                let (text, report) = crate::clean::clean_text_with_report(
-                    &source_read.text,
-                    cleaning_config,
-                    Some(&context),
-                );
-                (text, Some(report))
-            };
-
-            let included_char_count = cleaned.chars().count();
-
-            let mut file_warnings: Vec<PreviewWarning> = extraction_warnings
+            let mut file_warnings: Vec<PreviewWarning> = document
+                .warnings
                 .into_iter()
                 .map(|w| PreviewWarning {
                     source_path: Some(record.source_path.clone()),
@@ -500,10 +413,10 @@ pub fn preview_processed_files(
                 document_type: record.document_type.clone(),
                 source_size_bytes: record.size_bytes,
                 included_char_count,
-                text: cleaned,
+                text: source_read.text,
                 truncated,
                 warnings: file_warnings,
-                cleaning_report,
+                cleaning_report: document.cleaning_report,
             })
         })
         .collect();
@@ -557,8 +470,10 @@ fn build_combined_preview_text(files: &[FilePreview], include_paths: bool) -> St
 
 fn preview_extraction_warning_kind(message: &str) -> PreviewWarningKind {
     if message.contains("Failed")
+        || message.contains("failed")
         || message.contains("low-quality text")
         || message.contains("required for this PDF")
+        || message.contains("OCR text is not materialised")
     {
         PreviewWarningKind::ExtractionError
     } else {
@@ -570,14 +485,6 @@ pub struct BoundedRead {
     pub text: String,
     pub truncated: bool,
     pub invalid_utf8: bool,
-}
-
-fn empty_bounded_read() -> BoundedRead {
-    BoundedRead {
-        text: String::new(),
-        truncated: false,
-        invalid_utf8: false,
-    }
 }
 
 fn limit_text(text: String, max_chars: Option<usize>, extraction_truncated: bool) -> BoundedRead {
@@ -736,7 +643,7 @@ fn push_limited(text: &mut String, fragment: &str, chars_seen: &mut usize, targe
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::ExtractionCache;
+    use crate::cache::{CacheEntry, ExtractionCache, document_text_from_cache_entry};
     use crate::clean::{
         CleaningConfig, CleaningOperation, RemovalMatcher, RemovalRule, RemovalRuleSource,
         RemovalScope, ReplacementRule,
@@ -755,6 +662,40 @@ mod tests {
             },
             scope: RemovalScope::Anywhere,
             enabled: true,
+        }
+    }
+
+    fn literal_rule(id: &str, text: &str, scope: RemovalScope) -> RemovalRule {
+        RemovalRule {
+            id: id.to_string(),
+            label: text.to_string(),
+            source: RemovalRuleSource::PromotedRepeatedArtifact,
+            matcher: RemovalMatcher::Literal {
+                text: text.to_string(),
+            },
+            scope,
+            enabled: true,
+        }
+    }
+
+    fn normalized_rule(id: &str, normalized_key: &str, scope: RemovalScope) -> RemovalRule {
+        RemovalRule {
+            id: id.to_string(),
+            label: normalized_key.to_string(),
+            source: RemovalRuleSource::PromotedRepeatedArtifact,
+            matcher: RemovalMatcher::NormalizedLine {
+                normalized_key: normalized_key.to_string(),
+            },
+            scope,
+            enabled: true,
+        }
+    }
+
+    fn unbounded_options() -> PreviewOptions {
+        PreviewOptions {
+            max_chars_per_file: None,
+            include_paths: false,
+            max_files: None,
         }
     }
 
@@ -958,6 +899,14 @@ mod tests {
             PreviewWarningKind::ExtractionError
         );
         assert_eq!(
+            preview_extraction_warning_kind("PDF extraction failed: invalid PDF"),
+            PreviewWarningKind::ExtractionError
+        );
+        assert_eq!(
+            preview_extraction_warning_kind("OCR text is not materialised for this PDF."),
+            PreviewWarningKind::ExtractionError
+        );
+        assert_eq!(
             preview_extraction_warning_kind("PDF backend: PDFium."),
             PreviewWarningKind::ExtractionWarning
         );
@@ -1061,7 +1010,8 @@ mod tests {
                 .all(|warning| warning.kind != PreviewWarningKind::Truncated)
         );
 
-        let (pdf_cleaned, _) = clean_extracted_pdf_text(&preview.text, &CleaningConfig::default());
+        let (pdf_cleaned, _) =
+            crate::pdf::clean_extracted_pdf_text(&preview.text, &CleaningConfig::default());
         let late_marker = pdf_cleaned
             .chars()
             .skip(5_000)
@@ -1133,6 +1083,229 @@ mod tests {
             .unwrap();
         assert_eq!(inline_summary.occurrence_count, 3);
         assert_eq!(inline_summary.examples.len(), 3);
+    }
+
+    #[test]
+    fn processed_preview_applies_page_top_rule_with_cached_pdf_page_texts() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("page-top.pdf"), b"%PDF-1.4").unwrap();
+        let report = scan_directory(dir.path()).unwrap();
+        let record = &report.files[0];
+        let cleaning = CleaningConfig {
+            removal_rules: vec![literal_rule("page-top", "HEADER", RemovalScope::PageTop)],
+            ..CleaningConfig::default()
+        };
+        let cache = ExtractionCache::new();
+        let pdf_options =
+            PdfExtractionOptions::raw_from_record_and_cleaning_config(record, &cleaning);
+        cache.insert_extracted(
+            record,
+            Some(pdf_options),
+            &cleaning,
+            CacheEntry {
+                extracted_text: "HEADER\nBODY".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(1),
+                page_texts: Some(vec!["HEADER\nBODY".to_string()]),
+            },
+        );
+
+        let preview =
+            preview_processed_files(&report.files, &unbounded_options(), &cleaning, Some(&cache))
+                .unwrap();
+
+        assert_eq!(preview.files[0].text, "BODY");
+    }
+
+    #[test]
+    fn processed_preview_applies_page_top_or_bottom_normalized_rule() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("running-head.pdf"), b"%PDF-1.4").unwrap();
+        let report = scan_directory(dir.path()).unwrap();
+        let record = &report.files[0];
+        let running_head_top = "4\u{2002}|\u{2002}Some fundamentals of empirical research";
+        let running_head_bottom = "5\u{2002}|\u{2002}Some fundamentals of empirical research";
+        let page_texts = vec![
+            format!("{running_head_top}\nFirst body"),
+            format!("Second body\n{running_head_bottom}"),
+            "Third body".to_string(),
+        ];
+        let cleaning = CleaningConfig {
+            removal_rules: vec![normalized_rule(
+                "running-head",
+                "# | some fundamentals of empirical research",
+                RemovalScope::PageTopOrBottom,
+            )],
+            ..CleaningConfig::default()
+        };
+        let cache = ExtractionCache::new();
+        let pdf_options =
+            PdfExtractionOptions::raw_from_record_and_cleaning_config(record, &cleaning);
+        cache.insert_extracted(
+            record,
+            Some(pdf_options),
+            &cleaning,
+            CacheEntry {
+                extracted_text: page_texts.join("\n\n"),
+                warnings: Vec::new(),
+                page_count: Some(page_texts.len()),
+                page_texts: Some(page_texts),
+            },
+        );
+
+        let preview =
+            preview_processed_files(&report.files, &unbounded_options(), &cleaning, Some(&cache))
+                .unwrap();
+
+        assert_eq!(
+            preview.files[0].text,
+            "First body\n\nSecond body\n\nThird body"
+        );
+        assert!(!preview.files[0].text.contains("Some fundamentals"));
+    }
+
+    #[test]
+    fn untruncated_processed_preview_matches_document_text_from_cache_entry() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("with-pages.pdf"), b"%PDF-1.4").unwrap();
+        fs::write(dir.path().join("without-pages.pdf"), b"%PDF-1.4").unwrap();
+        fs::write(dir.path().join("cached.docx"), b"PK\x05\x06").unwrap();
+        fs::write(dir.path().join("cached.txt"), "HEADER\nBODY").unwrap();
+        let report = scan_directory(dir.path()).unwrap();
+        let cleaning = CleaningConfig {
+            removal_rules: vec![literal_rule("page-top", "HEADER", RemovalScope::PageTop)],
+            lowercase: true,
+            ..CleaningConfig::default()
+        };
+        let cache = ExtractionCache::new();
+        let cases = [
+            (
+                "with-pages.pdf",
+                CacheEntry {
+                    extracted_text: "HEADER\nBODY".to_string(),
+                    warnings: Vec::new(),
+                    page_count: Some(1),
+                    page_texts: Some(vec!["HEADER\nBODY".to_string()]),
+                },
+            ),
+            (
+                "without-pages.pdf",
+                CacheEntry {
+                    extracted_text: "HEADER\nBODY".to_string(),
+                    warnings: Vec::new(),
+                    page_count: Some(1),
+                    page_texts: None,
+                },
+            ),
+            (
+                "cached.docx",
+                CacheEntry {
+                    extracted_text: "HEADER\nBODY".to_string(),
+                    warnings: Vec::new(),
+                    page_count: None,
+                    page_texts: None,
+                },
+            ),
+            (
+                "cached.txt",
+                CacheEntry {
+                    extracted_text: "HEADER\nBODY".to_string(),
+                    warnings: Vec::new(),
+                    page_count: None,
+                    page_texts: None,
+                },
+            ),
+        ];
+
+        for (name, entry) in cases {
+            let record = report
+                .files
+                .iter()
+                .find(|record| record.relative_path == std::path::Path::new(name))
+                .unwrap();
+            let pdf_options = (record.document_type == DocumentType::Pdf).then(|| {
+                PdfExtractionOptions::raw_from_record_and_cleaning_config(record, &cleaning)
+            });
+            cache.insert_extracted(record, pdf_options, &cleaning, entry.clone());
+            let preview = preview_processed_files(
+                std::slice::from_ref(record),
+                &unbounded_options(),
+                &cleaning,
+                Some(&cache),
+            )
+            .unwrap();
+            let document = document_text_from_cache_entry(
+                record,
+                &cleaning,
+                DocumentTextMode::Processed,
+                entry,
+            );
+
+            assert_eq!(preview.files[0].text, document.text, "{name}");
+        }
+    }
+
+    #[test]
+    fn processed_preview_reports_page_zone_skip_without_page_metadata() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("flat.pdf"), b"%PDF-1.4").unwrap();
+        let report = scan_directory(dir.path()).unwrap();
+        let record = &report.files[0];
+        let cleaning = CleaningConfig {
+            removal_rules: vec![literal_rule("page-top", "HEADER", RemovalScope::PageTop)],
+            ..CleaningConfig::default()
+        };
+        let cache = ExtractionCache::new();
+        let pdf_options =
+            PdfExtractionOptions::raw_from_record_and_cleaning_config(record, &cleaning);
+        cache.insert_extracted(
+            record,
+            Some(pdf_options),
+            &cleaning,
+            CacheEntry {
+                extracted_text: "HEADER\nBODY".to_string(),
+                warnings: Vec::new(),
+                page_count: Some(1),
+                page_texts: None,
+            },
+        );
+
+        let preview =
+            preview_processed_files(&report.files, &unbounded_options(), &cleaning, Some(&cache))
+                .unwrap();
+        let report = preview.files[0].cleaning_report.as_ref().unwrap();
+
+        assert_eq!(preview.files[0].text, "HEADER\nBODY");
+        assert!(report.skipped_rules.iter().any(|notice| {
+            notice.rule_id.as_deref() == Some("page-top")
+                && notice.notice.contains("Requires reliable page metadata")
+        }));
+    }
+
+    #[test]
+    fn processed_preview_truncates_after_cleaning() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("cap.txt"), "ABCDE\nREMOVE_ME\nTAIL").unwrap();
+        let report = scan_directory(dir.path()).unwrap();
+        let options = PreviewOptions {
+            max_chars_per_file: Some(7),
+            include_paths: false,
+            max_files: None,
+        };
+        let cleaning = CleaningConfig {
+            removal_rules: vec![literal_rule(
+                "remove-line",
+                "REMOVE_ME",
+                RemovalScope::WholeLine,
+            )],
+            ..CleaningConfig::default()
+        };
+
+        let preview = preview_processed_files(&report.files, &options, &cleaning, None).unwrap();
+
+        assert_eq!(preview.files[0].text, "ABCDE\nT");
+        assert!(preview.files[0].truncated);
+        assert!(!preview.files[0].text.contains("REMOVE_ME"));
     }
 
     #[test]
