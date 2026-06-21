@@ -82,9 +82,6 @@ interface ProjectDecisions {
 export let projectDecisions: ProjectDecisions = { version: 1, decisions: {} };
 let promotionsByCandidateId = new Map<string, RepeatedArtifactPromotion>();
 
-const CANDIDATE_ROW_HEIGHT_PX = 58;
-const CANDIDATE_ROW_OVERSCAN = 8;
-
 function formatKind(kind: string): string {
   switch (kind) {
     case "exact_line": return "Exact";
@@ -595,13 +592,10 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   const scanSettingsArrow = document.getElementById("scan-settings-arrow") as HTMLSpanElement | null;
   const typeTabs = document.getElementById("artifact-type-tabs");
   const decisionFilters = document.getElementById("artifact-decision-filters");
-  const candidateSearchInput = document.getElementById("artifact-candidate-search") as HTMLInputElement | null;
   const selectAllCheckbox = document.getElementById("chk-select-all-tab") as HTMLInputElement | null;
   const decisionSummary = document.getElementById("repeated-artifact-decision-summary") as HTMLSpanElement | null;
   const applyDecisionsButton = document.getElementById("btn-apply-artifact-decisions") as HTMLButtonElement | null;
   const candidateTableContainer = dom.tblArtifactCandidates.closest(".repeated-artifact-table-container") as HTMLElement | null;
-  let renderedCandidates: RepeatedArtifactCandidate[] = [];
-  let virtualScrollFrame: number | null = null;
 
   function updateProcessedWarning(): void {
     const isProcessed = getSelectedArtifactTextMode()?.value === "processed";
@@ -625,7 +619,6 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   }
 
   function setStatus(stage: string, elapsed?: number): void {
-    clearCandidateRowModel();
     const timeStr = elapsed !== undefined ? ` (${elapsed.toFixed(1)}s)` : "";
     dom.tblArtifactCandidates.innerHTML = `
       <tr>
@@ -654,14 +647,6 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       dom.btnRunArtifactScan.disabled = !scope.canScan;
     }
     return scope;
-  }
-
-  function clearCandidateRowModel(): void {
-    renderedCandidates = [];
-    if (virtualScrollFrame !== null) {
-      window.cancelAnimationFrame(virtualScrollFrame);
-      virtualScrollFrame = null;
-    }
   }
 
   function openRepeatedArtifactFinder(): void {
@@ -716,7 +701,6 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     scanGeneration++;
     if (currentAbortController) { currentAbortController.abort(); currentAbortController = null; }
     invoke("cancel_repeated_artifacts_command").catch(() => {});
-    clearCandidateRowModel();
     resetScanControls();
     dom.lblScanTime.style.display = "none";
     focusedCandidateId = null;
@@ -800,34 +784,19 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     });
   }
 
-  function activeCandidateSearchQuery(): string {
-    return candidateSearchInput?.value.trim().toLocaleLowerCase() ?? "";
-  }
-
-  function candidateMatchesSearch(candidate: RepeatedArtifactCandidate, query: string): boolean {
-    if (!query) return true;
-    const haystack = [
-      candidate.display_text,
-      candidate.normalized_key,
-      candidate.candidate_id,
-      candidate.raw_variants.join("\n"),
-    ].join("\n").toLocaleLowerCase();
-    return haystack.includes(query);
-  }
-
-  function applyCandidateSearch(candidates: RepeatedArtifactCandidate[]): RepeatedArtifactCandidate[] {
-    const query = activeCandidateSearchQuery();
-    if (!query) return candidates;
-    return candidates.filter(candidate => candidateMatchesSearch(candidate, query));
+  function resetCandidateTableScroll(): void {
+    if (candidateTableContainer) {
+      candidateTableContainer.scrollTop = 0;
+    }
   }
 
   function currentReviewCandidates(): RepeatedArtifactCandidate[] {
-    return applyCandidateSearch(filterCandidatesForReview(
+    return filterCandidatesForReview(
       state.lastScanCandidates,
       activeCategory,
       activeDecisionFilter,
       projectDecisions.decisions
-    ));
+    );
   }
 
   function updateReviewControls(candidates: RepeatedArtifactCandidate[]): void {
@@ -957,6 +926,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       if (!category || category === activeCategory) return;
       activeCategory = category;
       focusedCandidateId = null;
+      resetCandidateTableScroll();
       renderCandidates(state.lastScanCandidates, lastDiagnostics);
       dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Select a candidate to inspect examples.</div>`;
     });
@@ -968,15 +938,10 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       if (!filter || filter === activeDecisionFilter) return;
       activeDecisionFilter = filter;
       focusedCandidateId = null;
+      resetCandidateTableScroll();
       renderCandidates(state.lastScanCandidates, lastDiagnostics);
       dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Select a candidate to inspect examples.</div>`;
     });
-  });
-
-  candidateSearchInput?.addEventListener("input", () => {
-    focusedCandidateId = null;
-    renderCandidates(state.lastScanCandidates, lastDiagnostics);
-    dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Select a candidate to inspect examples.</div>`;
   });
 
   selectAllCheckbox?.addEventListener("change", (event) => {
@@ -1115,7 +1080,6 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
       const errStr = String(err);
       if (errStr.includes("cancelled") || errStr.includes("Cancelled") || errStr.includes("cancel")) {
-        clearCandidateRowModel();
         dom.lblScanTime.textContent = "Cancelled";
         dom.tblArtifactCandidates.innerHTML = `
           <tr>
@@ -1123,7 +1087,6 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
           </tr>
         `;
       } else {
-        clearCandidateRowModel();
         dom.lblScanTime.textContent = "Error";
         console.error(err);
         dom.tblArtifactCandidates.innerHTML = "";
@@ -1160,16 +1123,14 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     updateReviewControls(candidates);
     setActiveReviewControls();
 
-    const categoryCandidates = filterCandidatesForReview(
+    const filteredCandidates = filterCandidatesForReview(
       candidates,
       activeCategory,
       activeDecisionFilter,
       projectDecisions.decisions
     );
-    const filteredCandidates = applyCandidateSearch(categoryCandidates);
     syncDecisionControls(filteredCandidates);
 
-    clearCandidateRowModel();
     dom.tblArtifactCandidates.innerHTML = "";
     const reviewedCount = candidates.filter(candidate => (
       projectDecisions.decisions[candidate.candidate_id]?.decision !== undefined
@@ -1178,9 +1139,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       `${filteredCandidates.length.toLocaleString()} shown · ${reviewedCount.toLocaleString()} of ${candidates.length.toLocaleString()} reviewed`;
 
     if (filteredCandidates.length === 0) {
-      let msg = activeCandidateSearchQuery()
-        ? "No candidates match this search in the current type and decision filter."
-        : "No candidates in this type and decision filter.";
+      let msg = "No candidates in this type and decision filter.";
 
       if (candidates.length === 0) {
         if (diagnostics && diagnostics.total_raw_lines === 0) {
@@ -1220,11 +1179,12 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       });
     }
 
-    renderedCandidates = displayCandidates;
-    if (!isSortUpdate && candidateTableContainer) {
-      candidateTableContainer.scrollTop = 0;
+    if (!isSortUpdate) {
+      resetCandidateTableScroll();
     }
-    renderVirtualCandidateRows();
+    displayCandidates.forEach((cand) => {
+      dom.tblArtifactCandidates.appendChild(renderCandidateRow(cand));
+    });
 
     const noteContainer = dom.tblArtifactCandidates.closest(".repeated-artifact-table-container");
     if (noteContainer) {
@@ -1235,7 +1195,6 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
   function renderCandidateRow(cand: RepeatedArtifactCandidate): HTMLTableRowElement {
     const tr = document.createElement("tr");
-    tr.className = "artifact-candidate-row";
     tr.dataset.id = cand.candidate_id;
     if (cand.candidate_id === focusedCandidateId) {
       tr.classList.add("is-focused");
@@ -1361,52 +1320,6 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
     return tr;
   }
-
-  function appendVirtualSpacer(heightPx: number): void {
-    if (heightPx <= 0) return;
-    const tr = document.createElement("tr");
-    tr.className = "artifact-virtual-spacer";
-    tr.setAttribute("aria-hidden", "true");
-    const td = document.createElement("td");
-    td.colSpan = 6;
-    td.style.height = `${heightPx}px`;
-    tr.appendChild(td);
-    dom.tblArtifactCandidates.appendChild(tr);
-  }
-
-  function renderVirtualCandidateRows(): void {
-    if (renderedCandidates.length === 0) return;
-    dom.tblArtifactCandidates.innerHTML = "";
-
-    if (!candidateTableContainer) {
-      renderedCandidates.forEach(candidate => {
-        dom.tblArtifactCandidates.appendChild(renderCandidateRow(candidate));
-      });
-      return;
-    }
-
-    const scrollTop = candidateTableContainer.scrollTop;
-    const viewportHeight = candidateTableContainer.clientHeight || CANDIDATE_ROW_HEIGHT_PX * 12;
-    const firstIndex = Math.max(0, Math.floor(scrollTop / CANDIDATE_ROW_HEIGHT_PX) - CANDIDATE_ROW_OVERSCAN);
-    const visibleCount = Math.ceil(viewportHeight / CANDIDATE_ROW_HEIGHT_PX) + CANDIDATE_ROW_OVERSCAN * 2;
-    const lastIndex = Math.min(renderedCandidates.length, firstIndex + visibleCount);
-
-    appendVirtualSpacer(firstIndex * CANDIDATE_ROW_HEIGHT_PX);
-    for (const candidate of renderedCandidates.slice(firstIndex, lastIndex)) {
-      dom.tblArtifactCandidates.appendChild(renderCandidateRow(candidate));
-    }
-    appendVirtualSpacer((renderedCandidates.length - lastIndex) * CANDIDATE_ROW_HEIGHT_PX);
-  }
-
-  function scheduleVirtualCandidateRender(): void {
-    if (virtualScrollFrame !== null || renderedCandidates.length === 0) return;
-    virtualScrollFrame = window.requestAnimationFrame(() => {
-      virtualScrollFrame = null;
-      renderVirtualCandidateRows();
-    });
-  }
-
-  candidateTableContainer?.addEventListener("scroll", scheduleVirtualCandidateRender);
 
   function getTextProfile(cand: RepeatedArtifactCandidate): CandidateTextProfile | null {
     const candidate = cand as RepeatedArtifactCandidate & { text_profile?: CandidateTextProfile };
