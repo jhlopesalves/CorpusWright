@@ -923,7 +923,7 @@
               <input type="checkbox" id="chk-artifact-mixed" checked /> Mixed text + numbers
             </label>
             <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
-              <input type="checkbox" id="chk-artifact-numeric" /> Numbers / numeric output
+              <input type="checkbox" id="chk-artifact-numeric" checked /> Numbers / numeric output
             </label>
             <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
               <input type="checkbox" id="chk-artifact-symbol" checked /> Symbols / noise
@@ -934,18 +934,18 @@
           <div style="display: flex; flex-direction: column; gap: 6px;">
             <strong>Block Detection:</strong>
             <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
-              <input type="checkbox" id="chk-artifact-2line" /> Repeated 2-line blocks
+              <input type="checkbox" id="chk-artifact-2line" checked /> Repeated 2-line blocks
             </label>
             <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; cursor: pointer;">
               <input type="checkbox" id="chk-artifact-3line" /> Repeated 3-line blocks
             </label>
-            <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">2-line/3-line block detection is more expensive. Enable only when needed.</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">3-line block detection is more expensive. Enable only when needed.</span>
           </div>
 
           <div
             style="display: grid; grid-template-columns: auto auto; gap: 8px; align-items: center; font-size: 0.9rem;">
             <label for="num-artifact-min-occ">Min Occurrences:</label>
-            <input type="number" id="num-artifact-min-occ" value="5" min="2"
+            <input type="number" id="num-artifact-min-occ" value="3" min="2"
               style="width: 60px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 2px 4px; border-radius: 2px;" />
 
             <label for="num-artifact-min-files">Min Files:</label>
@@ -953,8 +953,8 @@
               style="width: 60px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 2px 4px; border-radius: 2px;" />
 
             <label for="num-artifact-max-cand">Max Candidates:</label>
-            <input type="number" id="num-artifact-max-cand" value="100" min="10"
-              style="width: 60px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 2px 4px; border-radius: 2px;" />
+            <input type="number" id="num-artifact-max-cand" value="" min="1" placeholder="All"
+              style="width: 70px; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 2px 4px; border-radius: 2px;" />
 
             <label for="num-artifact-max-examples">Max Examples:</label>
             <input type="number" id="num-artifact-max-examples" value="25" min="1" max="100"
@@ -984,6 +984,9 @@
               <button type="button" class="decision-filter-chip" data-decision-filter="unreviewed" aria-pressed="false">Unreviewed</button>
               <button type="button" class="decision-filter-chip" data-decision-filter="marked" aria-pressed="false">Marked</button>
               <button type="button" class="decision-filter-chip" data-decision-filter="dismissed" aria-pressed="false">Dismissed</button>
+            </div>
+            <div class="repeated-artifact-search">
+              <input type="search" id="artifact-candidate-search" placeholder="Search candidates" aria-label="Search candidates" />
             </div>
             <div class="repeated-artifact-table-container">
               <table>

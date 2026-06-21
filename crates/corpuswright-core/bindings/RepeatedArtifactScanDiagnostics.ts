@@ -4,4 +4,4 @@
  * Diagnostics collected during a repeated artefact scan.
  * Returned alongside candidates in `RepeatedArtifactScanReport`.
  */
-export type RepeatedArtifactScanDiagnostics = { files_requested: number, files_scanned: number, files_failed_extraction: number, files_empty_after_extraction: number, total_raw_lines: number, total_candidate_keys_before_filtering: number, candidates_after_min_occurrences: number, candidates_after_min_files: number, final_candidates: number, analysed_processed_text: boolean, custom_removals_active: number, max_examples_per_candidate: number, };
+export type RepeatedArtifactScanDiagnostics = { files_requested: number, files_scanned: number, files_failed_extraction: number, files_empty_after_extraction: number, total_raw_lines: number, total_candidate_keys_before_filtering: number, candidates_after_min_occurrences: number, candidates_after_min_files: number, candidates_before_cap: number, candidates_truncated: number, final_candidates: number, analysed_processed_text: boolean, custom_removals_active: number, max_examples_per_candidate: number, };
