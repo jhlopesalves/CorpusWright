@@ -2,6 +2,7 @@ import "./state";
 import "./dom";
 
 import { initAboutModal } from "./about-modal";
+import { initAppearanceDialog } from "./appearance";
 import { initCorpusHandlers } from "./corpus";
 import { initCustomRemovals, renderCustomRemovals } from "./custom-removals";
 import { initExport } from "./export";
@@ -42,6 +43,8 @@ function init(): void {
     invalidatePreviewSession,
   });
   initVirtualScroll();
+
+  initAppearanceDialog();
 
   initThemeToggle();
 
