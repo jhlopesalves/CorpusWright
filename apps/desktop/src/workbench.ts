@@ -27,6 +27,7 @@ import {
   type TermDistributionPage,
 } from "./analysis";
 import { BOOLEAN_CLEANING_CONFIG_KEYS } from "./config";
+import { createChevron } from "./chevron";
 import { dom } from "./dom";
 import { effectiveCleaningConfig } from "./effective-cleaning-config";
 import {
@@ -1120,14 +1121,6 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
 
   const diversityRows: OverviewMetricRow[] = [
     {
-      label: "Raw type–token ratio (TTR)",
-      labelSuffix: "(length-sensitive)",
-      value: spectrum.rawTtr === null
-        ? "not computable — no tokens"
-        : formatFixedNumber(spectrum.rawTtr, 3),
-      glossaryId: "rawTtr",
-    },
-    {
       label: "MATTR",
       labelSuffix: `(window ${formatNumber(spectrum.mattrWindow)})`,
       value: mattrValue,
@@ -1172,6 +1165,19 @@ function renderFrequencyConcentration(corpus: AnalysisCorpus): HTMLElement {
       glossaryId: "normalisedEntropy",
     });
   }
+  if (concentration.shannonEntropyBits !== null) {
+    rows.push({
+      label: "Shannon entropy",
+      labelSuffix: "(bits)",
+      value: formatFixedNumber(concentration.shannonEntropyBits, 3),
+    });
+  }
+  if (concentration.perplexity !== null) {
+    rows.push({
+      label: "Perplexity",
+      value: formatNumber(concentration.perplexity),
+    });
+  }
   if (concentration.effectiveVocabularyEntropy !== null) {
     rows.push({
       label: "Effective vocabulary (entropy-based)",
@@ -1183,6 +1189,59 @@ function renderFrequencyConcentration(corpus: AnalysisCorpus): HTMLElement {
     panel.appendChild(createMetricTable(rows));
   }
   appendPanelReading(panel, concentration.reading);
+  return panel;
+}
+
+function renderRankFrequency(corpus: AnalysisCorpus): HTMLElement {
+  const panel = createOverviewPanel("Rank–frequency fit");
+  const rank = corpus.rankFrequency;
+  const rows: OverviewMetricRow[] = [
+    { label: "Distribution points", value: formatNumber(rank.points.length) },
+  ];
+  if (rank.zipfExponent !== null) {
+    rows.push({ label: "Zipf exponent", value: formatFixedNumber(rank.zipfExponent, 3) });
+  }
+  if (rank.zipfCoefficient !== null) {
+    rows.push({ label: "Zipf coefficient", value: formatFixedNumber(rank.zipfCoefficient, 2) });
+  }
+  if (rank.rSquared !== null) {
+    rows.push({ label: "Fit R²", value: formatFixedNumber(rank.rSquared, 3) });
+  }
+  if (rank.fittedRankStart !== null && rank.fittedRankEnd !== null) {
+    rows.push({
+      label: "Fitted ranks",
+      value: `${formatNumber(rank.fittedRankStart)}–${formatNumber(rank.fittedRankEnd)}`,
+    });
+  }
+  panel.appendChild(createMetricTable(rows));
+  appendPanelReading(panel, rank.reading);
+  return panel;
+}
+
+function renderVocabularyGrowth(corpus: AnalysisCorpus): HTMLElement {
+  const panel = createOverviewPanel("Vocabulary growth");
+  const growth = corpus.vocabularyGrowth;
+  const finalPoint = growth.points[growth.points.length - 1];
+  const rows: OverviewMetricRow[] = [
+    { label: "Growth checkpoints", value: formatNumber(growth.points.length) },
+  ];
+  if (finalPoint) {
+    rows.push({
+      label: "Final checkpoint",
+      value: `${formatNumber(finalPoint.types)} types / ${formatNumber(finalPoint.tokens)} tokens`,
+    });
+  }
+  if (growth.heapsK !== null) {
+    rows.push({ label: "Heaps K", value: formatFixedNumber(growth.heapsK, 3) });
+  }
+  if (growth.heapsBeta !== null) {
+    rows.push({ label: "Heaps β", value: formatFixedNumber(growth.heapsBeta, 3) });
+  }
+  if (growth.rSquared !== null) {
+    rows.push({ label: "Fit R²", value: formatFixedNumber(growth.rSquared, 3) });
+  }
+  panel.appendChild(createMetricTable(rows));
+  appendPanelReading(panel, growth.reading);
   return panel;
 }
 
@@ -1340,6 +1399,8 @@ function renderCorpusOverview(): void {
     renderExtractionQuality(corpus),
     renderLexicalSpectrum(corpus),
     renderFrequencyConcentration(corpus),
+    renderRankFrequency(corpus),
+    renderVocabularyGrowth(corpus),
     renderDispersionProfile(corpus),
     renderBuildDetails(corpus),
   );
@@ -1364,6 +1425,12 @@ function frequencySelectionIncludes(selection: AnalysisDocumentSelection, docume
   return selection.allDocuments
     ? !selection.excludedIds.includes(documentId)
     : selection.ids.includes(documentId);
+}
+
+function syncFrequencyStopwordsToggle(): void {
+  const isHidden = dom.frequencyHideStopwordsInput.checked;
+  dom.frequencyHideStopwordsInput.setAttribute("aria-checked", isHidden ? "true" : "false");
+  dom.frequencyStopwordState.textContent = isHidden ? "Hidden" : "Hide";
 }
 
 function setFrequencySelectionDocument(
@@ -1588,14 +1655,14 @@ function createFrequencyDistributionPanel(term: FrequencyTermItem): HTMLElement 
 
     const rate = document.createElement("span");
     rate.className = "numeric";
-    rate.textContent = formatFixedNumber(item.ratePer10k, 2);
+    rate.textContent = formatFixedNumber(item.ratePerMillion, 2);
 
     const track = document.createElement("span");
     track.className = "frequency-distribution-track";
     const fill = document.createElement("span");
     fill.className = "frequency-distribution-fill";
-    const barWidth = page.maxRatePer10k > 0 && item.ratePer10k > 0
-      ? Math.max(3, (item.ratePer10k / page.maxRatePer10k) * 100)
+    const barWidth = page.maxRatePerMillion > 0 && item.ratePerMillion > 0
+      ? Math.max(3, (item.ratePerMillion / page.maxRatePerMillion) * 100)
       : 0;
     fill.style.setProperty("--bar-width", `${barWidth}%`);
     track.appendChild(fill);
@@ -1772,10 +1839,7 @@ function renderFrequencyList(): void {
     token.title = term.token;
     const tokenContent = document.createElement("span");
     tokenContent.className = "frequency-token-content";
-    const caret = document.createElement("span");
-    caret.className = "frequency-token-caret";
-    caret.setAttribute("aria-hidden", "true");
-    caret.textContent = isExpanded ? "▾" : "▸";
+    const caret = createChevron("frequency-token-caret");
     const tokenText = document.createElement("span");
     tokenText.className = "frequency-token-text";
     tokenText.textContent = term.token;
@@ -1790,7 +1854,7 @@ function renderFrequencyList(): void {
     documentFrequency.textContent = `${formatNumber(term.documentFrequency)} / ${formatNumber(page.selectedDocumentCount)}`;
     const rate = document.createElement("td");
     rate.className = "numeric";
-    rate.textContent = formatFixedNumber(term.ratePer10k, 2);
+    rate.textContent = formatFixedNumber(term.ratePerMillion, 2);
     row.append(token, frequency, documentFrequency, rate, createDispersionCell(term));
     dom.frequencyTableBody.appendChild(row);
 
@@ -2349,7 +2413,11 @@ export function initWorkbenchSwitcher(): void {
   dom.frequencyMatchModeSelect.addEventListener("change", () => void refreshFrequencyPage());
   dom.frequencyMinInput.addEventListener("input", scheduleFrequencyRefresh);
   dom.frequencyTokenClassSelect.addEventListener("change", () => void refreshFrequencyPage());
-  dom.frequencyHideStopwordsInput.addEventListener("change", () => void refreshFrequencyPage());
+  syncFrequencyStopwordsToggle();
+  dom.frequencyHideStopwordsInput.addEventListener("change", () => {
+    syncFrequencyStopwordsToggle();
+    void refreshFrequencyPage();
+  });
   dom.frequencyFilesButton.addEventListener("click", openFrequencyFilesModal);
   dom.frequencyTableHead.addEventListener("click", handleFrequencySortClick);
   dom.frequencyTableBody.addEventListener("click", handleFrequencyTableClick);

@@ -1,5 +1,6 @@
 use crate::clean::CleaningConfig;
 use crate::scan::DocumentType;
+use crate::tokenization::TokenizationManifest;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use ts_rs::TS;
@@ -31,5 +32,7 @@ pub struct ExportManifest {
     pub files_exported: usize,
     pub warnings_count: usize,
     pub cleaning_config: CleaningConfig,
+    #[serde(default)]
+    pub tokenization: TokenizationManifest,
     pub files: Vec<ManifestFileRecord>,
 }

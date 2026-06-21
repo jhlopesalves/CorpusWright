@@ -38,6 +38,9 @@ use corpuswright_core::scan::{
     CorpusSummary, DocumentRecord, DocumentType, DocumentTypeCounts, ScanReport,
 };
 use corpuswright_core::search::{SearchHit, SearchResult};
+use corpuswright_core::tokenization::{
+    TokenizationConfig, TokenizationManifest, UnicodeNormalizationForm,
+};
 
 struct TypeImport {
     name: &'static str,
@@ -479,6 +482,23 @@ fn main() {
         }],
         &[],
     );
+    export_type::<UnicodeNormalizationForm>(&out_dir, &[], &[]);
+    export_type::<TokenizationConfig>(
+        &out_dir,
+        &[TypeImport {
+            name: "UnicodeNormalizationForm",
+            file: "UnicodeNormalizationForm",
+        }],
+        &[],
+    );
+    export_type::<TokenizationManifest>(
+        &out_dir,
+        &[TypeImport {
+            name: "TokenizationConfig",
+            file: "TokenizationConfig",
+        }],
+        &[],
+    );
     export_type::<ExportManifest>(
         &out_dir,
         &[
@@ -489,6 +509,10 @@ fn main() {
             TypeImport {
                 name: "ManifestFileRecord",
                 file: "ManifestFileRecord",
+            },
+            TypeImport {
+                name: "TokenizationManifest",
+                file: "TokenizationManifest",
             },
         ],
         &[],

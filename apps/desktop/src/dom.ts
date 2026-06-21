@@ -29,6 +29,7 @@ export const dom = {
   frequencyMinInput: getElement<HTMLInputElement>("frequency-min-input"),
   frequencyTokenClassSelect: getElement<HTMLSelectElement>("frequency-token-class"),
   frequencyHideStopwordsInput: getElement<HTMLInputElement>("frequency-hide-stopwords"),
+  frequencyStopwordState: getElement<HTMLSpanElement>("frequency-stopword-state"),
   frequencyFilesButton: getElement<HTMLButtonElement>("frequency-files-button"),
   frequencySection: getElement<HTMLElement>("frequency-list-pane"),
   frequencySummary: getElement<HTMLParagraphElement>("frequency-summary"),

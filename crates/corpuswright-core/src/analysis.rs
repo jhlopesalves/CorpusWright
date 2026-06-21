@@ -2,10 +2,11 @@
 
 use crate::clean::CleaningConfig;
 use crate::scan::{DocumentRecord, DocumentType};
+use crate::tokenization::{TokenizationConfig, tokenize};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use unicode_normalization::UnicodeNormalization;
@@ -14,6 +15,7 @@ const OVERVIEW_DOCUMENT_LIMIT: usize = 20;
 const FREQUENT_TERM_THRESHOLD: u64 = 10;
 const HIGH_DISPERSION_THRESHOLD: f64 = 0.5;
 const MAX_QUERY_WINDOW: usize = 500;
+const MAX_DISTRIBUTION_POINTS: usize = 200;
 // These lexical-diversity parameters are provisional and should remain visible in the UI.
 const MATTR_WINDOW_TOKENS: usize = 100;
 const MTLD_TTR_THRESHOLD: f64 = 0.720;
@@ -30,11 +32,6 @@ mod overview_thresholds {
     pub(super) const DISPERSION_NEEDS_FIXING: f64 = 0.60;
     pub(super) const DEGENERATE_TYPE_COUNT: usize = 50;
 }
-
-static TOKEN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*")
-        .expect("analysis token pattern must compile")
-});
 
 static ENGLISH_STOPWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     "a about above after again against all am an and any are as at be because been before \
@@ -284,7 +281,8 @@ pub struct CorpusOverviewLexicalSpectrum {
     pub dis_legomena_share: Option<f64>,
     pub band_3_to_9_share: Option<f64>,
     pub band_10plus_share: Option<f64>,
-    pub raw_ttr: Option<f64>,
+    pub frequency_spectrum: Vec<FrequencySpectrumPoint>,
+    pub frequency_spectrum_truncated: bool,
     pub mattr_window: u32,
     pub mattr_median: Option<f64>,
     pub mattr_min: Option<f64>,
@@ -308,8 +306,59 @@ pub struct CorpusOverviewFrequencyConcentration {
     pub top_100_coverage: Option<f64>,
     pub top_1000_coverage: Option<f64>,
     pub top_10000_coverage: Option<f64>,
+    pub shannon_entropy_bits: Option<f64>,
     pub evenness_j: Option<f64>,
+    pub perplexity: Option<f64>,
     pub effective_vocabulary_entropy: Option<f64>,
+    pub reading: String,
+}
+
+/// Number of types observed at one exact corpus frequency.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FrequencySpectrumPoint {
+    pub frequency: u64,
+    pub type_count: usize,
+}
+
+/// One bounded point from the corpus rank-frequency distribution.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RankFrequencyPoint {
+    pub rank: u64,
+    pub frequency: u64,
+    pub rate_per_million: f64,
+}
+
+/// Zipf fit and bounded rank-frequency series.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusOverviewRankFrequency {
+    pub zipf_exponent: Option<f64>,
+    pub zipf_coefficient: Option<f64>,
+    pub r_squared: Option<f64>,
+    pub fitted_rank_start: Option<u64>,
+    pub fitted_rank_end: Option<u64>,
+    pub points: Vec<RankFrequencyPoint>,
+    pub reading: String,
+}
+
+/// One deterministic, bounded vocabulary-growth checkpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct VocabularyGrowthPoint {
+    pub tokens: u64,
+    pub types: usize,
+}
+
+/// Heaps-law fit and bounded vocabulary-growth series.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusOverviewVocabularyGrowth {
+    pub heaps_k: Option<f64>,
+    pub heaps_beta: Option<f64>,
+    pub r_squared: Option<f64>,
+    pub points: Vec<VocabularyGrowthPoint>,
     pub reading: String,
 }
 
@@ -432,6 +481,8 @@ pub struct CorpusOverview {
     pub extraction_quality: CorpusOverviewExtractionQuality,
     pub lexical_spectrum: CorpusOverviewLexicalSpectrum,
     pub frequency_concentration: CorpusOverviewFrequencyConcentration,
+    pub rank_frequency: CorpusOverviewRankFrequency,
+    pub vocabulary_growth: CorpusOverviewVocabularyGrowth,
     pub dispersion: CorpusOverviewDispersion,
     pub reading: CorpusOverviewReading,
     pub build: CorpusOverviewBuild,
@@ -440,7 +491,7 @@ pub struct CorpusOverview {
 #[derive(Debug, Clone)]
 struct AnalysisDocument {
     summary: AnalysisDocumentSummary,
-    term_counts: Vec<(usize, u64)>,
+    term_counts: Vec<(u32, u64)>,
     mattr: Option<f64>,
     mtld: Option<f64>,
 }
@@ -465,6 +516,7 @@ struct AnalysisBuildMetadata {
     processing_config_signature: String,
     skipped_documents: usize,
     skipped_pdf_documents: usize,
+    vocabulary_growth: Vec<VocabularyGrowthPoint>,
     overview_context: CorpusOverviewContext,
 }
 
@@ -473,7 +525,7 @@ struct AnalysisBuildMetadata {
 pub struct AnalysisCorpus {
     documents: Vec<AnalysisDocument>,
     terms: Vec<AnalysisTerm>,
-    term_index: HashMap<String, usize>,
+    term_index: HashMap<String, u32>,
     overview: CorpusOverview,
 }
 
@@ -573,6 +625,7 @@ pub struct FrequencyTermItem {
     pub frequency: u64,
     pub document_frequency: usize,
     pub rate_per_10k: f64,
+    pub rate_per_million: f64,
     pub dispersion: f64,
 }
 
@@ -624,6 +677,7 @@ pub struct TermDistributionItem {
     pub token_count: u64,
     pub count: u64,
     pub rate_per_10k: f64,
+    pub rate_per_million: f64,
 }
 
 /// Bounded per-document term distribution.
@@ -636,14 +690,7 @@ pub struct TermDistributionPage {
     pub limit: usize,
     pub items: Vec<TermDistributionItem>,
     pub max_rate_per_10k: f64,
-}
-
-fn tokenise(text: &str) -> Vec<String> {
-    let normalised = text.nfc().collect::<String>().to_lowercase();
-    TOKEN_PATTERN
-        .find_iter(&normalised)
-        .map(|matched| matched.as_str().to_string())
-        .collect()
+    pub max_rate_per_million: f64,
 }
 
 fn percentile(sorted_values: &[u64], percentile_value: f64) -> Option<f64> {
@@ -795,6 +842,125 @@ fn entropy_metrics(
     } else {
         (None, None, None)
     }
+}
+
+fn linear_regression(points: &[(f64, f64)]) -> Option<(f64, f64, f64)> {
+    if points.len() < 2 {
+        return None;
+    }
+    let count = points.len() as f64;
+    let mean_x = points.iter().map(|(x, _)| x).sum::<f64>() / count;
+    let mean_y = points.iter().map(|(_, y)| y).sum::<f64>() / count;
+    let ss_x = points
+        .iter()
+        .map(|(x, _)| (x - mean_x).powi(2))
+        .sum::<f64>();
+    if ss_x <= f64::EPSILON {
+        return None;
+    }
+    let covariance = points
+        .iter()
+        .map(|(x, y)| (x - mean_x) * (y - mean_y))
+        .sum::<f64>();
+    let slope = covariance / ss_x;
+    let intercept = mean_y - slope * mean_x;
+    let ss_total = points
+        .iter()
+        .map(|(_, y)| (y - mean_y).powi(2))
+        .sum::<f64>();
+    let ss_residual = points
+        .iter()
+        .map(|(x, y)| (y - (intercept + slope * x)).powi(2))
+        .sum::<f64>();
+    let r_squared = if ss_total <= f64::EPSILON {
+        1.0
+    } else {
+        (1.0 - ss_residual / ss_total).clamp(0.0, 1.0)
+    };
+    (slope.is_finite() && intercept.is_finite() && r_squared.is_finite())
+        .then_some((slope, intercept, r_squared))
+}
+
+fn sampled_indices(length: usize, maximum: usize) -> Vec<usize> {
+    if length <= maximum {
+        return (0..length).collect();
+    }
+    (0..maximum)
+        .map(|index| index * (length - 1) / (maximum - 1))
+        .collect()
+}
+
+fn rank_frequency_summary(frequencies: &[u64], total_tokens: u64) -> CorpusOverviewRankFrequency {
+    let fit_points = frequencies
+        .iter()
+        .enumerate()
+        .filter(|(index, frequency)| *index > 0 && **frequency > 1)
+        .map(|(index, frequency)| (((index + 1) as f64).ln(), (*frequency as f64).ln()))
+        .collect::<Vec<_>>();
+    let fit = linear_regression(&fit_points);
+    let fitted_rank_start = fit.as_ref().map(|_| 2);
+    let fitted_rank_end = fit
+        .as_ref()
+        .map(|_| u64::try_from(fit_points.len() + 1).unwrap_or(u64::MAX));
+    let points = sampled_indices(frequencies.len(), MAX_DISTRIBUTION_POINTS)
+        .into_iter()
+        .map(|index| RankFrequencyPoint {
+            rank: u64::try_from(index + 1).unwrap_or(u64::MAX),
+            frequency: frequencies[index],
+            rate_per_million: if total_tokens > 0 {
+                frequencies[index] as f64 / total_tokens as f64 * 1_000_000.0
+            } else {
+                0.0
+            },
+        })
+        .collect();
+    CorpusOverviewRankFrequency {
+        zipf_exponent: fit.map(|(slope, _, _)| -slope),
+        zipf_coefficient: fit.map(|(_, intercept, _)| intercept.exp()),
+        r_squared: fit.map(|(_, _, r_squared)| r_squared),
+        fitted_rank_start,
+        fitted_rank_end,
+        points,
+        reading: "The Zipf fit uses log frequency against log rank, excluding the highest-frequency type and the frequency-one tail where the classic law is least reliable."
+            .to_string(),
+    }
+}
+
+fn vocabulary_growth_summary(points: &[VocabularyGrowthPoint]) -> CorpusOverviewVocabularyGrowth {
+    let fit_points = points
+        .iter()
+        .filter(|point| point.tokens > 1 && point.types > 1)
+        .map(|point| ((point.tokens as f64).ln(), (point.types as f64).ln()))
+        .collect::<Vec<_>>();
+    let fit = linear_regression(&fit_points);
+    CorpusOverviewVocabularyGrowth {
+        heaps_k: fit.map(|(_, intercept, _)| intercept.exp()),
+        heaps_beta: fit.map(|(slope, _, _)| slope),
+        r_squared: fit.map(|(_, _, r_squared)| r_squared),
+        points: points.to_vec(),
+        reading: "Heaps' law is fitted to deterministic, power-of-two token checkpoints in stable source-path order; it describes this snapshot rather than predicting a universal vocabulary ceiling."
+            .to_string(),
+    }
+}
+
+fn frequency_spectrum(frequencies: &[u64]) -> (Vec<FrequencySpectrumPoint>, bool) {
+    let mut counts = BTreeMap::<u64, usize>::new();
+    for &frequency in frequencies {
+        *counts.entry(frequency).or_default() += 1;
+    }
+    let all_points = counts
+        .into_iter()
+        .map(|(frequency, type_count)| FrequencySpectrumPoint {
+            frequency,
+            type_count,
+        })
+        .collect::<Vec<_>>();
+    let truncated = all_points.len() > MAX_DISTRIBUTION_POINTS;
+    let points = sampled_indices(all_points.len(), MAX_DISTRIBUTION_POINTS)
+        .into_iter()
+        .map(|index| all_points[index].clone())
+        .collect();
+    (points, truncated)
 }
 
 fn document_summary(
@@ -1082,7 +1248,7 @@ fn build_overview(
             numeric_only_types += 1;
         }
         // The analysis token representation is Unicode-scalar based; grapheme clusters
-        // are not available without changing the tokenizer's established contract.
+        // are not available without changing the tokeniser's established contract.
         if term.token.chars().count() == 1 {
             single_character_types += 1;
         }
@@ -1150,7 +1316,11 @@ fn build_overview(
     let top_100_coverage = coverage_at(&frequencies, 100, total_tokens);
     let top_1000_coverage = coverage_at(&frequencies, 1_000, total_tokens);
     let top_10000_coverage = coverage_at(&frequencies, 10_000, total_tokens);
-    let (_, evenness_j, effective_vocabulary_entropy) = entropy_metrics(&frequencies, total_tokens);
+    let (shannon_entropy_bits, evenness_j, effective_vocabulary_entropy) =
+        entropy_metrics(&frequencies, total_tokens);
+    let (frequency_spectrum, frequency_spectrum_truncated) = frequency_spectrum(&frequencies);
+    let rank_frequency = rank_frequency_summary(&frequencies, total_tokens);
+    let vocabulary_growth = vocabulary_growth_summary(&metadata.vocabulary_growth);
 
     let sources_in_project = metadata
         .overview_context
@@ -1370,7 +1540,8 @@ fn build_overview(
             dis_legomena_share: type_share(dis_legomena, total_types),
             band_3_to_9_share: type_share(band_3_to_9_count, total_types),
             band_10plus_share: type_share(band_10plus_count, total_types),
-            raw_ttr: (total_tokens > 0).then(|| total_types as f64 / total_tokens as f64),
+            frequency_spectrum,
+            frequency_spectrum_truncated,
             mattr_window: MATTR_WINDOW_TOKENS as u32,
             mattr_median: mattr_summary.median,
             mattr_min: mattr_summary.minimum,
@@ -1393,11 +1564,15 @@ fn build_overview(
             top_100_coverage,
             top_1000_coverage,
             top_10000_coverage,
+            shannon_entropy_bits,
             evenness_j,
+            perplexity: effective_vocabulary_entropy,
             effective_vocabulary_entropy,
             reading: "A small set of high-frequency forms can carry much of the token mass even when most types are rare."
                 .to_string(),
         },
+        rank_frequency,
+        vocabulary_growth,
         dispersion: CorpusOverviewDispersion {
             frequent_types: frequent_terms.len(),
             high_dp_frequent_types,
@@ -1423,13 +1598,15 @@ fn build_overview(
         reading: CorpusOverviewReading { verdict, findings },
         build: CorpusOverviewBuild {
             tokenisation: Some(
-                "Unicode letters and numbers; internal apostrophes and hyphens retained"
+                "UAX #29 word boundaries; ASCII Letter/Number hyphen chains and U+0027/U+2019 contractions retained; dictionary-free CJK/Thai segmentation remains limited"
                     .to_string(),
             ),
-            case_handling: Some("Unicode lowercase".to_string()),
+            case_handling: Some(
+                "Surface case preserved; NFC Unicode lowercase aggregation keys".to_string(),
+            ),
             lemmatisation: Some("Not applied".to_string()),
             number_punctuation_handling: Some(
-                "Numbers retained; punctuation delimits tokens except internal apostrophes and hyphens"
+                "Numbers retained; decimal points and thousands separators split; standalone punctuation retained"
                     .to_string(),
             ),
             input_source: analysis_input_label(
@@ -1472,8 +1649,11 @@ where
 
     let mut documents = Vec::with_capacity(records.len());
     let mut terms = Vec::<AnalysisTerm>::new();
-    let mut term_index = HashMap::<String, usize>::new();
+    let mut term_index = HashMap::<String, u32>::new();
     let mut total_tokens = 0u64;
+    let mut growth_tokens = 0u64;
+    let mut next_growth_checkpoint = 1u64;
+    let mut vocabulary_growth = Vec::<VocabularyGrowthPoint>::new();
     let mut skipped_documents = 0usize;
     let mut skipped_pdf_documents = 0usize;
     let mut processed_documents = 0usize;
@@ -1486,7 +1666,14 @@ where
         current_phase: AnalysisBuildPhase::ReadingFiles,
     });
 
-    for (record_index, record) in records.iter().enumerate() {
+    let mut ordered_records = records.iter().collect::<Vec<_>>();
+    ordered_records.sort_by(|left, right| {
+        left.relative_path
+            .cmp(&right.relative_path)
+            .then_with(|| left.source_path.cmp(&right.source_path))
+    });
+
+    for (record_index, record) in ordered_records.into_iter().enumerate() {
         if cancel.load(AtomicOrdering::Relaxed) {
             return Err(AnalysisBuildError::Cancelled);
         }
@@ -1516,23 +1703,31 @@ where
             });
             continue;
         };
-        let tokens = tokenise(&text);
-        let document_mattr = mattr(&tokens, MATTR_WINDOW_TOKENS);
-        let document_mtld = (tokens.len() >= MTLD_MIN_DOCUMENT_TOKENS)
-            .then(|| mtld(&tokens, MTLD_TTR_THRESHOLD))
+        let document_id = u32::try_from(documents.len()).map_err(|_| {
+            AnalysisBuildError::Message(
+                "Analysis contains more than u32::MAX documents.".to_string(),
+            )
+        })?;
+        let tokenization_config = TokenizationConfig::default();
+        let tokens = tokenize(&text, document_id, &tokenization_config);
+        let token_keys = tokens
+            .iter()
+            .map(|token| token.aggregation_key(&tokenization_config))
+            .collect::<Vec<_>>();
+        let document_mattr = mattr(&token_keys, MATTR_WINDOW_TOKENS);
+        let document_mtld = (token_keys.len() >= MTLD_MIN_DOCUMENT_TOKENS)
+            .then(|| mtld(&token_keys, MTLD_TTR_THRESHOLD))
             .flatten();
-        let mut document_terms = HashMap::<String, u64>::new();
-        for token in tokens {
-            *document_terms.entry(token).or_default() += 1;
-        }
-        let document_id = documents.len();
-        let token_count = document_terms.values().sum::<u64>();
-        let mut sparse_counts = Vec::with_capacity(document_terms.len());
-        for (token, count) in document_terms {
+        let mut document_terms = HashMap::<u32, u64>::new();
+        for token in token_keys {
             let term_id = if let Some(&term_id) = term_index.get(&token) {
                 term_id
             } else {
-                let term_id = terms.len();
+                let term_id = u32::try_from(terms.len()).map_err(|_| {
+                    AnalysisBuildError::Message(
+                        "Analysis vocabulary contains more than u32::MAX types.".to_string(),
+                    )
+                })?;
                 term_index.insert(token.clone(), term_id);
                 terms.push(AnalysisTerm {
                     token,
@@ -1543,16 +1738,29 @@ where
                 });
                 term_id
             };
-            let term = &mut terms[term_id];
+            *document_terms.entry(term_id).or_default() += 1;
+            growth_tokens += 1;
+            if growth_tokens >= next_growth_checkpoint {
+                vocabulary_growth.push(VocabularyGrowthPoint {
+                    tokens: growth_tokens,
+                    types: terms.len(),
+                });
+                next_growth_checkpoint = next_growth_checkpoint.saturating_mul(2);
+            }
+        }
+        let token_count = document_terms.values().sum::<u64>();
+        let mut sparse_counts = Vec::with_capacity(document_terms.len());
+        for (term_id, count) in document_terms {
+            let term = &mut terms[term_id as usize];
             term.frequency += count;
             term.document_frequency += 1;
-            term.document_counts.push((document_id, count));
+            term.document_counts.push((document_id as usize, count));
             sparse_counts.push((term_id, count));
         }
         sparse_counts.sort_unstable_by_key(|(term_id, _)| *term_id);
         total_tokens += token_count;
         documents.push(AnalysisDocument {
-            summary: document_summary(record, document_id, token_count),
+            summary: document_summary(record, document_id as usize, token_count),
             term_counts: sparse_counts,
             mattr: document_mattr,
             mtld: document_mtld,
@@ -1563,6 +1771,17 @@ where
             tokens_seen: total_tokens,
             types_seen: terms.len(),
             current_phase: AnalysisBuildPhase::Tokenising,
+        });
+    }
+
+    if total_tokens > 0
+        && vocabulary_growth
+            .last()
+            .is_none_or(|point| point.tokens != total_tokens)
+    {
+        vocabulary_growth.push(VocabularyGrowthPoint {
+            tokens: total_tokens,
+            types: terms.len(),
         });
     }
 
@@ -1610,6 +1829,7 @@ where
             processing_config_signature,
             skipped_documents,
             skipped_pdf_documents,
+            vocabulary_growth,
             overview_context,
         },
     );
@@ -1754,8 +1974,8 @@ pub fn query_frequency_list(corpus: &AnalysisCorpus, query: &FrequencyQuery) -> 
             .filter(|document| selected[document.summary.id])
         {
             for &(term_id, count) in &document.term_counts {
-                scoped_frequency[term_id] += count;
-                scoped_document_frequency[term_id] += 1;
+                scoped_frequency[term_id as usize] += count;
+                scoped_document_frequency[term_id as usize] += 1;
             }
         }
     }
@@ -1823,6 +2043,11 @@ pub fn query_frequency_list(corpus: &AnalysisCorpus, query: &FrequencyQuery) -> 
             } else {
                 0.0
             },
+            rate_per_million: if scoped_total_tokens > 0 {
+                frequency as f64 / scoped_total_tokens as f64 * 1_000_000.0
+            } else {
+                0.0
+            },
             dispersion,
         });
     }
@@ -1878,7 +2103,7 @@ pub fn query_term_distribution(
     let term = corpus
         .term_index
         .get(&normalised_token)
-        .and_then(|term_id| corpus.terms.get(*term_id));
+        .and_then(|term_id| corpus.terms.get(*term_id as usize));
     let counts = term
         .map(|term| {
             term.document_counts
@@ -1888,6 +2113,7 @@ pub fn query_term_distribution(
         })
         .unwrap_or_default();
     let mut max_rate_per_10k = 0.0f64;
+    let mut max_rate_per_million = 0.0f64;
     for document in corpus
         .documents
         .iter()
@@ -1900,6 +2126,7 @@ pub fn query_term_distribution(
             0.0
         };
         max_rate_per_10k = max_rate_per_10k.max(rate);
+        max_rate_per_million = max_rate_per_million.max(rate * 100.0);
     }
 
     let limit = limit.min(MAX_QUERY_WINDOW);
@@ -1924,6 +2151,11 @@ pub fn query_term_distribution(
                 } else {
                     0.0
                 },
+                rate_per_million: if summary.token_count > 0 {
+                    count as f64 / summary.token_count as f64 * 1_000_000.0
+                } else {
+                    0.0
+                },
             }
         })
         .collect();
@@ -1935,6 +2167,7 @@ pub fn query_term_distribution(
         limit,
         items,
         max_rate_per_10k,
+        max_rate_per_million,
     }
 }
 
@@ -2421,6 +2654,121 @@ mod tests {
     }
 
     #[test]
+    fn frequency_spectrum_counts_exact_frequency_classes() {
+        let (points, truncated) = frequency_spectrum(&[5, 2, 2, 1]);
+        assert!(!truncated);
+        assert_eq!(
+            points,
+            vec![
+                FrequencySpectrumPoint {
+                    frequency: 1,
+                    type_count: 1,
+                },
+                FrequencySpectrumPoint {
+                    frequency: 2,
+                    type_count: 2,
+                },
+                FrequencySpectrumPoint {
+                    frequency: 5,
+                    type_count: 1,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn zipf_fit_recovers_known_synthetic_exponent() {
+        let frequencies = (1..=20u64)
+            .map(|rank| 1_000_000 / rank.pow(2))
+            .collect::<Vec<_>>();
+        let summary = rank_frequency_summary(&frequencies, frequencies.iter().sum());
+        assert!((summary.zipf_exponent.unwrap() - 2.0).abs() < 0.02);
+        assert!(summary.r_squared.unwrap() > 0.999);
+    }
+
+    #[test]
+    fn heaps_fit_recovers_known_synthetic_shape() {
+        let points = vec![
+            VocabularyGrowthPoint {
+                tokens: 100,
+                types: 100,
+            },
+            VocabularyGrowthPoint {
+                tokens: 400,
+                types: 200,
+            },
+            VocabularyGrowthPoint {
+                tokens: 900,
+                types: 300,
+            },
+            VocabularyGrowthPoint {
+                tokens: 1_600,
+                types: 400,
+            },
+        ];
+        let summary = vocabulary_growth_summary(&points);
+        assert!((summary.heaps_k.unwrap() - 10.0).abs() < 1e-10);
+        assert!((summary.heaps_beta.unwrap() - 0.5).abs() < 1e-12);
+        assert!((summary.r_squared.unwrap() - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn frequency_rows_report_raw_and_per_million_counts() {
+        let corpus = corpus_for(&[("one.txt", "alpha alpha beta")]);
+        let page = query_frequency_list(
+            &corpus,
+            &FrequencyQuery {
+                selection: AnalysisDocumentSelection::default(),
+                query: "alpha".to_string(),
+                match_mode: FrequencyMatchMode::Exact,
+                minimum_frequency: 1,
+                token_class: FrequencyTokenClass::All,
+                hide_stopwords: false,
+                sort_key: FrequencySortKey::Frequency,
+                sort_direction: SortDirection::Desc,
+                offset: 0,
+                limit: 10,
+            },
+        );
+        assert_eq!(page.items[0].frequency, 2);
+        assert!((page.items[0].rate_per_million - 666_666.666_666_666_6).abs() < 1e-6);
+    }
+
+    #[test]
+    fn shuffled_source_order_produces_identical_analysis() {
+        let texts = HashMap::from([
+            ("a.txt", "alpha alpha beta"),
+            ("b.txt", "beta gamma"),
+            ("c.txt", "gamma delta"),
+        ]);
+        let build = |names: &[&str]| {
+            let records = names.iter().map(|name| record(name)).collect::<Vec<_>>();
+            build_analysis_corpus(
+                &records,
+                build_options(),
+                &AtomicBool::new(false),
+                |record| {
+                    Ok(processed_resolution(
+                        record,
+                        texts[record.source_path.to_str().unwrap()],
+                    ))
+                },
+                |_| {},
+            )
+            .unwrap()
+        };
+        let forward = build(&["a.txt", "b.txt", "c.txt"]);
+        let shuffled = build(&["c.txt", "a.txt", "b.txt"]);
+        assert_eq!(forward.overview(), shuffled.overview());
+        assert_eq!(forward.terms.len(), shuffled.terms.len());
+        for (left, right) in forward.terms.iter().zip(&shuffled.terms) {
+            assert_eq!(left.token, right.token);
+            assert_eq!(left.frequency, right.frequency);
+            assert_eq!(left.document_counts, right.document_counts);
+        }
+    }
+
+    #[test]
     fn lexical_bands_partition_types_and_match_frequent_types() {
         let corpus = corpus_for(&[("bands.txt", "a b b c c c d d d d d d d d d d")]);
         let overview = corpus.overview();
@@ -2540,10 +2888,11 @@ mod tests {
         assert_eq!(overview.balance.gini, None);
         assert_eq!(overview.balance.coefficient_of_variation, None);
         assert_eq!(overview.balance.effective_documents, None);
-        assert_eq!(overview.lexical_spectrum.raw_ttr, None);
         assert_eq!(overview.lexical_spectrum.mattr_median, None);
         assert_eq!(overview.lexical_spectrum.mtld_median, None);
+        assert_eq!(overview.frequency_concentration.shannon_entropy_bits, None);
         assert_eq!(overview.frequency_concentration.evenness_j, None);
+        assert_eq!(overview.frequency_concentration.perplexity, None);
         assert_eq!(
             overview
                 .frequency_concentration
@@ -2551,6 +2900,7 @@ mod tests {
             None
         );
         let json = serde_json::to_string(overview).unwrap();
+        assert!(!json.contains("rawTtr"));
         assert!(!json.contains("NaN"));
         assert!(!json.contains("Infinity"));
     }

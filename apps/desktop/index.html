@@ -10,7 +10,11 @@
     (() => {
       try {
         const raw = localStorage.getItem("corpuswright.appearance.v1");
-        if (!raw) return;
+        if (!raw) {
+          const prefersLight = window.matchMedia?.("(prefers-color-scheme: light)")?.matches;
+          document.documentElement.dataset.theme = prefersLight ? "light" : "dark";
+          return;
+        }
         const preference = JSON.parse(raw);
         const root = document.documentElement;
         if (typeof preference.themeId === "string") {
@@ -326,9 +330,9 @@
                     <label class="frequency-stopword-control" for="frequency-hide-stopwords">
                       <span>Stopwords</span>
                       <span class="frequency-toggle">
-                        <input id="frequency-hide-stopwords" type="checkbox" />
+                        <input id="frequency-hide-stopwords" type="checkbox" role="switch" aria-checked="false" />
                         <span class="frequency-toggle-track" aria-hidden="true"></span>
-                        <span>Hide</span>
+                        <span id="frequency-stopword-state">Hide</span>
                       </span>
                     </label>
                     <div class="frequency-file-scope-control">
@@ -353,7 +357,7 @@
                           <button type="button" class="frequency-sort frequency-sort-right" data-sort="range">Range (docs)</button>
                         </th>
                         <th>
-                          <button type="button" class="frequency-sort frequency-sort-right" data-sort="rate">Per 10k</button>
+                          <button type="button" class="frequency-sort frequency-sort-right" data-sort="rate">Per million</button>
                         </th>
                         <th>
                           <button type="button" class="frequency-sort frequency-sort-right" data-sort="dispersion">Dispersion (DP)</button>
@@ -956,8 +960,9 @@
 
         <div class="repeated-artifact-toolbar">
           <div class="repeated-artifact-toolbar-left">
-            <button type="button" id="btn-toggle-scan-settings" class="scan-settings-toggle">
-              <span id="scan-settings-arrow" aria-hidden="true">v</span>
+            <button type="button" id="btn-toggle-scan-settings" class="scan-settings-toggle"
+              aria-expanded="true" aria-controls="repeated-artifact-config-panel">
+              <span id="scan-settings-arrow" aria-hidden="true"></span>
               Scan Settings
             </button>
             <span id="lbl-artifact-scan-scope"></span>
