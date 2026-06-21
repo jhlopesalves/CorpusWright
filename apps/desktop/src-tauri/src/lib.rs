@@ -3127,7 +3127,7 @@ mod tests {
     }
 
     #[test]
-    fn analysis_resolver_applies_active_cleaning_to_native_text() {
+    fn prepare_and_analyse_share_processed_input_and_token_stream() {
         let root = unique_temp_dir("analysis-processed-text");
         fs::create_dir_all(&root).unwrap();
         let source_path = root.join("source.txt");
@@ -3146,18 +3146,29 @@ mod tests {
             ..CleaningConfig::default()
         };
 
-        let resolution = resolve_analysis_input_for_record(
+        let cache = ExtractionCache::new();
+        let prepared = document_text_for_record(
             &record,
-            Some(&root),
             &cleaning_config,
-            &ExtractionCache::new(),
-        );
+            DocumentTextMode::Processed,
+            Some(&cache),
+        )
+        .unwrap()
+        .text;
+        let resolution =
+            resolve_analysis_input_for_record(&record, Some(&root), &cleaning_config, &cache);
 
         assert_eq!(
             resolution.provenance,
             corpuswright_core::analysis::AnalysisInputProvenance::Processed
         );
-        assert_eq!(resolution.text.as_deref(), Some("keep "));
+        assert_eq!(prepared, "keep ");
+        assert_eq!(resolution.text.as_deref(), Some(prepared.as_str()));
+        let config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let prepare_tokens = corpuswright_core::tokenization::tokenize(&prepared, 0, &config);
+        let analysis_text = resolution.text.as_deref().unwrap();
+        let analysis_tokens = corpuswright_core::tokenization::tokenize(analysis_text, 0, &config);
+        assert_eq!(prepare_tokens, analysis_tokens);
         let _ = fs::remove_dir_all(root);
     }
 }

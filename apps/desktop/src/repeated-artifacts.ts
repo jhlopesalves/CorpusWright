@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import { createChevron } from "./chevron";
 import {
   dom,
   getArtifactTextModeRadios,
@@ -912,12 +913,20 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     closeArtifactModal();
   }
 
+  if (scanSettingsArrow) {
+    scanSettingsArrow.replaceChildren(createChevron("scan-settings-chevron"));
+  }
+  if (toggleScanSettingsButton && configPanel) {
+    toggleScanSettingsButton.setAttribute(
+      "aria-expanded",
+      configPanel.classList.contains("hidden") ? "false" : "true",
+    );
+  }
+
   toggleScanSettingsButton?.addEventListener("click", () => {
     if (!configPanel) return;
     const isHidden = configPanel.classList.toggle("hidden");
-    if (scanSettingsArrow) {
-      scanSettingsArrow.textContent = isHidden ? ">" : "v";
-    }
+    toggleScanSettingsButton.setAttribute("aria-expanded", isHidden ? "false" : "true");
   });
 
   typeTabs?.querySelectorAll<HTMLButtonElement>(".tab").forEach(tab => {
