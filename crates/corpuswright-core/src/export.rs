@@ -405,6 +405,7 @@ pub fn export_corpus(
         files_exported: exported_files.len(),
         warnings_count: warnings.len(),
         cleaning_config: cleaning_config.clone(),
+        tokenization: crate::tokenization::TokenizationManifest::default(),
         files: exported_files.clone(),
     };
 
@@ -1153,6 +1154,15 @@ mod tests {
         assert_eq!(manifest.files.len(), 1);
         assert_eq!(manifest.files[0].source_hash_sha256.len(), 64);
         assert_eq!(manifest.files[0].processed_hash_sha256.len(), 64);
+        assert_eq!(manifest.tokenization.id, crate::tokenization::TOKENIZER_ID);
+        assert_eq!(
+            manifest.tokenization.version,
+            crate::tokenization::TOKENIZER_VERSION
+        );
+        assert_eq!(
+            manifest.tokenization.config,
+            crate::tokenization::TokenizationConfig::default()
+        );
     }
 
     #[test]

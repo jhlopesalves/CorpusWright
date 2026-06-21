@@ -85,7 +85,8 @@ export interface CorpusOverviewLexicalSpectrum {
   disLegomenaShare: number | null;
   band3To9Share: number | null;
   band10plusShare: number | null;
-  rawTtr: number | null;
+  frequencySpectrum: FrequencySpectrumPoint[];
+  frequencySpectrumTruncated: boolean;
   mattrWindow: number;
   mattrMedian: number | null;
   mattrMin: number | null;
@@ -106,8 +107,44 @@ export interface CorpusOverviewFrequencyConcentration {
   top100Coverage: number | null;
   top1000Coverage: number | null;
   top10000Coverage: number | null;
+  shannonEntropyBits: number | null;
   evennessJ: number | null;
+  perplexity: number | null;
   effectiveVocabularyEntropy: number | null;
+  reading: string;
+}
+
+export interface FrequencySpectrumPoint {
+  frequency: number;
+  typeCount: number;
+}
+
+export interface RankFrequencyPoint {
+  rank: number;
+  frequency: number;
+  ratePerMillion: number;
+}
+
+export interface CorpusOverviewRankFrequency {
+  zipfExponent: number | null;
+  zipfCoefficient: number | null;
+  rSquared: number | null;
+  fittedRankStart: number | null;
+  fittedRankEnd: number | null;
+  points: RankFrequencyPoint[];
+  reading: string;
+}
+
+export interface VocabularyGrowthPoint {
+  tokens: number;
+  types: number;
+}
+
+export interface CorpusOverviewVocabularyGrowth {
+  heapsK: number | null;
+  heapsBeta: number | null;
+  rSquared: number | null;
+  points: VocabularyGrowthPoint[];
   reading: string;
 }
 
@@ -167,6 +204,8 @@ export interface CorpusOverview {
   extractionQuality: CorpusOverviewExtractionQuality;
   lexicalSpectrum: CorpusOverviewLexicalSpectrum;
   frequencyConcentration: CorpusOverviewFrequencyConcentration;
+  rankFrequency: CorpusOverviewRankFrequency;
+  vocabularyGrowth: CorpusOverviewVocabularyGrowth;
   dispersion: CorpusOverviewDispersion;
   reading: CorpusOverviewReading;
   build: CorpusOverviewBuild;
@@ -212,6 +251,7 @@ export interface FrequencyTermItem {
   frequency: number;
   documentFrequency: number;
   ratePer10k: number;
+  ratePerMillion: number;
   dispersion: number;
 }
 
@@ -247,6 +287,7 @@ export interface TermDistributionItem {
   tokenCount: number;
   count: number;
   ratePer10k: number;
+  ratePerMillion: number;
 }
 
 export interface TermDistributionPage {
@@ -256,6 +297,7 @@ export interface TermDistributionPage {
   limit: number;
   items: TermDistributionItem[];
   maxRatePer10k: number;
+  maxRatePerMillion: number;
 }
 
 export function defaultAnalysisDocumentSelection(): AnalysisDocumentSelection {

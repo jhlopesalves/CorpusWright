@@ -33,8 +33,13 @@ class FakeElement {
   readonly dataset: Record<string, string> = {};
   readonly listeners = new Map<string, Listener[]>();
   readonly style = new FakeStyle();
+  readonly attributes = new Map<string, string>();
   children: FakeElement[] = [];
+  disabled = false;
+  innerHTML = "";
+  tabIndex = 0;
   textContent = "";
+  title = "";
   value = "";
   valueAsNumber = Number.NaN;
   readonly id: string;
@@ -51,6 +56,23 @@ class FakeElement {
 
   replaceChildren(...children: FakeElement[]): void {
     this.children = children;
+  }
+
+  appendChild(child: FakeElement): FakeElement {
+    this.children.push(child);
+    return child;
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
+
+  removeAttribute(name: string): void {
+    this.attributes.delete(name);
+  }
+
+  getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null;
   }
 
   focus(): void {}
@@ -109,6 +131,24 @@ globalThis.localStorage = new FakeStorage() as unknown as Storage;
 
 const appearance = await import("../src/appearance.ts");
 const key = appearance.APPEARANCE_STORAGE_KEY;
+const singletonIds = new Set<string>(appearance.INTENTIONAL_SINGLETONS);
+const pairs = new Map<string, typeof appearance.THEME_PRESETS>();
+for (const theme of appearance.THEME_PRESETS) {
+  assert(theme.mode === "light" || theme.mode === "dark", `${theme.id} must declare a light/dark mode`);
+  if (!theme.pairId) {
+    assert(singletonIds.has(theme.id), `${theme.id} must be paired or intentionally listed as a singleton`);
+    continue;
+  }
+  pairs.set(theme.pairId, [...(pairs.get(theme.pairId) ?? []), theme]);
+}
+for (const [pairId, pairThemes] of pairs) {
+  assert(pairThemes.length === 2, `${pairId} must have exactly two theme variants`);
+  assert(
+    pairThemes.some(theme => theme.mode === "light") && pairThemes.some(theme => theme.mode === "dark"),
+    `${pairId} must have one light and one dark variant`,
+  );
+}
+
 const gentium = appearance.FONT_OPTIONS.find(font => font.id === "gentium-plus");
 const roboto = appearance.FONT_OPTIONS.find(font => font.id === "roboto");
 const firaCode = appearance.MONO_FONT_OPTIONS.find(font => font.id === "fira-code");
@@ -119,6 +159,8 @@ assert(firaCode, "Fira Code must be in the fixed monospace shortlist");
 appearance.initAppearanceDialog();
 assert(root.dataset.theme === "dark", "initial appearance must apply the default dark theme");
 assert(root.style.values.get("--cw-font-size-base") === "16px", "initial appearance must apply the default font size");
+assert(element("theme-toggle").disabled === false, "paired default theme must leave the quick toggle enabled");
+assert(element("menu-toggle-theme").textContent === "Switch to light variant", "dark themes must target their light pair");
 
 element("menu-appearance").dispatch("click");
 element("appearance-theme-select").value = "solar-paper";
@@ -145,18 +187,30 @@ element("menu-appearance").dispatch("click");
 element("appearance-theme-select").value = "high-contrast";
 element("appearance-theme-select").dispatch("change");
 assert(root.dataset.theme === "high-contrast", "cancelled edits must still preview before cancellation");
+assert(element("theme-toggle").disabled === true, "singleton themes must disable the title-bar toggle");
+assert(
+  element("menu-toggle-theme").getAttribute("aria-disabled") === "true",
+  "singleton themes must disable the menu toggle",
+);
+assert(
+  element("menu-toggle-theme").title === "No light variant for High Contrast",
+  "singleton themes must explain why the pair toggle is unavailable",
+);
 element("appearance-cancel-button").dispatch("click");
 assert(root.dataset.theme === "solar-paper", "cancel must restore the last saved theme");
+assert(element("theme-toggle").disabled === false, "restoring a paired theme must re-enable the title-bar toggle");
+assert(element("menu-toggle-theme").textContent === "Switch to dark variant", "light themes must target their dark pair");
 
 appearance.toggleLightDarkTheme();
 saved = JSON.parse(localStorage.getItem(key) ?? "{}");
-assert(saved.themeId === "light", "quick toggle must persist the light default from a non-light theme");
-assert(root.dataset.theme === "light", "quick toggle must apply the light default immediately");
+assert(saved.themeId === "solar-night", "quick toggle must persist the active theme's dark pair");
+assert(root.dataset.theme === "solar-night", "quick toggle must apply the active theme's dark pair immediately");
+assert(element("menu-toggle-theme").textContent === "Switch to light variant", "dark paired themes must target their light pair");
 
 appearance.toggleLightDarkTheme();
 saved = JSON.parse(localStorage.getItem(key) ?? "{}");
-assert(saved.themeId === "dark", "quick toggle must persist the dark default from light");
-assert(root.dataset.theme === "dark", "quick toggle must apply the dark default immediately");
+assert(saved.themeId === "solar-paper", "quick toggle must persist the active theme's light pair");
+assert(root.dataset.theme === "solar-paper", "quick toggle must apply the active theme's light pair immediately");
 
 element("menu-appearance").dispatch("click");
 element("appearance-font-size-input").valueAsNumber = 99;
