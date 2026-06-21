@@ -1,0 +1,171 @@
+[
+  {
+    "candidate_id": "exact_top",
+    "kind": "exact_line",
+    "display_text": "Header",
+    "normalized_key": "header",
+    "top": 3,
+    "middle": 0,
+    "bottom": 0,
+    "page_based": true,
+    "can_promote": true,
+    "expected_rule": {
+      "id": "repeated-artifact:page_top:exact_top",
+      "label": "Page top: Header",
+      "source": "promoted_repeated_artifact",
+      "matcher": { "kind": "literal", "text": "Header" },
+      "scope": "page_top",
+      "enabled": true
+    }
+  },
+  {
+    "candidate_id": "exact_bottom",
+    "kind": "exact_line",
+    "display_text": "Footer",
+    "normalized_key": "footer",
+    "top": 0,
+    "middle": 0,
+    "bottom": 3,
+    "page_based": true,
+    "can_promote": true,
+    "expected_rule": {
+      "id": "repeated-artifact:page_bottom:exact_bottom",
+      "label": "Page bottom: Footer",
+      "source": "promoted_repeated_artifact",
+      "matcher": { "kind": "literal", "text": "Footer" },
+      "scope": "page_bottom",
+      "enabled": true
+    }
+  },
+  {
+    "candidate_id": "exact_both",
+    "kind": "exact_line",
+    "display_text": "Journal",
+    "normalized_key": "journal",
+    "top": 2,
+    "middle": 0,
+    "bottom": 1,
+    "page_based": true,
+    "can_promote": true,
+    "expected_rule": {
+      "id": "repeated-artifact:page_top_or_bottom:exact_both",
+      "label": "Page top/bottom: Journal",
+      "source": "promoted_repeated_artifact",
+      "matcher": { "kind": "literal", "text": "Journal" },
+      "scope": "page_top_or_bottom",
+      "enabled": true
+    }
+  },
+  {
+    "candidate_id": "exact_flat",
+    "kind": "exact_line",
+    "display_text": "Flat Header",
+    "normalized_key": "flat header",
+    "top": 3,
+    "middle": 0,
+    "bottom": 0,
+    "page_based": false,
+    "can_promote": true,
+    "expected_rule": {
+      "id": "repeated-artifact:whole_line:exact_flat",
+      "label": "Whole line: Flat Header",
+      "source": "promoted_repeated_artifact",
+      "matcher": { "kind": "literal", "text": "Flat Header" },
+      "scope": "whole_line",
+      "enabled": true
+    }
+  },
+  {
+    "candidate_id": "norm_page",
+    "kind": "normalized_line",
+    "display_text": "Page 12",
+    "normalized_key": "  page #  ",
+    "top": 0,
+    "middle": 3,
+    "bottom": 0,
+    "page_based": false,
+    "can_promote": true,
+    "expected_rule": {
+      "id": "repeated-artifact:normalized-line:whole_line:norm_page",
+      "label": "Whole-line family: page #",
+      "source": "promoted_repeated_artifact",
+      "matcher": { "kind": "normalized_line", "normalized_key": "page #" },
+      "scope": "whole_line",
+      "enabled": true
+    }
+  },
+  {
+    "candidate_id": "inline_valid",
+    "kind": "inline_artifact",
+    "display_text": "<br />",
+    "normalized_key": "",
+    "top": 0,
+    "middle": 3,
+    "bottom": 0,
+    "page_based": false,
+    "can_promote": true,
+    "expected_rule": {
+      "id": "repeated-artifact:anywhere:inline_valid",
+      "label": "Inline literal: <br />",
+      "source": "promoted_repeated_artifact",
+      "matcher": { "kind": "literal", "text": "<br />" },
+      "scope": "anywhere",
+      "enabled": true
+    }
+  },
+  {
+    "candidate_id": "inline_empty",
+    "kind": "inline_artifact",
+    "display_text": "",
+    "normalized_key": "",
+    "top": 0,
+    "middle": 1,
+    "bottom": 0,
+    "page_based": false,
+    "can_promote": false,
+    "expected_rule": null
+  },
+  {
+    "candidate_id": "inline_lf",
+    "kind": "inline_artifact",
+    "display_text": "line one\nline two",
+    "normalized_key": "",
+    "top": 0,
+    "middle": 1,
+    "bottom": 0,
+    "page_based": false,
+    "can_promote": true,
+    "expected_rule": null
+  },
+  {
+    "candidate_id": "inline_cr",
+    "kind": "inline_artifact",
+    "display_text": "line one\rline two",
+    "normalized_key": "",
+    "top": 0,
+    "middle": 1,
+    "bottom": 0,
+    "page_based": false,
+    "can_promote": true,
+    "expected_rule": null
+  },
+  {
+    "candidate_id": "block_top",
+    "kind": "two_line_block",
+    "display_text": "Header one\nHeader two",
+    "normalized_key": "header one\nheader two",
+    "top": 3,
+    "middle": 0,
+    "bottom": 0,
+    "page_based": true,
+    "can_promote": true,
+    "expected_rule": {
+      "id": "repeated-artifact:page_top:block_top",
+      "label": "Page top: Header one\nHeader two",
+      "source": "promoted_repeated_artifact",
+      "matcher": { "kind": "literal", "text": "Header one\nHeader two" },
+      "scope": "page_top",
+      "enabled": true
+    }
+  }
+]

@@ -26,6 +26,9 @@ use corpuswright_core::project_sources::{
     ProjectSourcePreviewViewport, ProjectSourceSelectionDescriptor, ProjectSourceSelectionViewport,
     ProjectSourceStatus, ProjectSourceStatusCounts, ProjectSourceSummary, ProjectSourceUpdate,
 };
+use corpuswright_core::repeated_artifact_promotion::{
+    RepeatedArtifactMatcherKind, RepeatedArtifactPromotion,
+};
 use corpuswright_core::repeated_artifacts::{
     ArtifactRiskLabel, CandidateContentClass, CandidateTextProfile, CandidateTextSignalLabel,
     PositionSummary, RepeatedArtifactCandidate, RepeatedArtifactExample, RepeatedArtifactKind,
@@ -551,6 +554,25 @@ fn main() {
         ],
         &[],
     );
+    export_type::<RepeatedArtifactMatcherKind>(&out_dir, &[], &[]);
+    export_type::<RepeatedArtifactPromotion>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "RepeatedArtifactMatcherKind",
+                file: "RepeatedArtifactMatcherKind",
+            },
+            TypeImport {
+                name: "RemovalScope",
+                file: "RemovalScope",
+            },
+            TypeImport {
+                name: "RemovalRule",
+                file: "RemovalRule",
+            },
+        ],
+        &[],
+    );
     export_type::<RepeatedArtifactScanDiagnostics>(&out_dir, &[], &[]);
     export_type::<RepeatedArtifactScanReport>(
         &out_dir,
@@ -562,6 +584,10 @@ fn main() {
             TypeImport {
                 name: "RepeatedArtifactScanDiagnostics",
                 file: "RepeatedArtifactScanDiagnostics",
+            },
+            TypeImport {
+                name: "RepeatedArtifactPromotion",
+                file: "RepeatedArtifactPromotion",
             },
         ],
         &[],

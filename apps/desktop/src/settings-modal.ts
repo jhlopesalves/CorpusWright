@@ -9,7 +9,10 @@ import {
 } from "./config";
 import { dom } from "./dom";
 import { syncDraftCustomRemovalsFromConfig } from "./custom-removals";
-import { syncDecisionsWithActiveRules, syncRepeatedArtifactSettingsSection } from "./repeated-artifacts";
+import {
+  syncDecisionsWithActiveRules,
+  syncRepeatedArtifactSettingsSection,
+} from "./repeated-artifacts";
 import { state } from "./state";
 import { hasProjectSourceSelection } from "./sources";
 import { formatRemovalRuleMigrationSummary } from "./removal-rule-migration.ts";

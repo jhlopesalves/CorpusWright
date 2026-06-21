@@ -142,6 +142,7 @@ pub fn export_corpus(
             let mut file_warnings = Vec::new();
             let mut warnings = Vec::new();
             let mut page_count = None;
+            let mut pdf_page_texts = None;
 
             let pdf_options = if record.document_type == DocumentType::Pdf {
                 Some(
@@ -248,6 +249,7 @@ pub fn export_corpus(
                                 });
                             }
                             page_count = entry.page_count;
+                            pdf_page_texts = entry.page_texts;
                             entry.extracted_text
                         }
                         Err(e) => {
@@ -275,6 +277,7 @@ pub fn export_corpus(
                                 });
                             }
                             page_count = Some(extracted.page_count);
+                            pdf_page_texts = extracted.page_texts;
                             extracted.text
                         }
                         Err(e) => {
@@ -294,10 +297,18 @@ pub fn export_corpus(
                 raw_text
             };
 
-            let mut text_for_processing = original_text.clone();
-            if record.document_type == DocumentType::Pdf {
-                let (pdf_cleaned, cleanup_warnings) =
-                    crate::pdf::clean_extracted_pdf_text(&original_text, cleaning_config);
+            let processed_text = if record.document_type == DocumentType::Pdf {
+                let (pdf_cleaned, cleanup_warnings, cleaned_pages) = if let Some(page_texts) =
+                    pdf_page_texts.as_deref()
+                {
+                    let (text, warnings, pages) =
+                        crate::pdf::clean_extracted_pdf_pages_and_text(page_texts, cleaning_config);
+                    (text, warnings, Some(pages))
+                } else {
+                    let (text, warnings) =
+                        crate::pdf::clean_extracted_pdf_text(&original_text, cleaning_config);
+                    (text, warnings, None)
+                };
                 for w in cleanup_warnings {
                     file_warnings.push(w.clone());
                     warnings.push(ExportWarning {
@@ -307,16 +318,17 @@ pub fn export_corpus(
                         message: w,
                     });
                 }
-                text_for_processing = pdf_cleaned;
-            }
-
-            let processed_text = if cleaning_config.extract_html {
-                clean_text(
-                    &crate::html::extract_html(&text_for_processing),
-                    cleaning_config,
-                )
+                if let Some(cleaned_pages) = cleaned_pages {
+                    let document =
+                        crate::structured_document::StructuredDocument::from_pages(cleaned_pages);
+                    crate::clean::clean_structured_document(&document, cleaning_config).text
+                } else {
+                    clean_text(&pdf_cleaned, cleaning_config)
+                }
+            } else if cleaning_config.extract_html {
+                clean_text(&crate::html::extract_html(&original_text), cleaning_config)
             } else {
-                clean_text(&text_for_processing, cleaning_config)
+                clean_text(&original_text, cleaning_config)
             };
             let processed_bytes = processed_text.as_bytes();
             let processed_hash_sha256 = sha256_hex(processed_bytes);
