@@ -1,9 +1,6 @@
-use crate::cache::ExtractionCache;
-use crate::clean::{CleaningConfig, clean_text};
-use crate::docx::extract_docx;
-use crate::html::extract_html;
-use crate::pdf::{PdfExtractionOptions, clean_extracted_pdf_text, extract_pdf};
-use crate::scan::{DocumentRecord, DocumentType};
+use crate::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
+use crate::clean::CleaningConfig;
+use crate::scan::DocumentRecord;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -60,7 +57,7 @@ const CONTEXT_CHARS: usize = 80;
 /// Processing is sequential (not parallel) to avoid unbounded per-worker hit
 /// accumulation.  Only at most max_hits SearchHit contexts are ever allocated.
 ///
-/// If `is_processed` is true, applies the cleaning_config before searching.
+/// If `is_processed` is true, searches the canonical processed document text.
 pub fn search_corpus(
     records: &[DocumentRecord],
     query: &str,
@@ -98,63 +95,7 @@ pub fn search_corpus(
     let mut remaining_hits = max_hits;
 
     for (index, record) in records.iter().enumerate() {
-        let mut source_text = String::new();
-
-        if let Some(cache) = cache {
-            let pdf_options = if record.document_type == DocumentType::Pdf {
-                Some(PdfExtractionOptions::raw_from_record_and_cleaning_config(
-                    record,
-                    cleaning_config,
-                ))
-            } else {
-                None
-            };
-            if let Ok(entry) = cache.get_or_extract(record, pdf_options, cleaning_config) {
-                source_text = entry.extracted_text;
-            }
-        } else {
-            if record.document_type == DocumentType::Docx {
-                if let Ok(bytes) = std::fs::read(&record.source_path)
-                    && let Ok(extracted) = extract_docx(&bytes, cleaning_config)
-                {
-                    source_text = extracted.text;
-                }
-            } else if record.document_type == DocumentType::Pdf {
-                if let Ok(bytes) = std::fs::read(&record.source_path)
-                    && let Ok(extracted) = extract_pdf(
-                        &bytes,
-                        None, // no char cap – read full text
-                        PdfExtractionOptions::raw_from_record_and_cleaning_config(
-                            record,
-                            cleaning_config,
-                        ),
-                    )
-                {
-                    source_text = extracted.text;
-                }
-            } else if let Ok(content) = std::fs::read(&record.source_path) {
-                // Read full file content lossily but bounded by OS memory limits.
-                source_text = String::from_utf8_lossy(&content).to_string();
-            }
-        }
-
-        if source_text.is_empty() {
-            continue;
-        }
-
-        if is_processed {
-            if record.document_type == DocumentType::Pdf {
-                let (pdf_cleaned, _) = clean_extracted_pdf_text(&source_text, cleaning_config);
-                source_text = pdf_cleaned;
-            }
-            if cleaning_config.extract_html {
-                source_text = extract_html(&source_text);
-            }
-            source_text = clean_text(&source_text, cleaning_config);
-            if source_text.is_empty() {
-                continue;
-            }
-        }
+        let source_text = search_text_for_record(record, is_processed, cleaning_config, cache)?;
 
         let file_match_count = re.find_iter(&source_text).count();
 
@@ -205,6 +146,28 @@ pub fn search_corpus(
         truncated,
         hits,
     })
+}
+
+fn search_text_for_record(
+    record: &DocumentRecord,
+    is_processed: bool,
+    cleaning_config: &CleaningConfig,
+    cache: Option<&ExtractionCache>,
+) -> Result<String, String> {
+    let mode = if is_processed {
+        DocumentTextMode::Processed
+    } else {
+        DocumentTextMode::Original
+    };
+
+    match document_text_for_record(record, cleaning_config, mode, cache) {
+        Ok(document) => Ok(document.text),
+        Err(error) if error.contains("OCR text is not materialised") => Err(
+            "Text has not been extracted yet. Use Extract/OCR selected PDFs before searching this source."
+                .to_string(),
+        ),
+        Err(_) => Ok(String::new()),
+    }
 }
 
 /// Returns up to `n` characters from `text` immediately before `pos`.
@@ -278,9 +241,17 @@ fn take_chars_after(text: &str, pos: usize, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clean::CleaningConfig;
-    use crate::scan::DocumentRecord;
+    use crate::cache::{
+        CacheEntry, DocumentTextMode, ExtractionCache, document_text_from_cache_entry,
+    };
+    use crate::clean::{
+        CleaningConfig, RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope,
+    };
+    use crate::pdf::PdfExtractionOptions;
+    use crate::preview::{PreviewOptions, preview_processed_files};
+    use crate::scan::{DocumentRecord, DocumentType};
     use std::path::PathBuf;
+    use tempfile::tempdir;
 
     fn make_record(text: &str, relative_path: &str) -> DocumentRecord {
         DocumentRecord {
@@ -298,6 +269,58 @@ mod tests {
         (0..count)
             .map(|i| make_record("", &format!("{}_{}.txt", base_name, i)))
             .collect()
+    }
+
+    fn normalized_rule(id: &str, normalized_key: &str, scope: RemovalScope) -> RemovalRule {
+        RemovalRule {
+            id: id.to_string(),
+            label: normalized_key.to_string(),
+            source: RemovalRuleSource::PromotedRepeatedArtifact,
+            matcher: RemovalMatcher::NormalizedLine {
+                normalized_key: normalized_key.to_string(),
+            },
+            scope,
+            enabled: true,
+        }
+    }
+
+    fn cached_pdf_record(path: PathBuf, relative_path: &str, content_len: usize) -> DocumentRecord {
+        DocumentRecord {
+            source_path: path,
+            relative_path: PathBuf::from(relative_path),
+            document_type: DocumentType::Pdf,
+            size_bytes: content_len as u64,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        }
+    }
+
+    fn running_head_entry() -> CacheEntry {
+        let running_head_top = "4\u{2002}|\u{2002}Some fundamentals of empirical research";
+        let running_head_bottom = "5\u{2002}|\u{2002}Some fundamentals of empirical research";
+        let page_texts = vec![
+            format!("{running_head_top}\nFirst body"),
+            format!("Second body\n{running_head_bottom}"),
+            "Third body".to_string(),
+        ];
+        CacheEntry {
+            extracted_text: page_texts.join("\n\n"),
+            warnings: Vec::new(),
+            page_count: Some(page_texts.len()),
+            page_texts: Some(page_texts),
+        }
+    }
+
+    fn running_head_cleaning_config() -> CleaningConfig {
+        CleaningConfig {
+            removal_rules: vec![normalized_rule(
+                "running-head",
+                "# | some fundamentals of empirical research",
+                RemovalScope::PageTopOrBottom,
+            )],
+            ..CleaningConfig::default()
+        }
     }
 
     #[test]
@@ -423,6 +446,77 @@ mod tests {
         assert!(!result.truncated);
 
         std::fs::remove_file(&tmp).ok();
+    }
+
+    #[test]
+    fn processed_search_uses_page_aware_document_text() {
+        let dir = tempdir().unwrap();
+        let source_bytes = b"%PDF-1.4";
+        let path = dir.path().join("running-head.pdf");
+        std::fs::write(&path, source_bytes).unwrap();
+        let record = cached_pdf_record(path, "running-head.pdf", source_bytes.len());
+        let cleaning = running_head_cleaning_config();
+        let cache = ExtractionCache::new();
+        let pdf_options =
+            PdfExtractionOptions::raw_from_record_and_cleaning_config(&record, &cleaning);
+        cache.insert_extracted(&record, Some(pdf_options), &cleaning, running_head_entry());
+        let records = [record];
+
+        let original = search_corpus(
+            &records,
+            "Some fundamentals of empirical research",
+            false,
+            &cleaning,
+            100,
+            Some(&cache),
+        )
+        .unwrap();
+        let processed = search_corpus(
+            &records,
+            "Some fundamentals of empirical research",
+            true,
+            &cleaning,
+            100,
+            Some(&cache),
+        )
+        .unwrap();
+
+        assert_eq!(original.total_matches, 2);
+        assert_eq!(processed.total_matches, 0);
+        assert!(processed.hits.is_empty());
+    }
+
+    #[test]
+    fn processed_search_text_matches_preview_and_document_text() {
+        let dir = tempdir().unwrap();
+        let source_bytes = b"%PDF-1.4";
+        let path = dir.path().join("shared-path.pdf");
+        std::fs::write(&path, source_bytes).unwrap();
+        let record = cached_pdf_record(path, "shared-path.pdf", source_bytes.len());
+        let cleaning = running_head_cleaning_config();
+        let entry = running_head_entry();
+        let cache = ExtractionCache::new();
+        let pdf_options =
+            PdfExtractionOptions::raw_from_record_and_cleaning_config(&record, &cleaning);
+        cache.insert_extracted(&record, Some(pdf_options), &cleaning, entry.clone());
+
+        let preview = preview_processed_files(
+            std::slice::from_ref(&record),
+            &PreviewOptions {
+                max_chars_per_file: None,
+                include_paths: false,
+                max_files: None,
+            },
+            &cleaning,
+            Some(&cache),
+        )
+        .unwrap();
+        let search_text = search_text_for_record(&record, true, &cleaning, Some(&cache)).unwrap();
+        let document =
+            document_text_from_cache_entry(&record, &cleaning, DocumentTextMode::Processed, entry);
+
+        assert_eq!(preview.files[0].text, document.text);
+        assert_eq!(search_text, document.text);
     }
 
     #[test]
