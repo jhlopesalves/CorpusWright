@@ -19,11 +19,13 @@
 //!   metadata artefacts.
 
 pub mod analysis;
+pub mod annotation;
 pub mod cache;
 pub mod clean;
 pub mod docx;
 pub mod export;
 pub mod html;
+pub mod language;
 pub mod manifest;
 pub mod pdf;
 pub mod pdf_audit;
@@ -94,6 +96,10 @@ pub use structured_document::{
     DocumentLine, DocumentPage, PAGE_EDGE_LINE_COUNT, StructuredDocument,
 };
 pub use text_profile::{CandidateTextProfile, CandidateTextSignalLabel};
+pub use language::{
+    DetectedLanguage, DocumentLanguage, LanguageResolution, DEFAULT_LOW_CONFIDENCE_THRESHOLD,
+    detect_and_resolve, detect_language, resolve_language,
+};
 pub use tokenization::{
     TOKENIZER_ID, TOKENIZER_VERSION, Token, TokenKind, TokenizationConfig, TokenizationManifest,
     UnicodeNormalizationForm, tokenize,
