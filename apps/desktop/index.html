@@ -316,8 +316,36 @@
                       <span>Minimum frequency</span>
                       <input id="frequency-min-input" type="number" min="1" step="1" value="1" />
                     </label>
+                    <label for="frequency-group-by">
+                      <span>Group by</span>
+                      <select id="frequency-group-by">
+                        <option value="surface" selected>Surface form</option>
+                        <option value="stem">Stem</option>
+                      </select>
+                    </label>
                   </div>
                   <div class="frequency-control-cluster frequency-display-cluster">
+                    <label class="frequency-stopword-control" for="frequency-case-fold">
+                      <span>Case</span>
+                      <span class="frequency-toggle">
+                        <input id="frequency-case-fold" type="checkbox" role="switch" aria-checked="false" />
+                        <span class="frequency-toggle-track" aria-hidden="true"></span>
+                        <span id="frequency-case-fold-state">As typed</span>
+                      </span>
+                    </label>
+                    <label for="frequency-language">
+                      <span>Language</span>
+                      <select id="frequency-language">
+                        <option value="en" selected>English</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="it">Italian</option>
+                        <option value="nl">Dutch</option>
+                        <option value="sv">Swedish</option>
+                      </select>
+                    </label>
                     <label for="frequency-token-class">
                       <span>Token class</span>
                       <select id="frequency-token-class">
@@ -341,8 +369,9 @@
                     </div>
                   </div>
                 </div>
-                <p class="frequency-search-note">Tokens are matched against the current lowercased token index.</p>
+                <p class="frequency-search-note">Tokens are matched against the selected Rust grouping.</p>
                 <div id="frequency-search-error" class="frequency-search-error hidden" role="alert"></div>
+                <div id="frequency-query-notice" class="frequency-query-notice hidden" role="status"></div>
                 <div class="frequency-table-wrap">
                   <table class="frequency-table">
                     <thead id="frequency-table-head">

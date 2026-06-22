@@ -228,10 +228,7 @@ pub fn ocr_model_identity() -> Option<String> {
 /// Useful for guarding tests that depend on the native PDFium library.
 #[cfg(test)]
 pub(crate) fn pdfium_available() -> bool {
-    first_existing_pdfium_library()
-        .and_then(|path| Pdfium::bind_to_library(path).ok())
-        .or_else(|| Pdfium::bind_to_system_library().ok())
-        .is_some()
+    init_pdfium().is_ok()
 }
 
 pub fn init_pdfium() -> anyhow::Result<&'static Pdfium> {

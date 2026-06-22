@@ -4,11 +4,13 @@ use crate::clean::CleaningConfig;
 use crate::scan::{DocumentRecord, DocumentType};
 use crate::tokenization::{TokenizationConfig, tokenize};
 use regex::Regex;
+use rust_stemmers::{Algorithm, Stemmer};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use ts_rs::TS;
 use unicode_normalization::UnicodeNormalization;
 
 const OVERVIEW_DOCUMENT_LIMIT: usize = 20;
@@ -491,7 +493,7 @@ pub struct CorpusOverview {
 #[derive(Debug, Clone)]
 struct AnalysisDocument {
     summary: AnalysisDocumentSummary,
-    term_counts: Vec<(u32, u64)>,
+    surface_term_counts: Vec<(u32, u64)>,
     mattr: Option<f64>,
     mtld: Option<f64>,
 }
@@ -503,6 +505,12 @@ struct AnalysisTerm {
     document_frequency: usize,
     document_counts: Vec<(usize, u64)>,
     dispersion: f64,
+}
+
+#[derive(Debug, Clone)]
+struct AnalysisSurfaceTerm {
+    token: String,
+    document_counts: Vec<(usize, u64)>,
 }
 
 struct AnalysisBuildMetadata {
@@ -524,8 +532,7 @@ struct AnalysisBuildMetadata {
 #[derive(Debug, Clone)]
 pub struct AnalysisCorpus {
     documents: Vec<AnalysisDocument>,
-    terms: Vec<AnalysisTerm>,
-    term_index: HashMap<String, u32>,
+    surface_terms: Vec<AnalysisSurfaceTerm>,
     overview: CorpusOverview,
 }
 
@@ -542,7 +549,7 @@ impl AnalysisCorpus {
 }
 
 /// Compact selection of analysis documents.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct AnalysisDocumentSelection {
     pub all_documents: bool,
@@ -563,7 +570,7 @@ impl Default for AnalysisDocumentSelection {
 }
 
 /// Match mode for frequency token queries.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum FrequencyMatchMode {
     Contains,
@@ -573,7 +580,7 @@ pub enum FrequencyMatchMode {
 }
 
 /// Token-class filter applied by Rust.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum FrequencyTokenClass {
     Alphabetic,
@@ -583,7 +590,7 @@ pub enum FrequencyTokenClass {
 }
 
 /// Sort column for frequency results.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum FrequencySortKey {
     Token,
@@ -594,23 +601,54 @@ pub enum FrequencySortKey {
 }
 
 /// Sort direction for frequency results.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum SortDirection {
     Asc,
     Desc,
 }
 
+/// Grouping strategy for the bounded frequency query.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum FrequencyGroupMode {
+    #[default]
+    Surface,
+    Stem,
+}
+
+/// Machine-readable notices returned with frequency query windows.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum FrequencyNoticeKind {
+    StemmingUnsupportedLanguage,
+}
+
+/// One explicit notice about a frequency query fallback or limitation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FrequencyNotice {
+    pub kind: FrequencyNoticeKind,
+    pub message: String,
+}
+
 /// Parameters for one bounded frequency-list query.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct FrequencyQuery {
     pub selection: AnalysisDocumentSelection,
     pub query: String,
     pub match_mode: FrequencyMatchMode,
+    #[ts(type = "number")]
     pub minimum_frequency: u64,
     pub token_class: FrequencyTokenClass,
     pub hide_stopwords: bool,
+    #[serde(default)]
+    pub group_by: FrequencyGroupMode,
+    #[serde(default)]
+    pub case_fold: bool,
+    #[serde(default)]
+    pub language: Option<String>,
     pub sort_key: FrequencySortKey,
     pub sort_direction: SortDirection,
     pub offset: usize,
@@ -618,10 +656,11 @@ pub struct FrequencyQuery {
 }
 
 /// One frequency result row.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct FrequencyTermItem {
     pub token: String,
+    #[ts(type = "number")]
     pub frequency: u64,
     pub document_frequency: usize,
     pub rate_per_10k: f64,
@@ -630,7 +669,7 @@ pub struct FrequencyTermItem {
 }
 
 /// Bounded frequency-list response.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct FrequencyPage {
     pub total_terms: usize,
@@ -640,8 +679,10 @@ pub struct FrequencyPage {
     pub items: Vec<FrequencyTermItem>,
     pub selected_document_count: usize,
     pub total_document_count: usize,
+    #[ts(type = "number")]
     pub scoped_total_tokens: u64,
     pub query_error: Option<String>,
+    pub notices: Vec<FrequencyNotice>,
 }
 
 /// One document in a bounded file-scope picker response.
@@ -691,6 +732,17 @@ pub struct TermDistributionPage {
     pub items: Vec<TermDistributionItem>,
     pub max_rate_per_10k: f64,
     pub max_rate_per_million: f64,
+}
+
+/// Parameters for one bounded per-document frequency distribution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TermDistributionQuery {
+    pub selection: AnalysisDocumentSelection,
+    pub group_by: FrequencyGroupMode,
+    pub case_fold: bool,
+    pub language: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
 }
 
 fn percentile(sorted_values: &[u64], percentile_value: f64) -> Option<f64> {
@@ -1181,6 +1233,17 @@ fn analysis_input_label(processed_documents: usize, fallback_documents: usize) -
     }
 }
 
+fn analysis_word_tokens<'text>(
+    text: &'text str,
+    document_id: u32,
+    config: &TokenizationConfig,
+) -> Vec<crate::tokenization::Token<'text>> {
+    tokenize(text, document_id, config)
+        .into_iter()
+        .filter(|token| token.counts_as_word())
+        .collect()
+}
+
 fn build_overview(
     documents: &[AnalysisDocument],
     terms: &[AnalysisTerm],
@@ -1606,7 +1669,7 @@ fn build_overview(
             ),
             lemmatisation: Some("Not applied".to_string()),
             number_punctuation_handling: Some(
-                "Numbers retained; decimal points and thousands separators split; standalone punctuation retained"
+                "Numbers retained; decimal points and thousands separators split; standalone punctuation excluded from corpus metrics"
                     .to_string(),
             ),
             input_source: analysis_input_label(
@@ -1650,6 +1713,8 @@ where
     let mut documents = Vec::with_capacity(records.len());
     let mut terms = Vec::<AnalysisTerm>::new();
     let mut term_index = HashMap::<String, u32>::new();
+    let mut surface_terms = Vec::<AnalysisSurfaceTerm>::new();
+    let mut surface_term_index = HashMap::<String, u32>::new();
     let mut total_tokens = 0u64;
     let mut growth_tokens = 0u64;
     let mut next_growth_checkpoint = 1u64;
@@ -1709,7 +1774,7 @@ where
             )
         })?;
         let tokenization_config = TokenizationConfig::default();
-        let tokens = tokenize(&text, document_id, &tokenization_config);
+        let tokens = analysis_word_tokens(&text, document_id, &tokenization_config);
         let token_keys = tokens
             .iter()
             .map(|token| token.aggregation_key(&tokenization_config))
@@ -1719,8 +1784,8 @@ where
             .then(|| mtld(&token_keys, MTLD_TTR_THRESHOLD))
             .flatten();
         let mut document_terms = HashMap::<u32, u64>::new();
-        for token in token_keys {
-            let term_id = if let Some(&term_id) = term_index.get(&token) {
+        for token in &token_keys {
+            let term_id = if let Some(&term_id) = term_index.get(token) {
                 term_id
             } else {
                 let term_id = u32::try_from(terms.len()).map_err(|_| {
@@ -1730,7 +1795,7 @@ where
                 })?;
                 term_index.insert(token.clone(), term_id);
                 terms.push(AnalysisTerm {
-                    token,
+                    token: token.clone(),
                     frequency: 0,
                     document_frequency: 0,
                     document_counts: Vec::new(),
@@ -1748,20 +1813,45 @@ where
                 next_growth_checkpoint = next_growth_checkpoint.saturating_mul(2);
             }
         }
+        let mut document_surface_terms = HashMap::<u32, u64>::new();
+        for surface in tokens.iter().map(|token| token.surface) {
+            let surface = surface.to_string();
+            let term_id = if let Some(&term_id) = surface_term_index.get(&surface) {
+                term_id
+            } else {
+                let term_id = u32::try_from(surface_terms.len()).map_err(|_| {
+                    AnalysisBuildError::Message(
+                        "Analysis surface vocabulary contains more than u32::MAX types."
+                            .to_string(),
+                    )
+                })?;
+                surface_term_index.insert(surface.clone(), term_id);
+                surface_terms.push(AnalysisSurfaceTerm {
+                    token: surface,
+                    document_counts: Vec::new(),
+                });
+                term_id
+            };
+            *document_surface_terms.entry(term_id).or_default() += 1;
+        }
         let token_count = document_terms.values().sum::<u64>();
-        let mut sparse_counts = Vec::with_capacity(document_terms.len());
         for (term_id, count) in document_terms {
             let term = &mut terms[term_id as usize];
             term.frequency += count;
             term.document_frequency += 1;
             term.document_counts.push((document_id as usize, count));
-            sparse_counts.push((term_id, count));
         }
-        sparse_counts.sort_unstable_by_key(|(term_id, _)| *term_id);
+        let mut surface_sparse_counts = Vec::with_capacity(document_surface_terms.len());
+        for (term_id, count) in document_surface_terms {
+            let term = &mut surface_terms[term_id as usize];
+            term.document_counts.push((document_id as usize, count));
+            surface_sparse_counts.push((term_id, count));
+        }
+        surface_sparse_counts.sort_unstable_by_key(|(term_id, _)| *term_id);
         total_tokens += token_count;
         documents.push(AnalysisDocument {
             summary: document_summary(record, document_id as usize, token_count),
-            term_counts: sparse_counts,
+            surface_term_counts: surface_sparse_counts,
             mattr: document_mattr,
             mtld: document_mtld,
         });
@@ -1836,8 +1926,7 @@ where
 
     Ok(AnalysisCorpus {
         documents,
-        terms,
-        term_index,
+        surface_terms,
         overview,
     })
 }
@@ -1919,6 +2008,116 @@ fn token_matches_class(token: &str, filter: FrequencyTokenClass) -> bool {
     }
 }
 
+fn case_fold_surface(value: &str) -> String {
+    value.nfc().collect::<String>().to_lowercase()
+}
+
+fn stemming_algorithm(language: Option<&str>) -> Option<Algorithm> {
+    match language.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(value) => match value.to_ascii_lowercase().as_str() {
+            "ar" | "ara" | "arabic" => Some(Algorithm::Arabic),
+            "da" | "dan" | "danish" => Some(Algorithm::Danish),
+            "nl" | "nld" | "dut" | "dutch" => Some(Algorithm::Dutch),
+            "en" | "eng" | "english" => Some(Algorithm::English),
+            "fi" | "fin" | "finnish" => Some(Algorithm::Finnish),
+            "fr" | "fra" | "fre" | "french" => Some(Algorithm::French),
+            "de" | "deu" | "ger" | "german" => Some(Algorithm::German),
+            "el" | "ell" | "greek" => Some(Algorithm::Greek),
+            "hu" | "hun" | "hungarian" => Some(Algorithm::Hungarian),
+            "it" | "ita" | "italian" => Some(Algorithm::Italian),
+            "no" | "nor" | "norwegian" => Some(Algorithm::Norwegian),
+            "pt" | "por" | "portuguese" => Some(Algorithm::Portuguese),
+            "ro" | "ron" | "rum" | "romanian" => Some(Algorithm::Romanian),
+            "ru" | "rus" | "russian" => Some(Algorithm::Russian),
+            "es" | "spa" | "spanish" => Some(Algorithm::Spanish),
+            "sv" | "swe" | "swedish" => Some(Algorithm::Swedish),
+            "ta" | "tam" | "tamil" => Some(Algorithm::Tamil),
+            "tr" | "tur" | "turkish" => Some(Algorithm::Turkish),
+            _ => None,
+        },
+        None => None,
+    }
+}
+
+struct ResolvedFrequencyGrouping {
+    group_by: FrequencyGroupMode,
+    case_fold: bool,
+    stemmer: Option<Stemmer>,
+    notices: Vec<FrequencyNotice>,
+}
+
+fn resolve_frequency_grouping(query: &FrequencyQuery) -> ResolvedFrequencyGrouping {
+    if query.group_by != FrequencyGroupMode::Stem {
+        return ResolvedFrequencyGrouping {
+            group_by: query.group_by,
+            case_fold: query.case_fold,
+            stemmer: None,
+            notices: Vec::new(),
+        };
+    }
+
+    if let Some(algorithm) = stemming_algorithm(query.language.as_deref()) {
+        return ResolvedFrequencyGrouping {
+            group_by: FrequencyGroupMode::Stem,
+            case_fold: true,
+            stemmer: Some(Stemmer::create(algorithm)),
+            notices: Vec::new(),
+        };
+    }
+
+    let language = query
+        .language
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unspecified");
+    ResolvedFrequencyGrouping {
+        group_by: FrequencyGroupMode::Surface,
+        case_fold: query.case_fold,
+        stemmer: None,
+        notices: vec![FrequencyNotice {
+            kind: FrequencyNoticeKind::StemmingUnsupportedLanguage,
+            message: format!(
+                "Stemming is not available for language \"{language}\"; surface grouping was used."
+            ),
+        }],
+    }
+}
+
+fn frequency_group_key(surface: &str, grouping: &ResolvedFrequencyGrouping) -> String {
+    match grouping.group_by {
+        FrequencyGroupMode::Surface => {
+            if grouping.case_fold {
+                case_fold_surface(surface)
+            } else {
+                surface.to_string()
+            }
+        }
+        FrequencyGroupMode::Stem => {
+            let folded = case_fold_surface(surface);
+            grouping
+                .stemmer
+                .as_ref()
+                .map(|stemmer| stemmer.stem(&folded).into_owned())
+                .unwrap_or(folded)
+        }
+    }
+}
+
+fn frequency_query_key(query: &str, grouping: &ResolvedFrequencyGrouping) -> String {
+    let query = query.trim();
+    if query.is_empty() {
+        return String::new();
+    }
+    frequency_group_key(query, grouping)
+}
+
+#[derive(Default)]
+struct FrequencyAccumulator {
+    frequency: u64,
+    document_counts: HashMap<usize, u64>,
+}
+
 fn compare_frequency_terms(
     left: &FrequencyTermItem,
     right: &FrequencyTermItem,
@@ -1936,14 +2135,14 @@ fn compare_frequency_terms(
 /// Filters, sorts, and pages a frequency list entirely in Rust.
 pub fn query_frequency_list(corpus: &AnalysisCorpus, query: &FrequencyQuery) -> FrequencyPage {
     let (selected, selected_document_count) = selected_document_mask(corpus, &query.selection);
-    let all_documents_selected = selected_document_count == corpus.documents.len();
     let scoped_total_tokens = corpus
         .documents
         .iter()
         .filter(|document| selected[document.summary.id])
         .map(|document| document.summary.token_count)
         .sum::<u64>();
-    let token_query = query.query.trim().to_lowercase();
+    let grouping = resolve_frequency_grouping(query);
+    let token_query = frequency_query_key(&query.query, &grouping);
     let regex = if query.match_mode == FrequencyMatchMode::Regex && !token_query.is_empty() {
         match Regex::new(&token_query) {
             Ok(regex) => Some(regex),
@@ -1958,6 +2157,7 @@ pub fn query_frequency_list(corpus: &AnalysisCorpus, query: &FrequencyQuery) -> 
                     total_document_count: corpus.documents.len(),
                     scoped_total_tokens,
                     query_error: Some("Invalid regex pattern.".to_string()),
+                    notices: grouping.notices,
                 };
             }
         }
@@ -1965,36 +2165,32 @@ pub fn query_frequency_list(corpus: &AnalysisCorpus, query: &FrequencyQuery) -> 
         None
     };
 
-    let mut scoped_frequency = vec![0u64; corpus.terms.len()];
-    let mut scoped_document_frequency = vec![0usize; corpus.terms.len()];
-    if !all_documents_selected {
-        for document in corpus
-            .documents
-            .iter()
-            .filter(|document| selected[document.summary.id])
-        {
-            for &(term_id, count) in &document.term_counts {
-                scoped_frequency[term_id as usize] += count;
-                scoped_document_frequency[term_id as usize] += 1;
+    let mut groups = HashMap::<String, FrequencyAccumulator>::new();
+    for document in corpus
+        .documents
+        .iter()
+        .filter(|document| selected[document.summary.id])
+    {
+        for &(surface_term_id, count) in &document.surface_term_counts {
+            let surface = &corpus.surface_terms[surface_term_id as usize].token;
+            if !token_matches_class(surface, query.token_class) {
+                continue;
             }
+            let key = frequency_group_key(surface, &grouping);
+            let group = groups.entry(key).or_default();
+            group.frequency += count;
+            *group
+                .document_counts
+                .entry(document.summary.id)
+                .or_default() += count;
         }
     }
 
-    let mut scoped_total_types = 0usize;
+    let scoped_total_types = groups.len();
     let mut items = Vec::new();
-    for (term_id, term) in corpus.terms.iter().enumerate() {
-        let frequency = if all_documents_selected {
-            term.frequency
-        } else {
-            scoped_frequency[term_id]
-        };
-        if frequency == 0 {
-            continue;
-        }
-        scoped_total_types += 1;
-        if frequency < query.minimum_frequency
-            || !token_matches_class(&term.token, query.token_class)
-            || (query.hide_stopwords && ENGLISH_STOPWORDS.contains(term.token.as_str()))
+    for (token, group) in groups {
+        if group.frequency < query.minimum_frequency
+            || (query.hide_stopwords && ENGLISH_STOPWORDS.contains(token.as_str()))
         {
             continue;
         }
@@ -2002,49 +2198,36 @@ pub fn query_frequency_list(corpus: &AnalysisCorpus, query: &FrequencyQuery) -> 
             true
         } else {
             match query.match_mode {
-                FrequencyMatchMode::Contains => term.token.contains(&token_query),
-                FrequencyMatchMode::Exact => term.token == token_query,
-                FrequencyMatchMode::StartsWith => term.token.starts_with(&token_query),
+                FrequencyMatchMode::Contains => token.contains(&token_query),
+                FrequencyMatchMode::Exact => token == token_query,
+                FrequencyMatchMode::StartsWith => token.starts_with(&token_query),
                 FrequencyMatchMode::Regex => regex
                     .as_ref()
-                    .is_some_and(|pattern| pattern.is_match(&term.token)),
+                    .is_some_and(|pattern| pattern.is_match(&token)),
             }
         };
         if !matches {
             continue;
         }
-        let document_frequency = if all_documents_selected {
-            term.document_frequency
-        } else {
-            scoped_document_frequency[term_id]
-        };
-        let dispersion = if all_documents_selected {
-            term.dispersion
-        } else {
-            let scoped_counts = term
-                .document_counts
-                .iter()
-                .copied()
-                .filter(|(document_id, _)| selected[*document_id])
-                .collect::<Vec<_>>();
-            compute_dispersion(
-                &scoped_counts,
-                frequency,
-                &corpus.documents,
-                scoped_total_tokens,
-            )
-        };
+        let mut document_counts = group.document_counts.into_iter().collect::<Vec<_>>();
+        document_counts.sort_unstable_by_key(|(document_id, _)| *document_id);
+        let dispersion = compute_dispersion(
+            &document_counts,
+            group.frequency,
+            &corpus.documents,
+            scoped_total_tokens,
+        );
         items.push(FrequencyTermItem {
-            token: term.token.clone(),
-            frequency,
-            document_frequency,
+            token,
+            frequency: group.frequency,
+            document_frequency: document_counts.len(),
             rate_per_10k: if scoped_total_tokens > 0 {
-                frequency as f64 / scoped_total_tokens as f64 * 10_000.0
+                group.frequency as f64 / scoped_total_tokens as f64 * 10_000.0
             } else {
                 0.0
             },
             rate_per_million: if scoped_total_tokens > 0 {
-                frequency as f64 / scoped_total_tokens as f64 * 1_000_000.0
+                group.frequency as f64 / scoped_total_tokens as f64 * 1_000_000.0
             } else {
                 0.0
             },
@@ -2087,6 +2270,7 @@ pub fn query_frequency_list(corpus: &AnalysisCorpus, query: &FrequencyQuery) -> 
         total_document_count: corpus.documents.len(),
         scoped_total_tokens,
         query_error: None,
+        notices: grouping.notices,
     }
 }
 
@@ -2094,24 +2278,37 @@ pub fn query_frequency_list(corpus: &AnalysisCorpus, query: &FrequencyQuery) -> 
 pub fn query_term_distribution(
     corpus: &AnalysisCorpus,
     token: &str,
-    selection: &AnalysisDocumentSelection,
-    offset: usize,
-    limit: usize,
+    query: &TermDistributionQuery,
 ) -> TermDistributionPage {
-    let (selected, selected_count) = selected_document_mask(corpus, selection);
-    let normalised_token = token.nfc().collect::<String>().to_lowercase();
-    let term = corpus
-        .term_index
-        .get(&normalised_token)
-        .and_then(|term_id| corpus.terms.get(*term_id as usize));
-    let counts = term
-        .map(|term| {
-            term.document_counts
-                .iter()
-                .copied()
-                .collect::<HashMap<_, _>>()
-        })
-        .unwrap_or_default();
+    let (selected, selected_count) = selected_document_mask(corpus, &query.selection);
+    let grouping_query = FrequencyQuery {
+        selection: query.selection.clone(),
+        query: String::new(),
+        match_mode: FrequencyMatchMode::Contains,
+        minimum_frequency: 1,
+        token_class: FrequencyTokenClass::All,
+        hide_stopwords: false,
+        group_by: query.group_by,
+        case_fold: query.case_fold,
+        language: query.language.clone(),
+        sort_key: FrequencySortKey::Token,
+        sort_direction: SortDirection::Asc,
+        offset: 0,
+        limit: 1,
+    };
+    let grouping = resolve_frequency_grouping(&grouping_query);
+    let normalised_token = frequency_query_key(token, &grouping);
+    let mut counts = HashMap::<usize, u64>::new();
+    for surface_term in &corpus.surface_terms {
+        if frequency_group_key(&surface_term.token, &grouping) != normalised_token {
+            continue;
+        }
+        for &(document_id, count) in &surface_term.document_counts {
+            if selected[document_id] {
+                *counts.entry(document_id).or_default() += count;
+            }
+        }
+    }
     let mut max_rate_per_10k = 0.0f64;
     let mut max_rate_per_million = 0.0f64;
     for document in corpus
@@ -2129,8 +2326,8 @@ pub fn query_term_distribution(
         max_rate_per_million = max_rate_per_million.max(rate * 100.0);
     }
 
-    let limit = limit.min(MAX_QUERY_WINDOW);
-    let offset = offset.min(selected_count);
+    let limit = query.limit.min(MAX_QUERY_WINDOW);
+    let offset = query.offset.min(selected_count);
     let items = corpus
         .documents
         .iter()
@@ -2246,6 +2443,31 @@ mod tests {
         .unwrap()
     }
 
+    fn base_frequency_query() -> FrequencyQuery {
+        FrequencyQuery {
+            selection: AnalysisDocumentSelection::default(),
+            query: String::new(),
+            match_mode: FrequencyMatchMode::Contains,
+            minimum_frequency: 1,
+            token_class: FrequencyTokenClass::All,
+            hide_stopwords: false,
+            group_by: FrequencyGroupMode::Surface,
+            case_fold: false,
+            language: None,
+            sort_key: FrequencySortKey::Token,
+            sort_direction: SortDirection::Asc,
+            offset: 0,
+            limit: 100,
+        }
+    }
+
+    fn frequency_tokens(page: &FrequencyPage) -> Vec<(&str, u64)> {
+        page.items
+            .iter()
+            .map(|item| (item.token.as_str(), item.frequency))
+            .collect()
+    }
+
     #[test]
     fn resolver_uses_active_processed_pipeline_output() {
         let record = record("processed.txt");
@@ -2338,6 +2560,87 @@ mod tests {
         assert_eq!(resolution.status, AnalysisInputStatus::Empty);
         assert_eq!(resolution.text, None);
         assert!(!fallback_called.get());
+    }
+
+    #[test]
+    fn analyse_excludes_punctuation_from_metrics() {
+        let with_punctuation = corpus_for(&[("punct.txt", "Alpha, beta! Alpha? — beta.")]);
+        let stripped = corpus_for(&[("plain.txt", "Alpha beta Alpha beta")]);
+
+        assert_eq!(
+            with_punctuation.overview().total_tokens,
+            stripped.overview().total_tokens
+        );
+        assert_eq!(
+            with_punctuation.overview().total_types,
+            stripped.overview().total_types
+        );
+        assert_eq!(
+            with_punctuation.overview().lexical_spectrum.hapax_count,
+            stripped.overview().lexical_spectrum.hapax_count
+        );
+        assert_eq!(
+            with_punctuation
+                .overview()
+                .frequency_concentration
+                .shannon_entropy_bits,
+            stripped
+                .overview()
+                .frequency_concentration
+                .shannon_entropy_bits
+        );
+
+        let page = query_frequency_list(&with_punctuation, &base_frequency_query());
+        assert_eq!(frequency_tokens(&page), [("Alpha", 2), ("beta", 2)]);
+    }
+
+    #[test]
+    fn prepare_analyse_token_parity() {
+        let config = CleaningConfig {
+            extract_html: true,
+            normalize_unicode: true,
+            replace_diacritics: false,
+            ..CleaningConfig::default()
+        };
+        let fixtures = [
+            "Well-being, don't stop. 3.14 and 1,000.",
+            "<p>Cafe\u{301} — café! Alpha&nbsp;beta.</p>",
+            "leading- -trailing alpha—beta",
+        ];
+
+        for fixture in fixtures {
+            let prepare =
+                crate::word_count::word_token_surfaces_in_processed_text(fixture, &config);
+            let html = crate::html::extract_html(fixture);
+            let cleaned = crate::clean::clean_text(&html, &config);
+            let analyse = analysis_word_tokens(&cleaned, 0, &TokenizationConfig::default())
+                .into_iter()
+                .map(|token| token.surface.to_string())
+                .collect::<Vec<_>>();
+            assert_eq!(analyse, prepare);
+        }
+    }
+
+    #[test]
+    fn frequency_invariant_under_punctuation() {
+        let punctuated = corpus_for(&[("punct.txt", "(alpha), beta! alpha; beta?")]);
+        let plain = corpus_for(&[("plain.txt", "alpha beta alpha beta")]);
+
+        let punctuated_page = query_frequency_list(&punctuated, &base_frequency_query());
+        let plain_page = query_frequency_list(&plain, &base_frequency_query());
+
+        assert_eq!(
+            frequency_tokens(&punctuated_page),
+            frequency_tokens(&plain_page)
+        );
+        assert_eq!(
+            punctuated.overview().total_tokens,
+            plain.overview().total_tokens
+        );
+        assert_eq!(
+            punctuated.overview().total_types,
+            plain.overview().total_types
+        );
     }
 
     #[test]
@@ -2462,6 +2765,9 @@ mod tests {
                 minimum_frequency: 1,
                 token_class: FrequencyTokenClass::All,
                 hide_stopwords: false,
+                group_by: FrequencyGroupMode::Surface,
+                case_fold: false,
+                language: None,
                 sort_key: FrequencySortKey::Frequency,
                 sort_direction: SortDirection::Desc,
                 offset: 0,
@@ -2504,17 +2810,20 @@ mod tests {
                 minimum_frequency: 1,
                 token_class: FrequencyTokenClass::All,
                 hide_stopwords: false,
+                group_by: FrequencyGroupMode::Surface,
+                case_fold: false,
+                language: None,
                 sort_key: FrequencySortKey::Frequency,
                 sort_direction: SortDirection::Desc,
                 offset: 0,
                 limit: 2,
             },
         );
-        assert_eq!(page.total_terms, 3);
+        assert_eq!(page.total_terms, 4);
         assert_eq!(page.items.len(), 2);
-        assert_eq!(page.items[0].token, "cats");
+        assert_eq!(page.items[0].token, "dog");
         assert_eq!(page.items[0].frequency, 2);
-        assert_eq!(page.items[1].token, "dog");
+        assert_eq!(page.items[1].token, "Cats");
     }
 
     #[test]
@@ -2533,6 +2842,9 @@ mod tests {
                 minimum_frequency: 1,
                 token_class: FrequencyTokenClass::All,
                 hide_stopwords: false,
+                group_by: FrequencyGroupMode::Surface,
+                case_fold: false,
+                language: None,
                 sort_key: FrequencySortKey::Token,
                 sort_direction: SortDirection::Asc,
                 offset: 1,
@@ -2547,6 +2859,105 @@ mod tests {
     }
 
     #[test]
+    fn frequency_query_window_bounds() {
+        let corpus = corpus_for(&[("one.txt", "alpha beta gamma delta epsilon")]);
+        let first = query_frequency_list(
+            &corpus,
+            &FrequencyQuery {
+                limit: 2,
+                ..base_frequency_query()
+            },
+        );
+        let second = query_frequency_list(
+            &corpus,
+            &FrequencyQuery {
+                offset: 2,
+                limit: 2,
+                ..base_frequency_query()
+            },
+        );
+
+        assert_eq!(first.total_terms, 5);
+        assert_eq!(second.total_terms, 5);
+        assert_eq!(first.offset, 0);
+        assert_eq!(first.items.len(), 2);
+        assert_eq!(second.offset, 2);
+        assert_eq!(second.items.len(), 2);
+        assert_eq!(frequency_tokens(&first), [("alpha", 1), ("beta", 1)]);
+        assert_eq!(frequency_tokens(&second), [("delta", 1), ("epsilon", 1)]);
+    }
+
+    #[test]
+    fn frequency_group_by_stem_en() {
+        let corpus = corpus_for(&[(
+            "stem.txt",
+            "running runs connected connecting connects unrelated",
+        )]);
+        let page = query_frequency_list(
+            &corpus,
+            &FrequencyQuery {
+                group_by: FrequencyGroupMode::Stem,
+                language: Some("en".to_string()),
+                sort_key: FrequencySortKey::Frequency,
+                sort_direction: SortDirection::Desc,
+                ..base_frequency_query()
+            },
+        );
+
+        assert!(page.notices.is_empty());
+        assert_eq!(page.items[0].token, "connect");
+        assert_eq!(page.items[0].frequency, 3);
+        assert_eq!(page.items[1].token, "run");
+        assert_eq!(page.items[1].frequency, 2);
+    }
+
+    #[test]
+    fn stemming_unsupported_language_emits_notice() {
+        let corpus = corpus_for(&[("stem.txt", "Running running")]);
+        let page = query_frequency_list(
+            &corpus,
+            &FrequencyQuery {
+                group_by: FrequencyGroupMode::Stem,
+                language: Some("zz".to_string()),
+                ..base_frequency_query()
+            },
+        );
+
+        assert_eq!(page.notices.len(), 1);
+        assert_eq!(
+            page.notices[0].kind,
+            FrequencyNoticeKind::StemmingUnsupportedLanguage
+        );
+        assert!(page.notices[0].message.contains("zz"));
+        assert_eq!(frequency_tokens(&page), [("Running", 1), ("running", 1)]);
+    }
+
+    #[test]
+    fn frequency_min_count_and_casefold() {
+        let corpus = corpus_for(&[("case.txt", "Alpha alpha ALPHA beta Beta gamma")]);
+        let folded = query_frequency_list(
+            &corpus,
+            &FrequencyQuery {
+                minimum_frequency: 2,
+                case_fold: true,
+                ..base_frequency_query()
+            },
+        );
+        let surface = query_frequency_list(
+            &corpus,
+            &FrequencyQuery {
+                minimum_frequency: 2,
+                case_fold: false,
+                ..base_frequency_query()
+            },
+        );
+
+        assert_eq!(frequency_tokens(&folded), [("alpha", 3), ("beta", 2)]);
+        assert_eq!(surface.total_terms, 0);
+        assert_eq!(surface.scoped_total_types, 6);
+    }
+
+    #[test]
     fn document_and_distribution_queries_are_bounded() {
         let corpus = corpus_for(&[("one.txt", "alpha"), ("two.txt", "alpha beta")]);
         let documents =
@@ -2558,9 +2969,14 @@ mod tests {
         let distribution = query_term_distribution(
             &corpus,
             "alpha",
-            &AnalysisDocumentSelection::default(),
-            0,
-            1,
+            &TermDistributionQuery {
+                selection: AnalysisDocumentSelection::default(),
+                group_by: FrequencyGroupMode::Surface,
+                case_fold: false,
+                language: None,
+                offset: 0,
+                limit: 1,
+            },
         );
         assert_eq!(distribution.total_documents, 2);
         assert_eq!(distribution.items.len(), 1);
@@ -2724,6 +3140,9 @@ mod tests {
                 minimum_frequency: 1,
                 token_class: FrequencyTokenClass::All,
                 hide_stopwords: false,
+                group_by: FrequencyGroupMode::Surface,
+                case_fold: false,
+                language: None,
                 sort_key: FrequencySortKey::Frequency,
                 sort_direction: SortDirection::Desc,
                 offset: 0,
@@ -2760,12 +3179,10 @@ mod tests {
         let forward = build(&["a.txt", "b.txt", "c.txt"]);
         let shuffled = build(&["c.txt", "a.txt", "b.txt"]);
         assert_eq!(forward.overview(), shuffled.overview());
-        assert_eq!(forward.terms.len(), shuffled.terms.len());
-        for (left, right) in forward.terms.iter().zip(&shuffled.terms) {
-            assert_eq!(left.token, right.token);
-            assert_eq!(left.frequency, right.frequency);
-            assert_eq!(left.document_counts, right.document_counts);
-        }
+        assert_eq!(
+            query_frequency_list(&forward, &base_frequency_query()),
+            query_frequency_list(&shuffled, &base_frequency_query())
+        );
     }
 
     #[test]

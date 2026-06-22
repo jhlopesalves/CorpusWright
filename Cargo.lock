@@ -811,6 +811,7 @@ dependencies = [
  "regex",
  "rten",
  "rten-tensor",
+ "rust-stemmers",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -4157,6 +4158,16 @@ checksum = "9574ddebf5671bc08ceb76e2e1638fadc57fdeff318634eab2c29e9a803cff64"
 dependencies = [
  "rten-base",
  "rten-simd",
+]
+
+[[package]]
+name = "rust-stemmers"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e46a2036019fdb888131db7a4c847a1063a7493f971ed94ea82c67eada63ca54"
+dependencies = [
+ "serde",
+ "serde_derive",
 ]
 
 [[package]]

@@ -41,6 +41,11 @@ pub mod text_profile;
 pub mod tokenization;
 pub mod word_count;
 
+pub use analysis::{
+    AnalysisDocumentSelection, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
+    FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
+    FrequencyTokenClass, SortDirection,
+};
 pub use clean::{
     CleaningConfig, PdfOcrQuality, PdfTextSource, RemovalMatcher, RemovalRule, RemovalRuleSource,
     RemovalScope, ReplacementRule, clean_text,

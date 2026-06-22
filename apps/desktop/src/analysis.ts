@@ -1,6 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import type { AnalysisDocumentSelection as GeneratedAnalysisDocumentSelection } from "./generated/AnalysisDocumentSelection.js";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
+import type { FrequencyGroupMode as GeneratedFrequencyGroupMode } from "./generated/FrequencyGroupMode.js";
+import type { FrequencyMatchMode as GeneratedFrequencyMatchMode } from "./generated/FrequencyMatchMode.js";
+import type { FrequencyPage as GeneratedFrequencyPage } from "./generated/FrequencyPage.js";
+import type { FrequencyQuery as GeneratedFrequencyQuery } from "./generated/FrequencyQuery.js";
+import type { FrequencySortKey as GeneratedFrequencySortKey } from "./generated/FrequencySortKey.js";
+import type { FrequencyTermItem as GeneratedFrequencyTermItem } from "./generated/FrequencyTermItem.js";
+import type { FrequencyTokenClass as GeneratedFrequencyTokenClass } from "./generated/FrequencyTokenClass.js";
+import type { SortDirection as GeneratedSortDirection } from "./generated/SortDirection.js";
 
 export type AnalysisInputSource =
   | "processed"
@@ -13,10 +22,11 @@ export type AnalysisBuildPhase =
   | "computingDispersion"
   | "finalisingSummaries";
 export type AnalysisBuildStateKind = "notBuilt" | "building" | "ready" | "stale" | "failed" | "cancelled";
-export type FrequencySortKey = "token" | "frequency" | "range" | "rate" | "dispersion";
-export type FrequencyMatchMode = "contains" | "exact" | "startsWith" | "regex";
-export type FrequencyTokenClass = "alphabetic" | "includeSingles" | "includeNumerals" | "all";
-export type SortDirection = "asc" | "desc";
+export type FrequencySortKey = GeneratedFrequencySortKey;
+export type FrequencyMatchMode = GeneratedFrequencyMatchMode;
+export type FrequencyTokenClass = GeneratedFrequencyTokenClass;
+export type FrequencyGroupMode = GeneratedFrequencyGroupMode;
+export type SortDirection = GeneratedSortDirection;
 
 export interface AnalysisDocumentSummary {
   id: number;
@@ -227,45 +237,10 @@ export interface AnalysisBuildStatus {
   overview: CorpusOverview | null;
 }
 
-export interface AnalysisDocumentSelection {
-  allDocuments: boolean;
-  ids: number[];
-  excludedIds: number[];
-}
-
-export interface FrequencyQuery {
-  selection: AnalysisDocumentSelection;
-  query: string;
-  matchMode: FrequencyMatchMode;
-  minimumFrequency: number;
-  tokenClass: FrequencyTokenClass;
-  hideStopwords: boolean;
-  sortKey: FrequencySortKey;
-  sortDirection: SortDirection;
-  offset: number;
-  limit: number;
-}
-
-export interface FrequencyTermItem {
-  token: string;
-  frequency: number;
-  documentFrequency: number;
-  ratePer10k: number;
-  ratePerMillion: number;
-  dispersion: number;
-}
-
-export interface FrequencyPage {
-  totalTerms: number;
-  scopedTotalTypes: number;
-  offset: number;
-  limit: number;
-  items: FrequencyTermItem[];
-  selectedDocumentCount: number;
-  totalDocumentCount: number;
-  scopedTotalTokens: number;
-  queryError: string | null;
-}
+export type AnalysisDocumentSelection = GeneratedAnalysisDocumentSelection;
+export type FrequencyQuery = GeneratedFrequencyQuery;
+export type FrequencyTermItem = GeneratedFrequencyTermItem;
+export type FrequencyPage = GeneratedFrequencyPage;
 
 export interface AnalysisDocumentPageItem extends AnalysisDocumentSummary {
   selected: boolean;
@@ -358,6 +333,9 @@ export function queryAnalysisDocuments(
 export function queryTermDistribution(
   token: string,
   selection: AnalysisDocumentSelection,
+  groupBy: FrequencyGroupMode,
+  caseFold: boolean,
+  language: string | null,
   offset: number,
   limit: number,
   cleaningConfig: CleaningConfig,
@@ -365,6 +343,9 @@ export function queryTermDistribution(
   return invoke<TermDistributionPage>("query_term_distribution_command", {
     token,
     selection,
+    groupBy,
+    caseFold,
+    language,
     offset,
     limit,
     cleaningConfig,
