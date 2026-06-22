@@ -206,6 +206,15 @@ pub struct AnalysisDocumentSummary {
     pub source_path: String,
     pub relative_path: String,
     pub token_count: u64,
+    /// Detected language ISO 639-1 code.
+    #[serde(default)]
+    pub language: Option<String>,
+    /// Detection confidence 0.0–1.0.
+    #[serde(default)]
+    pub language_confidence: Option<f64>,
+    /// True if the language was manually overridden.
+    #[serde(default)]
+    pub language_is_overridden: bool,
 }
 
 /// Corpus totals computed during the Rust build.
@@ -459,6 +468,9 @@ pub struct AnalysisBuildOptions {
     pub build_signature: String,
     pub processing_config_signature: String,
     pub overview_context: CorpusOverviewContext,
+    /// Per-document language override keyed by document index (0-based in the
+    /// original records slice). When present, this always wins over detection.
+    pub language_overrides: std::collections::HashMap<usize, String>,
 }
 
 /// Render-ready first-stage corpus EDA summary.
@@ -615,6 +627,7 @@ pub enum FrequencyGroupMode {
     #[default]
     Surface,
     Stem,
+    Lemma,
 }
 
 /// Machine-readable notices returned with frequency query windows.
@@ -622,6 +635,8 @@ pub enum FrequencyGroupMode {
 #[serde(rename_all = "camelCase")]
 pub enum FrequencyNoticeKind {
     StemmingUnsupportedLanguage,
+    AnnotationUnavailable,
+    PosFilterUnavailable,
 }
 
 /// One explicit notice about a frequency query fallback or limitation.
@@ -649,6 +664,9 @@ pub struct FrequencyQuery {
     pub case_fold: bool,
     #[serde(default)]
     pub language: Option<String>,
+    /// UPOS filter (e.g., "NOUN").
+    #[serde(default)]
+    pub pos_filter: Option<String>,
     pub sort_key: FrequencySortKey,
     pub sort_direction: SortDirection,
     pub offset: usize,
@@ -1019,12 +1037,18 @@ fn document_summary(
     record: &DocumentRecord,
     id: usize,
     token_count: u64,
+    language: Option<String>,
+    language_confidence: Option<f64>,
+    language_is_overridden: bool,
 ) -> AnalysisDocumentSummary {
     AnalysisDocumentSummary {
         id,
         source_path: record.source_path.to_string_lossy().to_string(),
         relative_path: record.relative_path.to_string_lossy().to_string(),
         token_count,
+        language,
+        language_confidence,
+        language_is_overridden,
     }
 }
 
@@ -1700,6 +1724,7 @@ where
         build_signature,
         processing_config_signature,
         overview_context,
+        language_overrides: _,
     } = options;
 
     report_progress(AnalysisBuildProgress {
@@ -1849,8 +1874,21 @@ where
         }
         surface_sparse_counts.sort_unstable_by_key(|(term_id, _)| *term_id);
         total_tokens += token_count;
+        let (language, language_confidence, language_is_overridden) = {
+            // Language detection is a Phase A hook available for the desktop layer.
+            // In the pure build we store None — the desktop Tauri command passes
+            // language overrides and runs detection externally.
+            (None, None, false)
+        };
         documents.push(AnalysisDocument {
-            summary: document_summary(record, document_id as usize, token_count),
+            summary: document_summary(
+                record,
+                document_id as usize,
+                token_count,
+                language,
+                language_confidence,
+                language_is_overridden,
+            ),
             surface_term_counts: surface_sparse_counts,
             mattr: document_mattr,
             mtld: document_mtld,
@@ -2047,40 +2085,56 @@ struct ResolvedFrequencyGrouping {
 }
 
 fn resolve_frequency_grouping(query: &FrequencyQuery) -> ResolvedFrequencyGrouping {
-    if query.group_by != FrequencyGroupMode::Stem {
-        return ResolvedFrequencyGrouping {
-            group_by: query.group_by,
+    match query.group_by {
+        FrequencyGroupMode::Surface => ResolvedFrequencyGrouping {
+            group_by: FrequencyGroupMode::Surface,
             case_fold: query.case_fold,
             stemmer: None,
             notices: Vec::new(),
-        };
-    }
-
-    if let Some(algorithm) = stemming_algorithm(query.language.as_deref()) {
-        return ResolvedFrequencyGrouping {
-            group_by: FrequencyGroupMode::Stem,
-            case_fold: true,
-            stemmer: Some(Stemmer::create(algorithm)),
-            notices: Vec::new(),
-        };
-    }
-
-    let language = query
-        .language
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("unspecified");
-    ResolvedFrequencyGrouping {
-        group_by: FrequencyGroupMode::Surface,
-        case_fold: query.case_fold,
-        stemmer: None,
-        notices: vec![FrequencyNotice {
-            kind: FrequencyNoticeKind::StemmingUnsupportedLanguage,
-            message: format!(
-                "Stemming is not available for language \"{language}\"; surface grouping was used."
-            ),
-        }],
+        },
+        FrequencyGroupMode::Lemma => {
+            // Lemma grouping requires annotation data. When annotation is
+            // unavailable, we surface a notice and fall back to surface.
+            let mut notices = Vec::new();
+            notices.push(FrequencyNotice {
+                kind: FrequencyNoticeKind::AnnotationUnavailable,
+                message: "Lemma grouping requires UDPipe annotation. Build the analysis corpus with annotation enabled, or switch to surface/stem grouping."
+                    .to_string(),
+            });
+            ResolvedFrequencyGrouping {
+                group_by: FrequencyGroupMode::Surface,
+                case_fold: query.case_fold,
+                stemmer: None,
+                notices,
+            }
+        }
+        FrequencyGroupMode::Stem => {
+            if let Some(algorithm) = stemming_algorithm(query.language.as_deref()) {
+                return ResolvedFrequencyGrouping {
+                    group_by: FrequencyGroupMode::Stem,
+                    case_fold: true,
+                    stemmer: Some(Stemmer::create(algorithm)),
+                    notices: Vec::new(),
+                };
+            }
+            let language = query
+                .language
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("unspecified");
+            ResolvedFrequencyGrouping {
+                group_by: FrequencyGroupMode::Surface,
+                case_fold: query.case_fold,
+                stemmer: None,
+                notices: vec![FrequencyNotice {
+                    kind: FrequencyNoticeKind::StemmingUnsupportedLanguage,
+                    message: format!(
+                        "Stemming is not available for language \"{language}\"; surface grouping was used."
+                    ),
+                }],
+            }
+        }
     }
 }
 
@@ -2394,6 +2448,7 @@ mod tests {
             build_signature: "signature".to_string(),
             processing_config_signature: cleaning_config_signature(&cleaning_config),
             overview_context: CorpusOverviewContext::default(),
+            language_overrides: std::collections::HashMap::new(),
         }
     }
 
@@ -2454,6 +2509,7 @@ mod tests {
             group_by: FrequencyGroupMode::Surface,
             case_fold: false,
             language: None,
+            pos_filter: None,
             sort_key: FrequencySortKey::Token,
             sort_direction: SortDirection::Asc,
             offset: 0,
