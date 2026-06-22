@@ -3961,6 +3961,14 @@ main {
   width: 132px;
 }
 
+#frequency-group-by {
+  width: 136px;
+}
+
+#frequency-language {
+  width: 132px;
+}
+
 #frequency-token-class {
   width: 176px;
 }
@@ -4041,6 +4049,7 @@ main {
 
 .frequency-search-note,
 .frequency-search-error,
+.frequency-query-notice,
 .frequency-explanation {
   margin: 0;
   color: var(--text-muted);
@@ -4050,6 +4059,10 @@ main {
 
 .frequency-search-error {
   color: var(--danger-color);
+}
+
+.frequency-query-notice {
+  color: var(--cw-warning-text);
 }
 
 .frequency-table-wrap {

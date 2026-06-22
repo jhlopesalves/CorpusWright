@@ -9,6 +9,8 @@ use unicode_segmentation::UnicodeSegmentation;
 pub const TOKENIZER_ID: &str = "corpuswright-uax29";
 /// Increment when a boundary rule or aggregation key changes.
 pub const TOKENIZER_VERSION: &str = "1";
+/// Exact unicode-segmentation version resolved by Cargo for this build.
+pub const UNICODE_SEGMENTATION_VERSION: &str = env!("CORPUSWRIGHT_UNICODE_SEGMENTATION_VERSION");
 
 /// Unicode normalisation applied to aggregation keys.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -65,7 +67,7 @@ impl Default for TokenizationManifest {
         Self {
             id: TOKENIZER_ID.to_string(),
             version: TOKENIZER_VERSION.to_string(),
-            unicode_segmentation_version: "1.13.3".to_string(),
+            unicode_segmentation_version: UNICODE_SEGMENTATION_VERSION.to_string(),
             config: TokenizationConfig::default(),
         }
     }
@@ -306,5 +308,32 @@ mod tests {
             .map(|token| token.surface)
             .collect::<Vec<_>>();
         assert_eq!(surfaces, ["well", "-", "being", "don", "'", "t"]);
+    }
+
+    #[test]
+    fn segmentation_version_matches_lockfile() {
+        let lockfile = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.lock"));
+        let mut in_unicode_segmentation = false;
+        let mut resolved = None;
+        for line in lockfile.lines() {
+            let trimmed = line.trim();
+            if trimmed == "[[package]]" {
+                in_unicode_segmentation = false;
+            } else if trimmed == "name = \"unicode-segmentation\"" {
+                in_unicode_segmentation = true;
+            } else if in_unicode_segmentation
+                && let Some(version) = trimmed
+                    .strip_prefix("version = \"")
+                    .and_then(|value| value.strip_suffix('"'))
+            {
+                resolved = Some(version);
+                break;
+            }
+        }
+        assert_eq!(UNICODE_SEGMENTATION_VERSION, resolved.unwrap());
+        assert_eq!(
+            TokenizationManifest::default().unicode_segmentation_version,
+            resolved.unwrap()
+        );
     }
 }
