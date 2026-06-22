@@ -171,6 +171,10 @@ impl LemmaTable {
     pub fn len(&self) -> usize {
         self.reverse.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.reverse.is_empty()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -190,10 +194,17 @@ impl std::fmt::Display for AnnotationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ModelNotFound { language } => {
-                write!(f, "No UDPipe model is available for language \"{language}\"")
+                write!(
+                    f,
+                    "No UDPipe model is available for language \"{language}\""
+                )
             }
             Self::ModelLoadFailed { path, error } => {
-                write!(f, "Failed to load UDPipe model at {}: {error}", path.display())
+                write!(
+                    f,
+                    "Failed to load UDPipe model at {}: {error}",
+                    path.display()
+                )
             }
             Self::TaggingFailed { error } => {
                 write!(f, "UDPipe tagging failed: {error}")
@@ -238,12 +249,11 @@ impl ModelManager {
                 language: language.to_string(),
             });
         }
-        let model = udpipe_rs::Model::load(&path).map_err(|error| {
-            AnnotationError::ModelLoadFailed {
+        let model =
+            udpipe_rs::Model::load(&path).map_err(|error| AnnotationError::ModelLoadFailed {
                 path: path.clone(),
                 error: error.to_string(),
-            }
-        })?;
+            })?;
         self.loaded.insert(language.to_string(), model);
         Ok(())
     }
@@ -261,20 +271,21 @@ impl ModelManager {
         language: &str,
         tokens: &[&str],
     ) -> Result<Vec<AnnotatedToken>, AnnotationError> {
-        let model = self.loaded.get(language).ok_or_else(|| {
-            AnnotationError::ModelNotFound {
+        let model = self
+            .loaded
+            .get(language)
+            .ok_or_else(|| AnnotationError::ModelNotFound {
                 language: language.to_string(),
-            }
-        })?;
+            })?;
 
         // Reconstruct text: space-separated canonical tokens.
         let text = tokens.join(" ");
 
-        let words = model.parse(&text).map_err(|error| {
-            AnnotationError::TaggingFailed {
+        let words = model
+            .parse(&text)
+            .map_err(|error| AnnotationError::TaggingFailed {
                 error: error.to_string(),
-            }
-        })?;
+            })?;
 
         // Align by surface form — walk both lists in order.
         let mut annotated = Vec::with_capacity(tokens.len());
@@ -429,7 +440,9 @@ mod tests {
         };
 
         let mut manager = ModelManager::new(model_dir);
-        manager.load_model("en").expect("Failed to load English model");
+        manager
+            .load_model("en")
+            .expect("Failed to load English model");
 
         // Canonical tokens for "The cat runs." — both UAX #29 and UDPipe should agree.
         let tokens = &["The", "cat", "runs"];
@@ -444,10 +457,7 @@ mod tests {
             "Token count mismatch — re-segmentation detected"
         );
         for (i, tok) in annotated.iter().enumerate() {
-            assert_eq!(
-                tok.surface, tokens[i],
-                "Surface mismatch at index {i}"
-            );
+            assert_eq!(tok.surface, tokens[i], "Surface mismatch at index {i}");
         }
 
         // Lemma and UPOS present.

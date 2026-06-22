@@ -128,12 +128,13 @@ pub fn resolve_language(
 }
 
 /// Convenience: detect + resolve in one call using the default threshold.
-pub fn detect_and_resolve(
-    text: &str,
-    override_language: Option<&str>,
-) -> DocumentLanguage {
+pub fn detect_and_resolve(text: &str, override_language: Option<&str>) -> DocumentLanguage {
     let detected = detect_language(text);
-    let resolution = resolve_language(&detected, override_language, DEFAULT_LOW_CONFIDENCE_THRESHOLD);
+    let resolution = resolve_language(
+        &detected,
+        override_language,
+        DEFAULT_LOW_CONFIDENCE_THRESHOLD,
+    );
     DocumentLanguage {
         detected,
         override_language: override_language.map(str::to_string),
@@ -186,8 +187,7 @@ mod tests {
         assert!(resolution.is_low_confidence);
 
         // With override — low confidence flag is cleared.
-        let resolved =
-            resolve_language(&detected, Some("fr"), DEFAULT_LOW_CONFIDENCE_THRESHOLD);
+        let resolved = resolve_language(&detected, Some("fr"), DEFAULT_LOW_CONFIDENCE_THRESHOLD);
         assert_eq!(resolved.effective_language, "fr");
         assert!(resolved.is_overridden);
         assert!(!resolved.is_low_confidence);
