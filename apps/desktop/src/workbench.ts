@@ -20,6 +20,7 @@ import {
   type CorpusOverviewFindingSeverity,
   type FrequencyMatchMode,
   type FrequencyPage,
+  type FrequencyGroupMode,
   type FrequencySortKey,
   type FrequencyTermItem,
   type FrequencyTokenClass as FrequencyTokenClassFilter,
@@ -1506,8 +1507,36 @@ function renderFrequencySearchError(message: string | null): void {
   dom.frequencySearchError.classList.toggle("hidden", message === null);
 }
 
+function renderFrequencyQueryNotice(page: FrequencyPage | null): void {
+  const message = page?.notices.map((notice) => notice.message).join(" ") ?? "";
+  dom.frequencyQueryNotice.textContent = message;
+  dom.frequencyQueryNotice.classList.toggle("hidden", message.length === 0);
+}
+
 function currentFrequencyTokenClassFilter(): FrequencyTokenClassFilter {
   return dom.frequencyTokenClassSelect.value as FrequencyTokenClassFilter;
+}
+
+function currentFrequencyGroupMode(): FrequencyGroupMode {
+  return dom.frequencyGroupBySelect.value as FrequencyGroupMode;
+}
+
+function currentFrequencyCaseFold(): boolean {
+  return dom.frequencyCaseFoldInput.checked || currentFrequencyGroupMode() === "stem";
+}
+
+function currentFrequencyLanguage(): string | null {
+  return currentFrequencyGroupMode() === "stem" ? dom.frequencyLanguageSelect.value : null;
+}
+
+function syncFrequencyCaseFoldToggle(): void {
+  const stemsAreSelected = currentFrequencyGroupMode() === "stem";
+  const isFolded = currentFrequencyCaseFold();
+  dom.frequencyCaseFoldInput.disabled = stemsAreSelected;
+  dom.frequencyCaseFoldInput.checked = isFolded;
+  dom.frequencyCaseFoldInput.setAttribute("aria-checked", isFolded ? "true" : "false");
+  dom.frequencyCaseFoldState.textContent = isFolded ? "Folded" : "As typed";
+  dom.frequencyLanguageSelect.disabled = !stemsAreSelected;
 }
 
 function tokenClassSummary(filter: FrequencyTokenClassFilter): string {
@@ -1520,6 +1549,15 @@ function tokenClassSummary(filter: FrequencyTokenClassFilter): string {
       return "numerals included";
     case "all":
       return "all token classes";
+  }
+}
+
+function frequencyGroupingSummary(): string {
+  switch (currentFrequencyGroupMode()) {
+    case "surface":
+      return currentFrequencyCaseFold() ? "case-folded surface forms" : "surface forms";
+    case "stem":
+      return `${dom.frequencyLanguageSelect.selectedOptions[0]?.textContent ?? "selected language"} stems`;
   }
 }
 
@@ -1547,6 +1585,7 @@ function frequencySummaryText(page: FrequencyPage, tokenClassFilter: FrequencyTo
     parts.push("English stopwords hidden");
   }
   parts.push(
+    frequencyGroupingSummary(),
     tokenClassSummary(tokenClassFilter),
     documentScope,
     `${formatNumber(page.scopedTotalTokens)} tokens in scope`,
@@ -1593,6 +1632,9 @@ async function loadTermDistribution(token: string, offset: number): Promise<void
     const page = await queryTermDistribution(
       token,
       frequencyDocumentScope,
+      currentFrequencyGroupMode(),
+      currentFrequencyCaseFold(),
+      currentFrequencyLanguage(),
       offset,
       TERM_DISTRIBUTION_PAGE_SIZE,
       effectiveCleaningConfig(),
@@ -1723,6 +1765,9 @@ async function refreshFrequencyPage(resetOffset = true): Promise<void> {
         minimumFrequency: Math.max(1, Number.parseInt(dom.frequencyMinInput.value, 10) || 1),
         tokenClass: currentFrequencyTokenClassFilter(),
         hideStopwords: dom.frequencyHideStopwordsInput.checked,
+        groupBy: currentFrequencyGroupMode(),
+        caseFold: currentFrequencyCaseFold(),
+        language: currentFrequencyLanguage(),
         sortKey: frequencySortKey,
         sortDirection: frequencySortDirection,
         offset: frequencyPageOffset,
@@ -1763,6 +1808,7 @@ function renderFrequencyList(): void {
   dom.frequencyTableBody.replaceChildren();
   dom.frequencyLimitNote.textContent = "";
   renderFrequencySearchError(frequencyQueryFailure);
+  renderFrequencyQueryNotice(frequencyPage);
 
   const corpus = state.analysisCorpus;
   renderFrequencyScopeControl(corpus);
@@ -1804,6 +1850,7 @@ function renderFrequencyList(): void {
 
   const page = frequencyPage;
   renderFrequencySearchError(page.queryError);
+  renderFrequencyQueryNotice(page);
   dom.frequencySummary.textContent = frequencySummaryText(page, currentFrequencyTokenClassFilter());
   dom.frequencyResultCount.textContent = `Built from ${inputTextSourceLabel(corpus.inputTextSource)}`;
   const first = page.totalTerms === 0 ? 0 : page.offset + 1;
@@ -2412,6 +2459,16 @@ export function initWorkbenchSwitcher(): void {
   dom.frequencySearchInput.addEventListener("input", scheduleFrequencyRefresh);
   dom.frequencyMatchModeSelect.addEventListener("change", () => void refreshFrequencyPage());
   dom.frequencyMinInput.addEventListener("input", scheduleFrequencyRefresh);
+  dom.frequencyGroupBySelect.addEventListener("change", () => {
+    syncFrequencyCaseFoldToggle();
+    void refreshFrequencyPage();
+  });
+  syncFrequencyCaseFoldToggle();
+  dom.frequencyCaseFoldInput.addEventListener("change", () => {
+    syncFrequencyCaseFoldToggle();
+    void refreshFrequencyPage();
+  });
+  dom.frequencyLanguageSelect.addEventListener("change", () => void refreshFrequencyPage());
   dom.frequencyTokenClassSelect.addEventListener("change", () => void refreshFrequencyPage());
   syncFrequencyStopwordsToggle();
   dom.frequencyHideStopwordsInput.addEventListener("change", () => {

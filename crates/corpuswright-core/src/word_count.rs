@@ -125,16 +125,33 @@ fn apply_pdf_cleaning_for_word_count(raw: &str, cleaning_config: &CleaningConfig
 
 /// Counts words after optional HTML extraction and `clean_text`.
 fn count_words_in_processed_text(raw: &str, cleaning_config: &CleaningConfig) -> usize {
+    let cleaned = cleaned_word_count_text(raw, cleaning_config);
+    tokenize(&cleaned, 0, &TokenizationConfig::default())
+        .into_iter()
+        .filter(|token| token.counts_as_word())
+        .count()
+}
+
+#[cfg(test)]
+pub(crate) fn word_token_surfaces_in_processed_text(
+    raw: &str,
+    cleaning_config: &CleaningConfig,
+) -> Vec<String> {
+    let cleaned = cleaned_word_count_text(raw, cleaning_config);
+    tokenize(&cleaned, 0, &TokenizationConfig::default())
+        .into_iter()
+        .filter(|token| token.counts_as_word())
+        .map(|token| token.surface.to_string())
+        .collect()
+}
+
+fn cleaned_word_count_text(raw: &str, cleaning_config: &CleaningConfig) -> String {
     let text = if cleaning_config.extract_html {
         crate::html::extract_html(raw)
     } else {
         raw.to_string()
     };
-    let cleaned = clean_text(&text, cleaning_config);
-    tokenize(&cleaned, 0, &TokenizationConfig::default())
-        .into_iter()
-        .filter(|token| token.counts_as_word())
-        .count()
+    clean_text(&text, cleaning_config)
 }
 
 #[cfg(test)]

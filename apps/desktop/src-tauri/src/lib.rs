@@ -1,9 +1,9 @@
 use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisCorpus,
     AnalysisDocumentPage, AnalysisDocumentSelection, CorpusOverview, CorpusOverviewContext,
-    FrequencyPage, FrequencyQuery, TermDistributionPage, build_analysis_corpus,
-    cleaning_config_signature, query_analysis_documents, query_frequency_list,
-    query_term_distribution, resolve_analysis_input,
+    FrequencyGroupMode, FrequencyPage, FrequencyQuery, TermDistributionPage, TermDistributionQuery,
+    build_analysis_corpus, cleaning_config_signature, query_analysis_documents,
+    query_frequency_list, query_term_distribution, resolve_analysis_input,
 };
 use corpuswright_core::cache::{
     CacheEntry, DocumentTextMode, ExtractionCache, document_text_for_record,
@@ -1984,6 +1984,9 @@ async fn query_analysis_documents_command(
 async fn query_term_distribution_command(
     token: String,
     selection: AnalysisDocumentSelection,
+    group_by: FrequencyGroupMode,
+    case_fold: bool,
+    language: Option<String>,
     offset: usize,
     limit: usize,
     cleaning_config: CleaningConfig,
@@ -1991,7 +1994,18 @@ async fn query_term_distribution_command(
 ) -> Result<TermDistributionPage, String> {
     let corpus = analysis.corpus(&cleaning_config)?;
     tauri::async_runtime::spawn_blocking(move || {
-        query_term_distribution(&corpus, &token, &selection, offset, limit)
+        query_term_distribution(
+            &corpus,
+            &token,
+            &TermDistributionQuery {
+                selection,
+                group_by,
+                case_fold,
+                language,
+                offset,
+                limit,
+            },
+        )
     })
     .await
     .map_err(|error| format!("Term distribution query task failed: {error}"))
