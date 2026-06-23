@@ -1,0 +1,12 @@
+# Normalise line-endings to LF on check-in; let the working copy
+# follow the platform default on check-out.
+* text=auto eol=lf
+
+# Binary assets — never touch.
+*.ttf  binary
+*.otf  binary
+*.woff binary
+*.woff2 binary
+*.png  binary
+*.ico  binary
+*.udpipe binary
