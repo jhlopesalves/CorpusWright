@@ -5,6 +5,7 @@ use crate::clean::CleaningConfig;
 use crate::language::detect_and_resolve;
 use crate::scan::{DocumentRecord, DocumentType};
 use crate::tokenization::{TokenizationConfig, tokenize};
+use rayon::prelude::*;
 use regex::Regex;
 use rust_stemmers::{Algorithm, Stemmer};
 use serde::{Deserialize, Serialize};
@@ -552,6 +553,44 @@ struct AnalysisBuildMetadata {
     skipped_pdf_documents: usize,
     vocabulary_growth: Vec<VocabularyGrowthPoint>,
     overview_context: CorpusOverviewContext,
+}
+
+struct AnalysisBuildProduct {
+    corpus: AnalysisCorpus,
+    #[cfg(test)]
+    terms: Vec<AnalysisTerm>,
+}
+
+enum LoadedAnalysisInput<'record> {
+    Ready {
+        original_record_index: usize,
+        record: &'record DocumentRecord,
+        text: String,
+    },
+    Skipped,
+}
+
+enum MappedAnalysisInput<'record> {
+    Ready(MappedAnalysisDocument<'record>),
+    Skipped,
+}
+
+struct MappedAnalysisDocument<'record> {
+    record: &'record DocumentRecord,
+    prepared_terms: Vec<LocalTermCount>,
+    surface_terms: Vec<LocalTermCount>,
+    token_count: u64,
+    mattr: Option<f64>,
+    mtld: Option<f64>,
+    language: Option<String>,
+    language_confidence: Option<f64>,
+    language_is_overridden: bool,
+}
+
+struct LocalTermCount {
+    token: String,
+    count: u64,
+    first_token_position: u64,
 }
 
 /// Sparse Rust-owned analysis index.
@@ -1734,9 +1773,25 @@ pub fn build_analysis_corpus<TextLoader, Progress>(
     records: &[DocumentRecord],
     options: AnalysisBuildOptions,
     cancel: &AtomicBool,
+    load_text: TextLoader,
+    report_progress: Progress,
+) -> Result<AnalysisCorpus, AnalysisBuildError>
+where
+    TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
+    Progress: FnMut(AnalysisBuildProgress),
+{
+    build_analysis_corpus_with_mapping(records, options, cancel, load_text, report_progress, true)
+        .map(|product| product.corpus)
+}
+
+fn build_analysis_corpus_with_mapping<TextLoader, Progress>(
+    records: &[DocumentRecord],
+    options: AnalysisBuildOptions,
+    cancel: &AtomicBool,
     mut load_text: TextLoader,
     mut report_progress: Progress,
-) -> Result<AnalysisCorpus, AnalysisBuildError>
+    parallel_map: bool,
+) -> Result<AnalysisBuildProduct, AnalysisBuildError>
 where
     TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
     Progress: FnMut(AnalysisBuildProgress),
@@ -1758,16 +1813,6 @@ where
         current_phase: AnalysisBuildPhase::LoadingSources,
     });
 
-    let mut documents = Vec::with_capacity(records.len());
-    let mut terms = Vec::<AnalysisTerm>::new();
-    let mut term_index = HashMap::<String, u32>::new();
-    let mut surface_terms = Vec::<AnalysisSurfaceTerm>::new();
-    let mut surface_term_index = HashMap::<String, u32>::new();
-    let lemma_table = LemmaTable::new();
-    let mut total_tokens = 0u64;
-    let mut growth_tokens = 0u64;
-    let mut next_growth_checkpoint = 1u64;
-    let mut vocabulary_growth = Vec::<VocabularyGrowthPoint>::new();
     let mut skipped_documents = 0usize;
     let mut skipped_pdf_documents = 0usize;
     let mut processed_documents = 0usize;
@@ -1788,6 +1833,7 @@ where
             .then_with(|| left.1.source_path.cmp(&right.1.source_path))
     });
 
+    let mut loaded_inputs = Vec::with_capacity(records.len());
     for (record_index, (original_record_index, record)) in ordered_records.into_iter().enumerate() {
         if cancel.load(AtomicOrdering::Relaxed) {
             return Err(AnalysisBuildError::Cancelled);
@@ -1804,125 +1850,112 @@ where
             }
             AnalysisInputProvenance::EmptyOrFailed => None,
         };
-        let Some(text) = text.filter(|value| !value.trim().is_empty()) else {
+        if let Some(text) = text.filter(|value| !value.trim().is_empty()) {
+            loaded_inputs.push(LoadedAnalysisInput::Ready {
+                original_record_index,
+                record,
+                text,
+            });
+        } else {
             skipped_documents += 1;
             if record.document_type == DocumentType::Pdf {
                 skipped_pdf_documents += 1;
             }
+            loaded_inputs.push(LoadedAnalysisInput::Skipped);
             report_progress(AnalysisBuildProgress {
                 files_done: record_index + 1,
                 files_total: records.len(),
-                tokens_seen: total_tokens,
-                types_seen: terms.len(),
+                tokens_seen: 0,
+                types_seen: 0,
                 current_phase: AnalysisBuildPhase::ReadingFiles,
             });
             continue;
-        };
-        let document_id = u32::try_from(documents.len()).map_err(|_| {
-            AnalysisBuildError::Message(
-                "Analysis contains more than u32::MAX documents.".to_string(),
-            )
-        })?;
-        let tokenization_config = TokenizationConfig::default();
-        let tokens = analysis_word_tokens(&text, document_id, &tokenization_config);
-        let token_keys = tokens
-            .iter()
-            .map(|token| token.aggregation_key(&tokenization_config))
-            .collect::<Vec<_>>();
-        let document_mattr = mattr(&token_keys, MATTR_WINDOW_TOKENS);
-        let document_mtld = (token_keys.len() >= MTLD_MIN_DOCUMENT_TOKENS)
-            .then(|| mtld(&token_keys, MTLD_TTR_THRESHOLD))
-            .flatten();
-        let mut document_terms = HashMap::<u32, u64>::new();
-        for token in &token_keys {
-            let term_id = if let Some(&term_id) = term_index.get(token) {
-                term_id
-            } else {
-                let term_id = u32::try_from(terms.len()).map_err(|_| {
-                    AnalysisBuildError::Message(
-                        "Analysis vocabulary contains more than u32::MAX types.".to_string(),
-                    )
-                })?;
-                term_index.insert(token.clone(), term_id);
-                terms.push(AnalysisTerm {
-                    token: token.clone(),
-                    frequency: 0,
-                    document_frequency: 0,
-                    document_counts: Vec::new(),
-                    dispersion: 0.0,
-                });
-                term_id
-            };
-            *document_terms.entry(term_id).or_default() += 1;
-            growth_tokens += 1;
-            if growth_tokens >= next_growth_checkpoint {
-                vocabulary_growth.push(VocabularyGrowthPoint {
-                    tokens: growth_tokens,
-                    types: terms.len(),
-                });
-                next_growth_checkpoint = next_growth_checkpoint.saturating_mul(2);
-            }
         }
-        let mut document_surface_terms = HashMap::<u32, u64>::new();
-        for surface in tokens.iter().map(|token| token.surface) {
-            let surface = surface.to_string();
-            let term_id = if let Some(&term_id) = surface_term_index.get(&surface) {
-                term_id
-            } else {
-                let term_id = u32::try_from(surface_terms.len()).map_err(|_| {
-                    AnalysisBuildError::Message(
-                        "Analysis surface vocabulary contains more than u32::MAX types."
-                            .to_string(),
-                    )
-                })?;
-                surface_term_index.insert(surface.clone(), term_id);
-                surface_terms.push(AnalysisSurfaceTerm {
-                    token: surface,
-                    document_counts: Vec::new(),
-                });
-                term_id
-            };
-            *document_surface_terms.entry(term_id).or_default() += 1;
-        }
-        let document_language = detect_and_resolve(
-            &text,
-            language_overrides
-                .get(&original_record_index)
-                .map(String::as_str),
-        );
-        let token_count = document_terms.values().sum::<u64>();
-        for (term_id, count) in document_terms {
-            let term = &mut terms[term_id as usize];
-            term.frequency += count;
-            term.document_frequency += 1;
-            term.document_counts.push((document_id as usize, count));
-        }
-        let mut surface_sparse_counts = Vec::with_capacity(document_surface_terms.len());
-        for (term_id, count) in document_surface_terms {
-            let term = &mut surface_terms[term_id as usize];
-            term.document_counts.push((document_id as usize, count));
-            surface_sparse_counts.push((term_id, count));
-        }
-        surface_sparse_counts.sort_unstable_by_key(|(term_id, _)| *term_id);
-        total_tokens += token_count;
-        let language = Some(document_language.resolution.effective_language.clone());
-        let language_confidence = document_language.resolution.confidence;
-        let language_is_overridden = document_language.resolution.is_overridden;
-        documents.push(AnalysisDocument {
-            summary: document_summary(
-                record,
-                document_id as usize,
-                token_count,
-                language,
-                language_confidence,
-                language_is_overridden,
-            ),
-            surface_term_counts: surface_sparse_counts,
-            annotated_term_counts: Vec::new(),
-            annotation_available: false,
-            mattr: document_mattr,
-            mtld: document_mtld,
+        report_progress(AnalysisBuildProgress {
+            files_done: record_index + 1,
+            files_total: records.len(),
+            tokens_seen: 0,
+            types_seen: 0,
+            current_phase: AnalysisBuildPhase::ReadingFiles,
         });
+    }
+
+    let mapped_inputs =
+        map_loaded_analysis_inputs(loaded_inputs, &language_overrides, cancel, parallel_map)?;
+
+    let mut documents = Vec::with_capacity(records.len().saturating_sub(skipped_documents));
+    let mut terms = Vec::<AnalysisTerm>::new();
+    let mut term_index = HashMap::<String, u32>::new();
+    let mut surface_terms = Vec::<AnalysisSurfaceTerm>::new();
+    let mut surface_term_index = HashMap::<String, u32>::new();
+    let lemma_table = LemmaTable::new();
+    let mut total_tokens = 0u64;
+    let mut growth_tokens = 0u64;
+    let mut next_growth_checkpoint = 1u64;
+    let mut vocabulary_growth = Vec::<VocabularyGrowthPoint>::new();
+
+    report_progress(AnalysisBuildProgress {
+        files_done: 0,
+        files_total: records.len(),
+        tokens_seen: 0,
+        types_seen: 0,
+        current_phase: AnalysisBuildPhase::Tokenising,
+    });
+
+    for (record_index, input) in mapped_inputs.iter().enumerate() {
+        if cancel.load(AtomicOrdering::Relaxed) {
+            return Err(AnalysisBuildError::Cancelled);
+        }
+        if let MappedAnalysisInput::Ready(mapped_document) = input {
+            let document_id = u32::try_from(documents.len()).map_err(|_| {
+                AnalysisBuildError::Message(
+                    "Analysis contains more than u32::MAX documents.".to_string(),
+                )
+            })?;
+            let document_term_counts = assign_prepared_term_ids(
+                mapped_document,
+                &mut term_index,
+                &mut terms,
+                &mut growth_tokens,
+                &mut next_growth_checkpoint,
+                &mut vocabulary_growth,
+            )?;
+            let mut surface_sparse_counts = Vec::with_capacity(mapped_document.surface_terms.len());
+            for local_term in &mapped_document.surface_terms {
+                let term_id = surface_term_id(
+                    &local_term.token,
+                    &mut surface_term_index,
+                    &mut surface_terms,
+                )?;
+                surface_terms[term_id as usize]
+                    .document_counts
+                    .push((document_id as usize, local_term.count));
+                surface_sparse_counts.push((term_id, local_term.count));
+            }
+            surface_sparse_counts.sort_unstable_by_key(|(term_id, _)| *term_id);
+            for (term_id, count) in document_term_counts {
+                let term = &mut terms[term_id as usize];
+                term.frequency += count;
+                term.document_frequency += 1;
+                term.document_counts.push((document_id as usize, count));
+            }
+            total_tokens += mapped_document.token_count;
+            documents.push(AnalysisDocument {
+                summary: document_summary(
+                    mapped_document.record,
+                    document_id as usize,
+                    mapped_document.token_count,
+                    mapped_document.language.clone(),
+                    mapped_document.language_confidence,
+                    mapped_document.language_is_overridden,
+                ),
+                surface_term_counts: surface_sparse_counts,
+                annotated_term_counts: Vec::new(),
+                annotation_available: false,
+                mattr: mapped_document.mattr,
+                mtld: mapped_document.mtld,
+            });
+        }
         report_progress(AnalysisBuildProgress {
             files_done: record_index + 1,
             files_total: records.len(),
@@ -1992,12 +2025,222 @@ where
         },
     );
 
-    Ok(AnalysisCorpus {
-        documents,
-        surface_terms,
-        lemma_table,
-        overview,
+    Ok(AnalysisBuildProduct {
+        corpus: AnalysisCorpus {
+            documents,
+            surface_terms,
+            lemma_table,
+            overview,
+        },
+        #[cfg(test)]
+        terms,
     })
+}
+
+fn map_loaded_analysis_inputs<'record>(
+    loaded_inputs: Vec<LoadedAnalysisInput<'record>>,
+    language_overrides: &HashMap<usize, String>,
+    cancel: &AtomicBool,
+    parallel_map: bool,
+) -> Result<Vec<MappedAnalysisInput<'record>>, AnalysisBuildError> {
+    if parallel_map {
+        loaded_inputs
+            .into_par_iter()
+            .map(|input| map_loaded_analysis_input(input, language_overrides, cancel))
+            .collect()
+    } else {
+        loaded_inputs
+            .into_iter()
+            .map(|input| map_loaded_analysis_input(input, language_overrides, cancel))
+            .collect()
+    }
+}
+
+fn map_loaded_analysis_input<'record>(
+    input: LoadedAnalysisInput<'record>,
+    language_overrides: &HashMap<usize, String>,
+    cancel: &AtomicBool,
+) -> Result<MappedAnalysisInput<'record>, AnalysisBuildError> {
+    if cancel.load(AtomicOrdering::Relaxed) {
+        return Err(AnalysisBuildError::Cancelled);
+    }
+    match input {
+        LoadedAnalysisInput::Ready {
+            original_record_index,
+            record,
+            text,
+        } => {
+            let tokenization_config = TokenizationConfig::default();
+            let tokens = analysis_word_tokens(&text, 0, &tokenization_config);
+            let token_keys = tokens
+                .iter()
+                .map(|token| token.aggregation_key(&tokenization_config))
+                .collect::<Vec<_>>();
+            let document_mattr = mattr(&token_keys, MATTR_WINDOW_TOKENS);
+            let document_mtld = (token_keys.len() >= MTLD_MIN_DOCUMENT_TOKENS)
+                .then(|| mtld(&token_keys, MTLD_TTR_THRESHOLD))
+                .flatten();
+            let prepared_terms = collect_local_term_counts(token_keys.iter().cloned());
+            let surface_terms =
+                collect_local_term_counts(tokens.iter().map(|token| token.surface.to_string()));
+            drop(tokens);
+            let document_language = detect_and_resolve(
+                &text,
+                language_overrides
+                    .get(&original_record_index)
+                    .map(String::as_str),
+            );
+            Ok(MappedAnalysisInput::Ready(MappedAnalysisDocument {
+                record,
+                token_count: token_keys.len() as u64,
+                prepared_terms,
+                surface_terms,
+                mattr: document_mattr,
+                mtld: document_mtld,
+                language: Some(document_language.resolution.effective_language),
+                language_confidence: document_language.resolution.confidence,
+                language_is_overridden: document_language.resolution.is_overridden,
+            }))
+        }
+        LoadedAnalysisInput::Skipped => Ok(MappedAnalysisInput::Skipped),
+    }
+}
+
+fn collect_local_term_counts(tokens: impl Iterator<Item = String>) -> Vec<LocalTermCount> {
+    let mut term_lookup = HashMap::<String, usize>::new();
+    let mut terms = Vec::<LocalTermCount>::new();
+    for (index, token) in tokens.enumerate() {
+        if let Some(&term_index) = term_lookup.get(&token) {
+            terms[term_index].count += 1;
+        } else {
+            let term_index = terms.len();
+            term_lookup.insert(token.clone(), term_index);
+            terms.push(LocalTermCount {
+                token,
+                count: 1,
+                first_token_position: index as u64 + 1,
+            });
+        }
+    }
+    terms
+}
+
+fn assign_prepared_term_ids(
+    document: &MappedAnalysisDocument<'_>,
+    term_index: &mut HashMap<String, u32>,
+    terms: &mut Vec<AnalysisTerm>,
+    growth_tokens: &mut u64,
+    next_growth_checkpoint: &mut u64,
+    vocabulary_growth: &mut Vec<VocabularyGrowthPoint>,
+) -> Result<Vec<(u32, u64)>, AnalysisBuildError> {
+    let document_start_tokens = *growth_tokens;
+    let mut document_term_counts = Vec::with_capacity(document.prepared_terms.len());
+    for local_term in &document.prepared_terms {
+        let first_absolute_position = document_start_tokens
+            .checked_add(local_term.first_token_position)
+            .ok_or_else(|| {
+                AnalysisBuildError::Message(
+                    "Analysis contains more than u64::MAX tokens.".to_string(),
+                )
+            })?;
+        while *next_growth_checkpoint < first_absolute_position {
+            if !record_vocabulary_growth_checkpoint(
+                vocabulary_growth,
+                next_growth_checkpoint,
+                terms.len(),
+            ) {
+                break;
+            }
+        }
+        let term_id = prepared_term_id(&local_term.token, term_index, terms)?;
+        while *next_growth_checkpoint <= first_absolute_position {
+            if !record_vocabulary_growth_checkpoint(
+                vocabulary_growth,
+                next_growth_checkpoint,
+                terms.len(),
+            ) {
+                break;
+            }
+        }
+        document_term_counts.push((term_id, local_term.count));
+    }
+    *growth_tokens = growth_tokens
+        .checked_add(document.token_count)
+        .ok_or_else(|| {
+            AnalysisBuildError::Message("Analysis contains more than u64::MAX tokens.".to_string())
+        })?;
+    while *next_growth_checkpoint <= *growth_tokens {
+        if !record_vocabulary_growth_checkpoint(
+            vocabulary_growth,
+            next_growth_checkpoint,
+            terms.len(),
+        ) {
+            break;
+        }
+    }
+    Ok(document_term_counts)
+}
+
+fn record_vocabulary_growth_checkpoint(
+    vocabulary_growth: &mut Vec<VocabularyGrowthPoint>,
+    next_growth_checkpoint: &mut u64,
+    types: usize,
+) -> bool {
+    vocabulary_growth.push(VocabularyGrowthPoint {
+        tokens: *next_growth_checkpoint,
+        types,
+    });
+    let next = next_growth_checkpoint.saturating_mul(2);
+    if next == *next_growth_checkpoint {
+        return false;
+    }
+    *next_growth_checkpoint = next;
+    true
+}
+
+fn prepared_term_id(
+    token: &str,
+    term_index: &mut HashMap<String, u32>,
+    terms: &mut Vec<AnalysisTerm>,
+) -> Result<u32, AnalysisBuildError> {
+    if let Some(&term_id) = term_index.get(token) {
+        return Ok(term_id);
+    }
+    let term_id = u32::try_from(terms.len()).map_err(|_| {
+        AnalysisBuildError::Message(
+            "Analysis vocabulary contains more than u32::MAX types.".to_string(),
+        )
+    })?;
+    term_index.insert(token.to_string(), term_id);
+    terms.push(AnalysisTerm {
+        token: token.to_string(),
+        frequency: 0,
+        document_frequency: 0,
+        document_counts: Vec::new(),
+        dispersion: 0.0,
+    });
+    Ok(term_id)
+}
+
+fn surface_term_id(
+    token: &str,
+    surface_term_index: &mut HashMap<String, u32>,
+    surface_terms: &mut Vec<AnalysisSurfaceTerm>,
+) -> Result<u32, AnalysisBuildError> {
+    if let Some(&term_id) = surface_term_index.get(token) {
+        return Ok(term_id);
+    }
+    let term_id = u32::try_from(surface_terms.len()).map_err(|_| {
+        AnalysisBuildError::Message(
+            "Analysis surface vocabulary contains more than u32::MAX types.".to_string(),
+        )
+    })?;
+    surface_term_index.insert(token.to_string(), term_id);
+    surface_terms.push(AnalysisSurfaceTerm {
+        token: token.to_string(),
+        document_counts: Vec::new(),
+    });
+    Ok(term_id)
 }
 
 fn selected_document_mask(
@@ -2660,6 +2903,129 @@ mod tests {
             .collect()
     }
 
+    #[derive(Debug, PartialEq)]
+    struct AnalysisCorpusSnapshot {
+        overview: CorpusOverview,
+        documents: Vec<AnalysisDocumentSnapshot>,
+        surface_terms: Vec<(String, Vec<(usize, u64)>)>,
+        prepared_terms: Vec<AnalysisPreparedTermSnapshot>,
+        frequency_by_token: FrequencyPage,
+        frequency_by_frequency: FrequencyPage,
+        alpha_distribution: TermDistributionPage,
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct AnalysisDocumentSnapshot {
+        summary: AnalysisDocumentSummary,
+        surface_term_counts: Vec<(u32, u64)>,
+        annotated_term_counts: Vec<(u32, u32, UniversalPos, u64)>,
+        annotation_available: bool,
+        mattr: Option<f64>,
+        mtld: Option<f64>,
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct AnalysisPreparedTermSnapshot {
+        token: String,
+        frequency: u64,
+        document_frequency: usize,
+        document_counts: Vec<(usize, u64)>,
+        dispersion: f64,
+    }
+
+    fn analysis_product_for(
+        texts: &[(&str, &str)],
+        options: AnalysisBuildOptions,
+        parallel_map: bool,
+    ) -> AnalysisBuildProduct {
+        let records = texts
+            .iter()
+            .map(|(name, _)| record(name))
+            .collect::<Vec<_>>();
+        let text_by_name = texts.iter().copied().collect::<HashMap<_, _>>();
+        build_analysis_corpus_with_mapping(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    text_by_name
+                        .get(record.source_path.to_str().unwrap())
+                        .copied()
+                        .unwrap_or_default(),
+                ))
+            },
+            |_| {},
+            parallel_map,
+        )
+        .unwrap()
+    }
+
+    fn snapshot_analysis_product(product: &AnalysisBuildProduct) -> AnalysisCorpusSnapshot {
+        let corpus = &product.corpus;
+        let mut frequency_by_frequency_query = base_frequency_query();
+        frequency_by_frequency_query.sort_key = FrequencySortKey::Frequency;
+        frequency_by_frequency_query.sort_direction = SortDirection::Desc;
+        frequency_by_frequency_query.limit = 10;
+        AnalysisCorpusSnapshot {
+            overview: corpus.overview().clone(),
+            documents: corpus
+                .documents
+                .iter()
+                .map(|document| AnalysisDocumentSnapshot {
+                    summary: document.summary.clone(),
+                    surface_term_counts: document.surface_term_counts.clone(),
+                    annotated_term_counts: document
+                        .annotated_term_counts
+                        .iter()
+                        .map(|count| {
+                            (
+                                count.surface_term_id,
+                                count.lemma_id,
+                                count.upos,
+                                count.count,
+                            )
+                        })
+                        .collect(),
+                    annotation_available: document.annotation_available,
+                    mattr: document.mattr,
+                    mtld: document.mtld,
+                })
+                .collect(),
+            surface_terms: corpus
+                .surface_terms
+                .iter()
+                .map(|term| (term.token.clone(), term.document_counts.clone()))
+                .collect(),
+            prepared_terms: product
+                .terms
+                .iter()
+                .map(|term| AnalysisPreparedTermSnapshot {
+                    token: term.token.clone(),
+                    frequency: term.frequency,
+                    document_frequency: term.document_frequency,
+                    document_counts: term.document_counts.clone(),
+                    dispersion: term.dispersion,
+                })
+                .collect(),
+            frequency_by_token: query_frequency_list(corpus, &base_frequency_query()),
+            frequency_by_frequency: query_frequency_list(corpus, &frequency_by_frequency_query),
+            alpha_distribution: query_term_distribution(
+                corpus,
+                "alpha",
+                &TermDistributionQuery {
+                    selection: AnalysisDocumentSelection::default(),
+                    group_by: FrequencyGroupMode::Surface,
+                    case_fold: true,
+                    language: None,
+                    offset: 0,
+                    limit: 10,
+                },
+            ),
+        }
+    }
+
     fn add_document_annotations(
         corpus: &mut AnalysisCorpus,
         document_id: usize,
@@ -2734,6 +3100,153 @@ mod tests {
         assert_eq!(summary.language.as_deref(), Some("en"));
         assert_eq!(summary.language_confidence, None);
         assert!(summary.language_is_overridden);
+    }
+
+    #[test]
+    fn parallel_map_matches_sequential_reference_build() {
+        let long_text = (0..130)
+            .map(|index| match index % 5 {
+                0 => "alpha",
+                1 => "beta",
+                2 => "gamma",
+                3 => "delta",
+                _ => "epsilon",
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let texts = [
+            ("z.txt", "Bonjour le monde alpha"),
+            ("a.txt", long_text.as_str()),
+            ("empty.txt", " \n"),
+            ("b.txt", "Cats cat ran running alpha"),
+        ];
+        let mut options = build_options();
+        options.language_overrides.insert(0, "fr".to_string());
+
+        let sequential = analysis_product_for(&texts, options.clone(), false);
+        let parallel = analysis_product_for(&texts, options, true);
+
+        assert_eq!(
+            snapshot_analysis_product(&parallel),
+            snapshot_analysis_product(&sequential)
+        );
+    }
+
+    #[test]
+    fn golden_fixture_pins_document_and_term_ordering() {
+        let texts = [
+            ("z.txt", "Beta delta alpha"),
+            ("a.txt", "Beta alpha beta"),
+            ("m.txt", "alpha Gamma"),
+            ("empty.txt", " "),
+        ];
+        let mut options = build_options();
+        for index in 0..texts.len() {
+            options.language_overrides.insert(index, "en".to_string());
+        }
+        let product = analysis_product_for(&texts, options, true);
+        let corpus = &product.corpus;
+
+        let summaries = corpus
+            .documents
+            .iter()
+            .map(|document| {
+                (
+                    document.summary.id,
+                    document.summary.relative_path.as_str(),
+                    document.summary.token_count,
+                    document.summary.language.as_deref(),
+                    document.summary.language_confidence,
+                    document.summary.language_is_overridden,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            summaries,
+            vec![
+                (0, "a.txt", 3, Some("en"), None, true),
+                (1, "m.txt", 2, Some("en"), None, true),
+                (2, "z.txt", 3, Some("en"), None, true),
+            ]
+        );
+
+        let prepared_terms = product
+            .terms
+            .iter()
+            .map(|term| {
+                (
+                    term.token.as_str(),
+                    term.frequency,
+                    term.document_frequency,
+                    term.document_counts.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            prepared_terms,
+            vec![
+                ("beta", 3, 2, vec![(0, 2), (2, 1)]),
+                ("alpha", 3, 3, vec![(0, 1), (1, 1), (2, 1)]),
+                ("gamma", 1, 1, vec![(1, 1)]),
+                ("delta", 1, 1, vec![(2, 1)]),
+            ]
+        );
+
+        let surface_terms = corpus
+            .surface_terms
+            .iter()
+            .map(|term| (term.token.as_str(), term.document_counts.clone()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            surface_terms,
+            vec![
+                ("Beta", vec![(0, 1), (2, 1)]),
+                ("alpha", vec![(0, 1), (1, 1), (2, 1)]),
+                ("beta", vec![(0, 1)]),
+                ("Gamma", vec![(1, 1)]),
+                ("delta", vec![(2, 1)]),
+            ]
+        );
+
+        let document_surface_counts = corpus
+            .documents
+            .iter()
+            .map(|document| {
+                (
+                    document.summary.relative_path.as_str(),
+                    document.surface_term_counts.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            document_surface_counts,
+            vec![
+                ("a.txt", vec![(0, 1), (1, 1), (2, 1)]),
+                ("m.txt", vec![(1, 1), (3, 1)]),
+                ("z.txt", vec![(0, 1), (1, 1), (4, 1)]),
+            ]
+        );
+        assert_eq!(
+            corpus.overview().vocabulary_growth.points,
+            vec![
+                VocabularyGrowthPoint {
+                    tokens: 1,
+                    types: 1,
+                },
+                VocabularyGrowthPoint {
+                    tokens: 2,
+                    types: 2,
+                },
+                VocabularyGrowthPoint {
+                    tokens: 4,
+                    types: 2,
+                },
+                VocabularyGrowthPoint {
+                    tokens: 8,
+                    types: 4,
+                },
+            ]
+        );
     }
 
     #[test]

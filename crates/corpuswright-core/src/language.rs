@@ -12,6 +12,7 @@ use ts_rs::TS;
 /// Confidence threshold below which detection is considered low-confidence.
 /// This is tunable — change the constant to adjust sensitivity.
 pub const DEFAULT_LOW_CONFIDENCE_THRESHOLD: f64 = 0.5;
+const CONFIDENCE_STABILITY_SCALE: f64 = 1_000_000_000_000.0;
 
 /// A detected language with its confidence score (0.0–1.0).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
@@ -65,6 +66,14 @@ static DETECTOR: LazyLock<LanguageDetector> = LazyLock::new(|| {
     .build()
 });
 
+fn stable_confidence(confidence: f64) -> f64 {
+    if confidence.is_finite() {
+        (confidence * CONFIDENCE_STABILITY_SCALE).round() / CONFIDENCE_STABILITY_SCALE
+    } else {
+        confidence
+    }
+}
+
 /// Runs language detection on arbitrary text, returning the best-matching
 /// language and its confidence (0.0–1.0).
 pub fn detect_language(text: &str) -> DetectedLanguage {
@@ -90,7 +99,7 @@ pub fn detect_language(text: &str) -> DetectedLanguage {
 
     DetectedLanguage {
         iso639_1: best_lang.to_string(),
-        confidence: best_conf,
+        confidence: stable_confidence(best_conf),
     }
 }
 
@@ -230,10 +239,7 @@ mod tests {
 
         let a_confidence = a.resolution.confidence.unwrap();
         let b_confidence = b.resolution.confidence.unwrap();
-        assert!(
-            (a_confidence - b_confidence).abs() <= 1e-12,
-            "confidence drifted from {a_confidence} to {b_confidence}"
-        );
+        assert_eq!(a_confidence, b_confidence);
     }
 
     #[test]
