@@ -1,8 +1,6 @@
 //! Rust-owned corpus analysis and bounded query APIs.
 
-use crate::annotation::{
-    AnnotationError, LemmaTable, ModelManager, UniversalPos, default_model_dir,
-};
+use crate::annotation::{LemmaTable, UniversalPos};
 use crate::clean::CleaningConfig;
 use crate::language::detect_and_resolve;
 use crate::scan::{DocumentRecord, DocumentType};
@@ -486,6 +484,7 @@ pub struct CorpusOverview {
     pub source_count: usize,
     pub total_tokens: u64,
     pub total_types: usize,
+    pub annotation_available: bool,
     pub input_text_source: AnalysisInputSource,
     pub built_at: String,
     pub build_signature: String,
@@ -553,7 +552,6 @@ struct AnalysisBuildMetadata {
     skipped_pdf_documents: usize,
     vocabulary_growth: Vec<VocabularyGrowthPoint>,
     overview_context: CorpusOverviewContext,
-    annotated_documents: usize,
 }
 
 /// Sparse Rust-owned analysis index.
@@ -1373,6 +1371,10 @@ fn build_overview(
     };
     debug_assert_eq!(band_10plus_count, frequent_terms.len());
     let document_count = documents.len();
+    let annotation_available = !documents.is_empty()
+        && documents
+            .iter()
+            .all(|document| document.annotation_available);
     let (df_in_1_count, df_in_2_to_n_minus_1_count, df_in_all_count) = if document_count == 0 {
         (0, 0, 0)
     } else if document_count == 1 {
@@ -1586,6 +1588,7 @@ fn build_overview(
         source_count: sources_in_project.unwrap_or(metadata.source_count),
         total_tokens,
         total_types,
+        annotation_available,
         input_text_source: metadata.input_text_source,
         built_at: metadata.built_at.clone(),
         build_signature: metadata.build_signature,
@@ -1708,14 +1711,9 @@ fn build_overview(
             case_handling: Some(
                 "Surface case preserved; NFC Unicode lowercase aggregation keys".to_string(),
             ),
-            lemmatisation: Some(if metadata.annotated_documents > 0 {
-                format!(
-                    "UDPipe lemma/POS annotation applied to {} of {} documents",
-                    metadata.annotated_documents, document_count
-                )
-            } else {
-                "Not applied; UDPipe models unavailable for this build".to_string()
-            }),
+            lemmatisation: Some(
+                "Surface-only build; lemma/POS annotation is not built yet.".to_string(),
+            ),
             number_punctuation_handling: Some(
                 "Numbers retained; decimal points and thousands separators split; standalone punctuation excluded from corpus metrics"
                     .to_string(),
@@ -1748,7 +1746,7 @@ where
         build_signature,
         processing_config_signature,
         overview_context,
-        udpipe_model_dir,
+        udpipe_model_dir: _udpipe_model_dir,
         language_overrides,
     } = options;
 
@@ -1765,8 +1763,7 @@ where
     let mut term_index = HashMap::<String, u32>::new();
     let mut surface_terms = Vec::<AnalysisSurfaceTerm>::new();
     let mut surface_term_index = HashMap::<String, u32>::new();
-    let mut lemma_table = LemmaTable::new();
-    let mut model_manager = ModelManager::new(udpipe_model_dir.unwrap_or_else(default_model_dir));
+    let lemma_table = LemmaTable::new();
     let mut total_tokens = 0u64;
     let mut growth_tokens = 0u64;
     let mut next_growth_checkpoint = 1u64;
@@ -1775,7 +1772,6 @@ where
     let mut skipped_pdf_documents = 0usize;
     let mut processed_documents = 0usize;
     let mut source_text_fallback_documents = 0usize;
-    let mut annotated_documents = 0usize;
     report_progress(AnalysisBuildProgress {
         files_done: 0,
         files_total: records.len(),
@@ -1868,7 +1864,6 @@ where
             }
         }
         let mut document_surface_terms = HashMap::<u32, u64>::new();
-        let mut token_surface_term_ids = Vec::with_capacity(tokens.len());
         for surface in tokens.iter().map(|token| token.surface) {
             let surface = surface.to_string();
             let term_id = if let Some(&term_id) = surface_term_index.get(&surface) {
@@ -1887,7 +1882,6 @@ where
                 });
                 term_id
             };
-            token_surface_term_ids.push(term_id);
             *document_surface_terms.entry(term_id).or_default() += 1;
         }
         let document_language = detect_and_resolve(
@@ -1896,31 +1890,6 @@ where
                 .get(&original_record_index)
                 .map(String::as_str),
         );
-        let effective_language = document_language.resolution.effective_language.as_str();
-        let mut document_annotated_terms = HashMap::<(u32, u32, UniversalPos), u64>::new();
-        let mut document_annotation_available = tokens.is_empty();
-        if !tokens.is_empty() {
-            let token_surfaces = tokens.iter().map(|token| token.surface).collect::<Vec<_>>();
-            match model_manager
-                .load_model(effective_language)
-                .and_then(|_| model_manager.tag_and_align(effective_language, &token_surfaces))
-            {
-                Ok(annotations) => {
-                    for (annotation, &surface_term_id) in
-                        annotations.iter().zip(token_surface_term_ids.iter())
-                    {
-                        let lemma_id = lemma_table.intern(&annotation.lemma);
-                        *document_annotated_terms
-                            .entry((surface_term_id, lemma_id, annotation.upos))
-                            .or_default() += 1;
-                    }
-                    document_annotation_available = true;
-                    annotated_documents += 1;
-                }
-                Err(AnnotationError::ModelNotFound { .. }) => {}
-                Err(error) => return Err(AnalysisBuildError::Message(error.to_string())),
-            }
-        }
         let token_count = document_terms.values().sum::<u64>();
         for (term_id, count) in document_terms {
             let term = &mut terms[term_id as usize];
@@ -1935,20 +1904,6 @@ where
             surface_sparse_counts.push((term_id, count));
         }
         surface_sparse_counts.sort_unstable_by_key(|(term_id, _)| *term_id);
-        let mut annotated_sparse_counts = document_annotated_terms
-            .into_iter()
-            .map(
-                |((surface_term_id, lemma_id, upos), count)| AnnotatedTermCount {
-                    surface_term_id,
-                    lemma_id,
-                    upos,
-                    count,
-                },
-            )
-            .collect::<Vec<_>>();
-        annotated_sparse_counts.sort_unstable_by_key(|entry| {
-            (entry.surface_term_id, entry.lemma_id, entry.upos as u8)
-        });
         total_tokens += token_count;
         let language = Some(document_language.resolution.effective_language.clone());
         let language_confidence = document_language.resolution.confidence;
@@ -1963,8 +1918,8 @@ where
                 language_is_overridden,
             ),
             surface_term_counts: surface_sparse_counts,
-            annotated_term_counts: annotated_sparse_counts,
-            annotation_available: document_annotation_available,
+            annotated_term_counts: Vec::new(),
+            annotation_available: false,
             mattr: document_mattr,
             mtld: document_mtld,
         });
@@ -2034,7 +1989,6 @@ where
             skipped_pdf_documents,
             vocabulary_growth,
             overview_context,
-            annotated_documents,
         },
     );
 
@@ -2734,6 +2688,55 @@ mod tests {
     }
 
     #[test]
+    fn build_is_surface_only_without_udpipe_models() {
+        let corpus = corpus_for(&[("surface.txt", "Cats cat ran running")]);
+
+        assert!(!corpus.overview().annotation_available);
+        assert_eq!(
+            corpus.overview().build.lemmatisation.as_deref(),
+            Some("Surface-only build; lemma/POS annotation is not built yet.")
+        );
+        assert!(
+            corpus
+                .documents
+                .iter()
+                .all(|document| !document.annotation_available)
+        );
+        assert!(
+            corpus
+                .documents
+                .iter()
+                .all(|document| document.annotated_term_counts.is_empty())
+        );
+
+        let page = query_frequency_list(&corpus, &base_frequency_query());
+        assert_eq!(
+            frequency_tokens(&page),
+            [("Cats", 1), ("cat", 1), ("ran", 1), ("running", 1)]
+        );
+    }
+
+    #[test]
+    fn language_override_skips_detection_in_fast_build() {
+        let records = vec![record("override.txt")];
+        let mut options = build_options();
+        options.language_overrides.insert(0, "en".to_string());
+        let corpus = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "Bonjour le monde")),
+            |_| {},
+        )
+        .unwrap();
+        let summary = &corpus.documents[0].summary;
+
+        assert_eq!(summary.language.as_deref(), Some("en"));
+        assert_eq!(summary.language_confidence, None);
+        assert!(summary.language_is_overridden);
+    }
+
+    #[test]
     fn resolver_uses_active_processed_pipeline_output() {
         let record = record("processed.txt");
         let cleaning_config = CleaningConfig {
@@ -3259,6 +3262,13 @@ mod tests {
     #[test]
     fn frequency_lemma_requires_annotation_notice() {
         let corpus = corpus_for(&[("lemma.txt", "Cats cat")]);
+        assert!(
+            corpus
+                .documents
+                .iter()
+                .all(|document| !document.annotation_available)
+        );
+        assert!(!corpus.overview().annotation_available);
         let page = query_frequency_list(
             &corpus,
             &FrequencyQuery {
@@ -3280,6 +3290,13 @@ mod tests {
     #[test]
     fn frequency_pos_filter_requires_annotation_notice() {
         let corpus = corpus_for(&[("pos.txt", "Cats ran")]);
+        assert!(
+            corpus
+                .documents
+                .iter()
+                .all(|document| !document.annotation_available)
+        );
+        assert!(!corpus.overview().annotation_available);
         let page = query_frequency_list(
             &corpus,
             &FrequencyQuery {

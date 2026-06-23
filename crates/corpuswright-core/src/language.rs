@@ -46,8 +46,9 @@ pub struct LanguageResolution {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct DocumentLanguage {
-    /// The raw detected language (always computed).
-    pub detected: DetectedLanguage,
+    /// The raw detected language, absent when an override short-circuits detection.
+    #[ts(optional)]
+    pub detected: Option<DetectedLanguage>,
     /// Manual override ISO 639-1 code, if set.
     #[ts(optional)]
     pub override_language: Option<String>,
@@ -93,6 +94,13 @@ pub fn detect_language(text: &str) -> DetectedLanguage {
     }
 }
 
+fn normalised_override_language(override_language: Option<&str>) -> Option<String> {
+    override_language
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_ascii_lowercase())
+}
+
 /// Resolves a DetectedLanguage against an optional manual override and a
 /// tunable confidence threshold.
 ///
@@ -105,17 +113,12 @@ pub fn resolve_language(
     override_language: Option<&str>,
     threshold: f64,
 ) -> LanguageResolution {
-    let override_lang = override_language
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_ascii_lowercase());
-
-    if let Some(ref lang) = override_lang {
+    if let Some(lang) = normalised_override_language(override_language) {
         LanguageResolution {
-            effective_language: lang.clone(),
+            effective_language: lang,
             is_overridden: true,
             is_low_confidence: false,
-            confidence: Some(detected.confidence),
+            confidence: None,
         }
     } else {
         LanguageResolution {
@@ -129,15 +132,24 @@ pub fn resolve_language(
 
 /// Convenience: detect + resolve in one call using the default threshold.
 pub fn detect_and_resolve(text: &str, override_language: Option<&str>) -> DocumentLanguage {
+    if let Some(lang) = normalised_override_language(override_language) {
+        return DocumentLanguage {
+            detected: None,
+            override_language: Some(lang.clone()),
+            resolution: LanguageResolution {
+                effective_language: lang,
+                is_overridden: true,
+                is_low_confidence: false,
+                confidence: None,
+            },
+        };
+    }
+
     let detected = detect_language(text);
-    let resolution = resolve_language(
-        &detected,
-        override_language,
-        DEFAULT_LOW_CONFIDENCE_THRESHOLD,
-    );
+    let resolution = resolve_language(&detected, None, DEFAULT_LOW_CONFIDENCE_THRESHOLD);
     DocumentLanguage {
-        detected,
-        override_language: override_language.map(str::to_string),
+        detected: Some(detected),
+        override_language: None,
         resolution,
     }
 }
@@ -172,6 +184,7 @@ mod tests {
         assert_eq!(resolution.effective_language, "en");
         assert!(resolution.is_overridden);
         assert!(!resolution.is_low_confidence);
+        assert_eq!(resolution.confidence, None);
     }
 
     #[test]
@@ -191,6 +204,7 @@ mod tests {
         assert_eq!(resolved.effective_language, "fr");
         assert!(resolved.is_overridden);
         assert!(!resolved.is_low_confidence);
+        assert_eq!(resolved.confidence, None);
     }
 
     #[test]
@@ -220,6 +234,17 @@ mod tests {
             (a_confidence - b_confidence).abs() <= 1e-12,
             "confidence drifted from {a_confidence} to {b_confidence}"
         );
+    }
+
+    #[test]
+    fn override_short_circuits_detection_result() {
+        let resolved = detect_and_resolve("Bonjour le monde", Some("EN"));
+        assert_eq!(resolved.detected, None);
+        assert_eq!(resolved.override_language.as_deref(), Some("en"));
+        assert_eq!(resolved.resolution.effective_language, "en");
+        assert!(resolved.resolution.is_overridden);
+        assert!(!resolved.resolution.is_low_confidence);
+        assert_eq!(resolved.resolution.confidence, None);
     }
 
     #[test]

@@ -7,9 +7,9 @@ import type { LanguageResolution } from "./LanguageResolution";
  */
 export type DocumentLanguage = { 
 /**
- * The raw detected language (always computed).
+ * The raw detected language, absent when an override short-circuits detection.
  */
-detected: DetectedLanguage, 
+detected?: DetectedLanguage,
 /**
  * Manual override ISO 639-1 code, if set.
  */
