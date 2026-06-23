@@ -798,6 +798,7 @@ version = "0.1.0"
 dependencies = [
  "aho-corasick",
  "anyhow",
+ "cc",
  "chrono",
  "html2text",
  "image",
