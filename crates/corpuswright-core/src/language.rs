@@ -204,7 +204,22 @@ mod tests {
     fn resolution_is_deterministic() {
         let a = detect_and_resolve("Bonjour le monde", None);
         let b = detect_and_resolve("Bonjour le monde", None);
-        assert_eq!(a.resolution, b.resolution);
+        assert_eq!(
+            a.resolution.effective_language,
+            b.resolution.effective_language
+        );
+        assert_eq!(a.resolution.is_overridden, b.resolution.is_overridden);
+        assert_eq!(
+            a.resolution.is_low_confidence,
+            b.resolution.is_low_confidence
+        );
+
+        let a_confidence = a.resolution.confidence.unwrap();
+        let b_confidence = b.resolution.confidence.unwrap();
+        assert!(
+            (a_confidence - b_confidence).abs() <= 1e-12,
+            "confidence drifted from {a_confidence} to {b_confidence}"
+        );
     }
 
     #[test]

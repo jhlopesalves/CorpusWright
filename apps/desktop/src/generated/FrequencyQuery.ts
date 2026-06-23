@@ -5,4 +5,8 @@ import type { FrequencyGroupMode } from "./FrequencyGroupMode.js";
 import type { FrequencySortKey } from "./FrequencySortKey.js";
 import type { SortDirection } from "./SortDirection.js";
 
-export type FrequencyQuery = { selection: AnalysisDocumentSelection, query: string, matchMode: FrequencyMatchMode, minimumFrequency: number, tokenClass: FrequencyTokenClass, hideStopwords: boolean, groupBy: FrequencyGroupMode, caseFold: boolean, language: string | null, sortKey: FrequencySortKey, sortDirection: SortDirection, offset: number, limit: number, };
+export type FrequencyQuery = { selection: AnalysisDocumentSelection, query: string, matchMode: FrequencyMatchMode, minimumFrequency: number, tokenClass: FrequencyTokenClass, hideStopwords: boolean, groupBy: FrequencyGroupMode, caseFold: boolean, language: string | null,
+/**
+ * UPOS filter (e.g., "NOUN").
+ */
+posFilter: string | null, sortKey: FrequencySortKey, sortDirection: SortDirection, offset: number, limit: number, };
