@@ -92,6 +92,8 @@ struct AnalysisBuildRequest {
     corpus_version: u64,
     build_signature: String,
     cleaning_config: CleaningConfig,
+    #[serde(default)]
+    language_overrides: HashMap<usize, String>,
 }
 
 struct AnalysisStateInner {
@@ -1844,6 +1846,12 @@ async fn build_analysis_corpus_command(
     let built_at = jiff::Timestamp::now().to_string();
     let build_signature = request.build_signature;
     let cleaning_config = request.cleaning_config;
+    let language_overrides = request.language_overrides;
+    let udpipe_model_dir = window
+        .app_handle()
+        .path()
+        .resolve("udpipe", BaseDirectory::Resource)
+        .ok();
     let processing_config_signature = cleaning_config_signature(&cleaning_config);
     let task = tauri::async_runtime::spawn_blocking(move || {
         let mut last_emit = Instant::now()
@@ -1857,6 +1865,8 @@ async fn build_analysis_corpus_command(
                 build_signature,
                 processing_config_signature,
                 overview_context,
+                udpipe_model_dir,
+                language_overrides,
             },
             &cancel,
             |record| {
@@ -1980,6 +1990,7 @@ async fn query_analysis_documents_command(
     .map_err(|error| format!("Analysis document query task failed: {error}"))
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn query_term_distribution_command(
     token: String,

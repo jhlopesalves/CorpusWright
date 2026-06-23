@@ -27,7 +27,8 @@
     "active": true,
     "targets": "all",
     "resources": {
-      "resources/ocr/": "ocr/"
+      "resources/ocr/": "ocr/",
+      "resources/udpipe/": "udpipe/"
     },
     "icon": [
       "icons/32x32.png",

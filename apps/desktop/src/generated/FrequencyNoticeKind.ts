@@ -1,1 +1,1 @@
-export type FrequencyNoticeKind = "stemmingUnsupportedLanguage";
+export type FrequencyNoticeKind = "stemmingUnsupportedLanguage" | "annotationUnavailable" | "posFilterUnavailable";

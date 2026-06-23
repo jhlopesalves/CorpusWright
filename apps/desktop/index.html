@@ -269,6 +269,15 @@
             <div id="analyse-input-banner" class="analyse-input-banner hidden" aria-live="polite"></div>
             <div class="analyse-action-row">
               <button id="analyse-build-button" class="primary-btn" type="button">Build Analysis Corpus</button>
+              <label for="analyse-language-override">
+                <span>Language override</span>
+                <select id="analyse-language-override">
+                  <option value="" selected>Auto detect</option>
+                  <option value="en">English</option>
+                  <option value="pt">Portuguese</option>
+                  <option value="fr">French</option>
+                </select>
+              </label>
               <span id="analyse-build-note">Builds a Rust analysis index from loaded project text.</span>
             </div>
           </div>
@@ -320,6 +329,7 @@
                       <span>Group by</span>
                       <select id="frequency-group-by">
                         <option value="surface" selected>Surface form</option>
+                        <option value="lemma">Lemma</option>
                         <option value="stem">Stem</option>
                       </select>
                     </label>
@@ -353,6 +363,29 @@
                         <option value="includeSingles">Include single-character</option>
                         <option value="includeNumerals">Include numerals</option>
                         <option value="all">All tokens</option>
+                      </select>
+                    </label>
+                    <label for="frequency-pos-filter">
+                      <span>POS</span>
+                      <select id="frequency-pos-filter">
+                        <option value="" selected>Any POS</option>
+                        <option value="ADJ">ADJ</option>
+                        <option value="ADP">ADP</option>
+                        <option value="ADV">ADV</option>
+                        <option value="AUX">AUX</option>
+                        <option value="CCONJ">CCONJ</option>
+                        <option value="DET">DET</option>
+                        <option value="INTJ">INTJ</option>
+                        <option value="NOUN">NOUN</option>
+                        <option value="NUM">NUM</option>
+                        <option value="PART">PART</option>
+                        <option value="PRON">PRON</option>
+                        <option value="PROPN">PROPN</option>
+                        <option value="PUNCT">PUNCT</option>
+                        <option value="SCONJ">SCONJ</option>
+                        <option value="SYM">SYM</option>
+                        <option value="VERB">VERB</option>
+                        <option value="X">X</option>
                       </select>
                     </label>
                     <label class="frequency-stopword-control" for="frequency-hide-stopwords">
