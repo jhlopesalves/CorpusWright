@@ -478,6 +478,8 @@ pub struct AnalysisBuildOptions {
     /// Per-document language override keyed by document index (0-based in the
     /// original records slice). When present, this always wins over detection.
     pub language_overrides: std::collections::HashMap<usize, String>,
+    pub tokenization: TokenizationConfig,
+    pub annotation_cache_root: Option<std::path::PathBuf>,
 }
 
 /// Render-ready first-stage corpus EDA summary.
@@ -518,6 +520,7 @@ struct AnalysisDocument {
     annotation_available: bool,
     mattr: Option<f64>,
     mtld: Option<f64>,
+    processed_hash_sha256: String,
 }
 
 #[derive(Debug, Clone)]
@@ -694,6 +697,7 @@ struct MappedAnalysisDocument<'record> {
     language: Option<String>,
     language_confidence: Option<f64>,
     language_is_overridden: bool,
+    processed_hash_sha256: String,
 }
 
 struct LocalTermCount {
@@ -732,6 +736,7 @@ pub struct AnalysisCorpus {
     surface_terms: Vec<AnalysisSurfaceTerm>,
     lemma_table: LemmaTable,
     overview: CorpusOverview,
+    pub tokenization: TokenizationConfig,
 }
 
 impl AnalysisCorpus {
@@ -1936,6 +1941,181 @@ where
     build_annotation_layer_with_mapping(corpus, records, options, cancel, load_text, true)
 }
 
+pub(crate) fn compare_document_records(
+    left: &DocumentRecord,
+    right: &DocumentRecord,
+) -> std::cmp::Ordering {
+    left.relative_path
+        .cmp(&right.relative_path)
+        .then_with(|| left.source_path.cmp(&right.source_path))
+}
+
+fn build_expected_manifest(
+    corpus: &AnalysisCorpus,
+    records: &[DocumentRecord],
+    model_dir: Option<&Path>,
+    language_overrides: &HashMap<usize, String>,
+) -> Result<
+    crate::annotation_cache::AnnotationManifest,
+    crate::annotation_cache::AnnotationLayerCacheError,
+> {
+    let tokenization = crate::tokenization::TokenizationManifest {
+        id: crate::tokenization::TOKENIZER_ID.to_string(),
+        version: crate::tokenization::TOKENIZER_VERSION.to_string(),
+        unicode_segmentation_version: crate::tokenization::UNICODE_SEGMENTATION_VERSION.to_string(),
+        config: corpus.tokenization,
+    };
+
+    let document_languages: Vec<String> = corpus
+        .documents
+        .iter()
+        .map(|doc| doc.summary.language.clone().unwrap_or_default())
+        .collect();
+
+    let languages_set: BTreeSet<String> = document_languages.iter().cloned().collect();
+    let default_dir;
+    let resolved_model_dir = match model_dir {
+        Some(dir) => dir,
+        None => {
+            default_dir = default_model_dir();
+            &default_dir
+        }
+    };
+
+    let mut models = Vec::new();
+    for lang in &languages_set {
+        let (language, model_filename, udpipe_model_name, sha256) =
+            crate::annotation::model_identity(lang, resolved_model_dir).map_err(|e| {
+                crate::annotation_cache::AnnotationLayerCacheError::ValidationError(e.to_string())
+            })?;
+        models.push(crate::annotation_cache::AnnotationModelIdentity {
+            language,
+            model_filename,
+            udpipe_model_name,
+            sha256,
+        });
+    }
+
+    let document_hashes: Vec<String> = corpus
+        .documents
+        .iter()
+        .map(|doc| doc.processed_hash_sha256.clone())
+        .collect();
+
+    crate::annotation_cache::build_annotation_manifest(
+        corpus,
+        records,
+        tokenization,
+        language_overrides,
+        models,
+        &document_hashes,
+        &document_languages,
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnnotationAttachError {
+    DocumentCountMismatch {
+        expected: usize,
+        got: usize,
+    },
+    DocumentIndexMismatch {
+        index: usize,
+        got: usize,
+    },
+    DocumentPathMismatch {
+        index: usize,
+        expected_source: String,
+        got_source: String,
+        expected_relative: String,
+        got_relative: String,
+    },
+    SurfaceTermIdOutOfRange {
+        index: usize,
+        term_id: u32,
+        limit: usize,
+    },
+    LemmaIdOutOfRange {
+        index: usize,
+        lemma_id: u32,
+        limit: usize,
+    },
+    LanguagesUsedNotSortedOrDeduplicated,
+}
+
+fn attach_annotation_layer(
+    corpus: &mut AnalysisCorpus,
+    layer: AnnotationLayer,
+) -> Result<(), AnnotationAttachError> {
+    if layer.documents.len() != corpus.documents.len() {
+        return Err(AnnotationAttachError::DocumentCountMismatch {
+            expected: corpus.documents.len(),
+            got: layer.documents.len(),
+        });
+    }
+
+    let mut langs = layer.languages_used.clone();
+    let original_langs = langs.clone();
+    langs.sort_unstable();
+    langs.dedup();
+    if langs != original_langs {
+        return Err(AnnotationAttachError::LanguagesUsedNotSortedOrDeduplicated);
+    }
+
+    let max_surface_term_len = corpus.surface_terms.len();
+    let max_lemma_len = layer.lemma_table.len();
+
+    for (idx, layer_doc) in layer.documents.iter().enumerate() {
+        if layer_doc.analysis_document_index != idx {
+            return Err(AnnotationAttachError::DocumentIndexMismatch {
+                index: idx,
+                got: layer_doc.analysis_document_index,
+            });
+        }
+
+        let corpus_doc = &corpus.documents[idx];
+        if corpus_doc.summary.source_path != layer_doc.source_path
+            || corpus_doc.summary.relative_path != layer_doc.relative_path
+        {
+            return Err(AnnotationAttachError::DocumentPathMismatch {
+                index: idx,
+                expected_source: corpus_doc.summary.source_path.clone(),
+                got_source: layer_doc.source_path.clone(),
+                expected_relative: corpus_doc.summary.relative_path.clone(),
+                got_relative: layer_doc.relative_path.clone(),
+            });
+        }
+
+        for count in &layer_doc.term_counts {
+            if count.surface_term_id as usize >= max_surface_term_len {
+                return Err(AnnotationAttachError::SurfaceTermIdOutOfRange {
+                    index: idx,
+                    term_id: count.surface_term_id,
+                    limit: max_surface_term_len,
+                });
+            }
+            if count.lemma_id as usize >= max_lemma_len {
+                return Err(AnnotationAttachError::LemmaIdOutOfRange {
+                    index: idx,
+                    lemma_id: count.lemma_id,
+                    limit: max_lemma_len,
+                });
+            }
+        }
+    }
+
+    // Now mutate corpus (all-or-nothing check passed!)
+    corpus.lemma_table = layer.lemma_table;
+    for (idx, layer_doc) in layer.documents.into_iter().enumerate() {
+        let corpus_doc = &mut corpus.documents[idx];
+        corpus_doc.annotated_term_counts = layer_doc.term_counts;
+        corpus_doc.annotation_available = true;
+    }
+    corpus.overview.annotation_available = true;
+
+    Ok(())
+}
+
 fn build_annotation_layer_with_mapping<TextLoader>(
     corpus: &AnalysisCorpus,
     records: &[DocumentRecord],
@@ -1969,6 +2149,7 @@ where
         &model_dir,
         cancel,
         parallel_map,
+        &corpus.tokenization,
     )?;
     reduce_annotation_documents(worker_documents, languages_used.into_iter().collect())
 }
@@ -1984,12 +2165,7 @@ where
     TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
 {
     let mut ordered_records = records.iter().enumerate().collect::<Vec<_>>();
-    ordered_records.sort_by(|left, right| {
-        left.1
-            .relative_path
-            .cmp(&right.1.relative_path)
-            .then_with(|| left.1.source_path.cmp(&right.1.source_path))
-    });
+    ordered_records.sort_by(|left, right| compare_document_records(left.1, right.1));
 
     let mut inputs = Vec::with_capacity(corpus.documents.len());
     for (original_record_index, record) in ordered_records {
@@ -2028,6 +2204,7 @@ where
             &source_path,
             &relative_path,
             &text,
+            &corpus.tokenization,
         )?;
 
         let language =
@@ -2071,6 +2248,7 @@ fn verify_annotation_document_identity(
     source_path: &str,
     relative_path: &str,
     text: &str,
+    tokenization_config: &TokenizationConfig,
 ) -> Result<(), AnnotationLayerBuildError> {
     if document.summary.source_path != source_path
         || document.summary.relative_path != relative_path
@@ -2093,8 +2271,7 @@ fn verify_annotation_document_identity(
             reason: "analysis corpus contains more than u32::MAX documents".to_string(),
         }
     })?;
-    let tokenization_config = TokenizationConfig::default();
-    let tokens = analysis_word_tokens(text, document_id, &tokenization_config);
+    let tokens = analysis_word_tokens(text, document_id, tokenization_config);
     if tokens.len() as u64 != document.summary.token_count {
         return Err(AnnotationLayerBuildError::CorpusDocumentMismatch {
             reason: format!(
@@ -2164,6 +2341,7 @@ fn annotate_annotation_documents(
     model_dir: &Path,
     cancel: &AtomicBool,
     parallel_map: bool,
+    tokenization_config: &TokenizationConfig,
 ) -> Result<Vec<WorkerAnnotationDocument>, AnnotationLayerBuildError> {
     if parallel_map {
         let model_dir = model_dir.to_path_buf();
@@ -2172,7 +2350,13 @@ fn annotate_annotation_documents(
             .map_init(
                 || ModelManager::new(model_dir.clone()),
                 |manager, input| {
-                    annotate_annotation_document(input, surface_term_lookup, manager, cancel)
+                    annotate_annotation_document(
+                        input,
+                        surface_term_lookup,
+                        manager,
+                        cancel,
+                        tokenization_config,
+                    )
                 },
             )
             .collect()
@@ -2181,7 +2365,13 @@ fn annotate_annotation_documents(
         inputs
             .iter()
             .map(|input| {
-                annotate_annotation_document(input, surface_term_lookup, &mut manager, cancel)
+                annotate_annotation_document(
+                    input,
+                    surface_term_lookup,
+                    &mut manager,
+                    cancel,
+                    tokenization_config,
+                )
             })
             .collect()
     }
@@ -2192,6 +2382,7 @@ fn annotate_annotation_document(
     surface_term_lookup: &HashMap<String, u32>,
     manager: &mut ModelManager,
     cancel: &AtomicBool,
+    tokenization_config: &TokenizationConfig,
 ) -> Result<WorkerAnnotationDocument, AnnotationLayerBuildError> {
     if cancel.load(AtomicOrdering::Relaxed) {
         return Err(AnnotationLayerBuildError::Cancelled);
@@ -2206,8 +2397,7 @@ fn annotate_annotation_document(
             reason: "analysis corpus contains more than u32::MAX documents".to_string(),
         }
     })?;
-    let tokenization_config = TokenizationConfig::default();
-    let tokens = analysis_word_tokens(&input.text, document_id, &tokenization_config);
+    let tokens = analysis_word_tokens(&input.text, document_id, tokenization_config);
     let token_surfaces = tokens.iter().map(|token| token.surface).collect::<Vec<_>>();
     let annotated_tokens = manager
         .tag_and_align(&input.language, &token_surfaces)
@@ -2359,8 +2549,10 @@ where
         build_signature,
         processing_config_signature,
         overview_context,
-        udpipe_model_dir: _udpipe_model_dir,
+        udpipe_model_dir,
         language_overrides,
+        tokenization,
+        annotation_cache_root,
     } = options;
 
     report_progress(AnalysisBuildProgress {
@@ -2384,12 +2576,7 @@ where
     });
 
     let mut ordered_records = records.iter().enumerate().collect::<Vec<_>>();
-    ordered_records.sort_by(|left, right| {
-        left.1
-            .relative_path
-            .cmp(&right.1.relative_path)
-            .then_with(|| left.1.source_path.cmp(&right.1.source_path))
-    });
+    ordered_records.sort_by(|left, right| compare_document_records(left.1, right.1));
 
     let mut loaded_inputs = Vec::with_capacity(records.len());
     for (record_index, (original_record_index, record)) in ordered_records.into_iter().enumerate() {
@@ -2438,8 +2625,13 @@ where
         });
     }
 
-    let mapped_inputs =
-        map_loaded_analysis_inputs(loaded_inputs, &language_overrides, cancel, parallel_map)?;
+    let mapped_inputs = map_loaded_analysis_inputs(
+        loaded_inputs,
+        &language_overrides,
+        cancel,
+        parallel_map,
+        &tokenization,
+    )?;
 
     let mut documents = Vec::with_capacity(records.len().saturating_sub(skipped_documents));
     let mut terms = Vec::<AnalysisTerm>::new();
@@ -2512,6 +2704,7 @@ where
                 annotation_available: false,
                 mattr: mapped_document.mattr,
                 mtld: mapped_document.mtld,
+                processed_hash_sha256: mapped_document.processed_hash_sha256.clone(),
             });
         }
         report_progress(AnalysisBuildProgress {
@@ -2583,13 +2776,34 @@ where
         },
     );
 
+    let mut corpus = AnalysisCorpus {
+        documents,
+        surface_terms,
+        lemma_table,
+        overview,
+        tokenization,
+    };
+
+    if let Some(ref cache_root) = annotation_cache_root {
+        let expected_manifest = build_expected_manifest(
+            &corpus,
+            records,
+            udpipe_model_dir.as_deref(),
+            &language_overrides,
+        );
+        if let Ok(expected_manifest) = expected_manifest {
+            let load_res = crate::annotation_cache::load_annotation_layer_cache(
+                cache_root,
+                &expected_manifest,
+            );
+            if let crate::annotation_cache::AnnotationLayerCacheLoad::Ready(layer) = load_res {
+                let _ = attach_annotation_layer(&mut corpus, layer);
+            }
+        }
+    }
+
     Ok(AnalysisBuildProduct {
-        corpus: AnalysisCorpus {
-            documents,
-            surface_terms,
-            lemma_table,
-            overview,
-        },
+        corpus,
         #[cfg(test)]
         terms,
     })
@@ -2600,16 +2814,21 @@ fn map_loaded_analysis_inputs<'record>(
     language_overrides: &HashMap<usize, String>,
     cancel: &AtomicBool,
     parallel_map: bool,
+    tokenization_config: &TokenizationConfig,
 ) -> Result<Vec<MappedAnalysisInput<'record>>, AnalysisBuildError> {
     if parallel_map {
         loaded_inputs
             .into_par_iter()
-            .map(|input| map_loaded_analysis_input(input, language_overrides, cancel))
+            .map(|input| {
+                map_loaded_analysis_input(input, language_overrides, cancel, tokenization_config)
+            })
             .collect()
     } else {
         loaded_inputs
             .into_iter()
-            .map(|input| map_loaded_analysis_input(input, language_overrides, cancel))
+            .map(|input| {
+                map_loaded_analysis_input(input, language_overrides, cancel, tokenization_config)
+            })
             .collect()
     }
 }
@@ -2618,6 +2837,7 @@ fn map_loaded_analysis_input<'record>(
     input: LoadedAnalysisInput<'record>,
     language_overrides: &HashMap<usize, String>,
     cancel: &AtomicBool,
+    tokenization_config: &TokenizationConfig,
 ) -> Result<MappedAnalysisInput<'record>, AnalysisBuildError> {
     if cancel.load(AtomicOrdering::Relaxed) {
         return Err(AnalysisBuildError::Cancelled);
@@ -2628,11 +2848,11 @@ fn map_loaded_analysis_input<'record>(
             record,
             text,
         } => {
-            let tokenization_config = TokenizationConfig::default();
-            let tokens = analysis_word_tokens(&text, 0, &tokenization_config);
+            let processed_hash_sha256 = crate::hash::sha256_hex(text.as_bytes());
+            let tokens = analysis_word_tokens(&text, 0, tokenization_config);
             let token_keys = tokens
                 .iter()
-                .map(|token| token.aggregation_key(&tokenization_config))
+                .map(|token| token.aggregation_key(tokenization_config))
                 .collect::<Vec<_>>();
             let document_mattr = mattr(&token_keys, MATTR_WINDOW_TOKENS);
             let document_mtld = (token_keys.len() >= MTLD_MIN_DOCUMENT_TOKENS)
@@ -2658,6 +2878,7 @@ fn map_loaded_analysis_input<'record>(
                 language: Some(document_language.resolution.effective_language),
                 language_confidence: document_language.resolution.confidence,
                 language_is_overridden: document_language.resolution.is_overridden,
+                processed_hash_sha256,
             }))
         }
         LoadedAnalysisInput::Skipped => Ok(MappedAnalysisInput::Skipped),
@@ -3386,6 +3607,8 @@ mod tests {
             overview_context: CorpusOverviewContext::default(),
             udpipe_model_dir: Some(PathBuf::from("__missing_udpipe_models_for_tests__")),
             language_overrides: std::collections::HashMap::new(),
+            tokenization: TokenizationConfig::default(),
+            annotation_cache_root: None,
         }
     }
 
@@ -5139,5 +5362,577 @@ mod tests {
             result,
             Err(crate::annotation_cache::AnnotationLayerCacheError::ValidationError(_))
         ));
+    }
+
+    #[test]
+    fn test_annotation_cache_seam_none_root() {
+        let corpus = corpus_for(&[("doc.txt", "The quick brown fox jumps over the lazy dog.")]);
+        assert!(!corpus.overview().annotation_available);
+        assert!(corpus.documents.iter().all(|doc| !doc.annotation_available));
+        assert!(
+            corpus
+                .documents
+                .iter()
+                .all(|doc| doc.annotated_term_counts.is_empty())
+        );
+    }
+
+    #[test]
+    fn test_annotation_cache_seam_missing_cache() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options.udpipe_model_dir = Some(default_model_dir());
+
+        let corpus = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick brown fox jumps over the lazy dog.",
+                ))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(!corpus.overview().annotation_available);
+        assert!(corpus.documents.iter().all(|doc| !doc.annotation_available));
+    }
+
+    #[test]
+    fn test_annotation_cache_seam_stale_cache() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+
+        // 1. Build a corpus to generate expected manifest
+        let mut options = build_options();
+        options.udpipe_model_dir = Some(default_model_dir());
+        let corpus = build_analysis_corpus(
+            &records,
+            options.clone(),
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick brown fox jumps over the lazy dog.",
+                ))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        let mut manifest = build_expected_manifest(
+            &corpus,
+            &records,
+            options.udpipe_model_dir.as_deref(),
+            &options.language_overrides,
+        )
+        .unwrap();
+        // Make it stale
+        manifest.schema_version += 1;
+
+        let layer = AnnotationLayer {
+            documents: vec![],
+            lemma_table: LemmaTable::new(),
+            languages_used: vec![],
+        };
+
+        crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
+            .unwrap();
+
+        // 2. Build with cache root
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        let corpus2 = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick brown fox jumps over the lazy dog.",
+                ))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(!corpus2.overview().annotation_available);
+    }
+
+    #[test]
+    fn test_annotation_cache_seam_invalid_cache() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+
+        let final_path = temp_dir.path().join(format!(
+            "annotation-layer.v{}.json",
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        ));
+        std::fs::write(&final_path, b"{ corrupt json").unwrap();
+
+        let mut options = build_options();
+        options.udpipe_model_dir = Some(default_model_dir());
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+
+        let corpus = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick brown fox jumps over the lazy dog.",
+                ))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(!corpus.overview().annotation_available);
+    }
+
+    #[test]
+    fn test_annotation_cache_seam_valid_cache() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+
+        // 1. Build unannotated corpus
+        let mut options = build_options();
+        options.udpipe_model_dir = Some(default_model_dir());
+        let corpus = build_analysis_corpus(
+            &records,
+            options.clone(),
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick brown fox jumps over the lazy dog.",
+                ))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        // 2. Call build_annotation_layer to create a valid layer
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+        let layer = build_annotation_layer(
+            &corpus,
+            &records,
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick brown fox jumps over the lazy dog.",
+                ))
+            },
+        )
+        .unwrap();
+
+        // 3. Build manifest and write to cache
+        let manifest = build_expected_manifest(
+            &corpus,
+            &records,
+            options.udpipe_model_dir.as_deref(),
+            &options.language_overrides,
+        )
+        .unwrap();
+        crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
+            .unwrap();
+
+        // 4. Run fresh analysis build with cache root
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        let corpus_cached = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick brown fox jumps over the lazy dog.",
+                ))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        // 5. Assertions
+        assert!(corpus_cached.overview().annotation_available);
+        assert!(
+            corpus_cached
+                .documents
+                .iter()
+                .all(|doc| doc.annotation_available)
+        );
+        assert!(!corpus_cached.documents[0].annotated_term_counts.is_empty());
+        assert_eq!(corpus_cached.lemma_table, layer.lemma_table);
+
+        // Verify query lights up
+        let mut query = base_frequency_query();
+        query.group_by = FrequencyGroupMode::Lemma;
+        let page = query_frequency_list(&corpus_cached, &query);
+        assert!(!page.items.is_empty());
+        // Verify no AnnotationUnavailable notices
+        assert!(
+            page.notices
+                .iter()
+                .all(|n| n.kind != FrequencyNoticeKind::AnnotationUnavailable)
+        );
+    }
+
+    #[test]
+    fn test_annotation_cache_seam_validation_reject_bad_layer_docs() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc1.txt"), record("doc2.txt")];
+
+        let mut options = build_options();
+        options.udpipe_model_dir = Some(default_model_dir());
+        let corpus = build_analysis_corpus(
+            &records,
+            options.clone(),
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick brown fox jumps over the lazy dog.",
+                ))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+        let mut layer = build_annotation_layer(
+            &corpus,
+            &records,
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick brown fox jumps over the lazy dog.",
+                ))
+            },
+        )
+        .unwrap();
+
+        // Mess up the documents in layer: make mismatched path/source
+        layer.documents[1].analysis_document_index = 1;
+        layer.documents[1].source_path = "mismatched".to_string();
+
+        let manifest = build_expected_manifest(
+            &corpus,
+            &records,
+            options.udpipe_model_dir.as_deref(),
+            &options.language_overrides,
+        )
+        .unwrap();
+
+        crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
+            .unwrap();
+
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        let corpus2 = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick brown fox jumps over the lazy dog.",
+                ))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(!corpus2.overview().annotation_available);
+    }
+
+    #[test]
+    fn test_annotation_cache_seam_validation_reject_bad_ids() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+
+        let mut options = build_options();
+        options.udpipe_model_dir = Some(default_model_dir());
+        let corpus = build_analysis_corpus(
+            &records,
+            options.clone(),
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick brown fox jumps over the lazy dog.",
+                ))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+        let mut layer = build_annotation_layer(
+            &corpus,
+            &records,
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick brown fox jumps over the lazy dog.",
+                ))
+            },
+        )
+        .unwrap();
+
+        // Mess up term/lemma IDs: make surface_term_id out of range
+        if !layer.documents[0].term_counts.is_empty() {
+            layer.documents[0].term_counts[0].surface_term_id = 99999;
+        }
+
+        let manifest = build_expected_manifest(
+            &corpus,
+            &records,
+            options.udpipe_model_dir.as_deref(),
+            &options.language_overrides,
+        )
+        .unwrap();
+        crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
+            .unwrap();
+
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        let corpus2 = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick brown fox jumps over the lazy dog.",
+                ))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(!corpus2.overview().annotation_available);
+    }
+
+    #[test]
+    fn test_annotation_cache_seam_tokenisation_threading() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+
+        let custom_config = TokenizationConfig {
+            retain_ascii_hyphen_compounds: false,
+            ..Default::default()
+        };
+
+        let mut options_custom = build_options();
+        options_custom.tokenization = custom_config;
+        options_custom.udpipe_model_dir = Some(default_model_dir());
+
+        let corpus = build_analysis_corpus(
+            &records,
+            options_custom.clone(),
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick-brown-fox jumps over the lazy dog.",
+                ))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        // Expect custom tokenization config to flow into manifest
+        let manifest = build_expected_manifest(
+            &corpus,
+            &records,
+            options_custom.udpipe_model_dir.as_deref(),
+            &options_custom.language_overrides,
+        )
+        .unwrap();
+        assert!(!manifest.tokenization.config.retain_ascii_hyphen_compounds);
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options_custom.udpipe_model_dir.clone(),
+            language_overrides: options_custom.language_overrides.clone(),
+        };
+        let layer = build_annotation_layer(
+            &corpus,
+            &records,
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick-brown-fox jumps over the lazy dog.",
+                ))
+            },
+        )
+        .unwrap();
+
+        crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
+            .unwrap();
+
+        // Build with default tokenization config (should read Stale)
+        let mut options_default = build_options();
+        options_default.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options_default.udpipe_model_dir = Some(default_model_dir());
+
+        let corpus_default = build_analysis_corpus(
+            &records,
+            options_default,
+            &AtomicBool::new(false),
+            |record| {
+                Ok(processed_resolution(
+                    record,
+                    "The quick-brown-fox jumps over the lazy dog.",
+                ))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(!corpus_default.overview().annotation_available);
+    }
+
+    #[test]
+    fn test_annotation_cache_seam_mixed_en_pt() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        // doc1 is Portuguese, doc2 is English
+        let records = vec![record("pt.txt"), record("en.txt")];
+        let mut overrides = HashMap::new();
+        overrides.insert(0, "pt".to_string());
+        overrides.insert(1, "en".to_string());
+
+        let mut options = build_options();
+        options.language_overrides = overrides;
+        options.udpipe_model_dir = Some(default_model_dir());
+
+        let corpus = build_analysis_corpus(
+            &records,
+            options.clone(),
+            &AtomicBool::new(false),
+            |record| {
+                if record.source_path.to_string_lossy().contains("pt") {
+                    Ok(processed_resolution(record, "O gato preto correu."))
+                } else {
+                    Ok(processed_resolution(record, "The quick brown fox jumps."))
+                }
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+        let layer = build_annotation_layer(
+            &corpus,
+            &records,
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| {
+                if record.source_path.to_string_lossy().contains("pt") {
+                    Ok(processed_resolution(record, "O gato preto correu."))
+                } else {
+                    Ok(processed_resolution(record, "The quick brown fox jumps."))
+                }
+            },
+        )
+        .unwrap();
+
+        let manifest = build_expected_manifest(
+            &corpus,
+            &records,
+            options.udpipe_model_dir.as_deref(),
+            &options.language_overrides,
+        )
+        .unwrap();
+        // Assert English and Portuguese models both present in manifest
+        assert!(manifest.models.iter().any(|m| m.language == "pt"));
+        assert!(manifest.models.iter().any(|m| m.language == "en"));
+
+        crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
+            .unwrap();
+
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        let corpus_cached = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| {
+                if record.source_path.to_string_lossy().contains("pt") {
+                    Ok(processed_resolution(record, "O gato preto correu."))
+                } else {
+                    Ok(processed_resolution(record, "The quick brown fox jumps."))
+                }
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(corpus_cached.overview().annotation_available);
+    }
+
+    #[test]
+    fn test_annotation_cache_seam_unsupported_language_preflight() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+        let mut overrides = HashMap::new();
+        overrides.insert(0, "unsupported_lang".to_string());
+
+        let mut options = build_options();
+        options.language_overrides = overrides;
+        options.udpipe_model_dir = Some(default_model_dir());
+
+        let corpus = build_analysis_corpus(
+            &records,
+            options.clone(),
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "Hello world.")),
+            |_| {},
+        )
+        .unwrap();
+
+        // Attempting to build expected manifest should fail (ValidationError because unsupported_lang model is not found)
+        let manifest_res = build_expected_manifest(
+            &corpus,
+            &records,
+            options.udpipe_model_dir.as_deref(),
+            &options.language_overrides,
+        );
+        assert!(manifest_res.is_err());
+
+        // Run analysis build with cache root (should skip attach cleanly, leaving build successful)
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        let corpus_res = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "Hello world.")),
+            |_| {},
+        );
+
+        assert!(corpus_res.is_ok());
+        let corpus_built = corpus_res.unwrap();
+        assert!(!corpus_built.overview().annotation_available);
     }
 }
