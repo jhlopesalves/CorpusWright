@@ -271,7 +271,7 @@
               <button id="analyse-build-button" class="primary-btn" type="button">Build Analysis Corpus</button>
               <label for="analyse-language-override">
                 <span>Language override</span>
-                <select id="analyse-language-override">
+                <select id="analyse-language-override" title="Choose a language to use instead of auto-detection.">
                   <option value="" selected>Auto detect</option>
                   <option value="en">English</option>
                   <option value="pt">Portuguese</option>
@@ -367,7 +367,7 @@
                     </label>
                     <label for="frequency-pos-filter">
                       <span>POS</span>
-                      <select id="frequency-pos-filter" disabled title="Lemma grouping and POS filters require annotation, which is not built in this version.">
+                      <select id="frequency-pos-filter" disabled title="Lemma grouping and POS filters need the annotation layer, which isn't available yet.">
                         <option value="" selected>Annotation unavailable</option>
                         <option value="ADJ">ADJ</option>
                         <option value="ADP">ADP</option>
@@ -402,7 +402,7 @@
                     </div>
                   </div>
                 </div>
-                <p class="frequency-search-note">Tokens are matched against the selected Rust grouping.</p>
+                <p class="frequency-search-note">Tokens are matched against the selected grouping.</p>
                 <div id="frequency-search-error" class="frequency-search-error hidden" role="alert"></div>
                 <div id="frequency-query-notice" class="frequency-query-notice hidden" role="status"></div>
                 <div class="frequency-table-wrap">
