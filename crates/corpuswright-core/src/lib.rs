@@ -20,10 +20,12 @@
 
 pub mod analysis;
 pub mod annotation;
+pub mod annotation_cache;
 pub mod cache;
 pub mod clean;
 pub mod docx;
 pub mod export;
+pub mod hash;
 pub mod html;
 pub mod language;
 pub mod manifest;
@@ -48,6 +50,13 @@ pub use analysis::{
     AnnotationLayerBuildOptions, AnnotationLayerDocument, FrequencyGroupMode, FrequencyMatchMode,
     FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey,
     FrequencyTermItem, FrequencyTokenClass, SortDirection, build_annotation_layer,
+};
+pub use annotation_cache::{
+    ANNOTATION_LAYER_CACHE_FILE_VERSION, ANNOTATION_LAYER_SCHEMA_VERSION, AnnotationCorpusIdentity,
+    AnnotationDocumentIdentity, AnnotationDocumentLanguage, AnnotationLanguageIdentity,
+    AnnotationLanguageOverrideInput, AnnotationLayerCacheError, AnnotationLayerCacheLoad,
+    AnnotationManifest, AnnotationModelIdentity, build_annotation_manifest,
+    load_annotation_layer_cache, write_annotation_layer_cache,
 };
 pub use clean::{
     CleaningConfig, PdfOcrQuality, PdfTextSource, RemovalMatcher, RemovalRule, RemovalRuleSource,
