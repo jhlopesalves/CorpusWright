@@ -253,17 +253,7 @@ impl std::fmt::Display for AnnotationError {
 
 impl std::error::Error for AnnotationError {}
 
-fn verify_bundled_model_checksum(path: &Path) -> Result<(), AnnotationError> {
-    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
-        return Ok(());
-    };
-    let Some((_, expected)) = BUNDLED_MODEL_SHA256
-        .iter()
-        .find(|(known_name, _)| *known_name == file_name)
-    else {
-        return Ok(());
-    };
-
+fn compute_and_verify_model_checksum(path: &Path) -> Result<String, AnnotationError> {
     let mut file = File::open(path).map_err(|error| AnnotationError::ModelLoadFailed {
         path: path.to_path_buf(),
         error: format!("failed to open model for checksum verification: {error}"),
@@ -282,18 +272,26 @@ fn verify_bundled_model_checksum(path: &Path) -> Result<(), AnnotationError> {
         }
         hasher.update(&buffer[..bytes_read]);
     }
-    let actual = format!("{:x}", hasher.finalize());
-    if actual != *expected {
+    let actual = format!("{:02x}", hasher.finalize());
+
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    if let Some((_, expected)) = BUNDLED_MODEL_SHA256
+        .iter()
+        .find(|(known_name, _)| *known_name == file_name)
+        && actual != *expected
+    {
         return Err(AnnotationError::ModelLoadFailed {
             path: path.to_path_buf(),
             error: format!("SHA-256 mismatch: expected {expected}, got {actual}"),
         });
     }
-    Ok(())
+
+    Ok(actual)
 }
 
-/// Returns model identity metadata for a language, if the model file exists.
-/// Returns a tuple of `(language, model_filename, udpipe_model_name, sha256)`.
 pub fn model_identity(
     language: &str,
     model_dir: &Path,
@@ -305,26 +303,7 @@ pub fn model_identity(
 
     let path = model_dir.join(&model_name);
 
-    let mut file = File::open(&path).map_err(|error| AnnotationError::ModelLoadFailed {
-        path: path.to_path_buf(),
-        error: format!("failed to open model for identity: {error}"),
-    })?;
-
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 64 * 1024];
-    loop {
-        let bytes_read =
-            file.read(&mut buffer)
-                .map_err(|error| AnnotationError::ModelLoadFailed {
-                    path: path.to_path_buf(),
-                    error: format!("failed to read model for identity: {error}"),
-                })?;
-        if bytes_read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..bytes_read]);
-    }
-    let sha256 = format!("{:02x}", hasher.finalize());
+    let sha256 = compute_and_verify_model_checksum(&path)?;
 
     Ok((language.to_string(), model_name, udpipe_name, sha256))
 }
@@ -593,7 +572,7 @@ impl ModelManager {
                 language: language.to_string(),
             });
         }
-        verify_bundled_model_checksum(&path)?;
+        compute_and_verify_model_checksum(&path)?;
         let model = NativeModel::load(&path)?;
         self.loaded.insert(language.to_string(), model);
         Ok(())

@@ -98,17 +98,29 @@ impl From<&LemmaTable> for LemmaTableDto {
     }
 }
 
-impl From<LemmaTableDto> for LemmaTable {
-    fn from(dto: LemmaTableDto) -> Self {
+impl TryFrom<LemmaTableDto> for LemmaTable {
+    type Error = String;
+
+    fn try_from(dto: LemmaTableDto) -> Result<Self, Self::Error> {
         let mut table = LemmaTable::new();
+        let mut unique = std::collections::HashSet::new();
         for entry in dto.entries {
+            if !unique.insert(entry.clone()) {
+                return Err(format!("Duplicate lemma entry: {}", entry));
+            }
             table.intern(&entry);
         }
-        table
+        Ok(table)
     }
 }
 
 /// Result of loading a cache file.
+///
+/// Semantics:
+/// - `Ready`: Cache loaded successfully and matches expected manifest.
+/// - `Stale`: Cache file exists but schema version, file version, or manifest data has changed.
+/// - `Missing`: Cache file does not exist.
+/// - `Invalid`: Cache file exists but is corrupt, partial, or violates consistency invariants.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AnnotationLayerCacheLoad {
     Ready(AnnotationLayer),
@@ -139,6 +151,22 @@ pub fn build_annotation_manifest(
     document_hashes: &[String],
     document_languages: &[String],
 ) -> Result<AnnotationManifest, AnnotationLayerCacheError> {
+    let expected_count = corpus.document_summaries().count();
+    if document_hashes.len() != expected_count {
+        return Err(AnnotationLayerCacheError::ValidationError(format!(
+            "document_hashes length ({}) does not match corpus document count ({})",
+            document_hashes.len(),
+            expected_count
+        )));
+    }
+    if document_languages.len() != expected_count {
+        return Err(AnnotationLayerCacheError::ValidationError(format!(
+            "document_languages length ({}) does not match corpus document count ({})",
+            document_languages.len(),
+            expected_count
+        )));
+    }
+
     models.sort_by(|a, b| a.language.cmp(&b.language));
 
     let mut ordered_records = records.iter().enumerate().collect::<Vec<_>>();
@@ -239,6 +267,56 @@ pub fn build_annotation_manifest(
     })
 }
 
+fn validate_annotation_cache_envelope(
+    envelope: &AnnotationLayerCacheEnvelope,
+    expected_manifest: Option<&AnnotationManifest>,
+) -> Result<(), AnnotationLayerCacheLoad> {
+    if envelope.cache_file_version != ANNOTATION_LAYER_CACHE_FILE_VERSION {
+        return Err(AnnotationLayerCacheLoad::Stale);
+    }
+
+    if let Some(expected) = expected_manifest {
+        if envelope.manifest.schema_version != expected.schema_version {
+            return Err(AnnotationLayerCacheLoad::Stale);
+        }
+        if envelope.manifest != *expected {
+            return Err(AnnotationLayerCacheLoad::Stale);
+        }
+    }
+
+    let max_lemma_id = envelope.layer.lemma_table.entries.len() as u32;
+    let mut prev_doc_idx = None;
+    for doc in &envelope.layer.documents {
+        if prev_doc_idx.is_some_and(|prev| doc.analysis_document_index <= prev) {
+            return Err(AnnotationLayerCacheLoad::Invalid(
+                "Document indices are not strictly ordered".to_string(),
+            ));
+        }
+        prev_doc_idx = Some(doc.analysis_document_index);
+
+        for term in &doc.term_counts {
+            if term.lemma_id >= max_lemma_id {
+                return Err(AnnotationLayerCacheLoad::Invalid(format!(
+                    "Lemma ID {} out of range",
+                    term.lemma_id
+                )));
+            }
+        }
+    }
+
+    let mut langs = envelope.layer.languages_used.clone();
+    let original_langs = langs.clone();
+    langs.sort_unstable();
+    langs.dedup();
+    if langs != original_langs {
+        return Err(AnnotationLayerCacheLoad::Invalid(
+            "languages_used is not sorted and deduplicated".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 /// Writes the annotation layer cache to disk atomically.
 pub fn write_annotation_layer_cache(
     cache_root: &Path,
@@ -275,13 +353,23 @@ pub fn write_annotation_layer_cache(
     // Read back and verify
     let read_back =
         std::fs::read(&temp_path).map_err(|e| AnnotationLayerCacheError::IoError(e.to_string()))?;
-    let _parsed: AnnotationLayerCacheEnvelope =
-        serde_json::from_slice(&read_back).map_err(|e| {
-            AnnotationLayerCacheError::ValidationError(format!(
-                "Roundtrip validation failed: {}",
-                e
-            ))
-        })?;
+    let parsed: AnnotationLayerCacheEnvelope = serde_json::from_slice(&read_back).map_err(|e| {
+        AnnotationLayerCacheError::ValidationError(format!("Roundtrip validation failed: {}", e))
+    })?;
+
+    if let Err(load_state) = validate_annotation_cache_envelope(&parsed, Some(manifest)) {
+        return Err(AnnotationLayerCacheError::ValidationError(format!(
+            "Roundtrip invariants validation failed: {:?}",
+            load_state
+        )));
+    }
+    // Also test fallible DTO conversion
+    if let Err(e) = LemmaTable::try_from(parsed.layer.lemma_table) {
+        return Err(AnnotationLayerCacheError::ValidationError(format!(
+            "Roundtrip LemmaTable validation failed: {}",
+            e
+        )));
+    }
 
     // Atomic rename (Windows safe)
     if let Err(e) = std::fs::rename(&temp_path, &final_path) {
@@ -324,50 +412,19 @@ pub fn load_annotation_layer_cache(
         }
     };
 
-    if envelope.cache_file_version != ANNOTATION_LAYER_CACHE_FILE_VERSION {
-        return AnnotationLayerCacheLoad::Stale;
+    if let Err(load_state) = validate_annotation_cache_envelope(&envelope, Some(expected_manifest))
+    {
+        return load_state;
     }
 
-    if envelope.manifest.schema_version != expected_manifest.schema_version {
-        return AnnotationLayerCacheLoad::Stale;
-    }
-    if envelope.manifest != *expected_manifest {
-        return AnnotationLayerCacheLoad::Stale;
-    }
-
-    let max_lemma_id = envelope.layer.lemma_table.entries.len() as u32;
-    let mut prev_doc_idx = None;
-    for doc in &envelope.layer.documents {
-        if prev_doc_idx.is_some_and(|prev| doc.analysis_document_index <= prev) {
-            return AnnotationLayerCacheLoad::Invalid(
-                "Document indices are not strictly ordered".to_string(),
-            );
-        }
-        prev_doc_idx = Some(doc.analysis_document_index);
-
-        for term in &doc.term_counts {
-            if term.lemma_id >= max_lemma_id {
-                return AnnotationLayerCacheLoad::Invalid(format!(
-                    "Lemma ID {} out of range",
-                    term.lemma_id
-                ));
-            }
-        }
-    }
-
-    let mut langs = envelope.layer.languages_used.clone();
-    let original_langs = langs.clone();
-    langs.sort_unstable();
-    langs.dedup();
-    if langs != original_langs {
-        return AnnotationLayerCacheLoad::Invalid(
-            "languages_used is not sorted and deduplicated".to_string(),
-        );
-    }
+    let lemma_table = match LemmaTable::try_from(envelope.layer.lemma_table) {
+        Ok(t) => t,
+        Err(e) => return AnnotationLayerCacheLoad::Invalid(e),
+    };
 
     let layer = AnnotationLayer {
         documents: envelope.layer.documents,
-        lemma_table: envelope.layer.lemma_table.into(),
+        lemma_table,
         languages_used: envelope.layer.languages_used,
     };
 
@@ -584,8 +641,16 @@ mod tests {
         table.intern("world");
 
         let dto = LemmaTableDto::from(&table);
-        let rebuilt: LemmaTable = dto.into();
+        let rebuilt: LemmaTable = dto.try_into().unwrap();
 
         assert_eq!(table, rebuilt);
+    }
+
+    #[test]
+    fn duplicate_lemma_entries_return_invalid() {
+        let dto = LemmaTableDto {
+            entries: vec!["hello".to_string(), "hello".to_string()],
+        };
+        assert!(LemmaTable::try_from(dto).is_err());
     }
 }

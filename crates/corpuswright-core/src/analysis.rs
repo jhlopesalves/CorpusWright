@@ -5049,4 +5049,95 @@ mod tests {
 
         assert_eq!(result.unwrap_err(), AnalysisBuildError::Cancelled);
     }
+    #[test]
+    fn manifest_builder_rejects_too_short_document_hash_input() {
+        let corpus = corpus_for(&[("doc1.txt", "hello")]);
+        let result = crate::annotation_cache::build_annotation_manifest(
+            &corpus,
+            &[],
+            crate::tokenization::TokenizationManifest {
+                id: "".into(),
+                version: String::new(),
+                unicode_segmentation_version: "".into(),
+                config: crate::tokenization::TokenizationConfig::default(),
+            },
+            &std::collections::HashMap::new(),
+            vec![],
+            &[], // too few
+            &["en".to_string()],
+        );
+        assert!(matches!(
+            result,
+            Err(crate::annotation_cache::AnnotationLayerCacheError::ValidationError(_))
+        ));
+    }
+
+    #[test]
+    fn manifest_builder_rejects_too_long_document_hash_input() {
+        let corpus = corpus_for(&[]); // count = 0
+        let result = crate::annotation_cache::build_annotation_manifest(
+            &corpus,
+            &[],
+            crate::tokenization::TokenizationManifest {
+                id: "".into(),
+                version: String::new(),
+                unicode_segmentation_version: "".into(),
+                config: crate::tokenization::TokenizationConfig::default(),
+            },
+            &std::collections::HashMap::new(),
+            vec![],
+            &["hash1".to_string()], // too many
+            &[],
+        );
+        assert!(matches!(
+            result,
+            Err(crate::annotation_cache::AnnotationLayerCacheError::ValidationError(_))
+        ));
+    }
+
+    #[test]
+    fn manifest_builder_rejects_too_short_document_language_input() {
+        let corpus = corpus_for(&[("doc1.txt", "hello")]);
+        let result = crate::annotation_cache::build_annotation_manifest(
+            &corpus,
+            &[],
+            crate::tokenization::TokenizationManifest {
+                id: "".into(),
+                version: String::new(),
+                unicode_segmentation_version: "".into(),
+                config: crate::tokenization::TokenizationConfig::default(),
+            },
+            &std::collections::HashMap::new(),
+            vec![],
+            &["hash1".to_string()],
+            &[], // too few
+        );
+        assert!(matches!(
+            result,
+            Err(crate::annotation_cache::AnnotationLayerCacheError::ValidationError(_))
+        ));
+    }
+
+    #[test]
+    fn manifest_builder_rejects_too_long_document_language_input() {
+        let corpus = corpus_for(&[]); // count = 0
+        let result = crate::annotation_cache::build_annotation_manifest(
+            &corpus,
+            &[],
+            crate::tokenization::TokenizationManifest {
+                id: "".into(),
+                version: String::new(),
+                unicode_segmentation_version: "".into(),
+                config: crate::tokenization::TokenizationConfig::default(),
+            },
+            &std::collections::HashMap::new(),
+            vec![],
+            &[],
+            &["en".to_string()], // too many
+        );
+        assert!(matches!(
+            result,
+            Err(crate::annotation_cache::AnnotationLayerCacheError::ValidationError(_))
+        ));
+    }
 }
