@@ -143,7 +143,7 @@ pub struct SurfaceAnnotation {
 /// Lemma intern table for compact storage.
 ///
 /// Each unique lemma string gets a single u32 id shared across the corpus.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LemmaTable {
     /// lemma → id mapping
     map: HashMap<String, u32>,
