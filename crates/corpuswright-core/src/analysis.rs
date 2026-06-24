@@ -535,7 +535,7 @@ struct AnalysisSurfaceTerm {
     document_counts: Vec<(usize, u64)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnnotatedTermCount {
     pub surface_term_id: u32,
     pub lemma_id: u32,
@@ -550,7 +550,7 @@ pub struct AnnotationLayer {
     pub languages_used: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnnotationLayerDocument {
     /// Index into `AnalysisCorpus.documents`.
     pub analysis_document_index: usize,
@@ -740,9 +740,16 @@ impl AnalysisCorpus {
         &self.overview
     }
 
-    /// Returns whether active processing settings differ from this snapshot.
     pub fn is_stale_for_cleaning_config(&self, cleaning_config: &CleaningConfig) -> bool {
         self.overview.processing_config_signature != cleaning_config_signature(cleaning_config)
+    }
+
+    pub(crate) fn document_summaries(&self) -> impl Iterator<Item = &AnalysisDocumentSummary> {
+        self.documents.iter().map(|doc| &doc.summary)
+    }
+
+    pub(crate) fn surface_term_tokens(&self) -> impl Iterator<Item = &str> {
+        self.surface_terms.iter().map(|term| term.token.as_str())
     }
 }
 
@@ -5041,5 +5048,96 @@ mod tests {
         );
 
         assert_eq!(result.unwrap_err(), AnalysisBuildError::Cancelled);
+    }
+    #[test]
+    fn manifest_builder_rejects_too_short_document_hash_input() {
+        let corpus = corpus_for(&[("doc1.txt", "hello")]);
+        let result = crate::annotation_cache::build_annotation_manifest(
+            &corpus,
+            &[],
+            crate::tokenization::TokenizationManifest {
+                id: "".into(),
+                version: String::new(),
+                unicode_segmentation_version: "".into(),
+                config: crate::tokenization::TokenizationConfig::default(),
+            },
+            &std::collections::HashMap::new(),
+            vec![],
+            &[], // too few
+            &["en".to_string()],
+        );
+        assert!(matches!(
+            result,
+            Err(crate::annotation_cache::AnnotationLayerCacheError::ValidationError(_))
+        ));
+    }
+
+    #[test]
+    fn manifest_builder_rejects_too_long_document_hash_input() {
+        let corpus = corpus_for(&[]); // count = 0
+        let result = crate::annotation_cache::build_annotation_manifest(
+            &corpus,
+            &[],
+            crate::tokenization::TokenizationManifest {
+                id: "".into(),
+                version: String::new(),
+                unicode_segmentation_version: "".into(),
+                config: crate::tokenization::TokenizationConfig::default(),
+            },
+            &std::collections::HashMap::new(),
+            vec![],
+            &["hash1".to_string()], // too many
+            &[],
+        );
+        assert!(matches!(
+            result,
+            Err(crate::annotation_cache::AnnotationLayerCacheError::ValidationError(_))
+        ));
+    }
+
+    #[test]
+    fn manifest_builder_rejects_too_short_document_language_input() {
+        let corpus = corpus_for(&[("doc1.txt", "hello")]);
+        let result = crate::annotation_cache::build_annotation_manifest(
+            &corpus,
+            &[],
+            crate::tokenization::TokenizationManifest {
+                id: "".into(),
+                version: String::new(),
+                unicode_segmentation_version: "".into(),
+                config: crate::tokenization::TokenizationConfig::default(),
+            },
+            &std::collections::HashMap::new(),
+            vec![],
+            &["hash1".to_string()],
+            &[], // too few
+        );
+        assert!(matches!(
+            result,
+            Err(crate::annotation_cache::AnnotationLayerCacheError::ValidationError(_))
+        ));
+    }
+
+    #[test]
+    fn manifest_builder_rejects_too_long_document_language_input() {
+        let corpus = corpus_for(&[]); // count = 0
+        let result = crate::annotation_cache::build_annotation_manifest(
+            &corpus,
+            &[],
+            crate::tokenization::TokenizationManifest {
+                id: "".into(),
+                version: String::new(),
+                unicode_segmentation_version: "".into(),
+                config: crate::tokenization::TokenizationConfig::default(),
+            },
+            &std::collections::HashMap::new(),
+            vec![],
+            &[],
+            &["en".to_string()], // too many
+        );
+        assert!(matches!(
+            result,
+            Err(crate::annotation_cache::AnnotationLayerCacheError::ValidationError(_))
+        ));
     }
 }
