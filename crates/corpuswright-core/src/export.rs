@@ -4,7 +4,6 @@ use crate::manifest::{ExportManifest, ManifestFileRecord};
 use crate::scan::{DocumentRecord, DocumentType};
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -135,7 +134,7 @@ pub fn export_corpus(
                 path: record.source_path.clone(),
                 message: error.to_string(),
             })?;
-            let source_hash_sha256 = sha256_hex(&source_bytes);
+            let source_hash_sha256 = crate::hash::sha256_hex(&source_bytes);
             let invalid_utf8 = std::str::from_utf8(&source_bytes).is_err();
             let raw_text = String::from_utf8_lossy(&source_bytes).into_owned();
 
@@ -331,7 +330,7 @@ pub fn export_corpus(
                 clean_text(&original_text, cleaning_config)
             };
             let processed_bytes = processed_text.as_bytes();
-            let processed_hash_sha256 = sha256_hex(processed_bytes);
+            let processed_hash_sha256 = crate::hash::sha256_hex(processed_bytes);
 
             if invalid_utf8
                 && record.document_type != DocumentType::Docx
@@ -638,7 +637,7 @@ fn unique_output_relative_path(
         }
     }
 
-    let hash: String = sha256_hex(
+    let hash: String = crate::hash::sha256_hex(
         format!(
             "{}\n{}",
             record.source_path.display(),
@@ -657,11 +656,6 @@ fn unique_output_relative_path(
     };
     used_paths.insert(candidate.clone());
     candidate
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn export_extraction_warning_kind(message: &str) -> ExportWarningKind {
