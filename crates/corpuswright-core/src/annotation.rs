@@ -156,6 +156,11 @@ impl LemmaTable {
         Self::default()
     }
 
+    /// Returns the ordered slice of all interned lemmas.
+    pub fn entries(&self) -> &[String] {
+        &self.reverse
+    }
+
     /// Intern a lemma string, returning its stable id.
     pub fn intern(&mut self, lemma: &str) -> u32 {
         if let Some(&id) = self.map.get(lemma) {
@@ -248,17 +253,7 @@ impl std::fmt::Display for AnnotationError {
 
 impl std::error::Error for AnnotationError {}
 
-fn verify_bundled_model_checksum(path: &Path) -> Result<(), AnnotationError> {
-    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
-        return Ok(());
-    };
-    let Some((_, expected)) = BUNDLED_MODEL_SHA256
-        .iter()
-        .find(|(known_name, _)| *known_name == file_name)
-    else {
-        return Ok(());
-    };
-
+fn compute_and_verify_model_checksum(path: &Path) -> Result<String, AnnotationError> {
     let mut file = File::open(path).map_err(|error| AnnotationError::ModelLoadFailed {
         path: path.to_path_buf(),
         error: format!("failed to open model for checksum verification: {error}"),
@@ -277,14 +272,40 @@ fn verify_bundled_model_checksum(path: &Path) -> Result<(), AnnotationError> {
         }
         hasher.update(&buffer[..bytes_read]);
     }
-    let actual = format!("{:x}", hasher.finalize());
-    if actual != *expected {
+    let actual = format!("{:02x}", hasher.finalize());
+
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    if let Some((_, expected)) = BUNDLED_MODEL_SHA256
+        .iter()
+        .find(|(known_name, _)| *known_name == file_name)
+        && actual != *expected
+    {
         return Err(AnnotationError::ModelLoadFailed {
             path: path.to_path_buf(),
             error: format!("SHA-256 mismatch: expected {expected}, got {actual}"),
         });
     }
-    Ok(())
+
+    Ok(actual)
+}
+
+pub fn model_identity(
+    language: &str,
+    model_dir: &Path,
+) -> Result<(String, String, String, String), AnnotationError> {
+    let udpipe_name = language_to_udpipe_name(language);
+    let model_name = bundled_model_filename(language)
+        .map(str::to_string)
+        .unwrap_or_else(|| udpipe_rs::model_filename(&udpipe_name));
+
+    let path = model_dir.join(&model_name);
+
+    let sha256 = compute_and_verify_model_checksum(&path)?;
+
+    Ok((language.to_string(), model_name, udpipe_name, sha256))
 }
 
 #[repr(C)]
@@ -551,7 +572,7 @@ impl ModelManager {
                 language: language.to_string(),
             });
         }
-        verify_bundled_model_checksum(&path)?;
+        compute_and_verify_model_checksum(&path)?;
         let model = NativeModel::load(&path)?;
         self.loaded.insert(language.to_string(), model);
         Ok(())
