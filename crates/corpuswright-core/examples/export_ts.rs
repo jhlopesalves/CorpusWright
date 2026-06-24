@@ -18,6 +18,7 @@ use corpuswright_core::clean::{
     TableExtractionStrategy,
 };
 use corpuswright_core::export::{ExportReport, ExportWarning, ExportWarningKind};
+use corpuswright_core::language::{DetectedLanguage, DocumentLanguage, LanguageResolution};
 use corpuswright_core::manifest::{ExportManifest, ManifestFileRecord};
 use corpuswright_core::pdf::{PdfPageExtractionMethod, PdfPageRangePage, PdfPageRangeResult};
 use corpuswright_core::pdf_audit::{PdfAuditQuality, PdfAuditResult, PdfAuditSuggestedProfile};
@@ -237,6 +238,24 @@ fn main() {
         ],
         &[],
     );
+
+    export_type::<DetectedLanguage>(&out_dir, &[], &[]);
+    export_type::<LanguageResolution>(&out_dir, &[], &[]);
+    export_type::<DocumentLanguage>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "DetectedLanguage",
+                file: "DetectedLanguage",
+            },
+            TypeImport {
+                name: "LanguageResolution",
+                file: "LanguageResolution",
+            },
+        ],
+        &[],
+    );
+
     export_type::<ProjectSourceKind>(&out_dir, &[], &[]);
     export_type::<ProjectSourceStatus>(&out_dir, &[], &[]);
     export_type::<ProjectSourceExtractionRoute>(&out_dir, &[], &[]);
