@@ -44,9 +44,10 @@ pub mod tokenization;
 pub mod word_count;
 
 pub use analysis::{
-    AnalysisDocumentSelection, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
-    FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
-    FrequencyTokenClass, SortDirection,
+    AnalysisDocumentSelection, AnnotatedTermCount, AnnotationLayer, AnnotationLayerBuildError,
+    AnnotationLayerBuildOptions, AnnotationLayerDocument, FrequencyGroupMode, FrequencyMatchMode,
+    FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey,
+    FrequencyTermItem, FrequencyTokenClass, SortDirection, build_annotation_layer,
 };
 pub use clean::{
     CleaningConfig, PdfOcrQuality, PdfTextSource, RemovalMatcher, RemovalRule, RemovalRuleSource,
