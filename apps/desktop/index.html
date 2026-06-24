@@ -12,14 +12,36 @@
         const raw = localStorage.getItem("corpuswright.appearance.v1");
         if (!raw) {
           const prefersLight = window.matchMedia?.("(prefers-color-scheme: light)")?.matches;
-          document.documentElement.dataset.theme = prefersLight ? "light" : "dark";
+          document.documentElement.dataset.theme = prefersLight ? "corpus-light" : "corpus-dark";
           return;
         }
         const preference = JSON.parse(raw);
         const root = document.documentElement;
-        if (typeof preference.themeId === "string") {
-          root.dataset.theme = preference.themeId;
+
+        let themeValue = "corpus-dark";
+        if (preference.themeFamilyId && preference.themeVariant) {
+          themeValue = `${preference.themeFamilyId}-${preference.themeVariant}`;
+        } else if (typeof preference.themeId === "string") {
+          const id = preference.themeId;
+          const m = {
+            "dark": "corpus-dark", "light": "corpus-light",
+            "repository-light": "workbench-light", "repository-dark": "workbench-dark",
+            "solar-paper": "solar-light", "solar-night": "solar-dark",
+            "graphite-day": "graphite-light", "graphite-desk": "graphite-dark",
+            "retro-paper": "retro-light", "retro-console": "retro-dark",
+            "sepia-reading": "sepia-light", "high-contrast": "high-contrast-dark",
+            "moss-day": "moss-light", "moss-desk": "moss-dark",
+            "clear-day": "corpus-light", "clear-night": "corpus-dark",
+            "spectrum-paper": "solar-light", "spectrum-ink": "solar-dark",
+            "cloud-desk": "workbench-light", "cloud-night": "workbench-dark",
+            "amber-paper": "sepia-light", "ink-amber": "sepia-dark",
+            "mineral-chalk": "graphite-light", "mineral-slate": "graphite-dark",
+            "studio-light": "workbench-light", "studio-dark": "workbench-dark"
+          };
+          themeValue = m[id] || "corpus-dark";
         }
+        root.dataset.theme = themeValue;
+
         if (typeof preference.fontFamily === "string") {
           root.style.setProperty("--cw-font-ui", preference.fontFamily);
         }
@@ -467,7 +489,7 @@
 
         <div class="appearance-controls">
           <label class="appearance-field" for="appearance-theme-select">
-            <span>Theme preset</span>
+            <span>Theme family</span>
             <select id="appearance-theme-select" class="settings-select"></select>
           </label>
 
