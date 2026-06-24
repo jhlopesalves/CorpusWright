@@ -271,14 +271,14 @@
               <button id="analyse-build-button" class="primary-btn" type="button">Build Analysis Corpus</button>
               <label for="analyse-language-override">
                 <span>Language override</span>
-                <select id="analyse-language-override">
+                <select id="analyse-language-override" title="Choose a language to use instead of auto-detection.">
                   <option value="" selected>Auto detect</option>
                   <option value="en">English</option>
                   <option value="pt">Portuguese</option>
                   <option value="fr">French</option>
                 </select>
               </label>
-              <span id="analyse-build-note">Build a fast surface index for frequencies, dispersion, and corpus diagnostics. Lemma/POS annotation is not built yet.</span>
+              <span id="analyse-build-note">Builds the analysis from the current project text.</span>
             </div>
           </div>
 
@@ -367,8 +367,8 @@
                     </label>
                     <label for="frequency-pos-filter">
                       <span>POS</span>
-                      <select id="frequency-pos-filter" disabled title="Lemma grouping and POS filters require annotation, which is not built in this version.">
-                        <option value="" selected>Annotation unavailable</option>
+                      <select id="frequency-pos-filter" disabled title="Lemma grouping and POS filters need the annotation layer, which isn't available yet.">
+                        <option value="" selected>Annotation layer unavailable</option>
                         <option value="ADJ">ADJ</option>
                         <option value="ADP">ADP</option>
                         <option value="ADV">ADV</option>

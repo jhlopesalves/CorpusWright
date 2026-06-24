@@ -50,7 +50,7 @@ const FREQUENCY_DOCUMENT_PAGE_SIZE = 200;
 const TERM_DISTRIBUTION_PAGE_SIZE = 100;
 const FREQUENCY_TABLE_COLUMN_COUNT = 5;
 const ANNOTATION_UNAVAILABLE_MESSAGE =
-  "Lemma grouping and POS filters require annotation, which is not built in this version.";
+  "Lemma grouping and POS filters need the annotation layer, which isn't available yet.";
 type AnalysisToolId = "overview" | "frequency";
 
 interface OverviewMetricRow {
@@ -335,7 +335,7 @@ function renderAnalyseStatus(): void {
       `Built ${new Date(corpus.builtAt).toLocaleString()} from ${inputTextSourceLabel(corpus.inputTextSource)}`;
     dom.analyseStatusDetail.textContent =
       `${pluralise(corpus.documentCount, "document")} - ${formatNumber(corpus.totalTokens)} tokens`;
-    dom.analyseBuildNote.textContent = "Rebuild updates the Rust analysis index from current project text.";
+    dom.analyseBuildNote.textContent = "Rebuilds the analysis from the current project text.";
     return;
   }
 
@@ -351,7 +351,7 @@ function renderAnalyseStatus(): void {
   dom.analyseStatusDetail.textContent = processedCount > 0
     ? "Processed text is available. Build the analysis corpus to inspect descriptive counts."
     : "Analysis corpus not built yet.";
-  dom.analyseBuildNote.textContent = "Builds a Rust analysis index from loaded project text.";
+  dom.analyseBuildNote.textContent = "Builds the analysis from the current project text.";
 }
 
 function analysisPhaseLabel(progress: AnalysisBuildProgress): string {
@@ -1533,7 +1533,7 @@ function syncFrequencyAnnotationControls(corpus: AnalysisCorpus | null = state.a
 
   const anyPosOption = dom.frequencyPosFilterSelect.querySelector<HTMLOptionElement>('option[value=""]');
   if (anyPosOption) {
-    anyPosOption.textContent = annotationAvailable ? "Any POS" : "Annotation unavailable";
+    anyPosOption.textContent = annotationAvailable ? "Any POS" : "Annotation layer unavailable";
   }
   if (!annotationAvailable) {
     dom.frequencyPosFilterSelect.value = "";
@@ -1870,7 +1870,7 @@ function renderFrequencyList(): void {
   if (!frequencyPage) {
     dom.frequencySummary.textContent = frequencyQueryFailure
       ? "Frequency query failed."
-      : "Querying the Rust analysis index...";
+      : "Loading frequency results...";
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = FREQUENCY_TABLE_COLUMN_COUNT;
