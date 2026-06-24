@@ -9,7 +9,7 @@ export type DocumentLanguage = {
 /**
  * The raw detected language, absent when an override short-circuits detection.
  */
-detected?: DetectedLanguage,
+detected?: DetectedLanguage, 
 /**
  * Manual override ISO 639-1 code, if set.
  */
