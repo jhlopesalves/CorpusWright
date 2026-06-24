@@ -200,6 +200,7 @@ export interface CorpusOverview {
   sourceCount: number;
   totalTokens: number;
   totalTypes: number;
+  annotationAvailable: boolean;
   inputTextSource: AnalysisInputSource;
   builtAt: string;
   buildSignature: string;

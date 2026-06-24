@@ -49,6 +49,8 @@ const FREQUENCY_PAGE_SIZE = 200;
 const FREQUENCY_DOCUMENT_PAGE_SIZE = 200;
 const TERM_DISTRIBUTION_PAGE_SIZE = 100;
 const FREQUENCY_TABLE_COLUMN_COUNT = 5;
+const ANNOTATION_UNAVAILABLE_MESSAGE =
+  "Lemma grouping and POS filters require annotation, which is not built in this version.";
 type AnalysisToolId = "overview" | "frequency";
 
 interface OverviewMetricRow {
@@ -1508,9 +1510,36 @@ function renderFrequencySearchError(message: string | null): void {
 }
 
 function renderFrequencyQueryNotice(page: FrequencyPage | null): void {
-  const message = page?.notices.map((notice) => notice.message).join(" ") ?? "";
+  const messages = page?.notices.map((notice) => notice.message) ?? [];
+  if (state.analysisCorpus && !state.analysisCorpus.annotationAvailable) {
+    messages.push(ANNOTATION_UNAVAILABLE_MESSAGE);
+  }
+  const message = messages.join(" ");
   dom.frequencyQueryNotice.textContent = message;
   dom.frequencyQueryNotice.classList.toggle("hidden", message.length === 0);
+}
+
+function syncFrequencyAnnotationControls(corpus: AnalysisCorpus | null = state.analysisCorpus): void {
+  const annotationAvailable = corpus?.annotationAvailable === true;
+  const lemmaOption = dom.frequencyGroupBySelect.querySelector<HTMLOptionElement>('option[value="lemma"]');
+  if (lemmaOption) {
+    lemmaOption.disabled = !annotationAvailable;
+    lemmaOption.textContent = annotationAvailable ? "Lemma" : "Lemma (annotation unavailable)";
+  }
+  if (!annotationAvailable && dom.frequencyGroupBySelect.value === "lemma") {
+    dom.frequencyGroupBySelect.value = "surface";
+  }
+  dom.frequencyGroupBySelect.title = annotationAvailable ? "" : ANNOTATION_UNAVAILABLE_MESSAGE;
+
+  const anyPosOption = dom.frequencyPosFilterSelect.querySelector<HTMLOptionElement>('option[value=""]');
+  if (anyPosOption) {
+    anyPosOption.textContent = annotationAvailable ? "Any POS" : "Annotation unavailable";
+  }
+  if (!annotationAvailable) {
+    dom.frequencyPosFilterSelect.value = "";
+  }
+  dom.frequencyPosFilterSelect.disabled = !annotationAvailable;
+  dom.frequencyPosFilterSelect.title = annotationAvailable ? "" : ANNOTATION_UNAVAILABLE_MESSAGE;
 }
 
 function currentFrequencyTokenClassFilter(): FrequencyTokenClassFilter {
@@ -1752,6 +1781,7 @@ async function refreshFrequencyPage(resetOffset = true): Promise<void> {
   if (!corpus) {
     return;
   }
+  syncFrequencyAnnotationControls(corpus);
   if (resetOffset) {
     frequencyPageOffset = 0;
   }
@@ -1816,9 +1846,10 @@ function renderFrequencyList(): void {
   dom.frequencyTableBody.replaceChildren();
   dom.frequencyLimitNote.textContent = "";
   renderFrequencySearchError(frequencyQueryFailure);
-  renderFrequencyQueryNotice(frequencyPage);
 
   const corpus = state.analysisCorpus;
+  syncFrequencyAnnotationControls(corpus);
+  renderFrequencyQueryNotice(frequencyPage);
   renderFrequencyScopeControl(corpus);
   if (!corpus) {
     dom.frequencyResultCount.textContent = "";
@@ -2480,9 +2511,11 @@ export function initWorkbenchSwitcher(): void {
   dom.frequencyMatchModeSelect.addEventListener("change", () => void refreshFrequencyPage());
   dom.frequencyMinInput.addEventListener("input", scheduleFrequencyRefresh);
   dom.frequencyGroupBySelect.addEventListener("change", () => {
+    syncFrequencyAnnotationControls();
     syncFrequencyCaseFoldToggle();
     void refreshFrequencyPage();
   });
+  syncFrequencyAnnotationControls();
   syncFrequencyCaseFoldToggle();
   dom.frequencyCaseFoldInput.addEventListener("change", () => {
     syncFrequencyCaseFoldToggle();
