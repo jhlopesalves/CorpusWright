@@ -652,6 +652,57 @@ impl std::fmt::Display for AnnotationLayerBuildError {
 
 impl std::error::Error for AnnotationLayerBuildError {}
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationCacheBuildReport {
+    pub documents_annotated: usize,
+    pub total_annotated_term_count_rows: usize,
+    pub languages_used: Vec<String>,
+    pub cache_root: String,
+    pub reused_existing: bool,
+    pub cache_written: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[ts(export)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum AnnotationCacheBuildError {
+    Cancelled,
+    MissingCacheRoot,
+    SurfaceBuildFailed { error: String },
+    UnsupportedLanguages { languages: Vec<String> },
+    AnnotationFailed { error: String },
+    ManifestError { error: String },
+    CacheWriteError { error: String },
+}
+
+impl std::fmt::Display for AnnotationCacheBuildError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cancelled => formatter.write_str("Annotation cache build cancelled."),
+            Self::MissingCacheRoot => formatter.write_str("Missing annotation cache root."),
+            Self::SurfaceBuildFailed { error } => {
+                write!(formatter, "Surface build failed: {error}")
+            }
+            Self::UnsupportedLanguages { languages } => {
+                write!(
+                    formatter,
+                    "No UDPipe model is available for language(s): {}",
+                    languages.join(", ")
+                )
+            }
+            Self::AnnotationFailed { error } => {
+                write!(formatter, "Annotation build failed: {error}")
+            }
+            Self::ManifestError { error } => write!(formatter, "Manifest error: {error}"),
+            Self::CacheWriteError { error } => write!(formatter, "Cache write error: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for AnnotationCacheBuildError {}
+
 struct AnalysisBuildMetadata {
     source_count: usize,
     total_tokens: u64,
@@ -1939,6 +1990,106 @@ where
     TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
 {
     build_annotation_layer_with_mapping(corpus, records, options, cancel, load_text, true)
+}
+
+pub fn build_and_write_annotation_cache<TextLoader>(
+    records: &[DocumentRecord],
+    mut analysis_options: AnalysisBuildOptions,
+    annotation_options: AnnotationLayerBuildOptions,
+    cancel: &AtomicBool,
+    mut load_text: TextLoader,
+) -> Result<AnnotationCacheBuildReport, AnnotationCacheBuildError>
+where
+    TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
+{
+    let cache_root = analysis_options
+        .annotation_cache_root
+        .take()
+        .ok_or(AnnotationCacheBuildError::MissingCacheRoot)?;
+
+    let cache_root_str = cache_root.to_string_lossy().into_owned();
+
+    let corpus = build_analysis_corpus(records, analysis_options, cancel, &mut load_text, |_| {})
+        .map_err(|e| {
+        if matches!(e, AnalysisBuildError::Cancelled) {
+            AnnotationCacheBuildError::Cancelled
+        } else {
+            AnnotationCacheBuildError::SurfaceBuildFailed {
+                error: e.to_string(),
+            }
+        }
+    })?;
+
+    if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+        return Err(AnnotationCacheBuildError::Cancelled);
+    }
+
+    let manifest = build_expected_manifest(
+        &corpus,
+        records,
+        annotation_options.udpipe_model_dir.as_deref(),
+        &annotation_options.language_overrides,
+    )
+    .map_err(|e| AnnotationCacheBuildError::ManifestError {
+        error: format!("{:?}", e),
+    })?;
+
+    let cache_load = crate::annotation_cache::load_annotation_layer_cache(&cache_root, &manifest);
+    if let crate::annotation_cache::AnnotationLayerCacheLoad::Ready(layer) = cache_load {
+        let documents_annotated = layer.documents.len();
+        let total_annotated_term_count_rows = layer
+            .documents
+            .iter()
+            .map(|doc| doc.term_counts.len())
+            .sum();
+
+        return Ok(AnnotationCacheBuildReport {
+            documents_annotated,
+            total_annotated_term_count_rows,
+            languages_used: layer.languages_used,
+            cache_root: cache_root_str,
+            reused_existing: true,
+            cache_written: false,
+        });
+    }
+
+    let layer =
+        build_annotation_layer(&corpus, records, annotation_options, cancel, &mut load_text)
+            .map_err(|e| match e {
+                AnnotationLayerBuildError::Cancelled => AnnotationCacheBuildError::Cancelled,
+                AnnotationLayerBuildError::UnsupportedLanguages { languages } => {
+                    AnnotationCacheBuildError::UnsupportedLanguages { languages }
+                }
+                other => AnnotationCacheBuildError::AnnotationFailed {
+                    error: other.to_string(),
+                },
+            })?;
+
+    if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+        return Err(AnnotationCacheBuildError::Cancelled);
+    }
+
+    crate::annotation_cache::write_annotation_layer_cache(&cache_root, &manifest, &layer).map_err(
+        |e| AnnotationCacheBuildError::CacheWriteError {
+            error: format!("{:?}", e),
+        },
+    )?;
+
+    let documents_annotated = layer.documents.len();
+    let total_annotated_term_count_rows = layer
+        .documents
+        .iter()
+        .map(|doc| doc.term_counts.len())
+        .sum();
+
+    Ok(AnnotationCacheBuildReport {
+        documents_annotated,
+        total_annotated_term_count_rows,
+        languages_used: layer.languages_used,
+        cache_root: cache_root_str,
+        reused_existing: false,
+        cache_written: true,
+    })
 }
 
 pub(crate) fn compare_document_records(
@@ -5934,5 +6085,470 @@ mod tests {
         assert!(corpus_res.is_ok());
         let corpus_built = corpus_res.unwrap();
         assert!(!corpus_built.overview().annotation_available);
+    }
+
+    #[test]
+    fn test_explicit_build_writes_ready_cache() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options.udpipe_model_dir = Some(default_model_dir());
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+
+        let report = build_and_write_annotation_cache(
+            &records,
+            options.clone(),
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+        )
+        .unwrap();
+
+        assert!(report.cache_written);
+        assert!(!report.reused_existing);
+        assert_eq!(report.documents_annotated, 1);
+        assert!(report.total_annotated_term_count_rows > 0);
+
+        // Assert we can read it and it's Ready
+        let corpus = build_analysis_corpus(
+            &records,
+            build_options(),
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
+        )
+        .unwrap();
+        let manifest = build_expected_manifest(
+            &corpus,
+            &records,
+            options.udpipe_model_dir.as_deref(),
+            &options.language_overrides,
+        )
+        .unwrap();
+        let load = crate::annotation_cache::load_annotation_layer_cache(temp_dir.path(), &manifest);
+        assert!(matches!(
+            load,
+            crate::annotation_cache::AnnotationLayerCacheLoad::Ready(_)
+        ));
+    }
+
+    #[test]
+    fn test_fresh_analysis_attaches_after_explicit_build() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options.udpipe_model_dir = Some(default_model_dir());
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+
+        build_and_write_annotation_cache(
+            &records,
+            options.clone(),
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+        )
+        .unwrap();
+
+        let corpus_cached = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(corpus_cached.overview().annotation_available);
+    }
+
+    #[test]
+    fn test_persisted_manifest_matches_reader() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options.udpipe_model_dir = Some(default_model_dir());
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+
+        build_and_write_annotation_cache(
+            &records,
+            options.clone(),
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+        )
+        .unwrap();
+
+        let cache_file = temp_dir.path().join(format!(
+            "annotation-layer.v{}.json",
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        ));
+        let bytes = std::fs::read(&cache_file).unwrap();
+        let envelope: crate::annotation_cache::AnnotationLayerCacheEnvelope =
+            serde_json::from_slice(&bytes).unwrap();
+
+        let corpus = build_analysis_corpus(
+            &records,
+            build_options(),
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
+        )
+        .unwrap();
+        let manifest = build_expected_manifest(
+            &corpus,
+            &records,
+            options.udpipe_model_dir.as_deref(),
+            &options.language_overrides,
+        )
+        .unwrap();
+
+        assert_eq!(envelope.manifest, manifest);
+    }
+
+    #[test]
+    fn test_build_is_deterministic() {
+        let temp_dir1 = tempfile::tempdir().unwrap();
+        let temp_dir2 = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+
+        let mut options1 = build_options();
+        options1.annotation_cache_root = Some(temp_dir1.path().to_path_buf());
+        options1.udpipe_model_dir = Some(default_model_dir());
+        let build_ann_options1 = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options1.udpipe_model_dir.clone(),
+            language_overrides: options1.language_overrides.clone(),
+        };
+        build_and_write_annotation_cache(
+            &records,
+            options1,
+            build_ann_options1,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+        )
+        .unwrap();
+
+        let mut options2 = build_options();
+        options2.annotation_cache_root = Some(temp_dir2.path().to_path_buf());
+        options2.udpipe_model_dir = Some(default_model_dir());
+        let build_ann_options2 = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options2.udpipe_model_dir.clone(),
+            language_overrides: options2.language_overrides.clone(),
+        };
+        build_and_write_annotation_cache(
+            &records,
+            options2,
+            build_ann_options2,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+        )
+        .unwrap();
+
+        let cache_file1 = temp_dir1.path().join(format!(
+            "annotation-layer.v{}.json",
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        ));
+        let cache_file2 = temp_dir2.path().join(format!(
+            "annotation-layer.v{}.json",
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        ));
+
+        let bytes1 = std::fs::read(&cache_file1).unwrap();
+        let bytes2 = std::fs::read(&cache_file2).unwrap();
+
+        // Use semantic envelope equality
+        let envelope1: crate::annotation_cache::AnnotationLayerCacheEnvelope =
+            serde_json::from_slice(&bytes1).unwrap();
+        let envelope2: crate::annotation_cache::AnnotationLayerCacheEnvelope =
+            serde_json::from_slice(&bytes2).unwrap();
+
+        assert_eq!(envelope1, envelope2);
+    }
+
+    #[test]
+    fn test_ready_cache_skips_rebuild() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options.udpipe_model_dir = Some(default_model_dir());
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+
+        let report1 = build_and_write_annotation_cache(
+            &records,
+            options.clone(),
+            build_ann_options.clone(),
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+        )
+        .unwrap();
+
+        assert!(report1.cache_written);
+        assert!(!report1.reused_existing);
+
+        let cache_file = temp_dir.path().join(format!(
+            "annotation-layer.v{}.json",
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        ));
+        let mtime1 = std::fs::metadata(&cache_file).unwrap().modified().unwrap();
+
+        let report2 = build_and_write_annotation_cache(
+            &records,
+            options.clone(),
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+        )
+        .unwrap();
+
+        assert!(!report2.cache_written);
+        assert!(report2.reused_existing);
+        assert_eq!(report1.documents_annotated, report2.documents_annotated);
+        assert_eq!(
+            report1.total_annotated_term_count_rows,
+            report2.total_annotated_term_count_rows
+        );
+
+        let mtime2 = std::fs::metadata(&cache_file).unwrap().modified().unwrap();
+        assert_eq!(mtime1, mtime2);
+    }
+
+    #[test]
+    fn test_stale_or_invalid_replaced_after_full_build() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options.udpipe_model_dir = Some(default_model_dir());
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+
+        let cache_file = temp_dir.path().join(format!(
+            "annotation-layer.v{}.json",
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        ));
+        std::fs::create_dir_all(temp_dir.path()).unwrap();
+        std::fs::write(&cache_file, "INVALID JSON DATA").unwrap();
+
+        let report = build_and_write_annotation_cache(
+            &records,
+            options.clone(),
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+        )
+        .unwrap();
+
+        assert!(report.cache_written);
+        assert!(!report.reused_existing);
+
+        let bytes = std::fs::read(&cache_file).unwrap();
+        assert!(
+            serde_json::from_slice::<crate::annotation_cache::AnnotationLayerCacheEnvelope>(&bytes)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn test_unsupported_language_writes_no_partial_cache() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+        let mut overrides = HashMap::new();
+        overrides.insert(0, "unsupported_lang".to_string());
+
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options.udpipe_model_dir = Some(default_model_dir());
+        options.language_overrides = overrides;
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+
+        let res = build_and_write_annotation_cache(
+            &records,
+            options.clone(),
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "Hello world.")),
+        );
+
+        assert!(matches!(
+            res,
+            Err(AnnotationCacheBuildError::ManifestError { .. })
+        ));
+
+        let cache_file = temp_dir.path().join(format!(
+            "annotation-layer.v{}.json",
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        ));
+        assert!(!cache_file.exists());
+    }
+    #[test]
+    fn test_unsupported_language_does_not_overwrite_existing_cache() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+        
+        // 1. Build a valid cache first
+        let mut options_valid = build_options();
+        options_valid.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options_valid.udpipe_model_dir = Some(default_model_dir());
+        
+        let build_ann_options_valid = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options_valid.udpipe_model_dir.clone(),
+            language_overrides: options_valid.language_overrides.clone(),
+        };
+
+        build_and_write_annotation_cache(
+            &records,
+            options_valid,
+            build_ann_options_valid,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "Valid content.")),
+        )
+        .unwrap();
+
+        let cache_file = temp_dir.path().join(format!(
+            "annotation-layer.v{}.json",
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        ));
+        
+        // Save the valid cache content
+        let original_cache_content = std::fs::read(&cache_file).unwrap();
+
+        // 2. Attempt a build with unsupported language
+        let mut overrides = HashMap::new();
+        overrides.insert(0, "unsupported_lang".to_string());
+
+        let mut options_invalid = build_options();
+        options_invalid.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options_invalid.udpipe_model_dir = Some(default_model_dir());
+        options_invalid.language_overrides = overrides;
+
+        let build_ann_options_invalid = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options_invalid.udpipe_model_dir.clone(),
+            language_overrides: options_invalid.language_overrides.clone(),
+        };
+
+        let res = build_and_write_annotation_cache(
+            &records,
+            options_invalid,
+            build_ann_options_invalid,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "Hello world.")),
+        );
+
+        assert!(matches!(
+            res,
+            Err(AnnotationCacheBuildError::ManifestError { .. })
+        ));
+
+        // 3. Verify the cache file is untouched
+        let new_cache_content = std::fs::read(&cache_file).unwrap();
+        assert_eq!(original_cache_content, new_cache_content);
+    }
+
+    #[test]
+    fn test_cancelled_build_writes_no_final_cache() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options.udpipe_model_dir = Some(default_model_dir());
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+
+        let cancel = AtomicBool::new(true);
+        let res = build_and_write_annotation_cache(
+            &records,
+            options.clone(),
+            build_ann_options,
+            &cancel,
+            |record| Ok(processed_resolution(record, "Hello world.")),
+        );
+
+        assert!(matches!(res, Err(AnnotationCacheBuildError::Cancelled)));
+
+        let cache_file = temp_dir.path().join(format!(
+            "annotation-layer.v{}.json",
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        ));
+        assert!(!cache_file.exists());
+    }
+
+    #[test]
+    fn test_mixed_en_pt_round_trips_explicit() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("pt.txt"), record("en.txt")];
+        let mut overrides = HashMap::new();
+        overrides.insert(0, "pt".to_string());
+        overrides.insert(1, "en".to_string());
+
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options.udpipe_model_dir = Some(default_model_dir());
+        options.language_overrides = overrides;
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+
+        build_and_write_annotation_cache(
+            &records,
+            options.clone(),
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| {
+                if record.source_path.to_string_lossy().contains("pt") {
+                    Ok(processed_resolution(record, "O gato preto correu."))
+                } else {
+                    Ok(processed_resolution(record, "The quick brown fox jumps."))
+                }
+            },
+        )
+        .unwrap();
+
+        let corpus_cached = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| {
+                if record.source_path.to_string_lossy().contains("pt") {
+                    Ok(processed_resolution(record, "O gato preto correu."))
+                } else {
+                    Ok(processed_resolution(record, "The quick brown fox jumps."))
+                }
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(corpus_cached.overview().annotation_available);
     }
 }

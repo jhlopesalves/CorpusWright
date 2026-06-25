@@ -72,21 +72,21 @@ pub struct AnnotationModelIdentity {
 
 /// On-disk cache file envelope.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct AnnotationLayerCacheEnvelope {
+pub(crate) struct AnnotationLayerCacheEnvelope {
     pub cache_file_version: u32,
     pub manifest: AnnotationManifest,
     pub layer: AnnotationLayerDto,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct AnnotationLayerDto {
+pub(crate) struct AnnotationLayerDto {
     pub documents: Vec<AnnotationLayerDocument>,
     pub lemma_table: LemmaTableDto,
     pub languages_used: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct LemmaTableDto {
+pub(crate) struct LemmaTableDto {
     pub entries: Vec<String>,
 }
 
