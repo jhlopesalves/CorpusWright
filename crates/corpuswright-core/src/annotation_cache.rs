@@ -170,12 +170,8 @@ pub fn build_annotation_manifest(
     models.sort_by(|a, b| a.language.cmp(&b.language));
 
     let mut ordered_records = records.iter().enumerate().collect::<Vec<_>>();
-    ordered_records.sort_by(|left, right| {
-        left.1
-            .relative_path
-            .cmp(&right.1.relative_path)
-            .then_with(|| left.1.source_path.cmp(&right.1.source_path))
-    });
+    ordered_records
+        .sort_by(|left, right| crate::analysis::compare_document_records(left.1, right.1));
 
     let mut documents = Vec::with_capacity(corpus.document_summaries().count());
     let mut record_iter = ordered_records.into_iter().peekable();
