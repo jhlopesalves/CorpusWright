@@ -1,0 +1,1 @@
+export type AnnotationCacheBuildReport = { documentsAnnotated: number, totalAnnotatedTermCountRows: number, languagesUsed: Array<string>, cacheRoot: string, reusedExisting: boolean, cacheWritten: boolean, };
