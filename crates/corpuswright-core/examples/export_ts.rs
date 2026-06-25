@@ -7,9 +7,9 @@ use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
 use corpuswright_core::analysis::{
-    AnalysisDocumentSelection, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
-    FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
-    FrequencyTokenClass, SortDirection,
+    AnalysisDocumentSelection, AnnotationCacheBuildError, AnnotationCacheBuildReport,
+    FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice, FrequencyNoticeKind, FrequencyPage,
+    FrequencyQuery, FrequencySortKey, FrequencyTermItem, FrequencyTokenClass, SortDirection,
 };
 use corpuswright_core::clean::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
@@ -700,6 +700,9 @@ fn main() {
         ],
         &[],
     );
+
+    export_type::<AnnotationCacheBuildReport>(&out_dir, &[], &[]);
+    export_type::<AnnotationCacheBuildError>(&out_dir, &[], &[]);
 
     eprintln!("Done.");
 }
