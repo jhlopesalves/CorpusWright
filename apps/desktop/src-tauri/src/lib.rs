@@ -1790,6 +1790,118 @@ fn analysis_progress_payload(
 }
 
 #[tauri::command]
+async fn build_annotation_cache_command(
+    request: AnalysisBuildRequest,
+    corpus: tauri::State<'_, CorpusState>,
+    cache: tauri::State<'_, ExtractionCache>,
+    inventory: tauri::State<'_, project::ProjectSourceInventoryState>,
+    window: Window,
+) -> Result<
+    corpuswright_core::analysis::AnnotationCacheBuildReport,
+    corpuswright_core::analysis::AnnotationCacheBuildError,
+> {
+    let (records, project_root) = match request.indices {
+        Some(indices) => corpus
+            .records_and_root_for_indices(&indices, request.corpus_version)
+            .map_err(|e| {
+                corpuswright_core::analysis::AnnotationCacheBuildError::SurfaceBuildFailed {
+                    error: e,
+                }
+            })?,
+        None => corpus
+            .all_records_and_root(request.corpus_version)
+            .map_err(|e| {
+                corpuswright_core::analysis::AnnotationCacheBuildError::SurfaceBuildFailed {
+                    error: e,
+                }
+            })?,
+    };
+    if records.is_empty() {
+        return Err(
+            corpuswright_core::analysis::AnnotationCacheBuildError::SurfaceBuildFailed {
+                error: "No text is available for analysis.".to_string(),
+            },
+        );
+    }
+
+    let overview_context = if let Some(root) = project_root.as_deref() {
+        let summary = inventory.summary(root).map_err(|e| {
+            corpuswright_core::analysis::AnnotationCacheBuildError::SurfaceBuildFailed { error: e }
+        })?;
+        CorpusOverviewContext {
+            sources_in_project: Some(summary.total_count),
+            sources_with_warnings: Some(summary.warning_count),
+            failed_sources: summary.status_counts.failed,
+            config_version: None,
+            metadata_attached: false,
+        }
+    } else {
+        CorpusOverviewContext {
+            sources_in_project: Some(records.len()),
+            sources_with_warnings: None,
+            failed_sources: 0,
+            config_version: None,
+            metadata_attached: false,
+        }
+    };
+
+    let cache_dir = project_root.as_deref().map(project_annotation_cache_dir);
+
+    let udpipe_model_dir = window
+        .app_handle()
+        .path()
+        .resolve("udpipe", BaseDirectory::Resource)
+        .ok();
+
+    let analysis_options = AnalysisBuildOptions {
+        built_at: jiff::Timestamp::now().to_string(),
+        build_signature: request.build_signature,
+        processing_config_signature: cleaning_config_signature(&request.cleaning_config),
+        overview_context,
+        udpipe_model_dir: udpipe_model_dir.clone(),
+        language_overrides: request.language_overrides.clone(),
+        tokenization: corpuswright_core::tokenization::TokenizationConfig::default(),
+        annotation_cache_root: cache_dir,
+    };
+
+    let annotation_options = corpuswright_core::analysis::AnnotationLayerBuildOptions {
+        udpipe_model_dir,
+        language_overrides: request.language_overrides,
+    };
+
+    let cleaning_config = request.cleaning_config;
+    let cache_inner = cache.inner().clone();
+
+    // We use a local atomic bool since this action doesn't have UI cancellation wiring yet.
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+
+    let report = tauri::async_runtime::spawn_blocking(move || {
+        corpuswright_core::analysis::build_and_write_annotation_cache(
+            &records,
+            analysis_options,
+            annotation_options,
+            &cancel,
+            |record| {
+                Ok(resolve_analysis_input_for_record(
+                    record,
+                    project_root.as_deref(),
+                    &cleaning_config,
+                    &cache_inner,
+                ))
+            },
+        )
+    })
+    .await
+    .map_err(|e| {
+        corpuswright_core::analysis::AnnotationCacheBuildError::SurfaceBuildFailed {
+            error: e.to_string(),
+        }
+    })??;
+
+    Ok(report)
+}
+
+#[tauri::command]
 async fn build_analysis_corpus_command(
     request: AnalysisBuildRequest,
     corpus: tauri::State<'_, CorpusState>,
@@ -2041,6 +2153,13 @@ fn project_source_text_cache_dir(project_root: &Path) -> PathBuf {
         .join(".corpuswright")
         .join("cache")
         .join(PROJECT_SOURCE_TEXT_CACHE_DIR)
+}
+
+fn project_annotation_cache_dir(project_root: &Path) -> PathBuf {
+    project_root
+        .join(".corpuswright")
+        .join("cache")
+        .join("annotation")
 }
 
 fn project_source_text_cache_path(project_root: &Path, source_id: &str) -> PathBuf {
@@ -2744,6 +2863,7 @@ pub fn run() {
             preview_processed_files_command,
             read_project_source_preview_command,
             query_selected_source_preview_viewport_command,
+            build_annotation_cache_command,
             build_analysis_corpus_command,
             cancel_analysis_build_command,
             get_analysis_build_status_command,
