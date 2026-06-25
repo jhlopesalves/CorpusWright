@@ -1,13 +1,16 @@
 :root {
-  --bg: #0f1115;
-  --panel: #171a21;
-  --panel-soft: #1d222c;
-  --text: #f3f0e8;
-  --muted: #b8b2a7;
-  --line: #2b303b;
-  --accent: #d6a85f;
-  --accent-2: #9bd4c6;
-  --danger: #efb2a8;
+  --bg: #0e1117;
+  --panel: #151a22;
+  --panel-soft: #1b212c;
+  --text: #e8ecf2;          /* cool near-white */
+  --muted: #98a2b3;         /* cool grey */
+  --line: #232b38;
+
+  --brand: #006cd6;         /* CorpusWright logo blue — fills + primary button */
+  --brand-hover: #0a5fc0;   /* darker, hover/active */
+  --accent: #5aa2f0;        /* lighter tint of the brand — links, labels, focus ring */
+  --danger: #e0857a;
+
   --max: 1120px;
   color-scheme: dark;
 }
@@ -22,10 +25,7 @@ html {
 
 body {
   margin: 0;
-  background:
-    radial-gradient(circle at top left, rgba(214, 168, 95, 0.12), transparent 30rem),
-    radial-gradient(circle at 80% 10%, rgba(155, 212, 198, 0.08), transparent 28rem),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
@@ -34,11 +34,11 @@ body {
 }
 
 body::selection {
-  background: rgba(214, 168, 95, 0.35);
+  background: rgba(0, 108, 214, 0.35);
 }
 
 a {
-  color: var(--accent-2);
+  color: var(--accent);
   text-decoration: none;
 }
 
@@ -113,16 +113,16 @@ main {
 
 h1, h2, h3 {
   line-height: 1.12;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.02em;
   margin: 0 0 1rem;
 }
 
 h1 {
-  font-size: clamp(2.7rem, 7vw, 5.9rem);
+  font-size: clamp(2.4rem, 4.5vw, 3.6rem);
 }
 
 h2 {
-  font-size: clamp(2rem, 4vw, 3.4rem);
+  font-size: clamp(1.7rem, 3vw, 2.4rem);
 }
 
 h3 {
@@ -147,7 +147,7 @@ h3 {
   align-items: center;
   justify-content: center;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 10px;
   padding: 0.74rem 1rem;
   color: var(--text);
   background: var(--panel-soft);
@@ -155,9 +155,13 @@ h3 {
 }
 
 .button.primary {
-  background: var(--accent);
-  color: #16120b;
+  background: var(--brand);
+  color: #ffffff;
   border-color: transparent;
+}
+
+.button.primary:hover {
+  background: var(--brand-hover);
 }
 
 .button:hover {
@@ -257,5 +261,15 @@ h3 {
 
   main {
     padding-top: 3rem;
-  }
+}
+
+a:focus-visible,
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .button:hover { transform: none; }
 }
