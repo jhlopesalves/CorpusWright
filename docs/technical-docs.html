@@ -6,68 +6,89 @@
   <meta name="description" content="CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.">
   <title>Technical docs · CorpusWright</title>
   <link rel="stylesheet" href="assets/site.css">
+  <link rel="icon" href="assets/icon.png">
 </head>
 <body>
 <header class="site-header">
-  <nav class="nav" aria-label="Main navigation">
-    <a class="brand" href="index.html">CorpusWright</a>
-    <div class="nav-links">
-      <a href="index.html">Home</a>
+  <div class="shell nav">
+    <a class="brand" href="index.html"><svg class="mark"><use href="#kwic"/></svg> CorpusWright</a>
+    <nav class="nav-links" aria-label="Primary">
       <a href="method.html">Method</a>
-      <a href="quick-start.html">Quick start</a>
       <a href="roadmap.html">Roadmap</a>
-      <a href="technical-docs.html" aria-current="page">Technical docs</a>
-      <a href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
-    </div>
-  </nav>
+      <a href="technical-docs.html" aria-current="page">Docs</a>
+      <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
+    </nav>
+  </div>
 </header>
-<main>
+
+<main id="top">
 
 <section class="section">
-  <p class="eyebrow">Technical docs</p>
-  <h1>The existing docs folder becomes the technical library.</h1>
-  <p class="lede">This page points readers from the public site into the repository documentation. The public homepage should stay short; the repository docs can stay precise and technical.</p>
+  <div class="shell">
+    <div class="section-lead">
+      <p class="eyebrow">Technical docs</p>
+      <h1>The existing docs folder becomes the technical library.</h1>
+      <p class="lede">This page points readers from the public site into the repository documentation. The public homepage should stay short; the repository docs can stay precise and technical.</p>
+    </div>
+  </div>
 </section>
 
-<section class="grid two">
-  <article class="card">
-    <h3>Core product docs</h3>
-    <ul class="list">
-      <li><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/corpus-projects.md">CorpusWright projects</a></li>
-      <li><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/supported-formats.md">Supported formats</a></li>
-      <li><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/testing.md">Testing guide</a></li>
-      <li><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/product_workflow.md">Product workflow</a></li>
-    </ul>
-  </article>
-  <article class="card">
-    <h3>Cleaning and extraction</h3>
-    <ul class="list">
-      <li><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/pdf-extraction-strategy.md">PDF extraction strategy</a></li>
-      <li><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/repeated-artifact-finder.md">Repeated artefact finder</a></li>
-      <li><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/structured-custom-removals.md">Structured custom removals</a></li>
-      <li><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/page-zone-removal-rules.md">Page-zone removal rules</a></li>
-    </ul>
-  </article>
-  <article class="card">
-    <h3>Release notes</h3>
-    <ul class="list">
-      <li><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/releases/v0.1.0-alpha.7.md">v0.1.0-alpha.7</a></li>
-      <li><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/releases/v0.1.0-alpha.6.md">v0.1.0-alpha.6</a></li>
-      <li><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/release-cleanup-alpha-3.md">Alpha 3 cleanup notes</a></li>
-    </ul>
-  </article>
-  <article class="card">
-    <h3>Archive</h3>
-    <p>Older spikes and legacy architecture notes should stay in <code>docs/archive/</code>. They are useful archaeology, but they should not be the first thing new users read.</p>
-  </article>
+<section class="section">
+  <div class="shell grid">
+    <article class="card">
+      <h3>Core product docs</h3>
+      <div class="principles">
+        <p><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/corpus-projects.md">CorpusWright projects</a></p>
+        <p><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/supported-formats.md">Supported formats</a></p>
+        <p><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/testing.md">Testing guide</a></p>
+        <p><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/product_workflow.md">Product workflow</a></p>
+      </div>
+    </article>
+    <article class="card">
+      <h3>Cleaning and extraction</h3>
+      <div class="principles">
+        <p><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/pdf-extraction-strategy.md">PDF extraction strategy</a></p>
+        <p><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/repeated-artifact-finder.md">Repeated artefact finder</a></p>
+        <p><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/structured-custom-removals.md">Structured custom removals</a></p>
+        <p><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/page-zone-removal-rules.md">Page-zone removal rules</a></p>
+      </div>
+    </article>
+    <article class="card">
+      <h3>Release notes</h3>
+      <div class="principles">
+        <p><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/releases/v0.1.0-alpha.7.md">v0.1.0-alpha.7</a></p>
+        <p><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/releases/v0.1.0-alpha.6.md">v0.1.0-alpha.6</a></p>
+        <p><a href="https://github.com/jhlopesalves/CorpusWright/blob/main/docs/release-cleanup-alpha-3.md">Alpha 3 cleanup notes</a></p>
+      </div>
+    </article>
+    <article class="card">
+      <h3>Archive</h3>
+      <p>Older spikes and legacy architecture notes should stay in <code>docs/archive/</code>. They are useful archaeology, but they should not be the first thing new users read.</p>
+    </article>
+  </div>
 </section>
 
 </main>
+
 <footer class="site-footer">
-  <div>
+  <div class="shell foot">
     <span>CorpusWright is an open, local-first corpus linguistics workbench in early, pre-public development.</span>
     <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
   </div>
 </footer>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="kwic" viewBox="0 0 64 48">
+    <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+      <circle cx="32" cy="24" r="5"/>
+      <path d="M32 6 v8 M32 34 v8"/>
+      <path d="M6 9 h4 M15 9 h11 M38 9 h20"/>
+      <path d="M6 17 h4 M15 17 h6 M25 17 h1 M38 17 h20"/>
+      <path d="M6 25 h4 M15 25 h7 M38 25 h20"/>
+      <path d="M6 33 h4 M13 33 h4 M22 33 h4 M38 33 h20"/>
+      <path d="M6 41 h4 M13 41 h6 M38 41 h20"/>
+    </g>
+  </symbol>
+</svg>
 </body>
 </html>
