@@ -1,89 +1,95 @@
 <!doctype html>
 <html lang="en-GB">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.">
+  <meta name="description"
+    content="CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.">
   <title>Home · CorpusWright</title>
   <link rel="stylesheet" href="assets/site.css">
 </head>
+
 <body>
-<header class="site-header">
-  <nav class="nav" aria-label="Main navigation">
-    <a class="brand" href="index.html" aria-current="page">CorpusWright</a>
-    <div class="nav-links">
-      <a href="index.html">Home</a>
-      <a href="method.html">Method</a>
-      <a href="quick-start.html">Quick start</a>
-      <a href="roadmap.html">Roadmap</a>
-      <a href="technical-docs.html">Technical docs</a>
-      <a href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
+  <header class="site-header">
+    <nav class="nav" aria-label="Main navigation">
+      <a class="brand" href="index.html" aria-current="page">CorpusWright</a>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="method.html">Method</a>
+        <a href="quick-start.html">Quick start</a>
+        <a href="roadmap.html">Roadmap</a>
+        <a href="technical-docs.html">Technical docs</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
+      </div>
+    </nav>
+  </header>
+  <main>
+
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Rust corpus workbench</p>
+        <h1>Clean, inspect, and analyse corpora.</h1>
+        <p class="lede">A desktop workbench for corpus linguistics, built on a Rust core. The focus is analysis that
+          holds up statistically and methodologically, with modern analytics and metrics as core features rather than
+          add-ons.</p>
+        <div class="actions">
+          <a class="button primary" href="quick-start.html">Get started</a>
+          <a class="button" href="method.html">Read the method</a>
+          <a class="button" href="https://github.com/jhlopesalves/CorpusWright/releases">Releases</a>
+        </div>
+      </div>
+      <aside class="alpha-card card">
+        <p class="kicker">Alpha</p>
+        <p><strong>CorpusWright is under active development.</strong> It already handles simple workflows well, but it
+          is not yet a robust, general-purpose statistical platform — that is the direction of travel.</p>
+        <p class="muted">Expect rapid changes to features, documentation, and tutorials.</p>
+      </aside>
+    </section>
+
+    <section class="section">
+      <h2>What it is</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Local-first</h3>
+          <p>Your corpus stays on your machine, which matters when texts are private, copyrighted, or institutionally
+            sensitive.</p>
+        </article>
+        <article class="card">
+          <h3>Auditable cleaning</h3>
+          <p>Cleaning is reviewable, deterministic, and explainable by design. Artefacts are always inspectable;
+            whenever the deterministic rules can't catch the noise, you can add custom removals that are reviewable and
+            can be included in the pipeline.</p>
+        </article>
+        <article class="card">
+          <h3>Analysis-aware</h3>
+          <p>Preprocessing is not separate from analysis. KWIC, repeated-artefact review, frequency, dispersion, and
+            collocation belong in the same loop.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>What works today</h2>
+      <ul class="list">
+        <li>Local project folders and source management</li>
+        <li>Text extraction from TXT, HTML, DOCX, and PDF</li>
+        <li>Configurable, deterministic cleaning with processed previews</li>
+        <li>Repeated-artefact finder</li>
+        <li>Structured custom removals</li>
+      </ul>
+      <p><a href="roadmap.html">See the roadmap for what's planned.</a></p>
+    </section>
+
+
+
+  </main>
+  <footer class="site-footer">
+    <div>
+      <span>CorpusWright is an open, local-first corpus linguistics workbench in early, pre-public development.</span>
+      <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
     </div>
-  </nav>
-</header>
-<main>
-
-<section class="hero">
-  <div>
-    <p class="eyebrow">Local-first corpus workbench</p>
-    <h1>Clean, inspect, and analyse corpora without surrendering your texts.</h1>
-    <p class="lede">CorpusWright is a desktop tool for corpus linguistics workflows where privacy, reproducibility, and auditability matter. It starts with careful preprocessing and grows towards statistically serious analysis.</p>
-    <div class="actions">
-      <a class="button primary" href="quick-start.html">Get started</a>
-      <a class="button" href="method.html">Read the method</a>
-      <a class="button" href="https://github.com/jhlopesalves/CorpusWright/releases">Releases</a>
-    </div>
-  </div>
-  <aside class="alpha-card card">
-    <p class="kicker">Alpha software</p>
-    <p><strong>CorpusWright is early-stage.</strong> It is useful for testing workflows, but not yet a polished general-purpose research platform.</p>
-    <p class="muted">Expect rapid changes, rough edges, and documentation that tracks the design as it stabilises.</p>
-  </aside>
-</section>
-
-<section class="section">
-  <h2>What it is trying to be</h2>
-  <div class="grid">
-    <article class="card">
-      <h3>Local-first</h3>
-      <p>Your corpus stays on your machine. CorpusWright is designed for researchers who work with private, copyrighted, classroom, or institutionally sensitive texts.</p>
-    </article>
-    <article class="card">
-      <h3>Auditable cleaning</h3>
-      <p>Cleaning rules should be reviewable, deterministic, and explainable. The tool should help you inspect artefacts rather than silently invent corrections.</p>
-    </article>
-    <article class="card">
-      <h3>Analysis-aware</h3>
-      <p>Preprocessing is not separate from analysis. KWIC, repeated artefact review, frequency lists, dispersion, and collocation workflows belong in the same loop.</p>
-    </article>
-  </div>
-</section>
-
-<section class="section">
-  <h2>Current focus</h2>
-  <div class="grid two">
-    <article class="card">
-      <h3>Preprocessing workspace</h3>
-      <p>Load corpus sources, extract text, preview original and processed text, configure deterministic cleaning rules, and export processed corpora with provenance.</p>
-    </article>
-    <article class="card">
-      <h3>Repeated artefact review</h3>
-      <p>Find repeated headers, footers, page labels, boilerplate, and extraction leftovers. Promote candidates into structured removal rules only after review.</p>
-    </article>
-  </div>
-</section>
-
-<section class="callout">
-  <h2>Built for boringly serious research habits</h2>
-  <p>CorpusWright favours explicit choices over magic, files over hidden state, local processing over cloud dependency, and transparent limitations over inflated claims.</p>
-</section>
-
-</main>
-<footer class="site-footer">
-  <div>
-    <span>CorpusWright is an open, local-first corpus linguistics workbench in early, pre-public development.</span>
-    <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
-  </div>
-</footer>
+  </footer>
 </body>
+
 </html>
