@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use CorpusWright in your research or teaching, please cite it as below."
+title: CorpusWright
+abstract: >-
+  A desktop corpus-linguistics workbench with a Rust core for cleaning,
+  inspecting, and analysing research corpora with statistical and
+  methodological rigour. Local-first, auditable, and analysis-aware.
+type: software
+authors:
+  - family-names: Lopes
+    given-names: Jhonatan Henrique
+    orcid: "https://orcid.org/0009-0008-4914-0262"
+    email: jhlopesalves@gmail.com
+repository-code: "https://github.com/jhlopesalves/CorpusWright"
+url: "https://jhlopesalves.github.io/CorpusWright/"
+version: 0.1.0-alpha.7
+date-released: "2026-06-25"   # TODO: set to the actual release date of this version
+keywords:
+  - corpus linguistics
+  - text processing
+  - concordance
+  - KWIC
+  - reproducibility
+  - Rust
+# license: MIT   # TODO: uncomment and set to your actual SPDX licence id (e.g. MIT, GPL-3.0-or-later)
+#
+# Once mint a Zenodo DOI for a release, add an identifiers block so the
+# DOI becomes the preferred, permanent citation target:
+# identifiers:
+#   - type: doi
+#     value: 10.5281/zenodo.XXXXXXX
+#     description: Concept DOI (always resolves to the latest version)
