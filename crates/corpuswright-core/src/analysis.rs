@@ -6410,12 +6410,12 @@ mod tests {
     fn test_unsupported_language_does_not_overwrite_existing_cache() {
         let temp_dir = tempfile::tempdir().unwrap();
         let records = vec![record("doc.txt")];
-        
+
         // 1. Build a valid cache first
         let mut options_valid = build_options();
         options_valid.annotation_cache_root = Some(temp_dir.path().to_path_buf());
         options_valid.udpipe_model_dir = Some(default_model_dir());
-        
+
         let build_ann_options_valid = AnnotationLayerBuildOptions {
             udpipe_model_dir: options_valid.udpipe_model_dir.clone(),
             language_overrides: options_valid.language_overrides.clone(),
@@ -6434,7 +6434,7 @@ mod tests {
             "annotation-layer.v{}.json",
             crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
         ));
-        
+
         // Save the valid cache content
         let original_cache_content = std::fs::read(&cache_file).unwrap();
 
