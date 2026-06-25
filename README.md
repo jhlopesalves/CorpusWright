@@ -1,25 +1,37 @@
 # CorpusWright
 [![CI](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v0.1.0--alpha.5-blue)](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.7)
+[![Release](https://img.shields.io/badge/release-v0.1.0--alpha.7-blue)](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.7)
+[![Docs](https://img.shields.io/badge/docs-website-006cd6)](https://jhlopesalves.github.io/CorpusWright/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
 
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
 ![Local-first](https://img.shields.io/badge/local--first-desktop-blue)
 ![Corpus linguistics](https://img.shields.io/badge/corpus-linguistics-purple)
 
+A local-first desktop workbench for cleaning, inspecting, and analysing text corpora — with every step visible and reproducible.
 
 **Download the experimental alpha:** [CorpusWright v0.1.0-alpha.7](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.7)
 
-> Experimental alpha. Windows and macOS builds are on the Releases page, but they're unsigned and your OS will probably warn you before letting them run.
-
+> Experimental alpha. Windows and macOS builds are on the Releases page, but they're unsigned, so your OS will probably warn you before letting them run.
 
 CorpusWright is a Rust/Tauri rewrite of an earlier PySide6 prototype. The old PySide app is still in the repo under `legacy/pyside/` for reference, but all active development now happens in the Rust/Tauri version.
 
+## Documentation
 
-## Why it exists
+Full documentation: **https://jhlopesalves.github.io/CorpusWright/**
 
-Corpus work usually starts with a tedious problem: text files are _mess_ and _chaos_. PDFs arrive with running headers, page numbers, broken line wraps, OCR slip-ups, and stray table fragments baked straight into the extracted text. DOCX files smuggle in footnotes, comments, and headers you never asked for. Before you can count or analyse anything, someone has to strip all of that out - reproducibly, across a few hundred files - and doing it by hand is miserable.
+Reference material lives in [`docs/`](docs/) and is linked in context throughout this README:
+
+- [Corpus projects](docs/corpus-projects.md) — project folders and the `.corpuswright/` manifest
+- [Supported formats](docs/supported-formats.md) — TXT, HTML, DOCX, and PDF extraction routes
+- [PDF extraction strategy](docs/pdf-extraction-strategy.md) — embedded text, layout-aware text, and OCR
+- [Structured custom removals](docs/structured-custom-removals.md)
+- [Page-zone removal rules](docs/page-zone-removal-rules.md)
+- [Repeated artefact review](docs/repeated-artifact-finder.md)
+
+# Why it exists
+
+Corpus work usually starts with a tedious problem: the text files are messy and chaotic. PDFs arrive with running headers, page numbers, broken line wraps, OCR slip-ups, and stray table fragments baked straight into the extracted text. DOCX files smuggle in footnotes, comments, and headers you never asked for. Before you can count or analyse anything, someone has to strip all of that out — reproducibly, across a few hundred files — and doing it by hand is miserable.
 
 CorpusWright is my attempt to make that stage less miserable: load the documents, see exactly what was extracted, configure cleaning rules you can save and re-run, and export plain UTF-8 text that's actually ready for analysis.
 
@@ -47,6 +59,7 @@ The Source Explorer separates file type, extraction route, source text extractio
 
 PDF handling and OCR quality are source import choices. Cleaning Settings keep advanced fallback defaults for older or unspecified PDF sources, plus conservative PDF cleanup for obvious page labels, symbol-noise lines, code-like blocks, and formula-like lines. Repeated headers and footers are best handled through Repeated artefact review, where accepted candidates become explicit cleaning rules.
 
+
 ## How it's built
 
 The desktop app lives in `apps/desktop/`.
@@ -62,8 +75,6 @@ legacy/pyside/              original PySide6 prototype, kept for reference
 docs/                       design notes and reference documentation
 examples/                   sample corpora and usage material
 ```
-
-
 
 ## Build and run
 
@@ -112,6 +123,35 @@ Next on my list:
 ## Legacy PySide version
 
 The first working version was built with PySide6 and lives in `legacy/pyside/`. It's kept for historical reference only — the Rust/Tauri app has replaced it.
+
+## How to cite
+
+If CorpusWright contributes to your research or teaching, please cite it. The repository includes a [`CITATION.cff`](CITATION.cff), so GitHub shows a **“Cite this repository”** button on the repo page that exports BibTeX and APA automatically and stays in sync with each release.
+
+**Preferred citation**
+
+> Lopes, J. H. (2026). *CorpusWright* (Version 0.1.0-alpha.7) [Computer software]. https://github.com/jhlopesalves/CorpusWright
+
+**BibTeX**
+
+```bibtex
+@software{lopes_corpuswright_2026,
+  author  = {Lopes, Jhonatan Henrique},
+  title   = {CorpusWright: a Rust corpus workbench},
+  year    = {2026},
+  version = {0.1.0-alpha.7},
+  url     = {https://github.com/jhlopesalves/CorpusWright},
+  note    = {ORCID: 0009-0008-4914-0262}
+}
+```
+
+When a Zenodo DOI is available for a release, cite the DOI in preference to the repository URL. Full guidance: https://jhlopesalves.github.io/CorpusWright/citation.html
+
+## Connect
+
+- Documentation — https://jhlopesalves.github.io/CorpusWright/
+- ORCID — https://orcid.org/0009-0008-4914-0262
+- Substack — https://substack.com/@jhonatanlopes
 
 ## License
 
