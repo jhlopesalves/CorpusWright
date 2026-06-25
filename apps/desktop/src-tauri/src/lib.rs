@@ -1867,6 +1867,8 @@ async fn build_analysis_corpus_command(
                 overview_context,
                 udpipe_model_dir,
                 language_overrides,
+                tokenization: corpuswright_core::tokenization::TokenizationConfig::default(),
+                annotation_cache_root: None,
             },
             &cancel,
             |record| {
@@ -2680,7 +2682,7 @@ fn set_window_titlebar_color(window: Window, color: String) -> Result<(), String
             }
             return Err("Could not get window handle".to_string());
         }
-        return Err(format!("Invalid hex color: {}", color));
+        Err(format!("Invalid hex color: {}", color))
     }
     #[cfg(not(target_os = "windows"))]
     {
