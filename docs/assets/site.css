@@ -189,14 +189,10 @@ code, .mono { font-family: var(--mono); font-size: 0.92em; }
 /* ---- status list + table ---- */
 .cols { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 40px; align-items: start; }
 .checklist { list-style: none; padding: 0; margin: 0; }
-.checklist li { position: relative; padding-left: 26px; margin: 10px 0; color: var(--text); }
+.checklist li { position: relative; padding-left: 20px; margin: 10px 0; color: var(--text); }
 .checklist li::before {
-  content: ""; position: absolute; left: 0; top: 9px;
-  width: 12px; height: 2px; background: var(--brand);
-}
-.checklist li::after {
-  content: ""; position: absolute; left: 14px; top: 5px;
-  width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid var(--accent);
+  content: ""; position: absolute; left: 0; top: 12px;
+  width: 8px; height: 2px; background: var(--brand);
 }
 table.status { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
 table.status th, table.status td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
