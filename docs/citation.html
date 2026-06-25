@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Citation guidelines for the CorpusWright corpus linguistics software.">
+  <title>Citation · CorpusWright</title>
+  <link rel="stylesheet" href="assets/site.css">
+  <link rel="icon" href="assets/icon.png">
+  <script>
+    (function() {
+      const savedTheme = localStorage.getItem('theme');
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
+    })();
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme') ||
+                           (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+    }
+  </script>
+</head>
+<body>
+<header class="site-header">
+  <div class="shell nav">
+    <a class="brand" href="index.html"><svg class="mark"><use href="#kwic"/></svg> CorpusWright</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="method.html">Method</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="technical-docs.html">Docs</a>
+      <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
+      <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
+        <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+        </svg>
+        <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+        </svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+<section class="section">
+  <div class="shell">
+    <div class="section-lead">
+      <p class="eyebrow">Citation Guidance</p>
+      <h1>Citing CorpusWright in research and teaching</h1>
+      <p class="lede">CorpusWright is open-source research software. If it helps you compile, preprocess, or clean your text corpora for publications, studies, or presentations, please cite the specific version you used.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="shell">
+    <div class="principles">
+      <div style="max-width: var(--prose);">
+        <h3>Preferred citation</h3>
+        <p class="muted">Cite the software directly, naming the version you used. You can copy the citation format below:</p>
+        <p><strong>Lopes, J. H. (2026). <em>CorpusWright</em> (Version 0.1.0-alpha.7) [Computer software]. <a href="https://github.com/jhlopesalves/CorpusWright">https://github.com/jhlopesalves/CorpusWright</a></strong></p>
+
+        <h3 style="margin-top: 36px;">BibTeX</h3>
+        <p class="muted">For LaTeX, Pandoc, or reference managers that import BibTeX format directly:</p>
+        <pre class="code"><code class="mono">@software{lopes_corpuswright_2026,
+  author  = {Lopes, Jhonatan Henrique},
+  title   = {CorpusWright: a Rust corpus workbench},
+  year    = {2026},
+  version = {0.1.0-alpha.7},
+  url     = {https://github.com/jhlopesalves/CorpusWright},
+  note    = {ORCID: 0009-0008-4914-0262}
+}</code></pre>
+
+        <h3 style="margin-top: 36px;">Automatic extraction from GitHub</h3>
+        <p>The repository carries a machine-readable <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a> metadata file. On the right-hand sidebar of the <a href="https://github.com/jhlopesalves/CorpusWright">CorpusWright GitHub page</a>, you can click the <strong>“Cite this repository”</strong> button to copy the APA citation or export the BibTeX block directly.</p>
+
+        <h3 style="margin-top: 36px;">Version-specific DOI (via Zenodo)</h3>
+        <p>When permanent DOIs (e.g. Zenodo) are minted for official releases, citing the version-specific DOI is preferred to referencing the repository URL. This guarantees that your research references the exact software build, ensuring the reproducibility of your preprocessing pipeline.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="shell foot">
+    <span>CorpusWright is an open, local-first corpus linguistics workbench in early, pre-public development.</span>
+    <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
+  </div>
+</footer>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="kwic" viewBox="0 0 64 48">
+    <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+      <circle cx="32" cy="24" r="5"/>
+      <path d="M32 6 v8 M32 34 v8"/>
+      <path d="M6 9 h4 M15 9 h11 M38 9 h20"/>
+      <path d="M6 17 h4 M15 17 h6 M25 17 h1 M38 17 h20"/>
+      <path d="M6 25 h4 M15 25 h7 M38 25 h20"/>
+      <path d="M6 33 h4 M13 33 h4 M22 33 h4 M38 33 h20"/>
+      <path d="M6 41 h4 M13 41 h6 M38 41 h20"/>
+    </g>
+  </symbol>
+</svg>
+</body>
+</html>
