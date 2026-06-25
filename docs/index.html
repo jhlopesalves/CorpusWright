@@ -5,12 +5,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
-    content="A desktop corpus-linguistics workbench with a Rust core. Clean, inspect, and analyse research corpora with statistical and methodological rigour.">
-  <title>CorpusWright — Rust corpus workbench</title>
+    content="CorpusWright is a local-first desktop workbench for preparing, inspecting, and analysing research corpora.">
+  <title>CorpusWright — local-first corpus workbench</title>
   <link rel="stylesheet" href="assets/site.css">
   <link rel="icon" href="assets/icon.png">
   <script>
-    (function() {
+    (function () {
       const savedTheme = localStorage.getItem('theme');
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
@@ -18,7 +18,7 @@
 
     function toggleTheme() {
       const currentTheme = document.documentElement.getAttribute('data-theme') ||
-                           (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', newTheme);
       localStorage.setItem('theme', newTheme);
@@ -29,7 +29,7 @@
 <body>
   <header class="site-header">
     <div class="shell nav">
-      <a class="brand" href="index.html"><svg class="mark">
+      <a class="brand" href="index.html"><svg class="mark" aria-hidden="true">
           <use href="#kwic" />
         </svg> CorpusWright</a>
       <nav class="nav-links" aria-label="Primary">
@@ -37,12 +37,16 @@
         <a href="roadmap.html">Roadmap</a>
         <a href="technical-docs.html">Docs</a>
         <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
-        <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
-          <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme" type="button">
+          <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="4"></circle>
-            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+            <path
+              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41">
+            </path>
           </svg>
-          <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
           </svg>
         </button>
@@ -51,226 +55,185 @@
   </header>
 
   <main id="top">
-
     <section class="hero">
-      <svg class="hero-bg" aria-hidden="true" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
-        <use href="#kwic" x="58%" y="-6%" width="560" height="420" />
-      </svg>
       <div class="shell hero-inner">
-        <p class="eyebrow">CorpusWright — a Rust corpus workbench</p>
-        <h1>Clean, inspect, and analyse corpora.</h1>
-        <p class="lede">A desktop application for corpus linguistics built on a Rust core. It prioritises statistically
-          robust, methodologically sound analysis, with modern analytics and quantitative metrics.</p>
-        <div class="actions">
+        <p class="eyebrow">CorpusWright</p>
+        <h1>A local-first corpus workbench.</h1>
+        <p class="lede">CorpusWright is a desktop application for preparing, inspecting, and analysing research corpora. It combines source management, deterministic cleaning, corpus inspection, and analysis-oriented workflows in a Rust-based application.</p>
+        <div class="actions" aria-label="Project links">
           <a class="btn primary" href="technical-docs.html">Documentation</a>
           <a class="btn ghost" href="https://github.com/jhlopesalves/CorpusWright">Source code</a>
-          <a class="btn ghost" href="https://github.com/jhlopesalves/CorpusWright/releases">Release notes</a>
+          <a class="btn ghost" href="https://github.com/jhlopesalves/CorpusWright/releases">Releases</a>
         </div>
       </div>
     </section>
 
-    <div class="shell">
-      <div class="kwic-divider"><svg viewBox="0 0 64 48" preserveAspectRatio="xMidYMid meet">
-          <use href="#kwic" />
-        </svg></div>
-    </div>
+    <section class="section compact" id="overview">
+      <div class="shell narrow">
+        <h2>Overview</h2>
+        <p>CorpusWright is intended for corpus linguistics work where preparation and analysis need to remain close together. The current alpha focuses on local project folders, extraction from common source formats, configurable text cleaning, processed previews, repeated-artefact detection, and early corpus-level frequency analysis.</p>
+        <p>The project is deliberately local-first: source files and processed corpora remain on the user's machine. Cleaning steps are designed to be repeatable, inspectable, and recorded rather than hidden behind irreversible preprocessing.</p>
+      </div>
+    </section>
 
-    <section class="section" id="demo">
+    <section class="section compact" id="principles">
       <div class="shell">
         <div class="section-lead">
-          <p class="eyebrow">Preprocessing</p>
-          <h2>Before and after cleaning</h2>
-          <p>Extraction from PDFs and documents leaves running headers, footers, page numbers, and hyphenation breaks.
-            CorpusWright removes them deterministically and records every change in a cleaning report.</p>
+          <h2>Project principles</h2>
+          <p>These principles shape the design of the application and its analysis layer.</p>
         </div>
-        <div class="ba">
-          <div class="ba-col">
-            <div class="ba-head"><span class="state raw">Raw extraction</span><span>source.pdf · p.12</span></div>
-            <div class="ba-body"><span class="junk">DRAFT — not for circulation 12</span>
-              <span class="junk">─────────────────────────────</span>
-              The distribution of lexical items
-              across a corpus is rarely uni<span class="junk">-
-              </span>form; dispersion measures cap<span class="junk">-
-              </span>ture how evenly a feature occurs.
-              <span class="junk">University Press · 2019 · p. 12</span>
-            </div>
-          </div>
-          <div class="ba-col">
-            <div class="ba-head"><span class="state clean">After cleaning</span><span>deterministic · auditable</span>
-            </div>
-            <div class="ba-body">The distribution of lexical items
-              across a corpus is rarely <span class="fix">uniform</span>;
-              dispersion measures <span class="fix">capture</span>
-              how evenly a feature occurs.</div>
-          </div>
+        <div class="principle-list">
+          <article>
+            <h3>Local-first</h3>
+            <p>Corpus files are processed on the user's machine. The application does not depend on uploading research material to a remote service.</p>
+          </article>
+          <article>
+            <h3>Deterministic</h3>
+            <p>The same corpus and the same cleaning configuration should produce the same processed output.</p>
+          </article>
+          <article>
+            <h3>Auditable</h3>
+            <p>Cleaning operations should be visible and reviewable, especially when they remove recurring headers, footers, page numbers, or extraction noise.</p>
+          </article>
+          <article>
+            <h3>Analysis-aware</h3>
+            <p>Corpus preparation, concordancing, annotation, frequency lists, and distributional measures belong in one workflow rather than disconnected tools.</p>
+          </article>
         </div>
-        <div class="annot">
-          <span>running header removed</span>
-          <span>page number stripped</span>
-          <span>de-hyphenated: uni-form → uniform</span>
-          <span>footer boilerplate removed</span>
-        </div>
-        <p class="ba-caption">Every removal is recorded in the cleaning report. Same corpus and same configuration
-          produce the same output, every time.</p>
       </div>
     </section>
 
-    <section class="section" id="prepare-workflow">
+    <section class="section compact" id="status">
       <div class="shell">
         <div class="section-lead">
-          <p class="eyebrow">The Preprocessing Workflow</p>
-          <h2>A tour of the Prepare workbench</h2>
-          <p>Take a look at how CorpusWright helps you load, clean, and audit your corpus locally.</p>
+          <h2>Current status</h2>
+          <p>CorpusWright is in alpha. The table below separates currently available functionality from experimental and planned work.</p>
         </div>
-
-        <div class="workflow-steps">
-          <div class="workflow-step">
-            <div class="workflow-text">
-              <h3>1. Load and inspect your sources</h3>
-              <p>Load text, HTML, DOCX, or PDF files. The prepare bench shows you raw text side-by-side with cleaning previews, highlighting warnings and structural elements in real time.</p>
-            </div>
-            <div class="window">
-              <div class="window-header">
-                <span class="window-dot"></span>
-                <span class="window-dot"></span>
-                <span class="window-dot"></span>
-              </div>
-              <div class="window-body">
-                <img src="assets/screenshots/prepare-dark.png" class="theme-img-dark" alt="Prepare Bench dark mode">
-                <img src="assets/screenshots/prepare-light.png" class="theme-img-light" alt="Prepare Bench light mode">
-              </div>
-            </div>
-          </div>
-
-          <div class="workflow-step">
-            <div class="workflow-text">
-              <h3>2. Configure deterministic cleaning rules</h3>
-              <p>Control exact cleaning rules—like de-hyphenation, unicode normalization, line ending normalization, and noise removal. Every toggled option is saved to your project configuration, making your preprocessing pipeline completely repeatable.</p>
-            </div>
-            <div class="window">
-              <div class="window-header">
-                <span class="window-dot"></span>
-                <span class="window-dot"></span>
-                <span class="window-dot"></span>
-              </div>
-              <div class="window-body">
-                <img src="assets/screenshots/prepare-cleaning-settings-dark.png" class="theme-img-dark" alt="Cleaning Settings dark mode">
-                <img src="assets/screenshots/prepare-cleaning-settings-light.png" class="theme-img-light" alt="Cleaning Settings light mode">
-              </div>
-            </div>
-          </div>
-
-          <div class="workflow-step">
-            <div class="workflow-text">
-              <h3>3. Detect and audit repeated artefacts</h3>
-              <p>The Repeated-Artefact Finder automatically scans the entire corpus to identify recurring headers, footers, boilerplate, and extraction noise. Accept or reject candidates to safely build your custom removal rules without risk of silent data loss.</p>
-            </div>
-            <div class="window">
-              <div class="window-header">
-                <span class="window-dot"></span>
-                <span class="window-dot"></span>
-                <span class="window-dot"></span>
-              </div>
-              <div class="window-body">
-                <img src="assets/screenshots/prepare-repeated-artefacts-dark.png" class="theme-img-dark" alt="Repeated Artefacts dark mode">
-                <img src="assets/screenshots/prepare-repeated-artefacts-light.png" class="theme-img-light" alt="Repeated Artefacts light mode">
-              </div>
-            </div>
-          </div>
-        </div>
+        <table class="status-table">
+          <thead>
+            <tr>
+              <th>Area</th>
+              <th>Status</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Local project folders</td>
+              <td>Available</td>
+              <td>Corpus sources and project state are stored locally.</td>
+            </tr>
+            <tr>
+              <td>Source extraction</td>
+              <td>Available</td>
+              <td>TXT, HTML, DOCX, and PDF sources are supported.</td>
+            </tr>
+            <tr>
+              <td>Cleaning configuration</td>
+              <td>Available</td>
+              <td>Includes deterministic processing options and processed-text previews.</td>
+            </tr>
+            <tr>
+              <td>Repeated-artefact finder</td>
+              <td>Available</td>
+              <td>Detects recurring corpus noise such as headers, footers, and boilerplate.</td>
+            </tr>
+            <tr>
+              <td>Structured custom removals</td>
+              <td>Available</td>
+              <td>Supports explicit removal rules for known text artefacts.</td>
+            </tr>
+            <tr>
+              <td>Frequency list</td>
+              <td>Available</td>
+              <td>Provides early corpus-level frequency inspection.</td>
+            </tr>
+            <tr>
+              <td>Lemma / POS annotation</td>
+              <td>Experimental</td>
+              <td>Annotation support is present but still being stabilised.</td>
+            </tr>
+            <tr>
+              <td>KWIC / concordance</td>
+              <td>Planned</td>
+              <td>Part of the upcoming Explore workbench.</td>
+            </tr>
+            <tr>
+              <td>Collocation analysis</td>
+              <td>Planned</td>
+              <td>Will be built on positional indexes and transparent association measures.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="text-link"><a href="roadmap.html">Read the roadmap &rarr;</a></p>
       </div>
     </section>
 
-    <section class="section" id="what">
+    <section class="section" id="interface">
       <div class="shell">
         <div class="section-lead">
-          <h2>What it is</h2>
-          <p>These commitments shape every part of CorpusWright.</p>
+          <h2>Interface</h2>
+          <p>The screenshots below show the current alpha interface. They are provided as interface documentation, not as a complete feature list.</p>
         </div>
-        <div class="principles">
-          <p><span class="term">Local-first.</span> Your corpus stays on your machine; nothing is uploaded to a server.
-          </p>
-          <p><span class="term">Auditable.</span> Every cleaning step is deterministic and recorded.</p>
-          <p><span class="term">Analysis-aware.</span> Preprocessing, concordancing, and analysis stay in one loop.</p>
-          <p><span class="term">Statistically grounded.</span> Dispersion (DP), entropy, and frequency distributions
-            such as Zipf and hapax counts are computed transparently.</p>
-        </div>
+
+        <figure class="screenshot">
+          <a class="screenshot-link theme-img-dark" href="assets/screenshots/prepare-dark.png">
+            <img src="assets/screenshots/prepare-dark.png" alt="CorpusWright Prepare workbench in dark mode">
+          </a>
+          <a class="screenshot-link theme-img-light" href="assets/screenshots/prepare-light.png">
+            <img src="assets/screenshots/prepare-light.png" alt="CorpusWright Prepare workbench in light mode">
+          </a>
+          <figcaption>Prepare workbench with source selection, corpus summary, and original/processed text preview.</figcaption>
+        </figure>
+
+        <figure class="screenshot">
+          <a class="screenshot-link theme-img-dark" href="assets/screenshots/prepare-cleaning-settings-dark.png">
+            <img src="assets/screenshots/prepare-cleaning-settings-dark.png" alt="CorpusWright cleaning settings in dark mode">
+          </a>
+          <a class="screenshot-link theme-img-light" href="assets/screenshots/prepare-cleaning-settings-light.png">
+            <img src="assets/screenshots/prepare-cleaning-settings-light.png" alt="CorpusWright cleaning settings in light mode">
+          </a>
+          <figcaption>Cleaning settings used to configure repeatable preprocessing behaviour.</figcaption>
+        </figure>
+
+        <figure class="screenshot">
+          <a class="screenshot-link theme-img-dark" href="assets/screenshots/prepare-repeated-artefacts-dark.png">
+            <img src="assets/screenshots/prepare-repeated-artefacts-dark.png" alt="CorpusWright repeated-artefact finder in dark mode">
+          </a>
+          <a class="screenshot-link theme-img-light" href="assets/screenshots/prepare-repeated-artefacts-light.png">
+            <img src="assets/screenshots/prepare-repeated-artefacts-light.png" alt="CorpusWright repeated-artefact finder in light mode">
+          </a>
+          <figcaption>Repeated-artefact finder for reviewing recurring extraction noise before adding removal rules.</figcaption>
+        </figure>
       </div>
     </section>
 
-    <section class="section" id="status">
-      <div class="shell cols">
-        <div>
-          <p class="eyebrow">What works today</p>
-          <h2>Honest about the alpha</h2>
-          <ul class="checklist">
-            <li>Local project folders and source management</li>
-            <li>Text extraction from TXT, HTML, DOCX, and PDF</li>
-            <li>Configurable, deterministic cleaning with processed previews</li>
-            <li>Repeated-artefact finder</li>
-            <li>Structured custom removals</li>
-          </ul>
-          <p class="roadmap-link"><a href="roadmap.html">See the roadmap for what's planned &rarr;</a></p>
-        </div>
-        <div>
-          <table class="status">
-            <thead>
-              <tr>
-                <th>Area</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Prepare &amp; cleaning</td>
-                <td><span class="badge active">Active</span></td>
-              </tr>
-              <tr>
-                <td>Cleaning audit</td>
-                <td><span class="badge active">Active</span></td>
-              </tr>
-              <tr>
-                <td>Frequency list</td>
-                <td><span class="badge active">Active</span></td>
-              </tr>
-              <tr>
-                <td>Lemma / POS annotation</td>
-                <td><span class="badge exp">Experimental</span></td>
-              </tr>
-              <tr>
-                <td>KWIC / Explore</td>
-                <td><span class="badge plan">Planned</span></td>
-              </tr>
-              <tr>
-                <td>Public release</td>
-                <td><span class="badge plan">Pre-public</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" id="cite">
+    <section class="section compact" id="documentation">
       <div class="shell">
         <div class="section-lead">
-          <p class="eyebrow">Citation</p>
-          <h2>How to cite</h2>
-          <p>If CorpusWright contributes to your research or teaching, please cite it. The repository includes a <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a> file, so the citation details automatically stay in sync with each release.</p>
+          <h2>Documentation</h2>
+          <p>The project documentation includes implementation notes, supported formats, testing notes, and release history.</p>
         </div>
-        <div class="cols">
-          <div>
-            <h3>Preferred citation</h3>
-            <p class="muted">Cite the software directly, naming the version you used.</p>
-            <p><strong>Lopes, J. H. (2026). <em>CorpusWright</em> (Version 0.1.0-alpha.7) [Computer software]. <a href="https://github.com/jhlopesalves/CorpusWright">https://github.com/jhlopesalves/CorpusWright</a></strong></p>
+        <div class="doc-grid">
+          <a href="supported-formats.md">Supported formats</a>
+          <a href="pdf-extraction-strategy.md">PDF extraction strategy</a>
+          <a href="repeated-artifact-finder.md">Repeated-artefact finder</a>
+          <a href="structured-custom-removals.md">Structured custom removals</a>
+          <a href="testing.md">Testing</a>
+          <a href="releases/">Release notes</a>
+        </div>
+      </div>
+    </section>
 
-            <h3 style="margin-top: 24px;">From GitHub, automatically</h3>
-            <p class="muted">On the repository page, use the <strong>“Cite this repository”</strong> button in the sidebar to export BibTeX or APA. When a Zenodo DOI is available for a release, cite the DOI in preference to the repository URL.</p>
-            <p class="roadmap-link"><a href="citation.html">Read the full citation guide &rarr;</a></p>
-          </div>
-          <div>
-            <h3>BibTeX</h3>
-            <pre class="code"><code class="mono">@software{lopes_corpuswright_2026,
+    <section class="section compact" id="citation">
+      <div class="shell narrow">
+        <h2>Citation</h2>
+        <p>Please cite the version of CorpusWright used in your work. The repository includes a <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a> file with citation metadata.</p>
+        <p class="citation-text"><strong>Lopes, J. H. (2026). <em>CorpusWright</em> (Version 0.1.0-alpha.7) [Computer software].</strong> <a href="https://github.com/jhlopesalves/CorpusWright">https://github.com/jhlopesalves/CorpusWright</a></p>
+
+        <details class="bibtex">
+          <summary>BibTeX</summary>
+          <pre class="code"><code class="mono">@software{lopes_corpuswright_2026,
   author  = {Lopes, Jhonatan Henrique},
   title   = {CorpusWright: a Rust corpus workbench},
   year    = {2026},
@@ -278,17 +241,15 @@
   url     = {https://github.com/jhlopesalves/CorpusWright},
   note    = {ORCID: 0009-0008-4914-0262}
 }</code></pre>
-          </div>
-        </div>
+        </details>
       </div>
     </section>
-
   </main>
 
   <footer class="site-footer">
     <div class="shell foot">
-      <span>CorpusWright is an open, local-first corpus linguistics workbench in early, pre-public development.</span>
-      <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
+      <span>CorpusWright is an open, local-first corpus linguistics workbench in alpha development.</span>
+      <span><a href="https://github.com/jhlopesalves/CorpusWright">Source on GitHub</a></span>
     </div>
   </footer>
 
