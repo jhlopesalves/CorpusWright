@@ -45,10 +45,16 @@ interface ProjectCreationDialogChoice {
   folders: string[];
 }
 
+interface ProjectCreationDialogOptions {
+  allowInitialSources: boolean;
+}
+
 const RECENT_PROJECTS_KEY = "corpuswright.recentProjects.v1";
 const MAX_RECENT_PROJECTS = 10;
+const MISSING_PROJECT_MANIFEST_ERROR = "does not contain a CorpusWright project";
 
 let projectCreationRootPath = "";
+let projectCreationAllowInitialSources = true;
 let pendingProjectCreationSources: ProjectCreationSource[] = [];
 let projectCreationResolve: ((choice: ProjectCreationDialogChoice | null) => void) | null = null;
 
@@ -112,6 +118,10 @@ function removeRecentProject(rootPath: string): void {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isMissingProjectManifestError(error: unknown): boolean {
+  return formatError(error).includes(MISSING_PROJECT_MANIFEST_ERROR);
 }
 
 function setWelcomeStatus(message: string, isError = false): void {
@@ -206,6 +216,11 @@ function updateProjectCreationConfirmState(): void {
 
 function renderProjectCreationSources(): void {
   dom.projectCreateSourcesList.replaceChildren();
+  if (!projectCreationAllowInitialSources) {
+    dom.projectCreateSourceSummary.textContent = "";
+    return;
+  }
+
   const count = pendingProjectCreationSources.length;
   dom.projectCreateSourceSummary.textContent =
     count === 0
@@ -243,6 +258,10 @@ function renderProjectCreationSources(): void {
 }
 
 function addProjectCreationSources(kind: ProjectCreationSource["kind"], paths: string[]): void {
+  if (!projectCreationAllowInitialSources) {
+    return;
+  }
+
   const existing = new Set(pendingProjectCreationSources.map((source) => source.path));
   for (const path of paths) {
     if (existing.has(path)) {
@@ -276,9 +295,11 @@ async function chooseProjectCreationFolder(): Promise<void> {
   addProjectCreationSources("folder", [selected]);
 }
 
-function resetProjectCreationDialog(rootPath: string): void {
+function resetProjectCreationDialog(rootPath: string, options: ProjectCreationDialogOptions): void {
   projectCreationRootPath = rootPath;
+  projectCreationAllowInitialSources = options.allowInitialSources;
   pendingProjectCreationSources = [];
+  dom.projectCreateSources.classList.toggle("hidden", !projectCreationAllowInitialSources);
   dom.projectCreateName.value = defaultProjectNameFromPath(rootPath);
   renderProjectLanguageOptions();
   dom.projectCreateDescription.value = "";
@@ -301,12 +322,16 @@ function selectedProjectCreationChoice(): ProjectCreationDialogChoice | null {
     return null;
   }
 
-  const files = pendingProjectCreationSources
-    .filter((source) => source.kind === "file")
-    .map((source) => source.path);
-  const folders = pendingProjectCreationSources
-    .filter((source) => source.kind === "folder")
-    .map((source) => source.path);
+  const files = projectCreationAllowInitialSources
+    ? pendingProjectCreationSources
+        .filter((source) => source.kind === "file")
+        .map((source) => source.path)
+    : [];
+  const folders = projectCreationAllowInitialSources
+    ? pendingProjectCreationSources
+        .filter((source) => source.kind === "folder")
+        .map((source) => source.path)
+    : [];
   const request: CreateCorpusProjectRequest = {
     rootPath: projectCreationRootPath,
     name: dom.projectCreateName.value.trim(),
@@ -324,11 +349,14 @@ function closeProjectCreationDialog(choice: ProjectCreationDialogChoice | null):
   resolve?.(choice);
 }
 
-function showProjectCreationDialog(rootPath: string): Promise<ProjectCreationDialogChoice | null> {
+function showProjectCreationDialog(
+  rootPath: string,
+  options: ProjectCreationDialogOptions = { allowInitialSources: true },
+): Promise<ProjectCreationDialogChoice | null> {
   if (projectCreationResolve) {
     closeProjectCreationDialog(null);
   }
-  resetProjectCreationDialog(rootPath);
+  resetProjectCreationDialog(rootPath, options);
   dom.projectCreateModal.classList.remove("hidden");
   dom.projectCreateName.focus();
 
@@ -395,9 +423,26 @@ async function handleOpenFolderAsProject(): Promise<void> {
   }
 
   try {
+    setWelcomeStatus("Opening project...");
+    await openProjectFromPath(selected, true);
+    return;
+  } catch (error) {
+    if (!isMissingProjectManifestError(error)) {
+      setWelcomeStatus(formatError(error), true);
+      return;
+    }
+  }
+
+  const choice = await showProjectCreationDialog(selected, { allowInitialSources: false });
+  if (choice === null) {
+    setWelcomeStatus("Open folder as project cancelled.");
+    return;
+  }
+
+  try {
     setWelcomeStatus("Creating project metadata...");
     const project = await invoke<ActiveProject>("initialise_folder_as_corpus_project_command", {
-      rootPath: selected,
+      request: choice.request,
     });
     recordRecentProject(project);
     await activateProject(project, true);

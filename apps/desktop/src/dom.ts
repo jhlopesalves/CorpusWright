@@ -84,6 +84,7 @@ export const dom = {
   projectCreateName: getElement<HTMLInputElement>("project-create-name"),
   projectCreateLanguage: getElement<HTMLSelectElement>("project-create-language"),
   projectCreateDescription: getElement<HTMLTextAreaElement>("project-create-description"),
+  projectCreateSources: getElement<HTMLElement>("project-create-sources"),
   projectCreateAddFiles: getElement<HTMLButtonElement>("project-create-add-files"),
   projectCreateAddFolder: getElement<HTMLButtonElement>("project-create-add-folder"),
   projectCreateSourceSummary: getElement<HTMLParagraphElement>("project-create-source-summary"),
