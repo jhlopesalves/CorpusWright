@@ -126,26 +126,13 @@ The first working version was built with PySide6 and lives in `legacy/pyside/`. 
 
 ## How to cite
 
-If CorpusWright contributes to your research or teaching, please cite it. The repository includes a [`CITATION.cff`](CITATION.cff), so GitHub shows a **“Cite this repository”** button on the repo page that exports BibTeX and APA automatically and stays in sync with each release.
+If CorpusWright contributes to your research or teaching, please cite it. The repository contains a machine-readable [`CITATION.cff`](CITATION.cff) file.
 
-**Preferred citation**
+To obtain the correct citation format for the version you are using:
+- Use GitHub's **“Cite this repository”** widget on the right-hand sidebar of the repository page, which automatically exports APA and BibTeX formats.
+- Alternatively, read the metadata directly from the [`CITATION.cff`](CITATION.cff) file.
 
-> Lopes, J. H. (2026). *CorpusWright* (Version 0.1.0-alpha.7) [Computer software]. https://github.com/jhlopesalves/CorpusWright
-
-**BibTeX**
-
-```bibtex
-@software{lopes_corpuswright_2026,
-  author  = {Lopes, Jhonatan Henrique},
-  title   = {CorpusWright: a Rust corpus workbench},
-  year    = {2026},
-  version = {0.1.0-alpha.7},
-  url     = {https://github.com/jhlopesalves/CorpusWright},
-  note    = {ORCID: 0009-0008-4914-0262}
-}
-```
-
-When a Zenodo DOI is available for a release, cite the DOI in preference to the repository URL. Full guidance: https://jhlopesalves.github.io/CorpusWright/citation.html
+For further guidance (including how to reference version-specific DOIs via Zenodo once minted), see the [Citation Guidance on our documentation site](https://jhlopesalves.github.io/CorpusWright/citation.html).
 
 ## Connect
 
