@@ -545,6 +545,34 @@ a.card:hover .card-action {
   text-underline-offset: 3px;
 }
 
+/* ---- tabs ---- */
+.tab-nav {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 24px;
+}
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 0.96rem;
+  font-weight: 600;
+  padding: 10px 16px;
+  margin-bottom: -1px;
+  transition: color 0.14s ease, border-color 0.14s ease;
+}
+.tab-btn:hover {
+  color: var(--text);
+}
+.tab-btn.active {
+  color: var(--text);
+  border-bottom-color: var(--brand);
+}
+
 @media (max-width: 880px) {
   .grid,
   .cols,

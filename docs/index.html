@@ -82,35 +82,45 @@
           <p>Screenshots from the current alpha, provided as interface documentation.</p>
         </div>
 
-        <figure class="screenshot">
-          <div class="theme-img-dark">
-            <img src="assets/screenshots/prepare-dark.png" alt="CorpusWright Prepare workbench in dark mode">
-          </div>
-          <div class="theme-img-light">
-            <img src="assets/screenshots/prepare-light.png" alt="CorpusWright Prepare workbench in light mode">
-          </div>
-          <figcaption>Prepare workbench with source selection, corpus summary, and original/processed text preview.</figcaption>
-        </figure>
+        <!-- Tab Navigation -->
+        <div class="tab-nav" role="tablist" aria-label="Interface screenshots">
+          <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="pane-prepare" id="tab-prepare" onclick="switchTab(event, 'pane-prepare')">Prepare</button>
+          <button class="tab-btn" role="tab" aria-selected="false" aria-controls="pane-settings" id="tab-settings" onclick="switchTab(event, 'pane-settings')">Cleaning settings</button>
+          <button class="tab-btn" role="tab" aria-selected="false" aria-controls="pane-artefacts" id="tab-artefacts" onclick="switchTab(event, 'pane-artefacts')">Repeated artefacts</button>
+        </div>
 
-        <figure class="screenshot">
-          <div class="theme-img-dark">
-            <img src="assets/screenshots/prepare-cleaning-settings-dark.png" alt="CorpusWright cleaning settings in dark mode">
-          </div>
-          <div class="theme-img-light">
-            <img src="assets/screenshots/prepare-cleaning-settings-light.png" alt="CorpusWright cleaning settings in light mode">
-          </div>
-          <figcaption>Cleaning settings used to configure repeatable preprocessing behaviour.</figcaption>
-        </figure>
+        <!-- Tab Content Panes -->
+        <div class="tab-content">
+          <figure class="screenshot tab-pane active" id="pane-prepare" role="tabpanel" aria-labelledby="tab-prepare">
+            <div class="theme-img-dark">
+              <img src="assets/screenshots/prepare-dark.png" alt="CorpusWright Prepare workbench in dark mode">
+            </div>
+            <div class="theme-img-light">
+              <img src="assets/screenshots/prepare-light.png" alt="CorpusWright Prepare workbench in light mode">
+            </div>
+            <figcaption>Prepare workbench with source selection, corpus summary, and original/processed text preview.</figcaption>
+          </figure>
 
-        <figure class="screenshot">
-          <div class="theme-img-dark">
-            <img src="assets/screenshots/prepare-repeated-artefacts-dark.png" alt="CorpusWright repeated-artefact finder in dark mode">
-          </div>
-          <div class="theme-img-light">
-            <img src="assets/screenshots/prepare-repeated-artefacts-light.png" alt="CorpusWright repeated-artefact finder in light mode">
-          </div>
-          <figcaption>Repeated-artefact finder for reviewing recurring extraction noise before adding removal rules.</figcaption>
-        </figure>
+          <figure class="screenshot tab-pane" id="pane-settings" role="tabpanel" aria-labelledby="tab-settings" style="display: none;">
+            <div class="theme-img-dark">
+              <img src="assets/screenshots/prepare-cleaning-settings-dark.png" alt="CorpusWright cleaning settings in dark mode">
+            </div>
+            <div class="theme-img-light">
+              <img src="assets/screenshots/prepare-cleaning-settings-light.png" alt="CorpusWright cleaning settings in light mode">
+            </div>
+            <figcaption>Cleaning settings used to configure repeatable preprocessing behaviour.</figcaption>
+          </figure>
+
+          <figure class="screenshot tab-pane" id="pane-artefacts" role="tabpanel" aria-labelledby="tab-artefacts" style="display: none;">
+            <div class="theme-img-dark">
+              <img src="assets/screenshots/prepare-repeated-artefacts-dark.png" alt="CorpusWright repeated-artefact finder in dark mode">
+            </div>
+            <div class="theme-img-light">
+              <img src="assets/screenshots/prepare-repeated-artefacts-light.png" alt="CorpusWright repeated-artefact finder in light mode">
+            </div>
+            <figcaption>Repeated-artefact finder for reviewing recurring extraction noise before adding removal rules.</figcaption>
+          </figure>
+        </div>
       </div>
     </section>
     <section class="section compact" id="resources">
@@ -176,7 +186,26 @@ repository-code: "https://github.com/jhlopesalves/CorpusWright"</code></pre>
       <span><a href="https://github.com/jhlopesalves/CorpusWright">Source on GitHub</a></span>
     </div>
   </footer>
-
+  <script>
+    function switchTab(event, paneId) {
+      const tabBtns = document.querySelectorAll('.tab-btn');
+      tabBtns.forEach(btn => {
+        btn.classList.remove('active');
+        btn.setAttribute('aria-selected', 'false');
+      });
+      const tabPanes = document.querySelectorAll('.tab-pane');
+      tabPanes.forEach(pane => {
+        pane.style.display = 'none';
+        pane.classList.remove('active');
+      });
+      const activeTab = event.currentTarget;
+      activeTab.classList.add('active');
+      activeTab.setAttribute('aria-selected', 'true');
+      const activePane = document.getElementById(paneId);
+      activePane.style.display = 'block';
+      activePane.classList.add('active');
+    }
+  </script>
 </body>
 
 </html>
