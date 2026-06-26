@@ -11,6 +11,7 @@ use corpuswright_core::project_sources::{
     update_project_source_pdf_handling, update_project_source_pdf_profiles,
 };
 use corpuswright_core::scan::{ScanReport, load_files, scan_directory};
+use corpuswright_core::{ActiveProject, CreateCorpusProjectRequest, ProjectLanguage};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -22,7 +23,8 @@ use tauri::{Emitter, Window};
 const PROJECT_DIR: &str = ".corpuswright";
 const MANIFEST_FILE: &str = "project.json";
 const REPEATED_ARTIFACTS_FILE: &str = "repeated-artifacts.json";
-const PROJECT_VERSION: u32 = 1;
+const PROJECT_VERSION: u32 = 2;
+const MIN_SUPPORTED_PROJECT_VERSION: u32 = 1;
 
 struct CachedProjectSourceInventory {
     root: PathBuf,
@@ -143,17 +145,14 @@ pub(crate) struct CorpusProjectManifest {
     pub created_at: String,
     pub updated_at: String,
     pub source_roots: Vec<PathBuf>,
+    #[serde(default)]
+    pub language: Option<ProjectLanguage>,
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ActiveProject {
-    name: String,
-    root_path: String,
-    manifest_path: String,
+#[derive(Debug, Deserialize)]
+struct CorpusProjectManifestVersion {
     project_version: u32,
-    source_roots: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -289,11 +288,15 @@ fn selection_action_summary(
 }
 
 #[tauri::command(async)]
-pub(crate) fn create_corpus_project_command(root_path: String) -> Result<ActiveProject, String> {
-    let root = normalise_selected_path(&root_path)?;
+pub(crate) fn create_corpus_project_command(
+    request: CreateCorpusProjectRequest,
+) -> Result<ActiveProject, String> {
+    let root = normalise_selected_path(&request.root_path)?;
     if root.exists() && !root.is_dir() {
         return Err("Choose a folder for the CorpusWright project.".to_string());
     }
+    let name = normalise_project_name(&request.name)?;
+    let description = normalise_project_description(request.description);
 
     fs::create_dir_all(&root)
         .map_err(|error| format!("Could not create project folder: {error}"))?;
@@ -312,7 +315,7 @@ pub(crate) fn create_corpus_project_command(root_path: String) -> Result<ActiveP
     fs::create_dir_all(root.join("exports"))
         .map_err(|error| format!("Could not create project exports folder: {error}"))?;
 
-    let manifest = new_manifest(&root, Vec::new());
+    let manifest = new_manifest(&root, Vec::new(), name, Some(request.language), description);
     write_manifest(&manifest_path, &manifest)?;
     save_project_source_manifest(&root, &ProjectSourceManifest::default())?;
     Ok(active_project_from_manifest(&manifest, &manifest_path))
@@ -352,7 +355,13 @@ pub(crate) fn initialise_folder_as_corpus_project_command(
     fs::create_dir_all(root.join(PROJECT_DIR).join("exports"))
         .map_err(|error| format!("Could not create project exports folder: {error}"))?;
 
-    let manifest = new_manifest(&root, vec![root.clone()]);
+    let manifest = new_manifest(
+        &root,
+        vec![root.clone()],
+        project_name_from_root(&root),
+        None,
+        None,
+    );
     write_manifest(&manifest_path, &manifest)?;
     save_project_source_manifest(&root, &ProjectSourceManifest::default())?;
     Ok(active_project_from_manifest(&manifest, &manifest_path))
@@ -852,16 +861,37 @@ fn project_name_from_root(root: &Path) -> String {
         .to_string()
 }
 
-fn new_manifest(root: &Path, source_roots: Vec<PathBuf>) -> CorpusProjectManifest {
+fn normalise_project_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("Project name is required.".to_string());
+    }
+    Ok(name.to_string())
+}
+
+fn normalise_project_description(description: Option<String>) -> Option<String> {
+    description
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn new_manifest(
+    root: &Path,
+    source_roots: Vec<PathBuf>,
+    name: String,
+    language: Option<ProjectLanguage>,
+    notes: Option<String>,
+) -> CorpusProjectManifest {
     let now = current_timestamp();
     CorpusProjectManifest {
         project_version: PROJECT_VERSION,
-        name: project_name_from_root(root),
+        name,
         root_path: root.to_path_buf(),
         created_at: now.clone(),
         updated_at: now,
         source_roots,
-        notes: None,
+        language,
+        notes,
     }
 }
 
@@ -885,14 +915,16 @@ fn read_manifest(manifest_path: &Path) -> Result<CorpusProjectManifest, String> 
     }
     let content = fs::read_to_string(manifest_path)
         .map_err(|error| format!("Could not read project manifest: {error}"))?;
-    let manifest: CorpusProjectManifest = serde_json::from_str(&content)
+    let version: CorpusProjectManifestVersion = serde_json::from_str(&content)
         .map_err(|error| format!("Project manifest is not valid JSON: {error}"))?;
-    if manifest.project_version != PROJECT_VERSION {
+    if !(MIN_SUPPORTED_PROJECT_VERSION..=PROJECT_VERSION).contains(&version.project_version) {
         return Err(format!(
-            "Unsupported CorpusWright project version: {}.",
-            manifest.project_version
+            "Unsupported CorpusWright project version: {}. This build supports project versions {}-{}.",
+            version.project_version, MIN_SUPPORTED_PROJECT_VERSION, PROJECT_VERSION
         ));
     }
+    let manifest: CorpusProjectManifest = serde_json::from_str(&content)
+        .map_err(|error| format!("Project manifest is not valid JSON: {error}"))?;
     if manifest.name.trim().is_empty() {
         return Err("Project manifest is missing a project name.".to_string());
     }
@@ -928,6 +960,8 @@ fn active_project_from_manifest(
         manifest_path: path_to_string(manifest_path),
         project_version: manifest.project_version,
         source_roots,
+        language: manifest.language,
+        description: manifest.notes.clone(),
     }
 }
 
@@ -951,18 +985,42 @@ mod tests {
         let _ = fs::remove_dir_all(path);
     }
 
+    fn create_request(root: &Path) -> CreateCorpusProjectRequest {
+        CreateCorpusProjectRequest {
+            root_path: path_to_string(root),
+            name: project_name_from_root(root),
+            language: ProjectLanguage::En,
+            description: None,
+        }
+    }
+
+    fn create_project(root: &Path) -> ActiveProject {
+        create_corpus_project_command(create_request(root)).unwrap()
+    }
+
     #[test]
-    fn creating_new_project_writes_valid_manifest() {
+    fn create_project_persists_name_language_description() {
         let root = unique_temp_dir("create");
-        let result = create_corpus_project_command(path_to_string(&root));
+        let result = create_corpus_project_command(CreateCorpusProjectRequest {
+            root_path: path_to_string(&root),
+            name: "  Field Interviews  ".to_string(),
+            language: ProjectLanguage::Pt,
+            description: Some("  Oral history corpus  ".to_string()),
+        });
 
         assert!(result.is_ok());
+        let project = result.unwrap();
         let manifest_path = manifest_path_for_root(&root);
         let manifest: CorpusProjectManifest =
             serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
 
         assert_eq!(manifest.project_version, PROJECT_VERSION);
-        assert_eq!(manifest.name, root.file_name().unwrap().to_str().unwrap());
+        assert_eq!(manifest.name, "Field Interviews");
+        assert_eq!(manifest.language, Some(ProjectLanguage::Pt));
+        assert_eq!(manifest.notes.as_deref(), Some("Oral history corpus"));
+        assert_eq!(project.name, "Field Interviews");
+        assert_eq!(project.language, Some(ProjectLanguage::Pt));
+        assert_eq!(project.description.as_deref(), Some("Oral history corpus"));
         assert!(manifest.source_roots.is_empty());
         assert!(root.join(PROJECT_DIR).join("cache").is_dir());
         assert!(root.join("sources").is_dir());
@@ -973,9 +1031,111 @@ mod tests {
     }
 
     #[test]
+    fn create_project_rejects_missing_or_unsupported_language() {
+        let root = unique_temp_dir("invalid-create");
+        let error = create_corpus_project_command(CreateCorpusProjectRequest {
+            root_path: path_to_string(&root),
+            name: "   ".to_string(),
+            language: ProjectLanguage::En,
+            description: None,
+        })
+        .unwrap_err();
+        assert!(error.contains("Project name is required"));
+
+        let missing_language = serde_json::json!({
+            "rootPath": path_to_string(&root),
+            "name": "Corpus",
+            "description": null
+        });
+        assert!(serde_json::from_value::<CreateCorpusProjectRequest>(missing_language).is_err());
+
+        let unsupported_language = serde_json::json!({
+            "rootPath": path_to_string(&root),
+            "name": "Corpus",
+            "language": "de",
+            "description": null
+        });
+        assert!(
+            serde_json::from_value::<CreateCorpusProjectRequest>(unsupported_language).is_err()
+        );
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn older_manifest_without_metadata_still_loads() {
+        let root = unique_temp_dir("legacy");
+        fs::create_dir_all(&root).unwrap();
+        let manifest_path = manifest_path_for_root(&root);
+        let legacy_notes = "Collected before project language metadata existed.";
+        let legacy_manifest = serde_json::json!({
+            "project_version": 1,
+            "name": "Legacy Corpus",
+            "root_path": path_to_string(&root),
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2025-01-01T00:00:00Z",
+            "source_roots": [],
+            "notes": legacy_notes
+        });
+        if let Some(parent) = manifest_path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(
+            &manifest_path,
+            serde_json::to_string_pretty(&legacy_manifest).unwrap(),
+        )
+        .unwrap();
+
+        let opened = open_corpus_project_command(path_to_string(&root)).unwrap();
+        assert_eq!(opened.project_version, 1);
+        assert_eq!(opened.language, None);
+        assert_eq!(opened.description.as_deref(), Some(legacy_notes));
+
+        let manifest = read_manifest(&manifest_path).unwrap();
+        write_manifest(&manifest_path, &manifest).unwrap();
+        let round_tripped: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
+        assert_eq!(round_tripped["notes"].as_str(), Some(legacy_notes));
+        assert!(round_tripped.get("description").is_none());
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn future_manifest_version_returns_user_facing_error() {
+        let root = unique_temp_dir("future");
+        fs::create_dir_all(&root).unwrap();
+        let manifest_path = manifest_path_for_root(&root);
+        let manifest = serde_json::json!({
+            "project_version": PROJECT_VERSION + 1,
+            "name": "Future Corpus",
+            "root_path": path_to_string(&root),
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "source_roots": [],
+            "language": "es",
+            "notes": null
+        });
+        if let Some(parent) = manifest_path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(
+            &manifest_path,
+            serde_json::to_string_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+
+        let error = open_corpus_project_command(path_to_string(&root)).unwrap_err();
+        assert!(error.contains("Unsupported CorpusWright project version"));
+        assert!(error.contains("This build supports project versions"));
+
+        cleanup(&root);
+    }
+
+    #[test]
     fn opening_existing_project_reads_manifest() {
         let root = unique_temp_dir("open");
-        create_corpus_project_command(path_to_string(&root)).unwrap();
+        create_project(&root);
 
         let opened = open_corpus_project_command(path_to_string(&root)).unwrap();
 
@@ -1034,7 +1194,7 @@ mod tests {
     #[test]
     fn reviewing_source_files_does_not_persist_sources() {
         let root = unique_temp_dir("review-files");
-        create_corpus_project_command(path_to_string(&root)).unwrap();
+        create_project(&root);
         let source_file = root.join("essay.txt");
         fs::write(&source_file, "sample").unwrap();
 
@@ -1055,7 +1215,7 @@ mod tests {
     #[test]
     fn folder_import_review_reports_ignored_unsupported_files() {
         let root = unique_temp_dir("review-folder");
-        create_corpus_project_command(path_to_string(&root)).unwrap();
+        create_project(&root);
         let folder = root.join("incoming");
         fs::create_dir_all(&folder).unwrap();
         fs::write(folder.join("essay.txt"), "sample").unwrap();
@@ -1076,7 +1236,7 @@ mod tests {
     #[test]
     fn confirming_source_file_import_persists_sources() {
         let root = unique_temp_dir("confirm-files");
-        create_corpus_project_command(path_to_string(&root)).unwrap();
+        create_project(&root);
         let source_file = root.join("essay.txt");
         fs::write(&source_file, "sample").unwrap();
 

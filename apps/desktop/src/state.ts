@@ -6,19 +6,14 @@ import type { ProjectSourceSummary } from "./generated/ProjectSourceSummary.js";
 import type { RepeatedArtifactCandidate } from "./generated/RepeatedArtifactCandidate.js";
 import type { SearchResult } from "./generated/SearchResult.js";
 import type { CorpusOverview } from "./analysis";
+import type { ActiveProject } from "./generated/ActiveProject.js";
 import type {
   VisibleFile,
 } from "./types";
 
-export type WorkbenchId = "prepare" | "analyse";
+export type { ActiveProject };
 
-export interface ActiveProject {
-  name: string;
-  rootPath: string;
-  manifestPath: string;
-  projectVersion: number;
-  sourceRoots: string[];
-}
+export type WorkbenchId = "prepare" | "analyse";
 
 export const state = {
   activeProject: null as ActiveProject | null,

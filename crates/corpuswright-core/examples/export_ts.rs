@@ -18,13 +18,16 @@ use corpuswright_core::clean::{
     TableExtractionStrategy,
 };
 use corpuswright_core::export::{ExportReport, ExportWarning, ExportWarningKind};
-use corpuswright_core::language::{DetectedLanguage, DocumentLanguage, LanguageResolution};
+use corpuswright_core::language::{
+    DetectedLanguage, DocumentLanguage, LanguageResolution, ProjectLanguage,
+};
 use corpuswright_core::manifest::{ExportManifest, ManifestFileRecord};
 use corpuswright_core::pdf::{PdfPageExtractionMethod, PdfPageRangePage, PdfPageRangeResult};
 use corpuswright_core::pdf_audit::{PdfAuditQuality, PdfAuditResult, PdfAuditSuggestedProfile};
 use corpuswright_core::preview::{
     CombinedPreview, FilePreview, PreviewWarning, PreviewWarningKind,
 };
+use corpuswright_core::project::{ActiveProject, CreateCorpusProjectRequest};
 use corpuswright_core::project_sources::{
     ProjectSource, ProjectSourceExtractionRoute, ProjectSourceImportPolicy,
     ProjectSourceImportReview, ProjectSourceKind, ProjectSourceKindCounts, ProjectSourceManifest,
@@ -240,6 +243,7 @@ fn main() {
     );
 
     export_type::<DetectedLanguage>(&out_dir, &[], &[]);
+    export_type::<ProjectLanguage>(&out_dir, &[], &[]);
     export_type::<LanguageResolution>(&out_dir, &[], &[]);
     export_type::<DocumentLanguage>(
         &out_dir,
@@ -253,6 +257,22 @@ fn main() {
                 file: "LanguageResolution",
             },
         ],
+        &[],
+    );
+    export_type::<CreateCorpusProjectRequest>(
+        &out_dir,
+        &[TypeImport {
+            name: "ProjectLanguage",
+            file: "ProjectLanguage",
+        }],
+        &[],
+    );
+    export_type::<ActiveProject>(
+        &out_dir,
+        &[TypeImport {
+            name: "ProjectLanguage",
+            file: "ProjectLanguage",
+        }],
         &[],
     );
 
