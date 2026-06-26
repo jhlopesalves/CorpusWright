@@ -145,7 +145,7 @@ pub(crate) struct CorpusProjectManifest {
     pub created_at: String,
     pub updated_at: String,
     pub source_roots: Vec<PathBuf>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<ProjectLanguage>,
     pub notes: Option<String>,
 }
@@ -331,9 +331,9 @@ pub(crate) fn open_corpus_project_command(path: String) -> Result<ActiveProject,
 
 #[tauri::command(async)]
 pub(crate) fn initialise_folder_as_corpus_project_command(
-    root_path: String,
+    request: CreateCorpusProjectRequest,
 ) -> Result<ActiveProject, String> {
-    let root = normalise_selected_path(&root_path)?;
+    let root = normalise_selected_path(&request.root_path)?;
     if !root.exists() {
         return Err("Choose an existing folder to open as a CorpusWright project.".to_string());
     }
@@ -348,6 +348,9 @@ pub(crate) fn initialise_folder_as_corpus_project_command(
         return Ok(active_project_from_manifest(&manifest, &manifest_path));
     }
 
+    let name = normalise_project_name(&request.name)?;
+    let description = normalise_project_description(request.description);
+
     fs::create_dir_all(root.join(PROJECT_DIR).join("cache"))
         .map_err(|error| format!("Could not create project metadata folder: {error}"))?;
     fs::create_dir_all(root.join(PROJECT_DIR).join("processed"))
@@ -358,9 +361,9 @@ pub(crate) fn initialise_folder_as_corpus_project_command(
     let manifest = new_manifest(
         &root,
         vec![root.clone()],
-        project_name_from_root(&root),
-        None,
-        None,
+        name,
+        Some(request.language),
+        description,
     );
     write_manifest(&manifest_path, &manifest)?;
     save_project_source_manifest(&root, &ProjectSourceManifest::default())?;
@@ -853,6 +856,7 @@ fn current_timestamp() -> String {
     jiff::Timestamp::now().to_string()
 }
 
+#[cfg(test)]
 fn project_name_from_root(root: &Path) -> String {
     root.file_name()
         .and_then(|name| name.to_str())
@@ -1063,7 +1067,7 @@ mod tests {
     }
 
     #[test]
-    fn older_manifest_without_metadata_still_loads() {
+    fn legacy_v1_writeback_omits_language_key() {
         let root = unique_temp_dir("legacy");
         fs::create_dir_all(&root).unwrap();
         let manifest_path = manifest_path_for_root(&root);
@@ -1096,6 +1100,7 @@ mod tests {
         let round_tripped: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
         assert_eq!(round_tripped["notes"].as_str(), Some(legacy_notes));
+        assert!(round_tripped.get("language").is_none());
         assert!(round_tripped.get("description").is_none());
 
         cleanup(&root);
@@ -1164,18 +1169,30 @@ mod tests {
     }
 
     #[test]
-    fn opening_folder_as_project_preserves_existing_files() {
+    fn initialise_folder_as_project_persists_name_language_description() {
         let root = unique_temp_dir("folder");
         fs::create_dir_all(&root).unwrap();
         let source_file = root.join("essay.txt");
         fs::write(&source_file, "sample").unwrap();
 
-        let project = initialise_folder_as_corpus_project_command(path_to_string(&root)).unwrap();
+        let project = initialise_folder_as_corpus_project_command(CreateCorpusProjectRequest {
+            root_path: path_to_string(&root),
+            name: "  Folder Interviews  ".to_string(),
+            language: ProjectLanguage::Fr,
+            description: Some("  Folder notes  ".to_string()),
+        })
+        .unwrap();
         let manifest_path = manifest_path_for_root(&root);
         let manifest: CorpusProjectManifest =
             serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
 
         assert!(source_file.exists());
+        assert_eq!(manifest.name, "Folder Interviews");
+        assert_eq!(manifest.language, Some(ProjectLanguage::Fr));
+        assert_eq!(manifest.notes.as_deref(), Some("Folder notes"));
+        assert_eq!(project.name, "Folder Interviews");
+        assert_eq!(project.language, Some(ProjectLanguage::Fr));
+        assert_eq!(project.description.as_deref(), Some("Folder notes"));
         assert_eq!(
             manifest.source_roots,
             vec![canonical_or_original(root.clone())]
@@ -1187,6 +1204,75 @@ mod tests {
         assert!(root.join(PROJECT_DIR).join("cache").is_dir());
         assert!(root.join(PROJECT_DIR).join("processed").is_dir());
         assert!(root.join(PROJECT_DIR).join("exports").is_dir());
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn initialise_folder_as_project_rejects_missing_or_unsupported_language() {
+        let root = unique_temp_dir("invalid-folder");
+        fs::create_dir_all(&root).unwrap();
+
+        let error = initialise_folder_as_corpus_project_command(CreateCorpusProjectRequest {
+            root_path: path_to_string(&root),
+            name: "   ".to_string(),
+            language: ProjectLanguage::En,
+            description: None,
+        })
+        .unwrap_err();
+        assert!(error.contains("Project name is required"));
+
+        let missing_language = serde_json::json!({
+            "rootPath": path_to_string(&root),
+            "name": "Corpus",
+            "description": null
+        });
+        assert!(serde_json::from_value::<CreateCorpusProjectRequest>(missing_language).is_err());
+
+        let unsupported_language = serde_json::json!({
+            "rootPath": path_to_string(&root),
+            "name": "Corpus",
+            "language": "de",
+            "description": null
+        });
+        assert!(
+            serde_json::from_value::<CreateCorpusProjectRequest>(unsupported_language).is_err()
+        );
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn opening_existing_project_from_folder_does_not_overwrite_metadata() {
+        let root = unique_temp_dir("existing-folder");
+        fs::create_dir_all(&root).unwrap();
+        let root = canonical_or_original(root);
+        let source_root = root.join("kept-sources");
+        let manifest_path = manifest_path_for_root(&root);
+        let manifest = new_manifest(
+            &root,
+            vec![source_root.clone()],
+            "Original Corpus".to_string(),
+            Some(ProjectLanguage::Pt),
+            Some("Do not replace".to_string()),
+        );
+        write_manifest(&manifest_path, &manifest).unwrap();
+        let before = fs::read_to_string(&manifest_path).unwrap();
+
+        let opened = initialise_folder_as_corpus_project_command(CreateCorpusProjectRequest {
+            root_path: path_to_string(&root),
+            name: "Replacement Corpus".to_string(),
+            language: ProjectLanguage::Fr,
+            description: Some("Replacement notes".to_string()),
+        })
+        .unwrap();
+
+        let after = fs::read_to_string(&manifest_path).unwrap();
+        assert_eq!(after, before);
+        assert_eq!(opened.name, "Original Corpus");
+        assert_eq!(opened.language, Some(ProjectLanguage::Pt));
+        assert_eq!(opened.description.as_deref(), Some("Do not replace"));
+        assert_eq!(opened.source_roots, vec![path_to_string(&source_root)]);
 
         cleanup(&root);
     }

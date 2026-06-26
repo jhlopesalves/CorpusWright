@@ -24,8 +24,16 @@ assert(
   "new-project dialog blocks confirm until name is set",
 );
 assert(
+  !projectCreationMetadataIsValid({ name: "   ", language: "en" }),
+  "new-project dialog blocks confirm when name is blank after trimming",
+);
+assert(
   !projectCreationMetadataIsValid({ name: "Corpus", language: "" }),
   "new-project dialog blocks confirm until language is set",
+);
+assert(
+  !projectCreationMetadataIsValid({ name: "Corpus", language: "de" }),
+  "new-project dialog blocks confirm when language is unsupported",
 );
 assert(
   projectCreationMetadataIsValid({ name: "Corpus", language: "pt" }),
