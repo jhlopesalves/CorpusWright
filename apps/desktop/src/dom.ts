@@ -80,6 +80,18 @@ export const dom = {
   btnOpenFolderProject: getElement<HTMLButtonElement>("btn-open-folder-project"),
   welcomeStatus: getElement<HTMLDivElement>("welcome-status"),
   recentProjectsList: getElement<HTMLDivElement>("recent-projects-list"),
+  projectCreateModal: getElement<HTMLDivElement>("project-create-modal"),
+  projectCreateName: getElement<HTMLInputElement>("project-create-name"),
+  projectCreateLanguage: getElement<HTMLSelectElement>("project-create-language"),
+  projectCreateDescription: getElement<HTMLTextAreaElement>("project-create-description"),
+  projectCreateAddFiles: getElement<HTMLButtonElement>("project-create-add-files"),
+  projectCreateAddFolder: getElement<HTMLButtonElement>("project-create-add-folder"),
+  projectCreateSourceSummary: getElement<HTMLParagraphElement>("project-create-source-summary"),
+  projectCreateSourcesList: getElement<HTMLDivElement>("project-create-sources-list"),
+  projectCreateStatus: getElement<HTMLSpanElement>("project-create-status"),
+  projectCreateCloseTop: getElement<HTMLButtonElement>("btn-close-project-create-modal-top"),
+  projectCreateCancel: getElement<HTMLButtonElement>("cancel-project-create-btn"),
+  projectCreateConfirm: getElement<HTMLButtonElement>("confirm-project-create-btn"),
 
   // Sources
   sourceAddFilesBtn: getElement<HTMLButtonElement>("source-add-files-btn"),

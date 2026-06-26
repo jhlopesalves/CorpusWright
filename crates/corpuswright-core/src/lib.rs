@@ -34,6 +34,7 @@ pub mod pdf_audit;
 pub mod pdf_ocr;
 pub mod pdf_quality;
 pub mod preview;
+pub mod project;
 pub mod project_sources;
 pub mod repeated_artifact_promotion;
 pub mod repeated_artifacts;
@@ -68,7 +69,7 @@ pub use export::{
 };
 pub use language::{
     DEFAULT_LOW_CONFIDENCE_THRESHOLD, DetectedLanguage, DocumentLanguage, LanguageResolution,
-    detect_and_resolve, detect_language, resolve_language,
+    ProjectLanguage, detect_and_resolve, detect_language, resolve_language,
 };
 pub use manifest::{ExportManifest, ManifestFileRecord};
 pub use pdf::{
@@ -79,6 +80,7 @@ pub use preview::{
     CombinedPreview, FilePreview, PreviewError, PreviewOptions, PreviewWarning, PreviewWarningKind,
     preview_file, preview_files, preview_processed_files,
 };
+pub use project::{ActiveProject, CreateCorpusProjectRequest};
 pub use project_sources::{
     ProjectSource, ProjectSourceExtractionResult, ProjectSourceExtractionRoute,
     ProjectSourceImportPolicy, ProjectSourceImportReview, ProjectSourceKind,

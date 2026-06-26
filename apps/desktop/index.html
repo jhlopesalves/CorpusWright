@@ -565,6 +565,64 @@
       </div>
     </div>
 
+    <!-- Project Creation Modal -->
+    <div id="project-create-modal" class="modal hidden" role="dialog" aria-modal="true"
+      aria-labelledby="project-create-title" aria-describedby="project-create-description-text">
+      <div class="modal-content project-create-modal-content">
+        <button
+          id="btn-close-project-create-modal-top"
+          class="modal-close-btn"
+          type="button"
+          aria-label="Close New Corpus Project"
+        >
+          &times;
+        </button>
+        <h2 id="project-create-title">New Corpus Project</h2>
+        <p id="project-create-description-text" class="modal-description">
+          Set the project identity before CorpusWright creates the project.
+        </p>
+
+        <div class="project-create-form">
+          <label for="project-create-name">
+            <span>Project name</span>
+            <input id="project-create-name" type="text" autocomplete="off" />
+          </label>
+
+          <label for="project-create-language">
+            <span>Project language</span>
+            <select id="project-create-language" class="settings-select">
+              <option value="en">en</option>
+              <option value="fr">fr</option>
+              <option value="pt">pt</option>
+            </select>
+          </label>
+
+          <label for="project-create-description">
+            <span>Description</span>
+            <textarea id="project-create-description" rows="4"></textarea>
+          </label>
+        </div>
+
+        <section class="project-create-sources" aria-label="Initial sources">
+          <div class="project-create-section-header">
+            <h3>Sources</h3>
+            <div class="project-create-source-actions">
+              <button id="project-create-add-files" class="secondary-btn" type="button">Add files</button>
+              <button id="project-create-add-folder" class="secondary-btn" type="button">Add folder</button>
+            </div>
+          </div>
+          <p id="project-create-source-summary" class="project-create-source-summary"></p>
+          <div id="project-create-sources-list" class="project-create-sources-list"></div>
+        </section>
+
+        <div class="modal-actions">
+          <span id="project-create-status" class="project-create-status"></span>
+          <button id="cancel-project-create-btn" class="secondary-btn" type="button">Cancel</button>
+          <button id="confirm-project-create-btn" class="primary-btn" type="button" disabled>Create Project</button>
+        </div>
+      </div>
+    </div>
+
     <!-- About Modal -->
     <div id="about-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="about-title"
       aria-describedby="about-description">

@@ -4231,6 +4231,109 @@ pre {
   overflow-y: auto;
 }
 
+.project-create-modal-content {
+  width: min(92vw, 640px);
+  max-height: min(90vh, 760px);
+  overflow-y: auto;
+}
+
+.project-create-form {
+  display: grid;
+  gap: 12px;
+}
+
+.project-create-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.86rem;
+}
+
+.project-create-form input,
+.project-create-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 7px 9px;
+}
+
+.project-create-form textarea {
+  resize: vertical;
+  min-height: 88px;
+}
+
+.project-create-sources {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+}
+
+.project-create-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.project-create-section-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.project-create-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.project-create-source-summary,
+.project-create-status {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.project-create-source-summary {
+  margin: 8px 0;
+}
+
+.project-create-sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.project-create-source-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+}
+
+.project-create-source-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.83rem;
+}
+
+.project-create-source-kind {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
 .settings-select {
   appearance: none;
   -webkit-appearance: none;
@@ -4247,6 +4350,21 @@ pre {
   color: var(--text-color);
   font: inherit;
   font-size: 0.86rem;
+}
+
+@media (max-width: 640px) {
+  .project-create-source-row {
+    grid-template-columns: 1fr;
+  }
+
+  .project-create-section-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .project-create-source-actions {
+    justify-content: flex-start;
+  }
 }
 
 .settings-select:focus {
