@@ -34,9 +34,11 @@
     <div class="shell nav">
       <a class="brand" href="index.html"><img class="mark" src="assets/icon-32.png" alt="" width="28" height="28"> CorpusWright</a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="method.html">Method</a>
+        <a href="quick-start.html">Get Started</a>
+        <a href="#">User Guide</a> <!-- TODO: link when the User Guide page is built -->
+        <a href="#">Learn</a> <!-- TODO: link when the Learn page is built -->
         <a href="roadmap.html">Roadmap</a>
-        <a href="technical-docs.html">Docs</a>
+        <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases">Download</a>
         <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
         <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme" type="button">
           <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -60,70 +62,18 @@
       <div class="shell hero-inner">
         <p class="eyebrow">CorpusWright</p>
         <h1>A local-first corpus workbench.</h1>
-        <p class="lede">A desktop application for building, cleaning, and analysing research corpora &mdash; entirely on your machine, with every step recorded and repeatable.</p>
+        <p class="lede">Build, clean, inspect, and analyse research corpora — entirely on your machine. Every cleaning step is recorded and every statistic is defined, so the results are yours to inspect and reproduce.</p>
         <div class="actions" aria-label="Project links">
-          <a class="btn primary" href="technical-docs.html">Documentation</a>
+          <a class="btn primary" href="https://github.com/jhlopesalves/CorpusWright/releases">Download the alpha</a>
+          <a class="btn ghost" href="#">Read the docs</a> <!-- TODO: link when the Read the docs page is built -->
           <a class="btn ghost" href="https://github.com/jhlopesalves/CorpusWright">Source code</a>
-          <a class="btn ghost" href="https://github.com/jhlopesalves/CorpusWright/releases">Releases</a>
+          <a class="btn ghost" href="citation.html">Cite</a>
         </div>
+        <p class="muted small">Experimental alpha (v0.1.0-alpha.7). Windows and macOS builds are unsigned, so your operating system may warn before letting them run.</p>
       </div>
     </section>
 
-    <section class="section compact" id="status">
-      <div class="shell">
-        <div class="section-lead">
-          <h2>Current status</h2>
-          <p>CorpusWright is in alpha. Functionality is grouped below by maturity.</p>
-        </div>
 
-        <div class="status-group available">
-          <div class="status-group-heading">
-            <h3>Available</h3>
-            <span class="badge active">stable</span>
-          </div>
-          <dl class="status-items">
-            <dt>Local project folders</dt>
-            <dd>Corpus sources and project state are stored locally.</dd>
-            <dt>Source extraction</dt>
-            <dd>TXT, HTML, DOCX, and PDF sources are supported.</dd>
-            <dt>Cleaning configuration</dt>
-            <dd>Deterministic processing options with processed-text previews.</dd>
-            <dt>Repeated-artefact finder</dt>
-            <dd>Detects recurring corpus noise such as headers, footers, and boilerplate.</dd>
-            <dt>Structured custom removals</dt>
-            <dd>Explicit removal rules for known text artefacts.</dd>
-            <dt>Frequency list</dt>
-            <dd>Corpus-level frequency inspection.</dd>
-          </dl>
-        </div>
-
-        <div class="status-group experimental">
-          <div class="status-group-heading">
-            <h3>Experimental</h3>
-            <span class="badge exp">unstable</span>
-          </div>
-          <dl class="status-items">
-            <dt>Lemma / POS annotation</dt>
-            <dd>Annotation support is present but still being stabilised.</dd>
-          </dl>
-        </div>
-
-        <div class="status-group planned">
-          <div class="status-group-heading">
-            <h3>Planned</h3>
-            <span class="badge plan">upcoming</span>
-          </div>
-          <dl class="status-items">
-            <dt>KWIC / concordance</dt>
-            <dd>Part of the upcoming Explore workbench.</dd>
-            <dt>Collocation analysis</dt>
-            <dd>Positional indexes and transparent association measures.</dd>
-          </dl>
-        </div>
-
-        <p class="text-link"><a href="roadmap.html">Read the roadmap &rarr;</a></p>
-      </div>
-    </section>
 
     <section class="section" id="interface">
       <div class="shell">
@@ -163,20 +113,25 @@
         </figure>
       </div>
     </section>
-
-    <section class="section compact" id="documentation">
+    <section class="section compact" id="resources">
       <div class="shell">
-        <div class="section-lead">
-          <h2>Documentation</h2>
-          <p>Implementation notes, supported formats, testing notes, and release history.</p>
-        </div>
-        <div class="doc-grid">
-          <a href="index.html">Supported formats</a>
-          <a href="index.html">PDF extraction strategy</a>
-          <a href="index.html">Repeated-artefact finder</a>
-          <a href="index.html">Structured custom removals</a>
-          <a href="index.html">Testing</a>
-          <a href="releases/">Release notes</a>
+        <div class="card-grid">
+          <a href="quick-start.html" class="card">
+            <h3>Get Started</h3>
+            <p>Install CorpusWright, create your first project, and clean a corpus end to end. A guided walkthrough; no prior corpus experience assumed.</p>
+          </a>
+          <a href="#" class="card"> <!-- TODO: link when the User Guide page is built -->
+            <h3>User Guide</h3>
+            <p>How each tool works: source extraction, cleaning rules, the Repeated Artefact Finder, and the Analyse overview &mdash; task by task.</p>
+          </a>
+          <a href="#" class="card"> <!-- TODO: link when the Learn page is built -->
+            <h3>Learn</h3>
+            <p>The statistics and linguistics behind the numbers: dispersion, lexical diversity, vocabulary growth, and how to read them.</p>
+          </a>
+          <a href="roadmap.html" class="card">
+            <h3>Roadmap</h3>
+            <p>What works today and what is coming: the Explore workbench with KWIC and concordance, collocations, and pattern search.</p>
+          </a>
         </div>
       </div>
     </section>
@@ -206,7 +161,7 @@ repository-code: "https://github.com/jhlopesalves/CorpusWright"</code></pre>
 
   <footer class="site-footer">
     <div class="shell foot">
-      <span>CorpusWright is an open, local-first corpus linguistics workbench in alpha development.</span>
+      <span>CorpusWright is an open, local-first corpus linguistics workbench, currently in public alpha (v0.1.0-alpha.7).</span>
       <span><a href="https://github.com/jhlopesalves/CorpusWright">Source on GitHub</a></span>
     </div>
   </footer>
