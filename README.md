@@ -132,6 +132,19 @@ To obtain the correct citation format for the version you are using:
 - Use GitHub's **“Cite this repository”** widget on the right-hand sidebar of the repository page, which automatically exports APA and BibTeX formats.
 - Alternatively, read the metadata directly from the [`CITATION.cff`](CITATION.cff) file.
 
+**`CITATION.cff` template:**
+```yaml
+cff-version: 1.2.0
+title: CorpusWright
+message: "If you use CorpusWright in your research or teaching, please cite it."
+authors:
+  - family-names: Lopes
+    given-names: Jhonatan Henrique
+    orcid: "https://orcid.org/0009-0008-4914-0262"
+version: [version]
+repository-code: "https://github.com/jhlopesalves/CorpusWright"
+```
+
 For further guidance (including how to reference version-specific DOIs via Zenodo once minted), see the [Citation Guidance on our documentation site](https://jhlopesalves.github.io/CorpusWright/citation.html).
 
 ## Connect
