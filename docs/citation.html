@@ -64,23 +64,23 @@
   <div class="shell">
     <div class="principles">
       <div style="max-width: var(--prose);">
-        <h3>Preferred citation</h3>
-        <p class="muted">Cite the software directly, naming the version you used. You can copy the citation format below:</p>
-        <p><strong>Lopes, J. H. (2026). <em>CorpusWright</em> (Version 0.1.0-alpha.7) [Computer software]. <a href="https://github.com/jhlopesalves/CorpusWright">https://github.com/jhlopesalves/CorpusWright</a></strong></p>
+        <h3>Preferred citation format (APA)</h3>
+        <p class="muted">Cite the software directly, naming the specific version you used. For example:</p>
+        <p><strong>Lopes, J. H. ([year]). <em>CorpusWright</em> (Version [version]) [Computer software]. <a href="https://github.com/jhlopesalves/CorpusWright">https://github.com/jhlopesalves/CorpusWright</a></strong></p>
 
-        <h3 style="margin-top: 36px;">BibTeX</h3>
-        <p class="muted">For LaTeX, Pandoc, or reference managers that import BibTeX format directly:</p>
-        <pre class="code"><code class="mono">@software{lopes_corpuswright_2026,
+        <h3 style="margin-top: 36px;">BibTeX template</h3>
+        <p class="muted">For LaTeX, Pandoc, or reference managers, you can adapt the template below:</p>
+        <pre class="code"><code class="mono">@software{lopes_corpuswright_[year],
   author  = {Lopes, Jhonatan Henrique},
   title   = {CorpusWright: a Rust corpus workbench},
-  year    = {2026},
-  version = {0.1.0-alpha.7},
+  year    = {[year]},
+  version = {[version]},
   url     = {https://github.com/jhlopesalves/CorpusWright},
   note    = {ORCID: 0009-0008-4914-0262}
 }</code></pre>
 
         <h3 style="margin-top: 36px;">Automatic extraction from GitHub</h3>
-        <p>The repository carries a machine-readable <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a> metadata file. On the right-hand sidebar of the <a href="https://github.com/jhlopesalves/CorpusWright">CorpusWright GitHub page</a>, you can click the <strong>“Cite this repository”</strong> button to copy the APA citation or export the BibTeX block directly.</p>
+        <p>The repository carries a machine-readable <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a> metadata file. On the right-hand sidebar of the <a href="https://github.com/jhlopesalves/CorpusWright">CorpusWright GitHub page</a>, you can click the <strong>“Cite this repository”</strong> button to copy the APA citation or export the BibTeX block directly. This widget will always match the latest release's metadata.</p>
 
         <h3 style="margin-top: 36px;">Version-specific DOI (via Zenodo)</h3>
         <p>When permanent DOIs (e.g. Zenodo) are minted for official releases, citing the version-specific DOI is preferred to referencing the repository URL. This guarantees that your research references the exact software build, ensuring the reproducibility of your preprocessing pipeline.</p>
