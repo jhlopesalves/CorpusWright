@@ -2916,6 +2916,37 @@ main {
   line-height: 1.4;
 }
 
+.frequency-mode-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.frequency-mode-tab {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--panel-bg);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.frequency-mode-tab.is-active {
+  border-color: var(--accent-color);
+  color: var(--text-color);
+  background: var(--bg-color);
+}
+
+.frequency-mode-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .frequency-result-count,
 .frequency-limit-note {
   color: var(--text-muted);
@@ -3362,6 +3393,23 @@ main {
 
 .frequency-dp-cell {
   white-space: nowrap;
+}
+
+.frequency-dispersion-label-cell {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.frequency-dispersion-label-cell[data-level="low"] {
+  color: var(--cw-viz-frequency-repeated);
+}
+
+.frequency-dispersion-label-cell[data-level="medium"] {
+  color: var(--cw-viz-frequency-mid);
+}
+
+.frequency-dispersion-label-cell[data-level="high"] {
+  color: var(--cw-viz-frequency-frequent);
 }
 
 .frequency-dp-value {
