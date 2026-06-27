@@ -2103,6 +2103,18 @@ main {
   font-size: 0.84rem;
 }
 
+.analyse-project-language {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--panel-bg);
+  color: var(--text-color);
+  font-weight: 600;
+}
+
 .analyse-status-row {
   display: flex;
   flex-direction: column;
@@ -2976,12 +2988,36 @@ main {
   width: 136px;
 }
 
-#frequency-language {
-  width: 132px;
-}
-
 #frequency-token-class {
   width: 176px;
+}
+
+.frequency-readonly-control {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.frequency-readonly-value {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  min-width: 132px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--panel-bg);
+  color: var(--text-color);
+  font-size: 0.86rem;
+  font-weight: 500;
+  box-sizing: border-box;
+}
+
+.frequency-readonly-value.is-disabled {
+  color: var(--text-muted);
 }
 
 .frequency-toggle {
@@ -4235,6 +4271,24 @@ pre {
   width: min(92vw, 640px);
   max-height: min(90vh, 760px);
   overflow-y: auto;
+}
+
+.project-language-upgrade-modal-content {
+  width: min(92vw, 520px);
+}
+
+.project-language-upgrade-path {
+  margin: 0 0 14px;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  word-break: break-word;
+}
+
+.project-language-upgrade-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.86rem;
 }
 
 .project-create-form {

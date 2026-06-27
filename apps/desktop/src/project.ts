@@ -12,12 +12,14 @@ import { dom } from "./dom";
 import { loadProjectSourcesForActiveProject, projectSourceTotalCount } from "./sources";
 import { state, type ActiveProject } from "./state";
 import type { CreateCorpusProjectRequest } from "./generated/CreateCorpusProjectRequest.js";
+import type { ProjectLanguage } from "./generated/ProjectLanguage.js";
 import {
   PROJECT_LANGUAGE_OPTIONS,
   defaultProjectNameFromPath,
   normaliseProjectDescription,
   projectCreationMetadataIsValid,
   projectLanguageFromValue,
+  projectLanguageLabel,
 } from "./project-creation-dialog";
 import { clearDecisions, loadDecisionsForProject } from "./repeated-artifacts";
 import { formatRemovalRuleMigrationSummary } from "./removal-rule-migration.ts";
@@ -52,11 +54,13 @@ interface ProjectCreationDialogOptions {
 const RECENT_PROJECTS_KEY = "corpuswright.recentProjects.v1";
 const MAX_RECENT_PROJECTS = 10;
 const MISSING_PROJECT_MANIFEST_ERROR = "does not contain a CorpusWright project";
+const PROJECT_LANGUAGE_UPGRADE_REQUIRED = "Project language upgrade required.";
 
 let projectCreationRootPath = "";
 let projectCreationAllowInitialSources = true;
 let pendingProjectCreationSources: ProjectCreationSource[] = [];
 let projectCreationResolve: ((choice: ProjectCreationDialogChoice | null) => void) | null = null;
+let projectLanguageUpgradeResolve: ((language: ProjectLanguage | null) => void) | null = null;
 
 function isRecentProject(value: unknown): value is RecentProject {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -122,6 +126,10 @@ function formatError(error: unknown): string {
 
 function isMissingProjectManifestError(error: unknown): boolean {
   return formatError(error).includes(MISSING_PROJECT_MANIFEST_ERROR);
+}
+
+function isProjectLanguageUpgradeRequired(error: unknown): boolean {
+  return formatError(error) === PROJECT_LANGUAGE_UPGRADE_REQUIRED;
 }
 
 function setWelcomeStatus(message: string, isError = false): void {
@@ -195,15 +203,19 @@ async function chooseProjectFolder(cancelMessage: string): Promise<string | null
   return selected;
 }
 
-function renderProjectLanguageOptions(): void {
-  dom.projectCreateLanguage.replaceChildren(
+function renderLanguageOptions(select: HTMLSelectElement): void {
+  select.replaceChildren(
     ...PROJECT_LANGUAGE_OPTIONS.map((language) => {
       const option = document.createElement("option");
       option.value = language;
-      option.textContent = language;
+      option.textContent = projectLanguageLabel(language);
       return option;
     }),
   );
+}
+
+function renderProjectLanguageOptions(): void {
+  renderLanguageOptions(dom.projectCreateLanguage);
   dom.projectCreateLanguage.selectedIndex = -1;
 }
 
@@ -365,6 +377,45 @@ function showProjectCreationDialog(
   });
 }
 
+function updateProjectLanguageUpgradeConfirmState(): void {
+  dom.projectLanguageUpgradeConfirm.disabled =
+    projectLanguageFromValue(dom.projectLanguageUpgradeSelect.value) === null;
+}
+
+function closeProjectLanguageUpgradeDialog(language: ProjectLanguage | null): void {
+  dom.projectLanguageUpgradeModal.classList.add("hidden");
+  const resolve = projectLanguageUpgradeResolve;
+  projectLanguageUpgradeResolve = null;
+  resolve?.(language);
+}
+
+function showProjectLanguageUpgradeDialog(projectPath: string): Promise<ProjectLanguage | null> {
+  if (projectLanguageUpgradeResolve) {
+    closeProjectLanguageUpgradeDialog(null);
+  }
+  renderLanguageOptions(dom.projectLanguageUpgradeSelect);
+  dom.projectLanguageUpgradeSelect.selectedIndex = -1;
+  dom.projectLanguageUpgradePath.textContent = projectPath;
+  dom.projectLanguageUpgradeStatus.textContent = "";
+  updateProjectLanguageUpgradeConfirmState();
+  dom.projectLanguageUpgradeModal.classList.remove("hidden");
+  dom.projectLanguageUpgradeSelect.focus();
+
+  return new Promise((resolve) => {
+    projectLanguageUpgradeResolve = resolve;
+  });
+}
+
+async function upgradeProjectLanguage(path: string): Promise<ActiveProject | null> {
+  const language = await showProjectLanguageUpgradeDialog(path);
+  if (language === null) {
+    setWelcomeStatus("Open project cancelled.");
+    return null;
+  }
+  dom.projectLanguageUpgradeStatus.textContent = "Saving project language...";
+  return invoke<ActiveProject>("upgrade_project_language_command", { path, language });
+}
+
 async function importInitialProjectSources(choice: ProjectCreationDialogChoice): Promise<void> {
   if (choice.files.length > 0) {
     await registerFilesForActiveProject(choice.files);
@@ -375,7 +426,18 @@ async function importInitialProjectSources(choice: ProjectCreationDialogChoice):
 }
 
 async function openProjectFromPath(path: string, scanSourceRoot: boolean): Promise<void> {
-  const project = await invoke<ActiveProject>("open_corpus_project_command", { path });
+  let project: ActiveProject | null = null;
+  try {
+    project = await invoke<ActiveProject>("open_corpus_project_command", { path });
+  } catch (error) {
+    if (!isProjectLanguageUpgradeRequired(error)) {
+      throw error;
+    }
+    project = await upgradeProjectLanguage(path);
+  }
+  if (project === null) {
+    return;
+  }
   recordRecentProject(project);
   await activateProject(project, scanSourceRoot && project.sourceRoots.length > 0);
 }
@@ -554,6 +616,9 @@ export function initProjectEntry(): void {
   dom.projectCreateLanguage.addEventListener("change", () => {
     updateProjectCreationConfirmState();
   });
+  dom.projectLanguageUpgradeSelect.addEventListener("change", () => {
+    updateProjectLanguageUpgradeConfirmState();
+  });
   dom.projectCreateAddFiles.addEventListener("click", () => {
     chooseProjectCreationFiles();
   });
@@ -571,6 +636,21 @@ export function initProjectEntry(): void {
     if (choice) {
       closeProjectCreationDialog(choice);
     }
+  });
+  dom.projectLanguageUpgradeCancel.addEventListener("click", () => {
+    closeProjectLanguageUpgradeDialog(null);
+  });
+  dom.projectLanguageUpgradeCloseTop.addEventListener("click", () => {
+    closeProjectLanguageUpgradeDialog(null);
+  });
+  dom.projectLanguageUpgradeConfirm.addEventListener("click", () => {
+    const language = projectLanguageFromValue(dom.projectLanguageUpgradeSelect.value);
+    if (language === null) {
+      dom.projectLanguageUpgradeStatus.textContent = "Project language is required.";
+      updateProjectLanguageUpgradeConfirmState();
+      return;
+    }
+    closeProjectLanguageUpgradeDialog(language);
   });
 
   showWelcome();

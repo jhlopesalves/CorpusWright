@@ -3734,6 +3734,7 @@ pub fn query_term_distribution(
 mod tests {
     use super::*;
     use crate::clean::{RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope};
+    use crate::language::{ProjectLanguage, resolve_effective_document_languages};
     use std::cell::Cell;
     use std::path::PathBuf;
 
@@ -3934,6 +3935,77 @@ mod tests {
         )
         .unwrap();
         (corpus, layer)
+    }
+
+    #[test]
+    fn project_language_is_effective_for_all_documents() {
+        let records = vec![record("a.txt"), record("b.txt")];
+        let language_overrides =
+            resolve_effective_document_languages(ProjectLanguage::Pt, &records);
+        let mut options = build_options();
+        options.language_overrides = language_overrides.clone();
+
+        let corpus = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| {
+                let text = if record.source_path == PathBuf::from("a.txt") {
+                    "The quick brown fox."
+                } else {
+                    "Le chat noir court."
+                };
+                Ok(processed_resolution(record, text))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        assert_eq!(language_overrides.len(), records.len());
+        assert!(language_overrides.values().all(|language| language == "pt"));
+        assert_eq!(corpus.documents.len(), 2);
+        assert!(corpus.documents.iter().all(|document| {
+            document.summary.language.as_deref() == Some("pt")
+                && document.summary.language_is_overridden
+                && document.summary.language_confidence.is_none()
+        }));
+    }
+
+    #[test]
+    fn annotation_cache_round_trips_ready_with_project_language() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+        let language_overrides =
+            resolve_effective_document_languages(ProjectLanguage::En, &records);
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options.udpipe_model_dir = Some(default_model_dir());
+        options.language_overrides = language_overrides.clone();
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides,
+        };
+
+        build_and_write_annotation_cache(
+            &records,
+            options.clone(),
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+        )
+        .unwrap();
+
+        let corpus_cached = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(corpus_cached.overview().annotation_available);
     }
 
     fn snapshot_analysis_product(product: &AnalysisBuildProduct) -> AnalysisCorpusSnapshot {

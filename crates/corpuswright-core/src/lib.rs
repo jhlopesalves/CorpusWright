@@ -69,7 +69,8 @@ pub use export::{
 };
 pub use language::{
     DEFAULT_LOW_CONFIDENCE_THRESHOLD, DetectedLanguage, DocumentLanguage, LanguageResolution,
-    ProjectLanguage, detect_and_resolve, detect_language, resolve_language,
+    ProjectLanguage, detect_and_resolve, detect_language, resolve_effective_document_languages,
+    resolve_language,
 };
 pub use manifest::{ExportManifest, ManifestFileRecord};
 pub use pdf::{

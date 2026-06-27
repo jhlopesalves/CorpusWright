@@ -21,6 +21,6 @@ pub struct ActiveProject {
     pub manifest_path: String,
     pub project_version: u32,
     pub source_roots: Vec<String>,
-    pub language: Option<ProjectLanguage>,
+    pub language: ProjectLanguage,
     pub description: Option<String>,
 }
