@@ -4,12 +4,21 @@ import { open } from "@tauri-apps/plugin-dialog";
 import {
   clearStateForLoad,
   loadCorpusFromProjectSources,
+  registerFilesForActiveProject,
   registerFolderForActiveProject,
   renderProjectEmptyState,
 } from "./corpus";
 import { dom } from "./dom";
 import { loadProjectSourcesForActiveProject, projectSourceTotalCount } from "./sources";
 import { state, type ActiveProject } from "./state";
+import type { CreateCorpusProjectRequest } from "./generated/CreateCorpusProjectRequest.js";
+import {
+  PROJECT_LANGUAGE_OPTIONS,
+  defaultProjectNameFromPath,
+  normaliseProjectDescription,
+  projectCreationMetadataIsValid,
+  projectLanguageFromValue,
+} from "./project-creation-dialog";
 import { clearDecisions, loadDecisionsForProject } from "./repeated-artifacts";
 import { formatRemovalRuleMigrationSummary } from "./removal-rule-migration.ts";
 import { hideWorkbenchSwitcher, resetWorkbenchForProject } from "./workbench";
@@ -25,8 +34,29 @@ interface RecentProjectsStore {
   projects: RecentProject[];
 }
 
+interface ProjectCreationSource {
+  kind: "file" | "folder";
+  path: string;
+}
+
+interface ProjectCreationDialogChoice {
+  request: CreateCorpusProjectRequest;
+  files: string[];
+  folders: string[];
+}
+
+interface ProjectCreationDialogOptions {
+  allowInitialSources: boolean;
+}
+
 const RECENT_PROJECTS_KEY = "corpuswright.recentProjects.v1";
 const MAX_RECENT_PROJECTS = 10;
+const MISSING_PROJECT_MANIFEST_ERROR = "does not contain a CorpusWright project";
+
+let projectCreationRootPath = "";
+let projectCreationAllowInitialSources = true;
+let pendingProjectCreationSources: ProjectCreationSource[] = [];
+let projectCreationResolve: ((choice: ProjectCreationDialogChoice | null) => void) | null = null;
 
 function isRecentProject(value: unknown): value is RecentProject {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -88,6 +118,10 @@ function removeRecentProject(rootPath: string): void {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isMissingProjectManifestError(error: unknown): boolean {
+  return formatError(error).includes(MISSING_PROJECT_MANIFEST_ERROR);
 }
 
 function setWelcomeStatus(message: string, isError = false): void {
@@ -161,6 +195,185 @@ async function chooseProjectFolder(cancelMessage: string): Promise<string | null
   return selected;
 }
 
+function renderProjectLanguageOptions(): void {
+  dom.projectCreateLanguage.replaceChildren(
+    ...PROJECT_LANGUAGE_OPTIONS.map((language) => {
+      const option = document.createElement("option");
+      option.value = language;
+      option.textContent = language;
+      return option;
+    }),
+  );
+  dom.projectCreateLanguage.selectedIndex = -1;
+}
+
+function updateProjectCreationConfirmState(): void {
+  dom.projectCreateConfirm.disabled = !projectCreationMetadataIsValid({
+    name: dom.projectCreateName.value,
+    language: dom.projectCreateLanguage.value,
+  });
+}
+
+function renderProjectCreationSources(): void {
+  dom.projectCreateSourcesList.replaceChildren();
+  if (!projectCreationAllowInitialSources) {
+    dom.projectCreateSourceSummary.textContent = "";
+    return;
+  }
+
+  const count = pendingProjectCreationSources.length;
+  dom.projectCreateSourceSummary.textContent =
+    count === 0
+      ? "No initial sources selected."
+      : `${count.toLocaleString()} initial ${count === 1 ? "source" : "sources"} selected.`;
+
+  for (const source of pendingProjectCreationSources) {
+    const row = document.createElement("div");
+    row.className = "project-create-source-row";
+
+    const details = document.createElement("div");
+    details.className = "project-create-source-path";
+    details.title = source.path;
+    details.textContent = source.path;
+
+    const kind = document.createElement("span");
+    kind.className = "project-create-source-kind";
+    kind.textContent = source.kind === "file" ? "File" : "Folder";
+    details.appendChild(kind);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "secondary-btn";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", () => {
+      pendingProjectCreationSources = pendingProjectCreationSources.filter(
+        (candidate) => candidate.path !== source.path,
+      );
+      renderProjectCreationSources();
+    });
+
+    row.append(details, remove);
+    dom.projectCreateSourcesList.appendChild(row);
+  }
+}
+
+function addProjectCreationSources(kind: ProjectCreationSource["kind"], paths: string[]): void {
+  if (!projectCreationAllowInitialSources) {
+    return;
+  }
+
+  const existing = new Set(pendingProjectCreationSources.map((source) => source.path));
+  for (const path of paths) {
+    if (existing.has(path)) {
+      continue;
+    }
+    existing.add(path);
+    pendingProjectCreationSources.push({ kind, path });
+  }
+  renderProjectCreationSources();
+}
+
+async function chooseProjectCreationFiles(): Promise<void> {
+  const selected = await open({
+    directory: false,
+    multiple: true,
+  });
+  if (selected === null) {
+    return;
+  }
+  addProjectCreationSources("file", Array.isArray(selected) ? selected : [selected]);
+}
+
+async function chooseProjectCreationFolder(): Promise<void> {
+  const selected = await open({
+    directory: true,
+    multiple: false,
+  });
+  if (selected === null || Array.isArray(selected)) {
+    return;
+  }
+  addProjectCreationSources("folder", [selected]);
+}
+
+function resetProjectCreationDialog(rootPath: string, options: ProjectCreationDialogOptions): void {
+  projectCreationRootPath = rootPath;
+  projectCreationAllowInitialSources = options.allowInitialSources;
+  pendingProjectCreationSources = [];
+  dom.projectCreateSources.classList.toggle("hidden", !projectCreationAllowInitialSources);
+  dom.projectCreateName.value = defaultProjectNameFromPath(rootPath);
+  renderProjectLanguageOptions();
+  dom.projectCreateDescription.value = "";
+  dom.projectCreateStatus.textContent = "";
+  renderProjectCreationSources();
+  updateProjectCreationConfirmState();
+}
+
+function selectedProjectCreationChoice(): ProjectCreationDialogChoice | null {
+  const language = projectLanguageFromValue(dom.projectCreateLanguage.value);
+  if (
+    !projectCreationMetadataIsValid({
+      name: dom.projectCreateName.value,
+      language: dom.projectCreateLanguage.value,
+    }) ||
+    language === null
+  ) {
+    dom.projectCreateStatus.textContent = "Project name and language are required.";
+    updateProjectCreationConfirmState();
+    return null;
+  }
+
+  const files = projectCreationAllowInitialSources
+    ? pendingProjectCreationSources
+        .filter((source) => source.kind === "file")
+        .map((source) => source.path)
+    : [];
+  const folders = projectCreationAllowInitialSources
+    ? pendingProjectCreationSources
+        .filter((source) => source.kind === "folder")
+        .map((source) => source.path)
+    : [];
+  const request: CreateCorpusProjectRequest = {
+    rootPath: projectCreationRootPath,
+    name: dom.projectCreateName.value.trim(),
+    language,
+    description: normaliseProjectDescription(dom.projectCreateDescription.value),
+  };
+
+  return { request, files, folders };
+}
+
+function closeProjectCreationDialog(choice: ProjectCreationDialogChoice | null): void {
+  dom.projectCreateModal.classList.add("hidden");
+  const resolve = projectCreationResolve;
+  projectCreationResolve = null;
+  resolve?.(choice);
+}
+
+function showProjectCreationDialog(
+  rootPath: string,
+  options: ProjectCreationDialogOptions = { allowInitialSources: true },
+): Promise<ProjectCreationDialogChoice | null> {
+  if (projectCreationResolve) {
+    closeProjectCreationDialog(null);
+  }
+  resetProjectCreationDialog(rootPath, options);
+  dom.projectCreateModal.classList.remove("hidden");
+  dom.projectCreateName.focus();
+
+  return new Promise((resolve) => {
+    projectCreationResolve = resolve;
+  });
+}
+
+async function importInitialProjectSources(choice: ProjectCreationDialogChoice): Promise<void> {
+  if (choice.files.length > 0) {
+    await registerFilesForActiveProject(choice.files);
+  }
+  for (const folder of choice.folders) {
+    await registerFolderForActiveProject(folder);
+  }
+}
+
 async function openProjectFromPath(path: string, scanSourceRoot: boolean): Promise<void> {
   const project = await invoke<ActiveProject>("open_corpus_project_command", { path });
   recordRecentProject(project);
@@ -172,12 +385,18 @@ async function handleNewProject(): Promise<void> {
   if (selected === null) {
     return;
   }
+  const choice = await showProjectCreationDialog(selected);
+  if (choice === null) {
+    setWelcomeStatus("New project cancelled.");
+    return;
+  }
 
   try {
     setWelcomeStatus("Creating project...");
-    const project = await invoke<ActiveProject>("create_corpus_project_command", { rootPath: selected });
+    const project = await invoke<ActiveProject>("create_corpus_project_command", { request: choice.request });
     recordRecentProject(project);
     await activateProject(project, false);
+    await importInitialProjectSources(choice);
   } catch (error) {
     setWelcomeStatus(formatError(error), true);
   }
@@ -204,9 +423,26 @@ async function handleOpenFolderAsProject(): Promise<void> {
   }
 
   try {
+    setWelcomeStatus("Opening project...");
+    await openProjectFromPath(selected, true);
+    return;
+  } catch (error) {
+    if (!isMissingProjectManifestError(error)) {
+      setWelcomeStatus(formatError(error), true);
+      return;
+    }
+  }
+
+  const choice = await showProjectCreationDialog(selected, { allowInitialSources: false });
+  if (choice === null) {
+    setWelcomeStatus("Open folder as project cancelled.");
+    return;
+  }
+
+  try {
     setWelcomeStatus("Creating project metadata...");
     const project = await invoke<ActiveProject>("initialise_folder_as_corpus_project_command", {
-      rootPath: selected,
+      request: choice.request,
     });
     recordRecentProject(project);
     await activateProject(project, true);
@@ -311,6 +547,30 @@ export function initProjectEntry(): void {
   });
   dom.menuCloseProject.addEventListener("click", () => {
     handleCloseProject();
+  });
+  dom.projectCreateName.addEventListener("input", () => {
+    updateProjectCreationConfirmState();
+  });
+  dom.projectCreateLanguage.addEventListener("change", () => {
+    updateProjectCreationConfirmState();
+  });
+  dom.projectCreateAddFiles.addEventListener("click", () => {
+    chooseProjectCreationFiles();
+  });
+  dom.projectCreateAddFolder.addEventListener("click", () => {
+    chooseProjectCreationFolder();
+  });
+  dom.projectCreateCancel.addEventListener("click", () => {
+    closeProjectCreationDialog(null);
+  });
+  dom.projectCreateCloseTop.addEventListener("click", () => {
+    closeProjectCreationDialog(null);
+  });
+  dom.projectCreateConfirm.addEventListener("click", () => {
+    const choice = selectedProjectCreationChoice();
+    if (choice) {
+      closeProjectCreationDialog(choice);
+    }
   });
 
   showWelcome();
