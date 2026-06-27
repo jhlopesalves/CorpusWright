@@ -28,10 +28,21 @@ const CONCORDANCE_DEFAULT_WINDOW_TOKENS: usize = 5;
 const CONCORDANCE_MAX_WINDOW_TOKENS: usize = 20;
 const CONCORDANCE_DEFAULT_LIMIT: usize = 100;
 const CONCORDANCE_MAX_LIMIT: usize = 500;
+const ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE: &str =
+    "Build the annotation cache to enable lemma and POS frequency.";
 // These lexical-diversity parameters are provisional and should remain visible in the UI.
 const MATTR_WINDOW_TOKENS: usize = 100;
 const MTLD_TTR_THRESHOLD: f64 = 0.720;
 const MTLD_MIN_DOCUMENT_TOKENS: usize = 100;
+
+/// Heuristic DP threshold below which an item is treated as broadly dispersed.
+///
+/// Plain Gries-style DP is unnormalised here: its upper bound depends on the
+/// document-size shares, so these labels are corpus-internal orientation aids,
+/// not cross-corpus cut-offs.
+const ANNOTATED_DP_BROADLY_DISPERSED_MAX: f64 = 0.30;
+/// Heuristic DP threshold from which an item is treated as highly concentrated.
+const ANNOTATED_DP_HIGHLY_CONCENTRATED_MIN: f64 = 0.70;
 
 // These are provisional descriptive thresholds for orientation, not inferential tests.
 mod overview_thresholds {
@@ -957,6 +968,98 @@ pub struct FrequencyPage {
     pub notices: Vec<FrequencyNotice>,
 }
 
+/// Annotated frequency view requested by the desktop panel.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AnnotatedFrequencyMode {
+    LemmaPos,
+    Pos,
+}
+
+/// Cache state used to gate annotation-only frequency views.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AnnotationCacheState {
+    Ready,
+    Missing,
+    Stale,
+    Invalid,
+}
+
+/// Readiness detail derived from the existing annotation-cache loader.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AnnotationCacheAvailability {
+    pub state: AnnotationCacheState,
+    pub detail: Option<String>,
+}
+
+/// Parameters for a bounded annotated frequency query.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AnnotatedFrequencyQuery {
+    pub selection: AnalysisDocumentSelection,
+    pub mode: AnnotatedFrequencyMode,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+/// UPOS frequency with document dispersion statistics.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PosFrequencyRow {
+    pub upos: String,
+    #[ts(type = "number")]
+    pub raw: u64,
+    pub per_10k: f64,
+    pub doc_freq: usize,
+    pub doc_total: usize,
+    pub dp: f64,
+    pub dispersion_label: String,
+    pub top_doc_share: f64,
+}
+
+/// Lemma + UPOS frequency with document dispersion statistics.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LexFrequencyRow {
+    pub lemma: String,
+    pub upos: String,
+    #[ts(type = "number")]
+    pub raw: u64,
+    pub per_10k: f64,
+    pub doc_freq: usize,
+    pub doc_total: usize,
+    pub dp: f64,
+    pub dispersion_label: String,
+    pub top_doc_share: f64,
+}
+
+/// Bounded response for annotation-only frequency views.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AnnotatedFrequencyResult {
+    pub mode: AnnotatedFrequencyMode,
+    pub cache: AnnotationCacheAvailability,
+    pub unavailable_message: Option<String>,
+    #[ts(type = "number")]
+    pub total_tokens: u64,
+    pub selected_document_count: usize,
+    pub total_document_count: usize,
+    pub total_rows: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub pos_rows: Vec<PosFrequencyRow>,
+    pub lex_rows: Vec<LexFrequencyRow>,
+}
+
 /// Parameters for a bounded surface-token concordance query.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
@@ -1402,6 +1505,58 @@ fn compute_dispersion(
         difference += (count as f64 / frequency as f64 - document_share).abs();
     }
     0.5 * (difference + (1.0 - present_document_share).max(0.0))
+}
+
+fn annotated_dispersion_label(dp: f64) -> &'static str {
+    if dp < ANNOTATED_DP_BROADLY_DISPERSED_MAX {
+        "broadly dispersed"
+    } else if dp < ANNOTATED_DP_HIGHLY_CONCENTRATED_MIN {
+        "moderately concentrated"
+    } else {
+        "highly concentrated"
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct FrequencyDistributionStats {
+    raw: u64,
+    per_10k: f64,
+    doc_freq: usize,
+    dp: f64,
+    top_doc_share: f64,
+}
+
+fn frequency_distribution_stats(
+    document_counts: &[(usize, u64)],
+    raw: u64,
+    documents: &[AnalysisDocument],
+    total_tokens: u64,
+) -> FrequencyDistributionStats {
+    let doc_freq = document_counts
+        .iter()
+        .filter(|(_, count)| *count > 0)
+        .count();
+    let top_doc_share = if raw > 0 {
+        document_counts
+            .iter()
+            .map(|(_, count)| *count)
+            .max()
+            .unwrap_or(0) as f64
+            / raw as f64
+    } else {
+        0.0
+    };
+    FrequencyDistributionStats {
+        raw,
+        per_10k: if total_tokens > 0 {
+            raw as f64 / total_tokens as f64 * 10_000.0
+        } else {
+            0.0
+        },
+        doc_freq,
+        dp: compute_dispersion(document_counts, raw, documents, total_tokens),
+        top_doc_share,
+    }
 }
 
 fn gini_coefficient(values: &[u64]) -> Option<f64> {
@@ -3567,6 +3722,54 @@ fn selected_documents_have_annotation(corpus: &AnalysisCorpus, selected: &[bool]
         .all(|document| document.annotation_available)
 }
 
+pub fn annotation_cache_availability_for_corpus(
+    corpus: &AnalysisCorpus,
+    records: &[DocumentRecord],
+    cache_root: Option<&Path>,
+    model_dir: Option<&Path>,
+    language_overrides: &HashMap<usize, String>,
+) -> AnnotationCacheAvailability {
+    let Some(cache_root) = cache_root else {
+        return AnnotationCacheAvailability {
+            state: AnnotationCacheState::Missing,
+            detail: None,
+        };
+    };
+    let expected_manifest =
+        match build_expected_manifest(corpus, records, model_dir, language_overrides) {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                return AnnotationCacheAvailability {
+                    state: AnnotationCacheState::Invalid,
+                    detail: Some(format!("{error:?}")),
+                };
+            }
+        };
+
+    match crate::annotation_cache::load_annotation_layer_cache(cache_root, &expected_manifest) {
+        crate::annotation_cache::AnnotationLayerCacheLoad::Ready(_) => {
+            AnnotationCacheAvailability {
+                state: AnnotationCacheState::Ready,
+                detail: None,
+            }
+        }
+        crate::annotation_cache::AnnotationLayerCacheLoad::Missing => AnnotationCacheAvailability {
+            state: AnnotationCacheState::Missing,
+            detail: None,
+        },
+        crate::annotation_cache::AnnotationLayerCacheLoad::Stale => AnnotationCacheAvailability {
+            state: AnnotationCacheState::Stale,
+            detail: None,
+        },
+        crate::annotation_cache::AnnotationLayerCacheLoad::Invalid(detail) => {
+            AnnotationCacheAvailability {
+                state: AnnotationCacheState::Invalid,
+                detail: Some(detail),
+            }
+        }
+    }
+}
+
 fn frequency_group_key(surface: &str, grouping: &ResolvedFrequencyGrouping) -> String {
     match grouping.group_by {
         FrequencyGroupMode::Surface | FrequencyGroupMode::Lemma => {
@@ -3618,6 +3821,25 @@ struct FrequencyAccumulator {
     document_counts: HashMap<usize, u64>,
 }
 
+#[derive(Default)]
+struct AnnotatedFrequencyAccumulator {
+    raw: u64,
+    document_counts: HashMap<usize, u64>,
+}
+
+impl AnnotatedFrequencyAccumulator {
+    fn add(&mut self, document_id: usize, count: u64) {
+        self.raw += count;
+        *self.document_counts.entry(document_id).or_default() += count;
+    }
+
+    fn sorted_document_counts(self) -> Vec<(usize, u64)> {
+        let mut counts = self.document_counts.into_iter().collect::<Vec<_>>();
+        counts.sort_unstable_by_key(|(document_id, _)| *document_id);
+        counts
+    }
+}
+
 fn compare_frequency_terms(
     left: &FrequencyTermItem,
     right: &FrequencyTermItem,
@@ -3629,6 +3851,235 @@ fn compare_frequency_terms(
         FrequencySortKey::Range => left.document_frequency.cmp(&right.document_frequency),
         FrequencySortKey::Rate => left.rate_per_10k.total_cmp(&right.rate_per_10k),
         FrequencySortKey::Dispersion => left.dispersion.total_cmp(&right.dispersion),
+    }
+}
+
+fn empty_annotated_frequency_result(
+    query: &AnnotatedFrequencyQuery,
+    cache: AnnotationCacheAvailability,
+    unavailable_message: Option<String>,
+    selected_document_count: usize,
+    total_document_count: usize,
+    total_tokens: u64,
+) -> AnnotatedFrequencyResult {
+    AnnotatedFrequencyResult {
+        mode: query.mode,
+        cache,
+        unavailable_message,
+        total_tokens,
+        selected_document_count,
+        total_document_count,
+        total_rows: 0,
+        offset: 0,
+        limit: query.limit.min(MAX_QUERY_WINDOW),
+        pos_rows: Vec::new(),
+        lex_rows: Vec::new(),
+    }
+}
+
+fn sort_pos_frequency_rows(rows: &mut [PosFrequencyRow]) {
+    rows.sort_by(|left, right| {
+        right
+            .raw
+            .cmp(&left.raw)
+            .then_with(|| left.upos.cmp(&right.upos))
+    });
+}
+
+fn sort_lex_frequency_rows(rows: &mut [LexFrequencyRow]) {
+    rows.sort_by(|left, right| {
+        right
+            .raw
+            .cmp(&left.raw)
+            .then_with(|| left.lemma.cmp(&right.lemma))
+            .then_with(|| left.upos.cmp(&right.upos))
+    });
+}
+
+fn pos_frequency_rows(
+    corpus: &AnalysisCorpus,
+    selected: &[bool],
+    selected_document_count: usize,
+    total_tokens: u64,
+) -> Vec<PosFrequencyRow> {
+    let mut groups = HashMap::<UniversalPos, AnnotatedFrequencyAccumulator>::new();
+    for document in corpus
+        .documents
+        .iter()
+        .filter(|document| selected[document.summary.id])
+    {
+        for count in &document.annotated_term_counts {
+            groups
+                .entry(count.upos)
+                .or_default()
+                .add(document.summary.id, count.count);
+        }
+    }
+
+    let mut rows = groups
+        .into_iter()
+        .filter_map(|(upos, group)| {
+            if group.raw == 0 {
+                return None;
+            }
+            let raw = group.raw;
+            let document_counts = group.sorted_document_counts();
+            let stats = frequency_distribution_stats(
+                &document_counts,
+                raw,
+                &corpus.documents,
+                total_tokens,
+            );
+            Some(PosFrequencyRow {
+                upos: upos.as_upos_str().to_string(),
+                raw: stats.raw,
+                per_10k: stats.per_10k,
+                doc_freq: stats.doc_freq,
+                doc_total: selected_document_count,
+                dp: stats.dp,
+                dispersion_label: annotated_dispersion_label(stats.dp).to_string(),
+                top_doc_share: stats.top_doc_share,
+            })
+        })
+        .collect::<Vec<_>>();
+    sort_pos_frequency_rows(&mut rows);
+    rows
+}
+
+fn lemma_pos_frequency_rows(
+    corpus: &AnalysisCorpus,
+    selected: &[bool],
+    selected_document_count: usize,
+    total_tokens: u64,
+) -> Vec<LexFrequencyRow> {
+    let mut groups = HashMap::<(u32, UniversalPos), AnnotatedFrequencyAccumulator>::new();
+    for document in corpus
+        .documents
+        .iter()
+        .filter(|document| selected[document.summary.id])
+    {
+        for count in &document.annotated_term_counts {
+            groups
+                .entry((count.lemma_id, count.upos))
+                .or_default()
+                .add(document.summary.id, count.count);
+        }
+    }
+
+    let mut rows = groups
+        .into_iter()
+        .filter_map(|((lemma_id, upos), group)| {
+            if group.raw == 0 {
+                return None;
+            }
+            let lemma = corpus.lemma_table.lookup(lemma_id)?.to_string();
+            let raw = group.raw;
+            let document_counts = group.sorted_document_counts();
+            let stats = frequency_distribution_stats(
+                &document_counts,
+                raw,
+                &corpus.documents,
+                total_tokens,
+            );
+            Some(LexFrequencyRow {
+                lemma,
+                upos: upos.as_upos_str().to_string(),
+                raw: stats.raw,
+                per_10k: stats.per_10k,
+                doc_freq: stats.doc_freq,
+                doc_total: selected_document_count,
+                dp: stats.dp,
+                dispersion_label: annotated_dispersion_label(stats.dp).to_string(),
+                top_doc_share: stats.top_doc_share,
+            })
+        })
+        .collect::<Vec<_>>();
+    sort_lex_frequency_rows(&mut rows);
+    rows
+}
+
+/// Computes annotation-only frequency rows from the attached Ready annotation layer.
+pub fn query_annotated_frequency(
+    corpus: &AnalysisCorpus,
+    query: &AnnotatedFrequencyQuery,
+    cache: AnnotationCacheAvailability,
+) -> AnnotatedFrequencyResult {
+    let (selected, selected_document_count) = selected_document_mask(corpus, &query.selection);
+    let total_tokens = corpus
+        .documents
+        .iter()
+        .filter(|document| selected[document.summary.id])
+        .map(|document| document.summary.token_count)
+        .sum::<u64>();
+    let limit = if query.limit == 0 {
+        MAX_QUERY_WINDOW
+    } else {
+        query.limit.min(MAX_QUERY_WINDOW)
+    };
+
+    if cache.state != AnnotationCacheState::Ready
+        || !selected_documents_have_annotation(corpus, &selected)
+    {
+        return empty_annotated_frequency_result(
+            query,
+            cache,
+            Some(ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE.to_string()),
+            selected_document_count,
+            corpus.documents.len(),
+            total_tokens,
+        );
+    }
+    if selected_document_count == 0 || total_tokens == 0 {
+        return empty_annotated_frequency_result(
+            query,
+            cache,
+            None,
+            selected_document_count,
+            corpus.documents.len(),
+            total_tokens,
+        );
+    }
+
+    match query.mode {
+        AnnotatedFrequencyMode::Pos => {
+            let rows = pos_frequency_rows(corpus, &selected, selected_document_count, total_tokens);
+            let total_rows = rows.len();
+            let offset = query.offset.min(total_rows);
+            let pos_rows = rows.into_iter().skip(offset).take(limit).collect();
+            AnnotatedFrequencyResult {
+                mode: query.mode,
+                cache,
+                unavailable_message: None,
+                total_tokens,
+                selected_document_count,
+                total_document_count: corpus.documents.len(),
+                total_rows,
+                offset,
+                limit,
+                pos_rows,
+                lex_rows: Vec::new(),
+            }
+        }
+        AnnotatedFrequencyMode::LemmaPos => {
+            let rows =
+                lemma_pos_frequency_rows(corpus, &selected, selected_document_count, total_tokens);
+            let total_rows = rows.len();
+            let offset = query.offset.min(total_rows);
+            let lex_rows = rows.into_iter().skip(offset).take(limit).collect();
+            AnnotatedFrequencyResult {
+                mode: query.mode,
+                cache,
+                unavailable_message: None,
+                total_tokens,
+                selected_document_count,
+                total_document_count: corpus.documents.len(),
+                total_rows,
+                offset,
+                limit,
+                pos_rows: Vec::new(),
+                lex_rows,
+            }
+        }
     }
 }
 
@@ -4044,6 +4495,13 @@ mod tests {
             .iter()
             .map(|item| (item.token.as_str(), item.frequency))
             .collect()
+    }
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 1e-12,
+            "expected {actual} to be close to {expected}"
+        );
     }
 
     fn concordance_document(index: usize, name: &str, text: &str) -> ConcordanceDocument {
@@ -4474,6 +4932,22 @@ mod tests {
             .collect::<Vec<_>>();
         corpus.documents[document_id].annotation_available = true;
         corpus.documents[document_id].annotated_term_counts = counts;
+    }
+
+    fn ready_annotation_cache() -> AnnotationCacheAvailability {
+        AnnotationCacheAvailability {
+            state: AnnotationCacheState::Ready,
+            detail: None,
+        }
+    }
+
+    fn annotated_frequency_query(mode: AnnotatedFrequencyMode) -> AnnotatedFrequencyQuery {
+        AnnotatedFrequencyQuery {
+            selection: AnalysisDocumentSelection::default(),
+            mode,
+            offset: 0,
+            limit: 100,
+        }
     }
 
     #[test]
@@ -5387,6 +5861,178 @@ mod tests {
     }
 
     #[test]
+    fn dp_is_zero_for_perfectly_even_distribution() {
+        let corpus = corpus_for(&[("a.txt", "alpha alpha"), ("b.txt", "beta beta")]);
+        let stats = frequency_distribution_stats(&[(0, 1), (1, 1)], 2, &corpus.documents, 4);
+
+        assert_close(stats.dp, 0.0);
+    }
+
+    #[test]
+    fn dp_increases_with_concentration() {
+        let corpus = corpus_for(&[("a.txt", "alpha alpha"), ("b.txt", "beta beta")]);
+        let even = frequency_distribution_stats(&[(0, 1), (1, 1)], 2, &corpus.documents, 4);
+        let concentrated = frequency_distribution_stats(&[(0, 2)], 2, &corpus.documents, 4);
+
+        assert!(concentrated.dp > even.dp);
+    }
+
+    #[test]
+    fn dp_uses_document_sizes_not_equal_parts() {
+        let corpus = corpus_for(&[("short.txt", "alpha"), ("long.txt", "alpha beta gamma")]);
+        let stats = frequency_distribution_stats(&[(0, 3), (1, 1)], 4, &corpus.documents, 4);
+
+        assert_close(stats.dp, 0.0);
+    }
+
+    #[test]
+    fn top_document_share_reports_max_single_doc_proportion() {
+        let corpus = corpus_for(&[("a.txt", "alpha alpha"), ("b.txt", "beta beta")]);
+        let stats = frequency_distribution_stats(&[(0, 2), (1, 6)], 8, &corpus.documents, 4);
+
+        assert_close(stats.top_doc_share, 0.75);
+    }
+
+    #[test]
+    fn normalised_frequency_per_10k_is_correct() {
+        let corpus = corpus_for(&[("a.txt", "alpha beta gamma"), ("b.txt", "delta epsilon")]);
+        let stats = frequency_distribution_stats(&[(0, 3), (1, 2)], 5, &corpus.documents, 10);
+
+        assert_close(stats.per_10k, 5_000.0);
+    }
+
+    #[test]
+    fn document_frequency_counts_documents_with_at_least_one_hit() {
+        let corpus = corpus_for(&[("a.txt", "alpha"), ("b.txt", "beta"), ("c.txt", "gamma")]);
+        let stats =
+            frequency_distribution_stats(&[(0, 2), (1, 0), (2, 3)], 5, &corpus.documents, 3);
+
+        assert_eq!(stats.doc_freq, 2);
+    }
+
+    #[test]
+    fn pos_distribution_lists_all_present_upos_tags() {
+        let mut corpus = corpus_for(&[("a.txt", "Cats run quickly"), ("b.txt", "Cats run")]);
+        add_document_annotations(
+            &mut corpus,
+            0,
+            &[
+                ("Cats", "cat", UniversalPos::Noun, 1),
+                ("run", "run", UniversalPos::Verb, 1),
+                ("quickly", "quickly", UniversalPos::Adv, 1),
+            ],
+        );
+        add_document_annotations(
+            &mut corpus,
+            1,
+            &[
+                ("Cats", "cat", UniversalPos::Noun, 1),
+                ("run", "run", UniversalPos::Verb, 1),
+            ],
+        );
+
+        let result = query_annotated_frequency(
+            &corpus,
+            &annotated_frequency_query(AnnotatedFrequencyMode::Pos),
+            ready_annotation_cache(),
+        );
+        let rows = result
+            .pos_rows
+            .iter()
+            .map(|row| (row.upos.as_str(), row.raw, row.doc_freq, row.doc_total))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            rows,
+            vec![("NOUN", 2, 2, 2), ("VERB", 2, 2, 2), ("ADV", 1, 1, 2),]
+        );
+    }
+
+    #[test]
+    fn lemma_pos_frequency_groups_by_lemma_and_upos() {
+        let mut corpus = corpus_for(&[("a.txt", "run runs"), ("b.txt", "run running")]);
+        add_document_annotations(
+            &mut corpus,
+            0,
+            &[
+                ("run", "run", UniversalPos::Verb, 1),
+                ("runs", "run", UniversalPos::Verb, 1),
+            ],
+        );
+        add_document_annotations(
+            &mut corpus,
+            1,
+            &[
+                ("run", "run", UniversalPos::Noun, 1),
+                ("running", "run", UniversalPos::Verb, 1),
+            ],
+        );
+
+        let result = query_annotated_frequency(
+            &corpus,
+            &annotated_frequency_query(AnnotatedFrequencyMode::LemmaPos),
+            ready_annotation_cache(),
+        );
+        let rows = result
+            .lex_rows
+            .iter()
+            .map(|row| (row.lemma.as_str(), row.upos.as_str(), row.raw, row.doc_freq))
+            .collect::<Vec<_>>();
+
+        assert_eq!(rows, vec![("run", "VERB", 3, 2), ("run", "NOUN", 1, 1)]);
+    }
+
+    #[test]
+    fn annotated_frequency_requires_ready_annotation_layer() {
+        let mut corpus = corpus_for(&[("pos.txt", "Cats run")]);
+        add_document_annotations(
+            &mut corpus,
+            0,
+            &[
+                ("Cats", "cat", UniversalPos::Noun, 1),
+                ("run", "run", UniversalPos::Verb, 1),
+            ],
+        );
+
+        let result = query_annotated_frequency(
+            &corpus,
+            &annotated_frequency_query(AnnotatedFrequencyMode::Pos),
+            AnnotationCacheAvailability {
+                state: AnnotationCacheState::Missing,
+                detail: None,
+            },
+        );
+
+        assert!(result.pos_rows.is_empty());
+        assert_eq!(
+            result.unavailable_message.as_deref(),
+            Some(ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE)
+        );
+    }
+
+    #[test]
+    fn single_document_corpus_has_zero_dp_and_full_top_doc_share() {
+        let mut corpus = corpus_for(&[("one.txt", "Cats run")]);
+        add_document_annotations(
+            &mut corpus,
+            0,
+            &[
+                ("Cats", "cat", UniversalPos::Noun, 1),
+                ("run", "run", UniversalPos::Verb, 1),
+            ],
+        );
+
+        let result = query_annotated_frequency(
+            &corpus,
+            &annotated_frequency_query(AnnotatedFrequencyMode::Pos),
+            ready_annotation_cache(),
+        );
+
+        assert!(result.pos_rows.iter().all(|row| row.dp == 0.0));
+        assert!(result.pos_rows.iter().all(|row| row.top_doc_share == 1.0));
+    }
+
+    #[test]
     fn frequency_lemma_requires_annotation_notice() {
         let corpus = corpus_for(&[("lemma.txt", "Cats cat")]);
         assert!(
@@ -6192,6 +6838,7 @@ mod tests {
         // 1. Build unannotated corpus
         let mut options = build_options();
         options.udpipe_model_dir = Some(default_model_dir());
+        options.force_compute_hashes = true;
         let corpus = build_analysis_corpus(
             &records,
             options.clone(),
@@ -6513,6 +7160,7 @@ mod tests {
         let mut options = build_options();
         options.language_overrides = overrides;
         options.udpipe_model_dir = Some(default_model_dir());
+        options.force_compute_hashes = true;
 
         let corpus = build_analysis_corpus(
             &records,
@@ -6653,9 +7301,12 @@ mod tests {
         assert!(report.total_annotated_term_count_rows > 0);
 
         // Assert we can read it and it's Ready
+        let mut manifest_options = build_options();
+        manifest_options.udpipe_model_dir = options.udpipe_model_dir.clone();
+        manifest_options.force_compute_hashes = true;
         let corpus = build_analysis_corpus(
             &records,
-            build_options(),
+            manifest_options,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "The quick brown fox.")),
             |_| {},
@@ -6739,9 +7390,12 @@ mod tests {
         let envelope: crate::annotation_cache::AnnotationLayerCacheEnvelope =
             serde_json::from_slice(&bytes).unwrap();
 
+        let mut manifest_options = build_options();
+        manifest_options.udpipe_model_dir = options.udpipe_model_dir.clone();
+        manifest_options.force_compute_hashes = true;
         let corpus = build_analysis_corpus(
             &records,
-            build_options(),
+            manifest_options,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "The quick brown fox.")),
             |_| {},

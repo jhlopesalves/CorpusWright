@@ -320,6 +320,11 @@
                   </div>
                   <span id="frequency-result-count" class="frequency-result-count"></span>
                 </div>
+                <div id="frequency-mode-tabs" class="frequency-mode-tabs" role="tablist" aria-label="Frequency mode">
+                  <button type="button" class="frequency-mode-tab is-active" data-frequency-mode="surface" role="tab" aria-selected="true">Surface tokens</button>
+                  <button type="button" class="frequency-mode-tab" data-frequency-mode="lemmaPos" role="tab" aria-selected="false" disabled>Lemmas + POS</button>
+                  <button type="button" class="frequency-mode-tab" data-frequency-mode="pos" role="tab" aria-selected="false" disabled>POS tags</button>
+                </div>
                 <div class="frequency-controls">
                   <div class="frequency-control-cluster frequency-query-cluster">
                     <label for="frequency-search-input">
@@ -444,7 +449,7 @@
                   <button id="frequency-page-next" class="secondary-btn" type="button">Next</button>
                 </div>
                 <span id="frequency-limit-note" class="frequency-limit-note"></span>
-                <p class="frequency-explanation">Range = number of selected files the token occurs in. DP = Deviation of Proportions; 0 is evenly distributed relative to file sizes, 1 is highly concentrated.</p>
+                <p class="frequency-explanation">Range = selected files with a hit. DP = unnormalised Deviation of Proportions relative to file sizes; labels are heuristic within this corpus.</p>
               </section>
 
               <section id="concordance-pane" class="analyse-section analyse-tool-pane concordance-section hidden" aria-labelledby="concordance-title">
