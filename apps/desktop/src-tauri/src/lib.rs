@@ -1,9 +1,10 @@
 use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisCorpus,
-    AnalysisDocumentPage, AnalysisDocumentSelection, CorpusOverview, CorpusOverviewContext,
-    FrequencyGroupMode, FrequencyPage, FrequencyQuery, TermDistributionPage, TermDistributionQuery,
-    build_analysis_corpus, cleaning_config_signature, query_analysis_documents,
-    query_frequency_list, query_term_distribution, resolve_analysis_input,
+    AnalysisDocumentPage, AnalysisDocumentSelection, ConcordanceDocument, ConcordanceQuery,
+    ConcordanceResult, CorpusOverview, CorpusOverviewContext, FrequencyGroupMode, FrequencyPage,
+    FrequencyQuery, TermDistributionPage, TermDistributionQuery, build_analysis_corpus,
+    cleaning_config_signature, query_analysis_documents, query_frequency_list,
+    query_term_distribution, resolve_analysis_input, search_concordance_documents,
 };
 use corpuswright_core::cache::{
     CacheEntry, DocumentTextMode, ExtractionCache, document_text_for_record,
@@ -92,8 +93,6 @@ struct AnalysisBuildRequest {
     corpus_version: u64,
     build_signature: String,
     cleaning_config: CleaningConfig,
-    #[serde(default)]
-    language_overrides: HashMap<usize, String>,
 }
 
 struct AnalysisStateInner {
@@ -1775,6 +1774,19 @@ fn resolve_analysis_input_for_record(
     )
 }
 
+fn project_effective_language_overrides(
+    project_root: Option<&Path>,
+    records: &[DocumentRecord],
+) -> Result<HashMap<usize, String>, String> {
+    let Some(project_root) = project_root else {
+        return Ok(HashMap::new());
+    };
+    let language = project::project_language_for_root(project_root)?;
+    Ok(corpuswright_core::resolve_effective_document_languages(
+        language, records,
+    ))
+}
+
 fn analysis_progress_payload(
     progress: AnalysisBuildProgress,
     started_at: Instant,
@@ -1846,6 +1858,10 @@ async fn build_annotation_cache_command(
     };
 
     let cache_dir = project_root.as_deref().map(project_annotation_cache_dir);
+    let language_overrides =
+        project_effective_language_overrides(project_root.as_deref(), &records).map_err(|e| {
+            corpuswright_core::analysis::AnnotationCacheBuildError::SurfaceBuildFailed { error: e }
+        })?;
 
     let udpipe_model_dir = window
         .app_handle()
@@ -1859,14 +1875,14 @@ async fn build_annotation_cache_command(
         processing_config_signature: cleaning_config_signature(&request.cleaning_config),
         overview_context,
         udpipe_model_dir: udpipe_model_dir.clone(),
-        language_overrides: request.language_overrides.clone(),
+        language_overrides: language_overrides.clone(),
         tokenization: corpuswright_core::tokenization::TokenizationConfig::default(),
         annotation_cache_root: cache_dir,
     };
 
     let annotation_options = corpuswright_core::analysis::AnnotationLayerBuildOptions {
         udpipe_model_dir,
-        language_overrides: request.language_overrides,
+        language_overrides,
     };
 
     let cleaning_config = request.cleaning_config;
@@ -1939,6 +1955,9 @@ async fn build_analysis_corpus_command(
             metadata_attached: false,
         }
     };
+    let language_overrides =
+        project_effective_language_overrides(project_root.as_deref(), &records)?;
+    let annotation_cache_root = project_root.as_deref().map(project_annotation_cache_dir);
 
     analysis.cancel.store(false, Ordering::Relaxed);
     let build_generation = {
@@ -1958,7 +1977,6 @@ async fn build_analysis_corpus_command(
     let built_at = jiff::Timestamp::now().to_string();
     let build_signature = request.build_signature;
     let cleaning_config = request.cleaning_config;
-    let language_overrides = request.language_overrides;
     let udpipe_model_dir = window
         .app_handle()
         .path()
@@ -1980,7 +1998,7 @@ async fn build_analysis_corpus_command(
                 udpipe_model_dir,
                 language_overrides,
                 tokenization: corpuswright_core::tokenization::TokenizationConfig::default(),
-                annotation_cache_root: None,
+                annotation_cache_root,
             },
             &cancel,
             |record| {
@@ -2073,6 +2091,59 @@ fn compute_corpus_overview_command(
     cleaning_config: CleaningConfig,
 ) -> Result<CorpusOverview, String> {
     Ok(analysis.corpus(&cleaning_config)?.overview().clone())
+}
+
+#[tauri::command]
+async fn search_concordance_command(
+    query: ConcordanceQuery,
+    corpus_version: u64,
+    cleaning_config: CleaningConfig,
+    corpus: tauri::State<'_, CorpusState>,
+    cache: tauri::State<'_, ExtractionCache>,
+) -> Result<ConcordanceResult, String> {
+    let (records, project_root) = corpus.all_records_and_root(corpus_version)?;
+    let cache = cache.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut documents = Vec::new();
+        for (document_index, record) in records.iter().enumerate() {
+            let resolution = resolve_analysis_input_for_record(
+                record,
+                project_root.as_deref(),
+                &cleaning_config,
+                &cache,
+            );
+            let text = match resolution.provenance {
+                corpuswright_core::analysis::AnalysisInputProvenance::Processed
+                | corpuswright_core::analysis::AnalysisInputProvenance::SourceTextFallback => {
+                    resolution.text
+                }
+                corpuswright_core::analysis::AnalysisInputProvenance::EmptyOrFailed => None,
+            };
+            let Some(text) = text.filter(|value| !value.trim().is_empty()) else {
+                continue;
+            };
+            let source_path = record.source_path.to_string_lossy().into_owned();
+            let relative_path = record.relative_path.to_string_lossy().into_owned();
+            documents.push(ConcordanceDocument {
+                document_index,
+                source_path: source_path.clone(),
+                display_name: if relative_path.is_empty() {
+                    source_path
+                } else {
+                    relative_path
+                },
+                text,
+            });
+        }
+        search_concordance_documents(
+            &documents,
+            &query,
+            &corpuswright_core::tokenization::TokenizationConfig::default(),
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("Concordance query task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -2868,6 +2939,7 @@ pub fn run() {
             cancel_analysis_build_command,
             get_analysis_build_status_command,
             compute_corpus_overview_command,
+            search_concordance_command,
             query_frequency_list_command,
             query_analysis_documents_command,
             query_term_distribution_command,
@@ -2884,6 +2956,7 @@ pub fn run() {
             project::create_corpus_project_command,
             project::open_corpus_project_command,
             project::initialise_folder_as_corpus_project_command,
+            project::upgrade_project_language_command,
             project::query_project_sources_command,
             project::query_project_source_selection_action_summary_command,
             project::resolve_project_source_selection_pdf_paths_command,
@@ -3068,6 +3141,31 @@ mod tests {
                 .unwrap(),
             vec![second, first]
         );
+    }
+
+    #[test]
+    fn analysis_request_uses_project_language() {
+        let root = unique_temp_dir("analysis-project-language");
+        let project =
+            project::create_corpus_project_command(corpuswright_core::CreateCorpusProjectRequest {
+                root_path: root.to_string_lossy().into_owned(),
+                name: "Project Language".to_string(),
+                language: corpuswright_core::ProjectLanguage::Pt,
+                description: None,
+            })
+            .unwrap();
+        let records = vec![
+            pdf_record("first.txt", None, None),
+            pdf_record("second.txt", None, None),
+        ];
+
+        let overrides =
+            project_effective_language_overrides(Some(Path::new(&project.root_path)), &records)
+                .unwrap();
+
+        assert_eq!(overrides.len(), records.len());
+        assert!(overrides.values().all(|language| language == "pt"));
+        let _ = fs::remove_dir_all(root);
     }
 
     fn project_pdf_record(project_root: &Path, name: &str) -> DocumentRecord {
