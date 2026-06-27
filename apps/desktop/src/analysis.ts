@@ -2,6 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { AnalysisDocumentSelection as GeneratedAnalysisDocumentSelection } from "./generated/AnalysisDocumentSelection.js";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
+import type { ConcordanceQuery as GeneratedConcordanceQuery } from "./generated/ConcordanceQuery.js";
+import type { ConcordanceResult as GeneratedConcordanceResult } from "./generated/ConcordanceResult.js";
+import type { ConcordanceRow as GeneratedConcordanceRow } from "./generated/ConcordanceRow.js";
 import type { FrequencyGroupMode as GeneratedFrequencyGroupMode } from "./generated/FrequencyGroupMode.js";
 import type { FrequencyMatchMode as GeneratedFrequencyMatchMode } from "./generated/FrequencyMatchMode.js";
 import type { FrequencyPage as GeneratedFrequencyPage } from "./generated/FrequencyPage.js";
@@ -242,6 +245,9 @@ export type AnalysisDocumentSelection = GeneratedAnalysisDocumentSelection;
 export type FrequencyQuery = GeneratedFrequencyQuery;
 export type FrequencyTermItem = GeneratedFrequencyTermItem;
 export type FrequencyPage = GeneratedFrequencyPage;
+export type ConcordanceQuery = GeneratedConcordanceQuery;
+export type ConcordanceRow = GeneratedConcordanceRow;
+export type ConcordanceResult = GeneratedConcordanceResult;
 
 export interface AnalysisDocumentPageItem extends AnalysisDocumentSummary {
   selected: boolean;
@@ -313,6 +319,18 @@ export function queryFrequencyList(
   cleaningConfig: CleaningConfig,
 ): Promise<FrequencyPage> {
   return invoke<FrequencyPage>("query_frequency_list_command", { query, cleaningConfig });
+}
+
+export function searchConcordance(
+  query: ConcordanceQuery,
+  corpusVersion: number,
+  cleaningConfig: CleaningConfig,
+): Promise<ConcordanceResult> {
+  return invoke<ConcordanceResult>("search_concordance_command", {
+    query,
+    corpusVersion,
+    cleaningConfig,
+  });
 }
 
 export function queryAnalysisDocuments(
