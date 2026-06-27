@@ -1,10 +1,12 @@
 use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisCorpus,
-    AnalysisDocumentPage, AnalysisDocumentSelection, ConcordanceDocument, ConcordanceQuery,
-    ConcordanceResult, CorpusOverview, CorpusOverviewContext, FrequencyGroupMode, FrequencyPage,
-    FrequencyQuery, TermDistributionPage, TermDistributionQuery, build_analysis_corpus,
-    cleaning_config_signature, query_analysis_documents, query_frequency_list,
-    query_term_distribution, resolve_analysis_input, search_concordance_documents,
+    AnalysisDocumentPage, AnalysisDocumentSelection, AnnotatedFrequencyQuery,
+    AnnotatedFrequencyResult, ConcordanceDocument, ConcordanceQuery, ConcordanceResult,
+    CorpusOverview, CorpusOverviewContext, FrequencyGroupMode, FrequencyPage, FrequencyQuery,
+    TermDistributionPage, TermDistributionQuery, annotation_cache_availability_for_corpus,
+    build_analysis_corpus, cleaning_config_signature, query_analysis_documents,
+    query_annotated_frequency, query_frequency_list, query_term_distribution,
+    resolve_analysis_input, search_concordance_documents,
 };
 use corpuswright_core::cache::{
     CacheEntry, DocumentTextMode, ExtractionCache, document_text_for_record,
@@ -2161,6 +2163,39 @@ async fn query_frequency_list_command(
 }
 
 #[tauri::command]
+async fn query_annotated_frequency_command(
+    query: AnnotatedFrequencyQuery,
+    corpus_version: u64,
+    cleaning_config: CleaningConfig,
+    corpus: tauri::State<'_, CorpusState>,
+    analysis: tauri::State<'_, AnalysisState>,
+    window: Window,
+) -> Result<AnnotatedFrequencyResult, String> {
+    let analysis_corpus = analysis.corpus(&cleaning_config)?;
+    let (records, project_root) = corpus.all_records_and_root(corpus_version)?;
+    let language_overrides =
+        project_effective_language_overrides(project_root.as_deref(), &records)?;
+    let cache_root = project_root.as_deref().map(project_annotation_cache_dir);
+    let udpipe_model_dir = window
+        .app_handle()
+        .path()
+        .resolve("udpipe", BaseDirectory::Resource)
+        .ok();
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = annotation_cache_availability_for_corpus(
+            &analysis_corpus,
+            &records,
+            cache_root.as_deref(),
+            udpipe_model_dir.as_deref(),
+            &language_overrides,
+        );
+        query_annotated_frequency(&analysis_corpus, &query, cache)
+    })
+    .await
+    .map_err(|error| format!("Annotated frequency query task failed: {error}"))
+}
+
+#[tauri::command]
 async fn query_analysis_documents_command(
     selection: AnalysisDocumentSelection,
     query: String,
@@ -2943,6 +2978,7 @@ pub fn run() {
             compute_corpus_overview_command,
             search_concordance_command,
             query_frequency_list_command,
+            query_annotated_frequency_command,
             query_analysis_documents_command,
             query_term_distribution_command,
             extract_pdf_page_range_command,

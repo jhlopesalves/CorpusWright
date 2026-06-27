@@ -47,11 +47,14 @@ pub mod tokenization;
 pub mod word_count;
 
 pub use analysis::{
-    AnalysisDocumentSelection, AnnotatedTermCount, AnnotationLayer, AnnotationLayerBuildError,
-    AnnotationLayerBuildOptions, AnnotationLayerDocument, ConcordanceDocument, ConcordanceError,
-    ConcordanceQuery, ConcordanceResult, ConcordanceRow, FrequencyGroupMode, FrequencyMatchMode,
-    FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey,
-    FrequencyTermItem, FrequencyTokenClass, SortDirection, build_annotation_layer,
+    AnalysisDocumentSelection, AnnotatedFrequencyMode, AnnotatedFrequencyQuery,
+    AnnotatedFrequencyResult, AnnotatedTermCount, AnnotationCacheAvailability,
+    AnnotationCacheState, AnnotationLayer, AnnotationLayerBuildError, AnnotationLayerBuildOptions,
+    AnnotationLayerDocument, ConcordanceDocument, ConcordanceError, ConcordanceQuery,
+    ConcordanceResult, ConcordanceRow, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
+    FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
+    FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow, SortDirection,
+    annotation_cache_availability_for_corpus, build_annotation_layer, query_annotated_frequency,
     search_concordance_documents,
 };
 pub use annotation_cache::{
