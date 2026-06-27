@@ -14,6 +14,16 @@ use ts_rs::TS;
 pub const DEFAULT_LOW_CONFIDENCE_THRESHOLD: f64 = 0.5;
 const CONFIDENCE_STABILITY_SCALE: f64 = 1_000_000_000_000.0;
 
+/// Project-level language supported by CorpusWright annotation resources.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum ProjectLanguage {
+    En,
+    Fr,
+    Pt,
+}
+
 /// A detected language with its confidence score (0.0–1.0).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
