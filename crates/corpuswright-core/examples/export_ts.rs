@@ -8,8 +8,9 @@ use ts_rs::TS;
 
 use corpuswright_core::analysis::{
     AnalysisDocumentSelection, AnnotationCacheBuildError, AnnotationCacheBuildReport,
-    FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice, FrequencyNoticeKind, FrequencyPage,
-    FrequencyQuery, FrequencySortKey, FrequencyTermItem, FrequencyTokenClass, SortDirection,
+    ConcordanceQuery, ConcordanceResult, ConcordanceRow, FrequencyGroupMode, FrequencyMatchMode,
+    FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey,
+    FrequencyTermItem, FrequencyTokenClass, SortDirection,
 };
 use corpuswright_core::clean::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
@@ -601,6 +602,16 @@ fn main() {
                 file: "FrequencyNotice",
             },
         ],
+        &[],
+    );
+    export_type::<ConcordanceQuery>(&out_dir, &[], &[]);
+    export_type::<ConcordanceRow>(&out_dir, &[], &[]);
+    export_type::<ConcordanceResult>(
+        &out_dir,
+        &[TypeImport {
+            name: "ConcordanceRow",
+            file: "ConcordanceRow",
+        }],
         &[],
     );
     export_type::<ExportManifest>(
