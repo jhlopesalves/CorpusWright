@@ -446,6 +446,43 @@
                 <span id="frequency-limit-note" class="frequency-limit-note"></span>
                 <p class="frequency-explanation">Range = number of selected files the token occurs in. DP = Deviation of Proportions; 0 is evenly distributed relative to file sizes, 1 is highly concentrated.</p>
               </section>
+
+              <section id="concordance-pane" class="analyse-section analyse-tool-pane concordance-section hidden" aria-labelledby="concordance-title">
+                <div class="frequency-section-header">
+                  <div>
+                    <h2 id="concordance-title">Concordance</h2>
+                    <p id="concordance-summary" class="frequency-summary">Search for a surface word to see its occurrences in context.</p>
+                  </div>
+                  <span id="concordance-result-count" class="frequency-result-count"></span>
+                </div>
+                <div class="concordance-controls">
+                  <label for="concordance-query-input">
+                    <span>Surface word</span>
+                    <input id="concordance-query-input" type="search" autocomplete="off" />
+                  </label>
+                  <label for="concordance-window-input">
+                    <span>Window</span>
+                    <input id="concordance-window-input" type="number" min="1" max="20" step="1" value="5" />
+                  </label>
+                  <label class="frequency-stopword-control" for="concordance-case-sensitive">
+                    <span>Case</span>
+                    <span class="frequency-toggle">
+                      <input id="concordance-case-sensitive" type="checkbox" role="switch" aria-checked="false" />
+                      <span class="frequency-toggle-track" aria-hidden="true"></span>
+                      <span id="concordance-case-state">Insensitive</span>
+                    </span>
+                  </label>
+                  <button id="concordance-search-button" class="primary-btn" type="button">Search</button>
+                </div>
+                <p class="frequency-search-note">KWIC alpha currently supports one-token surface queries.</p>
+                <div id="concordance-status" class="frequency-query-notice hidden" role="status"></div>
+                <div id="concordance-results" class="concordance-results"></div>
+                <div class="analysis-pagination" aria-label="Concordance result pages">
+                  <button id="concordance-page-previous" class="secondary-btn" type="button">Previous</button>
+                  <span id="concordance-page-status"></span>
+                  <button id="concordance-page-next" class="secondary-btn" type="button">Next</button>
+                </div>
+              </section>
             </div>
           </div>
         </div>

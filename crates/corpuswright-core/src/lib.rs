@@ -48,9 +48,11 @@ pub mod word_count;
 
 pub use analysis::{
     AnalysisDocumentSelection, AnnotatedTermCount, AnnotationLayer, AnnotationLayerBuildError,
-    AnnotationLayerBuildOptions, AnnotationLayerDocument, FrequencyGroupMode, FrequencyMatchMode,
+    AnnotationLayerBuildOptions, AnnotationLayerDocument, ConcordanceDocument, ConcordanceError,
+    ConcordanceQuery, ConcordanceResult, ConcordanceRow, FrequencyGroupMode, FrequencyMatchMode,
     FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey,
     FrequencyTermItem, FrequencyTokenClass, SortDirection, build_annotation_layer,
+    search_concordance_documents,
 };
 pub use annotation_cache::{
     ANNOTATION_LAYER_CACHE_FILE_VERSION, ANNOTATION_LAYER_SCHEMA_VERSION, AnnotationCorpusIdentity,
