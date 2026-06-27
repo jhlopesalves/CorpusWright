@@ -4,8 +4,10 @@
 //! Languages below the confidence threshold require an explicit override;
 //! if no override is set the document is flagged as low-confidence.
 
+use crate::scan::DocumentRecord;
 use lingua::{Language, LanguageDetector, LanguageDetectorBuilder};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::LazyLock;
 use ts_rs::TS;
 
@@ -22,6 +24,29 @@ pub enum ProjectLanguage {
     En,
     Fr,
     Pt,
+}
+
+impl ProjectLanguage {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::En => "en",
+            Self::Fr => "fr",
+            Self::Pt => "pt",
+        }
+    }
+}
+
+/// Resolves the monolingual project language to every source record.
+pub fn resolve_effective_document_languages(
+    project_language: ProjectLanguage,
+    records: &[DocumentRecord],
+) -> HashMap<usize, String> {
+    let language = project_language.code();
+    records
+        .iter()
+        .enumerate()
+        .map(|(index, _)| (index, language.to_string()))
+        .collect()
 }
 
 /// A detected language with its confidence score (0.0–1.0).

@@ -285,7 +285,6 @@ export function buildAnalysisCorpus(
   corpusVersion: number,
   buildSignature: string,
   cleaningConfig: CleaningConfig,
-  languageOverrides: Record<number, string> = {},
 ): Promise<CorpusOverview> {
   return invoke<CorpusOverview>("build_analysis_corpus_command", {
     request: {
@@ -293,7 +292,6 @@ export function buildAnalysisCorpus(
       corpusVersion,
       buildSignature,
       cleaningConfig,
-      languageOverrides,
     },
   });
 }
