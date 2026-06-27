@@ -148,6 +148,9 @@ function showWelcome(message = ""): void {
   dom.projectWorkspace.classList.add("hidden");
   dom.menuCloseProject.classList.add("hidden");
   dom.projectContext.classList.add("hidden");
+  dom.projectContextName.textContent = "";
+  dom.projectContextLanguage.textContent = "";
+  dom.projectContextPath.textContent = "";
   hideWorkbenchSwitcher();
   setWelcomeStatus(message);
   renderRecentProjects();
@@ -163,6 +166,7 @@ async function activateProject(project: ActiveProject, scanSourceRoot: boolean):
   dom.menuCloseProject.classList.remove("hidden");
   dom.projectContext.classList.remove("hidden");
   dom.projectContextName.textContent = `Project: ${project.name}`;
+  dom.projectContextLanguage.textContent = `Language: ${projectLanguageLabel(project.language)}`;
   dom.projectContextPath.textContent = project.rootPath;
 
   state.projectSources = [];

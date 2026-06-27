@@ -1985,6 +1985,10 @@ main {
   font-weight: 600;
 }
 
+#project-context-language {
+  color: var(--text-muted);
+}
+
 #project-context-path {
   color: var(--text-muted);
   max-width: 100%;
@@ -2103,17 +2107,6 @@ main {
   font-size: 0.84rem;
 }
 
-.analyse-project-language {
-  min-height: 34px;
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--panel-bg);
-  color: var(--text-color);
-  font-weight: 600;
-}
 
 .analyse-status-row {
   display: flex;
