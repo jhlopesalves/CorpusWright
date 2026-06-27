@@ -5879,10 +5879,14 @@ mod tests {
 
     #[test]
     fn dp_uses_document_sizes_not_equal_parts() {
-        let corpus = corpus_for(&[("short.txt", "alpha"), ("long.txt", "alpha beta gamma")]);
-        let stats = frequency_distribution_stats(&[(0, 3), (1, 1)], 4, &corpus.documents, 4);
-
-        assert_close(stats.dp, 0.0);
+        let corpus = corpus_for(&[("short.txt", "alpha"), ("z_long.txt", "alpha beta gamma")]);
+        // doc sizes 1:3. Counts proportional to sizes => DP = 0 ONLY under size weighting
+        // (under equal-parts weighting this would be 0.25).
+        let even = frequency_distribution_stats(&[(0, 1), (1, 3)], 4, &corpus.documents, 4);
+        assert_close(even.dp, 0.0);
+        // Counts inverse to sizes => maximally skewed for this 2-part split.
+        let concentrated = frequency_distribution_stats(&[(0, 3), (1, 1)], 4, &corpus.documents, 4);
+        assert_close(concentrated.dp, 0.5);
     }
 
     #[test]
