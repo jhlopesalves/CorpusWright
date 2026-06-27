@@ -479,6 +479,7 @@ pub struct AnalysisBuildOptions {
     pub processing_config_signature: String,
     pub overview_context: CorpusOverviewContext,
     pub udpipe_model_dir: Option<std::path::PathBuf>,
+    pub force_compute_hashes: bool,
     /// Per-document language override keyed by document index (0-based in the
     /// original records slice). When present, this always wins over detection.
     pub language_overrides: std::collections::HashMap<usize, String>,
@@ -2080,6 +2081,7 @@ where
         .annotation_cache_root
         .take()
         .ok_or(AnnotationCacheBuildError::MissingCacheRoot)?;
+    analysis_options.force_compute_hashes = true;
 
     let cache_root_str = cache_root.to_string_lossy().into_owned();
 
@@ -2775,10 +2777,12 @@ where
         processing_config_signature,
         overview_context,
         udpipe_model_dir,
+        force_compute_hashes,
         language_overrides,
         tokenization,
         annotation_cache_root,
     } = options;
+    let cache_enabled = annotation_cache_root.is_some() || force_compute_hashes;
 
     report_progress(AnalysisBuildProgress {
         files_done: 0,
@@ -2856,6 +2860,7 @@ where
         cancel,
         parallel_map,
         &tokenization,
+        cache_enabled,
     )?;
 
     let mut documents = Vec::with_capacity(records.len().saturating_sub(skipped_documents));
@@ -3040,19 +3045,32 @@ fn map_loaded_analysis_inputs<'record>(
     cancel: &AtomicBool,
     parallel_map: bool,
     tokenization_config: &TokenizationConfig,
+    cache_enabled: bool,
 ) -> Result<Vec<MappedAnalysisInput<'record>>, AnalysisBuildError> {
     if parallel_map {
         loaded_inputs
             .into_par_iter()
             .map(|input| {
-                map_loaded_analysis_input(input, language_overrides, cancel, tokenization_config)
+                map_loaded_analysis_input(
+                    input,
+                    language_overrides,
+                    cancel,
+                    tokenization_config,
+                    cache_enabled,
+                )
             })
             .collect()
     } else {
         loaded_inputs
             .into_iter()
             .map(|input| {
-                map_loaded_analysis_input(input, language_overrides, cancel, tokenization_config)
+                map_loaded_analysis_input(
+                    input,
+                    language_overrides,
+                    cancel,
+                    tokenization_config,
+                    cache_enabled,
+                )
             })
             .collect()
     }
@@ -3063,6 +3081,7 @@ fn map_loaded_analysis_input<'record>(
     language_overrides: &HashMap<usize, String>,
     cancel: &AtomicBool,
     tokenization_config: &TokenizationConfig,
+    cache_enabled: bool,
 ) -> Result<MappedAnalysisInput<'record>, AnalysisBuildError> {
     if cancel.load(AtomicOrdering::Relaxed) {
         return Err(AnalysisBuildError::Cancelled);
@@ -3073,7 +3092,11 @@ fn map_loaded_analysis_input<'record>(
             record,
             text,
         } => {
-            let processed_hash_sha256 = crate::hash::sha256_hex(text.as_bytes());
+            let processed_hash_sha256 = if cache_enabled {
+                crate::hash::sha256_hex(text.as_bytes())
+            } else {
+                String::new()
+            };
             let tokens = analysis_word_tokens(&text, 0, tokenization_config);
             let token_keys = tokens
                 .iter()
@@ -3947,6 +3970,7 @@ mod tests {
             language_overrides: std::collections::HashMap::new(),
             tokenization: TokenizationConfig::default(),
             annotation_cache_root: None,
+            force_compute_hashes: false,
         }
     }
 
@@ -5848,6 +5872,95 @@ mod tests {
 
         assert_eq!(result.unwrap_err(), AnalysisBuildError::Cancelled);
     }
+
+    #[test]
+    fn none_path_skips_processed_hash() {
+        let product = analysis_product_for(
+            &[("hash.txt", "The quick brown fox.")],
+            build_options(),
+            false,
+        );
+
+        assert_eq!(product.corpus.documents[0].processed_hash_sha256, "");
+    }
+
+    #[test]
+    fn some_path_hash_unchanged() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        let product = analysis_product_for(&[("hash.txt", "The quick brown fox.")], options, false);
+
+        assert_eq!(
+            product.corpus.documents[0].processed_hash_sha256,
+            crate::hash::sha256_hex("The quick brown fox.".as_bytes())
+        );
+    }
+
+    #[test]
+    fn some_path_cache_still_ready() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+        let text = "The quick brown fox.";
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options.udpipe_model_dir = Some(default_model_dir());
+
+        let mut corpus = build_analysis_corpus(
+            &records,
+            options.clone(),
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, text)),
+            |_| {},
+        )
+        .unwrap();
+        let surface_term_id = corpus
+            .surface_terms
+            .iter()
+            .position(|term| term.token == "The")
+            .unwrap() as u32;
+        let lemma_id = corpus.lemma_table.intern("the");
+        let layer = AnnotationLayer {
+            documents: vec![AnnotationLayerDocument {
+                analysis_document_index: 0,
+                source_path: "doc.txt".to_string(),
+                relative_path: "doc.txt".to_string(),
+                term_counts: vec![AnnotatedTermCount {
+                    surface_term_id,
+                    lemma_id,
+                    upos: UniversalPos::Det,
+                    count: 1,
+                }],
+            }],
+            lemma_table: corpus.lemma_table.clone(),
+            languages_used: Vec::new(),
+        };
+        let manifest = build_expected_manifest(
+            &corpus,
+            &records,
+            options.udpipe_model_dir.as_deref(),
+            &options.language_overrides,
+        )
+        .unwrap();
+        crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
+            .unwrap();
+
+        let cached = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, text)),
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(cached.overview().annotation_available);
+        assert_eq!(
+            cached.documents[0].annotated_term_counts,
+            layer.documents[0].term_counts
+        );
+    }
+
     #[test]
     fn manifest_builder_rejects_too_short_document_hash_input() {
         let corpus = corpus_for(&[("doc1.txt", "hello")]);
