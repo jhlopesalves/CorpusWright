@@ -24,6 +24,10 @@ const FREQUENT_TERM_THRESHOLD: u64 = 10;
 const HIGH_DISPERSION_THRESHOLD: f64 = 0.5;
 const MAX_QUERY_WINDOW: usize = 500;
 const MAX_DISTRIBUTION_POINTS: usize = 200;
+const CONCORDANCE_DEFAULT_WINDOW_TOKENS: usize = 5;
+const CONCORDANCE_MAX_WINDOW_TOKENS: usize = 20;
+const CONCORDANCE_DEFAULT_LIMIT: usize = 100;
+const CONCORDANCE_MAX_LIMIT: usize = 500;
 // These lexical-diversity parameters are provisional and should remain visible in the UI.
 const MATTR_WINDOW_TOKENS: usize = 100;
 const MTLD_TTR_THRESHOLD: f64 = 0.720;
@@ -951,6 +955,76 @@ pub struct FrequencyPage {
     pub query_error: Option<String>,
     pub notices: Vec<FrequencyNotice>,
 }
+
+/// Parameters for a bounded surface-token concordance query.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ConcordanceQuery {
+    pub query: String,
+    #[serde(default)]
+    pub case_sensitive: bool,
+    pub window_tokens: usize,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+/// One KWIC row with token context around the matching node.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ConcordanceRow {
+    pub document_index: usize,
+    pub source_path: String,
+    pub display_name: String,
+    pub token_index: usize,
+    pub left_context: Vec<String>,
+    pub node: String,
+    pub right_context: Vec<String>,
+}
+
+/// Bounded surface-token concordance response.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ConcordanceResult {
+    pub query: String,
+    pub case_sensitive: bool,
+    pub window_tokens: usize,
+    pub total_hits: usize,
+    pub documents_with_hits: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub rows: Vec<ConcordanceRow>,
+}
+
+/// Text supplied by the desktop layer for an on-demand concordance scan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConcordanceDocument {
+    pub document_index: usize,
+    pub source_path: String,
+    pub display_name: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConcordanceError {
+    EmptyQuery,
+    MultiTokenQuery,
+}
+
+impl std::fmt::Display for ConcordanceError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyQuery => formatter.write_str("Enter one surface word to search."),
+            Self::MultiTokenQuery => {
+                formatter.write_str("KWIC alpha currently supports one-token surface queries only.")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ConcordanceError {}
 
 /// One document in a bounded file-scope picker response.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -3238,6 +3312,118 @@ pub fn query_analysis_documents(
     }
 }
 
+fn concordance_window_tokens(window_tokens: usize) -> usize {
+    if window_tokens == 0 {
+        CONCORDANCE_DEFAULT_WINDOW_TOKENS
+    } else {
+        window_tokens.clamp(1, CONCORDANCE_MAX_WINDOW_TOKENS)
+    }
+}
+
+fn concordance_limit(limit: usize) -> usize {
+    if limit == 0 {
+        CONCORDANCE_DEFAULT_LIMIT
+    } else {
+        limit.clamp(1, CONCORDANCE_MAX_LIMIT)
+    }
+}
+
+fn concordance_key(value: &str, case_sensitive: bool) -> String {
+    if case_sensitive {
+        value.to_string()
+    } else {
+        case_fold_surface(value)
+    }
+}
+
+fn resolve_concordance_query_token<'text>(
+    query: &'text str,
+    tokenization_config: &TokenizationConfig,
+) -> Result<&'text str, ConcordanceError> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Err(ConcordanceError::EmptyQuery);
+    }
+    let query_tokens = tokenize(trimmed, 0, tokenization_config);
+    if query_tokens.is_empty() {
+        return Err(ConcordanceError::EmptyQuery);
+    }
+    if query_tokens.len() != 1 {
+        return Err(ConcordanceError::MultiTokenQuery);
+    }
+    let token = query_tokens[0];
+    if !token.counts_as_word() {
+        return Err(ConcordanceError::EmptyQuery);
+    }
+    Ok(token.surface)
+}
+
+/// Searches processed text for a single surface word and returns KWIC rows.
+pub fn search_concordance_documents(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceQuery,
+    tokenization_config: &TokenizationConfig,
+) -> Result<ConcordanceResult, ConcordanceError> {
+    let window_tokens = concordance_window_tokens(query.window_tokens);
+    let limit = concordance_limit(query.limit);
+    let query_surface = resolve_concordance_query_token(&query.query, tokenization_config)?;
+    let query_key = concordance_key(query_surface, query.case_sensitive);
+    let mut total_hits = 0usize;
+    let mut documents_with_hits = HashSet::<usize>::new();
+    let mut rows = Vec::with_capacity(limit);
+
+    for document in documents {
+        let tokens = analysis_word_tokens(
+            &document.text,
+            document.document_index as u32,
+            tokenization_config,
+        );
+        let mut document_has_hit = false;
+        for (token_index, token) in tokens.iter().enumerate() {
+            if concordance_key(token.surface, query.case_sensitive) != query_key {
+                continue;
+            }
+
+            if total_hits >= query.offset && rows.len() < limit {
+                let left_start = token_index.saturating_sub(window_tokens);
+                let right_end = (token_index + 1 + window_tokens).min(tokens.len());
+                rows.push(ConcordanceRow {
+                    document_index: document.document_index,
+                    source_path: document.source_path.clone(),
+                    display_name: document.display_name.clone(),
+                    token_index,
+                    left_context: tokens[left_start..token_index]
+                        .iter()
+                        .map(|token| token.surface.to_string())
+                        .collect(),
+                    node: token.surface.to_string(),
+                    right_context: tokens[token_index + 1..right_end]
+                        .iter()
+                        .map(|token| token.surface.to_string())
+                        .collect(),
+                });
+            }
+
+            total_hits += 1;
+            document_has_hit = true;
+        }
+        if document_has_hit {
+            documents_with_hits.insert(document.document_index);
+        }
+    }
+
+    Ok(ConcordanceResult {
+        query: query_surface.to_string(),
+        case_sensitive: query.case_sensitive,
+        window_tokens,
+        total_hits,
+        documents_with_hits: documents_with_hits.len(),
+        offset: query.offset.min(total_hits),
+        limit,
+        rows,
+    })
+}
+
 fn token_matches_class(token: &str, filter: FrequencyTokenClass) -> bool {
     let has_letter = token.chars().any(char::is_alphabetic);
     let has_number = token.chars().any(char::is_numeric);
@@ -3734,6 +3920,7 @@ pub fn query_term_distribution(
 mod tests {
     use super::*;
     use crate::clean::{RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope};
+    use crate::language::{ProjectLanguage, resolve_effective_document_languages};
     use std::cell::Cell;
     use std::path::PathBuf;
 
@@ -3835,6 +4022,32 @@ mod tests {
             .collect()
     }
 
+    fn concordance_document(index: usize, name: &str, text: &str) -> ConcordanceDocument {
+        ConcordanceDocument {
+            document_index: index,
+            source_path: name.to_string(),
+            display_name: name.to_string(),
+            text: text.to_string(),
+        }
+    }
+
+    fn concordance_query(query: &str) -> ConcordanceQuery {
+        ConcordanceQuery {
+            query: query.to_string(),
+            case_sensitive: false,
+            window_tokens: 5,
+            offset: 0,
+            limit: 100,
+        }
+    }
+
+    fn concordance_for(
+        documents: &[ConcordanceDocument],
+        query: ConcordanceQuery,
+    ) -> Result<ConcordanceResult, ConcordanceError> {
+        search_concordance_documents(documents, &query, &TokenizationConfig::default())
+    }
+
     #[derive(Debug, PartialEq)]
     struct AnalysisCorpusSnapshot {
         overview: CorpusOverview,
@@ -3934,6 +4147,218 @@ mod tests {
         )
         .unwrap();
         (corpus, layer)
+    }
+
+    #[test]
+    fn project_language_is_effective_for_all_documents() {
+        let records = vec![record("a.txt"), record("b.txt")];
+        let language_overrides =
+            resolve_effective_document_languages(ProjectLanguage::Pt, &records);
+        let mut options = build_options();
+        options.language_overrides = language_overrides.clone();
+
+        let corpus = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| {
+                let text = if record.source_path == std::path::Path::new("a.txt") {
+                    "The quick brown fox."
+                } else {
+                    "Le chat noir court."
+                };
+                Ok(processed_resolution(record, text))
+            },
+            |_| {},
+        )
+        .unwrap();
+
+        assert_eq!(language_overrides.len(), records.len());
+        assert!(language_overrides.values().all(|language| language == "pt"));
+        assert_eq!(corpus.documents.len(), 2);
+        assert!(corpus.documents.iter().all(|document| {
+            document.summary.language.as_deref() == Some("pt")
+                && document.summary.language_is_overridden
+                && document.summary.language_confidence.is_none()
+        }));
+    }
+
+    #[test]
+    fn annotation_cache_round_trips_ready_with_project_language() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc.txt")];
+        let language_overrides =
+            resolve_effective_document_languages(ProjectLanguage::En, &records);
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options.udpipe_model_dir = Some(default_model_dir());
+        options.language_overrides = language_overrides.clone();
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides,
+        };
+
+        build_and_write_annotation_cache(
+            &records,
+            options.clone(),
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+        )
+        .unwrap();
+
+        let corpus_cached = build_analysis_corpus(
+            &records,
+            options,
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(corpus_cached.overview().annotation_available);
+    }
+
+    #[test]
+    fn kwic_finds_surface_token_with_token_windows() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "alpha beta gamma beta delta epsilon",
+        )];
+        let mut query = concordance_query("beta");
+        query.window_tokens = 2;
+
+        let result = concordance_for(&documents, query).unwrap();
+
+        assert_eq!(result.total_hits, 2);
+        assert_eq!(result.rows[0].left_context, ["alpha"]);
+        assert_eq!(result.rows[0].node, "beta");
+        assert_eq!(result.rows[0].right_context, ["gamma", "beta"]);
+        assert_eq!(result.rows[1].left_context, ["beta", "gamma"]);
+        assert_eq!(result.rows[1].right_context, ["delta", "epsilon"]);
+    }
+
+    #[test]
+    fn kwic_does_not_match_substrings_inside_tokens() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "the there breathe other The",
+        )];
+
+        let result = concordance_for(&documents, concordance_query("the")).unwrap();
+
+        assert_eq!(result.total_hits, 2);
+        assert_eq!(
+            result
+                .rows
+                .iter()
+                .map(|row| row.node.as_str())
+                .collect::<Vec<_>>(),
+            ["the", "The"]
+        );
+    }
+
+    #[test]
+    fn kwic_is_case_insensitive_by_default() {
+        let documents = vec![concordance_document(0, "doc.txt", "The the THE theme")];
+
+        let result = concordance_for(&documents, concordance_query("the")).unwrap();
+
+        assert_eq!(result.total_hits, 3);
+    }
+
+    #[test]
+    fn kwic_can_match_case_sensitive_when_enabled() {
+        let documents = vec![concordance_document(0, "doc.txt", "The the THE")];
+        let mut query = concordance_query("the");
+        query.case_sensitive = true;
+
+        let result = concordance_for(&documents, query).unwrap();
+
+        assert_eq!(result.total_hits, 1);
+        assert_eq!(result.rows[0].node, "the");
+    }
+
+    #[test]
+    fn kwic_rejects_empty_query() {
+        let documents = vec![concordance_document(0, "doc.txt", "alpha")];
+
+        let error = concordance_for(&documents, concordance_query("   ")).unwrap_err();
+
+        assert_eq!(error, ConcordanceError::EmptyQuery);
+    }
+
+    #[test]
+    fn kwic_rejects_multi_token_query_for_alpha() {
+        let documents = vec![concordance_document(0, "doc.txt", "alpha beta")];
+
+        let error = concordance_for(&documents, concordance_query("alpha beta")).unwrap_err();
+
+        assert_eq!(error, ConcordanceError::MultiTokenQuery);
+        assert_eq!(
+            error.to_string(),
+            "KWIC alpha currently supports one-token surface queries only."
+        );
+    }
+
+    #[test]
+    fn kwic_reports_total_hits_and_documents_with_hits() {
+        let documents = vec![
+            concordance_document(0, "a.txt", "alpha beta alpha"),
+            concordance_document(1, "b.txt", "beta gamma"),
+            concordance_document(2, "c.txt", "alpha"),
+        ];
+
+        let result = concordance_for(&documents, concordance_query("alpha")).unwrap();
+
+        assert_eq!(result.total_hits, 3);
+        assert_eq!(result.documents_with_hits, 2);
+    }
+
+    #[test]
+    fn kwic_respects_offset_and_limit() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "alpha beta alpha gamma alpha delta alpha",
+        )];
+        let mut query = concordance_query("alpha");
+        query.offset = 1;
+        query.limit = 2;
+
+        let result = concordance_for(&documents, query).unwrap();
+
+        assert_eq!(result.total_hits, 4);
+        assert_eq!(result.offset, 1);
+        assert_eq!(result.limit, 2);
+        assert_eq!(result.rows.len(), 2);
+        assert_eq!(
+            result
+                .rows
+                .iter()
+                .map(|row| row.token_index)
+                .collect::<Vec<_>>(),
+            [2, 4]
+        );
+    }
+
+    #[test]
+    fn kwic_uses_canonical_tokenisation() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "state-of-the-art state of the art",
+        )];
+
+        let compound = concordance_for(&documents, concordance_query("state-of-the-art")).unwrap();
+        let single = concordance_for(&documents, concordance_query("state")).unwrap();
+
+        assert_eq!(compound.total_hits, 1);
+        assert_eq!(compound.rows[0].node, "state-of-the-art");
+        assert_eq!(single.total_hits, 1);
     }
 
     fn snapshot_analysis_product(product: &AnalysisBuildProduct) -> AnalysisCorpusSnapshot {

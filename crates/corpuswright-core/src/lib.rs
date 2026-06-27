@@ -48,9 +48,11 @@ pub mod word_count;
 
 pub use analysis::{
     AnalysisDocumentSelection, AnnotatedTermCount, AnnotationLayer, AnnotationLayerBuildError,
-    AnnotationLayerBuildOptions, AnnotationLayerDocument, FrequencyGroupMode, FrequencyMatchMode,
+    AnnotationLayerBuildOptions, AnnotationLayerDocument, ConcordanceDocument, ConcordanceError,
+    ConcordanceQuery, ConcordanceResult, ConcordanceRow, FrequencyGroupMode, FrequencyMatchMode,
     FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey,
     FrequencyTermItem, FrequencyTokenClass, SortDirection, build_annotation_layer,
+    search_concordance_documents,
 };
 pub use annotation_cache::{
     ANNOTATION_LAYER_CACHE_FILE_VERSION, ANNOTATION_LAYER_SCHEMA_VERSION, AnnotationCorpusIdentity,
@@ -69,7 +71,8 @@ pub use export::{
 };
 pub use language::{
     DEFAULT_LOW_CONFIDENCE_THRESHOLD, DetectedLanguage, DocumentLanguage, LanguageResolution,
-    ProjectLanguage, detect_and_resolve, detect_language, resolve_language,
+    ProjectLanguage, detect_and_resolve, detect_language, resolve_effective_document_languages,
+    resolve_language,
 };
 pub use manifest::{ExportManifest, ManifestFileRecord};
 pub use pdf::{

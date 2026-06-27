@@ -2103,6 +2103,18 @@ main {
   font-size: 0.84rem;
 }
 
+.analyse-project-language {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--panel-bg);
+  color: var(--text-color);
+  font-weight: 600;
+}
+
 .analyse-status-row {
   display: flex;
   flex-direction: column;
@@ -2877,7 +2889,8 @@ main {
   max-width: 560px;
 }
 
-.frequency-section {
+.frequency-section,
+.concordance-section {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -2960,6 +2973,47 @@ main {
   border-color: var(--accent-color);
 }
 
+.concordance-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+}
+
+.concordance-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.concordance-controls input:not([type="checkbox"]) {
+  height: 34px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-family: inherit;
+  font-size: 0.88rem;
+  box-sizing: border-box;
+}
+
+.concordance-controls input:not([type="checkbox"]):focus {
+  outline: 1px solid var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+#concordance-query-input {
+  width: clamp(260px, 32vw, 420px);
+}
+
+#concordance-window-input {
+  width: 90px;
+}
+
 #frequency-search-input {
   width: clamp(260px, 32vw, 420px);
 }
@@ -2976,12 +3030,36 @@ main {
   width: 136px;
 }
 
-#frequency-language {
-  width: 132px;
-}
-
 #frequency-token-class {
   width: 176px;
+}
+
+.frequency-readonly-control {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.frequency-readonly-value {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  min-width: 132px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--panel-bg);
+  color: var(--text-color);
+  font-size: 0.86rem;
+  font-weight: 500;
+  box-sizing: border-box;
+}
+
+.frequency-readonly-value.is-disabled {
+  color: var(--text-muted);
 }
 
 .frequency-toggle {
@@ -3074,6 +3152,59 @@ main {
 
 .frequency-query-notice {
   color: var(--cw-warning-text);
+}
+
+.concordance-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.concordance-row {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+}
+
+.concordance-context {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  font-family: var(--cw-font-mono);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.concordance-left,
+.concordance-right {
+  min-width: 0;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.concordance-left {
+  text-align: right;
+}
+
+.concordance-node {
+  padding: 1px 5px;
+  border: 1px solid var(--cw-info-border-strong);
+  border-radius: 3px;
+  background: var(--cw-info-bg);
+  color: var(--text-color);
+  font-weight: 700;
+}
+
+.concordance-meta {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.concordance-empty {
+  margin: 0;
 }
 
 .frequency-table-wrap {
@@ -4235,6 +4366,24 @@ pre {
   width: min(92vw, 640px);
   max-height: min(90vh, 760px);
   overflow-y: auto;
+}
+
+.project-language-upgrade-modal-content {
+  width: min(92vw, 520px);
+}
+
+.project-language-upgrade-path {
+  margin: 0 0 14px;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  word-break: break-word;
+}
+
+.project-language-upgrade-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.86rem;
 }
 
 .project-create-form {

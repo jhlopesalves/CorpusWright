@@ -291,15 +291,7 @@
             <div id="analyse-input-banner" class="analyse-input-banner hidden" aria-live="polite"></div>
             <div class="analyse-action-row">
               <button id="analyse-build-button" class="primary-btn" type="button">Build Analysis Corpus</button>
-              <label for="analyse-language-override">
-                <span>Language override</span>
-                <select id="analyse-language-override" title="Choose a language to use instead of auto-detection.">
-                  <option value="" selected>Auto detect</option>
-                  <option value="en">English</option>
-                  <option value="pt">Portuguese</option>
-                  <option value="fr">French</option>
-                </select>
-              </label>
+              <span id="analyse-project-language" class="analyse-project-language">Project language: Not available</span>
               <span id="analyse-build-note">Build a fast surface index for frequencies, dispersion, and corpus diagnostics. Lemma/POS annotation is not built yet.</span>
             </div>
           </div>
@@ -365,19 +357,10 @@
                         <span id="frequency-case-fold-state">As typed</span>
                       </span>
                     </label>
-                    <label for="frequency-language">
+                    <div class="frequency-readonly-control">
                       <span>Language</span>
-                      <select id="frequency-language">
-                        <option value="en" selected>English</option>
-                        <option value="pt">Portuguese</option>
-                        <option value="es">Spanish</option>
-                        <option value="fr">French</option>
-                        <option value="de">German</option>
-                        <option value="it">Italian</option>
-                        <option value="nl">Dutch</option>
-                        <option value="sv">Swedish</option>
-                      </select>
-                    </label>
+                      <span id="frequency-language-display" class="frequency-readonly-value">Project language</span>
+                    </div>
                     <label for="frequency-token-class">
                       <span>Token class</span>
                       <select id="frequency-token-class">
@@ -462,6 +445,43 @@
                 </div>
                 <span id="frequency-limit-note" class="frequency-limit-note"></span>
                 <p class="frequency-explanation">Range = number of selected files the token occurs in. DP = Deviation of Proportions; 0 is evenly distributed relative to file sizes, 1 is highly concentrated.</p>
+              </section>
+
+              <section id="concordance-pane" class="analyse-section analyse-tool-pane concordance-section hidden" aria-labelledby="concordance-title">
+                <div class="frequency-section-header">
+                  <div>
+                    <h2 id="concordance-title">Concordance</h2>
+                    <p id="concordance-summary" class="frequency-summary">Search for a surface word to see its occurrences in context.</p>
+                  </div>
+                  <span id="concordance-result-count" class="frequency-result-count"></span>
+                </div>
+                <div class="concordance-controls">
+                  <label for="concordance-query-input">
+                    <span>Surface word</span>
+                    <input id="concordance-query-input" type="search" autocomplete="off" />
+                  </label>
+                  <label for="concordance-window-input">
+                    <span>Window</span>
+                    <input id="concordance-window-input" type="number" min="1" max="20" step="1" value="5" />
+                  </label>
+                  <label class="frequency-stopword-control" for="concordance-case-sensitive">
+                    <span>Case</span>
+                    <span class="frequency-toggle">
+                      <input id="concordance-case-sensitive" type="checkbox" role="switch" aria-checked="false" />
+                      <span class="frequency-toggle-track" aria-hidden="true"></span>
+                      <span id="concordance-case-state">Insensitive</span>
+                    </span>
+                  </label>
+                  <button id="concordance-search-button" class="primary-btn" type="button">Search</button>
+                </div>
+                <p class="frequency-search-note">KWIC alpha currently supports one-token surface queries.</p>
+                <div id="concordance-status" class="frequency-query-notice hidden" role="status"></div>
+                <div id="concordance-results" class="concordance-results"></div>
+                <div class="analysis-pagination" aria-label="Concordance result pages">
+                  <button id="concordance-page-previous" class="secondary-btn" type="button">Previous</button>
+                  <span id="concordance-page-status"></span>
+                  <button id="concordance-page-next" class="secondary-btn" type="button">Next</button>
+                </div>
               </section>
             </div>
           </div>
@@ -591,9 +611,9 @@
           <label for="project-create-language">
             <span>Project language</span>
             <select id="project-create-language" class="settings-select">
-              <option value="en">en</option>
-              <option value="fr">fr</option>
-              <option value="pt">pt</option>
+              <option value="en">English</option>
+              <option value="fr">French</option>
+              <option value="pt">Portuguese</option>
             </select>
           </label>
 
@@ -619,6 +639,41 @@
           <span id="project-create-status" class="project-create-status"></span>
           <button id="cancel-project-create-btn" class="secondary-btn" type="button">Cancel</button>
           <button id="confirm-project-create-btn" class="primary-btn" type="button" disabled>Create Project</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Project Language Upgrade Modal -->
+    <div id="project-language-upgrade-modal" class="modal hidden" role="dialog" aria-modal="true"
+      aria-labelledby="project-language-upgrade-title" aria-describedby="project-language-upgrade-description">
+      <div class="modal-content project-language-upgrade-modal-content">
+        <button
+          id="btn-close-project-language-upgrade-modal-top"
+          class="modal-close-btn"
+          type="button"
+          aria-label="Close Project Language Upgrade"
+        >
+          &times;
+        </button>
+        <h2 id="project-language-upgrade-title">Project Language Required</h2>
+        <p id="project-language-upgrade-description" class="modal-description">
+          Choose the language for this project before CorpusWright opens it.
+        </p>
+        <p id="project-language-upgrade-path" class="project-language-upgrade-path"></p>
+
+        <label class="project-language-upgrade-field" for="project-language-upgrade-select">
+          <span>Project language</span>
+          <select id="project-language-upgrade-select" class="settings-select">
+            <option value="en">English</option>
+            <option value="fr">French</option>
+            <option value="pt">Portuguese</option>
+          </select>
+        </label>
+
+        <div class="modal-actions">
+          <span id="project-language-upgrade-status" class="project-create-status"></span>
+          <button id="cancel-project-language-upgrade-btn" class="secondary-btn" type="button">Cancel</button>
+          <button id="confirm-project-language-upgrade-btn" class="primary-btn" type="button" disabled>Save Language</button>
         </div>
       </div>
     </div>
