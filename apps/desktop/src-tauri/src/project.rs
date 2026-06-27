@@ -25,6 +25,7 @@ const MANIFEST_FILE: &str = "project.json";
 const REPEATED_ARTIFACTS_FILE: &str = "repeated-artifacts.json";
 const PROJECT_VERSION: u32 = 2;
 const MIN_SUPPORTED_PROJECT_VERSION: u32 = 1;
+const PROJECT_LANGUAGE_UPGRADE_REQUIRED: &str = "Project language upgrade required.";
 
 struct CachedProjectSourceInventory {
     root: PathBuf,
@@ -318,7 +319,7 @@ pub(crate) fn create_corpus_project_command(
     let manifest = new_manifest(&root, Vec::new(), name, Some(request.language), description);
     write_manifest(&manifest_path, &manifest)?;
     save_project_source_manifest(&root, &ProjectSourceManifest::default())?;
-    Ok(active_project_from_manifest(&manifest, &manifest_path))
+    active_project_from_manifest(&manifest, &manifest_path)
 }
 
 #[tauri::command(async)]
@@ -326,7 +327,7 @@ pub(crate) fn open_corpus_project_command(path: String) -> Result<ActiveProject,
     let selected = normalise_selected_path(&path)?;
     let manifest_path = selected_manifest_path(&selected);
     let manifest = read_manifest(&manifest_path)?;
-    Ok(active_project_from_manifest(&manifest, &manifest_path))
+    active_project_from_manifest(&manifest, &manifest_path)
 }
 
 #[tauri::command(async)]
@@ -345,7 +346,7 @@ pub(crate) fn initialise_folder_as_corpus_project_command(
     let manifest_path = manifest_path_for_root(&root);
     if manifest_path.exists() {
         let manifest = read_manifest(&manifest_path)?;
-        return Ok(active_project_from_manifest(&manifest, &manifest_path));
+        return active_project_from_manifest(&manifest, &manifest_path);
     }
 
     let name = normalise_project_name(&request.name)?;
@@ -367,7 +368,21 @@ pub(crate) fn initialise_folder_as_corpus_project_command(
     );
     write_manifest(&manifest_path, &manifest)?;
     save_project_source_manifest(&root, &ProjectSourceManifest::default())?;
-    Ok(active_project_from_manifest(&manifest, &manifest_path))
+    active_project_from_manifest(&manifest, &manifest_path)
+}
+
+#[tauri::command(async)]
+pub(crate) fn upgrade_project_language_command(
+    path: String,
+    language: ProjectLanguage,
+) -> Result<ActiveProject, String> {
+    let selected = normalise_selected_path(&path)?;
+    let manifest_path = selected_manifest_path(&selected);
+    let mut manifest = read_manifest(&manifest_path)?;
+    manifest.language = Some(language);
+    manifest.updated_at = current_timestamp();
+    write_manifest(&manifest_path, &manifest)?;
+    active_project_from_manifest(&manifest, &manifest_path)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -819,6 +834,12 @@ pub(crate) fn processed_output_dir_for_root(root: &Path) -> Result<PathBuf, Stri
     }
 }
 
+pub(crate) fn project_language_for_root(root: &Path) -> Result<ProjectLanguage, String> {
+    read_manifest(&manifest_path_for_root(root))?
+        .language
+        .ok_or_else(|| PROJECT_LANGUAGE_UPGRADE_REQUIRED.to_string())
+}
+
 fn project_root_from_manifest_path(manifest_path: &Path) -> Option<PathBuf> {
     manifest_path
         .parent()
@@ -942,7 +963,10 @@ fn path_to_string(path: &Path) -> String {
 fn active_project_from_manifest(
     manifest: &CorpusProjectManifest,
     manifest_path: &Path,
-) -> ActiveProject {
+) -> Result<ActiveProject, String> {
+    let language = manifest
+        .language
+        .ok_or_else(|| PROJECT_LANGUAGE_UPGRADE_REQUIRED.to_string())?;
     let actual_root = project_root_from_manifest_path(manifest_path)
         .map(canonical_or_original)
         .unwrap_or_else(|| manifest.root_path.clone());
@@ -958,15 +982,15 @@ fn active_project_from_manifest(
         })
         .collect();
 
-    ActiveProject {
+    Ok(ActiveProject {
         name: manifest.name.clone(),
         root_path: path_to_string(&actual_root),
         manifest_path: path_to_string(manifest_path),
         project_version: manifest.project_version,
         source_roots,
-        language: manifest.language,
+        language,
         description: manifest.notes.clone(),
-    }
+    })
 }
 
 #[cfg(test)]
@@ -1023,7 +1047,7 @@ mod tests {
         assert_eq!(manifest.language, Some(ProjectLanguage::Pt));
         assert_eq!(manifest.notes.as_deref(), Some("Oral history corpus"));
         assert_eq!(project.name, "Field Interviews");
-        assert_eq!(project.language, Some(ProjectLanguage::Pt));
+        assert_eq!(project.language, ProjectLanguage::Pt);
         assert_eq!(project.description.as_deref(), Some("Oral history corpus"));
         assert!(manifest.source_roots.is_empty());
         assert!(root.join(PROJECT_DIR).join("cache").is_dir());
@@ -1067,7 +1091,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_v1_writeback_omits_language_key() {
+    fn project_missing_language_requires_upgrade_before_activation() {
         let root = unique_temp_dir("legacy");
         fs::create_dir_all(&root).unwrap();
         let manifest_path = manifest_path_for_root(&root);
@@ -1090,18 +1114,61 @@ mod tests {
         )
         .unwrap();
 
-        let opened = open_corpus_project_command(path_to_string(&root)).unwrap();
-        assert_eq!(opened.project_version, 1);
-        assert_eq!(opened.language, None);
-        assert_eq!(opened.description.as_deref(), Some(legacy_notes));
+        let error = open_corpus_project_command(path_to_string(&root)).unwrap_err();
 
-        let manifest = read_manifest(&manifest_path).unwrap();
+        assert_eq!(error, PROJECT_LANGUAGE_UPGRADE_REQUIRED);
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn project_language_upgrade_persists_language() {
+        let root = unique_temp_dir("upgrade-language");
+        fs::create_dir_all(&root).unwrap();
+        let manifest_path = manifest_path_for_root(&root);
+        let legacy_manifest = serde_json::json!({
+            "project_version": 1,
+            "name": "Legacy Corpus",
+            "root_path": path_to_string(&root),
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2025-01-01T00:00:00Z",
+            "source_roots": [],
+            "notes": "Collected before project language metadata existed."
+        });
+        if let Some(parent) = manifest_path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(
+            &manifest_path,
+            serde_json::to_string_pretty(&legacy_manifest).unwrap(),
+        )
+        .unwrap();
+
+        let opened =
+            upgrade_project_language_command(path_to_string(&root), ProjectLanguage::Fr).unwrap();
+        let persisted = read_manifest(&manifest_path).unwrap();
+
+        assert_eq!(opened.language, ProjectLanguage::Fr);
+        assert_eq!(persisted.language, Some(ProjectLanguage::Fr));
+        assert_eq!(
+            project_language_for_root(&root).unwrap(),
+            ProjectLanguage::Fr
+        );
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn active_project_language_is_required() {
+        let root = unique_temp_dir("active-language-required");
+        fs::create_dir_all(&root).unwrap();
+        let manifest_path = manifest_path_for_root(&root);
+        let manifest = new_manifest(&root, Vec::new(), "Missing".to_string(), None, None);
         write_manifest(&manifest_path, &manifest).unwrap();
-        let round_tripped: serde_json::Value =
-            serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
-        assert_eq!(round_tripped["notes"].as_str(), Some(legacy_notes));
-        assert!(round_tripped.get("language").is_none());
-        assert!(round_tripped.get("description").is_none());
+
+        let error = active_project_from_manifest(&manifest, &manifest_path).unwrap_err();
+
+        assert_eq!(error, PROJECT_LANGUAGE_UPGRADE_REQUIRED);
 
         cleanup(&root);
     }
@@ -1191,7 +1258,7 @@ mod tests {
         assert_eq!(manifest.language, Some(ProjectLanguage::Fr));
         assert_eq!(manifest.notes.as_deref(), Some("Folder notes"));
         assert_eq!(project.name, "Folder Interviews");
-        assert_eq!(project.language, Some(ProjectLanguage::Fr));
+        assert_eq!(project.language, ProjectLanguage::Fr);
         assert_eq!(project.description.as_deref(), Some("Folder notes"));
         assert_eq!(
             manifest.source_roots,
@@ -1270,7 +1337,7 @@ mod tests {
         let after = fs::read_to_string(&manifest_path).unwrap();
         assert_eq!(after, before);
         assert_eq!(opened.name, "Original Corpus");
-        assert_eq!(opened.language, Some(ProjectLanguage::Pt));
+        assert_eq!(opened.language, ProjectLanguage::Pt);
         assert_eq!(opened.description.as_deref(), Some("Do not replace"));
         assert_eq!(opened.source_roots, vec![path_to_string(&source_root)]);
 

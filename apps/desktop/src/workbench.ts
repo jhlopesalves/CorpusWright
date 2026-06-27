@@ -36,6 +36,8 @@ import {
   type OverviewGlossaryEntry,
   type OverviewGlossaryId,
 } from "./overview-glossary";
+import type { ProjectLanguage } from "./generated/ProjectLanguage.js";
+import { projectLanguageLabel } from "./project-creation-dialog";
 import { sourceHasExtractedText } from "./sources";
 import { state, type WorkbenchId } from "./state";
 
@@ -114,6 +116,15 @@ function pluralise(count: number, singular: string, plural = `${singular}s`): st
 
 function activeAnalysisToolName(): string {
   return ANALYSIS_TOOLS.find((tool) => tool.id === activeAnalysisTool)?.name ?? "Corpus Overview";
+}
+
+function activeProjectLanguageCode(): ProjectLanguage | null {
+  return state.activeProject?.language ?? null;
+}
+
+function activeProjectLanguageLabel(): string {
+  const language = activeProjectLanguageCode();
+  return language ? projectLanguageLabel(language) : "Not available";
 }
 
 function processedSourceCount(): number {
@@ -417,6 +428,7 @@ function renderProjectSummary(): void {
 
   dom.analyseProjectSummary.replaceChildren();
   appendSummaryRow("Project", state.activeProject?.name ?? "No project open");
+  appendSummaryRow("Project language", activeProjectLanguageLabel());
   appendSummaryRow("Sources", pluralise(sourceCount, "source"));
   appendSummaryRow("Files loaded", pluralise(fileCount, "file"));
   appendSummaryRow("Text available", `${extractedCount.toLocaleString()} of ${sourceCount.toLocaleString()} sources`);
@@ -1555,7 +1567,7 @@ function currentFrequencyCaseFold(): boolean {
 }
 
 function currentFrequencyLanguage(): string | null {
-  return currentFrequencyGroupMode() === "stem" ? dom.frequencyLanguageSelect.value : null;
+  return currentFrequencyGroupMode() === "stem" ? activeProjectLanguageCode() : null;
 }
 
 function currentFrequencyPosFilter(): string | null {
@@ -1570,7 +1582,8 @@ function syncFrequencyCaseFoldToggle(): void {
   dom.frequencyCaseFoldInput.checked = isFolded;
   dom.frequencyCaseFoldInput.setAttribute("aria-checked", isFolded ? "true" : "false");
   dom.frequencyCaseFoldState.textContent = isFolded ? "Folded" : "As typed";
-  dom.frequencyLanguageSelect.disabled = !stemsAreSelected;
+  dom.frequencyLanguageDisplay.textContent = activeProjectLanguageLabel();
+  dom.frequencyLanguageDisplay.classList.toggle("is-disabled", !stemsAreSelected);
 }
 
 function tokenClassSummary(filter: FrequencyTokenClassFilter): string {
@@ -1593,7 +1606,7 @@ function frequencyGroupingSummary(): string {
     case "lemma":
       return currentFrequencyCaseFold() ? "case-folded lemmas" : "lemmas";
     case "stem":
-      return `${dom.frequencyLanguageSelect.selectedOptions[0]?.textContent ?? "selected language"} stems`;
+      return `${activeProjectLanguageLabel()} stems`;
   }
 }
 
@@ -1959,6 +1972,8 @@ function renderFrequencyList(): void {
 export function renderAnalyseWorkbench(): void {
   renderAnalyseStatus();
   renderAnalysisNotice();
+  dom.analyseProjectLanguage.textContent = `Project language: ${activeProjectLanguageLabel()}`;
+  dom.frequencyLanguageDisplay.textContent = activeProjectLanguageLabel();
   renderProjectSummary();
   renderAnalysisTools();
   renderAnalysisToolPanels();
@@ -2027,16 +2042,6 @@ export function refreshAnalyseWorkbench(): void {
   }
 }
 
-function analysisLanguageOverrides(indices: number[] | null): Record<number, string> {
-  const language = dom.analyseLanguageOverrideSelect.value.trim();
-  if (language.length === 0) {
-    return {};
-  }
-  const targetIndices = indices
-    ?? Array.from({ length: state.projectCorpusFileCount }, (_, index) => index);
-  return Object.fromEntries(targetIndices.map((index) => [index, language]));
-}
-
 async function handleBuildAnalysisCorpus(): Promise<void> {
   if (analysisBuildInProgress) {
     dom.analyseBuildButton.disabled = true;
@@ -2052,7 +2057,6 @@ async function handleBuildAnalysisCorpus(): Promise<void> {
 
   const indices = state.activeProject ? null : state.allFiles.map((_, index) => index);
   const buildSignature = analysisBuildSignature();
-  const languageOverrides = analysisLanguageOverrides(indices);
 
   analysisNotice = null;
 
@@ -2083,7 +2087,6 @@ async function handleBuildAnalysisCorpus(): Promise<void> {
       state.currentCorpusVersion,
       buildSignature,
       effectiveCleaningConfig(),
-      languageOverrides,
     );
     if (analysisBuildGeneration !== buildGeneration) {
       return;
@@ -2521,7 +2524,6 @@ export function initWorkbenchSwitcher(): void {
     syncFrequencyCaseFoldToggle();
     void refreshFrequencyPage();
   });
-  dom.frequencyLanguageSelect.addEventListener("change", () => void refreshFrequencyPage());
   dom.frequencyPosFilterSelect.addEventListener("change", () => void refreshFrequencyPage());
   dom.frequencyTokenClassSelect.addEventListener("change", () => void refreshFrequencyPage());
   syncFrequencyStopwordsToggle();

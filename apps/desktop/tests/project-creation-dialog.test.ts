@@ -4,6 +4,7 @@ import {
   normaliseProjectDescription,
   projectCreationMetadataIsValid,
   projectLanguageFromValue,
+  projectLanguageLabel,
 } from "../src/project-creation-dialog.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -14,6 +15,9 @@ assert(
   JSON.stringify(PROJECT_LANGUAGE_OPTIONS) === JSON.stringify(["en", "fr", "pt"]),
   "language select lists exactly en/fr/pt",
 );
+assert(projectLanguageLabel("en") === "English", "English label must be shown in full");
+assert(projectLanguageLabel("fr") === "French", "French label must be shown in full");
+assert(projectLanguageLabel("pt") === "Portuguese", "Portuguese label must be shown in full");
 assert(projectLanguageFromValue("en") === "en", "English must be accepted");
 assert(projectLanguageFromValue("fr") === "fr", "French must be accepted");
 assert(projectLanguageFromValue("pt") === "pt", "Portuguese must be accepted");
