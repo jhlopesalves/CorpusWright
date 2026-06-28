@@ -13,6 +13,8 @@ import type { AnnotationCacheState as GeneratedAnnotationCacheState } from "./ge
 import type { AnalysisDocumentSelection as GeneratedAnalysisDocumentSelection } from "./generated/AnalysisDocumentSelection.js";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
 import type { ConcordanceQuery as GeneratedConcordanceQuery } from "./generated/ConcordanceQuery.js";
+import type { ConcordanceExpansionQuery as GeneratedConcordanceExpansionQuery } from "./generated/ConcordanceExpansionQuery.js";
+import type { ConcordanceExpansionResult as GeneratedConcordanceExpansionResult } from "./generated/ConcordanceExpansionResult.js";
 import type { ConcordanceResult as GeneratedConcordanceResult } from "./generated/ConcordanceResult.js";
 import type { ConcordanceRow as GeneratedConcordanceRow } from "./generated/ConcordanceRow.js";
 import type { ConcordanceSortKey as GeneratedConcordanceSortKey } from "./generated/ConcordanceSortKey.js";
@@ -271,6 +273,8 @@ export type FrequencyQuery = GeneratedFrequencyQuery;
 export type FrequencyTermItem = GeneratedFrequencyTermItem;
 export type FrequencyPage = GeneratedFrequencyPage;
 export type ConcordanceQuery = GeneratedConcordanceQuery;
+export type ConcordanceExpansionQuery = GeneratedConcordanceExpansionQuery;
+export type ConcordanceExpansionResult = GeneratedConcordanceExpansionResult;
 export type ConcordanceRow = GeneratedConcordanceRow;
 export type ConcordanceResult = GeneratedConcordanceResult;
 export type ConcordanceSortKey = GeneratedConcordanceSortKey;
@@ -365,6 +369,18 @@ export function searchConcordance(
   cleaningConfig: CleaningConfig,
 ): Promise<ConcordanceResult> {
   return invoke<ConcordanceResult>("search_concordance_command", {
+    query,
+    corpusVersion,
+    cleaningConfig,
+  });
+}
+
+export function expandConcordanceContext(
+  query: ConcordanceExpansionQuery,
+  corpusVersion: number,
+  cleaningConfig: CleaningConfig,
+): Promise<ConcordanceExpansionResult> {
+  return invoke<ConcordanceExpansionResult>("expand_concordance_context_command", {
     query,
     corpusVersion,
     cleaningConfig,

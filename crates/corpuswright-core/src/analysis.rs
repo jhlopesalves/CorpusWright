@@ -27,6 +27,7 @@ const MAX_QUERY_WINDOW: usize = 500;
 const MAX_DISTRIBUTION_POINTS: usize = 200;
 const CONCORDANCE_DEFAULT_WINDOW_TOKENS: usize = 5;
 const CONCORDANCE_MAX_WINDOW_TOKENS: usize = 20;
+const CONCORDANCE_DEFAULT_EXPANSION_WINDOW_TOKENS: usize = 40;
 const CONCORDANCE_DEFAULT_LIMIT: usize = 100;
 const CONCORDANCE_MAX_LIMIT: usize = 500;
 const CONCORDANCE_DEFAULT_DISTRIBUTION_LIMIT: usize = 10;
@@ -1107,6 +1108,12 @@ impl AnalysisCorpus {
         &self.overview
     }
 
+    pub fn document_summary(&self, document_index: usize) -> Option<&AnalysisDocumentSummary> {
+        self.documents
+            .get(document_index)
+            .map(|document| &document.summary)
+    }
+
     pub fn is_stale_for_cleaning_config(&self, cleaning_config: &CleaningConfig) -> bool {
         self.overview.processing_config_signature != cleaning_config_signature(cleaning_config)
     }
@@ -1413,6 +1420,17 @@ pub struct ConcordanceQuery {
     pub distribution_limit: usize,
 }
 
+/// Parameters for expanding one surface-token concordance hit in its document.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ConcordanceExpansionQuery {
+    pub document_index: usize,
+    pub token_index: usize,
+    pub node_token_length: usize,
+    pub window_tokens: usize,
+}
+
 /// One KWIC row with token context around the matching node.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
@@ -1422,7 +1440,25 @@ pub struct ConcordanceRow {
     pub source_path: String,
     pub display_name: String,
     pub token_index: usize,
+    pub node_token_length: usize,
     pub left_context: Vec<String>,
+    pub node: String,
+    pub right_context: Vec<String>,
+}
+
+/// Wider context for one surface-token concordance hit.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ConcordanceExpansionResult {
+    pub document_index: usize,
+    pub source_path: String,
+    pub display_name: String,
+    pub token_index: usize,
+    pub node_token_length: usize,
+    pub window_tokens: usize,
+    pub left_context: Vec<String>,
+    pub node_tokens: Vec<String>,
     pub node: String,
     pub right_context: Vec<String>,
 }
@@ -1491,12 +1527,20 @@ pub struct ConcordanceDocument {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConcordanceError {
     EmptyQuery,
+    InvalidDocumentIdentity,
+    InvalidHitIdentity,
 }
 
 impl std::fmt::Display for ConcordanceError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EmptyQuery => formatter.write_str("Enter a word or phrase to search."),
+            Self::InvalidDocumentIdentity => {
+                formatter.write_str("The concordance document no longer matches the result.")
+            }
+            Self::InvalidHitIdentity => {
+                formatter.write_str("The concordance hit no longer matches the document.")
+            }
         }
     }
 }
@@ -4351,6 +4395,14 @@ fn concordance_window_tokens(window_tokens: usize) -> usize {
     }
 }
 
+fn concordance_expansion_window_tokens(window_tokens: usize) -> usize {
+    if window_tokens == 0 {
+        CONCORDANCE_DEFAULT_EXPANSION_WINDOW_TOKENS
+    } else {
+        window_tokens.clamp(1, MAX_QUERY_WINDOW)
+    }
+}
+
 fn concordance_limit(limit: usize) -> usize {
     if limit == 0 {
         CONCORDANCE_DEFAULT_LIMIT
@@ -4514,6 +4566,13 @@ fn concordance_row_text<'text>(tokens: &[crate::tokenization::Token<'text>]) -> 
         .join(" ")
 }
 
+fn concordance_token_surfaces<'text>(tokens: &[crate::tokenization::Token<'text>]) -> Vec<String> {
+    tokens
+        .iter()
+        .map(|token| token.surface.to_string())
+        .collect()
+}
+
 fn concordance_distribution_page(
     document_stats: Vec<ConcordanceDocumentStats>,
     offset: usize,
@@ -4621,6 +4680,7 @@ pub fn search_concordance_documents(
                     source_path: document.source_path.clone(),
                     display_name: document.display_name.clone(),
                     token_index,
+                    node_token_length: query_keys.len(),
                     left_context: tokens[left_start..token_index]
                         .iter()
                         .map(|token| token.surface.to_string())
@@ -4718,6 +4778,50 @@ pub fn search_concordance_documents(
         limit,
         rows,
         distribution,
+    })
+}
+
+/// Expands one surface-token concordance hit in its source document.
+pub fn expand_concordance_context(
+    document: &ConcordanceDocument,
+    query: &ConcordanceExpansionQuery,
+    tokenization_config: &TokenizationConfig,
+) -> Result<ConcordanceExpansionResult, ConcordanceError> {
+    if document.document_index != query.document_index {
+        return Err(ConcordanceError::InvalidDocumentIdentity);
+    }
+    let Some(node_end) = query.token_index.checked_add(query.node_token_length) else {
+        return Err(ConcordanceError::InvalidHitIdentity);
+    };
+    if query.node_token_length == 0 {
+        return Err(ConcordanceError::InvalidHitIdentity);
+    }
+
+    let window_tokens = concordance_expansion_window_tokens(query.window_tokens);
+    let tokens = analysis_word_tokens(
+        &document.text,
+        document.document_index as u32,
+        tokenization_config,
+    );
+    if node_end > tokens.len() {
+        return Err(ConcordanceError::InvalidHitIdentity);
+    }
+
+    let left_start = query.token_index.saturating_sub(window_tokens);
+    let right_end = (node_end + window_tokens).min(tokens.len());
+    let node_tokens = concordance_token_surfaces(&tokens[query.token_index..node_end]);
+
+    Ok(ConcordanceExpansionResult {
+        document_index: document.document_index,
+        source_path: document.source_path.clone(),
+        display_name: document.display_name.clone(),
+        token_index: query.token_index,
+        node_token_length: query.node_token_length,
+        window_tokens,
+        left_context: concordance_token_surfaces(&tokens[left_start..query.token_index]),
+        node: node_tokens.join(" "),
+        node_tokens,
+        right_context: concordance_token_surfaces(&tokens[node_end..right_end]),
     })
 }
 
@@ -5940,6 +6044,13 @@ mod tests {
         search_concordance_documents(documents, &query, &TokenizationConfig::default())
     }
 
+    fn concordance_expansion_for(
+        document: &ConcordanceDocument,
+        query: ConcordanceExpansionQuery,
+    ) -> Result<ConcordanceExpansionResult, ConcordanceError> {
+        expand_concordance_context(document, &query, &TokenizationConfig::default())
+    }
+
     #[derive(Debug, PartialEq)]
     struct AnalysisCorpusSnapshot {
         overview: CorpusOverview,
@@ -6384,6 +6495,127 @@ mod tests {
         assert_eq!(compound.total_hits, 1);
         assert_eq!(compound.rows[0].node, "state-of-the-art");
         assert_eq!(single.total_hits, 1);
+    }
+
+    #[test]
+    fn kwic_expansion_returns_wider_context_for_same_hit() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "zero one two target phrase three four five six",
+        )];
+        let mut query = concordance_query("target phrase");
+        query.window_tokens = 1;
+        let result = concordance_for(&documents, query).unwrap();
+        let row = &result.rows[0];
+
+        let expansion = concordance_expansion_for(
+            &documents[0],
+            ConcordanceExpansionQuery {
+                document_index: row.document_index,
+                token_index: row.token_index,
+                node_token_length: row.node_token_length,
+                window_tokens: 3,
+            },
+        )
+        .unwrap();
+
+        assert!(expansion.left_context.len() > row.left_context.len());
+        assert!(expansion.right_context.len() > row.right_context.len());
+        assert_eq!(expansion.node_tokens, ["target", "phrase"]);
+        assert_eq!(expansion.node, "target phrase");
+    }
+
+    #[test]
+    fn kwic_expansion_clamps_at_document_start() {
+        let document = concordance_document(0, "doc.txt", "alpha beta gamma delta");
+
+        let expansion = concordance_expansion_for(
+            &document,
+            ConcordanceExpansionQuery {
+                document_index: 0,
+                token_index: 0,
+                node_token_length: 1,
+                window_tokens: 40,
+            },
+        )
+        .unwrap();
+
+        assert!(expansion.left_context.is_empty());
+        assert_eq!(expansion.node_tokens, ["alpha"]);
+        assert_eq!(expansion.right_context, ["beta", "gamma", "delta"]);
+    }
+
+    #[test]
+    fn kwic_expansion_clamps_at_document_end() {
+        let document = concordance_document(0, "doc.txt", "alpha beta gamma delta");
+
+        let expansion = concordance_expansion_for(
+            &document,
+            ConcordanceExpansionQuery {
+                document_index: 0,
+                token_index: 3,
+                node_token_length: 1,
+                window_tokens: 40,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(expansion.left_context, ["alpha", "beta", "gamma"]);
+        assert_eq!(expansion.node_tokens, ["delta"]);
+        assert!(expansion.right_context.is_empty());
+    }
+
+    #[test]
+    fn kwic_expansion_rejects_invalid_identity_without_panic() {
+        let document = concordance_document(0, "doc.txt", "alpha beta");
+
+        let document_error = concordance_expansion_for(
+            &document,
+            ConcordanceExpansionQuery {
+                document_index: 1,
+                token_index: 0,
+                node_token_length: 1,
+                window_tokens: 40,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(document_error, ConcordanceError::InvalidDocumentIdentity);
+
+        let hit_error = concordance_expansion_for(
+            &document,
+            ConcordanceExpansionQuery {
+                document_index: 0,
+                token_index: 1,
+                node_token_length: 2,
+                window_tokens: 40,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(hit_error, ConcordanceError::InvalidHitIdentity);
+    }
+
+    #[test]
+    fn kwic_expansion_retokenises_one_supplied_document() {
+        let documents = [
+            concordance_document(0, "a.txt", "alpha beta gamma"),
+            concordance_document(1, "b.txt", "beta should not be inspected"),
+        ];
+
+        let expansion = concordance_expansion_for(
+            &documents[0],
+            ConcordanceExpansionQuery {
+                document_index: 0,
+                token_index: 1,
+                node_token_length: 1,
+                window_tokens: 40,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(expansion.display_name, "a.txt");
+        assert_eq!(expansion.node_tokens, ["beta"]);
+        assert_eq!(expansion.right_context, ["gamma"]);
     }
 
     fn snapshot_analysis_product(product: &AnalysisBuildProduct) -> AnalysisCorpusSnapshot {
