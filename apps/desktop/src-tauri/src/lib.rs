@@ -2,9 +2,10 @@ use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisCorpus,
     AnalysisDocumentPage, AnalysisDocumentSelection, AnnotatedFrequencyQuery,
     AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, ConcordanceDocument,
-    ConcordanceQuery, ConcordanceResult, CorpusOverview, CorpusOverviewContext, FrequencyGroupMode,
-    FrequencyPage, FrequencyQuery, TermDistributionPage, TermDistributionQuery,
-    annotation_cache_availability_for_corpus, build_analysis_corpus, cleaning_config_signature,
+    ConcordanceExpansionQuery, ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult,
+    CorpusOverview, CorpusOverviewContext, FrequencyGroupMode, FrequencyPage, FrequencyQuery,
+    TermDistributionPage, TermDistributionQuery, annotation_cache_availability_for_corpus,
+    build_analysis_corpus, cleaning_config_signature, expand_concordance_context,
     query_analysis_documents, query_annotated_frequency, query_annotated_term_distribution,
     query_frequency_list, query_term_distribution, resolve_analysis_input,
     search_concordance_documents,
@@ -412,6 +413,25 @@ impl CorpusState {
             .get(&record_path_key(path))
             .and_then(|index| inner.records.get(*index))
             .cloned())
+    }
+
+    fn record_for_path_and_root(
+        &self,
+        path: &Path,
+        corpus_version: u64,
+    ) -> Result<(Option<DocumentRecord>, Option<PathBuf>), String> {
+        let inner = self.inner.read().unwrap();
+        if inner.version != corpus_version {
+            return Err(
+                "Corpus has been reloaded. Please re-select the source and try again.".to_string(),
+            );
+        }
+        let record = inner
+            .record_index_by_path
+            .get(&record_path_key(path))
+            .and_then(|index| inner.records.get(*index))
+            .cloned();
+        Ok((record, inner.root.clone()))
     }
 
     fn records_for_paths(
@@ -1823,6 +1843,43 @@ fn resolve_analysis_input_for_record(
     )
 }
 
+fn text_for_concordance_resolution(
+    resolution: corpuswright_core::analysis::AnalysisInputResolution,
+) -> Option<String> {
+    match resolution.provenance {
+        corpuswright_core::analysis::AnalysisInputProvenance::Processed
+        | corpuswright_core::analysis::AnalysisInputProvenance::SourceTextFallback => {
+            resolution.text
+        }
+        corpuswright_core::analysis::AnalysisInputProvenance::EmptyOrFailed => None,
+    }
+    .filter(|value| !value.trim().is_empty())
+}
+
+fn concordance_document_from_record(
+    record: &DocumentRecord,
+    document_index: usize,
+    project_root: Option<&Path>,
+    cleaning_config: &CleaningConfig,
+    cache: &ExtractionCache,
+) -> Option<ConcordanceDocument> {
+    let resolution =
+        resolve_analysis_input_for_record(record, project_root, cleaning_config, cache);
+    let text = text_for_concordance_resolution(resolution)?;
+    let source_path = record.source_path.to_string_lossy().into_owned();
+    let relative_path = record.relative_path.to_string_lossy().into_owned();
+    Some(ConcordanceDocument {
+        document_index,
+        source_path: source_path.clone(),
+        display_name: if relative_path.is_empty() {
+            source_path
+        } else {
+            relative_path
+        },
+        text,
+    })
+}
+
 fn project_effective_language_overrides(
     project_root: Option<&Path>,
     records: &[DocumentRecord],
@@ -2175,35 +2232,16 @@ async fn search_concordance_command(
     tauri::async_runtime::spawn_blocking(move || {
         let mut documents = Vec::new();
         for record in &records {
-            let resolution = resolve_analysis_input_for_record(
+            let document_index = documents.len();
+            if let Some(document) = concordance_document_from_record(
                 record,
+                document_index,
                 project_root.as_deref(),
                 &cleaning_config,
                 &cache,
-            );
-            let text = match resolution.provenance {
-                corpuswright_core::analysis::AnalysisInputProvenance::Processed
-                | corpuswright_core::analysis::AnalysisInputProvenance::SourceTextFallback => {
-                    resolution.text
-                }
-                corpuswright_core::analysis::AnalysisInputProvenance::EmptyOrFailed => None,
-            };
-            let Some(text) = text.filter(|value| !value.trim().is_empty()) else {
-                continue;
-            };
-            let source_path = record.source_path.to_string_lossy().into_owned();
-            let relative_path = record.relative_path.to_string_lossy().into_owned();
-            let document_index = documents.len();
-            documents.push(ConcordanceDocument {
-                document_index,
-                source_path: source_path.clone(),
-                display_name: if relative_path.is_empty() {
-                    source_path
-                } else {
-                    relative_path
-                },
-                text,
-            });
+            ) {
+                documents.push(document);
+            }
         }
         search_concordance_documents(
             &documents,
@@ -2214,6 +2252,48 @@ async fn search_concordance_command(
     })
     .await
     .map_err(|error| format!("Concordance query task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn expand_concordance_context_command(
+    query: ConcordanceExpansionQuery,
+    corpus_version: u64,
+    cleaning_config: CleaningConfig,
+    corpus: tauri::State<'_, CorpusState>,
+    analysis: tauri::State<'_, AnalysisState>,
+    cache: tauri::State<'_, ExtractionCache>,
+) -> Result<ConcordanceExpansionResult, String> {
+    let analysis_corpus = analysis.corpus(&cleaning_config)?;
+    let summary = analysis_corpus
+        .document_summary(query.document_index)
+        .cloned()
+        .ok_or(corpuswright_core::analysis::ConcordanceError::InvalidDocumentIdentity)
+        .map_err(|error| error.to_string())?;
+    let (record, project_root) =
+        corpus.record_for_path_and_root(Path::new(&summary.source_path), corpus_version)?;
+    let record = record
+        .ok_or(corpuswright_core::analysis::ConcordanceError::InvalidDocumentIdentity)
+        .map_err(|error| error.to_string())?;
+    let cache = cache.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let document = concordance_document_from_record(
+            &record,
+            query.document_index,
+            project_root.as_deref(),
+            &cleaning_config,
+            &cache,
+        )
+        .ok_or(corpuswright_core::analysis::ConcordanceError::InvalidDocumentIdentity)
+        .map_err(|error| error.to_string())?;
+        expand_concordance_context(
+            &document,
+            &query,
+            &corpuswright_core::tokenization::TokenizationConfig::default(),
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("Concordance expansion task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -3057,6 +3137,7 @@ pub fn run() {
             get_analysis_build_status_command,
             compute_corpus_overview_command,
             search_concordance_command,
+            expand_concordance_context_command,
             query_frequency_list_command,
             query_annotated_frequency_command,
             query_analysis_documents_command,

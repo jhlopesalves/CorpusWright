@@ -9,6 +9,7 @@ import {
   cancelAnalysisBuild,
   computeCorpusOverview,
   defaultAnalysisDocumentSelection,
+  expandConcordanceContext,
   getAnalysisBuildStatus,
   queryAnnotatedFrequency,
   queryAnnotatedTermDistribution,
@@ -27,6 +28,7 @@ import {
   type AnalysisDocumentPage,
   type AnalysisDocumentSelection,
   type AnalysisInputSource,
+  type ConcordanceExpansionResult,
   type ConcordanceResult,
   type ConcordanceRow,
   type ConcordanceSortKey,
@@ -50,11 +52,17 @@ import { BOOLEAN_CLEANING_CONFIG_KEYS } from "./config";
 import {
   clampConcordanceWindow,
   clampConcordancePageSize,
+  concordanceExpansionViewModel,
+  concordanceRowExpansionKey,
+  concordanceRowText,
   concordanceSortLabel,
+  CONCORDANCE_EXPANSION_WINDOW,
   CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,
   DEFAULT_CONCORDANCE_SORT_KEY,
   CONCORDANCE_COLUMNS,
+  toggleConcordanceExpansionKey,
+  type ConcordanceExpansionStateSnapshot,
   normaliseConcordanceQuery,
 } from "./concordance";
 import { createChevron } from "./chevron";
@@ -153,6 +161,11 @@ let concordanceDistributionOffset = 0;
 let concordanceQueryGeneration = 0;
 let concordancePending = false;
 let concordanceFailure: string | null = null;
+let concordanceExpansionKey: string | null = null;
+let concordanceExpansionPending = false;
+let concordanceExpansionFailure: string | null = null;
+let concordanceExpansionResult: ConcordanceExpansionResult | null = null;
+let concordanceExpansionGeneration = 0;
 let expandedFrequencyTokens = new Set<string>();
 let termDistributionPages = new Map<string, TermDistributionPage>();
 let termDistributionGenerations = new Map<string, number>();
@@ -1595,6 +1608,11 @@ function resetFrequencyCorpusState(resetAnnotationLayer = true): void {
   concordanceQueryGeneration += 1;
   concordancePending = false;
   concordanceFailure = null;
+  concordanceExpansionKey = null;
+  concordanceExpansionPending = false;
+  concordanceExpansionFailure = null;
+  concordanceExpansionResult = null;
+  concordanceExpansionGeneration += 1;
   expandedFrequencyTokens = new Set<string>();
   termDistributionPages.clear();
   termDistributionGenerations.clear();
@@ -1635,8 +1653,77 @@ function renderConcordanceStatus(message: string | null, isError = false): void 
   dom.concordanceStatus.classList.toggle("warning", isError);
 }
 
-function concordanceRowText(tokens: string[]): string {
-  return tokens.join(" ");
+function currentConcordanceExpansionState(): ConcordanceExpansionStateSnapshot {
+  return {
+    key: concordanceExpansionKey,
+    pending: concordanceExpansionPending,
+    error: concordanceExpansionFailure,
+    result: concordanceExpansionResult,
+  };
+}
+
+function collapseConcordanceExpansion(): void {
+  if (
+    concordanceExpansionKey === null
+    && !concordanceExpansionPending
+    && concordanceExpansionFailure === null
+    && concordanceExpansionResult === null
+  ) {
+    return;
+  }
+  concordanceExpansionKey = null;
+  concordanceExpansionPending = false;
+  concordanceExpansionFailure = null;
+  concordanceExpansionResult = null;
+  concordanceExpansionGeneration += 1;
+}
+
+function concordanceExpansionDomId(rowKey: string): string {
+  return `concordance-expansion-${rowKey.replace(/[^a-z0-9_-]/gi, "-")}`;
+}
+
+async function toggleConcordanceExpansion(row: ConcordanceRow): Promise<void> {
+  const rowKey = concordanceRowExpansionKey(row);
+  const nextKey = toggleConcordanceExpansionKey(concordanceExpansionKey, rowKey);
+  if (nextKey === null) {
+    collapseConcordanceExpansion();
+    renderConcordance();
+    return;
+  }
+
+  concordanceExpansionKey = nextKey;
+  concordanceExpansionPending = true;
+  concordanceExpansionFailure = null;
+  concordanceExpansionResult = null;
+  const generation = ++concordanceExpansionGeneration;
+  renderConcordance();
+
+  try {
+    const result = await expandConcordanceContext(
+      {
+        documentIndex: row.documentIndex,
+        tokenIndex: row.tokenIndex,
+        nodeTokenLength: row.nodeTokenLength,
+        windowTokens: CONCORDANCE_EXPANSION_WINDOW,
+      },
+      state.currentCorpusVersion,
+      effectiveCleaningConfig(),
+    );
+    if (generation !== concordanceExpansionGeneration) {
+      return;
+    }
+    concordanceExpansionResult = result;
+  } catch (error) {
+    if (generation !== concordanceExpansionGeneration) {
+      return;
+    }
+    concordanceExpansionFailure = `${error}`;
+  } finally {
+    if (generation === concordanceExpansionGeneration) {
+      concordanceExpansionPending = false;
+      renderConcordance();
+    }
+  }
 }
 
 function renderConcordanceTableState(message: string): void {
@@ -1651,7 +1738,25 @@ function renderConcordanceTableState(message: string): void {
 
 function createConcordanceRow(row: ConcordanceRow): HTMLTableRowElement {
   const item = document.createElement("tr");
+  const rowKey = concordanceRowExpansionKey(row);
+  const expansion = concordanceExpansionViewModel(rowKey, currentConcordanceExpansionState());
   item.className = "concordance-row";
+  item.tabIndex = 0;
+  item.setAttribute("role", "button");
+  item.setAttribute("aria-expanded", expansion.ariaExpanded);
+  item.setAttribute("aria-controls", concordanceExpansionDomId(rowKey));
+  item.title = "Show wider context";
+  item.addEventListener("click", () => {
+    void toggleConcordanceExpansion(row);
+  });
+  item.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    void toggleConcordanceExpansion(row);
+  });
+  item.classList.toggle("is-expanded", expansion.expanded);
 
   const file = document.createElement("td");
   file.className = "concordance-file";
@@ -1674,6 +1779,62 @@ function createConcordanceRow(row: ConcordanceRow): HTMLTableRowElement {
   right.textContent = concordanceRowText(row.rightContext);
 
   item.append(file, left, nodeCell, right);
+  return item;
+}
+
+function createConcordanceExpansionRow(row: ConcordanceRow): HTMLTableRowElement {
+  const rowKey = concordanceRowExpansionKey(row);
+  const expansion = concordanceExpansionViewModel(rowKey, currentConcordanceExpansionState());
+  const item = document.createElement("tr");
+  item.className = "concordance-expansion-row";
+
+  const cell = document.createElement("td");
+  cell.className = "concordance-expansion-cell";
+  cell.colSpan = CONCORDANCE_COLUMNS.length;
+
+  const panel = document.createElement("div");
+  panel.id = concordanceExpansionDomId(rowKey);
+  panel.className = "concordance-expansion-panel";
+
+  const header = document.createElement("div");
+  header.className = "concordance-expansion-header";
+  const file = document.createElement("span");
+  file.className = "concordance-expansion-file";
+  file.textContent = row.displayName || row.sourcePath;
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "secondary-btn concordance-expansion-close";
+  close.textContent = "Close";
+  close.addEventListener("click", () => {
+    collapseConcordanceExpansion();
+    renderConcordance();
+  });
+  header.append(file, close);
+  panel.appendChild(header);
+
+  if (expansion.status === "ready") {
+    const context = document.createElement("p");
+    context.className = "concordance-expansion-context";
+    const left = document.createElement("span");
+    left.className = "concordance-expansion-left";
+    left.textContent = expansion.leftText;
+    const node = document.createElement("mark");
+    node.className = "concordance-node concordance-expansion-node";
+    node.textContent = expansion.nodeText;
+    const right = document.createElement("span");
+    right.className = "concordance-expansion-right";
+    right.textContent = expansion.rightText;
+    context.append(left, node, right);
+    panel.appendChild(context);
+  } else {
+    const message = document.createElement("p");
+    message.className = `concordance-expansion-message is-${expansion.status}`;
+    message.textContent = expansion.message;
+    panel.appendChild(message);
+  }
+
+  cell.appendChild(panel);
+  item.appendChild(cell);
   return item;
 }
 
@@ -1766,7 +1927,7 @@ function renderConcordanceDistribution(result: ConcordanceResult | null): void {
   previous.disabled = result.distribution.offset === 0;
   previous.addEventListener("click", () => {
     concordanceDistributionOffset = Math.max(0, result.distribution.offset - result.distribution.limit);
-    void refreshConcordance(false, false);
+    void refreshConcordance(false, false, false);
   });
   const status = document.createElement("span");
   const first = result.distribution.totalDocuments === 0 ? 0 : result.distribution.offset + 1;
@@ -1782,7 +1943,7 @@ function renderConcordanceDistribution(result: ConcordanceResult | null): void {
   next.disabled = result.distribution.offset + result.distribution.items.length >= result.distribution.totalDocuments;
   next.addEventListener("click", () => {
     concordanceDistributionOffset = result.distribution.offset + result.distribution.limit;
-    void refreshConcordance(false, false);
+    void refreshConcordance(false, false, false);
   });
   pagination.append(previous, status, next);
   panel.appendChild(pagination);
@@ -1794,7 +1955,6 @@ function renderConcordance(): void {
 
   if (concordancePending) {
     dom.concordanceSummary.textContent = "Searching...";
-    dom.concordanceResultCount.textContent = "";
     renderConcordanceStatus(null);
     renderConcordanceTableState("Searching...");
     renderConcordanceDistribution(null);
@@ -1806,7 +1966,6 @@ function renderConcordance(): void {
 
   if (concordanceFailure) {
     dom.concordanceSummary.textContent = CONCORDANCE_NO_QUERY_MESSAGE;
-    dom.concordanceResultCount.textContent = "";
     renderConcordanceStatus(concordanceFailure, true);
     renderConcordanceTableState(concordanceFailure);
     renderConcordanceDistribution(null);
@@ -1819,7 +1978,6 @@ function renderConcordance(): void {
   const result = concordanceResult;
   if (!result) {
     dom.concordanceSummary.textContent = CONCORDANCE_NO_QUERY_MESSAGE;
-    dom.concordanceResultCount.textContent = "";
     renderConcordanceStatus(null);
     renderConcordanceTableState(CONCORDANCE_NO_QUERY_MESSAGE);
     renderConcordanceDistribution(null);
@@ -1830,7 +1988,6 @@ function renderConcordance(): void {
   }
 
   renderConcordanceSummary(result);
-  dom.concordanceResultCount.textContent = formatNumber(result.totalHits);
   renderConcordanceStatus(null);
 
   if (result.rows.length === 0) {
@@ -1838,7 +1995,13 @@ function renderConcordance(): void {
   } else {
     dom.concordanceTableBody.replaceChildren();
     for (const row of result.rows) {
-      dom.concordanceTableBody.appendChild(createConcordanceRow(row));
+      const rowElement = createConcordanceRow(row);
+      dom.concordanceTableBody.appendChild(rowElement);
+      const rowKey = concordanceRowExpansionKey(row);
+      const expansion = concordanceExpansionViewModel(rowKey, currentConcordanceExpansionState());
+      if (expansion.expanded) {
+        dom.concordanceTableBody.appendChild(createConcordanceExpansionRow(row));
+      }
     }
   }
   renderConcordanceDistribution(result);
@@ -1851,13 +2014,20 @@ function renderConcordance(): void {
   dom.concordancePageNextButton.disabled = result.offset + result.rows.length >= result.totalHits;
 }
 
-async function refreshConcordance(resetOffset = true, resetDistribution = true): Promise<void> {
+async function refreshConcordance(
+  resetOffset = true,
+  resetDistribution = true,
+  collapseExpansion = true,
+): Promise<void> {
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   if (resetOffset) {
     concordanceOffset = 0;
   }
   if (resetDistribution) {
     concordanceDistributionOffset = 0;
+  }
+  if (collapseExpansion) {
+    collapseConcordanceExpansion();
   }
   concordanceSortKey = currentConcordanceSortKey();
   if (query.length === 0) {
@@ -1928,6 +2098,16 @@ function handleConcordanceSortChange(): void {
 function handleConcordancePageSizeChange(): void {
   currentConcordancePageSize();
   void refreshConcordance(true, true);
+}
+
+function collapseConcordanceExpansionFromControlChange(): void {
+  collapseConcordanceExpansion();
+  renderConcordance();
+}
+
+function handleConcordanceCaseChange(): void {
+  syncConcordanceCaseToggle();
+  collapseConcordanceExpansionFromControlChange();
 }
 
 function renderFrequencyScopeControl(corpus: AnalysisCorpus | null): void {
@@ -3858,6 +4038,7 @@ function applyFrequencyFileScope(): void {
   concordanceOffset = 0;
   concordanceDistributionOffset = 0;
   concordanceResult = null;
+  collapseConcordanceExpansion();
   void refreshFrequencyPage();
   if (normaliseConcordanceQuery(dom.concordanceQueryInput.value).length > 0) {
     void refreshConcordance(true, true);
@@ -3935,13 +4116,15 @@ export function initWorkbenchSwitcher(): void {
   dom.concordanceSearchButton.addEventListener("click", () => {
     void refreshConcordance();
   });
+  dom.concordanceQueryInput.addEventListener("input", collapseConcordanceExpansionFromControlChange);
   dom.concordanceQueryInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       void refreshConcordance();
     }
   });
-  dom.concordanceCaseSensitiveInput.addEventListener("change", syncConcordanceCaseToggle);
+  dom.concordanceWindowInput.addEventListener("change", collapseConcordanceExpansionFromControlChange);
+  dom.concordanceCaseSensitiveInput.addEventListener("change", handleConcordanceCaseChange);
   dom.concordanceSortSelect.addEventListener("change", handleConcordanceSortChange);
   dom.concordancePageSizeInput.addEventListener("change", handleConcordancePageSizeChange);
   dom.concordanceFilesButton.addEventListener("click", openFrequencyFilesModal);

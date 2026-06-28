@@ -1,8 +1,11 @@
+import type { ConcordanceExpansionResult } from "./generated/ConcordanceExpansionResult.js";
+import type { ConcordanceRow } from "./generated/ConcordanceRow.js";
 import type { ConcordanceSortKey } from "./generated/ConcordanceSortKey.js";
 
 export const CONCORDANCE_MIN_WINDOW = 1;
 export const CONCORDANCE_DEFAULT_WINDOW = 5;
 export const CONCORDANCE_MAX_WINDOW = 20;
+export const CONCORDANCE_EXPANSION_WINDOW = 40;
 export const CONCORDANCE_MIN_PAGE_SIZE = 25;
 export const CONCORDANCE_DEFAULT_PAGE_SIZE = 100;
 export const CONCORDANCE_MAX_PAGE_SIZE = 500;
@@ -25,6 +28,10 @@ export const CONCORDANCE_SORT_OPTIONS: Array<{ value: ConcordanceSortKey; label:
 
 export function normaliseConcordanceQuery(value: string): string {
   return value.trim();
+}
+
+export function concordanceRowText(tokens: string[]): string {
+  return tokens.join(" ");
 }
 
 export function clampConcordanceWindow(value: number): number {
@@ -55,4 +62,93 @@ export function concordanceSummaryText(result: {
   dp: number;
 }): string {
   return `${result.query} · ${result.totalHits.toLocaleString()} hits · ${result.documentsWithHits.toLocaleString()} files with hits · DP ${result.dp.toFixed(2)}`;
+}
+
+export interface ConcordanceExpansionStateSnapshot {
+  key: string | null;
+  pending: boolean;
+  error: string | null;
+  result: ConcordanceExpansionResult | null;
+}
+
+export interface ConcordanceExpansionViewModel {
+  expanded: boolean;
+  ariaExpanded: "true" | "false";
+  status: "collapsed" | "loading" | "error" | "ready";
+  message: string;
+  leftText: string;
+  nodeText: string;
+  rightText: string;
+}
+
+export function concordanceRowExpansionKey(
+  row: Pick<ConcordanceRow, "documentIndex" | "tokenIndex" | "nodeTokenLength">,
+): string {
+  return `${row.documentIndex}:${row.tokenIndex}:${row.nodeTokenLength}`;
+}
+
+export function toggleConcordanceExpansionKey(
+  currentKey: string | null,
+  rowKey: string,
+): string | null {
+  return currentKey === rowKey ? null : rowKey;
+}
+
+export function concordanceExpansionViewModel(
+  rowKey: string,
+  state: ConcordanceExpansionStateSnapshot,
+): ConcordanceExpansionViewModel {
+  if (state.key !== rowKey) {
+    return {
+      expanded: false,
+      ariaExpanded: "false",
+      status: "collapsed",
+      message: "",
+      leftText: "",
+      nodeText: "",
+      rightText: "",
+    };
+  }
+  if (state.pending) {
+    return {
+      expanded: true,
+      ariaExpanded: "true",
+      status: "loading",
+      message: "Loading wider context...",
+      leftText: "",
+      nodeText: "",
+      rightText: "",
+    };
+  }
+  if (state.error) {
+    return {
+      expanded: true,
+      ariaExpanded: "true",
+      status: "error",
+      message: state.error,
+      leftText: "",
+      nodeText: "",
+      rightText: "",
+    };
+  }
+  if (state.result) {
+    return {
+      expanded: true,
+      ariaExpanded: "true",
+      status: "ready",
+      message: "",
+      leftText: concordanceRowText(state.result.leftContext),
+      nodeText: state.result.nodeTokens.join(" "),
+      rightText: concordanceRowText(state.result.rightContext),
+    };
+  }
+  return {
+    expanded: true,
+    ariaExpanded: "true",
+    status: "loading",
+    message: "Loading wider context...",
+    leftText: "",
+    nodeText: "",
+    rightText: "",
+  };
 }
