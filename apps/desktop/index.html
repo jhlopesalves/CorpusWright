@@ -283,16 +283,16 @@
               <h1>Analyse Corpus</h1>
             </div>
             <div class="analyse-status-line" aria-live="polite">
-              <span id="analyse-status-chip" class="analyse-status-text">Analysis corpus not built</span>
-              <p id="analyse-status-detail">Analysis corpus not built yet.</p>
+              <span id="analyse-status-chip" class="analyse-status-text">Surface analysis not built</span>
+              <p id="analyse-status-detail">Surface analysis not built yet.</p>
             </div>
           </header>
 
           <div class="analyse-status-row">
             <div id="analyse-input-banner" class="analyse-input-banner hidden" aria-live="polite"></div>
             <div class="analyse-action-row">
-              <button id="analyse-build-button" class="primary-btn" type="button">Build Analysis Corpus</button>
-              <span id="analyse-build-note">Build a fast surface index for frequencies, dispersion, and corpus diagnostics. Lemma/POS annotation is not built yet.</span>
+              <button id="analyse-build-button" class="primary-btn" type="button">Build surface analysis</button>
+              <span id="analyse-build-note">Builds surface analysis from the current project text.</span>
             </div>
           </div>
 
@@ -316,7 +316,7 @@
                 <div class="frequency-section-header">
                   <div>
                     <h2 id="frequency-list-title">Frequency List</h2>
-                    <p id="frequency-summary" class="frequency-summary">Build an analysis corpus to populate the frequency list.</p>
+                    <p id="frequency-summary" class="frequency-summary">Build surface analysis to populate the frequency list.</p>
                   </div>
                   <span id="frequency-result-count" class="frequency-result-count"></span>
                 </div>
@@ -325,6 +325,7 @@
                   <button type="button" class="frequency-mode-tab" data-frequency-mode="lemmaPos" role="tab" aria-selected="false" disabled>Lemmas + POS</button>
                   <button type="button" class="frequency-mode-tab" data-frequency-mode="pos" role="tab" aria-selected="false" disabled>POS tags</button>
                 </div>
+                <div id="frequency-annotation-layer" class="annotation-layer-strip" aria-live="polite"></div>
                 <div class="frequency-controls">
                   <div class="frequency-control-cluster frequency-query-cluster">
                     <label for="frequency-search-input">
@@ -377,7 +378,7 @@
                     </label>
                     <label for="frequency-pos-filter">
                       <span>POS</span>
-                      <select id="frequency-pos-filter" disabled title="Lemma grouping and POS filters need the annotation layer, which isn't available yet.">
+                      <select id="frequency-pos-filter" disabled title="Build annotations to enable lemma and POS frequency.">
                         <option value="" selected>Annotation unavailable</option>
                         <option value="ADJ">ADJ</option>
                         <option value="ADP">ADP</option>
@@ -438,7 +439,7 @@
                     </thead>
                     <tbody id="frequency-table-body">
                       <tr>
-                        <td colspan="5" class="frequency-empty">Build an analysis corpus to populate the frequency list.</td>
+                        <td colspan="5" class="frequency-empty">Build surface analysis to populate the frequency list.</td>
                       </tr>
                     </tbody>
                   </table>
