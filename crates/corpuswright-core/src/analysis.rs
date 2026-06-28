@@ -3360,7 +3360,7 @@ fn resolve_annotated_tokens_to_local_counts(
     annotated_tokens: &[AnnotatedToken],
     surface_term_lookup: &HashMap<String, u32>,
 ) -> Result<Vec<LocalAnnotatedTermCount>, AnnotationLayerBuildError> {
-    let mut counts = HashMap::<(u32, String, UniversalPos), u64>::new();
+    let mut counts = HashMap::<(u32, &str, UniversalPos), u64>::new();
     for annotated_token in annotated_tokens {
         let Some(&surface_term_id) = surface_term_lookup.get(&annotated_token.surface) else {
             return Err(AnnotationLayerBuildError::AlignmentOrIdentityMismatch {
@@ -3373,7 +3373,7 @@ fn resolve_annotated_tokens_to_local_counts(
         };
         let key = (
             surface_term_id,
-            annotated_token.lemma.clone(),
+            annotated_token.lemma.as_str(),
             annotated_token.upos,
         );
         let count = counts.entry(key).or_default();
@@ -3390,7 +3390,7 @@ fn resolve_annotated_tokens_to_local_counts(
         .map(
             |((surface_term_id, lemma, upos), count)| LocalAnnotatedTermCount {
                 surface_term_id,
-                lemma,
+                lemma: lemma.to_string(),
                 upos,
                 count,
             },
@@ -5671,6 +5671,75 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn annotation_local_counts_group_duplicates_by_surface_lemma_and_upos() {
+        let corpus = corpus_for(&[("grouping.txt", "Alpha alpha Alpha")]);
+        let surface_lookup = build_surface_term_lookup(&corpus).unwrap();
+        let upper_id = *surface_lookup.get("Alpha").unwrap();
+        let lower_id = *surface_lookup.get("alpha").unwrap();
+        let annotated = vec![
+            AnnotatedToken {
+                surface: "Alpha".to_string(),
+                lemma: "alpha".to_string(),
+                upos: UniversalPos::Noun,
+                token_index: 0,
+                features: HashMap::new(),
+            },
+            AnnotatedToken {
+                surface: "alpha".to_string(),
+                lemma: "alpha".to_string(),
+                upos: UniversalPos::Noun,
+                token_index: 1,
+                features: HashMap::new(),
+            },
+            AnnotatedToken {
+                surface: "Alpha".to_string(),
+                lemma: "alpha".to_string(),
+                upos: UniversalPos::Noun,
+                token_index: 2,
+                features: HashMap::new(),
+            },
+            AnnotatedToken {
+                surface: "Alpha".to_string(),
+                lemma: "alpha".to_string(),
+                upos: UniversalPos::Verb,
+                token_index: 3,
+                features: HashMap::new(),
+            },
+        ];
+
+        let counts =
+            resolve_annotated_tokens_to_local_counts(0, &annotated, &surface_lookup).unwrap();
+        let mut expected = vec![
+            LocalAnnotatedTermCount {
+                surface_term_id: upper_id,
+                lemma: "alpha".to_string(),
+                upos: UniversalPos::Noun,
+                count: 2,
+            },
+            LocalAnnotatedTermCount {
+                surface_term_id: upper_id,
+                lemma: "alpha".to_string(),
+                upos: UniversalPos::Verb,
+                count: 1,
+            },
+            LocalAnnotatedTermCount {
+                surface_term_id: lower_id,
+                lemma: "alpha".to_string(),
+                upos: UniversalPos::Noun,
+                count: 1,
+            },
+        ];
+        expected.sort_by(|left, right| {
+            left.surface_term_id
+                .cmp(&right.surface_term_id)
+                .then_with(|| left.lemma.cmp(&right.lemma))
+                .then_with(|| left.upos.as_upos_str().cmp(right.upos.as_upos_str()))
+        });
+
+        assert_eq!(counts, expected);
     }
 
     #[test]
