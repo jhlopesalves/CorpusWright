@@ -6,6 +6,7 @@ import type { AnnotatedFrequencyResult as GeneratedAnnotatedFrequencyResult } fr
 import type { AnnotationCacheAvailability as GeneratedAnnotationCacheAvailability } from "./generated/AnnotationCacheAvailability.js";
 import type { AnnotationCacheBuildError as GeneratedAnnotationCacheBuildError } from "./generated/AnnotationCacheBuildError.js";
 import type { AnnotationCacheBuildReport as GeneratedAnnotationCacheBuildReport } from "./generated/AnnotationCacheBuildReport.js";
+import type { AnnotationCacheBuildProgress as GeneratedAnnotationCacheBuildProgress } from "./generated/AnnotationCacheBuildProgress.js";
 import type { AnnotationCacheState as GeneratedAnnotationCacheState } from "./generated/AnnotationCacheState.js";
 import type { AnalysisDocumentSelection as GeneratedAnalysisDocumentSelection } from "./generated/AnalysisDocumentSelection.js";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
@@ -43,6 +44,7 @@ export type AnnotatedFrequencyResult = GeneratedAnnotatedFrequencyResult;
 export type AnnotationCacheAvailability = GeneratedAnnotationCacheAvailability;
 export type AnnotationCacheBuildError = GeneratedAnnotationCacheBuildError;
 export type AnnotationCacheBuildReport = GeneratedAnnotationCacheBuildReport;
+export type AnnotationCacheBuildProgress = GeneratedAnnotationCacheBuildProgress;
 export type AnnotationCacheState = GeneratedAnnotationCacheState;
 
 export interface AnalysisDocumentSummary {
