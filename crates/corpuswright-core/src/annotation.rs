@@ -16,6 +16,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
+use std::time::{Duration, Instant};
 use ts_rs::TS;
 
 // ---------------------------------------------------------------------------
@@ -586,14 +587,35 @@ impl ModelManager {
         language: &str,
         tokens: &[&str],
     ) -> Result<Vec<AnnotatedToken>, AnnotationError> {
+        self.tag_and_align_with_timing(language, tokens, |_| {}, |_| {})
+    }
+
+    pub fn tag_and_align_with_timing<TagTiming, AlignTiming>(
+        &self,
+        language: &str,
+        tokens: &[&str],
+        mut record_tag_timing: TagTiming,
+        mut record_alignment_timing: AlignTiming,
+    ) -> Result<Vec<AnnotatedToken>, AnnotationError>
+    where
+        TagTiming: FnMut(Duration),
+        AlignTiming: FnMut(Duration),
+    {
         let model = self
             .loaded
             .get(language)
             .ok_or_else(|| AnnotationError::ModelNotFound {
                 language: language.to_string(),
             })?;
-        let (words, range_count) = model.tag_pretokenized_words(tokens)?;
-        align_tagged_words(tokens, &words, range_count)
+        let tag_started = Instant::now();
+        let tagged = model.tag_pretokenized_words(tokens);
+        record_tag_timing(tag_started.elapsed());
+        let (words, range_count) = tagged?;
+
+        let alignment_started = Instant::now();
+        let aligned = align_tagged_words(tokens, &words, range_count);
+        record_alignment_timing(alignment_started.elapsed());
+        aligned
     }
 }
 
