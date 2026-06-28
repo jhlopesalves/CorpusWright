@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AnnotatedFrequencyMode as GeneratedAnnotatedFrequencyMode } from "./generated/AnnotatedFrequencyMode.js";
 import type { AnnotatedFrequencyQuery as GeneratedAnnotatedFrequencyQuery } from "./generated/AnnotatedFrequencyQuery.js";
 import type { AnnotatedFrequencyResult as GeneratedAnnotatedFrequencyResult } from "./generated/AnnotatedFrequencyResult.js";
+import type { AnnotatedTermDistributionQuery as GeneratedAnnotatedTermDistributionQuery } from "./generated/AnnotatedTermDistributionQuery.js";
+import type { AnnotatedTermSelector as GeneratedAnnotatedTermSelector } from "./generated/AnnotatedTermSelector.js";
 import type { AnnotationCacheAvailability as GeneratedAnnotationCacheAvailability } from "./generated/AnnotationCacheAvailability.js";
 import type { AnnotationCacheBuildError as GeneratedAnnotationCacheBuildError } from "./generated/AnnotationCacheBuildError.js";
 import type { AnnotationCacheBuildReport as GeneratedAnnotationCacheBuildReport } from "./generated/AnnotationCacheBuildReport.js";
@@ -21,6 +23,8 @@ import type { FrequencySortKey as GeneratedFrequencySortKey } from "./generated/
 import type { FrequencyTermItem as GeneratedFrequencyTermItem } from "./generated/FrequencyTermItem.js";
 import type { FrequencyTokenClass as GeneratedFrequencyTokenClass } from "./generated/FrequencyTokenClass.js";
 import type { SortDirection as GeneratedSortDirection } from "./generated/SortDirection.js";
+import type { TermDistributionItem as GeneratedTermDistributionItem } from "./generated/TermDistributionItem.js";
+import type { TermDistributionPage as GeneratedTermDistributionPage } from "./generated/TermDistributionPage.js";
 
 export type AnalysisInputSource =
   | "processed"
@@ -41,11 +45,15 @@ export type SortDirection = GeneratedSortDirection;
 export type AnnotatedFrequencyMode = GeneratedAnnotatedFrequencyMode;
 export type AnnotatedFrequencyQuery = GeneratedAnnotatedFrequencyQuery;
 export type AnnotatedFrequencyResult = GeneratedAnnotatedFrequencyResult;
+export type AnnotatedTermSelector = GeneratedAnnotatedTermSelector;
+export type AnnotatedTermDistributionQuery = GeneratedAnnotatedTermDistributionQuery;
 export type AnnotationCacheAvailability = GeneratedAnnotationCacheAvailability;
 export type AnnotationCacheBuildError = GeneratedAnnotationCacheBuildError;
 export type AnnotationCacheBuildReport = GeneratedAnnotationCacheBuildReport;
 export type AnnotationCacheBuildProgress = GeneratedAnnotationCacheBuildProgress;
 export type AnnotationCacheState = GeneratedAnnotationCacheState;
+export type TermDistributionItem = GeneratedTermDistributionItem;
+export type TermDistributionPage = GeneratedTermDistributionPage;
 
 export interface AnalysisDocumentSummary {
   id: number;
@@ -278,26 +286,6 @@ export interface AnalysisDocumentPage {
   totalDocumentCount: number;
 }
 
-export interface TermDistributionItem {
-  documentId: number;
-  sourcePath: string;
-  relativePath: string;
-  tokenCount: number;
-  count: number;
-  ratePer10k: number;
-  ratePerMillion: number;
-}
-
-export interface TermDistributionPage {
-  token: string;
-  totalDocuments: number;
-  offset: number;
-  limit: number;
-  items: TermDistributionItem[];
-  maxRatePer10k: number;
-  maxRatePerMillion: number;
-}
-
 export function defaultAnalysisDocumentSelection(): AnalysisDocumentSelection {
   return { allDocuments: true, ids: [], excludedIds: [] };
 }
@@ -415,6 +403,16 @@ export function queryTermDistribution(
     language,
     offset,
     limit,
+    cleaningConfig,
+  });
+}
+
+export function queryAnnotatedTermDistribution(
+  query: AnnotatedTermDistributionQuery,
+  cleaningConfig: CleaningConfig,
+): Promise<TermDistributionPage> {
+  return invoke<TermDistributionPage>("query_annotated_term_distribution_command", {
+    query,
     cleaningConfig,
   });
 }
