@@ -1,8 +1,10 @@
 import type { AnnotationCacheAvailability } from "./generated/AnnotationCacheAvailability.js";
 import type { AnnotationCacheState } from "./generated/AnnotationCacheState.js";
 
+import type { AnnotationCacheBuildProgress } from "./generated/AnnotationCacheBuildProgress.js";
+
 export type AnnotationLayerTransientState =
-  | { status: "building"; elapsedMs: number | null }
+  | { status: "building"; elapsedMs: number | null; progress: AnnotationCacheBuildProgress | null }
   | { status: "failed"; message: string }
   | { status: "cancelled" };
 
@@ -87,10 +89,42 @@ function helpText(input: AnnotationLayerControlInput, status: AnnotationLayerSta
     case "invalid":
       return "Build annotations to replace the invalid annotation layer.";
     case "building": {
-      const elapsed = input.transient?.status === "building"
-        ? formatAnnotationElapsed(input.transient.elapsedMs)
-        : null;
-      return elapsed ? `${elapsed} · annotating` : "Annotating current project text.";
+      const trans = input.transient;
+      const isBuilding = trans?.status === "building";
+      const elapsed = isBuilding ? formatAnnotationElapsed(trans.elapsedMs) : null;
+      const progress = isBuilding ? trans.progress : null;
+
+      if (progress && progress.current_phase.type === "Annotating") {
+        const percent =
+          progress.files_total > 0
+            ? Math.floor((progress.files_done / progress.files_total) * 100)
+            : 0;
+        
+        let eta = "Estimating...";
+        if (isBuilding && trans.elapsedMs !== null && percent >= 2 && progress.files_done > 0) {
+          const msPerFile = trans.elapsedMs / progress.files_done;
+          const remainingFiles = progress.files_total - progress.files_done;
+          const remainingMs = remainingFiles * msPerFile;
+          const remainingSeconds = Math.max(0, Math.floor(remainingMs / 1000));
+          if (remainingSeconds < 60) {
+            eta = `${remainingSeconds}s remaining`;
+          } else {
+            const minutes = Math.floor(remainingSeconds / 60);
+            const rSec = `${remainingSeconds % 60}`.padStart(2, "0");
+            eta = `${minutes}m ${rSec}s remaining`;
+          }
+        }
+        
+        return `${formatNumber(progress.files_done)} / ${formatNumber(progress.files_total)} files · ${percent}% · ${eta}`;
+      }
+
+      const statusMsg = progress
+        ? (progress.current_phase.type === "BuildingSurface" ? "Preparing text" :
+           progress.current_phase.type === "LoadingModel" ? "Loading models" :
+           progress.current_phase.type === "WritingCache" ? "Saving annotations" : "Annotating")
+        : "Annotating current project text.";
+
+      return elapsed ? `${elapsed} · ${statusMsg}` : statusMsg;
     }
     case "failed":
       return input.transient?.status === "failed"
