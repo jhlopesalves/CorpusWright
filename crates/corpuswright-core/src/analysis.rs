@@ -834,37 +834,50 @@ fn log_annotation_timing_bucket(name: &str, duration: Duration, total: Duration)
     );
 }
 
-fn log_annotation_build_timings(
-    timing: &AnnotationBuildTimingCounters,
-    total: Duration,
+#[derive(Clone, Copy)]
+struct AnnotationBuildTimingLogContext {
     documents: usize,
     tokens: u64,
     reused_existing: bool,
     cache_written: bool,
+    active_surface_reused: bool,
+    internal_surface_rebuild_ran: bool,
+}
+
+fn log_annotation_build_timings(
+    timing: &AnnotationBuildTimingCounters,
+    total: Duration,
+    context: AnnotationBuildTimingLogContext,
 ) {
     let total_seconds = total.as_secs_f64();
     let docs_per_sec = if total_seconds > 0.0 {
-        documents as f64 / total_seconds
+        context.documents as f64 / total_seconds
     } else {
         0.0
     };
     let tokens_per_sec = if total_seconds > 0.0 {
-        tokens as f64 / total_seconds
+        context.tokens as f64 / total_seconds
     } else {
         0.0
     };
-    let cache_status = if reused_existing { "reused" } else { "rebuilt" };
+    let cache_status = if context.reused_existing {
+        "reused"
+    } else {
+        "rebuilt"
+    };
 
     eprintln!(
-        "annotation_timing total_wall_ms={:.2} documents={} tokens={} docs_per_sec={:.2} tokens_per_sec={:.2} rayon_workers={} cache={} cache_written={} readback_verification={}",
+        "annotation_timing total_wall_ms={:.2} documents={} tokens={} docs_per_sec={:.2} tokens_per_sec={:.2} rayon_workers={} cache={} cache_written={} active_surface_reused={} internal_surface_rebuild_ran={} duplicate_tokenisation_avoided=false readback_verification={}",
         duration_ms(total),
-        documents,
-        tokens,
+        context.documents,
+        context.tokens,
         docs_per_sec,
         tokens_per_sec,
         rayon::current_num_threads(),
         cache_status,
-        cache_written,
+        context.cache_written,
+        context.active_surface_reused,
+        context.internal_surface_rebuild_ran,
         timing.readback_verification_ran()
     );
     log_annotation_timing_bucket(
@@ -1061,6 +1074,20 @@ struct WorkerAnnotationDocument {
 struct AnnotationLayerBuildRuntime<'a> {
     docs_done: &'a std::sync::atomic::AtomicUsize,
     timing: Option<&'a AnnotationBuildTimingCounters>,
+}
+
+enum AnnotationSurfaceCorpusInput<'a> {
+    Borrowed(&'a AnalysisCorpus),
+    Owned(Box<AnalysisCorpus>),
+}
+
+impl AnnotationSurfaceCorpusInput<'_> {
+    fn as_ref(&self) -> &AnalysisCorpus {
+        match self {
+            Self::Borrowed(corpus) => corpus,
+            Self::Owned(corpus) => corpus,
+        }
+    }
 }
 
 /// Sparse Rust-owned analysis index.
@@ -2492,13 +2519,133 @@ where
     )
 }
 
+fn validate_reusable_surface_corpus(
+    corpus: &AnalysisCorpus,
+    records: &[DocumentRecord],
+    analysis_options: &AnalysisBuildOptions,
+    language_overrides: &HashMap<usize, String>,
+) -> Result<(), String> {
+    if corpus.overview.build_signature != analysis_options.build_signature {
+        return Err("build signature differs".to_string());
+    }
+    if corpus.overview.processing_config_signature != analysis_options.processing_config_signature {
+        return Err("processing config signature differs".to_string());
+    }
+    if corpus.tokenization != analysis_options.tokenization {
+        return Err("tokenisation config differs".to_string());
+    }
+    if corpus.overview.source_count != records.len() {
+        return Err(format!(
+            "source count differs: corpus has {}, request has {}",
+            corpus.overview.source_count,
+            records.len()
+        ));
+    }
+    if corpus.overview.document_count != corpus.documents.len() {
+        return Err("overview document count does not match corpus documents".to_string());
+    }
+
+    let mut ordered_records = records.iter().enumerate().collect::<Vec<_>>();
+    ordered_records.sort_by(|left, right| compare_document_records(left.1, right.1));
+    let mut record_iter = ordered_records.into_iter().peekable();
+
+    for (analysis_document_index, document) in corpus.documents.iter().enumerate() {
+        if document.summary.id != analysis_document_index {
+            return Err(format!(
+                "document id {} does not match analysis index {analysis_document_index}",
+                document.summary.id
+            ));
+        }
+        if document.summary.token_count == 0 {
+            return Err(format!(
+                "document {analysis_document_index} has uncertain zero token count"
+            ));
+        }
+        if document.processed_hash_sha256.len() != 64
+            || !document
+                .processed_hash_sha256
+                .chars()
+                .all(|ch| ch.is_ascii_hexdigit())
+        {
+            return Err(format!(
+                "document {analysis_document_index} has missing or invalid processed hash"
+            ));
+        }
+
+        let mut matched_record = None;
+        for (original_record_index, record) in record_iter.by_ref() {
+            if record.source_path.to_string_lossy() == document.summary.source_path
+                && record.relative_path.to_string_lossy() == document.summary.relative_path
+            {
+                matched_record = Some((original_record_index, record));
+                break;
+            }
+        }
+        let Some((original_record_index, _record)) = matched_record else {
+            return Err(format!(
+                "document {analysis_document_index} path is not present in requested records"
+            ));
+        };
+
+        match language_overrides.get(&original_record_index) {
+            Some(expected_language) => {
+                if document.summary.language.as_deref() != Some(expected_language.as_str())
+                    || !document.summary.language_is_overridden
+                {
+                    return Err(format!(
+                        "document {analysis_document_index} language override differs"
+                    ));
+                }
+            }
+            None => {
+                if document.summary.language.is_none() {
+                    return Err(format!(
+                        "document {analysis_document_index} has missing language identity"
+                    ));
+                }
+                if document.summary.language_is_overridden {
+                    return Err(format!(
+                        "document {analysis_document_index} carries an unexpected language override"
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn build_and_write_annotation_cache<TextLoader, Progress>(
+    records: &[DocumentRecord],
+    analysis_options: AnalysisBuildOptions,
+    annotation_options: AnnotationLayerBuildOptions,
+    cancel: &AtomicBool,
+    load_text: TextLoader,
+    report_progress: Progress,
+) -> Result<AnnotationCacheBuildReport, AnnotationCacheBuildError>
+where
+    TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String> + Send,
+    Progress: FnMut(AnnotationCacheBuildProgress),
+{
+    build_and_write_annotation_cache_with_reusable_surface_corpus(
+        records,
+        analysis_options,
+        annotation_options,
+        cancel,
+        load_text,
+        report_progress,
+        None,
+    )
+}
+
+pub fn build_and_write_annotation_cache_with_reusable_surface_corpus<TextLoader, Progress>(
     records: &[DocumentRecord],
     mut analysis_options: AnalysisBuildOptions,
     annotation_options: AnnotationLayerBuildOptions,
     cancel: &AtomicBool,
     mut load_text: TextLoader,
     mut report_progress: Progress,
+    reusable_surface_corpus: Option<&AnalysisCorpus>,
 ) -> Result<AnnotationCacheBuildReport, AnnotationCacheBuildError>
 where
     TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String> + Send,
@@ -2517,55 +2664,85 @@ where
     let cache_root_str = cache_root.to_string_lossy().into_owned();
 
     let surface_files_total = records.len();
-    report_progress(annotation_build_progress(
-        0,
-        surface_files_total,
-        AnnotationCacheBuildPhase::BuildingSurface {
-            phase: "Building surface analysis".to_string(),
-        },
-    ));
-
-    let surface_started = Instant::now();
-    let corpus_result = build_analysis_corpus(
-        records,
-        analysis_options,
-        cancel,
-        &mut load_text,
-        |progress| {
-            report_progress(annotation_build_progress(
-                progress.files_done,
-                progress.files_total,
-                AnnotationCacheBuildPhase::BuildingSurface {
-                    phase: format!("{:?}", progress.current_phase),
-                },
-            ));
-        },
-    );
-    if let Some(timing) = timing_ref {
-        timing.record_internal_surface_rebuild(surface_started.elapsed());
-    }
-    let corpus = match corpus_result {
-        Ok(corpus) => corpus,
-        Err(error) => {
-            let cancelled = matches!(&error, AnalysisBuildError::Cancelled);
-            report_progress(annotation_build_progress(
-                0,
-                surface_files_total,
-                if cancelled {
-                    AnnotationCacheBuildPhase::Cancelled
-                } else {
-                    AnnotationCacheBuildPhase::Failed
-                },
-            ));
-            return Err(if cancelled {
-                AnnotationCacheBuildError::Cancelled
-            } else {
-                AnnotationCacheBuildError::SurfaceBuildFailed {
-                    error: error.to_string(),
+    let reusable_surface_corpus = reusable_surface_corpus.and_then(|candidate| {
+        match validate_reusable_surface_corpus(
+            candidate,
+            records,
+            &analysis_options,
+            &annotation_options.language_overrides,
+        ) {
+            Ok(()) => Some(candidate),
+            Err(reason) => {
+                if timing_ref.is_some() {
+                    eprintln!(
+                        "annotation_timing active_surface_reuse=rejected reason=\"{reason}\""
+                    );
                 }
-            });
+                None
+            }
+        }
+    });
+
+    let surface_corpus = if let Some(corpus) = reusable_surface_corpus {
+        AnnotationSurfaceCorpusInput::Borrowed(corpus)
+    } else {
+        report_progress(annotation_build_progress(
+            0,
+            surface_files_total,
+            AnnotationCacheBuildPhase::BuildingSurface {
+                phase: "Building surface analysis".to_string(),
+            },
+        ));
+
+        let surface_started = Instant::now();
+        let corpus_result = build_analysis_corpus(
+            records,
+            analysis_options,
+            cancel,
+            &mut load_text,
+            |progress| {
+                report_progress(annotation_build_progress(
+                    progress.files_done,
+                    progress.files_total,
+                    AnnotationCacheBuildPhase::BuildingSurface {
+                        phase: format!("{:?}", progress.current_phase),
+                    },
+                ));
+            },
+        );
+        if let Some(timing) = timing_ref {
+            timing.record_internal_surface_rebuild(surface_started.elapsed());
+        }
+        match corpus_result {
+            Ok(corpus) => AnnotationSurfaceCorpusInput::Owned(Box::new(corpus)),
+            Err(error) => {
+                let cancelled = matches!(&error, AnalysisBuildError::Cancelled);
+                report_progress(annotation_build_progress(
+                    0,
+                    surface_files_total,
+                    if cancelled {
+                        AnnotationCacheBuildPhase::Cancelled
+                    } else {
+                        AnnotationCacheBuildPhase::Failed
+                    },
+                ));
+                return Err(if cancelled {
+                    AnnotationCacheBuildError::Cancelled
+                } else {
+                    AnnotationCacheBuildError::SurfaceBuildFailed {
+                        error: error.to_string(),
+                    }
+                });
+            }
         }
     };
+    let active_surface_reused = matches!(surface_corpus, AnnotationSurfaceCorpusInput::Borrowed(_));
+    let internal_surface_rebuild_ran = !active_surface_reused;
+    let corpus = surface_corpus.as_ref();
+
+    if active_surface_reused && let Some(timing) = timing_ref {
+        timing.record_internal_surface_rebuild(Duration::ZERO);
+    }
 
     let annotation_files_total = corpus.documents.len();
 
@@ -2580,7 +2757,7 @@ where
 
     let manifest_cache_started = Instant::now();
     let manifest = match build_expected_manifest(
-        &corpus,
+        corpus,
         records,
         annotation_options.udpipe_model_dir.as_deref(),
         &annotation_options.language_overrides,
@@ -2623,10 +2800,14 @@ where
             log_annotation_build_timings(
                 timing,
                 total_started.elapsed(),
-                documents_annotated,
-                corpus.overview().total_tokens,
-                true,
-                false,
+                AnnotationBuildTimingLogContext {
+                    documents: documents_annotated,
+                    tokens: corpus.overview().total_tokens,
+                    reused_existing: true,
+                    cache_written: false,
+                    active_surface_reused,
+                    internal_surface_rebuild_ran,
+                },
             );
         }
 
@@ -2656,7 +2837,7 @@ where
     let layer = std::thread::scope(|s| {
         let handle = s.spawn(|| {
             build_annotation_layer_with_mapping_timed(
-                &corpus,
+                corpus,
                 records,
                 annotation_options,
                 cancel,
@@ -2763,10 +2944,14 @@ where
         log_annotation_build_timings(
             timing,
             total_started.elapsed(),
-            documents_annotated,
-            corpus.overview().total_tokens,
-            false,
-            true,
+            AnnotationBuildTimingLogContext {
+                documents: documents_annotated,
+                tokens: corpus.overview().total_tokens,
+                reused_existing: false,
+                cache_written: true,
+                active_surface_reused,
+                internal_surface_rebuild_ran,
+            },
         );
     }
 
@@ -4930,6 +5115,8 @@ mod tests {
     use crate::language::{ProjectLanguage, resolve_effective_document_languages};
     use std::cell::Cell;
     use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicUsize;
 
     fn record(name: &str) -> DocumentRecord {
         DocumentRecord {
@@ -4978,6 +5165,17 @@ mod tests {
             |_, _| Ok(text.to_string()),
             |_, _| panic!("processed test input must not use fallback"),
         )
+    }
+
+    fn read_annotation_cache_envelope(
+        cache_root: &std::path::Path,
+    ) -> crate::annotation_cache::AnnotationLayerCacheEnvelope {
+        let cache_file = cache_root.join(format!(
+            "annotation-layer.v{}.json",
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        ));
+        let bytes = std::fs::read(cache_file).unwrap();
+        serde_json::from_slice(&bytes).unwrap()
     }
 
     fn corpus_for(texts: &[(&str, &str)]) -> AnalysisCorpus {
@@ -8140,6 +8338,276 @@ mod tests {
         let timed = build_cache(timed_dir.path());
 
         assert_eq!(untimed, timed);
+    }
+
+    #[test]
+    fn test_reused_surface_corpus_skips_rebuild_and_matches_rebuild_output() {
+        let records = vec![record("doc.txt")];
+        let text = "The quick brown fox.";
+        let mut surface_options = build_options();
+        surface_options.udpipe_model_dir = Some(default_model_dir());
+        surface_options.force_compute_hashes = true;
+        let active_corpus = build_analysis_corpus(
+            &records,
+            surface_options.clone(),
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, text)),
+            |_| {},
+        )
+        .unwrap();
+
+        let reuse_dir = tempfile::tempdir().unwrap();
+        let mut reuse_options = surface_options.clone();
+        reuse_options.annotation_cache_root = Some(reuse_dir.path().to_path_buf());
+        let reuse_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: reuse_options.udpipe_model_dir.clone(),
+            language_overrides: reuse_options.language_overrides.clone(),
+        };
+        let reuse_load_calls = Arc::new(AtomicUsize::new(0));
+        let reuse_load_calls_for_closure = reuse_load_calls.clone();
+        let mut reuse_progress = Vec::new();
+        let reuse_report = build_and_write_annotation_cache_with_reusable_surface_corpus(
+            &records,
+            reuse_options,
+            reuse_ann_options,
+            &AtomicBool::new(false),
+            |record| {
+                reuse_load_calls_for_closure.fetch_add(1, AtomicOrdering::Relaxed);
+                Ok(processed_resolution(record, text))
+            },
+            |progress| reuse_progress.push(progress),
+            Some(&active_corpus),
+        )
+        .unwrap();
+        assert!(reuse_report.cache_written);
+        assert_eq!(reuse_load_calls.load(AtomicOrdering::Relaxed), 1);
+        assert!(reuse_progress.iter().all(|progress| {
+            !matches!(
+                progress.current_phase,
+                AnnotationCacheBuildPhase::BuildingSurface { .. }
+            )
+        }));
+
+        let ready_load_calls = Arc::new(AtomicUsize::new(0));
+        let ready_load_calls_for_closure = ready_load_calls.clone();
+        let mut ready_options = surface_options.clone();
+        ready_options.annotation_cache_root = Some(reuse_dir.path().to_path_buf());
+        let ready_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: ready_options.udpipe_model_dir.clone(),
+            language_overrides: ready_options.language_overrides.clone(),
+        };
+        let ready_report = build_and_write_annotation_cache_with_reusable_surface_corpus(
+            &records,
+            ready_options,
+            ready_ann_options,
+            &AtomicBool::new(false),
+            |record| {
+                ready_load_calls_for_closure.fetch_add(1, AtomicOrdering::Relaxed);
+                Ok(processed_resolution(record, text))
+            },
+            |_| {},
+            Some(&active_corpus),
+        )
+        .unwrap();
+        assert!(ready_report.reused_existing);
+        assert_eq!(ready_load_calls.load(AtomicOrdering::Relaxed), 0);
+
+        let rebuild_dir = tempfile::tempdir().unwrap();
+        let mut rebuild_options = surface_options.clone();
+        rebuild_options.annotation_cache_root = Some(rebuild_dir.path().to_path_buf());
+        let rebuild_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: rebuild_options.udpipe_model_dir.clone(),
+            language_overrides: rebuild_options.language_overrides.clone(),
+        };
+        let rebuild_load_calls = Arc::new(AtomicUsize::new(0));
+        let rebuild_load_calls_for_closure = rebuild_load_calls.clone();
+        let rebuild_report = build_and_write_annotation_cache(
+            &records,
+            rebuild_options,
+            rebuild_ann_options,
+            &AtomicBool::new(false),
+            |record| {
+                rebuild_load_calls_for_closure.fetch_add(1, AtomicOrdering::Relaxed);
+                Ok(processed_resolution(record, text))
+            },
+            |_| {},
+        )
+        .unwrap();
+        assert!(rebuild_report.cache_written);
+        assert_eq!(rebuild_load_calls.load(AtomicOrdering::Relaxed), 2);
+        assert_eq!(
+            read_annotation_cache_envelope(reuse_dir.path()),
+            read_annotation_cache_envelope(rebuild_dir.path())
+        );
+    }
+
+    #[test]
+    fn test_reusable_surface_corpus_gate_rejects_identity_mismatches() {
+        let records = vec![record("doc.txt")];
+        let mut options = build_options();
+        options.udpipe_model_dir = Some(default_model_dir());
+        options.force_compute_hashes = true;
+        let corpus = build_analysis_corpus(
+            &records,
+            options.clone(),
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
+        )
+        .unwrap();
+        assert!(
+            validate_reusable_surface_corpus(
+                &corpus,
+                &records,
+                &options,
+                &options.language_overrides
+            )
+            .is_ok()
+        );
+
+        let other_records = vec![record("other.txt")];
+        assert!(
+            validate_reusable_surface_corpus(
+                &corpus,
+                &other_records,
+                &options,
+                &options.language_overrides
+            )
+            .is_err()
+        );
+
+        let mut build_signature_mismatch = options.clone();
+        build_signature_mismatch.build_signature = "different".to_string();
+        assert!(
+            validate_reusable_surface_corpus(
+                &corpus,
+                &records,
+                &build_signature_mismatch,
+                &options.language_overrides
+            )
+            .is_err()
+        );
+
+        let mut missing_hash = corpus.clone();
+        missing_hash.documents[0].processed_hash_sha256.clear();
+        assert!(
+            validate_reusable_surface_corpus(
+                &missing_hash,
+                &records,
+                &options,
+                &options.language_overrides
+            )
+            .is_err()
+        );
+
+        let mut invalid_hash = corpus.clone();
+        invalid_hash.documents[0].processed_hash_sha256 = "z".repeat(64);
+        assert!(
+            validate_reusable_surface_corpus(
+                &invalid_hash,
+                &records,
+                &options,
+                &options.language_overrides
+            )
+            .is_err()
+        );
+
+        let mut cleaning_mismatch = options.clone();
+        cleaning_mismatch.processing_config_signature = "different".to_string();
+        assert!(
+            validate_reusable_surface_corpus(
+                &corpus,
+                &records,
+                &cleaning_mismatch,
+                &options.language_overrides
+            )
+            .is_err()
+        );
+
+        let mut tokenisation_mismatch = options.clone();
+        tokenisation_mismatch
+            .tokenization
+            .retain_ascii_hyphen_compounds = !tokenisation_mismatch
+            .tokenization
+            .retain_ascii_hyphen_compounds;
+        assert!(
+            validate_reusable_surface_corpus(
+                &corpus,
+                &records,
+                &tokenisation_mismatch,
+                &options.language_overrides
+            )
+            .is_err()
+        );
+
+        let mut override_mismatch = HashMap::new();
+        override_mismatch.insert(0, "pt".to_string());
+        assert!(
+            validate_reusable_surface_corpus(&corpus, &records, &options, &override_mismatch)
+                .is_err()
+        );
+
+        let mut missing_language = corpus.clone();
+        missing_language.documents[0].summary.language = None;
+        assert!(
+            validate_reusable_surface_corpus(
+                &missing_language,
+                &records,
+                &options,
+                &options.language_overrides
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn test_rejected_surface_corpus_reuse_falls_back_to_rebuild() {
+        let records = vec![record("doc.txt")];
+        let text = "The quick brown fox.";
+        let mut options = build_options();
+        options.udpipe_model_dir = Some(default_model_dir());
+        options.force_compute_hashes = true;
+        let mut invalid_reuse_corpus = build_analysis_corpus(
+            &records,
+            options.clone(),
+            &AtomicBool::new(false),
+            |record| Ok(processed_resolution(record, text)),
+            |_| {},
+        )
+        .unwrap();
+        invalid_reuse_corpus.documents[0]
+            .processed_hash_sha256
+            .clear();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+        let load_calls = Arc::new(AtomicUsize::new(0));
+        let load_calls_for_closure = load_calls.clone();
+        let mut progress = Vec::new();
+        let report = build_and_write_annotation_cache_with_reusable_surface_corpus(
+            &records,
+            options,
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| {
+                load_calls_for_closure.fetch_add(1, AtomicOrdering::Relaxed);
+                Ok(processed_resolution(record, text))
+            },
+            |event| progress.push(event),
+            Some(&invalid_reuse_corpus),
+        )
+        .unwrap();
+
+        assert!(report.cache_written);
+        assert_eq!(load_calls.load(AtomicOrdering::Relaxed), 2);
+        assert!(progress.iter().any(|event| matches!(
+            event.current_phase,
+            AnnotationCacheBuildPhase::BuildingSurface { .. }
+        )));
     }
 
     #[test]
