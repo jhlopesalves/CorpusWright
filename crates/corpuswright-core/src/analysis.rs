@@ -720,7 +720,7 @@ pub(crate) struct AnnotationBuildTimingCounters {
 }
 
 impl AnnotationBuildTimingCounters {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             internal_surface_rebuild_ns: AtomicU64::new(0),
             manifest_cache_ready_ns: AtomicU64::new(0),
@@ -797,7 +797,7 @@ impl AnnotationBuildTimingCounters {
         Self::add_duration(&self.cache_readback_verification_ns, duration);
     }
 
-    fn readback_verification_ran(&self) -> bool {
+    pub(crate) fn readback_verification_ran(&self) -> bool {
         self.cache_readback_verification_runs
             .load(AtomicOrdering::Relaxed)
             > 0
