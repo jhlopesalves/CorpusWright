@@ -1,4 +1,6 @@
-use crate::analysis::{AnalysisCorpus, AnnotationLayer, AnnotationLayerDocument};
+use crate::analysis::{
+    AnalysisCorpus, AnnotationBuildTimingCounters, AnnotationLayer, AnnotationLayerDocument,
+};
 use crate::annotation::LemmaTable;
 use crate::hash::sha256_hex;
 use crate::scan::{DocumentRecord, DocumentType};
@@ -6,6 +8,7 @@ use crate::tokenization::TokenizationManifest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::Instant;
 
 pub const ANNOTATION_LAYER_SCHEMA_VERSION: u32 = 1;
 pub const ANNOTATION_LAYER_CACHE_FILE_VERSION: u32 = 1;
@@ -319,6 +322,15 @@ pub fn write_annotation_layer_cache(
     manifest: &AnnotationManifest,
     layer: &AnnotationLayer,
 ) -> Result<(), AnnotationLayerCacheError> {
+    write_annotation_layer_cache_with_timing(cache_root, manifest, layer, None)
+}
+
+pub(crate) fn write_annotation_layer_cache_with_timing(
+    cache_root: &Path,
+    manifest: &AnnotationManifest,
+    layer: &AnnotationLayer,
+    timing: Option<&AnnotationBuildTimingCounters>,
+) -> Result<(), AnnotationLayerCacheError> {
     std::fs::create_dir_all(cache_root)
         .map_err(|e| AnnotationLayerCacheError::IoError(e.to_string()))?;
     let final_path = cache_root.join(format!(
@@ -340,13 +352,22 @@ pub fn write_annotation_layer_cache(
         },
     };
 
+    let serialise_started = Instant::now();
     let json = serde_json::to_string(&envelope)
         .map_err(|e| AnnotationLayerCacheError::SerializationError(e.to_string()))?;
+    if let Some(timing) = timing {
+        timing.record_cache_serialise(serialise_started.elapsed());
+    }
 
+    let write_started = Instant::now();
     std::fs::write(&temp_path, json)
         .map_err(|e| AnnotationLayerCacheError::IoError(e.to_string()))?;
+    if let Some(timing) = timing {
+        timing.record_cache_write(write_started.elapsed());
+    }
 
     // Read back and verify
+    let readback_started = Instant::now();
     let read_back =
         std::fs::read(&temp_path).map_err(|e| AnnotationLayerCacheError::IoError(e.to_string()))?;
     let parsed: AnnotationLayerCacheEnvelope = serde_json::from_slice(&read_back).map_err(|e| {
@@ -365,6 +386,9 @@ pub fn write_annotation_layer_cache(
             "Roundtrip LemmaTable validation failed: {}",
             e
         )));
+    }
+    if let Some(timing) = timing {
+        timing.record_cache_readback_verification(readback_started.elapsed());
     }
 
     // Atomic rename (Windows safe)
