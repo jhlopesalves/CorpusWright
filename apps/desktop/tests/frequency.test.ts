@@ -2,6 +2,7 @@ import {
   ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE,
   annotatedDispersionLevel,
   annotatedFrequencyModeEnabled,
+  frequencyControlVisibility,
   formatDocumentFrequency,
   frequencyModeLabel,
 } from "../src/frequency.ts";
@@ -29,6 +30,11 @@ assert(
 assert(frequencyModeLabel("surface") === "Surface tokens", "Surface tab label should be stable");
 assert(frequencyModeLabel("lemmaPos") === "Lemmas + POS", "Lemma + POS tab label should be stable");
 assert(frequencyModeLabel("pos") === "POS tags", "POS tab label should be stable");
+assert(frequencyControlVisibility("surface").tokenClass, "Surface should show token-class filtering");
+assert(!frequencyControlVisibility("lemmaPos").tokenClass, "Lemma + POS should hide surface token class");
+assert(frequencyControlVisibility("lemmaPos").posFilter, "Lemma + POS should show POS filtering");
+assert(!frequencyControlVisibility("pos").caseFold, "POS tags should hide case folding");
+assert(!frequencyControlVisibility("pos").hideStopwords, "POS tags should hide stopword filtering");
 assert(
   ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE === "Build annotations to enable lemma and POS frequency.",
   "Unavailable annotation copy should point to building annotations",
