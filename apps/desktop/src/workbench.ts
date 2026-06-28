@@ -3,7 +3,9 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 
 import {
+  buildAnnotationCache,
   buildAnalysisCorpus,
+  cancelAnnotationBuild,
   cancelAnalysisBuild,
   computeCorpusOverview,
   defaultAnalysisDocumentSelection,
@@ -15,6 +17,9 @@ import {
   searchConcordance,
   type AnnotatedFrequencyMode,
   type AnnotatedFrequencyResult,
+  type AnnotationCacheAvailability,
+  type AnnotationCacheBuildReport,
+  type AnnotationCacheBuildProgress,
   type AnnotationCacheState,
   type AnalysisBuildProgress,
   type AnalysisDocumentPage,
@@ -34,6 +39,10 @@ import {
   type SortDirection,
   type TermDistributionPage,
 } from "./analysis";
+import {
+  annotationLayerControlViewModel,
+  type AnnotationLayerTransientState,
+} from "./annotation-layer-control";
 import { BOOLEAN_CLEANING_CONFIG_KEYS } from "./config";
 import {
   clampConcordanceWindow,
@@ -134,6 +143,17 @@ let analysisBuildProgress: AnalysisBuildProgress | null = null;
 let analysisBuildGeneration = 0;
 let analysisProgressUnlisten: (() => void) | null = null;
 let analysisNotice: { kind: "info" | "warning"; message: string } | null = null;
+let annotationCacheAvailability: AnnotationCacheAvailability = { state: "missing", detail: null };
+let annotationCacheProbeGeneration = 0;
+let annotationCacheProbeKey: string | null = null;
+let annotationCacheProbePending = false;
+let annotationBuildTransient: AnnotationLayerTransientState | null = null;
+let annotationBuildGeneration = 0;
+let annotationBuildStartedAt: number | null = null;
+let annotationBuildAnnotatingStartedAt: number | null = null;
+let annotationBuildTimer: number | null = null;
+let lastAnnotationBuildReport: AnnotationCacheBuildReport | null = null;
+let annotationProgressUnlisten: (() => void) | null = null;
 
 function pluralise(count: number, singular: string, plural = `${singular}s`): string {
   return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
@@ -200,6 +220,33 @@ function analysisStatus(): "not-built" | "ready" | "stale" {
     return "not-built";
   }
   return analysisIsStale() ? "stale" : "ready";
+}
+
+function readyAnnotationCacheAvailability(): AnnotationCacheAvailability {
+  return { state: "ready", detail: null };
+}
+
+function resetAnnotationLayerState(): void {
+  annotationCacheAvailability = { state: "missing", detail: null };
+  annotationCacheProbeGeneration += 1;
+  annotationCacheProbeKey = null;
+  annotationCacheProbePending = false;
+  annotationBuildTransient = null;
+  annotationBuildGeneration += 1;
+  annotationBuildStartedAt = null;
+  lastAnnotationBuildReport = null;
+  if (annotationBuildTimer !== null) {
+    window.clearInterval(annotationBuildTimer);
+    annotationBuildTimer = null;
+  }
+}
+
+function annotationCacheProbeSignature(corpus: AnalysisCorpus): string {
+  return [
+    state.currentCorpusVersion,
+    corpus.buildSignature,
+    corpus.processingConfigSignature,
+  ].join(":");
 }
 
 function formatNumber(value: number, maximumFractionDigits = 0): string {
@@ -355,10 +402,10 @@ function renderAnalyseStatus(): void {
   const processedCount = processedSourceCount();
 
   dom.analyseStatusChip.dataset.status = status;
-  dom.analyseBuildButton.textContent = corpus ? "Rebuild Analysis Corpus" : "Build Analysis Corpus";
+  dom.analyseBuildButton.textContent = corpus ? "Rebuild surface analysis" : "Build surface analysis";
 
   if (analysisBuildInProgress) {
-    dom.analyseStatusChip.textContent = "Building analysis corpus";
+    dom.analyseStatusChip.textContent = "Building surface analysis";
     dom.analyseStatusDetail.textContent = analysisBuildProgressText(analysisBuildProgress);
     dom.analyseBuildButton.textContent = "Cancel build";
     dom.analyseBuildButton.disabled = false;
@@ -371,23 +418,23 @@ function renderAnalyseStatus(): void {
       `Built ${new Date(corpus.builtAt).toLocaleString()} from ${inputTextSourceLabel(corpus.inputTextSource)}`;
     dom.analyseStatusDetail.textContent =
       `${pluralise(corpus.documentCount, "document")} - ${formatNumber(corpus.totalTokens)} tokens`;
-    dom.analyseBuildNote.textContent = "Rebuilds the analysis from the current project text.";
+    dom.analyseBuildNote.textContent = "Rebuilds surface analysis from the current project text.";
     return;
   }
 
   if (status === "stale") {
-    dom.analyseStatusChip.textContent = "Analysis corpus stale";
+    dom.analyseStatusChip.textContent = "Surface analysis stale";
     dom.analyseStatusDetail.textContent =
-      "Prepare-side inputs changed after the analysis corpus was built. Rebuild to refresh the counts.";
-    dom.analyseBuildNote.textContent = "Rebuild keeps the analysis data in memory for this session.";
+      "Prepare-side inputs changed after the surface analysis was built. Rebuild to refresh the counts.";
+    dom.analyseBuildNote.textContent = "Rebuild keeps the surface analysis data in memory for this session.";
     return;
   }
 
-  dom.analyseStatusChip.textContent = "Analysis corpus not built";
+  dom.analyseStatusChip.textContent = "Surface analysis not built";
   dom.analyseStatusDetail.textContent = processedCount > 0
-    ? "Processed text is available. Build the analysis corpus to inspect descriptive counts."
-    : "Analysis corpus not built yet.";
-  dom.analyseBuildNote.textContent = "Builds the analysis from the current project text.";
+    ? "Processed text is available. Build surface analysis to inspect descriptive counts."
+    : "Surface analysis not built yet.";
+  dom.analyseBuildNote.textContent = "Builds surface analysis from the current project text.";
 }
 
 function analysisPhaseLabel(progress: AnalysisBuildProgress): string {
@@ -402,7 +449,7 @@ function analysisPhaseLabel(progress: AnalysisBuildProgress): string {
 
 function analysisBuildProgressText(progress: AnalysisBuildProgress | null): string {
   if (!progress) {
-    return "Building analysis corpus...";
+    return "Building surface analysis...";
   }
   return `${formatNumber(progress.filesDone)} / ${formatNumber(progress.filesTotal)} sources · ${formatNumber(progress.tokensSeen)} tokens · ${analysisPhaseLabel(progress)}`;
 }
@@ -424,7 +471,7 @@ function renderAnalysisNotice(): void {
 
   if (analysisIsStale(corpus)) {
     dom.analyseInputBanner.textContent =
-      "The current analysis corpus is stale because Prepare-side data or cleaning settings changed.";
+      "The current surface analysis is stale because Prepare-side data or cleaning settings changed.";
     dom.analyseInputBanner.classList.add("warning");
     dom.analyseInputBanner.classList.remove("hidden");
     return;
@@ -980,7 +1027,7 @@ function renderDocumentLengthDistribution(corpus: AnalysisCorpus): HTMLElement {
   if (corpus.documents.length === 0) {
     const empty = document.createElement("p");
     empty.className = "analysis-empty-state";
-    empty.textContent = "No documents in the analysis corpus.";
+    empty.textContent = "No documents in the surface analysis.";
     distribution.appendChild(empty);
     return distribution;
   }
@@ -1428,7 +1475,7 @@ function renderCorpusOverview(): void {
     const empty = document.createElement("p");
     empty.className = "analysis-empty-state";
     empty.textContent = analysisNotice?.message ??
-      "Build an analysis corpus to see the first-stage corpus diagnostics.";
+      "Build surface analysis to see the first-stage corpus diagnostics.";
     dom.analyseOverview.appendChild(empty);
     return;
   }
@@ -1499,7 +1546,7 @@ function setFrequencySelectionDocument(
   selection.ids = [...ids];
 }
 
-function resetFrequencyCorpusState(): void {
+function resetFrequencyCorpusState(resetAnnotationLayer = true): void {
   if (frequencyQueryDebounceTimer !== null) {
     window.clearTimeout(frequencyQueryDebounceTimer);
     frequencyQueryDebounceTimer = null;
@@ -1530,6 +1577,9 @@ function resetFrequencyCorpusState(): void {
   expandedFrequencyTokens = new Set<string>();
   termDistributionPages.clear();
   termDistributionGenerations.clear();
+  if (resetAnnotationLayer) {
+    resetAnnotationLayerState();
+  }
 }
 
 function currentConcordanceWindow(): number {
@@ -1721,7 +1771,7 @@ function renderFrequencySearchError(message: string | null): void {
 
 function renderFrequencyQueryNotice(page: FrequencyPage | null): void {
   const messages = page?.notices.map((notice) => notice.message) ?? [];
-  if (state.analysisCorpus && !state.analysisCorpus.annotationAvailable) {
+  if (state.analysisCorpus && annotationCacheStateForUi(state.analysisCorpus) !== "ready") {
     messages.push(ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE);
   }
   const message = messages.join(" ");
@@ -1729,8 +1779,153 @@ function renderFrequencyQueryNotice(page: FrequencyPage | null): void {
   dom.frequencyQueryNotice.classList.toggle("hidden", message.length === 0);
 }
 
+function annotationCacheAvailabilityForUi(corpus: AnalysisCorpus | null = state.analysisCorpus): AnnotationCacheAvailability {
+  if (corpus?.annotationAvailable) {
+    return readyAnnotationCacheAvailability();
+  }
+  if (corpus && annotationCacheAvailability.state === "ready") {
+    return { state: "missing", detail: annotationCacheAvailability.detail };
+  }
+  return annotationCacheAvailability;
+}
+
 function annotationCacheStateForUi(corpus: AnalysisCorpus | null = state.analysisCorpus): AnnotationCacheState {
-  return corpus?.annotationAvailable === true ? "ready" : "missing";
+  return annotationCacheAvailabilityForUi(corpus).state;
+}
+
+async function refreshAnnotationCacheAvailability(probeKey: string, generation: number): Promise<void> {
+  try {
+    const page = await queryAnnotatedFrequency(
+      {
+        selection: defaultAnalysisDocumentSelection(),
+        mode: "lemmaPos",
+        offset: 0,
+        limit: 1,
+      },
+      state.currentCorpusVersion,
+      effectiveCleaningConfig(),
+    );
+    if (annotationCacheProbeGeneration !== generation) {
+      return;
+    }
+    annotationCacheAvailability = page.cache;
+    annotationCacheProbeKey = probeKey;
+  } catch {
+    if (annotationCacheProbeGeneration === generation) {
+      annotationCacheProbeKey = probeKey;
+    }
+  } finally {
+    if (annotationCacheProbeGeneration === generation) {
+      annotationCacheProbePending = false;
+      if (state.activeWorkbench === "analyse") {
+        renderFrequencyList();
+      }
+    }
+  }
+}
+
+function ensureAnnotationCacheAvailability(corpus: AnalysisCorpus | null): void {
+  if (!corpus) {
+    annotationCacheProbeKey = null;
+    return;
+  }
+  if (analysisIsStale(corpus)) {
+    return;
+  }
+  const probeKey = annotationCacheProbeSignature(corpus);
+  if (corpus.annotationAvailable) {
+    annotationCacheAvailability = readyAnnotationCacheAvailability();
+    annotationCacheProbeKey = probeKey;
+    return;
+  }
+  if (annotationBuildTransient?.status === "building") {
+    return;
+  }
+  if (annotationCacheProbePending || annotationCacheProbeKey === probeKey) {
+    return;
+  }
+  annotationCacheProbePending = true;
+  const generation = ++annotationCacheProbeGeneration;
+  void refreshAnnotationCacheAvailability(probeKey, generation);
+}
+
+function annotationLayerControlInput() {
+  const corpus = state.analysisCorpus;
+  const cache = annotationCacheAvailabilityForUi(corpus);
+  const annotatedDocumentCount = lastAnnotationBuildReport?.documentsAnnotated
+    ?? (corpus?.annotationAvailable ? corpus.documentCount : null);
+  return {
+    cache,
+    transient: annotationBuildTransient,
+    surfaceAnalysisBuilt: corpus !== null,
+    surfaceAnalysisRequired: false,
+    languageLabel: activeProjectLanguageLabel(),
+    annotatedDocumentCount,
+  };
+}
+
+function renderFrequencyAnnotationLayer(): void {
+  const view = annotationLayerControlViewModel(annotationLayerControlInput());
+  dom.frequencyAnnotationLayer.dataset.status = view.status;
+  dom.frequencyAnnotationLayer.classList.remove("is-hidden");
+  dom.frequencyAnnotationLayer.replaceChildren();
+
+  const copy = document.createElement("div");
+  copy.className = "annotation-layer-copy";
+
+  const title = document.createElement("p");
+  title.className = "annotation-layer-title";
+  title.textContent = view.title;
+
+  const help = document.createElement("p");
+  help.className = "annotation-layer-help";
+  help.textContent = view.help;
+
+  copy.append(title, help);
+
+  if (view.progress) {
+    const progress = document.createElement("div");
+    progress.className = "annotation-layer-progress";
+
+    const progressLabel = document.createElement("p");
+    progressLabel.className = "annotation-layer-progress-label";
+    progressLabel.textContent = view.progress.phaseLabel;
+
+    const bar = document.createElement("div");
+    bar.className = `annotation-layer-progress-bar is-${view.progress.kind}`;
+    bar.setAttribute("role", "progressbar");
+    bar.setAttribute("aria-label", view.progress.phaseLabel);
+
+    const fill = document.createElement("span");
+    fill.className = "annotation-layer-progress-fill";
+    if (view.progress.kind === "determinate") {
+      const percent = view.progress.percent ?? 0;
+      bar.setAttribute("aria-valuemin", "0");
+      bar.setAttribute("aria-valuemax", "100");
+      bar.setAttribute("aria-valuenow", `${percent}`);
+      fill.style.width = `${percent}%`;
+    }
+    bar.append(fill);
+
+    const meta = document.createElement("p");
+    meta.className = "annotation-layer-progress-meta";
+    meta.textContent = view.progress.kind === "determinate"
+      ? `${view.progress.percentLabel} · ${view.progress.filesLine} · ETA ${view.progress.etaLabel}`
+      : view.progress.etaLabel;
+
+    progress.append(progressLabel, bar, meta);
+    copy.append(progress);
+  }
+
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = `${view.action === "cancel" ? "secondary-btn" : "primary-btn"} annotation-layer-action`;
+  action.textContent = view.actionLabel;
+  action.disabled = view.actionDisabled;
+  action.dataset.annotationLayerAction = view.action;
+  action.title = view.actionDisabledReason ?? "";
+
+  dom.frequencyAnnotationLayer.append(copy, action);
 }
 
 function currentAnnotatedFrequencyMode(): AnnotatedFrequencyMode | null {
@@ -1751,7 +1946,7 @@ function frequencyTableColumnCount(): number {
 function syncFrequencyModeTabs(corpus: AnalysisCorpus | null = state.analysisCorpus): void {
   const cacheState = annotationCacheStateForUi(corpus);
   const buttons = dom.frequencyModeTabs.querySelectorAll<HTMLButtonElement>("[data-frequency-mode]");
-  if (!annotatedFrequencyModeEnabled(frequencyViewMode, cacheState)) {
+  if (corpus === null || !annotatedFrequencyModeEnabled(frequencyViewMode, cacheState)) {
     frequencyViewMode = "surface";
   }
   buttons.forEach((button) => {
@@ -1759,13 +1954,17 @@ function syncFrequencyModeTabs(corpus: AnalysisCorpus | null = state.analysisCor
     if (!mode) {
       return;
     }
-    const enabled = annotatedFrequencyModeEnabled(mode, cacheState);
+    const enabled = mode === "surface" || (corpus !== null && annotatedFrequencyModeEnabled(mode, cacheState));
     const active = mode === frequencyViewMode;
     button.textContent = frequencyModeLabel(mode);
     button.disabled = !enabled;
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-selected", active ? "true" : "false");
-    button.title = enabled ? "" : ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE;
+    button.title = enabled
+      ? ""
+      : corpus === null
+        ? "Build surface analysis first."
+        : ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE;
   });
 }
 
@@ -1777,11 +1976,12 @@ function setSurfaceFrequencyControlsEnabled(enabled: boolean): void {
   dom.frequencyCaseFoldInput.disabled = !enabled;
   dom.frequencyTokenClassSelect.disabled = !enabled;
   dom.frequencyHideStopwordsInput.disabled = !enabled;
-  dom.frequencyPosFilterSelect.disabled = !enabled || !state.analysisCorpus?.annotationAvailable;
+  dom.frequencyPosFilterSelect.disabled =
+    !enabled || annotationCacheStateForUi(state.analysisCorpus) !== "ready";
 }
 
 function syncFrequencyAnnotationControls(corpus: AnalysisCorpus | null = state.analysisCorpus): void {
-  const annotationAvailable = corpus?.annotationAvailable === true;
+  const annotationAvailable = corpus !== null && annotationCacheStateForUi(corpus) === "ready";
   const lemmaOption = dom.frequencyGroupBySelect.querySelector<HTMLOptionElement>('option[value="lemma"]');
   if (lemmaOption) {
     lemmaOption.disabled = !annotationAvailable;
@@ -2120,6 +2320,8 @@ async function refreshFrequencyPage(resetOffset = true): Promise<void> {
         return;
       }
       annotatedFrequencyPage = page;
+      annotationCacheAvailability = page.cache;
+      annotationCacheProbeKey = null;
       frequencyPageOffset = page.offset;
       return;
     }
@@ -2295,6 +2497,8 @@ function renderFrequencyList(): void {
   renderFrequencySearchError(frequencyQueryFailure);
 
   const corpus = state.analysisCorpus;
+  ensureAnnotationCacheAvailability(corpus);
+  renderFrequencyAnnotationLayer();
   syncFrequencyModeTabs(corpus);
   syncFrequencyAnnotationControls(corpus);
   setSurfaceFrequencyControlsEnabled(frequencyViewMode === "surface");
@@ -2302,7 +2506,7 @@ function renderFrequencyList(): void {
   renderFrequencyScopeControl(corpus);
   if (!corpus) {
     dom.frequencyResultCount.textContent = "";
-    dom.frequencySummary.textContent = "Build an analysis corpus to populate the frequency list.";
+    dom.frequencySummary.textContent = "Build surface analysis to populate the frequency list.";
     dom.frequencyPageStatus.textContent = "";
     dom.frequencyPagePreviousButton.disabled = true;
     dom.frequencyPageNextButton.disabled = true;
@@ -2310,7 +2514,7 @@ function renderFrequencyList(): void {
     const cell = document.createElement("td");
     cell.colSpan = frequencyTableColumnCount();
     cell.className = "frequency-empty";
-    cell.textContent = "Build an analysis corpus to populate the frequency list.";
+    cell.textContent = "Build surface analysis to populate the frequency list.";
     row.appendChild(cell);
     dom.frequencyTableBody.appendChild(row);
     return;
@@ -2485,6 +2689,193 @@ export function refreshAnalyseWorkbench(): void {
   }
 }
 
+function stopAnnotationBuildTimer(): void {
+  if (annotationBuildTimer !== null) {
+    window.clearInterval(annotationBuildTimer);
+    annotationBuildTimer = null;
+  }
+}
+
+function refreshAnnotationBuildElapsed(): void {
+  if (annotationBuildTransient?.status !== "building" || annotationBuildStartedAt === null) {
+    return;
+  }
+  const annotatingElapsedMs =
+    annotationBuildTransient.progress?.current_phase.type === "Annotating"
+      && annotationBuildAnnotatingStartedAt !== null
+      ? Date.now() - annotationBuildAnnotatingStartedAt
+      : null;
+  annotationBuildTransient = {
+    status: "building",
+    elapsedMs: Date.now() - annotationBuildStartedAt,
+    annotatingElapsedMs,
+    progress: annotationBuildTransient?.status === "building" ? annotationBuildTransient.progress : null,
+  };
+  renderFrequencyAnnotationLayer();
+}
+
+function startAnnotationBuildTimer(): void {
+  stopAnnotationBuildTimer();
+  annotationBuildTimer = window.setInterval(refreshAnnotationBuildElapsed, 1000);
+}
+
+function annotationBuildRequestIndices(): number[] | null {
+  return state.activeProject ? null : state.allFiles.map((_, index) => index);
+}
+
+function annotationBuildSourceCount(indices: number[] | null): number {
+  return indices?.length ?? state.projectCorpusFileCount;
+}
+
+function annotationBuildErrorMessage(error: unknown): string {
+  if (typeof error === "object" && error !== null && "type" in error) {
+    const typed = error as { type: string; error?: string; languages?: string[] };
+    switch (typed.type) {
+      case "cancelled":
+        return "Annotation build cancelled.";
+      case "missingCacheRoot":
+        return "Missing annotation storage for this project.";
+      case "surfaceBuildFailed":
+        return typed.error ?? "Surface build failed.";
+      case "unsupportedLanguages":
+        return `No annotation model is available for language(s): ${(typed.languages ?? []).join(", ")}.`;
+      case "annotationFailed":
+      case "manifestError":
+      case "cacheWriteError":
+        return typed.error ?? "Annotation build failed.";
+    }
+  }
+  return `${error}`;
+}
+
+function annotationBuildWasCancelled(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "type" in error
+    ? (error as { type: string }).type === "cancelled"
+    : `${error}`.toLowerCase().includes("cancelled");
+}
+
+async function refreshSurfaceAnalysisAfterAnnotationBuild(generation: number): Promise<void> {
+  if (!state.analysisCorpus) {
+    return;
+  }
+  const indices = annotationBuildRequestIndices();
+  const builtOverview = await buildAnalysisCorpus(
+    indices,
+    state.currentCorpusVersion,
+    analysisBuildSignature(),
+    effectiveCleaningConfig(),
+  );
+  if (annotationBuildGeneration !== generation) {
+    return;
+  }
+  const overview = await computeCorpusOverview(effectiveCleaningConfig()).catch(() => builtOverview);
+  if (annotationBuildGeneration !== generation) {
+    return;
+  }
+  state.analysisCorpus = overview;
+  resetFrequencyCorpusState(false);
+  annotationCacheAvailability = overview.annotationAvailable
+    ? readyAnnotationCacheAvailability()
+    : annotationCacheAvailability;
+  annotationCacheProbeKey = null;
+}
+
+async function handleAnnotationLayerAction(): Promise<void> {
+  const view = annotationLayerControlViewModel(annotationLayerControlInput());
+  if (view.actionDisabled) {
+    return;
+  }
+
+  if (view.action === "cancel") {
+    annotationBuildGeneration += 1;
+    stopAnnotationBuildTimer();
+    annotationBuildStartedAt = null;
+    annotationBuildAnnotatingStartedAt = null;
+    annotationBuildTransient = { status: "cancelled" };
+    dom.statusBar.textContent = "Cancelling annotation build...";
+    renderFrequencyList();
+    await cancelAnnotationBuild().catch(() => undefined);
+    dom.statusBar.textContent = "Annotation build cancelled.";
+    renderFrequencyList();
+    return;
+  }
+
+  const indices = annotationBuildRequestIndices();
+  if (annotationBuildSourceCount(indices) === 0) {
+    annotationBuildTransient = {
+      status: "failed",
+      message: "No text is available for annotations.",
+    };
+    dom.statusBar.textContent = "No text is available for annotations.";
+    renderFrequencyList();
+    return;
+  }
+
+  const generation = ++annotationBuildGeneration;
+  annotationCacheProbeGeneration += 1;
+  annotationCacheProbePending = false;
+  annotationBuildStartedAt = Date.now();
+  annotationBuildAnnotatingStartedAt = null;
+  annotationBuildTransient = {
+    status: "building",
+    elapsedMs: 0,
+    annotatingElapsedMs: null,
+    progress: null,
+  };
+  lastAnnotationBuildReport = null;
+  startAnnotationBuildTimer();
+  renderFrequencyList();
+  dom.statusBar.textContent = "Building annotations...";
+
+  try {
+    const report = await buildAnnotationCache(
+      indices,
+      state.currentCorpusVersion,
+      analysisBuildSignature(),
+      effectiveCleaningConfig(),
+    );
+    if (annotationBuildGeneration !== generation) {
+      return;
+    }
+
+    lastAnnotationBuildReport = report;
+    annotationCacheAvailability = readyAnnotationCacheAvailability();
+    annotationCacheProbeKey = null;
+
+    if (state.analysisCorpus) {
+      dom.statusBar.textContent = "Refreshing surface analysis for annotations...";
+      await refreshSurfaceAnalysisAfterAnnotationBuild(generation);
+      if (annotationBuildGeneration !== generation) {
+        return;
+      }
+    }
+
+    annotationBuildTransient = null;
+    const reportSummary =
+      `${formatNumber(report.documentsAnnotated)} annotated documents · ${formatNumber(report.totalAnnotatedTermCountRows)} rows`;
+    dom.statusBar.textContent = state.analysisCorpus
+      ? `Annotations ready. ${reportSummary}.`
+      : `Annotations built. ${reportSummary}. Build surface analysis to inspect lemma and POS frequency.`;
+  } catch (error) {
+    if (annotationBuildGeneration !== generation) {
+      return;
+    }
+    const message = annotationBuildErrorMessage(error);
+    annotationBuildTransient = annotationBuildWasCancelled(error)
+      ? { status: "cancelled" }
+      : { status: "failed", message };
+    dom.statusBar.textContent = message;
+  } finally {
+    if (annotationBuildGeneration === generation) {
+      stopAnnotationBuildTimer();
+      annotationBuildStartedAt = null;
+      annotationBuildAnnotatingStartedAt = null;
+      renderFrequencyList();
+      refreshStageNavigator();
+    }
+  }
+}
+
 async function handleBuildAnalysisCorpus(): Promise<void> {
   if (analysisBuildInProgress) {
     dom.analyseBuildButton.disabled = true;
@@ -2522,7 +2913,7 @@ async function handleBuildAnalysisCorpus(): Promise<void> {
   state.analysisCorpus = null;
   resetFrequencyCorpusState();
   renderAnalyseWorkbench();
-  dom.statusBar.textContent = "Building analysis corpus...";
+  dom.statusBar.textContent = "Building surface analysis...";
 
   try {
     const builtOverview = await buildAnalysisCorpus(
@@ -2582,13 +2973,38 @@ async function initialiseAnalysisBuildState(): Promise<void> {
   if (analysisProgressUnlisten) {
     analysisProgressUnlisten();
   }
+  if (annotationProgressUnlisten) {
+    annotationProgressUnlisten();
+  }
+
+  annotationProgressUnlisten = await listen<AnnotationCacheBuildProgress>("annotation-build-progress", (event) => {
+    if (annotationBuildTransient?.status !== "building") {
+      return;
+    }
+    const previousPhase = annotationBuildTransient.progress?.current_phase.type ?? null;
+    const nextPhase = event.payload.current_phase.type;
+    if (nextPhase === "Annotating" && (previousPhase !== "Annotating" || annotationBuildAnnotatingStartedAt === null)) {
+      annotationBuildAnnotatingStartedAt = Date.now();
+    }
+    const annotatingElapsedMs =
+      nextPhase === "Annotating" && annotationBuildAnnotatingStartedAt !== null
+        ? Date.now() - annotationBuildAnnotatingStartedAt
+        : null;
+    annotationBuildTransient = {
+      ...annotationBuildTransient,
+      annotatingElapsedMs,
+      progress: event.payload,
+    };
+    renderFrequencyAnnotationLayer();
+  });
+
   analysisProgressUnlisten = await listen<AnalysisBuildProgress>("analysis-build-progress", (event) => {
     if (!analysisBuildInProgress) {
       return;
     }
     analysisBuildProgress = event.payload;
     const progressText = analysisBuildProgressText(event.payload);
-    dom.statusBar.textContent = `Building analysis corpus... ${progressText}`;
+    dom.statusBar.textContent = `Building surface analysis... ${progressText}`;
     if (state.activeWorkbench === "analyse") {
       renderAnalyseStatus();
     }
@@ -2671,6 +3087,14 @@ function handleFrequencyModeClick(event: Event): void {
   termDistributionPages.clear();
   renderFrequencyList();
   void refreshFrequencyPage();
+}
+
+function handleAnnotationLayerClick(event: Event): void {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-annotation-layer-action]");
+  if (!button || button.disabled) {
+    return;
+  }
+  void handleAnnotationLayerAction();
 }
 
 function toggleFrequencyTokenExpansion(token: string): void {
@@ -2812,7 +3236,7 @@ function renderFrequencyFilesModal(): void {
 
   if (!corpus) {
     dom.frequencyFilesApplyButton.disabled = true;
-    dom.frequencyFilesStatus.textContent = "Build an analysis corpus before choosing files.";
+    dom.frequencyFilesStatus.textContent = "Build surface analysis before choosing files.";
     dom.frequencyFilesStatus.classList.add("is-error");
     dom.frequencyFilesPreviousButton.disabled = true;
     dom.frequencyFilesNextButton.disabled = true;
@@ -3027,6 +3451,7 @@ export function initWorkbenchSwitcher(): void {
   });
   dom.frequencyFilesButton.addEventListener("click", openFrequencyFilesModal);
   dom.frequencyModeTabs.addEventListener("click", handleFrequencyModeClick);
+  dom.frequencyAnnotationLayer.addEventListener("click", handleAnnotationLayerClick);
   dom.frequencyTableHead.addEventListener("click", handleFrequencySortClick);
   dom.frequencyTableBody.addEventListener("click", handleFrequencyTableClick);
   dom.frequencyTableBody.addEventListener("keydown", handleFrequencyTableKeydown);

@@ -4,6 +4,9 @@ import type { AnnotatedFrequencyMode as GeneratedAnnotatedFrequencyMode } from "
 import type { AnnotatedFrequencyQuery as GeneratedAnnotatedFrequencyQuery } from "./generated/AnnotatedFrequencyQuery.js";
 import type { AnnotatedFrequencyResult as GeneratedAnnotatedFrequencyResult } from "./generated/AnnotatedFrequencyResult.js";
 import type { AnnotationCacheAvailability as GeneratedAnnotationCacheAvailability } from "./generated/AnnotationCacheAvailability.js";
+import type { AnnotationCacheBuildError as GeneratedAnnotationCacheBuildError } from "./generated/AnnotationCacheBuildError.js";
+import type { AnnotationCacheBuildReport as GeneratedAnnotationCacheBuildReport } from "./generated/AnnotationCacheBuildReport.js";
+import type { AnnotationCacheBuildProgress as GeneratedAnnotationCacheBuildProgress } from "./generated/AnnotationCacheBuildProgress.js";
 import type { AnnotationCacheState as GeneratedAnnotationCacheState } from "./generated/AnnotationCacheState.js";
 import type { AnalysisDocumentSelection as GeneratedAnalysisDocumentSelection } from "./generated/AnalysisDocumentSelection.js";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
@@ -39,6 +42,9 @@ export type AnnotatedFrequencyMode = GeneratedAnnotatedFrequencyMode;
 export type AnnotatedFrequencyQuery = GeneratedAnnotatedFrequencyQuery;
 export type AnnotatedFrequencyResult = GeneratedAnnotatedFrequencyResult;
 export type AnnotationCacheAvailability = GeneratedAnnotationCacheAvailability;
+export type AnnotationCacheBuildError = GeneratedAnnotationCacheBuildError;
+export type AnnotationCacheBuildReport = GeneratedAnnotationCacheBuildReport;
+export type AnnotationCacheBuildProgress = GeneratedAnnotationCacheBuildProgress;
 export type AnnotationCacheState = GeneratedAnnotationCacheState;
 
 export interface AnalysisDocumentSummary {
@@ -314,6 +320,26 @@ export function buildAnalysisCorpus(
 
 export function cancelAnalysisBuild(): Promise<void> {
   return invoke("cancel_analysis_build_command");
+}
+
+export function buildAnnotationCache(
+  indices: number[] | null,
+  corpusVersion: number,
+  buildSignature: string,
+  cleaningConfig: CleaningConfig,
+): Promise<AnnotationCacheBuildReport> {
+  return invoke<AnnotationCacheBuildReport>("build_annotation_cache_command", {
+    request: {
+      indices,
+      corpusVersion,
+      buildSignature,
+      cleaningConfig,
+    },
+  });
+}
+
+export function cancelAnnotationBuild(): Promise<void> {
+  return invoke("cancel_annotation_cache_build_command");
 }
 
 export function getAnalysisBuildStatus(cleaningConfig: CleaningConfig): Promise<AnalysisBuildStatus> {

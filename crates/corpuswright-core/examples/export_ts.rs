@@ -9,10 +9,11 @@ use ts_rs::TS;
 use corpuswright_core::analysis::{
     AnalysisDocumentSelection, AnnotatedFrequencyMode, AnnotatedFrequencyQuery,
     AnnotatedFrequencyResult, AnnotationCacheAvailability, AnnotationCacheBuildError,
-    AnnotationCacheBuildReport, AnnotationCacheState, ConcordanceQuery, ConcordanceResult,
-    ConcordanceRow, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice, FrequencyNoticeKind,
-    FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem, FrequencyTokenClass,
-    LexFrequencyRow, PosFrequencyRow, SortDirection,
+    AnnotationCacheBuildPhase, AnnotationCacheBuildProgress, AnnotationCacheBuildReport,
+    AnnotationCacheState, ConcordanceQuery, ConcordanceResult, ConcordanceRow, FrequencyGroupMode,
+    FrequencyMatchMode, FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery,
+    FrequencySortKey, FrequencyTermItem, FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow,
+    SortDirection,
 };
 use corpuswright_core::clean::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
@@ -782,6 +783,15 @@ fn main() {
         &[],
     );
 
+    export_type::<AnnotationCacheBuildPhase>(&out_dir, &[], &[]);
+    export_type::<AnnotationCacheBuildProgress>(
+        &out_dir,
+        &[TypeImport {
+            name: "AnnotationCacheBuildPhase",
+            file: "AnnotationCacheBuildPhase",
+        }],
+        &[],
+    );
     export_type::<AnnotationCacheBuildReport>(&out_dir, &[], &[]);
     export_type::<AnnotationCacheBuildError>(&out_dir, &[], &[]);
 

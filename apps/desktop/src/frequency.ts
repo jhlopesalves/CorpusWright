@@ -4,7 +4,7 @@ import type { AnnotationCacheState } from "./generated/AnnotationCacheState.js";
 export type FrequencyViewMode = "surface" | AnnotatedFrequencyMode;
 
 export const ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE =
-  "Build the annotation cache to enable lemma and POS frequency.";
+  "Build annotations to enable lemma and POS frequency.";
 
 export function frequencyModeLabel(mode: FrequencyViewMode): string {
   switch (mode) {
