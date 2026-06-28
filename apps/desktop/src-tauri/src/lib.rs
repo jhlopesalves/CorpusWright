@@ -178,6 +178,15 @@ impl AnalysisState {
         Ok(corpus)
     }
 
+    fn reusable_corpus_for_annotation(&self) -> Option<Arc<AnalysisCorpus>> {
+        let inner = self.inner.read().unwrap();
+        if inner.state == AnalysisBuildStateKind::Ready {
+            inner.corpus.clone()
+        } else {
+            None
+        }
+    }
+
     fn clear(&self) {
         self.cancel.store(true, Ordering::Relaxed);
         let mut inner = self.inner.write().unwrap();
@@ -1846,6 +1855,7 @@ async fn build_annotation_cache_command(
     corpus: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     inventory: tauri::State<'_, project::ProjectSourceInventoryState>,
+    analysis: tauri::State<'_, AnalysisState>,
     annotation: tauri::State<'_, AnnotationBuildState>,
     window: Window,
 ) -> Result<
@@ -1928,11 +1938,12 @@ async fn build_annotation_cache_command(
 
     let cleaning_config = request.cleaning_config;
     let cache_inner = cache.inner().clone();
+    let reusable_surface_corpus = analysis.reusable_corpus_for_annotation();
     let cancel = annotation.begin();
     let cancel_for_task = cancel.clone();
 
     let task_result = tauri::async_runtime::spawn_blocking(move || {
-        corpuswright_core::analysis::build_and_write_annotation_cache(
+        corpuswright_core::analysis::build_and_write_annotation_cache_with_reusable_surface_corpus(
             &records,
             analysis_options,
             annotation_options,
@@ -1948,6 +1959,7 @@ async fn build_annotation_cache_command(
             move |progress| {
                 let _ = window.emit("annotation-build-progress", progress);
             },
+            reusable_surface_corpus.as_deref(),
         )
     })
     .await
