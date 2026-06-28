@@ -11,8 +11,9 @@ use corpuswright_core::analysis::{
     AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, AnnotatedTermSelector,
     AnnotationCacheAvailability, AnnotationCacheBuildError, AnnotationCacheBuildPhase,
     AnnotationCacheBuildProgress, AnnotationCacheBuildReport, AnnotationCacheState,
-    ConcordanceDistributionItem, ConcordanceDistributionPage, ConcordanceQuery, ConcordanceResult,
-    ConcordanceRow, ConcordanceSortKey, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
+    ConcordanceDistributionItem, ConcordanceDistributionPage, ConcordanceExpansionQuery,
+    ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult, ConcordanceRow,
+    ConcordanceSortKey, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
     FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
     FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow, SortDirection, TermDistributionItem,
     TermDistributionPage,
@@ -709,6 +710,8 @@ fn main() {
         &[],
     );
     export_type::<ConcordanceRow>(&out_dir, &[], &[]);
+    export_type::<ConcordanceExpansionQuery>(&out_dir, &[], &[]);
+    export_type::<ConcordanceExpansionResult>(&out_dir, &[], &[]);
     export_type::<ConcordanceDistributionItem>(&out_dir, &[], &[]);
     export_type::<ConcordanceDistributionPage>(
         &out_dir,

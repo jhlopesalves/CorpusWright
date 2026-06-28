@@ -33,7 +33,6 @@ export const dom = {
   concordanceCaseState: getElement<HTMLSpanElement>("concordance-case-state"),
   concordanceSearchButton: getElement<HTMLButtonElement>("concordance-search-button"),
   concordanceSummary: getElement<HTMLParagraphElement>("concordance-summary"),
-  concordanceResultCount: getElement<HTMLSpanElement>("concordance-result-count"),
   concordanceStatus: getElement<HTMLDivElement>("concordance-status"),
   concordanceTableBody: getElement<HTMLTableSectionElement>("concordance-table-body"),
   concordancePagePreviousButton: getElement<HTMLButtonElement>("concordance-page-previous"),
