@@ -328,7 +328,7 @@
                 <div id="frequency-annotation-layer" class="annotation-layer-strip" aria-live="polite"></div>
                 <div class="frequency-controls">
                   <div class="frequency-control-cluster frequency-query-cluster">
-                    <label for="frequency-search-input">
+                    <label class="frequency-query-control" for="frequency-search-input">
                       <span>Token search</span>
                       <input id="frequency-search-input" type="search" placeholder="Filter tokens..." autocomplete="off" />
                     </label>
@@ -363,10 +363,6 @@
                         <span id="frequency-case-fold-state">As typed</span>
                       </span>
                     </label>
-                    <div class="frequency-readonly-control">
-                      <span>Language</span>
-                      <span id="frequency-language-display" class="frequency-readonly-value">Project language</span>
-                    </div>
                     <label for="frequency-token-class">
                       <span>Token class</span>
                       <select id="frequency-token-class">
@@ -411,35 +407,41 @@
                       <span>File scope</span>
                       <button id="frequency-files-button" type="button" class="secondary-btn">Files: 0 of 0</button>
                     </div>
+                    <label for="frequency-rate-scale">
+                      <span>Rate</span>
+                      <select id="frequency-rate-scale">
+                        <option value="off" selected>Off</option>
+                        <option value="per10k">per 10k</option>
+                        <option value="per100k">per 100k</option>
+                        <option value="perMillion">per million</option>
+                      </select>
+                    </label>
                   </div>
                 </div>
-                <p class="frequency-search-note">Tokens are matched against the selected grouping.</p>
+                <p class="frequency-rate-note">Normalised rates are optional and can be unstable in very short files; inspect raw counts and document tokens.</p>
                 <div id="frequency-search-error" class="frequency-search-error hidden" role="alert"></div>
                 <div id="frequency-query-notice" class="frequency-query-notice hidden" role="status"></div>
                 <div class="frequency-table-wrap">
                   <table class="frequency-table">
                     <thead id="frequency-table-head">
                       <tr>
-                        <th>
+                        <th class="frequency-col-term">
                           <button type="button" class="frequency-sort" data-sort="token">Token</button>
                         </th>
-                        <th>
+                        <th class="frequency-col-frequency">
                           <button type="button" class="frequency-sort frequency-sort-right" data-sort="frequency">Frequency</button>
                         </th>
-                        <th>
+                        <th class="frequency-col-range">
                           <button type="button" class="frequency-sort frequency-sort-right" data-sort="range">Range (docs)</button>
                         </th>
-                        <th>
-                          <button type="button" class="frequency-sort frequency-sort-right" data-sort="rate">Per million</button>
-                        </th>
-                        <th>
+                        <th class="frequency-col-dispersion">
                           <button type="button" class="frequency-sort frequency-sort-right" data-sort="dispersion">Dispersion (DP)</button>
                         </th>
                       </tr>
                     </thead>
                     <tbody id="frequency-table-body">
                       <tr>
-                        <td colspan="5" class="frequency-empty">Build surface analysis to populate the frequency list.</td>
+                        <td colspan="4" class="frequency-empty">Build surface analysis to populate the frequency list.</td>
                       </tr>
                     </tbody>
                   </table>
