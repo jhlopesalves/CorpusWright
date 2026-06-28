@@ -150,6 +150,7 @@ let annotationCacheProbePending = false;
 let annotationBuildTransient: AnnotationLayerTransientState | null = null;
 let annotationBuildGeneration = 0;
 let annotationBuildStartedAt: number | null = null;
+let annotationBuildAnnotatingStartedAt: number | null = null;
 let annotationBuildTimer: number | null = null;
 let lastAnnotationBuildReport: AnnotationCacheBuildReport | null = null;
 let annotationProgressUnlisten: (() => void) | null = null;
@@ -1882,6 +1883,40 @@ function renderFrequencyAnnotationLayer(): void {
 
   copy.append(title, help);
 
+  if (view.progress) {
+    const progress = document.createElement("div");
+    progress.className = "annotation-layer-progress";
+
+    const progressLabel = document.createElement("p");
+    progressLabel.className = "annotation-layer-progress-label";
+    progressLabel.textContent = view.progress.phaseLabel;
+
+    const bar = document.createElement("div");
+    bar.className = `annotation-layer-progress-bar is-${view.progress.kind}`;
+    bar.setAttribute("role", "progressbar");
+    bar.setAttribute("aria-label", view.progress.phaseLabel);
+
+    const fill = document.createElement("span");
+    fill.className = "annotation-layer-progress-fill";
+    if (view.progress.kind === "determinate") {
+      const percent = view.progress.percent ?? 0;
+      bar.setAttribute("aria-valuemin", "0");
+      bar.setAttribute("aria-valuemax", "100");
+      bar.setAttribute("aria-valuenow", `${percent}`);
+      fill.style.width = `${percent}%`;
+    }
+    bar.append(fill);
+
+    const meta = document.createElement("p");
+    meta.className = "annotation-layer-progress-meta";
+    meta.textContent = view.progress.kind === "determinate"
+      ? `${view.progress.percentLabel} · ${view.progress.filesLine} · ETA ${view.progress.etaLabel}`
+      : view.progress.etaLabel;
+
+    progress.append(progressLabel, bar, meta);
+    copy.append(progress);
+  }
+
   const action = document.createElement("button");
   action.type = "button";
   action.className = `${view.action === "cancel" ? "secondary-btn" : "primary-btn"} annotation-layer-action`;
@@ -2665,9 +2700,15 @@ function refreshAnnotationBuildElapsed(): void {
   if (annotationBuildTransient?.status !== "building" || annotationBuildStartedAt === null) {
     return;
   }
+  const annotatingElapsedMs =
+    annotationBuildTransient.progress?.current_phase.type === "Annotating"
+      && annotationBuildAnnotatingStartedAt !== null
+      ? Date.now() - annotationBuildAnnotatingStartedAt
+      : null;
   annotationBuildTransient = {
     status: "building",
     elapsedMs: Date.now() - annotationBuildStartedAt,
+    annotatingElapsedMs,
     progress: annotationBuildTransient?.status === "building" ? annotationBuildTransient.progress : null,
   };
   renderFrequencyAnnotationLayer();
@@ -2749,6 +2790,7 @@ async function handleAnnotationLayerAction(): Promise<void> {
     annotationBuildGeneration += 1;
     stopAnnotationBuildTimer();
     annotationBuildStartedAt = null;
+    annotationBuildAnnotatingStartedAt = null;
     annotationBuildTransient = { status: "cancelled" };
     dom.statusBar.textContent = "Cancelling annotation build...";
     renderFrequencyList();
@@ -2773,7 +2815,13 @@ async function handleAnnotationLayerAction(): Promise<void> {
   annotationCacheProbeGeneration += 1;
   annotationCacheProbePending = false;
   annotationBuildStartedAt = Date.now();
-  annotationBuildTransient = { status: "building", elapsedMs: 0, progress: null };
+  annotationBuildAnnotatingStartedAt = null;
+  annotationBuildTransient = {
+    status: "building",
+    elapsedMs: 0,
+    annotatingElapsedMs: null,
+    progress: null,
+  };
   lastAnnotationBuildReport = null;
   startAnnotationBuildTimer();
   renderFrequencyList();
@@ -2821,6 +2869,7 @@ async function handleAnnotationLayerAction(): Promise<void> {
     if (annotationBuildGeneration === generation) {
       stopAnnotationBuildTimer();
       annotationBuildStartedAt = null;
+      annotationBuildAnnotatingStartedAt = null;
       renderFrequencyList();
       refreshStageNavigator();
     }
@@ -2932,8 +2981,18 @@ async function initialiseAnalysisBuildState(): Promise<void> {
     if (annotationBuildTransient?.status !== "building") {
       return;
     }
+    const previousPhase = annotationBuildTransient.progress?.current_phase.type ?? null;
+    const nextPhase = event.payload.current_phase.type;
+    if (nextPhase === "Annotating" && (previousPhase !== "Annotating" || annotationBuildAnnotatingStartedAt === null)) {
+      annotationBuildAnnotatingStartedAt = Date.now();
+    }
+    const annotatingElapsedMs =
+      nextPhase === "Annotating" && annotationBuildAnnotatingStartedAt !== null
+        ? Date.now() - annotationBuildAnnotatingStartedAt
+        : null;
     annotationBuildTransient = {
       ...annotationBuildTransient,
+      annotatingElapsedMs,
       progress: event.payload,
     };
     renderFrequencyAnnotationLayer();
