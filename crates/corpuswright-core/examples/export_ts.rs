@@ -8,12 +8,13 @@ use ts_rs::TS;
 
 use corpuswright_core::analysis::{
     AnalysisDocumentSelection, AnnotatedFrequencyMode, AnnotatedFrequencyQuery,
-    AnnotatedFrequencyResult, AnnotationCacheAvailability, AnnotationCacheBuildError,
-    AnnotationCacheBuildPhase, AnnotationCacheBuildProgress, AnnotationCacheBuildReport,
-    AnnotationCacheState, ConcordanceQuery, ConcordanceResult, ConcordanceRow, FrequencyGroupMode,
-    FrequencyMatchMode, FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery,
-    FrequencySortKey, FrequencyTermItem, FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow,
-    SortDirection,
+    AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, AnnotatedTermSelector,
+    AnnotationCacheAvailability, AnnotationCacheBuildError, AnnotationCacheBuildPhase,
+    AnnotationCacheBuildProgress, AnnotationCacheBuildReport, AnnotationCacheState,
+    ConcordanceQuery, ConcordanceResult, ConcordanceRow, FrequencyGroupMode, FrequencyMatchMode,
+    FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey,
+    FrequencyTermItem, FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow, SortDirection,
+    TermDistributionItem, TermDistributionPage,
 };
 use corpuswright_core::clean::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
@@ -628,6 +629,33 @@ fn main() {
                 name: "AnnotatedFrequencyMode",
                 file: "AnnotatedFrequencyMode",
             },
+            TypeImport {
+                name: "FrequencyMatchMode",
+                file: "FrequencyMatchMode",
+            },
+            TypeImport {
+                name: "FrequencySortKey",
+                file: "FrequencySortKey",
+            },
+            TypeImport {
+                name: "SortDirection",
+                file: "SortDirection",
+            },
+        ],
+        &[],
+    );
+    export_type::<AnnotatedTermSelector>(&out_dir, &[], &[]);
+    export_type::<AnnotatedTermDistributionQuery>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "AnalysisDocumentSelection",
+                file: "AnalysisDocumentSelection",
+            },
+            TypeImport {
+                name: "AnnotatedTermSelector",
+                file: "AnnotatedTermSelector",
+            },
         ],
         &[],
     );
@@ -653,6 +681,15 @@ fn main() {
                 file: "LexFrequencyRow",
             },
         ],
+        &[],
+    );
+    export_type::<TermDistributionItem>(&out_dir, &[], &[]);
+    export_type::<TermDistributionPage>(
+        &out_dir,
+        &[TypeImport {
+            name: "TermDistributionItem",
+            file: "TermDistributionItem",
+        }],
         &[],
     );
     export_type::<ConcordanceQuery>(&out_dir, &[], &[]);
