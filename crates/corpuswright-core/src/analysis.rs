@@ -668,6 +668,37 @@ impl std::fmt::Display for AnnotationLayerBuildError {
 
 impl std::error::Error for AnnotationLayerBuildError {}
 
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+#[serde(tag = "type")]
+pub enum AnnotationCacheBuildPhase {
+    BuildingSurface { phase: String },
+    LoadingModel,
+    Annotating,
+    WritingCache,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct AnnotationCacheBuildProgress {
+    pub files_done: usize,
+    pub files_total: usize,
+    pub current_phase: AnnotationCacheBuildPhase,
+}
+
+fn annotation_build_progress(
+    files_done: usize,
+    files_total: usize,
+    current_phase: AnnotationCacheBuildPhase,
+) -> AnnotationCacheBuildProgress {
+    AnnotationCacheBuildProgress {
+        files_done,
+        files_total,
+        current_phase,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ts_rs::TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -2215,22 +2246,27 @@ pub fn build_annotation_layer<TextLoader>(
     options: AnnotationLayerBuildOptions,
     cancel: &AtomicBool,
     load_text: TextLoader,
+    docs_done: &std::sync::atomic::AtomicUsize,
 ) -> Result<AnnotationLayer, AnnotationLayerBuildError>
 where
     TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
 {
-    build_annotation_layer_with_mapping(corpus, records, options, cancel, load_text, true)
+    build_annotation_layer_with_mapping(
+        corpus, records, options, cancel, load_text, true, docs_done,
+    )
 }
 
-pub fn build_and_write_annotation_cache<TextLoader>(
+pub fn build_and_write_annotation_cache<TextLoader, Progress>(
     records: &[DocumentRecord],
     mut analysis_options: AnalysisBuildOptions,
     annotation_options: AnnotationLayerBuildOptions,
     cancel: &AtomicBool,
     mut load_text: TextLoader,
+    mut report_progress: Progress,
 ) -> Result<AnnotationCacheBuildReport, AnnotationCacheBuildError>
 where
-    TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
+    TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String> + Send,
+    Progress: FnMut(AnnotationCacheBuildProgress),
 {
     let cache_root = analysis_options
         .annotation_cache_root
@@ -2240,30 +2276,81 @@ where
 
     let cache_root_str = cache_root.to_string_lossy().into_owned();
 
-    let corpus = build_analysis_corpus(records, analysis_options, cancel, &mut load_text, |_| {})
-        .map_err(|e| {
-        if matches!(e, AnalysisBuildError::Cancelled) {
-            AnnotationCacheBuildError::Cancelled
-        } else {
-            AnnotationCacheBuildError::SurfaceBuildFailed {
-                error: e.to_string(),
-            }
+    let surface_files_total = records.len();
+    report_progress(annotation_build_progress(
+        0,
+        surface_files_total,
+        AnnotationCacheBuildPhase::BuildingSurface {
+            phase: "Building surface analysis".to_string(),
+        },
+    ));
+
+    let corpus = match build_analysis_corpus(
+        records,
+        analysis_options,
+        cancel,
+        &mut load_text,
+        |progress| {
+            report_progress(annotation_build_progress(
+                progress.files_done,
+                progress.files_total,
+                AnnotationCacheBuildPhase::BuildingSurface {
+                    phase: format!("{:?}", progress.current_phase),
+                },
+            ));
+        },
+    ) {
+        Ok(corpus) => corpus,
+        Err(error) => {
+            let cancelled = matches!(&error, AnalysisBuildError::Cancelled);
+            report_progress(annotation_build_progress(
+                0,
+                surface_files_total,
+                if cancelled {
+                    AnnotationCacheBuildPhase::Cancelled
+                } else {
+                    AnnotationCacheBuildPhase::Failed
+                },
+            ));
+            return Err(if cancelled {
+                AnnotationCacheBuildError::Cancelled
+            } else {
+                AnnotationCacheBuildError::SurfaceBuildFailed {
+                    error: error.to_string(),
+                }
+            });
         }
-    })?;
+    };
+
+    let annotation_files_total = corpus.documents.len();
 
     if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+        report_progress(annotation_build_progress(
+            0,
+            annotation_files_total,
+            AnnotationCacheBuildPhase::Cancelled,
+        ));
         return Err(AnnotationCacheBuildError::Cancelled);
     }
 
-    let manifest = build_expected_manifest(
+    let manifest = match build_expected_manifest(
         &corpus,
         records,
         annotation_options.udpipe_model_dir.as_deref(),
         &annotation_options.language_overrides,
-    )
-    .map_err(|e| AnnotationCacheBuildError::ManifestError {
-        error: format!("{:?}", e),
-    })?;
+    ) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            report_progress(annotation_build_progress(
+                0,
+                annotation_files_total,
+                AnnotationCacheBuildPhase::Failed,
+            ));
+            return Err(AnnotationCacheBuildError::ManifestError {
+                error: format!("{:?}", error),
+            });
+        }
+    };
 
     let cache_load = crate::annotation_cache::load_annotation_layer_cache(&cache_root, &manifest);
     if let crate::annotation_cache::AnnotationLayerCacheLoad::Ready(layer) = cache_load {
@@ -2273,6 +2360,12 @@ where
             .iter()
             .map(|doc| doc.term_counts.len())
             .sum();
+
+        report_progress(annotation_build_progress(
+            documents_annotated,
+            annotation_files_total,
+            AnnotationCacheBuildPhase::Completed,
+        ));
 
         return Ok(AnnotationCacheBuildReport {
             documents_annotated,
@@ -2284,9 +2377,60 @@ where
         });
     }
 
-    let layer =
-        build_annotation_layer(&corpus, records, annotation_options, cancel, &mut load_text)
-            .map_err(|e| match e {
+    report_progress(annotation_build_progress(
+        0,
+        annotation_files_total,
+        AnnotationCacheBuildPhase::LoadingModel,
+    ));
+
+    let docs_done = std::sync::atomic::AtomicUsize::new(0);
+    report_progress(annotation_build_progress(
+        0,
+        annotation_files_total,
+        AnnotationCacheBuildPhase::Annotating,
+    ));
+
+    let layer = std::thread::scope(|s| {
+        let handle = s.spawn(|| {
+            build_annotation_layer(
+                &corpus,
+                records,
+                annotation_options,
+                cancel,
+                &mut load_text,
+                &docs_done,
+            )
+        });
+
+        while !handle.is_finished() {
+            let done = docs_done.load(std::sync::atomic::Ordering::Relaxed);
+            report_progress(annotation_build_progress(
+                done.min(annotation_files_total),
+                annotation_files_total,
+                AnnotationCacheBuildPhase::Annotating,
+            ));
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+
+        handle.join().unwrap()
+    });
+
+    let layer = match layer {
+        Ok(layer) => layer,
+        Err(error) => {
+            let cancelled = matches!(&error, AnnotationLayerBuildError::Cancelled);
+            report_progress(annotation_build_progress(
+                docs_done
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                    .min(annotation_files_total),
+                annotation_files_total,
+                if cancelled {
+                    AnnotationCacheBuildPhase::Cancelled
+                } else {
+                    AnnotationCacheBuildPhase::Failed
+                },
+            ));
+            return Err(match error {
                 AnnotationLayerBuildError::Cancelled => AnnotationCacheBuildError::Cancelled,
                 AnnotationLayerBuildError::UnsupportedLanguages { languages } => {
                     AnnotationCacheBuildError::UnsupportedLanguages { languages }
@@ -2294,17 +2438,43 @@ where
                 other => AnnotationCacheBuildError::AnnotationFailed {
                     error: other.to_string(),
                 },
-            })?;
+            });
+        }
+    };
+
+    report_progress(annotation_build_progress(
+        annotation_files_total,
+        annotation_files_total,
+        AnnotationCacheBuildPhase::Annotating,
+    ));
+
+    report_progress(annotation_build_progress(
+        annotation_files_total,
+        annotation_files_total,
+        AnnotationCacheBuildPhase::WritingCache,
+    ));
 
     if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+        report_progress(annotation_build_progress(
+            annotation_files_total,
+            annotation_files_total,
+            AnnotationCacheBuildPhase::Cancelled,
+        ));
         return Err(AnnotationCacheBuildError::Cancelled);
     }
 
-    crate::annotation_cache::write_annotation_layer_cache(&cache_root, &manifest, &layer).map_err(
-        |e| AnnotationCacheBuildError::CacheWriteError {
-            error: format!("{:?}", e),
-        },
-    )?;
+    if let Err(error) =
+        crate::annotation_cache::write_annotation_layer_cache(&cache_root, &manifest, &layer)
+    {
+        report_progress(annotation_build_progress(
+            annotation_files_total,
+            annotation_files_total,
+            AnnotationCacheBuildPhase::Failed,
+        ));
+        return Err(AnnotationCacheBuildError::CacheWriteError {
+            error: format!("{:?}", error),
+        });
+    }
 
     let documents_annotated = layer.documents.len();
     let total_annotated_term_count_rows = layer
@@ -2312,6 +2482,12 @@ where
         .iter()
         .map(|doc| doc.term_counts.len())
         .sum();
+
+    report_progress(annotation_build_progress(
+        documents_annotated,
+        annotation_files_total,
+        AnnotationCacheBuildPhase::Completed,
+    ));
 
     Ok(AnnotationCacheBuildReport {
         documents_annotated,
@@ -2505,6 +2681,7 @@ fn build_annotation_layer_with_mapping<TextLoader>(
     cancel: &AtomicBool,
     mut load_text: TextLoader,
     parallel_map: bool,
+    docs_done: &std::sync::atomic::AtomicUsize,
 ) -> Result<AnnotationLayer, AnnotationLayerBuildError>
 where
     TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
@@ -2532,6 +2709,7 @@ where
         cancel,
         parallel_map,
         &corpus.tokenization,
+        docs_done,
     )?;
     reduce_annotation_documents(worker_documents, languages_used.into_iter().collect())
 }
@@ -2724,6 +2902,7 @@ fn annotate_annotation_documents(
     cancel: &AtomicBool,
     parallel_map: bool,
     tokenization_config: &TokenizationConfig,
+    docs_done: &std::sync::atomic::AtomicUsize,
 ) -> Result<Vec<WorkerAnnotationDocument>, AnnotationLayerBuildError> {
     if parallel_map {
         let model_dir = model_dir.to_path_buf();
@@ -2732,13 +2911,17 @@ fn annotate_annotation_documents(
             .map_init(
                 || ModelManager::new(model_dir.clone()),
                 |manager, input| {
-                    annotate_annotation_document(
+                    let result = annotate_annotation_document(
                         input,
                         surface_term_lookup,
                         manager,
                         cancel,
                         tokenization_config,
-                    )
+                    );
+                    if result.is_ok() {
+                        docs_done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    result
                 },
             )
             .collect()
@@ -2747,13 +2930,17 @@ fn annotate_annotation_documents(
         inputs
             .iter()
             .map(|input| {
-                annotate_annotation_document(
+                let result = annotate_annotation_document(
                     input,
                     surface_term_lookup,
                     &mut manager,
                     cancel,
                     tokenization_config,
-                )
+                );
+                if result.is_ok() {
+                    docs_done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+                result
             })
             .collect()
     }
@@ -4626,6 +4813,7 @@ mod tests {
                 ))
             },
             parallel_map,
+            &std::sync::atomic::AtomicUsize::new(0),
         )
         .unwrap();
         (corpus, layer)
@@ -4687,6 +4875,7 @@ mod tests {
             build_ann_options,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
         )
         .unwrap();
 
@@ -5060,6 +5249,7 @@ mod tests {
                 ))
             },
             true,
+            &std::sync::atomic::AtomicUsize::new(0),
         );
 
         assert_eq!(
@@ -6873,6 +7063,7 @@ mod tests {
                     "The quick brown fox jumps over the lazy dog.",
                 ))
             },
+            &std::sync::atomic::AtomicUsize::new(0),
         )
         .unwrap();
 
@@ -6963,6 +7154,7 @@ mod tests {
                     "The quick brown fox jumps over the lazy dog.",
                 ))
             },
+            &std::sync::atomic::AtomicUsize::new(0),
         )
         .unwrap();
 
@@ -7035,6 +7227,7 @@ mod tests {
                     "The quick brown fox jumps over the lazy dog.",
                 ))
             },
+            &std::sync::atomic::AtomicUsize::new(0),
         )
         .unwrap();
 
@@ -7124,6 +7317,7 @@ mod tests {
                     "The quick-brown-fox jumps over the lazy dog.",
                 ))
             },
+            &std::sync::atomic::AtomicUsize::new(0),
         )
         .unwrap();
 
@@ -7197,6 +7391,7 @@ mod tests {
                     Ok(processed_resolution(record, "The quick brown fox jumps."))
                 }
             },
+            &std::sync::atomic::AtomicUsize::new(0),
         )
         .unwrap();
 
@@ -7296,6 +7491,7 @@ mod tests {
             build_ann_options,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
         )
         .unwrap();
 
@@ -7349,6 +7545,7 @@ mod tests {
             build_ann_options,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
         )
         .unwrap();
 
@@ -7383,6 +7580,7 @@ mod tests {
             build_ann_options,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
         )
         .unwrap();
 
@@ -7435,6 +7633,7 @@ mod tests {
             build_ann_options1,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
         )
         .unwrap();
 
@@ -7451,6 +7650,7 @@ mod tests {
             build_ann_options2,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
         )
         .unwrap();
 
@@ -7494,6 +7694,7 @@ mod tests {
             build_ann_options.clone(),
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
         )
         .unwrap();
 
@@ -7512,6 +7713,7 @@ mod tests {
             build_ann_options,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
         )
         .unwrap();
 
@@ -7525,6 +7727,74 @@ mod tests {
 
         let mtime2 = std::fs::metadata(&cache_file).unwrap().modified().unwrap();
         assert_eq!(mtime1, mtime2);
+    }
+
+    #[test]
+    fn test_annotation_cache_build_reports_phase_progress() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let records = vec![record("doc1.txt"), record("doc2.txt")];
+        let mut options = build_options();
+        options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+        options.udpipe_model_dir = Some(default_model_dir());
+
+        let build_ann_options = AnnotationLayerBuildOptions {
+            udpipe_model_dir: options.udpipe_model_dir.clone(),
+            language_overrides: options.language_overrides.clone(),
+        };
+
+        let mut progress_events = Vec::new();
+        let report = build_and_write_annotation_cache(
+            &records,
+            options,
+            build_ann_options,
+            &AtomicBool::new(false),
+            |record| {
+                if record.source_path.to_string_lossy().contains("doc1") {
+                    Ok(processed_resolution(record, "The quick brown fox."))
+                } else {
+                    Ok(processed_resolution(record, "The slow red fox."))
+                }
+            },
+            |progress| progress_events.push(progress),
+        )
+        .unwrap();
+
+        assert_eq!(report.documents_annotated, 2);
+        assert!(progress_events.iter().any(|progress| matches!(
+            progress.current_phase,
+            AnnotationCacheBuildPhase::BuildingSurface { .. }
+        )));
+        assert!(progress_events.iter().any(|progress| matches!(
+            progress.current_phase,
+            AnnotationCacheBuildPhase::LoadingModel
+        )));
+        assert!(progress_events.iter().any(|progress| matches!(
+            progress.current_phase,
+            AnnotationCacheBuildPhase::Annotating
+        )));
+        assert!(progress_events.iter().any(|progress| matches!(
+            progress.current_phase,
+            AnnotationCacheBuildPhase::WritingCache
+        )));
+        assert!(progress_events.iter().any(|progress| matches!(
+            progress.current_phase,
+            AnnotationCacheBuildPhase::Completed
+        )));
+
+        let annotating_done = progress_events
+            .iter()
+            .filter_map(|progress| match progress.current_phase {
+                AnnotationCacheBuildPhase::Annotating => Some(progress.files_done),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(!annotating_done.is_empty());
+        assert!(
+            annotating_done
+                .windows(2)
+                .all(|window| window[0] <= window[1])
+        );
+        assert_eq!(annotating_done.last(), Some(&2));
     }
 
     #[test]
@@ -7553,6 +7823,7 @@ mod tests {
             build_ann_options,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "The quick brown fox.")),
+            |_| {},
         )
         .unwrap();
 
@@ -7589,6 +7860,7 @@ mod tests {
             build_ann_options,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "Hello world.")),
+            |_| {},
         );
 
         assert!(matches!(
@@ -7623,6 +7895,7 @@ mod tests {
             build_ann_options_valid,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "Valid content.")),
+            |_| {},
         )
         .unwrap();
 
@@ -7654,6 +7927,7 @@ mod tests {
             build_ann_options_invalid,
             &AtomicBool::new(false),
             |record| Ok(processed_resolution(record, "Hello world.")),
+            |_| {},
         );
 
         assert!(matches!(
@@ -7679,6 +7953,7 @@ mod tests {
             language_overrides: options.language_overrides.clone(),
         };
 
+        let mut progress_events = Vec::new();
         let cancel = AtomicBool::new(true);
         let res = build_and_write_annotation_cache(
             &records,
@@ -7686,9 +7961,14 @@ mod tests {
             build_ann_options,
             &cancel,
             |record| Ok(processed_resolution(record, "Hello world.")),
+            |progress| progress_events.push(progress),
         );
 
         assert!(matches!(res, Err(AnnotationCacheBuildError::Cancelled)));
+        assert!(progress_events.iter().any(|progress| matches!(
+            progress.current_phase,
+            AnnotationCacheBuildPhase::Cancelled
+        )));
 
         let cache_file = temp_dir.path().join(format!(
             "annotation-layer.v{}.json",
@@ -7727,6 +8007,7 @@ mod tests {
                     Ok(processed_resolution(record, "The quick brown fox jumps."))
                 }
             },
+            |_| {},
         )
         .unwrap();
 

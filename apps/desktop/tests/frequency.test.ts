@@ -1,4 +1,5 @@
 import {
+  ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE,
   annotatedDispersionLevel,
   annotatedFrequencyModeEnabled,
   formatDocumentFrequency,
@@ -28,3 +29,7 @@ assert(
 assert(frequencyModeLabel("surface") === "Surface tokens", "Surface tab label should be stable");
 assert(frequencyModeLabel("lemmaPos") === "Lemmas + POS", "Lemma + POS tab label should be stable");
 assert(frequencyModeLabel("pos") === "POS tags", "POS tab label should be stable");
+assert(
+  ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE === "Build annotations to enable lemma and POS frequency.",
+  "Unavailable annotation copy should point to building annotations",
+);
