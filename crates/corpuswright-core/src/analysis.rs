@@ -29,6 +29,7 @@ const CONCORDANCE_DEFAULT_WINDOW_TOKENS: usize = 5;
 const CONCORDANCE_MAX_WINDOW_TOKENS: usize = 20;
 const CONCORDANCE_DEFAULT_LIMIT: usize = 100;
 const CONCORDANCE_MAX_LIMIT: usize = 500;
+const CONCORDANCE_DEFAULT_DISTRIBUTION_LIMIT: usize = 10;
 const ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE: &str =
     "Build the annotation cache to enable lemma and POS frequency.";
 const ANNOTATION_TIMING_ENV: &str = "CORPUSWRIGHT_ANNOTATION_TIMING";
@@ -1375,17 +1376,41 @@ pub struct AnnotatedFrequencyResult {
     pub lex_rows: Vec<LexFrequencyRow>,
 }
 
+/// Server-side sort key for a bounded surface-token concordance query.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ConcordanceSortKey {
+    #[default]
+    FilePosition,
+    Node,
+    Left1,
+    Left2,
+    Left3,
+    Right1,
+    Right2,
+    Right3,
+}
+
 /// Parameters for a bounded surface-token concordance query.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ConcordanceQuery {
+    #[serde(default)]
+    pub selection: AnalysisDocumentSelection,
     pub query: String,
     #[serde(default)]
     pub case_sensitive: bool,
+    #[serde(default)]
+    pub sort_key: ConcordanceSortKey,
     pub window_tokens: usize,
     pub offset: usize,
     pub limit: usize,
+    #[serde(default)]
+    pub distribution_offset: usize,
+    #[serde(default)]
+    pub distribution_limit: usize,
 }
 
 /// One KWIC row with token context around the matching node.
@@ -1402,19 +1427,56 @@ pub struct ConcordanceRow {
     pub right_context: Vec<String>,
 }
 
+/// One per-document row for a concordance hit distribution.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ConcordanceDistributionItem {
+    pub document_id: usize,
+    pub source_path: String,
+    pub display_name: String,
+    #[ts(type = "number")]
+    pub token_count: u64,
+    #[ts(type = "number")]
+    pub count: u64,
+    pub rate_per_10k: f64,
+    pub rate_per_million: f64,
+}
+
+/// Bounded per-document distribution for the current concordance query.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ConcordanceDistributionPage {
+    pub total_documents: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub items: Vec<ConcordanceDistributionItem>,
+    #[ts(type = "number")]
+    pub max_count: u64,
+}
+
 /// Bounded surface-token concordance response.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct ConcordanceResult {
     pub query: String,
     pub case_sensitive: bool,
+    pub sort_key: ConcordanceSortKey,
     pub window_tokens: usize,
     pub total_hits: usize,
     pub documents_with_hits: usize,
+    pub selected_documents_total: usize,
+    #[ts(type = "number")]
+    pub selected_tokens_total: u64,
+    pub dp: f64,
+    pub dispersion_label: String,
+    pub top_document_share: f64,
     pub offset: usize,
     pub limit: usize,
     pub rows: Vec<ConcordanceRow>,
+    pub distribution: ConcordanceDistributionPage,
 }
 
 /// Text supplied by the desktop layer for an on-demand concordance scan.
@@ -1429,16 +1491,12 @@ pub struct ConcordanceDocument {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConcordanceError {
     EmptyQuery,
-    MultiTokenQuery,
 }
 
 impl std::fmt::Display for ConcordanceError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EmptyQuery => formatter.write_str("Enter one surface word to search."),
-            Self::MultiTokenQuery => {
-                formatter.write_str("KWIC alpha currently supports one-token surface queries only.")
-            }
+            Self::EmptyQuery => formatter.write_str("Enter a word or phrase to search."),
         }
     }
 }
@@ -1849,6 +1907,29 @@ fn compute_dispersion(
     for &(document_id, count) in document_counts {
         let document_share =
             documents[document_id].summary.token_count as f64 / total_tokens as f64;
+        present_document_share += document_share;
+        difference += (count as f64 / frequency as f64 - document_share).abs();
+    }
+    0.5 * (difference + (1.0 - present_document_share).max(0.0))
+}
+
+fn compute_dispersion_from_token_counts(
+    document_counts: &[(usize, u64)],
+    frequency: u64,
+    document_token_counts: &HashMap<usize, u64>,
+    total_tokens: u64,
+) -> f64 {
+    if frequency == 0 || total_tokens == 0 {
+        return 0.0;
+    }
+    let mut present_document_share = 0.0;
+    let mut difference = 0.0;
+    for &(document_id, count) in document_counts {
+        let document_share = document_token_counts
+            .get(&document_id)
+            .copied()
+            .unwrap_or_default() as f64
+            / total_tokens as f64;
         present_document_share += document_share;
         difference += (count as f64 / frequency as f64 - document_share).abs();
     }
@@ -4278,6 +4359,14 @@ fn concordance_limit(limit: usize) -> usize {
     }
 }
 
+fn concordance_distribution_limit(limit: usize) -> usize {
+    if limit == 0 {
+        CONCORDANCE_DEFAULT_DISTRIBUTION_LIMIT
+    } else {
+        limit.clamp(1, MAX_QUERY_WINDOW)
+    }
+}
+
 fn concordance_key(value: &str, case_sensitive: bool) -> String {
     if case_sensitive {
         value.to_string()
@@ -4286,29 +4375,192 @@ fn concordance_key(value: &str, case_sensitive: bool) -> String {
     }
 }
 
-fn resolve_concordance_query_token<'text>(
-    query: &'text str,
+fn selected_concordance_document_ids(
+    documents: &[ConcordanceDocument],
+    selection: &AnalysisDocumentSelection,
+) -> HashSet<usize> {
+    if selection.all_documents {
+        let excluded_ids = selection
+            .excluded_ids
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
+        documents
+            .iter()
+            .filter(|document| !excluded_ids.contains(&document.document_index))
+            .map(|document| document.document_index)
+            .collect()
+    } else {
+        let requested_ids = selection.ids.iter().copied().collect::<HashSet<_>>();
+        documents
+            .iter()
+            .filter(|document| requested_ids.contains(&document.document_index))
+            .map(|document| document.document_index)
+            .collect()
+    }
+}
+
+fn resolve_concordance_query_tokens(
+    query: &str,
     tokenization_config: &TokenizationConfig,
-) -> Result<&'text str, ConcordanceError> {
+) -> Result<Vec<String>, ConcordanceError> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return Err(ConcordanceError::EmptyQuery);
     }
-    let query_tokens = tokenize(trimmed, 0, tokenization_config);
+    let query_tokens = tokenize(trimmed, 0, tokenization_config)
+        .into_iter()
+        .filter(|token| token.counts_as_word())
+        .map(|token| token.surface.to_string())
+        .collect::<Vec<_>>();
     if query_tokens.is_empty() {
         return Err(ConcordanceError::EmptyQuery);
     }
-    if query_tokens.len() != 1 {
-        return Err(ConcordanceError::MultiTokenQuery);
-    }
-    let token = query_tokens[0];
-    if !token.counts_as_word() {
-        return Err(ConcordanceError::EmptyQuery);
-    }
-    Ok(token.surface)
+    Ok(query_tokens)
 }
 
-/// Searches processed text for a single surface word and returns KWIC rows.
+#[derive(Debug, Clone)]
+struct ConcordanceHit {
+    row: ConcordanceRow,
+    node_key: String,
+    left_keys: [Option<String>; 3],
+    right_keys: [Option<String>; 3],
+}
+
+#[derive(Debug, Clone)]
+struct ConcordanceDocumentStats {
+    document_id: usize,
+    source_path: String,
+    display_name: String,
+    token_count: u64,
+    hit_count: u64,
+}
+
+fn context_sort_key<'text>(
+    tokens: &[crate::tokenization::Token<'text>],
+    index: Option<usize>,
+    case_sensitive: bool,
+) -> Option<String> {
+    index.map(|token_index| concordance_key(tokens[token_index].surface, case_sensitive))
+}
+
+fn compare_optional_context(left: Option<&str>, right: Option<&str>) -> Ordering {
+    match (left, right) {
+        (Some(left), Some(right)) => left.cmp(right),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
+    }
+}
+
+fn compare_context_sequence(
+    left: &ConcordanceHit,
+    right: &ConcordanceHit,
+    left_side: bool,
+    primary_index: usize,
+) -> Ordering {
+    let keys = if primary_index == 0 {
+        [0, 1, 2]
+    } else if primary_index == 1 {
+        [1, 0, 2]
+    } else {
+        [2, 1, 0]
+    };
+    for key_index in keys {
+        let left_key = if left_side {
+            left.left_keys[key_index].as_deref()
+        } else {
+            left.right_keys[key_index].as_deref()
+        };
+        let right_key = if left_side {
+            right.left_keys[key_index].as_deref()
+        } else {
+            right.right_keys[key_index].as_deref()
+        };
+        let ordering = compare_optional_context(left_key, right_key);
+        if ordering != Ordering::Equal {
+            return ordering;
+        }
+    }
+    left.node_key.cmp(&right.node_key)
+}
+
+fn compare_concordance_hits(
+    left: &ConcordanceHit,
+    right: &ConcordanceHit,
+    sort_key: ConcordanceSortKey,
+) -> Ordering {
+    let primary_ordering = match sort_key {
+        ConcordanceSortKey::FilePosition => Ordering::Equal,
+        ConcordanceSortKey::Node => left.node_key.cmp(&right.node_key),
+        ConcordanceSortKey::Left1 => compare_context_sequence(left, right, true, 0),
+        ConcordanceSortKey::Left2 => compare_context_sequence(left, right, true, 1),
+        ConcordanceSortKey::Left3 => compare_context_sequence(left, right, true, 2),
+        ConcordanceSortKey::Right1 => compare_context_sequence(left, right, false, 0),
+        ConcordanceSortKey::Right2 => compare_context_sequence(left, right, false, 1),
+        ConcordanceSortKey::Right3 => compare_context_sequence(left, right, false, 2),
+    };
+
+    primary_ordering
+        .then_with(|| left.row.document_index.cmp(&right.row.document_index))
+        .then_with(|| left.row.token_index.cmp(&right.row.token_index))
+}
+
+fn concordance_row_text<'text>(tokens: &[crate::tokenization::Token<'text>]) -> String {
+    tokens
+        .iter()
+        .map(|token| token.surface)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn concordance_distribution_page(
+    document_stats: Vec<ConcordanceDocumentStats>,
+    offset: usize,
+    limit: usize,
+) -> ConcordanceDistributionPage {
+    let mut items = document_stats
+        .into_iter()
+        .map(|stats| ConcordanceDistributionItem {
+            document_id: stats.document_id,
+            source_path: stats.source_path,
+            display_name: stats.display_name,
+            token_count: stats.token_count,
+            count: stats.hit_count,
+            rate_per_10k: if stats.token_count > 0 {
+                stats.hit_count as f64 / stats.token_count as f64 * 10_000.0
+            } else {
+                0.0
+            },
+            rate_per_million: if stats.token_count > 0 {
+                stats.hit_count as f64 / stats.token_count as f64 * 1_000_000.0
+            } else {
+                0.0
+            },
+        })
+        .collect::<Vec<_>>();
+    items.sort_by(|left, right| {
+        let left_has_hits = left.count > 0;
+        let right_has_hits = right.count > 0;
+        right_has_hits
+            .cmp(&left_has_hits)
+            .then_with(|| right.count.cmp(&left.count))
+            .then_with(|| left.display_name.cmp(&right.display_name))
+            .then_with(|| left.document_id.cmp(&right.document_id))
+    });
+    let max_count = items.iter().map(|item| item.count).max().unwrap_or(0);
+    let total_documents = items.len();
+    let offset = offset.min(total_documents);
+    ConcordanceDistributionPage {
+        total_documents,
+        offset,
+        limit,
+        items: items.into_iter().skip(offset).take(limit).collect(),
+        max_count,
+    }
+}
+
+/// Searches processed text for a surface token sequence and returns KWIC rows.
 pub fn search_concordance_documents(
     documents: &[ConcordanceDocument],
     query: &ConcordanceQuery,
@@ -4316,28 +4568,55 @@ pub fn search_concordance_documents(
 ) -> Result<ConcordanceResult, ConcordanceError> {
     let window_tokens = concordance_window_tokens(query.window_tokens);
     let limit = concordance_limit(query.limit);
-    let query_surface = resolve_concordance_query_token(&query.query, tokenization_config)?;
-    let query_key = concordance_key(query_surface, query.case_sensitive);
-    let mut total_hits = 0usize;
-    let mut documents_with_hits = HashSet::<usize>::new();
-    let mut rows = Vec::with_capacity(limit);
+    let distribution_limit = concordance_distribution_limit(query.distribution_limit);
+    let query_tokens = resolve_concordance_query_tokens(&query.query, tokenization_config)?;
+    let query_keys = query_tokens
+        .iter()
+        .map(|token| concordance_key(token, query.case_sensitive))
+        .collect::<Vec<_>>();
+    let selected_document_ids = selected_concordance_document_ids(documents, &query.selection);
+    let mut document_counts = Vec::<(usize, u64)>::new();
+    let mut document_token_counts = HashMap::<usize, u64>::new();
+    let mut document_stats = Vec::<ConcordanceDocumentStats>::new();
+    let mut hits = Vec::<ConcordanceHit>::new();
+    let mut selected_tokens_total = 0u64;
 
     for document in documents {
+        if !selected_document_ids.contains(&document.document_index) {
+            continue;
+        }
         let tokens = analysis_word_tokens(
             &document.text,
             document.document_index as u32,
             tokenization_config,
         );
-        let mut document_has_hit = false;
-        for (token_index, token) in tokens.iter().enumerate() {
-            if concordance_key(token.surface, query.case_sensitive) != query_key {
+        let document_token_count = tokens.len() as u64;
+        selected_tokens_total += document_token_count;
+        document_token_counts.insert(document.document_index, document_token_count);
+        let mut document_hit_count = 0u64;
+        for token_index in 0..tokens.len() {
+            let node_end = token_index + query_keys.len();
+            if node_end > tokens.len() {
+                break;
+            }
+            let node_matches =
+                tokens[token_index..node_end]
+                    .iter()
+                    .zip(&query_keys)
+                    .all(|(token, query_key)| {
+                        concordance_key(token.surface, query.case_sensitive) == *query_key
+                    });
+            if !node_matches {
                 continue;
             }
 
-            if total_hits >= query.offset && rows.len() < limit {
-                let left_start = token_index.saturating_sub(window_tokens);
-                let right_end = (token_index + 1 + window_tokens).min(tokens.len());
-                rows.push(ConcordanceRow {
+            let left_start = token_index.saturating_sub(window_tokens);
+            let right_end = (node_end + window_tokens).min(tokens.len());
+            let node_tokens = &tokens[token_index..node_end];
+            let node = concordance_row_text(node_tokens);
+            let node_key = concordance_key(&node, query.case_sensitive);
+            hits.push(ConcordanceHit {
+                row: ConcordanceRow {
                     document_index: document.document_index,
                     source_path: document.source_path.clone(),
                     display_name: document.display_name.clone(),
@@ -4346,31 +4625,99 @@ pub fn search_concordance_documents(
                         .iter()
                         .map(|token| token.surface.to_string())
                         .collect(),
-                    node: token.surface.to_string(),
-                    right_context: tokens[token_index + 1..right_end]
+                    node,
+                    right_context: tokens[node_end..right_end]
                         .iter()
                         .map(|token| token.surface.to_string())
                         .collect(),
-                });
-            }
+                },
+                node_key,
+                left_keys: [
+                    context_sort_key(&tokens, token_index.checked_sub(1), query.case_sensitive),
+                    context_sort_key(&tokens, token_index.checked_sub(2), query.case_sensitive),
+                    context_sort_key(&tokens, token_index.checked_sub(3), query.case_sensitive),
+                ],
+                right_keys: [
+                    context_sort_key(
+                        &tokens,
+                        (node_end < tokens.len()).then_some(node_end),
+                        query.case_sensitive,
+                    ),
+                    context_sort_key(
+                        &tokens,
+                        (node_end + 1 < tokens.len()).then_some(node_end + 1),
+                        query.case_sensitive,
+                    ),
+                    context_sort_key(
+                        &tokens,
+                        (node_end + 2 < tokens.len()).then_some(node_end + 2),
+                        query.case_sensitive,
+                    ),
+                ],
+            });
 
-            total_hits += 1;
-            document_has_hit = true;
+            document_hit_count += 1;
         }
-        if document_has_hit {
-            documents_with_hits.insert(document.document_index);
+        if document_hit_count > 0 {
+            document_counts.push((document.document_index, document_hit_count));
         }
+        document_stats.push(ConcordanceDocumentStats {
+            document_id: document.document_index,
+            source_path: document.source_path.clone(),
+            display_name: document.display_name.clone(),
+            token_count: document_token_count,
+            hit_count: document_hit_count,
+        });
     }
+    hits.sort_by(|left, right| compare_concordance_hits(left, right, query.sort_key));
+
+    let total_hits = hits.len();
+    let offset = query.offset.min(total_hits);
+    let rows = hits
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .map(|hit| hit.row)
+        .collect::<Vec<_>>();
+    let total_hits_u64 = total_hits as u64;
+    let dp = compute_dispersion_from_token_counts(
+        &document_counts,
+        total_hits_u64,
+        &document_token_counts,
+        selected_tokens_total,
+    );
+    let top_document_share = if total_hits == 0 {
+        0.0
+    } else {
+        document_counts
+            .iter()
+            .map(|(_, count)| *count)
+            .max()
+            .unwrap_or(0) as f64
+            / total_hits as f64
+    };
+    let distribution = concordance_distribution_page(
+        document_stats,
+        query.distribution_offset,
+        distribution_limit,
+    );
 
     Ok(ConcordanceResult {
-        query: query_surface.to_string(),
+        query: query_tokens.join(" "),
         case_sensitive: query.case_sensitive,
+        sort_key: query.sort_key,
         window_tokens,
         total_hits,
-        documents_with_hits: documents_with_hits.len(),
-        offset: query.offset.min(total_hits),
+        documents_with_hits: document_counts.len(),
+        selected_documents_total: selected_document_ids.len(),
+        selected_tokens_total,
+        dp,
+        dispersion_label: annotated_dispersion_label(dp).to_string(),
+        top_document_share,
+        offset,
         limit,
         rows,
+        distribution,
     })
 }
 
@@ -5574,11 +5921,15 @@ mod tests {
 
     fn concordance_query(query: &str) -> ConcordanceQuery {
         ConcordanceQuery {
+            selection: AnalysisDocumentSelection::default(),
             query: query.to_string(),
             case_sensitive: false,
+            sort_key: ConcordanceSortKey::FilePosition,
             window_tokens: 5,
             offset: 0,
             limit: 100,
+            distribution_offset: 0,
+            distribution_limit: 10,
         }
     }
 
@@ -5784,6 +6135,26 @@ mod tests {
     }
 
     #[test]
+    fn kwic_finds_phrase_and_context_around_full_node() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "alpha not very good movie today not very good ending",
+        )];
+        let mut query = concordance_query("not very good");
+        query.window_tokens = 1;
+
+        let result = concordance_for(&documents, query).unwrap();
+
+        assert_eq!(result.total_hits, 2);
+        assert_eq!(result.rows[0].left_context, ["alpha"]);
+        assert_eq!(result.rows[0].node, "not very good");
+        assert_eq!(result.rows[0].right_context, ["movie"]);
+        assert_eq!(result.rows[1].left_context, ["today"]);
+        assert_eq!(result.rows[1].right_context, ["ending"]);
+    }
+
+    #[test]
     fn kwic_does_not_match_substrings_inside_tokens() {
         let documents = vec![concordance_document(
             0,
@@ -5835,19 +6206,6 @@ mod tests {
     }
 
     #[test]
-    fn kwic_rejects_multi_token_query_for_alpha() {
-        let documents = vec![concordance_document(0, "doc.txt", "alpha beta")];
-
-        let error = concordance_for(&documents, concordance_query("alpha beta")).unwrap_err();
-
-        assert_eq!(error, ConcordanceError::MultiTokenQuery);
-        assert_eq!(
-            error.to_string(),
-            "KWIC alpha currently supports one-token surface queries only."
-        );
-    }
-
-    #[test]
     fn kwic_reports_total_hits_and_documents_with_hits() {
         let documents = vec![
             concordance_document(0, "a.txt", "alpha beta alpha"),
@@ -5859,6 +6217,26 @@ mod tests {
 
         assert_eq!(result.total_hits, 3);
         assert_eq!(result.documents_with_hits, 2);
+    }
+
+    #[test]
+    fn kwic_stats_use_full_hit_set_and_document_token_proportions() {
+        let documents = vec![
+            concordance_document(0, "a.txt", "alpha alpha"),
+            concordance_document(1, "b.txt", "beta beta beta beta beta beta"),
+        ];
+        let mut query = concordance_query("alpha");
+        query.limit = 1;
+
+        let result = concordance_for(&documents, query).unwrap();
+
+        assert_eq!(result.rows.len(), 1);
+        assert_eq!(result.total_hits, 2);
+        assert_eq!(result.documents_with_hits, 1);
+        assert_eq!(result.selected_documents_total, 2);
+        assert_eq!(result.selected_tokens_total, 8);
+        assert_close(result.dp, 0.75);
+        assert_close(result.top_document_share, 1.0);
     }
 
     #[test]
@@ -5885,6 +6263,110 @@ mod tests {
                 .map(|row| row.token_index)
                 .collect::<Vec<_>>(),
             [2, 4]
+        );
+    }
+
+    #[test]
+    fn kwic_sorts_full_hit_set_before_pagination() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "alpha z alpha a alpha m",
+        )];
+        let mut query = concordance_query("alpha");
+        query.sort_key = ConcordanceSortKey::Right1;
+        query.offset = 1;
+        query.limit = 1;
+
+        let result = concordance_for(&documents, query).unwrap();
+
+        assert_eq!(result.total_hits, 3);
+        assert_eq!(result.rows.len(), 1);
+        assert_eq!(result.rows[0].right_context, ["m"]);
+    }
+
+    #[test]
+    fn kwic_left_sort_uses_missing_context_last() {
+        let documents = vec![concordance_document(0, "doc.txt", "alpha b a alpha")];
+        let mut query = concordance_query("alpha");
+        query.sort_key = ConcordanceSortKey::Left1;
+
+        let result = concordance_for(&documents, query).unwrap();
+
+        assert_eq!(result.total_hits, 2);
+        assert_eq!(
+            result.rows[0].left_context.last().map(String::as_str),
+            Some("a")
+        );
+        assert!(result.rows[1].left_context.is_empty());
+    }
+
+    #[test]
+    fn kwic_file_position_sort_ties_by_document_and_offset() {
+        let documents = vec![
+            concordance_document(1, "b.txt", "alpha beta alpha"),
+            concordance_document(0, "a.txt", "beta alpha"),
+        ];
+
+        let result = concordance_for(&documents, concordance_query("alpha")).unwrap();
+
+        assert_eq!(
+            result
+                .rows
+                .iter()
+                .map(|row| (row.document_index, row.token_index))
+                .collect::<Vec<_>>(),
+            [(0, 1), (1, 0), (1, 2)]
+        );
+    }
+
+    #[test]
+    fn kwic_distribution_counts_and_paginates_after_sorting() {
+        let documents = vec![
+            concordance_document(0, "c.txt", "alpha beta"),
+            concordance_document(1, "a.txt", "alpha alpha beta"),
+            concordance_document(2, "b.txt", "beta beta"),
+        ];
+        let mut query = concordance_query("alpha");
+        query.distribution_offset = 1;
+        query.distribution_limit = 1;
+
+        let result = concordance_for(&documents, query).unwrap();
+
+        assert_eq!(result.distribution.total_documents, 3);
+        assert_eq!(result.distribution.offset, 1);
+        assert_eq!(result.distribution.items.len(), 1);
+        assert_eq!(result.distribution.items[0].display_name, "c.txt");
+        assert_eq!(result.distribution.items[0].count, 1);
+        assert_eq!(result.distribution.items[0].token_count, 2);
+        assert_eq!(result.distribution.max_count, 2);
+    }
+
+    #[test]
+    fn kwic_honours_selected_file_scope() {
+        let documents = vec![
+            concordance_document(0, "a.txt", "alpha alpha"),
+            concordance_document(1, "b.txt", "alpha beta"),
+            concordance_document(2, "c.txt", "alpha gamma"),
+        ];
+        let mut query = concordance_query("alpha");
+        query.selection = AnalysisDocumentSelection {
+            all_documents: false,
+            ids: vec![1, 2],
+            excluded_ids: Vec::new(),
+        };
+
+        let result = concordance_for(&documents, query).unwrap();
+
+        assert_eq!(result.total_hits, 2);
+        assert_eq!(result.selected_documents_total, 2);
+        assert_eq!(
+            result
+                .rows
+                .iter()
+                .map(|row| row.display_name.as_str())
+                .collect::<Vec<_>>(),
+            ["b.txt", "c.txt"]
         );
     }
 
