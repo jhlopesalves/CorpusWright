@@ -2174,7 +2174,7 @@ async fn search_concordance_command(
     let cache = cache.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let mut documents = Vec::new();
-        for (document_index, record) in records.iter().enumerate() {
+        for record in &records {
             let resolution = resolve_analysis_input_for_record(
                 record,
                 project_root.as_deref(),
@@ -2193,6 +2193,7 @@ async fn search_concordance_command(
             };
             let source_path = record.source_path.to_string_lossy().into_owned();
             let relative_path = record.relative_path.to_string_lossy().into_owned();
+            let document_index = documents.len();
             documents.push(ConcordanceDocument {
                 document_index,
                 source_path: source_path.clone(),

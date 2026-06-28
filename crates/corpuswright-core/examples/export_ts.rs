@@ -11,10 +11,11 @@ use corpuswright_core::analysis::{
     AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, AnnotatedTermSelector,
     AnnotationCacheAvailability, AnnotationCacheBuildError, AnnotationCacheBuildPhase,
     AnnotationCacheBuildProgress, AnnotationCacheBuildReport, AnnotationCacheState,
-    ConcordanceQuery, ConcordanceResult, ConcordanceRow, FrequencyGroupMode, FrequencyMatchMode,
-    FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey,
-    FrequencyTermItem, FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow, SortDirection,
-    TermDistributionItem, TermDistributionPage,
+    ConcordanceDistributionItem, ConcordanceDistributionPage, ConcordanceQuery, ConcordanceResult,
+    ConcordanceRow, ConcordanceSortKey, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
+    FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
+    FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow, SortDirection, TermDistributionItem,
+    TermDistributionPage,
 };
 use corpuswright_core::clean::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
@@ -692,14 +693,47 @@ fn main() {
         }],
         &[],
     );
-    export_type::<ConcordanceQuery>(&out_dir, &[], &[]);
+    export_type::<ConcordanceSortKey>(&out_dir, &[], &[]);
+    export_type::<ConcordanceQuery>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "AnalysisDocumentSelection",
+                file: "AnalysisDocumentSelection",
+            },
+            TypeImport {
+                name: "ConcordanceSortKey",
+                file: "ConcordanceSortKey",
+            },
+        ],
+        &[],
+    );
     export_type::<ConcordanceRow>(&out_dir, &[], &[]);
-    export_type::<ConcordanceResult>(
+    export_type::<ConcordanceDistributionItem>(&out_dir, &[], &[]);
+    export_type::<ConcordanceDistributionPage>(
         &out_dir,
         &[TypeImport {
-            name: "ConcordanceRow",
-            file: "ConcordanceRow",
+            name: "ConcordanceDistributionItem",
+            file: "ConcordanceDistributionItem",
         }],
+        &[],
+    );
+    export_type::<ConcordanceResult>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "ConcordanceSortKey",
+                file: "ConcordanceSortKey",
+            },
+            TypeImport {
+                name: "ConcordanceRow",
+                file: "ConcordanceRow",
+            },
+            TypeImport {
+                name: "ConcordanceDistributionPage",
+                file: "ConcordanceDistributionPage",
+            },
+        ],
         &[],
     );
     export_type::<ExportManifest>(

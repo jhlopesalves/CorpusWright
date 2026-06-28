@@ -29,6 +29,7 @@ import {
   type AnalysisInputSource,
   type ConcordanceResult,
   type ConcordanceRow,
+  type ConcordanceSortKey,
   type CorpusOverview as AnalysisCorpus,
   type CorpusOverviewFinding,
   type CorpusOverviewFindingSeverity,
@@ -48,7 +49,12 @@ import {
 import { BOOLEAN_CLEANING_CONFIG_KEYS } from "./config";
 import {
   clampConcordanceWindow,
-  concordanceSummaryText,
+  clampConcordancePageSize,
+  concordanceSortLabel,
+  CONCORDANCE_NO_HITS_MESSAGE,
+  CONCORDANCE_NO_QUERY_MESSAGE,
+  DEFAULT_CONCORDANCE_SORT_KEY,
+  CONCORDANCE_COLUMNS,
   normaliseConcordanceQuery,
 } from "./concordance";
 import { createChevron } from "./chevron";
@@ -88,7 +94,7 @@ const FUTURE_ANALYSIS_TOOLS = [
 const FREQUENCY_PAGE_SIZE = 200;
 const FREQUENCY_DOCUMENT_PAGE_SIZE = 200;
 const TERM_DISTRIBUTION_PAGE_SIZE = 100;
-const CONCORDANCE_PAGE_SIZE = 100;
+const CONCORDANCE_DISTRIBUTION_PAGE_SIZE = 10;
 type AnalysisToolId = "overview" | "frequency" | "concordance";
 
 interface OverviewMetricRow {
@@ -142,6 +148,8 @@ let frequencyDocumentsDebounceTimer: number | null = null;
 let frequencyDocumentsFailure: string | null = null;
 let concordanceResult: ConcordanceResult | null = null;
 let concordanceOffset = 0;
+let concordanceSortKey: ConcordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;
+let concordanceDistributionOffset = 0;
 let concordanceQueryGeneration = 0;
 let concordancePending = false;
 let concordanceFailure: string | null = null;
@@ -1582,6 +1590,8 @@ function resetFrequencyCorpusState(resetAnnotationLayer = true): void {
   frequencyDocumentsFailure = null;
   concordanceResult = null;
   concordanceOffset = 0;
+  concordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;
+  concordanceDistributionOffset = 0;
   concordanceQueryGeneration += 1;
   concordancePending = false;
   concordanceFailure = null;
@@ -1598,10 +1608,25 @@ function currentConcordanceWindow(): number {
   return clampConcordanceWindow(Number.parseInt(dom.concordanceWindowInput.value, 10));
 }
 
+function currentConcordancePageSize(): number {
+  const pageSize = clampConcordancePageSize(Number.parseInt(dom.concordancePageSizeInput.value, 10));
+  dom.concordancePageSizeInput.value = pageSize.toString();
+  return pageSize;
+}
+
+function currentConcordanceSortKey(): ConcordanceSortKey {
+  return dom.concordanceSortSelect.value as ConcordanceSortKey;
+}
+
 function syncConcordanceCaseToggle(): void {
   const isCaseSensitive = dom.concordanceCaseSensitiveInput.checked;
   dom.concordanceCaseSensitiveInput.setAttribute("aria-checked", isCaseSensitive ? "true" : "false");
   dom.concordanceCaseState.textContent = isCaseSensitive ? "Sensitive" : "Insensitive";
+}
+
+function syncConcordanceControls(): void {
+  syncConcordanceCaseToggle();
+  dom.concordanceSortSelect.value = concordanceSortKey;
 }
 
 function renderConcordanceStatus(message: string | null, isError = false): void {
@@ -1614,43 +1639,165 @@ function concordanceRowText(tokens: string[]): string {
   return tokens.join(" ");
 }
 
-function createConcordanceRow(row: ConcordanceRow): HTMLElement {
-  const item = document.createElement("article");
+function renderConcordanceTableState(message: string): void {
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = CONCORDANCE_COLUMNS.length;
+  cell.className = "frequency-empty concordance-empty";
+  cell.textContent = message;
+  row.appendChild(cell);
+  dom.concordanceTableBody.replaceChildren(row);
+}
+
+function createConcordanceRow(row: ConcordanceRow): HTMLTableRowElement {
+  const item = document.createElement("tr");
   item.className = "concordance-row";
 
-  const context = document.createElement("div");
-  context.className = "concordance-context";
+  const file = document.createElement("td");
+  file.className = "concordance-file";
+  file.title = row.displayName || row.sourcePath;
+  file.textContent = row.displayName || row.sourcePath;
 
-  const left = document.createElement("span");
+  const left = document.createElement("td");
   left.className = "concordance-left";
   left.textContent = concordanceRowText(row.leftContext);
 
+  const nodeCell = document.createElement("td");
+  nodeCell.className = "concordance-node-cell";
   const node = document.createElement("mark");
   node.className = "concordance-node";
   node.textContent = row.node;
+  nodeCell.appendChild(node);
 
-  const right = document.createElement("span");
+  const right = document.createElement("td");
   right.className = "concordance-right";
   right.textContent = concordanceRowText(row.rightContext);
 
-  context.append(left, node, right);
-
-  const meta = document.createElement("p");
-  meta.className = "concordance-meta";
-  meta.textContent = `${row.displayName || row.sourcePath} · token ${formatNumber(row.tokenIndex + 1)}`;
-
-  item.append(context, meta);
+  item.append(file, left, nodeCell, right);
   return item;
 }
 
+function createInlineDispersionBar(dp: number): HTMLElement {
+  const track = document.createElement("span");
+  track.className = "frequency-dp-track concordance-dp-track";
+  track.title = `DP ${formatFixedNumber(dp, 2)}`;
+  const fill = document.createElement("span");
+  fill.className = "frequency-dp-fill";
+  fill.dataset.level = dispersionLevel(dp);
+  fill.style.setProperty("--bar-width", `${Math.max(0, Math.min(100, dp * 100))}%`);
+  track.appendChild(fill);
+  return track;
+}
+
+function renderConcordanceSummary(result: ConcordanceResult): void {
+  const query = document.createElement("span");
+  query.className = "concordance-summary-query";
+  query.textContent = result.query;
+
+  const metrics = document.createElement("span");
+  metrics.textContent = ` · ${formatNumber(result.totalHits)} hits · ${formatNumber(result.documentsWithHits)} files with hits · DP ${formatFixedNumber(result.dp, 2)}`;
+
+  const scope = document.createElement("span");
+  scope.className = "concordance-summary-scope";
+  scope.textContent = ` · ${formatNumber(result.selectedDocumentsTotal)} files · ${formatNumber(result.selectedTokensTotal)} tokens · sort ${concordanceSortLabel(result.sortKey)}`;
+
+  dom.concordanceSummary.replaceChildren(query, metrics, createInlineDispersionBar(result.dp), scope);
+}
+
+function renderConcordanceDistribution(result: ConcordanceResult | null): void {
+  dom.concordanceDistribution.replaceChildren();
+  if (!result || result.totalHits === 0) {
+    return;
+  }
+
+  const panel = document.createElement("div");
+  panel.className = "concordance-distribution-panel";
+
+  const title = document.createElement("h3");
+  title.textContent = "File distribution";
+  panel.appendChild(title);
+
+  const header = document.createElement("div");
+  header.className = "concordance-distribution-row concordance-distribution-header";
+  for (const label of ["File", "Hits", "Tokens", "Bar"]) {
+    const cell = document.createElement("span");
+    cell.textContent = label;
+    header.appendChild(cell);
+  }
+  panel.appendChild(header);
+
+  const maxCount = result.distribution.maxCount;
+  for (const item of result.distribution.items) {
+    const row = document.createElement("div");
+    row.className = "concordance-distribution-row";
+
+    const file = document.createElement("span");
+    file.className = "concordance-distribution-file";
+    file.title = item.displayName || item.sourcePath;
+    file.textContent = item.displayName || item.sourcePath;
+
+    const count = document.createElement("span");
+    count.className = "numeric";
+    count.textContent = formatNumber(item.count);
+
+    const tokens = document.createElement("span");
+    tokens.className = "numeric";
+    tokens.textContent = formatNumber(item.tokenCount);
+
+    const track = document.createElement("span");
+    track.className = "frequency-distribution-track";
+    const fill = document.createElement("span");
+    fill.className = "frequency-distribution-fill";
+    const width = maxCount > 0 && item.count > 0 ? Math.max(3, (item.count / maxCount) * 100) : 0;
+    fill.style.setProperty("--bar-width", `${width}%`);
+    track.title = `Hits: ${formatNumber(item.count)}`;
+    track.appendChild(fill);
+
+    row.append(file, count, tokens, track);
+    panel.appendChild(row);
+  }
+
+  const pagination = document.createElement("div");
+  pagination.className = "analysis-pagination";
+  const previous = document.createElement("button");
+  previous.type = "button";
+  previous.className = "secondary-btn";
+  previous.textContent = "Previous";
+  previous.disabled = result.distribution.offset === 0;
+  previous.addEventListener("click", () => {
+    concordanceDistributionOffset = Math.max(0, result.distribution.offset - result.distribution.limit);
+    void refreshConcordance(false, false);
+  });
+  const status = document.createElement("span");
+  const first = result.distribution.totalDocuments === 0 ? 0 : result.distribution.offset + 1;
+  const last = Math.min(
+    result.distribution.totalDocuments,
+    result.distribution.offset + result.distribution.items.length,
+  );
+  status.textContent = `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(result.distribution.totalDocuments)}`;
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "secondary-btn";
+  next.textContent = "Next";
+  next.disabled = result.distribution.offset + result.distribution.items.length >= result.distribution.totalDocuments;
+  next.addEventListener("click", () => {
+    concordanceDistributionOffset = result.distribution.offset + result.distribution.limit;
+    void refreshConcordance(false, false);
+  });
+  pagination.append(previous, status, next);
+  panel.appendChild(pagination);
+  dom.concordanceDistribution.appendChild(panel);
+}
+
 function renderConcordance(): void {
-  syncConcordanceCaseToggle();
-  dom.concordanceResults.replaceChildren();
+  syncConcordanceControls();
 
   if (concordancePending) {
-    dom.concordanceSummary.textContent = "Searching concordance...";
+    dom.concordanceSummary.textContent = "Searching...";
     dom.concordanceResultCount.textContent = "";
     renderConcordanceStatus(null);
+    renderConcordanceTableState("Searching...");
+    renderConcordanceDistribution(null);
     dom.concordancePagePreviousButton.disabled = true;
     dom.concordancePageNextButton.disabled = true;
     dom.concordancePageStatus.textContent = "";
@@ -1658,9 +1805,11 @@ function renderConcordance(): void {
   }
 
   if (concordanceFailure) {
-    dom.concordanceSummary.textContent = "Search for a surface word to see its occurrences in context.";
+    dom.concordanceSummary.textContent = CONCORDANCE_NO_QUERY_MESSAGE;
     dom.concordanceResultCount.textContent = "";
     renderConcordanceStatus(concordanceFailure, true);
+    renderConcordanceTableState(concordanceFailure);
+    renderConcordanceDistribution(null);
     dom.concordancePagePreviousButton.disabled = true;
     dom.concordancePageNextButton.disabled = true;
     dom.concordancePageStatus.textContent = "";
@@ -1669,29 +1818,30 @@ function renderConcordance(): void {
 
   const result = concordanceResult;
   if (!result) {
-    dom.concordanceSummary.textContent = "Search for a surface word to see its occurrences in context.";
+    dom.concordanceSummary.textContent = CONCORDANCE_NO_QUERY_MESSAGE;
     dom.concordanceResultCount.textContent = "";
     renderConcordanceStatus(null);
+    renderConcordanceTableState(CONCORDANCE_NO_QUERY_MESSAGE);
+    renderConcordanceDistribution(null);
     dom.concordancePagePreviousButton.disabled = true;
     dom.concordancePageNextButton.disabled = true;
     dom.concordancePageStatus.textContent = "";
     return;
   }
 
-  dom.concordanceSummary.textContent = concordanceSummaryText(result);
+  renderConcordanceSummary(result);
   dom.concordanceResultCount.textContent = formatNumber(result.totalHits);
   renderConcordanceStatus(null);
 
   if (result.rows.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "frequency-empty concordance-empty";
-    empty.textContent = "No concordance rows found.";
-    dom.concordanceResults.appendChild(empty);
+    renderConcordanceTableState(CONCORDANCE_NO_HITS_MESSAGE);
   } else {
+    dom.concordanceTableBody.replaceChildren();
     for (const row of result.rows) {
-      dom.concordanceResults.appendChild(createConcordanceRow(row));
+      dom.concordanceTableBody.appendChild(createConcordanceRow(row));
     }
   }
+  renderConcordanceDistribution(result);
 
   const first = result.totalHits === 0 ? 0 : result.offset + 1;
   const last = Math.min(result.totalHits, result.offset + result.rows.length);
@@ -1701,14 +1851,19 @@ function renderConcordance(): void {
   dom.concordancePageNextButton.disabled = result.offset + result.rows.length >= result.totalHits;
 }
 
-async function refreshConcordance(resetOffset = true): Promise<void> {
+async function refreshConcordance(resetOffset = true, resetDistribution = true): Promise<void> {
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   if (resetOffset) {
     concordanceOffset = 0;
   }
+  if (resetDistribution) {
+    concordanceDistributionOffset = 0;
+  }
+  concordanceSortKey = currentConcordanceSortKey();
   if (query.length === 0) {
     concordanceResult = null;
-    concordanceFailure = "Enter one surface word to search.";
+    concordanceFailure = null;
+    concordancePending = false;
     renderConcordance();
     return;
   }
@@ -1722,11 +1877,15 @@ async function refreshConcordance(resetOffset = true): Promise<void> {
   try {
     const result = await searchConcordance(
       {
+        selection: frequencyDocumentScope,
         query,
         caseSensitive: dom.concordanceCaseSensitiveInput.checked,
+        sortKey: concordanceSortKey,
         windowTokens: currentConcordanceWindow(),
         offset: concordanceOffset,
-        limit: CONCORDANCE_PAGE_SIZE,
+        limit: currentConcordancePageSize(),
+        distributionOffset: concordanceDistributionOffset,
+        distributionLimit: CONCORDANCE_DISTRIBUTION_PAGE_SIZE,
       },
       state.currentCorpusVersion,
       effectiveCleaningConfig(),
@@ -1750,30 +1909,47 @@ async function refreshConcordance(resetOffset = true): Promise<void> {
 }
 
 function showPreviousConcordancePage(): void {
-  concordanceOffset = Math.max(0, concordanceOffset - CONCORDANCE_PAGE_SIZE);
-  void refreshConcordance(false);
+  const pageSize = concordanceResult?.limit ?? currentConcordancePageSize();
+  concordanceOffset = Math.max(0, concordanceOffset - pageSize);
+  void refreshConcordance(false, false);
 }
 
 function showNextConcordancePage(): void {
-  concordanceOffset += CONCORDANCE_PAGE_SIZE;
-  void refreshConcordance(false);
+  const pageSize = concordanceResult?.limit ?? currentConcordancePageSize();
+  concordanceOffset += pageSize;
+  void refreshConcordance(false, false);
+}
+
+function handleConcordanceSortChange(): void {
+  concordanceSortKey = currentConcordanceSortKey();
+  void refreshConcordance(true, true);
+}
+
+function handleConcordancePageSizeChange(): void {
+  currentConcordancePageSize();
+  void refreshConcordance(true, true);
 }
 
 function renderFrequencyScopeControl(corpus: AnalysisCorpus | null): void {
   if (!corpus || corpus.documentCount === 0) {
     dom.frequencyFilesButton.disabled = true;
     dom.frequencyFilesButton.textContent = "Files: 0 of 0";
-    dom.frequencyFilesButton.setAttribute("aria-label", "No files available for frequency scoping");
+    dom.concordanceFilesButton.disabled = true;
+    dom.concordanceFilesButton.textContent = "Files: 0 of 0";
+    const label = "No files available for analysis scoping";
+    dom.frequencyFilesButton.setAttribute("aria-label", label);
+    dom.concordanceFilesButton.setAttribute("aria-label", label);
     return;
   }
 
   const selectedCount = frequencySelectionCount(frequencyDocumentScope, corpus.documentCount);
   dom.frequencyFilesButton.disabled = false;
   dom.frequencyFilesButton.textContent = `Files: ${formatNumber(selectedCount)} of ${formatNumber(corpus.documentCount)}`;
-  dom.frequencyFilesButton.setAttribute(
-    "aria-label",
-    `Frequency list file scope: ${formatNumber(selectedCount)} of ${formatNumber(corpus.documentCount)} files selected`,
-  );
+  dom.concordanceFilesButton.disabled = false;
+  dom.concordanceFilesButton.textContent = dom.frequencyFilesButton.textContent;
+  const label = `Analysis file scope: ${formatNumber(selectedCount)} of ${formatNumber(corpus.documentCount)} files selected`;
+  dom.frequencyFilesButton.setAttribute("aria-label", label);
+  dom.concordanceFilesButton.setAttribute("aria-label", label);
 }
 
 function renderFrequencySearchError(message: string | null): void {
@@ -3679,7 +3855,15 @@ function applyFrequencyFileScope(): void {
   termDistributionPages.clear();
   annotatedDistributionSelectors.clear();
   closeFrequencyFilesModal();
+  concordanceOffset = 0;
+  concordanceDistributionOffset = 0;
+  concordanceResult = null;
   void refreshFrequencyPage();
+  if (normaliseConcordanceQuery(dom.concordanceQueryInput.value).length > 0) {
+    void refreshConcordance(true, true);
+  } else {
+    renderConcordance();
+  }
 }
 
 function handleFrequencyFilesListChange(event: Event): void {
@@ -3758,6 +3942,9 @@ export function initWorkbenchSwitcher(): void {
     }
   });
   dom.concordanceCaseSensitiveInput.addEventListener("change", syncConcordanceCaseToggle);
+  dom.concordanceSortSelect.addEventListener("change", handleConcordanceSortChange);
+  dom.concordancePageSizeInput.addEventListener("change", handleConcordancePageSizeChange);
+  dom.concordanceFilesButton.addEventListener("click", openFrequencyFilesModal);
   dom.concordancePagePreviousButton.addEventListener("click", showPreviousConcordancePage);
   dom.concordancePageNextButton.addEventListener("click", showNextConcordancePage);
   dom.frequencySearchInput.addEventListener("input", scheduleFrequencyRefresh);

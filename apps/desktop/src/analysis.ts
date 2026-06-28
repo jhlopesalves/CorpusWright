@@ -15,6 +15,7 @@ import type { CleaningConfig } from "./generated/CleaningConfig.js";
 import type { ConcordanceQuery as GeneratedConcordanceQuery } from "./generated/ConcordanceQuery.js";
 import type { ConcordanceResult as GeneratedConcordanceResult } from "./generated/ConcordanceResult.js";
 import type { ConcordanceRow as GeneratedConcordanceRow } from "./generated/ConcordanceRow.js";
+import type { ConcordanceSortKey as GeneratedConcordanceSortKey } from "./generated/ConcordanceSortKey.js";
 import type { FrequencyGroupMode as GeneratedFrequencyGroupMode } from "./generated/FrequencyGroupMode.js";
 import type { FrequencyMatchMode as GeneratedFrequencyMatchMode } from "./generated/FrequencyMatchMode.js";
 import type { FrequencyPage as GeneratedFrequencyPage } from "./generated/FrequencyPage.js";
@@ -272,6 +273,7 @@ export type FrequencyPage = GeneratedFrequencyPage;
 export type ConcordanceQuery = GeneratedConcordanceQuery;
 export type ConcordanceRow = GeneratedConcordanceRow;
 export type ConcordanceResult = GeneratedConcordanceResult;
+export type ConcordanceSortKey = GeneratedConcordanceSortKey;
 
 export interface AnalysisDocumentPageItem extends AnalysisDocumentSummary {
   selected: boolean;

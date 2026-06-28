@@ -59,3 +59,26 @@ assert(
   !workbench.includes("Top-doc share"),
   "Frequency renderer should not render Top-doc share by default",
 );
+
+const concordanceHeadMatch = html.match(/<table class="concordance-table">([\s\S]*?)<\/table>/);
+assert(concordanceHeadMatch, "Concordance table should exist");
+const concordanceTable = concordanceHeadMatch[1];
+for (const label of ["File", "Left context", "Node", "Right context"]) {
+  assert(concordanceTable.includes(label), `Concordance table should render ${label}`);
+}
+for (const sort of ["filePosition", "node", "left1", "left2", "left3", "right1", "right2", "right3"]) {
+  assert(html.includes(`value="${sort}"`), `Concordance sort should include ${sort}`);
+}
+assert(
+  html.includes("Enter a word or phrase to see concordance lines."),
+  "Concordance no-query copy should invite word or phrase search",
+);
+assert(
+  workbench.includes("function handleConcordanceSortChange")
+    && workbench.includes("void refreshConcordance(true, true);"),
+  "Concordance sort changes should reset KWIC and distribution pagination",
+);
+assert(
+  workbench.includes("Searching...") && workbench.includes("CONCORDANCE_NO_HITS_MESSAGE"),
+  "Concordance renderer should include loading and no-hit states",
+);
