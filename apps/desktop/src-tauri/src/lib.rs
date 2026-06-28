@@ -1937,6 +1937,9 @@ async fn build_annotation_cache_command(
             analysis_options,
             annotation_options,
             &cancel_for_task,
+            move |progress| {
+                let _ = window.emit("annotation-build-progress", progress);
+            },
             |record| {
                 Ok(resolve_analysis_input_for_record(
                     record,

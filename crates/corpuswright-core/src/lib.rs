@@ -49,6 +49,7 @@ pub mod word_count;
 pub use analysis::{
     AnalysisDocumentSelection, AnnotatedFrequencyMode, AnnotatedFrequencyQuery,
     AnnotatedFrequencyResult, AnnotatedTermCount, AnnotationCacheAvailability,
+    AnnotationCacheBuildPhase, AnnotationCacheBuildProgress,
     AnnotationCacheState, AnnotationLayer, AnnotationLayerBuildError, AnnotationLayerBuildOptions,
     AnnotationLayerDocument, ConcordanceDocument, ConcordanceError, ConcordanceQuery,
     ConcordanceResult, ConcordanceRow, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
