@@ -459,18 +459,39 @@
                 <div class="frequency-section-header">
                   <div>
                     <h2 id="concordance-title">Concordance</h2>
-                    <p id="concordance-summary" class="frequency-summary">Search for a surface word to see its occurrences in context.</p>
+                    <p id="concordance-summary" class="frequency-summary">Enter a word or phrase to see concordance lines.</p>
                   </div>
                   <span id="concordance-result-count" class="frequency-result-count"></span>
                 </div>
                 <div class="concordance-controls">
                   <label for="concordance-query-input">
-                    <span>Surface word</span>
+                    <span>Surface word or phrase</span>
                     <input id="concordance-query-input" type="search" autocomplete="off" />
                   </label>
                   <label for="concordance-window-input">
                     <span>Window</span>
                     <input id="concordance-window-input" type="number" min="1" max="20" step="1" value="5" />
+                  </label>
+                  <label for="concordance-sort-select">
+                    <span>Sort</span>
+                    <select id="concordance-sort-select">
+                      <option value="filePosition" selected>File/position</option>
+                      <option value="node">Node</option>
+                      <option value="left1">1L</option>
+                      <option value="left2">2L</option>
+                      <option value="left3">3L</option>
+                      <option value="right1">1R</option>
+                      <option value="right2">2R</option>
+                      <option value="right3">3R</option>
+                    </select>
+                  </label>
+                  <div class="frequency-file-scope-control">
+                    <span>File scope</span>
+                    <button id="concordance-files-button" type="button" class="secondary-btn">Files: 0 of 0</button>
+                  </div>
+                  <label for="concordance-page-size-input">
+                    <span>Rows</span>
+                    <input id="concordance-page-size-input" type="number" min="25" max="500" step="25" value="100" />
                   </label>
                   <label class="frequency-stopword-control" for="concordance-case-sensitive">
                     <span>Case</span>
@@ -482,14 +503,30 @@
                   </label>
                   <button id="concordance-search-button" class="primary-btn" type="button">Search</button>
                 </div>
-                <p class="frequency-search-note">KWIC alpha currently supports one-token surface queries.</p>
                 <div id="concordance-status" class="frequency-query-notice hidden" role="status"></div>
-                <div id="concordance-results" class="concordance-results"></div>
+                <div class="concordance-table-wrap">
+                  <table class="concordance-table">
+                    <thead>
+                      <tr>
+                        <th>File</th>
+                        <th>Left context</th>
+                        <th>Node</th>
+                        <th>Right context</th>
+                      </tr>
+                    </thead>
+                    <tbody id="concordance-table-body">
+                      <tr>
+                        <td colspan="4" class="frequency-empty">Enter a word or phrase to see concordance lines.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
                 <div class="analysis-pagination" aria-label="Concordance result pages">
                   <button id="concordance-page-previous" class="secondary-btn" type="button">Previous</button>
                   <span id="concordance-page-status"></span>
                   <button id="concordance-page-next" class="secondary-btn" type="button">Next</button>
                 </div>
+                <div id="concordance-distribution" class="concordance-distribution"></div>
               </section>
             </div>
           </div>
