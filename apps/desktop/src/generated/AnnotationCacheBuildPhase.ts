@@ -1,1 +1,1 @@
-export type AnnotationCacheBuildPhase = { "type": "BuildingSurface", phase: string, } | { "type": "LoadingModel" } | { "type": "Annotating" } | { "type": "WritingCache" };
+export type AnnotationCacheBuildPhase = { "type": "BuildingSurface", phase: string, } | { "type": "LoadingModel" } | { "type": "Annotating" } | { "type": "WritingCache" } | { "type": "Completed" } | { "type": "Failed" } | { "type": "Cancelled" };
