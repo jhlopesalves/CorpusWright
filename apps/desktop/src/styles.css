@@ -2940,6 +2940,103 @@ main {
   opacity: 0.55;
 }
 
+.annotation-layer-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+}
+
+.annotation-layer-strip.is-hidden {
+  display: none;
+}
+
+.annotation-layer-strip[data-status="ready"] {
+  border-left-color: var(--accent-color);
+}
+
+.annotation-layer-strip[data-status="invalid"],
+.annotation-layer-strip[data-status="failed"] {
+  border-left-color: var(--danger-color);
+}
+
+.annotation-layer-copy {
+  min-width: 0;
+}
+
+.annotation-layer-title {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.annotation-layer-help {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.annotation-layer-progress {
+  margin-top: 7px;
+  display: grid;
+  gap: 4px;
+}
+
+.annotation-layer-progress-label,
+.annotation-layer-progress-meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+
+.annotation-layer-progress-label {
+  color: var(--text-color);
+  font-weight: 600;
+}
+
+.annotation-layer-progress-bar {
+  position: relative;
+  width: min(360px, 100%);
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--border-color);
+}
+
+.annotation-layer-progress-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--accent-color);
+}
+
+.annotation-layer-progress-bar.is-indeterminate .annotation-layer-progress-fill {
+  width: 42%;
+  animation: annotation-progress-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes annotation-progress-indeterminate {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(240%);
+  }
+}
+
+.annotation-layer-action {
+  flex: 0 0 auto;
+}
+
 .frequency-result-count,
 .frequency-limit-note {
   color: var(--text-muted);

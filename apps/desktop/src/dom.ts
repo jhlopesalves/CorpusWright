@@ -37,6 +37,7 @@ export const dom = {
   concordancePageNextButton: getElement<HTMLButtonElement>("concordance-page-next"),
   concordancePageStatus: getElement<HTMLSpanElement>("concordance-page-status"),
   frequencyModeTabs: getElement<HTMLDivElement>("frequency-mode-tabs"),
+  frequencyAnnotationLayer: getElement<HTMLDivElement>("frequency-annotation-layer"),
   frequencySearchInput: getElement<HTMLInputElement>("frequency-search-input"),
   frequencyMatchModeSelect: getElement<HTMLSelectElement>("frequency-match-mode"),
   frequencySearchError: getElement<HTMLDivElement>("frequency-search-error"),
