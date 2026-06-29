@@ -1,6 +1,6 @@
 # CorpusWright
 [![CI](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v0.1.0--alpha.7-blue)](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.7)
+[![Release](https://img.shields.io/badge/release-v0.1.0--alpha.8-blue)](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8)
 [![Docs](https://img.shields.io/badge/docs-website-006cd6)](https://jhlopesalves.github.io/CorpusWright/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -8,11 +8,13 @@
 ![Local-first](https://img.shields.io/badge/local--first-desktop-blue)
 ![Corpus linguistics](https://img.shields.io/badge/corpus-linguistics-purple)
 
-A local-first desktop workbench for cleaning, inspecting, and analysing text corpora — with every step visible and reproducible.
+A local-first desktop corpus workbench for cleaning, counting, concordancing, and exploring real-world text corpora — with every step visible and reproducible.
 
-**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.7](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.7)
+**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.8](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8)
 
-> Experimental alpha. Windows and macOS builds are on the Releases page, but they're unsigned, so your OS will probably warn you before letting them run.
+Latest release page: https://github.com/jhlopesalves/CorpusWright/releases/latest
+
+> Experimental alpha. Release builds are on the Releases page. Windows installers may still trigger the usual unsigned-app warnings.
 
 CorpusWright is a Rust/Tauri rewrite of an earlier PySide6 prototype. The old PySide app is still in the repo under `legacy/pyside/` for reference, but all active development now happens in the Rust/Tauri version.
 
@@ -46,6 +48,12 @@ CorpusWright is my attempt to make that stage less miserable: load the documents
 - Promotes selected exact and normalised repeated-line candidates into structured cleaning rules from Cleaning Settings.
 - Uses page-aware repeated artefact evidence and page-zone scoped rules when reliable PDF/OCR page metadata is available; flat text paths do not invent page zones.
 - Searches across selected documents with backend-powered hit navigation.
+- Builds Corpus Overview / Frequency List tables for surface tokens, lemmas plus POS where annotation is available, and POS tags, with raw frequency, document range, DP/dispersion-aware defaults, and optional normalised rates.
+- Provides alpha Concordance / KWIC workflows for surface and phrase search, KWIC lines, sorting by file/position, node, and left/right context positions, source preview, and document spread diagnostics.
+- Provides alpha Collocates around the current query, including raw co-occurrence count, Near query/O11, corpus frequency/f_c, and association scores such as logDice.
+- Keeps Collocates lazy and cached, so ordinary Search updates KWIC lines without immediately recomputing collocate tables.
+- Uses canonical source decoding across preview, export, and word-count paths: strict UTF-8 first, then Windows-1252 fallback for legacy Western-European, Portuguese, and French-style text files.
+- Records decode provenance in manifests, and includes decode policy in annotation/cache identity so stale text foundations can be detected.
 - Exports cleaned text alongside a manifest, a warnings file, and the exact configuration used.
 
 Cleaning configurations save and load as JSON, so a corpus you cleaned today can be cleaned identically six months from now.
@@ -109,16 +117,25 @@ cargo check -p corpuswright-desktop --all-targets
 
 ## Status
 
-This is alpha, and it behaves like alpha. The core pipeline - loading, preview, cleaning, search, export, repeated-artefact detection, extraction caching - is in place and working. The rough edges are mostly in packaging, UI polish, documentation, and the higher-level corpus-linguistic features.
+This is alpha, and it behaves like alpha. The core pipeline - loading, preview, cleaning, search, export, repeated-artefact detection, extraction caching - is in place and working. Alpha.8 also includes the first public analysis pass: Corpus Overview / Frequency List, surface and phrase KWIC, Collocates alpha, document spread diagnostics, and safer source decoding for UTF-8 and Windows-1252 text.
+
+Known limits:
+
+- Concordance and Collocates are functional alpha features, not final workflow design.
+- Current analysis still uses scan and cached paths rather than the future positional index.
+- CQL, N-grams, lemma/POS KWIC, and annotation-aware Concordance are not implemented yet.
+- Collocates are useful alpha functionality, not the final indexed architecture.
+- CorpusWright is local-first; it does not host corpora remotely.
+- Windows installers may still be unsigned.
 
 Next on my list:
 
-- an original-vs-processed diff view;
-- richer export summaries;
-- frequency lists and other corpus diagnostics;
-- more TypeScript bindings generated from the Rust types;
-- a frontend tidy-up;
-- proper screenshots and documentation.
+- dogfood alpha.8 on IMDB and Portuguese corpora;
+- design and build the surface positional index;
+- migrate KWIC and Collocates to the index behind parity gates;
+- write the frontend/Analyse workspace state-model brief;
+- shape the future one-workspace Concordance interaction model;
+- add N-grams, CQL-lite, lemma/POS KWIC, richer Collocates, and export/copy workflows after the foundations are ready.
 
 ## Legacy PySide version
 

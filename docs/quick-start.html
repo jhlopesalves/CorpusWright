@@ -54,8 +54,8 @@
   <div class="shell">
     <div class="section-lead">
       <p class="eyebrow">Quick start</p>
-      <h1>Try CorpusWright from source or from published alpha releases.</h1>
-      <p class="lede">This page is intentionally conservative. Replace the commands below with the exact commands from the current repository README before publishing.</p>
+      <h1>Try CorpusWright from source or from the alpha.8 release.</h1>
+      <p class="lede">Use the GitHub release page for packaged alpha builds, or build locally from the repository when you want a development checkout.</p>
     </div>
   </div>
 </section>
@@ -64,9 +64,10 @@
   <div class="shell grid">
     <article class="card">
       <h3>Use a release build</h3>
-      <p>Any published alpha builds will appear on GitHub Releases. If none are listed yet, build from source using the steps opposite.</p>
+      <p>Download alpha.8 from the release page. Windows installers may still show unsigned-app warnings.</p>
       <div class="actions">
-        <a class="btn primary" href="https://github.com/jhlopesalves/CorpusWright/releases">Open releases</a>
+        <a class="btn primary" href="https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8">Download alpha.8</a>
+        <a class="btn ghost" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">View latest release</a>
       </div>
     </article>
     <article class="card">
@@ -74,7 +75,9 @@
       <p>CorpusWright is a Rust + Tauri desktop application. Development usually requires Rust, Node.js, and the package manager used by the frontend.</p>
       <pre class="code"><code>git clone https://github.com/jhlopesalves/CorpusWright.git
 cd CorpusWright
-# Replace with the canonical dev command from README.md.</code></pre>
+cd apps/desktop
+npm ci
+npm run tauri dev</code></pre>
     </article>
   </div>
 </section>
@@ -90,7 +93,8 @@ cd CorpusWright
       <p><span class="term">3.</span> Review extracted text and warnings.</p>
       <p><span class="term">4.</span> Configure cleaning rules deliberately.</p>
       <p><span class="term">5.</span> Preview processed text before exporting.</p>
-      <p><span class="term">6.</span> Export processed text with project metadata and warnings.</p>
+      <p><span class="term">6.</span> Inspect frequency lists, KWIC lines, collocates, and document spread diagnostics.</p>
+      <p><span class="term">7.</span> Export processed text with project metadata and warnings.</p>
     </div>
   </div>
 </section>
@@ -108,7 +112,7 @@ cd CorpusWright
 
 <footer class="site-footer">
   <div class="shell foot">
-    <span>CorpusWright is an open, local-first corpus linguistics workbench, currently in public alpha (v0.1.0-alpha.7).</span>
+    <span>CorpusWright is an open, local-first corpus linguistics workbench, currently in public alpha (v0.1.0-alpha.8).</span>
     <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
   </div>
 </footer>
