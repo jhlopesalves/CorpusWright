@@ -60,6 +60,7 @@ import {
   clampConcordanceCollocationFloor,
   clampConcordanceCollocationSpan,
   clampConcordancePageSize,
+  concordanceCollocationExplanation,
   concordanceCollocationMeasureLabel,
   concordanceCollocationScore,
   concordanceCollocationScoreBarPercent,
@@ -72,6 +73,9 @@ import {
   CONCORDANCE_COLLOCATION_SORT_OPTIONS,
   CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE,
   CONCORDANCE_COLLOCATION_NO_ROWS_MESSAGE,
+  CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE,
+  CONCORDANCE_COLLOCATION_STALE_DETAIL,
+  CONCORDANCE_COLLOCATION_STALE_MESSAGE,
   CONCORDANCE_EXPANSION_WINDOW,
   CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,
@@ -124,6 +128,7 @@ const TERM_DISTRIBUTION_PAGE_SIZE = 100;
 const CONCORDANCE_DISTRIBUTION_PAGE_SIZE = 10;
 type AnalysisToolId = "overview" | "frequency" | "concordance";
 type ConcordanceViewId = "lines" | "collocates";
+type ConcordanceCollocationState = "idle_not_computed" | "loading" | "ready" | "stale" | "error";
 
 interface OverviewMetricRow {
   label: string;
@@ -188,10 +193,15 @@ let concordanceExpansionPending = false;
 let concordanceExpansionFailure: string | null = null;
 let concordanceExpansionResult: ConcordanceExpansionResult | null = null;
 let concordanceExpansionGeneration = 0;
+let concordanceCollocationState: ConcordanceCollocationState = "idle_not_computed";
 let concordanceCollocationResult: ConcordanceCollocationResult | null = null;
 let concordanceCollocationPending = false;
 let concordanceCollocationFailure: string | null = null;
 let concordanceCollocationGeneration = 0;
+let concordanceCollocationFreshAggregationKey: string | null = null;
+let concordanceCollocationEverComputed = false;
+let concordanceCollocationInFlightRequestKey: string | null = null;
+let concordanceCollocationSupersededNotice: string | null = null;
 let concordanceCollocationMeasure: ConcordanceCollocationMeasure =
   DEFAULT_CONCORDANCE_COLLOCATION_MEASURE;
 let concordanceCollocationSortKey: ConcordanceCollocationSortKey =
@@ -1646,10 +1656,15 @@ function resetFrequencyCorpusState(resetAnnotationLayer = true): void {
   concordanceExpansionFailure = null;
   concordanceExpansionResult = null;
   concordanceExpansionGeneration += 1;
+  concordanceCollocationState = "idle_not_computed";
   concordanceCollocationResult = null;
   concordanceCollocationGeneration += 1;
   concordanceCollocationPending = false;
   concordanceCollocationFailure = null;
+  concordanceCollocationFreshAggregationKey = null;
+  concordanceCollocationEverComputed = false;
+  concordanceCollocationInFlightRequestKey = null;
+  concordanceCollocationSupersededNotice = null;
   concordanceCollocationMeasure = DEFAULT_CONCORDANCE_COLLOCATION_MEASURE;
   concordanceCollocationSortKey = DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY;
   concordanceCollocationSortDirection = DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION;
@@ -1712,6 +1727,47 @@ function currentConcordanceCollocationMinFrequency(): number {
   return floor;
 }
 
+function currentConcordanceCollocationAggregationKey(): string | null {
+  const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
+  if (query.length === 0) {
+    return null;
+  }
+  return JSON.stringify({
+    corpusVersion: state.currentCorpusVersion,
+    cleaningConfig: effectiveCleaningConfig(),
+    selection: frequencyDocumentScope,
+    query,
+    caseSensitive: dom.concordanceCaseSensitiveInput.checked,
+    span: currentConcordanceCollocationSpan(),
+    direction: currentConcordanceCollocationDirection(),
+  });
+}
+
+function currentConcordanceCollocationRequestKey(): string | null {
+  const aggregationKey = currentConcordanceCollocationAggregationKey();
+  if (aggregationKey === null) {
+    return null;
+  }
+  return JSON.stringify({
+    aggregationKey,
+    minCooccurrence: currentConcordanceCollocationMinO11(),
+    minCollocateFrequency: currentConcordanceCollocationMinFrequency(),
+    hideStopwords: dom.concordanceCollocationHideStopwordsInput.checked,
+    sortMeasure: concordanceCollocationMeasure,
+    sortKey: concordanceCollocationSortKey,
+    sortDirection: currentConcordanceCollocationSortDirection(),
+    limit: CONCORDANCE_COLLOCATION_LIMIT,
+  });
+}
+
+function currentConcordanceCollocationResultIsFresh(): boolean {
+  const aggregationKey = currentConcordanceCollocationAggregationKey();
+  return aggregationKey !== null
+    && concordanceCollocationFreshAggregationKey === aggregationKey
+    && concordanceCollocationResult !== null
+    && concordanceCollocationState === "ready";
+}
+
 function syncConcordanceCaseToggle(): void {
   const isCaseSensitive = dom.concordanceCaseSensitiveInput.checked;
   dom.concordanceCaseSensitiveInput.setAttribute("aria-checked", isCaseSensitive ? "true" : "false");
@@ -1729,6 +1785,80 @@ function syncConcordanceControls(): void {
   syncConcordanceCollocationStopwordsToggle();
   dom.concordanceSortSelect.value = concordanceSortKey;
   dom.concordanceCollocationMeasureSelect.value = concordanceCollocationMeasure;
+}
+
+function markConcordanceCollocationsForAggregationChange(): void {
+  const aggregationKey = currentConcordanceCollocationAggregationKey();
+  if (
+    aggregationKey !== null
+    && concordanceCollocationFreshAggregationKey === aggregationKey
+    && concordanceCollocationResult !== null
+  ) {
+    concordanceCollocationState = "ready";
+    concordanceCollocationFailure = null;
+    concordanceCollocationSupersededNotice = null;
+    renderConcordanceCollocations();
+    return;
+  }
+
+  concordanceCollocationGeneration += 1;
+  concordanceCollocationPending = false;
+  concordanceCollocationInFlightRequestKey = null;
+  concordanceCollocationFailure = null;
+  concordanceCollocationSupersededNotice = null;
+  concordanceCollocationResult = null;
+
+  if (aggregationKey === null) {
+    concordanceCollocationState = "idle_not_computed";
+    concordanceCollocationFreshAggregationKey = null;
+  } else {
+    concordanceCollocationState = concordanceCollocationEverComputed ? "stale" : "idle_not_computed";
+  }
+
+  renderConcordanceCollocations();
+}
+
+function noteSupersededConcordanceCollocationResult(): void {
+  if (concordanceCollocationState !== "stale") {
+    return;
+  }
+  concordanceCollocationSupersededNotice =
+    "An older collocate result was ignored because the settings changed.";
+  renderConcordanceCollocations();
+}
+
+function refreshConcordanceCollocationsForPresentationChange(): void {
+  if (
+    concordanceCollocationPending
+    && currentConcordanceCollocationRequestKey() !== concordanceCollocationInFlightRequestKey
+  ) {
+    void refreshConcordanceCollocations();
+    return;
+  }
+  if (currentConcordanceCollocationResultIsFresh()) {
+    void refreshConcordanceCollocations();
+  } else {
+    renderConcordanceCollocations();
+  }
+}
+
+function maybeAutoComputeConcordanceCollocations(): void {
+  if (activeConcordanceView !== "collocates") {
+    return;
+  }
+  if (currentConcordanceCollocationResultIsFresh()) {
+    renderConcordanceCollocations();
+    return;
+  }
+  if (
+    concordanceCollocationState === "idle_not_computed"
+    && !concordanceCollocationEverComputed
+    && currentConcordanceCollocationAggregationKey() !== null
+  ) {
+    void refreshConcordanceCollocations();
+    return;
+  }
+  renderConcordanceCollocations();
 }
 
 function isConcordanceViewId(value: string | undefined): value is ConcordanceViewId {
@@ -1772,6 +1902,9 @@ function handleConcordanceViewTabClick(event: MouseEvent): void {
     return;
   }
   setActiveConcordanceView(view);
+  if (view === "collocates") {
+    maybeAutoComputeConcordanceCollocations();
+  }
 }
 
 function renderConcordanceStatus(message: string | null, isError = false): void {
@@ -1813,10 +1946,37 @@ function renderConcordanceFilterStatus(result: ConcordanceResult): void {
   dom.concordanceStatus.classList.remove("hidden", "warning");
 }
 
-function renderConcordanceCollocationStatus(message: string | null, isError = false): void {
-  dom.concordanceCollocationsStatus.textContent = message ?? "";
-  dom.concordanceCollocationsStatus.classList.toggle("hidden", message === null);
+function renderConcordanceCollocationStatus(content: string | Node | null, isError = false): void {
+  dom.concordanceCollocationsStatus.replaceChildren();
+  if (typeof content === "string") {
+    dom.concordanceCollocationsStatus.textContent = content;
+  } else if (content) {
+    dom.concordanceCollocationsStatus.appendChild(content);
+  }
+  dom.concordanceCollocationsStatus.classList.toggle("hidden", content === null);
   dom.concordanceCollocationsStatus.classList.toggle("warning", isError);
+}
+
+function renderConcordanceCollocationAction(
+  message: string,
+  detail: string | null,
+  label: string,
+): HTMLElement {
+  const prompt = document.createElement("div");
+  prompt.className = "concordance-collocation-action";
+  const copy = document.createElement("span");
+  copy.className = "concordance-collocation-action-copy";
+  copy.textContent = detail ? `${message} ${detail}` : message;
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "secondary-btn concordance-collocation-action-button";
+  action.textContent = label;
+  action.disabled = concordanceCollocationPending;
+  action.addEventListener("click", () => {
+    void refreshConcordanceCollocations();
+  });
+  prompt.append(copy, action);
+  return prompt;
 }
 
 function currentConcordanceExpansionState(): ConcordanceExpansionStateSnapshot {
@@ -2126,12 +2286,19 @@ function createConcordanceCollocationRow(
   visibleScores: Array<number | null>,
 ): HTMLTableRowElement {
   const item = document.createElement("tr");
+  item.className = "concordance-collocation-row";
 
   const surface = document.createElement("td");
   const button = document.createElement("button");
   button.type = "button";
   button.className = "concordance-collocate-button";
-  button.textContent = row.surface;
+  const text = document.createElement("span");
+  text.className = "concordance-collocate-text";
+  text.textContent = row.surface;
+  const cue = document.createElement("span");
+  cue.className = "concordance-collocate-action";
+  cue.textContent = "Show lines";
+  button.append(text, cue);
   button.addEventListener("click", () => handleConcordanceCollocateClick(row));
   surface.appendChild(button);
 
@@ -2170,22 +2337,10 @@ function renderConcordanceCollocations(): void {
   syncConcordanceControls();
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   const measure = concordanceCollocationMeasure;
+  const span = currentConcordanceCollocationSpan();
+  const direction = currentConcordanceCollocationDirection();
   renderConcordanceCollocationTableHead(measure);
   dom.concordanceCollocationsSummary.classList.remove("hidden");
-
-  if (concordanceCollocationPending) {
-    dom.concordanceCollocationsSummary.textContent = "Profiling collocates...";
-    renderConcordanceCollocationStatus(null);
-    renderConcordanceCollocationTableState("Loading...");
-    return;
-  }
-
-  if (concordanceCollocationFailure) {
-    dom.concordanceCollocationsSummary.textContent = CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE;
-    renderConcordanceCollocationStatus(concordanceCollocationFailure, true);
-    renderConcordanceCollocationTableState(concordanceCollocationFailure);
-    return;
-  }
 
   if (query.length === 0) {
     dom.concordanceCollocationsSummary.textContent = CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE;
@@ -2194,16 +2349,56 @@ function renderConcordanceCollocations(): void {
     return;
   }
 
+  const explanation = concordanceCollocationExplanation(query, span, direction, measure);
+  dom.concordanceCollocationsSummary.textContent = explanation;
+
+  if (concordanceCollocationPending || concordanceCollocationState === "loading") {
+    renderConcordanceCollocationStatus("Computing collocates...");
+    renderConcordanceCollocationTableState("Loading...");
+    return;
+  }
+
+  if (concordanceCollocationFailure || concordanceCollocationState === "error") {
+    const message = concordanceCollocationFailure ?? "Collocate computation failed.";
+    renderConcordanceCollocationStatus(message, true);
+    renderConcordanceCollocationTableState(message);
+    return;
+  }
+
+  if (concordanceCollocationState === "stale") {
+    const detail = concordanceCollocationSupersededNotice
+      ? `${CONCORDANCE_COLLOCATION_STALE_DETAIL} ${concordanceCollocationSupersededNotice}`
+      : CONCORDANCE_COLLOCATION_STALE_DETAIL;
+    renderConcordanceCollocationStatus(
+      renderConcordanceCollocationAction(
+        CONCORDANCE_COLLOCATION_STALE_MESSAGE,
+        detail,
+        "Refresh collocates",
+      ),
+    );
+    renderConcordanceCollocationTableState(CONCORDANCE_COLLOCATION_STALE_MESSAGE);
+    return;
+  }
+
   const result = concordanceCollocationResult;
-  if (!result) {
-    dom.concordanceCollocationsSummary.textContent = CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE;
-    renderConcordanceCollocationStatus(null);
-    renderConcordanceCollocationTableState(CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE);
+  if (
+    !result
+    || concordanceCollocationState === "idle_not_computed"
+    || !currentConcordanceCollocationResultIsFresh()
+  ) {
+    renderConcordanceCollocationStatus(
+      renderConcordanceCollocationAction(
+        CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE,
+        null,
+        "Compute collocates",
+      ),
+    );
+    renderConcordanceCollocationTableState(CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE);
     return;
   }
 
   dom.concordanceCollocationsSummary.textContent =
-    `${formatNumber(result.fNode)} nodes · ${formatNumber(result.r1)} slots · ${formatNumber(result.n)} tokens · ranked by ${concordanceCollocationSortHeaderLabel(concordanceCollocationSortKey, measure)}`;
+    `${explanation} ${formatNumber(result.fNode)} nodes · ${formatNumber(result.r1)} slots · ${formatNumber(result.n)} tokens.`;
   renderConcordanceCollocationStatus(null);
 
   const rows = result.rows;
@@ -2480,18 +2675,29 @@ async function refreshConcordance(
 async function refreshConcordanceCollocations(): Promise<void> {
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   concordanceCollocationMeasure = currentConcordanceCollocationMeasure();
-  if (query.length === 0) {
+  const aggregationKey = currentConcordanceCollocationAggregationKey();
+  const requestKey = currentConcordanceCollocationRequestKey();
+  if (query.length === 0 || aggregationKey === null || requestKey === null) {
+    concordanceCollocationState = "idle_not_computed";
     concordanceCollocationResult = null;
     concordanceCollocationFailure = null;
     concordanceCollocationPending = false;
+    concordanceCollocationFreshAggregationKey = null;
+    concordanceCollocationInFlightRequestKey = null;
     renderConcordanceCollocations();
+    return;
+  }
+  if (concordanceCollocationPending && concordanceCollocationInFlightRequestKey === requestKey) {
     return;
   }
 
   const generation = ++concordanceCollocationGeneration;
   concordanceCollocationPending = true;
+  concordanceCollocationState = "loading";
   concordanceCollocationFailure = null;
+  concordanceCollocationSupersededNotice = null;
   concordanceCollocationResult = null;
+  concordanceCollocationInFlightRequestKey = requestKey;
   renderConcordanceCollocations();
 
   try {
@@ -2513,18 +2719,29 @@ async function refreshConcordanceCollocations(): Promise<void> {
       state.currentCorpusVersion,
       effectiveCleaningConfig(),
     );
-    if (generation !== concordanceCollocationGeneration) {
+    if (
+      generation !== concordanceCollocationGeneration
+      || requestKey !== currentConcordanceCollocationRequestKey()
+      || aggregationKey !== currentConcordanceCollocationAggregationKey()
+    ) {
+      noteSupersededConcordanceCollocationResult();
       return;
     }
     concordanceCollocationResult = result;
+    concordanceCollocationFreshAggregationKey = aggregationKey;
+    concordanceCollocationEverComputed = true;
+    concordanceCollocationState = "ready";
   } catch (error) {
     if (generation !== concordanceCollocationGeneration) {
+      noteSupersededConcordanceCollocationResult();
       return;
     }
+    concordanceCollocationState = "error";
     concordanceCollocationFailure = `${error}`;
   } finally {
     if (generation === concordanceCollocationGeneration) {
       concordanceCollocationPending = false;
+      concordanceCollocationInFlightRequestKey = null;
       renderConcordanceCollocations();
     }
   }
@@ -2549,8 +2766,8 @@ function handleConcordanceSortChange(): void {
 
 function runConcordanceSearch(): void {
   concordanceContextFilter = null;
+  markConcordanceCollocationsForAggregationChange();
   void refreshConcordance();
-  void refreshConcordanceCollocations();
 }
 
 function handleConcordancePageSizeChange(): void {
@@ -2564,14 +2781,20 @@ function collapseConcordanceExpansionFromControlChange(): void {
   renderConcordance();
 }
 
+function handleConcordanceQueryInput(): void {
+  collapseConcordanceExpansionFromControlChange();
+  markConcordanceCollocationsForAggregationChange();
+}
+
 function handleConcordanceCaseChange(): void {
   syncConcordanceCaseToggle();
   collapseConcordanceExpansionFromControlChange();
+  markConcordanceCollocationsForAggregationChange();
 }
 
 function handleConcordanceCollocationMeasureChange(): void {
   concordanceCollocationMeasure = currentConcordanceCollocationMeasure();
-  void refreshConcordanceCollocations();
+  refreshConcordanceCollocationsForPresentationChange();
 }
 
 function handleConcordanceCollocationSortClick(event: Event): void {
@@ -2589,11 +2812,15 @@ function handleConcordanceCollocationSortClick(event: Event): void {
     concordanceCollocationSortKey = nextKey;
     concordanceCollocationSortDirection = "desc";
   }
-  void refreshConcordanceCollocations();
+  refreshConcordanceCollocationsForPresentationChange();
 }
 
-function handleConcordanceCollocationControlChange(): void {
-  void refreshConcordanceCollocations();
+function handleConcordanceCollocationAggregationControlChange(): void {
+  markConcordanceCollocationsForAggregationChange();
+}
+
+function handleConcordanceCollocationPresentationControlChange(): void {
+  refreshConcordanceCollocationsForPresentationChange();
 }
 
 function renderFrequencyScopeControl(corpus: AnalysisCorpus | null): void {
@@ -4527,10 +4754,11 @@ function applyFrequencyFileScope(): void {
   collapseConcordanceExpansion();
   void refreshFrequencyPage();
   if (normaliseConcordanceQuery(dom.concordanceQueryInput.value).length > 0) {
+    markConcordanceCollocationsForAggregationChange();
     void refreshConcordance(true, true);
-    void refreshConcordanceCollocations();
   } else {
     renderConcordance();
+    markConcordanceCollocationsForAggregationChange();
   }
 }
 
@@ -4602,7 +4830,7 @@ export function initWorkbenchSwitcher(): void {
   dom.analyseToolsList.addEventListener("click", handleAnalysisToolClick);
   dom.concordanceViewTabs.addEventListener("click", handleConcordanceViewTabClick);
   dom.concordanceSearchButton.addEventListener("click", runConcordanceSearch);
-  dom.concordanceQueryInput.addEventListener("input", collapseConcordanceExpansionFromControlChange);
+  dom.concordanceQueryInput.addEventListener("input", handleConcordanceQueryInput);
   dom.concordanceQueryInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -4616,16 +4844,16 @@ export function initWorkbenchSwitcher(): void {
   dom.concordanceFilesButton.addEventListener("click", openFrequencyFilesModal);
   dom.concordancePagePreviousButton.addEventListener("click", showPreviousConcordancePage);
   dom.concordancePageNextButton.addEventListener("click", showNextConcordancePage);
-  dom.concordanceCollocationSpanInput.addEventListener("change", handleConcordanceCollocationControlChange);
-  dom.concordanceCollocationDirectionSelect.addEventListener("change", handleConcordanceCollocationControlChange);
+  dom.concordanceCollocationSpanInput.addEventListener("change", handleConcordanceCollocationAggregationControlChange);
+  dom.concordanceCollocationDirectionSelect.addEventListener("change", handleConcordanceCollocationAggregationControlChange);
   dom.concordanceCollocationMeasureSelect.addEventListener("change", handleConcordanceCollocationMeasureChange);
-  dom.concordanceCollocationMinO11Input.addEventListener("change", handleConcordanceCollocationControlChange);
-  dom.concordanceCollocationMinFreqInput.addEventListener("change", handleConcordanceCollocationControlChange);
+  dom.concordanceCollocationMinO11Input.addEventListener("change", handleConcordanceCollocationPresentationControlChange);
+  dom.concordanceCollocationMinFreqInput.addEventListener("change", handleConcordanceCollocationPresentationControlChange);
   dom.concordanceCollocationsTableHead.addEventListener("click", handleConcordanceCollocationSortClick);
   syncConcordanceCollocationStopwordsToggle();
   dom.concordanceCollocationHideStopwordsInput.addEventListener("change", () => {
     syncConcordanceCollocationStopwordsToggle();
-    handleConcordanceCollocationControlChange();
+    handleConcordanceCollocationPresentationControlChange();
   });
   dom.frequencySearchInput.addEventListener("input", scheduleFrequencyRefresh);
   dom.frequencyMatchModeSelect.addEventListener("change", () => void refreshFrequencyPage());

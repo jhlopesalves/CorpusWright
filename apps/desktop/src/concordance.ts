@@ -1,4 +1,5 @@
 import type { ConcordanceCollocateRow } from "./generated/ConcordanceCollocateRow.js";
+import type { ConcordanceCollocationDirection } from "./generated/ConcordanceCollocationDirection.js";
 import type { ConcordanceCollocationMeasure } from "./generated/ConcordanceCollocationMeasure.js";
 import type { ConcordanceCollocationSortKey } from "./generated/ConcordanceCollocationSortKey.js";
 import type { ConcordanceExpansionResult } from "./generated/ConcordanceExpansionResult.js";
@@ -27,6 +28,11 @@ export const CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE =
   "Enter a word or phrase to profile collocates.";
 export const CONCORDANCE_COLLOCATION_NO_ROWS_MESSAGE =
   "No collocates above the current floors.";
+export const CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE =
+  "Collocates have not been computed yet.";
+export const CONCORDANCE_COLLOCATION_STALE_MESSAGE = "Collocates need refresh.";
+export const CONCORDANCE_COLLOCATION_STALE_DETAIL =
+  "The query or collocate settings changed.";
 export const DEFAULT_CONCORDANCE_COLLOCATION_MEASURE: ConcordanceCollocationMeasure = "logDice";
 export const DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY: ConcordanceCollocationSortKey = "association";
 export const DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION: SortDirection = "desc";
@@ -114,6 +120,29 @@ export function concordanceCollocationMeasureLabel(
   measure: ConcordanceCollocationMeasure,
 ): string {
   return CONCORDANCE_COLLOCATION_MEASURE_OPTIONS.find((option) => option.value === measure)?.label ?? "logDice";
+}
+
+export function concordanceCollocationDirectionLabel(
+  direction: ConcordanceCollocationDirection,
+): string {
+  switch (direction) {
+    case "left":
+      return "left";
+    case "right":
+      return "right";
+    case "both":
+      return "both sides";
+  }
+}
+
+export function concordanceCollocationExplanation(
+  query: string,
+  span: number,
+  direction: ConcordanceCollocationDirection,
+  measure: ConcordanceCollocationMeasure,
+): string {
+  const directionText = concordanceCollocationDirectionLabel(direction);
+  return `Collocates near "${query}" within ${span.toLocaleString()} tokens (${directionText}), ranked by Association: ${concordanceCollocationMeasureLabel(measure)}. Near query = times the word appears around the query · Corpus frequency = total frequency in the selected corpus.`;
 }
 
 export function clampConcordanceCollocationSpan(value: number): number {

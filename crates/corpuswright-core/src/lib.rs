@@ -52,6 +52,7 @@ pub use analysis::{
     AnnotatedTermSelector, AnnotationCacheAvailability, AnnotationCacheBuildPhase,
     AnnotationCacheBuildProgress, AnnotationCacheState, AnnotationLayer, AnnotationLayerBuildError,
     AnnotationLayerBuildOptions, AnnotationLayerDocument, ConcordanceCollocateRow,
+    ConcordanceCollocationAggregate, ConcordanceCollocationAggregationSignature,
     ConcordanceCollocationDirection, ConcordanceCollocationMeasure, ConcordanceCollocationQuery,
     ConcordanceCollocationResult, ConcordanceCollocationSortKey, ConcordanceDistributionItem,
     ConcordanceDistributionPage, ConcordanceDocument, ConcordanceError, ConcordanceExpansionQuery,
@@ -59,9 +60,11 @@ pub use analysis::{
     ConcordanceSortKey, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
     FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
     FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow, SortDirection,
-    annotation_cache_availability_for_corpus, build_annotation_layer, expand_concordance_context,
-    query_annotated_frequency, query_annotated_term_distribution,
-    query_concordance_collocations_documents, search_concordance_documents,
+    aggregate_concordance_collocations_documents, annotation_cache_availability_for_corpus,
+    build_annotation_layer, concordance_collocation_aggregation_signature,
+    expand_concordance_context, query_annotated_frequency, query_annotated_term_distribution,
+    query_concordance_collocations_documents, query_concordance_collocations_from_aggregate,
+    search_concordance_documents,
 };
 pub use annotation_cache::{
     ANNOTATION_LAYER_CACHE_FILE_VERSION, ANNOTATION_LAYER_SCHEMA_VERSION, AnnotationCorpusIdentity,

@@ -1548,6 +1548,26 @@ pub struct ConcordanceCollocationResult {
     pub rows: Vec<ConcordanceCollocateRow>,
 }
 
+/// Aggregation inputs normalised with the same tokenisation as KWIC.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConcordanceCollocationAggregationSignature {
+    pub query: String,
+    pub case_sensitive: bool,
+    pub span: usize,
+    pub direction: ConcordanceCollocationDirection,
+}
+
+/// Corpus-scan output for concordance collocates.
+#[derive(Debug, Clone)]
+pub struct ConcordanceCollocationAggregate {
+    pub signature: ConcordanceCollocationAggregationSignature,
+    pub candidate_counts: HashMap<String, u64>,
+    pub collocate_frequencies: HashMap<String, u64>,
+    pub r1: u64,
+    pub n: u64,
+    pub f_node: u64,
+}
+
 /// Parameters for expanding one surface-token concordance hit in its document.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
@@ -4821,12 +4841,11 @@ fn add_collocation_window_tokens<'text>(
     end: usize,
     case_sensitive: bool,
     query_keys: &HashSet<String>,
-    hide_stopwords: bool,
     candidate_counts: &mut HashMap<String, u64>,
 ) {
     for token in &tokens[start..end] {
         let candidate = concordance_key(token.surface, case_sensitive);
-        if query_keys.contains(&candidate) || (hide_stopwords && stopword_matches(&candidate)) {
+        if query_keys.contains(&candidate) {
             continue;
         }
         *candidate_counts.entry(candidate).or_default() += 1;
@@ -5197,20 +5216,53 @@ pub fn search_concordance_documents(
     })
 }
 
-/// Computes surface-token collocates around every concordance hit in the selected documents.
-pub fn query_concordance_collocations_documents(
-    documents: &[ConcordanceDocument],
+fn resolve_concordance_collocation_aggregation(
     query: &ConcordanceCollocationQuery,
     tokenization_config: &TokenizationConfig,
-) -> Result<ConcordanceCollocationResult, ConcordanceError> {
+) -> Result<
+    (
+        ConcordanceCollocationAggregationSignature,
+        Vec<String>,
+        HashSet<String>,
+    ),
+    ConcordanceError,
+> {
     let span = concordance_collocation_span(query.span);
-    let limit = concordance_collocation_limit(query.limit);
     let query_tokens = resolve_concordance_query_tokens(&query.query, tokenization_config)?;
     let query_keys = query_tokens
         .iter()
         .map(|token| concordance_key(token, query.case_sensitive))
         .collect::<Vec<_>>();
     let query_key_set = query_keys.iter().cloned().collect::<HashSet<_>>();
+    Ok((
+        ConcordanceCollocationAggregationSignature {
+            query: query_tokens.join(" "),
+            case_sensitive: query.case_sensitive,
+            span,
+            direction: query.direction,
+        },
+        query_keys,
+        query_key_set,
+    ))
+}
+
+/// Normalises the corpus-scan inputs used to key a cached collocation aggregate.
+pub fn concordance_collocation_aggregation_signature(
+    query: &ConcordanceCollocationQuery,
+    tokenization_config: &TokenizationConfig,
+) -> Result<ConcordanceCollocationAggregationSignature, ConcordanceError> {
+    resolve_concordance_collocation_aggregation(query, tokenization_config)
+        .map(|(signature, _, _)| signature)
+}
+
+/// Counts collocate candidates around every concordance hit in the selected documents.
+pub fn aggregate_concordance_collocations_documents(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceCollocationQuery,
+    tokenization_config: &TokenizationConfig,
+) -> Result<ConcordanceCollocationAggregate, ConcordanceError> {
+    let (signature, query_keys, query_key_set) =
+        resolve_concordance_collocation_aggregation(query, tokenization_config)?;
     let selected_document_ids = selected_concordance_document_ids(documents, &query.selection);
     let mut collocate_frequencies = HashMap::<String, u64>::new();
     let mut candidate_counts = HashMap::<String, u64>::new();
@@ -5251,10 +5303,10 @@ pub fn query_concordance_collocations_documents(
 
             f_node += 1;
             if matches!(
-                query.direction,
+                signature.direction,
                 ConcordanceCollocationDirection::Left | ConcordanceCollocationDirection::Both
             ) {
-                let left_start = token_index.saturating_sub(span);
+                let left_start = token_index.saturating_sub(signature.span);
                 r1 += (token_index - left_start) as u64;
                 add_collocation_window_tokens(
                     &tokens,
@@ -5262,15 +5314,14 @@ pub fn query_concordance_collocations_documents(
                     token_index,
                     query.case_sensitive,
                     &query_key_set,
-                    query.hide_stopwords,
                     &mut candidate_counts,
                 );
             }
             if matches!(
-                query.direction,
+                signature.direction,
                 ConcordanceCollocationDirection::Right | ConcordanceCollocationDirection::Both
             ) {
-                let right_end = (node_end + span).min(tokens.len());
+                let right_end = (node_end + signature.span).min(tokens.len());
                 r1 += (right_end - node_end) as u64;
                 add_collocation_window_tokens(
                     &tokens,
@@ -5278,21 +5329,47 @@ pub fn query_concordance_collocations_documents(
                     right_end,
                     query.case_sensitive,
                     &query_key_set,
-                    query.hide_stopwords,
                     &mut candidate_counts,
                 );
             }
         }
     }
 
-    let mut rows = candidate_counts
-        .into_iter()
+    Ok(ConcordanceCollocationAggregate {
+        signature,
+        candidate_counts,
+        collocate_frequencies,
+        r1,
+        n,
+        f_node,
+    })
+}
+
+/// Applies presentation filters, scoring, ranking, and truncation to a cached aggregate.
+pub fn query_concordance_collocations_from_aggregate(
+    aggregate: &ConcordanceCollocationAggregate,
+    query: &ConcordanceCollocationQuery,
+) -> ConcordanceCollocationResult {
+    let limit = concordance_collocation_limit(query.limit);
+    let mut rows = aggregate
+        .candidate_counts
+        .iter()
         .filter_map(|(surface, o11)| {
-            let collocate_frequency = *collocate_frequencies.get(&surface).unwrap_or(&0);
+            if query.hide_stopwords && stopword_matches(surface) {
+                return None;
+            }
+            let collocate_frequency = *aggregate.collocate_frequencies.get(surface).unwrap_or(&0);
+            let o11 = *o11;
             if o11 < query.min_cooccurrence || collocate_frequency < query.min_collocate_frequency {
                 return None;
             }
-            Some(collocation_row(surface, o11, collocate_frequency, r1, n))
+            Some(collocation_row(
+                surface.clone(),
+                o11,
+                collocate_frequency,
+                aggregate.r1,
+                aggregate.n,
+            ))
         })
         .collect::<Vec<_>>();
     rows.sort_by(|left, right| {
@@ -5307,11 +5384,11 @@ pub fn query_concordance_collocations_documents(
     let total_candidates = rows.len();
     rows.truncate(limit);
 
-    Ok(ConcordanceCollocationResult {
-        query: query_tokens.join(" "),
-        case_sensitive: query.case_sensitive,
-        span,
-        direction: query.direction,
+    ConcordanceCollocationResult {
+        query: aggregate.signature.query.clone(),
+        case_sensitive: aggregate.signature.case_sensitive,
+        span: aggregate.signature.span,
+        direction: aggregate.signature.direction,
         min_cooccurrence: query.min_cooccurrence,
         min_collocate_frequency: query.min_collocate_frequency,
         hide_stopwords: query.hide_stopwords,
@@ -5319,12 +5396,25 @@ pub fn query_concordance_collocations_documents(
         sort_key: query.sort_key,
         sort_direction: query.sort_direction,
         limit,
-        r1,
-        n,
-        f_node,
+        r1: aggregate.r1,
+        n: aggregate.n,
+        f_node: aggregate.f_node,
         total_candidates,
         rows,
-    })
+    }
+}
+
+/// Computes surface-token collocates around every concordance hit in the selected documents.
+pub fn query_concordance_collocations_documents(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceCollocationQuery,
+    tokenization_config: &TokenizationConfig,
+) -> Result<ConcordanceCollocationResult, ConcordanceError> {
+    let aggregate =
+        aggregate_concordance_collocations_documents(documents, query, tokenization_config)?;
+    Ok(query_concordance_collocations_from_aggregate(
+        &aggregate, query,
+    ))
 }
 
 /// Expands one surface-token concordance hit in its source document.
@@ -6623,6 +6713,17 @@ mod tests {
         query_concordance_collocations_documents(documents, &query, &TokenizationConfig::default())
     }
 
+    fn collocation_aggregate_for(
+        documents: &[ConcordanceDocument],
+        query: &ConcordanceCollocationQuery,
+    ) -> Result<ConcordanceCollocationAggregate, ConcordanceError> {
+        aggregate_concordance_collocations_documents(
+            documents,
+            query,
+            &TokenizationConfig::default(),
+        )
+    }
+
     fn collocate<'a>(
         result: &'a ConcordanceCollocationResult,
         surface: &str,
@@ -7370,6 +7471,76 @@ mod tests {
         assert_eq!(association.rows[0].surface, "rare");
         assert_eq!(near.rows[0].surface, "common");
         assert_eq!(corpus_frequency.rows[0].surface, "common");
+    }
+
+    #[test]
+    fn surface_collocation_aggregate_post_processing_matches_full_query() {
+        let documents = vec![
+            concordance_document(0, "a.txt", "red alpha blue target green alpha blue"),
+            concordance_document(1, "b.txt", "yellow target blue green"),
+        ];
+        let query = collocation_query("target");
+
+        let one_shot = collocations_for(&documents, query.clone()).unwrap();
+        let aggregate = collocation_aggregate_for(&documents, &query).unwrap();
+        let from_aggregate = query_concordance_collocations_from_aggregate(&aggregate, &query);
+
+        assert_eq!(from_aggregate.query, one_shot.query);
+        assert_eq!(from_aggregate.r1, one_shot.r1);
+        assert_eq!(from_aggregate.n, one_shot.n);
+        assert_eq!(from_aggregate.f_node, one_shot.f_node);
+        assert_eq!(from_aggregate.total_candidates, one_shot.total_candidates);
+        assert_eq!(from_aggregate.rows, one_shot.rows);
+    }
+
+    #[test]
+    fn surface_collocation_presentation_changes_reuse_full_aggregate() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "rare target common target common target common common common common common common common common common common",
+        )];
+        let mut query = collocation_query("target");
+        query.direction = ConcordanceCollocationDirection::Left;
+        query.limit = 1;
+        let aggregate = collocation_aggregate_for(&documents, &query).unwrap();
+
+        let association = query_concordance_collocations_from_aggregate(&aggregate, &query);
+        let mut near_query = query.clone();
+        near_query.sort_key = ConcordanceCollocationSortKey::NearQuery;
+        let near = query_concordance_collocations_from_aggregate(&aggregate, &near_query);
+        let mut corpus_frequency_query = query.clone();
+        corpus_frequency_query.sort_key = ConcordanceCollocationSortKey::CorpusFrequency;
+        let corpus_frequency =
+            query_concordance_collocations_from_aggregate(&aggregate, &corpus_frequency_query);
+
+        assert_eq!(association.rows[0].surface, "rare");
+        assert_eq!(near.rows[0].surface, "common");
+        assert_eq!(corpus_frequency.rows[0].surface, "common");
+    }
+
+    #[test]
+    fn surface_collocation_stopwords_filter_after_aggregation() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "the target useful target the target useful",
+        )];
+        let mut query = collocation_query("target");
+        query.span = 1;
+        query.min_cooccurrence = 1;
+        query.min_collocate_frequency = 1;
+        query.sort_key = ConcordanceCollocationSortKey::NearQuery;
+        let aggregate = collocation_aggregate_for(&documents, &query).unwrap();
+
+        let shown = query_concordance_collocations_from_aggregate(&aggregate, &query);
+        let mut hidden_query = query.clone();
+        hidden_query.hide_stopwords = true;
+        let hidden = query_concordance_collocations_from_aggregate(&aggregate, &hidden_query);
+
+        assert!(shown.rows.iter().any(|row| row.surface == "the"));
+        assert!(hidden.rows.iter().all(|row| row.surface != "the"));
+        assert!(hidden.rows.iter().any(|row| row.surface == "useful"));
     }
 
     fn snapshot_analysis_product(product: &AnalysisBuildProduct) -> AnalysisCorpusSnapshot {
