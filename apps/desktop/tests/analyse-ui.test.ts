@@ -79,13 +79,41 @@ assert(
   "Concordance header should not render a duplicate standalone hit count",
 );
 assert(
+  html.includes('id="concordance-collocations-summary"')
+    && html.includes('id="concordance-collocation-span"')
+    && html.includes('id="concordance-collocation-direction"')
+    && html.includes('id="concordance-collocation-measure"')
+    && html.includes('id="concordance-collocation-min-o11"')
+    && html.includes('id="concordance-collocation-min-freq"')
+    && html.includes('id="concordance-collocation-hide-stopwords"'),
+  "Concordance should expose collocation controls",
+);
+for (const label of ["Collocate", "Co-occ (O11)", "Collocate freq (f_c)", "logDice"]) {
+  assert(html.includes(label), `Collocation table should render ${label}`);
+}
+for (const measure of ["logDice", "mi", "mi3", "tScore", "zScore", "g2", "logRatio"]) {
+  assert(html.includes(`value="${measure}"`), `Collocation measure should include ${measure}`);
+}
+assert(
   workbench.includes("function handleConcordanceSortChange")
     && workbench.includes("void refreshConcordance(true, true);"),
   "Concordance sort changes should reset KWIC and distribution pagination",
 );
 assert(
+  workbench.includes("concordanceSummaryText(result)")
+    && !workbench.includes("createInlineDispersionBar")
+    && !workbench.includes("concordance-dp-track"),
+  "Concordance summary should use plain range-led text without the coloured DP bar",
+);
+assert(
   workbench.includes("Searching...") && workbench.includes("CONCORDANCE_NO_HITS_MESSAGE"),
   "Concordance renderer should include loading and no-hit states",
+);
+assert(
+  workbench.includes("queryConcordanceCollocations")
+    && workbench.includes("sortConcordanceCollocates(result.rows, measure)")
+    && workbench.includes("handleConcordanceCollocateClick"),
+  "Concordance collocations should query Rust, sort selected measures client-side, and support click-through",
 );
 assert(
   workbench.includes("addEventListener(\"click\", () => {\n    void toggleConcordanceExpansion(row);")

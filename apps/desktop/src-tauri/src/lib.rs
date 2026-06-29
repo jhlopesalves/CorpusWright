@@ -1,14 +1,15 @@
 use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisCorpus,
     AnalysisDocumentPage, AnalysisDocumentSelection, AnnotatedFrequencyQuery,
-    AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, ConcordanceDocument,
-    ConcordanceExpansionQuery, ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult,
-    CorpusOverview, CorpusOverviewContext, FrequencyGroupMode, FrequencyPage, FrequencyQuery,
-    TermDistributionPage, TermDistributionQuery, annotation_cache_availability_for_corpus,
-    build_analysis_corpus, cleaning_config_signature, expand_concordance_context,
-    query_analysis_documents, query_annotated_frequency, query_annotated_term_distribution,
-    query_frequency_list, query_term_distribution, resolve_analysis_input,
-    search_concordance_documents,
+    AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, ConcordanceCollocationQuery,
+    ConcordanceCollocationResult, ConcordanceDocument, ConcordanceExpansionQuery,
+    ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult, CorpusOverview,
+    CorpusOverviewContext, FrequencyGroupMode, FrequencyPage, FrequencyQuery, TermDistributionPage,
+    TermDistributionQuery, annotation_cache_availability_for_corpus, build_analysis_corpus,
+    cleaning_config_signature, expand_concordance_context, query_analysis_documents,
+    query_annotated_frequency, query_annotated_term_distribution,
+    query_concordance_collocations_documents, query_frequency_list, query_term_distribution,
+    resolve_analysis_input, search_concordance_documents,
 };
 use corpuswright_core::cache::{
     CacheEntry, DocumentTextMode, ExtractionCache, document_text_for_record,
@@ -2255,6 +2256,41 @@ async fn search_concordance_command(
 }
 
 #[tauri::command]
+async fn query_concordance_collocations_command(
+    query: ConcordanceCollocationQuery,
+    corpus_version: u64,
+    cleaning_config: CleaningConfig,
+    corpus: tauri::State<'_, CorpusState>,
+    cache: tauri::State<'_, ExtractionCache>,
+) -> Result<ConcordanceCollocationResult, String> {
+    let (records, project_root) = corpus.all_records_and_root(corpus_version)?;
+    let cache = cache.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut documents = Vec::new();
+        for record in &records {
+            let document_index = documents.len();
+            if let Some(document) = concordance_document_from_record(
+                record,
+                document_index,
+                project_root.as_deref(),
+                &cleaning_config,
+                &cache,
+            ) {
+                documents.push(document);
+            }
+        }
+        query_concordance_collocations_documents(
+            &documents,
+            &query,
+            &corpuswright_core::tokenization::TokenizationConfig::default(),
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("Concordance collocation task failed: {error}"))?
+}
+
+#[tauri::command]
 async fn expand_concordance_context_command(
     query: ConcordanceExpansionQuery,
     corpus_version: u64,
@@ -3137,6 +3173,7 @@ pub fn run() {
             get_analysis_build_status_command,
             compute_corpus_overview_command,
             search_concordance_command,
+            query_concordance_collocations_command,
             expand_concordance_context_command,
             query_frequency_list_command,
             query_annotated_frequency_command,

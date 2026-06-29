@@ -503,29 +503,99 @@
                   <button id="concordance-search-button" class="primary-btn" type="button">Search</button>
                 </div>
                 <div id="concordance-status" class="frequency-query-notice hidden" role="status"></div>
-                <div class="concordance-table-wrap">
-                  <table class="concordance-table">
-                    <thead>
-                      <tr>
-                        <th>File</th>
-                        <th>Left context</th>
-                        <th>Node</th>
-                        <th>Right context</th>
-                      </tr>
-                    </thead>
-                    <tbody id="concordance-table-body">
-                      <tr>
-                        <td colspan="4" class="frequency-empty">Enter a word or phrase to see concordance lines.</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                <div class="concordance-results-grid">
+                  <div class="concordance-kwic-panel">
+                    <div class="concordance-table-wrap">
+                      <table class="concordance-table">
+                        <thead>
+                          <tr>
+                            <th>File</th>
+                            <th>Left context</th>
+                            <th>Node</th>
+                            <th>Right context</th>
+                          </tr>
+                        </thead>
+                        <tbody id="concordance-table-body">
+                          <tr>
+                            <td colspan="4" class="frequency-empty">Enter a word or phrase to see concordance lines.</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div class="analysis-pagination" aria-label="Concordance result pages">
+                      <button id="concordance-page-previous" class="secondary-btn" type="button">Previous</button>
+                      <span id="concordance-page-status"></span>
+                      <button id="concordance-page-next" class="secondary-btn" type="button">Next</button>
+                    </div>
+                    <div id="concordance-distribution" class="concordance-distribution"></div>
+                  </div>
+                  <section class="concordance-collocations-panel" aria-labelledby="concordance-collocations-title">
+                    <div class="concordance-collocations-header">
+                      <h3 id="concordance-collocations-title">Collocations</h3>
+                      <p id="concordance-collocations-summary" class="frequency-summary">Enter a word or phrase to profile collocates.</p>
+                    </div>
+                    <div class="concordance-collocation-controls">
+                      <label for="concordance-collocation-span">
+                        <span>Span</span>
+                        <input id="concordance-collocation-span" type="number" min="1" max="20" step="1" value="5" />
+                      </label>
+                      <label for="concordance-collocation-direction">
+                        <span>Direction</span>
+                        <select id="concordance-collocation-direction">
+                          <option value="both" selected>Both</option>
+                          <option value="left">Left</option>
+                          <option value="right">Right</option>
+                        </select>
+                      </label>
+                      <label for="concordance-collocation-measure">
+                        <span>Measure</span>
+                        <select id="concordance-collocation-measure">
+                          <option value="logDice" selected>logDice</option>
+                          <option value="mi">MI</option>
+                          <option value="mi3">MI3</option>
+                          <option value="tScore">t-score</option>
+                          <option value="zScore">z-score</option>
+                          <option value="g2">log-likelihood</option>
+                          <option value="logRatio">log-ratio</option>
+                        </select>
+                      </label>
+                      <label for="concordance-collocation-min-o11">
+                        <span>Min co-occ</span>
+                        <input id="concordance-collocation-min-o11" type="number" min="0" step="1" value="5" />
+                      </label>
+                      <label for="concordance-collocation-min-freq">
+                        <span>Min freq</span>
+                        <input id="concordance-collocation-min-freq" type="number" min="0" step="1" value="5" />
+                      </label>
+                      <label class="frequency-stopword-control" for="concordance-collocation-hide-stopwords">
+                        <span>Stopwords</span>
+                        <span class="frequency-toggle">
+                          <input id="concordance-collocation-hide-stopwords" type="checkbox" role="switch" aria-checked="false" />
+                          <span class="frequency-toggle-track" aria-hidden="true"></span>
+                          <span id="concordance-collocation-stopword-state">Show</span>
+                        </span>
+                      </label>
+                    </div>
+                    <div id="concordance-collocations-status" class="frequency-query-notice hidden" role="status"></div>
+                    <div class="concordance-collocations-table-wrap">
+                      <table class="concordance-collocations-table">
+                        <thead>
+                          <tr>
+                            <th>Collocate</th>
+                            <th>Co-occ (O11)</th>
+                            <th>Collocate freq (f_c)</th>
+                            <th id="concordance-collocations-measure-head">logDice</th>
+                          </tr>
+                        </thead>
+                        <tbody id="concordance-collocations-table-body">
+                          <tr>
+                            <td colspan="4" class="frequency-empty">Enter a word or phrase to profile collocates.</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
                 </div>
-                <div class="analysis-pagination" aria-label="Concordance result pages">
-                  <button id="concordance-page-previous" class="secondary-btn" type="button">Previous</button>
-                  <span id="concordance-page-status"></span>
-                  <button id="concordance-page-next" class="secondary-btn" type="button">Next</button>
-                </div>
-                <div id="concordance-distribution" class="concordance-distribution"></div>
               </section>
             </div>
           </div>
