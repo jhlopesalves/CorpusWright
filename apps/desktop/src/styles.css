@@ -2908,6 +2908,11 @@ main {
   line-height: 1.4;
 }
 
+.concordance-header {
+  display: grid;
+  gap: 12px;
+}
+
 .frequency-mode-tabs {
   display: flex;
   align-items: center;
@@ -3136,6 +3141,42 @@ main {
   border-color: var(--accent-color);
 }
 
+.concordance-view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.concordance-view-tab {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--panel-bg);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.concordance-view-tab.is-active {
+  border-color: var(--accent-color);
+  color: var(--text-color);
+  background: var(--bg-color);
+}
+
+.concordance-views,
+.concordance-view-panel {
+  min-width: 0;
+}
+
+.concordance-view-panel {
+  display: grid;
+  gap: 10px;
+}
+
 #concordance-query-input {
   width: clamp(260px, 32vw, 420px);
 }
@@ -3287,12 +3328,17 @@ main {
   color: var(--cw-warning-text);
 }
 
-.concordance-table-wrap {
-  max-height: min(58vh, 680px);
-  overflow: auto;
+.concordance-table-wrap,
+.concordance-collocations-table-wrap,
+.concordance-distribution-table-wrap {
   border: 1px solid var(--border-color);
   border-radius: 4px;
   background: var(--bg-color);
+}
+
+.concordance-table-wrap {
+  max-height: min(62vh, 720px);
+  overflow: auto;
 }
 
 .concordance-table {
@@ -3330,6 +3376,7 @@ main {
 .concordance-table th:nth-child(4),
 .concordance-table td:nth-child(4) {
   width: 32%;
+  min-width: 260px;
 }
 
 .concordance-table th:nth-child(3),
@@ -3338,9 +3385,7 @@ main {
   min-width: 180px;
 }
 
-.concordance-file,
-.concordance-left,
-.concordance-right {
+.concordance-file {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3362,6 +3407,7 @@ main {
 .concordance-left {
   color: var(--text-muted);
   text-align: right;
+  white-space: nowrap;
 }
 
 .concordance-node-cell {
@@ -3372,20 +3418,17 @@ main {
 .concordance-right {
   color: var(--text-muted);
   text-align: left;
+  white-space: nowrap;
 }
 
 .concordance-node {
   display: inline-block;
-  max-width: min(56ch, 52vw);
   padding: 1px 5px;
   border: 1px solid var(--cw-info-border-strong);
   border-radius: 3px;
   background: var(--cw-info-bg);
   color: var(--text-color);
   font-weight: 700;
-  overflow-x: auto;
-  overflow-y: hidden;
-  text-overflow: clip;
   white-space: nowrap;
   vertical-align: middle;
 }
@@ -3448,7 +3491,6 @@ main {
   align-items: baseline;
   gap: 8px;
   margin: 0;
-  overflow-x: auto;
   font-family: var(--cw-font-mono);
   font-size: 0.9rem;
   line-height: 1.55;
@@ -3493,65 +3535,69 @@ main {
 
 .concordance-distribution-panel {
   display: grid;
-  gap: 8px;
-  padding-top: 4px;
-}
-
-.concordance-distribution-panel h3 {
-  margin: 0;
-  color: var(--text-color);
-  font-size: 0.92rem;
-}
-
-.concordance-distribution-row {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) 80px 100px minmax(100px, 180px);
   gap: 10px;
-  align-items: center;
-  min-height: 28px;
-  color: var(--text-color);
-  font-size: 0.82rem;
 }
 
-.concordance-distribution-header {
+.concordance-distribution-table-wrap {
+  max-height: min(62vh, 720px);
+  overflow: auto;
+}
+
+.concordance-distribution-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.concordance-distribution-table th,
+.concordance-distribution-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+.concordance-distribution-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-bg);
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: 0.76rem;
   font-weight: 700;
-  text-transform: uppercase;
+  text-align: left;
+}
+
+.concordance-distribution-table th:nth-child(1),
+.concordance-distribution-table td:nth-child(1) {
+  width: auto;
+}
+
+.concordance-distribution-table th:nth-child(2),
+.concordance-distribution-table td:nth-child(2) {
+  width: 110px;
+}
+
+.concordance-distribution-table th:nth-child(3),
+.concordance-distribution-table td:nth-child(3) {
+  width: 130px;
+}
+
+.concordance-distribution-table th:nth-child(4),
+.concordance-distribution-table td:nth-child(4) {
+  width: 34%;
+}
+
+.concordance-distribution-table th:nth-child(n + 2),
+.concordance-distribution-table td:nth-child(n + 2) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .concordance-distribution-file {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.concordance-results-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.38fr);
-  gap: 16px;
-  align-items: start;
-}
-
-.concordance-kwic-panel,
-.concordance-collocations-panel {
-  min-width: 0;
-}
-
-.concordance-collocations-panel {
-  display: grid;
-  gap: 10px;
-}
-
-.concordance-collocations-header {
-  display: grid;
-  gap: 4px;
-}
-
-.concordance-collocations-header h3 {
-  margin: 0;
-  font-size: 0.95rem;
-  font-weight: 650;
 }
 
 .concordance-collocation-controls {
@@ -3590,16 +3636,13 @@ main {
 }
 
 .concordance-collocations-table-wrap {
-  max-height: min(48vh, 560px);
+  max-height: min(62vh, 720px);
   overflow: auto;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--bg-color);
 }
 
 .concordance-collocations-table {
   width: 100%;
-  min-width: 420px;
+  min-width: 760px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -3620,6 +3663,27 @@ main {
   font-size: 0.72rem;
   font-weight: 700;
   text-align: left;
+  white-space: nowrap;
+}
+
+.concordance-collocations-table th:nth-child(1),
+.concordance-collocations-table td:nth-child(1) {
+  width: 45%;
+}
+
+.concordance-collocations-table th:nth-child(2),
+.concordance-collocations-table td:nth-child(2) {
+  width: 16%;
+}
+
+.concordance-collocations-table th:nth-child(3),
+.concordance-collocations-table td:nth-child(3) {
+  width: 22%;
+}
+
+.concordance-collocations-table th:nth-child(4),
+.concordance-collocations-table td:nth-child(4) {
+  width: 17%;
 }
 
 .concordance-collocations-table th:nth-child(n + 2),
@@ -3646,12 +3710,6 @@ main {
 .concordance-collocate-button:hover,
 .concordance-collocate-button:focus-visible {
   text-decoration: underline;
-}
-
-@media (max-width: 1180px) {
-  .concordance-results-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 .frequency-table-wrap {
