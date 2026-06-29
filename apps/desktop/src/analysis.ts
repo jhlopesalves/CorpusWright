@@ -15,6 +15,11 @@ import type { CleaningConfig } from "./generated/CleaningConfig.js";
 import type { ConcordanceQuery as GeneratedConcordanceQuery } from "./generated/ConcordanceQuery.js";
 import type { ConcordanceExpansionQuery as GeneratedConcordanceExpansionQuery } from "./generated/ConcordanceExpansionQuery.js";
 import type { ConcordanceExpansionResult as GeneratedConcordanceExpansionResult } from "./generated/ConcordanceExpansionResult.js";
+import type { ConcordanceCollocateRow as GeneratedConcordanceCollocateRow } from "./generated/ConcordanceCollocateRow.js";
+import type { ConcordanceCollocationDirection as GeneratedConcordanceCollocationDirection } from "./generated/ConcordanceCollocationDirection.js";
+import type { ConcordanceCollocationMeasure as GeneratedConcordanceCollocationMeasure } from "./generated/ConcordanceCollocationMeasure.js";
+import type { ConcordanceCollocationQuery as GeneratedConcordanceCollocationQuery } from "./generated/ConcordanceCollocationQuery.js";
+import type { ConcordanceCollocationResult as GeneratedConcordanceCollocationResult } from "./generated/ConcordanceCollocationResult.js";
 import type { ConcordanceResult as GeneratedConcordanceResult } from "./generated/ConcordanceResult.js";
 import type { ConcordanceRow as GeneratedConcordanceRow } from "./generated/ConcordanceRow.js";
 import type { ConcordanceSortKey as GeneratedConcordanceSortKey } from "./generated/ConcordanceSortKey.js";
@@ -275,6 +280,11 @@ export type FrequencyPage = GeneratedFrequencyPage;
 export type ConcordanceQuery = GeneratedConcordanceQuery;
 export type ConcordanceExpansionQuery = GeneratedConcordanceExpansionQuery;
 export type ConcordanceExpansionResult = GeneratedConcordanceExpansionResult;
+export type ConcordanceCollocateRow = GeneratedConcordanceCollocateRow;
+export type ConcordanceCollocationDirection = GeneratedConcordanceCollocationDirection;
+export type ConcordanceCollocationMeasure = GeneratedConcordanceCollocationMeasure;
+export type ConcordanceCollocationQuery = GeneratedConcordanceCollocationQuery;
+export type ConcordanceCollocationResult = GeneratedConcordanceCollocationResult;
 export type ConcordanceRow = GeneratedConcordanceRow;
 export type ConcordanceResult = GeneratedConcordanceResult;
 export type ConcordanceSortKey = GeneratedConcordanceSortKey;
@@ -381,6 +391,18 @@ export function expandConcordanceContext(
   cleaningConfig: CleaningConfig,
 ): Promise<ConcordanceExpansionResult> {
   return invoke<ConcordanceExpansionResult>("expand_concordance_context_command", {
+    query,
+    corpusVersion,
+    cleaningConfig,
+  });
+}
+
+export function queryConcordanceCollocations(
+  query: ConcordanceCollocationQuery,
+  corpusVersion: number,
+  cleaningConfig: CleaningConfig,
+): Promise<ConcordanceCollocationResult> {
+  return invoke<ConcordanceCollocationResult>("query_concordance_collocations_command", {
     query,
     corpusVersion,
     cleaningConfig,

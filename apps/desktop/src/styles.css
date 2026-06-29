@@ -3152,6 +3152,20 @@ main {
   width: 140px;
 }
 
+#concordance-collocation-span,
+#concordance-collocation-min-o11,
+#concordance-collocation-min-freq {
+  width: 86px;
+}
+
+#concordance-collocation-direction {
+  width: 112px;
+}
+
+#concordance-collocation-measure {
+  width: 150px;
+}
+
 #frequency-search-input {
   width: clamp(260px, 32vw, 420px);
 }
@@ -3477,13 +3491,6 @@ main {
   color: var(--text-muted);
 }
 
-.concordance-dp-track {
-  display: inline-flex;
-  width: 64px;
-  margin-left: 8px;
-  vertical-align: middle;
-}
-
 .concordance-distribution-panel {
   display: grid;
   gap: 8px;
@@ -3517,6 +3524,134 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.concordance-results-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.38fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.concordance-kwic-panel,
+.concordance-collocations-panel {
+  min-width: 0;
+}
+
+.concordance-collocations-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.concordance-collocations-header {
+  display: grid;
+  gap: 4px;
+}
+
+.concordance-collocations-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.concordance-collocation-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  align-items: flex-end;
+}
+
+.concordance-collocation-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.concordance-collocation-controls input:not([type="checkbox"]),
+.concordance-collocation-controls select {
+  height: 32px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-family: inherit;
+  font-size: 0.84rem;
+  box-sizing: border-box;
+}
+
+.concordance-collocation-controls input:not([type="checkbox"]):focus,
+.concordance-collocation-controls select:focus {
+  outline: 1px solid var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+.concordance-collocations-table-wrap {
+  max-height: min(48vh, 560px);
+  overflow: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+}
+
+.concordance-collocations-table {
+  width: 100%;
+  min-width: 420px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.concordance-collocations-table th,
+.concordance-collocations-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+.concordance-collocations-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-bg);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.concordance-collocations-table th:nth-child(n + 2),
+.concordance-collocations-table td:nth-child(n + 2) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.concordance-collocate-button {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-color);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.concordance-collocate-button:hover,
+.concordance-collocate-button:focus-visible {
+  text-decoration: underline;
+}
+
+@media (max-width: 1180px) {
+  .concordance-results-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .frequency-table-wrap {

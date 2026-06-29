@@ -1,18 +1,30 @@
 import {
   CONCORDANCE_COLUMNS,
+  CONCORDANCE_COLLOCATION_DEFAULT_FLOOR,
+  CONCORDANCE_COLLOCATION_DEFAULT_SPAN,
+  CONCORDANCE_COLLOCATION_LIMIT,
+  CONCORDANCE_COLLOCATION_MEASURE_OPTIONS,
+  DEFAULT_CONCORDANCE_COLLOCATION_MEASURE,
   CONCORDANCE_EXPANSION_WINDOW,
   CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,
   CONCORDANCE_SORT_OPTIONS,
   DEFAULT_CONCORDANCE_SORT_KEY,
+  clampConcordanceCollocationFloor,
+  clampConcordanceCollocationSpan,
   clampConcordancePageSize,
   clampConcordanceWindow,
+  concordanceCollocationMeasureLabel,
+  concordanceCollocationScore,
   concordanceExpansionViewModel,
+  concordanceIsSparse,
+  concordanceRangePercent,
   concordanceRowExpansionKey,
   concordanceRowText,
   concordanceSortLabel,
   concordanceSummaryText,
   normaliseConcordanceQuery,
+  sortConcordanceCollocates,
   toggleConcordanceExpansionKey,
 } from "../src/concordance.ts";
 
@@ -28,10 +40,19 @@ assert(clampConcordanceWindow(3.8) === 3, "Windows should use whole tokens");
 assert(clampConcordancePageSize(0) === 100, "Invalid page sizes should fall back to the default");
 assert(clampConcordancePageSize(12) === 25, "Page sizes should respect the minimum");
 assert(clampConcordancePageSize(900) === 500, "Page sizes should respect the maximum");
+assert(clampConcordanceCollocationSpan(Number.NaN) === 5, "Invalid collocation spans should fall back");
+assert(clampConcordanceCollocationSpan(24) === 20, "Collocation spans should be capped");
+assert(clampConcordanceCollocationFloor(-1) === 5, "Invalid collocation floors should fall back");
+assert(clampConcordanceCollocationFloor(3.8) === 3, "Collocation floors should use whole counts");
 assert(DEFAULT_CONCORDANCE_SORT_KEY === "filePosition", "Default sort should be file/position");
+assert(DEFAULT_CONCORDANCE_COLLOCATION_MEASURE === "logDice", "Default collocation measure should be logDice");
+assert(CONCORDANCE_COLLOCATION_DEFAULT_SPAN === 5, "Default collocation span should be +/-5");
+assert(CONCORDANCE_COLLOCATION_DEFAULT_FLOOR === 5, "Default collocation floors should be 5");
+assert(CONCORDANCE_COLLOCATION_LIMIT === 100, "Collocation results should request the default top 100");
 assert(CONCORDANCE_EXPANSION_WINDOW === 40, "Expansion should request the default wide KWIC window");
 assert(concordanceSortLabel("left1") === "1L", "Left sort labels should use KWIC shorthand");
 assert(concordanceSortLabel("right3") === "3R", "Right sort labels should use KWIC shorthand");
+assert(concordanceCollocationMeasureLabel("g2") === "log-likelihood", "Measure labels should be readable");
 assert(concordanceRowText(["not", "very", "good"]) === "not very good", "KWIC token text should use token spacing");
 for (const node of ["movie", "this movie", "not very good"]) {
   assert(concordanceRowText(node.split(" ")) === node, `${node} node text should render in full`);
@@ -40,6 +61,11 @@ assert(
   CONCORDANCE_SORT_OPTIONS.map((option) => option.value).join("|")
     === "filePosition|node|left1|left2|left3|right1|right2|right3",
   "Sort options should include file, node, and 1-3L/1-3R",
+);
+assert(
+  CONCORDANCE_COLLOCATION_MEASURE_OPTIONS.map((option) => option.value).join("|")
+    === "logDice|mi|mi3|tScore|zScore|g2|logRatio",
+  "Collocation measures should include all requested association scores",
 );
 assert(
   CONCORDANCE_COLUMNS.join("|") === "File|Left context|Node|Right context",
@@ -56,15 +82,54 @@ assert(
 
 const summary = concordanceSummaryText({
   query: "good movie",
-  totalHits: 2,
-  documentsWithHits: 1,
+  totalHits: 24,
+  documentsWithHits: 12,
+  selectedDocumentsTotal: 24,
+  topDocumentShare: 0.375,
   dp: 0.57,
 });
 
 assert(summary.includes("good movie"), "Summary should include the query");
-assert(summary.includes("2 hits"), "Summary should include total hits");
-assert(summary.includes("1 files with hits"), "Summary should include files with hits");
+assert(summary.includes("24 hits"), "Summary should include total hits");
+assert(summary.includes("12 / 24 files"), "Summary should include files with hits and selected files");
+assert(summary.includes("range 50.0%"), "Summary should lead with range percentage");
+assert(summary.includes("top file 37.5%"), "Summary should include top-file share");
 assert(summary.includes("DP 0.57"), "Summary should include DP");
+assert(!summary.includes("Sparse"), "Broad summaries should omit the sparse caveat");
+assert(concordanceRangePercent({ documentsWithHits: 3, selectedDocumentsTotal: 12 }) === 25, "Range percent should divide hits by selected files");
+assert(concordanceRangePercent({ documentsWithHits: 3, selectedDocumentsTotal: 0 }) === 0, "Range percent should guard zero selected files");
+assert(
+  concordanceIsSparse({ totalHits: 19, documentsWithHits: 12, selectedDocumentsTotal: 12 }),
+  "Thin hit counts should be sparse",
+);
+assert(
+  concordanceSummaryText({
+    query: "rare",
+    totalHits: 2,
+    documentsWithHits: 1,
+    selectedDocumentsTotal: 500,
+    topDocumentShare: 1,
+    dp: 0.99,
+  }).endsWith(" · Sparse"),
+  "Sparse caveat should be appended as plain summary text",
+);
+
+const collocates = [
+  { surface: "beta", o11: 5, o12: 10, o21: 2, o22: 40, collocateFrequency: 7, mi: 2, mi3: 4, tScore: 1, zScore: 1, g2: 9, logDice: 10, logRatio: 2 },
+  { surface: "alpha", o11: 5, o12: 10, o21: 1, o22: 41, collocateFrequency: 6, mi: 3, mi3: 5, tScore: 2, zScore: 2, g2: 8, logDice: 10, logRatio: 3 },
+  { surface: "gamma", o11: 4, o12: 11, o21: 1, o22: 41, collocateFrequency: 5, mi: null, mi3: null, tScore: null, zScore: null, g2: null, logDice: null, logRatio: null },
+];
+assert(concordanceCollocationScore(collocates[0], "mi") === 2, "Score lookup should use selected measure");
+assert(
+  sortConcordanceCollocates(collocates, "logDice").map((row) => row.surface).join("|")
+    === "beta|alpha|gamma",
+  "Collocation sorting should use measure, frequency tie-break, then text, with missing scores last",
+);
+assert(
+  sortConcordanceCollocates(collocates, "mi").map((row) => row.surface).join("|")
+    === "alpha|beta|gamma",
+  "Switching measure should re-sort returned collocates client-side",
+);
 
 const row = {
   documentIndex: 2,
