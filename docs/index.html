@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
-    content="CorpusWright is a local-first desktop workbench for preparing, inspecting, and analysing research corpora.">
+    content="CorpusWright is an alpha local-first corpus workbench for frequency lists, KWIC concordances, collocates, and careful text processing.">
   <title>CorpusWright - local-first corpus workbench</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,10 +30,11 @@
         CorpusWright</a>
       <nav class="nav-links" aria-label="Primary">
         <a href="quick-start.html">Get Started</a>
-        <a href="#">User Guide</a>
-        <a href="#">Learn</a>
+        <a href="method.html">Method</a>
+        <a href="technical-docs.html">Docs</a>
         <a href="roadmap.html">Roadmap</a>
-        <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases">Download</a>
+        <a class="nav-cta"
+          href="https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8">Download</a>
         <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round" aria-hidden="true">
@@ -65,23 +66,23 @@
         <div class="hero-split">
           <img class="hero-logo" src="assets/icon.png" alt="CorpusWright logo">
           <div>
-            <h1>A local-first corpus tool, built in Rust.</h1>
-            <p class="lede">Clean documents, build a corpus of any size, and profile it: frequency, diversity,
-              dispersion and distribution.</p>
+            <h1>A local-first corpus workbench for real-world text.</h1>
+            <p class="lede">CorpusWright is an alpha desktop workbench for local, reproducible text analysis:
+              frequency lists, KWIC concordances, collocates, document spread diagnostics, and safer handling of
+              messy UTF-8 and Windows-1252 text files.</p>
             <div class="hero-downloads">
               <div class="dl-list">
-                <p class="dl-heading">Downloads</p>
+                <p class="dl-heading">Release</p>
                 <ul>
-                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases">Windows installer (.msi) <span
-                        class="dl-ver">alpha 0.7</span></a></li>
-                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases">macOS disk image (.dmg) <span
-                        class="dl-ver">alpha 0.7</span></a></li>
-                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases">Linux AppImage <span
-                        class="dl-ver">alpha 0.7</span></a></li>
+                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8">Download
+                      alpha.8 <span class="dl-ver">v0.1.0-alpha.8</span></a></li>
+                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases/latest">View latest release</a>
+                  </li>
+                  <li><a href="https://github.com/jhlopesalves/CorpusWright">View on GitHub</a></li>
                 </ul>
               </div>
-              <p class="muted dl-note">Experimental alpha. Windows and macOS builds are unsigned, so your system may
-                warn before running them.</p>
+              <p class="muted dl-note">Public alpha. Release pages list the current builds; Windows installers may
+                still trigger unsigned-app warnings.</p>
             </div>
           </div>
         </div>
@@ -93,22 +94,22 @@
         <div class="intro-split">
           <div class="principle-list">
             <div class="principle">
+              <h3>Local-first</h3>
+              <p>Corpora stay on your machine. CorpusWright is a desktop application, not a hosted corpus service.</p>
+            </div>
+            <div class="principle">
               <h3>Reproducible</h3>
-              <p>Every export ships a manifest: cleaning configuration, tokeniser settings, and SHA-256 checksums of
-                every source and processed file.</p>
+              <p>Exports carry manifests, cleaning configuration, tokeniser settings, and checksums for source and
+                processed files.</p>
             </div>
             <div class="principle">
-              <h3>Statistically grounded</h3>
-              <p>A full statistical profile of your corpus: frequency, diversity, dispersion, concentration and
-                distributional shape, with every measure defined and clearly explained.</p>
+              <h3>Statistically careful</h3>
+              <p>Frequency views foreground document range, DP and dispersion-aware defaults alongside raw counts and
+                optional normalised rates.</p>
             </div>
             <div class="principle">
-              <h3>Transparent</h3>
-              <p>Every statistic comes with its formula, an interpretation and its limitations.</p>
-            </div>
-            <div class="principle">
-              <h3>Fast</h3>
-              <p>A Rust core processes large corpora in parallel, natively.</p>
+              <h3>Rust-fast core</h3>
+              <p>The Rust core handles extraction, cleaning, counting, search, and cached analysis paths locally.</p>
             </div>
           </div>
           <div>
@@ -152,29 +153,116 @@
       </div>
     </section>
 
+    <section class="section compact" id="features">
+      <div class="shell">
+        <div class="section-lead">
+          <h2>What alpha.8 covers</h2>
+          <p>CorpusWright is still alpha software, but it is no longer only a preprocessing or overview tool. The
+            current public release covers the first pass of analysis work as well as the text foundation beneath it.</p>
+        </div>
+        <div class="card-grid-2">
+          <article class="card">
+            <h3>Frequency List / Corpus Overview</h3>
+            <p>Inspect surface tokens, lemmas plus POS where annotation is available, and POS tags. Tables include raw
+              frequency, document range, DP and dispersion-aware defaults, with optional normalised rates.</p>
+          </article>
+          <article class="card">
+            <h3>Concordance / KWIC alpha</h3>
+            <p>Surface and phrase search produce KWIC lines with sorting by file and position, node, and left or right
+              context positions. Hits remain connected to source preview and document spread diagnostics.</p>
+          </article>
+          <article class="card">
+            <h3>Collocates alpha</h3>
+            <p>Inspect collocates around the current query with raw co-occurrence count, Near query/O11, corpus
+              frequency/f_c, and association scores such as logDice. Collocates are lazy and cached, so ordinary search
+              can update KWIC lines without recomputing them immediately.</p>
+          </article>
+          <article class="card">
+            <h3>Text Foundation / Encoding Recovery</h3>
+            <p>Preview, export, and word counts now share canonical source decoding: strict UTF-8 first, then
+              Windows-1252 recovery for legacy Western-European, Portuguese, and French-style text files. Decode
+              provenance is recorded in manifests and participates in cache identity.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section compact" id="limits">
+      <div class="shell">
+        <div class="section-lead">
+          <h2>Alpha limits</h2>
+          <p>Alpha.8 is useful for real corpus work, but several analysis workflows are deliberately still in progress.</p>
+        </div>
+        <div class="principles">
+          <p><span class="term">Workflow:</span> Concordance and Collocates are functional alpha features, not the final
+            interaction design.</p>
+          <p><span class="term">Indexing:</span> Current analysis uses scan and cached paths. The positional index is
+            planned work and is not included in alpha.8.</p>
+          <p><span class="term">Querying:</span> CQL, N-grams, lemma/POS KWIC, and annotation-aware Concordance are not
+            implemented yet.</p>
+          <p><span class="term">Encoding:</span> UTF-8 and Windows-1252 recovery reduce silent replacement-character
+            surprises, but they do not claim to detect every possible legacy encoding.</p>
+          <p><span class="term">Packaging:</span> Windows builds may still trigger the usual unsigned-app warnings.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section compact" id="roadmap">
+      <div class="shell">
+        <div class="section-lead">
+          <h2>Coming next</h2>
+          <p>The near-term work is about hardening alpha.8 in real corpora and preparing the indexed architecture that
+            will eventually replace the current scan and cache paths.</p>
+        </div>
+        <div class="card-grid-2">
+          <article class="card">
+            <h3>Next / near-term</h3>
+            <ul class="checklist">
+              <li>Dogfood alpha.8 on IMDB and Portuguese corpora</li>
+              <li>Design and build the surface positional index</li>
+              <li>Migrate KWIC and Collocates to the index behind parity gates</li>
+              <li>Write the frontend Analyse workspace state-model brief</li>
+              <li>Shape the future one-workspace Concordance interaction model</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Future</h3>
+            <ul class="checklist">
+              <li>N-grams</li>
+              <li>CQL-lite</li>
+              <li>Lemma/POS KWIC</li>
+              <li>Annotation-aware Concordance</li>
+              <li>Richer Collocates</li>
+              <li>Export and copy workflows</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
     <section class="section compact">
       <div class="shell">
         <div class="card-grid-2">
           <a class="card" href="quick-start.html">
             <h3>Get Started</h3>
-            <p>Absolute Beginners: Install CorpusWright, create your first project, and clean a corpus end to end. A
-              guided walkthrough; no prior corpus experience assumed.</p><span class="card-link">To the tutorials
+            <p>Install CorpusWright, create your first project, and inspect a corpus without sending the texts to a
+              remote service.</p><span class="card-link">To the quick start
               &#x2192;</span>
           </a>
-          <a class="card" href="#">
-            <h3>User Guide</h3>
-            <p>How each tool works: source extraction, cleaning rules, the Repeated Artefact Finder, the Analyse
-              Overview; task by task.</p><span class="card-link">To the user guide &#x2192;</span>
+          <a class="card" href="method.html">
+            <h3>Method</h3>
+            <p>How CorpusWright thinks about local-first corpora, conservative cleaning, inspectable evidence, and the
+              analysis loop.</p><span class="card-link">Read the method &#x2192;</span>
           </a>
-          <a class="card" href="#">
-            <h3>Learn</h3>
-            <p>The statistics and linguistics behind the numbers: dispersion, lexical diversity, vocabulary growth, and
-              how to read them.</p><span class="card-link">To the explanations &#x2192;</span>
+          <a class="card" href="technical-docs.html">
+            <h3>Technical Docs</h3>
+            <p>Reference notes for project folders, supported formats, PDF extraction, page-zone rules, and repeated
+              artefact review.</p><span class="card-link">Open the docs &#x2192;</span>
           </a>
           <a class="card" href="roadmap.html">
             <h3>Roadmap</h3>
-            <p>What works today and what is coming: the Explore workbench with KWIC and concordance, collocations, and
-              pattern search.</p><span class="card-link">See the roadmap &#x2192;</span>
+            <p>What is in alpha.8, what remains alpha-shaped, and what is planned for the positional index and later
+              Concordance work.</p><span class="card-link">See the roadmap &#x2192;</span>
           </a>
         </div>
       </div>
@@ -195,7 +283,7 @@
   <footer class="site-footer">
     <div class="shell foot">
       <span>CorpusWright is an open, local-first corpus linguistics tool, currently in public alpha
-        (v0.1.0-alpha.7).</span>
+        (v0.1.0-alpha.8).</span>
       <span><a href="https://github.com/jhlopesalves/CorpusWright">Source on GitHub</a></span>
     </div>
   </footer>

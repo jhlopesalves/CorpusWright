@@ -54,8 +54,8 @@
   <div class="shell">
     <div class="section-lead">
       <p class="eyebrow">Roadmap</p>
-      <h1>Alpha now, research workbench later.</h1>
-      <p class="lede">The first public story is preprocessing: extraction, cleaning, review, provenance, and repeatability. Analysis features should grow on top of that foundation without breaking it.</p>
+      <h1>Alpha workbench now, indexed analysis next.</h1>
+      <p class="lede">CorpusWright alpha.8 includes preprocessing, frequency views, KWIC, collocates, document spread diagnostics, and safer text decoding. The next architecture step is the positional index that will make those analysis paths stronger.</p>
     </div>
   </div>
 </section>
@@ -63,35 +63,58 @@
 <section class="section">
   <div class="shell grid">
     <article class="card">
-      <h3>Now</h3>
+      <h3>Alpha.8 now</h3>
       <ul class="checklist">
         <li>Local project folders</li>
         <li>Text extraction from supported formats</li>
         <li>Cleaning settings and processed previews</li>
         <li>Repeated artefact finder</li>
         <li>Structured custom removals</li>
+        <li>Corpus Overview / Frequency List</li>
+        <li>Surface and phrase KWIC search</li>
+        <li>KWIC sorting and source preview</li>
+        <li>Document spread diagnostics</li>
+        <li>Collocates alpha with raw counts, corpus frequency, and logDice</li>
+        <li>Strict UTF-8 decoding with Windows-1252 recovery</li>
       </ul>
     </article>
     <article class="card">
-      <h3>Next</h3>
+      <h3>Next / near-term</h3>
       <ul class="checklist">
-        <li>Sharper documentation</li>
-        <li>More stable release packaging</li>
-        <li>Better sample/demo corpora</li>
-        <li>Cleaner UI explanations for warnings</li>
-        <li>Regression-proof extraction tests</li>
+        <li>Dogfood alpha.8 on IMDB and Portuguese corpora</li>
+        <li>Design and build the surface positional index</li>
+        <li>Migrate KWIC and Collocates to the index behind parity gates</li>
+        <li>Write the frontend Analyse workspace state-model brief</li>
+        <li>Shape the future one-workspace Concordance interaction model</li>
       </ul>
     </article>
     <article class="card">
-      <h3>Later</h3>
+      <h3>Future</h3>
       <ul class="checklist">
-        <li>KWIC and concordance workflows</li>
-        <li>Frequency and dispersion views</li>
-        <li>Collocates and n-grams</li>
-        <li>Exportable analysis artefacts</li>
-        <li>Statistically defensible comparison workflows</li>
+        <li>N-grams</li>
+        <li>CQL-lite</li>
+        <li>Lemma/POS KWIC</li>
+        <li>Annotation-aware Concordance</li>
+        <li>Richer Collocates</li>
+        <li>Export and copy workflows</li>
       </ul>
     </article>
+  </div>
+</section>
+
+<section class="section">
+  <div class="shell">
+    <div class="section-lead">
+      <h2>Known alpha limits</h2>
+      <p>These are not hidden future promises. They are the boundaries of the current public alpha.</p>
+    </div>
+    <div class="principles">
+      <p><span class="term">Concordance and Collocates:</span> functional alpha features, not the final workflow design.</p>
+      <p><span class="term">Indexing:</span> alpha.8 still uses scan and cached paths. The positional index is not included yet.</p>
+      <p><span class="term">Queries:</span> there is no CQL, no N-grams, no lemma/POS KWIC, and no annotation-aware Concordance yet.</p>
+      <p><span class="term">Hosting:</span> CorpusWright is local-first. It does not provide remote corpus hosting.</p>
+      <p><span class="term">Packaging:</span> Windows builds may still show unsigned-app warnings.</p>
+    </div>
   </div>
 </section>
 
@@ -101,7 +124,7 @@
 
 <footer class="site-footer">
   <div class="shell foot">
-    <span>CorpusWright is an open, local-first corpus linguistics workbench, currently in public alpha (v0.1.0-alpha.7).</span>
+    <span>CorpusWright is an open, local-first corpus linguistics workbench, currently in public alpha (v0.1.0-alpha.8).</span>
     <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
   </div>
 </footer>
