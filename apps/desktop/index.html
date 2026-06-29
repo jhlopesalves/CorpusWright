@@ -328,7 +328,7 @@
                 <div id="frequency-annotation-layer" class="annotation-layer-strip" aria-live="polite"></div>
                 <div class="frequency-controls">
                   <div class="frequency-control-cluster frequency-query-cluster">
-                    <label for="frequency-search-input">
+                    <label class="frequency-query-control" for="frequency-search-input">
                       <span>Token search</span>
                       <input id="frequency-search-input" type="search" placeholder="Filter tokens..." autocomplete="off" />
                     </label>
@@ -363,10 +363,6 @@
                         <span id="frequency-case-fold-state">As typed</span>
                       </span>
                     </label>
-                    <div class="frequency-readonly-control">
-                      <span>Language</span>
-                      <span id="frequency-language-display" class="frequency-readonly-value">Project language</span>
-                    </div>
                     <label for="frequency-token-class">
                       <span>Token class</span>
                       <select id="frequency-token-class">
@@ -411,35 +407,41 @@
                       <span>File scope</span>
                       <button id="frequency-files-button" type="button" class="secondary-btn">Files: 0 of 0</button>
                     </div>
+                    <label for="frequency-rate-scale">
+                      <span>Rate</span>
+                      <select id="frequency-rate-scale">
+                        <option value="off" selected>Off</option>
+                        <option value="per10k">per 10k</option>
+                        <option value="per100k">per 100k</option>
+                        <option value="perMillion">per million</option>
+                      </select>
+                    </label>
                   </div>
                 </div>
-                <p class="frequency-search-note">Tokens are matched against the selected grouping.</p>
+                <p class="frequency-rate-note">Normalised rates are optional and can be unstable in very short files; inspect raw counts and document tokens.</p>
                 <div id="frequency-search-error" class="frequency-search-error hidden" role="alert"></div>
                 <div id="frequency-query-notice" class="frequency-query-notice hidden" role="status"></div>
                 <div class="frequency-table-wrap">
                   <table class="frequency-table">
                     <thead id="frequency-table-head">
                       <tr>
-                        <th>
+                        <th class="frequency-col-term">
                           <button type="button" class="frequency-sort" data-sort="token">Token</button>
                         </th>
-                        <th>
+                        <th class="frequency-col-frequency">
                           <button type="button" class="frequency-sort frequency-sort-right" data-sort="frequency">Frequency</button>
                         </th>
-                        <th>
+                        <th class="frequency-col-range">
                           <button type="button" class="frequency-sort frequency-sort-right" data-sort="range">Range (docs)</button>
                         </th>
-                        <th>
-                          <button type="button" class="frequency-sort frequency-sort-right" data-sort="rate">Per million</button>
-                        </th>
-                        <th>
+                        <th class="frequency-col-dispersion">
                           <button type="button" class="frequency-sort frequency-sort-right" data-sort="dispersion">Dispersion (DP)</button>
                         </th>
                       </tr>
                     </thead>
                     <tbody id="frequency-table-body">
                       <tr>
-                        <td colspan="5" class="frequency-empty">Build surface analysis to populate the frequency list.</td>
+                        <td colspan="4" class="frequency-empty">Build surface analysis to populate the frequency list.</td>
                       </tr>
                     </tbody>
                   </table>
@@ -457,18 +459,39 @@
                 <div class="frequency-section-header">
                   <div>
                     <h2 id="concordance-title">Concordance</h2>
-                    <p id="concordance-summary" class="frequency-summary">Search for a surface word to see its occurrences in context.</p>
+                    <p id="concordance-summary" class="frequency-summary">Enter a word or phrase to see concordance lines.</p>
                   </div>
                   <span id="concordance-result-count" class="frequency-result-count"></span>
                 </div>
                 <div class="concordance-controls">
                   <label for="concordance-query-input">
-                    <span>Surface word</span>
+                    <span>Surface word or phrase</span>
                     <input id="concordance-query-input" type="search" autocomplete="off" />
                   </label>
                   <label for="concordance-window-input">
                     <span>Window</span>
                     <input id="concordance-window-input" type="number" min="1" max="20" step="1" value="5" />
+                  </label>
+                  <label for="concordance-sort-select">
+                    <span>Sort</span>
+                    <select id="concordance-sort-select">
+                      <option value="filePosition" selected>File/position</option>
+                      <option value="node">Node</option>
+                      <option value="left1">1L</option>
+                      <option value="left2">2L</option>
+                      <option value="left3">3L</option>
+                      <option value="right1">1R</option>
+                      <option value="right2">2R</option>
+                      <option value="right3">3R</option>
+                    </select>
+                  </label>
+                  <div class="frequency-file-scope-control">
+                    <span>File scope</span>
+                    <button id="concordance-files-button" type="button" class="secondary-btn">Files: 0 of 0</button>
+                  </div>
+                  <label for="concordance-page-size-input">
+                    <span>Rows</span>
+                    <input id="concordance-page-size-input" type="number" min="25" max="500" step="25" value="100" />
                   </label>
                   <label class="frequency-stopword-control" for="concordance-case-sensitive">
                     <span>Case</span>
@@ -480,14 +503,30 @@
                   </label>
                   <button id="concordance-search-button" class="primary-btn" type="button">Search</button>
                 </div>
-                <p class="frequency-search-note">KWIC alpha currently supports one-token surface queries.</p>
                 <div id="concordance-status" class="frequency-query-notice hidden" role="status"></div>
-                <div id="concordance-results" class="concordance-results"></div>
+                <div class="concordance-table-wrap">
+                  <table class="concordance-table">
+                    <thead>
+                      <tr>
+                        <th>File</th>
+                        <th>Left context</th>
+                        <th>Node</th>
+                        <th>Right context</th>
+                      </tr>
+                    </thead>
+                    <tbody id="concordance-table-body">
+                      <tr>
+                        <td colspan="4" class="frequency-empty">Enter a word or phrase to see concordance lines.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
                 <div class="analysis-pagination" aria-label="Concordance result pages">
                   <button id="concordance-page-previous" class="secondary-btn" type="button">Previous</button>
                   <span id="concordance-page-status"></span>
                   <button id="concordance-page-next" class="secondary-btn" type="button">Next</button>
                 </div>
+                <div id="concordance-distribution" class="concordance-distribution"></div>
               </section>
             </div>
           </div>

@@ -3,4 +3,4 @@ import type { AnnotationCacheAvailability } from "./AnnotationCacheAvailability.
 import type { PosFrequencyRow } from "./PosFrequencyRow.js";
 import type { LexFrequencyRow } from "./LexFrequencyRow.js";
 
-export type AnnotatedFrequencyResult = { mode: AnnotatedFrequencyMode, cache: AnnotationCacheAvailability, unavailableMessage: string | null, totalTokens: number, selectedDocumentCount: number, totalDocumentCount: number, totalRows: number, offset: number, limit: number, posRows: Array<PosFrequencyRow>, lexRows: Array<LexFrequencyRow>, };
+export type AnnotatedFrequencyResult = { mode: AnnotatedFrequencyMode, cache: AnnotationCacheAvailability, unavailableMessage: string | null, queryError: string | null, totalTokens: number, selectedDocumentCount: number, totalDocumentCount: number, totalRows: number, offset: number, limit: number, posRows: Array<PosFrequencyRow>, lexRows: Array<LexFrequencyRow>, };
