@@ -20,6 +20,7 @@ import type { ConcordanceCollocationDirection as GeneratedConcordanceCollocation
 import type { ConcordanceCollocationMeasure as GeneratedConcordanceCollocationMeasure } from "./generated/ConcordanceCollocationMeasure.js";
 import type { ConcordanceCollocationQuery as GeneratedConcordanceCollocationQuery } from "./generated/ConcordanceCollocationQuery.js";
 import type { ConcordanceCollocationResult as GeneratedConcordanceCollocationResult } from "./generated/ConcordanceCollocationResult.js";
+import type { ConcordanceCollocationSortKey as GeneratedConcordanceCollocationSortKey } from "./generated/ConcordanceCollocationSortKey.js";
 import type { ConcordanceResult as GeneratedConcordanceResult } from "./generated/ConcordanceResult.js";
 import type { ConcordanceRow as GeneratedConcordanceRow } from "./generated/ConcordanceRow.js";
 import type { ConcordanceSortKey as GeneratedConcordanceSortKey } from "./generated/ConcordanceSortKey.js";
@@ -285,6 +286,7 @@ export type ConcordanceCollocationDirection = GeneratedConcordanceCollocationDir
 export type ConcordanceCollocationMeasure = GeneratedConcordanceCollocationMeasure;
 export type ConcordanceCollocationQuery = GeneratedConcordanceCollocationQuery;
 export type ConcordanceCollocationResult = GeneratedConcordanceCollocationResult;
+export type ConcordanceCollocationSortKey = GeneratedConcordanceCollocationSortKey;
 export type ConcordanceRow = GeneratedConcordanceRow;
 export type ConcordanceResult = GeneratedConcordanceResult;
 export type ConcordanceSortKey = GeneratedConcordanceSortKey;

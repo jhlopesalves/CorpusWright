@@ -34,6 +34,7 @@ import {
   type ConcordanceCollocationDirection,
   type ConcordanceCollocationMeasure,
   type ConcordanceCollocationResult,
+  type ConcordanceCollocationSortKey,
   type ConcordanceResult,
   type ConcordanceRow,
   type ConcordanceSortKey,
@@ -61,20 +62,24 @@ import {
   clampConcordancePageSize,
   concordanceCollocationMeasureLabel,
   concordanceCollocationScore,
+  concordanceCollocationScoreBarPercent,
+  concordanceCollocationSortHeaderLabel,
   concordanceExpansionViewModel,
-  concordanceSummaryText,
+  concordanceSummaryMetricsText,
   concordanceRowExpansionKey,
   concordanceRowText,
   CONCORDANCE_COLLOCATION_LIMIT,
+  CONCORDANCE_COLLOCATION_SORT_OPTIONS,
   CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE,
   CONCORDANCE_COLLOCATION_NO_ROWS_MESSAGE,
   CONCORDANCE_EXPANSION_WINDOW,
   CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,
   DEFAULT_CONCORDANCE_COLLOCATION_MEASURE,
+  DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION,
+  DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY,
   DEFAULT_CONCORDANCE_SORT_KEY,
   CONCORDANCE_COLUMNS,
-  sortConcordanceCollocates,
   toggleConcordanceExpansionKey,
   type ConcordanceExpansionStateSnapshot,
   normaliseConcordanceQuery,
@@ -118,7 +123,7 @@ const FREQUENCY_DOCUMENT_PAGE_SIZE = 200;
 const TERM_DISTRIBUTION_PAGE_SIZE = 100;
 const CONCORDANCE_DISTRIBUTION_PAGE_SIZE = 10;
 type AnalysisToolId = "overview" | "frequency" | "concordance";
-type ConcordanceViewId = "lines" | "collocates" | "distribution";
+type ConcordanceViewId = "lines" | "collocates";
 
 interface OverviewMetricRow {
   label: string;
@@ -189,6 +194,10 @@ let concordanceCollocationFailure: string | null = null;
 let concordanceCollocationGeneration = 0;
 let concordanceCollocationMeasure: ConcordanceCollocationMeasure =
   DEFAULT_CONCORDANCE_COLLOCATION_MEASURE;
+let concordanceCollocationSortKey: ConcordanceCollocationSortKey =
+  DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY;
+let concordanceCollocationSortDirection: SortDirection =
+  DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION;
 let expandedFrequencyTokens = new Set<string>();
 let termDistributionPages = new Map<string, TermDistributionPage>();
 let termDistributionGenerations = new Map<string, number>();
@@ -1642,6 +1651,8 @@ function resetFrequencyCorpusState(resetAnnotationLayer = true): void {
   concordanceCollocationPending = false;
   concordanceCollocationFailure = null;
   concordanceCollocationMeasure = DEFAULT_CONCORDANCE_COLLOCATION_MEASURE;
+  concordanceCollocationSortKey = DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY;
+  concordanceCollocationSortDirection = DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION;
   expandedFrequencyTokens = new Set<string>();
   termDistributionPages.clear();
   termDistributionGenerations.clear();
@@ -1681,6 +1692,10 @@ function currentConcordanceCollocationMeasure(): ConcordanceCollocationMeasure {
   return dom.concordanceCollocationMeasureSelect.value as ConcordanceCollocationMeasure;
 }
 
+function currentConcordanceCollocationSortDirection(): SortDirection {
+  return concordanceCollocationSortDirection;
+}
+
 function currentConcordanceCollocationMinO11(): number {
   const floor = clampConcordanceCollocationFloor(
     Number.parseInt(dom.concordanceCollocationMinO11Input.value, 10),
@@ -1717,7 +1732,7 @@ function syncConcordanceControls(): void {
 }
 
 function isConcordanceViewId(value: string | undefined): value is ConcordanceViewId {
-  return value === "lines" || value === "collocates" || value === "distribution";
+  return value === "lines" || value === "collocates";
 }
 
 function syncConcordanceViewTabs(): void {
@@ -1735,7 +1750,6 @@ function syncConcordanceViewTabs(): void {
   const panels: Array<{ view: ConcordanceViewId; element: HTMLElement }> = [
     { view: "lines", element: dom.concordanceLinesPanel },
     { view: "collocates", element: dom.concordanceCollocationsPanel },
-    { view: "distribution", element: dom.concordanceDistributionPanel },
   ];
   panels.forEach(({ view, element }) => {
     const active = view === activeConcordanceView;
@@ -1761,9 +1775,42 @@ function handleConcordanceViewTabClick(event: MouseEvent): void {
 }
 
 function renderConcordanceStatus(message: string | null, isError = false): void {
-  dom.concordanceStatus.textContent = message ?? "";
+  dom.concordanceStatus.replaceChildren(message ?? "");
   dom.concordanceStatus.classList.toggle("hidden", message === null);
   dom.concordanceStatus.classList.toggle("warning", isError);
+}
+
+function clearConcordanceContextFilter(): void {
+  if (concordanceContextFilter === null) {
+    return;
+  }
+  concordanceContextFilter = null;
+  concordanceOffset = 0;
+  concordanceDistributionOffset = 0;
+  collapseConcordanceExpansion();
+  void refreshConcordance(true, true);
+}
+
+function renderConcordanceFilterStatus(result: ConcordanceResult): void {
+  if (!concordanceContextFilter) {
+    renderConcordanceStatus(null);
+    return;
+  }
+
+  const filter = result.contextFilter ?? concordanceContextFilter;
+  const chip = document.createElement("div");
+  chip.className = "concordance-filter-chip";
+  const label = document.createElement("span");
+  label.textContent = `Showing lines where "${result.query}" occurs near "${filter}".`;
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.className = "secondary-btn concordance-filter-clear";
+  clear.textContent = "Clear";
+  clear.addEventListener("click", clearConcordanceContextFilter);
+  chip.append(label, clear);
+
+  dom.concordanceStatus.replaceChildren(chip);
+  dom.concordanceStatus.classList.remove("hidden", "warning");
 }
 
 function renderConcordanceCollocationStatus(message: string | null, isError = false): void {
@@ -1960,8 +2007,11 @@ function createConcordanceExpansionRow(row: ConcordanceRow): HTMLTableRowElement
 function renderConcordanceSummary(result: ConcordanceResult): void {
   const query = document.createElement("span");
   query.className = "concordance-summary-query";
-  query.textContent = concordanceSummaryText(result);
-  dom.concordanceSummary.replaceChildren(query);
+  query.textContent = result.query;
+  const metrics = document.createElement("span");
+  metrics.className = "concordance-summary-scope";
+  metrics.textContent = ` · ${concordanceSummaryMetricsText(result)}`;
+  dom.concordanceSummary.replaceChildren(query, metrics);
 }
 
 function renderConcordanceCollocationTableState(message: string): void {
@@ -1975,7 +2025,90 @@ function renderConcordanceCollocationTableState(message: string): void {
 }
 
 function formatConcordanceCollocationScore(value: number | null): string {
-  return value === null ? "n/a" : formatFixedNumber(value, 4);
+  return value === null ? "n/a" : formatFixedNumber(value, 2);
+}
+
+function appendConcordanceCollocationHeader(
+  row: HTMLTableRowElement,
+  label: string,
+  notation = "",
+  title = "",
+): void {
+  const cell = document.createElement("th");
+  if (title) {
+    cell.title = title;
+  }
+  const content = document.createElement("span");
+  content.className = "concordance-collocation-heading";
+  const primary = document.createElement("span");
+  primary.className = "concordance-collocation-heading-primary";
+  primary.textContent = label;
+  content.appendChild(primary);
+  if (notation) {
+    const sublabel = document.createElement("span");
+    sublabel.className = "concordance-collocation-heading-sublabel";
+    sublabel.textContent = notation;
+    content.appendChild(sublabel);
+  }
+  cell.appendChild(content);
+  row.appendChild(cell);
+}
+
+function appendConcordanceCollocationSortHeader(
+  row: HTMLTableRowElement,
+  sortKey: ConcordanceCollocationSortKey,
+  measure: ConcordanceCollocationMeasure,
+): void {
+  const option = CONCORDANCE_COLLOCATION_SORT_OPTIONS.find((item) => item.value === sortKey);
+  const cell = document.createElement("th");
+  if (option?.title) {
+    cell.title = option.title;
+  }
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "frequency-sort frequency-sort-right concordance-collocation-sort";
+  button.dataset.collocationSort = sortKey;
+
+  const content = document.createElement("span");
+  content.className = "concordance-collocation-heading";
+  const primary = document.createElement("span");
+  primary.className = "concordance-collocation-heading-primary";
+  primary.textContent = concordanceCollocationSortHeaderLabel(sortKey, measure);
+  content.appendChild(primary);
+  if (option?.notation) {
+    const sublabel = document.createElement("span");
+    sublabel.className = "concordance-collocation-heading-sublabel";
+    sublabel.textContent = option.notation;
+    content.appendChild(sublabel);
+  }
+  button.appendChild(content);
+  cell.appendChild(button);
+  row.appendChild(cell);
+}
+
+function renderConcordanceCollocationTableHead(measure: ConcordanceCollocationMeasure): void {
+  const row = document.createElement("tr");
+  appendConcordanceCollocationHeader(row, "Collocate");
+  appendConcordanceCollocationSortHeader(row, "nearQuery", measure);
+  appendConcordanceCollocationSortHeader(row, "corpusFrequency", measure);
+  appendConcordanceCollocationSortHeader(row, "association", measure);
+  dom.concordanceCollocationsTableHead.replaceChildren(row);
+  updateConcordanceCollocationSortHeaders();
+}
+
+function updateConcordanceCollocationSortHeaders(): void {
+  const buttons = dom.concordanceCollocationsTableHead
+    .querySelectorAll<HTMLButtonElement>(".concordance-collocation-sort");
+  buttons.forEach((button) => {
+    const sort = button.dataset.collocationSort as ConcordanceCollocationSortKey | undefined;
+    button.removeAttribute("aria-sort");
+    if (sort === concordanceCollocationSortKey) {
+      button.setAttribute(
+        "aria-sort",
+        concordanceCollocationSortDirection === "asc" ? "ascending" : "descending",
+      );
+    }
+  });
 }
 
 function handleConcordanceCollocateClick(row: ConcordanceCollocateRow): void {
@@ -1983,12 +2116,14 @@ function handleConcordanceCollocateClick(row: ConcordanceCollocateRow): void {
   concordanceOffset = 0;
   concordanceDistributionOffset = 0;
   collapseConcordanceExpansion();
+  setActiveConcordanceView("lines");
   void refreshConcordance(true, true);
 }
 
 function createConcordanceCollocationRow(
   row: ConcordanceCollocateRow,
   measure: ConcordanceCollocationMeasure,
+  visibleScores: Array<number | null>,
 ): HTMLTableRowElement {
   const item = document.createElement("tr");
 
@@ -2010,9 +2145,22 @@ function createConcordanceCollocationRow(
 
   const score = document.createElement("td");
   score.className = "numeric";
-  score.textContent = formatConcordanceCollocationScore(
-    concordanceCollocationScore(row, measure),
-  );
+  const scoreValue = concordanceCollocationScore(row, measure);
+  const value = document.createElement("span");
+  value.className = "concordance-collocation-score-value";
+  value.textContent = formatConcordanceCollocationScore(scoreValue);
+  score.appendChild(value);
+  const barPercent = concordanceCollocationScoreBarPercent(scoreValue, measure, visibleScores);
+  if (barPercent !== null) {
+    const track = document.createElement("span");
+    track.className = "concordance-collocation-score-track";
+    const fill = document.createElement("span");
+    fill.className = "concordance-collocation-score-fill";
+    fill.style.setProperty("--bar-width", `${barPercent}%`);
+    track.title = `${concordanceCollocationMeasureLabel(measure)}: ${formatConcordanceCollocationScore(scoreValue)}`;
+    track.appendChild(fill);
+    score.appendChild(track);
+  }
 
   item.append(surface, o11, frequency, score);
   return item;
@@ -2022,7 +2170,8 @@ function renderConcordanceCollocations(): void {
   syncConcordanceControls();
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   const measure = concordanceCollocationMeasure;
-  dom.concordanceCollocationsMeasureHead.textContent = concordanceCollocationMeasureLabel(measure);
+  renderConcordanceCollocationTableHead(measure);
+  dom.concordanceCollocationsSummary.classList.remove("hidden");
 
   if (concordanceCollocationPending) {
     dom.concordanceCollocationsSummary.textContent = "Profiling collocates...";
@@ -2054,18 +2203,19 @@ function renderConcordanceCollocations(): void {
   }
 
   dom.concordanceCollocationsSummary.textContent =
-    `${formatNumber(result.fNode)} nodes · ${formatNumber(result.r1)} slots · ${formatNumber(result.n)} tokens`;
+    `${formatNumber(result.fNode)} nodes · ${formatNumber(result.r1)} slots · ${formatNumber(result.n)} tokens · ranked by ${concordanceCollocationSortHeaderLabel(concordanceCollocationSortKey, measure)}`;
   renderConcordanceCollocationStatus(null);
 
-  const rows = sortConcordanceCollocates(result.rows, measure);
+  const rows = result.rows;
   if (rows.length === 0) {
     renderConcordanceCollocationTableState(CONCORDANCE_COLLOCATION_NO_ROWS_MESSAGE);
     return;
   }
 
+  const visibleScores = rows.map((row) => concordanceCollocationScore(row, measure));
   dom.concordanceCollocationsTableBody.replaceChildren();
   for (const row of rows) {
-    dom.concordanceCollocationsTableBody.appendChild(createConcordanceCollocationRow(row, measure));
+    dom.concordanceCollocationsTableBody.appendChild(createConcordanceCollocationRow(row, measure, visibleScores));
   }
 }
 
@@ -2075,8 +2225,25 @@ function renderConcordanceDistribution(
 ): void {
   dom.concordanceDistribution.replaceChildren();
 
-  const panel = document.createElement("div");
-  panel.className = "concordance-distribution-panel";
+  const panel = document.createElement("details");
+  panel.className = "concordance-document-spread-panel";
+
+  const summary = document.createElement("summary");
+  summary.className = "concordance-document-spread-summary";
+  const title = document.createElement("span");
+  title.className = "concordance-document-spread-title";
+  if (result && result.totalHits > 0) {
+    title.textContent =
+      `Document spread — ${formatNumber(result.totalHits)} hits across ${formatNumber(result.documentsWithHits)} files · top file ${formatFixedNumber(result.topDocumentShare * 100, 1)}% · DP ${formatFixedNumber(result.dp, 2)}`;
+  } else if (result) {
+    title.textContent = "Document spread — no hits in the selected files";
+  } else {
+    title.textContent = `Document spread — ${emptyMessage}`;
+  }
+  const toggle = document.createElement("span");
+  toggle.className = "concordance-document-spread-toggle";
+  summary.append(title, toggle);
+  panel.appendChild(summary);
 
   const tableWrap = document.createElement("div");
   tableWrap.className = "concordance-distribution-table-wrap";
@@ -2176,6 +2343,7 @@ function renderConcordanceDistribution(
 }
 
 function renderConcordance(): void {
+  renderFrequencyScopeControl(state.analysisCorpus);
   syncConcordanceControls();
   syncConcordanceViewTabs();
 
@@ -2217,9 +2385,7 @@ function renderConcordance(): void {
   }
 
   renderConcordanceSummary(result);
-  renderConcordanceStatus(
-    concordanceContextFilter ? `Filtered to lines with ${concordanceContextFilter}.` : null,
-  );
+  renderConcordanceFilterStatus(result);
 
   if (result.rows.length === 0) {
     renderConcordanceTableState(CONCORDANCE_NO_HITS_MESSAGE);
@@ -2340,6 +2506,8 @@ async function refreshConcordanceCollocations(): Promise<void> {
         minCollocateFrequency: currentConcordanceCollocationMinFrequency(),
         hideStopwords: dom.concordanceCollocationHideStopwordsInput.checked,
         sortMeasure: concordanceCollocationMeasure,
+        sortKey: concordanceCollocationSortKey,
+        sortDirection: currentConcordanceCollocationSortDirection(),
         limit: CONCORDANCE_COLLOCATION_LIMIT,
       },
       state.currentCorpusVersion,
@@ -2403,7 +2571,25 @@ function handleConcordanceCaseChange(): void {
 
 function handleConcordanceCollocationMeasureChange(): void {
   concordanceCollocationMeasure = currentConcordanceCollocationMeasure();
-  renderConcordanceCollocations();
+  void refreshConcordanceCollocations();
+}
+
+function handleConcordanceCollocationSortClick(event: Event): void {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>(".concordance-collocation-sort");
+  if (!button) {
+    return;
+  }
+  const nextKey = button.dataset.collocationSort as ConcordanceCollocationSortKey | undefined;
+  if (!nextKey) {
+    return;
+  }
+  if (nextKey === concordanceCollocationSortKey) {
+    concordanceCollocationSortDirection = concordanceCollocationSortDirection === "asc" ? "desc" : "asc";
+  } else {
+    concordanceCollocationSortKey = nextKey;
+    concordanceCollocationSortDirection = "desc";
+  }
+  void refreshConcordanceCollocations();
 }
 
 function handleConcordanceCollocationControlChange(): void {
@@ -4435,6 +4621,7 @@ export function initWorkbenchSwitcher(): void {
   dom.concordanceCollocationMeasureSelect.addEventListener("change", handleConcordanceCollocationMeasureChange);
   dom.concordanceCollocationMinO11Input.addEventListener("change", handleConcordanceCollocationControlChange);
   dom.concordanceCollocationMinFreqInput.addEventListener("change", handleConcordanceCollocationControlChange);
+  dom.concordanceCollocationsTableHead.addEventListener("click", handleConcordanceCollocationSortClick);
   syncConcordanceCollocationStopwordsToggle();
   dom.concordanceCollocationHideStopwordsInput.addEventListener("change", () => {
     syncConcordanceCollocationStopwordsToggle();

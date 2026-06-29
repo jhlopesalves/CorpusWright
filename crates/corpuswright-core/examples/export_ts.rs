@@ -12,12 +12,13 @@ use corpuswright_core::analysis::{
     AnnotationCacheAvailability, AnnotationCacheBuildError, AnnotationCacheBuildPhase,
     AnnotationCacheBuildProgress, AnnotationCacheBuildReport, AnnotationCacheState,
     ConcordanceCollocateRow, ConcordanceCollocationDirection, ConcordanceCollocationMeasure,
-    ConcordanceCollocationQuery, ConcordanceCollocationResult, ConcordanceDistributionItem,
-    ConcordanceDistributionPage, ConcordanceExpansionQuery, ConcordanceExpansionResult,
-    ConcordanceQuery, ConcordanceResult, ConcordanceRow, ConcordanceSortKey, FrequencyGroupMode,
-    FrequencyMatchMode, FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery,
-    FrequencySortKey, FrequencyTermItem, FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow,
-    SortDirection, TermDistributionItem, TermDistributionPage,
+    ConcordanceCollocationQuery, ConcordanceCollocationResult, ConcordanceCollocationSortKey,
+    ConcordanceDistributionItem, ConcordanceDistributionPage, ConcordanceExpansionQuery,
+    ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult, ConcordanceRow,
+    ConcordanceSortKey, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
+    FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
+    FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow, SortDirection, TermDistributionItem,
+    TermDistributionPage,
 };
 use corpuswright_core::clean::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
@@ -742,6 +743,7 @@ fn main() {
     );
     export_type::<ConcordanceCollocationDirection>(&out_dir, &[], &[]);
     export_type::<ConcordanceCollocationMeasure>(&out_dir, &[], &[]);
+    export_type::<ConcordanceCollocationSortKey>(&out_dir, &[], &[]);
     export_type::<ConcordanceCollocationQuery>(
         &out_dir,
         &[
@@ -757,6 +759,14 @@ fn main() {
                 name: "ConcordanceCollocationMeasure",
                 file: "ConcordanceCollocationMeasure",
             },
+            TypeImport {
+                name: "ConcordanceCollocationSortKey",
+                file: "ConcordanceCollocationSortKey",
+            },
+            TypeImport {
+                name: "SortDirection",
+                file: "SortDirection",
+            },
         ],
         &[],
     );
@@ -771,6 +781,14 @@ fn main() {
             TypeImport {
                 name: "ConcordanceCollocationMeasure",
                 file: "ConcordanceCollocationMeasure",
+            },
+            TypeImport {
+                name: "ConcordanceCollocationSortKey",
+                file: "ConcordanceCollocationSortKey",
+            },
+            TypeImport {
+                name: "SortDirection",
+                file: "SortDirection",
             },
             TypeImport {
                 name: "ConcordanceCollocateRow",

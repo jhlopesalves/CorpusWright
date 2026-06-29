@@ -2,8 +2,10 @@
 import type { AnalysisDocumentSelection } from "./AnalysisDocumentSelection";
 import type { ConcordanceCollocationDirection } from "./ConcordanceCollocationDirection";
 import type { ConcordanceCollocationMeasure } from "./ConcordanceCollocationMeasure";
+import type { ConcordanceCollocationSortKey } from "./ConcordanceCollocationSortKey";
+import type { SortDirection } from "./SortDirection";
 
 /**
  * Parameters for a surface-token collocation profile around concordance nodes.
  */
-export type ConcordanceCollocationQuery = { selection: AnalysisDocumentSelection, query: string, caseSensitive: boolean, span: number, direction: ConcordanceCollocationDirection, minCooccurrence: number, minCollocateFrequency: number, hideStopwords: boolean, sortMeasure: ConcordanceCollocationMeasure, limit: number, };
+export type ConcordanceCollocationQuery = { selection: AnalysisDocumentSelection, query: string, caseSensitive: boolean, span: number, direction: ConcordanceCollocationDirection, minCooccurrence: number, minCollocateFrequency: number, hideStopwords: boolean, sortMeasure: ConcordanceCollocationMeasure, sortKey: ConcordanceCollocationSortKey, sortDirection: SortDirection, limit: number, };

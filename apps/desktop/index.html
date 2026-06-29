@@ -507,7 +507,6 @@
                 <div id="concordance-view-tabs" class="concordance-view-tabs" role="tablist" aria-label="Concordance views">
                   <button id="concordance-lines-tab" type="button" class="concordance-view-tab is-active" data-concordance-view="lines" role="tab" aria-selected="true" aria-controls="concordance-lines-panel">Lines</button>
                   <button id="concordance-collocates-tab" type="button" class="concordance-view-tab" data-concordance-view="collocates" role="tab" aria-selected="false" aria-controls="concordance-collocations-panel">Collocates</button>
-                  <button id="concordance-distribution-tab" type="button" class="concordance-view-tab" data-concordance-view="distribution" role="tab" aria-selected="false" aria-controls="concordance-distribution-panel">Distribution</button>
                 </div>
                 <div id="concordance-status" class="frequency-query-notice hidden" role="status"></div>
                 <div class="concordance-views">
@@ -534,9 +533,12 @@
                       <span id="concordance-page-status"></span>
                       <button id="concordance-page-next" class="secondary-btn" type="button">Next</button>
                     </div>
+                    <section id="concordance-distribution-panel" class="concordance-document-spread" aria-label="Document spread">
+                      <div id="concordance-distribution" class="concordance-distribution"></div>
+                    </section>
                   </section>
                   <section id="concordance-collocations-panel" class="concordance-view-panel concordance-collocations-panel hidden" data-concordance-view-panel="collocates" role="tabpanel" aria-labelledby="concordance-collocates-tab" aria-hidden="true">
-                    <p id="concordance-collocations-summary" class="frequency-summary hidden">Enter a word or phrase to profile collocates.</p>
+                    <p id="concordance-collocations-summary" class="frequency-summary">Enter a word or phrase to profile collocates.</p>
                     <div class="concordance-collocation-controls">
                       <label for="concordance-collocation-span">
                         <span>Span</span>
@@ -582,12 +584,12 @@
                     <div id="concordance-collocations-status" class="frequency-query-notice hidden" role="status"></div>
                     <div class="concordance-collocations-table-wrap">
                       <table class="concordance-collocations-table">
-                        <thead>
+                        <thead id="concordance-collocations-table-head">
                           <tr>
                             <th>Collocate</th>
-                            <th>Co-occ (O11)</th>
-                            <th>Collocate freq (f_c)</th>
-                            <th id="concordance-collocations-measure-head">logDice</th>
+                            <th title="Co-occurrences within the selected span; O11">Near query <span class="concordance-collocation-heading-sublabel">O11</span></th>
+                            <th title="Total frequency of the collocate in scope; f_c">Corpus frequency <span class="concordance-collocation-heading-sublabel">f_c</span></th>
+                            <th>Association: logDice</th>
                           </tr>
                         </thead>
                         <tbody id="concordance-collocations-table-body">
@@ -597,9 +599,6 @@
                         </tbody>
                       </table>
                     </div>
-                  </section>
-                  <section id="concordance-distribution-panel" class="concordance-view-panel concordance-distribution-view hidden" data-concordance-view-panel="distribution" role="tabpanel" aria-labelledby="concordance-distribution-tab" aria-hidden="true">
-                    <div id="concordance-distribution" class="concordance-distribution"></div>
                   </section>
                 </div>
               </section>
