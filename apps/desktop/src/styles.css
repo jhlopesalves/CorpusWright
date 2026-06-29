@@ -3533,9 +3533,57 @@ main {
   color: var(--text-muted);
 }
 
-.concordance-distribution-panel {
+.concordance-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  color: var(--text-color);
+}
+
+.concordance-filter-clear {
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 0.78rem;
+}
+
+.concordance-document-spread {
+  margin-top: 12px;
+}
+
+.concordance-document-spread-panel {
   display: grid;
   gap: 10px;
+}
+
+.concordance-document-spread-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.concordance-document-spread-title {
+  min-width: 0;
+}
+
+.concordance-document-spread-toggle {
+  flex: 0 0 auto;
+  color: var(--accent-color);
+  font-size: 0.78rem;
+}
+
+.concordance-document-spread-toggle::before {
+  content: "Show";
+}
+
+.concordance-document-spread-panel[open] .concordance-document-spread-toggle::before {
+  content: "Hide";
 }
 
 .concordance-distribution-table-wrap {
@@ -3668,7 +3716,7 @@ main {
 
 .concordance-collocations-table th:nth-child(1),
 .concordance-collocations-table td:nth-child(1) {
-  width: 45%;
+  width: 40%;
 }
 
 .concordance-collocations-table th:nth-child(2),
@@ -3678,12 +3726,12 @@ main {
 
 .concordance-collocations-table th:nth-child(3),
 .concordance-collocations-table td:nth-child(3) {
-  width: 22%;
+  width: 20%;
 }
 
 .concordance-collocations-table th:nth-child(4),
 .concordance-collocations-table td:nth-child(4) {
-  width: 17%;
+  width: 24%;
 }
 
 .concordance-collocations-table th:nth-child(n + 2),
@@ -3694,10 +3742,11 @@ main {
 
 .concordance-collocate-button {
   max-width: 100%;
-  padding: 0;
-  border: 0;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
   background: transparent;
-  color: var(--accent-color);
+  color: var(--text-color);
   cursor: pointer;
   font: inherit;
   font-weight: 650;
@@ -3709,7 +3758,53 @@ main {
 
 .concordance-collocate-button:hover,
 .concordance-collocate-button:focus-visible {
-  text-decoration: underline;
+  border-color: var(--border-color);
+  background: var(--cw-interaction-bg-hover);
+  outline: none;
+}
+
+.concordance-collocation-heading {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.concordance-collocation-heading-primary {
+  color: inherit;
+}
+
+.concordance-collocation-heading-sublabel {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.concordance-collocation-sort {
+  align-items: flex-start;
+}
+
+.concordance-collocation-score-value {
+  display: inline-block;
+  min-width: 54px;
+}
+
+.concordance-collocation-score-track {
+  display: inline-block;
+  width: min(96px, calc(100% - 66px));
+  height: 8px;
+  margin-left: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border-color);
+  vertical-align: middle;
+}
+
+.concordance-collocation-score-fill {
+  display: block;
+  width: var(--bar-width, 0%);
+  height: 100%;
+  background: var(--accent-color);
 }
 
 .frequency-table-wrap {

@@ -2,8 +2,10 @@
 import type { ConcordanceCollocateRow } from "./ConcordanceCollocateRow";
 import type { ConcordanceCollocationDirection } from "./ConcordanceCollocationDirection";
 import type { ConcordanceCollocationMeasure } from "./ConcordanceCollocationMeasure";
+import type { ConcordanceCollocationSortKey } from "./ConcordanceCollocationSortKey";
+import type { SortDirection } from "./SortDirection";
 
 /**
  * Surface-token collocation profile for the current concordance query.
  */
-export type ConcordanceCollocationResult = { query: string, caseSensitive: boolean, span: number, direction: ConcordanceCollocationDirection, minCooccurrence: number, minCollocateFrequency: number, hideStopwords: boolean, sortMeasure: ConcordanceCollocationMeasure, limit: number, r1: number, n: number, fNode: number, totalCandidates: number, rows: Array<ConcordanceCollocateRow>, };
+export type ConcordanceCollocationResult = { query: string, caseSensitive: boolean, span: number, direction: ConcordanceCollocationDirection, minCooccurrence: number, minCollocateFrequency: number, hideStopwords: boolean, sortMeasure: ConcordanceCollocationMeasure, sortKey: ConcordanceCollocationSortKey, sortDirection: SortDirection, limit: number, r1: number, n: number, fNode: number, totalCandidates: number, rows: Array<ConcordanceCollocateRow>, };

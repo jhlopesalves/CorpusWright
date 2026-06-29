@@ -1452,6 +1452,17 @@ pub enum ConcordanceCollocationMeasure {
     LogRatio,
 }
 
+/// Primary key used to rank surface-token concordance collocates before truncation.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ConcordanceCollocationSortKey {
+    #[default]
+    Association,
+    NearQuery,
+    CorpusFrequency,
+}
+
 /// Parameters for a surface-token collocation profile around concordance nodes.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
@@ -1476,6 +1487,10 @@ pub struct ConcordanceCollocationQuery {
     pub hide_stopwords: bool,
     #[serde(default)]
     pub sort_measure: ConcordanceCollocationMeasure,
+    #[serde(default)]
+    pub sort_key: ConcordanceCollocationSortKey,
+    #[serde(default)]
+    pub sort_direction: SortDirection,
     #[serde(default)]
     pub limit: usize,
 }
@@ -1520,6 +1535,8 @@ pub struct ConcordanceCollocationResult {
     pub min_collocate_frequency: u64,
     pub hide_stopwords: bool,
     pub sort_measure: ConcordanceCollocationMeasure,
+    pub sort_key: ConcordanceCollocationSortKey,
+    pub sort_direction: SortDirection,
     pub limit: usize,
     #[ts(type = "number")]
     pub r1: u64,
@@ -4940,18 +4957,56 @@ fn collocation_score_for_measure(
 fn compare_collocation_rows(
     left: &ConcordanceCollocateRow,
     right: &ConcordanceCollocateRow,
+    sort_key: ConcordanceCollocationSortKey,
     measure: ConcordanceCollocationMeasure,
+    sort_direction: SortDirection,
 ) -> Ordering {
-    let score_ordering = match (
-        collocation_score_for_measure(left, measure),
-        collocation_score_for_measure(right, measure),
-    ) {
-        (Some(left), Some(right)) => right.partial_cmp(&left).unwrap_or(Ordering::Equal),
-        (Some(_), None) => Ordering::Less,
-        (None, Some(_)) => Ordering::Greater,
-        (None, None) => Ordering::Equal,
+    fn compare_count(left: u64, right: u64, sort_direction: SortDirection) -> Ordering {
+        match sort_direction {
+            SortDirection::Asc => left.cmp(&right),
+            SortDirection::Desc => right.cmp(&left),
+        }
+    }
+
+    fn compare_score(
+        left: &ConcordanceCollocateRow,
+        right: &ConcordanceCollocateRow,
+        measure: ConcordanceCollocationMeasure,
+        sort_direction: SortDirection,
+    ) -> Ordering {
+        match (
+            collocation_score_for_measure(left, measure),
+            collocation_score_for_measure(right, measure),
+        ) {
+            (Some(left), Some(right)) => {
+                let ordering = left.partial_cmp(&right).unwrap_or(Ordering::Equal);
+                match sort_direction {
+                    SortDirection::Asc => ordering,
+                    SortDirection::Desc => ordering.reverse(),
+                }
+            }
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        }
+    }
+
+    let score_ordering = match (sort_key, sort_direction) {
+        (ConcordanceCollocationSortKey::Association, direction) => {
+            compare_score(left, right, measure, direction)
+        }
+        (ConcordanceCollocationSortKey::NearQuery, direction) => {
+            compare_count(left.o11, right.o11, direction)
+        }
+        (ConcordanceCollocationSortKey::CorpusFrequency, direction) => compare_count(
+            left.collocate_frequency,
+            right.collocate_frequency,
+            direction,
+        ),
     };
     score_ordering
+        .then_with(|| compare_score(left, right, measure, SortDirection::Desc))
+        .then_with(|| right.o11.cmp(&left.o11))
         .then_with(|| right.collocate_frequency.cmp(&left.collocate_frequency))
         .then_with(|| left.surface.cmp(&right.surface))
 }
@@ -5240,7 +5295,15 @@ pub fn query_concordance_collocations_documents(
             Some(collocation_row(surface, o11, collocate_frequency, r1, n))
         })
         .collect::<Vec<_>>();
-    rows.sort_by(|left, right| compare_collocation_rows(left, right, query.sort_measure));
+    rows.sort_by(|left, right| {
+        compare_collocation_rows(
+            left,
+            right,
+            query.sort_key,
+            query.sort_measure,
+            query.sort_direction,
+        )
+    });
     let total_candidates = rows.len();
     rows.truncate(limit);
 
@@ -5253,6 +5316,8 @@ pub fn query_concordance_collocations_documents(
         min_collocate_frequency: query.min_collocate_frequency,
         hide_stopwords: query.hide_stopwords,
         sort_measure: query.sort_measure,
+        sort_key: query.sort_key,
+        sort_direction: query.sort_direction,
         limit,
         r1,
         n,
@@ -6545,6 +6610,8 @@ mod tests {
             min_collocate_frequency: 1,
             hide_stopwords: false,
             sort_measure: ConcordanceCollocationMeasure::LogDice,
+            sort_key: ConcordanceCollocationSortKey::Association,
+            sort_direction: SortDirection::Desc,
             limit: 100,
         }
     }
@@ -7274,6 +7341,35 @@ mod tests {
         assert_eq!(collocate(&result, "tail").o11, 1);
         assert!(result.rows.iter().all(|row| row.surface != "alpha"));
         assert!(result.rows.iter().all(|row| row.surface != "beta"));
+    }
+
+    #[test]
+    fn surface_collocation_sort_key_ranks_before_limit() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "rare target common target common target common common common common common common common common common common",
+        )];
+        let mut association_query = collocation_query("target");
+        association_query.direction = ConcordanceCollocationDirection::Left;
+        association_query.limit = 1;
+
+        let mut near_query = association_query.clone();
+        near_query.sort_key = ConcordanceCollocationSortKey::NearQuery;
+
+        let mut corpus_frequency_query = association_query.clone();
+        corpus_frequency_query.sort_key = ConcordanceCollocationSortKey::CorpusFrequency;
+
+        let association = collocations_for(&documents, association_query).unwrap();
+        let near = collocations_for(&documents, near_query).unwrap();
+        let corpus_frequency = collocations_for(&documents, corpus_frequency_query).unwrap();
+
+        assert_eq!(association.rows.len(), 1);
+        assert_eq!(near.rows.len(), 1);
+        assert_eq!(corpus_frequency.rows.len(), 1);
+        assert_eq!(association.rows[0].surface, "rare");
+        assert_eq!(near.rows[0].surface, "common");
+        assert_eq!(corpus_frequency.rows[0].surface, "common");
     }
 
     fn snapshot_analysis_product(product: &AnalysisBuildProduct) -> AnalysisCorpusSnapshot {
