@@ -112,12 +112,14 @@ for (const label of [
   "CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE",
   "CONCORDANCE_COLLOCATION_STALE_MESSAGE",
   "CONCORDANCE_COLLOCATION_STALE_DETAIL",
-  "Compute collocates",
   "Refresh collocates",
-  "Show lines",
 ]) {
   assert(workbench.includes(label), `Collocates should render ${label}`);
 }
+assert(
+  !workbench.includes("Compute collocates") && !workbench.includes("Show lines"),
+  "Collocates should avoid resting compute buttons and glued Show lines row text",
+);
 for (const measure of ["logDice", "mi", "mi3", "tScore", "zScore", "g2", "logRatio"]) {
   assert(html.includes(`value="${measure}"`), `Collocation measure should include ${measure}`);
 }
@@ -156,9 +158,10 @@ assert(
     && workbench.includes("function handleConcordanceCollocationPresentationControlChange")
     && workbench.includes("refreshConcordanceCollocationsForPresentationChange")
     && workbench.includes("markConcordanceCollocationsForAggregationChange")
+    && workbench.includes("concordanceCollocationAutoComputedAggregationKeys")
     && !workbench.includes("sortConcordanceCollocates(result.rows, measure)")
     && workbench.includes("handleConcordanceCollocateClick"),
-  "Concordance collocations should query Rust for true top-N sorting, split aggregation/presentation controls, and support click-through",
+  "Concordance collocations should query Rust for true top-N sorting, split aggregation/presentation controls, auto-compute fresh keys once, and support click-through",
 );
 assert(
   workbench.includes('type ConcordanceViewId = "lines" | "collocates";')
@@ -185,8 +188,18 @@ assert(
 assert(
   workbench.includes("concordanceExpansionViewModel")
     && workbench.includes("concordance-expansion-message is-")
-    && workbench.includes("concordance-expansion-node"),
-  "Concordance renderer should include ready, loading, and error expansion states",
+    && workbench.includes("concordance-expansion-node")
+    && workbench.includes("handleConcordanceExpansionEscape"),
+  "Concordance renderer should include ready, loading, error, and Escape-close expansion states",
+);
+const concordanceExpansionCssMatch = styles.match(/\.concordance-expansion-context \{([\s\S]*?)\n\}/);
+assert(concordanceExpansionCssMatch, "Concordance source preview CSS should exist");
+const concordanceExpansionCss = concordanceExpansionCssMatch[1];
+assert(
+  concordanceExpansionCss.includes("white-space: normal")
+    && concordanceExpansionCss.includes("overflow-wrap: anywhere")
+    && !concordanceExpansionCss.includes("white-space: nowrap"),
+  "Concordance source preview should wrap instead of expanding the table sideways",
 );
 assert(
   workbench.includes("collapseConcordanceExpansionFromControlChange")
@@ -211,8 +224,16 @@ assert(
 assert(
   workbench.includes('setActiveConcordanceView("lines")')
     && workbench.includes('label.textContent = `Showing lines where "${result.query}" occurs near "${filter}".`;')
+    && workbench.includes('activeConcordanceView !== "lines" || !concordanceContextFilter')
     && workbench.includes("clearConcordanceContextFilter"),
   "Collocate filtering should switch to Lines and expose a clearable active-filter chip",
+);
+assert(
+  workbench.includes('item.className = "concordance-collocation-row"')
+    && workbench.includes('item.setAttribute("role", "button")')
+    && workbench.includes('item.setAttribute("aria-label", actionLabel)')
+    && workbench.includes('event.key !== "Enter" && event.key !== " "'),
+  "Collocate rows should be clickable and keyboard accessible without an inline Show lines cue",
 );
 
 const concordanceNodeCssMatch = styles.match(/\.concordance-node \{([\s\S]*?)\n\}/);
@@ -228,7 +249,7 @@ assert(
 );
 assert(
   styles.includes(".concordance-table td:nth-child(3)")
-    && styles.includes("min-width: 180px"),
+    && styles.includes("min-width: 140px"),
   "Concordance node column should have a sensible minimum width",
 );
 
@@ -237,9 +258,9 @@ assert(concordanceRightCssMatch, "Concordance right-context CSS should exist");
 const concordanceRightCss = concordanceRightCssMatch[1];
 assert(
   concordanceRightCss.includes("white-space: nowrap")
-    && !concordanceRightCss.includes("text-overflow")
-    && !concordanceRightCss.includes("overflow: hidden"),
-  "Concordance right context should render without ellipsis clipping",
+    && concordanceRightCss.includes("text-overflow: ellipsis")
+    && concordanceRightCss.includes("overflow: hidden"),
+  "Concordance right context should clip inside its own cell instead of forcing table scroll",
 );
 assert(
   styles.includes(".concordance-collocations-table th:nth-child(4)")
@@ -249,25 +270,30 @@ assert(
 );
 assert(
   !styles.includes("max-height: min(62vh, 720px)")
-    && styles.includes(".concordance-table-wrap {\n  overflow-x: auto;")
+    && styles.includes(".analyse-workbench.is-concordance-active .analyse-content")
+    && styles.includes(".concordance-table-wrap {\n  overflow-x: clip;")
+    && styles.includes("@media (max-width: 760px)")
+    && styles.includes(".concordance-table {\n    min-width: 760px;")
     && styles.includes(".concordance-collocations-table-wrap {\n  overflow-x: auto;")
     && styles.includes(".concordance-distribution-table-wrap {\n  overflow-x: auto;"),
-  "Concordance tables should use natural vertical workspace scrolling with horizontal overflow only as needed",
+  "Concordance should use a scoped wide workspace and reserve KWIC horizontal overflow for narrow viewports",
 );
-const collocateButtonCssMatch = styles.match(/\.concordance-collocate-button \{([\s\S]*?)\n\}/);
-assert(collocateButtonCssMatch, "Collocate button CSS should exist");
-const collocateButtonCss = collocateButtonCssMatch[1];
+const collocateTextCssMatch = styles.match(/\.concordance-collocate-text \{([\s\S]*?)\n\}/);
+assert(collocateTextCssMatch, "Collocate text CSS should exist");
+const collocateTextCss = collocateTextCssMatch[1];
 assert(
-  collocateButtonCss.includes("font-weight: 500")
-    && !collocateButtonCss.includes("font-weight: 650")
-    && !collocateButtonCss.includes("text-decoration"),
-  "Collocate identifiers should not look like heavy ordinary links",
+  collocateTextCss.includes("font-weight: 500")
+    && !styles.includes(".concordance-collocate-button")
+    && !styles.includes(".concordance-collocate-action")
+    && !collocateTextCss.includes("text-decoration"),
+  "Collocate identifiers should render as normal row text, not as glued link-style actions",
 );
 assert(
   styles.includes(".concordance-collocation-score-track")
     && styles.includes(".concordance-collocation-score-fill")
-    && styles.includes("background: var(--cw-viz-frequency-mid);")
+    && styles.includes("--concordance-score-bar")
+    && styles.includes("background: var(--concordance-score-bar);")
     && styles.includes(".concordance-collocation-row:hover td")
     && styles.includes(".concordance-document-spread-toggle::before"),
-  "Collocates should render association bars, row hover, and Document spread should expose a collapsible toggle",
+  "Collocates should render muted association bars, row hover, and Document spread should expose a collapsible toggle",
 );
