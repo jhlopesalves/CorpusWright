@@ -1,14 +1,16 @@
 use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisCorpus,
     AnalysisDocumentPage, AnalysisDocumentSelection, AnnotatedFrequencyQuery,
-    AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, ConcordanceCollocationQuery,
+    AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, ConcordanceCollocationAggregate,
+    ConcordanceCollocationAggregationSignature, ConcordanceCollocationQuery,
     ConcordanceCollocationResult, ConcordanceDocument, ConcordanceExpansionQuery,
     ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult, CorpusOverview,
     CorpusOverviewContext, FrequencyGroupMode, FrequencyPage, FrequencyQuery, TermDistributionPage,
-    TermDistributionQuery, annotation_cache_availability_for_corpus, build_analysis_corpus,
-    cleaning_config_signature, expand_concordance_context, query_analysis_documents,
-    query_annotated_frequency, query_annotated_term_distribution,
-    query_concordance_collocations_documents, query_frequency_list, query_term_distribution,
+    TermDistributionQuery, aggregate_concordance_collocations_documents,
+    annotation_cache_availability_for_corpus, build_analysis_corpus, cleaning_config_signature,
+    concordance_collocation_aggregation_signature, expand_concordance_context,
+    query_analysis_documents, query_annotated_frequency, query_annotated_term_distribution,
+    query_concordance_collocations_from_aggregate, query_frequency_list, query_term_distribution,
     resolve_analysis_input, search_concordance_documents,
 };
 use corpuswright_core::cache::{
@@ -314,6 +316,53 @@ impl PdfPageRangeCache {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConcordanceCollocationCacheKey {
+    corpus_version: u64,
+    project_root: Option<String>,
+    cleaning_config_signature: String,
+    selection: AnalysisDocumentSelection,
+    aggregation: ConcordanceCollocationAggregationSignature,
+}
+
+struct ConcordanceCollocationCache {
+    // Last-one cache for the expensive corpus scan. Presentation filters are
+    // intentionally excluded from the key so measure/sort/floor changes reuse it.
+    inner: Mutex<
+        Option<(
+            ConcordanceCollocationCacheKey,
+            ConcordanceCollocationAggregate,
+        )>,
+    >,
+}
+
+impl ConcordanceCollocationCache {
+    fn new() -> Self {
+        Self {
+            inner: Mutex::new(None),
+        }
+    }
+
+    fn get(&self, key: &ConcordanceCollocationCacheKey) -> Option<ConcordanceCollocationAggregate> {
+        let inner = self.inner.lock().unwrap();
+        inner
+            .as_ref()
+            .and_then(|(cached_key, aggregate)| (cached_key == key).then(|| aggregate.clone()))
+    }
+
+    fn insert(
+        &self,
+        key: ConcordanceCollocationCacheKey,
+        aggregate: ConcordanceCollocationAggregate,
+    ) {
+        *self.inner.lock().unwrap() = Some((key, aggregate));
+    }
+
+    fn clear(&self) {
+        *self.inner.lock().unwrap() = None;
+    }
+}
+
 impl CorpusState {
     fn records_for_indices(
         &self,
@@ -465,6 +514,10 @@ fn record_path_key(path: &Path) -> String {
     }
 }
 
+fn project_root_cache_key(path: Option<&Path>) -> Option<String> {
+    path.map(record_path_key)
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CorpusLoadResult {
@@ -569,11 +622,13 @@ fn scan_directory_command(
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
+    collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
     analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<CorpusLoadResult, String> {
     analysis.clear();
     cache.clear();
     page_cache.clear();
+    collocation_cache.clear();
     let report = scan_directory(&path).map_err(|e| format!("{:?}", e))?;
     let version = {
         let mut inner = corpus_state.inner.write().unwrap();
@@ -592,11 +647,13 @@ fn load_files_command(
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
+    collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
     analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<CorpusLoadResult, String> {
     analysis.clear();
     cache.clear();
     page_cache.clear();
+    collocation_cache.clear();
     let path_bufs = paths.into_iter().map(PathBuf::from).collect();
     let report = load_files(path_bufs).map_err(|e| format!("{:?}", e))?;
     let version = {
@@ -616,11 +673,13 @@ fn load_project_source_records_command(
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
+    collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
     analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<ProjectCorpusLoadResult, String> {
     analysis.clear();
     cache.clear();
     page_cache.clear();
+    collocation_cache.clear();
     let report = project::load_project_source_records(root_path)?;
     hydrate_project_source_text_cache(&report.root, &report.files, &cache);
     let version = {
@@ -1286,6 +1345,7 @@ fn load_pdf_intake_files_command(
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
+    collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
     intake_state: tauri::State<'_, PdfIntakeState>,
 ) -> Result<CorpusLoadResult, String> {
     if paths.is_empty() {
@@ -1295,6 +1355,7 @@ fn load_pdf_intake_files_command(
     intake_state.cancel.store(false, Ordering::Relaxed);
     cache.clear();
     page_cache.clear();
+    collocation_cache.clear();
     corpus_state.inner.write().unwrap().clear();
 
     let path_bufs = paths.into_iter().map(PathBuf::from).collect();
@@ -1355,6 +1416,7 @@ fn prepare_project_pdf_sources_command(
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
+    collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
     intake_state: tauri::State<'_, PdfIntakeState>,
 ) -> Result<CorpusLoadResult, String> {
     if paths.is_empty() {
@@ -1364,6 +1426,7 @@ fn prepare_project_pdf_sources_command(
     intake_state.cancel.store(false, Ordering::Relaxed);
     cache.clear();
     page_cache.clear();
+    collocation_cache.clear();
     corpus_state.inner.write().unwrap().clear();
 
     if let Some(profile) = profile_override {
@@ -1510,11 +1573,13 @@ fn clear_corpus_command(
     corpus_state: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     page_cache: tauri::State<'_, PdfPageRangeCache>,
+    collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
     analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<(), String> {
     analysis.clear();
     cache.clear();
     page_cache.clear();
+    collocation_cache.clear();
     corpus_state.inner.write().unwrap().clear();
     Ok(())
 }
@@ -2262,9 +2327,28 @@ async fn query_concordance_collocations_command(
     cleaning_config: CleaningConfig,
     corpus: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
+    collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
 ) -> Result<ConcordanceCollocationResult, String> {
+    let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+    let aggregation = concordance_collocation_aggregation_signature(&query, &tokenization_config)
+        .map_err(|error| error.to_string())?;
     let (records, project_root) = corpus.all_records_and_root(corpus_version)?;
+    let cache_key = ConcordanceCollocationCacheKey {
+        corpus_version,
+        project_root: project_root_cache_key(project_root.as_deref()),
+        cleaning_config_signature: cleaning_config_signature(&cleaning_config),
+        selection: query.selection.clone(),
+        aggregation,
+    };
+    if let Some(aggregate) = collocation_cache.get(&cache_key) {
+        return Ok(query_concordance_collocations_from_aggregate(
+            &aggregate, &query,
+        ));
+    }
+
     let cache = cache.inner().clone();
+    let query_for_aggregation = query.clone();
+    let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
     tauri::async_runtime::spawn_blocking(move || {
         let mut documents = Vec::new();
         for record in &records {
@@ -2279,15 +2363,19 @@ async fn query_concordance_collocations_command(
                 documents.push(document);
             }
         }
-        query_concordance_collocations_documents(
+        aggregate_concordance_collocations_documents(
             &documents,
-            &query,
-            &corpuswright_core::tokenization::TokenizationConfig::default(),
+            &query_for_aggregation,
+            &tokenization_config,
         )
         .map_err(|error| error.to_string())
     })
     .await
     .map_err(|error| format!("Concordance collocation task failed: {error}"))?
+    .map(|aggregate| {
+        collocation_cache.insert(cache_key, aggregate.clone());
+        query_concordance_collocations_from_aggregate(&aggregate, &query)
+    })
 }
 
 #[tauri::command]
@@ -3151,6 +3239,7 @@ pub fn run() {
         })
         .manage(ExtractionCache::new())
         .manage(PdfPageRangeCache::new())
+        .manage(ConcordanceCollocationCache::new())
         .manage(project::ProjectSourceInventoryState::new())
         .invoke_handler(tauri::generate_handler![
             scan_directory_command,
@@ -3227,6 +3316,78 @@ mod tests {
             "corpuswright-desktop-{label}-{}-{nanos}",
             std::process::id()
         ))
+    }
+
+    fn collocation_cache_key(
+        corpus_version: u64,
+        selection: AnalysisDocumentSelection,
+        span: usize,
+    ) -> ConcordanceCollocationCacheKey {
+        ConcordanceCollocationCacheKey {
+            corpus_version,
+            project_root: Some("project".to_string()),
+            cleaning_config_signature: "cleaning-v1".to_string(),
+            selection,
+            aggregation: ConcordanceCollocationAggregationSignature {
+                query: "movie".to_string(),
+                case_sensitive: false,
+                span,
+                direction: corpuswright_core::analysis::ConcordanceCollocationDirection::Both,
+            },
+        }
+    }
+
+    fn collocation_aggregate(
+        signature: ConcordanceCollocationAggregationSignature,
+    ) -> ConcordanceCollocationAggregate {
+        ConcordanceCollocationAggregate {
+            signature,
+            candidate_counts: std::collections::HashMap::new(),
+            collocate_frequencies: std::collections::HashMap::new(),
+            r1: 0,
+            n: 0,
+            f_node: 0,
+        }
+    }
+
+    #[test]
+    fn concordance_collocation_cache_is_keyed_by_aggregation_inputs() {
+        let cache = ConcordanceCollocationCache::new();
+        let key = collocation_cache_key(7, AnalysisDocumentSelection::default(), 5);
+        cache.insert(key.clone(), collocation_aggregate(key.aggregation.clone()));
+
+        assert!(cache.get(&key).is_some());
+        assert!(
+            cache
+                .get(&collocation_cache_key(
+                    8,
+                    AnalysisDocumentSelection::default(),
+                    5,
+                ))
+                .is_none()
+        );
+        assert!(
+            cache
+                .get(&collocation_cache_key(
+                    7,
+                    AnalysisDocumentSelection {
+                        all_documents: false,
+                        ids: vec![1],
+                        excluded_ids: Vec::new(),
+                    },
+                    5,
+                ))
+                .is_none()
+        );
+        assert!(
+            cache
+                .get(&collocation_cache_key(
+                    7,
+                    AnalysisDocumentSelection::default(),
+                    6,
+                ))
+                .is_none()
+        );
     }
 
     #[test]
