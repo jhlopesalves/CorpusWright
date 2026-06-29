@@ -79,6 +79,23 @@ assert(
   "Concordance header should not render a duplicate standalone hit count",
 );
 assert(
+  html.includes('id="concordance-view-tabs"')
+    && html.includes('data-concordance-view="lines"')
+    && html.includes('data-concordance-view="collocates"')
+    && html.includes('data-concordance-view="distribution"'),
+  "Concordance should expose Lines, Collocates, and Distribution tabs",
+);
+assert(
+  html.includes('id="concordance-lines-panel" class="concordance-view-panel concordance-kwic-panel"')
+    && html.includes('id="concordance-collocations-panel" class="concordance-view-panel concordance-collocations-panel hidden"')
+    && html.includes('id="concordance-distribution-panel" class="concordance-view-panel concordance-distribution-view hidden"'),
+  "Concordance should render one initially visible full-width view panel",
+);
+assert(
+  !html.includes("concordance-results-grid") && !styles.includes("concordance-results-grid"),
+  "Concordance should not use the old side-by-side results grid",
+);
+assert(
   html.includes('id="concordance-collocations-summary"')
     && html.includes('id="concordance-collocation-span"')
     && html.includes('id="concordance-collocation-direction"')
@@ -116,6 +133,18 @@ assert(
   "Concordance collocations should query Rust, sort selected measures client-side, and support click-through",
 );
 assert(
+  workbench.includes('type ConcordanceViewId = "lines" | "collocates" | "distribution";')
+    && workbench.includes("function syncConcordanceViewTabs")
+    && workbench.includes('dom.concordanceViewTabs.addEventListener("click", handleConcordanceViewTabClick)')
+    && !workbench.includes("function handleConcordanceViewTabClick(event: MouseEvent): void {\n  void refreshConcordance"),
+  "Concordance tab switching should be a layout-only state change",
+);
+assert(
+  workbench.includes('table.className = "concordance-distribution-table"')
+    && workbench.includes('for (const label of ["File", "Hits", "Tokens", "Bar"])'),
+  "Concordance distribution should render as a full-width table",
+);
+assert(
   workbench.includes("addEventListener(\"click\", () => {\n    void toggleConcordanceExpansion(row);")
     && workbench.includes("event.key !== \"Enter\" && event.key !== \" \"")
     && workbench.includes("aria-expanded"),
@@ -150,11 +179,27 @@ assert(
   "Concordance node should not use ordinary ellipsis clipping",
 );
 assert(
-  concordanceNodeCss.includes("overflow-x: auto") && concordanceNodeCss.includes("white-space: nowrap"),
-  "Very long Concordance nodes should be horizontally scrollable",
+  !concordanceNodeCss.includes("overflow-x") && concordanceNodeCss.includes("white-space: nowrap"),
+  "Very long Concordance nodes should expand into the table scroll region rather than adding a nested scrollbar",
 );
 assert(
   styles.includes(".concordance-table td:nth-child(3)")
     && styles.includes("min-width: 180px"),
   "Concordance node column should have a sensible minimum width",
+);
+
+const concordanceRightCssMatch = styles.match(/\.concordance-right \{\n  color: var\(--text-muted\);([\s\S]*?)\n\}/);
+assert(concordanceRightCssMatch, "Concordance right-context CSS should exist");
+const concordanceRightCss = concordanceRightCssMatch[1];
+assert(
+  concordanceRightCss.includes("white-space: nowrap")
+    && !concordanceRightCss.includes("text-overflow")
+    && !concordanceRightCss.includes("overflow: hidden"),
+  "Concordance right context should render without ellipsis clipping",
+);
+assert(
+  styles.includes(".concordance-collocations-table th:nth-child(4)")
+    && styles.includes("width: 17%")
+    && styles.includes("min-width: 760px"),
+  "Concordance collocation measure-score column should have visible full-width table space",
 );

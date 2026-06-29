@@ -118,6 +118,7 @@ const FREQUENCY_DOCUMENT_PAGE_SIZE = 200;
 const TERM_DISTRIBUTION_PAGE_SIZE = 100;
 const CONCORDANCE_DISTRIBUTION_PAGE_SIZE = 10;
 type AnalysisToolId = "overview" | "frequency" | "concordance";
+type ConcordanceViewId = "lines" | "collocates" | "distribution";
 
 interface OverviewMetricRow {
   label: string;
@@ -169,6 +170,7 @@ let overviewGlossaryControlId = 0;
 let frequencyDocumentsDebounceTimer: number | null = null;
 let frequencyDocumentsFailure: string | null = null;
 let concordanceResult: ConcordanceResult | null = null;
+let activeConcordanceView: ConcordanceViewId = "lines";
 let concordanceOffset = 0;
 let concordanceSortKey: ConcordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;
 let concordanceContextFilter: string | null = null;
@@ -1714,6 +1716,50 @@ function syncConcordanceControls(): void {
   dom.concordanceCollocationMeasureSelect.value = concordanceCollocationMeasure;
 }
 
+function isConcordanceViewId(value: string | undefined): value is ConcordanceViewId {
+  return value === "lines" || value === "collocates" || value === "distribution";
+}
+
+function syncConcordanceViewTabs(): void {
+  const buttons = dom.concordanceViewTabs.querySelectorAll<HTMLButtonElement>("[data-concordance-view]");
+  buttons.forEach((button) => {
+    const view = button.dataset.concordanceView;
+    if (!isConcordanceViewId(view)) {
+      return;
+    }
+    const active = view === activeConcordanceView;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+
+  const panels: Array<{ view: ConcordanceViewId; element: HTMLElement }> = [
+    { view: "lines", element: dom.concordanceLinesPanel },
+    { view: "collocates", element: dom.concordanceCollocationsPanel },
+    { view: "distribution", element: dom.concordanceDistributionPanel },
+  ];
+  panels.forEach(({ view, element }) => {
+    const active = view === activeConcordanceView;
+    element.classList.toggle("hidden", !active);
+    element.setAttribute("aria-hidden", active ? "false" : "true");
+  });
+}
+
+function setActiveConcordanceView(view: ConcordanceViewId): void {
+  activeConcordanceView = view;
+  syncConcordanceViewTabs();
+}
+
+function handleConcordanceViewTabClick(event: MouseEvent): void {
+  const target = event.target instanceof HTMLElement
+    ? event.target.closest<HTMLButtonElement>("[data-concordance-view]")
+    : null;
+  const view = target?.dataset.concordanceView;
+  if (!isConcordanceViewId(view)) {
+    return;
+  }
+  setActiveConcordanceView(view);
+}
+
 function renderConcordanceStatus(message: string | null, isError = false): void {
   dom.concordanceStatus.textContent = message ?? "";
   dom.concordanceStatus.classList.toggle("hidden", message === null);
@@ -2023,99 +2069,121 @@ function renderConcordanceCollocations(): void {
   }
 }
 
-function renderConcordanceDistribution(result: ConcordanceResult | null): void {
+function renderConcordanceDistribution(
+  result: ConcordanceResult | null,
+  emptyMessage = CONCORDANCE_NO_QUERY_MESSAGE,
+): void {
   dom.concordanceDistribution.replaceChildren();
-  if (!result || result.totalHits === 0) {
-    return;
-  }
 
   const panel = document.createElement("div");
   panel.className = "concordance-distribution-panel";
 
-  const title = document.createElement("h3");
-  title.textContent = "File distribution";
-  panel.appendChild(title);
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "concordance-distribution-table-wrap";
 
-  const header = document.createElement("div");
-  header.className = "concordance-distribution-row concordance-distribution-header";
+  const table = document.createElement("table");
+  table.className = "concordance-distribution-table";
+
+  const head = document.createElement("thead");
+  const header = document.createElement("tr");
   for (const label of ["File", "Hits", "Tokens", "Bar"]) {
-    const cell = document.createElement("span");
+    const cell = document.createElement("th");
     cell.textContent = label;
     header.appendChild(cell);
   }
-  panel.appendChild(header);
+  head.appendChild(header);
+  table.appendChild(head);
 
-  const maxCount = result.distribution.maxCount;
-  for (const item of result.distribution.items) {
-    const row = document.createElement("div");
-    row.className = "concordance-distribution-row";
+  const body = document.createElement("tbody");
+  if (!result || result.totalHits === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 4;
+    cell.className = "frequency-empty concordance-empty";
+    cell.textContent = result ? CONCORDANCE_NO_HITS_MESSAGE : emptyMessage;
+    row.appendChild(cell);
+    body.appendChild(row);
+  } else {
+    const maxCount = result.distribution.maxCount;
+    for (const item of result.distribution.items) {
+      const row = document.createElement("tr");
 
-    const file = document.createElement("span");
-    file.className = "concordance-distribution-file";
-    file.title = item.displayName || item.sourcePath;
-    file.textContent = item.displayName || item.sourcePath;
+      const file = document.createElement("td");
+      file.className = "concordance-distribution-file";
+      file.title = item.displayName || item.sourcePath;
+      file.textContent = item.displayName || item.sourcePath;
 
-    const count = document.createElement("span");
-    count.className = "numeric";
-    count.textContent = formatNumber(item.count);
+      const count = document.createElement("td");
+      count.className = "numeric";
+      count.textContent = formatNumber(item.count);
 
-    const tokens = document.createElement("span");
-    tokens.className = "numeric";
-    tokens.textContent = formatNumber(item.tokenCount);
+      const tokens = document.createElement("td");
+      tokens.className = "numeric";
+      tokens.textContent = formatNumber(item.tokenCount);
 
-    const track = document.createElement("span");
-    track.className = "frequency-distribution-track";
-    const fill = document.createElement("span");
-    fill.className = "frequency-distribution-fill";
-    const width = maxCount > 0 && item.count > 0 ? Math.max(3, (item.count / maxCount) * 100) : 0;
-    fill.style.setProperty("--bar-width", `${width}%`);
-    track.title = `Hits: ${formatNumber(item.count)}`;
-    track.appendChild(fill);
+      const bar = document.createElement("td");
+      const track = document.createElement("span");
+      track.className = "frequency-distribution-track";
+      const fill = document.createElement("span");
+      fill.className = "frequency-distribution-fill";
+      const width = maxCount > 0 && item.count > 0 ? Math.max(3, (item.count / maxCount) * 100) : 0;
+      fill.style.setProperty("--bar-width", `${width}%`);
+      track.title = `Hits: ${formatNumber(item.count)}`;
+      track.appendChild(fill);
+      bar.appendChild(track);
 
-    row.append(file, count, tokens, track);
-    panel.appendChild(row);
+      row.append(file, count, tokens, bar);
+      body.appendChild(row);
+    }
   }
 
-  const pagination = document.createElement("div");
-  pagination.className = "analysis-pagination";
-  const previous = document.createElement("button");
-  previous.type = "button";
-  previous.className = "secondary-btn";
-  previous.textContent = "Previous";
-  previous.disabled = result.distribution.offset === 0;
-  previous.addEventListener("click", () => {
-    concordanceDistributionOffset = Math.max(0, result.distribution.offset - result.distribution.limit);
-    void refreshConcordance(false, false, false);
-  });
-  const status = document.createElement("span");
-  const first = result.distribution.totalDocuments === 0 ? 0 : result.distribution.offset + 1;
-  const last = Math.min(
-    result.distribution.totalDocuments,
-    result.distribution.offset + result.distribution.items.length,
-  );
-  status.textContent = `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(result.distribution.totalDocuments)}`;
-  const next = document.createElement("button");
-  next.type = "button";
-  next.className = "secondary-btn";
-  next.textContent = "Next";
-  next.disabled = result.distribution.offset + result.distribution.items.length >= result.distribution.totalDocuments;
-  next.addEventListener("click", () => {
-    concordanceDistributionOffset = result.distribution.offset + result.distribution.limit;
-    void refreshConcordance(false, false, false);
-  });
-  pagination.append(previous, status, next);
-  panel.appendChild(pagination);
+  table.appendChild(body);
+  tableWrap.appendChild(table);
+  panel.appendChild(tableWrap);
+
+  if (result && result.totalHits > 0) {
+    const pagination = document.createElement("div");
+    pagination.className = "analysis-pagination";
+    const previous = document.createElement("button");
+    previous.type = "button";
+    previous.className = "secondary-btn";
+    previous.textContent = "Previous";
+    previous.disabled = result.distribution.offset === 0;
+    previous.addEventListener("click", () => {
+      concordanceDistributionOffset = Math.max(0, result.distribution.offset - result.distribution.limit);
+      void refreshConcordance(false, false, false);
+    });
+    const status = document.createElement("span");
+    const first = result.distribution.totalDocuments === 0 ? 0 : result.distribution.offset + 1;
+    const last = Math.min(
+      result.distribution.totalDocuments,
+      result.distribution.offset + result.distribution.items.length,
+    );
+    status.textContent = `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(result.distribution.totalDocuments)}`;
+    const next = document.createElement("button");
+    next.type = "button";
+    next.className = "secondary-btn";
+    next.textContent = "Next";
+    next.disabled = result.distribution.offset + result.distribution.items.length >= result.distribution.totalDocuments;
+    next.addEventListener("click", () => {
+      concordanceDistributionOffset = result.distribution.offset + result.distribution.limit;
+      void refreshConcordance(false, false, false);
+    });
+    pagination.append(previous, status, next);
+    panel.appendChild(pagination);
+  }
   dom.concordanceDistribution.appendChild(panel);
 }
 
 function renderConcordance(): void {
   syncConcordanceControls();
+  syncConcordanceViewTabs();
 
   if (concordancePending) {
     dom.concordanceSummary.textContent = "Searching...";
     renderConcordanceStatus(null);
     renderConcordanceTableState("Searching...");
-    renderConcordanceDistribution(null);
+    renderConcordanceDistribution(null, "Searching...");
     renderConcordanceCollocations();
     dom.concordancePagePreviousButton.disabled = true;
     dom.concordancePageNextButton.disabled = true;
@@ -2127,7 +2195,7 @@ function renderConcordance(): void {
     dom.concordanceSummary.textContent = CONCORDANCE_NO_QUERY_MESSAGE;
     renderConcordanceStatus(concordanceFailure, true);
     renderConcordanceTableState(concordanceFailure);
-    renderConcordanceDistribution(null);
+    renderConcordanceDistribution(null, concordanceFailure);
     renderConcordanceCollocations();
     dom.concordancePagePreviousButton.disabled = true;
     dom.concordancePageNextButton.disabled = true;
@@ -2140,7 +2208,7 @@ function renderConcordance(): void {
     dom.concordanceSummary.textContent = CONCORDANCE_NO_QUERY_MESSAGE;
     renderConcordanceStatus(null);
     renderConcordanceTableState(CONCORDANCE_NO_QUERY_MESSAGE);
-    renderConcordanceDistribution(null);
+    renderConcordanceDistribution(null, CONCORDANCE_NO_QUERY_MESSAGE);
     renderConcordanceCollocations();
     dom.concordancePagePreviousButton.disabled = true;
     dom.concordancePageNextButton.disabled = true;
@@ -4346,6 +4414,7 @@ export function initWorkbenchSwitcher(): void {
     void handleBuildAnalysisCorpus();
   });
   dom.analyseToolsList.addEventListener("click", handleAnalysisToolClick);
+  dom.concordanceViewTabs.addEventListener("click", handleConcordanceViewTabClick);
   dom.concordanceSearchButton.addEventListener("click", runConcordanceSearch);
   dom.concordanceQueryInput.addEventListener("input", collapseConcordanceExpansionFromControlChange);
   dom.concordanceQueryInput.addEventListener("keydown", (event) => {
