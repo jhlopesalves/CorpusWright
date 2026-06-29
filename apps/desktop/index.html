@@ -456,77 +456,151 @@
               </section>
 
               <section id="concordance-pane" class="analyse-section analyse-tool-pane concordance-section hidden" aria-labelledby="concordance-title">
-                <div class="frequency-section-header">
-                  <div>
-                    <h2 id="concordance-title">Concordance</h2>
-                    <p id="concordance-summary" class="frequency-summary">Enter a word or phrase to see concordance lines.</p>
+                <div class="concordance-header">
+                  <div class="frequency-section-header">
+                    <div>
+                      <h2 id="concordance-title">Concordance</h2>
+                      <p id="concordance-summary" class="frequency-summary">Enter a word or phrase to see concordance lines.</p>
+                    </div>
                   </div>
-                  <span id="concordance-result-count" class="frequency-result-count"></span>
+                  <div class="concordance-controls">
+                    <label for="concordance-query-input">
+                      <span>Surface word or phrase</span>
+                      <input id="concordance-query-input" type="search" autocomplete="off" />
+                    </label>
+                    <label class="frequency-stopword-control" for="concordance-case-sensitive">
+                      <span>Case</span>
+                      <span class="frequency-toggle">
+                        <input id="concordance-case-sensitive" type="checkbox" role="switch" aria-checked="false" />
+                        <span class="frequency-toggle-track" aria-hidden="true"></span>
+                        <span id="concordance-case-state">Insensitive</span>
+                      </span>
+                    </label>
+                    <label for="concordance-window-input">
+                      <span>Window</span>
+                      <input id="concordance-window-input" type="number" min="1" max="20" step="1" value="5" />
+                    </label>
+                    <label for="concordance-sort-select">
+                      <span>Sort</span>
+                      <select id="concordance-sort-select">
+                        <option value="filePosition" selected>File/position</option>
+                        <option value="node">Node</option>
+                        <option value="left1">1L</option>
+                        <option value="left2">2L</option>
+                        <option value="left3">3L</option>
+                        <option value="right1">1R</option>
+                        <option value="right2">2R</option>
+                        <option value="right3">3R</option>
+                      </select>
+                    </label>
+                    <div class="frequency-file-scope-control">
+                      <span>File scope</span>
+                      <button id="concordance-files-button" type="button" class="secondary-btn">Files: 0 of 0</button>
+                    </div>
+                    <label for="concordance-page-size-input">
+                      <span>Rows</span>
+                      <input id="concordance-page-size-input" type="number" min="25" max="500" step="25" value="100" />
+                    </label>
+                    <button id="concordance-search-button" class="primary-btn" type="button">Search</button>
+                  </div>
                 </div>
-                <div class="concordance-controls">
-                  <label for="concordance-query-input">
-                    <span>Surface word or phrase</span>
-                    <input id="concordance-query-input" type="search" autocomplete="off" />
-                  </label>
-                  <label for="concordance-window-input">
-                    <span>Window</span>
-                    <input id="concordance-window-input" type="number" min="1" max="20" step="1" value="5" />
-                  </label>
-                  <label for="concordance-sort-select">
-                    <span>Sort</span>
-                    <select id="concordance-sort-select">
-                      <option value="filePosition" selected>File/position</option>
-                      <option value="node">Node</option>
-                      <option value="left1">1L</option>
-                      <option value="left2">2L</option>
-                      <option value="left3">3L</option>
-                      <option value="right1">1R</option>
-                      <option value="right2">2R</option>
-                      <option value="right3">3R</option>
-                    </select>
-                  </label>
-                  <div class="frequency-file-scope-control">
-                    <span>File scope</span>
-                    <button id="concordance-files-button" type="button" class="secondary-btn">Files: 0 of 0</button>
-                  </div>
-                  <label for="concordance-page-size-input">
-                    <span>Rows</span>
-                    <input id="concordance-page-size-input" type="number" min="25" max="500" step="25" value="100" />
-                  </label>
-                  <label class="frequency-stopword-control" for="concordance-case-sensitive">
-                    <span>Case</span>
-                    <span class="frequency-toggle">
-                      <input id="concordance-case-sensitive" type="checkbox" role="switch" aria-checked="false" />
-                      <span class="frequency-toggle-track" aria-hidden="true"></span>
-                      <span id="concordance-case-state">Insensitive</span>
-                    </span>
-                  </label>
-                  <button id="concordance-search-button" class="primary-btn" type="button">Search</button>
+                <div id="concordance-view-tabs" class="concordance-view-tabs" role="tablist" aria-label="Concordance views">
+                  <button id="concordance-lines-tab" type="button" class="concordance-view-tab is-active" data-concordance-view="lines" role="tab" aria-selected="true" aria-controls="concordance-lines-panel">Lines</button>
+                  <button id="concordance-collocates-tab" type="button" class="concordance-view-tab" data-concordance-view="collocates" role="tab" aria-selected="false" aria-controls="concordance-collocations-panel">Collocates</button>
                 </div>
                 <div id="concordance-status" class="frequency-query-notice hidden" role="status"></div>
-                <div class="concordance-table-wrap">
-                  <table class="concordance-table">
-                    <thead>
-                      <tr>
-                        <th>File</th>
-                        <th>Left context</th>
-                        <th>Node</th>
-                        <th>Right context</th>
-                      </tr>
-                    </thead>
-                    <tbody id="concordance-table-body">
-                      <tr>
-                        <td colspan="4" class="frequency-empty">Enter a word or phrase to see concordance lines.</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                <div class="concordance-views">
+                  <section id="concordance-lines-panel" class="concordance-view-panel concordance-kwic-panel" data-concordance-view-panel="lines" role="tabpanel" aria-labelledby="concordance-lines-tab">
+                    <div class="concordance-table-wrap">
+                      <table class="concordance-table">
+                        <thead>
+                          <tr>
+                            <th>File</th>
+                            <th>Left context</th>
+                            <th>Node</th>
+                            <th>Right context</th>
+                          </tr>
+                        </thead>
+                        <tbody id="concordance-table-body">
+                          <tr>
+                            <td colspan="4" class="frequency-empty">Enter a word or phrase to see concordance lines.</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div class="analysis-pagination" aria-label="Concordance result pages">
+                      <button id="concordance-page-previous" class="secondary-btn" type="button">Previous</button>
+                      <span id="concordance-page-status"></span>
+                      <button id="concordance-page-next" class="secondary-btn" type="button">Next</button>
+                    </div>
+                    <section id="concordance-distribution-panel" class="concordance-document-spread" aria-label="Document spread">
+                      <div id="concordance-distribution" class="concordance-distribution"></div>
+                    </section>
+                  </section>
+                  <section id="concordance-collocations-panel" class="concordance-view-panel concordance-collocations-panel hidden" data-concordance-view-panel="collocates" role="tabpanel" aria-labelledby="concordance-collocates-tab" aria-hidden="true">
+                    <p id="concordance-collocations-summary" class="frequency-summary">Enter a word or phrase to profile collocates.</p>
+                    <div class="concordance-collocation-controls">
+                      <label for="concordance-collocation-span">
+                        <span>Span</span>
+                        <input id="concordance-collocation-span" type="number" min="1" max="20" step="1" value="5" />
+                      </label>
+                      <label for="concordance-collocation-direction">
+                        <span>Direction</span>
+                        <select id="concordance-collocation-direction">
+                          <option value="both" selected>Both</option>
+                          <option value="left">Left</option>
+                          <option value="right">Right</option>
+                        </select>
+                      </label>
+                      <label for="concordance-collocation-measure">
+                        <span>Measure</span>
+                        <select id="concordance-collocation-measure">
+                          <option value="logDice" selected>logDice</option>
+                          <option value="mi">MI</option>
+                          <option value="mi3">MI3</option>
+                          <option value="tScore">t-score</option>
+                          <option value="zScore">z-score</option>
+                          <option value="g2">log-likelihood</option>
+                          <option value="logRatio">log-ratio</option>
+                        </select>
+                      </label>
+                      <label for="concordance-collocation-min-o11">
+                        <span>Min co-occ</span>
+                        <input id="concordance-collocation-min-o11" type="number" min="0" step="1" value="5" />
+                      </label>
+                      <label for="concordance-collocation-min-freq">
+                        <span>Min freq</span>
+                        <input id="concordance-collocation-min-freq" type="number" min="0" step="1" value="5" />
+                      </label>
+                      <label class="frequency-stopword-control" for="concordance-collocation-hide-stopwords">
+                        <span>Stopwords</span>
+                        <span class="frequency-toggle">
+                          <input id="concordance-collocation-hide-stopwords" type="checkbox" role="switch" aria-checked="false" />
+                          <span class="frequency-toggle-track" aria-hidden="true"></span>
+                          <span id="concordance-collocation-stopword-state">Show</span>
+                        </span>
+                      </label>
+                    </div>
+                    <div id="concordance-collocations-status" class="frequency-query-notice hidden" role="status"></div>
+                    <div class="concordance-collocations-table-wrap">
+                      <table class="concordance-collocations-table">
+                        <thead id="concordance-collocations-table-head">
+                          <tr>
+                            <th>Collocate</th>
+                            <th title="Co-occurrences within the selected span; O11">Near query <span class="concordance-collocation-heading-sublabel">O11</span></th>
+                            <th title="Total frequency of the collocate in scope; f_c">Corpus frequency <span class="concordance-collocation-heading-sublabel">f_c</span></th>
+                            <th>Association: logDice</th>
+                          </tr>
+                        </thead>
+                        <tbody id="concordance-collocations-table-body">
+                          <tr>
+                            <td colspan="4" class="frequency-empty">Enter a word or phrase to profile collocates.</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
                 </div>
-                <div class="analysis-pagination" aria-label="Concordance result pages">
-                  <button id="concordance-page-previous" class="secondary-btn" type="button">Previous</button>
-                  <span id="concordance-page-status"></span>
-                  <button id="concordance-page-next" class="secondary-btn" type="button">Next</button>
-                </div>
-                <div id="concordance-distribution" class="concordance-distribution"></div>
               </section>
             </div>
           </div>

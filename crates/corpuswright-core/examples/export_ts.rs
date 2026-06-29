@@ -11,8 +11,11 @@ use corpuswright_core::analysis::{
     AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, AnnotatedTermSelector,
     AnnotationCacheAvailability, AnnotationCacheBuildError, AnnotationCacheBuildPhase,
     AnnotationCacheBuildProgress, AnnotationCacheBuildReport, AnnotationCacheState,
-    ConcordanceDistributionItem, ConcordanceDistributionPage, ConcordanceQuery, ConcordanceResult,
-    ConcordanceRow, ConcordanceSortKey, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
+    ConcordanceCollocateRow, ConcordanceCollocationDirection, ConcordanceCollocationMeasure,
+    ConcordanceCollocationQuery, ConcordanceCollocationResult, ConcordanceCollocationSortKey,
+    ConcordanceDistributionItem, ConcordanceDistributionPage, ConcordanceExpansionQuery,
+    ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult, ConcordanceRow,
+    ConcordanceSortKey, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
     FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
     FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow, SortDirection, TermDistributionItem,
     TermDistributionPage,
@@ -709,6 +712,8 @@ fn main() {
         &[],
     );
     export_type::<ConcordanceRow>(&out_dir, &[], &[]);
+    export_type::<ConcordanceExpansionQuery>(&out_dir, &[], &[]);
+    export_type::<ConcordanceExpansionResult>(&out_dir, &[], &[]);
     export_type::<ConcordanceDistributionItem>(&out_dir, &[], &[]);
     export_type::<ConcordanceDistributionPage>(
         &out_dir,
@@ -732,6 +737,62 @@ fn main() {
             TypeImport {
                 name: "ConcordanceDistributionPage",
                 file: "ConcordanceDistributionPage",
+            },
+        ],
+        &[],
+    );
+    export_type::<ConcordanceCollocationDirection>(&out_dir, &[], &[]);
+    export_type::<ConcordanceCollocationMeasure>(&out_dir, &[], &[]);
+    export_type::<ConcordanceCollocationSortKey>(&out_dir, &[], &[]);
+    export_type::<ConcordanceCollocationQuery>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "AnalysisDocumentSelection",
+                file: "AnalysisDocumentSelection",
+            },
+            TypeImport {
+                name: "ConcordanceCollocationDirection",
+                file: "ConcordanceCollocationDirection",
+            },
+            TypeImport {
+                name: "ConcordanceCollocationMeasure",
+                file: "ConcordanceCollocationMeasure",
+            },
+            TypeImport {
+                name: "ConcordanceCollocationSortKey",
+                file: "ConcordanceCollocationSortKey",
+            },
+            TypeImport {
+                name: "SortDirection",
+                file: "SortDirection",
+            },
+        ],
+        &[],
+    );
+    export_type::<ConcordanceCollocateRow>(&out_dir, &[], &[]);
+    export_type::<ConcordanceCollocationResult>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "ConcordanceCollocationDirection",
+                file: "ConcordanceCollocationDirection",
+            },
+            TypeImport {
+                name: "ConcordanceCollocationMeasure",
+                file: "ConcordanceCollocationMeasure",
+            },
+            TypeImport {
+                name: "ConcordanceCollocationSortKey",
+                file: "ConcordanceCollocationSortKey",
+            },
+            TypeImport {
+                name: "SortDirection",
+                file: "SortDirection",
+            },
+            TypeImport {
+                name: "ConcordanceCollocateRow",
+                file: "ConcordanceCollocateRow",
             },
         ],
         &[],
