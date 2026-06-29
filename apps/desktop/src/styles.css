@@ -3337,8 +3337,7 @@ main {
 }
 
 .concordance-table-wrap {
-  max-height: min(62vh, 720px);
-  overflow: auto;
+  overflow-x: auto;
 }
 
 .concordance-table {
@@ -3587,8 +3586,7 @@ main {
 }
 
 .concordance-distribution-table-wrap {
-  max-height: min(62vh, 720px);
-  overflow: auto;
+  overflow-x: auto;
 }
 
 .concordance-distribution-table {
@@ -3684,8 +3682,7 @@ main {
 }
 
 .concordance-collocations-table-wrap {
-  max-height: min(62vh, 720px);
-  overflow: auto;
+  overflow-x: auto;
 }
 
 .concordance-collocations-table {
@@ -3693,13 +3690,17 @@ main {
   min-width: 760px;
   border-collapse: collapse;
   table-layout: fixed;
+  font-size: 0.85rem;
 }
 
 .concordance-collocations-table th,
 .concordance-collocations-table td {
-  padding: 7px 8px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--border-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
   vertical-align: middle;
+  white-space: nowrap;
 }
 
 .concordance-collocations-table th {
@@ -3708,10 +3709,9 @@ main {
   z-index: 1;
   background: var(--panel-bg);
   color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 0.76rem;
+  font-weight: 650;
   text-align: left;
-  white-space: nowrap;
 }
 
 .concordance-collocations-table th:nth-child(1),
@@ -3740,27 +3740,80 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+.concordance-collocation-row {
+  cursor: pointer;
+}
+
+.concordance-collocation-row:hover td,
+.concordance-collocation-row:focus-within td {
+  background: var(--cw-interaction-bg-hover);
+}
+
 .concordance-collocate-button {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
   max-width: 100%;
-  padding: 2px 6px;
-  border: 1px solid transparent;
-  border-radius: 4px;
+  min-width: 0;
+  padding: 0;
+  border: none;
   background: transparent;
   color: var(--text-color);
   cursor: pointer;
   font: inherit;
-  font-weight: 650;
+  font-weight: 500;
   overflow: hidden;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .concordance-collocate-button:hover,
 .concordance-collocate-button:focus-visible {
-  border-color: var(--border-color);
-  background: var(--cw-interaction-bg-hover);
+  color: var(--text-color);
   outline: none;
+}
+
+.concordance-collocate-button:focus-visible {
+  outline: 1px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.concordance-collocate-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.concordance-collocate-action {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.concordance-collocation-row:hover .concordance-collocate-action,
+.concordance-collocate-button:focus-visible .concordance-collocate-action {
+  opacity: 1;
+}
+
+.concordance-collocation-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+}
+
+.concordance-collocation-action-copy {
+  min-width: 0;
+}
+
+.concordance-collocation-action-button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 0.78rem;
 }
 
 .concordance-collocation-heading {
@@ -3804,7 +3857,7 @@ main {
   display: block;
   width: var(--bar-width, 0%);
   height: 100%;
-  background: var(--accent-color);
+  background: var(--cw-viz-frequency-mid);
 }
 
 .frequency-table-wrap {
