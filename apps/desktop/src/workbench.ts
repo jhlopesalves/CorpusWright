@@ -11,12 +11,14 @@ import {
   defaultAnalysisDocumentSelection,
   getAnalysisBuildStatus,
   queryAnnotatedFrequency,
+  queryAnnotatedTermDistribution,
   queryAnalysisDocuments,
   queryFrequencyList,
   queryTermDistribution,
   searchConcordance,
   type AnnotatedFrequencyMode,
   type AnnotatedFrequencyResult,
+  type AnnotatedTermSelector,
   type AnnotationCacheAvailability,
   type AnnotationCacheBuildReport,
   type AnnotationCacheBuildProgress,
@@ -27,6 +29,7 @@ import {
   type AnalysisInputSource,
   type ConcordanceResult,
   type ConcordanceRow,
+  type ConcordanceSortKey,
   type CorpusOverview as AnalysisCorpus,
   type CorpusOverviewFinding,
   type CorpusOverviewFindingSeverity,
@@ -46,7 +49,12 @@ import {
 import { BOOLEAN_CLEANING_CONFIG_KEYS } from "./config";
 import {
   clampConcordanceWindow,
-  concordanceSummaryText,
+  clampConcordancePageSize,
+  concordanceSortLabel,
+  CONCORDANCE_NO_HITS_MESSAGE,
+  CONCORDANCE_NO_QUERY_MESSAGE,
+  DEFAULT_CONCORDANCE_SORT_KEY,
+  CONCORDANCE_COLUMNS,
   normaliseConcordanceQuery,
 } from "./concordance";
 import { createChevron } from "./chevron";
@@ -54,10 +62,18 @@ import { dom } from "./dom";
 import { effectiveCleaningConfig } from "./effective-cleaning-config";
 import {
   ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE,
-  annotatedDispersionLevel,
+  DEFAULT_FREQUENCY_RATE_SCALE,
   annotatedFrequencyModeEnabled,
+  frequencyColumnLabels,
+  frequencyControlVisibility,
+  frequencyDistributionBarValue,
+  frequencyDistributionColumnLabels,
+  frequencyRateLabel,
+  frequencyRateValue,
+  frequencyTableColumnCountForMode,
   formatDocumentFrequency,
   frequencyModeLabel,
+  type FrequencyRateScale,
   type FrequencyViewMode,
 } from "./frequency";
 import {
@@ -78,7 +94,7 @@ const FUTURE_ANALYSIS_TOOLS = [
 const FREQUENCY_PAGE_SIZE = 200;
 const FREQUENCY_DOCUMENT_PAGE_SIZE = 200;
 const TERM_DISTRIBUTION_PAGE_SIZE = 100;
-const CONCORDANCE_PAGE_SIZE = 100;
+const CONCORDANCE_DISTRIBUTION_PAGE_SIZE = 10;
 type AnalysisToolId = "overview" | "frequency" | "concordance";
 
 interface OverviewMetricRow {
@@ -132,12 +148,15 @@ let frequencyDocumentsDebounceTimer: number | null = null;
 let frequencyDocumentsFailure: string | null = null;
 let concordanceResult: ConcordanceResult | null = null;
 let concordanceOffset = 0;
+let concordanceSortKey: ConcordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;
+let concordanceDistributionOffset = 0;
 let concordanceQueryGeneration = 0;
 let concordancePending = false;
 let concordanceFailure: string | null = null;
 let expandedFrequencyTokens = new Set<string>();
 let termDistributionPages = new Map<string, TermDistributionPage>();
 let termDistributionGenerations = new Map<string, number>();
+let annotatedDistributionSelectors = new Map<string, AnnotatedTermSelector>();
 let analysisBuildInProgress = false;
 let analysisBuildProgress: AnalysisBuildProgress | null = null;
 let analysisBuildGeneration = 0;
@@ -1571,12 +1590,15 @@ function resetFrequencyCorpusState(resetAnnotationLayer = true): void {
   frequencyDocumentsFailure = null;
   concordanceResult = null;
   concordanceOffset = 0;
+  concordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;
+  concordanceDistributionOffset = 0;
   concordanceQueryGeneration += 1;
   concordancePending = false;
   concordanceFailure = null;
   expandedFrequencyTokens = new Set<string>();
   termDistributionPages.clear();
   termDistributionGenerations.clear();
+  annotatedDistributionSelectors.clear();
   if (resetAnnotationLayer) {
     resetAnnotationLayerState();
   }
@@ -1586,10 +1608,25 @@ function currentConcordanceWindow(): number {
   return clampConcordanceWindow(Number.parseInt(dom.concordanceWindowInput.value, 10));
 }
 
+function currentConcordancePageSize(): number {
+  const pageSize = clampConcordancePageSize(Number.parseInt(dom.concordancePageSizeInput.value, 10));
+  dom.concordancePageSizeInput.value = pageSize.toString();
+  return pageSize;
+}
+
+function currentConcordanceSortKey(): ConcordanceSortKey {
+  return dom.concordanceSortSelect.value as ConcordanceSortKey;
+}
+
 function syncConcordanceCaseToggle(): void {
   const isCaseSensitive = dom.concordanceCaseSensitiveInput.checked;
   dom.concordanceCaseSensitiveInput.setAttribute("aria-checked", isCaseSensitive ? "true" : "false");
   dom.concordanceCaseState.textContent = isCaseSensitive ? "Sensitive" : "Insensitive";
+}
+
+function syncConcordanceControls(): void {
+  syncConcordanceCaseToggle();
+  dom.concordanceSortSelect.value = concordanceSortKey;
 }
 
 function renderConcordanceStatus(message: string | null, isError = false): void {
@@ -1602,43 +1639,165 @@ function concordanceRowText(tokens: string[]): string {
   return tokens.join(" ");
 }
 
-function createConcordanceRow(row: ConcordanceRow): HTMLElement {
-  const item = document.createElement("article");
+function renderConcordanceTableState(message: string): void {
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = CONCORDANCE_COLUMNS.length;
+  cell.className = "frequency-empty concordance-empty";
+  cell.textContent = message;
+  row.appendChild(cell);
+  dom.concordanceTableBody.replaceChildren(row);
+}
+
+function createConcordanceRow(row: ConcordanceRow): HTMLTableRowElement {
+  const item = document.createElement("tr");
   item.className = "concordance-row";
 
-  const context = document.createElement("div");
-  context.className = "concordance-context";
+  const file = document.createElement("td");
+  file.className = "concordance-file";
+  file.title = row.displayName || row.sourcePath;
+  file.textContent = row.displayName || row.sourcePath;
 
-  const left = document.createElement("span");
+  const left = document.createElement("td");
   left.className = "concordance-left";
   left.textContent = concordanceRowText(row.leftContext);
 
+  const nodeCell = document.createElement("td");
+  nodeCell.className = "concordance-node-cell";
   const node = document.createElement("mark");
   node.className = "concordance-node";
   node.textContent = row.node;
+  nodeCell.appendChild(node);
 
-  const right = document.createElement("span");
+  const right = document.createElement("td");
   right.className = "concordance-right";
   right.textContent = concordanceRowText(row.rightContext);
 
-  context.append(left, node, right);
-
-  const meta = document.createElement("p");
-  meta.className = "concordance-meta";
-  meta.textContent = `${row.displayName || row.sourcePath} · token ${formatNumber(row.tokenIndex + 1)}`;
-
-  item.append(context, meta);
+  item.append(file, left, nodeCell, right);
   return item;
 }
 
+function createInlineDispersionBar(dp: number): HTMLElement {
+  const track = document.createElement("span");
+  track.className = "frequency-dp-track concordance-dp-track";
+  track.title = `DP ${formatFixedNumber(dp, 2)}`;
+  const fill = document.createElement("span");
+  fill.className = "frequency-dp-fill";
+  fill.dataset.level = dispersionLevel(dp);
+  fill.style.setProperty("--bar-width", `${Math.max(0, Math.min(100, dp * 100))}%`);
+  track.appendChild(fill);
+  return track;
+}
+
+function renderConcordanceSummary(result: ConcordanceResult): void {
+  const query = document.createElement("span");
+  query.className = "concordance-summary-query";
+  query.textContent = result.query;
+
+  const metrics = document.createElement("span");
+  metrics.textContent = ` · ${formatNumber(result.totalHits)} hits · ${formatNumber(result.documentsWithHits)} files with hits · DP ${formatFixedNumber(result.dp, 2)}`;
+
+  const scope = document.createElement("span");
+  scope.className = "concordance-summary-scope";
+  scope.textContent = ` · ${formatNumber(result.selectedDocumentsTotal)} files · ${formatNumber(result.selectedTokensTotal)} tokens · sort ${concordanceSortLabel(result.sortKey)}`;
+
+  dom.concordanceSummary.replaceChildren(query, metrics, createInlineDispersionBar(result.dp), scope);
+}
+
+function renderConcordanceDistribution(result: ConcordanceResult | null): void {
+  dom.concordanceDistribution.replaceChildren();
+  if (!result || result.totalHits === 0) {
+    return;
+  }
+
+  const panel = document.createElement("div");
+  panel.className = "concordance-distribution-panel";
+
+  const title = document.createElement("h3");
+  title.textContent = "File distribution";
+  panel.appendChild(title);
+
+  const header = document.createElement("div");
+  header.className = "concordance-distribution-row concordance-distribution-header";
+  for (const label of ["File", "Hits", "Tokens", "Bar"]) {
+    const cell = document.createElement("span");
+    cell.textContent = label;
+    header.appendChild(cell);
+  }
+  panel.appendChild(header);
+
+  const maxCount = result.distribution.maxCount;
+  for (const item of result.distribution.items) {
+    const row = document.createElement("div");
+    row.className = "concordance-distribution-row";
+
+    const file = document.createElement("span");
+    file.className = "concordance-distribution-file";
+    file.title = item.displayName || item.sourcePath;
+    file.textContent = item.displayName || item.sourcePath;
+
+    const count = document.createElement("span");
+    count.className = "numeric";
+    count.textContent = formatNumber(item.count);
+
+    const tokens = document.createElement("span");
+    tokens.className = "numeric";
+    tokens.textContent = formatNumber(item.tokenCount);
+
+    const track = document.createElement("span");
+    track.className = "frequency-distribution-track";
+    const fill = document.createElement("span");
+    fill.className = "frequency-distribution-fill";
+    const width = maxCount > 0 && item.count > 0 ? Math.max(3, (item.count / maxCount) * 100) : 0;
+    fill.style.setProperty("--bar-width", `${width}%`);
+    track.title = `Hits: ${formatNumber(item.count)}`;
+    track.appendChild(fill);
+
+    row.append(file, count, tokens, track);
+    panel.appendChild(row);
+  }
+
+  const pagination = document.createElement("div");
+  pagination.className = "analysis-pagination";
+  const previous = document.createElement("button");
+  previous.type = "button";
+  previous.className = "secondary-btn";
+  previous.textContent = "Previous";
+  previous.disabled = result.distribution.offset === 0;
+  previous.addEventListener("click", () => {
+    concordanceDistributionOffset = Math.max(0, result.distribution.offset - result.distribution.limit);
+    void refreshConcordance(false, false);
+  });
+  const status = document.createElement("span");
+  const first = result.distribution.totalDocuments === 0 ? 0 : result.distribution.offset + 1;
+  const last = Math.min(
+    result.distribution.totalDocuments,
+    result.distribution.offset + result.distribution.items.length,
+  );
+  status.textContent = `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(result.distribution.totalDocuments)}`;
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "secondary-btn";
+  next.textContent = "Next";
+  next.disabled = result.distribution.offset + result.distribution.items.length >= result.distribution.totalDocuments;
+  next.addEventListener("click", () => {
+    concordanceDistributionOffset = result.distribution.offset + result.distribution.limit;
+    void refreshConcordance(false, false);
+  });
+  pagination.append(previous, status, next);
+  panel.appendChild(pagination);
+  dom.concordanceDistribution.appendChild(panel);
+}
+
 function renderConcordance(): void {
-  syncConcordanceCaseToggle();
-  dom.concordanceResults.replaceChildren();
+  syncConcordanceControls();
 
   if (concordancePending) {
-    dom.concordanceSummary.textContent = "Searching concordance...";
+    dom.concordanceSummary.textContent = "Searching...";
     dom.concordanceResultCount.textContent = "";
     renderConcordanceStatus(null);
+    renderConcordanceTableState("Searching...");
+    renderConcordanceDistribution(null);
     dom.concordancePagePreviousButton.disabled = true;
     dom.concordancePageNextButton.disabled = true;
     dom.concordancePageStatus.textContent = "";
@@ -1646,9 +1805,11 @@ function renderConcordance(): void {
   }
 
   if (concordanceFailure) {
-    dom.concordanceSummary.textContent = "Search for a surface word to see its occurrences in context.";
+    dom.concordanceSummary.textContent = CONCORDANCE_NO_QUERY_MESSAGE;
     dom.concordanceResultCount.textContent = "";
     renderConcordanceStatus(concordanceFailure, true);
+    renderConcordanceTableState(concordanceFailure);
+    renderConcordanceDistribution(null);
     dom.concordancePagePreviousButton.disabled = true;
     dom.concordancePageNextButton.disabled = true;
     dom.concordancePageStatus.textContent = "";
@@ -1657,29 +1818,30 @@ function renderConcordance(): void {
 
   const result = concordanceResult;
   if (!result) {
-    dom.concordanceSummary.textContent = "Search for a surface word to see its occurrences in context.";
+    dom.concordanceSummary.textContent = CONCORDANCE_NO_QUERY_MESSAGE;
     dom.concordanceResultCount.textContent = "";
     renderConcordanceStatus(null);
+    renderConcordanceTableState(CONCORDANCE_NO_QUERY_MESSAGE);
+    renderConcordanceDistribution(null);
     dom.concordancePagePreviousButton.disabled = true;
     dom.concordancePageNextButton.disabled = true;
     dom.concordancePageStatus.textContent = "";
     return;
   }
 
-  dom.concordanceSummary.textContent = concordanceSummaryText(result);
+  renderConcordanceSummary(result);
   dom.concordanceResultCount.textContent = formatNumber(result.totalHits);
   renderConcordanceStatus(null);
 
   if (result.rows.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "frequency-empty concordance-empty";
-    empty.textContent = "No concordance rows found.";
-    dom.concordanceResults.appendChild(empty);
+    renderConcordanceTableState(CONCORDANCE_NO_HITS_MESSAGE);
   } else {
+    dom.concordanceTableBody.replaceChildren();
     for (const row of result.rows) {
-      dom.concordanceResults.appendChild(createConcordanceRow(row));
+      dom.concordanceTableBody.appendChild(createConcordanceRow(row));
     }
   }
+  renderConcordanceDistribution(result);
 
   const first = result.totalHits === 0 ? 0 : result.offset + 1;
   const last = Math.min(result.totalHits, result.offset + result.rows.length);
@@ -1689,14 +1851,19 @@ function renderConcordance(): void {
   dom.concordancePageNextButton.disabled = result.offset + result.rows.length >= result.totalHits;
 }
 
-async function refreshConcordance(resetOffset = true): Promise<void> {
+async function refreshConcordance(resetOffset = true, resetDistribution = true): Promise<void> {
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   if (resetOffset) {
     concordanceOffset = 0;
   }
+  if (resetDistribution) {
+    concordanceDistributionOffset = 0;
+  }
+  concordanceSortKey = currentConcordanceSortKey();
   if (query.length === 0) {
     concordanceResult = null;
-    concordanceFailure = "Enter one surface word to search.";
+    concordanceFailure = null;
+    concordancePending = false;
     renderConcordance();
     return;
   }
@@ -1710,11 +1877,15 @@ async function refreshConcordance(resetOffset = true): Promise<void> {
   try {
     const result = await searchConcordance(
       {
+        selection: frequencyDocumentScope,
         query,
         caseSensitive: dom.concordanceCaseSensitiveInput.checked,
+        sortKey: concordanceSortKey,
         windowTokens: currentConcordanceWindow(),
         offset: concordanceOffset,
-        limit: CONCORDANCE_PAGE_SIZE,
+        limit: currentConcordancePageSize(),
+        distributionOffset: concordanceDistributionOffset,
+        distributionLimit: CONCORDANCE_DISTRIBUTION_PAGE_SIZE,
       },
       state.currentCorpusVersion,
       effectiveCleaningConfig(),
@@ -1738,30 +1909,47 @@ async function refreshConcordance(resetOffset = true): Promise<void> {
 }
 
 function showPreviousConcordancePage(): void {
-  concordanceOffset = Math.max(0, concordanceOffset - CONCORDANCE_PAGE_SIZE);
-  void refreshConcordance(false);
+  const pageSize = concordanceResult?.limit ?? currentConcordancePageSize();
+  concordanceOffset = Math.max(0, concordanceOffset - pageSize);
+  void refreshConcordance(false, false);
 }
 
 function showNextConcordancePage(): void {
-  concordanceOffset += CONCORDANCE_PAGE_SIZE;
-  void refreshConcordance(false);
+  const pageSize = concordanceResult?.limit ?? currentConcordancePageSize();
+  concordanceOffset += pageSize;
+  void refreshConcordance(false, false);
+}
+
+function handleConcordanceSortChange(): void {
+  concordanceSortKey = currentConcordanceSortKey();
+  void refreshConcordance(true, true);
+}
+
+function handleConcordancePageSizeChange(): void {
+  currentConcordancePageSize();
+  void refreshConcordance(true, true);
 }
 
 function renderFrequencyScopeControl(corpus: AnalysisCorpus | null): void {
   if (!corpus || corpus.documentCount === 0) {
     dom.frequencyFilesButton.disabled = true;
     dom.frequencyFilesButton.textContent = "Files: 0 of 0";
-    dom.frequencyFilesButton.setAttribute("aria-label", "No files available for frequency scoping");
+    dom.concordanceFilesButton.disabled = true;
+    dom.concordanceFilesButton.textContent = "Files: 0 of 0";
+    const label = "No files available for analysis scoping";
+    dom.frequencyFilesButton.setAttribute("aria-label", label);
+    dom.concordanceFilesButton.setAttribute("aria-label", label);
     return;
   }
 
   const selectedCount = frequencySelectionCount(frequencyDocumentScope, corpus.documentCount);
   dom.frequencyFilesButton.disabled = false;
   dom.frequencyFilesButton.textContent = `Files: ${formatNumber(selectedCount)} of ${formatNumber(corpus.documentCount)}`;
-  dom.frequencyFilesButton.setAttribute(
-    "aria-label",
-    `Frequency list file scope: ${formatNumber(selectedCount)} of ${formatNumber(corpus.documentCount)} files selected`,
-  );
+  dom.concordanceFilesButton.disabled = false;
+  dom.concordanceFilesButton.textContent = dom.frequencyFilesButton.textContent;
+  const label = `Analysis file scope: ${formatNumber(selectedCount)} of ${formatNumber(corpus.documentCount)} files selected`;
+  dom.frequencyFilesButton.setAttribute("aria-label", label);
+  dom.concordanceFilesButton.setAttribute("aria-label", label);
 }
 
 function renderFrequencySearchError(message: string | null): void {
@@ -1799,6 +1987,14 @@ async function refreshAnnotationCacheAvailability(probeKey: string, generation: 
       {
         selection: defaultAnalysisDocumentSelection(),
         mode: "lemmaPos",
+        query: "",
+        matchMode: "contains",
+        minimumFrequency: 1,
+        hideStopwords: false,
+        caseFold: false,
+        posFilter: null,
+        sortKey: "frequency",
+        sortDirection: "desc",
         offset: 0,
         limit: 1,
       },
@@ -1932,14 +2128,18 @@ function currentAnnotatedFrequencyMode(): AnnotatedFrequencyMode | null {
   return frequencyViewMode === "surface" ? null : frequencyViewMode;
 }
 
+function currentFrequencyRateScale(): FrequencyRateScale {
+  return dom.frequencyRateScaleSelect.value as FrequencyRateScale;
+}
+
 function frequencyTableColumnCount(): number {
-  switch (frequencyViewMode) {
-    case "surface":
-      return 5;
-    case "pos":
-      return 7;
-    case "lemmaPos":
-      return 8;
+  return frequencyTableColumnCountForMode(frequencyViewMode, currentFrequencyRateScale());
+}
+
+function ensureVisibleFrequencySortKey(): void {
+  if (currentFrequencyRateScale() === "off" && frequencySortKey === "rate") {
+    frequencySortKey = "frequency";
+    frequencySortDirection = "desc";
   }
 }
 
@@ -1968,16 +2168,35 @@ function syncFrequencyModeTabs(corpus: AnalysisCorpus | null = state.analysisCor
   });
 }
 
-function setSurfaceFrequencyControlsEnabled(enabled: boolean): void {
-  dom.frequencySearchInput.disabled = !enabled;
-  dom.frequencyMatchModeSelect.disabled = !enabled;
-  dom.frequencyMinInput.disabled = !enabled;
-  dom.frequencyGroupBySelect.disabled = !enabled;
-  dom.frequencyCaseFoldInput.disabled = !enabled;
-  dom.frequencyTokenClassSelect.disabled = !enabled;
-  dom.frequencyHideStopwordsInput.disabled = !enabled;
-  dom.frequencyPosFilterSelect.disabled =
-    !enabled || annotationCacheStateForUi(state.analysisCorpus) !== "ready";
+function setFrequencyControlVisible(element: HTMLElement, visible: boolean): void {
+  const container = element.closest<HTMLElement>("label")
+    ?? element.closest<HTMLElement>(".frequency-readonly-control");
+  container?.classList.toggle("hidden", !visible);
+}
+
+function syncFrequencyControlMatrix(corpus: AnalysisCorpus | null = state.analysisCorpus): void {
+  const controls = frequencyControlVisibility(frequencyViewMode);
+  const enabled = corpus !== null;
+  const annotationAvailable = annotationCacheStateForUi(corpus) === "ready";
+
+  setFrequencyControlVisible(dom.frequencySearchInput, controls.query);
+  setFrequencyControlVisible(dom.frequencyMatchModeSelect, controls.matchMode);
+  setFrequencyControlVisible(dom.frequencyMinInput, controls.minimumFrequency);
+  setFrequencyControlVisible(dom.frequencyGroupBySelect, controls.groupBy);
+  setFrequencyControlVisible(dom.frequencyCaseFoldInput, controls.caseFold);
+  setFrequencyControlVisible(dom.frequencyTokenClassSelect, controls.tokenClass);
+  setFrequencyControlVisible(dom.frequencyPosFilterSelect, controls.posFilter);
+  setFrequencyControlVisible(dom.frequencyHideStopwordsInput, controls.hideStopwords);
+  setFrequencyControlVisible(dom.frequencyRateScaleSelect, controls.rate);
+
+  dom.frequencySearchInput.disabled = !enabled || !controls.query;
+  dom.frequencyMatchModeSelect.disabled = !enabled || !controls.matchMode;
+  dom.frequencyMinInput.disabled = !enabled || !controls.minimumFrequency;
+  dom.frequencyGroupBySelect.disabled = !enabled || !controls.groupBy;
+  dom.frequencyTokenClassSelect.disabled = !enabled || !controls.tokenClass;
+  dom.frequencyHideStopwordsInput.disabled = !enabled || !controls.hideStopwords;
+  dom.frequencyPosFilterSelect.disabled = !enabled || !controls.posFilter || !annotationAvailable;
+  dom.frequencyRateScaleSelect.disabled = !enabled || !controls.rate;
 }
 
 function syncFrequencyAnnotationControls(corpus: AnalysisCorpus | null = state.analysisCorpus): void {
@@ -2015,6 +2234,10 @@ function currentFrequencyCaseFold(): boolean {
   return dom.frequencyCaseFoldInput.checked || currentFrequencyGroupMode() === "stem";
 }
 
+function currentAnnotatedFrequencyCaseFold(mode: AnnotatedFrequencyMode): boolean {
+  return mode === "lemmaPos" && dom.frequencyCaseFoldInput.checked;
+}
+
 function currentFrequencyLanguage(): string | null {
   return currentFrequencyGroupMode() === "stem" ? activeProjectLanguageCode() : null;
 }
@@ -2025,14 +2248,17 @@ function currentFrequencyPosFilter(): string | null {
 }
 
 function syncFrequencyCaseFoldToggle(): void {
+  const controls = frequencyControlVisibility(frequencyViewMode);
   const stemsAreSelected = currentFrequencyGroupMode() === "stem";
-  const isFolded = currentFrequencyCaseFold();
-  dom.frequencyCaseFoldInput.disabled = stemsAreSelected;
-  dom.frequencyCaseFoldInput.checked = isFolded;
-  dom.frequencyCaseFoldInput.setAttribute("aria-checked", isFolded ? "true" : "false");
-  dom.frequencyCaseFoldState.textContent = isFolded ? "Folded" : "As typed";
-  dom.frequencyLanguageDisplay.textContent = activeProjectLanguageLabel();
-  dom.frequencyLanguageDisplay.classList.toggle("is-disabled", !stemsAreSelected);
+  const isFolded = frequencyViewMode === "surface"
+    ? currentFrequencyCaseFold()
+    : currentAnnotatedFrequencyCaseFold(frequencyViewMode);
+  dom.frequencyCaseFoldInput.disabled = !controls.caseFold || (frequencyViewMode === "surface" && stemsAreSelected);
+  if (controls.caseFold) {
+    dom.frequencyCaseFoldInput.checked = isFolded;
+  }
+  dom.frequencyCaseFoldInput.setAttribute("aria-checked", controls.caseFold && isFolded ? "true" : "false");
+  dom.frequencyCaseFoldState.textContent = controls.caseFold && isFolded ? "Folded" : "As typed";
 }
 
 function tokenClassSummary(filter: FrequencyTokenClassFilter): string {
@@ -2063,14 +2289,109 @@ function frequencyDetailId(token: string): string {
   return `frequency-detail-${encodeURIComponent(token)}`;
 }
 
-function appendHeaderCell(row: HTMLTableRowElement, label: string): void {
+function annotatedDistributionKey(selector: AnnotatedTermSelector): string {
+  switch (selector.mode) {
+    case "pos":
+      return `annotated:pos:${encodeURIComponent(selector.upos)}`;
+    case "lemmaPos":
+      return `annotated:lemmaPos:${encodeURIComponent(selector.lemma)}:${encodeURIComponent(selector.upos)}`;
+  }
+}
+
+function createExpandableTokenCell(label: string, title = label): HTMLTableCellElement {
+  const token = document.createElement("td");
+  token.className = "frequency-token-cell frequency-col-term";
+  token.title = title;
+  const tokenContent = document.createElement("span");
+  tokenContent.className = "frequency-token-content";
+  const caret = createChevron("frequency-token-caret");
+  const tokenText = document.createElement("span");
+  tokenText.className = "frequency-token-text";
+  tokenText.textContent = label;
+  tokenContent.append(caret, tokenText);
+  token.appendChild(tokenContent);
+  return token;
+}
+
+function createTextCell(text: string, className: string): HTMLTableCellElement {
+  const cell = document.createElement("td");
+  cell.className = className;
+  cell.textContent = text;
+  return cell;
+}
+
+function createNumericCell(text: string, className: string): HTMLTableCellElement {
+  return createTextCell(text, `numeric ${className}`);
+}
+
+function createRateCell(value: number): HTMLTableCellElement {
+  return createNumericCell(formatFixedNumber(value, 2), "frequency-col-rate");
+}
+
+function frequencyColumnClass(label: string): string {
+  switch (label) {
+    case "Token":
+    case "Lemma":
+      return "frequency-col-term";
+    case "UPOS":
+      return "frequency-col-upos";
+    case "Frequency":
+      return "frequency-col-frequency";
+    case "Range (docs)":
+      return "frequency-col-range";
+    case "Per 10k":
+    case "Per 100k":
+    case "Per million":
+      return "frequency-col-rate";
+    case "Dispersion (DP)":
+      return "frequency-col-dispersion";
+    default:
+      return "";
+  }
+}
+
+function frequencyColumnSortKey(label: string): FrequencySortKey | null {
+  switch (label) {
+    case "Token":
+    case "Lemma":
+      return "token";
+    case "UPOS":
+      return frequencyViewMode === "pos" ? "token" : null;
+    case "Frequency":
+      return "frequency";
+    case "Range (docs)":
+      return "range";
+    case "Per 10k":
+    case "Per 100k":
+    case "Per million":
+      return "rate";
+    case "Dispersion (DP)":
+      return "dispersion";
+    default:
+      return null;
+  }
+}
+
+function frequencyColumnAlignsRight(label: string): boolean {
+  return label !== "Token" && label !== "Lemma" && label !== "UPOS";
+}
+
+function appendHeaderCell(row: HTMLTableRowElement, label: string, className = ""): void {
   const cell = document.createElement("th");
+  cell.className = className;
   cell.textContent = label;
   row.appendChild(cell);
 }
 
-function appendSortHeaderCell(row: HTMLTableRowElement, label: string, sort: FrequencySortKey, alignRight = false): void {
+function appendSortHeaderCell(
+  row: HTMLTableRowElement,
+  label: string,
+  sort: FrequencySortKey,
+  alignRight = false,
+  className = "",
+): void {
   const cell = document.createElement("th");
+  cell.className = className;
   const button = document.createElement("button");
   button.type = "button";
   button.className = alignRight ? "frequency-sort frequency-sort-right" : "frequency-sort";
@@ -2081,30 +2402,16 @@ function appendSortHeaderCell(row: HTMLTableRowElement, label: string, sort: Fre
 }
 
 function renderFrequencyTableHead(): void {
+  ensureVisibleFrequencySortKey();
   const row = document.createElement("tr");
-  if (frequencyViewMode === "surface") {
-    appendSortHeaderCell(row, "Token", "token");
-    appendSortHeaderCell(row, "Frequency", "frequency", true);
-    appendSortHeaderCell(row, "Range (docs)", "range", true);
-    appendSortHeaderCell(row, "Per million", "rate", true);
-    appendSortHeaderCell(row, "Dispersion (DP)", "dispersion", true);
-  } else if (frequencyViewMode === "pos") {
-    appendHeaderCell(row, "UPOS");
-    appendHeaderCell(row, "Raw frequency");
-    appendHeaderCell(row, "Per 10k");
-    appendHeaderCell(row, "Documents");
-    appendHeaderCell(row, "DP");
-    appendHeaderCell(row, "Dispersion");
-    appendHeaderCell(row, "Top-doc share");
-  } else {
-    appendHeaderCell(row, "Lemma");
-    appendHeaderCell(row, "UPOS");
-    appendHeaderCell(row, "Raw frequency");
-    appendHeaderCell(row, "Per 10k");
-    appendHeaderCell(row, "Documents");
-    appendHeaderCell(row, "DP");
-    appendHeaderCell(row, "Dispersion");
-    appendHeaderCell(row, "Top-doc share");
+  for (const label of frequencyColumnLabels(frequencyViewMode, currentFrequencyRateScale())) {
+    const sortKey = frequencyColumnSortKey(label);
+    const className = frequencyColumnClass(label);
+    if (sortKey) {
+      appendSortHeaderCell(row, label, sortKey, frequencyColumnAlignsRight(label), className);
+    } else {
+      appendHeaderCell(row, label, className);
+    }
   }
   dom.frequencyTableHead.replaceChildren(row);
 }
@@ -2147,24 +2454,60 @@ function dispersionLevel(dispersion: number): "low" | "medium" | "high" {
   return "high";
 }
 
-function createDispersionCell(term: FrequencyTermItem): HTMLTableCellElement {
+function createDispersionValueCell(dispersion: number): HTMLTableCellElement {
   const cell = document.createElement("td");
-  cell.className = "numeric frequency-dp-cell";
+  cell.className = "numeric frequency-dp-cell frequency-col-dispersion";
 
   const value = document.createElement("span");
   value.className = "frequency-dp-value";
-  value.textContent = formatFixedNumber(term.dispersion, 2);
+  value.textContent = formatFixedNumber(dispersion, 2);
 
   const track = document.createElement("span");
   track.className = "frequency-dp-track";
   const fill = document.createElement("span");
   fill.className = "frequency-dp-fill";
-  fill.dataset.level = dispersionLevel(term.dispersion);
-  fill.style.setProperty("--bar-width", `${Math.max(0, Math.min(100, term.dispersion * 100))}%`);
+  fill.dataset.level = dispersionLevel(dispersion);
+  fill.style.setProperty("--bar-width", `${Math.max(0, Math.min(100, dispersion * 100))}%`);
   track.appendChild(fill);
 
   cell.append(value, track);
   return cell;
+}
+
+function createDispersionCell(term: FrequencyTermItem): HTMLTableCellElement {
+  return createDispersionValueCell(term.dispersion);
+}
+
+function frequencyDistributionColumnClass(label: string): string {
+  switch (label) {
+    case "Document/File":
+      return "frequency-distribution-file-col";
+    case "Count":
+      return "frequency-distribution-count";
+    case "Document tokens":
+      return "frequency-distribution-tokens";
+    case "Per 10k":
+    case "Per 100k":
+    case "Per million":
+      return "frequency-distribution-rate";
+    case "Bar":
+      return "frequency-distribution-bar";
+    default:
+      return "";
+  }
+}
+
+function frequencyDistributionMaxBarValue(page: TermDistributionPage, rateScale: FrequencyRateScale): number {
+  switch (rateScale) {
+    case "off":
+      return Math.max(0, ...page.items.map((item) => item.count));
+    case "per10k":
+      return page.maxRatePer10k;
+    case "per100k":
+      return page.maxRatePer10k * 10;
+    case "perMillion":
+      return page.maxRatePerMillion;
+  }
 }
 
 async function loadTermDistribution(token: string, offset: number): Promise<void> {
@@ -2199,15 +2542,55 @@ async function loadTermDistribution(token: string, offset: number): Promise<void
   }
 }
 
-function createFrequencyDistributionPanel(term: FrequencyTermItem): HTMLElement {
+async function loadAnnotatedTermDistribution(
+  distributionKey: string,
+  selector: AnnotatedTermSelector,
+  offset: number,
+): Promise<void> {
+  const generation = (termDistributionGenerations.get(distributionKey) ?? 0) + 1;
+  termDistributionGenerations.set(distributionKey, generation);
+  termDistributionPages.delete(distributionKey);
+  renderFrequencyList();
+  try {
+    const page = await queryAnnotatedTermDistribution(
+      {
+        selection: frequencyDocumentScope,
+        selector,
+        offset,
+        limit: TERM_DISTRIBUTION_PAGE_SIZE,
+      },
+      effectiveCleaningConfig(),
+    );
+    if (termDistributionGenerations.get(distributionKey) !== generation || !expandedFrequencyTokens.has(distributionKey)) {
+      return;
+    }
+    termDistributionPages.set(distributionKey, page);
+    renderFrequencyList();
+  } catch (error) {
+    if (termDistributionGenerations.get(distributionKey) !== generation) {
+      return;
+    }
+    analysisNotice = { kind: "warning", message: `Term distribution could not be loaded: ${error}` };
+    expandedFrequencyTokens.delete(distributionKey);
+    renderAnalysisNotice();
+    renderFrequencyList();
+  }
+}
+
+function createFrequencyDistributionPanel(
+  distributionKey: string,
+  loadPage: (offset: number) => void,
+): HTMLElement {
+  const rateScale = currentFrequencyRateScale();
   const panel = document.createElement("div");
   panel.className = "frequency-distribution-panel";
+  panel.dataset.rateScale = rateScale;
 
   const title = document.createElement("h3");
   title.textContent = "Per-file distribution (selected files)";
   panel.appendChild(title);
 
-  const page = termDistributionPages.get(term.token);
+  const page = termDistributionPages.get(distributionKey);
   if (!page) {
     const loading = document.createElement("p");
     loading.className = "analysis-panel-note";
@@ -2218,42 +2601,62 @@ function createFrequencyDistributionPanel(term: FrequencyTermItem): HTMLElement 
 
   const header = document.createElement("div");
   header.className = "frequency-distribution-row frequency-distribution-header";
-  header.append(
-    Object.assign(document.createElement("span"), { textContent: "Document/File" }),
-    Object.assign(document.createElement("span"), { textContent: "Count" }),
-    Object.assign(document.createElement("span"), { textContent: "Per 10k" }),
-    Object.assign(document.createElement("span"), { textContent: "Bar" }),
-  );
+  for (const label of frequencyDistributionColumnLabels(rateScale)) {
+    const column = document.createElement("span");
+    column.className = frequencyDistributionColumnClass(label);
+    column.textContent = label;
+    header.appendChild(column);
+  }
   panel.appendChild(header);
 
+  const maxBarValue = frequencyDistributionMaxBarValue(page, rateScale);
+  const rateLabel = frequencyRateLabel(rateScale);
   for (const item of page.items) {
     const line = document.createElement("div");
     line.className = "frequency-distribution-row";
 
     const label = document.createElement("span");
-    label.className = "frequency-distribution-file";
+    label.className = "frequency-distribution-file frequency-distribution-file-col";
     label.title = documentName(item);
     label.textContent = documentName(item);
 
     const count = document.createElement("span");
-    count.className = "numeric";
+    count.className = "numeric frequency-distribution-count";
     count.textContent = formatNumber(item.count);
 
-    const rate = document.createElement("span");
-    rate.className = "numeric";
-    rate.textContent = formatFixedNumber(item.ratePerMillion, 2);
+    const documentTokens = document.createElement("span");
+    documentTokens.className = "numeric frequency-distribution-tokens";
+    documentTokens.textContent = formatNumber(item.tokenCount);
 
     const track = document.createElement("span");
-    track.className = "frequency-distribution-track";
+    track.className = "frequency-distribution-track frequency-distribution-bar";
     const fill = document.createElement("span");
     fill.className = "frequency-distribution-fill";
-    const barWidth = page.maxRatePerMillion > 0 && item.ratePerMillion > 0
-      ? Math.max(3, (item.ratePerMillion / page.maxRatePerMillion) * 100)
+    const barValue = frequencyDistributionBarValue(rateScale, {
+      count: item.count,
+      per10k: item.ratePer10k,
+      perMillion: item.ratePerMillion,
+    });
+    const barWidth = maxBarValue > 0 && barValue > 0
+      ? Math.max(3, (barValue / maxBarValue) * 100)
       : 0;
     fill.style.setProperty("--bar-width", `${barWidth}%`);
+    fill.dataset.barValue = formatFixedNumber(barValue, 2);
+    track.title = rateLabel ? `${rateLabel}: ${formatFixedNumber(barValue, 2)}` : `Count: ${formatNumber(item.count)}`;
     track.appendChild(fill);
 
-    line.append(label, count, rate, track);
+    line.append(label, count, documentTokens);
+    const rateValue = frequencyRateValue(rateScale, {
+      per10k: item.ratePer10k,
+      perMillion: item.ratePerMillion,
+    });
+    if (rateValue !== null) {
+      const rate = document.createElement("span");
+      rate.className = "numeric frequency-distribution-rate";
+      rate.textContent = formatFixedNumber(rateValue, 2);
+      line.appendChild(rate);
+    }
+    line.appendChild(track);
     panel.appendChild(line);
   }
 
@@ -2265,7 +2668,7 @@ function createFrequencyDistributionPanel(term: FrequencyTermItem): HTMLElement 
   previous.textContent = "Previous";
   previous.disabled = page.offset === 0;
   previous.addEventListener("click", () => {
-    void loadTermDistribution(term.token, Math.max(0, page.offset - page.limit));
+    loadPage(Math.max(0, page.offset - page.limit));
   });
   const status = document.createElement("span");
   const first = page.totalDocuments === 0 ? 0 : page.offset + 1;
@@ -2277,7 +2680,7 @@ function createFrequencyDistributionPanel(term: FrequencyTermItem): HTMLElement 
   next.textContent = "Next";
   next.disabled = page.offset + page.items.length >= page.totalDocuments;
   next.addEventListener("click", () => {
-    void loadTermDistribution(term.token, page.offset + page.limit);
+    loadPage(page.offset + page.limit);
   });
   pagination.append(previous, status, next);
   panel.appendChild(pagination);
@@ -2289,6 +2692,7 @@ async function refreshFrequencyPage(resetOffset = true): Promise<void> {
   if (!corpus) {
     return;
   }
+  ensureVisibleFrequencySortKey();
   syncFrequencyModeTabs(corpus);
   syncFrequencyAnnotationControls(corpus);
   if (resetOffset) {
@@ -2301,6 +2705,7 @@ async function refreshFrequencyPage(resetOffset = true): Promise<void> {
   annotatedFrequencyPage = null;
   expandedFrequencyTokens.clear();
   termDistributionPages.clear();
+  annotatedDistributionSelectors.clear();
   renderFrequencyList();
 
   try {
@@ -2310,6 +2715,14 @@ async function refreshFrequencyPage(resetOffset = true): Promise<void> {
         {
           selection: frequencyDocumentScope,
           mode: annotatedMode,
+          query: dom.frequencySearchInput.value.trim(),
+          matchMode: dom.frequencyMatchModeSelect.value as FrequencyMatchMode,
+          minimumFrequency: Math.max(1, Number.parseInt(dom.frequencyMinInput.value, 10) || 1),
+          hideStopwords: annotatedMode === "lemmaPos" && dom.frequencyHideStopwordsInput.checked,
+          caseFold: currentAnnotatedFrequencyCaseFold(annotatedMode),
+          posFilter: annotatedMode === "lemmaPos" ? currentFrequencyPosFilter() : null,
+          sortKey: frequencySortKey,
+          sortDirection: frequencySortDirection,
           offset: frequencyPageOffset,
           limit: FREQUENCY_PAGE_SIZE,
         },
@@ -2389,15 +2802,6 @@ function annotatedFrequencySummaryText(page: AnnotatedFrequencyResult): string {
   ].join(" · ");
 }
 
-function createAnnotatedDispersionCell(dp: number, label: string): HTMLTableCellElement {
-  const cell = document.createElement("td");
-  cell.className = "frequency-dispersion-label-cell";
-  cell.dataset.level = annotatedDispersionLevel(label);
-  cell.textContent = label;
-  cell.title = `DP ${formatFixedNumber(dp, 3)}`;
-  return cell;
-}
-
 function renderAnnotatedFrequencyList(corpus: AnalysisCorpus): void {
   renderFrequencyQueryNotice(null);
   renderFrequencyScopeControl(corpus);
@@ -2422,6 +2826,7 @@ function renderAnnotatedFrequencyList(corpus: AnalysisCorpus): void {
   }
 
   const page = annotatedFrequencyPage;
+  renderFrequencySearchError(page.queryError);
   const unavailable = page.unavailableMessage ?? (page.cache.state === "ready" ? null : ANNOTATED_FREQUENCY_UNAVAILABLE_MESSAGE);
   dom.frequencyQueryNotice.textContent = unavailable ?? "";
   dom.frequencyQueryNotice.classList.toggle("hidden", unavailable === null);
@@ -2456,36 +2861,92 @@ function renderAnnotatedFrequencyList(corpus: AnalysisCorpus): void {
     return;
   }
 
+  const rateScale = currentFrequencyRateScale();
   if (page.mode === "pos") {
     for (const item of page.posRows) {
+      const selector: AnnotatedTermSelector = { mode: "pos", upos: item.upos };
+      const distributionKey = annotatedDistributionKey(selector);
+      annotatedDistributionSelectors.set(distributionKey, selector);
+      const isExpanded = expandedFrequencyTokens.has(distributionKey);
+      const detailId = frequencyDetailId(distributionKey);
       const row = document.createElement("tr");
-      row.append(
-        Object.assign(document.createElement("td"), { textContent: item.upos }),
-        Object.assign(document.createElement("td"), { className: "numeric", textContent: formatNumber(item.raw) }),
-        Object.assign(document.createElement("td"), { className: "numeric", textContent: formatFixedNumber(item.per10k, 2) }),
-        Object.assign(document.createElement("td"), { className: "numeric", textContent: formatDocumentFrequency(item.docFreq, item.docTotal) }),
-        Object.assign(document.createElement("td"), { className: "numeric", textContent: formatFixedNumber(item.dp, 3) }),
-        createAnnotatedDispersionCell(item.dp, item.dispersionLabel),
-        Object.assign(document.createElement("td"), { className: "numeric", textContent: formatPercent(item.topDocShare, 1) }),
+      row.className = "frequency-term-row";
+      row.dataset.distributionKey = distributionKey;
+      row.tabIndex = 0;
+      row.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+      row.setAttribute("aria-controls", detailId);
+      row.setAttribute("aria-label", `${isExpanded ? "Collapse" : "Expand"} per-file distribution for ${item.upos}`);
+      const cells = [
+        createExpandableTokenCell(item.upos),
+        createNumericCell(formatNumber(item.raw), "frequency-col-frequency"),
+        createNumericCell(formatDocumentFrequency(item.docFreq, item.docTotal), "frequency-col-range"),
+      ];
+      const rateValue = frequencyRateValue(rateScale, { per10k: item.per10k });
+      if (rateValue !== null) {
+        cells.push(createRateCell(rateValue));
+      }
+      cells.push(
+        createDispersionValueCell(item.dp),
       );
+      row.append(...cells);
       dom.frequencyTableBody.appendChild(row);
+      if (isExpanded) {
+        const detailRow = document.createElement("tr");
+        detailRow.className = "frequency-detail-row";
+        const detailCell = document.createElement("td");
+        detailCell.id = detailId;
+        detailCell.colSpan = frequencyTableColumnCount();
+        detailCell.appendChild(createFrequencyDistributionPanel(distributionKey, (offset) => {
+          void loadAnnotatedTermDistribution(distributionKey, selector, offset);
+        }));
+        detailRow.appendChild(detailCell);
+        dom.frequencyTableBody.appendChild(detailRow);
+      }
     }
     return;
   }
 
   for (const item of page.lexRows) {
+    const selector: AnnotatedTermSelector = { mode: "lemmaPos", lemma: item.lemma, upos: item.upos };
+    const distributionKey = annotatedDistributionKey(selector);
+    annotatedDistributionSelectors.set(distributionKey, selector);
+    const isExpanded = expandedFrequencyTokens.has(distributionKey);
+    const detailId = frequencyDetailId(distributionKey);
+    const label = `${item.lemma} ${item.upos}`;
     const row = document.createElement("tr");
-    row.append(
-      Object.assign(document.createElement("td"), { textContent: item.lemma, title: item.lemma }),
-      Object.assign(document.createElement("td"), { textContent: item.upos }),
-      Object.assign(document.createElement("td"), { className: "numeric", textContent: formatNumber(item.raw) }),
-      Object.assign(document.createElement("td"), { className: "numeric", textContent: formatFixedNumber(item.per10k, 2) }),
-      Object.assign(document.createElement("td"), { className: "numeric", textContent: formatDocumentFrequency(item.docFreq, item.docTotal) }),
-      Object.assign(document.createElement("td"), { className: "numeric", textContent: formatFixedNumber(item.dp, 3) }),
-      createAnnotatedDispersionCell(item.dp, item.dispersionLabel),
-      Object.assign(document.createElement("td"), { className: "numeric", textContent: formatPercent(item.topDocShare, 1) }),
+    row.className = "frequency-term-row";
+    row.dataset.distributionKey = distributionKey;
+    row.tabIndex = 0;
+    row.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+    row.setAttribute("aria-controls", detailId);
+    row.setAttribute("aria-label", `${isExpanded ? "Collapse" : "Expand"} per-file distribution for ${label}`);
+    const cells = [
+      createExpandableTokenCell(item.lemma),
+      createTextCell(item.upos, "frequency-col-upos"),
+      createNumericCell(formatNumber(item.raw), "frequency-col-frequency"),
+      createNumericCell(formatDocumentFrequency(item.docFreq, item.docTotal), "frequency-col-range"),
+    ];
+    const rateValue = frequencyRateValue(rateScale, { per10k: item.per10k });
+    if (rateValue !== null) {
+      cells.push(createRateCell(rateValue));
+    }
+    cells.push(
+      createDispersionValueCell(item.dp),
     );
+    row.append(...cells);
     dom.frequencyTableBody.appendChild(row);
+    if (isExpanded) {
+      const detailRow = document.createElement("tr");
+      detailRow.className = "frequency-detail-row";
+      const detailCell = document.createElement("td");
+      detailCell.id = detailId;
+      detailCell.colSpan = frequencyTableColumnCount();
+      detailCell.appendChild(createFrequencyDistributionPanel(distributionKey, (offset) => {
+        void loadAnnotatedTermDistribution(distributionKey, selector, offset);
+      }));
+      detailRow.appendChild(detailCell);
+      dom.frequencyTableBody.appendChild(detailRow);
+    }
   }
 }
 
@@ -2493,6 +2954,7 @@ function renderFrequencyList(): void {
   renderFrequencyTableHead();
   updateFrequencySortHeaders();
   dom.frequencyTableBody.replaceChildren();
+  annotatedDistributionSelectors.clear();
   dom.frequencyLimitNote.textContent = "";
   renderFrequencySearchError(frequencyQueryFailure);
 
@@ -2501,7 +2963,8 @@ function renderFrequencyList(): void {
   renderFrequencyAnnotationLayer();
   syncFrequencyModeTabs(corpus);
   syncFrequencyAnnotationControls(corpus);
-  setSurfaceFrequencyControlsEnabled(frequencyViewMode === "surface");
+  syncFrequencyControlMatrix(corpus);
+  syncFrequencyCaseFoldToggle();
   renderFrequencyQueryNotice(frequencyPage);
   renderFrequencyScopeControl(corpus);
   if (!corpus) {
@@ -2567,6 +3030,7 @@ function renderFrequencyList(): void {
     return;
   }
 
+  const rateScale = currentFrequencyRateScale();
   for (const term of page.items) {
     const isExpanded = expandedFrequencyTokens.has(term.token);
     const detailId = frequencyDetailId(term.token);
@@ -2578,28 +3042,25 @@ function renderFrequencyList(): void {
     row.setAttribute("aria-controls", detailId);
     row.setAttribute("aria-label", `${isExpanded ? "Collapse" : "Expand"} per-file distribution for ${term.token}`);
 
-    const token = document.createElement("td");
-    token.className = "frequency-token-cell";
-    token.title = term.token;
-    const tokenContent = document.createElement("span");
-    tokenContent.className = "frequency-token-content";
-    const caret = createChevron("frequency-token-caret");
-    const tokenText = document.createElement("span");
-    tokenText.className = "frequency-token-text";
-    tokenText.textContent = term.token;
-    tokenContent.append(caret, tokenText);
-    token.appendChild(tokenContent);
+    const token = createExpandableTokenCell(term.token);
 
-    const frequency = document.createElement("td");
-    frequency.className = "numeric";
-    frequency.textContent = formatNumber(term.frequency);
-    const documentFrequency = document.createElement("td");
-    documentFrequency.className = "numeric";
-    documentFrequency.textContent = `${formatNumber(term.documentFrequency)} / ${formatNumber(page.selectedDocumentCount)}`;
-    const rate = document.createElement("td");
-    rate.className = "numeric";
-    rate.textContent = formatFixedNumber(term.ratePerMillion, 2);
-    row.append(token, frequency, documentFrequency, rate, createDispersionCell(term));
+    const cells = [
+      token,
+      createNumericCell(formatNumber(term.frequency), "frequency-col-frequency"),
+      createNumericCell(
+        `${formatNumber(term.documentFrequency)} / ${formatNumber(page.selectedDocumentCount)}`,
+        "frequency-col-range",
+      ),
+    ];
+    const rateValue = frequencyRateValue(rateScale, {
+      per10k: term.ratePer10k,
+      perMillion: term.ratePerMillion,
+    });
+    if (rateValue !== null) {
+      cells.push(createRateCell(rateValue));
+    }
+    cells.push(createDispersionCell(term));
+    row.append(...cells);
     dom.frequencyTableBody.appendChild(row);
 
     if (isExpanded) {
@@ -2608,7 +3069,9 @@ function renderFrequencyList(): void {
       const detailCell = document.createElement("td");
       detailCell.id = detailId;
       detailCell.colSpan = frequencyTableColumnCount();
-      detailCell.appendChild(createFrequencyDistributionPanel(term));
+      detailCell.appendChild(createFrequencyDistributionPanel(term.token, (offset) => {
+        void loadTermDistribution(term.token, offset);
+      }));
       detailRow.appendChild(detailCell);
       dom.frequencyTableBody.appendChild(detailRow);
     }
@@ -2617,7 +3080,6 @@ function renderFrequencyList(): void {
 export function renderAnalyseWorkbench(): void {
   renderAnalyseStatus();
   renderAnalysisNotice();
-  dom.frequencyLanguageDisplay.textContent = activeProjectLanguageLabel();
   renderProjectSummary();
   renderAnalysisTools();
   renderAnalysisToolPanels();
@@ -3085,6 +3547,7 @@ function handleFrequencyModeClick(event: Event): void {
   annotatedFrequencyPage = null;
   expandedFrequencyTokens.clear();
   termDistributionPages.clear();
+  annotatedDistributionSelectors.clear();
   renderFrequencyList();
   void refreshFrequencyPage();
 }
@@ -3107,8 +3570,26 @@ function toggleFrequencyTokenExpansion(token: string): void {
   }
   expandedFrequencyTokens.clear();
   termDistributionPages.clear();
+  annotatedDistributionSelectors.clear();
   expandedFrequencyTokens.add(token);
   void loadTermDistribution(token, 0);
+}
+
+function toggleAnnotatedFrequencyExpansion(distributionKey: string, selector: AnnotatedTermSelector): void {
+  if (expandedFrequencyTokens.has(distributionKey)) {
+    expandedFrequencyTokens.delete(distributionKey);
+    termDistributionGenerations.set(
+      distributionKey,
+      (termDistributionGenerations.get(distributionKey) ?? 0) + 1,
+    );
+    termDistributionPages.delete(distributionKey);
+    renderFrequencyList();
+    return;
+  }
+  expandedFrequencyTokens.clear();
+  termDistributionPages.clear();
+  expandedFrequencyTokens.add(distributionKey);
+  void loadAnnotatedTermDistribution(distributionKey, selector, 0);
 }
 
 function showPreviousFrequencyPage(): void {
@@ -3153,11 +3634,24 @@ function handleFrequencyTableClick(event: Event): void {
   }
 
   const row = target.closest<HTMLTableRowElement>(".frequency-term-row");
-  if (!row?.dataset.token) {
+  if (!row) {
     return;
   }
 
-  toggleFrequencyTokenExpansion(row.dataset.token);
+  if (frequencyViewMode === "surface") {
+    if (!row.dataset.token) {
+      return;
+    }
+    toggleFrequencyTokenExpansion(row.dataset.token);
+    return;
+  }
+
+  const distributionKey = row.dataset.distributionKey;
+  const selector = distributionKey ? annotatedDistributionSelectors.get(distributionKey) : undefined;
+  if (!distributionKey || !selector) {
+    return;
+  }
+  toggleAnnotatedFrequencyExpansion(distributionKey, selector);
 }
 
 function handleFrequencyTableKeydown(event: KeyboardEvent): void {
@@ -3171,12 +3665,25 @@ function handleFrequencyTableKeydown(event: KeyboardEvent): void {
   }
 
   const row = target.closest<HTMLTableRowElement>(".frequency-term-row");
-  if (!row?.dataset.token) {
+  if (!row) {
     return;
   }
 
   event.preventDefault();
-  toggleFrequencyTokenExpansion(row.dataset.token);
+  if (frequencyViewMode === "surface") {
+    if (!row.dataset.token) {
+      return;
+    }
+    toggleFrequencyTokenExpansion(row.dataset.token);
+    return;
+  }
+
+  const distributionKey = row.dataset.distributionKey;
+  const selector = distributionKey ? annotatedDistributionSelectors.get(distributionKey) : undefined;
+  if (!distributionKey || !selector) {
+    return;
+  }
+  toggleAnnotatedFrequencyExpansion(distributionKey, selector);
 }
 
 function closeFrequencyFilesModal(): void {
@@ -3346,8 +3853,17 @@ function applyFrequencyFileScope(): void {
   annotatedFrequencyPage = null;
   expandedFrequencyTokens.clear();
   termDistributionPages.clear();
+  annotatedDistributionSelectors.clear();
   closeFrequencyFilesModal();
+  concordanceOffset = 0;
+  concordanceDistributionOffset = 0;
+  concordanceResult = null;
   void refreshFrequencyPage();
+  if (normaliseConcordanceQuery(dom.concordanceQueryInput.value).length > 0) {
+    void refreshConcordance(true, true);
+  } else {
+    renderConcordance();
+  }
 }
 
 function handleFrequencyFilesListChange(event: Event): void {
@@ -3426,6 +3942,9 @@ export function initWorkbenchSwitcher(): void {
     }
   });
   dom.concordanceCaseSensitiveInput.addEventListener("change", syncConcordanceCaseToggle);
+  dom.concordanceSortSelect.addEventListener("change", handleConcordanceSortChange);
+  dom.concordancePageSizeInput.addEventListener("change", handleConcordancePageSizeChange);
+  dom.concordanceFilesButton.addEventListener("click", openFrequencyFilesModal);
   dom.concordancePagePreviousButton.addEventListener("click", showPreviousConcordancePage);
   dom.concordancePageNextButton.addEventListener("click", showNextConcordancePage);
   dom.frequencySearchInput.addEventListener("input", scheduleFrequencyRefresh);
@@ -3436,6 +3955,7 @@ export function initWorkbenchSwitcher(): void {
     syncFrequencyCaseFoldToggle();
     void refreshFrequencyPage();
   });
+  dom.frequencyRateScaleSelect.value = DEFAULT_FREQUENCY_RATE_SCALE;
   syncFrequencyAnnotationControls();
   syncFrequencyCaseFoldToggle();
   dom.frequencyCaseFoldInput.addEventListener("change", () => {
@@ -3444,6 +3964,15 @@ export function initWorkbenchSwitcher(): void {
   });
   dom.frequencyPosFilterSelect.addEventListener("change", () => void refreshFrequencyPage());
   dom.frequencyTokenClassSelect.addEventListener("change", () => void refreshFrequencyPage());
+  dom.frequencyRateScaleSelect.addEventListener("change", () => {
+    const previousSortKey = frequencySortKey;
+    ensureVisibleFrequencySortKey();
+    if (previousSortKey === frequencySortKey) {
+      renderFrequencyList();
+    } else {
+      void refreshFrequencyPage();
+    }
+  });
   syncFrequencyStopwordsToggle();
   dom.frequencyHideStopwordsInput.addEventListener("change", () => {
     syncFrequencyStopwordsToggle();
