@@ -338,7 +338,7 @@ html[data-theme="light"] .theme-btn .moon-icon { display: block; }
 }
 .screenshot:last-child { margin-bottom: 0; }
 .screenshot img {
-  max-width: min(820px, 100%);
+  max-width: 820px;
   width: 100%;
   height: auto;
   display: block;
@@ -428,9 +428,7 @@ html[data-theme="light"] .theme-img-light { display: block; }
 .foot a:hover { color: var(--text); }
 
 /* ---- hero split ---- */
-.hero-split { display: grid; grid-template-columns: auto 1fr; gap: 36px; align-items: center; max-width: 940px; width: 100%; margin: 0 auto; }
-.hero-split > div,
-.intro-split > * { min-width: 0; }
+.hero-split { display: grid; grid-template-columns: auto 1fr; gap: 36px; align-items: center; max-width: 940px; margin: 0 auto; }
 .hero-logo { width: 132px; height: 132px; flex: none; }
 .hero-split h1 { margin: 0 0 12px; font-size: clamp(1.5rem, 3.2vw, 1.95rem); line-height: 1.18; white-space: nowrap; }
 .hero-split .lede { margin: 0; }
@@ -477,7 +475,6 @@ a.card .card-link { color: var(--brand); font-weight: 600; font-size: 0.92rem; d
   .nav-links { gap: 14px; }
   .nav-links a:not(.nav-cta):not(.icon-btn) { display: none; }
   .hero-split { grid-template-columns: 1fr; justify-items: center; text-align: center; }
-  .hero-split > div { width: 100%; }
   .hero-split h1 { white-space: normal; font-size: 1.7rem; }
   .hero-downloads { justify-content: center; text-align: left; }
   .intro-split { grid-template-columns: 1fr; }
@@ -487,29 +484,7 @@ a.card .card-link { color: var(--brand); font-weight: 600; font-size: 0.92rem; d
 @media (max-width: 620px) {
   body { font-size: 16px; }
   .shell { padding: 0 18px; }
-  .nav { gap: 10px; }
-  .nav-links { gap: 8px; }
-  .nav-links .icon-btn { display: none; }
-  .theme-btn { display: none; }
   .hero { padding: 44px 0 40px; }
-  .hero-split,
-  .intro-split,
-  .shot-panel,
-  .shot-panel .screenshot {
-    max-width: calc(100vw - 36px);
-  }
-  .hero-split h1 {
-    max-width: 13.5em;
-    margin-left: auto;
-    margin-right: auto;
-  }
-  .hero-split .lede,
-  .hero-downloads,
-  .dl-note {
-    max-width: 20rem;
-    margin-left: auto;
-    margin-right: auto;
-  }
   .section,
   .section.compact { padding: 38px 0; }
   .actions { flex-direction: column; align-items: flex-start; }
