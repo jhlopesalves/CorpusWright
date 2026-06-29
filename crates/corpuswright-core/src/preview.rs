@@ -85,8 +85,8 @@ pub enum PreviewError {
 /// extracted text is used and the configured character limit is applied. On a
 /// cache miss, falls back to extraction with the same optional limit.
 ///
-/// Only PDF and DOCX files attempt a cache lookup.  Text/HTML files are
-/// always read via `read_bounded_lossy_text`.
+/// Only PDF and DOCX files attempt a cache lookup. Text/HTML files are read
+/// through the shared source decode policy.
 pub fn preview_file(
     record: &DocumentRecord,
     options: &PreviewOptions,
@@ -244,7 +244,7 @@ pub fn preview_file_with_config(
             source_path: Some(record.source_path.clone()),
             relative_path: Some(record.relative_path.clone()),
             kind: PreviewWarningKind::InvalidUtf8,
-            message: "Invalid UTF-8 was replaced with the Unicode replacement character."
+            message: "Source was not valid UTF-8 and was recovered with Windows-1252 fallback."
                 .to_string(),
         });
     }
@@ -520,22 +520,13 @@ pub fn read_bounded_lossy_text(
         path: path.to_path_buf(),
         message: error.to_string(),
     })?;
-    let total_bytes = file
-        .metadata()
-        .map(|metadata| metadata.len())
-        .unwrap_or_default();
-
-    let target_chars = max_chars
-        .map(|limit| limit.saturating_add(1))
-        .unwrap_or(usize::MAX);
-    let mut pending = Vec::new();
-    let mut text = String::new();
-    let mut chars_seen = 0usize;
-    let mut invalid_utf8 = false;
+    let prefix_byte_limit = max_chars.map(|limit| limit.saturating_add(1).saturating_mul(4));
+    let mut prefix_bytes = Vec::new();
+    let mut utf8_pending = Vec::new();
+    let mut had_utf8_error = false;
     let mut bytes_read = 0u64;
-    let mut reached_eof = false;
 
-    while chars_seen < target_chars {
+    loop {
         let mut chunk = [0u8; CHUNK_SIZE];
         let read = file.read(&mut chunk).map_err(|error| PreviewError::Io {
             path: path.to_path_buf(),
@@ -543,100 +534,81 @@ pub fn read_bounded_lossy_text(
         })?;
 
         if read == 0 {
-            reached_eof = true;
-            flush_pending(
-                &mut pending,
-                &mut text,
-                &mut chars_seen,
-                target_chars,
-                true,
-                &mut invalid_utf8,
-            );
             break;
         }
 
         bytes_read += read as u64;
-        pending.extend_from_slice(&chunk[..read]);
-        flush_pending(
-            &mut pending,
-            &mut text,
-            &mut chars_seen,
-            target_chars,
-            false,
-            &mut invalid_utf8,
-        );
+
+        if prefix_byte_limit.is_none_or(|limit| prefix_bytes.len() < limit) {
+            let remaining = prefix_byte_limit
+                .map(|limit| limit.saturating_sub(prefix_bytes.len()))
+                .unwrap_or(read);
+            prefix_bytes.extend_from_slice(&chunk[..read.min(remaining)]);
+        }
+
+        if !had_utf8_error {
+            had_utf8_error = validate_utf8_chunk(&mut utf8_pending, &chunk[..read]);
+        }
     }
 
-    let truncated = max_chars
-        .is_some_and(|limit| chars_seen > limit || (!reached_eof && bytes_read < total_bytes));
+    if !utf8_pending.is_empty() {
+        had_utf8_error = true;
+    }
+
+    let decoded_prefix = if had_utf8_error {
+        crate::decode::decode_windows_1252_bytes(&prefix_bytes)
+    } else {
+        decode_utf8_prefix(&prefix_bytes)
+    };
+
+    let truncated = max_chars.is_some_and(|limit| {
+        decoded_prefix.chars().count() > limit || bytes_read > prefix_bytes.len() as u64
+    });
     let text = match max_chars {
-        Some(limit) => text.chars().take(limit).collect(),
-        None => text,
+        Some(limit) => decoded_prefix.chars().take(limit).collect(),
+        None => decoded_prefix,
     };
 
     Ok(BoundedRead {
         text,
         truncated,
-        invalid_utf8,
+        invalid_utf8: had_utf8_error,
     })
 }
 
-fn flush_pending(
-    pending: &mut Vec<u8>,
-    text: &mut String,
-    chars_seen: &mut usize,
-    target_chars: usize,
-    eof: bool,
-    invalid_utf8: &mut bool,
-) {
-    loop {
-        if *chars_seen >= target_chars {
-            pending.clear();
-            return;
-        }
-
-        match std::str::from_utf8(pending) {
-            Ok(valid) => {
-                push_limited(text, valid, chars_seen, target_chars);
-                pending.clear();
-                return;
-            }
+fn validate_utf8_chunk(pending: &mut Vec<u8>, chunk: &[u8]) -> bool {
+    if pending.is_empty() {
+        return match std::str::from_utf8(chunk) {
+            Ok(_) => false,
+            Err(error) if error.error_len().is_some() => true,
             Err(error) => {
-                let valid_up_to = error.valid_up_to();
-                if valid_up_to > 0 {
-                    let valid = std::str::from_utf8(&pending[..valid_up_to]).unwrap();
-                    push_limited(text, valid, chars_seen, target_chars);
-                    pending.drain(..valid_up_to);
-                    if *chars_seen >= target_chars {
-                        pending.clear();
-                        return;
-                    }
-                }
-
-                if let Some(error_len) = error.error_len() {
-                    *invalid_utf8 = true;
-                    push_limited(text, "\u{fffd}", chars_seen, target_chars);
-                    pending.drain(..error_len);
-                } else if eof {
-                    *invalid_utf8 = true;
-                    push_limited(text, "\u{fffd}", chars_seen, target_chars);
-                    pending.clear();
-                    return;
-                } else {
-                    return;
-                }
+                pending.extend_from_slice(&chunk[error.valid_up_to()..]);
+                false
             }
+        };
+    }
+
+    let mut combined = Vec::with_capacity(pending.len() + chunk.len());
+    combined.extend_from_slice(pending);
+    combined.extend_from_slice(chunk);
+    pending.clear();
+
+    match std::str::from_utf8(&combined) {
+        Ok(_) => false,
+        Err(error) if error.error_len().is_some() => true,
+        Err(error) => {
+            pending.extend_from_slice(&combined[error.valid_up_to()..]);
+            false
         }
     }
 }
 
-fn push_limited(text: &mut String, fragment: &str, chars_seen: &mut usize, target_chars: usize) {
-    for character in fragment.chars() {
-        if *chars_seen >= target_chars {
-            break;
-        }
-        text.push(character);
-        *chars_seen += 1;
+fn decode_utf8_prefix(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => text.to_string(),
+        Err(error) => std::str::from_utf8(&bytes[..error.valid_up_to()])
+            .expect("valid_up_to always marks a valid UTF-8 prefix")
+            .to_string(),
     }
 }
 
@@ -873,7 +845,7 @@ mod tests {
     }
 
     #[test]
-    fn handles_invalid_utf8_lossily_with_warning() {
+    fn recovers_invalid_utf8_with_windows_1252_warning() {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("bad.txt"), [0x66, 0x80, 0x67]).unwrap();
         let report = scan_directory(dir.path()).unwrap();
@@ -881,7 +853,7 @@ mod tests {
 
         let preview = preview_file(&report.files[0], &options, None).unwrap();
 
-        assert_eq!(preview.text, "f\u{fffd}g");
+        assert_eq!(preview.text, "f€g");
         assert!(
             preview
                 .warnings

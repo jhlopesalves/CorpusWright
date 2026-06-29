@@ -26,6 +26,7 @@ use corpuswright_core::clean::{
     RemovalScope, RemovalSummary, RemovedTextExample, ReplacementRule, SkippedRuleNotice,
     TableExtractionStrategy,
 };
+use corpuswright_core::decode::{DecodeStrategy, SourceEncoding};
 use corpuswright_core::export::{ExportReport, ExportWarning, ExportWarningKind};
 use corpuswright_core::language::{
     DetectedLanguage, DocumentLanguage, LanguageResolution, ProjectLanguage,
@@ -527,12 +528,24 @@ fn main() {
         }],
         &[],
     );
+    export_type::<SourceEncoding>(&out_dir, &[], &[]);
+    export_type::<DecodeStrategy>(&out_dir, &[], &[]);
     export_type::<ManifestFileRecord>(
         &out_dir,
-        &[TypeImport {
-            name: "DocumentType",
-            file: "DocumentType",
-        }],
+        &[
+            TypeImport {
+                name: "DocumentType",
+                file: "DocumentType",
+            },
+            TypeImport {
+                name: "SourceEncoding",
+                file: "SourceEncoding",
+            },
+            TypeImport {
+                name: "DecodeStrategy",
+                file: "DecodeStrategy",
+            },
+        ],
         &[],
     );
     export_type::<UnicodeNormalizationForm>(&out_dir, &[], &[]);

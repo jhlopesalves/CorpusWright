@@ -653,7 +653,7 @@ fn extract_text_from_record(
         _ => {
             // Plain text, HTML, or other textual files
             Ok(CacheEntry {
-                extracted_text: String::from_utf8_lossy(&bytes).into_owned(),
+                extracted_text: crate::decode::decode_source_bytes(&bytes).text,
                 warnings: Vec::new(),
                 page_count: None,
                 page_texts: None,
