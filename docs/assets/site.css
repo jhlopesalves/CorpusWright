@@ -411,6 +411,44 @@ html[data-theme="light"] .theme-img-light { display: block; }
 }
 .roadmap-link { margin-top: 18px; }
 
+/* ---- long-form learn page ---- */
+.learn-lead p:not(.eyebrow) {
+  max-width: var(--prose);
+}
+
+.learn-content { padding-top: 46px; }
+.learn-prose { max-width: 78ch; }
+.learn-section + .learn-section {
+  margin-top: 44px;
+  padding-top: 34px;
+  border-top: 1px solid var(--line);
+}
+.learn-prose h2 { margin-bottom: 18px; }
+.learn-prose p,
+.learn-prose li {
+  color: var(--muted);
+}
+.learn-prose p { margin-bottom: 18px; }
+.learn-prose ul,
+.learn-prose ol {
+  margin: 0 0 22px;
+  padding-left: 1.35rem;
+}
+.learn-prose li { margin: 8px 0; }
+.learn-prose strong { color: var(--text); }
+.learn-prose em { color: var(--text); }
+.learn-prose .formula {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.08em 0.34em 0.12em;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  overflow-wrap: anywhere;
+  vertical-align: baseline;
+}
+
 /* ---- footer ---- */
 .site-footer {
   padding: 28px 0;

@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Method and concepts for reading CorpusWright corpus statistics, dispersion, lexical diversity, vocabulary growth, entropy, and corpus design.">
+  <title>Method and concepts · CorpusWright</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Source+Code+Pro&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/site.css">
+  <link rel="icon" href="assets/icon.png">
+  <script>
+    (function() {
+      const savedTheme = localStorage.getItem('theme');
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
+    })();
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme') ||
+                           (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+    }
+  </script>
+</head>
+<body>
+<header class="site-header">
+  <div class="shell nav">
+    <a class="brand" href="index.html"><img class="mark" src="assets/icon-32.png" alt="" width="28" height="28"> CorpusWright</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="method.html">Method</a>
+      <a href="learn.html" aria-current="page">Learn</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="technical-docs.html">Docs</a>
+      <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
+      <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
+        <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+        </svg>
+        <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+        </svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+<section class="section">
+  <div class="shell">
+    <div class="section-lead learn-lead">
+      <p class="eyebrow">Learn</p>
+      <h1>Method and concepts</h1>
+      <p>What each measure on the Analyse layer actually means, why corpus linguistics bothers with it, and how to read the Overview without fooling yourself. Explanation, not a click-through tutorial.</p>
+      <p>This documentation keeps a simple discipline: no performance claim without a measured number, and anything experimental or merely planned is labelled as such rather than dressed up as shipped.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section learn-content">
+  <div class="shell narrow learn-prose">
+    <section class="learn-section">
+
+      <h2>How to read this section</h2>
+
+      <p>First, why any of this exists.</p>
+
+      <p>CorpusWright is built on one slightly unfashionable conviction: that describing a corpus is not the warm-up act before the statistics - it is the part that matters most, and the part most often skipped. A good deal of corpus work still treats this early stage as a formality: load the texts, generate a frequency list, perhaps run a keyness table, and hurry on to the comparison you wanted all along. The corpus itself - how big it really is, how varied, how evenly its vocabulary is spread, whether it is even large enough to carry the claim you are about to make - goes quietly unexamined.</p>
+
+      <p>That is the gap this section exists to fill.</p>
+
+      <p>It is also why the Overview is, admittedly, enormous. The size is not decoration - even though it looks nice, and it is not a pile of metrics competing for your attention. Each panel answers a specific question you should be asking of a corpus before you trust anything built on top of it: is it the size I think it is? Is its vocabulary varied or repetitive? Are these words spread across the whole corpus, or trapped in a handful of texts? Has it stopped meeting new words, or is it still growing? Every measure on that page exists to make one of those questions answerable rather than assumed blindly.</p>
+
+      <p>None of the mathematics here is new, and the page never pretends otherwise. Zipf is from 1949, Shannon from 1948, the principles of good corpus design older still. What is comparatively new is putting all of it in front of you by default, in a local-first tool that recomputes the same way every time - rather than leaving each measure as a script you might write if you happened to remember it. That is the only sense in which CorpusWright is &quot;modern&quot;: not a whole new idea, but an old and serious set of ideas made routine, reproducible, and undismissible.</p>
+
+      <p>Three commitments run underneath everything below. They are worth stating up front, because they decide how every section is written.</p>
+
+      <p>First: describe before you compare. Most of what follows is descriptive, and that is on purpose.</p>
+
+      <p>Second: effect sizes over significance. At corpus scale almost everything is &quot;statistically significant&quot;, because significance is largely a function of sample size, and corpora are enormous. Significance tells you a difference is probably not zero; it does not tell you the difference matters. What discriminates is the size of an effect, not the smallness of its p-value. (This bites hardest in the comparative tools - keyness, collocation - which get their own pass later.)</p>
+
+      <p>Third, and this one underwrites the other two: a count is only ever as trustworthy as the definition of the thing being counted. Change what a &quot;token&quot; is and every number on this page moves with it. So that is where we start.</p>
+
+    </section>
+
+    <section class="learn-section">
+
+      <h2>Tokens and types - why the definition comes first</h2>
+
+      <p>A token is a single running occurrence of a word. A type is a distinct word form. In <em>the cat sat on the mat</em> there are six tokens but five types, because <em>the</em> turns up twice. A lemma goes one step further and gathers inflected forms under a single headword: <em>go</em>, <em>goes</em>, <em>going</em>, <em>went</em> - four word forms, one lemma.</p>
+
+      <p>That sounds like bookkeeping. It is not. Every measure below - frequency, diversity, dispersion, the shape of the whole distribution - is computed over tokens and types. So the first methodological question is never &quot;what is the frequency of X?&quot; It is &quot;what counts as a token in the first place?&quot;</p>
+
+      <p>And that question has teeth. Do you fold case, so that <em>The</em> and <em>the</em> are the same type? What becomes of punctuation, of hyphenated compounds, of clitics like <em>don't</em>, of numerals? Each decision quietly rewrites every count that follows.</p>
+
+      <p>CorpusWright's answer is to use one canonical tokeniser - Unicode UAX #29 word boundaries - shared between the Prepare layer and the Analyse layer. The point is not that UAX #29 is the one true definition of a word; it is that the tokens you clean are exactly the tokens you count. There is no second, divergent definition hiding inside the analysis to surprise you later.</p>
+
+      <p>One honest caveat. Lemma- and part-of-speech-based counting needs linguistic annotation, and annotation in CorpusWright is experimental - not part of the standard Overview yet. Where a number depends on it, the interface says so. More on that below.</p>
+
+    </section>
+
+    <section class="learn-section">
+
+      <h2>Frequency: raw and normalised</h2>
+
+      <p>Raw frequency is just a count. Within a single corpus it is the honest number, and you should never lose sight of it. Across corpora of different sizes, though, it is close to meaningless: 50 occurrences in a 10,000-word text and 50 in a million-word corpus are not the same fact wearing different clothes.</p>
+
+      <p>Normalised frequency fixes the comparison by expressing a count relative to corpus size - conventionally per million words for large corpora, per ten thousand for smaller ones:</p>
+
+      <p><code class="formula">normalised frequency = (raw count / total tokens) × base</code></p>
+
+      <p>Report both, always. The normalised figure is what lets you compare; the raw count is what tells you whether the comparison is worth anything. A normalised frequency resting on three actual occurrences looks every bit as confident as one resting on three thousand, and is, in truth, fragile. Keep the evidence visible.</p>
+
+      <p>A quick worked example. A word that occurs 120 times in a 240,000-token corpus has a normalised frequency of <code class="formula">(120 / 240,000) × 1,000,000 = 500</code> per million words. The same 120 occurrences in a 12-million-token corpus give <code class="formula">10</code> per million - the same raw count, an entirely different fact.</p>
+
+    </section>
+
+    <section class="learn-section">
+
+      <h2>Dispersion: how evenly a word is spread</h2>
+
+      <p>Here is the trap that frequency sets for you. A count tells you how often a word occurs; it says nothing about <em>where</em>. Two words can post identical totals while one is sprinkled evenly across every text in the corpus and the other is piled into a single document. The second word is not characteristic of the corpus at all - it is a property of one text that happens to be sitting inside it. Frequency alone cannot tell the two apart. Dispersion can.</p>
+
+      <p>CorpusWright reports Gries's Deviation of Proportions (DP). The idea is friendlier than the name. Cut the corpus into parts - the individual texts, say. Each part has an <em>expected</em> share of the word, which is simply its size as a fraction of the whole corpus, and an <em>observed</em> share, the proportion of the word's occurrences that actually land in it. DP adds up the gaps between expected and observed:</p>
+
+      <p><code class="formula">DP = 0.5 × Σ |observed proportion − expected proportion|</code></p>
+
+      <p>More precisely, cut the corpus into <em>n</em> parts and, for part <em>i</em>, let <code class="formula">sᵢ</code> be its expected share - the part's size as a fraction of the whole corpus - and <code class="formula">vᵢ</code> the observed share - the proportion of the word's occurrences that land in it. Then <code class="formula">DP = 0.5 × Σ |vᵢ − sᵢ|</code>, and parts the word never reaches still count: each contributes its full expected share <code class="formula">sᵢ</code>, because the gap there is <code class="formula">|0 − sᵢ|</code>. CorpusWright reports this unnormalised DP directly - it does not divide through by <code class="formula">1 − min(sᵢ)</code> to force the ceiling to exactly 1, so on a corpus of very unevenly sized texts the practical maximum sits a little below 1. That is deliberate: one fewer transformation between the raw counts and the number you read.</p>
+
+      <p>It runs from near 0 to near 1. Near 0 means the word is spread almost exactly as the parts' sizes would predict - evenly distributed. Near 1 means it is clumped into a handful of parts.</p>
+
+      <p>Read it next to frequency, never instead of it. A high-frequency word with high DP is a bursty, text-bound word masquerading as a pervasive one - and that is precisely the sort of thing a bare frequency list will quietly let you believe.</p>
+
+    </section>
+
+    <section class="learn-section">
+
+      <h2>Lexical diversity: past the type-token ratio</h2>
+
+      <p>The obvious measure of vocabulary richness is the type-token ratio: types divided by tokens, <code class="formula">TTR = V / N</code>, with <code class="formula">V</code> the number of types and <code class="formula">N</code> the number of tokens. It is also, for comparison, broken - and broken in an instructive way.</p>
+
+      <p>The culprit is length. As a text grows it cannot help repeating common words - <em>the</em>, <em>of</em>, <em>and</em> - so the ratio falls, mechanically, no matter how rich the writing is. Hand TTR a 500-word text and a 5,000-word text and it will pronounce the short one &quot;richer&quot; even when they are equally varied. What you are measuring is length wearing a diversity costume.</p>
+
+      <p>CorpusWright uses two length-robust measures instead.</p>
+
+      <p>MATTR, the moving-average type-token ratio. Slide a fixed-size window - 100 tokens in CorpusWright - across the text, work out TTR inside each window, and average the lot. Because every window is the same length, the length confound simply has nowhere to hide. For a window of length <code class="formula">w</code> slid one token at a time across <code class="formula">N</code> tokens, MATTR is just the mean of the per-window ratios, <code class="formula">MATTR = (1 / (N − w + 1)) Σ TTRₖ</code>. (Covington &amp; McFall, 2010.)</p>
+
+      <p>MTLD, the measure of textual lexical diversity. Walk through the text accumulating tokens until the running TTR drops to a set threshold - 0.72, by convention; each time it does, that counts as one complete &quot;factor&quot;, and the count resets. MTLD is the mean number of tokens per factor, run forwards and backwards and averaged - in compact form, <code class="formula">MTLD = N / F</code>, where <code class="formula">F</code> is the (possibly fractional) count of complete factors in a given direction. Higher means more diverse, and it is among the most length-stable diversity measures going. (McCarthy &amp; Jarvis, 2010.)</p>
+
+      <p>Both measures are computed per document, never over the whole corpus glued into one long string - that would invent adjacencies across texts that never touched. CorpusWright reports the median across documents, with the minimum and maximum, and counts separately any documents too short to measure: MATTR needs at least one full 100-token window, and MTLD is computed only for documents of at least 100 tokens, since the factor count is unstable on very short texts.</p>
+
+      <p>The rule of thumb is short. Whenever you compare texts or corpora of unequal length - which is nearly always - reach for these and leave raw TTR alone.</p>
+
+    </section>
+
+    <section class="learn-section">
+
+      <h2>Vocabulary structure: hapax legomena and dislegomena</h2>
+
+      <p>A hapax legomenon is a type that occurs exactly once in the corpus. A hapax dislegomenon occurs exactly twice. They sound like pub-quiz trivia. They are not.</p>
+
+      <p>The proportion of hapaxes is a reading on how <em>open</em> the vocabulary still is. A high hapax ratio says the corpus is still meeting brand-new word forms as it grows - it has not &quot;saturated&quot; - which bears directly on a question you actually care about: is this corpus large enough to represent the variety you claim it represents? In morphological productivity research the same count does real work: Baayen's productivity measure is, roughly, the hapaxes of an affix over the tokens of that affix, on the logic that a genuinely productive process keeps throwing off one-off forms. As formulas: writing <code class="formula">V₁</code> for the number of types occurring exactly once, the hapax ratio is <code class="formula">V₁ / V</code> (sometimes <code class="formula">V₁ / N</code>), and Baayen's productivity is <code class="formula">P = V₁(a) / N(a)</code>, the hapaxes of an affix <em>a</em> over its tokens.</p>
+
+      <p>Two cautions, and CorpusWright honours both in how it reports the figures. Hapax counts are violently sensitive to the token definition and to corpus size, so a raw count on its own is close to uninterpretable - report it as a count <em>and</em> a ratio. And, like every type-based measure here, the moment you change tokenisation or cleaning, the hapax figures move with it.</p>
+
+    </section>
+
+    <section class="learn-section">
+
+      <h2>The frequency distribution: Zipf's law</h2>
+
+      <p>Rank the types from most to least frequent and a stubborn regularity appears. Zipf's law says frequency is roughly inversely proportional to rank: the second-ranked word turns up about half as often as the first, the third about a third as often, and on down. Formally,</p>
+
+      <p><code class="formula">f(r) ∝ 1 / r^a</code></p>
+
+      <p>with the exponent <code class="formula">a</code> near 1 for many corpora. Taking logarithms shows why a log-log plot is the natural view: <code class="formula">log f(r) = log C − a · log r</code>, a straight line whose slope is <code class="formula">−a</code>. Plot frequency against rank on those axes and the corpus comes out as roughly that line.</p>
+
+      <p>This buys you two things. The first is a sanity check, and it is the use I reach for most. A corpus whose rank-frequency curve departs grossly from the Zipfian shape is almost never announcing a linguistic discovery; it is usually confessing a tokenisation fault, encoding debris, or contamination. Look at the curve before you trust the numbers built on top of it.</p>
+
+      <p>The second is that the <em>deviations</em> are themselves informative. A pure Zipf fit is poor at the very top ranks and across the long tail - exactly where the law is least reliable. CorpusWright handles that honestly rather than papering over it: the fit it reports is an ordinary least-squares line of <code class="formula">log f</code> against <code class="formula">log r</code>, with the highest-frequency type (rank 1) and the whole frequency-one tail left out of the fit, since those are the regions the classic law fits worst. It reports the resulting exponent <code class="formula">a</code> together with the fit's <code class="formula">R²</code>, beside the rank-frequency plot, so you can judge how Zipfian the corpus actually is instead of taking a single number on faith.</p>
+
+      <p>There is a known refinement, Zipf-Mandelbrot, which adds a parameter to rescue the head of the curve, <code class="formula">f(r) ∝ 1 / (r + b)^a</code>. CorpusWright does not fit that extra parameter today, and says so rather than implying a richer model than it runs.</p>
+
+    </section>
+
+    <section class="learn-section">
+
+      <h2>Vocabulary growth: Heaps' law</h2>
+
+      <p>The hapax ratio asks whether a corpus is still meeting new words; Heaps' law puts a shape on the same question. As you read more tokens, the count of distinct types keeps climbing, but with diminishing returns:</p>
+
+      <p><code class="formula">V ≈ K · N^β</code></p>
+
+      <p>where <code class="formula">V</code> is the vocabulary size, <code class="formula">N</code> the token count, and <code class="formula">β</code> (between 0 and 1) the rate at which genuinely new types keep arriving. Take logarithms and it is, once again, a straight line on log-log axes - so CorpusWright fits <code class="formula">K</code> and <code class="formula">β</code> by the same least-squares method as Zipf, measured at deterministic token checkpoints as the corpus grows. A <code class="formula">β</code> nearer 1 means the vocabulary is still expanding briskly; nearer 0 means it is saturating. One honest caveat, which the tool states outright: this describes the snapshot in front of you, read in a fixed order. It is not a promise about some universal vocabulary ceiling, and should not be read as predicting one.</p>
+
+    </section>
+
+    <section class="learn-section">
+
+      <h2>Entropy: Shannon and normalised</h2>
+
+      <p>Entropy measures how evenly probability is spread across the vocabulary - how <em>uncertain</em> the distribution is. Shannon entropy is</p>
+
+      <p><code class="formula">H = − Σ pᵢ log₂ pᵢ</code>   (in bits)</p>
+
+      <p>where <code class="formula">pᵢ</code> is the relative frequency of type <em>i</em>. It is at its highest when every type is equally frequent and at its lowest when a few types dominate everything. State the unit, because it depends on the base: log base 2 gives bits, base <em>e</em> gives nats.</p>
+
+      <p>Raw entropy climbs with vocabulary size, which - you will have spotted the pattern by now - blocks comparison across corpora. Normalised entropy divides by the largest entropy that vocabulary could possibly carry, <code class="formula">log₂(V)</code>, landing the result between 0 and 1:</p>
+
+      <p><code class="formula">H_norm = H / log₂(V)</code></p>
+
+      <p>Now two corpora with different vocabulary sizes can be set side by side: near 1 means a very even distribution, near 0 means a few types carry most of the weight. (Perplexity, <code class="formula">2^H</code>, is the same information dressed for a different occasion.)</p>
+
+    </section>
+
+    <section class="learn-section">
+
+      <h2>Corpus design: representativeness, balance, dispersion</h2>
+
+      <p>Every statistic above is only as meaningful as the corpus underneath it. So corpus design is not the mere preamble to the method - it is part of the method.</p>
+
+      <p>Representativeness first. A corpus should represent the language variety or population you mean to study. It never fully will; representativeness is an aspiration, not an achievement. The honest move is therefore not to claim it outright but to state plainly what your corpus represents and, just as importantly, what it does not.</p>
+
+      <p>Balance is proportional sampling across the genres, registers, or domains of that target variety, so no single source quietly takes over the picture. The sampling frame and unit are the decisions underneath it: what counts as the population, how texts get selected, whether you take whole texts or fixed-size samples - each choice leaves fingerprints on the counts. And documentation - source, date, genre, author, language - is the unglamorous part that lets anyone else, and a future version of you, interpret and reproduce the analysis.</p>
+
+      <p>The neat thing is that none of this stays hidden; it resurfaces in the very measures we have been discussing. An unbalanced corpus shows up as high dispersion for source-specific vocabulary. An under-sampled one shows up as a hapax ratio that stubbornly refuses to come down. Design and diagnostics, it turns out, are two views of the same object. The Overview makes that concrete: it reports the share of tokens held by the largest document and by the top three, and an <em>effective document count</em>, <code class="formula">1 / Σ sᵢ²</code> - the inverse of the summed squared document shares, the number of equally sized documents your corpus effectively behaves like. When that figure sits far below your actual document count, a handful of texts are doing most of the talking.</p>
+
+    </section>
+
+    <section class="learn-section">
+
+      <h2>Reading the Overview</h2>
+
+      <p>The Overview is CorpusWright's descriptive dashboard for a prepared corpus. The labels and the layout will keep shifting while the tool is in alpha - fair warning - but the <em>way</em> to read it is stable. A reading order that rarely lets me down:</p>
+
+      <ol>
+
+        <li>Start with size. Token and type counts. Is the corpus the size you expected? A surprise here is almost always a Prepare-stage problem in disguise, not a finding.</li>
+
+        <li>Check the shape. Glance at the rank-frequency (Zipf) plot. Roughly Zipfian means tokenisation behaved itself; badly distorted sends you straight back to cleaning and extraction.</li>
+
+        <li>Read diversity and dispersion together. MATTR and MTLD tell you how varied the vocabulary is; DP tells you how evenly particular items are spread. Neither means much on its own.</li>
+
+        <li>Treat the hapax ratio as a saturation gauge. A high ratio says the corpus is still taking on new vocabulary - which speaks to whether it is big enough for the question you are asking.</li>
+
+        <li>Use entropy for the global picture. Normalised entropy folds the concentration of the whole distribution into one comparable number.</li>
+
+      </ol>
+
+      <p>One honest limit. Lemma- and POS-based views are not part of the standard Overview yet: the current build computes surface-level diagnostics only, and linguistic annotation is experimental. Where a measure leans on annotation, the interface labels it that way rather than presenting it as final. That is deliberate - better a smaller honest picture than a larger one with quiet asterisks.</p>
+
+    </section>
+
+    <section class="learn-section">
+
+      <h2>A note on statistics in CorpusWright</h2>
+
+      <p>Two principles govern how these numbers are produced, and they are worth knowing because they are what let you cite a result without crossing your fingers.</p>
+
+      <p>Determinism. The same corpus and the same configuration give the same results, every time. A number you quote can be reproduced - by a reviewer, by a collaborator, by you in six months when you have forgotten exactly what you did.</p>
+
+      <p>Provenance. Every result carries enough context to know how it was made - the tokeniser version, and for annotated counts the model and version - because, as this whole page has been insisting, change the tokeniser or the tagger and you change the counts. None of this is decoration. Labelling a result as partial, experimental, or in progress is treated here as part of getting it right, not an apology bolted on afterwards.</p>
+
+    </section>
+
+    <section class="learn-section">
+
+      <h2>Further reading</h2>
+
+      <p><strong>Corpus statistics, general</strong></p>
+
+      <ul>
+
+        <li>Brezina, V. (2018). <em>Statistics in Corpus Linguistics: A Practical Guide</em>. Cambridge University Press.</li>
+
+        <li>McEnery, T., &amp; Hardie, A. (2012). <em>Corpus Linguistics: Method, Theory and Practice</em>. Cambridge University Press.</li>
+
+      </ul>
+
+      <p><strong>Dispersion</strong></p>
+
+      <ul>
+
+        <li>Gries, S. Th. (2008). Dispersions and adjusted frequencies in corpora. <em>International Journal of Corpus Linguistics</em>, 13(4), 403-437.</li>
+
+      </ul>
+
+      <p><strong>Lexical diversity</strong></p>
+
+      <ul>
+
+        <li>Covington, M. A., &amp; McFall, J. D. (2010). Cutting the Gordian knot: the moving-average type-token ratio (MATTR). <em>Journal of Quantitative Linguistics</em>, 17(2), 94-100.</li>
+
+        <li>McCarthy, P. M., &amp; Jarvis, S. (2010). MTLD, vocd-D, and HD-D: a validation study of sophisticated approaches to lexical diversity assessment. <em>Behavior Research Methods</em>, 42(2), 381-392.</li>
+
+      </ul>
+
+      <p><strong>Vocabulary distributions and productivity</strong></p>
+
+      <ul>
+
+        <li>Baayen, R. H. (2001). <em>Word Frequency Distributions</em>. Kluwer.</li>
+
+        <li>Heaps, H. S. (1978). <em>Information Retrieval: Computational and Theoretical Aspects</em>. Academic Press.</li>
+
+        <li>Zipf, G. K. (1949). <em>Human Behavior and the Principle of Least Effort</em>. Addison-Wesley.</li>
+
+      </ul>
+
+      <p><strong>Information theory</strong></p>
+
+      <ul>
+
+        <li>Shannon, C. E. (1948). A mathematical theory of communication. <em>Bell System Technical Journal</em>, 27, 379-423.</li>
+
+      </ul>
+
+      <p><strong>External resources</strong></p>
+
+      <ul>
+
+        <li>LancsBox / LancsBox X - corpus analysis software with built-in dispersion and collocation statistics (Lancaster University).</li>
+
+        <li>Stefan Th. Gries - tutorials and R code for dispersion and association measures.</li>
+
+      </ul>
+
+    </section>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="shell foot">
+    <span>CorpusWright is an open, local-first corpus linguistics workbench, currently in public alpha (v0.1.0-alpha.8).</span>
+    <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
+  </div>
+</footer>
+
+
+</body>
+</html>
