@@ -1,12 +1,13 @@
 use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisCorpus,
     AnalysisDocumentPage, AnalysisDocumentSelection, AnnotatedFrequencyQuery,
-    AnnotatedFrequencyResult, ConcordanceDocument, ConcordanceQuery, ConcordanceResult,
-    CorpusOverview, CorpusOverviewContext, FrequencyGroupMode, FrequencyPage, FrequencyQuery,
-    TermDistributionPage, TermDistributionQuery, annotation_cache_availability_for_corpus,
-    build_analysis_corpus, cleaning_config_signature, query_analysis_documents,
-    query_annotated_frequency, query_frequency_list, query_term_distribution,
-    resolve_analysis_input, search_concordance_documents,
+    AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, ConcordanceDocument,
+    ConcordanceQuery, ConcordanceResult, CorpusOverview, CorpusOverviewContext, FrequencyGroupMode,
+    FrequencyPage, FrequencyQuery, TermDistributionPage, TermDistributionQuery,
+    annotation_cache_availability_for_corpus, build_analysis_corpus, cleaning_config_signature,
+    query_analysis_documents, query_annotated_frequency, query_annotated_term_distribution,
+    query_frequency_list, query_term_distribution, resolve_analysis_input,
+    search_concordance_documents,
 };
 use corpuswright_core::cache::{
     CacheEntry, DocumentTextMode, ExtractionCache, document_text_for_record,
@@ -2173,7 +2174,7 @@ async fn search_concordance_command(
     let cache = cache.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let mut documents = Vec::new();
-        for (document_index, record) in records.iter().enumerate() {
+        for record in &records {
             let resolution = resolve_analysis_input_for_record(
                 record,
                 project_root.as_deref(),
@@ -2192,6 +2193,7 @@ async fn search_concordance_command(
             };
             let source_path = record.source_path.to_string_lossy().into_owned();
             let relative_path = record.relative_path.to_string_lossy().into_owned();
+            let document_index = documents.len();
             documents.push(ConcordanceDocument {
                 document_index,
                 source_path: source_path.clone(),
@@ -2306,6 +2308,18 @@ async fn query_term_distribution_command(
     })
     .await
     .map_err(|error| format!("Term distribution query task failed: {error}"))
+}
+
+#[tauri::command]
+async fn query_annotated_term_distribution_command(
+    query: AnnotatedTermDistributionQuery,
+    cleaning_config: CleaningConfig,
+    analysis: tauri::State<'_, AnalysisState>,
+) -> Result<TermDistributionPage, String> {
+    let corpus = analysis.corpus(&cleaning_config)?;
+    tauri::async_runtime::spawn_blocking(move || query_annotated_term_distribution(&corpus, &query))
+        .await
+        .map_err(|error| format!("Annotated term distribution query task failed: {error}"))
 }
 
 fn modified_time_secs(path: &Path) -> Option<u64> {
@@ -3047,6 +3061,7 @@ pub fn run() {
             query_annotated_frequency_command,
             query_analysis_documents_command,
             query_term_distribution_command,
+            query_annotated_term_distribution_command,
             extract_pdf_page_range_command,
             export_corpus_command,
             process_project_sources_command,

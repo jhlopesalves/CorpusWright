@@ -7,4 +7,4 @@ import type { PosFrequencyRow } from "./PosFrequencyRow";
 /**
  * Bounded response for annotation-only frequency views.
  */
-export type AnnotatedFrequencyResult = { mode: AnnotatedFrequencyMode, cache: AnnotationCacheAvailability, unavailableMessage: string | null, totalTokens: number, selectedDocumentCount: number, totalDocumentCount: number, totalRows: number, offset: number, limit: number, posRows: Array<PosFrequencyRow>, lexRows: Array<LexFrequencyRow>, };
+export type AnnotatedFrequencyResult = { mode: AnnotatedFrequencyMode, cache: AnnotationCacheAvailability, unavailableMessage: string | null, queryError: string | null, totalTokens: number, selectedDocumentCount: number, totalDocumentCount: number, totalRows: number, offset: number, limit: number, posRows: Array<PosFrequencyRow>, lexRows: Array<LexFrequencyRow>, };
