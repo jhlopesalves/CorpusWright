@@ -11,12 +11,13 @@ use corpuswright_core::analysis::{
     AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, AnnotatedTermSelector,
     AnnotationCacheAvailability, AnnotationCacheBuildError, AnnotationCacheBuildPhase,
     AnnotationCacheBuildProgress, AnnotationCacheBuildReport, AnnotationCacheState,
-    ConcordanceDistributionItem, ConcordanceDistributionPage, ConcordanceExpansionQuery,
-    ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult, ConcordanceRow,
-    ConcordanceSortKey, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
-    FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
-    FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow, SortDirection, TermDistributionItem,
-    TermDistributionPage,
+    ConcordanceCollocateRow, ConcordanceCollocationDirection, ConcordanceCollocationMeasure,
+    ConcordanceCollocationQuery, ConcordanceCollocationResult, ConcordanceDistributionItem,
+    ConcordanceDistributionPage, ConcordanceExpansionQuery, ConcordanceExpansionResult,
+    ConcordanceQuery, ConcordanceResult, ConcordanceRow, ConcordanceSortKey, FrequencyGroupMode,
+    FrequencyMatchMode, FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery,
+    FrequencySortKey, FrequencyTermItem, FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow,
+    SortDirection, TermDistributionItem, TermDistributionPage,
 };
 use corpuswright_core::clean::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
@@ -735,6 +736,45 @@ fn main() {
             TypeImport {
                 name: "ConcordanceDistributionPage",
                 file: "ConcordanceDistributionPage",
+            },
+        ],
+        &[],
+    );
+    export_type::<ConcordanceCollocationDirection>(&out_dir, &[], &[]);
+    export_type::<ConcordanceCollocationMeasure>(&out_dir, &[], &[]);
+    export_type::<ConcordanceCollocationQuery>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "AnalysisDocumentSelection",
+                file: "AnalysisDocumentSelection",
+            },
+            TypeImport {
+                name: "ConcordanceCollocationDirection",
+                file: "ConcordanceCollocationDirection",
+            },
+            TypeImport {
+                name: "ConcordanceCollocationMeasure",
+                file: "ConcordanceCollocationMeasure",
+            },
+        ],
+        &[],
+    );
+    export_type::<ConcordanceCollocateRow>(&out_dir, &[], &[]);
+    export_type::<ConcordanceCollocationResult>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "ConcordanceCollocationDirection",
+                file: "ConcordanceCollocationDirection",
+            },
+            TypeImport {
+                name: "ConcordanceCollocationMeasure",
+                file: "ConcordanceCollocationMeasure",
+            },
+            TypeImport {
+                name: "ConcordanceCollocateRow",
+                file: "ConcordanceCollocateRow",
             },
         ],
         &[],
