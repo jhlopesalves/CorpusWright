@@ -1,4 +1,5 @@
 use crate::clean::CleaningConfig;
+use crate::decode::{DecodeStrategy, SourceEncoding};
 use crate::scan::DocumentType;
 use crate::tokenization::TokenizationManifest;
 use serde::{Deserialize, Serialize};
@@ -18,6 +19,14 @@ pub struct ManifestFileRecord {
     pub processed_char_count: usize,
     pub source_hash_sha256: String,
     pub processed_hash_sha256: String,
+    #[serde(default = "crate::decode::decode_policy_version")]
+    pub decode_policy_version: u32,
+    #[serde(default)]
+    pub detected_encoding: SourceEncoding,
+    #[serde(default)]
+    pub decode_strategy: DecodeStrategy,
+    #[serde(default)]
+    pub replacement_char_count: u32,
     pub warnings: Vec<String>,
     pub extraction_method: Option<String>,
     pub page_count: Option<usize>,
@@ -32,6 +41,8 @@ pub struct ExportManifest {
     pub files_exported: usize,
     pub warnings_count: usize,
     pub cleaning_config: CleaningConfig,
+    #[serde(default = "crate::decode::decode_policy_version")]
+    pub decode_policy_version: u32,
     #[serde(default)]
     pub tokenization: TokenizationManifest,
     pub files: Vec<ManifestFileRecord>,
