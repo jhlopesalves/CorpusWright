@@ -87,10 +87,13 @@ assert(
 );
 assert(
   html.includes('id="concordance-lines-panel" class="concordance-view-panel concordance-kwic-panel"')
-    && html.includes('id="concordance-source-preview" class="concordance-source-preview hidden"')
     && html.includes('id="concordance-collocations-panel" class="concordance-view-panel concordance-collocations-panel hidden"')
     && html.includes('id="concordance-distribution-panel" class="concordance-document-spread"'),
-  "Concordance should render source preview and document spread inside the Lines workspace",
+  "Concordance should render document spread inside the Lines workspace",
+);
+assert(
+  !html.includes('id="concordance-source-preview"'),
+  "Concordance source preview should not use a global bottom-of-table mount",
 );
 assert(
   !html.includes("concordance-results-grid") && !styles.includes("concordance-results-grid"),
@@ -188,19 +191,33 @@ assert(
 );
 assert(
   workbench.includes("concordanceExpansionViewModel")
-    && workbench.includes("function renderConcordanceSourcePreview")
-    && workbench.includes("dom.concordanceSourcePreview.replaceChildren(createConcordanceSourcePreviewPanel(row))")
+    && workbench.includes("function createConcordanceSourcePreviewRow")
+    && workbench.includes('item.className = "concordance-preview-row"')
+    && workbench.includes('cell.className = "concordance-preview-cell"')
+    && workbench.includes("cell.appendChild(createConcordanceSourcePreviewPanel(row))")
+    && workbench.includes("dom.concordanceTableBody.appendChild(createConcordanceSourcePreviewRow(row))")
     && workbench.includes("concordance-expansion-message is-")
     && workbench.includes("concordance-expansion-node")
     && workbench.includes("handleConcordanceExpansionEscape")
-    && !workbench.includes("createConcordanceExpansionRow")
-    && !workbench.includes("concordanceTableBody.appendChild(createConcordanceExpansionRow"),
-  "Concordance renderer should include ready, loading, error, and Escape-close preview states outside the table body",
+    && !workbench.includes("function renderConcordanceSourcePreview")
+    && !workbench.includes("dom.concordanceSourcePreview"),
+  "Concordance renderer should include ready, loading, error, and Escape-close preview states immediately after the selected row",
+);
+const concordanceRowsLoopMatch = workbench.match(
+  /for \(const row of result\.rows\) \{([\s\S]*?)\n    \}/,
+);
+assert(concordanceRowsLoopMatch, "Concordance renderer should append rows in a single result loop");
+assert(
+  concordanceRowsLoopMatch[1].indexOf("dom.concordanceTableBody.appendChild(rowElement);")
+    < concordanceRowsLoopMatch[1].indexOf("dom.concordanceTableBody.appendChild(createConcordanceSourcePreviewRow(row));"),
+  "Concordance source preview row should be appended immediately after the selected KWIC row",
 );
 assert(
-  styles.includes(".concordance-source-preview")
-    && !styles.includes("concordance-expansion-cell"),
-  "Concordance source preview should have its own mount outside the KWIC table overflow context",
+  styles.includes(".concordance-preview-row .concordance-expansion-panel")
+    && styles.includes(".concordance-table .concordance-preview-cell")
+    && !styles.includes("concordance-expansion-cell")
+    && !styles.includes(".concordance-source-preview"),
+  "Concordance source preview should render in a local preview row without the old nowrap expansion cell or bottom mount",
 );
 const concordanceExpansionCssMatch = styles.match(/\.concordance-expansion-context \{([\s\S]*?)\n\}/);
 assert(concordanceExpansionCssMatch, "Concordance source preview CSS should exist");
