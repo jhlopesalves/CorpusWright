@@ -102,7 +102,7 @@ pub fn count_words_for_record(
         } else {
             // Plain text, HTML, or other textual files
             if let Ok(bytes) = std::fs::read(&record.source_path) {
-                String::from_utf8_lossy(&bytes).into_owned()
+                crate::decode::decode_source_bytes(&bytes).text
             } else {
                 return WordCountOutcome::count(0);
             }

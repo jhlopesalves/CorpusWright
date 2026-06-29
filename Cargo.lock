@@ -800,6 +800,7 @@ dependencies = [
  "anyhow",
  "cc",
  "chrono",
+ "encoding_rs",
  "html2text",
  "image",
  "lazy_static",
