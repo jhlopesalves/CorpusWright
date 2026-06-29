@@ -10,6 +10,8 @@
 
 A local-first desktop corpus workbench for cleaning, counting, concordancing, and exploring real-world text corpora — with every step visible and reproducible.
 
+**Project website:** https://jhlopesalves.github.io/CorpusWright/ — the public GitHub Pages site for downloads, quick start, method and concepts, roadmap, citation guidance, and technical docs.
+
 **Download the experimental alpha:** [CorpusWright v0.1.0-alpha.8](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8)
 
 Latest release page: https://github.com/jhlopesalves/CorpusWright/releases/latest
@@ -20,7 +22,15 @@ CorpusWright is a Rust/Tauri rewrite of an earlier PySide6 prototype. The old Py
 
 ## Documentation
 
-Full documentation: **https://jhlopesalves.github.io/CorpusWright/**
+The public GitHub Pages website is the best entry point for readers: **https://jhlopesalves.github.io/CorpusWright/**
+
+Public website links:
+
+- [Website home](https://jhlopesalves.github.io/CorpusWright/)
+- [Quick start](https://jhlopesalves.github.io/CorpusWright/quick-start.html)
+- [Learn / Method and concepts](https://jhlopesalves.github.io/CorpusWright/learn.html)
+- [Roadmap](https://jhlopesalves.github.io/CorpusWright/roadmap.html)
+- [Citation guidance](https://jhlopesalves.github.io/CorpusWright/citation.html)
 
 Reference material lives in [`docs/`](docs/) and is linked in context throughout this README:
 
