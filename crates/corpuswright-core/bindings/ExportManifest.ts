@@ -3,4 +3,4 @@ import type { CleaningConfig } from "./CleaningConfig";
 import type { ManifestFileRecord } from "./ManifestFileRecord";
 import type { TokenizationManifest } from "./TokenizationManifest";
 
-export type ExportManifest = { app_name: string, app_version: string | null, export_timestamp: string, files_exported: number, warnings_count: number, cleaning_config: CleaningConfig, tokenization: TokenizationManifest, files: Array<ManifestFileRecord>, };
+export type ExportManifest = { app_name: string, app_version: string | null, export_timestamp: string, files_exported: number, warnings_count: number, cleaning_config: CleaningConfig, decode_policy_version: number, tokenization: TokenizationManifest, files: Array<ManifestFileRecord>, };

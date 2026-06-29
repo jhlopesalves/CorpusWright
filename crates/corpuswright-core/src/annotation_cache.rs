@@ -2,6 +2,7 @@ use crate::analysis::{
     AnalysisCorpus, AnnotationBuildTimingCounters, AnnotationLayer, AnnotationLayerDocument,
 };
 use crate::annotation::LemmaTable;
+use crate::decode::DECODE_POLICY_VERSION;
 use crate::hash::sha256_hex;
 use crate::scan::{DocumentRecord, DocumentType};
 use crate::tokenization::TokenizationManifest;
@@ -32,6 +33,7 @@ pub struct AnnotationCorpusIdentity {
     pub documents_hash_sha256: String,
     pub surface_terms_hash_sha256: String,
     pub processed_texts_hash_sha256: String,
+    pub decode_policy_version: u32,
     pub surface_term_count: usize,
     pub documents: Vec<AnnotationDocumentIdentity>,
 }
@@ -74,6 +76,12 @@ pub struct AnnotationModelIdentity {
     pub model_filename: String,
     pub udpipe_model_name: String,
     pub sha256: String,
+}
+
+#[derive(Serialize)]
+struct ProcessedTextsIdentityPayload<'a> {
+    decode_policy_version: u32,
+    document_hashes: &'a [String],
 }
 
 /// On-disk cache file envelope.
@@ -232,9 +240,8 @@ pub fn build_annotation_manifest(
         .map_err(|e| AnnotationLayerCacheError::SerializationError(e.to_string()))?;
     let surface_terms_hash_sha256 = sha256_hex(&surface_terms_payload);
 
-    let processed_texts_payload = serde_json::to_vec(document_hashes)
-        .map_err(|e| AnnotationLayerCacheError::SerializationError(e.to_string()))?;
-    let processed_texts_hash_sha256 = sha256_hex(&processed_texts_payload);
+    let processed_texts_hash_sha256 =
+        processed_texts_identity_hash(document_hashes, DECODE_POLICY_VERSION)?;
 
     let mut overrides = Vec::new();
     let mut override_keys: Vec<_> = language_overrides.keys().copied().collect();
@@ -262,6 +269,7 @@ pub fn build_annotation_manifest(
             documents_hash_sha256,
             surface_terms_hash_sha256,
             processed_texts_hash_sha256,
+            decode_policy_version: DECODE_POLICY_VERSION,
             surface_term_count,
             documents,
         },
@@ -271,6 +279,19 @@ pub fn build_annotation_manifest(
         },
         models,
     })
+}
+
+fn processed_texts_identity_hash(
+    document_hashes: &[String],
+    decode_policy_version: u32,
+) -> Result<String, AnnotationLayerCacheError> {
+    let payload = ProcessedTextsIdentityPayload {
+        decode_policy_version,
+        document_hashes,
+    };
+    let bytes = serde_json::to_vec(&payload)
+        .map_err(|e| AnnotationLayerCacheError::SerializationError(e.to_string()))?;
+    Ok(sha256_hex(&bytes))
 }
 
 fn validate_annotation_cache_envelope(
@@ -526,6 +547,7 @@ mod tests {
                 documents_hash_sha256: "hash1".to_string(),
                 surface_terms_hash_sha256: "hash2".to_string(),
                 processed_texts_hash_sha256: "hash3".to_string(),
+                decode_policy_version: DECODE_POLICY_VERSION,
                 surface_term_count: 0,
                 documents: vec![],
             },
@@ -605,6 +627,26 @@ mod tests {
         let mut m2 = empty_manifest();
         m2.corpus.processed_texts_hash_sha256 = "different".to_string();
         assert_ne!(m1, m2);
+    }
+
+    #[test]
+    fn manifest_stale_when_decode_policy_version_changes() {
+        let m1 = empty_manifest();
+        let mut m2 = empty_manifest();
+        m2.corpus.decode_policy_version += 1;
+        assert_ne!(m1, m2);
+    }
+
+    #[test]
+    fn processed_texts_hash_includes_decode_policy_version() {
+        let document_hashes = vec!["abc".to_string(), "def".to_string()];
+
+        let current =
+            processed_texts_identity_hash(&document_hashes, DECODE_POLICY_VERSION).unwrap();
+        let future =
+            processed_texts_identity_hash(&document_hashes, DECODE_POLICY_VERSION + 1).unwrap();
+
+        assert_ne!(current, future);
     }
 
     #[test]
