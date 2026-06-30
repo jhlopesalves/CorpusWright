@@ -2251,7 +2251,7 @@ fn search_concordance_documents_with_warm_index(
     let mut entry = context_state.lock().unwrap();
     if entry
         .as_ref()
-        .map_or(true, |cached_entry| cached_entry.key != key)
+        .is_none_or(|cached_entry| cached_entry.key != key)
     {
         *entry = Some(ConcordanceIndexContextEntry {
             key,
