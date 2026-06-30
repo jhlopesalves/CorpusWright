@@ -4588,7 +4588,7 @@ fn concordance_collocation_limit(limit: usize) -> usize {
     }
 }
 
-fn concordance_key(value: &str, case_sensitive: bool) -> String {
+pub(crate) fn concordance_key(value: &str, case_sensitive: bool) -> String {
     if case_sensitive {
         value.to_string()
     } else {
