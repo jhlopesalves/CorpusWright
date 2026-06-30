@@ -6939,6 +6939,8 @@ pub fn query_annotated_term_distribution(
 mod tests {
     use super::*;
     use crate::clean::{RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope};
+    use crate::decode::{DecodeStrategy, SourceEncoding, decode_source_bytes};
+    use crate::index::{InMemoryIndexStore, SurfaceIndexDocumentInput};
     use crate::language::{ProjectLanguage, resolve_effective_document_languages};
     use std::cell::Cell;
     use std::path::PathBuf;
@@ -7099,6 +7101,66 @@ mod tests {
         query: ConcordanceQuery,
     ) -> Result<ConcordanceResult, ConcordanceError> {
         search_concordance_documents(documents, &query, &TokenizationConfig::default())
+    }
+
+    fn routed_concordance_for(
+        documents: &[ConcordanceDocument],
+        query: &ConcordanceQuery,
+        context: &mut ConcordanceSearchContext,
+        backend: ConcordanceBackend,
+    ) -> Result<RoutedConcordanceResult, ConcordanceError> {
+        search_concordance_documents_routed(
+            documents,
+            query,
+            &TokenizationConfig::default(),
+            context,
+            backend,
+        )
+    }
+
+    fn parity_concordance_query(query: &str, case_sensitive: bool) -> ConcordanceQuery {
+        ConcordanceQuery {
+            case_sensitive,
+            limit: 500,
+            distribution_limit: 500,
+            ..concordance_query(query)
+        }
+    }
+
+    fn assert_routed_index_parity(
+        documents: &[ConcordanceDocument],
+        query_text: &str,
+        case_sensitive: bool,
+    ) {
+        let query = parity_concordance_query(query_text, case_sensitive);
+        let mut scan_context = ConcordanceSearchContext::default();
+        let scan = routed_concordance_for(
+            documents,
+            &query,
+            &mut scan_context,
+            ConcordanceBackend::Scan,
+        )
+        .unwrap();
+        assert_eq!(scan.backend_used, ConcordanceBackendUsed::Scan);
+
+        let mut index_context = ConcordanceSearchContext::default();
+        let index = routed_concordance_for(
+            documents,
+            &query,
+            &mut index_context,
+            ConcordanceBackend::Index,
+        )
+        .unwrap();
+        assert_eq!(index.backend_used, ConcordanceBackendUsed::Index);
+        assert_eq!(
+            index.result, scan.result,
+            "{query_text} case_sensitive={case_sensitive}"
+        );
+    }
+
+    fn assert_routed_index_parity_both_modes(documents: &[ConcordanceDocument], query_text: &str) {
+        assert_routed_index_parity(documents, query_text, false);
+        assert_routed_index_parity(documents, query_text, true);
     }
 
     fn collocation_query(query: &str) -> ConcordanceCollocationQuery {
@@ -7552,6 +7614,260 @@ mod tests {
                 .collect::<Vec<_>>(),
             [(0, 1), (1, 0), (1, 2)]
         );
+    }
+
+    #[test]
+    fn concordance_default_route_uses_scan_and_matches_public_entry() {
+        let documents = vec![concordance_document(0, "doc.txt", "Movie movie MOVIE")];
+        let query = concordance_query("movie");
+        let public = concordance_for(&documents, query.clone()).unwrap();
+        let mut context = ConcordanceSearchContext::default();
+
+        let routed = routed_concordance_for(
+            &documents,
+            &query,
+            &mut context,
+            ConcordanceBackend::default(),
+        )
+        .unwrap();
+
+        assert_eq!(routed.backend_used, ConcordanceBackendUsed::Scan);
+        assert_eq!(routed.result, public);
+        assert_eq!(context.index_build_count(), 0);
+    }
+
+    #[test]
+    fn routed_index_concordance_parity_holds_for_required_english_queries() {
+        let documents = vec![
+            concordance_document(
+                0,
+                "a.txt",
+                "Movie, movie. MOVIE. good movie. Good movie! I love it. i love it.",
+            ),
+            concordance_document(
+                1,
+                "b.txt",
+                "A movie is not the same as a Good movie? I love it.",
+            ),
+        ];
+
+        for query in [
+            "movie",
+            "Movie",
+            "MOVIE",
+            "good movie",
+            "Good movie",
+            "I love it",
+            "i love it",
+        ] {
+            assert_routed_index_parity_both_modes(&documents, query);
+        }
+    }
+
+    #[test]
+    fn routed_index_concordance_parity_holds_for_required_portuguese_queries() {
+        let documents = vec![
+            concordance_document(
+                0,
+                "pt-a.txt",
+                "ação Ação coração Coração não Não João joão maçã Maçã.",
+            ),
+            concordance_document(1, "pt-b.txt", "A ação toca o coração, e João diz não."),
+        ];
+
+        for query in [
+            "ação",
+            "Ação",
+            "coração",
+            "Coração",
+            "não",
+            "Não",
+            "João",
+            "joão",
+        ] {
+            assert_routed_index_parity_both_modes(&documents, query);
+        }
+    }
+
+    #[test]
+    fn routed_index_sort_keys_match_scan_beyond_visible_window() {
+        let documents = vec![
+            concordance_document(0, "a.txt", "z b alpha c y alpha d"),
+            concordance_document(1, "b.txt", "a q alpha b r alpha c"),
+        ];
+        for sort_key in [
+            ConcordanceSortKey::Node,
+            ConcordanceSortKey::Left1,
+            ConcordanceSortKey::Left2,
+            ConcordanceSortKey::Right1,
+            ConcordanceSortKey::Right2,
+        ] {
+            let mut query = parity_concordance_query("alpha", false);
+            query.sort_key = sort_key;
+            query.window_tokens = 1;
+            let mut scan_context = ConcordanceSearchContext::default();
+            let scan = routed_concordance_for(
+                &documents,
+                &query,
+                &mut scan_context,
+                ConcordanceBackend::Scan,
+            )
+            .unwrap();
+            let mut index_context = ConcordanceSearchContext::default();
+            let index = routed_concordance_for(
+                &documents,
+                &query,
+                &mut index_context,
+                ConcordanceBackend::Index,
+            )
+            .unwrap();
+
+            assert_eq!(index.backend_used, ConcordanceBackendUsed::Index);
+            assert_eq!(index.result, scan.result, "{sort_key:?}");
+        }
+    }
+
+    #[test]
+    fn routed_index_falls_back_for_context_filter_and_matches_scan() {
+        let documents = vec![concordance_document(
+            0,
+            "doc.txt",
+            "red target blue target green target red",
+        )];
+        let mut query = concordance_query("target");
+        query.window_tokens = 1;
+        query.context_filter = Some("blue".to_string());
+        let scan = concordance_for(&documents, query.clone()).unwrap();
+        let mut context = ConcordanceSearchContext::default();
+
+        let routed =
+            routed_concordance_for(&documents, &query, &mut context, ConcordanceBackend::Index)
+                .unwrap();
+
+        assert_eq!(
+            routed.backend_used,
+            ConcordanceBackendUsed::ScanFallback {
+                reason: ConcordanceFallbackReason::UnsupportedFilter,
+            }
+        );
+        assert_eq!(routed.result, scan);
+        assert_eq!(context.index_build_count(), 0);
+    }
+
+    #[test]
+    fn routed_index_cache_reuses_store_and_rebuilds_when_manifest_changes() {
+        let mut documents = vec![
+            concordance_document(0, "a.txt", "Movie movie good movie"),
+            concordance_document(1, "b.txt", "Good movie"),
+        ];
+        let mut context = ConcordanceSearchContext::default();
+        let movie = parity_concordance_query("movie", false);
+        let phrase = parity_concordance_query("good movie", false);
+
+        let first =
+            routed_concordance_for(&documents, &movie, &mut context, ConcordanceBackend::Index)
+                .unwrap();
+        let second =
+            routed_concordance_for(&documents, &phrase, &mut context, ConcordanceBackend::Index)
+                .unwrap();
+        documents[0].text.push_str(" movie");
+        let third =
+            routed_concordance_for(&documents, &movie, &mut context, ConcordanceBackend::Index)
+                .unwrap();
+
+        assert_eq!(first.backend_used, ConcordanceBackendUsed::Index);
+        assert_eq!(second.backend_used, ConcordanceBackendUsed::Index);
+        assert_eq!(third.backend_used, ConcordanceBackendUsed::Index);
+        assert_eq!(context.index_build_count(), 2);
+        assert_eq!(first.result.total_hits, 4);
+        assert_eq!(second.result.total_hits, 2);
+        assert_eq!(third.result.total_hits, 5);
+    }
+
+    #[test]
+    fn routed_index_windows_1252_portuguese_offsets_and_parity_hold() {
+        let bytes = b"caf\xe9 a\xe7\xe3o A\xe7\xe3o Jo\xe3o jo\xe3o cora\xe7\xe3o Cora\xe7\xe3o n\xe3o N\xe3o ma\xe7\xe3 Ma\xe7\xe3";
+        let decoded = decode_source_bytes(bytes);
+        assert_eq!(decoded.detected_encoding, SourceEncoding::Windows1252);
+        assert_eq!(decoded.decode_strategy, DecodeStrategy::Windows1252Fallback);
+        assert!(decoded.had_utf8_error);
+        assert_eq!(
+            decoded.text,
+            "café ação Ação João joão coração Coração não Não maçã Maçã"
+        );
+        assert!(!decoded.text.contains('\u{fffd}'));
+
+        let index_inputs = [SurfaceIndexDocumentInput {
+            document_id: 0,
+            source_path: "pt-win1252.txt".to_string(),
+            display_name: "pt-win1252.txt".to_string(),
+            prepared_text: decoded.text.as_str(),
+        }];
+        let store =
+            InMemoryIndexStore::build(&index_inputs, &TokenizationConfig::default()).unwrap();
+        let records = store.records_for_document(0).unwrap();
+        for expected_surface in [
+            "ação",
+            "Ação",
+            "João",
+            "joão",
+            "coração",
+            "Coração",
+            "não",
+            "Não",
+            "maçã",
+            "Maçã",
+        ] {
+            let record = records
+                .iter()
+                .find(|record| record.surface == expected_surface)
+                .unwrap();
+            let recovered = decoded
+                .text
+                .chars()
+                .skip(record.prepared_char_start)
+                .take(record.prepared_char_end - record.prepared_char_start)
+                .collect::<String>();
+            assert_eq!(recovered, expected_surface);
+        }
+        let acao = records
+            .iter()
+            .find(|record| record.surface == "ação")
+            .unwrap();
+        assert_eq!((acao.prepared_char_start, acao.prepared_char_end), (5, 9));
+
+        let concordance_documents = vec![concordance_document(
+            0,
+            "pt-win1252.txt",
+            decoded.text.as_str(),
+        )];
+        for query in [
+            "ação",
+            "Ação",
+            "coração",
+            "Coração",
+            "não",
+            "Não",
+            "João",
+            "joão",
+        ] {
+            assert_routed_index_parity_both_modes(&concordance_documents, query);
+        }
+    }
+
+    #[test]
+    fn concordance_routing_types_remain_rust_only_without_ts_export() {
+        let source = include_str!("analysis.rs");
+        let start = source
+            .find("pub(crate) enum ConcordanceBackend")
+            .expect("routing type source should exist");
+        let end = source
+            .find("#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ConcordanceError")
+            .expect("concordance error source should exist");
+        let routing_source = &source[start..end];
+
+        assert!(!routing_source.contains("#[ts(export)]"));
+        assert!(!routing_source.contains("TS"));
     }
 
     #[test]
