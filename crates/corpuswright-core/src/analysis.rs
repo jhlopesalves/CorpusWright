@@ -1679,35 +1679,33 @@ pub struct ConcordanceDocument {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum ConcordanceBackend {
+pub enum ConcordanceBackend {
     #[default]
     Scan,
-    // The selectable index path is exercised through internal routed tests on this
-    // branch; no production or UI caller constructs it while Scan remains default.
-    #[allow(dead_code)]
     Index,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConcordanceFallbackReason {
+pub enum ConcordanceFallbackReason {
     UnsupportedFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConcordanceBackendUsed {
+pub enum ConcordanceBackendUsed {
     Scan,
     Index,
     ScanFallback { reason: ConcordanceFallbackReason },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct RoutedConcordanceResult {
+pub struct RoutedConcordanceResult {
     pub result: ConcordanceResult,
     pub backend_used: ConcordanceBackendUsed,
+    pub index_rebuilt: bool,
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct ConcordanceSearchContext {
+pub struct ConcordanceSearchContext {
     index_cache: Option<ConcordanceIndexCacheEntry>,
     index_build_count: usize,
 }
@@ -1718,7 +1716,7 @@ impl ConcordanceSearchContext {
         documents: &[ConcordanceDocument],
         selected_document_ids: &HashSet<usize>,
         tokenization_config: &TokenizationConfig,
-    ) -> Result<&InMemoryIndexStore, ConcordanceError> {
+    ) -> Result<(&InMemoryIndexStore, bool), ConcordanceError> {
         let manifest = concordance_surface_index_manifest(
             documents,
             selected_document_ids,
@@ -1746,11 +1744,14 @@ impl ConcordanceSearchContext {
             self.index_build_count += 1;
         }
 
-        Ok(&self
-            .index_cache
-            .as_ref()
-            .expect("index cache exists after build")
-            .store)
+        Ok((
+            &self
+                .index_cache
+                .as_ref()
+                .expect("index cache exists after build")
+                .store,
+            !cache_valid,
+        ))
     }
 
     #[cfg(test)]
@@ -4973,7 +4974,7 @@ fn push_hash_bytes(bytes: &mut Vec<u8>, value: &[u8]) {
     bytes.extend_from_slice(value);
 }
 
-pub(crate) fn search_concordance_documents_routed(
+pub fn search_concordance_documents_routed(
     documents: &[ConcordanceDocument],
     query: &ConcordanceQuery,
     tokenization_config: &TokenizationConfig,
@@ -4984,6 +4985,7 @@ pub(crate) fn search_concordance_documents_routed(
         ConcordanceBackend::Scan => Ok(RoutedConcordanceResult {
             result: search_concordance_documents_scan(documents, query, tokenization_config)?,
             backend_used: ConcordanceBackendUsed::Scan,
+            index_rebuilt: false,
         }),
         ConcordanceBackend::Index => {
             if let Some(reason) = concordance_index_fallback_reason(query) {
@@ -4994,17 +4996,16 @@ pub(crate) fn search_concordance_documents_routed(
                         tokenization_config,
                     )?,
                     backend_used: ConcordanceBackendUsed::ScanFallback { reason },
+                    index_rebuilt: false,
                 });
             }
 
+            let (result, index_rebuilt) =
+                search_concordance_documents_index(documents, query, tokenization_config, context)?;
             Ok(RoutedConcordanceResult {
-                result: search_concordance_documents_index(
-                    documents,
-                    query,
-                    tokenization_config,
-                    context,
-                )?,
+                result,
                 backend_used: ConcordanceBackendUsed::Index,
+                index_rebuilt,
             })
         }
     }
@@ -5025,7 +5026,7 @@ fn search_concordance_documents_index(
     query: &ConcordanceQuery,
     tokenization_config: &TokenizationConfig,
     context: &mut ConcordanceSearchContext,
-) -> Result<ConcordanceResult, ConcordanceError> {
+) -> Result<(ConcordanceResult, bool), ConcordanceError> {
     let window_tokens = concordance_window_tokens(query.window_tokens);
     let limit = concordance_limit(query.limit);
     let distribution_limit = concordance_distribution_limit(query.distribution_limit);
@@ -5042,7 +5043,8 @@ fn search_concordance_documents_index(
         .collect::<Vec<_>>()
         .join(" ");
     let selected_document_ids = selected_concordance_document_ids(documents, &query.selection);
-    let store = context.index_store_for(documents, &selected_document_ids, tokenization_config)?;
+    let (store, index_rebuilt) =
+        context.index_store_for(documents, &selected_document_ids, tokenization_config)?;
     let index = search_surface_index_kwic(store, &index_query, window_tokens)
         .map_err(concordance_error_from_surface_index)?;
 
@@ -5121,24 +5123,27 @@ fn search_concordance_documents_index(
         distribution_limit,
     );
 
-    Ok(ConcordanceResult {
-        query: resolved_query,
-        context_filter: None,
-        case_sensitive: query.case_sensitive,
-        sort_key: query.sort_key,
-        window_tokens,
-        total_hits,
-        documents_with_hits: document_counts.len(),
-        selected_documents_total: selected_document_ids.len(),
-        selected_tokens_total,
-        dp,
-        dispersion_label: annotated_dispersion_label(dp).to_string(),
-        top_document_share,
-        offset,
-        limit,
-        rows,
-        distribution,
-    })
+    Ok((
+        ConcordanceResult {
+            query: resolved_query,
+            context_filter: None,
+            case_sensitive: query.case_sensitive,
+            sort_key: query.sort_key,
+            window_tokens,
+            total_hits,
+            documents_with_hits: document_counts.len(),
+            selected_documents_total: selected_document_ids.len(),
+            selected_tokens_total,
+            dp,
+            dispersion_label: annotated_dispersion_label(dp).to_string(),
+            top_document_share,
+            offset,
+            limit,
+            rows,
+            distribution,
+        },
+        index_rebuilt,
+    ))
 }
 
 fn concordance_error_from_surface_index(error: SurfaceIndexError) -> ConcordanceError {
@@ -7912,7 +7917,7 @@ mod tests {
     fn concordance_routing_types_remain_rust_only_without_ts_export() {
         let source = include_str!("analysis.rs");
         let start = source
-            .find("pub(crate) enum ConcordanceBackend")
+            .find("pub enum ConcordanceBackend")
             .expect("routing type source should exist");
         let end = source
             .find("#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ConcordanceError")
