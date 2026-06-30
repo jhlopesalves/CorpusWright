@@ -376,17 +376,20 @@
             single source quietly takes over the picture. The sampling frame and unit are the decisions underneath it:
             what counts as the population, how texts get selected, whether you take whole texts or fixed-size samples -
             each choice leaves fingerprints on the counts. And documentation - source, date, genre, author, language -
-            is the unglamorous part that lets anyone else, and a future version of you, interpret and reproduce the
+            is the important part that lets anyone else, and a future version of you, interpret and reproduce the
             analysis.</p>
 
-          <p>The neat thing is that none of this stays hidden; it resurfaces in the very measures we have been
-            discussing. An unbalanced corpus shows up as high dispersion for source-specific vocabulary. An
-            under-sampled one shows up as a hapax ratio that stubbornly refuses to come down. Design and diagnostics, it
-            turns out, are two views of the same object. The Overview makes that concrete: it reports the share of
-            tokens held by the largest document and by the top three, and an <em>effective document count</em>,
-            \\(\frac{1}{\sum s_i^2}\\) - the inverse of the summed squared document shares, the number of equally sized
-            documents your corpus effectively behaves like. When that figure sits far below your actual document count,
-            a handful of texts are doing most of the talking.</p>
+          <p>The relationship is beyond conceptual; it is ddirectly reflected in the descriptive measures themselves. An
+            unbalanced corpus is revealed through elevated dispersion for vocabulary concentrated in a small number of
+            sources. An under-sampled corpus is reflected in a persistently high hapax ratio, indicating that many words
+            continue to appear only once. Corpus design and corpus diagnostics are therefore not separate concerns but
+            complementary perspectives on the same underlying structure.
+          <p>The Overview makes these relationships explicit by reporting the proportion of all tokens contributed by
+            the largest document, the combined share of the three largest documents, and the effective document count,
+            (\frac{1}{\sum s_i^2}), where (s_i) denotes the proportion of tokens contributed by document (i). This
+            quantity—the inverse of the sum of squared document shares—represents the number of equally sized documents
+            to which the corpus is effectively equivalent. When the effective document count falls substantially below
+            the actual number of documents, the corpus is dominated by a relatively small number of texts.</p>
 
         </section>
 
