@@ -4,9 +4,14 @@ use crate::annotation::{
     AnnotatedToken, AnnotationError, LemmaTable, ModelManager, UniversalPos, default_model_dir,
 };
 use crate::clean::CleaningConfig;
+use crate::hash::sha256_hex;
+use crate::index::{
+    InMemoryIndexStore, IndexStore, SurfaceIndexDocumentInput, SurfaceIndexError,
+    SurfaceIndexKwicRow, SurfaceIndexManifest, SurfaceIndexQuery, search_surface_index_kwic,
+};
 use crate::language::detect_and_resolve;
 use crate::scan::{DocumentRecord, DocumentType};
-use crate::tokenization::{TokenizationConfig, tokenize};
+use crate::tokenization::{TokenizationConfig, TokenizationManifest, tokenize};
 use rayon::prelude::*;
 use regex::{Regex, RegexBuilder};
 use rust_stemmers::{Algorithm, Stemmer};
@@ -1673,11 +1678,99 @@ pub struct ConcordanceDocument {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum ConcordanceBackend {
+    #[default]
+    Scan,
+    // The selectable index path is exercised through internal routed tests on this
+    // branch; no production or UI caller constructs it while Scan remains default.
+    #[allow(dead_code)]
+    Index,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConcordanceFallbackReason {
+    UnsupportedFilter,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConcordanceBackendUsed {
+    Scan,
+    Index,
+    ScanFallback { reason: ConcordanceFallbackReason },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct RoutedConcordanceResult {
+    pub result: ConcordanceResult,
+    pub backend_used: ConcordanceBackendUsed,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct ConcordanceSearchContext {
+    index_cache: Option<ConcordanceIndexCacheEntry>,
+    index_build_count: usize,
+}
+
+impl ConcordanceSearchContext {
+    fn index_store_for(
+        &mut self,
+        documents: &[ConcordanceDocument],
+        selected_document_ids: &HashSet<usize>,
+        tokenization_config: &TokenizationConfig,
+    ) -> Result<&InMemoryIndexStore, ConcordanceError> {
+        let manifest = concordance_surface_index_manifest(
+            documents,
+            selected_document_ids,
+            tokenization_config,
+        );
+        let cache_valid = self
+            .index_cache
+            .as_ref()
+            .is_some_and(|entry| entry.manifest.is_valid_for(&manifest));
+
+        if !cache_valid {
+            let inputs = documents
+                .iter()
+                .filter(|document| selected_document_ids.contains(&document.document_index))
+                .map(|document| SurfaceIndexDocumentInput {
+                    document_id: document.document_index,
+                    source_path: document.source_path.clone(),
+                    display_name: document.display_name.clone(),
+                    prepared_text: document.text.as_str(),
+                })
+                .collect::<Vec<_>>();
+            let store = InMemoryIndexStore::build(&inputs, tokenization_config)
+                .map_err(ConcordanceError::Index)?;
+            self.index_cache = Some(ConcordanceIndexCacheEntry { manifest, store });
+            self.index_build_count += 1;
+        }
+
+        Ok(&self
+            .index_cache
+            .as_ref()
+            .expect("index cache exists after build")
+            .store)
+    }
+
+    #[cfg(test)]
+    fn index_build_count(&self) -> usize {
+        self.index_build_count
+    }
+}
+
+#[derive(Debug)]
+struct ConcordanceIndexCacheEntry {
+    manifest: SurfaceIndexManifest,
+    store: InMemoryIndexStore,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConcordanceError {
     EmptyQuery,
     InvalidDocumentIdentity,
     InvalidHitIdentity,
+    Index(SurfaceIndexError),
 }
 
 impl std::fmt::Display for ConcordanceError {
@@ -1690,11 +1783,19 @@ impl std::fmt::Display for ConcordanceError {
             Self::InvalidHitIdentity => {
                 formatter.write_str("The concordance hit no longer matches the document.")
             }
+            Self::Index(error) => write!(formatter, "The concordance index failed: {error}"),
         }
     }
 }
 
-impl std::error::Error for ConcordanceError {}
+impl std::error::Error for ConcordanceError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Index(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 /// One document in a bounded file-scope picker response.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -4831,6 +4932,301 @@ fn concordance_distribution_page(
     }
 }
 
+fn concordance_surface_index_manifest(
+    documents: &[ConcordanceDocument],
+    selected_document_ids: &HashSet<usize>,
+    tokenization_config: &TokenizationConfig,
+) -> SurfaceIndexManifest {
+    SurfaceIndexManifest::new(
+        concordance_processed_texts_hash(documents, selected_document_ids),
+        TokenizationManifest {
+            config: *tokenization_config,
+            ..TokenizationManifest::default()
+        },
+    )
+}
+
+fn concordance_processed_texts_hash(
+    documents: &[ConcordanceDocument],
+    selected_document_ids: &HashSet<usize>,
+) -> String {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"corpuswright-concordance-surface-index-v1\0");
+    for document in documents
+        .iter()
+        .filter(|document| selected_document_ids.contains(&document.document_index))
+    {
+        push_hash_usize(&mut bytes, document.document_index);
+        push_hash_bytes(&mut bytes, document.source_path.as_bytes());
+        push_hash_bytes(&mut bytes, document.display_name.as_bytes());
+        push_hash_bytes(&mut bytes, document.text.as_bytes());
+    }
+    sha256_hex(&bytes)
+}
+
+fn push_hash_usize(bytes: &mut Vec<u8>, value: usize) {
+    bytes.extend_from_slice(&(value as u64).to_le_bytes());
+}
+
+fn push_hash_bytes(bytes: &mut Vec<u8>, value: &[u8]) {
+    bytes.extend_from_slice(&(value.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(value);
+}
+
+pub(crate) fn search_concordance_documents_routed(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceQuery,
+    tokenization_config: &TokenizationConfig,
+    context: &mut ConcordanceSearchContext,
+    backend: ConcordanceBackend,
+) -> Result<RoutedConcordanceResult, ConcordanceError> {
+    match backend {
+        ConcordanceBackend::Scan => Ok(RoutedConcordanceResult {
+            result: search_concordance_documents_scan(documents, query, tokenization_config)?,
+            backend_used: ConcordanceBackendUsed::Scan,
+        }),
+        ConcordanceBackend::Index => {
+            if let Some(reason) = concordance_index_fallback_reason(query) {
+                return Ok(RoutedConcordanceResult {
+                    result: search_concordance_documents_scan(
+                        documents,
+                        query,
+                        tokenization_config,
+                    )?,
+                    backend_used: ConcordanceBackendUsed::ScanFallback { reason },
+                });
+            }
+
+            Ok(RoutedConcordanceResult {
+                result: search_concordance_documents_index(
+                    documents,
+                    query,
+                    tokenization_config,
+                    context,
+                )?,
+                backend_used: ConcordanceBackendUsed::Index,
+            })
+        }
+    }
+}
+
+fn concordance_index_fallback_reason(
+    query: &ConcordanceQuery,
+) -> Option<ConcordanceFallbackReason> {
+    query
+        .context_filter
+        .as_deref()
+        .is_some_and(|filter| !filter.trim().is_empty())
+        .then_some(ConcordanceFallbackReason::UnsupportedFilter)
+}
+
+fn search_concordance_documents_index(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceQuery,
+    tokenization_config: &TokenizationConfig,
+    context: &mut ConcordanceSearchContext,
+) -> Result<ConcordanceResult, ConcordanceError> {
+    let window_tokens = concordance_window_tokens(query.window_tokens);
+    let limit = concordance_limit(query.limit);
+    let distribution_limit = concordance_distribution_limit(query.distribution_limit);
+    let index_query = SurfaceIndexQuery::from_surface_text_with_case(
+        &query.query,
+        query.case_sensitive,
+        tokenization_config,
+    )
+    .map_err(concordance_error_from_surface_index)?;
+    let resolved_query = index_query
+        .terms()
+        .iter()
+        .map(|term| term.surface.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let selected_document_ids = selected_concordance_document_ids(documents, &query.selection);
+    let store = context.index_store_for(documents, &selected_document_ids, tokenization_config)?;
+    let index = search_surface_index_kwic(store, &index_query, window_tokens)
+        .map_err(concordance_error_from_surface_index)?;
+
+    let mut hits = index
+        .rows
+        .into_iter()
+        .map(|row| concordance_hit_from_index_row(store, row, query.case_sensitive))
+        .collect::<Result<Vec<_>, _>>()?;
+    hits.sort_by(|left, right| compare_concordance_hits(left, right, query.sort_key));
+
+    let total_hits = hits.len();
+    let offset = query.offset.min(total_hits);
+    let rows = hits
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .map(|hit| hit.row)
+        .collect::<Vec<_>>();
+
+    let mut document_counts = Vec::<(usize, u64)>::new();
+    let mut document_token_counts = HashMap::<usize, u64>::new();
+    let mut document_stats = Vec::<ConcordanceDocumentStats>::new();
+    let mut selected_tokens_total = 0u64;
+
+    for document in documents
+        .iter()
+        .filter(|document| selected_document_ids.contains(&document.document_index))
+    {
+        let indexed_document = store.document(document.document_index).ok_or({
+            ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
+                document_id: document.document_index,
+                token_ordinal_in_document: 0,
+                node_token_length: 0,
+            })
+        })?;
+        let token_count = indexed_document.token_count as u64;
+        let hit_count = index
+            .document_hit_counts
+            .get(&document.document_index)
+            .copied()
+            .unwrap_or_default();
+        selected_tokens_total += token_count;
+        document_token_counts.insert(document.document_index, token_count);
+        if hit_count > 0 {
+            document_counts.push((document.document_index, hit_count));
+        }
+        document_stats.push(ConcordanceDocumentStats {
+            document_id: document.document_index,
+            source_path: document.source_path.clone(),
+            display_name: document.display_name.clone(),
+            token_count,
+            hit_count,
+        });
+    }
+
+    let total_hits_u64 = total_hits as u64;
+    let dp = compute_dispersion_from_token_counts(
+        &document_counts,
+        total_hits_u64,
+        &document_token_counts,
+        selected_tokens_total,
+    );
+    let top_document_share = if total_hits == 0 {
+        0.0
+    } else {
+        document_counts
+            .iter()
+            .map(|(_, count)| *count)
+            .max()
+            .unwrap_or(0) as f64
+            / total_hits as f64
+    };
+    let distribution = concordance_distribution_page(
+        document_stats,
+        query.distribution_offset,
+        distribution_limit,
+    );
+
+    Ok(ConcordanceResult {
+        query: resolved_query,
+        context_filter: None,
+        case_sensitive: query.case_sensitive,
+        sort_key: query.sort_key,
+        window_tokens,
+        total_hits,
+        documents_with_hits: document_counts.len(),
+        selected_documents_total: selected_document_ids.len(),
+        selected_tokens_total,
+        dp,
+        dispersion_label: annotated_dispersion_label(dp).to_string(),
+        top_document_share,
+        offset,
+        limit,
+        rows,
+        distribution,
+    })
+}
+
+fn concordance_error_from_surface_index(error: SurfaceIndexError) -> ConcordanceError {
+    match error {
+        SurfaceIndexError::EmptyQuery => ConcordanceError::EmptyQuery,
+        error => ConcordanceError::Index(error),
+    }
+}
+
+fn concordance_hit_from_index_row(
+    store: &impl IndexStore,
+    row: SurfaceIndexKwicRow,
+    case_sensitive: bool,
+) -> Result<ConcordanceHit, ConcordanceError> {
+    let records = store.records_for_document(row.document_id).ok_or({
+        ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
+            document_id: row.document_id,
+            token_ordinal_in_document: row.token_ordinal_in_document,
+            node_token_length: row.node_token_length,
+        })
+    })?;
+    let node_end = row
+        .token_ordinal_in_document
+        .checked_add(row.node_token_length)
+        .ok_or({
+            ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
+                document_id: row.document_id,
+                token_ordinal_in_document: row.token_ordinal_in_document,
+                node_token_length: row.node_token_length,
+            })
+        })?;
+    if row.node_token_length == 0 || node_end > records.len() {
+        return Err(ConcordanceError::Index(
+            SurfaceIndexError::InconsistentStore {
+                document_id: row.document_id,
+                token_ordinal_in_document: row.token_ordinal_in_document,
+                node_token_length: row.node_token_length,
+            },
+        ));
+    }
+
+    Ok(ConcordanceHit {
+        node_key: concordance_key(&row.node, case_sensitive),
+        left_keys: [
+            index_context_sort_key(
+                records,
+                row.token_ordinal_in_document.checked_sub(1),
+                case_sensitive,
+            ),
+            index_context_sort_key(
+                records,
+                row.token_ordinal_in_document.checked_sub(2),
+                case_sensitive,
+            ),
+            index_context_sort_key(
+                records,
+                row.token_ordinal_in_document.checked_sub(3),
+                case_sensitive,
+            ),
+        ],
+        right_keys: [
+            index_context_sort_key(records, Some(node_end), case_sensitive),
+            index_context_sort_key(records, node_end.checked_add(1), case_sensitive),
+            index_context_sort_key(records, node_end.checked_add(2), case_sensitive),
+        ],
+        row: ConcordanceRow {
+            document_index: row.document_id,
+            source_path: row.source_path,
+            display_name: row.display_name,
+            token_index: row.token_ordinal_in_document,
+            node_token_length: row.node_token_length,
+            left_context: row.left_context,
+            node: row.node,
+            right_context: row.right_context,
+        },
+    })
+}
+
+fn index_context_sort_key(
+    records: &[crate::index::SurfaceIndexTokenRecord],
+    index: Option<usize>,
+    case_sensitive: bool,
+) -> Option<String> {
+    index
+        .and_then(|token_index| records.get(token_index))
+        .map(|record| concordance_key(&record.surface, case_sensitive))
+}
+
 fn stopword_matches(value: &str) -> bool {
     ENGLISH_STOPWORDS.contains(case_fold_surface(value).as_str())
 }
@@ -5032,6 +5428,22 @@ fn compare_collocation_rows(
 
 /// Searches processed text for a surface token sequence and returns KWIC rows.
 pub fn search_concordance_documents(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceQuery,
+    tokenization_config: &TokenizationConfig,
+) -> Result<ConcordanceResult, ConcordanceError> {
+    let mut context = ConcordanceSearchContext::default();
+    search_concordance_documents_routed(
+        documents,
+        query,
+        tokenization_config,
+        &mut context,
+        ConcordanceBackend::default(),
+    )
+    .map(|routed| routed.result)
+}
+
+fn search_concordance_documents_scan(
     documents: &[ConcordanceDocument],
     query: &ConcordanceQuery,
     tokenization_config: &TokenizationConfig,
