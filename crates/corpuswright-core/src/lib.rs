@@ -28,6 +28,7 @@ pub mod docx;
 pub mod export;
 pub mod hash;
 pub mod html;
+pub mod index;
 pub mod language;
 pub mod manifest;
 pub mod pdf;
