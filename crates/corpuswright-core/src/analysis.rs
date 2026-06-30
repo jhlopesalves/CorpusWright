@@ -7728,6 +7728,59 @@ mod tests {
     }
 
     #[test]
+    fn routed_index_parity_holds_for_selection_and_pagination() {
+        let documents = vec![
+            concordance_document(0, "a.txt", "alpha beta alpha gamma alpha"),
+            concordance_document(1, "b.txt", "alpha delta alpha"),
+            concordance_document(2, "c.txt", "epsilon alpha alpha alpha"),
+        ];
+        let mut query = parity_concordance_query("alpha", false);
+        query.selection = AnalysisDocumentSelection {
+            all_documents: false,
+            ids: vec![1, 2],
+            excluded_ids: Vec::new(),
+        };
+        query.offset = 1;
+        query.limit = 2;
+
+        let mut scan_context = ConcordanceSearchContext::default();
+        let scan = routed_concordance_for(
+            &documents,
+            &query,
+            &mut scan_context,
+            ConcordanceBackend::Scan,
+        )
+        .unwrap();
+        let mut index_context = ConcordanceSearchContext::default();
+        let index = routed_concordance_for(
+            &documents,
+            &query,
+            &mut index_context,
+            ConcordanceBackend::Index,
+        )
+        .unwrap();
+
+        assert_eq!(scan.backend_used, ConcordanceBackendUsed::Scan);
+        assert_eq!(index.backend_used, ConcordanceBackendUsed::Index);
+        assert_eq!(index.result, scan.result);
+        assert_eq!(index.result.total_hits, 5);
+        assert_eq!(index.result.selected_documents_total, 2);
+        assert_eq!(index.result.offset, 1);
+        assert_eq!(index.result.limit, 2);
+        assert_eq!(index.result.rows.len(), 2);
+        assert!(index.result.rows.iter().all(|row| row.document_index != 0));
+        assert_eq!(
+            index
+                .result
+                .rows
+                .iter()
+                .map(|row| (row.document_index, row.token_index))
+                .collect::<Vec<_>>(),
+            [(1, 2), (2, 1)]
+        );
+    }
+
+    #[test]
     fn routed_index_falls_back_for_context_filter_and_matches_scan() {
         let documents = vec![concordance_document(
             0,
