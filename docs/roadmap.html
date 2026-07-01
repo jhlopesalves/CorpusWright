@@ -31,9 +31,12 @@
   <div class="shell nav">
     <a class="brand" href="index.html"><img class="mark" src="assets/icon-32.png" alt="" width="28" height="28"> CorpusWright</a>
     <nav class="nav-links" aria-label="Primary">
+      <a href="quick-start.html">Quick Start</a>
       <a href="method.html">Method</a>
+      <a href="learn.html">Learn</a>
       <a href="roadmap.html" aria-current="page">Roadmap</a>
       <a href="technical-docs.html">Docs</a>
+      <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8">Download</a>
       <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
           stroke-linejoin="round" aria-hidden="true">
@@ -61,8 +64,8 @@
   <div class="shell">
     <div class="section-lead">
       <p class="eyebrow">Roadmap</p>
-      <h1>Alpha workbench now, indexed analysis next.</h1>
-      <p class="lede">CorpusWright alpha.8 includes preprocessing, frequency views, KWIC, collocates, document spread diagnostics, and safer text decoding. The next architecture step is the positional index that will make those analysis paths stronger.</p>
+      <h1>Current alpha and planned work</h1>
+      <p class="lede">CorpusWright alpha.8 covers preprocessing, frequency views, KWIC concordances, collocates, document-spread diagnostics, and safer text decoding. A surface positional index now exists as internal infrastructure; the next step is to route the analysis paths through it behind parity checks.</p>
     </div>
   </div>
 </section>
@@ -86,13 +89,20 @@
       </ul>
     </article>
     <article class="card">
+      <h3>Internal groundwork</h3>
+      <ul class="checklist">
+        <li>Landed: surface positional index, case-sensitive parity, and an index-backed Concordance route</li>
+        <li>In progress: a developer-only scan, index, and audit dogfood mode that is not present in public builds</li>
+      </ul>
+    </article>
+    <article class="card">
       <h3>Next / near-term</h3>
       <ul class="checklist">
-        <li>Dogfood alpha.8 on IMDB and Portuguese corpora</li>
-        <li>Design and build the surface positional index</li>
-        <li>Migrate KWIC and Collocates to the index behind parity gates</li>
+        <li>Dogfood alpha.8 on the IMDB and Portuguese corpora</li>
+        <li>Exercise the index-backed Concordance route against the scan engine under parity checks</li>
+        <li>Decide the default Concordance backend once parity holds on real corpora</li>
         <li>Write the frontend Analyse workspace state-model brief</li>
-        <li>Shape the future one-workspace Concordance interaction model</li>
+        <li>Shape the future single-workspace Concordance interaction model</li>
       </ul>
     </article>
     <article class="card">
@@ -113,11 +123,11 @@
   <div class="shell">
     <div class="section-lead">
       <h2>Known alpha limits</h2>
-      <p>These are not hidden future promises. They are the boundaries of the current public alpha.</p>
+      <p>These are the boundaries of the current public alpha.</p>
     </div>
     <div class="principles">
       <p><span class="term">Concordance and Collocates:</span> functional alpha features, not the final workflow design.</p>
-      <p><span class="term">Indexing:</span> alpha.8 still uses scan and cached paths. The positional index is not included yet.</p>
+      <p><span class="term">Indexing:</span> public alpha.8 builds still run the scan and cached analysis paths; the surface positional index is internal groundwork and is not yet the default in released builds.</p>
       <p><span class="term">Queries:</span> there is no CQL, no N-grams, no lemma/POS KWIC, and no annotation-aware Concordance yet.</p>
       <p><span class="term">Hosting:</span> CorpusWright is local-first. It does not provide remote corpus hosting.</p>
       <p><span class="term">Packaging:</span> Windows builds may still show unsigned-app warnings.</p>
