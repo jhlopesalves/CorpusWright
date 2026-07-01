@@ -3,118 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.">
-  <title>Method · CorpusWright</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/site.css">
-  <link rel="icon" href="assets/icon.png">
-  <script>
-    (function() {
-      const savedTheme = localStorage.getItem('theme');
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
-    })();
-
-    function toggleTheme() {
-      const currentTheme = document.documentElement.getAttribute('data-theme') ||
-                           (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', newTheme);
-      localStorage.setItem('theme', newTheme);
-    }
-  </script>
+  <title>Moved to Method and Measures - CorpusWright</title>
+  <link rel="canonical" href="method-and-measures.html">
+  <meta http-equiv="refresh" content="0; url=method-and-measures.html">
+  <script>location.replace('method-and-measures.html' + location.hash);</script>
 </head>
 <body>
-<header class="site-header">
-  <div class="shell nav">
-    <a class="brand" href="index.html"><img class="mark" src="assets/icon-32.png" alt="" width="28" height="28"> CorpusWright</a>
-    <nav class="nav-links" aria-label="Primary">
-      <a href="quick-start.html">Quick Start</a>
-      <a href="method.html" aria-current="page">Method</a>
-      <a href="learn.html">Learn</a>
-      <a href="roadmap.html">Roadmap</a>
-      <a href="technical-docs.html">Docs</a>
-      <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8">Download</a>
-      <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-          stroke-linejoin="round" aria-hidden="true">
-          <path
-            d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
-          </path>
-        </svg>
-      </a>
-      <button class="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
-        <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="4"></circle>
-          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
-        </svg>
-        <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
-        </svg>
-      </button>
-    </nav>
-  </div>
-</header>
-
-<main id="top">
-
-<section class="section">
-  <div class="shell">
-    <div class="section-lead">
-      <p class="eyebrow">Method</p>
-      <h1>CorpusWright treats cleaning as part of the analysis.</h1>
-      <p class="lede">Corpus preprocessing is part of the analysis, not a preliminary stage to be set aside once the corpus is built. Every cleaning decision should be inspectable, reproducible, and connected to the points in the workflow where its effects become visible.</p>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="shell grid">
-    <article class="card">
-      <h3>Deterministic by default</h3>
-      <p>Cleaning rules produce the same result on every run. A saved configuration is part of the research record: it can be inspected, shared, and re-applied without relying on any recollection of manual steps taken in the interface.</p>
-    </article>
-    <article class="card">
-      <h3>Review before removal</h3>
-      <p>A detected repeated artefact is evidence, not an instruction to remove it. The application identifies candidate noise but does not act on it automatically; a candidate becomes a cleaning rule only once it has been explicitly reviewed and accepted. The default is to preserve text rather than to discard it on inference alone.</p>
-    </article>
-    <article class="card">
-      <h3>Page-aware when possible</h3>
-      <p>Headers and footers belong to the structure of the page rather than to the running text. Where the source format permits, CorpusWright interprets a PDF as a paged document and distinguishes page-level structure from flat-text fallbacks.</p>
-    </article>
-    <article class="card">
-      <h3>An integrated analysis loop</h3>
-      <p>Assessing whether a cleaning decision was sound should not require repeated export and re-import between separate tools. Cleaning, concordance inspection, and frequency analysis are designed to operate within a single, continuous workflow.</p>
-    </article>
-  </div>
-</section>
-
-<section class="section">
-  <div class="shell">
-    <div class="section-lead">
-      <h2>The principles</h2>
-      <p>A tool that presents numbers is not, by that fact alone, a rigorous one. The following commitments guide the design of CorpusWright:</p>
-    </div>
-    <div class="principles">
-      <p><span class="term">Local-first:</span> Private corpora should not have to be uploaded to a remote server; all analysis remains on your own machine.</p>
-      <p><span class="term">Auditability:</span> Extraction warnings and cleaning rules remain inspectable, so that preprocessing decisions can be examined and, where necessary, revised.</p>
-      <p><span class="term">Conservatism:</span> The cleaner avoids destructive inference. Where a decision is uncertain, it retains the original text rather than removing content that cannot afterwards be recovered.</p>
-      <p><span class="term">Statistical restraint:</span> Basic frequencies are reported as such, without overstatement. Analysis features are designed to respect corpus design, dispersion, document-level variation, and the uncertainty inherent in the measures.</p>
-    </div>
-  </div>
-</section>
-
-</main>
-
-<footer class="site-footer">
-  <div class="shell foot">
-    <span>CorpusWright is an open, local-first corpus linguistics workbench, currently in public alpha (v0.1.0-alpha.8).</span>
-    <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
-  </div>
-</footer>
-
-
+  <p>This page has moved to <a href="method-and-measures.html">Method and Measures</a>.</p>
 </body>
 </html>
