@@ -9,6 +9,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  release-consistency:
+    name: Release metadata consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check release metadata
+        run: node scripts/check-release-consistency.cjs
+
   rust-core:
     name: Rust core (corpuswright-core)
     runs-on: ubuntu-latest
