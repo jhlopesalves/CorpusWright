@@ -31,9 +31,12 @@
   <div class="shell nav">
     <a class="brand" href="index.html"><img class="mark" src="assets/icon-32.png" alt="" width="28" height="28"> CorpusWright</a>
     <nav class="nav-links" aria-label="Primary">
+      <a href="quick-start.html">Quick Start</a>
       <a href="method.html" aria-current="page">Method</a>
+      <a href="learn.html">Learn</a>
       <a href="roadmap.html">Roadmap</a>
       <a href="technical-docs.html">Docs</a>
+      <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8">Download</a>
       <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
           stroke-linejoin="round" aria-hidden="true">
@@ -62,7 +65,7 @@
     <div class="section-lead">
       <p class="eyebrow">Method</p>
       <h1>CorpusWright treats cleaning as part of the analysis.</h1>
-      <p class="lede">The core idea is actually quite simple. Corpus preprocessing is not a separate, dirty phase we hide from the final paper. It should be inspectable, repeatable, and intimately connected to the places where we actually notice problems.</p>
+      <p class="lede">Corpus preprocessing is part of the analysis, not a preliminary stage to be set aside once the corpus is built. Every cleaning decision should be inspectable, reproducible, and connected to the points in the workflow where its effects become visible.</p>
     </div>
   </div>
 </section>
@@ -71,19 +74,19 @@
   <div class="shell grid">
     <article class="card">
       <h3>Deterministic by default</h3>
-      <p>We've all been there, right? A vague memory of GUI clicks that somehow cleaned the texts six months ago. Not here. Cleaning rules must behave exactly the same way today, tomorrow, and next Tuesday. A saved configuration is a research object. It exposes itself to scrutiny.</p>
+      <p>Cleaning rules produce the same result on every run. A saved configuration is part of the research record: it can be inspected, shared, and re-applied without relying on any recollection of manual steps taken in the interface.</p>
     </article>
     <article class="card">
       <h3>Review before removal</h3>
-      <p>Finding a repeated artefact is evidence, not permission to delete it. The software might flag the noise, but it does not make the final call. Candidates only become cleaning rules when we explicitly accept them. We prefer cautious decisions over destructive guesses, don't we? We all do.</p>
+      <p>A detected repeated artefact is evidence, not an instruction to remove it. The application identifies candidate noise but does not act on it automatically; a candidate becomes a cleaning rule only once it has been explicitly reviewed and accepted. The default is to preserve text rather than to discard it on inference alone.</p>
     </article>
     <article class="card">
       <h3>Page-aware when possible</h3>
-      <p>Headers and footers are page phenomena, not just floating text. CorpusWright treats a PDF like a physical document — well, like a suspiciously close cousin to a physical document, at least. It actively distinguishes page-aware metadata from basic flat-text fallbacks.</p>
+      <p>Headers and footers belong to the structure of the page rather than to the running text. Where the source format permits, CorpusWright interprets a PDF as a paged document and distinguishes page-level structure from flat-text fallbacks.</p>
     </article>
     <article class="card">
-      <h3>Analysis loop, not pipeline theatre</h3>
-      <p>Export. Import. Check. Export again. We shouldn't have to jump through hoops just to see if a cleaning decision actually worked. Cleaning, KWIC inspection, and frequencies should form a tight loop. This is about real analysis, not just pipeline theatre.</p>
+      <h3>An integrated analysis loop</h3>
+      <p>Assessing whether a cleaning decision was sound should not require repeated export and re-import between separate tools. Cleaning, concordance inspection, and frequency analysis are designed to operate within a single, continuous workflow.</p>
     </article>
   </div>
 </section>
@@ -92,13 +95,13 @@
   <div class="shell">
     <div class="section-lead">
       <h2>The principles</h2>
-      <p>Corpus tools can be seductive. They often make us think we are doing rigorous work just because the interface looks serious and is full of measurable nouns. But let's clear the ground first. Here is what actually drives the design:</p>
+      <p>A tool that presents numbers is not, by that fact alone, a rigorous one. The following commitments guide the design of CorpusWright:</p>
     </div>
     <div class="principles">
-      <p><span class="term">Local-first:</span> Private corpora should not require sending your data to a cloud server. The analysis stays on your machine.</p>
-      <p><span class="term">Auditability:</span> If we cannot imagine the world contradicting our decisions, we are not doing science. Extraction warnings and cleaning rules must remain inspectable.</p>
-      <p><span class="term">Conservatism:</span> The cleaner avoids destructive guesses. It would rather leave noise in the text than silently erase data. Funny, isn't it? A cleaner that prefers not to clean.</p>
-      <p><span class="term">Statistical seriousness:</span> We refuse to dress basic frequencies up as revolutionary. Future analysis features will respect corpus design, dispersion, document-level variation, and genuine uncertainty.</p>
+      <p><span class="term">Local-first:</span> Private corpora should not have to be uploaded to a remote server; all analysis remains on your own machine.</p>
+      <p><span class="term">Auditability:</span> Extraction warnings and cleaning rules remain inspectable, so that preprocessing decisions can be examined and, where necessary, revised.</p>
+      <p><span class="term">Conservatism:</span> The cleaner avoids destructive inference. Where a decision is uncertain, it retains the original text rather than removing content that cannot afterwards be recovered.</p>
+      <p><span class="term">Statistical restraint:</span> Basic frequencies are reported as such, without overstatement. Analysis features are designed to respect corpus design, dispersion, document-level variation, and the uncertainty inherent in the measures.</p>
     </div>
   </div>
 </section>
