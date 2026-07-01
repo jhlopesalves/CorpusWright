@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
-    content="CorpusWright is a local-first desktop workbench for preparing, inspecting, and analysing research corpora.">
+    content="CorpusWright is a local-first workbench for preparing, describing, and exploring a corpus.">
   <title>CorpusWright - local-first corpus workbench</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,10 +29,11 @@
       <a class="brand" href="index.html"><img class="mark" src="assets/icon-32.png" alt="" width="28" height="28">
         CorpusWright</a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="quick-start.html">Get Started</a>
-        <a href="#">User Guide</a>
+        <a href="quick-start.html">Quick Start</a>
+        <a href="method.html">Method</a>
         <a href="learn.html">Learn</a>
         <a href="roadmap.html">Roadmap</a>
+        <a href="technical-docs.html">Docs</a>
         <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8">Download</a>
         <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -66,23 +67,16 @@
           <img class="hero-logo" src="assets/icon.png" alt="CorpusWright logo">
           <div>
             <h1>A local-first corpus tool, built in Rust.</h1>
-            <p class="lede">Clean documents, build a corpus of any size, and profile it: frequency, diversity,
-              dispersion and distribution.</p>
+            <p class="lede">CorpusWright is a local-first desktop workbench for preparing, inspecting, and exploring text corpora, with frequency lists, KWIC concordances, collocates, document-spread diagnostics, and reproducible records of every processing step.</p>
             <div class="hero-downloads">
               <div class="dl-list">
                 <p class="dl-heading">Downloads</p>
                 <ul>
-                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8">Windows
-                      installer (.msi) <span class="dl-ver">alpha 0.8</span></a></li>
-                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8">macOS disk
-                      image (.dmg) <span class="dl-ver">alpha 0.8</span></a></li>
-                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8">Linux AppImage
-                      <span class="dl-ver">alpha 0.8</span></a></li>
-                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Latest release</a></li>
+                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8">Download alpha.8</a></li>
+                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases/latest">View the latest release</a></li>
                 </ul>
               </div>
-              <p class="muted dl-note">Experimental alpha. Windows and macOS builds are unsigned, so your system may
-                warn before running them.</p>
+              <p class="muted dl-note">Experimental alpha. Windows, macOS, and Linux builds are listed on the release page where available; unsigned Windows and macOS builds may prompt a warning before running.</p>
             </div>
           </div>
         </div>
@@ -99,7 +93,7 @@
                 every source and processed file.</p>
             </div>
             <div class="principle">
-              <h3>Statistically grounded</h3>
+              <h3>Statistical profile</h3>
               <p>A full statistical profile of your corpus: frequency, diversity, dispersion, concentration and
                 distributional shape, with every measure defined and clearly explained.</p>
             </div>
@@ -108,8 +102,8 @@
               <p>Every statistic comes with its formula, an interpretation and its limitations.</p>
             </div>
             <div class="principle">
-              <h3>Fast</h3>
-              <p>A Rust core processes large corpora in parallel, natively.</p>
+              <h3>Built in Rust</h3>
+              <p>A native Rust core keeps analysis local and deterministic, with reproducible outputs and explicit manifests.</p>
             </div>
           </div>
           <div>
@@ -157,15 +151,12 @@
       <div class="shell">
         <div class="card-grid-2">
           <a class="card" href="quick-start.html">
-            <h3>Get Started</h3>
-            <p>Absolute Beginners: Install CorpusWright, create your first project, and clean a corpus end to end. A
-              guided walkthrough; no prior corpus experience assumed.</p><span class="card-link">To the tutorials
-              &#x2192;</span>
+            <h3>Get started</h3>
+            <p>Install CorpusWright, create a project, and clean a corpus from start to finish in a guided walkthrough that assumes no prior corpus experience.</p><span class="card-link">To the tutorials &#x2192;</span>
           </a>
-          <a class="card" href="#">
-            <h3>User Guide</h3>
-            <p>How each tool works: source extraction, cleaning rules, the Repeated Artefact Finder, the Analyse
-              Overview; task by task.</p><span class="card-link">To the user guide &#x2192;</span>
+          <a class="card" href="method.html">
+            <h3>Method</h3>
+            <p>The principles behind the workbench: deterministic cleaning, review before removal, page-aware extraction, and an integrated analysis loop.</p><span class="card-link">To the method &#x2192;</span>
           </a>
           <a class="card" href="learn.html">
             <h3>Learn</h3>
@@ -188,7 +179,7 @@
         </div>
         <p>If you use CorpusWright in your research or teaching, please cite it. The repository contains a
           machine-readable <code>CITATION.cff</code> file; you can copy APA or BibTeX from the &#x201c;Cite this
-          repository&#x201d; widget on GitHub.</p>
+          repository&#x201d; widget on GitHub. See the <a href="citation.html">full citation guidance</a> for APA and BibTeX templates.</p>
       </div>
     </section>
   </main>
