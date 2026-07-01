@@ -7915,7 +7915,7 @@ mod tests {
 
     #[test]
     fn concordance_routing_types_remain_rust_only_without_ts_export() {
-        let source = include_str!("analysis.rs");
+        let source = include_str!("mod.rs");
         let start = source
             .find("pub enum ConcordanceBackend")
             .expect("routing type source should exist");
