@@ -13,8 +13,9 @@ authors:
     email: jhlopesalves@gmail.com
 repository-code: "https://github.com/jhlopesalves/CorpusWright"
 url: "https://jhlopesalves.github.io/CorpusWright/"
-version: 0.1.0-alpha.7
-date-released: "2026-06-25"   # TODO: set to the actual release date of this version
+version: 0.1.0-alpha.8
+date-released: "2026-06-29"
+license: MIT
 keywords:
   - corpus linguistics
   - text processing
@@ -22,11 +23,3 @@ keywords:
   - KWIC
   - reproducibility
   - Rust
-# license: MIT   # TODO: uncomment and set to your actual SPDX licence id (e.g. MIT, GPL-3.0-or-later)
-#
-# Once mint a Zenodo DOI for a release, add an identifiers block so the
-# DOI becomes the preferred, permanent citation target:
-# identifiers:
-#   - type: doi
-#     value: 10.5281/zenodo.XXXXXXX
-#     description: Concept DOI (always resolves to the latest version)
