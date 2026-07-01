@@ -1,6 +1,6 @@
 # CorpusWright
 [![CI](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v0.1.0--alpha.8-blue)](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8)
+[![Release](https://img.shields.io/github/v/release/jhlopesalves/CorpusWright?include_prereleases&label=release)](https://github.com/jhlopesalves/CorpusWright/releases/latest)
 [![Docs](https://img.shields.io/badge/docs-website-006cd6)](https://jhlopesalves.github.io/CorpusWright/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -12,7 +12,7 @@ A local-first desktop corpus workbench for cleaning, counting, concordancing, an
 
 **Project website:** https://jhlopesalves.github.io/CorpusWright/ — the public GitHub Pages site for downloads, quick start, method and concepts, roadmap, citation guidance, and technical docs.
 
-**Download the experimental alpha:** [CorpusWright v0.1.0-alpha.8](https://github.com/jhlopesalves/CorpusWright/releases/tag/v0.1.0-alpha.8)
+**Download the latest experimental alpha:** [CorpusWright releases](https://github.com/jhlopesalves/CorpusWright/releases/latest)
 
 Latest release page: https://github.com/jhlopesalves/CorpusWright/releases/latest
 
@@ -140,7 +140,7 @@ Known limits:
 
 Next on my list:
 
-- dogfood alpha.8 on IMDB and Portuguese corpora;
+- dogfood the current alpha on IMDB and Portuguese corpora;
 - design and build the surface positional index;
 - migrate KWIC and Collocates to the index behind parity gates;
 - write the frontend/Analyse workspace state-model brief;
@@ -159,17 +159,33 @@ To obtain the correct citation format for the version you are using:
 - Use GitHub's **“Cite this repository”** widget on the right-hand sidebar of the repository page, which automatically exports APA and BibTeX formats.
 - Alternatively, read the metadata directly from the [`CITATION.cff`](CITATION.cff) file.
 
-**`CITATION.cff` template:**
+**Current `CITATION.cff`:**
 ```yaml
 cff-version: 1.2.0
+message: "If you use CorpusWright in your research or teaching, please cite it as below."
 title: CorpusWright
-message: "If you use CorpusWright in your research or teaching, please cite it."
+abstract: >-
+  A desktop corpus-linguistics workbench with a Rust core for cleaning,
+  inspecting, and analysing research corpora with statistical and
+  methodological rigour. Local-first, auditable, and analysis-aware.
+type: software
 authors:
   - family-names: Lopes
     given-names: Jhonatan Henrique
     orcid: "https://orcid.org/0009-0008-4914-0262"
-version: [version]
+    email: jhlopesalves@gmail.com
 repository-code: "https://github.com/jhlopesalves/CorpusWright"
+url: "https://jhlopesalves.github.io/CorpusWright/"
+version: 0.1.0-alpha.8
+date-released: "2026-06-29"
+license: MIT
+keywords:
+  - corpus linguistics
+  - text processing
+  - concordance
+  - KWIC
+  - reproducibility
+  - Rust
 ```
 
 For further guidance (including how to reference version-specific DOIs via Zenodo once minted), see the [Citation Guidance on our documentation site](https://jhlopesalves.github.io/CorpusWright/citation.html).

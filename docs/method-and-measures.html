@@ -117,16 +117,16 @@
           <figure>
             <pre class="mermaid">
 flowchart TD
-    A["Source text"] --> B["Extract text"]
-    B --> C["Detect artefacts"]
-    C --> D["Human review"]
-    D --> E["Saved cleaning rules"]
-    E --> F["Build corpus"]
-    F --> G["Inspect diagnostics"]
-    G --> H{"Looks right?"}
-    H -->|no, revise| D
+    A["Source<br>text"] --> B["Extract<br>text"]
+    B --> C["Detect<br>artefacts"]
+    C --> D["Human<br>review"]
+    D --> E["Saved cleaning<br>rules"]
+    E --> F["Build<br>corpus"]
+    F --> G["Inspect<br>diagnostics"]
+    G --> H{"Looks<br>right?"}
+    H -->|revise| D
     H -->|yes| I["Analysis"]
-    E -.->|deterministic re-run| F
+    E -.->|re-run| F
 </pre>
             <figcaption>Preparation is analysis: saved cleaning rules replay deterministically into each rebuild.</figcaption>
           </figure>
@@ -181,14 +181,14 @@ flowchart TD
 
             <h2 id="how-to-read-this-section">How to read this section</h2>
 
-            <figure>
-              <pre class="mermaid">
+          <figure>
+            <pre class="mermaid">
 flowchart TD
-    Q1["What is in it?"] --> Q2["What shape does it have?"]
-    Q2 --> Q3["Where are the patterns located?"]
-    Q3 --> Q4["What limits the evidence?"]
-    Q4 --> Q5["What can we responsibly ask next?"]
-    Q5 -.->|then| N["Inference needs a specified comparison,<br>model, uncertainty, and a bounded claim"]
+    Q1["What is<br>in it?"] --> Q2["What shape<br>does it have?"]
+    Q2 --> Q3["Where are the<br>patterns located?"]
+    Q3 --> Q4["What limits<br>the evidence?"]
+    Q4 --> Q5["What can we<br>responsibly ask next?"]
+    Q5 -.->|then| N["Inference needs a<br>specified comparison,<br>model, uncertainty,<br>and a bounded claim"]
 </pre>
               <figcaption>A chain of diagnostic questions that cuts across measures, from what is in the corpus to what can be asked next.</figcaption>
             </figure>
@@ -277,7 +277,10 @@ flowchart TD
     <span class="cw-chip">Freedom</span>
     <span class="cw-chip is-repeat">is</span>
     <span class="cw-chip">slavery</span>
-    <span class="cw-count">6 tokens</span>
+    <span class="cw-chip">Ignorance</span>
+    <span class="cw-chip is-repeat">is</span>
+    <span class="cw-chip">strength</span>
+    <span class="cw-count">9 tokens</span>
   </div>
 
   <div class="cw-row">
@@ -287,7 +290,9 @@ flowchart TD
     <span class="cw-chip">peace</span>
     <span class="cw-chip">Freedom</span>
     <span class="cw-chip">slavery</span>
-    <span class="cw-count">5 types — the two “is” collapse to one</span>
+    <span class="cw-chip">Ignorance</span>
+    <span class="cw-chip">strength</span>
+    <span class="cw-count">7 types — the three “is” tokens collapse to one</span>
   </div>
 
   <div class="cw-row">
@@ -416,12 +421,13 @@ flowchart TD
               predict - evenly distributed. Near 1 means it is clumped into a handful of parts.</p>
 
             <p>A worked example shows why the two must be read together. Cut a corpus into four equally sized parts,
-              each with an expected share \(s_i = 0.25\), and take two words that occur twelve times apiece -
-              indistinguishable on any frequency list. The first is spread evenly, three occurrences to a part: every
-              observed share equals its expected \(0.25\), every gap \(|v_i - s_i|\) is zero, and \(DP = 0\). The
-              second lands entirely in one part, twelve and then nothing: the gaps are \(0.75, 0.25, 0.25, 0.25\),
-              summing to 1.5, so \(DP = 0.5 \times 1.5 = 0.75\). Same frequency, opposite verdict - the first word
-              belongs to the whole corpus, the second to a single text that happens to sit inside it. (Total
+              each with an expected share \(s_i = 0.25\), and take <em>labyrinth</em> and <em>tiger</em>, two words
+              that occur twelve times apiece - indistinguishable on any frequency list. <em>Labyrinth</em> is spread
+              evenly, three occurrences to a part: every observed share equals its expected \(0.25\), every gap
+              \(|v_i - s_i|\) is zero, and \(DP = 0\). <em>Tiger</em> lands entirely in one part, twelve and then
+              nothing: the gaps are \(0.75, 0.25, 0.25, 0.25\), summing to 1.5, so \(DP = 0.5 \times 1.5 = 0.75\).
+              Same frequency, opposite verdict - <em>labyrinth</em> belongs to the whole corpus, <em>tiger</em> to a
+              single text that happens to sit inside it. (Total
               concentration tops out at 0.75 rather than 1 here because, with four equal parts, the practical ceiling
               is \(1 - 0.25\) - the unnormalised behaviour described above.)</p>
 
@@ -697,13 +703,14 @@ flowchart TD
               equivalent. When the effective document count falls substantially below the actual number of documents,
               the corpus is dominated by a relatively small number of texts.</p>
 
-            <p>A worked example shows what the figure is worth. Take a corpus of ten documents. If each contributes an
-              equal tenth of the tokens, every share is \(s_i = 0.1\), so \(\sum s_i^2 = 10 \times 0.01 = 0.1\) and the
-              effective document count is \(1 / 0.1 = 10\) - the corpus behaves like the ten documents it holds. Now let
-              one document supply half the tokens while the other nine split the remainder evenly, about 0.056 each:
-              \(\sum s_i^2 = 0.5^2 + 9 \times 0.056^2 \approx 0.25 + 0.028 = 0.278\), so the effective count falls to
-              \(1 / 0.278 \approx 3.6\). Ten documents on paper, yet statistically the corpus rests on the equivalent
-              of fewer than four.</p>
+            <p>A worked example shows what the figure is worth. Take a corpus of four documents. If each contributes an
+              equal quarter of the tokens, every share is \(s_i = 0.25\), so
+              \(\sum s_i^2 = 4 \times 0.25^2 = 0.25\) and the effective document count is \(1 / 0.25 = 4\) - the corpus
+              behaves like the four documents it holds. Now let one document supply half the tokens while the other
+              three split the remainder evenly, about 0.167 each:
+              \(\sum s_i^2 = 0.5^2 + 3 \times 0.167^2 \approx 0.25 + 0.083 = 0.333\), so the effective count falls to
+              \(1 / 0.333 \approx 3.0\). Four documents on paper, yet statistically the corpus rests on the equivalent
+              of about three.</p>
 
             <figure>
               <img src="assets/figures/effective_documents.svg" alt="Four documents on paper — but one large document can make the corpus behave like fewer.">
@@ -716,15 +723,15 @@ flowchart TD
 
             <h2 id="reading-the-overview">Reading the Overview</h2>
 
-            <figure>
-              <pre class="mermaid">
+          <figure>
+            <pre class="mermaid">
 flowchart TD
-    S["Corpus size"] --> Z["Zipf shape"]
-    Z --> DD["Diversity + dispersion"]
-    DD --> HX["Hapax ratio"]
+    S["Corpus<br>size"] --> Z["Zipf<br>shape"]
+    Z --> DD["Diversity +<br>dispersion"]
+    DD --> HX["Hapax<br>ratio"]
     HX --> EN["Entropy"]
-    EN --> W{"Anything look wrong?"}
-    W -->|yes| CL["Return to cleaning"]
+    EN --> W{"Anything<br>look wrong?"}
+    W -->|yes| CL["Return to<br>cleaning"]
     W -->|no| OK["Read on"]
 </pre>
               <figcaption>A suggested reading order across the overview diagnostics, looping back to cleaning when something looks wrong.</figcaption>
@@ -814,8 +821,7 @@ flowchart TD
 
   <footer class="site-footer">
     <div class="shell foot">
-      <span>CorpusWright is an open, local-first corpus linguistics workbench, currently in public alpha
-        (v0.1.0-alpha.8).</span>
+      <span>CorpusWright is an open, local-first corpus linguistics workbench, currently in public alpha.</span>
       <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
     </div>
   </footer>
@@ -906,6 +912,13 @@ flowchart TD
     });
   })();
 </script>
+<style>
+  pre.mermaid,
+  pre.mermaid svg,
+  pre.mermaid svg text {
+    font-family: "Source Sans 3", sans-serif !important;
+  }
+</style>
 <script type="module">
   import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
   mermaid.initialize({

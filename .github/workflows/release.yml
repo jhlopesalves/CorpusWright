@@ -39,12 +39,12 @@ jobs:
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
 
-      - name: Derive canonical release tag from app version
+      - name: Derive canonical release tag from release metadata
         id: release_metadata
         shell: bash
         run: |
-          APP_VERSION="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
-          echo "App version from tauri.conf.json: ${APP_VERSION}"
+          APP_VERSION="$(node -p "require('./release-metadata.json').version")"
+          echo "App version from release-metadata.json: ${APP_VERSION}"
 
           node -e "
           const v = process.argv[1];
