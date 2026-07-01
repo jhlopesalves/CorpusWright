@@ -108,13 +108,29 @@
               <li><a href="#entropy-shannon-and-normalised">Entropy: Shannon and normalised</a></li>
               <li><a href="#corpus-design-representativeness-balance-dispersion">Corpus design: representativeness, balance, dispersion</a></li>
               <li><a href="#reading-the-overview">Reading the Overview</a></li>
-              <li><a href="#a-note-on-statistics-in-corpuswright">A note on statistics in CorpusWright</a></li>
               <li><a href="#further-reading">Further reading</a></li>
             </ol>
           </nav>
         </aside>
 
         <div class="docs-content learn-prose">
+          <figure>
+            <pre class="mermaid">
+flowchart TD
+    A["Source text"] --> B["Extract text"]
+    B --> C["Detect artefacts"]
+    C --> D["Human review"]
+    D --> E["Saved cleaning rules"]
+    E --> F["Build corpus"]
+    F --> G["Inspect diagnostics"]
+    G --> H{"Looks right?"}
+    H -->|no, revise| D
+    H -->|yes| I["Analysis"]
+    E -.->|deterministic re-run| F
+</pre>
+            <figcaption>Preparation is analysis: saved cleaning rules replay deterministically into each rebuild.</figcaption>
+          </figure>
+
           <section class="learn-section">
 
             <h2 id="the-method">The method</h2>
@@ -165,8 +181,17 @@
 
             <h2 id="how-to-read-this-section">How to read this section</h2>
 
-            <p>First, why this section exists.</p>
-
+            <figure>
+              <pre class="mermaid">
+flowchart TD
+    Q1["What is in it?"] --> Q2["What shape does it have?"]
+    Q2 --> Q3["Where are the patterns located?"]
+    Q3 --> Q4["What limits the evidence?"]
+    Q4 --> Q5["What can we responsibly ask next?"]
+    Q5 -.->|then| N["Inference needs a specified comparison,<br>model, uncertainty, and a bounded claim"]
+</pre>
+              <figcaption>A chain of diagnostic questions that cuts across measures, from what is in the corpus to what can be asked next.</figcaption>
+            </figure>
             <p>CorpusWright is founded on a simple yet frequently neglected principle: the description of a corpus is
               not a preliminary step taken before statistical analysis - it is the first stage of statistical analysis.
               In the data-science tradition this stage has a name: exploratory data analysis (EDA), the work of
@@ -222,6 +247,64 @@
           <section class="learn-section">
 
             <h2 id="tokens-and-types-why-the-definition-comes-first">Tokens and types - why the definition comes first</h2>
+
+<figure class="cw-chipfig">
+  <style>
+    .cw-chipfig { margin: 0; font-family: inherit; color: #222; }
+    .cw-chipfig .cw-row {
+      display: flex; flex-wrap: wrap; align-items: center;
+      gap: 0.4rem; margin: 0.5rem 0;
+    }
+    .cw-chipfig .cw-label {
+      min-width: 5rem; font-size: 0.75rem; letter-spacing: 0.03em;
+      text-transform: uppercase; color: #666;
+    }
+    .cw-chipfig .cw-chip {
+      border: 1px solid #bbb; border-radius: 6px; background: #f6f6f6;
+      padding: 0.15rem 0.5rem; font-size: 0.95rem;
+    }
+    .cw-chipfig .cw-chip.is-repeat { border-color: #555; background: #e6e6e6; }
+    .cw-chipfig .cw-arrow { color: #888; padding: 0 0.2rem; }
+    .cw-chipfig .cw-count { font-size: 0.75rem; color: #888; }
+    .cw-chipfig figcaption { margin-top: 0.6rem; font-size: 0.85rem; color: #555; }
+  </style>
+
+  <div class="cw-row">
+    <span class="cw-label">Tokens</span>
+    <span class="cw-chip">War</span>
+    <span class="cw-chip is-repeat">is</span>
+    <span class="cw-chip">peace</span>
+    <span class="cw-chip">Freedom</span>
+    <span class="cw-chip is-repeat">is</span>
+    <span class="cw-chip">slavery</span>
+    <span class="cw-count">6 tokens</span>
+  </div>
+
+  <div class="cw-row">
+    <span class="cw-label">Types</span>
+    <span class="cw-chip">War</span>
+    <span class="cw-chip is-repeat">is</span>
+    <span class="cw-chip">peace</span>
+    <span class="cw-chip">Freedom</span>
+    <span class="cw-chip">slavery</span>
+    <span class="cw-count">5 types — the two “is” collapse to one</span>
+  </div>
+
+  <div class="cw-row">
+    <span class="cw-label">Lemma</span>
+    <span class="cw-chip">go</span>
+    <span class="cw-chip">goes</span>
+    <span class="cw-chip">going</span>
+    <span class="cw-chip">went</span>
+    <span class="cw-arrow">→</span>
+    <span class="cw-chip is-repeat">GO</span>
+  </div>
+
+  <figcaption>
+    Tokens are running words; types are distinct forms; a lemma groups inflected
+    forms under one dictionary head.
+  </figcaption>
+</figure>
 
             <p>A token is a single running occurrence of a word. A type is a distinct word form. In <em>War is peace.
                 Freedom is slavery. Ignorance is strength.</em> there are nine tokens but seven types, because
@@ -290,6 +373,11 @@
               occurrences in a 12-million-token corpus give \(10\) per million - the same raw count, an entirely
               different descriptive picture.</p>
 
+            <figure>
+              <img src="assets/figures/frequency.svg" alt="Same raw count of 120 — 500 per million in a small corpus, 10 per million in a large one.">
+              <figcaption>Same raw count of 120 — 500 per million in a small corpus, 10 per million in a large one.</figcaption>
+            </figure>
+
           </section>
 
           <section class="learn-section">
@@ -337,6 +425,11 @@
               concentration tops out at 0.75 rather than 1 here because, with four equal parts, the practical ceiling
               is \(1 - 0.25\) - the unnormalised behaviour described above.)</p>
 
+            <figure>
+              <img src="assets/figures/dispersion.svg" alt="Same frequency, opposite corpus behaviour — balanced four-document toy corpus, each document 25% of tokens.">
+              <figcaption>Same frequency, opposite corpus behaviour — balanced four-document toy corpus, each document 25% of tokens.</figcaption>
+            </figure>
+
             <p>Read dispersion alongside frequency, never instead of it. A high-frequency word with high DP is
               concentrated in a small number of texts despite appearing pervasive - precisely the case that a bare
               frequency list will fail to reveal.</p>
@@ -355,6 +448,8 @@
               ratio falls mechanically, regardless of how varied the writing is. Given a 500-word text and a 5,000-word
               text, TTR will rate the shorter one as &quot;richer&quot; even when they are equally varied.</p>
 
+            <!-- figure:ttr_curve -->
+
             <p>CorpusWright uses two length-robust measures instead.</p>
 
             <p>MATTR, the moving-average type-token ratio. Slide a fixed-size window - 100 tokens in CorpusWright -
@@ -362,6 +457,55 @@
               length, the length confound is eliminated. For a window of length \(w\) slid one token at a time across
               \(N\) tokens, MATTR is just the mean of the per-window ratios, \(\text{MATTR} =
               \frac{1}{N - w + 1} \sum \text{TTR}_k\). (Covington &amp; McFall, 2010.)</p>
+
+<figure>
+  <svg viewBox="0 0 600 235" width="100%" font-family="sans-serif"
+       role="img" aria-label="A fixed-width window slides one token at a time across a token strip; a TTR is measured in each window and averaged into MATTR.">
+    <text x="30" y="22" font-size="13" fill="#333" font-weight="600">MATTR: a fixed-width window slides one token at a time</text>
+
+    <g fill="#555" fill-opacity="0.12" stroke="#555" stroke-opacity="0.55">
+      <rect x="30" y="44" width="270" height="26" rx="6"/>
+      <rect x="84" y="82" width="270" height="26" rx="6"/>
+      <rect x="138" y="120" width="270" height="26" rx="6"/>
+    </g>
+    <g font-size="12" fill="#444">
+      <text x="120" y="61">window 1 → TTR₁</text>
+      <text x="174" y="99">window 2 → TTR₂</text>
+      <text x="228" y="137">window 3 → TTR₃</text>
+    </g>
+
+    <rect x="30" y="168" width="540" height="34" fill="#f6f6f6" stroke="#bbb"/>
+    <g stroke="#ddd">
+      <line x1="84" y1="168" x2="84" y2="202"/>
+      <line x1="138" y1="168" x2="138" y2="202"/>
+      <line x1="192" y1="168" x2="192" y2="202"/>
+      <line x1="246" y1="168" x2="246" y2="202"/>
+      <line x1="300" y1="168" x2="300" y2="202"/>
+      <line x1="354" y1="168" x2="354" y2="202"/>
+      <line x1="408" y1="168" x2="408" y2="202"/>
+      <line x1="462" y1="168" x2="462" y2="202"/>
+      <line x1="516" y1="168" x2="516" y2="202"/>
+    </g>
+    <g font-size="12" fill="#666" text-anchor="middle">
+      <text x="57" y="190">t₁</text>
+      <text x="111" y="190">t₂</text>
+      <text x="165" y="190">t₃</text>
+      <text x="219" y="190">t₄</text>
+      <text x="273" y="190">t₅</text>
+      <text x="327" y="190">t₆</text>
+      <text x="381" y="190">t₇</text>
+      <text x="435" y="190">t₈</text>
+      <text x="489" y="190">t₉</text>
+      <text x="543" y="190">t₁₀</text>
+    </g>
+
+    <text x="30" y="226" font-size="12" fill="#333">MATTR = mean(TTR₁, TTR₂, TTR₃, …); window size fixed, illustrative here at 5 tokens.</text>
+  </svg>
+  <figcaption>
+    A fixed-width window slides one token at a time; TTR is computed at each
+    position and averaged, which removes TTR’s dependence on text length.
+  </figcaption>
+</figure>
 
             <p>MTLD, the measure of textual lexical diversity. Walk through the text accumulating tokens until the
               running TTR drops to a set threshold - 0.72, by convention; each time it does, that counts as one complete
@@ -385,6 +529,8 @@
 
             <h2 id="vocabulary-structure-hapax-legomena-and-dislegomena">Vocabulary structure: hapax legomena and dislegomena</h2>
 
+            <!-- figure:hapax_spectrum -->
+
             <p>A hapax legomenon is a type that occurs exactly once in the corpus. A hapax dislegomenon occurs exactly
               twice.</p>
 
@@ -407,6 +553,8 @@
           <section class="learn-section">
 
             <h2 id="the-frequency-distribution-zipfs-law">The frequency distribution: Zipf's law</h2>
+
+            <!-- figure:zipf -->
 
             <p>Ranking the types from most to least frequent reveals a consistent regularity. Zipf's law says frequency
               is roughly inversely proportional to rank: the second-ranked word turns up about half as often as the
@@ -444,6 +592,8 @@
           <section class="learn-section">
 
             <h2 id="vocabulary-growth-heaps-law">Vocabulary growth: Heaps' law</h2>
+
+            <!-- figure:heaps -->
 
             <p>The hapax ratio asks whether a corpus is still meeting new words; Heaps' law puts a shape on the same
               question. As you read more tokens, the count of distinct types keeps climbing, but with diminishing
@@ -489,6 +639,11 @@
               four types can produce. Skew the same four types to relative frequencies of 0.7, 0.1, 0.1 and 0.1 and the
               entropy falls to about \(1.36\) bits, because one type now carries most of the probability and the next
               word is far easier to guess.</p>
+
+            <figure>
+              <img src="assets/figures/entropy.svg" alt="Entropy measures how evenly probability is shared — even four-type distribution vs one type carrying most of the mass.">
+              <figcaption>Entropy measures how evenly probability is shared — even four-type distribution vs one type carrying most of the mass.</figcaption>
+            </figure>
 
             <p>Raw entropy increases with vocabulary size, which, as with the earlier measures, blocks comparison across
               corpora. Normalised entropy divides by the largest entropy that vocabulary could possibly carry,
@@ -550,11 +705,30 @@
               \(1 / 0.278 \approx 3.6\). Ten documents on paper, yet statistically the corpus rests on the equivalent
               of fewer than four.</p>
 
+            <figure>
+              <img src="assets/figures/effective_documents.svg" alt="Four documents on paper — but one large document can make the corpus behave like fewer.">
+              <figcaption>Four documents on paper — but one large document can make the corpus behave like fewer.</figcaption>
+            </figure>
+
           </section>
 
           <section class="learn-section">
 
             <h2 id="reading-the-overview">Reading the Overview</h2>
+
+            <figure>
+              <pre class="mermaid">
+flowchart TD
+    S["Corpus size"] --> Z["Zipf shape"]
+    Z --> DD["Diversity + dispersion"]
+    DD --> HX["Hapax ratio"]
+    HX --> EN["Entropy"]
+    EN --> W{"Anything look wrong?"}
+    W -->|yes| CL["Return to cleaning"]
+    W -->|no| OK["Read on"]
+</pre>
+              <figcaption>A suggested reading order across the overview diagnostics, looping back to cleaning when something looks wrong.</figcaption>
+            </figure>
 
             <p>The Overview is CorpusWright's descriptive dashboard for a prepared corpus. The labels and the layout
               will continue to change while the tool is in alpha, but the approach to reading it is stable. A
@@ -577,23 +751,6 @@
               build computes surface-level diagnostics, and linguistic annotation is experimental. Where a measure leans
               on annotation, the interface labels it as such and makes no claim that it is final. That is deliberate: a
               smaller but accurate picture is preferable to a larger one that depends on unstated qualifications.</p>
-
-          </section>
-
-          <section class="learn-section">
-
-            <h2 id="a-note-on-statistics-in-corpuswright">A note on statistics in CorpusWright</h2>
-
-            <p>Two principles govern how these numbers are produced.</p>
-
-            <p>Determinism. The same corpus and the same configuration give the same results, every time. A reported
-              number can be reproduced - by a reviewer, by a collaborator, or by the original author at a later date.
-            </p>
-
-            <p>Provenance. Every result carries enough context to know how it was made - the tokeniser version, and for
-              annotated counts the model and version - because, as stated throughout, changing the tokeniser or the
-              tagger changes the counts. This is all deliberate: labelling a result as partial, experimental, or in
-              progress counts as part of correctness in its own right.</p>
 
           </section>
 
@@ -748,6 +905,27 @@
       syncToggle();
     });
   })();
+</script>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    themeVariables: {
+      primaryColor: "#f6f6f6",
+      primaryTextColor: "#333333",
+      primaryBorderColor: "#4d4d4d",
+      secondaryColor: "#f6f6f6",
+      secondaryTextColor: "#333333",
+      secondaryBorderColor: "#4d4d4d",
+      tertiaryColor: "#ffffff",
+      tertiaryTextColor: "#333333",
+      tertiaryBorderColor: "#4d4d4d",
+      lineColor: "#4d4d4d",
+      edgeLabelBackground: "#ffffff",
+      fontFamily: "Source Sans 3, sans-serif"
+    }
+  });
 </script>
 </body>
 
