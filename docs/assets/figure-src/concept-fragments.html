@@ -1,23 +1,23 @@
 <!-- figure:workflow_loop -->
 flowchart TD
-    A["Source text"] --> B["Extract text"]
-    B --> C["Detect artefacts"]
-    C --> D["Human review"]
-    D --> E["Saved cleaning rules"]
-    E --> F["Build corpus"]
-    F --> G["Inspect diagnostics"]
-    G --> H{"Looks right?"}
-    H -->|no, revise| D
+    A["Source<br>text"] --> B["Extract<br>text"]
+    B --> C["Detect<br>artefacts"]
+    C --> D["Human<br>review"]
+    D --> E["Saved cleaning<br>rules"]
+    E --> F["Build<br>corpus"]
+    F --> G["Inspect<br>diagnostics"]
+    G --> H{"Looks<br>right?"}
+    H -->|revise| D
     H -->|yes| I["Analysis"]
-    E -.->|deterministic re-run| F
+    E -.->|re-run| F
 
 <!-- figure:eda_chain -->
 flowchart TD
-    Q1["What is in it?"] --> Q2["What shape does it have?"]
-    Q2 --> Q3["Where are the patterns located?"]
-    Q3 --> Q4["What limits the evidence?"]
-    Q4 --> Q5["What can we responsibly ask next?"]
-    Q5 -.->|then| N["Inference needs a specified comparison,<br>model, uncertainty, and a bounded claim"]
+    Q1["What is<br>in it?"] --> Q2["What shape<br>does it have?"]
+    Q2 --> Q3["Where are the<br>patterns located?"]
+    Q3 --> Q4["What limits<br>the evidence?"]
+    Q4 --> Q5["What can we<br>responsibly ask next?"]
+    Q5 -.->|then| N["Inference needs a<br>specified comparison,<br>model, uncertainty,<br>and a bounded claim"]
 
 <!-- figure:chips -->
 <figure class="cw-chipfig">
@@ -49,7 +49,10 @@ flowchart TD
     <span class="cw-chip">Freedom</span>
     <span class="cw-chip is-repeat">is</span>
     <span class="cw-chip">slavery</span>
-    <span class="cw-count">6 tokens</span>
+    <span class="cw-chip">Ignorance</span>
+    <span class="cw-chip is-repeat">is</span>
+    <span class="cw-chip">strength</span>
+    <span class="cw-count">9 tokens</span>
   </div>
 
   <div class="cw-row">
@@ -59,7 +62,9 @@ flowchart TD
     <span class="cw-chip">peace</span>
     <span class="cw-chip">Freedom</span>
     <span class="cw-chip">slavery</span>
-    <span class="cw-count">5 types — the two “is” collapse to one</span>
+    <span class="cw-chip">Ignorance</span>
+    <span class="cw-chip">strength</span>
+    <span class="cw-count">7 types — the three “is” tokens collapse to one</span>
   </div>
 
   <div class="cw-row">
@@ -130,10 +135,10 @@ flowchart TD
 
 <!-- figure:reading_order -->
 flowchart TD
-    S["Corpus size"] --> Z["Zipf shape"]
-    Z --> DD["Diversity + dispersion"]
-    DD --> HX["Hapax ratio"]
+    S["Corpus<br>size"] --> Z["Zipf<br>shape"]
+    Z --> DD["Diversity +<br>dispersion"]
+    DD --> HX["Hapax<br>ratio"]
     HX --> EN["Entropy"]
-    EN --> W{"Anything look wrong?"}
-    W -->|yes| CL["Return to cleaning"]
+    EN --> W{"Anything<br>look wrong?"}
+    W -->|yes| CL["Return to<br>cleaning"]
     W -->|no| OK["Read on"]
