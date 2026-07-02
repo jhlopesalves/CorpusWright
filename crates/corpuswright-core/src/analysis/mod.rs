@@ -35,7 +35,9 @@ pub use collocation::{
     ConcordanceCollocateRow, ConcordanceCollocationAggregate,
     ConcordanceCollocationAggregationSignature, ConcordanceCollocationDirection,
     ConcordanceCollocationMeasure, ConcordanceCollocationQuery, ConcordanceCollocationResult,
-    ConcordanceCollocationSortKey, aggregate_concordance_collocations_documents,
+    ConcordanceCollocationSortKey, RoutedConcordanceCollocationAggregate,
+    aggregate_concordance_collocations_documents,
+    aggregate_concordance_collocations_documents_routed,
     concordance_collocation_aggregation_signature, query_concordance_collocations_documents,
     query_concordance_collocations_from_aggregate,
 };

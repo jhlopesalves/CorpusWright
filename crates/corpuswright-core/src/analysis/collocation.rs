@@ -1,10 +1,14 @@
 use super::build::AnalysisDocumentSelection;
 use super::concordance::{
-    ConcordanceDocument, ConcordanceError, analysis_word_tokens, concordance_key,
+    ConcordanceBackend, ConcordanceBackendUsed, ConcordanceDocument, ConcordanceError,
+    ConcordanceFallbackReason, ConcordanceSearchContext, analysis_word_tokens, concordance_key,
     resolve_concordance_query_tokens, selected_concordance_document_ids,
 };
 use super::frequency::{SortDirection, case_fold_surface};
 use super::shared::ENGLISH_STOPWORDS;
+use crate::index::{
+    IndexStore, SurfaceIndexError, SurfaceIndexQuery, SurfaceIndexTokenRecord, search_surface_index,
+};
 use crate::tokenization::TokenizationConfig;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -164,6 +168,13 @@ pub struct ConcordanceCollocationAggregate {
     pub f_node: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoutedConcordanceCollocationAggregate {
+    pub aggregate: ConcordanceCollocationAggregate,
+    pub backend_used: ConcordanceBackendUsed,
+    pub index_rebuilt: bool,
+}
+
 impl Default for ConcordanceCollocationDistanceCounts {
     fn default() -> Self {
         Self {
@@ -270,6 +281,37 @@ fn add_collocation_window_token_keys(
         }
         candidate_counts
             .entry(candidate.clone())
+            .or_default()
+            .add(window.side, distance, 1);
+    }
+}
+
+fn add_collocation_window_record_keys(
+    records: &[SurfaceIndexTokenRecord],
+    window: CollocationWindow,
+    query_keys: &HashSet<String>,
+    case_sensitive: bool,
+    r1: &mut ConcordanceCollocationDistanceCounts,
+    candidate_counts: &mut HashMap<String, ConcordanceCollocationDistanceCounts>,
+) {
+    for (token_index, record) in records
+        .iter()
+        .enumerate()
+        .take(window.end)
+        .skip(window.start)
+    {
+        let distance = match window.side {
+            CollocationWindowSide::Left => window.node_edge - token_index,
+            CollocationWindowSide::Right => token_index - window.node_edge + 1,
+        };
+        r1.add(window.side, distance, 1);
+
+        let candidate = record.concordance_key(case_sensitive);
+        if query_keys.contains(candidate) {
+            continue;
+        }
+        candidate_counts
+            .entry(candidate.to_string())
             .or_default()
             .add(window.side, distance, 1);
     }
@@ -632,6 +674,162 @@ pub fn aggregate_concordance_collocations_documents(
     }
 
     Ok(aggregate)
+}
+
+pub fn aggregate_concordance_collocations_index(
+    store: &impl IndexStore,
+    query: &ConcordanceCollocationQuery,
+    tokenization_config: &TokenizationConfig,
+) -> Result<ConcordanceCollocationAggregate, ConcordanceError> {
+    let (signature, _, query_key_set) =
+        resolve_concordance_collocation_aggregation(query, tokenization_config)?;
+    let index_query = SurfaceIndexQuery::from_surface_text_with_case(
+        &query.query,
+        query.case_sensitive,
+        tokenization_config,
+    )
+    .map_err(collocation_error_from_surface_index)?;
+    let index =
+        search_surface_index(store, &index_query).map_err(collocation_error_from_surface_index)?;
+
+    let mut aggregate = ConcordanceCollocationAggregate {
+        signature,
+        candidate_counts: HashMap::new(),
+        collocate_frequencies: HashMap::new(),
+        r1: ConcordanceCollocationDistanceCounts::default(),
+        n: store.total_indexed_tokens() as u64,
+        f_node: index.hits.len() as u64,
+    };
+
+    for term in store.indexed_terms_for_concordance_key(query.case_sensitive) {
+        let frequency = store
+            .postings_for_concordance_key(term, query.case_sensitive)
+            .map(|postings| postings.len() as u64)
+            .unwrap_or_default();
+        if frequency > 0 {
+            aggregate
+                .collocate_frequencies
+                .insert(term.to_string(), frequency);
+        }
+    }
+
+    for hit in index.hits {
+        let records = store
+            .records_for_document(hit.document_id)
+            .ok_or_else(|| collocation_inconsistent_index_error(&hit))?;
+        let node_end = hit
+            .token_ordinal_in_document
+            .checked_add(hit.node_token_length)
+            .ok_or_else(|| collocation_inconsistent_index_error(&hit))?;
+        if hit.node_token_length == 0 || node_end > records.len() {
+            return Err(collocation_inconsistent_index_error(&hit));
+        }
+
+        let left_start = hit
+            .token_ordinal_in_document
+            .saturating_sub(CONCORDANCE_COLLOCATION_MAX_SPAN);
+        add_collocation_window_record_keys(
+            records,
+            CollocationWindow {
+                start: left_start,
+                end: hit.token_ordinal_in_document,
+                node_edge: hit.token_ordinal_in_document,
+                side: CollocationWindowSide::Left,
+            },
+            &query_key_set,
+            query.case_sensitive,
+            &mut aggregate.r1,
+            &mut aggregate.candidate_counts,
+        );
+
+        let right_end = node_end
+            .saturating_add(CONCORDANCE_COLLOCATION_MAX_SPAN)
+            .min(records.len());
+        add_collocation_window_record_keys(
+            records,
+            CollocationWindow {
+                start: node_end,
+                end: right_end,
+                node_edge: node_end,
+                side: CollocationWindowSide::Right,
+            },
+            &query_key_set,
+            query.case_sensitive,
+            &mut aggregate.r1,
+            &mut aggregate.candidate_counts,
+        );
+    }
+
+    Ok(aggregate)
+}
+
+pub fn aggregate_concordance_collocations_documents_routed(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceCollocationQuery,
+    tokenization_config: &TokenizationConfig,
+    context: &mut ConcordanceSearchContext,
+    backend: ConcordanceBackend,
+) -> Result<RoutedConcordanceCollocationAggregate, ConcordanceError> {
+    match backend {
+        ConcordanceBackend::Scan => Ok(RoutedConcordanceCollocationAggregate {
+            aggregate: aggregate_concordance_collocations_documents(
+                documents,
+                query,
+                tokenization_config,
+            )?,
+            backend_used: ConcordanceBackendUsed::Scan,
+            index_rebuilt: false,
+        }),
+        ConcordanceBackend::Index => {
+            let selected_document_ids =
+                selected_concordance_document_ids(documents, &query.selection);
+            let mut index_rebuilt = false;
+            let index_result = (|| {
+                let (store, rebuilt) = context.index_store_for(
+                    documents,
+                    &selected_document_ids,
+                    tokenization_config,
+                )?;
+                index_rebuilt = rebuilt;
+                aggregate_concordance_collocations_index(store, query, tokenization_config)
+            })();
+
+            match index_result {
+                Ok(aggregate) => Ok(RoutedConcordanceCollocationAggregate {
+                    aggregate,
+                    backend_used: ConcordanceBackendUsed::Index,
+                    index_rebuilt,
+                }),
+                Err(ConcordanceError::Index(_)) => Ok(RoutedConcordanceCollocationAggregate {
+                    aggregate: aggregate_concordance_collocations_documents(
+                        documents,
+                        query,
+                        tokenization_config,
+                    )?,
+                    backend_used: ConcordanceBackendUsed::ScanFallback {
+                        reason: ConcordanceFallbackReason::IndexError,
+                    },
+                    index_rebuilt,
+                }),
+                Err(error) => Err(error),
+            }
+        }
+    }
+}
+
+fn collocation_error_from_surface_index(error: SurfaceIndexError) -> ConcordanceError {
+    match error {
+        SurfaceIndexError::EmptyQuery => ConcordanceError::EmptyQuery,
+        error => ConcordanceError::Index(error),
+    }
+}
+
+fn collocation_inconsistent_index_error(hit: &crate::index::SurfaceIndexHit) -> ConcordanceError {
+    ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
+        document_id: hit.document_id,
+        token_ordinal_in_document: hit.token_ordinal_in_document,
+        node_token_length: hit.node_token_length,
+    })
 }
 
 /// Applies presentation filters, scoring, ranking, and truncation to a cached aggregate.
