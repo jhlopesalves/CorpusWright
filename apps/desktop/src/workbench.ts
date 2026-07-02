@@ -127,7 +127,7 @@ const FREQUENCY_PAGE_SIZE = 200;
 const FREQUENCY_DOCUMENT_PAGE_SIZE = 200;
 const TERM_DISTRIBUTION_PAGE_SIZE = 100;
 const CONCORDANCE_DISTRIBUTION_PAGE_SIZE = 10;
-const CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT = 20;
+const CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT = 8;
 type AnalysisToolId = "overview" | "frequency" | "concordance";
 type ConcordanceViewId = "lines" | "collocates" | "distribution";
 type ConcordanceCollocationState = "idle_not_computed" | "loading" | "ready" | "stale" | "error";
@@ -2377,16 +2377,44 @@ function isActiveCollocateEvidenceRow(row: ConcordanceCollocateRow): boolean {
     && selection.direction === currentConcordanceCollocationDirection();
 }
 
-function createCollocateEvidenceKwicRow(row: ConcordanceRow): HTMLTableRowElement {
-  const item = document.createElement("tr");
-  item.className = "concordance-collocate-evidence-kwic-row";
+function createCollocateEvidenceSnippet(row: ConcordanceRow): HTMLSpanElement {
+  const snippet = document.createElement("span");
+  snippet.className = "concordance-collocate-evidence-snippet";
+  snippet.setAttribute("role", "cell");
   const selection = collocateEvidenceSelection;
-  appendConcordanceKwicCells(
-    item,
-    row,
-    selection?.surface ?? null,
-    selection?.caseSensitive ?? false,
-  );
+  const activeFilter = selection?.surface ?? null;
+  const caseSensitive = selection?.caseSensitive ?? false;
+
+  if (row.leftContext.length > 0) {
+    snippet.appendChild(renderContextTokens(row.leftContext, activeFilter, caseSensitive));
+    snippet.appendChild(document.createTextNode(" "));
+  }
+
+  const node = document.createElement("mark");
+  node.className = "concordance-node";
+  node.textContent = row.node;
+  snippet.appendChild(node);
+
+  if (row.rightContext.length > 0) {
+    snippet.appendChild(document.createTextNode(" "));
+    snippet.appendChild(renderContextTokens(row.rightContext, activeFilter, caseSensitive));
+  }
+
+  return snippet;
+}
+
+function createCollocateEvidenceLine(row: ConcordanceRow): HTMLDivElement {
+  const item = document.createElement("div");
+  item.className = "concordance-collocate-evidence-line";
+  item.setAttribute("role", "row");
+
+  const file = document.createElement("span");
+  file.className = "concordance-collocate-evidence-file";
+  file.setAttribute("role", "cell");
+  file.title = row.displayName || row.sourcePath;
+  file.textContent = row.displayName || row.sourcePath;
+
+  item.append(file, createCollocateEvidenceSnippet(row));
   return item;
 }
 
@@ -2397,25 +2425,26 @@ function appendCollocateEvidenceMessage(parent: HTMLElement, message: string, is
   parent.appendChild(note);
 }
 
-function createCollocateEvidenceTable(result: ConcordanceResult): HTMLTableElement {
-  const table = document.createElement("table");
-  table.className = "concordance-collocate-evidence-table";
-  const head = document.createElement("thead");
-  const header = document.createElement("tr");
-  for (const label of CONCORDANCE_COLUMNS) {
-    const cell = document.createElement("th");
-    cell.textContent = label;
-    header.appendChild(cell);
-  }
-  head.appendChild(header);
-  table.appendChild(head);
+function createCollocateEvidenceList(result: ConcordanceResult): HTMLDivElement {
+  const list = document.createElement("div");
+  list.className = "concordance-collocate-evidence-list";
+  list.setAttribute("role", "table");
 
-  const body = document.createElement("tbody");
-  for (const evidenceRow of result.rows) {
-    body.appendChild(createCollocateEvidenceKwicRow(evidenceRow));
+  const head = document.createElement("div");
+  head.className = "concordance-collocate-evidence-list-head";
+  head.setAttribute("role", "row");
+  for (const label of ["File", "Evidence"]) {
+    const cell = document.createElement("span");
+    cell.setAttribute("role", "columnheader");
+    cell.textContent = label;
+    head.appendChild(cell);
   }
-  table.appendChild(body);
-  return table;
+  list.appendChild(head);
+
+  for (const evidenceRow of result.rows) {
+    list.appendChild(createCollocateEvidenceLine(evidenceRow));
+  }
+  return list;
 }
 
 function appendCollocateEvidencePagination(parent: HTMLElement, result: ConcordanceResult): void {
@@ -2504,7 +2533,7 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
       "No evidence lines found for this collocate with the current span and direction.",
     );
   } else {
-    panel.appendChild(createCollocateEvidenceTable(collocateEvidenceResult));
+    panel.appendChild(createCollocateEvidenceList(collocateEvidenceResult));
     appendCollocateEvidencePagination(panel, collocateEvidenceResult);
   }
 
