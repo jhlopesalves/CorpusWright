@@ -260,6 +260,9 @@
   --cw-info-border: rgba(80, 160, 220, 0.45);
   --cw-info-border-strong: rgba(80, 160, 220, 0.65);
   --cw-info-text: #8ecae6;
+  --cw-collocate-bg: rgba(181, 126, 170, 0.11);
+  --cw-collocate-border: rgba(181, 126, 170, 0.4);
+  --cw-collocate-text: #d8a6ca;
   --cw-success-bg: rgba(80, 200, 120, 0.05);
   --cw-success-bg-strong: rgba(80, 200, 120, 0.06);
   --cw-success-border: rgba(80, 200, 120, 0.3);
@@ -348,6 +351,9 @@
   --cw-info-border: rgba(0, 95, 184, 0.35);
   --cw-info-border-strong: rgba(0, 95, 184, 0.55);
   --cw-info-text: #005a9e;
+  --cw-collocate-bg: rgba(138, 67, 120, 0.08);
+  --cw-collocate-border: rgba(138, 67, 120, 0.3);
+  --cw-collocate-text: #7a315f;
   --cw-success-bg: rgba(29, 111, 66, 0.08);
   --cw-success-bg-strong: rgba(29, 111, 66, 0.1);
   --cw-success-border: rgba(29, 111, 66, 0.3);
@@ -435,6 +441,9 @@
   --cw-info-border: rgba(0, 95, 184, 0.35);
   --cw-info-border-strong: rgba(0, 95, 184, 0.55);
   --cw-info-text: #0550ae;
+  --cw-collocate-bg: rgba(138, 67, 120, 0.08);
+  --cw-collocate-border: rgba(138, 67, 120, 0.3);
+  --cw-collocate-text: #7a315f;
   --cw-success-bg: rgba(29, 111, 66, 0.08);
   --cw-success-bg-strong: rgba(29, 111, 66, 0.1);
   --cw-success-border: rgba(29, 111, 66, 0.3);
@@ -522,6 +531,9 @@
   --cw-info-border: rgba(80, 160, 220, 0.45);
   --cw-info-border-strong: rgba(80, 160, 220, 0.65);
   --cw-info-text: #79c0ff;
+  --cw-collocate-bg: rgba(181, 126, 170, 0.11);
+  --cw-collocate-border: rgba(181, 126, 170, 0.4);
+  --cw-collocate-text: #d8a6ca;
   --cw-success-bg: rgba(80, 200, 120, 0.05);
   --cw-success-bg-strong: rgba(80, 200, 120, 0.06);
   --cw-success-border: rgba(80, 200, 120, 0.3);
@@ -613,6 +625,9 @@
   --cw-info-border: rgba(0, 95, 184, 0.35);
   --cw-info-border-strong: rgba(0, 95, 184, 0.55);
   --cw-info-text: #2c6e9f;
+  --cw-collocate-bg: rgba(138, 67, 120, 0.08);
+  --cw-collocate-border: rgba(138, 67, 120, 0.3);
+  --cw-collocate-text: #7a315f;
   --cw-success-bg: rgba(29, 111, 66, 0.08);
   --cw-success-bg-strong: rgba(29, 111, 66, 0.1);
   --cw-success-border: rgba(29, 111, 66, 0.3);
@@ -707,6 +722,9 @@
   --cw-info-border: rgba(80, 160, 220, 0.45);
   --cw-info-border-strong: rgba(80, 160, 220, 0.65);
   --cw-info-text: #7de3ff;
+  --cw-collocate-bg: rgba(181, 126, 170, 0.11);
+  --cw-collocate-border: rgba(181, 126, 170, 0.4);
+  --cw-collocate-text: #e1a7d1;
   --cw-success-bg: rgba(80, 200, 120, 0.05);
   --cw-success-bg-strong: rgba(80, 200, 120, 0.06);
   --cw-success-border: rgba(80, 200, 120, 0.3);
@@ -799,6 +817,9 @@
   --cw-info-border: rgba(47, 111, 189, 0.35);
   --cw-info-border-strong: rgba(47, 111, 189, 0.55);
   --cw-info-text: #275fa4;
+  --cw-collocate-bg: rgba(138, 67, 120, 0.08);
+  --cw-collocate-border: rgba(138, 67, 120, 0.3);
+  --cw-collocate-text: #70405f;
   --cw-success-bg: rgba(32, 108, 70, 0.08);
   --cw-success-bg-strong: rgba(32, 108, 70, 0.1);
   --cw-success-border: rgba(32, 108, 70, 0.3);
@@ -886,6 +907,9 @@
   --cw-info-border: rgba(92, 150, 210, 0.44);
   --cw-info-border-strong: rgba(92, 150, 210, 0.65);
   --cw-info-text: #9cc4f0;
+  --cw-collocate-bg: rgba(181, 126, 170, 0.11);
+  --cw-collocate-border: rgba(181, 126, 170, 0.4);
+  --cw-collocate-text: #d8a6ca;
   --cw-success-bg: rgba(96, 185, 132, 0.08);
   --cw-success-bg-strong: rgba(96, 185, 132, 0.1);
   --cw-success-border: rgba(96, 185, 132, 0.34);
@@ -974,6 +998,9 @@
   --cw-info-border: rgba(31, 111, 120, 0.35);
   --cw-info-border-strong: rgba(31, 111, 120, 0.55);
   --cw-info-text: #175b62;
+  --cw-collocate-bg: rgba(138, 67, 120, 0.08);
+  --cw-collocate-border: rgba(138, 67, 120, 0.3);
+  --cw-collocate-text: #74405f;
   --cw-success-bg: rgba(49, 102, 68, 0.08);
   --cw-success-bg-strong: rgba(49, 102, 68, 0.1);
   --cw-success-border: rgba(49, 102, 68, 0.3);
@@ -1061,6 +1088,9 @@
   --cw-info-border: rgba(84, 166, 184, 0.44);
   --cw-info-border-strong: rgba(84, 166, 184, 0.65);
   --cw-info-text: #8fd0dc;
+  --cw-collocate-bg: rgba(181, 126, 170, 0.11);
+  --cw-collocate-border: rgba(181, 126, 170, 0.4);
+  --cw-collocate-text: #e0a8cf;
   --cw-success-bg: rgba(110, 202, 150, 0.08);
   --cw-success-bg-strong: rgba(110, 202, 150, 0.1);
   --cw-success-border: rgba(110, 202, 150, 0.34);
@@ -1150,6 +1180,9 @@
   --cw-info-border: rgba(35, 101, 111, 0.35);
   --cw-info-border-strong: rgba(35, 101, 111, 0.55);
   --cw-info-text: #235f68;
+  --cw-collocate-bg: rgba(138, 67, 120, 0.08);
+  --cw-collocate-border: rgba(138, 67, 120, 0.3);
+  --cw-collocate-text: #74405f;
   --cw-success-bg: rgba(54, 102, 58, 0.08);
   --cw-success-bg-strong: rgba(54, 102, 58, 0.1);
   --cw-success-border: rgba(54, 102, 58, 0.3);
@@ -1237,6 +1270,9 @@
   --cw-info-border: rgba(27, 103, 128, 0.35);
   --cw-info-border-strong: rgba(27, 103, 128, 0.55);
   --cw-info-text: #1b6780;
+  --cw-collocate-bg: rgba(138, 67, 120, 0.08);
+  --cw-collocate-border: rgba(138, 67, 120, 0.3);
+  --cw-collocate-text: #74405f;
   --cw-success-bg: rgba(30, 106, 63, 0.08);
   --cw-success-bg-strong: rgba(30, 106, 63, 0.1);
   --cw-success-border: rgba(30, 106, 63, 0.3);
@@ -1324,6 +1360,9 @@
   --cw-info-border: rgba(88, 164, 190, 0.44);
   --cw-info-border-strong: rgba(88, 164, 190, 0.65);
   --cw-info-text: #98cfe0;
+  --cw-collocate-bg: rgba(181, 126, 170, 0.11);
+  --cw-collocate-border: rgba(181, 126, 170, 0.4);
+  --cw-collocate-text: #e0a8cf;
   --cw-success-bg: rgba(101, 174, 125, 0.09);
   --cw-success-bg-strong: rgba(101, 174, 125, 0.11);
   --cw-success-border: rgba(101, 174, 125, 0.36);
@@ -1412,6 +1451,9 @@
   --cw-info-border: rgba(117, 221, 255, 0.85);
   --cw-info-border-strong: rgba(117, 221, 255, 1);
   --cw-info-text: #75ddff;
+  --cw-collocate-bg: rgba(255, 139, 220, 0.2);
+  --cw-collocate-border: rgba(255, 139, 220, 0.9);
+  --cw-collocate-text: #ff8bdc;
   --cw-success-bg: rgba(125, 255, 155, 0.16);
   --cw-success-bg-strong: rgba(125, 255, 155, 0.2);
   --cw-success-border: rgba(125, 255, 155, 0.8);
@@ -3212,8 +3254,26 @@ main {
   width: 112px;
 }
 
+.concordance-collocation-measure-field {
+  opacity: 0.86;
+}
+
+.concordance-collocation-measure-field > span {
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
 #concordance-collocation-measure {
-  width: 150px;
+  width: 122px;
+  height: 30px;
+  border-color: color-mix(in srgb, var(--border-color) 76%, transparent);
+  background: var(--cw-surface-subtle);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+#concordance-collocation-measure:focus {
+  color: var(--text-color);
 }
 
 #frequency-search-input {
@@ -3444,6 +3504,12 @@ main {
   font-weight: 700;
   white-space: nowrap;
   vertical-align: middle;
+}
+
+.concordance-collocate {
+  background: var(--cw-collocate-bg);
+  color: var(--cw-collocate-text);
+  box-shadow: inset 0 -1px 0 var(--cw-collocate-border);
 }
 
 .concordance-row {
@@ -3779,6 +3845,15 @@ main {
   background: var(--cw-interaction-bg-hover);
 }
 
+.concordance-collocation-row.is-active td {
+  background: var(--cw-collocate-bg);
+}
+
+.concordance-collocation-row.is-active:hover td,
+.concordance-collocation-row.is-active:focus-visible td {
+  background: color-mix(in srgb, var(--cw-collocate-bg) 72%, var(--cw-interaction-bg-hover));
+}
+
 .concordance-collocation-row:focus-visible {
   outline: 1px solid var(--accent-color);
   outline-offset: -2px;
@@ -3793,6 +3868,10 @@ main {
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.concordance-collocation-row.is-active .concordance-collocate-text {
+  color: var(--cw-collocate-text);
 }
 
 .concordance-collocation-action {
@@ -7123,6 +7202,9 @@ mark.search-match.current-match {
   --cw-info-border: rgba(89, 156, 177, 0.42);
   --cw-info-border-strong: rgba(89, 156, 177, 0.64);
   --cw-info-text: #93cce0;
+  --cw-collocate-bg: rgba(181, 126, 170, 0.11);
+  --cw-collocate-border: rgba(181, 126, 170, 0.4);
+  --cw-collocate-text: #dfaacd;
   --cw-success-bg: rgba(113, 196, 135, 0.08);
   --cw-success-bg-strong: rgba(113, 196, 135, 0.1);
   --cw-success-border: rgba(113, 196, 135, 0.34);
@@ -7211,6 +7293,9 @@ mark.search-match.current-match {
   --cw-info-border: rgba(117, 221, 255, 0.85);
   --cw-info-border-strong: rgba(117, 221, 255, 1);
   --cw-info-text: #75ddff;
+  --cw-collocate-bg: rgba(150, 0, 100, 0.16);
+  --cw-collocate-border: rgba(150, 0, 100, 0.85);
+  --cw-collocate-text: #7a0050;
   --cw-success-bg: rgba(125, 255, 155, 0.16);
   --cw-success-bg-strong: rgba(125, 255, 155, 0.2);
   --cw-success-border: rgba(125, 255, 155, 0.8);
