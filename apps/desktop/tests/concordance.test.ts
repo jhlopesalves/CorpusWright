@@ -26,6 +26,7 @@ import {
   concordanceCollocationScore,
   concordanceCollocationScoreBarPercent,
   concordanceCollocationSortHeaderLabel,
+  concordanceContextTokenSegments,
   concordanceExpansionViewModel,
   concordanceIsSparse,
   concordanceRangePercent,
@@ -87,6 +88,27 @@ assert(concordanceRowText(["not", "very", "good"]) === "not very good", "KWIC to
 for (const node of ["movie", "this movie", "not very good"]) {
   assert(concordanceRowText(node.split(" ")) === node, `${node} node text should render in full`);
 }
+const unfilteredSegments = concordanceContextTokenSegments(["not", "movie"], null, false);
+assert(
+  unfilteredSegments.map((segment) => segment.text).join(" ") === "not movie"
+    && unfilteredSegments.every((segment) => !segment.collocate),
+  "Unfiltered KWIC context should keep plain token text without collocate highlights",
+);
+const insensitiveSegments = concordanceContextTokenSegments(["Movie", "night"], "movie", false);
+assert(
+  insensitiveSegments[0].collocate && !insensitiveSegments[1].collocate,
+  "Case-insensitive collocate filters should highlight matching context tokens",
+);
+const sensitiveSegments = concordanceContextTokenSegments(["Movie", "movie"], "movie", true);
+assert(
+  !sensitiveSegments[0].collocate && sensitiveSegments[1].collocate,
+  "Case-sensitive collocate filters should only highlight exact token matches",
+);
+const unsafeSegments = concordanceContextTokenSegments(["<img src=x onerror=alert(1)>"], "<img src=x onerror=alert(1)>", true);
+assert(
+  unsafeSegments[0].text === "<img src=x onerror=alert(1)>" && unsafeSegments[0].collocate,
+  "Collocate token segmentation should preserve unsafe-looking token text for text-node rendering",
+);
 assert(
   CONCORDANCE_SORT_OPTIONS.map((option) => option.value).join("|")
     === "filePosition|node|left1|left2|left3|right1|right2|right3",
