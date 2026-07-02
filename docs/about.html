@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en-GB">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="About CorpusWright: the story, position, and maker behind the project.">
+  <title>About · CorpusWright</title>
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="CorpusWright">
+  <meta property="og:title" content="About · CorpusWright">
+  <meta property="og:description" content="About CorpusWright: the story, position, and maker behind the project.">
+  <meta property="og:url" content="https://jhlopesalves.github.io/CorpusWright/about.html">
+  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="About · CorpusWright">
+  <meta name="twitter:description" content="About CorpusWright: the story, position, and maker behind the project.">
+  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
+  <link rel="stylesheet" href="assets/site.css">
+  <link rel="icon" href="assets/icon.png">
+  <script>
+    (function () {
+      const savedTheme = localStorage.getItem('theme');
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
+    })();
+  </script>
+</head>
+
+<body>
+  <header class="site-header">
+    <div class="shell nav">
+      <a class="brand" href="index.html"><img class="mark" src="assets/icon-32.png" alt="" width="28" height="28">
+        CorpusWright</a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="quick-start.html">Quick Start</a>
+        <a href="concepts/overview.html">Concepts</a>
+        <a href="roadmap.html">Roadmap</a>
+        <a href="technical-docs.html">Docs</a>
+        <a href="about.html" aria-current="page">About</a>
+        <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download</a>
+        <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" aria-hidden="true">
+            <path
+              d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
+            </path>
+          </svg>
+        </a>
+        <button class="theme-btn" id="theme-toggle" type="button" aria-pressed="false" aria-label="Switch to dark theme">
+        <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+        </svg>
+        <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+        </svg>
+      </button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <section class="section">
+      <div class="shell">
+        <div class="section-lead learn-lead">
+          <p class="eyebrow">About</p>
+          <h1>About</h1>
+        </div>
+      </div>
+    </section>
+
+    <section class="section learn-content">
+      <div class="shell">
+        <div class="docs-content learn-prose">
+          <section class="learn-section">
+            <h2 id="story">The story</h2>
+
+            <p>CorpusWright began as a solo project, born mostly out of impatience.</p>
+
+            <p>As an undergraduate, I joined an "iniciação científica" project: compile a corpus of Agrarian Sciences articles, analyse it, and build teaching materials from it. I was given the task every undergraduate ends up with - cleaning the corpus - using a script that stripped unwanted characters from text files one at a time. The schedule allowed eight to twelve months for the job, and nobody around me found that strange; nor, I suspect, would most corpus linguistics projects. A few weeks of Python later, I could clean whole directories at once, and the work took days.</p>
+
+            <p>Everyone treated this as remarkable. It was not - not even close. A few lines of regex and pathlib; any programmer would call it a warm-up exercise. I declined to register the tool as intellectual property for exactly that reason - there was nothing there worth owning - and the refusal mattered far more than the code did: it left the idea free to stay open, and eventually to grow into this.</p>
+
+            <p>What stayed with me wasn't the speed so much as what the speed revealed. Once the cleaning dropped from months to days, everything else stayed the same: the corpus was still barely examined. That's when it clicked that the real constraint wasn't exactly the tooling; it was a habit - treating description as the tedious bit you get through on the way to the comparison you actually want to publish. (And yes, as I write this, I can see the origin story and the founding position are basically the same story told twice - which might be suspicious. I'm choosing to read it as reassuring.)</p>
+          </section>
+
+          <section class="learn-section">
+            <h2 id="stance">Where CorpusWright stands</h2>
+
+            <p>CorpusWright is built on one position: the description of a corpus is not a preliminary step taken before statistical analysis; it is the first stage of statistical analysis. The data-science tradition has a name for this stage: exploratory data analysis (Tukey, 1977), the work of understanding a dataset's structure, its distribution, and its limits before any confirmatory claim is made. Corpus research skips this stage more often than it should, treating description as a formality on the way to the comparison a study set out to make. CorpusWright's response is not an argument but a default: the descriptive diagnostics are computed for every corpus, in the same way, every time - whether or not anyone planned to look at them.</p>
+
+            <p>The position is not novel, and the project does not claim it as its own. It is the ordinary discipline of open science - reproducible results, transparent methods, findings that carry their provenance, claims held to organised scepticism - applied consistently to one corner of linguistics where it is applied unevenly. In practice, that discipline means five things:</p>
+
+            <ul>
+              <li><strong>Deterministic.</strong> The same corpus and the same configuration give the same results, every time. A saved cleaning configuration is part of the research record: it can be inspected, shared, and re-applied without relying on anyone's recollection of manual steps.</li>
+              <li><strong>Conservative.</strong> Where a cleaning decision is uncertain, the original text is preserved. Detected noise is evidence, not an instruction; it becomes a cleaning rule only after explicit review. The tool would rather under-clean than silently discard what cannot be recovered.</li>
+              <li><strong>Auditable.</strong> Extraction warnings, cleaning rules, and the provenance of every count - the tokeniser version, and for annotated counts the model and its version - remain inspectable, because changing the tokeniser or the tagger changes the counts.</li>
+              <li><strong>Local-first.</strong> Private corpora stay on your own machine. Nothing is uploaded anywhere.</li>
+              <li><strong>Statistically restrained.</strong> Frequencies are reported as what they are, without overstatement; measures respect corpus design, dispersion, document-level variation, and their own uncertainty.</li>
+            </ul>
+
+            <p>The documentation holds itself to the same standard: no performance claim without a measured number, and nothing experimental or merely planned presented as completed.</p>
+
+            <p>Why a stated position rather than a neutral product? Because a neutral analysis tool is a comforting idea and a fictional one. Every tool takes positions; defaults decide what gets looked at, and a diagnostic that only runs on request is a diagnostic that rarely runs. This page states CorpusWright's positions so that they can be argued with - software that is opinionated and says so, rather than opinionated and calling itself neutral.</p>
+
+            <h3>Nothing new, made routine</h3>
+
+            <p>None of the mathematics in CorpusWright is new, and the tool does not pretend otherwise: Zipf's law dates to Zipf (1949), Shannon entropy to Shannon (1948), and the principles of careful corpus design are older still. What is comparatively new is having all of these diagnostics presented by default in a local-first tool that recomputes them in the same way every time. Left to themselves, these measures stay as scripts you might never write, simply because they aren't part of the standard training, and their existence and interpretive value never become routine. That is the only sense in which CorpusWright is "modern": it takes an old and serious set of ideas and makes them routine and reproducible.</p>
+
+            <p>CorpusWright is in alpha, and that will not be dressed up either. Parts of it are solid, parts are scaffolding, and the documentation labels which is which.</p>
+          </section>
+
+          <section class="learn-section">
+            <h2 id="maker">The maker</h2>
+
+            <p>I am a corpus linguist who programs, in that order. The linguistics came first; the Rust and the Python exist to serve it. And the frustration behind this tool is practical, not quite stylistic. I've spent enough time watching the field's default routine - normalise per thousand words, run the familiar test, call it a day - to want the careful way to also be the easy way.</p>
+
+            <p>Where to find me:</p>
+
+            <ul>
+              <li>GitHub: <a href="https://github.com/jhlopesalves">jhlopesalves</a>; the project lives at <a href="https://github.com/jhlopesalves/CorpusWright">https://github.com/jhlopesalves/CorpusWright</a></li>
+              <li>Substack: <a href="https://substack.com/@jhonatanhlopes">https://substack.com/@jhonatanhlopes</a></li>
+            </ul>
+          </section>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell foot">
+      <span>CorpusWright is an open, local-first corpus linguistics workbench, currently in public alpha.</span>
+      <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var toggle = document.getElementById('theme-toggle');
+      if (!toggle) { return; }
+      function syncToggle() {
+        var dark = root.getAttribute('data-theme') === 'dark';
+        toggle.setAttribute('aria-pressed', String(dark));
+        toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+      }
+      syncToggle();
+      toggle.addEventListener('click', function () {
+        var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        syncToggle();
+      });
+    })();
+  </script>
+</body>
+
+</html>
