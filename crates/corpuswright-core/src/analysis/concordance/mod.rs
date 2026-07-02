@@ -1,6 +1,5 @@
-use super::{
-    AnalysisDocumentSelection, MAX_QUERY_WINDOW, annotated_dispersion_label, case_fold_surface,
-};
+use super::shared::MAX_QUERY_WINDOW;
+use super::{AnalysisDocumentSelection, annotated_dispersion_label, case_fold_surface};
 use crate::hash::sha256_hex;
 use crate::index::{
     InMemoryIndexStore, IndexStore, SurfaceIndexDocumentInput, SurfaceIndexError,

@@ -1,8 +1,11 @@
 use super::distribution::selected_document_mask;
+use super::shared::{
+    ANNOTATED_DP_BROADLY_DISPERSED_MAX, ANNOTATED_DP_HIGHLY_CONCENTRATED_MIN, ENGLISH_STOPWORDS,
+    MAX_QUERY_WINDOW,
+};
 use super::{
-    ANNOTATED_DP_BROADLY_DISPERSED_MAX, ANNOTATED_DP_HIGHLY_CONCENTRATED_MIN, AnalysisCorpus,
-    AnalysisDocument, AnalysisDocumentSelection, AnnotationCacheAvailability, AnnotationCacheState,
-    ENGLISH_STOPWORDS, MAX_QUERY_WINDOW, compute_dispersion,
+    AnalysisCorpus, AnalysisDocument, AnalysisDocumentSelection, AnnotationCacheAvailability,
+    AnnotationCacheState, compute_dispersion,
 };
 use crate::annotation::UniversalPos;
 use regex::{Regex, RegexBuilder};
