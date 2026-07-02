@@ -173,6 +173,7 @@ pub enum ConcordanceBackend {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConcordanceFallbackReason {
     UnsupportedFilter,
+    IndexError,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -196,7 +197,7 @@ pub struct ConcordanceSearchContext {
 }
 
 impl ConcordanceSearchContext {
-    fn index_store_for(
+    pub(super) fn index_store_for(
         &mut self,
         documents: &[ConcordanceDocument],
         selected_document_ids: &HashSet<usize>,
