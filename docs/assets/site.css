@@ -469,7 +469,7 @@ html[data-theme="light"] .theme-img-light { display: block; }
   grid-column: 1;
   min-width: 0;
 }
-.docs-content figure:has(> img[src*="assets/figures/"]),
+.docs-content figure:has(> img[src*="figures/"]),
 .docs-content figure.cw-chipfig,
 .docs-content figure:has(> svg),
 .docs-content figure:has(> pre.mermaid) {
@@ -478,7 +478,7 @@ html[data-theme="light"] .theme-img-light { display: block; }
   border-radius: 10px;
   padding: 16px 18px;
 }
-.docs-content figure:has(> img[src*="assets/figures/"]) figcaption,
+.docs-content figure:has(> img[src*="figures/"]) figcaption,
 .docs-content figure.cw-chipfig figcaption,
 .docs-content figure:has(> svg) figcaption,
 .docs-content figure:has(> pre.mermaid) figcaption {
