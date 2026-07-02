@@ -12,6 +12,7 @@ import type { AnnotationCacheBuildProgress as GeneratedAnnotationCacheBuildProgr
 import type { AnnotationCacheState as GeneratedAnnotationCacheState } from "./generated/AnnotationCacheState.js";
 import type { AnalysisDocumentSelection as GeneratedAnalysisDocumentSelection } from "./generated/AnalysisDocumentSelection.js";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
+import type { ConcordanceContextFilterDirection as GeneratedConcordanceContextFilterDirection } from "./generated/ConcordanceContextFilterDirection.js";
 import type { ConcordanceQuery as GeneratedConcordanceQuery } from "./generated/ConcordanceQuery.js";
 import type { ConcordanceExpansionQuery as GeneratedConcordanceExpansionQuery } from "./generated/ConcordanceExpansionQuery.js";
 import type { ConcordanceExpansionResult as GeneratedConcordanceExpansionResult } from "./generated/ConcordanceExpansionResult.js";
@@ -278,6 +279,7 @@ export type AnalysisDocumentSelection = GeneratedAnalysisDocumentSelection;
 export type FrequencyQuery = GeneratedFrequencyQuery;
 export type FrequencyTermItem = GeneratedFrequencyTermItem;
 export type FrequencyPage = GeneratedFrequencyPage;
+export type ConcordanceContextFilterDirection = GeneratedConcordanceContextFilterDirection;
 export type ConcordanceQuery = GeneratedConcordanceQuery;
 export type ConcordanceExpansionQuery = GeneratedConcordanceExpansionQuery;
 export type ConcordanceExpansionResult = GeneratedConcordanceExpansionResult;
