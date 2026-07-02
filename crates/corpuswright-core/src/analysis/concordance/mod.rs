@@ -1,5 +1,6 @@
+use super::build::AnalysisDocumentSelection;
+use super::frequency::{annotated_dispersion_label, case_fold_surface};
 use super::shared::MAX_QUERY_WINDOW;
-use super::{AnalysisDocumentSelection, annotated_dispersion_label, case_fold_surface};
 use crate::hash::sha256_hex;
 use crate::index::{
     InMemoryIndexStore, IndexStore, SurfaceIndexDocumentInput, SurfaceIndexError,
@@ -1137,19 +1138,4 @@ pub fn expand_concordance_context(
 }
 
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn concordance_routing_types_remain_rust_only_without_ts_export() {
-        let source = include_str!("mod.rs");
-        let start = source
-            .find("pub enum ConcordanceBackend")
-            .expect("routing type source should exist");
-        let end = source
-            .find("#[derive(Debug, Clone, PartialEq, Eq)]\npub enum ConcordanceError")
-            .expect("concordance error source should exist");
-        let routing_source = &source[start..end];
-
-        assert!(!routing_source.contains("#[ts(export)]"));
-        assert!(!routing_source.contains("TS"));
-    }
-}
+mod tests;

@@ -1,8 +1,9 @@
-use super::{
+use super::build::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisCorpus, AnalysisDocument,
-    AnalysisInputProvenance, AnalysisInputResolution, analysis_word_tokens, build_analysis_corpus,
-    compare_document_records, document_name,
+    build_analysis_corpus, compare_document_records, document_name,
 };
+use super::concordance::analysis_word_tokens;
+use super::input::{AnalysisInputProvenance, AnalysisInputResolution};
 use crate::annotation::{
     AnnotatedToken, AnnotationError, LemmaTable, ModelManager, UniversalPos, default_model_dir,
 };
@@ -1685,3 +1686,7 @@ pub fn annotation_cache_availability_for_corpus(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "annotation_build_tests.rs"]
+mod tests;

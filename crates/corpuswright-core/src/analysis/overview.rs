@@ -1,6 +1,5 @@
-use super::{
-    AnalysisBuildMetadata, AnalysisDocument, AnalysisInputSource, AnalysisTerm, document_name,
-};
+use super::build::{AnalysisBuildMetadata, AnalysisDocument, AnalysisTerm, document_name};
+use super::input::AnalysisInputSource;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -1198,3 +1197,7 @@ pub(super) fn build_overview(
         },
     }
 }
+
+#[cfg(test)]
+#[path = "overview_tests.rs"]
+mod tests;
