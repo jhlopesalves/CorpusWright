@@ -256,11 +256,33 @@ assert(
   "Collocate filtering should switch to Lines and expose a clearable active-filter chip",
 );
 assert(
+  workbench.includes("function renderContextTokens(")
+    && workbench.includes("concordanceContextTokenSegments(tokens, activeFilter, caseSensitive)")
+    && workbench.includes("document.createTextNode(\" \")")
+    && workbench.includes('const token = document.createElement("span");')
+    && workbench.includes('token.className = "concordance-collocate";')
+    && workbench.includes("token.textContent = segment.text;")
+    && workbench.includes("const activeContextFilter = concordanceResult?.contextFilter ?? concordanceContextFilter;")
+    && workbench.includes("const contextFilterCaseSensitive = concordanceResult?.caseSensitive ?? false;"),
+  "Concordance context rendering should use text nodes and span-based collocate highlights from the active Lines filter",
+);
+assert(
+  styles.includes(".concordance-collocate {\n  background: var(--cw-collocate-bg);\n  color: var(--cw-collocate-text);")
+    && !styles.includes("mark.concordance-collocate"),
+  "Concordance collocate tokens should use the quiet collocate colour role, not mark styling",
+);
+assert(
   workbench.includes('item.className = "concordance-collocation-row"')
+    && workbench.includes('item.classList.toggle("is-active", row.surface === concordanceContextFilter);')
     && workbench.includes('item.setAttribute("role", "button")')
     && workbench.includes('item.setAttribute("aria-label", actionLabel)')
     && workbench.includes('event.key !== "Enter" && event.key !== " "'),
-  "Collocate rows should be clickable and keyboard accessible without an inline Show lines cue",
+  "Collocate rows should be clickable, keyboard accessible, and mark the active evidence row without an inline Show lines cue",
+);
+assert(
+  styles.includes(".concordance-collocation-row.is-active td {\n  background: var(--cw-collocate-bg);")
+    && styles.includes(".concordance-collocation-row.is-active .concordance-collocate-text {\n  color: var(--cw-collocate-text);"),
+  "Active collocate rows should use the quiet collocate colour role",
 );
 
 const concordanceNodeCssMatch = styles.match(/\.concordance-node \{([\s\S]*?)\n\}/);
@@ -314,6 +336,39 @@ assert(
     && !styles.includes(".concordance-collocate-action")
     && !collocateTextCss.includes("text-decoration"),
   "Collocate identifiers should render as normal row text, not as glued link-style actions",
+);
+const infoTokenCount = styles.match(/^  --cw-info-text:/gm)?.length ?? 0;
+assert(infoTokenCount > 0, "Theme info colour roles should exist");
+assert(
+  (styles.match(/^  --cw-collocate-bg:/gm)?.length ?? 0) === infoTokenCount
+    && (styles.match(/^  --cw-collocate-border:/gm)?.length ?? 0) === infoTokenCount
+    && (styles.match(/^  --cw-collocate-text:/gm)?.length ?? 0) === infoTokenCount,
+  "Each theme block with info colours should define the collocate colour role",
+);
+const currentMeasureMatch = workbench.match(
+  /function currentConcordanceCollocationMeasure\(\): ConcordanceCollocationMeasure \{([\s\S]*?)\n\}/,
+);
+assert(currentMeasureMatch, "Current collocation measure state helper should exist");
+assert(
+  currentMeasureMatch[1].includes("return concordanceCollocationMeasure;")
+    && !currentMeasureMatch[1].includes("dom.concordanceCollocationMeasureSelect.value"),
+  "Collocation measure state should come from the module-level active measure",
+);
+const measureChangeMatch = workbench.match(
+  /function handleConcordanceCollocationMeasureChange\(\): void \{([\s\S]*?)\n\}/,
+);
+assert(measureChangeMatch, "Collocation measure change handler should exist");
+assert(
+  measureChangeMatch[1].includes("concordanceCollocationMeasure = dom.concordanceCollocationMeasureSelect.value as ConcordanceCollocationMeasure;")
+    && measureChangeMatch[1].includes("refreshConcordanceCollocationsForPresentationChange();"),
+  "Changing the demoted measure select should update active measure state and rerank presentation",
+);
+assert(
+  html.includes('class="concordance-collocation-measure-field" for="concordance-collocation-measure"')
+    && styles.includes("#concordance-collocation-measure {\n  width: 122px;")
+    && styles.includes("color: var(--text-muted);")
+    && styles.includes(".concordance-collocation-measure-field {\n  opacity: 0.86;"),
+  "The retained collocation measure select should be visually demoted but still accessible",
 );
 assert(
   styles.includes(".concordance-collocation-score-track")
