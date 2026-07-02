@@ -1,10 +1,10 @@
+use super::build::{AnalysisCorpus, AnalysisDocumentSelection};
 use super::frequency::{
     FrequencyGroupMode, FrequencyMatchMode, FrequencyQuery, FrequencySortKey, FrequencyTokenClass,
     SortDirection, annotated_frequency_group_key, frequency_group_key, frequency_query_key,
     resolve_frequency_grouping, selected_documents_have_annotation,
 };
 use super::shared::MAX_QUERY_WINDOW;
-use super::{AnalysisCorpus, AnalysisDocumentSelection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use ts_rs::TS;
@@ -371,3 +371,7 @@ pub fn query_annotated_term_distribution(
         max_rate_per_million,
     }
 }
+
+#[cfg(test)]
+#[path = "distribution_tests.rs"]
+mod tests;
