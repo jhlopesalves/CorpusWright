@@ -5,7 +5,6 @@ import {
   CONCORDANCE_COLLOCATION_LIMIT,
   CONCORDANCE_COLLOCATION_MEASURE_OPTIONS,
   CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE,
-  CONCORDANCE_COLLOCATION_STALE_DETAIL,
   CONCORDANCE_COLLOCATION_STALE_MESSAGE,
   CONCORDANCE_COLLOCATION_SORT_OPTIONS,
   DEFAULT_CONCORDANCE_COLLOCATION_MEASURE,
@@ -67,12 +66,8 @@ assert(
   "Collocate Profile should expose an explicit not-computed state",
 );
 assert(
-  CONCORDANCE_COLLOCATION_STALE_MESSAGE === "The collocate profile is out of date for the current query.",
-  "Collocate Profile should expose an explicit stale state",
-);
-assert(
-  CONCORDANCE_COLLOCATION_STALE_DETAIL === "Update collocate profile for the current query.",
-  "Stale collocate copy should explain why refresh is needed",
+  CONCORDANCE_COLLOCATION_STALE_MESSAGE === "Update the collocate profile for the current query.",
+  "Stale collocate copy should be a single action sentence",
 );
 assert(CONCORDANCE_EXPANSION_WINDOW === 40, "Expansion should request the default wide KWIC window");
 assert(concordanceSortLabel("left1") === "1L", "Left sort labels should use KWIC shorthand");

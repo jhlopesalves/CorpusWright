@@ -31,9 +31,7 @@ export const CONCORDANCE_COLLOCATION_NO_ROWS_MESSAGE =
 export const CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE =
   "The collocate profile has not been computed yet.";
 export const CONCORDANCE_COLLOCATION_STALE_MESSAGE =
-  "The collocate profile is out of date for the current query.";
-export const CONCORDANCE_COLLOCATION_STALE_DETAIL =
-  "Update collocate profile for the current query.";
+  "Update the collocate profile for the current query.";
 export const DEFAULT_CONCORDANCE_COLLOCATION_MEASURE: ConcordanceCollocationMeasure = "logDice";
 export const DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY: ConcordanceCollocationSortKey = "association";
 export const DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION: SortDirection = "desc";
