@@ -169,11 +169,15 @@ for (const label of ["Collocate", "Near query", "O11", "Corpus frequency", "f_c"
 for (const label of [
   "CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE",
   "CONCORDANCE_COLLOCATION_STALE_MESSAGE",
-  "CONCORDANCE_COLLOCATION_STALE_DETAIL",
-  "Update collocate profile",
+  "Update profile",
 ]) {
   assert(workbench.includes(label), `Collocate Profile should render ${label}`);
 }
+assert(
+  !workbench.includes("CONCORDANCE_COLLOCATION_STALE_DETAIL")
+    && !workbench.includes("Update collocate profile"),
+  "Collocate Profile stale copy should not concatenate repeated implementation-state text",
+);
 assert(
   !workbench.includes("Compute collocates")
     && !workbench.includes("Show lines")
@@ -205,9 +209,39 @@ const runConcordanceSearchMatch = workbench.match(
 );
 assert(runConcordanceSearchMatch, "Concordance search handler should exist");
 assert(
-  runConcordanceSearchMatch[1].includes("void refreshConcordance();")
-    && !runConcordanceSearchMatch[1].includes("refreshConcordanceCollocations"),
-  "Search should refresh KWIC lines only",
+  runConcordanceSearchMatch[1].includes("void runConcordanceSearchForActiveView();")
+    && !runConcordanceSearchMatch[1].includes("setActiveConcordanceView"),
+  "Search should delegate to the active Concordance view workflow without forcing Evidence lines",
+);
+const runConcordanceSearchForActiveViewMatch = workbench.match(
+  /async function runConcordanceSearchForActiveView\(\): Promise<void> \{([\s\S]*?)\n\}/,
+);
+assert(runConcordanceSearchForActiveViewMatch, "Active-view Concordance search helper should exist");
+const runConcordanceSearchForActiveViewBody = runConcordanceSearchForActiveViewMatch[1];
+const collocationRefreshesFromSearch = (
+  runConcordanceSearchForActiveViewBody.match(/refreshConcordanceCollocations\(/g) ?? []
+).length;
+assert(
+  runConcordanceSearchForActiveViewBody.includes("const viewAtSearch = activeConcordanceView;")
+    && runConcordanceSearchForActiveViewBody.includes("const queryAtSearch = normaliseConcordanceQuery(dom.concordanceQueryInput.value);")
+    && runConcordanceSearchForActiveViewBody.includes("await refreshConcordance();"),
+  "Active-view Concordance search should capture the current view/query and refresh the query result first",
+);
+assert(
+  runConcordanceSearchForActiveViewBody.includes('viewAtSearch === "collocates"')
+    && runConcordanceSearchForActiveViewBody.includes('activeConcordanceView === "collocates"')
+    && runConcordanceSearchForActiveViewBody.includes("normaliseConcordanceQuery(dom.concordanceQueryInput.value) === queryAtSearch")
+    && runConcordanceSearchForActiveViewBody.includes("concordanceResult !== null")
+    && runConcordanceSearchForActiveViewBody.includes("concordanceFailure === null")
+    && runConcordanceSearchForActiveViewBody.includes("await refreshConcordanceCollocations();")
+    && collocationRefreshesFromSearch === 1,
+  "Search should update Collocate Profile directly only when the Collocate Profile view is still active for the same successful query",
+);
+assert(
+  !runConcordanceSearchForActiveViewBody.includes('viewAtSearch === "distribution"')
+    && !runConcordanceSearchForActiveViewBody.includes("maybeAutoComputeConcordanceCollocations")
+    && !runConcordanceSearchForActiveViewBody.includes("setActiveConcordanceView"),
+  "Distribution search should rely on the refreshed Concordance result and avoid collocation computation or forced view changes",
 );
 assert(
   workbench.includes("queryConcordanceCollocations")
@@ -237,12 +271,36 @@ assert(
 );
 assert(
   workbench.includes('table.className = "concordance-distribution-table"')
-    && workbench.includes('for (const label of ["File", "Hits", "Tokens", "Bar"])')
     && workbench.includes('panel.className = "concordance-document-spread-panel"')
     && workbench.includes('panelHeader.className = "concordance-document-spread-header"')
+    && workbench.includes("concordanceSummaryMetricsText(result)")
     && workbench.includes("Distribution —")
     && !workbench.includes('const panel = document.createElement("details");\n  panel.className = "concordance-document-spread-panel";'),
   "Concordance Distribution should render directly rather than as a collapsed details widget",
+);
+const renderConcordanceDistributionMatch = workbench.match(
+  /function renderConcordanceDistribution\(\n  result: ConcordanceResult \| null,\n  emptyMessage = CONCORDANCE_NO_QUERY_MESSAGE,\n\): void \{([\s\S]*?)\n\}/,
+);
+assert(renderConcordanceDistributionMatch, "Concordance Distribution renderer should exist");
+const renderConcordanceDistributionBody = renderConcordanceDistributionMatch[1];
+assert(
+  renderConcordanceDistributionBody.includes('for (const label of ["File", "Hits", "Tokens", "Hits per 10k", "Share of hits"])')
+    && !renderConcordanceDistributionBody.includes('"Bar"')
+    && renderConcordanceDistributionBody.includes("cell.colSpan = 5;"),
+  "Concordance Distribution should expose metric-first columns and a five-column empty state",
+);
+assert(
+  renderConcordanceDistributionBody.includes("item.ratePer10k")
+    && renderConcordanceDistributionBody.includes("item.count / result.totalHits * 100")
+    && renderConcordanceDistributionBody.includes("formatFixedNumber(item.ratePer10k, 2)")
+    && renderConcordanceDistributionBody.includes("formatFixedNumber(shareOfHits, 1)"),
+  "Concordance Distribution should render Hits per 10k and Share of hits from existing result data",
+);
+assert(
+  !renderConcordanceDistributionBody.includes('track.className = "frequency-distribution-track"')
+    && !renderConcordanceDistributionBody.includes('fill.className = "frequency-distribution-fill"')
+    && !renderConcordanceDistributionBody.includes("--bar-width"),
+  "Concordance Distribution should not create bar tracks or fills",
 );
 assert(
   workbench.includes("addEventListener(\"click\", () => {\n    void toggleConcordanceExpansion(row);")

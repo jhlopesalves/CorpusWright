@@ -75,7 +75,6 @@ import {
   CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE,
   CONCORDANCE_COLLOCATION_NO_ROWS_MESSAGE,
   CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE,
-  CONCORDANCE_COLLOCATION_STALE_DETAIL,
   CONCORDANCE_COLLOCATION_STALE_MESSAGE,
   CONCORDANCE_EXPANSION_WINDOW,
   CONCORDANCE_NO_HITS_MESSAGE,
@@ -2443,17 +2442,17 @@ function renderConcordanceCollocations(): void {
   }
 
   if (concordanceCollocationState === "stale") {
-    const detail = concordanceCollocationSupersededNotice
-      ? `${CONCORDANCE_COLLOCATION_STALE_DETAIL} ${concordanceCollocationSupersededNotice}`
-      : CONCORDANCE_COLLOCATION_STALE_DETAIL;
+    const staleMessage = query.length > 0
+      ? `Update the collocate profile for "${query}".`
+      : CONCORDANCE_COLLOCATION_STALE_MESSAGE;
     renderConcordanceCollocationStatus(
       renderConcordanceCollocationAction(
-        CONCORDANCE_COLLOCATION_STALE_MESSAGE,
-        detail,
-        "Update collocate profile",
+        staleMessage,
+        concordanceCollocationSupersededNotice,
+        "Update profile",
       ),
     );
-    renderConcordanceCollocationTableState(CONCORDANCE_COLLOCATION_STALE_MESSAGE);
+    renderConcordanceCollocationTableState(staleMessage);
     return;
   }
 
@@ -2499,8 +2498,7 @@ function renderConcordanceDistribution(
   const title = document.createElement("span");
   title.className = "concordance-document-spread-title";
   if (result && result.totalHits > 0) {
-    title.textContent =
-      `Distribution — ${formatNumber(result.totalHits)} hits across ${formatNumber(result.documentsWithHits)} files · top file ${formatFixedNumber(result.topDocumentShare * 100, 1)}% · DP ${formatFixedNumber(result.dp, 2)}`;
+    title.textContent = `Distribution — ${concordanceSummaryMetricsText(result)}`;
   } else if (result) {
     title.textContent = "Distribution — no hits in the selected files";
   } else {
@@ -2517,7 +2515,7 @@ function renderConcordanceDistribution(
 
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  for (const label of ["File", "Hits", "Tokens", "Bar"]) {
+  for (const label of ["File", "Hits", "Tokens", "Hits per 10k", "Share of hits"]) {
     const cell = document.createElement("th");
     cell.textContent = label;
     header.appendChild(cell);
@@ -2529,13 +2527,12 @@ function renderConcordanceDistribution(
   if (!result || result.totalHits === 0) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 4;
+    cell.colSpan = 5;
     cell.className = "frequency-empty concordance-empty";
     cell.textContent = result ? CONCORDANCE_NO_HITS_MESSAGE : emptyMessage;
     row.appendChild(cell);
     body.appendChild(row);
   } else {
-    const maxCount = result.distribution.maxCount;
     for (const item of result.distribution.items) {
       const row = document.createElement("tr");
 
@@ -2552,18 +2549,16 @@ function renderConcordanceDistribution(
       tokens.className = "numeric";
       tokens.textContent = formatNumber(item.tokenCount);
 
-      const bar = document.createElement("td");
-      const track = document.createElement("span");
-      track.className = "frequency-distribution-track";
-      const fill = document.createElement("span");
-      fill.className = "frequency-distribution-fill";
-      const width = maxCount > 0 && item.count > 0 ? Math.max(3, (item.count / maxCount) * 100) : 0;
-      fill.style.setProperty("--bar-width", `${width}%`);
-      track.title = `Hits: ${formatNumber(item.count)}`;
-      track.appendChild(fill);
-      bar.appendChild(track);
+      const rate = document.createElement("td");
+      rate.className = "numeric";
+      rate.textContent = formatFixedNumber(item.ratePer10k, 2);
 
-      row.append(file, count, tokens, bar);
+      const share = document.createElement("td");
+      share.className = "numeric";
+      const shareOfHits = result.totalHits > 0 ? item.count / result.totalHits * 100 : 0;
+      share.textContent = `${formatFixedNumber(shareOfHits, 1)}%`;
+
+      row.append(file, count, tokens, rate, share);
       body.appendChild(row);
     }
   }
@@ -2835,9 +2830,27 @@ function handleConcordanceSortChange(): void {
 }
 
 function runConcordanceSearch(): void {
+  void runConcordanceSearchForActiveView();
+}
+
+async function runConcordanceSearchForActiveView(): Promise<void> {
+  const viewAtSearch = activeConcordanceView;
+  const queryAtSearch = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
+
   concordanceContextFilter = null;
   markConcordanceCollocationsForAggregationChange();
-  void refreshConcordance();
+  await refreshConcordance();
+
+  if (
+    viewAtSearch === "collocates"
+    && activeConcordanceView === "collocates"
+    && queryAtSearch.length > 0
+    && normaliseConcordanceQuery(dom.concordanceQueryInput.value) === queryAtSearch
+    && concordanceResult !== null
+    && concordanceFailure === null
+  ) {
+    await refreshConcordanceCollocations();
+  }
 }
 
 function handleConcordancePageSizeChange(): void {
