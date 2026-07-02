@@ -110,23 +110,6 @@
         </aside>
 
         <div class="docs-content learn-prose">
-          <figure>
-            <pre class="mermaid">
-flowchart TD
-    A["Source<br>text"] --> B["Extract<br>text"]
-    B --> C["Detect<br>artefacts"]
-    C --> D["Human<br>review"]
-    D --> E["Saved cleaning<br>rules"]
-    E --> F["Build<br>corpus"]
-    F --> G["Inspect<br>diagnostics"]
-    G --> H{"Looks<br>right?"}
-    H -->|revise| D
-    H -->|yes| I["Analysis"]
-    E -.->|re-run| F
-</pre>
-            <figcaption>Preparation is analysis: saved cleaning rules replay deterministically into each rebuild.</figcaption>
-          </figure>
-
           <section class="learn-section">
 
             <h2 id="how-to-read-this-section">How to read this section</h2>
@@ -175,6 +158,23 @@ flowchart TD
           <section class="learn-section">
 
             <h2 id="how-the-workbench-treats-your-text">How the workbench treats your text</h2>
+
+            <figure>
+              <pre class="mermaid">
+flowchart TD
+    A["Source<br>text"] --> B["Extract<br>text"]
+    B --> C["Detect<br>artefacts"]
+    C --> D["Human<br>review"]
+    D --> E["Saved cleaning<br>rules"]
+    E --> F["Build<br>corpus"]
+    F --> G["Inspect<br>diagnostics"]
+    G --> H{"Looks<br>right?"}
+    H -->|revise| D
+    H -->|yes| I["Analysis"]
+    E -.->|re-run| F
+</pre>
+              <figcaption>Preparation is analysis: saved cleaning rules replay deterministically into each rebuild.</figcaption>
+            </figure>
 
             <p>One more piece of ground to clear before the measures: what the Prepare layer has done to the text by the time anything is counted. Cleaning is deterministic - saved rules replay identically on every run, and the configuration is part of the research record. Detected artefacts are candidates, not deletions: nothing is removed without explicit review, and uncertain cases keep the original text. Where the source format permits, a PDF is read as a paged document, so headers and footers are recognised as page structure rather than running text. And cleaning, concordance inspection, and frequency analysis operate in one continuous workflow, so the effect of a cleaning decision can be checked at the points where it becomes visible. The stance behind these defaults lives on the <a href="../about.html">About</a> page; here they are facts to rely on when reading the numbers.</p>
 
