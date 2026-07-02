@@ -1,9 +1,10 @@
-use super::shared::ENGLISH_STOPWORDS;
-use super::{
-    AnalysisDocumentSelection, ConcordanceDocument, ConcordanceError, SortDirection,
-    analysis_word_tokens, case_fold_surface, concordance_key, resolve_concordance_query_tokens,
-    selected_concordance_document_ids,
+use super::build::AnalysisDocumentSelection;
+use super::concordance::{
+    ConcordanceDocument, ConcordanceError, analysis_word_tokens, concordance_key,
+    resolve_concordance_query_tokens, selected_concordance_document_ids,
 };
+use super::frequency::{SortDirection, case_fold_surface};
+use super::shared::ENGLISH_STOPWORDS;
 use crate::tokenization::TokenizationConfig;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -576,3 +577,7 @@ pub fn query_concordance_collocations_documents(
         &aggregate, query,
     ))
 }
+
+#[cfg(test)]
+#[path = "collocation_tests.rs"]
+mod tests;

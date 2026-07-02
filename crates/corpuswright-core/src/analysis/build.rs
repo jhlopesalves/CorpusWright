@@ -1,8 +1,14 @@
-use super::{
-    AnalysisInputProvenance, AnalysisInputResolution, AnalysisInputSource, AnnotatedTermCount,
+use super::annotation_build::{
+    AnnotatedTermCount, attach_annotation_layer, build_expected_manifest,
+};
+use super::concordance::analysis_word_tokens;
+use super::input::{
+    AnalysisInputProvenance, AnalysisInputResolution, AnalysisInputSource,
+    cleaning_config_signature,
+};
+use super::overview::{
     CorpusOverview, CorpusOverviewContext, MATTR_WINDOW_TOKENS, MTLD_MIN_DOCUMENT_TOKENS,
-    MTLD_TTR_THRESHOLD, VocabularyGrowthPoint, analysis_word_tokens, attach_annotation_layer,
-    build_expected_manifest, build_overview, cleaning_config_signature, mattr, mtld,
+    MTLD_TTR_THRESHOLD, VocabularyGrowthPoint, build_overview, mattr, mtld,
 };
 use crate::annotation::LemmaTable;
 use crate::clean::CleaningConfig;
@@ -807,3 +813,7 @@ fn surface_term_id(
     });
     Ok(term_id)
 }
+
+#[cfg(test)]
+#[path = "build_tests.rs"]
+mod tests;

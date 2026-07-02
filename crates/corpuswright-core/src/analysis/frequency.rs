@@ -1,11 +1,11 @@
+use super::annotation_build::{AnnotationCacheAvailability, AnnotationCacheState};
+use super::build::{
+    AnalysisCorpus, AnalysisDocument, AnalysisDocumentSelection, compute_dispersion,
+};
 use super::distribution::selected_document_mask;
 use super::shared::{
     ANNOTATED_DP_BROADLY_DISPERSED_MAX, ANNOTATED_DP_HIGHLY_CONCENTRATED_MIN, ENGLISH_STOPWORDS,
     MAX_QUERY_WINDOW,
-};
-use super::{
-    AnalysisCorpus, AnalysisDocument, AnalysisDocumentSelection, AnnotationCacheAvailability,
-    AnnotationCacheState, compute_dispersion,
 };
 use crate::annotation::UniversalPos;
 use regex::{Regex, RegexBuilder};
@@ -1097,3 +1097,7 @@ pub fn query_frequency_list(corpus: &AnalysisCorpus, query: &FrequencyQuery) -> 
         notices: grouping.notices,
     }
 }
+
+#[cfg(test)]
+#[path = "frequency_tests.rs"]
+mod tests;

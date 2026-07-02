@@ -111,3 +111,7 @@ pub fn cleaning_config_signature(cleaning_config: &CleaningConfig) -> String {
     });
     format!("{hash:016x}")
 }
+
+#[cfg(test)]
+#[path = "input_tests.rs"]
+mod tests;
