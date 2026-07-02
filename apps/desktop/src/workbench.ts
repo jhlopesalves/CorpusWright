@@ -65,6 +65,7 @@ import {
   concordanceCollocationScore,
   concordanceCollocationScoreBarPercent,
   concordanceCollocationSortHeaderLabel,
+  concordanceContextTokenSegments,
   concordanceExpansionViewModel,
   concordanceSummaryMetricsText,
   concordanceRowExpansionKey,
@@ -1707,7 +1708,7 @@ function currentConcordanceCollocationDirection(): ConcordanceCollocationDirecti
 }
 
 function currentConcordanceCollocationMeasure(): ConcordanceCollocationMeasure {
-  return dom.concordanceCollocationMeasureSelect.value as ConcordanceCollocationMeasure;
+  return concordanceCollocationMeasure;
 }
 
 function currentConcordanceCollocationSortDirection(): SortDirection {
@@ -2082,10 +2083,35 @@ function renderConcordanceTableState(message: string): void {
   dom.concordanceTableBody.replaceChildren(row);
 }
 
+function renderContextTokens(
+  tokens: string[],
+  activeFilter: string | null,
+  caseSensitive: boolean,
+): DocumentFragment {
+  const fragment = document.createDocumentFragment();
+  const segments = concordanceContextTokenSegments(tokens, activeFilter, caseSensitive);
+  segments.forEach((segment, index) => {
+    if (index > 0) {
+      fragment.appendChild(document.createTextNode(" "));
+    }
+    if (!segment.collocate) {
+      fragment.appendChild(document.createTextNode(segment.text));
+      return;
+    }
+    const token = document.createElement("span");
+    token.className = "concordance-collocate";
+    token.textContent = segment.text;
+    fragment.appendChild(token);
+  });
+  return fragment;
+}
+
 function createConcordanceRow(row: ConcordanceRow): HTMLTableRowElement {
   const item = document.createElement("tr");
   const rowKey = concordanceRowExpansionKey(row);
   const expansion = concordanceExpansionViewModel(rowKey, currentConcordanceExpansionState());
+  const activeContextFilter = concordanceResult?.contextFilter ?? concordanceContextFilter;
+  const contextFilterCaseSensitive = concordanceResult?.caseSensitive ?? false;
   item.className = "concordance-row";
   item.tabIndex = 0;
   item.setAttribute("role", "button");
@@ -2111,7 +2137,11 @@ function createConcordanceRow(row: ConcordanceRow): HTMLTableRowElement {
 
   const left = document.createElement("td");
   left.className = "concordance-left";
-  left.textContent = concordanceRowText(row.leftContext);
+  if (activeContextFilter === null) {
+    left.textContent = concordanceRowText(row.leftContext);
+  } else {
+    left.appendChild(renderContextTokens(row.leftContext, activeContextFilter, contextFilterCaseSensitive));
+  }
 
   const nodeCell = document.createElement("td");
   nodeCell.className = "concordance-node-cell";
@@ -2122,7 +2152,11 @@ function createConcordanceRow(row: ConcordanceRow): HTMLTableRowElement {
 
   const right = document.createElement("td");
   right.className = "concordance-right";
-  right.textContent = concordanceRowText(row.rightContext);
+  if (activeContextFilter === null) {
+    right.textContent = concordanceRowText(row.rightContext);
+  } else {
+    right.appendChild(renderContextTokens(row.rightContext, activeContextFilter, contextFilterCaseSensitive));
+  }
 
   item.append(file, left, nodeCell, right);
   return item;
@@ -2312,6 +2346,7 @@ function createConcordanceCollocationRow(
 ): HTMLTableRowElement {
   const item = document.createElement("tr");
   item.className = "concordance-collocation-row";
+  item.classList.toggle("is-active", row.surface === concordanceContextFilter);
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   const actionLabel = `Show KWIC lines where "${query}" occurs near "${row.surface}"`;
   item.tabIndex = 0;
@@ -2819,7 +2854,7 @@ function handleConcordanceCaseChange(): void {
 }
 
 function handleConcordanceCollocationMeasureChange(): void {
-  concordanceCollocationMeasure = currentConcordanceCollocationMeasure();
+  concordanceCollocationMeasure = dom.concordanceCollocationMeasureSelect.value as ConcordanceCollocationMeasure;
   refreshConcordanceCollocationsForPresentationChange();
 }
 

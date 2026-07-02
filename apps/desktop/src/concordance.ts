@@ -95,6 +95,28 @@ export function concordanceRowText(tokens: string[]): string {
   return tokens.join(" ");
 }
 
+export interface ConcordanceContextTokenSegment {
+  text: string;
+  collocate: boolean;
+}
+
+export function concordanceContextTokenSegments(
+  tokens: string[],
+  activeFilter: string | null,
+  caseSensitive: boolean,
+): ConcordanceContextTokenSegment[] {
+  const comparisonFilter = caseSensitive || activeFilter === null
+    ? activeFilter
+    : activeFilter.toLowerCase();
+  return tokens.map((token) => {
+    const comparisonToken = caseSensitive ? token : token.toLowerCase();
+    return {
+      text: token,
+      collocate: comparisonFilter !== null && comparisonToken === comparisonFilter,
+    };
+  });
+}
+
 export function clampConcordanceWindow(value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
     return CONCORDANCE_DEFAULT_WINDOW;
