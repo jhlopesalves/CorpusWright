@@ -29,6 +29,7 @@ import {
   type AnalysisDocumentPage,
   type AnalysisDocumentSelection,
   type AnalysisInputSource,
+  type ConcordanceContextFilterDirection,
   type ConcordanceExpansionResult,
   type ConcordanceCollocateRow,
   type ConcordanceCollocationDirection,
@@ -126,9 +127,18 @@ const FREQUENCY_PAGE_SIZE = 200;
 const FREQUENCY_DOCUMENT_PAGE_SIZE = 200;
 const TERM_DISTRIBUTION_PAGE_SIZE = 100;
 const CONCORDANCE_DISTRIBUTION_PAGE_SIZE = 10;
+const CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT = 20;
 type AnalysisToolId = "overview" | "frequency" | "concordance";
 type ConcordanceViewId = "lines" | "collocates" | "distribution";
 type ConcordanceCollocationState = "idle_not_computed" | "loading" | "ready" | "stale" | "error";
+
+type CollocateEvidenceSelection = {
+  surface: string;
+  query: string;
+  caseSensitive: boolean;
+  span: number;
+  direction: ConcordanceContextFilterDirection;
+};
 
 interface OverviewMetricRow {
   label: string;
@@ -183,7 +193,6 @@ let concordanceResult: ConcordanceResult | null = null;
 let activeConcordanceView: ConcordanceViewId = "lines";
 let concordanceOffset = 0;
 let concordanceSortKey: ConcordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;
-let concordanceContextFilter: string | null = null;
 let concordanceDistributionOffset = 0;
 let concordanceQueryGeneration = 0;
 let concordancePending = false;
@@ -209,6 +218,12 @@ let concordanceCollocationSortKey: ConcordanceCollocationSortKey =
   DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY;
 let concordanceCollocationSortDirection: SortDirection =
   DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION;
+let collocateEvidenceSelection: CollocateEvidenceSelection | null = null;
+let collocateEvidenceResult: ConcordanceResult | null = null;
+let collocateEvidencePending = false;
+let collocateEvidenceFailure: string | null = null;
+let collocateEvidenceOffset = 0;
+let collocateEvidenceGeneration = 0;
 let expandedFrequencyTokens = new Set<string>();
 let termDistributionPages = new Map<string, TermDistributionPage>();
 let termDistributionGenerations = new Map<string, number>();
@@ -1648,7 +1663,6 @@ function resetFrequencyCorpusState(resetAnnotationLayer = true): void {
   concordanceResult = null;
   concordanceOffset = 0;
   concordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;
-  concordanceContextFilter = null;
   concordanceDistributionOffset = 0;
   concordanceQueryGeneration += 1;
   concordancePending = false;
@@ -1671,6 +1685,7 @@ function resetFrequencyCorpusState(resetAnnotationLayer = true): void {
   concordanceCollocationMeasure = DEFAULT_CONCORDANCE_COLLOCATION_MEASURE;
   concordanceCollocationSortKey = DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY;
   concordanceCollocationSortDirection = DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION;
+  clearCollocateEvidence();
   expandedFrequencyTokens = new Set<string>();
   termDistributionPages.clear();
   termDistributionGenerations.clear();
@@ -1771,6 +1786,19 @@ function currentConcordanceCollocationResultIsFresh(): boolean {
     && concordanceCollocationState === "ready";
 }
 
+function clearCollocateEvidence(): void {
+  collocateEvidenceSelection = null;
+  collocateEvidenceResult = null;
+  collocateEvidencePending = false;
+  collocateEvidenceFailure = null;
+  collocateEvidenceOffset = 0;
+  collocateEvidenceGeneration += 1;
+}
+
+function resetCollocateEvidenceForQueryChange(): void {
+  clearCollocateEvidence();
+}
+
 function syncConcordanceCaseToggle(): void {
   const isCaseSensitive = dom.concordanceCaseSensitiveInput.checked;
   dom.concordanceCaseSensitiveInput.setAttribute("aria-checked", isCaseSensitive ? "true" : "false");
@@ -1791,6 +1819,7 @@ function syncConcordanceControls(): void {
 }
 
 function markConcordanceCollocationsForAggregationChange(): void {
+  resetCollocateEvidenceForQueryChange();
   const aggregationKey = currentConcordanceCollocationAggregationKey();
   const shouldShowStaleCallout = activeConcordanceView === "collocates" && concordanceCollocationEverComputed;
   if (
@@ -1897,7 +1926,7 @@ function syncConcordanceViewTabs(): void {
   if (activeConcordanceView !== "lines") {
     dom.concordanceStatus.classList.add("hidden");
   } else if (concordanceResult) {
-    renderConcordanceFilterStatus(concordanceResult);
+    renderConcordanceStatus(null);
   }
 }
 
@@ -1924,39 +1953,6 @@ function renderConcordanceStatus(message: string | null, isError = false): void 
   dom.concordanceStatus.replaceChildren(message ?? "");
   dom.concordanceStatus.classList.toggle("hidden", message === null);
   dom.concordanceStatus.classList.toggle("warning", isError);
-}
-
-function clearConcordanceContextFilter(): void {
-  if (concordanceContextFilter === null) {
-    return;
-  }
-  concordanceContextFilter = null;
-  concordanceOffset = 0;
-  concordanceDistributionOffset = 0;
-  collapseConcordanceExpansion();
-  void refreshConcordance(true, true);
-}
-
-function renderConcordanceFilterStatus(result: ConcordanceResult): void {
-  if (activeConcordanceView !== "lines" || !concordanceContextFilter) {
-    renderConcordanceStatus(null);
-    return;
-  }
-
-  const filter = result.contextFilter ?? concordanceContextFilter;
-  const chip = document.createElement("div");
-  chip.className = "concordance-filter-chip";
-  const label = document.createElement("span");
-  label.textContent = `Showing lines where "${result.query}" occurs near "${filter}".`;
-  const clear = document.createElement("button");
-  clear.type = "button";
-  clear.className = "secondary-btn concordance-filter-clear";
-  clear.textContent = "Clear";
-  clear.addEventListener("click", clearConcordanceContextFilter);
-  chip.append(label, clear);
-
-  dom.concordanceStatus.replaceChildren(chip);
-  dom.concordanceStatus.classList.remove("hidden", "warning");
 }
 
 function renderConcordanceCollocationStatus(content: string | Node | null, isError = false): void {
@@ -2106,11 +2102,48 @@ function renderContextTokens(
   return fragment;
 }
 
+function appendConcordanceKwicCells(
+  item: HTMLTableRowElement,
+  row: ConcordanceRow,
+  activeFilter: string | null,
+  caseSensitive: boolean,
+): void {
+  const file = document.createElement("td");
+  file.className = "concordance-file";
+  file.title = row.displayName || row.sourcePath;
+  file.textContent = row.displayName || row.sourcePath;
+
+  const left = document.createElement("td");
+  left.className = "concordance-left";
+  if (activeFilter === null) {
+    left.textContent = concordanceRowText(row.leftContext);
+  } else {
+    left.appendChild(renderContextTokens(row.leftContext, activeFilter, caseSensitive));
+  }
+
+  const nodeCell = document.createElement("td");
+  nodeCell.className = "concordance-node-cell";
+  const node = document.createElement("mark");
+  node.className = "concordance-node";
+  node.textContent = row.node;
+  nodeCell.appendChild(node);
+
+  const right = document.createElement("td");
+  right.className = "concordance-right";
+  if (activeFilter === null) {
+    right.textContent = concordanceRowText(row.rightContext);
+  } else {
+    right.appendChild(renderContextTokens(row.rightContext, activeFilter, caseSensitive));
+  }
+
+  item.append(file, left, nodeCell, right);
+}
+
 function createConcordanceRow(row: ConcordanceRow): HTMLTableRowElement {
   const item = document.createElement("tr");
   const rowKey = concordanceRowExpansionKey(row);
   const expansion = concordanceExpansionViewModel(rowKey, currentConcordanceExpansionState());
-  const activeContextFilter = concordanceResult?.contextFilter ?? concordanceContextFilter;
+  const activeContextFilter = concordanceResult?.contextFilter ?? null;
   const contextFilterCaseSensitive = concordanceResult?.caseSensitive ?? false;
   item.className = "concordance-row";
   item.tabIndex = 0;
@@ -2130,35 +2163,7 @@ function createConcordanceRow(row: ConcordanceRow): HTMLTableRowElement {
   });
   item.classList.toggle("is-expanded", expansion.expanded);
 
-  const file = document.createElement("td");
-  file.className = "concordance-file";
-  file.title = row.displayName || row.sourcePath;
-  file.textContent = row.displayName || row.sourcePath;
-
-  const left = document.createElement("td");
-  left.className = "concordance-left";
-  if (activeContextFilter === null) {
-    left.textContent = concordanceRowText(row.leftContext);
-  } else {
-    left.appendChild(renderContextTokens(row.leftContext, activeContextFilter, contextFilterCaseSensitive));
-  }
-
-  const nodeCell = document.createElement("td");
-  nodeCell.className = "concordance-node-cell";
-  const node = document.createElement("mark");
-  node.className = "concordance-node";
-  node.textContent = row.node;
-  nodeCell.appendChild(node);
-
-  const right = document.createElement("td");
-  right.className = "concordance-right";
-  if (activeContextFilter === null) {
-    right.textContent = concordanceRowText(row.rightContext);
-  } else {
-    right.appendChild(renderContextTokens(row.rightContext, activeContextFilter, contextFilterCaseSensitive));
-  }
-
-  item.append(file, left, nodeCell, right);
+  appendConcordanceKwicCells(item, row, activeContextFilter, contextFilterCaseSensitive);
   return item;
 }
 
@@ -2191,7 +2196,7 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
     context.className = "concordance-expansion-context";
     const left = document.createElement("span");
     left.className = "concordance-expansion-left";
-    const activeFilter = concordanceResult?.contextFilter ?? concordanceContextFilter;
+    const activeFilter = concordanceResult?.contextFilter ?? null;
     const caseSensitive = concordanceResult?.caseSensitive ?? false;
     if (concordanceExpansionResult !== null) {
       left.appendChild(renderContextTokens(concordanceExpansionResult.leftContext, activeFilter, caseSensitive));
@@ -2340,13 +2345,191 @@ function updateConcordanceCollocationSortHeaders(): void {
   });
 }
 
+function collocateEvidenceRelationText(direction: ConcordanceContextFilterDirection): string {
+  if (direction === "left") {
+    return "left of";
+  }
+  if (direction === "right") {
+    return "right of";
+  }
+  return "near";
+}
+
+function collocateEvidenceSideText(direction: ConcordanceContextFilterDirection): string {
+  if (direction === "left") {
+    return "left side";
+  }
+  if (direction === "right") {
+    return "right side";
+  }
+  return "both sides";
+}
+
+function isActiveCollocateEvidenceRow(row: ConcordanceCollocateRow): boolean {
+  const selection = collocateEvidenceSelection;
+  if (selection === null) {
+    return false;
+  }
+  return row.surface === selection.surface
+    && selection.query === normaliseConcordanceQuery(dom.concordanceQueryInput.value)
+    && selection.caseSensitive === dom.concordanceCaseSensitiveInput.checked
+    && selection.span === currentConcordanceCollocationSpan()
+    && selection.direction === currentConcordanceCollocationDirection();
+}
+
+function createCollocateEvidenceKwicRow(row: ConcordanceRow): HTMLTableRowElement {
+  const item = document.createElement("tr");
+  item.className = "concordance-collocate-evidence-kwic-row";
+  const selection = collocateEvidenceSelection;
+  appendConcordanceKwicCells(
+    item,
+    row,
+    selection?.surface ?? null,
+    selection?.caseSensitive ?? false,
+  );
+  return item;
+}
+
+function appendCollocateEvidenceMessage(parent: HTMLElement, message: string, isError = false): void {
+  const note = document.createElement("p");
+  note.className = `concordance-collocate-evidence-message${isError ? " is-error" : ""}`;
+  note.textContent = message;
+  parent.appendChild(note);
+}
+
+function createCollocateEvidenceTable(result: ConcordanceResult): HTMLTableElement {
+  const table = document.createElement("table");
+  table.className = "concordance-collocate-evidence-table";
+  const head = document.createElement("thead");
+  const header = document.createElement("tr");
+  for (const label of CONCORDANCE_COLUMNS) {
+    const cell = document.createElement("th");
+    cell.textContent = label;
+    header.appendChild(cell);
+  }
+  head.appendChild(header);
+  table.appendChild(head);
+
+  const body = document.createElement("tbody");
+  for (const evidenceRow of result.rows) {
+    body.appendChild(createCollocateEvidenceKwicRow(evidenceRow));
+  }
+  table.appendChild(body);
+  return table;
+}
+
+function appendCollocateEvidencePagination(parent: HTMLElement, result: ConcordanceResult): void {
+  if (result.totalHits <= result.limit) {
+    return;
+  }
+
+  const pagination = document.createElement("div");
+  pagination.className = "analysis-pagination concordance-collocate-evidence-pagination";
+  const previous = document.createElement("button");
+  previous.type = "button";
+  previous.className = "secondary-btn";
+  previous.textContent = "Previous";
+  previous.disabled = result.offset === 0 || collocateEvidencePending;
+  previous.addEventListener("click", () => {
+    collocateEvidenceOffset = Math.max(0, result.offset - result.limit);
+    void refreshCollocateEvidence();
+  });
+
+  const first = result.totalHits === 0 ? 0 : result.offset + 1;
+  const last = Math.min(result.totalHits, result.offset + result.rows.length);
+  const status = document.createElement("span");
+  status.textContent = `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(result.totalHits)}`;
+
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "secondary-btn";
+  next.textContent = "Next";
+  next.disabled = result.offset + result.rows.length >= result.totalHits || collocateEvidencePending;
+  next.addEventListener("click", () => {
+    collocateEvidenceOffset = result.offset + result.limit;
+    void refreshCollocateEvidence();
+  });
+
+  pagination.append(previous, status, next);
+  parent.appendChild(pagination);
+}
+
+function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTableRowElement {
+  const item = document.createElement("tr");
+  item.className = "concordance-collocate-evidence-row";
+
+  const cell = document.createElement("td");
+  cell.className = "concordance-collocate-evidence-cell";
+  cell.colSpan = 4;
+
+  const selection = collocateEvidenceSelection;
+  const panel = document.createElement("div");
+  panel.className = "concordance-collocate-evidence";
+
+  const header = document.createElement("div");
+  header.className = "concordance-collocate-evidence-header";
+  const copy = document.createElement("div");
+  copy.className = "concordance-collocate-evidence-copy";
+  const title = document.createElement("strong");
+  title.className = "concordance-collocate-evidence-title";
+  const query = selection?.query ?? normaliseConcordanceQuery(dom.concordanceQueryInput.value);
+  const direction = selection?.direction ?? "both";
+  title.textContent = `Evidence for "${row.surface}" ${collocateEvidenceRelationText(direction)} "${query}"`;
+  const meta = document.createElement("span");
+  meta.className = "concordance-collocate-evidence-meta";
+  const hitCount = collocateEvidenceResult?.totalHits ?? 0;
+  const lineText = `${formatNumber(hitCount)} line${hitCount === 1 ? "" : "s"}`;
+  const span = selection?.span ?? currentConcordanceCollocationSpan();
+  meta.textContent = `${lineText} · within ${formatNumber(span)} tokens · ${collocateEvidenceSideText(direction)}`;
+  copy.append(title, meta);
+
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "secondary-btn concordance-collocate-evidence-close";
+  close.textContent = "Close";
+  close.addEventListener("click", () => {
+    clearCollocateEvidence();
+    renderConcordanceCollocations();
+  });
+  header.append(copy, close);
+  panel.appendChild(header);
+
+  if (collocateEvidencePending) {
+    appendCollocateEvidenceMessage(panel, "Loading evidence...");
+  } else if (collocateEvidenceFailure !== null) {
+    appendCollocateEvidenceMessage(panel, `Could not load evidence: ${collocateEvidenceFailure}`, true);
+  } else if (collocateEvidenceResult === null || collocateEvidenceResult.totalHits === 0) {
+    appendCollocateEvidenceMessage(
+      panel,
+      "No evidence lines found for this collocate with the current span and direction.",
+    );
+  } else {
+    panel.appendChild(createCollocateEvidenceTable(collocateEvidenceResult));
+    appendCollocateEvidencePagination(panel, collocateEvidenceResult);
+  }
+
+  cell.appendChild(panel);
+  item.appendChild(cell);
+  return item;
+}
+
 function handleConcordanceCollocateClick(row: ConcordanceCollocateRow): void {
-  concordanceContextFilter = row.surface;
-  concordanceOffset = 0;
-  concordanceDistributionOffset = 0;
-  collapseConcordanceExpansion();
-  setActiveConcordanceView("lines");
-  void refreshConcordance(true, true);
+  const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
+  if (query.length === 0) {
+    return;
+  }
+
+  collocateEvidenceSelection = {
+    surface: row.surface,
+    query,
+    caseSensitive: dom.concordanceCaseSensitiveInput.checked,
+    span: currentConcordanceCollocationSpan(),
+    direction: currentConcordanceCollocationDirection() as ConcordanceContextFilterDirection,
+  };
+  collocateEvidenceOffset = 0;
+  collocateEvidenceFailure = null;
+  collocateEvidenceResult = null;
+  void refreshCollocateEvidence();
 }
 
 function createConcordanceCollocationRow(
@@ -2356,9 +2539,9 @@ function createConcordanceCollocationRow(
 ): HTMLTableRowElement {
   const item = document.createElement("tr");
   item.className = "concordance-collocation-row";
-  item.classList.toggle("is-active", row.surface === concordanceContextFilter);
+  item.classList.toggle("is-active", isActiveCollocateEvidenceRow(row));
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
-  const actionLabel = `Show evidence lines where "${query}" occurs near "${row.surface}"`;
+  const actionLabel = `Show evidence for "${row.surface}" near "${query}"`;
   item.tabIndex = 0;
   item.setAttribute("role", "button");
   item.setAttribute("aria-label", actionLabel);
@@ -2480,7 +2663,11 @@ function renderConcordanceCollocations(): void {
   const visibleScores = rows.map((row) => concordanceCollocationScore(row, measure));
   dom.concordanceCollocationsTableBody.replaceChildren();
   for (const row of rows) {
-    dom.concordanceCollocationsTableBody.appendChild(createConcordanceCollocationRow(row, measure, visibleScores));
+    const rowElement = createConcordanceCollocationRow(row, measure, visibleScores);
+    dom.concordanceCollocationsTableBody.appendChild(rowElement);
+    if (isActiveCollocateEvidenceRow(row)) {
+      dom.concordanceCollocationsTableBody.appendChild(createCollocateEvidenceDrawerRow(row));
+    }
   }
 }
 
@@ -2644,7 +2831,7 @@ function renderConcordance(): void {
   }
 
   renderConcordanceSummary(result);
-  renderConcordanceFilterStatus(result);
+  renderConcordanceStatus(null);
 
   if (result.rows.length === 0) {
     renderConcordanceTableState(CONCORDANCE_NO_HITS_MESSAGE);
@@ -2706,7 +2893,8 @@ async function refreshConcordance(
       {
         selection: frequencyDocumentScope,
         query,
-        contextFilter: concordanceContextFilter,
+        contextFilter: null,
+        contextFilterDirection: "both",
         caseSensitive: dom.concordanceCaseSensitiveInput.checked,
         sortKey: concordanceSortKey,
         windowTokens: currentConcordanceWindow(),
@@ -2732,6 +2920,58 @@ async function refreshConcordance(
     if (generation === concordanceQueryGeneration) {
       concordancePending = false;
       renderConcordance();
+    }
+  }
+}
+
+async function refreshCollocateEvidence(): Promise<void> {
+  const selection = collocateEvidenceSelection;
+  if (selection === null) {
+    collocateEvidenceResult = null;
+    collocateEvidenceFailure = null;
+    collocateEvidencePending = false;
+    renderConcordanceCollocations();
+    return;
+  }
+
+  const generation = ++collocateEvidenceGeneration;
+  collocateEvidencePending = true;
+  collocateEvidenceFailure = null;
+  collocateEvidenceResult = null;
+  renderConcordanceCollocations();
+
+  try {
+    const result = await searchConcordance(
+      {
+        selection: frequencyDocumentScope,
+        query: selection.query,
+        contextFilter: selection.surface,
+        contextFilterDirection: selection.direction,
+        caseSensitive: selection.caseSensitive,
+        sortKey: "filePosition",
+        windowTokens: selection.span,
+        offset: collocateEvidenceOffset,
+        limit: CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT,
+        distributionOffset: 0,
+        distributionLimit: 1,
+      },
+      state.currentCorpusVersion,
+      effectiveCleaningConfig(),
+    );
+    if (generation !== collocateEvidenceGeneration) {
+      return;
+    }
+    collocateEvidenceResult = result;
+    collocateEvidenceOffset = result.offset;
+  } catch (error) {
+    if (generation !== collocateEvidenceGeneration) {
+      return;
+    }
+    collocateEvidenceFailure = `${error}`;
+  } finally {
+    if (generation === collocateEvidenceGeneration) {
+      collocateEvidencePending = false;
+      renderConcordanceCollocations();
     }
   }
 }
@@ -2837,8 +3077,15 @@ async function runConcordanceSearchForActiveView(): Promise<void> {
   const viewAtSearch = activeConcordanceView;
   const queryAtSearch = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
 
-  concordanceContextFilter = null;
+  clearCollocateEvidence();
   markConcordanceCollocationsForAggregationChange();
+  if (viewAtSearch === "collocates" && queryAtSearch.length > 0) {
+    concordanceCollocationPending = true;
+    concordanceCollocationState = "loading";
+    concordanceCollocationFailure = null;
+    concordanceCollocationResult = null;
+    renderConcordanceCollocations();
+  }
   await refreshConcordance();
 
   if (
@@ -2859,7 +3106,6 @@ function handleConcordancePageSizeChange(): void {
 }
 
 function collapseConcordanceExpansionFromControlChange(): void {
-  concordanceContextFilter = null;
   collapseConcordanceExpansion();
   renderConcordance();
 }
@@ -2903,6 +3149,7 @@ function handleConcordanceCollocationAggregationControlChange(): void {
 }
 
 function handleConcordanceCollocationPresentationControlChange(): void {
+  clearCollocateEvidence();
   refreshConcordanceCollocationsForPresentationChange();
 }
 
