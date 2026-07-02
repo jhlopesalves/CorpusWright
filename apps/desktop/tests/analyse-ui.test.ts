@@ -414,6 +414,29 @@ assert(
     && refreshCollocateEvidenceBody.includes("limit: CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT"),
   "Base Concordance refresh should stay unfiltered while the collocate drawer performs a separate direction-aware evidence search",
 );
+const collocateEvidenceLimitMatch = workbench.match(/const CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT = (\d+);/);
+assert(
+  collocateEvidenceLimitMatch?.[1] === "8",
+  "Collocate evidence drawer should request compact 8-line pages",
+);
+const collocateEvidenceSnippetMatch = workbench.match(
+  /function createCollocateEvidenceSnippet\(row: ConcordanceRow\): HTMLSpanElement \{([\s\S]*?)\n\}/,
+);
+assert(collocateEvidenceSnippetMatch, "Collocate evidence snippet helper should exist");
+const collocateEvidenceSnippetBody = collocateEvidenceSnippetMatch[1];
+const collocateEvidenceSnippetSpaceCount = (
+  collocateEvidenceSnippetBody.match(/snippet\.appendChild\(document\.createTextNode\(" "\)\);/g) ?? []
+).length;
+const collocateEvidenceRendererStart = workbench.indexOf("function createCollocateEvidenceSnippet");
+const collocateEvidenceRendererEnd = workbench.indexOf(
+  "function appendCollocateEvidencePagination",
+  collocateEvidenceRendererStart,
+);
+assert(
+  collocateEvidenceRendererStart >= 0 && collocateEvidenceRendererEnd > collocateEvidenceRendererStart,
+  "Collocate evidence renderer helpers should be grouped before pagination",
+);
+const collocateEvidenceRendererBody = workbench.slice(collocateEvidenceRendererStart, collocateEvidenceRendererEnd);
 assert(
   workbench.includes("function renderContextTokens(")
     && workbench.includes("concordanceContextTokenSegments(tokens, activeFilter, caseSensitive)")
@@ -428,10 +451,36 @@ assert(
     && workbench.includes("const caseSensitive = concordanceResult?.caseSensitive ?? false;")
     && workbench.includes("left.appendChild(renderContextTokens(concordanceExpansionResult.leftContext, activeFilter, caseSensitive));")
     && workbench.includes("right.appendChild(renderContextTokens(concordanceExpansionResult.rightContext, activeFilter, caseSensitive));")
-    && workbench.includes("function createCollocateEvidenceKwicRow(row: ConcordanceRow): HTMLTableRowElement")
-    && workbench.includes("appendConcordanceKwicCells(")
+    && workbench.includes("function createCollocateEvidenceSnippet(row: ConcordanceRow): HTMLSpanElement")
+    && workbench.includes("function createCollocateEvidenceLine(row: ConcordanceRow): HTMLDivElement")
+    && workbench.includes("function createCollocateEvidenceList(result: ConcordanceResult): HTMLDivElement")
+    && !workbench.includes("function createCollocateEvidenceKwicRow")
+    && !workbench.includes("function createCollocateEvidenceTable")
+    && !workbench.includes("concordance-collocate-evidence-table")
     && !workbench.includes("innerHTML"),
-  "Concordance context rendering should use text nodes and shared span-based collocate highlights in KWIC, expanded context, and drawer evidence",
+  "Concordance context rendering should use text nodes and shared span-based collocate highlights in KWIC, expanded context, and inline drawer evidence",
+);
+assert(
+  collocateEvidenceRendererBody.includes("renderContextTokens(row.leftContext, activeFilter, caseSensitive)")
+    && collocateEvidenceRendererBody.includes("renderContextTokens(row.rightContext, activeFilter, caseSensitive)")
+    && collocateEvidenceRendererBody.includes('const node = document.createElement("mark");')
+    && collocateEvidenceRendererBody.includes('node.className = "concordance-node";')
+    && collocateEvidenceRendererBody.includes("node.textContent = row.node;")
+    && collocateEvidenceRendererBody.includes('for (const label of ["File", "Evidence"])')
+    && !collocateEvidenceRendererBody.includes("appendConcordanceKwicCells(")
+    && !collocateEvidenceRendererBody.includes("CONCORDANCE_COLUMNS")
+    && !collocateEvidenceRendererBody.includes('document.createElement("table")')
+    && !collocateEvidenceRendererBody.includes("Left context")
+    && !collocateEvidenceRendererBody.includes("Right context"),
+  "Collocate evidence drawer should render File plus inline Evidence snippets instead of a nested KWIC table",
+);
+assert(
+  collocateEvidenceSnippetBody.includes("if (row.leftContext.length > 0)")
+    && collocateEvidenceSnippetBody.includes("if (row.rightContext.length > 0)")
+    && collocateEvidenceSnippetSpaceCount === 2
+    && collocateEvidenceSnippetBody.indexOf("renderContextTokens(row.leftContext") < collocateEvidenceSnippetBody.indexOf("node.textContent = row.node;")
+    && collocateEvidenceSnippetBody.indexOf("node.textContent = row.node;") < collocateEvidenceSnippetBody.indexOf("renderContextTokens(row.rightContext"),
+  "Collocate evidence snippets should use ordinary conditional text spaces in left-context, node, right-context order",
 );
 assert(
   styles.includes(".concordance-collocate {\n  background: var(--cw-collocate-bg);\n  color: var(--cw-collocate-text);")
@@ -445,6 +494,7 @@ assert(
     && workbench.includes('item.setAttribute("aria-label", actionLabel)')
     && workbench.includes('event.key !== "Enter" && event.key !== " "')
     && workbench.includes('item.className = "concordance-collocate-evidence-row"')
+    && workbench.includes("panel.appendChild(createCollocateEvidenceList(collocateEvidenceResult));")
     && workbench.includes("dom.concordanceCollocationsTableBody.appendChild(createCollocateEvidenceDrawerRow(row));"),
   "Collocate rows should be clickable, keyboard accessible, mark the active evidence row, and render the drawer inline",
 );
@@ -453,14 +503,35 @@ assert(
     && styles.includes(".concordance-collocation-row.is-active .concordance-collocate-text {\n  color: var(--cw-collocate-text);"),
   "Active collocate rows should use the quiet collocate colour role",
 );
+const collocateEvidenceCellCssMatch = styles.match(
+  /\.concordance-collocate-evidence-row > \.concordance-collocate-evidence-cell \{([\s\S]*?)\n\}/,
+);
+assert(collocateEvidenceCellCssMatch, "Collocate evidence drawer cell CSS should exist");
+const collocateEvidenceCellCss = collocateEvidenceCellCssMatch[1];
+const collocateEvidenceListGridMatch = styles.match(
+  /\.concordance-collocate-evidence-list-head,\n\.concordance-collocate-evidence-line \{([\s\S]*?)\n\}/,
+);
+assert(collocateEvidenceListGridMatch, "Collocate evidence list grid CSS should exist");
+const collocateEvidenceListGridCss = collocateEvidenceListGridMatch[1];
 assert(
-  styles.includes(".concordance-collocate-evidence-row .concordance-collocate-evidence-cell")
+  styles.includes(".concordance-collocations-table > thead > tr > th,\n.concordance-collocations-table > tbody > tr.concordance-collocation-row > td")
+    && !styles.includes(".concordance-collocations-table th,\n.concordance-collocations-table td")
+    && collocateEvidenceCellCss.includes("overflow: visible")
+    && collocateEvidenceCellCss.includes("text-overflow: clip")
+    && collocateEvidenceCellCss.includes("white-space: normal")
     && styles.includes(".concordance-collocate-evidence {\n  display: grid;")
     && styles.includes("border-left: 1px solid var(--cw-collocate-border);")
-    && styles.includes(".concordance-collocate-evidence-table")
+    && styles.includes(".concordance-collocate-evidence-list")
+    && styles.includes(".concordance-collocate-evidence-line")
+    && styles.includes(".concordance-collocate-evidence-snippet")
+    && collocateEvidenceListGridCss.includes("grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr);")
     && styles.includes(".concordance-collocate-evidence-pagination")
+    && !styles.includes(".concordance-collocate-evidence-table")
+    && !styles.includes(".concordance-collocate-evidence-table .concordance-node-cell")
+    && !styles.includes(".concordance-collocate-evidence-left")
+    && !styles.includes(".concordance-collocate-evidence-right")
     && !styles.includes(".concordance-collocate-evidence-modal"),
-  "Collocate evidence should be styled as a quiet attached drawer with a compact KWIC table",
+  "Collocate evidence should be styled as a quiet attached drawer with File plus inline Evidence snippets",
 );
 
 const concordanceNodeCssMatch = styles.match(/\.concordance-node \{([\s\S]*?)\n\}/);
@@ -490,7 +561,8 @@ assert(
   "Concordance right context should clip inside its own cell instead of forcing table scroll",
 );
 assert(
-  styles.includes(".concordance-collocations-table th:nth-child(4)")
+  styles.includes(".concordance-collocations-table > thead > tr > th:nth-child(4)")
+    && styles.includes(".concordance-collocations-table > tbody > tr.concordance-collocation-row > td:nth-child(4)")
     && styles.includes("width: 24%")
     && styles.includes("min-width: 760px"),
   "Concordance collocation measure-score column should have visible full-width table space",
