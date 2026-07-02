@@ -471,11 +471,18 @@ html[data-theme="light"] .theme-img-light { display: block; }
 }
 .docs-content figure:has(> img[src*="assets/figures/"]),
 .docs-content figure.cw-chipfig,
-.docs-content figure:has(> svg) {
+.docs-content figure:has(> svg),
+.docs-content figure:has(> pre.mermaid) {
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 10px;
   padding: 16px 18px;
+}
+.docs-content figure:has(> img[src*="assets/figures/"]) figcaption,
+.docs-content figure.cw-chipfig figcaption,
+.docs-content figure:has(> svg) figcaption,
+.docs-content figure:has(> pre.mermaid) figcaption {
+  color: #444;
 }
 .docs-toc {
   grid-column: 2;
