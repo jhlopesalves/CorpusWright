@@ -5,8 +5,14 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const analysis = readFileSync(new URL("../src/analysis.ts", import.meta.url), "utf8");
 const workbench = readFileSync(new URL("../src/workbench.ts", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const generatedConcordanceQuery = readFileSync(new URL("../src/generated/ConcordanceQuery.ts", import.meta.url), "utf8");
+const generatedConcordanceContextFilterDirection = readFileSync(
+  new URL("../src/generated/ConcordanceContextFilterDirection.ts", import.meta.url),
+  "utf8",
+);
 
 const topAnalyseMatch = html.match(
   /<div class="analyse-status-row">([\s\S]*?)<div class="analyse-workspace-shell">/,
@@ -188,6 +194,14 @@ for (const measure of ["logDice", "mi", "mi3", "tScore", "zScore", "g2", "logRat
   assert(html.includes(`value="${measure}"`), `Collocation measure should include ${measure}`);
 }
 assert(
+  generatedConcordanceContextFilterDirection.includes('export type ConcordanceContextFilterDirection = "left" | "right" | "both";')
+    && generatedConcordanceQuery.includes('import type { ConcordanceContextFilterDirection } from "./ConcordanceContextFilterDirection.js";')
+    && generatedConcordanceQuery.includes("contextFilterDirection: ConcordanceContextFilterDirection")
+    && analysis.includes("GeneratedConcordanceContextFilterDirection")
+    && analysis.includes("export type ConcordanceContextFilterDirection = GeneratedConcordanceContextFilterDirection;"),
+  "Generated bindings and the analysis type barrel should expose ConcordanceContextFilterDirection",
+);
+assert(
   workbench.includes("function handleConcordanceSortChange")
     && workbench.includes("void refreshConcordance(true, true);"),
   "Concordance sort changes should reset KWIC and distribution pagination",
@@ -224,8 +238,9 @@ const collocationRefreshesFromSearch = (
 assert(
   runConcordanceSearchForActiveViewBody.includes("const viewAtSearch = activeConcordanceView;")
     && runConcordanceSearchForActiveViewBody.includes("const queryAtSearch = normaliseConcordanceQuery(dom.concordanceQueryInput.value);")
+    && runConcordanceSearchForActiveViewBody.includes("clearCollocateEvidence();")
     && runConcordanceSearchForActiveViewBody.includes("await refreshConcordance();"),
-  "Active-view Concordance search should capture the current view/query and refresh the query result first",
+  "Active-view Concordance search should capture the current view/query, clear collocate evidence, and refresh the query result first",
 );
 assert(
   runConcordanceSearchForActiveViewBody.includes('viewAtSearch === "collocates"')
@@ -255,7 +270,7 @@ assert(
     && workbench.includes("concordanceCollocationAutoComputedAggregationKeys")
     && !workbench.includes("sortConcordanceCollocates(result.rows, measure)")
     && workbench.includes("handleConcordanceCollocateClick"),
-  "Concordance collocations should query Rust for true top-N sorting, split aggregation/presentation controls, auto-compute fresh keys once, and support click-through",
+  "Concordance collocations should query Rust for true top-N sorting, split aggregation/presentation controls, auto-compute fresh keys once, and support evidence drawers",
 );
 assert(
   workbench.includes('type ConcordanceViewId = "lines" | "collocates" | "distribution";')
@@ -367,12 +382,37 @@ assert(
     && workbench.includes("dom.concordanceFilesButton.textContent = dom.frequencyFilesButton.textContent"),
   "Concordance file-scope button should refresh from the shared Frequency scope",
 );
+const handleConcordanceCollocateStart = workbench.indexOf("function handleConcordanceCollocateClick");
+const handleConcordanceCollocateEnd = workbench.indexOf("function createConcordanceCollocationRow", handleConcordanceCollocateStart);
+assert(handleConcordanceCollocateStart >= 0 && handleConcordanceCollocateEnd > handleConcordanceCollocateStart, "Collocate click handler should exist");
+const handleConcordanceCollocateBody = workbench.slice(handleConcordanceCollocateStart, handleConcordanceCollocateEnd);
 assert(
-  workbench.includes('setActiveConcordanceView("lines")')
-    && workbench.includes('label.textContent = `Showing lines where "${result.query}" occurs near "${filter}".`;')
-    && workbench.includes('activeConcordanceView !== "lines" || !concordanceContextFilter')
-    && workbench.includes("clearConcordanceContextFilter"),
-  "Collocate filtering should switch to Lines and expose a clearable active-filter chip",
+  handleConcordanceCollocateBody.includes("collocateEvidenceSelection = {")
+    && handleConcordanceCollocateBody.includes("direction: currentConcordanceCollocationDirection() as ConcordanceContextFilterDirection")
+    && handleConcordanceCollocateBody.includes("void refreshCollocateEvidence();")
+    && !handleConcordanceCollocateBody.includes("setActiveConcordanceView")
+    && !workbench.includes("concordanceContextFilter"),
+  "Collocate clicks should open dedicated inline evidence without switching to Evidence lines or mutating the base context filter",
+);
+const refreshConcordanceStart = workbench.indexOf("async function refreshConcordance(");
+const refreshConcordanceEnd = workbench.indexOf("async function refreshCollocateEvidence", refreshConcordanceStart);
+const refreshCollocateEvidenceEnd = workbench.indexOf("async function refreshConcordanceCollocations", refreshConcordanceEnd);
+assert(
+  refreshConcordanceStart >= 0
+    && refreshConcordanceEnd > refreshConcordanceStart
+    && refreshCollocateEvidenceEnd > refreshConcordanceEnd,
+  "Base and collocate evidence refresh helpers should exist in sequence",
+);
+const refreshConcordanceBody = workbench.slice(refreshConcordanceStart, refreshConcordanceEnd);
+const refreshCollocateEvidenceBody = workbench.slice(refreshConcordanceEnd, refreshCollocateEvidenceEnd);
+assert(
+  refreshConcordanceBody.includes("contextFilter: null")
+    && refreshConcordanceBody.includes('contextFilterDirection: "both"')
+    && refreshCollocateEvidenceBody.includes("const result = await searchConcordance(")
+    && refreshCollocateEvidenceBody.includes("contextFilter: selection.surface")
+    && refreshCollocateEvidenceBody.includes("contextFilterDirection: selection.direction")
+    && refreshCollocateEvidenceBody.includes("limit: CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT"),
+  "Base Concordance refresh should stay unfiltered while the collocate drawer performs a separate direction-aware evidence search",
 );
 assert(
   workbench.includes("function renderContextTokens(")
@@ -381,14 +421,17 @@ assert(
     && workbench.includes('const token = document.createElement("span");')
     && workbench.includes('token.className = "concordance-collocate";')
     && workbench.includes("token.textContent = segment.text;")
-    && workbench.includes("const activeContextFilter = concordanceResult?.contextFilter ?? concordanceContextFilter;")
+    && workbench.includes("function appendConcordanceKwicCells(")
+    && workbench.includes("const activeContextFilter = concordanceResult?.contextFilter ?? null;")
     && workbench.includes("const contextFilterCaseSensitive = concordanceResult?.caseSensitive ?? false;")
-    && workbench.includes("const activeFilter = concordanceResult?.contextFilter ?? concordanceContextFilter;")
+    && workbench.includes("const activeFilter = concordanceResult?.contextFilter ?? null;")
     && workbench.includes("const caseSensitive = concordanceResult?.caseSensitive ?? false;")
     && workbench.includes("left.appendChild(renderContextTokens(concordanceExpansionResult.leftContext, activeFilter, caseSensitive));")
     && workbench.includes("right.appendChild(renderContextTokens(concordanceExpansionResult.rightContext, activeFilter, caseSensitive));")
+    && workbench.includes("function createCollocateEvidenceKwicRow(row: ConcordanceRow): HTMLTableRowElement")
+    && workbench.includes("appendConcordanceKwicCells(")
     && !workbench.includes("innerHTML"),
-  "Concordance context rendering should use text nodes and span-based collocate highlights in KWIC and expanded context",
+  "Concordance context rendering should use text nodes and shared span-based collocate highlights in KWIC, expanded context, and drawer evidence",
 );
 assert(
   styles.includes(".concordance-collocate {\n  background: var(--cw-collocate-bg);\n  color: var(--cw-collocate-text);")
@@ -397,16 +440,27 @@ assert(
 );
 assert(
   workbench.includes('item.className = "concordance-collocation-row"')
-    && workbench.includes('item.classList.toggle("is-active", row.surface === concordanceContextFilter);')
+    && workbench.includes('item.classList.toggle("is-active", isActiveCollocateEvidenceRow(row));')
     && workbench.includes('item.setAttribute("role", "button")')
     && workbench.includes('item.setAttribute("aria-label", actionLabel)')
-    && workbench.includes('event.key !== "Enter" && event.key !== " "'),
-  "Collocate rows should be clickable, keyboard accessible, and mark the active evidence row without an inline Show lines cue",
+    && workbench.includes('event.key !== "Enter" && event.key !== " "')
+    && workbench.includes('item.className = "concordance-collocate-evidence-row"')
+    && workbench.includes("dom.concordanceCollocationsTableBody.appendChild(createCollocateEvidenceDrawerRow(row));"),
+  "Collocate rows should be clickable, keyboard accessible, mark the active evidence row, and render the drawer inline",
 );
 assert(
   styles.includes(".concordance-collocation-row.is-active td {\n  background: var(--cw-collocate-bg);")
     && styles.includes(".concordance-collocation-row.is-active .concordance-collocate-text {\n  color: var(--cw-collocate-text);"),
   "Active collocate rows should use the quiet collocate colour role",
+);
+assert(
+  styles.includes(".concordance-collocate-evidence-row .concordance-collocate-evidence-cell")
+    && styles.includes(".concordance-collocate-evidence {\n  display: grid;")
+    && styles.includes("border-left: 1px solid var(--cw-collocate-border);")
+    && styles.includes(".concordance-collocate-evidence-table")
+    && styles.includes(".concordance-collocate-evidence-pagination")
+    && !styles.includes(".concordance-collocate-evidence-modal"),
+  "Collocate evidence should be styled as a quiet attached drawer with a compact KWIC table",
 );
 
 const concordanceNodeCssMatch = styles.match(/\.concordance-node \{([\s\S]*?)\n\}/);
