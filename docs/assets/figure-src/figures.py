@@ -1,13 +1,14 @@
 """Generate Method and Measures figures for the static documentation site.
 
 The toy corpus below is a constructed, idealised example. It is used only to
-show how a measure responds to structure. Distribution-shape figures remain
-blocked until a real demo corpus is chosen.
+show how a measure responds to structure. Distribution-shape figures use a
+disclosed interim public-domain corpus until the real demo corpus is chosen.
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -16,22 +17,31 @@ import matplotlib
 matplotlib.use("Agg")  # non-interactive, file-only backend
 
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
 import numpy as np
 import pandas as pd
 
 
-RANDOM_STATE = 42
+# Vendored IBM Plex Sans TTFs (OFL) -- registered so the SVGs bake Plex
+# outlines instead of DejaVu.
+FONT_DIR = Path("docs/assets/figure-src/fonts")
+for _font in sorted(FONT_DIR.glob("*.ttf")):
+    font_manager.fontManager.addfont(str(_font))
+plt.rcParams["font.family"] = "IBM Plex Sans"
+plt.rcParams["svg.hashsalt"] = "corpuswright-method-and-measures"
+
 FIGURE_DIR = Path("docs/assets/figures")
+CORPUS_PATH = Path("docs/assets/figure-src/data/the_man_who_was_thursday.txt")
 
 CAPTIONS = {
     "workflow_loop": "Preparation is analysis: saved cleaning rules replay deterministically into each rebuild.",
     "eda_chain": "A chain of diagnostic questions that cuts across measures, from what is in the corpus to what can be asked next.",
     "frequency": "Same raw count of 120 — 500 per million in a small corpus, 10 per million in a large one.",
     "dispersion": "Same frequency, opposite corpus behaviour — balanced four-document toy corpus, each document 25% of tokens.",
-    "ttr_curve": "TTR falls as text length grows, because longer texts necessarily repeat common words.",
-    "hapax_spectrum": "Most types are rare — a long tail of hapaxes and dislegomena dominates the type inventory.",
-    "zipf": "Rank-frequency on log-log axes — a straight-ish line of slope −a, with the head and frequency-one tail excluded from the fit.",
-    "heaps": "New types keep arriving but the rate of discovery slows — a concave vocabulary growth curve.",
+    "ttr_curve": "TTR falls as text length grows, because longer texts necessarily repeat common words. Computed from the full text of Chesterton's The Man Who Was Thursday (1908, Project Gutenberg; lowercased alphabetic tokens) — an interim, fully disclosed stand-in for the demo corpus.",
+    "hapax_spectrum": "Most types are rare — a long tail of hapaxes and dislegomena dominates the type inventory. Occurrence counts 1–10 shown. Computed from the full text of Chesterton's The Man Who Was Thursday (1908, Project Gutenberg; lowercased alphabetic tokens) — an interim, fully disclosed stand-in for the demo corpus.",
+    "zipf": "Rank-frequency on log-log axes — a straight-ish line of slope −a, with the head and frequency-one tail excluded from the fit; the R² describes the fitted line, not proof the law holds. Computed from the full text of Chesterton's The Man Who Was Thursday (1908, Project Gutenberg; lowercased alphabetic tokens) — an interim, fully disclosed stand-in for the demo corpus.",
+    "heaps": "New types keep arriving but the rate of discovery slows — a concave vocabulary growth curve. Computed from the full text of Chesterton's The Man Who Was Thursday (1908, Project Gutenberg; lowercased alphabetic tokens) — an interim, fully disclosed stand-in for the demo corpus.",
     "entropy": "Entropy measures how evenly probability is shared — even four-type distribution vs one type carrying most of the mass.",
     "effective_documents": "Four documents on paper — but one large document can make the corpus behave like fewer.",
     "reading_order": "A suggested reading order across the overview diagnostics, looping back to cleaning when something looks wrong.",
@@ -63,19 +73,23 @@ def save_figure(fig, name):
         FIGURE_DIR / f"{name}.svg",
         format="svg",
         bbox_inches="tight",
+        metadata={"Date": None},
         transparent=True,
     )
     plt.close(fig)
 
 
 def load_corpus():
-    """TIER 3 interface: the real demo corpus as a token stream (list[str]).
+    """TIER 3 token stream for the shape figures (list[str]).
 
-    BLOCKED — not implemented; the demo corpus is undecided. Do NOT fabricate
-    tokens. Phenomenon figures must not be generated or embedded until this
-    returns real data.
+    Interim source (2 Jul): the full text of Chesterton's The Man Who Was
+    Thursday (1908, Project Gutenberg #1695), vendored with the Gutenberg
+    boilerplate stripped. Tokens are lowercased alphabetic strings -- a
+    deliberately simple rule, disclosed in every caption that uses it.
+    Swap for the real demo corpus when it lands, and relabel the captions.
     """
-    raise NotImplementedError("Demo corpus undecided (see this workbench).")
+    text = CORPUS_PATH.read_text(encoding="utf-8")
+    return re.findall(r"[a-z]+", text.lower())
 
 
 # Balanced corpus: four documents, 1,000 tokens each, 4,000 total.
@@ -223,11 +237,12 @@ def make_frequency():
             "total": [240_000, 12_000_000],
         }
     )
-    freq["pmw"] = normalised_frequency(freq["raw"], freq["total"], 1_000_000)
+    freq["pmw"] = normalised_frequency(freq["raw"], freq["total"], 1_000_000)  # 500, 10
 
     fig, ax = new_axes(figsize=(5, 2.4))
     ax.barh(freq["corpus"], freq["pmw"], color="0.3")
-    ax.set(xlabel="per million words", title="Same raw count (120), different rate")
+    ax.invert_yaxis()  # Small on top -- the prose meets the small corpus first
+    ax.set(xlabel="per million words")  # no in-figure title: the figcaption carries it
     for y, v in enumerate(freq["pmw"]):
         ax.text(v, y, f"  {v:.0f} pmw", va="center")
     save_figure(fig, "frequency")
@@ -235,77 +250,89 @@ def make_frequency():
 
 def make_dispersion():
     sizes = DOC_TOKENS_BALANCED.to_numpy()
-    pair = [WORDS["spread"], WORDS["concentrated"]]
+    pair = [WORDS["spread"], WORDS["concentrated"]]  # both total 12, opposite DP
 
-    fig, axes = new_axes(2, 1, figsize=(5, 3), sharex=True)
+    fig, axes = new_axes(2, 1, figsize=(5, 3.2), sharex=True)
     for ax, word in zip(axes, pair):
-        dp = deviation_of_proportions(TOY_WORDS[word].to_numpy(), sizes)
-        ax.bar(TOY_WORDS.index, TOY_WORDS[word], color="0.3")
-        ax.set(ylim=(0, 13), title=f"{word}: 12 occurrences, DP = {dp:.2f}")
-    fig.suptitle("Same frequency, opposite dispersion")
-    save_figure(fig, "dispersion")
+        counts = TOY_WORDS[word].to_numpy()
+        dp = deviation_of_proportions(counts, sizes)
+        ax.bar(TOY_WORDS.index, counts, color="0.3")
+        # Explicit zeros: absence is a value, not missing data.
+        for x, c in enumerate(counts):
+            ax.text(x, c + 0.4, str(c), ha="center", fontsize=9)
+        ax.set(ylim=(0, 14), title=f"{word}: 12 occurrences, DP = {dp:.2f}")
+    save_figure(fig, "dispersion")  # no suptitle: the figcaption carries it
 
 
 def make_entropy():
     dists = {"even": [0.25, 0.25, 0.25, 0.25], "skewed": [0.7, 0.1, 0.1, 0.1]}
 
-    fig, axes = new_axes(1, 2, figsize=(6, 2.6), sharey=True)
+    fig, axes = new_axes(1, 2, figsize=(6, 2.8), sharey=True)
     for ax, (name, p) in zip(axes, dists.items()):
-        ax.bar(list("ABCD"), p, color="0.3")
-        ax.set_title(f"{name}: H_norm = {normalised_entropy(p):.2f}")
+        ax.bar(list("ABCD"), p, color="0.3")  # abstract labels by design
+        h = shannon_entropy(p)  # 2.00/1.36 bits
+        h_norm = normalised_entropy(p)  # 1.00/0.68
+        ax.set_title(f"{name}\nH = {h:.2f} bits, H_norm = {h_norm:.2f}")
+    axes[0].set_ylabel("probability")
     save_figure(fig, "entropy")
 
 
 def make_effective_documents():
     corpora = {"Balanced": DOC_TOKENS_BALANCED, "Dominated": DOC_TOKENS_DOMINATED}
 
-    fig, axes = new_axes(2, 1, figsize=(5, 3))
+    fig, axes = new_axes(2, 1, figsize=(5, 3.2), sharex=True)  # SHARED x-axis --
+    # without it the balanced bars render as long as the dominated Doc 1: misleading
     for ax, (name, sizes) in zip(axes, corpora.items()):
-        eff = effective_document_count(sizes.to_numpy())
+        eff = effective_document_count(sizes.to_numpy())  # 4.0 then ~3.0
         ax.barh(sizes.index, sizes.to_numpy(), color="0.3")
         ax.invert_yaxis()
+        for y, v in enumerate(sizes.to_numpy()):
+            ax.text(v, y, f" {v:,}", va="center", fontsize=9)
         ax.set_title(f"{name}: effective documents = {eff:.1f}")
+    axes[0].set_xlim(0, 2300)  # headroom for the count labels
+    axes[1].set_xlabel("tokens")
     save_figure(fig, "effective_documents")
 
 
 def make_ttr_curve():
-    tokens = load_corpus()
+    tokens = load_corpus()  # interim: Chesterton -- disclosed in the caption
     n, ttr = ttr_curve(tokens)
 
     fig, ax = new_axes(figsize=(5, 2.6))
     ax.plot(n, ttr, color="0.3")
-    ax.set(xlabel="tokens read", ylabel="TTR", title="TTR falls with length")
+    ax.set(xlabel="tokens read", ylabel="TTR")  # no title: the figcaption carries it
     save_figure(fig, "ttr_curve")
 
 
 def make_hapax_spectrum():
-    tokens = load_corpus()
-    spectrum = frequency_spectrum(tokens)
-    occ = sorted(spectrum)
+    tokens = load_corpus()  # interim: Chesterton -- disclosed in the caption
+    spectrum = frequency_spectrum(tokens)  # {times_occurring: number_of_types}
+    occ = range(1, 11)  # head of the spectrum only: on real text the tail runs
+    # to the thousands ("the") and would crush the hapax/dislegomena story
 
     fig, ax = new_axes(figsize=(5, 2.6))
-    ax.bar([str(k) for k in occ], [spectrum[k] for k in occ], color="0.3")
-    ax.set(
-        xlabel="times a type occurs",
-        ylabel="number of types",
-        title="Frequency spectrum",
-    )
-    save_figure(fig, "hapax_spectrum")
+    ax.bar([str(k) for k in occ], [spectrum.get(k, 0) for k in occ], color="0.3")
+    ax.set(xlabel="times a type occurs", ylabel="number of types")
+    save_figure(fig, "hapax_spectrum")  # no title: the figcaption carries it
 
 
 def make_zipf():
-    tokens = load_corpus()
+    tokens = load_corpus()  # interim: Chesterton -- disclosed in the caption
     ranks, freqs = zipf_data(tokens)
     slope, intercept, r2 = zipf_fit(ranks, freqs)
 
     fig, ax = new_axes(figsize=(5, 4))
     ax.loglog(ranks, freqs, ".", color="0.3")
-    ax.set(xlabel="rank", ylabel="frequency", title=f"Zipf: a = {-slope:.2f}, R² = {r2:.2f}")
+    ax.set(
+        xlabel="rank",
+        ylabel="frequency",
+        title=f"Zipf: a = {-slope:.2f}, R² = {r2:.2f}",
+    )  # title carries data: stays
     save_figure(fig, "zipf")
 
 
 def make_heaps():
-    tokens = load_corpus()
+    tokens = load_corpus()  # interim: Chesterton -- disclosed in the caption
     n, vocab = heaps_curve(tokens)
     k, beta = heaps_fit(n, vocab)
 
@@ -320,9 +347,6 @@ READY_FIGURES = {
     "dispersion": make_dispersion,
     "entropy": make_entropy,
     "effective_documents": make_effective_documents,
-}
-
-BLOCKED_FIGURES = {
     "ttr_curve": make_ttr_curve,
     "hapax_spectrum": make_hapax_spectrum,
     "zipf": make_zipf,
@@ -337,7 +361,7 @@ def parse_args():
         nargs="*",
         default=list(READY_FIGURES),
         choices=sorted(READY_FIGURES),
-        help="READY figure keys to generate. Defaults to all READY figures.",
+        help="Figure keys to generate. Defaults to all figures.",
     )
     return parser.parse_args()
 
