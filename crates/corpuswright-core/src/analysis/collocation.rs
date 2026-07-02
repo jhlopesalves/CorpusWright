@@ -1,7 +1,8 @@
+use super::shared::ENGLISH_STOPWORDS;
 use super::{
-    AnalysisDocumentSelection, ConcordanceDocument, ConcordanceError, ENGLISH_STOPWORDS,
-    SortDirection, analysis_word_tokens, case_fold_surface, concordance_key,
-    resolve_concordance_query_tokens, selected_concordance_document_ids,
+    AnalysisDocumentSelection, ConcordanceDocument, ConcordanceError, SortDirection,
+    analysis_word_tokens, case_fold_surface, concordance_key, resolve_concordance_query_tokens,
+    selected_concordance_document_ids,
 };
 use crate::tokenization::TokenizationConfig;
 use serde::{Deserialize, Serialize};
