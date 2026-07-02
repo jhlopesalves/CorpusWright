@@ -78,18 +78,72 @@ assert(
   !html.includes('id="concordance-result-count"'),
   "Concordance header should not render a duplicate standalone hit count",
 );
+
+const concordanceControlsStart = html.indexOf('<div class="concordance-controls">');
+const concordanceStatusStart = html.indexOf('<div id="concordance-status"', concordanceControlsStart);
+assert(concordanceControlsStart >= 0 && concordanceStatusStart > concordanceControlsStart, "Concordance shared controls should exist before the status line");
+const concordanceSharedControls = html.slice(concordanceControlsStart, concordanceStatusStart);
+assert(
+  concordanceSharedControls.includes('id="concordance-query-input"')
+    && concordanceSharedControls.includes('id="concordance-case-sensitive"')
+    && concordanceSharedControls.includes('id="concordance-files-button"')
+    && concordanceSharedControls.includes('id="concordance-search-button"')
+    && !concordanceSharedControls.includes('id="concordance-window-input"')
+    && !concordanceSharedControls.includes('id="concordance-sort-select"')
+    && !concordanceSharedControls.includes('id="concordance-page-size-input"'),
+  "Concordance shared controls should contain only query, case, file scope, and search controls",
+);
 assert(
   html.includes('id="concordance-view-tabs"')
     && html.includes('data-concordance-view="lines"')
     && html.includes('data-concordance-view="collocates"')
-    && !html.includes('data-concordance-view="distribution"'),
-  "Concordance should expose Lines and Collocates as the work-mode tabs",
+    && html.includes('data-concordance-view="distribution"')
+    && html.includes(">Evidence lines</button>")
+    && html.includes(">Collocate profile</button>")
+    && html.includes(">Distribution</button>"),
+  "Concordance should expose Evidence lines, Collocate profile, and Distribution as query view tabs",
+);
+const concordanceTabsStart = html.indexOf('id="concordance-view-tabs"', concordanceStatusStart);
+const concordanceViewsStart = html.indexOf('<div class="concordance-views">', concordanceTabsStart);
+assert(
+  concordanceStatusStart < concordanceTabsStart && concordanceTabsStart < concordanceViewsStart,
+  "Concordance status should sit above the query view selector and panels",
+);
+const concordanceLinesStart = html.indexOf('id="concordance-lines-panel"', concordanceViewsStart);
+const concordanceCollocationsStart = html.indexOf('id="concordance-collocations-panel"', concordanceLinesStart);
+const concordanceDistributionStart = html.indexOf('id="concordance-distribution-panel"', concordanceCollocationsStart);
+assert(
+  concordanceLinesStart > concordanceViewsStart
+    && concordanceCollocationsStart > concordanceLinesStart
+    && concordanceDistributionStart > concordanceCollocationsStart,
+  "Concordance view panels should render as Evidence, Collocate Profile, and Distribution siblings",
+);
+const concordanceLinesPanel = html.slice(concordanceLinesStart, concordanceCollocationsStart);
+const concordanceCollocationsPanel = html.slice(concordanceCollocationsStart, concordanceDistributionStart);
+assert(
+  concordanceLinesPanel.includes('class="concordance-lines-controls"')
+    && concordanceLinesPanel.includes('id="concordance-window-input"')
+    && concordanceLinesPanel.includes('id="concordance-sort-select"')
+    && concordanceLinesPanel.includes('id="concordance-page-size-input"')
+    && !concordanceLinesPanel.includes('id="concordance-distribution-panel"'),
+  "Evidence Lines controls should live inside the Lines view panel without nesting Distribution",
 );
 assert(
-  html.includes('id="concordance-lines-panel" class="concordance-view-panel concordance-kwic-panel"')
-    && html.includes('id="concordance-collocations-panel" class="concordance-view-panel concordance-collocations-panel hidden"')
-    && html.includes('id="concordance-distribution-panel" class="concordance-document-spread"'),
-  "Concordance should render document spread inside the Lines workspace",
+  concordanceCollocationsPanel.includes('class="concordance-collocation-controls"')
+    && concordanceCollocationsPanel.includes('id="concordance-collocation-span"')
+    && concordanceCollocationsPanel.includes('id="concordance-collocation-direction"')
+    && concordanceCollocationsPanel.includes('id="concordance-collocation-measure"')
+    && concordanceCollocationsPanel.includes('id="concordance-collocation-min-o11"')
+    && concordanceCollocationsPanel.includes('id="concordance-collocation-min-freq"')
+    && concordanceCollocationsPanel.includes('id="concordance-collocation-hide-stopwords"'),
+  "Collocate Profile controls should remain inside the Collocate Profile panel",
+);
+assert(
+  html.includes('id="concordance-distribution-panel" class="concordance-view-panel concordance-distribution-panel hidden"')
+    && html.includes('data-concordance-view-panel="distribution"')
+    && html.includes('aria-labelledby="concordance-distribution-tab"')
+    && html.includes('aria-hidden="true"'),
+  "Distribution should render as a hidden sibling view panel",
 );
 assert(
   !html.includes('id="concordance-source-preview"'),
@@ -116,13 +170,15 @@ for (const label of [
   "CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE",
   "CONCORDANCE_COLLOCATION_STALE_MESSAGE",
   "CONCORDANCE_COLLOCATION_STALE_DETAIL",
-  "Refresh collocates",
+  "Update collocate profile",
 ]) {
-  assert(workbench.includes(label), `Collocates should render ${label}`);
+  assert(workbench.includes(label), `Collocate Profile should render ${label}`);
 }
 assert(
-  !workbench.includes("Compute collocates") && !workbench.includes("Show lines"),
-  "Collocates should avoid resting compute buttons and glued Show lines row text",
+  !workbench.includes("Compute collocates")
+    && !workbench.includes("Show lines")
+    && !workbench.includes("Show KWIC lines"),
+  "Collocate Profile should avoid resting compute buttons and glued Show lines row text",
 );
 for (const measure of ["logDice", "mi", "mi3", "tScore", "zScore", "g2", "logRatio"]) {
   assert(html.includes(`value="${measure}"`), `Collocation measure should include ${measure}`);
@@ -168,20 +224,25 @@ assert(
   "Concordance collocations should query Rust for true top-N sorting, split aggregation/presentation controls, auto-compute fresh keys once, and support click-through",
 );
 assert(
-  workbench.includes('type ConcordanceViewId = "lines" | "collocates";')
+  workbench.includes('type ConcordanceViewId = "lines" | "collocates" | "distribution";')
+    && workbench.includes('return value === "lines" || value === "collocates" || value === "distribution";')
+    && workbench.includes('{ view: "distribution", element: dom.concordanceDistributionPanel }')
     && workbench.includes('type ConcordanceCollocationState = "idle_not_computed" | "loading" | "ready" | "stale" | "error";')
     && workbench.includes("function syncConcordanceViewTabs")
     && workbench.includes("function maybeAutoComputeConcordanceCollocations")
     && workbench.includes('dom.concordanceViewTabs.addEventListener("click", handleConcordanceViewTabClick)')
+    && workbench.includes('if (view === "collocates") {\n    maybeAutoComputeConcordanceCollocations();\n  }')
     && !workbench.includes("function handleConcordanceViewTabClick(event: MouseEvent): void {\n  void refreshConcordance"),
-  "Concordance tab switching should use the lazy collocates trigger rather than refreshing KWIC",
+  "Concordance tab switching should recognise Distribution and only lazy-compute Collocate Profile",
 );
 assert(
   workbench.includes('table.className = "concordance-distribution-table"')
     && workbench.includes('for (const label of ["File", "Hits", "Tokens", "Bar"])')
     && workbench.includes('panel.className = "concordance-document-spread-panel"')
-    && workbench.includes("Document spread"),
-  "Concordance document spread should render as a collapsible table",
+    && workbench.includes('panelHeader.className = "concordance-document-spread-header"')
+    && workbench.includes("Distribution —")
+    && !workbench.includes('const panel = document.createElement("details");\n  panel.className = "concordance-document-spread-panel";'),
+  "Concordance Distribution should render directly rather than as a collapsed details widget",
 );
 assert(
   workbench.includes("addEventListener(\"click\", () => {\n    void toggleConcordanceExpansion(row);")
@@ -263,8 +324,13 @@ assert(
     && workbench.includes('token.className = "concordance-collocate";')
     && workbench.includes("token.textContent = segment.text;")
     && workbench.includes("const activeContextFilter = concordanceResult?.contextFilter ?? concordanceContextFilter;")
-    && workbench.includes("const contextFilterCaseSensitive = concordanceResult?.caseSensitive ?? false;"),
-  "Concordance context rendering should use text nodes and span-based collocate highlights from the active Lines filter",
+    && workbench.includes("const contextFilterCaseSensitive = concordanceResult?.caseSensitive ?? false;")
+    && workbench.includes("const activeFilter = concordanceResult?.contextFilter ?? concordanceContextFilter;")
+    && workbench.includes("const caseSensitive = concordanceResult?.caseSensitive ?? false;")
+    && workbench.includes("left.appendChild(renderContextTokens(concordanceExpansionResult.leftContext, activeFilter, caseSensitive));")
+    && workbench.includes("right.appendChild(renderContextTokens(concordanceExpansionResult.rightContext, activeFilter, caseSensitive));")
+    && !workbench.includes("innerHTML"),
+  "Concordance context rendering should use text nodes and span-based collocate highlights in KWIC and expanded context",
 );
 assert(
   styles.includes(".concordance-collocate {\n  background: var(--cw-collocate-bg);\n  color: var(--cw-collocate-text);")
@@ -376,6 +442,7 @@ assert(
     && styles.includes("--concordance-score-bar")
     && styles.includes("background: var(--concordance-score-bar);")
     && styles.includes(".concordance-collocation-row:hover td")
-    && styles.includes(".concordance-document-spread-toggle::before"),
-  "Collocates should render muted association bars, row hover, and Document spread should expose a collapsible toggle",
+    && styles.includes(".concordance-document-spread-header")
+    && !styles.includes(".concordance-document-spread-toggle"),
+  "Collocate Profile should render muted association bars, and Distribution should render directly without a collapsible toggle",
 );
