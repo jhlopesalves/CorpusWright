@@ -147,6 +147,7 @@ pub(super) fn concordance_query(query: &str) -> ConcordanceQuery {
         selection: AnalysisDocumentSelection::default(),
         query: query.to_string(),
         context_filter: None,
+        context_filter_direction: ConcordanceContextFilterDirection::Both,
         case_sensitive: false,
         sort_key: ConcordanceSortKey::FilePosition,
         window_tokens: 5,

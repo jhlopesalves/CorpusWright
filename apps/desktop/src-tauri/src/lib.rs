@@ -4875,6 +4875,8 @@ mod tests {
             selection: AnalysisDocumentSelection::default(),
             query: query.to_string(),
             context_filter: None,
+            context_filter_direction:
+                corpuswright_core::analysis::ConcordanceContextFilterDirection::Both,
             case_sensitive: false,
             sort_key: corpuswright_core::analysis::ConcordanceSortKey::FilePosition,
             window_tokens: 5,
@@ -4994,6 +4996,8 @@ mod tests {
         let documents = concordance_test_documents();
         let mut query = concordance_test_query("movie");
         query.context_filter = Some("good".to_string());
+        query.context_filter_direction =
+            corpuswright_core::analysis::ConcordanceContextFilterDirection::Right;
         let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
         let context = concordance_test_context();
         let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
