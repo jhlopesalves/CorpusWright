@@ -1,8 +1,10 @@
 //! Rust-owned corpus analysis and bounded query APIs.
 
+#[cfg(test)]
 use crate::annotation::LemmaTable;
 #[cfg(test)]
 use crate::annotation::{AnnotatedToken, UniversalPos, default_model_dir};
+#[cfg(test)]
 use crate::clean::CleaningConfig;
 use crate::hash::sha256_hex;
 use crate::index::{
@@ -30,9 +32,11 @@ mod overview;
 pub(crate) use build::compare_document_records;
 pub use build::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildPhase, AnalysisBuildProgress,
-    AnalysisDocumentSummary, build_analysis_corpus,
+    AnalysisCorpus, AnalysisDocumentSelection, AnalysisDocumentSummary, build_analysis_corpus,
 };
-use build::{AnalysisBuildMetadata, compute_dispersion, document_name};
+use build::{
+    AnalysisBuildMetadata, AnalysisDocument, AnalysisTerm, compute_dispersion, document_name,
+};
 #[cfg(test)]
 use build::{AnalysisBuildProduct, build_analysis_corpus_with_mapping};
 
@@ -125,88 +129,6 @@ static ENGLISH_STOPWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         .split_whitespace()
         .collect()
 });
-
-#[derive(Debug, Clone)]
-struct AnalysisDocument {
-    summary: AnalysisDocumentSummary,
-    surface_term_counts: Vec<(u32, u64)>,
-    annotated_term_counts: Vec<AnnotatedTermCount>,
-    annotation_available: bool,
-    mattr: Option<f64>,
-    mtld: Option<f64>,
-    processed_hash_sha256: String,
-}
-
-#[derive(Debug, Clone)]
-struct AnalysisTerm {
-    token: String,
-    frequency: u64,
-    document_frequency: usize,
-    document_counts: Vec<(usize, u64)>,
-    dispersion: f64,
-}
-
-#[derive(Debug, Clone)]
-struct AnalysisSurfaceTerm {
-    token: String,
-    document_counts: Vec<(usize, u64)>,
-}
-
-/// Sparse Rust-owned analysis index.
-#[derive(Debug, Clone)]
-pub struct AnalysisCorpus {
-    documents: Vec<AnalysisDocument>,
-    surface_terms: Vec<AnalysisSurfaceTerm>,
-    lemma_table: LemmaTable,
-    overview: CorpusOverview,
-    pub tokenization: TokenizationConfig,
-}
-
-impl AnalysisCorpus {
-    /// Returns the compact summary computed with the index.
-    pub fn overview(&self) -> &CorpusOverview {
-        &self.overview
-    }
-
-    pub fn document_summary(&self, document_index: usize) -> Option<&AnalysisDocumentSummary> {
-        self.documents
-            .get(document_index)
-            .map(|document| &document.summary)
-    }
-
-    pub fn is_stale_for_cleaning_config(&self, cleaning_config: &CleaningConfig) -> bool {
-        self.overview.processing_config_signature != cleaning_config_signature(cleaning_config)
-    }
-
-    pub(crate) fn document_summaries(&self) -> impl Iterator<Item = &AnalysisDocumentSummary> {
-        self.documents.iter().map(|doc| &doc.summary)
-    }
-
-    pub(crate) fn surface_term_tokens(&self) -> impl Iterator<Item = &str> {
-        self.surface_terms.iter().map(|term| term.token.as_str())
-    }
-}
-
-/// Compact selection of analysis documents.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct AnalysisDocumentSelection {
-    pub all_documents: bool,
-    #[serde(default)]
-    pub ids: Vec<usize>,
-    #[serde(default)]
-    pub excluded_ids: Vec<usize>,
-}
-
-impl Default for AnalysisDocumentSelection {
-    fn default() -> Self {
-        Self {
-            all_documents: true,
-            ids: Vec::new(),
-            excluded_ids: Vec::new(),
-        }
-    }
-}
 
 /// Server-side sort key for a bounded surface-token concordance query.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, TS)]

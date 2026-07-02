@@ -1,11 +1,11 @@
 use super::{
-    AnalysisCorpus, AnalysisDocument, AnalysisInputProvenance, AnalysisInputResolution,
-    AnalysisInputSource, AnalysisSurfaceTerm, AnalysisTerm, CorpusOverviewContext,
-    MATTR_WINDOW_TOKENS, MTLD_MIN_DOCUMENT_TOKENS, MTLD_TTR_THRESHOLD, VocabularyGrowthPoint,
-    analysis_word_tokens, attach_annotation_layer, build_expected_manifest, build_overview, mattr,
-    mtld,
+    AnalysisInputProvenance, AnalysisInputResolution, AnalysisInputSource, AnnotatedTermCount,
+    CorpusOverview, CorpusOverviewContext, MATTR_WINDOW_TOKENS, MTLD_MIN_DOCUMENT_TOKENS,
+    MTLD_TTR_THRESHOLD, VocabularyGrowthPoint, analysis_word_tokens, attach_annotation_layer,
+    build_expected_manifest, build_overview, cleaning_config_signature, mattr, mtld,
 };
 use crate::annotation::LemmaTable;
+use crate::clean::CleaningConfig;
 use crate::language::detect_and_resolve;
 use crate::scan::{DocumentRecord, DocumentType};
 use crate::tokenization::TokenizationConfig;
@@ -13,6 +13,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use ts_rs::TS;
 /// Current phase of a corpus analysis build.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -86,6 +87,88 @@ pub struct AnalysisBuildOptions {
     pub language_overrides: std::collections::HashMap<usize, String>,
     pub tokenization: TokenizationConfig,
     pub annotation_cache_root: Option<std::path::PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct AnalysisDocument {
+    pub(super) summary: AnalysisDocumentSummary,
+    pub(super) surface_term_counts: Vec<(u32, u64)>,
+    pub(super) annotated_term_counts: Vec<AnnotatedTermCount>,
+    pub(super) annotation_available: bool,
+    pub(super) mattr: Option<f64>,
+    pub(super) mtld: Option<f64>,
+    pub(super) processed_hash_sha256: String,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct AnalysisTerm {
+    pub(super) token: String,
+    pub(super) frequency: u64,
+    pub(super) document_frequency: usize,
+    pub(super) document_counts: Vec<(usize, u64)>,
+    pub(super) dispersion: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct AnalysisSurfaceTerm {
+    pub(super) token: String,
+    pub(super) document_counts: Vec<(usize, u64)>,
+}
+
+/// Sparse Rust-owned analysis index.
+#[derive(Debug, Clone)]
+pub struct AnalysisCorpus {
+    pub(super) documents: Vec<AnalysisDocument>,
+    pub(super) surface_terms: Vec<AnalysisSurfaceTerm>,
+    pub(super) lemma_table: LemmaTable,
+    pub(super) overview: CorpusOverview,
+    pub tokenization: TokenizationConfig,
+}
+
+impl AnalysisCorpus {
+    /// Returns the compact summary computed with the index.
+    pub fn overview(&self) -> &CorpusOverview {
+        &self.overview
+    }
+
+    pub fn document_summary(&self, document_index: usize) -> Option<&AnalysisDocumentSummary> {
+        self.documents
+            .get(document_index)
+            .map(|document| &document.summary)
+    }
+
+    pub fn is_stale_for_cleaning_config(&self, cleaning_config: &CleaningConfig) -> bool {
+        self.overview.processing_config_signature != cleaning_config_signature(cleaning_config)
+    }
+
+    pub(crate) fn document_summaries(&self) -> impl Iterator<Item = &AnalysisDocumentSummary> {
+        self.documents.iter().map(|doc| &doc.summary)
+    }
+
+    pub(crate) fn surface_term_tokens(&self) -> impl Iterator<Item = &str> {
+        self.surface_terms.iter().map(|term| term.token.as_str())
+    }
+}
+
+/// Compact selection of analysis documents.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalysisDocumentSelection {
+    pub all_documents: bool,
+    #[serde(default)]
+    pub ids: Vec<usize>,
+    #[serde(default)]
+    pub excluded_ids: Vec<usize>,
+}
+
+impl Default for AnalysisDocumentSelection {
+    fn default() -> Self {
+        Self {
+            all_documents: true,
+            ids: Vec::new(),
+            excluded_ids: Vec::new(),
+        }
+    }
 }
 
 pub(super) struct AnalysisBuildMetadata {
