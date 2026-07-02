@@ -266,28 +266,28 @@ flowchart TD
 
   <div class="cw-row">
     <span class="cw-label">Tokens</span>
-    <span class="cw-chip">War</span>
-    <span class="cw-chip is-repeat">is</span>
-    <span class="cw-chip">peace</span>
-    <span class="cw-chip">Freedom</span>
-    <span class="cw-chip is-repeat">is</span>
-    <span class="cw-chip">slavery</span>
-    <span class="cw-chip">Ignorance</span>
-    <span class="cw-chip is-repeat">is</span>
-    <span class="cw-chip">strength</span>
+    <span class="cw-chip">In</span>
+    <span class="cw-chip is-repeat">the</span>
+    <span class="cw-chip">labyrinth</span>
+    <span class="cw-chip">of</span>
+    <span class="cw-chip is-repeat">the</span>
+    <span class="cw-chip">library</span>
+    <span class="cw-chip is-repeat">the</span>
+    <span class="cw-chip">tiger</span>
+    <span class="cw-chip">sleeps</span>
     <span class="cw-count">9 tokens</span>
   </div>
 
   <div class="cw-row">
     <span class="cw-label">Types</span>
-    <span class="cw-chip">War</span>
-    <span class="cw-chip is-repeat">is</span>
-    <span class="cw-chip">peace</span>
-    <span class="cw-chip">Freedom</span>
-    <span class="cw-chip">slavery</span>
-    <span class="cw-chip">Ignorance</span>
-    <span class="cw-chip">strength</span>
-    <span class="cw-count">7 types — the three “is” tokens collapse to one</span>
+    <span class="cw-chip">In</span>
+    <span class="cw-chip is-repeat">the</span>
+    <span class="cw-chip">labyrinth</span>
+    <span class="cw-chip">of</span>
+    <span class="cw-chip">library</span>
+    <span class="cw-chip">tiger</span>
+    <span class="cw-chip">sleeps</span>
+    <span class="cw-count">7 types — the three “the” tokens collapse to one</span>
   </div>
 
   <div class="cw-row">
@@ -306,9 +306,9 @@ flowchart TD
   </figcaption>
 </figure>
 
-            <p>A token is a single running occurrence of a word. A type is a distinct word form. In <em>War is peace.
-                Freedom is slavery. Ignorance is strength.</em> there are nine tokens but seven types, because
-              <em>is</em> turns up three times. A lemma goes one step further and gathers inflected forms under a single
+            <p>A token is a single running occurrence of a word. A type is a distinct word form. Take <em>In the
+                labyrinth of the library, the tiger sleeps.</em>: nine tokens but seven types, because
+              <em>the</em> turns up three times. A lemma goes one step further and gathers inflected forms under a single
               headword: <em>go</em>, <em>goes</em>, <em>going</em>, <em>went</em> - four word forms, one lemma.
             </p>
 
@@ -449,7 +449,10 @@ flowchart TD
               ratio falls mechanically, regardless of how varied the writing is. Given a 500-word text and a 5,000-word
               text, TTR will rate the shorter one as &quot;richer&quot; even when they are equally varied.</p>
 
-            <!-- figure:ttr_curve -->
+            <figure>
+              <img src="assets/figures/ttr_curve.svg" alt="TTR falls as text length grows, because longer texts necessarily repeat common words. Computed from the full text of Chesterton's The Man Who Was Thursday (1908, Project Gutenberg; lowercased alphabetic tokens) — an interim, fully disclosed stand-in for the demo corpus.">
+              <figcaption>TTR falls as text length grows, because longer texts necessarily repeat common words. Computed from the full text of Chesterton's The Man Who Was Thursday (1908, Project Gutenberg; lowercased alphabetic tokens) — an interim, fully disclosed stand-in for the demo corpus.</figcaption>
+            </figure>
 
             <p>CorpusWright uses two length-robust measures instead.</p>
 
@@ -460,7 +463,7 @@ flowchart TD
               \frac{1}{N - w + 1} \sum \text{TTR}_k\). (Covington &amp; McFall, 2010.)</p>
 
 <figure>
-  <svg viewBox="0 0 600 235" width="100%" font-family="sans-serif"
+  <svg viewBox="0 0 600 235" width="100%"
        role="img" aria-label="A fixed-width window slides one token at a time across a token strip; a TTR is measured in each window and averaged into MATTR.">
     <text x="30" y="22" font-size="13" fill="#333" font-weight="600">MATTR: a fixed-width window slides one token at a time</text>
 
@@ -508,6 +511,41 @@ flowchart TD
   </figcaption>
 </figure>
 
+<figure>
+  <svg viewBox="0 0 600 185" width="100%"
+       role="img" aria-label="A token strip is cut into factors wherever the running TTR falls to 0.72; MTLD is the mean tokens per factor, run forwards and backwards and averaged.">
+    <text x="30" y="22" font-size="13" fill="#333" font-weight="600">MTLD: cut a factor wherever the running TTR falls to 0.72</text>
+
+    <rect x="30" y="44" width="540" height="34" fill="#f6f6f6" stroke="#bbb"/>
+    <g fill="#555" fill-opacity="0.12">
+      <rect x="30" y="44" width="200" height="34"/>
+      <rect x="430" y="44" width="140" height="34"/>
+    </g>
+    <g stroke="#555" stroke-width="1.5">
+      <line x1="230" y1="38" x2="230" y2="84"/>
+      <line x1="430" y1="38" x2="430" y2="84"/>
+    </g>
+    <g font-size="12" fill="#444" text-anchor="middle">
+      <text x="130" y="65">factor 1</text>
+      <text x="330" y="65">factor 2</text>
+      <text x="500" y="65">factor 3 (partial)</text>
+    </g>
+    <g font-size="11" fill="#666" text-anchor="middle">
+      <text x="230" y="100">TTR falls to 0.72 — reset</text>
+      <text x="430" y="100">TTR falls to 0.72 — reset</text>
+    </g>
+
+    <text x="30" y="132" font-size="12" fill="#333">Factors differ in length: repetitive stretches reach the threshold sooner.</text>
+    <text x="30" y="152" font-size="12" fill="#333">MTLD = N / F — complete factors plus a fraction for the remainder;</text>
+    <text x="30" y="172" font-size="12" fill="#333">run forwards and backwards, then averaged.</text>
+  </svg>
+  <figcaption>
+    Walking the text, each time the running TTR falls to 0.72 one factor is complete
+    and the count resets; MTLD is the mean number of tokens per factor. Longer factors
+    mean more diverse text.
+  </figcaption>
+</figure>
+
             <p>MTLD, the measure of textual lexical diversity. Walk through the text accumulating tokens until the
               running TTR drops to a set threshold - 0.72, by convention; each time it does, that counts as one complete
               &quot;factor&quot;, and the count resets. MTLD is the mean number of tokens per factor, run forwards and
@@ -530,7 +568,10 @@ flowchart TD
 
             <h2 id="vocabulary-structure-hapax-legomena-and-dislegomena">Vocabulary structure: hapax legomena and dislegomena</h2>
 
-            <!-- figure:hapax_spectrum -->
+            <figure>
+              <img src="assets/figures/hapax_spectrum.svg" alt="Most types are rare — a long tail of hapaxes and dislegomena dominates the type inventory. Occurrence counts 1–10 shown. Computed from the full text of Chesterton's The Man Who Was Thursday (1908, Project Gutenberg; lowercased alphabetic tokens) — an interim, fully disclosed stand-in for the demo corpus.">
+              <figcaption>Most types are rare — a long tail of hapaxes and dislegomena dominates the type inventory. Occurrence counts 1–10 shown. Computed from the full text of Chesterton's The Man Who Was Thursday (1908, Project Gutenberg; lowercased alphabetic tokens) — an interim, fully disclosed stand-in for the demo corpus.</figcaption>
+            </figure>
 
             <p>A hapax legomenon is a type that occurs exactly once in the corpus. A hapax dislegomenon occurs exactly
               twice.</p>
@@ -555,7 +596,10 @@ flowchart TD
 
             <h2 id="the-frequency-distribution-zipfs-law">The frequency distribution: Zipf's law</h2>
 
-            <!-- figure:zipf -->
+            <figure>
+              <img src="assets/figures/zipf.svg" alt="Rank-frequency on log-log axes — a straight-ish line of slope −a, with the head and frequency-one tail excluded from the fit; the R² describes the fitted line, not proof the law holds. Computed from the full text of Chesterton's The Man Who Was Thursday (1908, Project Gutenberg; lowercased alphabetic tokens) — an interim, fully disclosed stand-in for the demo corpus.">
+              <figcaption>Rank-frequency on log-log axes — a straight-ish line of slope −a, with the head and frequency-one tail excluded from the fit; the R² describes the fitted line, not proof the law holds. Computed from the full text of Chesterton's The Man Who Was Thursday (1908, Project Gutenberg; lowercased alphabetic tokens) — an interim, fully disclosed stand-in for the demo corpus.</figcaption>
+            </figure>
 
             <p>Ranking the types from most to least frequent reveals a consistent regularity. Zipf's law says frequency
               is roughly inversely proportional to rank: the second-ranked word turns up about half as often as the
@@ -582,7 +626,10 @@ flowchart TD
               the highest-frequency type (rank 1) and the whole frequency-one tail left out of the fit, since those are
               the regions the classic law fits worst. It reports the resulting exponent \(a\) together with the fit's
               \(R^2\), beside the rank-frequency plot, so that the degree to which the corpus is Zipfian can be
-              assessed rather than inferred from a single number.</p>
+              assessed rather than inferred from a single number. One caution on reading that \(R^2\): on log-log
+              rank-frequency data an ordinary least-squares line produces a high \(R^2\) almost regardless of fit
+              quality, so it describes the plotted line rather than proving the law holds — the shape of the curve, and
+              where it bends, is the informative part.</p>
 
             <p>There is a known refinement, Zipf-Mandelbrot, which adds a parameter to rescue the head of the curve,
               \(f(r) \propto 1 / (r + b)^a\). CorpusWright does not currently fit that additional parameter, and says so
@@ -594,7 +641,10 @@ flowchart TD
 
             <h2 id="vocabulary-growth-heaps-law">Vocabulary growth: Heaps' law</h2>
 
-            <!-- figure:heaps -->
+            <figure>
+              <img src="assets/figures/heaps.svg" alt="New types keep arriving but the rate of discovery slows — a concave vocabulary growth curve. Computed from the full text of Chesterton's The Man Who Was Thursday (1908, Project Gutenberg; lowercased alphabetic tokens) — an interim, fully disclosed stand-in for the demo corpus.">
+              <figcaption>New types keep arriving but the rate of discovery slows — a concave vocabulary growth curve. Computed from the full text of Chesterton's The Man Who Was Thursday (1908, Project Gutenberg; lowercased alphabetic tokens) — an interim, fully disclosed stand-in for the demo corpus.</figcaption>
+            </figure>
 
             <p>The hapax ratio asks whether a corpus is still meeting new words; Heaps' law puts a shape on the same
               question. As you read more tokens, the count of distinct types keeps climbing, but with diminishing
