@@ -5,7 +5,6 @@ import {
   CONCORDANCE_COLLOCATION_LIMIT,
   CONCORDANCE_COLLOCATION_MEASURE_OPTIONS,
   CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE,
-  CONCORDANCE_COLLOCATION_STALE_DETAIL,
   CONCORDANCE_COLLOCATION_STALE_MESSAGE,
   CONCORDANCE_COLLOCATION_SORT_OPTIONS,
   DEFAULT_CONCORDANCE_COLLOCATION_MEASURE,
@@ -63,16 +62,12 @@ assert(CONCORDANCE_COLLOCATION_DEFAULT_SPAN === 5, "Default collocation span sho
 assert(CONCORDANCE_COLLOCATION_DEFAULT_FLOOR === 5, "Default collocation floors should be 5");
 assert(CONCORDANCE_COLLOCATION_LIMIT === 100, "Collocation results should request the default top 100");
 assert(
-  CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE === "Collocates have not been computed yet.",
-  "Collocates should expose an explicit not-computed state",
+  CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE === "The collocate profile has not been computed yet.",
+  "Collocate Profile should expose an explicit not-computed state",
 );
 assert(
-  CONCORDANCE_COLLOCATION_STALE_MESSAGE === "Collocates need refresh.",
-  "Collocates should expose an explicit stale state",
-);
-assert(
-  CONCORDANCE_COLLOCATION_STALE_DETAIL === "The query or collocate settings changed.",
-  "Stale collocate copy should explain why refresh is needed",
+  CONCORDANCE_COLLOCATION_STALE_MESSAGE === "Update the collocate profile for the current query.",
+  "Stale collocate copy should be a single action sentence",
 );
 assert(CONCORDANCE_EXPANSION_WINDOW === 40, "Expansion should request the default wide KWIC window");
 assert(concordanceSortLabel("left1") === "1L", "Left sort labels should use KWIC shorthand");
