@@ -75,7 +75,6 @@ import {
   CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE,
   CONCORDANCE_COLLOCATION_NO_ROWS_MESSAGE,
   CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE,
-  CONCORDANCE_COLLOCATION_STALE_DETAIL,
   CONCORDANCE_COLLOCATION_STALE_MESSAGE,
   CONCORDANCE_EXPANSION_WINDOW,
   CONCORDANCE_NO_HITS_MESSAGE,
@@ -128,7 +127,7 @@ const FREQUENCY_DOCUMENT_PAGE_SIZE = 200;
 const TERM_DISTRIBUTION_PAGE_SIZE = 100;
 const CONCORDANCE_DISTRIBUTION_PAGE_SIZE = 10;
 type AnalysisToolId = "overview" | "frequency" | "concordance";
-type ConcordanceViewId = "lines" | "collocates";
+type ConcordanceViewId = "lines" | "collocates" | "distribution";
 type ConcordanceCollocationState = "idle_not_computed" | "loading" | "ready" | "stale" | "error";
 
 interface OverviewMetricRow {
@@ -1869,7 +1868,7 @@ function maybeAutoComputeConcordanceCollocations(): void {
 }
 
 function isConcordanceViewId(value: string | undefined): value is ConcordanceViewId {
-  return value === "lines" || value === "collocates";
+  return value === "lines" || value === "collocates" || value === "distribution";
 }
 
 function syncConcordanceViewTabs(): void {
@@ -1887,6 +1886,7 @@ function syncConcordanceViewTabs(): void {
   const panels: Array<{ view: ConcordanceViewId; element: HTMLElement }> = [
     { view: "lines", element: dom.concordanceLinesPanel },
     { view: "collocates", element: dom.concordanceCollocationsPanel },
+    { view: "distribution", element: dom.concordanceDistributionPanel },
   ];
   panels.forEach(({ view, element }) => {
     const active = view === activeConcordanceView;
@@ -2191,13 +2191,23 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
     context.className = "concordance-expansion-context";
     const left = document.createElement("span");
     left.className = "concordance-expansion-left";
-    left.textContent = expansion.leftText;
+    const activeFilter = concordanceResult?.contextFilter ?? concordanceContextFilter;
+    const caseSensitive = concordanceResult?.caseSensitive ?? false;
+    if (concordanceExpansionResult !== null) {
+      left.appendChild(renderContextTokens(concordanceExpansionResult.leftContext, activeFilter, caseSensitive));
+    } else {
+      left.textContent = expansion.leftText;
+    }
     const node = document.createElement("mark");
     node.className = "concordance-node concordance-expansion-node";
     node.textContent = expansion.nodeText;
     const right = document.createElement("span");
     right.className = "concordance-expansion-right";
-    right.textContent = expansion.rightText;
+    if (concordanceExpansionResult !== null) {
+      right.appendChild(renderContextTokens(concordanceExpansionResult.rightContext, activeFilter, caseSensitive));
+    } else {
+      right.textContent = expansion.rightText;
+    }
     context.append(left, node, right);
     panel.appendChild(context);
   } else {
@@ -2348,7 +2358,7 @@ function createConcordanceCollocationRow(
   item.className = "concordance-collocation-row";
   item.classList.toggle("is-active", row.surface === concordanceContextFilter);
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
-  const actionLabel = `Show KWIC lines where "${query}" occurs near "${row.surface}"`;
+  const actionLabel = `Show evidence lines where "${query}" occurs near "${row.surface}"`;
   item.tabIndex = 0;
   item.setAttribute("role", "button");
   item.setAttribute("aria-label", actionLabel);
@@ -2432,17 +2442,17 @@ function renderConcordanceCollocations(): void {
   }
 
   if (concordanceCollocationState === "stale") {
-    const detail = concordanceCollocationSupersededNotice
-      ? `${CONCORDANCE_COLLOCATION_STALE_DETAIL} ${concordanceCollocationSupersededNotice}`
-      : CONCORDANCE_COLLOCATION_STALE_DETAIL;
+    const staleMessage = query.length > 0
+      ? `Update the collocate profile for "${query}".`
+      : CONCORDANCE_COLLOCATION_STALE_MESSAGE;
     renderConcordanceCollocationStatus(
       renderConcordanceCollocationAction(
-        CONCORDANCE_COLLOCATION_STALE_MESSAGE,
-        detail,
-        "Refresh collocates",
+        staleMessage,
+        concordanceCollocationSupersededNotice,
+        "Update profile",
       ),
     );
-    renderConcordanceCollocationTableState(CONCORDANCE_COLLOCATION_STALE_MESSAGE);
+    renderConcordanceCollocationTableState(staleMessage);
     return;
   }
 
@@ -2480,25 +2490,22 @@ function renderConcordanceDistribution(
 ): void {
   dom.concordanceDistribution.replaceChildren();
 
-  const panel = document.createElement("details");
+  const panel = document.createElement("div");
   panel.className = "concordance-document-spread-panel";
 
-  const summary = document.createElement("summary");
-  summary.className = "concordance-document-spread-summary";
+  const panelHeader = document.createElement("div");
+  panelHeader.className = "concordance-document-spread-header";
   const title = document.createElement("span");
   title.className = "concordance-document-spread-title";
   if (result && result.totalHits > 0) {
-    title.textContent =
-      `Document spread — ${formatNumber(result.totalHits)} hits across ${formatNumber(result.documentsWithHits)} files · top file ${formatFixedNumber(result.topDocumentShare * 100, 1)}% · DP ${formatFixedNumber(result.dp, 2)}`;
+    title.textContent = `Distribution — ${concordanceSummaryMetricsText(result)}`;
   } else if (result) {
-    title.textContent = "Document spread — no hits in the selected files";
+    title.textContent = "Distribution — no hits in the selected files";
   } else {
-    title.textContent = `Document spread — ${emptyMessage}`;
+    title.textContent = `Distribution — ${emptyMessage}`;
   }
-  const toggle = document.createElement("span");
-  toggle.className = "concordance-document-spread-toggle";
-  summary.append(title, toggle);
-  panel.appendChild(summary);
+  panelHeader.appendChild(title);
+  panel.appendChild(panelHeader);
 
   const tableWrap = document.createElement("div");
   tableWrap.className = "concordance-distribution-table-wrap";
@@ -2508,7 +2515,7 @@ function renderConcordanceDistribution(
 
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  for (const label of ["File", "Hits", "Tokens", "Bar"]) {
+  for (const label of ["File", "Hits", "Tokens", "Hits per 10k", "Share of hits"]) {
     const cell = document.createElement("th");
     cell.textContent = label;
     header.appendChild(cell);
@@ -2520,13 +2527,12 @@ function renderConcordanceDistribution(
   if (!result || result.totalHits === 0) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 4;
+    cell.colSpan = 5;
     cell.className = "frequency-empty concordance-empty";
     cell.textContent = result ? CONCORDANCE_NO_HITS_MESSAGE : emptyMessage;
     row.appendChild(cell);
     body.appendChild(row);
   } else {
-    const maxCount = result.distribution.maxCount;
     for (const item of result.distribution.items) {
       const row = document.createElement("tr");
 
@@ -2543,18 +2549,16 @@ function renderConcordanceDistribution(
       tokens.className = "numeric";
       tokens.textContent = formatNumber(item.tokenCount);
 
-      const bar = document.createElement("td");
-      const track = document.createElement("span");
-      track.className = "frequency-distribution-track";
-      const fill = document.createElement("span");
-      fill.className = "frequency-distribution-fill";
-      const width = maxCount > 0 && item.count > 0 ? Math.max(3, (item.count / maxCount) * 100) : 0;
-      fill.style.setProperty("--bar-width", `${width}%`);
-      track.title = `Hits: ${formatNumber(item.count)}`;
-      track.appendChild(fill);
-      bar.appendChild(track);
+      const rate = document.createElement("td");
+      rate.className = "numeric";
+      rate.textContent = formatFixedNumber(item.ratePer10k, 2);
 
-      row.append(file, count, tokens, bar);
+      const share = document.createElement("td");
+      share.className = "numeric";
+      const shareOfHits = result.totalHits > 0 ? item.count / result.totalHits * 100 : 0;
+      share.textContent = `${formatFixedNumber(shareOfHits, 1)}%`;
+
+      row.append(file, count, tokens, rate, share);
       body.appendChild(row);
     }
   }
@@ -2826,9 +2830,27 @@ function handleConcordanceSortChange(): void {
 }
 
 function runConcordanceSearch(): void {
+  void runConcordanceSearchForActiveView();
+}
+
+async function runConcordanceSearchForActiveView(): Promise<void> {
+  const viewAtSearch = activeConcordanceView;
+  const queryAtSearch = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
+
   concordanceContextFilter = null;
   markConcordanceCollocationsForAggregationChange();
-  void refreshConcordance();
+  await refreshConcordance();
+
+  if (
+    viewAtSearch === "collocates"
+    && activeConcordanceView === "collocates"
+    && queryAtSearch.length > 0
+    && normaliseConcordanceQuery(dom.concordanceQueryInput.value) === queryAtSearch
+    && concordanceResult !== null
+    && concordanceFailure === null
+  ) {
+    await refreshConcordanceCollocations();
+  }
 }
 
 function handleConcordancePageSizeChange(): void {

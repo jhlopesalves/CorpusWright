@@ -25,14 +25,13 @@ export const CONCORDANCE_COLLOCATION_MAX_SPAN = 20;
 export const CONCORDANCE_COLLOCATION_DEFAULT_FLOOR = 5;
 export const CONCORDANCE_COLLOCATION_LIMIT = 100;
 export const CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE =
-  "Enter a word or phrase to profile collocates.";
+  "Enter a word or phrase to build a collocate profile.";
 export const CONCORDANCE_COLLOCATION_NO_ROWS_MESSAGE =
   "No collocates above the current floors.";
 export const CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE =
-  "Collocates have not been computed yet.";
-export const CONCORDANCE_COLLOCATION_STALE_MESSAGE = "Collocates need refresh.";
-export const CONCORDANCE_COLLOCATION_STALE_DETAIL =
-  "The query or collocate settings changed.";
+  "The collocate profile has not been computed yet.";
+export const CONCORDANCE_COLLOCATION_STALE_MESSAGE =
+  "Update the collocate profile for the current query.";
 export const DEFAULT_CONCORDANCE_COLLOCATION_MEASURE: ConcordanceCollocationMeasure = "logDice";
 export const DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY: ConcordanceCollocationSortKey = "association";
 export const DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION: SortDirection = "desc";
