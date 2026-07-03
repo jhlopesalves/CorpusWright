@@ -2,33 +2,18 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 
 import {
-  expandConcordanceContext,
   searchConcordance,
   type AnalysisInputSource,
-  type ConcordanceExpansionResult,
   type ConcordanceResult,
-  type ConcordanceRow,
-  type ConcordanceSortKey,
   type CorpusOverview as AnalysisCorpus,
   type CorpusOverviewFinding,
   type CorpusOverviewFindingSeverity,
 } from "./analysis";
 import { BOOLEAN_CLEANING_CONFIG_KEYS } from "./config";
 import {
-  clampConcordanceWindow,
-  clampConcordancePageSize,
   concordanceContextTokenSegments,
-  concordanceExpansionViewModel,
   concordanceSummaryMetricsText,
-  concordanceRowExpansionKey,
-  concordanceRowText,
-  CONCORDANCE_EXPANSION_WINDOW,
-  CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,
-  DEFAULT_CONCORDANCE_SORT_KEY,
-  CONCORDANCE_COLUMNS,
-  toggleConcordanceExpansionKey,
-  type ConcordanceExpansionStateSnapshot,
   normaliseConcordanceQuery,
 } from "./concordance";
 import { dom } from "./dom";
@@ -100,6 +85,24 @@ import {
   runConcordanceSearchForActiveView,
   syncConcordanceCollocationStopwordsToggle,
 } from "./workbench/concordance/collocations";
+import {
+  collapseConcordanceExpansion,
+  collapseConcordanceExpansionFromControlChange,
+  currentConcordanceLineOffset,
+  currentConcordanceLinePageSize,
+  currentConcordanceLineSortKey,
+  currentConcordanceLineWindow,
+  handleConcordanceExpansionEscape,
+  handleConcordancePageSizeChange,
+  handleConcordanceSortChange,
+  renderConcordanceLines,
+  resetConcordanceLineOffset,
+  resetConcordanceLinesCorpusState,
+  setConcordanceLineOffset,
+  showNextConcordancePage,
+  showPreviousConcordancePage,
+  syncConcordanceLineSortKeyFromControl,
+} from "./workbench/concordance/lines";
 
 const FUTURE_ANALYSIS_TOOLS = [
   "N-grams",
@@ -141,16 +144,9 @@ let activeAnalysisTool: AnalysisToolId = "overview";
 let overviewGlossaryControlId = 0;
 let concordanceResult: ConcordanceResult | null = null;
 let activeConcordanceView: ConcordanceViewId = "lines";
-let concordanceOffset = 0;
-let concordanceSortKey: ConcordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;
 let concordanceQueryGeneration = 0;
 let concordancePending = false;
 let concordanceFailure: string | null = null;
-let concordanceExpansionKey: string | null = null;
-let concordanceExpansionPending = false;
-let concordanceExpansionFailure: string | null = null;
-let concordanceExpansionResult: ConcordanceExpansionResult | null = null;
-let concordanceExpansionGeneration = 0;
 
 export function pluralise(count: number, singular: string, plural = `${singular}s`): string {
   return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
@@ -1342,20 +1338,6 @@ function renderCorpusOverview(): void {
   );
 }
 
-function currentConcordanceWindow(): number {
-  return clampConcordanceWindow(Number.parseInt(dom.concordanceWindowInput.value, 10));
-}
-
-function currentConcordancePageSize(): number {
-  const pageSize = clampConcordancePageSize(Number.parseInt(dom.concordancePageSizeInput.value, 10));
-  dom.concordancePageSizeInput.value = pageSize.toString();
-  return pageSize;
-}
-
-function currentConcordanceSortKey(): ConcordanceSortKey {
-  return dom.concordanceSortSelect.value as ConcordanceSortKey;
-}
-
 function syncConcordanceCaseToggle(): void {
   const isCaseSensitive = dom.concordanceCaseSensitiveInput.checked;
   dom.concordanceCaseSensitiveInput.setAttribute("aria-checked", isCaseSensitive ? "true" : "false");
@@ -1365,7 +1347,7 @@ function syncConcordanceCaseToggle(): void {
 export function syncConcordanceControls(): void {
   syncConcordanceCaseToggle();
   syncConcordanceCollocationStopwordsToggle();
-  dom.concordanceSortSelect.value = concordanceSortKey;
+  dom.concordanceSortSelect.value = currentConcordanceLineSortKey();
   dom.concordanceCollocationMeasureSelect.value = currentConcordanceCollocationMeasure();
 }
 
@@ -1441,97 +1423,6 @@ function renderConcordanceStatus(message: string | null, isError = false): void 
   dom.concordanceStatus.classList.toggle("warning", isError);
 }
 
-function currentConcordanceExpansionState(): ConcordanceExpansionStateSnapshot {
-  return {
-    key: concordanceExpansionKey,
-    pending: concordanceExpansionPending,
-    error: concordanceExpansionFailure,
-    result: concordanceExpansionResult,
-  };
-}
-
-function collapseConcordanceExpansion(): void {
-  if (
-    concordanceExpansionKey === null
-    && !concordanceExpansionPending
-    && concordanceExpansionFailure === null
-    && concordanceExpansionResult === null
-  ) {
-    return;
-  }
-  concordanceExpansionKey = null;
-  concordanceExpansionPending = false;
-  concordanceExpansionFailure = null;
-  concordanceExpansionResult = null;
-  concordanceExpansionGeneration += 1;
-}
-
-function handleConcordanceExpansionEscape(event: KeyboardEvent): void {
-  if (event.key !== "Escape" || concordanceExpansionKey === null) {
-    return;
-  }
-  collapseConcordanceExpansion();
-  renderConcordance();
-}
-
-function concordanceExpansionDomId(rowKey: string): string {
-  return `concordance-expansion-${rowKey.replace(/[^a-z0-9_-]/gi, "-")}`;
-}
-
-async function toggleConcordanceExpansion(row: ConcordanceRow): Promise<void> {
-  const rowKey = concordanceRowExpansionKey(row);
-  const nextKey = toggleConcordanceExpansionKey(concordanceExpansionKey, rowKey);
-  if (nextKey === null) {
-    collapseConcordanceExpansion();
-    renderConcordance();
-    return;
-  }
-
-  concordanceExpansionKey = nextKey;
-  concordanceExpansionPending = true;
-  concordanceExpansionFailure = null;
-  concordanceExpansionResult = null;
-  const generation = ++concordanceExpansionGeneration;
-  renderConcordance();
-
-  try {
-    const result = await expandConcordanceContext(
-      {
-        documentIndex: row.documentIndex,
-        tokenIndex: row.tokenIndex,
-        nodeTokenLength: row.nodeTokenLength,
-        windowTokens: CONCORDANCE_EXPANSION_WINDOW,
-      },
-      state.currentCorpusVersion,
-      effectiveCleaningConfig(),
-    );
-    if (generation !== concordanceExpansionGeneration) {
-      return;
-    }
-    concordanceExpansionResult = result;
-  } catch (error) {
-    if (generation !== concordanceExpansionGeneration) {
-      return;
-    }
-    concordanceExpansionFailure = `${error}`;
-  } finally {
-    if (generation === concordanceExpansionGeneration) {
-      concordanceExpansionPending = false;
-      renderConcordance();
-    }
-  }
-}
-
-function renderConcordanceTableState(message: string): void {
-  const row = document.createElement("tr");
-  const cell = document.createElement("td");
-  cell.colSpan = CONCORDANCE_COLUMNS.length;
-  cell.className = "frequency-empty concordance-empty";
-  cell.textContent = message;
-  row.appendChild(cell);
-  dom.concordanceTableBody.replaceChildren(row);
-}
-
 export function renderContextTokens(
   tokens: string[],
   activeFilter: string | null,
@@ -1555,142 +1446,6 @@ export function renderContextTokens(
   return fragment;
 }
 
-function appendConcordanceKwicCells(
-  item: HTMLTableRowElement,
-  row: ConcordanceRow,
-  activeFilter: string | null,
-  caseSensitive: boolean,
-): void {
-  const file = document.createElement("td");
-  file.className = "concordance-file";
-  file.title = row.displayName || row.sourcePath;
-  file.textContent = row.displayName || row.sourcePath;
-
-  const left = document.createElement("td");
-  left.className = "concordance-left";
-  if (activeFilter === null) {
-    left.textContent = concordanceRowText(row.leftContext);
-  } else {
-    left.appendChild(renderContextTokens(row.leftContext, activeFilter, caseSensitive));
-  }
-
-  const nodeCell = document.createElement("td");
-  nodeCell.className = "concordance-node-cell";
-  const node = document.createElement("mark");
-  node.className = "concordance-node";
-  node.textContent = row.node;
-  nodeCell.appendChild(node);
-
-  const right = document.createElement("td");
-  right.className = "concordance-right";
-  if (activeFilter === null) {
-    right.textContent = concordanceRowText(row.rightContext);
-  } else {
-    right.appendChild(renderContextTokens(row.rightContext, activeFilter, caseSensitive));
-  }
-
-  item.append(file, left, nodeCell, right);
-}
-
-function createConcordanceRow(row: ConcordanceRow): HTMLTableRowElement {
-  const item = document.createElement("tr");
-  const rowKey = concordanceRowExpansionKey(row);
-  const expansion = concordanceExpansionViewModel(rowKey, currentConcordanceExpansionState());
-  const activeContextFilter = concordanceResult?.contextFilter ?? null;
-  const contextFilterCaseSensitive = concordanceResult?.caseSensitive ?? false;
-  item.className = "concordance-row";
-  item.tabIndex = 0;
-  item.setAttribute("role", "button");
-  item.setAttribute("aria-expanded", expansion.ariaExpanded);
-  item.setAttribute("aria-controls", concordanceExpansionDomId(rowKey));
-  item.title = "Show wider context";
-  item.addEventListener("click", () => {
-    void toggleConcordanceExpansion(row);
-  });
-  item.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
-    }
-    event.preventDefault();
-    void toggleConcordanceExpansion(row);
-  });
-  item.classList.toggle("is-expanded", expansion.expanded);
-
-  appendConcordanceKwicCells(item, row, activeContextFilter, contextFilterCaseSensitive);
-  return item;
-}
-
-function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElement {
-  const rowKey = concordanceRowExpansionKey(row);
-  const expansion = concordanceExpansionViewModel(rowKey, currentConcordanceExpansionState());
-
-  const panel = document.createElement("div");
-  panel.id = concordanceExpansionDomId(rowKey);
-  panel.className = "concordance-expansion-panel";
-
-  const header = document.createElement("div");
-  header.className = "concordance-expansion-header";
-  const file = document.createElement("span");
-  file.className = "concordance-expansion-file";
-  file.textContent = row.displayName || row.sourcePath;
-  const close = document.createElement("button");
-  close.type = "button";
-  close.className = "secondary-btn concordance-expansion-close";
-  close.textContent = "Close";
-  close.addEventListener("click", () => {
-    collapseConcordanceExpansion();
-    renderConcordance();
-  });
-  header.append(file, close);
-  panel.appendChild(header);
-
-  if (expansion.status === "ready") {
-    const context = document.createElement("p");
-    context.className = "concordance-expansion-context";
-    const left = document.createElement("span");
-    left.className = "concordance-expansion-left";
-    const activeFilter = concordanceResult?.contextFilter ?? null;
-    const caseSensitive = concordanceResult?.caseSensitive ?? false;
-    if (concordanceExpansionResult !== null) {
-      left.appendChild(renderContextTokens(concordanceExpansionResult.leftContext, activeFilter, caseSensitive));
-    } else {
-      left.textContent = expansion.leftText;
-    }
-    const node = document.createElement("mark");
-    node.className = "concordance-node concordance-expansion-node";
-    node.textContent = expansion.nodeText;
-    const right = document.createElement("span");
-    right.className = "concordance-expansion-right";
-    if (concordanceExpansionResult !== null) {
-      right.appendChild(renderContextTokens(concordanceExpansionResult.rightContext, activeFilter, caseSensitive));
-    } else {
-      right.textContent = expansion.rightText;
-    }
-    context.append(left, node, right);
-    panel.appendChild(context);
-  } else {
-    const message = document.createElement("p");
-    message.className = `concordance-expansion-message is-${expansion.status}`;
-    message.textContent = expansion.message;
-    panel.appendChild(message);
-  }
-
-  return panel;
-}
-
-function createConcordanceSourcePreviewRow(row: ConcordanceRow): HTMLTableRowElement {
-  const item = document.createElement("tr");
-  item.className = "concordance-preview-row";
-
-  const cell = document.createElement("td");
-  cell.className = "concordance-preview-cell";
-  cell.colSpan = CONCORDANCE_COLUMNS.length;
-  cell.appendChild(createConcordanceSourcePreviewPanel(row));
-
-  item.appendChild(cell);
-  return item;
-}
-
 function renderConcordanceSummary(result: ConcordanceResult): void {
   const query = document.createElement("span");
   query.className = "concordance-summary-query";
@@ -1703,7 +1458,7 @@ function renderConcordanceSummary(result: ConcordanceResult): void {
 
 
 export function resetConcordanceForFrequencyScopeChange(): void {
-  concordanceOffset = 0;
+  resetConcordanceLineOffset();
   resetConcordanceDistributionOffset();
   concordanceResult = null;
   collapseConcordanceExpansion();
@@ -1711,17 +1466,11 @@ export function resetConcordanceForFrequencyScopeChange(): void {
 
 export function resetConcordanceCorpusState(): void {
   concordanceResult = null;
-  concordanceOffset = 0;
-  concordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;
+  resetConcordanceLinesCorpusState();
   resetConcordanceDistributionOffset();
   concordanceQueryGeneration += 1;
   concordancePending = false;
   concordanceFailure = null;
-  concordanceExpansionKey = null;
-  concordanceExpansionPending = false;
-  concordanceExpansionFailure = null;
-  concordanceExpansionResult = null;
-  concordanceExpansionGeneration += 1;
   resetConcordanceCollocationCorpusState();
 }
 
@@ -1733,24 +1482,18 @@ export function renderConcordance(): void {
   if (concordancePending) {
     dom.concordanceSummary.textContent = "Searching...";
     renderConcordanceStatus(null);
-    renderConcordanceTableState("Searching...");
+    renderConcordanceLines(null, "Searching...");
     renderConcordanceDistribution(null, "Searching...");
     renderConcordanceCollocations();
-    dom.concordancePagePreviousButton.disabled = true;
-    dom.concordancePageNextButton.disabled = true;
-    dom.concordancePageStatus.textContent = "";
     return;
   }
 
   if (concordanceFailure) {
     dom.concordanceSummary.textContent = CONCORDANCE_NO_QUERY_MESSAGE;
     renderConcordanceStatus(concordanceFailure, true);
-    renderConcordanceTableState(concordanceFailure);
+    renderConcordanceLines(null, concordanceFailure);
     renderConcordanceDistribution(null, concordanceFailure);
     renderConcordanceCollocations();
-    dom.concordancePagePreviousButton.disabled = true;
-    dom.concordancePageNextButton.disabled = true;
-    dom.concordancePageStatus.textContent = "";
     return;
   }
 
@@ -1758,41 +1501,17 @@ export function renderConcordance(): void {
   if (!result) {
     dom.concordanceSummary.textContent = CONCORDANCE_NO_QUERY_MESSAGE;
     renderConcordanceStatus(null);
-    renderConcordanceTableState(CONCORDANCE_NO_QUERY_MESSAGE);
+    renderConcordanceLines(null, CONCORDANCE_NO_QUERY_MESSAGE);
     renderConcordanceDistribution(null, CONCORDANCE_NO_QUERY_MESSAGE);
     renderConcordanceCollocations();
-    dom.concordancePagePreviousButton.disabled = true;
-    dom.concordancePageNextButton.disabled = true;
-    dom.concordancePageStatus.textContent = "";
     return;
   }
 
   renderConcordanceSummary(result);
   renderConcordanceStatus(null);
-
-  if (result.rows.length === 0) {
-    renderConcordanceTableState(CONCORDANCE_NO_HITS_MESSAGE);
-  } else {
-    dom.concordanceTableBody.replaceChildren();
-    for (const row of result.rows) {
-      const rowElement = createConcordanceRow(row);
-      dom.concordanceTableBody.appendChild(rowElement);
-      const rowKey = concordanceRowExpansionKey(row);
-      const expansion = concordanceExpansionViewModel(rowKey, currentConcordanceExpansionState());
-      if (expansion.expanded) {
-        dom.concordanceTableBody.appendChild(createConcordanceSourcePreviewRow(row));
-      }
-    }
-  }
+  renderConcordanceLines(result);
   renderConcordanceDistribution(result);
   renderConcordanceCollocations();
-
-  const first = result.totalHits === 0 ? 0 : result.offset + 1;
-  const last = Math.min(result.totalHits, result.offset + result.rows.length);
-  dom.concordancePageStatus.textContent =
-    result.totalHits === 0 ? "0 of 0" : `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(result.totalHits)}`;
-  dom.concordancePagePreviousButton.disabled = result.offset === 0;
-  dom.concordancePageNextButton.disabled = result.offset + result.rows.length >= result.totalHits;
 }
 
 export async function refreshConcordance(
@@ -1802,7 +1521,7 @@ export async function refreshConcordance(
 ): Promise<void> {
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   if (resetOffset) {
-    concordanceOffset = 0;
+    resetConcordanceLineOffset();
   }
   if (resetDistribution) {
     resetConcordanceDistributionOffset();
@@ -1810,7 +1529,7 @@ export async function refreshConcordance(
   if (collapseExpansion) {
     collapseConcordanceExpansion();
   }
-  concordanceSortKey = currentConcordanceSortKey();
+  const concordanceSortKey = syncConcordanceLineSortKeyFromControl();
   if (query.length === 0) {
     concordanceResult = null;
     concordanceFailure = null;
@@ -1834,9 +1553,9 @@ export async function refreshConcordance(
         contextFilterDirection: "both",
         caseSensitive: dom.concordanceCaseSensitiveInput.checked,
         sortKey: concordanceSortKey,
-        windowTokens: currentConcordanceWindow(),
-        offset: concordanceOffset,
-        limit: currentConcordancePageSize(),
+        windowTokens: currentConcordanceLineWindow(),
+        offset: currentConcordanceLineOffset(),
+        limit: currentConcordanceLinePageSize(),
         distributionOffset: currentConcordanceDistributionOffset(),
         distributionLimit: CONCORDANCE_DISTRIBUTION_PAGE_SIZE,
       },
@@ -1847,7 +1566,7 @@ export async function refreshConcordance(
       return;
     }
     concordanceResult = result;
-    concordanceOffset = result.offset;
+    setConcordanceLineOffset(result.offset);
   } catch (error) {
     if (generation !== concordanceQueryGeneration) {
       return;
@@ -1861,35 +1580,8 @@ export async function refreshConcordance(
   }
 }
 
-function showPreviousConcordancePage(): void {
-  const pageSize = concordanceResult?.limit ?? currentConcordancePageSize();
-  concordanceOffset = Math.max(0, concordanceOffset - pageSize);
-  void refreshConcordance(false, false);
-}
-
-function showNextConcordancePage(): void {
-  const pageSize = concordanceResult?.limit ?? currentConcordancePageSize();
-  concordanceOffset += pageSize;
-  void refreshConcordance(false, false);
-}
-
-function handleConcordanceSortChange(): void {
-  concordanceSortKey = currentConcordanceSortKey();
-  void refreshConcordance(true, true);
-}
-
 function runConcordanceSearch(): void {
   void runConcordanceSearchForActiveView();
-}
-
-function handleConcordancePageSizeChange(): void {
-  currentConcordancePageSize();
-  void refreshConcordance(true, true);
-}
-
-function collapseConcordanceExpansionFromControlChange(): void {
-  collapseConcordanceExpansion();
-  renderConcordance();
 }
 
 function handleConcordanceQueryInput(): void {
