@@ -12,6 +12,8 @@ import type { AnnotationCacheBuildProgress as GeneratedAnnotationCacheBuildProgr
 import type { AnnotationCacheState as GeneratedAnnotationCacheState } from "./generated/AnnotationCacheState.js";
 import type { AnalysisDocumentSelection as GeneratedAnalysisDocumentSelection } from "./generated/AnalysisDocumentSelection.js";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
+import type { CompareExpressionsQuery as GeneratedCompareExpressionsQuery } from "./generated/CompareExpressionsQuery.js";
+import type { CompareExpressionsResult as GeneratedCompareExpressionsResult } from "./generated/CompareExpressionsResult.js";
 import type { ConcordanceContextFilterDirection as GeneratedConcordanceContextFilterDirection } from "./generated/ConcordanceContextFilterDirection.js";
 import type { ConcordanceQuery as GeneratedConcordanceQuery } from "./generated/ConcordanceQuery.js";
 import type { ConcordanceExpansionQuery as GeneratedConcordanceExpansionQuery } from "./generated/ConcordanceExpansionQuery.js";
@@ -292,6 +294,8 @@ export type ConcordanceCollocationSortKey = GeneratedConcordanceCollocationSortK
 export type ConcordanceRow = GeneratedConcordanceRow;
 export type ConcordanceResult = GeneratedConcordanceResult;
 export type ConcordanceSortKey = GeneratedConcordanceSortKey;
+export type CompareExpressionsQuery = GeneratedCompareExpressionsQuery;
+export type CompareExpressionsResult = GeneratedCompareExpressionsResult;
 
 export interface AnalysisDocumentPageItem extends AnalysisDocumentSummary {
   selected: boolean;
@@ -383,6 +387,18 @@ export function searchConcordance(
   cleaningConfig: CleaningConfig,
 ): Promise<ConcordanceResult> {
   return invoke<ConcordanceResult>("search_concordance_command", {
+    query,
+    corpusVersion,
+    cleaningConfig,
+  });
+}
+
+export function compareExpressions(
+  query: CompareExpressionsQuery,
+  corpusVersion: number,
+  cleaningConfig: CleaningConfig,
+): Promise<CompareExpressionsResult> {
+  return invoke<CompareExpressionsResult>("compare_expressions_command", {
     query,
     corpusVersion,
     cleaningConfig,

@@ -297,7 +297,7 @@ impl std::error::Error for ConcordanceError {
     }
 }
 
-fn compute_dispersion_from_token_counts(
+pub(super) fn compute_dispersion_from_token_counts(
     document_counts: &[(usize, u64)],
     frequency: u64,
     document_token_counts: &HashMap<usize, u64>,
@@ -450,7 +450,7 @@ fn context_sort_key<'text>(
     index.map(|token_index| concordance_key(tokens[token_index].surface, case_sensitive))
 }
 
-fn concordance_token_sequence_matches<'text>(
+pub(super) fn concordance_token_sequence_matches<'text>(
     tokens: &[crate::tokenization::Token<'text>],
     query_keys: &[String],
     case_sensitive: bool,
@@ -461,6 +461,20 @@ fn concordance_token_sequence_matches<'text>(
                 concordance_key(token.surface, case_sensitive) == *query_key
             })
         })
+}
+
+pub(super) fn count_concordance_token_sequence_matches<'text>(
+    tokens: &[crate::tokenization::Token<'text>],
+    query_keys: &[String],
+    case_sensitive: bool,
+) -> u64 {
+    if query_keys.is_empty() {
+        return 0;
+    }
+    tokens
+        .windows(query_keys.len())
+        .filter(|window| concordance_token_sequence_matches(window, query_keys, case_sensitive))
+        .count() as u64
 }
 
 struct ConcordanceContextFilterWindow {
@@ -980,13 +994,11 @@ fn search_concordance_documents_scan(
             if node_end > tokens.len() {
                 break;
             }
-            let node_matches =
-                tokens[token_index..node_end]
-                    .iter()
-                    .zip(&query_keys)
-                    .all(|(token, query_key)| {
-                        concordance_key(token.surface, query.case_sensitive) == *query_key
-                    });
+            let node_matches = concordance_token_sequence_matches(
+                &tokens[token_index..node_end],
+                &query_keys,
+                query.case_sensitive,
+            );
             if !node_matches {
                 continue;
             }

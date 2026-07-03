@@ -3,6 +3,7 @@
 mod annotation_build;
 mod build;
 mod collocation;
+mod compare;
 mod concordance;
 mod distribution;
 mod frequency;
@@ -40,6 +41,10 @@ pub use collocation::{
     aggregate_concordance_collocations_documents_routed,
     concordance_collocation_aggregation_signature, query_concordance_collocations_documents,
     query_concordance_collocations_from_aggregate,
+};
+pub use compare::{
+    CompareDocumentCell, CompareDocumentRow, CompareError, CompareExpressionSummary,
+    CompareExpressionsQuery, CompareExpressionsResult, compare_expressions,
 };
 pub(crate) use concordance::concordance_key;
 pub use concordance::{
