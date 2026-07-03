@@ -76,8 +76,14 @@ assert(concordanceCollocationMeasureLabel("g2") === "log-likelihood", "Measure l
 assert(concordanceCollocationDirectionLabel("both") === "both sides", "Both-side direction should be readable");
 assert(
   concordanceCollocationExplanation("movie", 5, "both", "logDice")
-    === 'Collocates near "movie" within 5 tokens (both sides), ranked by Association: logDice. Near query = times the word appears around the query · Corpus frequency = total frequency in the selected corpus.',
-  "Collocation explanation should translate the active query, span, direction, measure, and raw counts",
+    === 'Collocates near "movie" · 5-token window · both sides · ranked by logDice',
+  "Collocation explanation should translate the active query, span, direction, and measure compactly",
+);
+assert(
+  !concordanceCollocationExplanation("movie", 5, "both", "logDice").includes("Near query =")
+    && !concordanceCollocationExplanation("movie", 5, "both", "logDice").includes("Corpus frequency =")
+    && !concordanceCollocationExplanation("movie", 5, "both", "logDice").includes("Association:"),
+  "Collocation explanation should not include persistent definition copy or Association prefix",
 );
 assert(concordanceRowText(["not", "very", "good"]) === "not very good", "KWIC token text should use token spacing");
 for (const node of ["movie", "this movie", "not very good"]) {
