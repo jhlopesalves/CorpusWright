@@ -31,10 +31,9 @@ import {
   processedSourceCount,
   refreshStageNavigator,
   renderAnalyseWorkbench,
-  renderFrequencyList,
-  resetFrequencyCorpusState,
   setActiveAnalysisToolForBuild,
 } from "../workbench";
+import { renderFrequencyList, resetFrequencyCorpusState } from "./frequency";
 
 let analysisBuildInProgress = false;
 
