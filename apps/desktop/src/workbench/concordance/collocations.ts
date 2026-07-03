@@ -39,7 +39,7 @@ import { dom } from "../../dom";
 import { effectiveCleaningConfig } from "../../effective-cleaning-config";
 import { state } from "../../state";
 import { currentFrequencyDocumentScope } from "../frequency";
-import { formatFixedNumber, formatNumber } from "../shell";
+import { activeProjectLanguageCode, formatFixedNumber, formatNumber } from "../shell";
 import {
   activeConcordanceViewId,
   currentConcordanceSearchFailure,
@@ -174,6 +174,7 @@ function currentConcordanceCollocationRequestKey(): string | null {
     minCooccurrence: currentConcordanceCollocationMinO11(),
     minCollocateFrequency: currentConcordanceCollocationMinFrequency(),
     hideStopwords: dom.concordanceCollocationHideStopwordsInput.checked,
+    language: activeProjectLanguageCode(),
     sortMeasure: concordanceCollocationMeasure,
     sortKey: concordanceCollocationSortKey,
     sortDirection: currentConcordanceCollocationSortDirection(),
@@ -997,6 +998,7 @@ export async function refreshConcordanceCollocations(): Promise<void> {
         minCooccurrence: currentConcordanceCollocationMinO11(),
         minCollocateFrequency: currentConcordanceCollocationMinFrequency(),
         hideStopwords: dom.concordanceCollocationHideStopwordsInput.checked,
+        language: activeProjectLanguageCode(),
         sortMeasure: concordanceCollocationMeasure,
         sortKey: concordanceCollocationSortKey,
         sortDirection: currentConcordanceCollocationSortDirection(),

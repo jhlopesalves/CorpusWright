@@ -21,6 +21,36 @@ fn collocation_routing_types_remain_rust_only_without_ts_export() {
     assert!(!routing_source.contains("TS"));
 }
 
+#[test]
+fn collocation_hides_stopwords_multilingual() {
+    let docs = [concordance_document(0, "doc", "alpha the le como alpha")];
+    
+    // English
+    let mut en_query = collocation_query("alpha");
+    en_query.hide_stopwords = true;
+    en_query.language = Some("en".to_string());
+    let en_rows = naive_collocations_for(&docs, &en_query).unwrap().rows;
+    assert!(!en_rows.iter().any(|r| r.surface == "the"));
+    assert!(en_rows.iter().any(|r| r.surface == "le"));
+    assert!(en_rows.iter().any(|r| r.surface == "como"));
+
+    // French
+    let mut fr_query = collocation_query("alpha");
+    fr_query.hide_stopwords = true;
+    fr_query.language = Some("fr".to_string());
+    let fr_rows = naive_collocations_for(&docs, &fr_query).unwrap().rows;
+    assert!(!fr_rows.iter().any(|r| r.surface == "le"));
+    assert!(fr_rows.iter().any(|r| r.surface == "the"));
+    
+    // Portuguese
+    let mut pt_query = collocation_query("alpha");
+    pt_query.hide_stopwords = true;
+    pt_query.language = Some("pt".to_string());
+    let pt_rows = naive_collocations_for(&docs, &pt_query).unwrap().rows;
+    assert!(!pt_rows.iter().any(|r| r.surface == "como"));
+    assert!(pt_rows.iter().any(|r| r.surface == "the"));
+}
+
 fn naive_collocations_for(
     documents: &[ConcordanceDocument],
     query: &ConcordanceCollocationQuery,
@@ -103,7 +133,7 @@ fn naive_collocations_for(
     let mut rows = candidate_counts
         .into_iter()
         .filter_map(|(surface, o11)| {
-            if query.hide_stopwords && stopword_matches(&surface) {
+            if query.hide_stopwords && crate::analysis::shared::stopword_matches(&surface, crate::analysis::shared::StopwordLanguage::from_subtag(query.language.as_deref())) {
                 return None;
             }
             let collocate_frequency = *collocate_frequencies.get(&surface).unwrap_or(&0);
@@ -925,7 +955,7 @@ fn surface_collocation_stopwords_filter_after_aggregation() {
     let documents = vec![concordance_document(
         0,
         "doc.txt",
-        "the target useful target the target useful",
+        "the target apple target the target apple",
     )];
     let mut query = collocation_query("target");
     query.span = 1;
@@ -941,5 +971,5 @@ fn surface_collocation_stopwords_filter_after_aggregation() {
 
     assert!(shown.rows.iter().any(|row| row.surface == "the"));
     assert!(hidden.rows.iter().all(|row| row.surface != "the"));
-    assert!(hidden.rows.iter().any(|row| row.surface == "useful"));
+    assert!(hidden.rows.iter().any(|row| row.surface == "apple"));
 }

@@ -8,4 +8,4 @@ import type { SortDirection } from "./SortDirection";
 /**
  * Parameters for a bounded annotated frequency query.
  */
-export type AnnotatedFrequencyQuery = { selection: AnalysisDocumentSelection, mode: AnnotatedFrequencyMode, query: string, matchMode: FrequencyMatchMode, minimumFrequency: number, hideStopwords: boolean, caseFold: boolean, posFilter: string | null, sortKey: FrequencySortKey, sortDirection: SortDirection, offset: number, limit: number, };
+export type AnnotatedFrequencyQuery = { selection: AnalysisDocumentSelection, mode: AnnotatedFrequencyMode, query: string, language: string | null, matchMode: FrequencyMatchMode, minimumFrequency: number, hideStopwords: boolean, caseFold: boolean, posFilter: string | null, sortKey: FrequencySortKey, sortDirection: SortDirection, offset: number, limit: number, };
