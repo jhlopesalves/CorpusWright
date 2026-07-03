@@ -2,7 +2,7 @@
 # CorpusWright
 
 [![CI](<https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml/badge.svg?branch=main>)](<https://github.com/jhlopesalves/CorpusWright/actions/workflows/ci.yml>)
-[![Release](<https://img.shields.io/github/v/release/jhlopesalves/CorpusWright?include_prereleases&label=release>)](<https://github.com/jhlopesalves/CorpusWright/releases/latest>)
+[![Release](https://img.shields.io/github/v/release/jhlopesalves/CorpusWright?include_prereleases&label=release)](https://github.com/jhlopesalves/CorpusWright/releases/latest)
 [![Docs](<https://img.shields.io/badge/docs-website-006cd6>)](<https://jhlopesalves.github.io/CorpusWright/>)
 [![License: MIT](<https://img.shields.io/badge/license-MIT-green.svg>)](LICENSE)
 
@@ -10,7 +10,7 @@ A local-first desktop workbench for corpus linguistics: clean messy text,
 count what matters, and read the evidence — with every step visible and
 reproducible.
 
-![The Analyse workspace: frequency list, KWIC concordance, and collocates](docs\assets\screenshots\analyse-workspace-light.png)
+![The Analyse workspace: frequency list, KWIC concordance, and collocates](docs/assets/screenshots/analyse-workspace-light.png)
 
 Corpus work usually starts with a tedious problem: the text files are messy.
 PDFs arrive with running headers, page numbers, and OCR slip-ups baked into
@@ -22,14 +22,45 @@ Everything runs on your machine; nothing is uploaded anywhere.
 
 ## For researchers
 
-- **[Download the latest release](<https://github.com/jhlopesalves/CorpusWright/releases/latest>)** —
-  experimental alpha; Windows installers may trigger the usual unsigned-app warnings.
+**Download the latest experimental alpha:** [CorpusWright releases](https://github.com/jhlopesalves/CorpusWright/releases/latest)
+
+Experimental alpha; Windows installers may trigger the usual unsigned-app warnings.
+
 - **[Quick start](<https://jhlopesalves.github.io/CorpusWright/quick-start.html>)** —
   from installer to first cleaned corpus.
 - **[Concepts](<https://jhlopesalves.github.io/CorpusWright/learn.html>)** —
   what the numbers mean and why the defaults are what they are.
 - **[How to cite](<https://jhlopesalves.github.io/CorpusWright/citation.html>)** —
   or use GitHub's "Cite this repository" widget, backed by [`CITATION.cff`](CITATION.cff).
+
+**Current `CITATION.cff`:**
+```yaml
+cff-version: 1.2.0
+message: "If you use CorpusWright in your research or teaching, please cite it as below."
+title: CorpusWright
+abstract: >-
+  A desktop corpus-linguistics workbench with a Rust core for cleaning,
+  inspecting, and analysing research corpora with statistical and
+  methodological rigour. Local-first, auditable, and analysis-aware.
+type: software
+authors:
+  - family-names: Lopes
+    given-names: Jhonatan Henrique
+    orcid: "https://orcid.org/0009-0008-4914-0262"
+    email: jhlopesalves@gmail.com
+repository-code: "https://github.com/jhlopesalves/CorpusWright"
+url: "https://jhlopesalves.github.io/CorpusWright/"
+version: 0.1.0-alpha.8
+date-released: "2026-06-29"
+license: MIT
+keywords:
+  - corpus linguistics
+  - text processing
+  - concordance
+  - KWIC
+  - reproducibility
+  - Rust
+```
 
 ## For developers
 
