@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -6,13 +6,42 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const analysis = readFileSync(new URL("../src/analysis.ts", import.meta.url), "utf8");
-const workbench = readFileSync(new URL("../src/workbench.ts", import.meta.url), "utf8");
+const workbench = readWorkbenchSources();
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const generatedConcordanceQuery = readFileSync(new URL("../src/generated/ConcordanceQuery.ts", import.meta.url), "utf8");
 const generatedConcordanceContextFilterDirection = readFileSync(
   new URL("../src/generated/ConcordanceContextFilterDirection.ts", import.meta.url),
   "utf8",
 );
+
+function readWorkbenchSources(): string {
+  const files: URL[] = [];
+  const legacyWorkbench = new URL("../src/workbench.ts", import.meta.url);
+  if (existsSync(legacyWorkbench)) {
+    files.push(legacyWorkbench);
+  }
+
+  const workbenchRoot = new URL("../src/workbench/", import.meta.url);
+  if (existsSync(workbenchRoot)) {
+    collectTypescriptFiles(workbenchRoot, files);
+  }
+
+  return files
+    .sort((left, right) => left.pathname.localeCompare(right.pathname))
+    .map((file) => readFileSync(file, "utf8"))
+    .join("\n");
+}
+
+function collectTypescriptFiles(directory: URL, files: URL[]): void {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const child = new URL(`${entry.name}${entry.isDirectory() ? "/" : ""}`, directory);
+    if (entry.isDirectory()) {
+      collectTypescriptFiles(child, files);
+    } else if (entry.isFile() && entry.name.endsWith(".ts")) {
+      files.push(child);
+    }
+  }
+}
 
 const topAnalyseMatch = html.match(
   /<div class="analyse-status-row">([\s\S]*?)<div class="analyse-workspace-shell">/,
@@ -244,7 +273,7 @@ const collocationRefreshesFromSearch = (
   runConcordanceSearchForActiveViewBody.match(/refreshConcordanceCollocations\(/g) ?? []
 ).length;
 assert(
-  runConcordanceSearchForActiveViewBody.includes("const viewAtSearch = activeConcordanceView;")
+  runConcordanceSearchForActiveViewBody.includes("const viewAtSearch = activeConcordanceViewId();")
     && runConcordanceSearchForActiveViewBody.includes("const queryAtSearch = normaliseConcordanceQuery(dom.concordanceQueryInput.value);")
     && runConcordanceSearchForActiveViewBody.includes("clearCollocateEvidence();")
     && runConcordanceSearchForActiveViewBody.includes("await refreshConcordance();"),
@@ -252,10 +281,10 @@ assert(
 );
 assert(
   runConcordanceSearchForActiveViewBody.includes('viewAtSearch === "collocates"')
-    && runConcordanceSearchForActiveViewBody.includes('activeConcordanceView === "collocates"')
+    && runConcordanceSearchForActiveViewBody.includes('activeConcordanceViewId() === "collocates"')
     && runConcordanceSearchForActiveViewBody.includes("normaliseConcordanceQuery(dom.concordanceQueryInput.value) === queryAtSearch")
-    && runConcordanceSearchForActiveViewBody.includes("concordanceResult !== null")
-    && runConcordanceSearchForActiveViewBody.includes("concordanceFailure === null")
+    && runConcordanceSearchForActiveViewBody.includes("currentConcordanceSearchResult() !== null")
+    && runConcordanceSearchForActiveViewBody.includes("currentConcordanceSearchFailure() === null")
     && runConcordanceSearchForActiveViewBody.includes("await refreshConcordanceCollocations();")
     && collocationRefreshesFromSearch === 1,
   "Search should update Collocate Profile directly only when the Collocate Profile view is still active for the same successful query",
@@ -408,7 +437,9 @@ assert(
   workbench.includes("function showPreviousConcordancePage")
     && workbench.includes("void refreshConcordance(false, false);")
     && workbench.includes("function handleConcordancePageSizeChange")
-    && workbench.includes("collapseConcordanceExpansion();\n  void refreshFrequencyPage();"),
+    && workbench.includes("function resetConcordanceForFrequencyScopeChange")
+    && workbench.includes("resetConcordanceForFrequencyScopeChange();\n  void refreshFrequencyPage();")
+    && workbench.includes("collapseConcordanceExpansion();"),
   "Page, page-size, and file-scope changes should collapse expanded Concordance rows",
 );
 assert(
@@ -431,16 +462,18 @@ assert(
   "Collocate clicks should open dedicated inline evidence without switching to Concordance lines or mutating the base context filter",
 );
 const refreshConcordanceStart = workbench.indexOf("async function refreshConcordance(");
-const refreshConcordanceEnd = workbench.indexOf("async function refreshCollocateEvidence", refreshConcordanceStart);
-const refreshCollocateEvidenceEnd = workbench.indexOf("async function refreshConcordanceCollocations", refreshConcordanceEnd);
+const refreshConcordanceEnd = workbench.indexOf("function runConcordanceSearch", refreshConcordanceStart);
+const refreshCollocateEvidenceStart = workbench.indexOf("async function refreshCollocateEvidence");
+const refreshCollocateEvidenceEnd = workbench.indexOf("async function refreshConcordanceCollocations", refreshCollocateEvidenceStart);
 assert(
   refreshConcordanceStart >= 0
     && refreshConcordanceEnd > refreshConcordanceStart
-    && refreshCollocateEvidenceEnd > refreshConcordanceEnd,
-  "Base and collocate evidence refresh helpers should exist in sequence",
+    && refreshCollocateEvidenceStart >= 0
+    && refreshCollocateEvidenceEnd > refreshCollocateEvidenceStart,
+  "Base and collocate evidence refresh helpers should exist",
 );
 const refreshConcordanceBody = workbench.slice(refreshConcordanceStart, refreshConcordanceEnd);
-const refreshCollocateEvidenceBody = workbench.slice(refreshConcordanceEnd, refreshCollocateEvidenceEnd);
+const refreshCollocateEvidenceBody = workbench.slice(refreshCollocateEvidenceStart, refreshCollocateEvidenceEnd);
 assert(
   refreshConcordanceBody.includes("contextFilter: null")
     && refreshConcordanceBody.includes('contextFilterDirection: "both"')
@@ -509,13 +542,13 @@ assert(
 );
 const toggleCollocateEvidenceExpansionStart = workbench.indexOf("async function toggleCollocateEvidenceExpansion");
 const toggleCollocateEvidenceExpansionEnd = workbench.indexOf(
-  "function renderConcordanceTableState",
+  "function renderConcordanceCollocationTableState",
   toggleCollocateEvidenceExpansionStart,
 );
 assert(
   toggleCollocateEvidenceExpansionStart >= 0
     && toggleCollocateEvidenceExpansionEnd > toggleCollocateEvidenceExpansionStart,
-  "Collocate evidence expansion toggle should exist before Concordance table rendering",
+  "Collocate evidence expansion toggle should exist before Collocates table rendering",
 );
 const toggleCollocateEvidenceExpansionBody = workbench.slice(
   toggleCollocateEvidenceExpansionStart,
