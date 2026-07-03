@@ -225,6 +225,11 @@ let collocateEvidencePending = false;
 let collocateEvidenceFailure: string | null = null;
 let collocateEvidenceLimit = CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT;
 let collocateEvidenceGeneration = 0;
+let collocateEvidenceExpansionKey: string | null = null;
+let collocateEvidenceExpansionPending = false;
+let collocateEvidenceExpansionFailure: string | null = null;
+let collocateEvidenceExpansionResult: ConcordanceExpansionResult | null = null;
+let collocateEvidenceExpansionGeneration = 0;
 let expandedFrequencyTokens = new Set<string>();
 let termDistributionPages = new Map<string, TermDistributionPage>();
 let termDistributionGenerations = new Map<string, number>();
@@ -1794,6 +1799,11 @@ function clearCollocateEvidence(): void {
   collocateEvidenceFailure = null;
   collocateEvidenceLimit = CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT;
   collocateEvidenceGeneration += 1;
+  collocateEvidenceExpansionKey = null;
+  collocateEvidenceExpansionPending = false;
+  collocateEvidenceExpansionFailure = null;
+  collocateEvidenceExpansionResult = null;
+  collocateEvidenceExpansionGeneration += 1;
 }
 
 function resetCollocateEvidenceForQueryChange(): void {
@@ -2026,6 +2036,10 @@ function concordanceExpansionDomId(rowKey: string): string {
   return `concordance-expansion-${rowKey.replace(/[^a-z0-9_-]/gi, "-")}`;
 }
 
+function collocateEvidenceExpansionDomId(rowKey: string): string {
+  return `concordance-collocate-evidence-expansion-${rowKey.replace(/[^a-z0-9_-]/gi, "-")}`;
+}
+
 async function toggleConcordanceExpansion(row: ConcordanceRow): Promise<void> {
   const rowKey = concordanceRowExpansionKey(row);
   const nextKey = toggleConcordanceExpansionKey(concordanceExpansionKey, rowKey);
@@ -2066,6 +2080,51 @@ async function toggleConcordanceExpansion(row: ConcordanceRow): Promise<void> {
     if (generation === concordanceExpansionGeneration) {
       concordanceExpansionPending = false;
       renderConcordance();
+    }
+  }
+}
+
+async function toggleCollocateEvidenceExpansion(row: ConcordanceRow): Promise<void> {
+  const rowKey = concordanceRowExpansionKey(row);
+  const nextKey = toggleConcordanceExpansionKey(collocateEvidenceExpansionKey, rowKey);
+  if (nextKey === null) {
+    collocateEvidenceExpansionKey = null;
+    collocateEvidenceExpansionPending = false;
+    renderConcordanceCollocations();
+    return;
+  }
+
+  collocateEvidenceExpansionKey = nextKey;
+  collocateEvidenceExpansionPending = true;
+  collocateEvidenceExpansionFailure = null;
+  collocateEvidenceExpansionResult = null;
+  const generation = ++collocateEvidenceExpansionGeneration;
+  renderConcordanceCollocations();
+
+  try {
+    const result = await expandConcordanceContext(
+      {
+        documentIndex: row.documentIndex,
+        tokenIndex: row.tokenIndex,
+        nodeTokenLength: row.nodeTokenLength,
+        windowTokens: CONCORDANCE_EXPANSION_WINDOW,
+      },
+      state.currentCorpusVersion,
+      effectiveCleaningConfig(),
+    );
+    if (generation !== collocateEvidenceExpansionGeneration) {
+      return;
+    }
+    collocateEvidenceExpansionResult = result;
+  } catch (error) {
+    if (generation !== collocateEvidenceExpansionGeneration) {
+      return;
+    }
+    collocateEvidenceExpansionFailure = `${error}`;
+  } finally {
+    if (generation === collocateEvidenceExpansionGeneration) {
+      collocateEvidenceExpansionPending = false;
+      renderConcordanceCollocations();
     }
   }
 }
@@ -2346,24 +2405,14 @@ function updateConcordanceCollocationSortHeaders(): void {
   });
 }
 
-function collocateEvidenceRelationText(direction: ConcordanceContextFilterDirection): string {
+function collocateEvidenceSpanText(span: number, direction: ConcordanceContextFilterDirection): string {
   if (direction === "left") {
-    return "left of";
+    return `span ${formatNumber(span)}L`;
   }
   if (direction === "right") {
-    return "right of";
+    return `span ${formatNumber(span)}R`;
   }
-  return "near";
-}
-
-function collocateEvidenceSideText(direction: ConcordanceContextFilterDirection): string {
-  if (direction === "left") {
-    return "left side";
-  }
-  if (direction === "right") {
-    return "right side";
-  }
-  return "both sides";
+  return `span ${formatNumber(span)}L–${formatNumber(span)}R`;
 }
 
 function isActiveCollocateEvidenceRow(row: ConcordanceCollocateRow): boolean {
@@ -2404,10 +2453,86 @@ function createCollocateEvidenceSnippet(row: ConcordanceRow): HTMLSpanElement {
   return snippet;
 }
 
+function createCollocateEvidenceExpansionRow(row: ConcordanceRow): HTMLDivElement {
+  const rowKey = concordanceRowExpansionKey(row);
+  const item = document.createElement("div");
+  item.id = collocateEvidenceExpansionDomId(rowKey);
+  item.className = "concordance-collocate-evidence-expansion-row";
+  item.setAttribute("role", "row");
+
+  const panel = document.createElement("div");
+  panel.className = "concordance-collocate-evidence-expansion";
+  panel.setAttribute("role", "cell");
+
+  if (collocateEvidenceExpansionPending) {
+    appendCollocateEvidenceMessage(panel, "Loading wider context...");
+  } else if (collocateEvidenceExpansionFailure !== null) {
+    appendCollocateEvidenceMessage(panel, collocateEvidenceExpansionFailure, true);
+  } else if (collocateEvidenceExpansionResult !== null) {
+    const context = document.createElement("p");
+    context.className = "concordance-collocate-evidence-expansion-context";
+    const activeFilter = collocateEvidenceSelection?.surface ?? null;
+    const caseSensitive = collocateEvidenceSelection?.caseSensitive ?? false;
+
+    if (collocateEvidenceExpansionResult.leftContext.length > 0) {
+      const left = document.createElement("span");
+      left.className = "concordance-collocate-evidence-expansion-left";
+      left.appendChild(renderContextTokens(
+        collocateEvidenceExpansionResult.leftContext,
+        activeFilter,
+        caseSensitive,
+      ));
+      context.appendChild(left);
+      context.appendChild(document.createTextNode(" "));
+    }
+
+    const node = document.createElement("mark");
+    node.className = "concordance-node";
+    node.textContent = collocateEvidenceExpansionResult.nodeTokens.join(" ");
+    context.appendChild(node);
+
+    if (collocateEvidenceExpansionResult.rightContext.length > 0) {
+      const right = document.createElement("span");
+      right.className = "concordance-collocate-evidence-expansion-right";
+      context.appendChild(document.createTextNode(" "));
+      right.appendChild(renderContextTokens(
+        collocateEvidenceExpansionResult.rightContext,
+        activeFilter,
+        caseSensitive,
+      ));
+      context.appendChild(right);
+    }
+
+    panel.appendChild(context);
+  } else {
+    appendCollocateEvidenceMessage(panel, "Loading wider context...");
+  }
+
+  item.appendChild(panel);
+  return item;
+}
+
 function createCollocateEvidenceLine(row: ConcordanceRow): HTMLDivElement {
   const item = document.createElement("div");
+  const rowKey = concordanceRowExpansionKey(row);
+  const expanded = collocateEvidenceExpansionKey === rowKey;
   item.className = "concordance-collocate-evidence-line";
+  item.classList.toggle("is-expanded", expanded);
+  item.tabIndex = 0;
   item.setAttribute("role", "row");
+  item.setAttribute("aria-expanded", expanded ? "true" : "false");
+  item.setAttribute("aria-controls", collocateEvidenceExpansionDomId(rowKey));
+  item.title = "Show wider context";
+  item.addEventListener("click", () => {
+    void toggleCollocateEvidenceExpansion(row);
+  });
+  item.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    void toggleCollocateEvidenceExpansion(row);
+  });
 
   const file = document.createElement("span");
   file.className = "concordance-collocate-evidence-file";
@@ -2434,7 +2559,7 @@ function createCollocateEvidenceList(result: ConcordanceResult): HTMLDivElement 
   const head = document.createElement("div");
   head.className = "concordance-collocate-evidence-list-head";
   head.setAttribute("role", "row");
-  for (const label of ["File", "Evidence"]) {
+  for (const label of ["File", "Context"]) {
     const cell = document.createElement("span");
     cell.setAttribute("role", "columnheader");
     cell.textContent = label;
@@ -2444,13 +2569,18 @@ function createCollocateEvidenceList(result: ConcordanceResult): HTMLDivElement 
 
   for (const evidenceRow of result.rows) {
     list.appendChild(createCollocateEvidenceLine(evidenceRow));
+    if (collocateEvidenceExpansionKey === concordanceRowExpansionKey(evidenceRow)) {
+      list.appendChild(createCollocateEvidenceExpansionRow(evidenceRow));
+    }
   }
   return list;
 }
 
 function appendCollocateEvidenceShowMore(parent: HTMLElement, result: ConcordanceResult): void {
   const shown = Math.min(result.totalHits, result.rows.length);
-  if (shown >= result.totalHits) {
+  const remaining = Math.max(0, result.totalHits - shown);
+  const nextCount = Math.min(CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT, remaining);
+  if (remaining <= 0) {
     return;
   }
 
@@ -2462,11 +2592,15 @@ function appendCollocateEvidenceShowMore(parent: HTMLElement, result: Concordanc
   const more = document.createElement("button");
   more.type = "button";
   more.className = "secondary-btn";
-  more.textContent = "Show more evidence";
+  more.textContent = collocateEvidencePending
+    ? "Loading..."
+    : remaining <= CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT
+      ? `Show remaining ${formatNumber(remaining)}`
+      : `Show ${formatNumber(nextCount)} more`;
   more.disabled = collocateEvidencePending;
   more.addEventListener("click", () => {
-    collocateEvidenceLimit += CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT;
-    void refreshCollocateEvidence();
+    collocateEvidenceLimit += nextCount;
+    void refreshCollocateEvidence({ preserveResult: true });
   });
 
   controls.append(status, more);
@@ -2493,17 +2627,17 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
   title.className = "concordance-collocate-evidence-title";
   const query = selection?.query ?? normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   const direction = selection?.direction ?? "both";
-  title.textContent = `Evidence for "${row.surface}" ${collocateEvidenceRelationText(direction)} "${query}"`;
+  title.textContent = `Co-occurrence lines for "${row.surface}" with "${query}"`;
   const meta = document.createElement("span");
   meta.className = "concordance-collocate-evidence-meta";
   const span = selection?.span ?? currentConcordanceCollocationSpan();
-  const sideText = collocateEvidenceSideText(direction);
-  if (collocateEvidenceResult !== null && !collocateEvidencePending) {
+  const spanText = collocateEvidenceSpanText(span, direction);
+  if (collocateEvidenceResult !== null && collocateEvidenceResult.totalHits > 0) {
     const hitCount = collocateEvidenceResult.totalHits;
     const lineText = `${formatNumber(hitCount)} line${hitCount === 1 ? "" : "s"}`;
-    meta.textContent = `${lineText} · within ${formatNumber(span)} tokens · ${sideText}`;
+    meta.textContent = `${lineText} · ${spanText}`;
   } else {
-    meta.textContent = `within ${formatNumber(span)} tokens · ${sideText}`;
+    meta.textContent = spanText;
   }
   copy.append(title, meta);
 
@@ -2518,18 +2652,21 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
   header.append(copy, close);
   panel.appendChild(header);
 
-  if (collocateEvidencePending) {
-    appendCollocateEvidenceMessage(panel, "Loading evidence...");
+  if (collocateEvidenceResult !== null && collocateEvidenceResult.totalHits > 0) {
+    panel.appendChild(createCollocateEvidenceList(collocateEvidenceResult));
+    appendCollocateEvidenceShowMore(panel, collocateEvidenceResult);
+    if (collocateEvidenceFailure !== null) {
+      appendCollocateEvidenceMessage(panel, `Could not load more co-occurrence lines: ${collocateEvidenceFailure}`, true);
+    }
+  } else if (collocateEvidencePending) {
+    appendCollocateEvidenceMessage(panel, "Loading co-occurrence lines...");
   } else if (collocateEvidenceFailure !== null) {
-    appendCollocateEvidenceMessage(panel, `Could not load evidence: ${collocateEvidenceFailure}`, true);
+    appendCollocateEvidenceMessage(panel, `Could not load co-occurrence lines: ${collocateEvidenceFailure}`, true);
   } else if (collocateEvidenceResult === null || collocateEvidenceResult.totalHits === 0) {
     appendCollocateEvidenceMessage(
       panel,
-      "No evidence lines found for this collocate with the current span and direction.",
+      "No co-occurrence lines for this collocate with the current span and direction.",
     );
-  } else {
-    panel.appendChild(createCollocateEvidenceList(collocateEvidenceResult));
-    appendCollocateEvidenceShowMore(panel, collocateEvidenceResult);
   }
 
   cell.appendChild(panel);
@@ -2565,7 +2702,7 @@ function createConcordanceCollocationRow(
   item.className = "concordance-collocation-row";
   item.classList.toggle("is-active", isActiveCollocateEvidenceRow(row));
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
-  const actionLabel = `Show evidence for "${row.surface}" near "${query}"`;
+  const actionLabel = `Show co-occurrence lines for "${row.surface}" with "${query}"`;
   item.tabIndex = 0;
   item.setAttribute("role", "button");
   item.setAttribute("aria-label", actionLabel);
@@ -2993,7 +3130,15 @@ async function refreshConcordance(
   }
 }
 
-async function refreshCollocateEvidence(): Promise<void> {
+async function refreshCollocateEvidence(
+  options: { preserveResult?: boolean } = {},
+): Promise<void> {
+  collocateEvidenceExpansionKey = null;
+  collocateEvidenceExpansionPending = false;
+  collocateEvidenceExpansionFailure = null;
+  collocateEvidenceExpansionResult = null;
+  collocateEvidenceExpansionGeneration += 1;
+
   const selection = collocateEvidenceSelection;
   if (selection === null) {
     collocateEvidenceResult = null;
@@ -3006,7 +3151,9 @@ async function refreshCollocateEvidence(): Promise<void> {
   const generation = ++collocateEvidenceGeneration;
   collocateEvidencePending = true;
   collocateEvidenceFailure = null;
-  collocateEvidenceResult = null;
+  if (!options.preserveResult) {
+    collocateEvidenceResult = null;
+  }
   renderConcordanceCollocations();
 
   try {
