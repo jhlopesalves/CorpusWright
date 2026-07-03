@@ -1,6 +1,7 @@
 use corpuswright_core::analysis::{
     AnalysisDocumentSelection, AnalysisInputProvenance, AnalysisInputResolution,
-    CompareExpressionsQuery, ConcordanceDocument, compare_expressions, resolve_analysis_input,
+    CompareExpressionsQuery, CompareExpressionsResult, ConcordanceDocument, compare_expressions,
+    resolve_analysis_input,
 };
 use corpuswright_core::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
 use corpuswright_core::clean::CleaningConfig;
@@ -11,6 +12,9 @@ use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process;
+
+/// Page size compatible with the backend `MAX_QUERY_WINDOW` clamp.
+const DUMP_PAGE_SIZE: usize = 500;
 
 struct Cli {
     input_dir: PathBuf,
@@ -240,6 +244,65 @@ fn write_dump(
     Ok(())
 }
 
+/// Pages through `compare_expressions` to collect every document row.
+///
+/// The first page supplies stable corpus-level metadata. Later pages must
+/// report identical metadata; a mismatch returns an error. A zero-row page
+/// before all rows are collected also returns an error to prevent an
+/// infinite loop.
+fn collect_compare_dump_result(
+    documents: &[ConcordanceDocument],
+    query: CompareExpressionsQuery,
+    tokenization_config: &TokenizationConfig,
+) -> Result<CompareExpressionsResult, String> {
+    let first_query = CompareExpressionsQuery {
+        offset: 0,
+        limit: DUMP_PAGE_SIZE,
+        ..query.clone()
+    };
+    let mut combined = compare_expressions(documents, &first_query, tokenization_config)
+        .map_err(|error| error.to_string())?;
+
+    while combined.documents.len() < combined.total_documents {
+        let page_query = CompareExpressionsQuery {
+            offset: combined.documents.len(),
+            limit: DUMP_PAGE_SIZE,
+            ..query.clone()
+        };
+        let page = compare_expressions(documents, &page_query, tokenization_config)
+            .map_err(|error| error.to_string())?;
+
+        if page.documents.is_empty() {
+            return Err(format!(
+                "Page at offset {} returned zero rows with {} of {} collected.",
+                combined.documents.len(),
+                combined.documents.len(),
+                combined.total_documents
+            ));
+        }
+
+        if page.expressions_queried != combined.expressions_queried
+            || page.case_sensitive != combined.case_sensitive
+            || page.min_document_tokens != combined.min_document_tokens
+            || page.selected_documents_total != combined.selected_documents_total
+            || page.selected_tokens_total != combined.selected_tokens_total
+            || page.expressions != combined.expressions
+            || page.total_documents != combined.total_documents
+        {
+            return Err(format!(
+                "Stable metadata changed between page 0 and offset {}.",
+                combined.documents.len()
+            ));
+        }
+
+        combined.documents.extend(page.documents);
+    }
+
+    combined.offset = 0;
+    combined.limit = combined.documents.len();
+    Ok(combined)
+}
+
 fn run() -> Result<(), String> {
     let cli = parse_args()?;
     let report = scan_directory(&cli.input_dir).map_err(|error| format!("{error:?}"))?;
@@ -268,17 +331,9 @@ fn run() -> Result<(), String> {
         case_sensitive: cli.case_sensitive,
         min_document_tokens: cli.min_document_tokens,
         offset: 0,
-        limit: documents.len().max(1),
+        limit: DUMP_PAGE_SIZE,
     };
-    let result = compare_expressions(&documents, &query, &TokenizationConfig::default())
-        .map_err(|error| error.to_string())?;
-    if result.documents.len() != result.total_documents {
-        return Err(format!(
-            "Compare returned {} of {} rows; this dump requires a single unpaginated result.",
-            result.documents.len(),
-            result.total_documents
-        ));
-    }
+    let result = collect_compare_dump_result(&documents, query, &TokenizationConfig::default())?;
 
     match cli.out {
         Some(path) => {
