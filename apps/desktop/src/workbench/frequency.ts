@@ -46,13 +46,13 @@ import {
   formatNumber,
   inputTextSourceLabel,
   isFrequencyAnalysisToolActive,
-  markConcordanceCollocationsForAggregationChange,
   refreshConcordance,
   renderConcordance,
   resetConcordanceCorpusState,
   resetConcordanceForFrequencyScopeChange,
 } from "../workbench";
 import { normaliseConcordanceQuery } from "../concordance";
+import { markConcordanceCollocationsForAggregationChange } from "./concordance/collocations";
 import {
   annotationCacheStateForUi,
   ensureAnnotationCacheAvailability,
