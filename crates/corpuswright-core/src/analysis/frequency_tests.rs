@@ -363,13 +363,13 @@ fn lemma_pos_frequency_honours_filters_before_pagination() {
 
 #[test]
 fn lemma_pos_frequency_hides_stopwords_by_lemma() {
-    let mut corpus = corpus_for(&[("a.txt", "The work"), ("b.txt", "the work")]);
+    let mut corpus = corpus_for(&[("a.txt", "The apple"), ("b.txt", "the apple")]);
     add_document_annotations(
         &mut corpus,
         0,
         &[
             ("The", "The", UniversalPos::Det, 1),
-            ("work", "work", UniversalPos::Noun, 1),
+            ("apple", "apple", UniversalPos::Noun, 1),
         ],
     );
     add_document_annotations(
@@ -377,7 +377,7 @@ fn lemma_pos_frequency_hides_stopwords_by_lemma() {
         1,
         &[
             ("the", "the", UniversalPos::Det, 1),
-            ("work", "work", UniversalPos::Verb, 1),
+            ("apple", "apple", UniversalPos::Verb, 1),
         ],
     );
 
@@ -398,7 +398,7 @@ fn lemma_pos_frequency_hides_stopwords_by_lemma() {
         .map(|row| (row.lemma.as_str(), row.upos.as_str()))
         .collect::<Vec<_>>();
     assert_eq!(result.total_rows, 2);
-    assert_eq!(rows, vec![("work", "NOUN"), ("work", "VERB")]);
+    assert_eq!(rows, vec![("apple", "NOUN"), ("apple", "VERB")]);
 }
 
 #[test]

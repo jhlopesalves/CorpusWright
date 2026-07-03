@@ -355,7 +355,7 @@ function currentAnnotatedFrequencyCaseFold(mode: AnnotatedFrequencyMode): boolea
 }
 
 function currentFrequencyLanguage(): string | null {
-  return currentFrequencyGroupMode() === "stem" ? activeProjectLanguageCode() : null;
+  return activeProjectLanguageCode();
 }
 
 function currentFrequencyPosFilter(): string | null {
@@ -836,6 +836,7 @@ export async function refreshFrequencyPage(resetOffset = true): Promise<void> {
           minimumFrequency: Math.max(1, Number.parseInt(dom.frequencyMinInput.value, 10) || 1),
           hideStopwords: annotatedMode === "lemmaPos" && dom.frequencyHideStopwordsInput.checked,
           caseFold: currentAnnotatedFrequencyCaseFold(annotatedMode),
+          language: currentFrequencyLanguage(),
           posFilter: annotatedMode === "lemmaPos" ? currentFrequencyPosFilter() : null,
           sortKey: frequencySortKey,
           sortDirection: frequencySortDirection,
