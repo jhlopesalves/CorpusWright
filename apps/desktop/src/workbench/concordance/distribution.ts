@@ -5,7 +5,8 @@ import {
   concordanceRangePercent,
 } from "../../concordance";
 import { dom } from "../../dom";
-import { formatFixedNumber, formatNumber, refreshConcordance } from "../../workbench";
+import { formatFixedNumber, formatNumber } from "../shell";
+import { refreshConcordance } from "./shared";
 
 export const CONCORDANCE_DISTRIBUTION_PAGE_SIZE = 10;
 
