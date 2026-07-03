@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -6,13 +6,42 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const analysis = readFileSync(new URL("../src/analysis.ts", import.meta.url), "utf8");
-const workbench = readFileSync(new URL("../src/workbench.ts", import.meta.url), "utf8");
+const workbench = readWorkbenchSources();
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const generatedConcordanceQuery = readFileSync(new URL("../src/generated/ConcordanceQuery.ts", import.meta.url), "utf8");
 const generatedConcordanceContextFilterDirection = readFileSync(
   new URL("../src/generated/ConcordanceContextFilterDirection.ts", import.meta.url),
   "utf8",
 );
+
+function readWorkbenchSources(): string {
+  const files: URL[] = [];
+  const legacyWorkbench = new URL("../src/workbench.ts", import.meta.url);
+  if (existsSync(legacyWorkbench)) {
+    files.push(legacyWorkbench);
+  }
+
+  const workbenchRoot = new URL("../src/workbench/", import.meta.url);
+  if (existsSync(workbenchRoot)) {
+    collectTypescriptFiles(workbenchRoot, files);
+  }
+
+  return files
+    .sort((left, right) => left.pathname.localeCompare(right.pathname))
+    .map((file) => readFileSync(file, "utf8"))
+    .join("\n");
+}
+
+function collectTypescriptFiles(directory: URL, files: URL[]): void {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const child = new URL(`${entry.name}${entry.isDirectory() ? "/" : ""}`, directory);
+    if (entry.isDirectory()) {
+      collectTypescriptFiles(child, files);
+    } else if (entry.isFile() && entry.name.endsWith(".ts")) {
+      files.push(child);
+    }
+  }
+}
 
 const topAnalyseMatch = html.match(
   /<div class="analyse-status-row">([\s\S]*?)<div class="analyse-workspace-shell">/,
