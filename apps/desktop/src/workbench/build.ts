@@ -32,7 +32,7 @@ import {
   refreshStageNavigator,
   renderAnalyseWorkbench,
   setActiveAnalysisToolForBuild,
-} from "../workbench";
+} from "./shell";
 import { renderFrequencyList, resetFrequencyCorpusState } from "./frequency";
 
 let analysisBuildInProgress = false;
