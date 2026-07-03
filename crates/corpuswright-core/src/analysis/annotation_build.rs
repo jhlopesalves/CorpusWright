@@ -5,14 +5,16 @@ use super::build::{
 use super::concordance::analysis_word_tokens;
 use super::input::{AnalysisInputProvenance, AnalysisInputResolution};
 use crate::annotation::{
-    AnnotatedToken, AnnotationError, LemmaTable, ModelManager, UniversalPos, default_model_dir,
+    ANNOTATION_SENTENCE_CHUNK_WORD_CAP, AnnotatedToken, AnnotationError, LemmaTable, ModelManager,
+    UniversalPos, default_model_dir, sentence_chunks,
 };
 use crate::language::detect_and_resolve;
 use crate::scan::DocumentRecord;
-use crate::tokenization::TokenizationConfig;
+use crate::tokenization::{Token, TokenizationConfig, tokenize};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::time::{Duration, Instant};
@@ -1489,22 +1491,34 @@ fn annotate_annotation_document(
         }
     })?;
     let retokenisation_started = Instant::now();
-    let tokens = analysis_word_tokens(&input.text, document_id, tokenization_config);
+    let mut annotation_tokenization_config = *tokenization_config;
+    annotation_tokenization_config.include_punctuation = true;
+    let tokens = tokenize(&input.text, document_id, &annotation_tokenization_config);
     if let Some(timing) = timing {
         timing.record_in_loop_retokenisation(retokenisation_started.elapsed());
     }
-    let token_surfaces = tokens.iter().map(|token| token.surface).collect::<Vec<_>>();
-    let annotated_tokens = if let Some(timing) = timing {
-        manager.tag_and_align_with_timing(
-            &input.language,
-            &token_surfaces,
-            |duration| timing.record_udpipe_tag_call(duration),
-            |duration| timing.record_alignment(duration),
-        )
-    } else {
-        manager.tag_and_align(&input.language, &token_surfaces)
+
+    let mut annotated_chunks = Vec::new();
+    for chunk in sentence_chunks(&tokens, ANNOTATION_SENTENCE_CHUNK_WORD_CAP) {
+        let token_surfaces = tokens[chunk.clone()]
+            .iter()
+            .map(|token| token.surface)
+            .collect::<Vec<_>>();
+        let chunk_annotations = if let Some(timing) = timing {
+            manager.tag_and_align_with_timing(
+                &input.language,
+                &token_surfaces,
+                |duration| timing.record_udpipe_tag_call(duration),
+                |duration| timing.record_alignment(duration),
+            )
+        } else {
+            manager.tag_and_align(&input.language, &token_surfaces)
+        }
+        .map_err(|error| annotation_document_error(input, error))?;
+        annotated_chunks.push((chunk, chunk_annotations));
     }
-    .map_err(|error| annotation_document_error(input, error))?;
+    let annotated_tokens =
+        project_chunk_annotations_to_word_tokens(input, &tokens, annotated_chunks)?;
     let counting_started = Instant::now();
     let term_counts = resolve_annotated_tokens_to_local_counts(
         input.analysis_document_index,
@@ -1521,6 +1535,116 @@ fn annotate_annotation_document(
         relative_path: input.relative_path.clone(),
         term_counts,
     })
+}
+
+fn project_chunk_annotations_to_word_tokens(
+    input: &AnnotationDocumentInput,
+    tokens: &[Token<'_>],
+    annotated_chunks: Vec<(Range<usize>, Vec<AnnotatedToken>)>,
+) -> Result<Vec<AnnotatedToken>, AnnotationLayerBuildError> {
+    let expected_word_surfaces = tokens
+        .iter()
+        .filter(|token| token.counts_as_word())
+        .map(|token| token.surface)
+        .collect::<Vec<_>>();
+    let mut projected = Vec::with_capacity(expected_word_surfaces.len());
+
+    for (chunk, annotations) in annotated_chunks {
+        let chunk_tokens = &tokens[chunk.clone()];
+        if annotations.len() != chunk_tokens.len() {
+            let first_mismatch = chunk.start + annotations.len().min(chunk_tokens.len());
+            return Err(annotation_projection_invariant_error(
+                input,
+                first_mismatch,
+                format!(
+                    "UDPipe produced {} annotations for {} input tokens in chunk {}..{}",
+                    annotations.len(),
+                    chunk_tokens.len(),
+                    chunk.start,
+                    chunk.end
+                ),
+            ));
+        }
+
+        for (offset, (token, annotation)) in chunk_tokens.iter().zip(annotations).enumerate() {
+            if annotation.surface != token.surface {
+                return Err(annotation_projection_invariant_error(
+                    input,
+                    chunk.start + offset,
+                    format!(
+                        "annotated surface {:?} does not match token surface {:?}",
+                        annotation.surface, token.surface
+                    ),
+                ));
+            }
+
+            if token.counts_as_word() {
+                let mut word_annotation = annotation;
+                word_annotation.token_index = u32::try_from(projected.len()).map_err(|_| {
+                    annotation_projection_invariant_error(
+                        input,
+                        projected.len(),
+                        "annotated word-token index overflowed u32".to_string(),
+                    )
+                })?;
+                projected.push(word_annotation);
+            }
+        }
+    }
+
+    validate_projected_word_annotations(input, &projected, &expected_word_surfaces)?;
+    Ok(projected)
+}
+
+fn validate_projected_word_annotations(
+    input: &AnnotationDocumentInput,
+    projected: &[AnnotatedToken],
+    expected_word_surfaces: &[&str],
+) -> Result<(), AnnotationLayerBuildError> {
+    if projected.len() != expected_word_surfaces.len() {
+        return Err(annotation_projection_invariant_error(
+            input,
+            projected.len().min(expected_word_surfaces.len()),
+            format!(
+                "projected {} word annotations but expected {} word tokens",
+                projected.len(),
+                expected_word_surfaces.len()
+            ),
+        ));
+    }
+
+    for (index, (annotation, expected_surface)) in projected
+        .iter()
+        .zip(expected_word_surfaces.iter())
+        .enumerate()
+    {
+        if annotation.surface != *expected_surface {
+            return Err(annotation_projection_invariant_error(
+                input,
+                index,
+                format!(
+                    "projected surface {:?} but expected word surface {:?}",
+                    annotation.surface, expected_surface
+                ),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn annotation_projection_invariant_error(
+    input: &AnnotationDocumentInput,
+    first_mismatching_index: usize,
+    reason: String,
+) -> AnnotationLayerBuildError {
+    AnnotationLayerBuildError::AlignmentOrIdentityMismatch {
+        analysis_document_index: input.analysis_document_index,
+        reason: format!(
+            "annotation projection invariant failed for document {:?} at index {}: {}",
+            input.relative_path, first_mismatching_index, reason
+        ),
+    }
 }
 
 fn annotation_document_error(
