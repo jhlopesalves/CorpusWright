@@ -35,6 +35,17 @@ pub enum ConcordanceSortKey {
     Right3,
 }
 
+/// Side of the node that a context filter may match.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ConcordanceContextFilterDirection {
+    Left,
+    Right,
+    #[default]
+    Both,
+}
+
 /// Parameters for a bounded surface-token concordance query.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
@@ -45,6 +56,8 @@ pub struct ConcordanceQuery {
     pub query: String,
     #[serde(default)]
     pub context_filter: Option<String>,
+    #[serde(default)]
+    pub context_filter_direction: ConcordanceContextFilterDirection,
     #[serde(default)]
     pub case_sensitive: bool,
     #[serde(default)]
@@ -450,24 +463,34 @@ fn concordance_token_sequence_matches<'text>(
         })
 }
 
+struct ConcordanceContextFilterWindow {
+    left: std::ops::Range<usize>,
+    right: std::ops::Range<usize>,
+}
+
 fn concordance_context_filter_matches<'text>(
     tokens: &[crate::tokenization::Token<'text>],
-    left_start: usize,
-    token_index: usize,
-    node_end: usize,
-    right_end: usize,
+    context_window: ConcordanceContextFilterWindow,
     context_filter_keys: &[String],
+    context_filter_direction: ConcordanceContextFilterDirection,
     case_sensitive: bool,
 ) -> bool {
-    concordance_token_sequence_matches(
-        &tokens[left_start..token_index],
+    let ConcordanceContextFilterWindow { left, right } = context_window;
+    let left_matches =
+        matches!(
+            context_filter_direction,
+            ConcordanceContextFilterDirection::Left | ConcordanceContextFilterDirection::Both
+        ) && concordance_token_sequence_matches(&tokens[left], context_filter_keys, case_sensitive);
+    let right_matches = matches!(
+        context_filter_direction,
+        ConcordanceContextFilterDirection::Right | ConcordanceContextFilterDirection::Both
+    ) && concordance_token_sequence_matches(
+        &tokens[right],
         context_filter_keys,
         case_sensitive,
-    ) || concordance_token_sequence_matches(
-        &tokens[node_end..right_end],
-        context_filter_keys,
-        case_sensitive,
-    )
+    );
+
+    left_matches || right_matches
 }
 
 fn compare_optional_context(left: Option<&str>, right: Option<&str>) -> Ordering {
@@ -973,11 +996,12 @@ fn search_concordance_documents_scan(
             if context_filter_keys.as_ref().is_some_and(|keys| {
                 !concordance_context_filter_matches(
                     &tokens,
-                    left_start,
-                    token_index,
-                    node_end,
-                    right_end,
+                    ConcordanceContextFilterWindow {
+                        left: left_start..token_index,
+                        right: node_end..right_end,
+                    },
                     keys,
+                    query.context_filter_direction,
                     query.case_sensitive,
                 )
             }) {

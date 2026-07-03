@@ -806,8 +806,8 @@ fn surface_index_window_tokens(window_tokens: usize) -> usize {
 mod tests {
     use super::*;
     use crate::analysis::{
-        AnalysisDocumentSelection, ConcordanceDocument, ConcordanceQuery, ConcordanceSortKey,
-        search_concordance_documents,
+        AnalysisDocumentSelection, ConcordanceContextFilterDirection, ConcordanceDocument,
+        ConcordanceQuery, ConcordanceSortKey, search_concordance_documents,
     };
     use crate::decode::{DecodeStrategy, SourceEncoding, decode_source_bytes};
 
@@ -850,6 +850,7 @@ mod tests {
             selection: AnalysisDocumentSelection::default(),
             query: query.to_string(),
             context_filter: None,
+            context_filter_direction: ConcordanceContextFilterDirection::Both,
             case_sensitive,
             sort_key: ConcordanceSortKey::FilePosition,
             window_tokens: 5,

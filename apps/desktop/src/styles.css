@@ -3479,14 +3479,14 @@ main {
 .concordance-table td:nth-child(2),
 .concordance-table th:nth-child(4),
 .concordance-table td:nth-child(4) {
-  width: calc((100% - 330px) / 2);
+  width: calc((100% - 150px - 9rem) / 2);
   min-width: 0;
 }
 
 .concordance-table th:nth-child(3),
 .concordance-table td:nth-child(3) {
-  width: 180px;
-  min-width: 140px;
+  width: 9rem;
+  min-width: 7rem;
 }
 
 .concordance-file {
@@ -3702,6 +3702,33 @@ main {
   min-width: 0;
 }
 
+.concordance-distribution-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, max-content));
+  gap: 10px 16px;
+  align-items: start;
+  margin: 8px 0 12px;
+}
+
+.concordance-distribution-metric {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.concordance-distribution-metric-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.concordance-distribution-metric strong {
+  color: var(--text-color);
+  font-size: 0.9rem;
+}
+
 .concordance-distribution-table-wrap {
   overflow-x: auto;
 }
@@ -3810,8 +3837,8 @@ main {
   font-size: 0.85rem;
 }
 
-.concordance-collocations-table th,
-.concordance-collocations-table td {
+.concordance-collocations-table > thead > tr > th,
+.concordance-collocations-table > tbody > tr.concordance-collocation-row > td {
   padding: 7px 10px;
   border-bottom: 1px solid var(--border-color);
   overflow: hidden;
@@ -3820,7 +3847,7 @@ main {
   white-space: nowrap;
 }
 
-.concordance-collocations-table th {
+.concordance-collocations-table > thead > tr > th {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -3831,28 +3858,28 @@ main {
   text-align: left;
 }
 
-.concordance-collocations-table th:nth-child(1),
-.concordance-collocations-table td:nth-child(1) {
+.concordance-collocations-table > thead > tr > th:nth-child(1),
+.concordance-collocations-table > tbody > tr.concordance-collocation-row > td:nth-child(1) {
   width: 40%;
 }
 
-.concordance-collocations-table th:nth-child(2),
-.concordance-collocations-table td:nth-child(2) {
+.concordance-collocations-table > thead > tr > th:nth-child(2),
+.concordance-collocations-table > tbody > tr.concordance-collocation-row > td:nth-child(2) {
   width: 16%;
 }
 
-.concordance-collocations-table th:nth-child(3),
-.concordance-collocations-table td:nth-child(3) {
+.concordance-collocations-table > thead > tr > th:nth-child(3),
+.concordance-collocations-table > tbody > tr.concordance-collocation-row > td:nth-child(3) {
   width: 20%;
 }
 
-.concordance-collocations-table th:nth-child(4),
-.concordance-collocations-table td:nth-child(4) {
+.concordance-collocations-table > thead > tr > th:nth-child(4),
+.concordance-collocations-table > tbody > tr.concordance-collocation-row > td:nth-child(4) {
   width: 24%;
 }
 
-.concordance-collocations-table th:nth-child(n + 2),
-.concordance-collocations-table td:nth-child(n + 2) {
+.concordance-collocations-table > thead > tr > th:nth-child(n + 2),
+.concordance-collocations-table > tbody > tr.concordance-collocation-row > td:nth-child(n + 2) {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -3893,6 +3920,127 @@ main {
 
 .concordance-collocation-row.is-active .concordance-collocate-text {
   color: var(--cw-collocate-text);
+}
+
+.concordance-collocate-evidence-row > .concordance-collocate-evidence-cell {
+  padding: 0;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-color);
+  text-align: left;
+  font-variant-numeric: normal;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.concordance-collocate-evidence {
+  display: grid;
+  gap: 8px;
+  margin: 4px 10px 12px 28px;
+  padding: 8px 0 8px 12px;
+  border-left: 1px solid var(--cw-collocate-border);
+  background: transparent;
+}
+
+.concordance-collocate-evidence-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.concordance-collocate-evidence-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.concordance-collocate-evidence-title {
+  color: var(--text-color);
+  font-size: 0.86rem;
+}
+
+.concordance-collocate-evidence-meta {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.concordance-collocate-evidence-close {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 3px 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.concordance-collocate-evidence-message {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+.concordance-collocate-evidence-message.is-error {
+  color: var(--cw-warning-text);
+}
+
+.concordance-collocate-evidence-list {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+
+.concordance-collocate-evidence-list-head,
+.concordance-collocate-evidence-line {
+  display: grid;
+  grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 10px;
+}
+
+.concordance-collocate-evidence-list-head {
+  padding: 3px 0 4px;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.concordance-collocate-evidence-line {
+  padding: 4px 0;
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+}
+
+.concordance-collocate-evidence-file {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.concordance-collocate-evidence-snippet {
+  min-width: 0;
+  color: var(--text-muted);
+  font-family: var(--cw-font-mono);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.concordance-collocate-evidence-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin-top: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
 }
 
 .concordance-collocation-action {

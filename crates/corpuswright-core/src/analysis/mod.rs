@@ -43,10 +43,11 @@ pub use collocation::{
 };
 pub(crate) use concordance::concordance_key;
 pub use concordance::{
-    ConcordanceBackend, ConcordanceBackendUsed, ConcordanceDistributionItem,
-    ConcordanceDistributionPage, ConcordanceDocument, ConcordanceError, ConcordanceExpansionQuery,
-    ConcordanceExpansionResult, ConcordanceFallbackReason, ConcordanceQuery, ConcordanceResult,
-    ConcordanceRow, ConcordanceSearchContext, ConcordanceSortKey, RoutedConcordanceResult,
+    ConcordanceBackend, ConcordanceBackendUsed, ConcordanceContextFilterDirection,
+    ConcordanceDistributionItem, ConcordanceDistributionPage, ConcordanceDocument,
+    ConcordanceError, ConcordanceExpansionQuery, ConcordanceExpansionResult,
+    ConcordanceFallbackReason, ConcordanceQuery, ConcordanceResult, ConcordanceRow,
+    ConcordanceSearchContext, ConcordanceSortKey, RoutedConcordanceResult,
     expand_concordance_context, search_concordance_documents, search_concordance_documents_routed,
 };
 
