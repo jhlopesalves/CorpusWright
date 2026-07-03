@@ -163,7 +163,7 @@ export function concordanceCollocationExplanation(
   measure: ConcordanceCollocationMeasure,
 ): string {
   const directionText = concordanceCollocationDirectionLabel(direction);
-  return `Collocates near "${query}" within ${span.toLocaleString()} tokens (${directionText}), ranked by Association: ${concordanceCollocationMeasureLabel(measure)}. Near query = times the word appears around the query · Corpus frequency = total frequency in the selected corpus.`;
+  return `Collocates near "${query}" · ${span.toLocaleString()}-token window · ${directionText} · ranked by ${concordanceCollocationMeasureLabel(measure)}`;
 }
 
 export function clampConcordanceCollocationSpan(value: number): number {
