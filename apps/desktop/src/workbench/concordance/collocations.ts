@@ -39,16 +39,15 @@ import { dom } from "../../dom";
 import { effectiveCleaningConfig } from "../../effective-cleaning-config";
 import { state } from "../../state";
 import { currentFrequencyDocumentScope } from "../frequency";
+import { formatFixedNumber, formatNumber } from "../shell";
 import {
   activeConcordanceViewId,
   currentConcordanceSearchFailure,
   currentConcordanceSearchResult,
-  formatFixedNumber,
-  formatNumber,
   refreshConcordance,
   renderContextTokens,
   syncConcordanceControls,
-} from "../../workbench";
+} from "./shared";
 
 const CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT = 8;
 

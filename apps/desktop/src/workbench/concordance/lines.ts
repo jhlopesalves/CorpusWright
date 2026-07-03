@@ -22,13 +22,13 @@ import {
 import { dom } from "../../dom";
 import { effectiveCleaningConfig } from "../../effective-cleaning-config";
 import { state } from "../../state";
+import { formatNumber } from "../shell";
 import {
   currentConcordanceSearchResult,
-  formatNumber,
   refreshConcordance,
   renderConcordance,
   renderContextTokens,
-} from "../../workbench";
+} from "./shared";
 
 let concordanceOffset = 0;
 let concordanceSortKey: ConcordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;

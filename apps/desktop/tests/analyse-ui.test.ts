@@ -462,16 +462,18 @@ assert(
   "Collocate clicks should open dedicated inline evidence without switching to Concordance lines or mutating the base context filter",
 );
 const refreshConcordanceStart = workbench.indexOf("async function refreshConcordance(");
-const refreshConcordanceEnd = workbench.indexOf("async function refreshCollocateEvidence", refreshConcordanceStart);
-const refreshCollocateEvidenceEnd = workbench.indexOf("async function refreshConcordanceCollocations", refreshConcordanceEnd);
+const refreshConcordanceEnd = workbench.indexOf("function runConcordanceSearch", refreshConcordanceStart);
+const refreshCollocateEvidenceStart = workbench.indexOf("async function refreshCollocateEvidence");
+const refreshCollocateEvidenceEnd = workbench.indexOf("async function refreshConcordanceCollocations", refreshCollocateEvidenceStart);
 assert(
   refreshConcordanceStart >= 0
     && refreshConcordanceEnd > refreshConcordanceStart
-    && refreshCollocateEvidenceEnd > refreshConcordanceEnd,
-  "Base and collocate evidence refresh helpers should exist in sequence",
+    && refreshCollocateEvidenceStart >= 0
+    && refreshCollocateEvidenceEnd > refreshCollocateEvidenceStart,
+  "Base and collocate evidence refresh helpers should exist",
 );
 const refreshConcordanceBody = workbench.slice(refreshConcordanceStart, refreshConcordanceEnd);
-const refreshCollocateEvidenceBody = workbench.slice(refreshConcordanceEnd, refreshCollocateEvidenceEnd);
+const refreshCollocateEvidenceBody = workbench.slice(refreshCollocateEvidenceStart, refreshCollocateEvidenceEnd);
 assert(
   refreshConcordanceBody.includes("contextFilter: null")
     && refreshConcordanceBody.includes('contextFilterDirection: "both"')
