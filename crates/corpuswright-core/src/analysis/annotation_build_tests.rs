@@ -4,10 +4,20 @@ use crate::analysis::*;
 use crate::annotation::{AnnotatedToken, LemmaTable, UniversalPos, default_model_dir};
 use crate::language::{ProjectLanguage, resolve_effective_document_languages};
 use crate::scan::DocumentRecord;
-use crate::tokenization::TokenizationConfig;
+use crate::tokenization::{TokenizationConfig, tokenize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
+
+fn fake_annotation(surface: &str, token_index: u32) -> AnnotatedToken {
+    AnnotatedToken {
+        surface: surface.to_string(),
+        lemma: surface.to_lowercase(),
+        upos: UniversalPos::Noun,
+        token_index,
+        features: HashMap::new(),
+    }
+}
 
 #[test]
 fn annotation_cache_round_trips_ready_with_project_language() {
@@ -270,6 +280,143 @@ fn annotation_local_counts_group_duplicates_by_surface_lemma_and_upos() {
     });
 
     assert_eq!(counts, expected);
+}
+
+#[test]
+fn annotation_projection_discards_punctuation_and_renumbers_word_tokens() {
+    let input = AnnotationDocumentInput {
+        analysis_document_index: 0,
+        source_path: "projection.txt".to_string(),
+        relative_path: "projection.txt".to_string(),
+        text: "Hello, world!".to_string(),
+        language: "en".to_string(),
+    };
+    let tokens = tokenize(&input.text, 0, &TokenizationConfig::default());
+    let annotations = tokens
+        .iter()
+        .enumerate()
+        .map(|(index, token)| fake_annotation(token.surface, index as u32))
+        .collect::<Vec<_>>();
+
+    let projected = project_chunk_annotations_to_word_tokens(
+        &input,
+        &tokens,
+        vec![(0..tokens.len(), annotations)],
+    )
+    .unwrap();
+
+    assert_eq!(
+        projected
+            .iter()
+            .map(|token| token.surface.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Hello", "world"]
+    );
+    assert_eq!(
+        projected
+            .iter()
+            .map(|token| token.token_index)
+            .collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+}
+
+#[test]
+fn annotation_projection_allows_punctuation_only_documents() {
+    let input = AnnotationDocumentInput {
+        analysis_document_index: 0,
+        source_path: "punctuation.txt".to_string(),
+        relative_path: "punctuation.txt".to_string(),
+        text: "!?...".to_string(),
+        language: "en".to_string(),
+    };
+    let tokens = tokenize(&input.text, 0, &TokenizationConfig::default());
+
+    let projected = project_chunk_annotations_to_word_tokens(&input, &tokens, vec![]).unwrap();
+
+    assert!(projected.is_empty());
+}
+
+#[test]
+fn annotation_layer_keeps_punctuation_out_of_counts_and_lemmas() {
+    let texts = [("multi.txt", "Hello, world! Dogs run. \"Cats?\"")];
+    let mut language_overrides = HashMap::new();
+    language_overrides.insert(0, "en".to_string());
+    let (corpus, layer) = annotation_layer_for(&texts, language_overrides, true);
+
+    let annotated_token_total = layer.documents[0]
+        .term_counts
+        .iter()
+        .map(|count| count.count)
+        .sum::<u64>();
+    assert_eq!(
+        annotated_token_total,
+        corpus.documents[0].summary.token_count
+    );
+
+    let punctuation = [",", "!", ".", "\"", "?"];
+    let counted_surfaces = layer.documents[0]
+        .term_counts
+        .iter()
+        .map(|count| {
+            corpus.surface_terms[count.surface_term_id as usize]
+                .token
+                .as_str()
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        counted_surfaces
+            .iter()
+            .all(|surface| !punctuation.contains(surface))
+    );
+    assert!(
+        layer
+            .lemma_table
+            .entries()
+            .iter()
+            .all(|lemma| !punctuation.contains(&lemma.as_str()))
+    );
+}
+
+#[test]
+fn annotation_layer_allows_punctuation_only_documents() {
+    let texts = [("punctuation.txt", "!?...")];
+    let mut language_overrides = HashMap::new();
+    language_overrides.insert(0, "en".to_string());
+    let (corpus, layer) = annotation_layer_for(&texts, language_overrides, false);
+
+    assert_eq!(corpus.documents[0].summary.token_count, 0);
+    assert!(layer.documents[0].term_counts.is_empty());
+    assert!(layer.lemma_table.is_empty());
+}
+
+#[test]
+fn annotation_layer_completes_document_larger_than_sentence_cap() {
+    let text = std::iter::repeat_n(
+        "word",
+        crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP + 3,
+    )
+    .collect::<Vec<_>>()
+    .join(" ");
+    let texts = [("long.txt", text.as_str())];
+    let mut language_overrides = HashMap::new();
+    language_overrides.insert(0, "en".to_string());
+    let (corpus, layer) = annotation_layer_for(&texts, language_overrides, false);
+
+    let annotated_token_total = layer.documents[0]
+        .term_counts
+        .iter()
+        .map(|count| count.count)
+        .sum::<u64>();
+
+    assert_eq!(
+        annotated_token_total,
+        corpus.documents[0].summary.token_count
+    );
+    assert_eq!(
+        annotated_token_total,
+        (crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP + 3) as u64
+    );
 }
 
 #[test]
