@@ -437,7 +437,9 @@ assert(
   workbench.includes("function showPreviousConcordancePage")
     && workbench.includes("void refreshConcordance(false, false);")
     && workbench.includes("function handleConcordancePageSizeChange")
-    && workbench.includes("collapseConcordanceExpansion();\n  void refreshFrequencyPage();"),
+    && workbench.includes("function resetConcordanceForFrequencyScopeChange")
+    && workbench.includes("resetConcordanceForFrequencyScopeChange();\n  void refreshFrequencyPage();")
+    && workbench.includes("collapseConcordanceExpansion();"),
   "Page, page-size, and file-scope changes should collapse expanded Concordance rows",
 );
 assert(
