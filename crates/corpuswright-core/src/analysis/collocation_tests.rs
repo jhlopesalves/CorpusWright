@@ -24,7 +24,7 @@ fn collocation_routing_types_remain_rust_only_without_ts_export() {
 #[test]
 fn collocation_hides_stopwords_multilingual() {
     let docs = [concordance_document(0, "doc", "alpha the le como alpha")];
-    
+
     // English
     let mut en_query = collocation_query("alpha");
     en_query.hide_stopwords = true;
@@ -41,7 +41,7 @@ fn collocation_hides_stopwords_multilingual() {
     let fr_rows = naive_collocations_for(&docs, &fr_query).unwrap().rows;
     assert!(!fr_rows.iter().any(|r| r.surface == "le"));
     assert!(fr_rows.iter().any(|r| r.surface == "the"));
-    
+
     // Portuguese
     let mut pt_query = collocation_query("alpha");
     pt_query.hide_stopwords = true;
@@ -133,7 +133,14 @@ fn naive_collocations_for(
     let mut rows = candidate_counts
         .into_iter()
         .filter_map(|(surface, o11)| {
-            if query.hide_stopwords && crate::analysis::shared::stopword_matches(&surface, crate::analysis::shared::StopwordLanguage::from_subtag(query.language.as_deref())) {
+            if query.hide_stopwords
+                && crate::analysis::shared::stopword_matches(
+                    &surface,
+                    crate::analysis::shared::StopwordLanguage::from_subtag(
+                        query.language.as_deref(),
+                    ),
+                )
+            {
                 return None;
             }
             let collocate_frequency = *collocate_frequencies.get(&surface).unwrap_or(&0);
