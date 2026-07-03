@@ -2346,24 +2346,14 @@ function updateConcordanceCollocationSortHeaders(): void {
   });
 }
 
-function collocateEvidenceRelationText(direction: ConcordanceContextFilterDirection): string {
+function collocateEvidenceSpanText(span: number, direction: ConcordanceContextFilterDirection): string {
   if (direction === "left") {
-    return "left of";
+    return `span ${formatNumber(span)}L`;
   }
   if (direction === "right") {
-    return "right of";
+    return `span ${formatNumber(span)}R`;
   }
-  return "near";
-}
-
-function collocateEvidenceSideText(direction: ConcordanceContextFilterDirection): string {
-  if (direction === "left") {
-    return "left side";
-  }
-  if (direction === "right") {
-    return "right side";
-  }
-  return "both sides";
+  return `span ${formatNumber(span)}L–${formatNumber(span)}R`;
 }
 
 function isActiveCollocateEvidenceRow(row: ConcordanceCollocateRow): boolean {
@@ -2434,7 +2424,7 @@ function createCollocateEvidenceList(result: ConcordanceResult): HTMLDivElement 
   const head = document.createElement("div");
   head.className = "concordance-collocate-evidence-list-head";
   head.setAttribute("role", "row");
-  for (const label of ["File", "Evidence"]) {
+  for (const label of ["File", "Context"]) {
     const cell = document.createElement("span");
     cell.setAttribute("role", "columnheader");
     cell.textContent = label;
@@ -2499,17 +2489,17 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
   title.className = "concordance-collocate-evidence-title";
   const query = selection?.query ?? normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   const direction = selection?.direction ?? "both";
-  title.textContent = `Evidence for "${row.surface}" ${collocateEvidenceRelationText(direction)} "${query}"`;
+  title.textContent = `Co-occurrence lines for "${row.surface}" with "${query}"`;
   const meta = document.createElement("span");
   meta.className = "concordance-collocate-evidence-meta";
   const span = selection?.span ?? currentConcordanceCollocationSpan();
-  const sideText = collocateEvidenceSideText(direction);
+  const spanText = collocateEvidenceSpanText(span, direction);
   if (collocateEvidenceResult !== null && collocateEvidenceResult.totalHits > 0) {
     const hitCount = collocateEvidenceResult.totalHits;
     const lineText = `${formatNumber(hitCount)} line${hitCount === 1 ? "" : "s"}`;
-    meta.textContent = `${lineText} · within ${formatNumber(span)} tokens · ${sideText}`;
+    meta.textContent = `${lineText} · ${spanText}`;
   } else {
-    meta.textContent = `within ${formatNumber(span)} tokens · ${sideText}`;
+    meta.textContent = spanText;
   }
   copy.append(title, meta);
 
@@ -2528,16 +2518,16 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
     panel.appendChild(createCollocateEvidenceList(collocateEvidenceResult));
     appendCollocateEvidenceShowMore(panel, collocateEvidenceResult);
     if (collocateEvidenceFailure !== null) {
-      appendCollocateEvidenceMessage(panel, `Could not load more evidence: ${collocateEvidenceFailure}`, true);
+      appendCollocateEvidenceMessage(panel, `Could not load more co-occurrence lines: ${collocateEvidenceFailure}`, true);
     }
   } else if (collocateEvidencePending) {
-    appendCollocateEvidenceMessage(panel, "Loading evidence...");
+    appendCollocateEvidenceMessage(panel, "Loading co-occurrence lines...");
   } else if (collocateEvidenceFailure !== null) {
-    appendCollocateEvidenceMessage(panel, `Could not load evidence: ${collocateEvidenceFailure}`, true);
+    appendCollocateEvidenceMessage(panel, `Could not load co-occurrence lines: ${collocateEvidenceFailure}`, true);
   } else if (collocateEvidenceResult === null || collocateEvidenceResult.totalHits === 0) {
     appendCollocateEvidenceMessage(
       panel,
-      "No evidence lines found for this collocate with the current span and direction.",
+      "No co-occurrence lines for this collocate with the current span and direction.",
     );
   }
 
@@ -2574,7 +2564,7 @@ function createConcordanceCollocationRow(
   item.className = "concordance-collocation-row";
   item.classList.toggle("is-active", isActiveCollocateEvidenceRow(row));
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
-  const actionLabel = `Show evidence for "${row.surface}" near "${query}"`;
+  const actionLabel = `Show co-occurrence lines for "${row.surface}" with "${query}"`;
   item.tabIndex = 0;
   item.setAttribute("role", "button");
   item.setAttribute("aria-label", actionLabel);
