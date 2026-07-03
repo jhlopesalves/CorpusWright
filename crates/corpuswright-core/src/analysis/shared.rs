@@ -43,17 +43,14 @@ fn load_stopword_set(raw: &str) -> HashSet<String> {
         .collect()
 }
 
-pub(super) static STOPWORDS_EN: LazyLock<HashSet<String>> = LazyLock::new(|| {
-    load_stopword_set(include_str!("../../resources/stopwords/en.txt"))
-});
+pub(super) static STOPWORDS_EN: LazyLock<HashSet<String>> =
+    LazyLock::new(|| load_stopword_set(include_str!("../../resources/stopwords/en.txt")));
 
-pub(super) static STOPWORDS_FR: LazyLock<HashSet<String>> = LazyLock::new(|| {
-    load_stopword_set(include_str!("../../resources/stopwords/fr.txt"))
-});
+pub(super) static STOPWORDS_FR: LazyLock<HashSet<String>> =
+    LazyLock::new(|| load_stopword_set(include_str!("../../resources/stopwords/fr.txt")));
 
-pub(super) static STOPWORDS_PT: LazyLock<HashSet<String>> = LazyLock::new(|| {
-    load_stopword_set(include_str!("../../resources/stopwords/pt.txt"))
-});
+pub(super) static STOPWORDS_PT: LazyLock<HashSet<String>> =
+    LazyLock::new(|| load_stopword_set(include_str!("../../resources/stopwords/pt.txt")));
 
 pub(super) fn stopword_matches(value: &str, language: StopwordLanguage) -> bool {
     let folded = case_fold_surface(value);
@@ -70,15 +67,39 @@ mod tests {
 
     #[test]
     fn parses_language_from_subtag() {
-        assert_eq!(StopwordLanguage::from_subtag(None), StopwordLanguage::English);
-        assert_eq!(StopwordLanguage::from_subtag(Some("en")), StopwordLanguage::English);
-        assert_eq!(StopwordLanguage::from_subtag(Some("EN-us")), StopwordLanguage::English);
-        assert_eq!(StopwordLanguage::from_subtag(Some("fr")), StopwordLanguage::French);
-        assert_eq!(StopwordLanguage::from_subtag(Some("FR-ca")), StopwordLanguage::French);
-        assert_eq!(StopwordLanguage::from_subtag(Some("pt-br")), StopwordLanguage::Portuguese);
+        assert_eq!(
+            StopwordLanguage::from_subtag(None),
+            StopwordLanguage::English
+        );
+        assert_eq!(
+            StopwordLanguage::from_subtag(Some("en")),
+            StopwordLanguage::English
+        );
+        assert_eq!(
+            StopwordLanguage::from_subtag(Some("EN-us")),
+            StopwordLanguage::English
+        );
+        assert_eq!(
+            StopwordLanguage::from_subtag(Some("fr")),
+            StopwordLanguage::French
+        );
+        assert_eq!(
+            StopwordLanguage::from_subtag(Some("FR-ca")),
+            StopwordLanguage::French
+        );
+        assert_eq!(
+            StopwordLanguage::from_subtag(Some("pt-br")),
+            StopwordLanguage::Portuguese
+        );
         // Fallback to English
-        assert_eq!(StopwordLanguage::from_subtag(Some("de")), StopwordLanguage::English);
-        assert_eq!(StopwordLanguage::from_subtag(Some("")), StopwordLanguage::English);
+        assert_eq!(
+            StopwordLanguage::from_subtag(Some("de")),
+            StopwordLanguage::English
+        );
+        assert_eq!(
+            StopwordLanguage::from_subtag(Some("")),
+            StopwordLanguage::English
+        );
     }
 
     #[test]
@@ -89,9 +110,9 @@ mod tests {
 
         assert!(stopword_matches("le", StopwordLanguage::French));
         assert!(!stopword_matches("le", StopwordLanguage::English));
-        
+
         assert!(stopword_matches("como", StopwordLanguage::Portuguese));
-        
+
         // Case folding works
         assert!(stopword_matches("THE", StopwordLanguage::English));
         assert!(stopword_matches("Le", StopwordLanguage::French));
