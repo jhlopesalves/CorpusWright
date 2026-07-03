@@ -3479,14 +3479,14 @@ main {
 .concordance-table td:nth-child(2),
 .concordance-table th:nth-child(4),
 .concordance-table td:nth-child(4) {
-  width: calc((100% - 330px) / 2);
+  width: calc((100% - 150px - 9rem) / 2);
   min-width: 0;
 }
 
 .concordance-table th:nth-child(3),
 .concordance-table td:nth-child(3) {
-  width: 180px;
-  min-width: 140px;
+  width: 9rem;
+  min-width: 7rem;
 }
 
 .concordance-file {
@@ -3700,6 +3700,33 @@ main {
 
 .concordance-document-spread-title {
   min-width: 0;
+}
+
+.concordance-distribution-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, max-content));
+  gap: 10px 16px;
+  align-items: start;
+  margin: 8px 0 12px;
+}
+
+.concordance-distribution-metric {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.concordance-distribution-metric-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.concordance-distribution-metric strong {
+  color: var(--text-color);
+  font-size: 0.9rem;
 }
 
 .concordance-distribution-table-wrap {
@@ -4005,9 +4032,15 @@ main {
   white-space: normal;
 }
 
-.concordance-collocate-evidence-pagination {
+.concordance-collocate-evidence-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-start;
+  gap: 8px;
   margin-top: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
 }
 
 .concordance-collocation-action {
