@@ -1,7 +1,7 @@
 use crate::analysis::{
     AnalysisCorpus, AnnotationBuildTimingCounters, AnnotationLayer, AnnotationLayerDocument,
 };
-use crate::annotation::LemmaTable;
+use crate::annotation::{ANNOTATION_PIPELINE_VERSION, LemmaTable};
 use crate::decode::DECODE_POLICY_VERSION;
 use crate::hash::sha256_hex;
 use crate::scan::{DocumentRecord, DocumentType};
@@ -17,10 +17,16 @@ pub const ANNOTATION_LAYER_SCHEMA_VERSION: u32 = 1;
 pub const ANNOTATION_LAYER_CACHE_FILE_VERSION: u32 = 1;
 const VERIFY_CACHE_WRITE_ENV: &str = "CORPUSWRIGHT_VERIFY_CACHE_WRITE";
 
+fn legacy_annotation_pipeline_version() -> u32 {
+    1
+}
+
 /// Full identity of the annotation layer and the corpus it was built from.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AnnotationManifest {
     pub schema_version: u32,
+    #[serde(default = "legacy_annotation_pipeline_version")]
+    pub annotation_pipeline_version: u32,
     pub tokenization: TokenizationManifest,
     pub corpus: AnnotationCorpusIdentity,
     pub languages: AnnotationLanguageIdentity,
@@ -264,6 +270,7 @@ pub fn build_annotation_manifest(
 
     Ok(AnnotationManifest {
         schema_version: ANNOTATION_LAYER_SCHEMA_VERSION,
+        annotation_pipeline_version: ANNOTATION_PIPELINE_VERSION,
         tokenization,
         corpus: AnnotationCorpusIdentity {
             documents_hash_sha256,
@@ -304,6 +311,9 @@ fn validate_annotation_cache_envelope(
 
     if let Some(expected) = expected_manifest {
         if envelope.manifest.schema_version != expected.schema_version {
+            return Err(AnnotationLayerCacheLoad::Stale);
+        }
+        if envelope.manifest.annotation_pipeline_version != ANNOTATION_PIPELINE_VERSION {
             return Err(AnnotationLayerCacheLoad::Stale);
         }
         if envelope.manifest != *expected {
@@ -537,6 +547,7 @@ mod tests {
     fn empty_manifest() -> AnnotationManifest {
         AnnotationManifest {
             schema_version: ANNOTATION_LAYER_SCHEMA_VERSION,
+            annotation_pipeline_version: ANNOTATION_PIPELINE_VERSION,
             tokenization: TokenizationManifest {
                 id: "test".to_string(),
                 version: "1.0".to_string(),
@@ -601,6 +612,14 @@ mod tests {
         let m1 = empty_manifest();
         let mut m2 = empty_manifest();
         m2.schema_version += 1;
+        assert_ne!(m1, m2);
+    }
+
+    #[test]
+    fn manifest_stale_when_annotation_pipeline_version_changes() {
+        let m1 = empty_manifest();
+        let mut m2 = empty_manifest();
+        m2.annotation_pipeline_version += 1;
         assert_ne!(m1, m2);
     }
 
@@ -729,6 +748,56 @@ mod tests {
             }
             _ => panic!("Expected Ready, got {:?}", loaded),
         }
+    }
+
+    #[test]
+    fn cache_write_records_annotation_pipeline_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_root = dir.path();
+        let manifest = empty_manifest();
+        let layer = sample_layer();
+
+        write_annotation_layer_cache(cache_root, &manifest, &layer).unwrap();
+
+        let bytes = std::fs::read(cache_file_path(cache_root)).unwrap();
+        let envelope: AnnotationLayerCacheEnvelope = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            envelope.manifest.annotation_pipeline_version,
+            ANNOTATION_PIPELINE_VERSION
+        );
+        assert!(matches!(
+            load_annotation_layer_cache(cache_root, &manifest),
+            AnnotationLayerCacheLoad::Ready(_)
+        ));
+    }
+
+    #[test]
+    fn missing_annotation_pipeline_version_deserializes_as_legacy_and_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_root = dir.path();
+        let manifest = empty_manifest();
+        let layer = sample_layer();
+        let envelope = cache_envelope_for(&manifest, &layer);
+        let mut value = serde_json::to_value(&envelope).unwrap();
+        value
+            .get_mut("manifest")
+            .and_then(serde_json::Value::as_object_mut)
+            .unwrap()
+            .remove("annotation_pipeline_version");
+        std::fs::create_dir_all(cache_root).unwrap();
+        std::fs::write(
+            cache_file_path(cache_root),
+            serde_json::to_vec(&value).unwrap(),
+        )
+        .unwrap();
+
+        let parsed: AnnotationLayerCacheEnvelope =
+            serde_json::from_value(value).expect("old cache metadata should deserialize");
+        assert_eq!(parsed.manifest.annotation_pipeline_version, 1);
+        assert!(matches!(
+            load_annotation_layer_cache(cache_root, &manifest),
+            AnnotationLayerCacheLoad::Stale
+        ));
     }
 
     #[test]

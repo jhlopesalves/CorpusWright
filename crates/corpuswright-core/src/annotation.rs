@@ -22,6 +22,7 @@ use std::time::{Duration, Instant};
 use ts_rs::TS;
 
 pub const ANNOTATION_SENTENCE_CHUNK_WORD_CAP: usize = 512;
+pub const ANNOTATION_PIPELINE_VERSION: u32 = 2;
 
 // ---------------------------------------------------------------------------
 // Closed UPOS enum (u8-backed, not String)
