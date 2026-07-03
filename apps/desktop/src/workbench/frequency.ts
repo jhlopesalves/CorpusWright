@@ -549,7 +549,7 @@ function frequencySummaryText(page: FrequencyPage, tokenClassFilter: FrequencyTo
     : `${formatNumber(page.selectedDocumentCount)} of ${formatNumber(page.totalDocumentCount)} files`;
   const parts = [`${formatNumber(page.totalTerms)} of ${formatNumber(page.scopedTotalTypes)} types shown`];
   if (dom.frequencyHideStopwordsInput.checked) {
-    parts.push("English stopwords hidden");
+    parts.push("Stopwords hidden");
   }
   parts.push(
     frequencyGroupingSummary(),

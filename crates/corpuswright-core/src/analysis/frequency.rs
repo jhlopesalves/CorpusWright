@@ -159,9 +159,11 @@ pub enum AnnotatedFrequencyMode {
 pub struct AnnotatedFrequencyQuery {
     pub selection: AnalysisDocumentSelection,
     pub mode: AnnotatedFrequencyMode,
+    #[serde(default)]
     pub query: String,
     #[serde(default)]
     pub language: Option<String>,
+    #[serde(default)]
     pub match_mode: FrequencyMatchMode,
     #[serde(default)]
     #[ts(type = "number")]
