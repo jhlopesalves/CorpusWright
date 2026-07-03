@@ -3286,24 +3286,25 @@ main {
 }
 
 .concordance-collocation-measure-field {
-  opacity: 0.86;
+  opacity: 1;
 }
 
 .concordance-collocation-measure-field > span {
   font-size: 0.72rem;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 #concordance-collocation-measure {
   width: 122px;
   height: 30px;
-  border-color: color-mix(in srgb, var(--border-color) 76%, transparent);
-  background: var(--cw-surface-subtle);
-  color: var(--text-muted);
+  border-color: var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-size: 0.8rem;
 }
 
 #concordance-collocation-measure:focus {
+  border-color: var(--accent-color);
   color: var(--text-color);
 }
 
