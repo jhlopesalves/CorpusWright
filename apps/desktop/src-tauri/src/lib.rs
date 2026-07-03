@@ -1,17 +1,17 @@
 use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisCorpus,
     AnalysisDocumentPage, AnalysisDocumentSelection, AnnotatedFrequencyQuery,
-    AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, ConcordanceBackend,
-    ConcordanceBackendUsed, ConcordanceCollocationAggregate,
-    ConcordanceCollocationAggregationSignature, ConcordanceCollocationQuery,
-    ConcordanceCollocationResult, ConcordanceDocument, ConcordanceExpansionQuery,
-    ConcordanceExpansionResult, ConcordanceFallbackReason, ConcordanceQuery, ConcordanceResult,
-    ConcordanceRow, ConcordanceSearchContext, CorpusOverview, CorpusOverviewContext,
-    FrequencyGroupMode, FrequencyPage, FrequencyQuery, RoutedConcordanceCollocationAggregate,
-    RoutedConcordanceResult, TermDistributionPage, TermDistributionQuery,
-    aggregate_concordance_collocations_documents,
+    AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, CompareExpressionsQuery,
+    CompareExpressionsResult, ConcordanceBackend, ConcordanceBackendUsed,
+    ConcordanceCollocationAggregate, ConcordanceCollocationAggregationSignature,
+    ConcordanceCollocationQuery, ConcordanceCollocationResult, ConcordanceDocument,
+    ConcordanceExpansionQuery, ConcordanceExpansionResult, ConcordanceFallbackReason,
+    ConcordanceQuery, ConcordanceResult, ConcordanceRow, ConcordanceSearchContext, CorpusOverview,
+    CorpusOverviewContext, FrequencyGroupMode, FrequencyPage, FrequencyQuery,
+    RoutedConcordanceCollocationAggregate, RoutedConcordanceResult, TermDistributionPage,
+    TermDistributionQuery, aggregate_concordance_collocations_documents,
     aggregate_concordance_collocations_documents_routed, annotation_cache_availability_for_corpus,
-    build_analysis_corpus, cleaning_config_signature,
+    build_analysis_corpus, cleaning_config_signature, compare_expressions,
     concordance_collocation_aggregation_signature, expand_concordance_context,
     query_analysis_documents, query_annotated_frequency, query_annotated_term_distribution,
     query_concordance_collocations_from_aggregate, query_frequency_list, query_term_distribution,
@@ -3734,6 +3734,41 @@ async fn search_concordance_command(
 }
 
 #[tauri::command]
+async fn compare_expressions_command(
+    query: CompareExpressionsQuery,
+    corpus_version: u64,
+    cleaning_config: CleaningConfig,
+    corpus: tauri::State<'_, CorpusState>,
+    cache: tauri::State<'_, ExtractionCache>,
+) -> Result<CompareExpressionsResult, String> {
+    let (records, project_root) = corpus.all_records_and_root(corpus_version)?;
+    let cache = cache.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut documents = Vec::new();
+        for record in &records {
+            let document_index = documents.len();
+            if let Some(document) = concordance_document_from_record(
+                record,
+                document_index,
+                project_root.as_deref(),
+                &cleaning_config,
+                &cache,
+            ) {
+                documents.push(document);
+            }
+        }
+        compare_expressions(
+            &documents,
+            &query,
+            &corpuswright_core::tokenization::TokenizationConfig::default(),
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("Compare expressions task failed: {error}"))?
+}
+
+#[tauri::command]
 async fn query_concordance_collocations_command(
     query: ConcordanceCollocationQuery,
     corpus_version: u64,
@@ -4717,6 +4752,7 @@ pub fn run() {
             get_analysis_build_status_command,
             compute_corpus_overview_command,
             search_concordance_command,
+            compare_expressions_command,
             query_concordance_collocations_command,
             expand_concordance_context_command,
             query_frequency_list_command,
