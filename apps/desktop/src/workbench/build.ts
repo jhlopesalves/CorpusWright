@@ -238,6 +238,7 @@ async function refreshAnnotationCacheAvailability(probeKey: string, generation: 
         minimumFrequency: 1,
         hideStopwords: false,
         caseFold: false,
+        language: null,
         posFilter: null,
         sortKey: "frequency",
         sortDirection: "desc",
