@@ -273,7 +273,7 @@ const collocationRefreshesFromSearch = (
   runConcordanceSearchForActiveViewBody.match(/refreshConcordanceCollocations\(/g) ?? []
 ).length;
 assert(
-  runConcordanceSearchForActiveViewBody.includes("const viewAtSearch = activeConcordanceView;")
+  runConcordanceSearchForActiveViewBody.includes("const viewAtSearch = activeConcordanceViewId();")
     && runConcordanceSearchForActiveViewBody.includes("const queryAtSearch = normaliseConcordanceQuery(dom.concordanceQueryInput.value);")
     && runConcordanceSearchForActiveViewBody.includes("clearCollocateEvidence();")
     && runConcordanceSearchForActiveViewBody.includes("await refreshConcordance();"),
@@ -281,10 +281,10 @@ assert(
 );
 assert(
   runConcordanceSearchForActiveViewBody.includes('viewAtSearch === "collocates"')
-    && runConcordanceSearchForActiveViewBody.includes('activeConcordanceView === "collocates"')
+    && runConcordanceSearchForActiveViewBody.includes('activeConcordanceViewId() === "collocates"')
     && runConcordanceSearchForActiveViewBody.includes("normaliseConcordanceQuery(dom.concordanceQueryInput.value) === queryAtSearch")
-    && runConcordanceSearchForActiveViewBody.includes("concordanceResult !== null")
-    && runConcordanceSearchForActiveViewBody.includes("concordanceFailure === null")
+    && runConcordanceSearchForActiveViewBody.includes("currentConcordanceSearchResult() !== null")
+    && runConcordanceSearchForActiveViewBody.includes("currentConcordanceSearchFailure() === null")
     && runConcordanceSearchForActiveViewBody.includes("await refreshConcordanceCollocations();")
     && collocationRefreshesFromSearch === 1,
   "Search should update Collocate Profile directly only when the Collocate Profile view is still active for the same successful query",
@@ -540,13 +540,13 @@ assert(
 );
 const toggleCollocateEvidenceExpansionStart = workbench.indexOf("async function toggleCollocateEvidenceExpansion");
 const toggleCollocateEvidenceExpansionEnd = workbench.indexOf(
-  "function renderConcordanceTableState",
+  "function renderConcordanceCollocationTableState",
   toggleCollocateEvidenceExpansionStart,
 );
 assert(
   toggleCollocateEvidenceExpansionStart >= 0
     && toggleCollocateEvidenceExpansionEnd > toggleCollocateEvidenceExpansionStart,
-  "Collocate evidence expansion toggle should exist before Concordance table rendering",
+  "Collocate evidence expansion toggle should exist before Collocates table rendering",
 );
 const toggleCollocateEvidenceExpansionBody = workbench.slice(
   toggleCollocateEvidenceExpansionStart,
