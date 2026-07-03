@@ -425,6 +425,7 @@ assert(
     && handleConcordanceCollocateBody.includes("direction: currentConcordanceCollocationDirection() as ConcordanceContextFilterDirection")
     && handleConcordanceCollocateBody.includes("collocateEvidenceLimit = CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT")
     && handleConcordanceCollocateBody.includes("void refreshCollocateEvidence();")
+    && !handleConcordanceCollocateBody.includes("preserveResult")
     && !handleConcordanceCollocateBody.includes("setActiveConcordanceView")
     && !workbench.includes("concordanceContextFilter"),
   "Collocate clicks should open dedicated inline evidence without switching to Concordance lines or mutating the base context filter",
@@ -448,8 +449,11 @@ assert(
     && refreshCollocateEvidenceBody.includes("contextFilterDirection: selection.direction")
     && refreshCollocateEvidenceBody.includes("offset: 0")
     && refreshCollocateEvidenceBody.includes("limit: collocateEvidenceLimit")
+    && refreshCollocateEvidenceBody.includes("options: { preserveResult?: boolean } = {}")
+    && refreshCollocateEvidenceBody.includes("if (!options.preserveResult) {\n    collocateEvidenceResult = null;\n  }")
+    && !refreshCollocateEvidenceBody.includes("collocateEvidenceFailure = null;\n  collocateEvidenceResult = null;\n  renderConcordanceCollocations();")
     && !refreshCollocateEvidenceBody.includes("collocateEvidenceOffset"),
-  "Base Concordance refresh should stay unfiltered while the collocate drawer performs a separate direction-aware cumulative evidence search",
+  "Base Concordance refresh should stay unfiltered while the collocate drawer performs a separate direction-aware cumulative evidence search with optional preserved results",
 );
 const collocateEvidenceLimitMatch = workbench.match(/const CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT = (\d+);/);
 assert(
@@ -501,6 +505,7 @@ assert(
   "Collocate evidence drawer renderer should exist before the click handler",
 );
 const collocateEvidenceDrawerBody = workbench.slice(collocateEvidenceDrawerStart, collocateEvidenceDrawerEnd);
+const legacyCollocateEvidenceMoreCopy = "Show more " + "evidence";
 assert(
   workbench.includes("function renderContextTokens(")
     && workbench.includes("concordanceContextTokenSegments(tokens, activeFilter, caseSensitive)")
@@ -563,22 +568,35 @@ assert(
   "Collocate rows should be clickable, keyboard accessible, mark the active evidence row, and render the drawer inline",
 );
 assert(
-  collocateEvidenceDrawerBody.includes("collocateEvidenceResult !== null && !collocateEvidencePending")
+  collocateEvidenceDrawerBody.includes("collocateEvidenceResult !== null && collocateEvidenceResult.totalHits > 0")
     && collocateEvidenceDrawerBody.includes("const hitCount = collocateEvidenceResult.totalHits;")
     && collocateEvidenceDrawerBody.includes("meta.textContent = `within ${formatNumber(span)} tokens · ${sideText}`;")
     && !collocateEvidenceDrawerBody.includes("collocateEvidenceResult?.totalHits ?? 0"),
-  "Collocate evidence drawer meta should omit line counts while evidence is pending without a result",
+  "Collocate evidence drawer meta should show line counts only when a non-empty result exists",
+);
+assert(
+  collocateEvidenceDrawerBody.indexOf("if (collocateEvidenceResult !== null && collocateEvidenceResult.totalHits > 0)") >= 0
+    && collocateEvidenceDrawerBody.indexOf("panel.appendChild(createCollocateEvidenceList(collocateEvidenceResult));")
+      < collocateEvidenceDrawerBody.indexOf("appendCollocateEvidenceMessage(panel, \"Loading evidence...\");")
+    && collocateEvidenceDrawerBody.includes("appendCollocateEvidenceMessage(panel, `Could not load more evidence: ${collocateEvidenceFailure}`, true);"),
+  "Collocate evidence drawer should keep existing rows visible while loading or reporting a failed show-more request",
 );
 assert(
   collocateEvidenceShowMoreBody.includes("function appendCollocateEvidenceShowMore")
     && collocateEvidenceShowMoreBody.includes('controls.className = "concordance-collocate-evidence-more"')
-    && collocateEvidenceShowMoreBody.includes("shown >= result.totalHits")
+    && collocateEvidenceShowMoreBody.includes("const remaining = Math.max(0, result.totalHits - shown);")
+    && collocateEvidenceShowMoreBody.includes("const nextCount = Math.min(CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT, remaining);")
+    && collocateEvidenceShowMoreBody.includes("remaining <= 0")
     && collocateEvidenceShowMoreBody.includes("Showing ${formatNumber(shown)} of ${formatNumber(result.totalHits)}")
-    && collocateEvidenceShowMoreBody.includes('more.textContent = "Show more evidence"')
-    && collocateEvidenceShowMoreBody.includes("collocateEvidenceLimit += CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT")
+    && collocateEvidenceShowMoreBody.includes('? "Loading..."')
+    && collocateEvidenceShowMoreBody.includes("`Show remaining ${formatNumber(remaining)}`")
+    && collocateEvidenceShowMoreBody.includes("`Show ${formatNumber(nextCount)} more`")
+    && collocateEvidenceShowMoreBody.includes("collocateEvidenceLimit += nextCount")
+    && collocateEvidenceShowMoreBody.includes("void refreshCollocateEvidence({ preserveResult: true });")
+    && !workbench.includes(legacyCollocateEvidenceMoreCopy)
     && !collocateEvidenceShowMoreBody.includes('previous.textContent = "Previous"')
     && !collocateEvidenceShowMoreBody.includes('next.textContent = "Next"'),
-  "Collocate evidence drawer should use cumulative Show more evidence controls instead of Previous/Next paging",
+  "Collocate evidence drawer should use cumulative count-based show-more controls instead of Previous/Next paging",
 );
 assert(
   styles.includes(".concordance-collocation-row.is-active td {\n  background: var(--cw-collocate-bg);")
@@ -660,22 +678,74 @@ assert(
     && concordanceRightCss.includes("overflow: hidden"),
   "Concordance right context should clip inside its own cell instead of forcing table scroll",
 );
+const concordanceCollocationScoreColumnCssMatch = styles.match(
+  /\.concordance-collocations-table > thead > tr > th:nth-child\(4\),\n\.concordance-collocations-table > tbody > tr\.concordance-collocation-row > td:nth-child\(4\) \{([\s\S]*?)\n\}/,
+);
+assert(concordanceCollocationScoreColumnCssMatch, "Concordance collocation measure-score column CSS should exist");
+const concordanceCollocationScoreColumnCss = concordanceCollocationScoreColumnCssMatch[1];
 assert(
-  styles.includes(".concordance-collocations-table > thead > tr > th:nth-child(4)")
-    && styles.includes(".concordance-collocations-table > tbody > tr.concordance-collocation-row > td:nth-child(4)")
-    && styles.includes("width: 24%")
-    && styles.includes("min-width: 760px"),
-  "Concordance collocation measure-score column should have visible full-width table space",
+  concordanceCollocationScoreColumnCss.includes("width: 24%;")
+    && styles.includes(".concordance-collocations-table-wrap {\n  max-width: 980px;")
+    && styles.includes(".concordance-collocations-table {\n  width: 100%;\n  min-width: 760px;"),
+  "Concordance collocation measure-score column should remain proportioned inside the capped collocations table",
+);
+const concordanceAnalyseShellOverrides = styles.match(/\.analyse-workbench\.is-concordance-active \.analyse-content \{([\s\S]*?)\n\}/g) ?? [];
+assert(
+  styles.includes(".analyse-content {\n  width: min(1180px, calc(100% - 48px));")
+    && concordanceAnalyseShellOverrides.every(
+      (block) =>
+        !block.includes("max-width: none")
+        && !block.includes("width: calc(100% - 48px)")
+        && !block.includes("width: calc(100% - 28px)"),
+    )
+    && !styles.includes("width: calc(100% - 48px)")
+    && !styles.includes("width: calc(100% - 28px)"),
+  "Concordance should share the normal Analyse content shell instead of using a Concordance-only full-width override",
+);
+const concordanceTableWrapCssMatch = styles.match(/\.concordance-table-wrap \{([\s\S]*?)\n\}/);
+const concordanceCollocationsTableWrapCssMatch = styles.match(/\.concordance-collocations-table-wrap \{([\s\S]*?)\n\}/);
+const concordanceDistributionTableWrapCssMatch = styles.match(
+  /\.concordance-distribution-table-wrap \{\n  max-width: 1000px;([\s\S]*?)\n\}/,
+);
+const frequencyTableWrapCssMatch = styles.match(/\.frequency-table-wrap \{([\s\S]*?)\n\}/);
+assert(concordanceTableWrapCssMatch, "Concordance table wrap CSS should exist");
+assert(concordanceCollocationsTableWrapCssMatch, "Concordance collocations table wrap CSS should exist");
+assert(concordanceDistributionTableWrapCssMatch, "Concordance distribution table wrap CSS should exist");
+assert(frequencyTableWrapCssMatch, "Frequency table wrap CSS should exist");
+const concordanceTableWrapCss = concordanceTableWrapCssMatch[1];
+const concordanceCollocationsTableWrapCss = concordanceCollocationsTableWrapCssMatch[1];
+const concordanceDistributionTableWrapCss = concordanceDistributionTableWrapCssMatch[0];
+const frequencyTableWrapCss = frequencyTableWrapCssMatch[1];
+assert(
+  concordanceTableWrapCss.includes("max-height: min(62vh, 720px);")
+    && concordanceTableWrapCss.includes("overflow-x: clip;")
+    && concordanceTableWrapCss.includes("overflow-y: auto;")
+    && styles.includes("@media (max-width: 760px)")
+    && styles.includes(".concordance-table-wrap {\n    overflow-x: auto;")
+    && styles.includes(".concordance-table {\n    min-width: 760px;"),
+  "Concordance lines should keep vertical scrolling inside the table wrap and reserve horizontal overflow for narrow viewports",
 );
 assert(
-  !styles.includes("max-height: min(62vh, 720px)")
-    && styles.includes(".analyse-workbench.is-concordance-active .analyse-content")
-    && styles.includes(".concordance-table-wrap {\n  overflow-x: clip;")
-    && styles.includes("@media (max-width: 760px)")
-    && styles.includes(".concordance-table {\n    min-width: 760px;")
-    && styles.includes(".concordance-collocations-table-wrap {\n  overflow-x: auto;")
-    && styles.includes(".concordance-distribution-table-wrap {\n  overflow-x: auto;"),
-  "Concordance should use a scoped wide workspace and reserve KWIC horizontal overflow for narrow viewports",
+  concordanceCollocationsTableWrapCss.includes("max-width: 980px;")
+    && concordanceCollocationsTableWrapCss.includes("max-height: min(58vh, 680px);")
+    && concordanceCollocationsTableWrapCss.includes("overflow-x: auto;")
+    && concordanceCollocationsTableWrapCss.includes("overflow-y: auto;"),
+  "Concordance collocations table wrap should cap width and height while retaining horizontal overflow",
+);
+assert(
+  concordanceDistributionTableWrapCss.includes("max-width: 1000px;")
+    && concordanceDistributionTableWrapCss.includes("max-height: min(58vh, 680px);")
+    && concordanceDistributionTableWrapCss.includes("overflow-x: auto;")
+    && concordanceDistributionTableWrapCss.includes("overflow-y: auto;"),
+  "Concordance distribution table wrap should cap width and height while retaining horizontal overflow",
+);
+assert(
+  frequencyTableWrapCss.includes("max-height: min(58vh, 680px);")
+    && frequencyTableWrapCss.includes("overflow: auto;")
+    && frequencyTableWrapCss.includes("border: 1px solid var(--border-color);")
+    && frequencyTableWrapCss.includes("border-radius: 4px;")
+    && frequencyTableWrapCss.includes("background: var(--bg-color);"),
+  "Frequency List table wrap should keep the existing internal scroll discipline",
 );
 const collocateTextCssMatch = styles.match(/\.concordance-collocate-text \{([\s\S]*?)\n\}/);
 assert(collocateTextCssMatch, "Collocate text CSS should exist");

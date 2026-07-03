@@ -2084,11 +2084,6 @@ main {
   gap: 18px;
 }
 
-.analyse-workbench.is-concordance-active .analyse-content {
-  width: calc(100% - 48px);
-  max-width: none;
-}
-
 .analyse-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 460px);
@@ -3442,7 +3437,9 @@ main {
 }
 
 .concordance-table-wrap {
+  max-height: min(62vh, 720px);
   overflow-x: clip;
+  overflow-y: auto;
 }
 
 .concordance-table {
@@ -3454,7 +3451,7 @@ main {
 
 .concordance-table th,
 .concordance-table td {
-  padding: 8px 10px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border-color);
   vertical-align: middle;
 }
@@ -3730,7 +3727,10 @@ main {
 }
 
 .concordance-distribution-table-wrap {
+  max-width: 1000px;
+  max-height: min(58vh, 680px);
   overflow-x: auto;
+  overflow-y: auto;
 }
 
 .concordance-distribution-table {
@@ -3826,7 +3826,10 @@ main {
 }
 
 .concordance-collocations-table-wrap {
+  max-width: 980px;
+  max-height: min(58vh, 680px);
   overflow-x: auto;
+  overflow-y: auto;
 }
 
 .concordance-collocations-table {
@@ -4528,10 +4531,6 @@ main {
   .analyse-content {
     width: min(100% - 28px, 1180px);
     padding-top: 24px;
-  }
-
-  .analyse-workbench.is-concordance-active .analyse-content {
-    width: calc(100% - 28px);
   }
 
   .analyse-workspace-shell {

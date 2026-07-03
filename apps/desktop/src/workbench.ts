@@ -2450,7 +2450,9 @@ function createCollocateEvidenceList(result: ConcordanceResult): HTMLDivElement 
 
 function appendCollocateEvidenceShowMore(parent: HTMLElement, result: ConcordanceResult): void {
   const shown = Math.min(result.totalHits, result.rows.length);
-  if (shown >= result.totalHits) {
+  const remaining = Math.max(0, result.totalHits - shown);
+  const nextCount = Math.min(CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT, remaining);
+  if (remaining <= 0) {
     return;
   }
 
@@ -2462,11 +2464,15 @@ function appendCollocateEvidenceShowMore(parent: HTMLElement, result: Concordanc
   const more = document.createElement("button");
   more.type = "button";
   more.className = "secondary-btn";
-  more.textContent = "Show more evidence";
+  more.textContent = collocateEvidencePending
+    ? "Loading..."
+    : remaining <= CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT
+      ? `Show remaining ${formatNumber(remaining)}`
+      : `Show ${formatNumber(nextCount)} more`;
   more.disabled = collocateEvidencePending;
   more.addEventListener("click", () => {
-    collocateEvidenceLimit += CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT;
-    void refreshCollocateEvidence();
+    collocateEvidenceLimit += nextCount;
+    void refreshCollocateEvidence({ preserveResult: true });
   });
 
   controls.append(status, more);
@@ -2498,7 +2504,7 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
   meta.className = "concordance-collocate-evidence-meta";
   const span = selection?.span ?? currentConcordanceCollocationSpan();
   const sideText = collocateEvidenceSideText(direction);
-  if (collocateEvidenceResult !== null && !collocateEvidencePending) {
+  if (collocateEvidenceResult !== null && collocateEvidenceResult.totalHits > 0) {
     const hitCount = collocateEvidenceResult.totalHits;
     const lineText = `${formatNumber(hitCount)} line${hitCount === 1 ? "" : "s"}`;
     meta.textContent = `${lineText} · within ${formatNumber(span)} tokens · ${sideText}`;
@@ -2518,7 +2524,13 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
   header.append(copy, close);
   panel.appendChild(header);
 
-  if (collocateEvidencePending) {
+  if (collocateEvidenceResult !== null && collocateEvidenceResult.totalHits > 0) {
+    panel.appendChild(createCollocateEvidenceList(collocateEvidenceResult));
+    appendCollocateEvidenceShowMore(panel, collocateEvidenceResult);
+    if (collocateEvidenceFailure !== null) {
+      appendCollocateEvidenceMessage(panel, `Could not load more evidence: ${collocateEvidenceFailure}`, true);
+    }
+  } else if (collocateEvidencePending) {
     appendCollocateEvidenceMessage(panel, "Loading evidence...");
   } else if (collocateEvidenceFailure !== null) {
     appendCollocateEvidenceMessage(panel, `Could not load evidence: ${collocateEvidenceFailure}`, true);
@@ -2527,9 +2539,6 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
       panel,
       "No evidence lines found for this collocate with the current span and direction.",
     );
-  } else {
-    panel.appendChild(createCollocateEvidenceList(collocateEvidenceResult));
-    appendCollocateEvidenceShowMore(panel, collocateEvidenceResult);
   }
 
   cell.appendChild(panel);
@@ -2993,7 +3002,9 @@ async function refreshConcordance(
   }
 }
 
-async function refreshCollocateEvidence(): Promise<void> {
+async function refreshCollocateEvidence(
+  options: { preserveResult?: boolean } = {},
+): Promise<void> {
   const selection = collocateEvidenceSelection;
   if (selection === null) {
     collocateEvidenceResult = null;
@@ -3006,7 +3017,9 @@ async function refreshCollocateEvidence(): Promise<void> {
   const generation = ++collocateEvidenceGeneration;
   collocateEvidencePending = true;
   collocateEvidenceFailure = null;
-  collocateEvidenceResult = null;
+  if (!options.preserveResult) {
+    collocateEvidenceResult = null;
+  }
   renderConcordanceCollocations();
 
   try {
