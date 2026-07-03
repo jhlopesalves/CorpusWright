@@ -11,14 +11,15 @@ use corpuswright_core::analysis::{
     AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, AnnotatedTermSelector,
     AnnotationCacheAvailability, AnnotationCacheBuildError, AnnotationCacheBuildPhase,
     AnnotationCacheBuildProgress, AnnotationCacheBuildReport, AnnotationCacheState,
-    ConcordanceCollocateRow, ConcordanceCollocationDirection, ConcordanceCollocationMeasure,
-    ConcordanceCollocationQuery, ConcordanceCollocationResult, ConcordanceCollocationSortKey,
-    ConcordanceContextFilterDirection, ConcordanceDistributionItem, ConcordanceDistributionPage,
-    ConcordanceExpansionQuery, ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult,
-    ConcordanceRow, ConcordanceSortKey, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
-    FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
-    FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow, SortDirection, TermDistributionItem,
-    TermDistributionPage,
+    CompareDocumentCell, CompareDocumentRow, CompareExpressionSummary, CompareExpressionsQuery,
+    CompareExpressionsResult, ConcordanceCollocateRow, ConcordanceCollocationDirection,
+    ConcordanceCollocationMeasure, ConcordanceCollocationQuery, ConcordanceCollocationResult,
+    ConcordanceCollocationSortKey, ConcordanceContextFilterDirection, ConcordanceDistributionItem,
+    ConcordanceDistributionPage, ConcordanceExpansionQuery, ConcordanceExpansionResult,
+    ConcordanceQuery, ConcordanceResult, ConcordanceRow, ConcordanceSortKey, FrequencyGroupMode,
+    FrequencyMatchMode, FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery,
+    FrequencySortKey, FrequencyTermItem, FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow,
+    SortDirection, TermDistributionItem, TermDistributionPage,
 };
 use corpuswright_core::clean::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
@@ -755,6 +756,38 @@ fn main() {
             TypeImport {
                 name: "ConcordanceDistributionPage",
                 file: "ConcordanceDistributionPage",
+            },
+        ],
+        &[],
+    );
+    export_type::<CompareDocumentCell>(&out_dir, &[], &[]);
+    export_type::<CompareDocumentRow>(
+        &out_dir,
+        &[TypeImport {
+            name: "CompareDocumentCell",
+            file: "CompareDocumentCell",
+        }],
+        &[],
+    );
+    export_type::<CompareExpressionSummary>(&out_dir, &[], &[]);
+    export_type::<CompareExpressionsQuery>(
+        &out_dir,
+        &[TypeImport {
+            name: "AnalysisDocumentSelection",
+            file: "AnalysisDocumentSelection",
+        }],
+        &[],
+    );
+    export_type::<CompareExpressionsResult>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "CompareExpressionSummary",
+                file: "CompareExpressionSummary",
+            },
+            TypeImport {
+                name: "CompareDocumentRow",
+                file: "CompareDocumentRow",
             },
         ],
         &[],

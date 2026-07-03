@@ -1,0 +1,1 @@
+export type CompareExpressionSummary = { expression: string, totalHits: number, documentsWithHits: number, ratePer10k: number, ratePerMillion: number, dp: number, dispersionLabel: string, topDocumentShare: number, };
