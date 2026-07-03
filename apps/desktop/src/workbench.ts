@@ -68,6 +68,7 @@ import {
   concordanceCollocationSortHeaderLabel,
   concordanceContextTokenSegments,
   concordanceExpansionViewModel,
+  concordanceRangePercent,
   concordanceSummaryMetricsText,
   concordanceRowExpansionKey,
   concordanceRowText,
@@ -222,7 +223,7 @@ let collocateEvidenceSelection: CollocateEvidenceSelection | null = null;
 let collocateEvidenceResult: ConcordanceResult | null = null;
 let collocateEvidencePending = false;
 let collocateEvidenceFailure: string | null = null;
-let collocateEvidenceOffset = 0;
+let collocateEvidenceLimit = CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT;
 let collocateEvidenceGeneration = 0;
 let expandedFrequencyTokens = new Set<string>();
 let termDistributionPages = new Map<string, TermDistributionPage>();
@@ -1791,7 +1792,7 @@ function clearCollocateEvidence(): void {
   collocateEvidenceResult = null;
   collocateEvidencePending = false;
   collocateEvidenceFailure = null;
-  collocateEvidenceOffset = 0;
+  collocateEvidenceLimit = CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT;
   collocateEvidenceGeneration += 1;
 }
 
@@ -2150,7 +2151,7 @@ function createConcordanceRow(row: ConcordanceRow): HTMLTableRowElement {
   item.setAttribute("role", "button");
   item.setAttribute("aria-expanded", expansion.ariaExpanded);
   item.setAttribute("aria-controls", concordanceExpansionDomId(rowKey));
-  item.title = "Show source preview";
+  item.title = "Show wider context";
   item.addEventListener("click", () => {
     void toggleConcordanceExpansion(row);
   });
@@ -2447,40 +2448,29 @@ function createCollocateEvidenceList(result: ConcordanceResult): HTMLDivElement 
   return list;
 }
 
-function appendCollocateEvidencePagination(parent: HTMLElement, result: ConcordanceResult): void {
-  if (result.totalHits <= result.limit) {
+function appendCollocateEvidenceShowMore(parent: HTMLElement, result: ConcordanceResult): void {
+  const shown = Math.min(result.totalHits, result.rows.length);
+  if (shown >= result.totalHits) {
     return;
   }
 
-  const pagination = document.createElement("div");
-  pagination.className = "analysis-pagination concordance-collocate-evidence-pagination";
-  const previous = document.createElement("button");
-  previous.type = "button";
-  previous.className = "secondary-btn";
-  previous.textContent = "Previous";
-  previous.disabled = result.offset === 0 || collocateEvidencePending;
-  previous.addEventListener("click", () => {
-    collocateEvidenceOffset = Math.max(0, result.offset - result.limit);
-    void refreshCollocateEvidence();
-  });
-
-  const first = result.totalHits === 0 ? 0 : result.offset + 1;
-  const last = Math.min(result.totalHits, result.offset + result.rows.length);
+  const controls = document.createElement("div");
+  controls.className = "concordance-collocate-evidence-more";
   const status = document.createElement("span");
-  status.textContent = `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(result.totalHits)}`;
+  status.textContent = `Showing ${formatNumber(shown)} of ${formatNumber(result.totalHits)}`;
 
-  const next = document.createElement("button");
-  next.type = "button";
-  next.className = "secondary-btn";
-  next.textContent = "Next";
-  next.disabled = result.offset + result.rows.length >= result.totalHits || collocateEvidencePending;
-  next.addEventListener("click", () => {
-    collocateEvidenceOffset = result.offset + result.limit;
+  const more = document.createElement("button");
+  more.type = "button";
+  more.className = "secondary-btn";
+  more.textContent = "Show more evidence";
+  more.disabled = collocateEvidencePending;
+  more.addEventListener("click", () => {
+    collocateEvidenceLimit += CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT;
     void refreshCollocateEvidence();
   });
 
-  pagination.append(previous, status, next);
-  parent.appendChild(pagination);
+  controls.append(status, more);
+  parent.appendChild(controls);
 }
 
 function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTableRowElement {
@@ -2506,10 +2496,15 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
   title.textContent = `Evidence for "${row.surface}" ${collocateEvidenceRelationText(direction)} "${query}"`;
   const meta = document.createElement("span");
   meta.className = "concordance-collocate-evidence-meta";
-  const hitCount = collocateEvidenceResult?.totalHits ?? 0;
-  const lineText = `${formatNumber(hitCount)} line${hitCount === 1 ? "" : "s"}`;
   const span = selection?.span ?? currentConcordanceCollocationSpan();
-  meta.textContent = `${lineText} · within ${formatNumber(span)} tokens · ${collocateEvidenceSideText(direction)}`;
+  const sideText = collocateEvidenceSideText(direction);
+  if (collocateEvidenceResult !== null && !collocateEvidencePending) {
+    const hitCount = collocateEvidenceResult.totalHits;
+    const lineText = `${formatNumber(hitCount)} line${hitCount === 1 ? "" : "s"}`;
+    meta.textContent = `${lineText} · within ${formatNumber(span)} tokens · ${sideText}`;
+  } else {
+    meta.textContent = `within ${formatNumber(span)} tokens · ${sideText}`;
+  }
   copy.append(title, meta);
 
   const close = document.createElement("button");
@@ -2534,7 +2529,7 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
     );
   } else {
     panel.appendChild(createCollocateEvidenceList(collocateEvidenceResult));
-    appendCollocateEvidencePagination(panel, collocateEvidenceResult);
+    appendCollocateEvidenceShowMore(panel, collocateEvidenceResult);
   }
 
   cell.appendChild(panel);
@@ -2555,7 +2550,7 @@ function handleConcordanceCollocateClick(row: ConcordanceCollocateRow): void {
     span: currentConcordanceCollocationSpan(),
     direction: currentConcordanceCollocationDirection() as ConcordanceContextFilterDirection,
   };
-  collocateEvidenceOffset = 0;
+  collocateEvidenceLimit = CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT;
   collocateEvidenceFailure = null;
   collocateEvidenceResult = null;
   void refreshCollocateEvidence();
@@ -2680,7 +2675,7 @@ function renderConcordanceCollocations(): void {
   }
 
   dom.concordanceCollocationsSummary.textContent =
-    `${explanation} ${formatNumber(result.fNode)} nodes · ${formatNumber(result.r1)} slots · ${formatNumber(result.n)} tokens.`;
+    `${explanation} · ${formatNumber(result.fNode)} nodes · ${formatNumber(result.r1)} slots · ${formatNumber(result.n)} tokens`;
   renderConcordanceCollocationStatus(null);
 
   const rows = result.rows;
@@ -2714,7 +2709,7 @@ function renderConcordanceDistribution(
   const title = document.createElement("span");
   title.className = "concordance-document-spread-title";
   if (result && result.totalHits > 0) {
-    title.textContent = `Distribution — ${concordanceSummaryMetricsText(result)}`;
+    title.textContent = "Distribution";
   } else if (result) {
     title.textContent = "Distribution — no hits in the selected files";
   } else {
@@ -2722,6 +2717,51 @@ function renderConcordanceDistribution(
   }
   panelHeader.appendChild(title);
   panel.appendChild(panelHeader);
+
+  if (result && result.totalHits > 0) {
+    const metrics = document.createElement("div");
+    metrics.className = "concordance-distribution-metrics";
+
+    const hitMetric = document.createElement("div");
+    hitMetric.className = "concordance-distribution-metric";
+    const hitLabel = document.createElement("span");
+    hitLabel.className = "concordance-distribution-metric-label";
+    hitLabel.textContent = "Hits";
+    const hitValue = document.createElement("strong");
+    hitValue.textContent = formatNumber(result.totalHits);
+    hitMetric.append(hitLabel, hitValue);
+
+    const rangeMetric = document.createElement("div");
+    rangeMetric.className = "concordance-distribution-metric";
+    const rangeLabel = document.createElement("span");
+    rangeLabel.className = "concordance-distribution-metric-label";
+    rangeLabel.textContent = "Range";
+    const rangeValue = document.createElement("strong");
+    rangeValue.textContent =
+      `${formatNumber(result.documentsWithHits)} / ${formatNumber(result.selectedDocumentsTotal)} files · ${formatFixedNumber(concordanceRangePercent(result), 1)}%`;
+    rangeMetric.append(rangeLabel, rangeValue);
+
+    const topFileMetric = document.createElement("div");
+    topFileMetric.className = "concordance-distribution-metric";
+    const topFileLabel = document.createElement("span");
+    topFileLabel.className = "concordance-distribution-metric-label";
+    topFileLabel.textContent = "Top file";
+    const topFileValue = document.createElement("strong");
+    topFileValue.textContent = `${formatFixedNumber(result.topDocumentShare * 100, 1)}%`;
+    topFileMetric.append(topFileLabel, topFileValue);
+
+    const dispersionMetric = document.createElement("div");
+    dispersionMetric.className = "concordance-distribution-metric";
+    const dispersionLabel = document.createElement("span");
+    dispersionLabel.className = "concordance-distribution-metric-label";
+    dispersionLabel.textContent = "Dispersion";
+    const dispersionValue = document.createElement("strong");
+    dispersionValue.textContent = `DP ${formatFixedNumber(result.dp, 2)} · ${result.dispersionLabel}`;
+    dispersionMetric.append(dispersionLabel, dispersionValue);
+
+    metrics.append(hitMetric, rangeMetric, topFileMetric, dispersionMetric);
+    panel.appendChild(metrics);
+  }
 
   const tableWrap = document.createElement("div");
   tableWrap.className = "concordance-distribution-table-wrap";
@@ -2979,8 +3019,8 @@ async function refreshCollocateEvidence(): Promise<void> {
         caseSensitive: selection.caseSensitive,
         sortKey: "filePosition",
         windowTokens: selection.span,
-        offset: collocateEvidenceOffset,
-        limit: CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT,
+        offset: 0,
+        limit: collocateEvidenceLimit,
         distributionOffset: 0,
         distributionLimit: 1,
       },
@@ -2991,7 +3031,6 @@ async function refreshCollocateEvidence(): Promise<void> {
       return;
     }
     collocateEvidenceResult = result;
-    collocateEvidenceOffset = result.offset;
   } catch (error) {
     if (generation !== collocateEvidenceGeneration) {
       return;
