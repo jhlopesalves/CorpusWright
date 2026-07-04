@@ -4,17 +4,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="About CorpusWright: the story, position, and maker behind the project.">
+  <meta name="description" content="About CorpusWright: where the project stands, and who maintains it.">
   <title>About · CorpusWright</title>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="CorpusWright">
   <meta property="og:title" content="About · CorpusWright">
-  <meta property="og:description" content="About CorpusWright: the story, position, and maker behind the project.">
+  <meta property="og:description" content="About CorpusWright: where the project stands, and who maintains it.">
   <meta property="og:url" content="https://jhlopesalves.github.io/CorpusWright/about.html">
   <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="About · CorpusWright">
-  <meta name="twitter:description" content="About CorpusWright: the story, position, and maker behind the project.">
+  <meta name="twitter:description" content="About CorpusWright: where the project stands, and who maintains it.">
   <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
   <link rel="stylesheet" href="assets/site.css">
   <link rel="icon" href="assets/icon.png">
@@ -74,22 +74,11 @@
     <section class="section learn-content">
       <div class="shell">
         <div class="docs-content learn-prose">
-          <section class="learn-section">
-            <h2 id="story">The story</h2>
-
-            <p>CorpusWright began as a solo project, born mostly out of impatience.</p>
-
-            <p>As an undergraduate, I joined an "iniciação científica" project: compile a corpus of Agrarian Sciences articles, analyse it, and build teaching materials from it. I was given the task every undergraduate ends up with - cleaning the corpus - using a script that stripped unwanted characters from text files one at a time. The schedule allowed eight to twelve months for the job, and nobody around me found that strange; nor, I suspect, would most corpus linguistics projects. A few weeks of Python later, I could clean whole directories at once, and the work took days.</p>
-
-            <p>Everyone treated this as remarkable. It was not - not even close. A few lines of regex and pathlib; any programmer would call it a warm-up exercise. I declined to register the tool as intellectual property for exactly that reason - there was nothing there worth owning - and the refusal mattered far more than the code did: it left the idea free to stay open, and eventually to grow into this.</p>
-
-            <p>What stayed with me wasn't the speed so much as what the speed revealed. Once the cleaning dropped from months to days, everything else stayed the same: the corpus was still barely examined. That's when it clicked that the real constraint wasn't exactly the tooling; it was a habit - treating description as the tedious bit you get through on the way to the comparison you actually want to publish. (And yes, as I write this, I can see the origin story and the founding position are basically the same story told twice - which might be suspicious. I'm choosing to read it as reassuring.)</p>
-          </section>
 
           <section class="learn-section">
             <h2 id="stance">Where CorpusWright stands</h2>
 
-            <p>CorpusWright is built on one position: the description of a corpus is not a preliminary step taken before statistical analysis; it is the first stage of statistical analysis. The data-science tradition has a name for this stage: exploratory data analysis (Tukey, 1977), the work of understanding a dataset's structure, its distribution, and its limits before any confirmatory claim is made. Corpus research skips this stage more often than it should, treating description as a formality on the way to the comparison a study set out to make. CorpusWright's response is not an argument but a default: the descriptive diagnostics are computed for every corpus, in the same way, every time - whether or not anyone planned to look at them.</p>
+            <p>CorpusWright is built on one position: the description of a corpus is not a preliminary step taken before statistical analysis; it is the first stage of statistical analysis. The data-science tradition has a name for this stage: exploratory data analysis (Tukey, 1977), the work of understanding a dataset's structure, its distribution, and its limits before any confirmatory claim is made. CorpusWright's response is not an argument but a default: the descriptive diagnostics are computed for every corpus, in the same way, every time - whether or not anyone planned to look at them.</p>
 
             <p>The position is not novel, and the project does not claim it as its own. It is the ordinary discipline of open science - reproducible results, transparent methods, findings that carry their provenance, claims held to organised scepticism - applied consistently to one corner of linguistics where it is applied unevenly. In practice, that discipline means five things:</p>
 
@@ -101,28 +90,32 @@
               <li><strong>Statistically restrained.</strong> Frequencies are reported as what they are, without overstatement; measures respect corpus design, dispersion, document-level variation, and their own uncertainty.</li>
             </ul>
 
-            <p>The documentation holds itself to the same standard: no performance claim without a measured number, and nothing experimental or merely planned presented as completed.</p>
-
-            <p>Why a stated position rather than a neutral product? Because a neutral analysis tool is a comforting idea and a fictional one. Every tool takes positions; defaults decide what gets looked at, and a diagnostic that only runs on request is a diagnostic that rarely runs. This page states CorpusWright's positions so that they can be argued with - software that is opinionated and says so, rather than opinionated and calling itself neutral.</p>
-
             <h3>Nothing new, made routine</h3>
 
-            <p>None of the mathematics in CorpusWright is new, and the tool does not pretend otherwise: Zipf's law dates to Zipf (1949), Shannon entropy to Shannon (1948), and the principles of careful corpus design are older still. What is comparatively new is having all of these diagnostics presented by default in a local-first tool that recomputes them in the same way every time. Left to themselves, these measures stay as scripts you might never write, simply because they aren't part of the standard training, and their existence and interpretive value never become routine. That is the only sense in which CorpusWright is "modern": it takes an old and serious set of ideas and makes them routine and reproducible.</p>
-
-            <p>CorpusWright is in alpha, and that will not be dressed up either. Parts of it are solid, parts are scaffolding, and the documentation labels which is which.</p>
+            <p>None of the mathematics in CorpusWright is new: Zipf’s law dates to Zipf (1949), Shannon entropy to Shannon (1948), and the principles of careful corpus design are older still. What is new is the delivery: a local-first tool that computes these diagnostics by default, in the same way, every time.</p>
           </section>
 
           <section class="learn-section">
-            <h2 id="maker">The maker</h2>
+            <h2 id="maintainer">Maintainer</h2>
 
-            <p>I am a corpus linguist who programs, in that order. The linguistics came first; the Rust and the Python exist to serve it. And the frustration behind this tool is practical, not quite stylistic. I've spent enough time watching the field's default routine - normalise per thousand words, run the familiar test, call it a day - to want the careful way to also be the easy way.</p>
+            <div class="maintainer-card">
+              <figure>
+                <img src="assets/maintainer.jpg" alt="Jhonatan H. Lopes" width="140" height="140">
+                <figcaption>Jhonatan H. Lopes</figcaption>
+              </figure>
+              <div>
+                <p>CorpusWright started as a solo project and is maintained, for now, by the person who started it.</p>
 
-            <p>Where to find me:</p>
+                <p>The short version of the origin: as an undergraduate on an iniciação científica project, I was given eight to twelve months to clean a corpus one file at a time; a few weeks of Python reduced the job to days - and the corpus still went barely examined. CorpusWright is the long answer to that experience.</p>
 
-            <ul>
-              <li>GitHub: <a href="https://github.com/jhlopesalves">jhlopesalves</a>; the project lives at <a href="https://github.com/jhlopesalves/CorpusWright">https://github.com/jhlopesalves/CorpusWright</a></li>
-              <li>Substack: <a href="https://substack.com/@jhonatanhlopes">https://substack.com/@jhonatanhlopes</a></li>
-            </ul>
+                <p>Where to find me:</p>
+
+                <ul>
+                  <li>GitHub: <a href="https://github.com/jhlopesalves">jhlopesalves</a></li>
+                  <li>Substack: <a href="https://substack.com/@jhonatanhlopes">https://substack.com/@jhonatanhlopes</a></li>
+                </ul>
+              </div>
+            </div>
           </section>
         </div>
       </div>
