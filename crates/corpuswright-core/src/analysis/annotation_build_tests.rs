@@ -911,8 +911,13 @@ fn test_annotation_cache_seam_stale_cache() {
         languages_used: vec![],
     };
 
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     // 2. Build with cache root
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
@@ -1016,8 +1021,13 @@ fn test_annotation_cache_seam_valid_cache() {
         &options.language_overrides,
     )
     .unwrap();
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     // 4. Run fresh analysis build with cache root
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
@@ -1111,8 +1121,13 @@ fn test_annotation_cache_seam_validation_reject_bad_layer_docs() {
     )
     .unwrap();
 
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
     let corpus2 = build_analysis_corpus(
@@ -1184,8 +1199,13 @@ fn test_annotation_cache_seam_validation_reject_bad_ids() {
         &options.language_overrides,
     )
     .unwrap();
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
     let corpus2 = build_analysis_corpus(
@@ -1262,8 +1282,13 @@ fn test_annotation_cache_seam_tokenisation_threading() {
     )
     .unwrap();
 
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     // Build with default tokenization config (should read Stale)
     let mut options_default = build_options();
@@ -1347,8 +1372,13 @@ fn test_annotation_cache_seam_mixed_en_pt() {
     assert!(manifest.models.iter().any(|m| m.language == "pt"));
     assert!(manifest.models.iter().any(|m| m.language == "en"));
 
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
     let corpus_cached = build_analysis_corpus(
