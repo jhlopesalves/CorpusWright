@@ -4,8 +4,8 @@ use super::concordance::{
     ConcordanceFallbackReason, ConcordanceSearchContext, analysis_word_tokens, concordance_key,
     resolve_concordance_query_tokens, selected_concordance_document_ids,
 };
-use super::frequency::{SortDirection, case_fold_surface};
-use super::shared::ENGLISH_STOPWORDS;
+use super::frequency::SortDirection;
+use super::shared::{StopwordLanguage, stopword_matches};
 use crate::index::{
     IndexStore, SurfaceIndexError, SurfaceIndexQuery, SurfaceIndexTokenRecord, search_surface_index,
 };
@@ -67,6 +67,8 @@ pub struct ConcordanceCollocationQuery {
     #[serde(default)]
     pub selection: AnalysisDocumentSelection,
     pub query: String,
+    #[serde(default)]
+    pub language: Option<String>,
     #[serde(default)]
     pub case_sensitive: bool,
     #[serde(default)]
@@ -251,10 +253,6 @@ fn concordance_collocation_limit(limit: usize) -> usize {
     } else {
         limit.clamp(1, CONCORDANCE_COLLOCATION_MAX_LIMIT)
     }
-}
-
-fn stopword_matches(value: &str) -> bool {
-    ENGLISH_STOPWORDS.contains(case_fold_surface(value).as_str())
 }
 
 fn add_collocation_window_token_keys(
@@ -845,7 +843,12 @@ pub fn query_concordance_collocations_from_aggregate(
         .candidate_counts
         .iter()
         .filter_map(|(surface, counts)| {
-            if query.hide_stopwords && stopword_matches(surface) {
+            if query.hide_stopwords
+                && stopword_matches(
+                    surface,
+                    StopwordLanguage::from_subtag(query.language.as_deref()),
+                )
+            {
                 return None;
             }
             let collocate_frequency = *aggregate.collocate_frequencies.get(surface).unwrap_or(&0);

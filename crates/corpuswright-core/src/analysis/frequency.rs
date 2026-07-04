@@ -4,8 +4,8 @@ use super::build::{
 };
 use super::distribution::selected_document_mask;
 use super::shared::{
-    ANNOTATED_DP_BROADLY_DISPERSED_MAX, ANNOTATED_DP_HIGHLY_CONCENTRATED_MIN, ENGLISH_STOPWORDS,
-    MAX_QUERY_WINDOW,
+    ANNOTATED_DP_BROADLY_DISPERSED_MAX, ANNOTATED_DP_HIGHLY_CONCENTRATED_MIN, MAX_QUERY_WINDOW,
+    StopwordLanguage, stopword_matches,
 };
 use crate::annotation::UniversalPos;
 use regex::{Regex, RegexBuilder};
@@ -162,6 +162,8 @@ pub struct AnnotatedFrequencyQuery {
     pub mode: AnnotatedFrequencyMode,
     #[serde(default)]
     pub query: String,
+    #[serde(default)]
+    pub language: Option<String>,
     #[serde(default)]
     pub match_mode: FrequencyMatchMode,
     #[serde(default)]
@@ -881,7 +883,10 @@ pub fn query_annotated_frequency(
             }
             if query.hide_stopwords {
                 rows.retain(|row| {
-                    !ENGLISH_STOPWORDS.contains(case_fold_surface(&row.lemma).as_str())
+                    !stopword_matches(
+                        &row.lemma,
+                        StopwordLanguage::from_subtag(query.language.as_deref()),
+                    )
                 });
             }
             rows.retain(|row| row.raw >= query.minimum_frequency);
@@ -1014,7 +1019,11 @@ pub fn query_frequency_list(corpus: &AnalysisCorpus, query: &FrequencyQuery) -> 
     let mut items = Vec::new();
     for (token, group) in groups {
         if group.frequency < query.minimum_frequency
-            || (query.hide_stopwords && ENGLISH_STOPWORDS.contains(token.as_str()))
+            || (query.hide_stopwords
+                && stopword_matches(
+                    &token,
+                    StopwordLanguage::from_subtag(query.language.as_deref()),
+                ))
         {
             continue;
         }

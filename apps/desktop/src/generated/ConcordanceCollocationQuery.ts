@@ -4,4 +4,4 @@ import type { ConcordanceCollocationMeasure } from "./ConcordanceCollocationMeas
 import type { ConcordanceCollocationSortKey } from "./ConcordanceCollocationSortKey.js";
 import type { SortDirection } from "./SortDirection.js";
 
-export type ConcordanceCollocationQuery = { selection: AnalysisDocumentSelection, query: string, caseSensitive: boolean, span: number, direction: ConcordanceCollocationDirection, minCooccurrence: number, minCollocateFrequency: number, hideStopwords: boolean, sortMeasure: ConcordanceCollocationMeasure, sortKey: ConcordanceCollocationSortKey, sortDirection: SortDirection, limit: number, };
+export type ConcordanceCollocationQuery = { selection: AnalysisDocumentSelection, query: string, language: string | null, caseSensitive: boolean, span: number, direction: ConcordanceCollocationDirection, minCooccurrence: number, minCollocateFrequency: number, hideStopwords: boolean, sortMeasure: ConcordanceCollocationMeasure, sortKey: ConcordanceCollocationSortKey, sortDirection: SortDirection, limit: number, };

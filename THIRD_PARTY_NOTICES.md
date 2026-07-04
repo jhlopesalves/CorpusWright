@@ -49,3 +49,14 @@ licences.
 - **Model build attribution:** bnosac credits the `udpipe` R package, fastText
   word-vector work by Bojanowski, Grave, Joulin, and Mikolov, and the
   corresponding Universal Dependencies treebanks for the model builds.
+
+## stopwords-iso
+
+- **Component:** Multilingual stopword lists (English, French, Portuguese)
+- **Source:**
+  - `https://github.com/stopwords-iso/stopwords-en` (Commit: `ccc8898188850d8fb019d5f69c14a6635c3bd115`)
+  - `https://github.com/stopwords-iso/stopwords-fr` (Commit: `069f556be89f2f08de2f1b8313084bb4610f30b4`)
+  - `https://github.com/stopwords-iso/stopwords-pt` (Commit: `84249b7ca37005f8cd19df70d86f44dc1f1936a5`)
+- **Licence:** MIT
+- **Location in repository:** `crates/corpuswright-core/resources/stopwords/`
+- **Retrieval Date:** 2026-07-03
