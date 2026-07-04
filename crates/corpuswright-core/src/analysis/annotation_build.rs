@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::time::{Duration, Instant};
 use ts_rs::TS;
@@ -1223,11 +1224,10 @@ where
         .map(|input| input.language.clone())
         .collect::<BTreeSet<_>>();
 
-    preflight_annotation_languages(&languages_used, &model_dir)?;
-
     let worker_documents = annotate_annotation_documents(
         &inputs,
         &surface_term_lookup,
+        &languages_used,
         &model_dir,
         cancel,
         parallel_map,
@@ -1407,9 +1407,8 @@ pub(super) fn build_surface_term_lookup(
 
 fn preflight_annotation_languages(
     languages: &BTreeSet<String>,
-    model_dir: &Path,
+    manager: &mut ModelManager,
 ) -> Result<(), AnnotationLayerBuildError> {
-    let mut manager = ModelManager::new(model_dir.to_path_buf());
     let mut unsupported = Vec::new();
     for language in languages {
         match manager.load_model(language) {
@@ -1436,6 +1435,7 @@ fn preflight_annotation_languages(
 fn annotate_annotation_documents(
     inputs: &[AnnotationDocumentInput],
     surface_term_lookup: &HashMap<String, u32>,
+    languages_used: &BTreeSet<String>,
     model_dir: &Path,
     cancel: &AtomicBool,
     parallel_map: bool,
@@ -1446,6 +1446,7 @@ fn annotate_annotation_documents(
         annotate_annotation_documents_in_staged_waves(
             inputs,
             surface_term_lookup,
+            languages_used,
             model_dir,
             cancel,
             tokenization_config,
@@ -1453,6 +1454,7 @@ fn annotate_annotation_documents(
         )
     } else {
         let mut manager = ModelManager::new(model_dir.to_path_buf());
+        preflight_annotation_languages(languages_used, &mut manager)?;
         inputs
             .iter()
             .map(|input| {
@@ -1478,11 +1480,27 @@ fn annotate_annotation_documents(
 fn annotate_annotation_documents_in_staged_waves(
     inputs: &[AnnotationDocumentInput],
     surface_term_lookup: &HashMap<String, u32>,
+    languages_used: &BTreeSet<String>,
     model_dir: &Path,
     cancel: &AtomicBool,
     tokenization_config: &TokenizationConfig,
     runtime: AnnotationLayerBuildRuntime<'_>,
 ) -> Result<Vec<WorkerAnnotationDocument>, AnnotationLayerBuildError> {
+    let manager_count = rayon::current_num_threads().max(1);
+    let managers = (0..manager_count)
+        .map(|_| Mutex::new(ModelManager::new(model_dir.to_path_buf())))
+        .collect::<Vec<_>>();
+    {
+        let mut manager =
+            managers[0]
+                .lock()
+                .map_err(|_| AnnotationLayerBuildError::ModelPreflightFailed {
+                    language: "*".to_string(),
+                    error: "annotation model manager lock poisoned".to_string(),
+                })?;
+        preflight_annotation_languages(languages_used, &mut manager)?;
+    }
+
     let mut worker_documents = Vec::with_capacity(inputs.len());
     let mut next_input = 0usize;
     let mut pending = None;
@@ -1501,7 +1519,7 @@ fn annotate_annotation_documents_in_staged_waves(
         let wave_documents = annotate_staged_annotation_wave_documents(
             &wave,
             surface_term_lookup,
-            model_dir,
+            &managers,
             cancel,
             runtime,
         )?;
@@ -1616,27 +1634,31 @@ fn annotation_chunk_jobs(wave: &[StagedAnnotationDocument<'_>]) -> Vec<Annotatio
 fn annotate_staged_annotation_wave_documents(
     wave: &[StagedAnnotationDocument<'_>],
     surface_term_lookup: &HashMap<String, u32>,
-    model_dir: &Path,
+    managers: &[Mutex<ModelManager>],
     cancel: &AtomicBool,
     runtime: AnnotationLayerBuildRuntime<'_>,
 ) -> Result<Vec<WorkerAnnotationDocument>, AnnotationLayerBuildError> {
     let jobs = annotation_chunk_jobs(wave);
-    let model_dir = model_dir.to_path_buf();
     let annotated_chunks = jobs
         .par_iter()
-        .map_init(
-            || ModelManager::new(model_dir.clone()),
-            |manager, job| {
-                let staged_document = &wave[job.document_position];
-                tag_staged_annotation_chunk(staged_document, job, manager, cancel, runtime.timing)
-                    .map(|annotations| AnnotatedAnnotationChunk {
-                        document_position: job.document_position,
-                        chunk_index: job.chunk_index,
-                        chunk: job.chunk.clone(),
-                        annotations,
-                    })
-            },
-        )
+        .map(|job| {
+            let staged_document = &wave[job.document_position];
+            let manager_slot = rayon::current_thread_index().unwrap_or(0) % managers.len();
+            let mut manager = managers[manager_slot].lock().map_err(|_| {
+                AnnotationLayerBuildError::ModelTaggingFailed {
+                    analysis_document_index: staged_document.input.analysis_document_index,
+                    language: staged_document.input.language.clone(),
+                    error: "annotation model manager lock poisoned".to_string(),
+                }
+            })?;
+            tag_staged_annotation_chunk(staged_document, job, &mut manager, cancel, runtime.timing)
+                .map(|annotations| AnnotatedAnnotationChunk {
+                    document_position: job.document_position,
+                    chunk_index: job.chunk_index,
+                    chunk: job.chunk.clone(),
+                    annotations,
+                })
+        })
         .collect::<Result<Vec<_>, _>>()?;
 
     let mut chunks_by_document = (0..wave.len()).map(|_| Vec::new()).collect::<Vec<_>>();
