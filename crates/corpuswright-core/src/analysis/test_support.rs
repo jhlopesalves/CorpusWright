@@ -232,6 +232,7 @@ pub(super) fn collocation_query(query: &str) -> ConcordanceCollocationQuery {
     ConcordanceCollocationQuery {
         selection: AnalysisDocumentSelection::default(),
         query: query.to_string(),
+        language: None,
         case_sensitive: false,
         span: 2,
         direction: ConcordanceCollocationDirection::Both,
@@ -481,6 +482,7 @@ pub(super) fn annotated_frequency_query(mode: AnnotatedFrequencyMode) -> Annotat
         selection: AnalysisDocumentSelection::default(),
         mode,
         query: String::new(),
+        language: None,
         match_mode: FrequencyMatchMode::Contains,
         minimum_frequency: 1,
         hide_stopwords: false,
