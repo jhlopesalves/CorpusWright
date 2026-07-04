@@ -354,6 +354,19 @@ struct NativeModel {
     ptr: NonNull<CwUdpipeModel>,
 }
 
+// SAFETY: CwUdpipeModel is an owned, heap-allocated handle with no
+// thread affinity. The shim stores no model ownership or model pointer
+// in thread-local or global mutable state; each operation receives the
+// model pointer explicitly. The only permitted thread-local state in
+// the shim is per-thread error-message storage, not model state.
+// NativeModel is never used concurrently by the annotation manager pool:
+// each ModelManager is protected by a Mutex in annotation_build.rs, so
+// load/tag access to the underlying native model is exclusive. This
+// grants Send only, allowing the owned handle to be transferred between
+// threads. NativeModel remains !Sync and must not be shared for
+// concurrent access.
+unsafe impl Send for NativeModel {}
+
 impl NativeModel {
     fn load(path: &Path) -> Result<Self, AnnotationError> {
         let path_string = path.to_string_lossy();
