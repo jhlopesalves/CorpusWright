@@ -495,6 +495,13 @@ struct AnnotationChunkJob {
     chunk: Range<usize>,
 }
 
+struct AnnotatedAnnotationChunk {
+    document_position: usize,
+    chunk_index: usize,
+    chunk: Range<usize>,
+    annotations: Vec<AnnotatedToken>,
+}
+
 #[derive(Clone, Copy)]
 struct AnnotationLayerBuildRuntime<'a> {
     docs_done: &'a std::sync::atomic::AtomicUsize,
@@ -1614,58 +1621,50 @@ fn annotate_staged_annotation_wave_documents(
     runtime: AnnotationLayerBuildRuntime<'_>,
 ) -> Result<Vec<WorkerAnnotationDocument>, AnnotationLayerBuildError> {
     let jobs = annotation_chunk_jobs(wave);
-    let mut jobs_by_document = (0..wave.len()).map(|_| Vec::new()).collect::<Vec<_>>();
-    for job in jobs {
-        jobs_by_document[job.document_position].push(job);
-    }
-
     let model_dir = model_dir.to_path_buf();
-    wave.par_iter()
-        .zip(jobs_by_document.par_iter())
+    let annotated_chunks = jobs
+        .par_iter()
         .map_init(
             || ModelManager::new(model_dir.clone()),
-            |manager, (staged_document, chunk_jobs)| {
-                let result = annotate_staged_annotation_document(
-                    staged_document,
-                    chunk_jobs,
-                    surface_term_lookup,
-                    manager,
-                    cancel,
-                    runtime.timing,
-                );
-                if result.is_ok() {
-                    runtime
-                        .docs_done
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                }
-                result
+            |manager, job| {
+                let staged_document = &wave[job.document_position];
+                tag_staged_annotation_chunk(staged_document, job, manager, cancel, runtime.timing)
+                    .map(|annotations| AnnotatedAnnotationChunk {
+                        document_position: job.document_position,
+                        chunk_index: job.chunk_index,
+                        chunk: job.chunk.clone(),
+                        annotations,
+                    })
             },
         )
-        .collect()
-}
+        .collect::<Result<Vec<_>, _>>()?;
 
-fn annotate_staged_annotation_document(
-    staged_document: &StagedAnnotationDocument<'_>,
-    chunk_jobs: &[AnnotationChunkJob],
-    surface_term_lookup: &HashMap<String, u32>,
-    manager: &mut ModelManager,
-    cancel: &AtomicBool,
-    timing: Option<&AnnotationBuildTimingCounters>,
-) -> Result<WorkerAnnotationDocument, AnnotationLayerBuildError> {
-    let mut annotated_chunks = Vec::with_capacity(chunk_jobs.len());
-    for (expected_chunk_index, job) in chunk_jobs.iter().enumerate() {
-        debug_assert_eq!(job.chunk_index, expected_chunk_index);
-        let chunk_annotations =
-            tag_staged_annotation_chunk(staged_document, job, manager, cancel, timing)?;
-        annotated_chunks.push((job.chunk.clone(), chunk_annotations));
+    let mut chunks_by_document = (0..wave.len()).map(|_| Vec::new()).collect::<Vec<_>>();
+    for annotated_chunk in annotated_chunks {
+        chunks_by_document[annotated_chunk.document_position].push(annotated_chunk);
     }
 
-    finish_staged_annotation_document(
-        staged_document,
-        surface_term_lookup,
-        annotated_chunks,
-        timing,
-    )
+    let mut worker_documents = Vec::with_capacity(wave.len());
+    for (document_position, staged_document) in wave.iter().enumerate() {
+        let mut document_chunks = std::mem::take(&mut chunks_by_document[document_position]);
+        document_chunks.sort_by_key(|chunk| chunk.chunk_index);
+        let annotated_chunks = document_chunks
+            .into_iter()
+            .map(|chunk| (chunk.chunk, chunk.annotations))
+            .collect();
+        let document = finish_staged_annotation_document(
+            staged_document,
+            surface_term_lookup,
+            annotated_chunks,
+            runtime.timing,
+        )?;
+        runtime
+            .docs_done
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        worker_documents.push(document);
+    }
+
+    Ok(worker_documents)
 }
 
 fn tag_staged_annotation_chunk(
