@@ -645,8 +645,13 @@ fn some_path_cache_still_ready() {
         &options.language_overrides,
     )
     .unwrap();
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     let cached = build_analysis_corpus(
         &records,
