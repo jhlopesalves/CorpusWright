@@ -1755,27 +1755,28 @@ fn annotate_staged_annotation_wave_documents(
         chunks_by_document[annotated_chunk.document_position].push(annotated_chunk);
     }
 
-    let mut worker_documents = Vec::with_capacity(wave.len());
-    for (document_position, staged_document) in wave.iter().enumerate() {
-        let mut document_chunks = std::mem::take(&mut chunks_by_document[document_position]);
-        document_chunks.sort_by_key(|chunk| chunk.chunk_index);
-        let annotated_chunks = document_chunks
-            .into_iter()
-            .map(|chunk| (chunk.chunk, chunk.annotations))
-            .collect();
-        let document = finish_staged_annotation_document(
-            staged_document,
-            surface_term_lookup,
-            annotated_chunks,
-            runtime.timing,
-        )?;
-        runtime
-            .docs_done
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        worker_documents.push(document);
-    }
+    let finished_documents = chunks_by_document
+        .into_par_iter()
+        .enumerate()
+        .map(|(document_position, mut document_chunks)| {
+            let staged_document = &wave[document_position];
+            document_chunks.sort_by_key(|chunk| chunk.chunk_index);
+            let annotated_chunks = document_chunks
+                .into_iter()
+                .map(|chunk| (chunk.chunk, chunk.annotations))
+                .collect();
+            let document = finish_staged_annotation_document(
+                staged_document,
+                surface_term_lookup,
+                annotated_chunks,
+                runtime.timing,
+            )?;
+            runtime.docs_done.fetch_add(1, AtomicOrdering::Relaxed);
+            Ok(document)
+        })
+        .collect::<Vec<Result<_, _>>>();
 
-    Ok(worker_documents)
+    finished_documents.into_iter().collect()
 }
 
 fn tag_staged_annotation_chunk(
