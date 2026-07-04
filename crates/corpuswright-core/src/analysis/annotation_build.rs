@@ -16,10 +16,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::time::{Duration, Instant};
 use ts_rs::TS;
 const ANNOTATION_TIMING_ENV: &str = "CORPUSWRIGHT_ANNOTATION_TIMING";
+const ANNOTATION_WAVE_CHUNKS_PER_WORKER: usize = 16;
 #[cfg(test)]
 pub(super) static TEST_ANNOTATION_TIMING_ENABLED: AtomicBool = AtomicBool::new(false);
 
@@ -174,6 +176,11 @@ pub(crate) struct AnnotationBuildTimingCounters {
     annotation_input_load_ns: AtomicU64,
     identity_verification_ns: AtomicU64,
     in_loop_retokenisation_ns: AtomicU64,
+    model_checksum_ns: AtomicU64,
+    model_load_ns: AtomicU64,
+    model_load_attempts: AtomicU64,
+    model_load_actual: AtomicU64,
+    manager_instances_created: AtomicU64,
     udpipe_tag_call_ns: AtomicU64,
     alignment_ns: AtomicU64,
     local_counting_ns: AtomicU64,
@@ -192,6 +199,11 @@ impl AnnotationBuildTimingCounters {
             annotation_input_load_ns: AtomicU64::new(0),
             identity_verification_ns: AtomicU64::new(0),
             in_loop_retokenisation_ns: AtomicU64::new(0),
+            model_checksum_ns: AtomicU64::new(0),
+            model_load_ns: AtomicU64::new(0),
+            model_load_attempts: AtomicU64::new(0),
+            model_load_actual: AtomicU64::new(0),
+            manager_instances_created: AtomicU64::new(0),
             udpipe_tag_call_ns: AtomicU64::new(0),
             alignment_ns: AtomicU64::new(0),
             local_counting_ns: AtomicU64::new(0),
@@ -230,6 +242,28 @@ impl AnnotationBuildTimingCounters {
 
     fn record_in_loop_retokenisation(&self, duration: Duration) {
         Self::add_duration(&self.in_loop_retokenisation_ns, duration);
+    }
+
+    fn record_model_checksum(&self, duration: Duration) {
+        Self::add_duration(&self.model_checksum_ns, duration);
+    }
+
+    fn record_model_load(&self, duration: Duration) {
+        Self::add_duration(&self.model_load_ns, duration);
+    }
+
+    fn record_model_load_attempt(&self) {
+        self.model_load_attempts
+            .fetch_add(1, AtomicOrdering::Relaxed);
+    }
+
+    fn record_model_load_actual(&self) {
+        self.model_load_actual.fetch_add(1, AtomicOrdering::Relaxed);
+    }
+
+    fn record_manager_instance_created(&self) {
+        self.manager_instances_created
+            .fetch_add(1, AtomicOrdering::Relaxed);
     }
 
     fn record_udpipe_tag_call(&self, duration: Duration) {
@@ -330,9 +364,14 @@ fn log_annotation_build_timings(
     } else {
         "rebuilt"
     };
+    let model_load_attempts = timing.model_load_attempts.load(AtomicOrdering::Relaxed);
+    let model_load_actual = timing.model_load_actual.load(AtomicOrdering::Relaxed);
+    let manager_instances_created = timing
+        .manager_instances_created
+        .load(AtomicOrdering::Relaxed);
 
     eprintln!(
-        "annotation_timing total_wall_ms={:.2} documents={} tokens={} docs_per_sec={:.2} tokens_per_sec={:.2} rayon_workers={} cache={} cache_written={} active_surface_reused={} internal_surface_rebuild_ran={} duplicate_tokenisation_avoided=false readback_verification={}",
+        "annotation_timing total_wall_ms={:.2} documents={} tokens={} docs_per_sec={:.2} tokens_per_sec={:.2} rayon_workers={} cache={} cache_written={} active_surface_reused={} internal_surface_rebuild_ran={} duplicate_tokenisation_avoided=false readback_verification={} model_load_attempts={} model_load_actual={} manager_instances_created={}",
         duration_ms(total),
         context.documents,
         context.tokens,
@@ -343,7 +382,10 @@ fn log_annotation_build_timings(
         context.cache_written,
         context.active_surface_reused,
         context.internal_surface_rebuild_ran,
-        timing.readback_verification_ran()
+        timing.readback_verification_ran(),
+        model_load_attempts,
+        model_load_actual,
+        manager_instances_created
     );
     log_annotation_timing_bucket(
         "internal surface rebuild",
@@ -368,6 +410,16 @@ fn log_annotation_build_timings(
     log_annotation_timing_bucket(
         "in-loop re-tokenisation",
         AnnotationBuildTimingCounters::load_duration(&timing.in_loop_retokenisation_ns),
+        total,
+    );
+    log_annotation_timing_bucket(
+        "model_checksum",
+        AnnotationBuildTimingCounters::load_duration(&timing.model_checksum_ns),
+        total,
+    );
+    log_annotation_timing_bucket(
+        "model_load",
+        AnnotationBuildTimingCounters::load_duration(&timing.model_load_ns),
         total,
     );
     log_annotation_timing_bucket(
@@ -481,10 +533,36 @@ struct WorkerAnnotationDocument {
     term_counts: Vec<LocalAnnotatedTermCount>,
 }
 
+struct StagedAnnotationDocument<'a> {
+    input: &'a AnnotationDocumentInput,
+    tokens: Vec<Token<'a>>,
+    chunks: Vec<Range<usize>>,
+}
+
+#[derive(Clone)]
+struct AnnotationChunkJob {
+    document_position: usize,
+    chunk_index: usize,
+    chunk: Range<usize>,
+}
+
+struct AnnotatedAnnotationChunk {
+    document_position: usize,
+    chunk_index: usize,
+    chunk: Range<usize>,
+    annotations: Vec<AnnotatedToken>,
+}
+
 #[derive(Clone, Copy)]
 struct AnnotationLayerBuildRuntime<'a> {
     docs_done: &'a std::sync::atomic::AtomicUsize,
     timing: Option<&'a AnnotationBuildTimingCounters>,
+}
+
+#[derive(Clone, Copy)]
+struct AnnotationModelBuildContext<'a> {
+    languages_used: &'a BTreeSet<String>,
+    model_dir: &'a Path,
 }
 
 enum AnnotationSurfaceCorpusInput<'a> {
@@ -1202,12 +1280,13 @@ where
         .map(|input| input.language.clone())
         .collect::<BTreeSet<_>>();
 
-    preflight_annotation_languages(&languages_used, &model_dir)?;
-
     let worker_documents = annotate_annotation_documents(
         &inputs,
         &surface_term_lookup,
-        &model_dir,
+        AnnotationModelBuildContext {
+            languages_used: &languages_used,
+            model_dir: &model_dir,
+        },
         cancel,
         parallel_map,
         &corpus.tokenization,
@@ -1386,12 +1465,12 @@ pub(super) fn build_surface_term_lookup(
 
 fn preflight_annotation_languages(
     languages: &BTreeSet<String>,
-    model_dir: &Path,
+    manager: &mut ModelManager,
+    timing: Option<&AnnotationBuildTimingCounters>,
 ) -> Result<(), AnnotationLayerBuildError> {
-    let mut manager = ModelManager::new(model_dir.to_path_buf());
     let mut unsupported = Vec::new();
     for language in languages {
-        match manager.load_model(language) {
+        match load_annotation_model(manager, language, timing) {
             Ok(()) => {}
             Err(AnnotationError::ModelNotFound { language }) => unsupported.push(language),
             Err(error) => {
@@ -1415,38 +1494,24 @@ fn preflight_annotation_languages(
 fn annotate_annotation_documents(
     inputs: &[AnnotationDocumentInput],
     surface_term_lookup: &HashMap<String, u32>,
-    model_dir: &Path,
+    model_context: AnnotationModelBuildContext<'_>,
     cancel: &AtomicBool,
     parallel_map: bool,
     tokenization_config: &TokenizationConfig,
     runtime: AnnotationLayerBuildRuntime<'_>,
 ) -> Result<Vec<WorkerAnnotationDocument>, AnnotationLayerBuildError> {
     if parallel_map {
-        let model_dir = model_dir.to_path_buf();
-        inputs
-            .par_iter()
-            .map_init(
-                || ModelManager::new(model_dir.clone()),
-                |manager, input| {
-                    let result = annotate_annotation_document(
-                        input,
-                        surface_term_lookup,
-                        manager,
-                        cancel,
-                        tokenization_config,
-                        runtime.timing,
-                    );
-                    if result.is_ok() {
-                        runtime
-                            .docs_done
-                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    }
-                    result
-                },
-            )
-            .collect()
+        annotate_annotation_documents_in_staged_waves(
+            inputs,
+            surface_term_lookup,
+            model_context,
+            cancel,
+            tokenization_config,
+            runtime,
+        )
     } else {
-        let mut manager = ModelManager::new(model_dir.to_path_buf());
+        let mut manager = new_annotation_model_manager(model_context.model_dir, runtime.timing);
+        preflight_annotation_languages(model_context.languages_used, &mut manager, runtime.timing)?;
         inputs
             .iter()
             .map(|input| {
@@ -1469,6 +1534,337 @@ fn annotate_annotation_documents(
     }
 }
 
+fn annotate_annotation_documents_in_staged_waves(
+    inputs: &[AnnotationDocumentInput],
+    surface_term_lookup: &HashMap<String, u32>,
+    model_context: AnnotationModelBuildContext<'_>,
+    cancel: &AtomicBool,
+    tokenization_config: &TokenizationConfig,
+    runtime: AnnotationLayerBuildRuntime<'_>,
+) -> Result<Vec<WorkerAnnotationDocument>, AnnotationLayerBuildError> {
+    let manager_count = rayon::current_num_threads().max(1);
+    let managers = (0..manager_count)
+        .map(|_| {
+            Mutex::new(new_annotation_model_manager(
+                model_context.model_dir,
+                runtime.timing,
+            ))
+        })
+        .collect::<Vec<_>>();
+    {
+        let mut manager =
+            managers[0]
+                .lock()
+                .map_err(|_| AnnotationLayerBuildError::ModelPreflightFailed {
+                    language: "*".to_string(),
+                    error: "annotation model manager lock poisoned".to_string(),
+                })?;
+        preflight_annotation_languages(model_context.languages_used, &mut manager, runtime.timing)?;
+    }
+
+    let mut worker_documents = Vec::with_capacity(inputs.len());
+    let mut next_input = 0usize;
+    let mut pending = None;
+    let token_budget = annotation_wave_token_budget();
+
+    let mut current_wave = if next_input < inputs.len() || pending.is_some() {
+        stage_next_annotation_wave(
+            inputs,
+            &mut next_input,
+            &mut pending,
+            token_budget,
+            cancel,
+            tokenization_config,
+            runtime.timing,
+        )?
+    } else {
+        Vec::new()
+    };
+
+    while !current_wave.is_empty() {
+        let (wave_documents_result, next_wave_result) = rayon::join(
+            || {
+                annotate_staged_annotation_wave_documents(
+                    &current_wave,
+                    surface_term_lookup,
+                    &managers,
+                    cancel,
+                    runtime,
+                )
+            },
+            || {
+                if next_input < inputs.len() || pending.is_some() {
+                    stage_next_annotation_wave(
+                        inputs,
+                        &mut next_input,
+                        &mut pending,
+                        token_budget,
+                        cancel,
+                        tokenization_config,
+                        runtime.timing,
+                    )
+                } else {
+                    Ok(Vec::new())
+                }
+            },
+        );
+        let wave_documents = wave_documents_result?;
+        let next_wave = next_wave_result?;
+        worker_documents.extend(wave_documents);
+        current_wave = next_wave;
+    }
+
+    Ok(worker_documents)
+}
+
+fn new_annotation_model_manager(
+    model_dir: &Path,
+    timing: Option<&AnnotationBuildTimingCounters>,
+) -> ModelManager {
+    if let Some(timing) = timing {
+        timing.record_manager_instance_created();
+    }
+    ModelManager::new(model_dir.to_path_buf())
+}
+
+fn load_annotation_model(
+    manager: &mut ModelManager,
+    language: &str,
+    timing: Option<&AnnotationBuildTimingCounters>,
+) -> Result<(), AnnotationError> {
+    if let Some(timing) = timing {
+        manager.load_model_with_timing(
+            language,
+            || timing.record_model_load_attempt(),
+            || timing.record_model_load_actual(),
+            |duration| timing.record_model_checksum(duration),
+            |duration| timing.record_model_load(duration),
+        )
+    } else {
+        manager.load_model(language)
+    }
+}
+
+fn annotation_wave_token_budget() -> usize {
+    rayon::current_num_threads()
+        .max(1)
+        .saturating_mul(ANNOTATION_SENTENCE_CHUNK_WORD_CAP)
+        .saturating_mul(ANNOTATION_WAVE_CHUNKS_PER_WORKER)
+        .max(ANNOTATION_SENTENCE_CHUNK_WORD_CAP)
+}
+
+fn stage_next_annotation_wave<'a>(
+    inputs: &'a [AnnotationDocumentInput],
+    next_input: &mut usize,
+    pending: &mut Option<StagedAnnotationDocument<'a>>,
+    token_budget: usize,
+    cancel: &AtomicBool,
+    tokenization_config: &TokenizationConfig,
+    timing: Option<&AnnotationBuildTimingCounters>,
+) -> Result<Vec<StagedAnnotationDocument<'a>>, AnnotationLayerBuildError> {
+    let mut wave = Vec::new();
+    let mut staged_tokens = 0usize;
+
+    if let Some(staged) = pending.take() {
+        staged_tokens = staged_annotation_document_token_weight(&staged);
+        wave.push(staged);
+    }
+
+    if staged_tokens >= token_budget {
+        return Ok(wave);
+    }
+
+    while *next_input < inputs.len() {
+        let staged =
+            stage_annotation_document(&inputs[*next_input], cancel, tokenization_config, timing)?;
+        *next_input += 1;
+        let token_weight = staged_annotation_document_token_weight(&staged);
+        if !wave.is_empty() && staged_tokens.saturating_add(token_weight) > token_budget {
+            *pending = Some(staged);
+            break;
+        }
+
+        staged_tokens = staged_tokens.saturating_add(token_weight);
+        wave.push(staged);
+        if staged_tokens >= token_budget {
+            break;
+        }
+    }
+
+    Ok(wave)
+}
+
+fn staged_annotation_document_token_weight(document: &StagedAnnotationDocument<'_>) -> usize {
+    document.tokens.len().max(1)
+}
+
+fn stage_annotation_document<'a>(
+    input: &'a AnnotationDocumentInput,
+    cancel: &AtomicBool,
+    tokenization_config: &TokenizationConfig,
+    timing: Option<&AnnotationBuildTimingCounters>,
+) -> Result<StagedAnnotationDocument<'a>, AnnotationLayerBuildError> {
+    if cancel.load(AtomicOrdering::Relaxed) {
+        return Err(AnnotationLayerBuildError::Cancelled);
+    }
+
+    let document_id = u32::try_from(input.analysis_document_index).map_err(|_| {
+        AnnotationLayerBuildError::CorpusDocumentMismatch {
+            reason: "analysis corpus contains more than u32::MAX documents".to_string(),
+        }
+    })?;
+    let retokenisation_started = Instant::now();
+    let mut annotation_tokenization_config = *tokenization_config;
+    annotation_tokenization_config.include_punctuation = true;
+    let tokens = tokenize(&input.text, document_id, &annotation_tokenization_config);
+    if let Some(timing) = timing {
+        timing.record_in_loop_retokenisation(retokenisation_started.elapsed());
+    }
+    let chunks = sentence_chunks(&tokens, ANNOTATION_SENTENCE_CHUNK_WORD_CAP);
+
+    Ok(StagedAnnotationDocument {
+        input,
+        tokens,
+        chunks,
+    })
+}
+
+fn annotation_chunk_jobs(wave: &[StagedAnnotationDocument<'_>]) -> Vec<AnnotationChunkJob> {
+    wave.iter()
+        .enumerate()
+        .flat_map(|(document_position, document)| {
+            document
+                .chunks
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(move |(chunk_index, chunk)| AnnotationChunkJob {
+                    document_position,
+                    chunk_index,
+                    chunk,
+                })
+        })
+        .collect()
+}
+
+fn annotate_staged_annotation_wave_documents(
+    wave: &[StagedAnnotationDocument<'_>],
+    surface_term_lookup: &HashMap<String, u32>,
+    managers: &[Mutex<ModelManager>],
+    cancel: &AtomicBool,
+    runtime: AnnotationLayerBuildRuntime<'_>,
+) -> Result<Vec<WorkerAnnotationDocument>, AnnotationLayerBuildError> {
+    let jobs = annotation_chunk_jobs(wave);
+    let annotated_chunks = jobs
+        .par_iter()
+        .map(|job| {
+            let staged_document = &wave[job.document_position];
+            let manager_slot = rayon::current_thread_index().unwrap_or(0) % managers.len();
+            let mut manager = managers[manager_slot].lock().map_err(|_| {
+                AnnotationLayerBuildError::ModelTaggingFailed {
+                    analysis_document_index: staged_document.input.analysis_document_index,
+                    language: staged_document.input.language.clone(),
+                    error: "annotation model manager lock poisoned".to_string(),
+                }
+            })?;
+            tag_staged_annotation_chunk(staged_document, job, &mut manager, cancel, runtime.timing)
+                .map(|annotations| AnnotatedAnnotationChunk {
+                    document_position: job.document_position,
+                    chunk_index: job.chunk_index,
+                    chunk: job.chunk.clone(),
+                    annotations,
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut chunks_by_document = (0..wave.len()).map(|_| Vec::new()).collect::<Vec<_>>();
+    for annotated_chunk in annotated_chunks {
+        chunks_by_document[annotated_chunk.document_position].push(annotated_chunk);
+    }
+
+    let finished_documents = chunks_by_document
+        .into_par_iter()
+        .enumerate()
+        .map(|(document_position, mut document_chunks)| {
+            let staged_document = &wave[document_position];
+            document_chunks.sort_by_key(|chunk| chunk.chunk_index);
+            let annotated_chunks = document_chunks
+                .into_iter()
+                .map(|chunk| (chunk.chunk, chunk.annotations))
+                .collect();
+            let document = finish_staged_annotation_document(
+                staged_document,
+                surface_term_lookup,
+                annotated_chunks,
+                runtime.timing,
+            )?;
+            runtime.docs_done.fetch_add(1, AtomicOrdering::Relaxed);
+            Ok(document)
+        })
+        .collect::<Vec<Result<_, _>>>();
+
+    finished_documents.into_iter().collect()
+}
+
+fn tag_staged_annotation_chunk(
+    staged_document: &StagedAnnotationDocument<'_>,
+    job: &AnnotationChunkJob,
+    manager: &mut ModelManager,
+    cancel: &AtomicBool,
+    timing: Option<&AnnotationBuildTimingCounters>,
+) -> Result<Vec<AnnotatedToken>, AnnotationLayerBuildError> {
+    if cancel.load(AtomicOrdering::Relaxed) {
+        return Err(AnnotationLayerBuildError::Cancelled);
+    }
+
+    let input = staged_document.input;
+    load_annotation_model(manager, &input.language, timing)
+        .map_err(|error| annotation_document_error(input, error))?;
+
+    let token_surfaces = staged_document.tokens[job.chunk.clone()]
+        .iter()
+        .map(|token| token.surface)
+        .collect::<Vec<_>>();
+    if let Some(timing) = timing {
+        manager.tag_and_align_with_timing(
+            &input.language,
+            &token_surfaces,
+            |duration| timing.record_udpipe_tag_call(duration),
+            |duration| timing.record_alignment(duration),
+        )
+    } else {
+        manager.tag_and_align(&input.language, &token_surfaces)
+    }
+    .map_err(|error| annotation_document_error(input, error))
+}
+
+fn finish_staged_annotation_document(
+    staged_document: &StagedAnnotationDocument<'_>,
+    surface_term_lookup: &HashMap<String, u32>,
+    annotated_chunks: Vec<(Range<usize>, Vec<AnnotatedToken>)>,
+    timing: Option<&AnnotationBuildTimingCounters>,
+) -> Result<WorkerAnnotationDocument, AnnotationLayerBuildError> {
+    let input = staged_document.input;
+    let annotated_tokens =
+        project_chunk_annotations_to_word_tokens(input, &staged_document.tokens, annotated_chunks)?;
+    let counting_started = Instant::now();
+    let term_counts = resolve_annotated_tokens_to_local_counts(
+        input.analysis_document_index,
+        &annotated_tokens,
+        surface_term_lookup,
+    )?;
+    if let Some(timing) = timing {
+        timing.record_local_counting(counting_started.elapsed());
+    }
+
+    Ok(WorkerAnnotationDocument {
+        analysis_document_index: input.analysis_document_index,
+        source_path: input.source_path.clone(),
+        relative_path: input.relative_path.clone(),
+        term_counts,
+    })
+}
+
 fn annotate_annotation_document(
     input: &AnnotationDocumentInput,
     surface_term_lookup: &HashMap<String, u32>,
@@ -1481,8 +1877,7 @@ fn annotate_annotation_document(
         return Err(AnnotationLayerBuildError::Cancelled);
     }
 
-    manager
-        .load_model(&input.language)
+    load_annotation_model(manager, &input.language, timing)
         .map_err(|error| annotation_document_error(input, error))?;
 
     let document_id = u32::try_from(input.analysis_document_index).map_err(|_| {
