@@ -5,7 +5,7 @@ use crate::annotation::{AnnotatedToken, LemmaTable, UniversalPos, default_model_
 use crate::language::{ProjectLanguage, resolve_effective_document_languages};
 use crate::scan::DocumentRecord;
 use crate::tokenization::{TokenizationConfig, tokenize};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
 
@@ -79,6 +79,62 @@ fn annotation_layer_result_for_with_timing(
         parallel_map,
         AnnotationLayerBuildRuntime { docs_done, timing },
     )?;
+    Ok((corpus, layer))
+}
+
+fn annotation_layer_result_for_with_wave_budget(
+    texts: &[(&str, &str)],
+    language_overrides: HashMap<usize, String>,
+    cancel: &AtomicBool,
+    docs_done: &AtomicUsize,
+    timing: Option<&AnnotationBuildTimingCounters>,
+    wave_budget: usize,
+) -> Result<(AnalysisCorpus, AnnotationLayer), AnnotationLayerBuildError> {
+    let mut analysis_options = build_options();
+    analysis_options.language_overrides = language_overrides.clone();
+    let corpus = analysis_product_for(texts, analysis_options, true).corpus;
+    let records = texts
+        .iter()
+        .map(|(name, _)| record(name))
+        .collect::<Vec<_>>();
+    let text_by_name = texts.iter().copied().collect::<HashMap<_, _>>();
+    let mut load_text = |record: &DocumentRecord| {
+        Ok(processed_resolution(
+            record,
+            text_by_name
+                .get(record.source_path.to_str().unwrap())
+                .copied()
+                .unwrap_or_default(),
+        ))
+    };
+    let inputs = load_annotation_document_inputs(
+        &corpus,
+        &records,
+        &language_overrides,
+        cancel,
+        &mut load_text,
+        timing,
+    )?;
+    let surface_term_lookup = build_surface_term_lookup(&corpus)?;
+    let languages_used = inputs
+        .iter()
+        .map(|input| input.language.clone())
+        .collect::<BTreeSet<_>>();
+    let model_dir = default_model_dir();
+    let worker_documents = annotate_annotation_documents_in_staged_waves_with_budget(
+        &inputs,
+        &surface_term_lookup,
+        AnnotationModelBuildContext {
+            languages_used: &languages_used,
+            model_dir: &model_dir,
+        },
+        cancel,
+        &corpus.tokenization,
+        AnnotationLayerBuildRuntime { docs_done, timing },
+        wave_budget,
+    )?;
+    let layer =
+        reduce_annotation_documents(worker_documents, languages_used.into_iter().collect())?;
     Ok((corpus, layer))
 }
 
@@ -383,6 +439,208 @@ fn annotation_chunk_parallel_model_loads_are_bounded_per_worker() {
             model_load_attempts > model_load_actual,
             "multi-chunk fixture should exercise cached model-load hits"
         );
+    });
+}
+
+#[test]
+fn annotation_segment_waves_oversized_document_matches_serial_reference() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let wave_budget = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP;
+        let whale = repeated_word_text("whale", wave_budget * 3 + 23);
+        let texts = [("whale.txt", whale.as_str())];
+        let language_overrides = english_overrides(texts.len());
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let timing = AnnotationBuildTimingCounters::new();
+        let docs_done = AtomicUsize::new(0);
+
+        let (_, segmented) = annotation_layer_result_for_with_wave_budget(
+            &texts,
+            language_overrides,
+            &AtomicBool::new(false),
+            &docs_done,
+            Some(&timing),
+            wave_budget,
+        )
+        .unwrap();
+
+        assert_eq!(segmented, serial);
+        assert_eq!(docs_done.load(AtomicOrdering::Relaxed), texts.len());
+        let segments_processed = timing
+            .annotation_segments_processed
+            .load(AtomicOrdering::Relaxed);
+        assert_eq!(segments_processed, 4);
+        assert!(segments_processed > 1);
+    });
+}
+
+#[test]
+fn annotation_segment_waves_mixed_corpus_matches_serial_reference() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let wave_budget = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP;
+        let whale = repeated_word_text("whale", wave_budget * 4 + 37);
+        let texts = [
+            ("a-small.txt", "Cats run quickly."),
+            ("b-whale.txt", whale.as_str()),
+            ("c-small.txt", "Dogs jump."),
+        ];
+        let language_overrides = english_overrides(texts.len());
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let timing = AnnotationBuildTimingCounters::new();
+        let docs_done = AtomicUsize::new(0);
+
+        let (_, segmented) = annotation_layer_result_for_with_wave_budget(
+            &texts,
+            language_overrides,
+            &AtomicBool::new(false),
+            &docs_done,
+            Some(&timing),
+            wave_budget,
+        )
+        .unwrap();
+
+        assert_eq!(segmented, serial);
+        assert_eq!(docs_done.load(AtomicOrdering::Relaxed), texts.len());
+        assert!(
+            timing
+                .annotation_segments_processed
+                .load(AtomicOrdering::Relaxed)
+                > 1
+        );
+    });
+}
+
+#[test]
+fn annotation_segment_waves_single_giant_chunk_is_own_segment() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let wave_budget = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP / 4;
+        let word_count = wave_budget + 7;
+        assert!(word_count < crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP);
+        let giant = repeated_word_text("giant", word_count);
+        let texts = [("giant.txt", giant.as_str())];
+        let language_overrides = english_overrides(texts.len());
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let timing = AnnotationBuildTimingCounters::new();
+        let docs_done = AtomicUsize::new(0);
+
+        let (_, segmented) = annotation_layer_result_for_with_wave_budget(
+            &texts,
+            language_overrides,
+            &AtomicBool::new(false),
+            &docs_done,
+            Some(&timing),
+            wave_budget,
+        )
+        .unwrap();
+
+        assert_eq!(segmented, serial);
+        assert_eq!(docs_done.load(AtomicOrdering::Relaxed), texts.len());
+        assert_eq!(
+            timing
+                .annotation_segments_processed
+                .load(AtomicOrdering::Relaxed),
+            1
+        );
+    });
+}
+
+#[test]
+fn annotation_segment_waves_under_budget_waves_use_existing_path() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let wave_budget = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP * 8;
+        let texts = [
+            ("a-small.txt", "Cats run quickly."),
+            ("b-small.txt", "Dogs jump."),
+            ("c-small.txt", "Birds sing."),
+        ];
+        let language_overrides = english_overrides(texts.len());
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let timing = AnnotationBuildTimingCounters::new();
+        let docs_done = AtomicUsize::new(0);
+
+        let (_, parallel) = annotation_layer_result_for_with_wave_budget(
+            &texts,
+            language_overrides,
+            &AtomicBool::new(false),
+            &docs_done,
+            Some(&timing),
+            wave_budget,
+        )
+        .unwrap();
+
+        assert_eq!(parallel, serial);
+        assert_eq!(docs_done.load(AtomicOrdering::Relaxed), texts.len());
+        assert_eq!(
+            timing
+                .annotation_segments_processed
+                .load(AtomicOrdering::Relaxed),
+            0
+        );
+    });
+}
+
+#[test]
+fn annotation_segment_waves_cancellation_between_segments() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let wave_budget = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP;
+        let whale = repeated_word_text("whale", wave_budget * 20 + 3);
+        let texts = [("whale.txt", whale.as_str())];
+        let language_overrides = english_overrides(texts.len());
+        let timing = AnnotationBuildTimingCounters::new();
+        let cancel = AtomicBool::new(false);
+        let docs_done = AtomicUsize::new(0);
+
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                while timing
+                    .annotation_segments_processed
+                    .load(AtomicOrdering::Relaxed)
+                    == 0
+                {
+                    std::thread::yield_now();
+                }
+                cancel.store(true, AtomicOrdering::Relaxed);
+            });
+
+            let result = annotation_layer_result_for_with_wave_budget(
+                &texts,
+                language_overrides,
+                &cancel,
+                &docs_done,
+                Some(&timing),
+                wave_budget,
+            );
+
+            match result {
+                Err(error) => assert_eq!(error, AnnotationLayerBuildError::Cancelled),
+                Ok(_) => panic!("segmented annotation build completed after cancellation"),
+            }
+        });
+        assert_eq!(docs_done.load(AtomicOrdering::Relaxed), 0);
     });
 }
 
