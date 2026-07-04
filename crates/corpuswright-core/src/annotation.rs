@@ -665,6 +665,24 @@ impl ModelManager {
 
     /// Load a model for `language` (cached).
     pub fn load_model(&mut self, language: &str) -> Result<(), AnnotationError> {
+        self.load_model_with_timing(language, || {}, || {}, |_| {}, |_| {})
+    }
+
+    pub fn load_model_with_timing<Attempt, Actual, ChecksumTiming, LoadTiming>(
+        &mut self,
+        language: &str,
+        mut record_attempt: Attempt,
+        mut record_actual: Actual,
+        mut record_checksum_timing: ChecksumTiming,
+        mut record_load_timing: LoadTiming,
+    ) -> Result<(), AnnotationError>
+    where
+        Attempt: FnMut(),
+        Actual: FnMut(),
+        ChecksumTiming: FnMut(Duration),
+        LoadTiming: FnMut(Duration),
+    {
+        record_attempt();
         if self.loaded.contains_key(language) {
             return Ok(());
         }
@@ -674,8 +692,15 @@ impl ModelManager {
                 language: language.to_string(),
             });
         }
-        compute_and_verify_model_checksum(&path)?;
-        let model = NativeModel::load(&path)?;
+        record_actual();
+        let checksum_started = Instant::now();
+        let checksum_result = compute_and_verify_model_checksum(&path);
+        record_checksum_timing(checksum_started.elapsed());
+        checksum_result?;
+        let load_started = Instant::now();
+        let model_result = NativeModel::load(&path);
+        record_load_timing(load_started.elapsed());
+        let model = model_result?;
         self.loaded.insert(language.to_string(), model);
         Ok(())
     }

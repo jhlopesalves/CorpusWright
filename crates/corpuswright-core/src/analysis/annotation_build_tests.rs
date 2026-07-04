@@ -36,6 +36,24 @@ fn annotation_layer_result_for(
     cancel: &AtomicBool,
     docs_done: &AtomicUsize,
 ) -> Result<(AnalysisCorpus, AnnotationLayer), AnnotationLayerBuildError> {
+    annotation_layer_result_for_with_timing(
+        texts,
+        language_overrides,
+        parallel_map,
+        cancel,
+        docs_done,
+        None,
+    )
+}
+
+fn annotation_layer_result_for_with_timing(
+    texts: &[(&str, &str)],
+    language_overrides: HashMap<usize, String>,
+    parallel_map: bool,
+    cancel: &AtomicBool,
+    docs_done: &AtomicUsize,
+    timing: Option<&AnnotationBuildTimingCounters>,
+) -> Result<(AnalysisCorpus, AnnotationLayer), AnnotationLayerBuildError> {
     let mut analysis_options = build_options();
     analysis_options.language_overrides = language_overrides.clone();
     let corpus = analysis_product_for(texts, analysis_options, true).corpus;
@@ -44,7 +62,7 @@ fn annotation_layer_result_for(
         .map(|(name, _)| record(name))
         .collect::<Vec<_>>();
     let text_by_name = texts.iter().copied().collect::<HashMap<_, _>>();
-    let layer = build_annotation_layer_with_mapping(
+    let layer = build_annotation_layer_with_mapping_timed(
         &corpus,
         &records,
         annotation_options(language_overrides),
@@ -59,9 +77,29 @@ fn annotation_layer_result_for(
             ))
         },
         parallel_map,
-        docs_done,
+        AnnotationLayerBuildRuntime { docs_done, timing },
     )?;
     Ok((corpus, layer))
+}
+
+fn multi_wave_english_texts() -> (Vec<(String, String)>, usize, usize) {
+    let token_budget = annotation_wave_token_budget();
+    let words_per_doc = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP * 2 + 17;
+    let target_words = token_budget.saturating_mul(2).saturating_add(words_per_doc);
+    let mut total_words = 0usize;
+    let mut texts = Vec::new();
+
+    while total_words <= target_words {
+        let words = words_per_doc + texts.len() % 5;
+        texts.push((
+            format!("doc-{:03}.txt", texts.len()),
+            repeated_word_text("word", words),
+        ));
+        total_words = total_words.saturating_add(words);
+    }
+
+    assert!(total_words > token_budget.saturating_mul(2));
+    (texts, total_words, token_budget)
 }
 
 #[test]
@@ -184,6 +222,109 @@ fn annotation_chunk_parallel_matches_serial_for_skewed_documents() {
             .map(|document| document.relative_path.as_str())
             .collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn annotation_chunk_parallel_multi_wave_matches_serial_reference() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let (owned_texts, total_words, token_budget) = multi_wave_english_texts();
+        assert!(total_words > token_budget.saturating_mul(2));
+        let texts = owned_texts
+            .iter()
+            .map(|(name, text)| (name.as_str(), text.as_str()))
+            .collect::<Vec<_>>();
+        let language_overrides = english_overrides(texts.len());
+
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let (_, parallel) = annotation_layer_for(&texts, language_overrides, true);
+
+        assert_eq!(parallel, serial);
+        assert_eq!(
+            parallel
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            serial
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            parallel
+                .documents
+                .iter()
+                .map(|document| &document.term_counts)
+                .collect::<Vec<_>>(),
+            serial
+                .documents
+                .iter()
+                .map(|document| &document.term_counts)
+                .collect::<Vec<_>>()
+        );
+    });
+}
+
+#[test]
+fn annotation_chunk_parallel_model_loads_are_bounded_per_worker() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let (owned_texts, total_words, token_budget) = multi_wave_english_texts();
+        assert!(total_words > token_budget.saturating_mul(2));
+        let texts = owned_texts
+            .iter()
+            .map(|(name, text)| (name.as_str(), text.as_str()))
+            .collect::<Vec<_>>();
+        let timing = AnnotationBuildTimingCounters::new();
+        let docs_done = AtomicUsize::new(0);
+
+        let (_, layer) = annotation_layer_result_for_with_timing(
+            &texts,
+            english_overrides(texts.len()),
+            true,
+            &AtomicBool::new(false),
+            &docs_done,
+            Some(&timing),
+        )
+        .unwrap();
+
+        assert_eq!(layer.documents.len(), texts.len());
+        assert_eq!(docs_done.load(AtomicOrdering::Relaxed), texts.len());
+
+        let worker_count = rayon::current_num_threads().max(1) as u64;
+        let model_load_actual = timing.model_load_actual.load(AtomicOrdering::Relaxed);
+        let manager_instances_created = timing
+            .manager_instances_created
+            .load(AtomicOrdering::Relaxed);
+        let model_load_attempts = timing.model_load_attempts.load(AtomicOrdering::Relaxed);
+
+        // For this same-language English fixture, actual loads are bounded by
+        // workers. A multi-language fixture would be bounded by workers times
+        // languages used.
+        assert!(
+            model_load_actual <= worker_count,
+            "actual model loads {model_load_actual} exceeded worker count {worker_count}"
+        );
+        assert!(
+            manager_instances_created <= worker_count,
+            "manager instances {manager_instances_created} exceeded worker count {worker_count}"
+        );
+        assert!(model_load_attempts >= model_load_actual);
+        assert!(
+            model_load_attempts > model_load_actual,
+            "multi-chunk fixture should exercise cached model-load hits"
+        );
+    });
 }
 
 #[test]
