@@ -272,6 +272,65 @@ fn annotation_chunk_parallel_multi_wave_matches_serial_reference() {
 }
 
 #[test]
+fn annotation_chunk_parallel_many_small_documents_matches_serial_reference() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let token_budget = annotation_wave_token_budget();
+        let words_per_doc = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP / 2 + 1;
+        let doc_count = (token_budget.saturating_mul(2) / words_per_doc + 2).max(64);
+        let owned_texts = (0..doc_count)
+            .map(|index| {
+                (
+                    format!("doc-{index:03}.txt"),
+                    repeated_word_text("word", words_per_doc),
+                )
+            })
+            .collect::<Vec<_>>();
+        let total_words = doc_count.saturating_mul(words_per_doc);
+        assert!(total_words > token_budget.saturating_mul(2));
+
+        let texts = owned_texts
+            .iter()
+            .map(|(name, text)| (name.as_str(), text.as_str()))
+            .collect::<Vec<_>>();
+        let expected_paths = owned_texts
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>();
+        let language_overrides = english_overrides(texts.len());
+
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let (_, parallel) = annotation_layer_for(&texts, language_overrides, true);
+
+        assert_eq!(parallel, serial);
+        assert_eq!(
+            parallel
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            expected_paths
+        );
+        assert_eq!(
+            parallel
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            serial
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>()
+        );
+    });
+}
+
+#[test]
 fn annotation_chunk_parallel_model_loads_are_bounded_per_worker() {
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(2)
