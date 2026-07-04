@@ -354,6 +354,19 @@ struct NativeModel {
     ptr: NonNull<CwUdpipeModel>,
 }
 
+// SAFETY: CwUdpipeModel is an owned, heap-allocated handle with no
+// thread affinity. The shim stores no model ownership or model pointer
+// in thread-local or global mutable state; each operation receives the
+// model pointer explicitly. The only permitted thread-local state in
+// the shim is per-thread error-message storage, not model state.
+// NativeModel is never used concurrently by the annotation manager pool:
+// each ModelManager is protected by a Mutex in annotation_build.rs, so
+// load/tag access to the underlying native model is exclusive. This
+// grants Send only, allowing the owned handle to be transferred between
+// threads. NativeModel remains !Sync and must not be shared for
+// concurrent access.
+unsafe impl Send for NativeModel {}
+
 impl NativeModel {
     fn load(path: &Path) -> Result<Self, AnnotationError> {
         let path_string = path.to_string_lossy();
@@ -652,6 +665,24 @@ impl ModelManager {
 
     /// Load a model for `language` (cached).
     pub fn load_model(&mut self, language: &str) -> Result<(), AnnotationError> {
+        self.load_model_with_timing(language, || {}, || {}, |_| {}, |_| {})
+    }
+
+    pub fn load_model_with_timing<Attempt, Actual, ChecksumTiming, LoadTiming>(
+        &mut self,
+        language: &str,
+        mut record_attempt: Attempt,
+        mut record_actual: Actual,
+        mut record_checksum_timing: ChecksumTiming,
+        mut record_load_timing: LoadTiming,
+    ) -> Result<(), AnnotationError>
+    where
+        Attempt: FnMut(),
+        Actual: FnMut(),
+        ChecksumTiming: FnMut(Duration),
+        LoadTiming: FnMut(Duration),
+    {
+        record_attempt();
         if self.loaded.contains_key(language) {
             return Ok(());
         }
@@ -661,8 +692,15 @@ impl ModelManager {
                 language: language.to_string(),
             });
         }
-        compute_and_verify_model_checksum(&path)?;
-        let model = NativeModel::load(&path)?;
+        record_actual();
+        let checksum_started = Instant::now();
+        let checksum_result = compute_and_verify_model_checksum(&path);
+        record_checksum_timing(checksum_started.elapsed());
+        checksum_result?;
+        let load_started = Instant::now();
+        let model_result = NativeModel::load(&path);
+        record_load_timing(load_started.elapsed());
+        let model = model_result?;
         self.loaded.insert(language.to_string(), model);
         Ok(())
     }

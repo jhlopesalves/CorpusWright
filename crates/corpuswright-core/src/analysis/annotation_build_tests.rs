@@ -19,6 +19,89 @@ fn fake_annotation(surface: &str, token_index: u32) -> AnnotatedToken {
     }
 }
 
+fn english_overrides(count: usize) -> HashMap<usize, String> {
+    (0..count).map(|index| (index, "en".to_string())).collect()
+}
+
+fn repeated_word_text(word: &str, word_count: usize) -> String {
+    std::iter::repeat_n(word, word_count)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn annotation_layer_result_for(
+    texts: &[(&str, &str)],
+    language_overrides: HashMap<usize, String>,
+    parallel_map: bool,
+    cancel: &AtomicBool,
+    docs_done: &AtomicUsize,
+) -> Result<(AnalysisCorpus, AnnotationLayer), AnnotationLayerBuildError> {
+    annotation_layer_result_for_with_timing(
+        texts,
+        language_overrides,
+        parallel_map,
+        cancel,
+        docs_done,
+        None,
+    )
+}
+
+fn annotation_layer_result_for_with_timing(
+    texts: &[(&str, &str)],
+    language_overrides: HashMap<usize, String>,
+    parallel_map: bool,
+    cancel: &AtomicBool,
+    docs_done: &AtomicUsize,
+    timing: Option<&AnnotationBuildTimingCounters>,
+) -> Result<(AnalysisCorpus, AnnotationLayer), AnnotationLayerBuildError> {
+    let mut analysis_options = build_options();
+    analysis_options.language_overrides = language_overrides.clone();
+    let corpus = analysis_product_for(texts, analysis_options, true).corpus;
+    let records = texts
+        .iter()
+        .map(|(name, _)| record(name))
+        .collect::<Vec<_>>();
+    let text_by_name = texts.iter().copied().collect::<HashMap<_, _>>();
+    let layer = build_annotation_layer_with_mapping_timed(
+        &corpus,
+        &records,
+        annotation_options(language_overrides),
+        cancel,
+        |record| {
+            Ok(processed_resolution(
+                record,
+                text_by_name
+                    .get(record.source_path.to_str().unwrap())
+                    .copied()
+                    .unwrap_or_default(),
+            ))
+        },
+        parallel_map,
+        AnnotationLayerBuildRuntime { docs_done, timing },
+    )?;
+    Ok((corpus, layer))
+}
+
+fn multi_wave_english_texts() -> (Vec<(String, String)>, usize, usize) {
+    let token_budget = annotation_wave_token_budget();
+    let words_per_doc = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP * 2 + 17;
+    let target_words = token_budget.saturating_mul(2).saturating_add(words_per_doc);
+    let mut total_words = 0usize;
+    let mut texts = Vec::new();
+
+    while total_words <= target_words {
+        let words = words_per_doc + texts.len() % 5;
+        texts.push((
+            format!("doc-{:03}.txt", texts.len()),
+            repeated_word_text("word", words),
+        ));
+        total_words = total_words.saturating_add(words);
+    }
+
+    assert!(total_words > token_budget.saturating_mul(2));
+    (texts, total_words, token_budget)
+}
+
 #[test]
 fn annotation_cache_round_trips_ready_with_project_language() {
     let temp_dir = tempfile::tempdir().unwrap();
@@ -107,6 +190,304 @@ fn annotation_parallel_build_matches_serial_reference() {
     let (_, parallel) = annotation_layer_for(&texts, language_overrides, true);
 
     assert_eq!(parallel, serial);
+}
+
+#[test]
+fn annotation_chunk_parallel_matches_serial_for_skewed_documents() {
+    let whale = repeated_word_text(
+        "whale",
+        crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP * 3 + 23,
+    );
+    let texts = [
+        ("d-short.txt", "Cats run quickly."),
+        ("b-whale.txt", whale.as_str()),
+        ("e-short.txt", "Dogs jump."),
+        ("a-short.txt", "Birds sing."),
+    ];
+    let language_overrides = english_overrides(texts.len());
+
+    let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+    let (_, parallel) = annotation_layer_for(&texts, language_overrides, true);
+
+    assert_eq!(parallel, serial);
+    assert_eq!(
+        parallel
+            .documents
+            .iter()
+            .map(|document| document.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        serial
+            .documents
+            .iter()
+            .map(|document| document.relative_path.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn annotation_chunk_parallel_multi_wave_matches_serial_reference() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let (owned_texts, total_words, token_budget) = multi_wave_english_texts();
+        assert!(total_words > token_budget.saturating_mul(2));
+        let texts = owned_texts
+            .iter()
+            .map(|(name, text)| (name.as_str(), text.as_str()))
+            .collect::<Vec<_>>();
+        let language_overrides = english_overrides(texts.len());
+
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let (_, parallel) = annotation_layer_for(&texts, language_overrides, true);
+
+        assert_eq!(parallel, serial);
+        assert_eq!(
+            parallel
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            serial
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            parallel
+                .documents
+                .iter()
+                .map(|document| &document.term_counts)
+                .collect::<Vec<_>>(),
+            serial
+                .documents
+                .iter()
+                .map(|document| &document.term_counts)
+                .collect::<Vec<_>>()
+        );
+    });
+}
+
+#[test]
+fn annotation_chunk_parallel_many_small_documents_matches_serial_reference() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let token_budget = annotation_wave_token_budget();
+        let words_per_doc = crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP / 2 + 1;
+        let doc_count = (token_budget.saturating_mul(2) / words_per_doc + 2).max(64);
+        let owned_texts = (0..doc_count)
+            .map(|index| {
+                (
+                    format!("doc-{index:03}.txt"),
+                    repeated_word_text("word", words_per_doc),
+                )
+            })
+            .collect::<Vec<_>>();
+        let total_words = doc_count.saturating_mul(words_per_doc);
+        assert!(total_words > token_budget.saturating_mul(2));
+
+        let texts = owned_texts
+            .iter()
+            .map(|(name, text)| (name.as_str(), text.as_str()))
+            .collect::<Vec<_>>();
+        let expected_paths = owned_texts
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>();
+        let language_overrides = english_overrides(texts.len());
+
+        let (_, serial) = annotation_layer_for(&texts, language_overrides.clone(), false);
+        let (_, parallel) = annotation_layer_for(&texts, language_overrides, true);
+
+        assert_eq!(parallel, serial);
+        assert_eq!(
+            parallel
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            expected_paths
+        );
+        assert_eq!(
+            parallel
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            serial
+                .documents
+                .iter()
+                .map(|document| document.relative_path.as_str())
+                .collect::<Vec<_>>()
+        );
+    });
+}
+
+#[test]
+fn annotation_chunk_parallel_model_loads_are_bounded_per_worker() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
+
+    pool.install(|| {
+        let (owned_texts, total_words, token_budget) = multi_wave_english_texts();
+        assert!(total_words > token_budget.saturating_mul(2));
+        let texts = owned_texts
+            .iter()
+            .map(|(name, text)| (name.as_str(), text.as_str()))
+            .collect::<Vec<_>>();
+        let timing = AnnotationBuildTimingCounters::new();
+        let docs_done = AtomicUsize::new(0);
+
+        let (_, layer) = annotation_layer_result_for_with_timing(
+            &texts,
+            english_overrides(texts.len()),
+            true,
+            &AtomicBool::new(false),
+            &docs_done,
+            Some(&timing),
+        )
+        .unwrap();
+
+        assert_eq!(layer.documents.len(), texts.len());
+        assert_eq!(docs_done.load(AtomicOrdering::Relaxed), texts.len());
+
+        let worker_count = rayon::current_num_threads().max(1) as u64;
+        let model_load_actual = timing.model_load_actual.load(AtomicOrdering::Relaxed);
+        let manager_instances_created = timing
+            .manager_instances_created
+            .load(AtomicOrdering::Relaxed);
+        let model_load_attempts = timing.model_load_attempts.load(AtomicOrdering::Relaxed);
+
+        // For this same-language English fixture, actual loads are bounded by
+        // workers. A multi-language fixture would be bounded by workers times
+        // languages used.
+        assert!(
+            model_load_actual <= worker_count,
+            "actual model loads {model_load_actual} exceeded worker count {worker_count}"
+        );
+        assert!(
+            manager_instances_created <= worker_count,
+            "manager instances {manager_instances_created} exceeded worker count {worker_count}"
+        );
+        assert!(model_load_attempts >= model_load_actual);
+        assert!(
+            model_load_attempts > model_load_actual,
+            "multi-chunk fixture should exercise cached model-load hits"
+        );
+    });
+}
+
+#[test]
+fn annotation_chunk_parallel_completes_single_whale_document() {
+    let whale = repeated_word_text(
+        "word",
+        crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP * 2 + 17,
+    );
+    let texts = [("whale.txt", whale.as_str())];
+    let language_overrides = english_overrides(texts.len());
+    let (corpus, layer) = annotation_layer_for(&texts, language_overrides, true);
+
+    let annotated_token_total = layer.documents[0]
+        .term_counts
+        .iter()
+        .map(|count| count.count)
+        .sum::<u64>();
+
+    assert_eq!(
+        annotated_token_total,
+        corpus.documents[0].summary.token_count
+    );
+    assert_eq!(
+        annotated_token_total,
+        (crate::annotation::ANNOTATION_SENTENCE_CHUNK_WORD_CAP * 2 + 17) as u64
+    );
+}
+
+#[test]
+fn annotation_chunk_parallel_preserves_punctuation_only_and_empty_documents() {
+    let punctuation_texts = [("punctuation.txt", "!?...")];
+    let punctuation_overrides = english_overrides(punctuation_texts.len());
+    let (punctuation_corpus, punctuation_layer) =
+        annotation_layer_for(&punctuation_texts, punctuation_overrides, true);
+
+    assert_eq!(punctuation_corpus.documents[0].summary.token_count, 0);
+    assert!(punctuation_layer.documents[0].term_counts.is_empty());
+    assert!(punctuation_layer.lemma_table.is_empty());
+
+    let empty_texts = [("empty.txt", "")];
+    let empty_overrides = english_overrides(empty_texts.len());
+    let (empty_corpus, empty_layer) = annotation_layer_for(&empty_texts, empty_overrides, true);
+
+    assert!(empty_corpus.documents.is_empty());
+    assert!(empty_layer.documents.is_empty());
+}
+
+#[test]
+fn annotation_chunk_parallel_cancellation_after_input_load_reports_cancelled() {
+    let texts = [("cancel.txt", "The quick brown fox jumps.")];
+    let records = texts
+        .iter()
+        .map(|(name, _)| record(name))
+        .collect::<Vec<_>>();
+    let text_by_name = texts.iter().copied().collect::<HashMap<_, _>>();
+    let language_overrides = english_overrides(texts.len());
+    let mut analysis_options = build_options();
+    analysis_options.language_overrides = language_overrides.clone();
+    let corpus = analysis_product_for(&texts, analysis_options, true).corpus;
+    let cancel = AtomicBool::new(false);
+    let docs_done = AtomicUsize::new(0);
+
+    let result = build_annotation_layer_with_mapping(
+        &corpus,
+        &records,
+        annotation_options(language_overrides),
+        &cancel,
+        |record| {
+            cancel.store(true, AtomicOrdering::Relaxed);
+            Ok(processed_resolution(
+                record,
+                text_by_name
+                    .get(record.source_path.to_str().unwrap())
+                    .copied()
+                    .unwrap_or_default(),
+            ))
+        },
+        true,
+        &docs_done,
+    );
+
+    assert_eq!(result.unwrap_err(), AnnotationLayerBuildError::Cancelled);
+    assert_eq!(docs_done.load(AtomicOrdering::Relaxed), 0);
+}
+
+#[test]
+fn annotation_chunk_parallel_progress_counts_each_document_once() {
+    let texts = [
+        ("c.txt", "Cats run."),
+        ("a.txt", "Dogs jump."),
+        ("b.txt", "Birds sing."),
+    ];
+    let docs_done = AtomicUsize::new(0);
+    let (_, layer) = annotation_layer_result_for(
+        &texts,
+        english_overrides(texts.len()),
+        true,
+        &AtomicBool::new(false),
+        &docs_done,
+    )
+    .unwrap();
+
+    assert_eq!(layer.documents.len(), texts.len());
+    assert_eq!(docs_done.load(AtomicOrdering::Relaxed), texts.len());
 }
 
 #[test]
