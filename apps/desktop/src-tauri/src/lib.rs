@@ -4855,6 +4855,7 @@ mod tests {
             min_cooccurrence: 1,
             min_collocate_frequency: 1,
             hide_stopwords: false,
+            language: None,
             sort_measure: corpuswright_core::analysis::ConcordanceCollocationMeasure::LogDice,
             sort_key: corpuswright_core::analysis::ConcordanceCollocationSortKey::Association,
             sort_direction: corpuswright_core::analysis::SortDirection::Desc,
