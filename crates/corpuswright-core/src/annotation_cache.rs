@@ -154,6 +154,14 @@ pub enum AnnotationLayerCacheLoad {
     Invalid(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AnnotationLayerCacheEnvelopeLoad {
+    Ready(Box<AnnotationLayerCacheEnvelope>),
+    Stale,
+    Missing,
+    Invalid(String),
+}
+
 /// Errors that can occur during cache I/O.
 #[derive(Debug, Clone)]
 pub enum AnnotationLayerCacheError {
@@ -321,16 +329,17 @@ fn validate_annotation_cache_envelope(
         return Err(AnnotationLayerCacheLoad::Stale);
     }
 
-    if let Some(expected) = expected_manifest {
-        if envelope.manifest.schema_version != expected.schema_version {
-            return Err(AnnotationLayerCacheLoad::Stale);
-        }
-        if envelope.manifest.annotation_pipeline_version != ANNOTATION_PIPELINE_VERSION {
-            return Err(AnnotationLayerCacheLoad::Stale);
-        }
-        if envelope.manifest != *expected {
-            return Err(AnnotationLayerCacheLoad::Stale);
-        }
+    if envelope.manifest.schema_version != ANNOTATION_LAYER_SCHEMA_VERSION {
+        return Err(AnnotationLayerCacheLoad::Stale);
+    }
+    if envelope.manifest.annotation_pipeline_version != ANNOTATION_PIPELINE_VERSION {
+        return Err(AnnotationLayerCacheLoad::Stale);
+    }
+
+    if let Some(expected) = expected_manifest
+        && envelope.manifest != *expected
+    {
+        return Err(AnnotationLayerCacheLoad::Stale);
     }
 
     if envelope.layer.surface_terms.len() != envelope.manifest.corpus.surface_term_count {
@@ -498,36 +507,69 @@ pub(crate) fn write_annotation_layer_cache_with_timing(
     Ok(())
 }
 
-/// Loads an annotation layer cache, validating it against the expected manifest.
-pub fn load_annotation_layer_cache(
+pub(crate) fn read_annotation_layer_cache_envelope(
     cache_root: &Path,
-    expected_manifest: &AnnotationManifest,
-) -> AnnotationLayerCacheLoad {
+) -> AnnotationLayerCacheEnvelopeLoad {
     let final_path = cache_root.join(format!(
         "annotation-layer.v{}.json",
         ANNOTATION_LAYER_CACHE_FILE_VERSION
     ));
     if !final_path.exists() {
-        return AnnotationLayerCacheLoad::Missing;
+        return AnnotationLayerCacheEnvelopeLoad::Missing;
     }
 
     let bytes = match std::fs::read(&final_path) {
         Ok(b) => b,
         Err(_) => {
-            return AnnotationLayerCacheLoad::Invalid("Failed to read cache file".to_string());
+            return AnnotationLayerCacheEnvelopeLoad::Invalid(
+                "Failed to read cache file".to_string(),
+            );
         }
     };
 
     let envelope: AnnotationLayerCacheEnvelope = match serde_json::from_slice(&bytes) {
         Ok(env) => env,
         Err(e) => {
-            return AnnotationLayerCacheLoad::Invalid(format!("Failed to parse cache file: {}", e));
+            return AnnotationLayerCacheEnvelopeLoad::Invalid(format!(
+                "Failed to parse cache file: {}",
+                e
+            ));
         }
     };
 
-    if let Err(load_state) = validate_annotation_cache_envelope(&envelope, Some(expected_manifest))
-    {
-        return load_state;
+    if let Err(load_state) = validate_annotation_cache_envelope(&envelope, None) {
+        return match load_state {
+            AnnotationLayerCacheLoad::Ready(_) => unreachable!(),
+            AnnotationLayerCacheLoad::Stale => AnnotationLayerCacheEnvelopeLoad::Stale,
+            AnnotationLayerCacheLoad::Missing => AnnotationLayerCacheEnvelopeLoad::Missing,
+            AnnotationLayerCacheLoad::Invalid(detail) => {
+                AnnotationLayerCacheEnvelopeLoad::Invalid(detail)
+            }
+        };
+    }
+    if let Err(error) = LemmaTable::try_from(envelope.layer.lemma_table.clone()) {
+        return AnnotationLayerCacheEnvelopeLoad::Invalid(error);
+    }
+
+    AnnotationLayerCacheEnvelopeLoad::Ready(Box::new(envelope))
+}
+
+/// Loads an annotation layer cache, validating it against the expected manifest.
+pub fn load_annotation_layer_cache(
+    cache_root: &Path,
+    expected_manifest: &AnnotationManifest,
+) -> AnnotationLayerCacheLoad {
+    let envelope = match read_annotation_layer_cache_envelope(cache_root) {
+        AnnotationLayerCacheEnvelopeLoad::Ready(envelope) => *envelope,
+        AnnotationLayerCacheEnvelopeLoad::Stale => return AnnotationLayerCacheLoad::Stale,
+        AnnotationLayerCacheEnvelopeLoad::Missing => return AnnotationLayerCacheLoad::Missing,
+        AnnotationLayerCacheEnvelopeLoad::Invalid(detail) => {
+            return AnnotationLayerCacheLoad::Invalid(detail);
+        }
+    };
+
+    if envelope.manifest != *expected_manifest {
+        return AnnotationLayerCacheLoad::Stale;
     }
 
     let lemma_table = match LemmaTable::try_from(envelope.layer.lemma_table) {
