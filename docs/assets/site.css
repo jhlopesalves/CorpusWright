@@ -683,6 +683,36 @@ a.card .card-link { color: var(--brand); font-weight: 600; font-size: 0.92rem; d
   html { scroll-behavior: auto; }
 }
 
+/* ---- maintainer card ---- */
+.maintainer-card {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+.maintainer-card figure {
+  flex: none;
+  margin: 0;
+  text-align: center;
+}
+.maintainer-card img {
+  width: 140px;
+  height: 140px;
+  border-radius: var(--r-md);
+  object-fit: cover;
+  display: block;
+}
+.maintainer-card figcaption {
+  margin-top: 8px;
+  font-family: var(--sans);
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+.maintainer-card > div { min-width: 0; }
+
+@media (max-width: 620px) {
+  .maintainer-card { flex-direction: column; align-items: center; text-align: center; }
+}
+
 @media print {
   :root, html[data-theme="dark"], html[data-theme="light"] {
     --bg: #fff; --bg-soft: #fff; --panel: #fff; --panel-2: #fff;
