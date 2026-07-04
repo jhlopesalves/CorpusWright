@@ -1857,12 +1857,22 @@ fn finish_staged_annotation_document(
         timing.record_local_counting(counting_started.elapsed());
     }
 
-    Ok(WorkerAnnotationDocument {
+    Ok(worker_annotation_document_from_local_counts(
+        input,
+        term_counts,
+    ))
+}
+
+fn worker_annotation_document_from_local_counts(
+    input: &AnnotationDocumentInput,
+    term_counts: Vec<LocalAnnotatedTermCount>,
+) -> WorkerAnnotationDocument {
+    WorkerAnnotationDocument {
         analysis_document_index: input.analysis_document_index,
         source_path: input.source_path.clone(),
         relative_path: input.relative_path.clone(),
         term_counts,
-    })
+    }
 }
 
 fn annotate_annotation_document(
@@ -1943,7 +1953,25 @@ fn project_chunk_annotations_to_word_tokens(
         .map(|token| token.surface)
         .collect::<Vec<_>>();
     let mut projected = Vec::with_capacity(expected_word_surfaces.len());
+    project_chunk_annotations_to_word_tokens_into(
+        input,
+        tokens,
+        annotated_chunks,
+        0,
+        &mut projected,
+    )?;
 
+    validate_projected_word_annotations(input, &projected, &expected_word_surfaces)?;
+    Ok(projected)
+}
+
+fn project_chunk_annotations_to_word_tokens_into(
+    input: &AnnotationDocumentInput,
+    tokens: &[Token<'_>],
+    annotated_chunks: Vec<(Range<usize>, Vec<AnnotatedToken>)>,
+    base_word_token_index: usize,
+    projected: &mut Vec<AnnotatedToken>,
+) -> Result<(), AnnotationLayerBuildError> {
     for (chunk, annotations) in annotated_chunks {
         let chunk_tokens = &tokens[chunk.clone()];
         if annotations.len() != chunk_tokens.len() {
@@ -1975,10 +2003,19 @@ fn project_chunk_annotations_to_word_tokens(
 
             if token.counts_as_word() {
                 let mut word_annotation = annotation;
-                word_annotation.token_index = u32::try_from(projected.len()).map_err(|_| {
+                let word_token_index = base_word_token_index
+                    .checked_add(projected.len())
+                    .ok_or_else(|| {
+                        annotation_projection_invariant_error(
+                            input,
+                            projected.len(),
+                            "annotated word-token index overflowed usize".to_string(),
+                        )
+                    })?;
+                word_annotation.token_index = u32::try_from(word_token_index).map_err(|_| {
                     annotation_projection_invariant_error(
                         input,
-                        projected.len(),
+                        word_token_index,
                         "annotated word-token index overflowed u32".to_string(),
                     )
                 })?;
@@ -1987,8 +2024,7 @@ fn project_chunk_annotations_to_word_tokens(
         }
     }
 
-    validate_projected_word_annotations(input, &projected, &expected_word_surfaces)?;
-    Ok(projected)
+    Ok(())
 }
 
 fn validate_projected_word_annotations(
@@ -2107,13 +2143,17 @@ pub(super) fn resolve_annotated_tokens_to_local_counts(
             },
         )
         .collect::<Vec<_>>();
+    sort_local_annotated_term_counts(&mut terms);
+    Ok(terms)
+}
+
+fn sort_local_annotated_term_counts(terms: &mut [LocalAnnotatedTermCount]) {
     terms.sort_by(|left, right| {
         left.surface_term_id
             .cmp(&right.surface_term_id)
             .then_with(|| left.lemma.cmp(&right.lemma))
             .then_with(|| left.upos.as_upos_str().cmp(right.upos.as_upos_str()))
     });
-    Ok(terms)
 }
 
 fn reduce_annotation_documents(
