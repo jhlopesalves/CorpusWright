@@ -1007,9 +1007,14 @@ where
         return Err(AnnotationCacheBuildError::Cancelled);
     }
 
+    let surface_terms = corpus
+        .surface_term_tokens()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
     if let Err(error) = crate::annotation_cache::write_annotation_layer_cache_with_timing(
         &cache_root,
         &manifest,
+        &surface_terms,
         &layer,
         timing_ref,
     ) {
