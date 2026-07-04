@@ -1567,8 +1567,8 @@ fn annotate_annotation_documents_in_staged_waves(
     let mut pending = None;
     let token_budget = annotation_wave_token_budget();
 
-    while next_input < inputs.len() || pending.is_some() {
-        let wave = stage_next_annotation_wave(
+    let mut current_wave = if next_input < inputs.len() || pending.is_some() {
+        stage_next_annotation_wave(
             inputs,
             &mut next_input,
             &mut pending,
@@ -1576,15 +1576,42 @@ fn annotate_annotation_documents_in_staged_waves(
             cancel,
             tokenization_config,
             runtime.timing,
-        )?;
-        let wave_documents = annotate_staged_annotation_wave_documents(
-            &wave,
-            surface_term_lookup,
-            &managers,
-            cancel,
-            runtime,
-        )?;
+        )?
+    } else {
+        Vec::new()
+    };
+
+    while !current_wave.is_empty() {
+        let (wave_documents_result, next_wave_result) = rayon::join(
+            || {
+                annotate_staged_annotation_wave_documents(
+                    &current_wave,
+                    surface_term_lookup,
+                    &managers,
+                    cancel,
+                    runtime,
+                )
+            },
+            || {
+                if next_input < inputs.len() || pending.is_some() {
+                    stage_next_annotation_wave(
+                        inputs,
+                        &mut next_input,
+                        &mut pending,
+                        token_budget,
+                        cancel,
+                        tokenization_config,
+                        runtime.timing,
+                    )
+                } else {
+                    Ok(Vec::new())
+                }
+            },
+        );
+        let wave_documents = wave_documents_result?;
+        let next_wave = next_wave_result?;
         worker_documents.extend(wave_documents);
+        current_wave = next_wave;
     }
 
     Ok(worker_documents)
