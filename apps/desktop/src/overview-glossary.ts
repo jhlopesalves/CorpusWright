@@ -11,6 +11,62 @@ export interface OverviewGlossaryEntry {
 }
 
 export const overviewGlossary = {
+  token: {
+    id: "token",
+    label: "Token",
+    explanation:
+      "A countable word-like unit: one occurrence of a word or number in the analysis corpus.",
+    latex: String.raw`N=\sum_{d=1}^{D}N_d`,
+    detail:
+      "CorpusWright segments text into Unicode word segments and counts two kinds: words and numbers. Standalone punctuation is never counted. By default, hyphen compounds (state-of-the-art) and apostrophe contractions (don't) are kept whole, and numeric separators are split. Every corpus-level figure on this page counts these tokens.",
+    symbols: [
+      { sym: String.raw`N`, def: "Total tokens in the analysis corpus." },
+      { sym: String.raw`N_d`, def: "Tokens in document d." },
+      { sym: String.raw`D`, def: "Number of documents." },
+    ],
+    interpretation:
+      "Tokens measure corpus size - how much running text there is. Every 'per million' rate and every proportion on this page uses N as its denominator.",
+    limitations: [
+      "Counts depend on the tokenisation rules above; corpora processed with different rules are not comparable.",
+      "Numbers count as tokens, so number-heavy material (tables, OCR output) inflates N.",
+    ],
+  },
+  type: {
+    id: "type",
+    label: "Type",
+    explanation:
+      "A distinct token form. Counting every occurrence gives tokens; counting each distinct form once gives types.",
+    latex: String.raw`V=\bigl\lvert\{\mathrm{key}(t):t\in\text{corpus}\}\bigr\rvert`,
+    detail:
+      "Two tokens belong to the same type when they share an aggregation key: the token's text, Unicode-normalised (NFC) and lowercased. 'The' and 'the' are one type; 'run' and 'running' remain two - types are surface forms, not lemmas. The Overview always computes over the full type universe of the analysis corpus.",
+    symbols: [
+      { sym: String.raw`V`, def: "Vocabulary size - the number of distinct types." },
+      { sym: String.raw`\mathrm{key}(t)`, def: "Token t's aggregation key: NFC-normalised, lowercased text." },
+    ],
+    interpretation:
+      "Types measure vocabulary breadth. The Frequency List applies its own view filters (alphabetic words only, hidden stopwords), so its displayed type count can legitimately differ from the Overview's total. The Overview is a fixed corpus snapshot; the Frequency List is an interactive filtered table.",
+    limitations: [
+      "Types are case-folded surface forms, not lemmas - inflected variants count separately.",
+      "OCR errors and spelling variants each create their own type, inflating V in noisy corpora.",
+    ],
+  },
+  documentUnit: {
+    id: "document",
+    label: "Document",
+    explanation:
+      "One source text in the analysis corpus - the unit behind balance, dispersion, and document-frequency measures.",
+    latex: String.raw`s_d=\frac{N_d}{N}`,
+    detail:
+      "Every file included in the analysis is one document. Balance metrics compare document sizes; dispersion metrics ask how each type spreads across documents. Documents that yield no tokens are excluded from these calculations.",
+    symbols: [
+      { sym: String.raw`s_d`, def: "Document d's share of all corpus tokens." },
+    ],
+    interpretation:
+      "Every document-based measure inherits your segmentation choices. One enormous file among thousands of small ones dominates the shares - check the largest-document share in the balance panel before reading dispersion.",
+    limitations: [
+      "Merging or splitting source files changes every document-based measure without changing a word of text.",
+    ],
+  },
   giniCoefficient: {
     id: "gini-coefficient",
     label: "Gini coefficient",
