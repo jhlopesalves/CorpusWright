@@ -697,7 +697,7 @@ a.card .card-link { color: var(--brand); font-weight: 600; font-size: 0.92rem; d
 .maintainer-card img {
   width: 140px;
   height: 140px;
-  border-radius: 50%;
+  border-radius: var(--r-md);
   object-fit: cover;
   display: block;
 }
