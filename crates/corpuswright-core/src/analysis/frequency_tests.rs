@@ -604,7 +604,9 @@ fn document_frequency_spectrum_and_median_are_computed_over_all_types() {
     let dispersion = &corpus.overview().dispersion;
 
     assert_eq!(dispersion.df_in_1_count, 3);
-    assert_eq!(dispersion.df_in_2_to_n_minus_1_count, 1);
+    assert_eq!(dispersion.df_in_2_to_9_count, 2);
+    assert_eq!(dispersion.df_in_10_to_99_count, 0);
+    assert_eq!(dispersion.df_in_100_plus_count, 0);
     assert_eq!(dispersion.df_in_all_count, 1);
     assert_eq!(dispersion.median_documents_per_type, Some(1.0));
     assert_eq!(dispersion.median_dp, None);
