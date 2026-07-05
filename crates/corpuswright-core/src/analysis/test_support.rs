@@ -68,6 +68,10 @@ pub(super) fn read_annotation_cache_envelope(
     serde_json::from_slice(&bytes).unwrap()
 }
 
+pub(super) fn surface_term_table(corpus: &AnalysisCorpus) -> Vec<String> {
+    corpus.surface_term_tokens().map(str::to_string).collect()
+}
+
 pub(super) fn corpus_for(texts: &[(&str, &str)]) -> AnalysisCorpus {
     let records = texts
         .iter()
