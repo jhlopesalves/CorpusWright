@@ -461,6 +461,7 @@ function createGlossaryExample(example: string): HTMLDetailsElement {
 function createGlossaryDisclosure(
   glossaryId: OverviewGlossaryId,
   onToggle?: (expanded: boolean) => void,
+  labelText: string = overviewGlossary[glossaryId].label,
 ): { button: HTMLButtonElement; panel: HTMLDivElement } {
   const entry: OverviewGlossaryEntry = overviewGlossary[glossaryId];
   const panelId = `overview-glossary-${entry.id}-${++overviewGlossaryControlId}`;
@@ -472,7 +473,7 @@ function createGlossaryDisclosure(
   button.setAttribute("aria-controls", panelId);
 
   const label = document.createElement("span");
-  label.textContent = entry.label;
+  label.textContent = labelText;
   const caret = document.createElement("span");
   caret.className = "analysis-glossary-caret";
   caret.setAttribute("aria-hidden", "true");
@@ -549,7 +550,7 @@ function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTable
       glossaryRow.hidden = true;
       const disclosure = createGlossaryDisclosure(row.glossaryId, (expanded) => {
         if (glossaryRow) glossaryRow.hidden = !expanded;
-      });
+      }, row.label);
       glossaryPanel = disclosure.panel;
       label.appendChild(disclosure.button);
     } else {
@@ -608,7 +609,7 @@ function createCompositionBar(
 
   const titleEl = document.createElement("h4");
   if (glossaryId) {
-    const disclosure = createGlossaryDisclosure(glossaryId);
+    const disclosure = createGlossaryDisclosure(glossaryId, undefined, title);
     titleEl.appendChild(disclosure.button);
     composition.append(titleEl, disclosure.panel);
   } else {
@@ -659,7 +660,7 @@ function createCompositionBar(
       glossaryDescription.hidden = true;
       const disclosure = createGlossaryDisclosure(segment.glossaryId, (expanded) => {
         if (glossaryDescription) glossaryDescription.hidden = !expanded;
-      });
+      }, segment.label);
       glossaryDetail = disclosure.panel;
       label.appendChild(disclosure.button);
       if (segment.labelSuffix) {
@@ -940,8 +941,14 @@ function renderExtractionQuality(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Extraction quality");
   const quality = corpus.extractionQuality;
   const rows: OverviewMetricRow[] = [
-    countAndShareRow("Word-like types", quality.wordLikeCount, quality.wordLikeShare),
-    countAndShareRow("Numeric-only types", quality.numericOnlyCount, quality.numericOnlyShare),
+    {
+      ...countAndShareRow("Word-like types", quality.wordLikeCount, quality.wordLikeShare),
+      description: "Counted as word-like when it contains at least one letter.",
+    },
+    {
+      ...countAndShareRow("Numeric-only types", quality.numericOnlyCount, quality.numericOnlyShare),
+      description: "Counted as numeric-only when it contains digits and only numeric separators (. , : - /).",
+    },
   ];
   if (quality.singleCharacterCount !== null) {
     rows.push(countAndShareRow(
@@ -982,6 +989,13 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
     { label: "3–9 occurrences", count: spectrum.band3To9Count, share: spectrum.band3To9Share, className: "is-mid-frequency" },
     { label: "10+ occurrences", count: spectrum.band10plusCount, share: spectrum.band10plusShare, className: "is-frequent" },
   ]));
+  const band3To9Note = document.createElement("p");
+  band3To9Note.className = "analysis-panel-note";
+  band3To9Note.textContent = "3-9: recurring but still rare types.";
+  const band10PlusNote = document.createElement("p");
+  band10PlusNote.className = "analysis-panel-note";
+  band10PlusNote.textContent = "10+: frequent types - the same threshold feeds the dispersion profile.";
+  panel.append(band3To9Note, band10PlusNote);
 
   const lexicalDiversity = document.createElement("div");
   lexicalDiversity.className = "analysis-metric-group";
@@ -1030,11 +1044,13 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
       labelSuffix: `(window ${formatNumber(spectrum.mattrWindow)})`,
       value: mattrValue,
       glossaryId: "mattr",
+      description: "median across eligible documents",
     },
     {
       label: "MTLD",
       value: mtldValue,
       glossaryId: "mtld",
+      description: "median across eligible documents",
     },
   ];
   lexicalDiversity.append(lexicalDiversityTitle, createMetricTable(diversityRows));
@@ -1055,13 +1071,25 @@ function renderFrequencyConcentration(corpus: AnalysisCorpus): HTMLElement {
   const concentration = corpus.frequencyConcentration;
   const rows: OverviewMetricRow[] = [];
   if (concentration.top100Coverage !== null) {
-    rows.push({ label: "Top 100 types cover", value: formatPercent(concentration.top100Coverage) });
+    rows.push({
+      label: "Top 100 types cover",
+      value: formatPercent(concentration.top100Coverage),
+      glossaryId: "topNCoverage",
+    });
   }
   if (concentration.top1000Coverage !== null) {
-    rows.push({ label: "Top 1,000 types cover", value: formatPercent(concentration.top1000Coverage) });
+    rows.push({
+      label: "Top 1,000 types cover",
+      value: formatPercent(concentration.top1000Coverage),
+      glossaryId: "topNCoverage",
+    });
   }
   if (concentration.top10000Coverage !== null) {
-    rows.push({ label: "Top 10,000 types cover", value: formatPercent(concentration.top10000Coverage) });
+    rows.push({
+      label: "Top 10,000 types cover",
+      value: formatPercent(concentration.top10000Coverage),
+      glossaryId: "topNCoverage",
+    });
   }
   if (concentration.evennessJ !== null) {
     rows.push({
@@ -1075,17 +1103,12 @@ function renderFrequencyConcentration(corpus: AnalysisCorpus): HTMLElement {
       label: "Shannon entropy",
       labelSuffix: "(bits)",
       value: formatFixedNumber(concentration.shannonEntropyBits, 3),
-    });
-  }
-  if (concentration.perplexity !== null) {
-    rows.push({
-      label: "Perplexity",
-      value: formatNumber(concentration.perplexity),
+      glossaryId: "shannonEntropy",
     });
   }
   if (concentration.effectiveVocabularyEntropy !== null) {
     rows.push({
-      label: "Effective vocabulary (entropy-based)",
+      label: "Effective vocabulary (perplexity)",
       value: `≈ ${formatNumber(concentration.effectiveVocabularyEntropy)} types`,
       glossaryId: "effectiveVocabulary",
     });
@@ -1101,21 +1124,30 @@ function renderRankFrequency(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Rank–frequency fit");
   const rank = corpus.rankFrequency;
   const rows: OverviewMetricRow[] = [
-    { label: "Distribution points", value: formatNumber(rank.points.length) },
+    { label: "Sampled rank points", value: formatNumber(rank.points.length), glossaryId: "zipfFit" },
   ];
   if (rank.zipfExponent !== null) {
-    rows.push({ label: "Zipf exponent", value: formatFixedNumber(rank.zipfExponent, 3) });
+    rows.push({
+      label: "Zipf exponent",
+      value: formatFixedNumber(rank.zipfExponent, 3),
+      glossaryId: "zipfFit",
+    });
   }
   if (rank.zipfCoefficient !== null) {
-    rows.push({ label: "Zipf coefficient", value: formatFixedNumber(rank.zipfCoefficient, 2) });
+    rows.push({
+      label: "Zipf coefficient (raw-frequency scale)",
+      value: formatFixedNumber(rank.zipfCoefficient, 2),
+      glossaryId: "zipfFit",
+    });
   }
   if (rank.rSquared !== null) {
-    rows.push({ label: "Fit R²", value: formatFixedNumber(rank.rSquared, 3) });
+    rows.push({ label: "Fit R²", value: formatFixedNumber(rank.rSquared, 3), glossaryId: "zipfFit" });
   }
   if (rank.fittedRankStart !== null && rank.fittedRankEnd !== null) {
     rows.push({
       label: "Fitted ranks",
       value: `${formatNumber(rank.fittedRankStart)}–${formatNumber(rank.fittedRankEnd)}`,
+      glossaryId: "zipfFit",
     });
   }
   panel.appendChild(createMetricTable(rows));
@@ -1128,22 +1160,23 @@ function renderVocabularyGrowth(corpus: AnalysisCorpus): HTMLElement {
   const growth = corpus.vocabularyGrowth;
   const finalPoint = growth.points[growth.points.length - 1];
   const rows: OverviewMetricRow[] = [
-    { label: "Growth checkpoints", value: formatNumber(growth.points.length) },
+    { label: "Vocabulary-growth checkpoints", value: formatNumber(growth.points.length), glossaryId: "heapsFit" },
   ];
   if (finalPoint) {
     rows.push({
-      label: "Final checkpoint",
+      label: "Final observed point",
       value: `${formatNumber(finalPoint.types)} types / ${formatNumber(finalPoint.tokens)} tokens`,
+      glossaryId: "heapsFit",
     });
   }
   if (growth.heapsK !== null) {
-    rows.push({ label: "Heaps K", value: formatFixedNumber(growth.heapsK, 3) });
+    rows.push({ label: "Heaps K", value: formatFixedNumber(growth.heapsK, 3), glossaryId: "heapsFit" });
   }
   if (growth.heapsBeta !== null) {
-    rows.push({ label: "Heaps β", value: formatFixedNumber(growth.heapsBeta, 3) });
+    rows.push({ label: "Heaps β", value: formatFixedNumber(growth.heapsBeta, 3), glossaryId: "heapsFit" });
   }
   if (growth.rSquared !== null) {
-    rows.push({ label: "Fit R²", value: formatFixedNumber(growth.rSquared, 3) });
+    rows.push({ label: "Fit R²", value: formatFixedNumber(growth.rSquared, 3), glossaryId: "heapsFit" });
   }
   panel.appendChild(createMetricTable(rows));
   appendPanelReading(panel, growth.reading);
