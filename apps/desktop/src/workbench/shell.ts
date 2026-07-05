@@ -83,6 +83,8 @@ const FUTURE_ANALYSIS_TOOLS = [
   "N-grams",
   "Exports",
 ];
+const BALANCE_ATTENTION_SHARE = 0.15;
+
 type AnalysisToolId = "overview" | "frequency" | "concordance";
 
 interface OverviewMetricRow {
@@ -723,6 +725,17 @@ function countAndShareRow(
   };
 }
 
+function countWithInlineShareRow(
+  label: string,
+  count: number,
+  share: number | null,
+): OverviewMetricRow {
+  return {
+    label,
+    value: formatCountWithShare(count, share),
+  };
+}
+
 function renderCorpusReading(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Reading of this corpus");
   panel.classList.add("analysis-reading-panel");
@@ -932,6 +945,13 @@ function renderDocumentBalance(corpus: AnalysisCorpus): HTMLElement {
   }
   if (rows.length > 0) {
     panel.appendChild(createMetricTable(rows));
+  }
+  if (balance.largestShare !== null && balance.largestShare >= BALANCE_ATTENTION_SHARE) {
+    const imbalanceWarning = document.createElement("p");
+    imbalanceWarning.className = "analysis-panel-note";
+    imbalanceWarning.textContent =
+      `One document holds ${formatPercent(balance.largestShare)} of all tokens. Corpus-level frequencies may largely reflect that document.`;
+    panel.appendChild(imbalanceWarning);
   }
   appendPanelReading(panel, balance.reading);
   return panel;
@@ -1208,63 +1228,87 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
   }
   panel.appendChild(createMetricTable(rows));
 
-  if (corpus.totals.documents >= 2 && corpus.totals.types > 0) {
-    const segments: CompositionSegment[] = [
+  if (corpus.totals.types > 0) {
+    const documentUnit = corpus.totals.documents === 1 ? "document" : "documents";
+    const frequencyRows: OverviewMetricRow[] = [
       {
-        label: "Types in 1 document only",
-        count: dispersion.dfIn1Count,
-        share: dispersion.dfIn1Share,
-        className: "is-hapax",
+        ...countWithInlineShareRow("Types in 1 document only", dispersion.dfIn1Count, dispersion.dfIn1Share),
+        glossaryId: "documentFrequencySpectrum",
+      },
+      {
+        ...countWithInlineShareRow("Types in 2–9 documents", dispersion.dfIn2To9Count, dispersion.dfIn2To9Share),
+        glossaryId: "documentFrequencySpectrum",
+      },
+      {
+        ...countWithInlineShareRow("Types in 10–99 documents", dispersion.dfIn10To99Count, dispersion.dfIn10To99Share),
+        glossaryId: "documentFrequencySpectrum",
+      },
+      {
+        ...countWithInlineShareRow("Types in 100+ documents", dispersion.dfIn100PlusCount, dispersion.dfIn100PlusShare),
+        glossaryId: "documentFrequencySpectrum",
+      },
+      {
+        ...countWithInlineShareRow(
+          "Types in at least 1% of documents",
+          dispersion.dfAtLeast1pctCount,
+          dispersion.dfAtLeast1pctShare,
+        ),
+        glossaryId: "documentFrequencySpectrum",
+      },
+      {
+        ...countWithInlineShareRow(
+          "Types in at least 10% of documents",
+          dispersion.dfAtLeast10pctCount,
+          dispersion.dfAtLeast10pctShare,
+        ),
+        glossaryId: "documentFrequencySpectrum",
+      },
+      {
+        ...countWithInlineShareRow(
+          "Types in at least 50% of documents",
+          dispersion.dfAtLeast50pctCount,
+          dispersion.dfAtLeast50pctShare,
+        ),
+        glossaryId: "documentFrequencySpectrum",
+      },
+      {
+        ...countWithInlineShareRow(
+          "Types in at least 90% of documents",
+          dispersion.dfAtLeast90pctCount,
+          dispersion.dfAtLeast90pctShare,
+        ),
+        glossaryId: "documentFrequencySpectrum",
+      },
+      {
+        ...countWithInlineShareRow(
+          `Types in all ${formatNumber(corpus.totals.documents)} ${documentUnit}`,
+          dispersion.dfInAllCount,
+          dispersion.dfInAllShare,
+        ),
+        glossaryId: "documentFrequencySpectrum",
       },
     ];
-    if (corpus.totals.documents > 2) {
-      segments.push({
-        label: `Types in 2–${formatNumber(corpus.totals.documents - 1)} documents`,
-        count: dispersion.dfIn2ToNMinus1Count,
-        share: dispersion.dfIn2ToNMinus1Share,
-        className: "is-mid-frequency",
-      });
-    }
-    segments.push({
-      label: `Types in all ${formatNumber(corpus.totals.documents)} documents`,
-      count: dispersion.dfInAllCount,
-      share: dispersion.dfInAllShare,
-      className: "is-frequent",
-    });
-    panel.appendChild(createCompositionBar(
-      "Document-frequency spectrum",
-      corpus.totals.types,
-      segments,
-      "documentFrequencySpectrum",
-    ));
-
-    const frequencyRows: OverviewMetricRow[] = [
-      countAndShareRow(
-        "Types in 1 document only",
-        dispersion.dfIn1Count,
-        dispersion.dfIn1Share,
-      ),
-    ];
-    if (corpus.totals.documents > 2) {
-      frequencyRows.push(countAndShareRow(
-        `Types in 2–${formatNumber(corpus.totals.documents - 1)} documents`,
-        dispersion.dfIn2ToNMinus1Count,
-        dispersion.dfIn2ToNMinus1Share,
-      ));
-    }
-    frequencyRows.push(countAndShareRow(
-      `Types in all ${formatNumber(corpus.totals.documents)} documents`,
-      dispersion.dfInAllCount,
-      dispersion.dfInAllShare,
-    ));
     if (dispersion.medianDocumentsPerType !== null) {
       frequencyRows.push({
         label: "Median documents per type",
         value: formatNumber(dispersion.medianDocumentsPerType, 1),
+        glossaryId: "documentFrequencySpectrum",
       });
     }
     panel.appendChild(createMetricTable(frequencyRows));
   }
+
+  if (corpus.balance.largestShare !== null && corpus.balance.largestShare >= BALANCE_ATTENTION_SHARE) {
+    const imbalanceWarning = document.createElement("p");
+    imbalanceWarning.className = "analysis-panel-note";
+    imbalanceWarning.textContent =
+      `One document holds ${formatPercent(corpus.balance.largestShare)} of all tokens. DP has a floor of about half that share for any type absent from it - a high median DP here may reflect imbalance, not clumpy vocabulary.`;
+    panel.appendChild(imbalanceWarning);
+  }
+  const universe = document.createElement("p");
+  universe.className = "analysis-panel-note";
+  universe.textContent = "Universe: all analysis types - independent of Frequency List filters.";
+  panel.appendChild(universe);
 
   appendPanelReading(panel, dispersion.reading);
   return panel;
