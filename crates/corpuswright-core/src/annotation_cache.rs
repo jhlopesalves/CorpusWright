@@ -14,8 +14,12 @@ use std::path::Path;
 use std::time::Instant;
 
 pub const ANNOTATION_LAYER_SCHEMA_VERSION: u32 = 1;
-pub const ANNOTATION_LAYER_CACHE_FILE_VERSION: u32 = 1;
+pub const ANNOTATION_LAYER_CACHE_FILE_VERSION: u32 = 2;
 const VERIFY_CACHE_WRITE_ENV: &str = "CORPUSWRIGHT_VERIFY_CACHE_WRITE";
+
+#[cfg(test)]
+static VERIFY_CACHE_WRITE_OVERRIDE: std::sync::atomic::AtomicU8 =
+    std::sync::atomic::AtomicU8::new(0);
 
 fn legacy_annotation_pipeline_version() -> u32 {
     1
@@ -100,6 +104,7 @@ pub(crate) struct AnnotationLayerCacheEnvelope {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct AnnotationLayerDto {
+    pub surface_terms: Vec<String>,
     pub documents: Vec<AnnotationLayerDocument>,
     pub lemma_table: LemmaTableDto,
     pub languages_used: Vec<String>,
@@ -149,6 +154,14 @@ pub enum AnnotationLayerCacheLoad {
     Invalid(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AnnotationLayerCacheEnvelopeLoad {
+    Ready(Box<AnnotationLayerCacheEnvelope>),
+    Stale,
+    Missing,
+    Invalid(String),
+}
+
 /// Errors that can occur during cache I/O.
 #[derive(Debug, Clone)]
 pub enum AnnotationLayerCacheError {
@@ -162,6 +175,13 @@ fn normalize_path(path: &Path) -> String {
 }
 
 fn verify_cache_write_enabled() -> bool {
+    #[cfg(test)]
+    match VERIFY_CACHE_WRITE_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => return false,
+        2 => return true,
+        _ => {}
+    }
+
     std::env::var(VERIFY_CACHE_WRITE_ENV).as_deref() == Ok("1")
 }
 
@@ -309,19 +329,44 @@ fn validate_annotation_cache_envelope(
         return Err(AnnotationLayerCacheLoad::Stale);
     }
 
-    if let Some(expected) = expected_manifest {
-        if envelope.manifest.schema_version != expected.schema_version {
-            return Err(AnnotationLayerCacheLoad::Stale);
-        }
-        if envelope.manifest.annotation_pipeline_version != ANNOTATION_PIPELINE_VERSION {
-            return Err(AnnotationLayerCacheLoad::Stale);
-        }
-        if envelope.manifest != *expected {
-            return Err(AnnotationLayerCacheLoad::Stale);
-        }
+    if envelope.manifest.schema_version != ANNOTATION_LAYER_SCHEMA_VERSION {
+        return Err(AnnotationLayerCacheLoad::Stale);
+    }
+    if envelope.manifest.annotation_pipeline_version != ANNOTATION_PIPELINE_VERSION {
+        return Err(AnnotationLayerCacheLoad::Stale);
+    }
+
+    if let Some(expected) = expected_manifest
+        && envelope.manifest != *expected
+    {
+        return Err(AnnotationLayerCacheLoad::Stale);
+    }
+
+    if envelope.layer.surface_terms.len() != envelope.manifest.corpus.surface_term_count {
+        return Err(AnnotationLayerCacheLoad::Invalid(format!(
+            "Surface term table length {} does not match manifest count {}",
+            envelope.layer.surface_terms.len(),
+            envelope.manifest.corpus.surface_term_count
+        )));
+    }
+    let surface_terms_for_hash = envelope
+        .layer
+        .surface_terms
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let surface_terms_payload = serde_json::to_vec(&surface_terms_for_hash).map_err(|error| {
+        AnnotationLayerCacheLoad::Invalid(format!("Failed to hash surface term table: {error}"))
+    })?;
+    let surface_terms_hash_sha256 = sha256_hex(&surface_terms_payload);
+    if surface_terms_hash_sha256 != envelope.manifest.corpus.surface_terms_hash_sha256 {
+        return Err(AnnotationLayerCacheLoad::Invalid(
+            "Surface term table hash does not match manifest".to_string(),
+        ));
     }
 
     let max_lemma_id = envelope.layer.lemma_table.entries.len() as u32;
+    let max_surface_term_id = envelope.layer.surface_terms.len() as u32;
     let mut prev_doc_idx = None;
     for doc in &envelope.layer.documents {
         if prev_doc_idx.is_some_and(|prev| doc.analysis_document_index <= prev) {
@@ -332,6 +377,12 @@ fn validate_annotation_cache_envelope(
         prev_doc_idx = Some(doc.analysis_document_index);
 
         for term in &doc.term_counts {
+            if term.surface_term_id >= max_surface_term_id {
+                return Err(AnnotationLayerCacheLoad::Invalid(format!(
+                    "Surface term ID {} out of range",
+                    term.surface_term_id
+                )));
+            }
             if term.lemma_id >= max_lemma_id {
                 return Err(AnnotationLayerCacheLoad::Invalid(format!(
                     "Lemma ID {} out of range",
@@ -358,14 +409,16 @@ fn validate_annotation_cache_envelope(
 pub fn write_annotation_layer_cache(
     cache_root: &Path,
     manifest: &AnnotationManifest,
+    surface_terms: &[String],
     layer: &AnnotationLayer,
 ) -> Result<(), AnnotationLayerCacheError> {
-    write_annotation_layer_cache_with_timing(cache_root, manifest, layer, None)
+    write_annotation_layer_cache_with_timing(cache_root, manifest, surface_terms, layer, None)
 }
 
 pub(crate) fn write_annotation_layer_cache_with_timing(
     cache_root: &Path,
     manifest: &AnnotationManifest,
+    surface_terms: &[String],
     layer: &AnnotationLayer,
     timing: Option<&AnnotationBuildTimingCounters>,
 ) -> Result<(), AnnotationLayerCacheError> {
@@ -384,6 +437,7 @@ pub(crate) fn write_annotation_layer_cache_with_timing(
         cache_file_version: ANNOTATION_LAYER_CACHE_FILE_VERSION,
         manifest: manifest.clone(),
         layer: AnnotationLayerDto {
+            surface_terms: surface_terms.to_vec(),
             documents: layer.documents.clone(),
             lemma_table: LemmaTableDto::from(&layer.lemma_table),
             languages_used: layer.languages_used.clone(),
@@ -453,36 +507,69 @@ pub(crate) fn write_annotation_layer_cache_with_timing(
     Ok(())
 }
 
-/// Loads an annotation layer cache, validating it against the expected manifest.
-pub fn load_annotation_layer_cache(
+pub(crate) fn read_annotation_layer_cache_envelope(
     cache_root: &Path,
-    expected_manifest: &AnnotationManifest,
-) -> AnnotationLayerCacheLoad {
+) -> AnnotationLayerCacheEnvelopeLoad {
     let final_path = cache_root.join(format!(
         "annotation-layer.v{}.json",
         ANNOTATION_LAYER_CACHE_FILE_VERSION
     ));
     if !final_path.exists() {
-        return AnnotationLayerCacheLoad::Missing;
+        return AnnotationLayerCacheEnvelopeLoad::Missing;
     }
 
     let bytes = match std::fs::read(&final_path) {
         Ok(b) => b,
         Err(_) => {
-            return AnnotationLayerCacheLoad::Invalid("Failed to read cache file".to_string());
+            return AnnotationLayerCacheEnvelopeLoad::Invalid(
+                "Failed to read cache file".to_string(),
+            );
         }
     };
 
     let envelope: AnnotationLayerCacheEnvelope = match serde_json::from_slice(&bytes) {
         Ok(env) => env,
         Err(e) => {
-            return AnnotationLayerCacheLoad::Invalid(format!("Failed to parse cache file: {}", e));
+            return AnnotationLayerCacheEnvelopeLoad::Invalid(format!(
+                "Failed to parse cache file: {}",
+                e
+            ));
         }
     };
 
-    if let Err(load_state) = validate_annotation_cache_envelope(&envelope, Some(expected_manifest))
-    {
-        return load_state;
+    if let Err(load_state) = validate_annotation_cache_envelope(&envelope, None) {
+        return match load_state {
+            AnnotationLayerCacheLoad::Ready(_) => unreachable!(),
+            AnnotationLayerCacheLoad::Stale => AnnotationLayerCacheEnvelopeLoad::Stale,
+            AnnotationLayerCacheLoad::Missing => AnnotationLayerCacheEnvelopeLoad::Missing,
+            AnnotationLayerCacheLoad::Invalid(detail) => {
+                AnnotationLayerCacheEnvelopeLoad::Invalid(detail)
+            }
+        };
+    }
+    if let Err(error) = LemmaTable::try_from(envelope.layer.lemma_table.clone()) {
+        return AnnotationLayerCacheEnvelopeLoad::Invalid(error);
+    }
+
+    AnnotationLayerCacheEnvelopeLoad::Ready(Box::new(envelope))
+}
+
+/// Loads an annotation layer cache, validating it against the expected manifest.
+pub fn load_annotation_layer_cache(
+    cache_root: &Path,
+    expected_manifest: &AnnotationManifest,
+) -> AnnotationLayerCacheLoad {
+    let envelope = match read_annotation_layer_cache_envelope(cache_root) {
+        AnnotationLayerCacheEnvelopeLoad::Ready(envelope) => *envelope,
+        AnnotationLayerCacheEnvelopeLoad::Stale => return AnnotationLayerCacheLoad::Stale,
+        AnnotationLayerCacheEnvelopeLoad::Missing => return AnnotationLayerCacheLoad::Missing,
+        AnnotationLayerCacheEnvelopeLoad::Invalid(detail) => {
+            return AnnotationLayerCacheLoad::Invalid(detail);
+        }
+    };
+
+    if envelope.manifest != *expected_manifest {
+        return AnnotationLayerCacheLoad::Stale;
     }
 
     let lemma_table = match LemmaTable::try_from(envelope.layer.lemma_table) {
@@ -504,47 +591,34 @@ mod tests {
     use super::*;
     use crate::scan::DocumentType;
     use crate::tokenization::TokenizationConfig;
-    use std::ffi::OsString;
-    use std::sync::Mutex;
-
-    static VERIFY_CACHE_WRITE_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     struct VerifyCacheWriteEnvGuard {
-        previous: Option<OsString>,
+        previous: u8,
     }
 
     impl VerifyCacheWriteEnvGuard {
-        fn set(value: Option<&str>) -> Self {
-            let previous = std::env::var_os(VERIFY_CACHE_WRITE_ENV);
-            // SAFETY: tests that mutate this process environment variable hold
-            // VERIFY_CACHE_WRITE_ENV_LOCK. The flag only affects this module's
-            // optional cache-write verification branch.
-            unsafe {
-                if let Some(value) = value {
-                    std::env::set_var(VERIFY_CACHE_WRITE_ENV, value);
-                } else {
-                    std::env::remove_var(VERIFY_CACHE_WRITE_ENV);
-                }
-            }
+        fn set(value: Option<bool>) -> Self {
+            let next = match value {
+                None => 0,
+                Some(false) => 1,
+                Some(true) => 2,
+            };
+            let previous =
+                VERIFY_CACHE_WRITE_OVERRIDE.swap(next, std::sync::atomic::Ordering::Relaxed);
             Self { previous }
         }
     }
 
     impl Drop for VerifyCacheWriteEnvGuard {
         fn drop(&mut self) {
-            // SAFETY: see VerifyCacheWriteEnvGuard::set; the guard is held
-            // within the same locked test scope that created it.
-            unsafe {
-                if let Some(previous) = &self.previous {
-                    std::env::set_var(VERIFY_CACHE_WRITE_ENV, previous);
-                } else {
-                    std::env::remove_var(VERIFY_CACHE_WRITE_ENV);
-                }
-            }
+            VERIFY_CACHE_WRITE_OVERRIDE.store(self.previous, std::sync::atomic::Ordering::Relaxed);
         }
     }
 
     fn empty_manifest() -> AnnotationManifest {
+        let empty_surface_terms: Vec<&str> = Vec::new();
+        let surface_terms_hash_sha256 =
+            sha256_hex(&serde_json::to_vec(&empty_surface_terms).unwrap());
         AnnotationManifest {
             schema_version: ANNOTATION_LAYER_SCHEMA_VERSION,
             annotation_pipeline_version: ANNOTATION_PIPELINE_VERSION,
@@ -556,7 +630,7 @@ mod tests {
             },
             corpus: AnnotationCorpusIdentity {
                 documents_hash_sha256: "hash1".to_string(),
-                surface_terms_hash_sha256: "hash2".to_string(),
+                surface_terms_hash_sha256,
                 processed_texts_hash_sha256: "hash3".to_string(),
                 decode_policy_version: DECODE_POLICY_VERSION,
                 surface_term_count: 0,
@@ -595,6 +669,7 @@ mod tests {
             cache_file_version: ANNOTATION_LAYER_CACHE_FILE_VERSION,
             manifest: manifest.clone(),
             layer: AnnotationLayerDto {
+                surface_terms: Vec::new(),
                 documents: layer.documents.clone(),
                 lemma_table: LemmaTableDto::from(&layer.lemma_table),
                 languages_used: layer.languages_used.clone(),
@@ -738,8 +813,11 @@ mod tests {
 
         let manifest = empty_manifest();
         let layer = sample_layer();
+        let surface_terms = Vec::new();
 
-        assert!(write_annotation_layer_cache(cache_root, &manifest, &layer).is_ok());
+        assert!(
+            write_annotation_layer_cache(cache_root, &manifest, &surface_terms, &layer).is_ok()
+        );
 
         let loaded = load_annotation_layer_cache(cache_root, &manifest);
         match loaded {
@@ -756,8 +834,9 @@ mod tests {
         let cache_root = dir.path();
         let manifest = empty_manifest();
         let layer = sample_layer();
+        let surface_terms = Vec::new();
 
-        write_annotation_layer_cache(cache_root, &manifest, &layer).unwrap();
+        write_annotation_layer_cache(cache_root, &manifest, &surface_terms, &layer).unwrap();
 
         let bytes = std::fs::read(cache_file_path(cache_root)).unwrap();
         let envelope: AnnotationLayerCacheEnvelope = serde_json::from_slice(&bytes).unwrap();
@@ -802,16 +881,22 @@ mod tests {
 
     #[test]
     fn cache_write_skips_internal_readback_by_default_but_public_load_validates() {
-        let _env_lock = VERIFY_CACHE_WRITE_ENV_LOCK.lock().unwrap();
-        let _env = VerifyCacheWriteEnvGuard::set(None);
+        let _env = VerifyCacheWriteEnvGuard::set(Some(false));
         let dir = tempfile::tempdir().unwrap();
         let cache_root = dir.path();
         let manifest = empty_manifest();
         let layer = sample_layer();
+        let surface_terms = Vec::new();
         let timing = AnnotationBuildTimingCounters::new();
 
-        write_annotation_layer_cache_with_timing(cache_root, &manifest, &layer, Some(&timing))
-            .unwrap();
+        write_annotation_layer_cache_with_timing(
+            cache_root,
+            &manifest,
+            &surface_terms,
+            &layer,
+            Some(&timing),
+        )
+        .unwrap();
 
         assert!(!timing.readback_verification_ran());
         let loaded = load_annotation_layer_cache(cache_root, &manifest);
@@ -820,32 +905,38 @@ mod tests {
 
     #[test]
     fn cache_write_runs_internal_readback_when_env_flag_is_set() {
-        let _env_lock = VERIFY_CACHE_WRITE_ENV_LOCK.lock().unwrap();
-        let _env = VerifyCacheWriteEnvGuard::set(Some("1"));
+        let _env = VerifyCacheWriteEnvGuard::set(Some(true));
         let dir = tempfile::tempdir().unwrap();
         let cache_root = dir.path();
         let manifest = empty_manifest();
         let layer = sample_layer();
+        let surface_terms = Vec::new();
         let timing = AnnotationBuildTimingCounters::new();
 
-        write_annotation_layer_cache_with_timing(cache_root, &manifest, &layer, Some(&timing))
-            .unwrap();
+        write_annotation_layer_cache_with_timing(
+            cache_root,
+            &manifest,
+            &surface_terms,
+            &layer,
+            Some(&timing),
+        )
+        .unwrap();
 
         assert!(timing.readback_verification_ran());
     }
 
     #[test]
     fn streaming_cache_write_matches_in_memory_serializer_bytes() {
-        let _env_lock = VERIFY_CACHE_WRITE_ENV_LOCK.lock().unwrap();
-        let _env = VerifyCacheWriteEnvGuard::set(None);
+        let _env = VerifyCacheWriteEnvGuard::set(Some(false));
         let dir = tempfile::tempdir().unwrap();
         let cache_root = dir.path();
         let manifest = empty_manifest();
         let layer = sample_layer();
         let envelope = cache_envelope_for(&manifest, &layer);
+        let surface_terms = Vec::new();
         let expected = serde_json::to_string(&envelope).unwrap().into_bytes();
 
-        write_annotation_layer_cache(cache_root, &manifest, &layer).unwrap();
+        write_annotation_layer_cache(cache_root, &manifest, &surface_terms, &layer).unwrap();
 
         let bytes = std::fs::read(cache_file_path(cache_root)).unwrap();
         assert_eq!(bytes, expected);
@@ -888,8 +979,11 @@ mod tests {
             lemma_table: LemmaTable::new(),
             languages_used: vec![],
         };
+        let surface_terms = Vec::new();
 
-        assert!(write_annotation_layer_cache(cache_root, &manifest, &layer).is_ok());
+        assert!(
+            write_annotation_layer_cache(cache_root, &manifest, &surface_terms, &layer).is_ok()
+        );
 
         let mut new_manifest = empty_manifest();
         new_manifest.schema_version += 1;
