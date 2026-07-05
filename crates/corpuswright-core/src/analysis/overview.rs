@@ -128,7 +128,6 @@ pub struct CorpusOverviewFrequencyConcentration {
     pub top_10000_coverage: Option<f64>,
     pub shannon_entropy_bits: Option<f64>,
     pub evenness_j: Option<f64>,
-    pub perplexity: Option<f64>,
     pub effective_vocabulary_entropy: Option<f64>,
     pub reading: String,
 }
@@ -190,11 +189,23 @@ pub struct CorpusOverviewDispersion {
     pub high_dp_frequent_types: usize,
     pub median_dp: Option<f64>,
     pub df_in_1_count: usize,
-    pub df_in_2_to_n_minus_1_count: usize,
+    pub df_in_2_to_9_count: usize,
+    pub df_in_10_to_99_count: usize,
+    pub df_in_100_plus_count: usize,
     pub df_in_all_count: usize,
     pub df_in_1_share: Option<f64>,
-    pub df_in_2_to_n_minus_1_share: Option<f64>,
+    pub df_in_2_to_9_share: Option<f64>,
+    pub df_in_10_to_99_share: Option<f64>,
+    pub df_in_100_plus_share: Option<f64>,
     pub df_in_all_share: Option<f64>,
+    pub df_at_least_1pct_count: usize,
+    pub df_at_least_1pct_share: Option<f64>,
+    pub df_at_least_10pct_count: usize,
+    pub df_at_least_10pct_share: Option<f64>,
+    pub df_at_least_50pct_count: usize,
+    pub df_at_least_50pct_share: Option<f64>,
+    pub df_at_least_90pct_count: usize,
+    pub df_at_least_90pct_share: Option<f64>,
     pub median_documents_per_type: Option<f64>,
     pub reading: String,
 }
@@ -652,6 +663,14 @@ fn type_share(count: usize, total: usize) -> Option<f64> {
     (total > 0).then(|| count as f64 / total as f64)
 }
 
+fn document_frequency_threshold(document_count: usize, proportion: f64) -> usize {
+    if document_count == 0 {
+        return 0;
+    }
+
+    ((document_count as f64 * proportion).ceil() as usize).clamp(1, document_count)
+}
+
 pub(super) fn balance_severity(
     document_count: usize,
     total_tokens: u64,
@@ -844,28 +863,44 @@ pub(super) fn build_overview(
         && documents
             .iter()
             .all(|document| document.annotation_available);
-    let (df_in_1_count, df_in_2_to_n_minus_1_count, df_in_all_count) = if document_count == 0 {
-        (0, 0, 0)
-    } else if document_count == 1 {
-        (0, 0, total_types)
-    } else {
-        (
-            terms
-                .iter()
-                .filter(|term| term.document_frequency == 1)
-                .count(),
-            terms
-                .iter()
-                .filter(|term| {
-                    term.document_frequency >= 2 && term.document_frequency < document_count
-                })
-                .count(),
-            terms
-                .iter()
-                .filter(|term| term.document_frequency == document_count)
-                .count(),
-        )
-    };
+    let df_at_least_1pct_threshold = document_frequency_threshold(document_count, 0.01);
+    let df_at_least_10pct_threshold = document_frequency_threshold(document_count, 0.10);
+    let df_at_least_50pct_threshold = document_frequency_threshold(document_count, 0.50);
+    let df_at_least_90pct_threshold = document_frequency_threshold(document_count, 0.90);
+    let mut df_in_1_count = 0usize;
+    let mut df_in_2_to_9_count = 0usize;
+    let mut df_in_10_to_99_count = 0usize;
+    let mut df_in_100_plus_count = 0usize;
+    let mut df_in_all_count = 0usize;
+    let mut df_at_least_1pct_count = 0usize;
+    let mut df_at_least_10pct_count = 0usize;
+    let mut df_at_least_50pct_count = 0usize;
+    let mut df_at_least_90pct_count = 0usize;
+    for term in terms {
+        let df = term.document_frequency;
+        debug_assert!(df > 0);
+        match df {
+            1 => df_in_1_count += 1,
+            2..=9 => df_in_2_to_9_count += 1,
+            10..=99 => df_in_10_to_99_count += 1,
+            _ => df_in_100_plus_count += 1,
+        }
+        if document_count > 0 && df == document_count {
+            df_in_all_count += 1;
+        }
+        if df_at_least_1pct_threshold > 0 && df >= df_at_least_1pct_threshold {
+            df_at_least_1pct_count += 1;
+        }
+        if df_at_least_10pct_threshold > 0 && df >= df_at_least_10pct_threshold {
+            df_at_least_10pct_count += 1;
+        }
+        if df_at_least_50pct_threshold > 0 && df >= df_at_least_50pct_threshold {
+            df_at_least_50pct_count += 1;
+        }
+        if df_at_least_90pct_threshold > 0 && df >= df_at_least_90pct_threshold {
+            df_at_least_90pct_count += 1;
+        }
+    }
     let mut document_frequencies = terms
         .iter()
         .map(|term| term.document_frequency as u64)
@@ -1142,7 +1177,6 @@ pub(super) fn build_overview(
             top_10000_coverage,
             shannon_entropy_bits,
             evenness_j,
-            perplexity: effective_vocabulary_entropy,
             effective_vocabulary_entropy,
             reading: "A small set of high-frequency forms can carry much of the token mass even when most types are rare."
                 .to_string(),
@@ -1154,14 +1188,23 @@ pub(super) fn build_overview(
             high_dp_frequent_types,
             median_dp,
             df_in_1_count,
-            df_in_2_to_n_minus_1_count,
+            df_in_2_to_9_count,
+            df_in_10_to_99_count,
+            df_in_100_plus_count,
             df_in_all_count,
             df_in_1_share: type_share(df_in_1_count, total_types),
-            df_in_2_to_n_minus_1_share: type_share(
-                df_in_2_to_n_minus_1_count,
-                total_types,
-            ),
+            df_in_2_to_9_share: type_share(df_in_2_to_9_count, total_types),
+            df_in_10_to_99_share: type_share(df_in_10_to_99_count, total_types),
+            df_in_100_plus_share: type_share(df_in_100_plus_count, total_types),
             df_in_all_share: type_share(df_in_all_count, total_types),
+            df_at_least_1pct_count,
+            df_at_least_1pct_share: type_share(df_at_least_1pct_count, total_types),
+            df_at_least_10pct_count,
+            df_at_least_10pct_share: type_share(df_at_least_10pct_count, total_types),
+            df_at_least_50pct_count,
+            df_at_least_50pct_share: type_share(df_at_least_50pct_count, total_types),
+            df_at_least_90pct_count,
+            df_at_least_90pct_share: type_share(df_at_least_90pct_count, total_types),
             median_documents_per_type,
             reading: if document_count < 2 {
                 "Dispersion and document-frequency spread require at least two documents."
