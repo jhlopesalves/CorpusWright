@@ -95,6 +95,8 @@ interface OverviewMetricRow {
   glossaryId?: OverviewGlossaryId;
   labelSuffix?: string;
   description?: string;
+  sampleTypes?: string[];
+  sampleTypeCount?: number;
 }
 
 interface CompositionSegment {
@@ -118,6 +120,7 @@ const ANALYSIS_TOOLS: Array<{
 
 let activeAnalysisTool: AnalysisToolId = "overview";
 let overviewGlossaryControlId = 0;
+let overviewSampleControlId = 0;
 
 export function pluralise(count: number, singular: string, plural = `${singular}s`): string {
   return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
@@ -460,14 +463,7 @@ function createGlossaryExample(example: string): HTMLDetailsElement {
   return disclosure;
 }
 
-function createGlossaryDisclosure(
-  glossaryId: OverviewGlossaryId,
-  onToggle?: (expanded: boolean) => void,
-  labelText: string = overviewGlossary[glossaryId].label,
-): { button: HTMLButtonElement; panel: HTMLDivElement } {
-  const entry: OverviewGlossaryEntry = overviewGlossary[glossaryId];
-  const panelId = `overview-glossary-${entry.id}-${++overviewGlossaryControlId}`;
-
+function createOverviewDisclosureButton(labelText: string, panelId: string): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "analysis-glossary-term";
@@ -481,6 +477,19 @@ function createGlossaryDisclosure(
   caret.setAttribute("aria-hidden", "true");
   caret.textContent = "›";
   button.append(label, caret);
+
+  return button;
+}
+
+function createGlossaryDisclosure(
+  glossaryId: OverviewGlossaryId,
+  onToggle?: (expanded: boolean) => void,
+  labelText: string = overviewGlossary[glossaryId].label,
+): { button: HTMLButtonElement; panel: HTMLDivElement } {
+  const entry: OverviewGlossaryEntry = overviewGlossary[glossaryId];
+  const panelId = `overview-glossary-${entry.id}-${++overviewGlossaryControlId}`;
+
+  const button = createOverviewDisclosureButton(labelText, panelId);
 
   const panel = document.createElement("div");
   panel.id = panelId;
@@ -530,6 +539,50 @@ function createGlossaryDisclosure(
   return { button, panel };
 }
 
+function createSampleTypesDisclosure(
+  sampleTypes: string[],
+  sampleTypeCount: number,
+): { button: HTMLButtonElement; row: HTMLTableRowElement; panel: HTMLDivElement } {
+  const panelId = `overview-sample-types-${++overviewSampleControlId}`;
+  const button = createOverviewDisclosureButton("Show types", panelId);
+  button.classList.add("analysis-dispersion-sample-toggle");
+
+  const row = document.createElement("tr");
+  row.className = "analysis-dispersion-sample-row";
+  row.hidden = true;
+
+  const detailCell = document.createElement("td");
+  detailCell.colSpan = 3;
+
+  const panel = document.createElement("div");
+  panel.id = panelId;
+  panel.className = "analysis-dispersion-sample-detail";
+  panel.hidden = true;
+
+  const types = document.createElement("p");
+  types.className = "analysis-dispersion-sample-types";
+  types.textContent = sampleTypes.join(", ");
+  panel.appendChild(types);
+
+  if (sampleTypeCount > sampleTypes.length) {
+    const caption = document.createElement("p");
+    caption.className = "analysis-dispersion-sample-caption";
+    caption.textContent = `Top 20 by frequency of ${formatNumber(sampleTypeCount)} types.`;
+    panel.appendChild(caption);
+  }
+
+  button.addEventListener("click", () => {
+    const expanded = button.getAttribute("aria-expanded") !== "true";
+    button.setAttribute("aria-expanded", String(expanded));
+    row.hidden = !expanded;
+    panel.hidden = !expanded;
+  });
+
+  detailCell.appendChild(panel);
+  row.appendChild(detailCell);
+  return { button, row, panel };
+}
+
 function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTableElement {
   const table = document.createElement("table");
   table.className = ["analysis-metric-table", className].filter(Boolean).join(" ");
@@ -575,7 +628,16 @@ function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTable
 
     const value = document.createElement("td");
     value.className = "numeric analysis-metric-value";
-    value.textContent = row.value;
+    const valueText = document.createElement("span");
+    valueText.textContent = row.value;
+    value.appendChild(valueText);
+
+    let sampleRow: HTMLTableRowElement | null = null;
+    if (row.sampleTypes?.length && row.sampleTypeCount !== undefined) {
+      const sampleDisclosure = createSampleTypesDisclosure(row.sampleTypes, row.sampleTypeCount);
+      value.appendChild(sampleDisclosure.button);
+      sampleRow = sampleDisclosure.row;
+    }
 
     const share = document.createElement("td");
     share.className = "numeric analysis-metric-share";
@@ -593,6 +655,9 @@ function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTable
       detailCell.appendChild(glossaryPanel);
       glossaryRow.appendChild(detailCell);
       body.appendChild(glossaryRow);
+    }
+    if (sampleRow) {
+      body.appendChild(sampleRow);
     }
   }
 
@@ -1215,18 +1280,26 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
       {
         ...countWithInlineShareRow("Types in 1 document only", dispersion.dfIn1Count, dispersion.dfIn1Share),
         glossaryId: "documentFrequencySpectrum",
+        sampleTypes: dispersion.dfIn1SampleTypes,
+        sampleTypeCount: dispersion.dfIn1Count,
       },
       {
         ...countWithInlineShareRow("Types in 2–9 documents", dispersion.dfIn2To9Count, dispersion.dfIn2To9Share),
         glossaryId: "documentFrequencySpectrum",
+        sampleTypes: dispersion.dfIn2To9SampleTypes,
+        sampleTypeCount: dispersion.dfIn2To9Count,
       },
       {
         ...countWithInlineShareRow("Types in 10–99 documents", dispersion.dfIn10To99Count, dispersion.dfIn10To99Share),
         glossaryId: "documentFrequencySpectrum",
+        sampleTypes: dispersion.dfIn10To99SampleTypes,
+        sampleTypeCount: dispersion.dfIn10To99Count,
       },
       {
         ...countWithInlineShareRow("Types in 100+ documents", dispersion.dfIn100PlusCount, dispersion.dfIn100PlusShare),
         glossaryId: "documentFrequencySpectrum",
+        sampleTypes: dispersion.dfIn100PlusSampleTypes,
+        sampleTypeCount: dispersion.dfIn100PlusCount,
       },
       {
         ...countWithInlineShareRow(
@@ -1235,6 +1308,8 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
           dispersion.dfAtLeast1pctShare,
         ),
         glossaryId: "documentFrequencySpectrum",
+        sampleTypes: dispersion.dfAtLeast1pctSampleTypes,
+        sampleTypeCount: dispersion.dfAtLeast1pctCount,
       },
       {
         ...countWithInlineShareRow(
@@ -1243,6 +1318,8 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
           dispersion.dfAtLeast10pctShare,
         ),
         glossaryId: "documentFrequencySpectrum",
+        sampleTypes: dispersion.dfAtLeast10pctSampleTypes,
+        sampleTypeCount: dispersion.dfAtLeast10pctCount,
       },
       {
         ...countWithInlineShareRow(
@@ -1251,6 +1328,8 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
           dispersion.dfAtLeast50pctShare,
         ),
         glossaryId: "documentFrequencySpectrum",
+        sampleTypes: dispersion.dfAtLeast50pctSampleTypes,
+        sampleTypeCount: dispersion.dfAtLeast50pctCount,
       },
       {
         ...countWithInlineShareRow(
@@ -1259,6 +1338,8 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
           dispersion.dfAtLeast90pctShare,
         ),
         glossaryId: "documentFrequencySpectrum",
+        sampleTypes: dispersion.dfAtLeast90pctSampleTypes,
+        sampleTypeCount: dispersion.dfAtLeast90pctCount,
       },
       {
         ...countWithInlineShareRow(
@@ -1267,6 +1348,8 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
           dispersion.dfInAllShare,
         ),
         glossaryId: "documentFrequencySpectrum",
+        sampleTypes: dispersion.dfInAllSampleTypes,
+        sampleTypeCount: dispersion.dfInAllCount,
       },
     ];
     if (dispersion.medianDocumentsPerType !== null) {

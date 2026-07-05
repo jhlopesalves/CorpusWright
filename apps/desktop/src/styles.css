@@ -2606,6 +2606,12 @@ main {
   font-weight: 500;
 }
 
+.analysis-dispersion-sample-toggle {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
 .analysis-metric-description {
   display: block;
   margin-top: 3px;
@@ -2619,7 +2625,15 @@ main {
   border-top: 0 !important;
 }
 
+.analysis-dispersion-sample-row {
+  border-top: 0 !important;
+}
+
 .analysis-glossary-row > td {
+  padding: 0 0 8px !important;
+}
+
+.analysis-dispersion-sample-row > td {
   padding: 0 0 8px !important;
 }
 
@@ -2635,15 +2649,42 @@ main {
   overflow: visible;
 }
 
+.analysis-dispersion-sample-detail {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--border-color);
+  background: var(--cw-interaction-bg-hover);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  overflow: visible;
+}
+
 .analysis-glossary-detail[hidden],
 .analysis-composition-glossary[hidden],
-.analysis-glossary-row[hidden] {
+.analysis-glossary-row[hidden],
+.analysis-dispersion-sample-detail[hidden],
+.analysis-dispersion-sample-row[hidden] {
   display: none;
 }
 
 .analysis-glossary-detail p {
   margin: 0;
   color: var(--text-color);
+}
+
+.analysis-dispersion-sample-types {
+  margin: 0;
+  color: var(--text-color);
+  font-family: var(--cw-font-mono);
+  overflow-wrap: anywhere;
+}
+
+.analysis-dispersion-sample-caption {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.76rem;
 }
 
 .analysis-glossary-section {
