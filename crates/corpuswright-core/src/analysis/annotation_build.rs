@@ -156,6 +156,8 @@ pub enum AnnotationCacheBuildPhase {
 pub struct AnnotationCacheBuildProgress {
     pub files_done: usize,
     pub files_total: usize,
+    pub tokens_done: u64,
+    pub tokens_total: u64,
     pub current_phase: AnnotationCacheBuildPhase,
 }
 
@@ -164,9 +166,21 @@ fn annotation_build_progress(
     files_total: usize,
     current_phase: AnnotationCacheBuildPhase,
 ) -> AnnotationCacheBuildProgress {
+    annotation_build_progress_with_tokens(files_done, files_total, 0, 0, current_phase)
+}
+
+fn annotation_build_progress_with_tokens(
+    files_done: usize,
+    files_total: usize,
+    tokens_done: u64,
+    tokens_total: u64,
+    current_phase: AnnotationCacheBuildPhase,
+) -> AnnotationCacheBuildProgress {
     AnnotationCacheBuildProgress {
         files_done,
         files_total,
+        tokens_done,
+        tokens_total,
         current_phase,
     }
 }
@@ -602,7 +616,36 @@ struct AnnotatedAnnotationChunk {
 #[derive(Clone, Copy)]
 struct AnnotationLayerBuildRuntime<'a> {
     docs_done: &'a std::sync::atomic::AtomicUsize,
+    tokens_done: &'a AtomicU64,
+    document_token_counts: &'a [u64],
     timing: Option<&'a AnnotationBuildTimingCounters>,
+}
+
+impl AnnotationLayerBuildRuntime<'_> {
+    fn token_count_for_document(&self, analysis_document_index: usize) -> u64 {
+        self.document_token_counts
+            .get(analysis_document_index)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn credit_document_tokens(&self, analysis_document_index: usize) {
+        self.credit_tokens(self.token_count_for_document(analysis_document_index));
+    }
+
+    fn credit_tokens(&self, count: u64) {
+        if count > 0 {
+            self.tokens_done.fetch_add(count, AtomicOrdering::Relaxed);
+        }
+    }
+}
+
+fn annotation_document_token_counts(corpus: &AnalysisCorpus) -> Vec<u64> {
+    corpus
+        .documents
+        .iter()
+        .map(|document| document.summary.token_count)
+        .collect()
 }
 
 #[derive(Clone, Copy)]
@@ -887,11 +930,16 @@ where
     }
 
     let annotation_files_total = corpus.documents.len();
+    let annotation_token_counts = annotation_document_token_counts(corpus);
+    let annotation_tokens_total = annotation_token_counts.iter().sum::<u64>();
+    let tokens_done = AtomicU64::new(0);
 
     if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-        report_progress(annotation_build_progress(
+        report_progress(annotation_build_progress_with_tokens(
             0,
             annotation_files_total,
+            0,
+            annotation_tokens_total,
             AnnotationCacheBuildPhase::Cancelled,
         ));
         return Err(AnnotationCacheBuildError::Cancelled);
@@ -909,9 +957,11 @@ where
             if let Some(timing) = timing_ref {
                 timing.record_manifest_cache_ready(manifest_cache_started.elapsed());
             }
-            report_progress(annotation_build_progress(
+            report_progress(annotation_build_progress_with_tokens(
                 0,
                 annotation_files_total,
+                0,
+                annotation_tokens_total,
                 AnnotationCacheBuildPhase::Failed,
             ));
             return Err(AnnotationCacheBuildError::ManifestError {
@@ -932,9 +982,11 @@ where
             .map(|doc| doc.term_counts.len())
             .sum();
 
-        report_progress(annotation_build_progress(
+        report_progress(annotation_build_progress_with_tokens(
             documents_annotated,
             annotation_files_total,
+            annotation_tokens_total,
+            annotation_tokens_total,
             AnnotationCacheBuildPhase::Completed,
         ));
 
@@ -969,9 +1021,11 @@ where
                 let surface_term_lookup = match build_surface_term_lookup(corpus) {
                     Ok(lookup) => lookup,
                     Err(error) => {
-                        report_progress(annotation_build_progress(
+                        report_progress(annotation_build_progress_with_tokens(
                             0,
                             annotation_files_total,
+                            0,
+                            annotation_tokens_total,
                             AnnotationCacheBuildPhase::Failed,
                         ));
                         return Err(AnnotationCacheBuildError::AnnotationFailed {
@@ -989,9 +1043,11 @@ where
                     Ok(plan) => Some((plan, surface_term_lookup)),
                     Err(error) => {
                         let cancelled = matches!(&error, AnnotationLayerBuildError::Cancelled);
-                        report_progress(annotation_build_progress(
+                        report_progress(annotation_build_progress_with_tokens(
                             0,
                             annotation_files_total,
+                            0,
+                            annotation_tokens_total,
                             if cancelled {
                                 AnnotationCacheBuildPhase::Cancelled
                             } else {
@@ -1017,9 +1073,11 @@ where
             | crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Invalid(_) => None,
         };
 
-    report_progress(annotation_build_progress(
+    report_progress(annotation_build_progress_with_tokens(
         0,
         annotation_files_total,
+        0,
+        annotation_tokens_total,
         AnnotationCacheBuildPhase::LoadingModel,
     ));
 
@@ -1029,12 +1087,27 @@ where
             plan.reused_documents.len(),
             std::sync::atomic::Ordering::Relaxed,
         );
+        let reused_tokens = plan
+            .reused_documents
+            .iter()
+            .map(|document| {
+                annotation_token_counts
+                    .get(document.analysis_document_index)
+                    .copied()
+                    .unwrap_or(0)
+            })
+            .sum::<u64>();
+        tokens_done.store(reused_tokens, AtomicOrdering::Relaxed);
     }
-    report_progress(annotation_build_progress(
+    report_progress(annotation_build_progress_with_tokens(
         docs_done
             .load(std::sync::atomic::Ordering::Relaxed)
             .min(annotation_files_total),
         annotation_files_total,
+        tokens_done
+            .load(AtomicOrdering::Relaxed)
+            .min(annotation_tokens_total),
+        annotation_tokens_total,
         AnnotationCacheBuildPhase::Annotating,
     ));
 
@@ -1052,6 +1125,8 @@ where
                         parallel_map: true,
                         runtime: AnnotationLayerBuildRuntime {
                             docs_done: &docs_done,
+                            tokens_done: &tokens_done,
+                            document_token_counts: &annotation_token_counts,
                             timing: timing_ref,
                         },
                     },
@@ -1062,9 +1137,13 @@ where
 
             while !handle.is_finished() {
                 let done = docs_done.load(std::sync::atomic::Ordering::Relaxed);
-                report_progress(annotation_build_progress(
+                report_progress(annotation_build_progress_with_tokens(
                     done.min(annotation_files_total),
                     annotation_files_total,
+                    tokens_done
+                        .load(AtomicOrdering::Relaxed)
+                        .min(annotation_tokens_total),
+                    annotation_tokens_total,
                     AnnotationCacheBuildPhase::Annotating,
                 ));
                 std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1084,6 +1163,8 @@ where
                     true,
                     AnnotationLayerBuildRuntime {
                         docs_done: &docs_done,
+                        tokens_done: &tokens_done,
+                        document_token_counts: &annotation_token_counts,
                         timing: timing_ref,
                     },
                 )
@@ -1091,9 +1172,13 @@ where
 
             while !handle.is_finished() {
                 let done = docs_done.load(std::sync::atomic::Ordering::Relaxed);
-                report_progress(annotation_build_progress(
+                report_progress(annotation_build_progress_with_tokens(
                     done.min(annotation_files_total),
                     annotation_files_total,
+                    tokens_done
+                        .load(AtomicOrdering::Relaxed)
+                        .min(annotation_tokens_total),
+                    annotation_tokens_total,
                     AnnotationCacheBuildPhase::Annotating,
                 ));
                 std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1107,11 +1192,15 @@ where
         Ok(layer) => layer,
         Err(error) => {
             let cancelled = matches!(&error, AnnotationLayerBuildError::Cancelled);
-            report_progress(annotation_build_progress(
+            report_progress(annotation_build_progress_with_tokens(
                 docs_done
                     .load(std::sync::atomic::Ordering::Relaxed)
                     .min(annotation_files_total),
                 annotation_files_total,
+                tokens_done
+                    .load(AtomicOrdering::Relaxed)
+                    .min(annotation_tokens_total),
+                annotation_tokens_total,
                 if cancelled {
                     AnnotationCacheBuildPhase::Cancelled
                 } else {
@@ -1130,22 +1219,30 @@ where
         }
     };
 
-    report_progress(annotation_build_progress(
+    tokens_done.store(annotation_tokens_total, AtomicOrdering::Relaxed);
+
+    report_progress(annotation_build_progress_with_tokens(
         annotation_files_total,
         annotation_files_total,
+        annotation_tokens_total,
+        annotation_tokens_total,
         AnnotationCacheBuildPhase::Annotating,
     ));
 
-    report_progress(annotation_build_progress(
+    report_progress(annotation_build_progress_with_tokens(
         annotation_files_total,
         annotation_files_total,
+        annotation_tokens_total,
+        annotation_tokens_total,
         AnnotationCacheBuildPhase::WritingCache,
     ));
 
     if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-        report_progress(annotation_build_progress(
+        report_progress(annotation_build_progress_with_tokens(
             annotation_files_total,
             annotation_files_total,
+            annotation_tokens_total,
+            annotation_tokens_total,
             AnnotationCacheBuildPhase::Cancelled,
         ));
         return Err(AnnotationCacheBuildError::Cancelled);
@@ -1162,9 +1259,11 @@ where
         &layer,
         timing_ref,
     ) {
-        report_progress(annotation_build_progress(
+        report_progress(annotation_build_progress_with_tokens(
             annotation_files_total,
             annotation_files_total,
+            annotation_tokens_total,
+            annotation_tokens_total,
             AnnotationCacheBuildPhase::Failed,
         ));
         return Err(AnnotationCacheBuildError::CacheWriteError {
@@ -1179,9 +1278,11 @@ where
         .map(|doc| doc.term_counts.len())
         .sum();
 
-    report_progress(annotation_build_progress(
+    report_progress(annotation_build_progress_with_tokens(
         documents_annotated,
         annotation_files_total,
+        annotation_tokens_total,
+        annotation_tokens_total,
         AnnotationCacheBuildPhase::Completed,
     ));
 
@@ -1388,6 +1489,8 @@ pub(super) fn build_annotation_layer_with_mapping<TextLoader>(
 where
     TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
 {
+    let tokens_done = AtomicU64::new(0);
+    let document_token_counts = annotation_document_token_counts(corpus);
     build_annotation_layer_with_mapping_timed(
         corpus,
         records,
@@ -1397,6 +1500,8 @@ where
         parallel_map,
         AnnotationLayerBuildRuntime {
             docs_done,
+            tokens_done: &tokens_done,
+            document_token_counts: &document_token_counts,
             timing: None,
         },
     )
@@ -2014,6 +2119,7 @@ fn annotate_annotation_documents(
                     runtime.timing,
                 );
                 if result.is_ok() {
+                    runtime.credit_document_tokens(input.analysis_document_index);
                     runtime
                         .docs_done
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -2323,6 +2429,7 @@ fn annotate_staged_annotation_wave_documents_with_budget(
                 annotated_chunks,
                 runtime.timing,
             )?;
+            runtime.credit_document_tokens(staged_document.input.analysis_document_index);
             runtime.docs_done.fetch_add(1, AtomicOrdering::Relaxed);
             Ok(document)
         })
@@ -2375,6 +2482,11 @@ fn annotate_segmented_staged_annotation_document(
     let segments = annotation_chunk_segments(&staged_document.chunks, segment_budget);
     let mut count_accumulator = LocalAnnotatedTermCountAccumulator::new();
     let mut next_word_token_index = 0usize;
+    let document_token_count =
+        runtime.token_count_for_document(staged_document.input.analysis_document_index);
+    let total_segment_tokens = staged_document.tokens.len();
+    let mut processed_segment_tokens = 0usize;
+    let mut credited_document_tokens = 0u64;
 
     for segment in segments {
         if cancel.load(AtomicOrdering::Relaxed) {
@@ -2383,6 +2495,7 @@ fn annotate_segmented_staged_annotation_document(
 
         let segment_chunks = &staged_document.chunks[segment.clone()];
         let token_range = annotation_segment_token_range(segment_chunks);
+        let segment_token_count = token_range.end.saturating_sub(token_range.start);
         let jobs = annotation_segment_chunk_jobs(segment_chunks, segment.start);
         let mut annotated_chunks = annotate_annotation_chunk_jobs(
             std::slice::from_ref(staged_document),
@@ -2431,9 +2544,19 @@ fn annotate_segmented_staged_annotation_document(
         if let Some(timing) = runtime.timing {
             timing.record_annotation_segment_processed();
         }
+        processed_segment_tokens = processed_segment_tokens.saturating_add(segment_token_count);
+        let segment_credit = proportional_segment_token_credit(
+            document_token_count,
+            total_segment_tokens,
+            processed_segment_tokens,
+            credited_document_tokens,
+        );
+        runtime.credit_tokens(segment_credit);
+        credited_document_tokens = credited_document_tokens.saturating_add(segment_credit);
     }
 
     let term_counts = finish_accumulated_local_counts(count_accumulator);
+    runtime.credit_tokens(document_token_count.saturating_sub(credited_document_tokens));
     runtime.docs_done.fetch_add(1, AtomicOrdering::Relaxed);
     Ok(worker_annotation_document_from_local_counts(
         staged_document.input,
@@ -2496,6 +2619,23 @@ fn annotation_segment_token_range(segment_chunks: &[Range<usize>]) -> Range<usiz
     let start = segment_chunks.first().map_or(0, |chunk| chunk.start);
     let end = segment_chunks.last().map_or(start, |chunk| chunk.end);
     start..end
+}
+
+fn proportional_segment_token_credit(
+    document_token_count: u64,
+    total_segment_tokens: usize,
+    processed_segment_tokens: usize,
+    credited_document_tokens: u64,
+) -> u64 {
+    if document_token_count == 0 || total_segment_tokens == 0 {
+        return 0;
+    }
+
+    let capped_processed = processed_segment_tokens.min(total_segment_tokens) as u128;
+    let target_credit = (u128::from(document_token_count) * capped_processed
+        / total_segment_tokens as u128)
+        .min(u128::from(document_token_count)) as u64;
+    target_credit.saturating_sub(credited_document_tokens)
 }
 
 fn tag_staged_annotation_chunk(
