@@ -6,8 +6,9 @@ use crate::language::{ProjectLanguage, resolve_effective_document_languages};
 use crate::scan::DocumentRecord;
 use crate::tokenization::{TokenizationConfig, tokenize};
 use std::collections::{BTreeSet, HashMap};
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
+use std::sync::{Arc, Mutex};
 
 fn fake_annotation(surface: &str, token_index: u32) -> AnnotatedToken {
     AnnotatedToken {
@@ -156,6 +157,298 @@ fn multi_wave_english_texts() -> (Vec<(String, String)>, usize, usize) {
 
     assert!(total_words > token_budget.saturating_mul(2));
     (texts, total_words, token_budget)
+}
+
+fn cache_file_path(cache_root: &Path) -> PathBuf {
+    cache_root.join(format!(
+        "annotation-layer.v{}.json",
+        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+    ))
+}
+
+fn cache_records(texts: &[(&str, &str)]) -> Vec<DocumentRecord> {
+    texts.iter().map(|(name, _)| record(name)).collect()
+}
+
+fn cache_surface_corpus_for(
+    texts: &[(&str, &str)],
+    language_overrides: HashMap<usize, String>,
+) -> AnalysisCorpus {
+    let mut options = build_options();
+    options.force_compute_hashes = true;
+    options.udpipe_model_dir = Some(default_model_dir());
+    options.language_overrides = language_overrides;
+    analysis_product_for(texts, options, true).corpus
+}
+
+fn build_cache_with_reusable_surface(
+    cache_root: &Path,
+    texts: &[(&str, &str)],
+    language_overrides: HashMap<usize, String>,
+    reusable_surface_corpus: &AnalysisCorpus,
+) -> (
+    AnnotationCacheBuildReport,
+    crate::annotation_cache::AnnotationLayerCacheEnvelope,
+    Vec<String>,
+) {
+    let records = cache_records(texts);
+    let text_by_name = texts
+        .iter()
+        .map(|(name, text)| ((*name).to_string(), (*text).to_string()))
+        .collect::<HashMap<_, _>>();
+    let loaded_records = Arc::new(Mutex::new(Vec::new()));
+    let loaded_records_for_closure = loaded_records.clone();
+    let mut options = build_options();
+    options.annotation_cache_root = Some(cache_root.to_path_buf());
+    options.udpipe_model_dir = Some(default_model_dir());
+    options.language_overrides = language_overrides.clone();
+    let annotation_options = AnnotationLayerBuildOptions {
+        udpipe_model_dir: options.udpipe_model_dir.clone(),
+        language_overrides,
+    };
+
+    let report = build_and_write_annotation_cache_with_reusable_surface_corpus(
+        &records,
+        options,
+        annotation_options,
+        &AtomicBool::new(false),
+        |record| {
+            loaded_records_for_closure
+                .lock()
+                .unwrap()
+                .push(record.relative_path.to_string_lossy().into_owned());
+            Ok(processed_resolution(
+                record,
+                text_by_name
+                    .get(record.source_path.to_str().unwrap())
+                    .map(String::as_str)
+                    .unwrap_or_default(),
+            ))
+        },
+        |_| {},
+        Some(reusable_surface_corpus),
+    )
+    .unwrap();
+    let envelope = read_annotation_cache_envelope(cache_root);
+    let loaded_records = loaded_records.lock().unwrap().clone();
+
+    (report, envelope, loaded_records)
+}
+
+fn build_full_rebuild_cache(
+    cache_root: &Path,
+    texts: &[(&str, &str)],
+    language_overrides: HashMap<usize, String>,
+    reusable_surface_corpus: &AnalysisCorpus,
+) -> crate::annotation_cache::AnnotationLayerCacheEnvelope {
+    build_cache_with_reusable_surface(
+        cache_root,
+        texts,
+        language_overrides,
+        reusable_surface_corpus,
+    )
+    .1
+}
+
+fn write_cache_envelope(
+    cache_root: &Path,
+    envelope: &crate::annotation_cache::AnnotationLayerCacheEnvelope,
+) {
+    std::fs::write(
+        cache_file_path(cache_root),
+        serde_json::to_vec(envelope).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn annotation_cache_salvage_unchanged_corpus_uses_fast_path() {
+    let cache_dir = tempfile::tempdir().unwrap();
+    let texts = [("a.txt", "Cats chase mice."), ("b.txt", "Dogs jump high.")];
+    let language_overrides = english_overrides(texts.len());
+    let corpus = cache_surface_corpus_for(&texts, language_overrides.clone());
+
+    let (first_report, _, first_loaded) = build_cache_with_reusable_surface(
+        cache_dir.path(),
+        &texts,
+        language_overrides.clone(),
+        &corpus,
+    );
+    assert!(first_report.cache_written);
+    assert_eq!(first_loaded.len(), texts.len());
+
+    let (second_report, _, second_loaded) =
+        build_cache_with_reusable_surface(cache_dir.path(), &texts, language_overrides, &corpus);
+
+    assert!(second_report.reused_existing);
+    assert!(!second_report.cache_written);
+    assert!(second_loaded.is_empty());
+}
+
+#[test]
+fn annotation_cache_salvage_added_documents_matches_full_rebuild() {
+    let salvage_dir = tempfile::tempdir().unwrap();
+    let full_dir = tempfile::tempdir().unwrap();
+    let old_texts = [("a.txt", "Cats chase mice.")];
+    let new_texts = [("a.txt", "Cats chase mice."), ("b.txt", "Dogs jump high.")];
+    let old_overrides = english_overrides(old_texts.len());
+    let new_overrides = english_overrides(new_texts.len());
+    let old_corpus = cache_surface_corpus_for(&old_texts, old_overrides.clone());
+    let new_corpus = cache_surface_corpus_for(&new_texts, new_overrides.clone());
+
+    build_cache_with_reusable_surface(salvage_dir.path(), &old_texts, old_overrides, &old_corpus);
+    let (_, salvaged, loaded) = build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &new_texts,
+        new_overrides.clone(),
+        &new_corpus,
+    );
+    let full = build_full_rebuild_cache(full_dir.path(), &new_texts, new_overrides, &new_corpus);
+
+    assert_eq!(loaded, vec!["b.txt".to_string()]);
+    assert_eq!(salvaged.layer, full.layer);
+}
+
+#[test]
+fn annotation_cache_salvage_removed_documents_matches_full_rebuild() {
+    let salvage_dir = tempfile::tempdir().unwrap();
+    let full_dir = tempfile::tempdir().unwrap();
+    let old_texts = [("a.txt", "Cats chase mice."), ("b.txt", "Dogs jump high.")];
+    let new_texts = [("a.txt", "Cats chase mice.")];
+    let old_overrides = english_overrides(old_texts.len());
+    let new_overrides = english_overrides(new_texts.len());
+    let old_corpus = cache_surface_corpus_for(&old_texts, old_overrides.clone());
+    let new_corpus = cache_surface_corpus_for(&new_texts, new_overrides.clone());
+
+    build_cache_with_reusable_surface(salvage_dir.path(), &old_texts, old_overrides, &old_corpus);
+    let (_, salvaged, loaded) = build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &new_texts,
+        new_overrides.clone(),
+        &new_corpus,
+    );
+    let full = build_full_rebuild_cache(full_dir.path(), &new_texts, new_overrides, &new_corpus);
+
+    assert!(loaded.is_empty());
+    assert_eq!(salvaged.layer, full.layer);
+}
+
+#[test]
+fn annotation_cache_salvage_modified_document_reannotates_only_misses() {
+    let salvage_dir = tempfile::tempdir().unwrap();
+    let full_dir = tempfile::tempdir().unwrap();
+    let old_texts = [("a.txt", "Cats chase mice."), ("b.txt", "Dogs jump high.")];
+    let new_texts = [
+        ("a.txt", "Cats chase mice."),
+        ("b.txt", "Birds sing softly."),
+    ];
+    let old_overrides = english_overrides(old_texts.len());
+    let new_overrides = english_overrides(new_texts.len());
+    let old_corpus = cache_surface_corpus_for(&old_texts, old_overrides.clone());
+    let new_corpus = cache_surface_corpus_for(&new_texts, new_overrides.clone());
+
+    build_cache_with_reusable_surface(salvage_dir.path(), &old_texts, old_overrides, &old_corpus);
+    let (_, salvaged, loaded) = build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &new_texts,
+        new_overrides.clone(),
+        &new_corpus,
+    );
+    let full = build_full_rebuild_cache(full_dir.path(), &new_texts, new_overrides, &new_corpus);
+
+    assert_eq!(loaded, vec!["b.txt".to_string()]);
+    assert_eq!(salvaged.layer, full.layer);
+}
+
+#[test]
+fn annotation_cache_salvage_renamed_document_reuses() {
+    let salvage_dir = tempfile::tempdir().unwrap();
+    let full_dir = tempfile::tempdir().unwrap();
+    let old_texts = [("old-name.txt", "Cats chase mice.")];
+    let new_texts = [("new-name.txt", "Cats chase mice.")];
+    let old_overrides = english_overrides(old_texts.len());
+    let new_overrides = english_overrides(new_texts.len());
+    let old_corpus = cache_surface_corpus_for(&old_texts, old_overrides.clone());
+    let new_corpus = cache_surface_corpus_for(&new_texts, new_overrides.clone());
+
+    build_cache_with_reusable_surface(salvage_dir.path(), &old_texts, old_overrides, &old_corpus);
+    let (_, salvaged, loaded) = build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &new_texts,
+        new_overrides.clone(),
+        &new_corpus,
+    );
+    let full = build_full_rebuild_cache(full_dir.path(), &new_texts, new_overrides, &new_corpus);
+
+    assert!(loaded.is_empty());
+    assert_eq!(salvaged.layer, full.layer);
+    assert_eq!(salvaged.layer.documents[0].relative_path, "new-name.txt");
+}
+
+#[test]
+fn annotation_cache_salvage_model_change_invalidates_language() {
+    let salvage_dir = tempfile::tempdir().unwrap();
+    let full_dir = tempfile::tempdir().unwrap();
+    let texts = [
+        ("en.txt", "The small cat sleeps."),
+        ("pt.txt", "O gato preto correu."),
+    ];
+    let mut language_overrides = HashMap::new();
+    language_overrides.insert(0, "en".to_string());
+    language_overrides.insert(1, "pt".to_string());
+    let corpus = cache_surface_corpus_for(&texts, language_overrides.clone());
+
+    build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &texts,
+        language_overrides.clone(),
+        &corpus,
+    );
+    let mut old_envelope = read_annotation_cache_envelope(salvage_dir.path());
+    let pt_model = old_envelope
+        .manifest
+        .models
+        .iter_mut()
+        .find(|model| model.language == "pt")
+        .expect("test fixture should include pt model");
+    pt_model.sha256 = "changed-model-sha".to_string();
+    write_cache_envelope(salvage_dir.path(), &old_envelope);
+
+    let (_, salvaged, loaded) = build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &texts,
+        language_overrides.clone(),
+        &corpus,
+    );
+    let full = build_full_rebuild_cache(full_dir.path(), &texts, language_overrides, &corpus);
+
+    assert_eq!(loaded, vec!["pt.txt".to_string()]);
+    assert_eq!(salvaged.layer, full.layer);
+}
+
+#[test]
+fn annotation_cache_salvage_rejects_pipeline_version_mismatch() {
+    let salvage_dir = tempfile::tempdir().unwrap();
+    let texts = [("a.txt", "Cats chase mice."), ("b.txt", "Dogs jump high.")];
+    let language_overrides = english_overrides(texts.len());
+    let corpus = cache_surface_corpus_for(&texts, language_overrides.clone());
+
+    build_cache_with_reusable_surface(
+        salvage_dir.path(),
+        &texts,
+        language_overrides.clone(),
+        &corpus,
+    );
+    let mut old_envelope = read_annotation_cache_envelope(salvage_dir.path());
+    old_envelope.manifest.annotation_pipeline_version += 1;
+    write_cache_envelope(salvage_dir.path(), &old_envelope);
+
+    let (report, _, loaded) =
+        build_cache_with_reusable_surface(salvage_dir.path(), &texts, language_overrides, &corpus);
+
+    assert!(report.cache_written);
+    assert!(!report.reused_existing);
+    assert_eq!(loaded.len(), texts.len());
 }
 
 #[test]
@@ -1169,8 +1462,13 @@ fn test_annotation_cache_seam_stale_cache() {
         languages_used: vec![],
     };
 
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     // 2. Build with cache root
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
@@ -1274,8 +1572,13 @@ fn test_annotation_cache_seam_valid_cache() {
         &options.language_overrides,
     )
     .unwrap();
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     // 4. Run fresh analysis build with cache root
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
@@ -1369,8 +1672,13 @@ fn test_annotation_cache_seam_validation_reject_bad_layer_docs() {
     )
     .unwrap();
 
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
     let corpus2 = build_analysis_corpus(
@@ -1442,8 +1750,13 @@ fn test_annotation_cache_seam_validation_reject_bad_ids() {
         &options.language_overrides,
     )
     .unwrap();
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
     let corpus2 = build_analysis_corpus(
@@ -1520,8 +1833,13 @@ fn test_annotation_cache_seam_tokenisation_threading() {
     )
     .unwrap();
 
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     // Build with default tokenization config (should read Stale)
     let mut options_default = build_options();
@@ -1605,8 +1923,13 @@ fn test_annotation_cache_seam_mixed_en_pt() {
     assert!(manifest.models.iter().any(|m| m.language == "pt"));
     assert!(manifest.models.iter().any(|m| m.language == "en"));
 
-    crate::annotation_cache::write_annotation_layer_cache(temp_dir.path(), &manifest, &layer)
-        .unwrap();
+    crate::annotation_cache::write_annotation_layer_cache(
+        temp_dir.path(),
+        &manifest,
+        &surface_term_table(&corpus),
+        &layer,
+    )
+    .unwrap();
 
     options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
     let corpus_cached = build_analysis_corpus(
