@@ -4,6 +4,28 @@ use crate::analysis::*;
 use crate::annotation::UniversalPos;
 use std::sync::atomic::AtomicBool;
 
+fn assert_dispersion_buckets_partition(overview: &CorpusOverview) {
+    let dispersion = &overview.dispersion;
+    let exclusive_count_total = dispersion.df_in_1_count
+        + dispersion.df_in_2_to_9_count
+        + dispersion.df_in_10_to_99_count
+        + dispersion.df_in_100_plus_count;
+    assert_eq!(exclusive_count_total, overview.total_types);
+
+    if overview.total_types > 0 {
+        let exclusive_share_total = [
+            dispersion.df_in_1_share,
+            dispersion.df_in_2_to_9_share,
+            dispersion.df_in_10_to_99_share,
+            dispersion.df_in_100_plus_share,
+        ]
+        .into_iter()
+        .map(Option::unwrap)
+        .sum::<f64>();
+        assert!((exclusive_share_total - 1.0).abs() < 1e-12);
+    }
+}
+
 #[test]
 fn single_document_corpus_has_zero_dp_and_full_top_doc_share() {
     let mut corpus = corpus_for(&[("one.txt", "Cats run")]);
@@ -247,7 +269,6 @@ fn empty_corpus_overview_has_no_non_finite_values() {
     assert_eq!(overview.lexical_spectrum.mtld_median, None);
     assert_eq!(overview.frequency_concentration.shannon_entropy_bits, None);
     assert_eq!(overview.frequency_concentration.evenness_j, None);
-    assert_eq!(overview.frequency_concentration.perplexity, None);
     assert_eq!(
         overview
             .frequency_concentration
@@ -256,6 +277,85 @@ fn empty_corpus_overview_has_no_non_finite_values() {
     );
     let json = serde_json::to_string(overview).unwrap();
     assert!(!json.contains("rawTtr"));
+    assert!(!json.contains("perplexity"));
     assert!(!json.contains("NaN"));
     assert!(!json.contains("Infinity"));
+    assert_dispersion_buckets_partition(overview);
+}
+
+#[test]
+fn document_frequency_buckets_partition_type_count_on_fixtures() {
+    for corpus in [
+        corpus_for(&[("one.txt", "alpha beta beta")]),
+        corpus_for(&[
+            ("one.txt", "alpha shared common"),
+            ("two.txt", "beta shared common"),
+            ("three.txt", "gamma common"),
+        ]),
+        corpus_for(&[]),
+    ] {
+        assert_dispersion_buckets_partition(corpus.overview());
+    }
+}
+
+#[test]
+fn document_frequency_buckets_and_thresholds_match_hand_computed_fixture() {
+    let texts = (0..100)
+        .map(|index| {
+            let mut tokens = vec!["alltype"];
+            if index == 0 {
+                tokens.push("single");
+            }
+            if index < 2 {
+                tokens.push("pairtype");
+            }
+            if index < 10 {
+                tokens.push("tentype");
+            }
+            (format!("doc-{index}.txt"), tokens.join(" "))
+        })
+        .collect::<Vec<_>>();
+    let borrowed_texts = texts
+        .iter()
+        .map(|(name, text)| (name.as_str(), text.as_str()))
+        .collect::<Vec<_>>();
+    let corpus = corpus_for(&borrowed_texts);
+    let overview = corpus.overview();
+    let dispersion = &overview.dispersion;
+
+    assert_eq!(overview.total_types, 4);
+    assert_eq!(dispersion.df_in_1_count, 1);
+    assert_eq!(dispersion.df_in_2_to_9_count, 1);
+    assert_eq!(dispersion.df_in_10_to_99_count, 1);
+    assert_eq!(dispersion.df_in_100_plus_count, 1);
+    assert_eq!(dispersion.df_in_all_count, 1);
+    assert_eq!(dispersion.df_at_least_1pct_count, 4);
+    assert_eq!(dispersion.df_at_least_10pct_count, 2);
+    assert_eq!(dispersion.df_at_least_50pct_count, 1);
+    assert_eq!(dispersion.df_at_least_90pct_count, 1);
+    assert_eq!(dispersion.df_at_least_1pct_share, Some(1.0));
+    assert_eq!(dispersion.df_at_least_10pct_share, Some(0.5));
+    assert_eq!(dispersion.df_at_least_50pct_share, Some(0.25));
+    assert_eq!(dispersion.df_at_least_90pct_share, Some(0.25));
+    assert_dispersion_buckets_partition(overview);
+}
+
+#[test]
+fn single_document_document_frequency_thresholds_clamp_to_one_document() {
+    let corpus = corpus_for(&[("one.txt", "alpha beta beta")]);
+    let overview = corpus.overview();
+    let dispersion = &overview.dispersion;
+
+    assert_eq!(overview.total_types, 2);
+    assert_eq!(dispersion.df_in_1_count, 2);
+    assert_eq!(dispersion.df_in_all_count, 2);
+    assert_eq!(dispersion.df_at_least_1pct_count, overview.total_types);
+    assert_eq!(dispersion.df_at_least_10pct_count, overview.total_types);
+    assert_eq!(dispersion.df_at_least_50pct_count, overview.total_types);
+    assert_eq!(dispersion.df_at_least_90pct_count, overview.total_types);
+    assert_eq!(dispersion.df_at_least_1pct_share, Some(1.0));
+    assert_eq!(dispersion.df_at_least_10pct_share, Some(1.0));
+    assert_eq!(dispersion.df_at_least_50pct_share, Some(1.0));
+    assert_eq!(dispersion.df_at_least_90pct_share, Some(1.0));
+    assert_dispersion_buckets_partition(overview);
 }
