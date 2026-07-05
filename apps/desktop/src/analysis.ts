@@ -158,7 +158,6 @@ export interface CorpusOverviewFrequencyConcentration {
   top10000Coverage: number | null;
   shannonEntropyBits: number | null;
   evennessJ: number | null;
-  perplexity: number | null;
   effectiveVocabularyEntropy: number | null;
   reading: string;
 }
@@ -202,11 +201,23 @@ export interface CorpusOverviewDispersion {
   highDpFrequentTypes: number;
   medianDp: number | null;
   dfIn1Count: number;
-  dfIn2ToNMinus1Count: number;
+  dfIn2To9Count: number;
+  dfIn10To99Count: number;
+  dfIn100PlusCount: number;
   dfInAllCount: number;
   dfIn1Share: number | null;
-  dfIn2ToNMinus1Share: number | null;
+  dfIn2To9Share: number | null;
+  dfIn10To99Share: number | null;
+  dfIn100PlusShare: number | null;
   dfInAllShare: number | null;
+  dfAtLeast1pctCount: number;
+  dfAtLeast1pctShare: number | null;
+  dfAtLeast10pctCount: number;
+  dfAtLeast10pctShare: number | null;
+  dfAtLeast50pctCount: number;
+  dfAtLeast50pctShare: number | null;
+  dfAtLeast90pctCount: number;
+  dfAtLeast90pctShare: number | null;
   medianDocumentsPerType: number | null;
   reading: string;
 }
