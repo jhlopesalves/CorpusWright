@@ -713,18 +713,6 @@ function appendPanelReading(panel: HTMLElement, text: string): void {
   panel.appendChild(reading);
 }
 
-function countAndShareRow(
-  label: string,
-  count: number,
-  share: number | null,
-): OverviewMetricRow {
-  return {
-    label,
-    value: formatNumber(count),
-    share: share === null ? undefined : formatPercent(share),
-  };
-}
-
 function countWithInlineShareRow(
   label: string,
   count: number,
@@ -962,16 +950,16 @@ function renderExtractionQuality(corpus: AnalysisCorpus): HTMLElement {
   const quality = corpus.extractionQuality;
   const rows: OverviewMetricRow[] = [
     {
-      ...countAndShareRow("Word-like types", quality.wordLikeCount, quality.wordLikeShare),
+      ...countWithInlineShareRow("Word-like types", quality.wordLikeCount, quality.wordLikeShare),
       description: "Counted as word-like when it contains at least one letter.",
     },
     {
-      ...countAndShareRow("Numeric-only types", quality.numericOnlyCount, quality.numericOnlyShare),
+      ...countWithInlineShareRow("Numeric-only types", quality.numericOnlyCount, quality.numericOnlyShare),
       description: "Counted as numeric-only when it contains digits and only numeric separators (. , : - /).",
     },
   ];
   if (quality.singleCharacterCount !== null) {
-    rows.push(countAndShareRow(
+    rows.push(countWithInlineShareRow(
       "Single-character types",
       quality.singleCharacterCount,
       quality.singleCharacterShare,
@@ -1074,13 +1062,6 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
     },
   ];
   lexicalDiversity.append(lexicalDiversityTitle, createMetricTable(diversityRows));
-  const mattrNote = document.createElement("p");
-  mattrNote.className = "analysis-panel-note";
-  mattrNote.textContent = "MATTR reduces raw TTR’s length sensitivity, but it still depends on window size, tokenisation, and casing.";
-  const mtldNote = document.createElement("p");
-  mtldNote.className = "analysis-panel-note";
-  mtldNote.textContent = `MTLD is less sensitive to text length than raw TTR, but it depends on the ${formatFixedNumber(spectrum.mtldThreshold, 3)} threshold and can be unstable for very short documents.`;
-  lexicalDiversity.append(mattrNote, mtldNote);
   panel.appendChild(lexicalDiversity);
   appendPanelReading(panel, spectrum.reading);
   return panel;

@@ -2514,6 +2514,7 @@ main {
 
 .analysis-metric-table {
   width: 100%;
+  max-width: 620px;
   border-collapse: collapse;
   table-layout: auto;
   font-size: 0.82rem;
