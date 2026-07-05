@@ -17,6 +17,7 @@ import {
   type CorpusOverview as AnalysisCorpus,
 } from "../analysis";
 import {
+  appendAnnotationTokenProgressSample,
   annotationLayerControlViewModel,
   type AnnotationLayerTransientState,
 } from "../annotation-layer-control";
@@ -357,6 +358,12 @@ export function renderFrequencyAnnotationLayer(): void {
       : view.progress.etaLabel;
 
     progress.append(progressLabel, bar, meta);
+    if (view.progress.heartbeatLine) {
+      const heartbeat = document.createElement("p");
+      heartbeat.className = "annotation-layer-progress-meta";
+      heartbeat.textContent = view.progress.heartbeatLine;
+      progress.append(heartbeat);
+    }
     copy.append(progress);
   }
 
@@ -382,16 +389,27 @@ function refreshAnnotationBuildElapsed(): void {
   if (annotationBuildTransient?.status !== "building" || annotationBuildStartedAt === null) {
     return;
   }
+  const now = Date.now();
   const annotatingElapsedMs =
     annotationBuildTransient.progress?.current_phase.type === "Annotating"
       && annotationBuildAnnotatingStartedAt !== null
-      ? Date.now() - annotationBuildAnnotatingStartedAt
+      ? now - annotationBuildAnnotatingStartedAt
       : null;
   annotationBuildTransient = {
     status: "building",
-    elapsedMs: Date.now() - annotationBuildStartedAt,
+    elapsedMs: now - annotationBuildStartedAt,
     annotatingElapsedMs,
     progress: annotationBuildTransient?.status === "building" ? annotationBuildTransient.progress : null,
+    progressSamples: annotationBuildTransient?.status === "building"
+      && annotationBuildTransient.progress?.current_phase.type === "Annotating"
+      ? appendAnnotationTokenProgressSample(
+          annotationBuildTransient.progressSamples,
+          {
+            atMs: now,
+            tokensDone: annotationBuildTransient.progress.tokens_done,
+          },
+        )
+      : [],
   };
   renderFrequencyAnnotationLayer();
 }
@@ -503,6 +521,7 @@ export async function handleAnnotationLayerAction(): Promise<void> {
     elapsedMs: 0,
     annotatingElapsedMs: null,
     progress: null,
+    progressSamples: [],
   };
   lastAnnotationBuildReport = null;
   startAnnotationBuildTimer();
@@ -663,19 +682,30 @@ export async function initialiseAnalysisBuildState(): Promise<void> {
     if (annotationBuildTransient?.status !== "building") {
       return;
     }
+    const now = Date.now();
     const previousPhase = annotationBuildTransient.progress?.current_phase.type ?? null;
     const nextPhase = event.payload.current_phase.type;
     if (nextPhase === "Annotating" && (previousPhase !== "Annotating" || annotationBuildAnnotatingStartedAt === null)) {
-      annotationBuildAnnotatingStartedAt = Date.now();
+      annotationBuildAnnotatingStartedAt = now;
     }
     const annotatingElapsedMs =
       nextPhase === "Annotating" && annotationBuildAnnotatingStartedAt !== null
-        ? Date.now() - annotationBuildAnnotatingStartedAt
+        ? now - annotationBuildAnnotatingStartedAt
         : null;
+    const progressSamples = nextPhase === "Annotating"
+      ? appendAnnotationTokenProgressSample(
+          previousPhase === "Annotating" ? annotationBuildTransient.progressSamples : [],
+          {
+            atMs: now,
+            tokensDone: event.payload.tokens_done,
+          },
+        )
+      : [];
     annotationBuildTransient = {
       ...annotationBuildTransient,
       annotatingElapsedMs,
       progress: event.payload,
+      progressSamples,
     };
     renderFrequencyAnnotationLayer();
   });
