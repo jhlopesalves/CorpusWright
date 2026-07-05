@@ -791,9 +791,9 @@ function renderAnalysisPopulation(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Analysis population");
   const population = corpus.population;
   const rows: OverviewMetricRow[] = [
-    { label: "Tokens", value: formatNumber(corpus.totals.tokens) },
-    { label: "Unique types", value: formatNumber(corpus.totals.types) },
-    { label: "Documents", value: formatNumber(corpus.totals.documents) },
+    { label: "Tokens", value: formatNumber(corpus.totals.tokens), glossaryId: "token" },
+    { label: "Types", value: formatNumber(corpus.totals.types), glossaryId: "type" },
+    { label: "Documents", value: formatNumber(corpus.totals.documents), glossaryId: "documentUnit" },
   ];
 
   if (population.sourcesInProject !== null) {
@@ -823,6 +823,10 @@ function renderAnalysisPopulation(corpus: AnalysisCorpus): HTMLElement {
   });
 
   panel.appendChild(createMetricTable(rows));
+  const universe = document.createElement("p");
+  universe.className = "analysis-panel-note";
+  universe.textContent = "Universe: all analysis types - independent of Frequency List filters.";
+  panel.appendChild(universe);
   appendPanelReading(panel, population.reading);
   return panel;
 }
@@ -956,7 +960,7 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Lexical spectrum");
   const spectrum = corpus.lexicalSpectrum;
   panel.appendChild(createMetricTable([
-    { label: "Unique types", value: formatNumber(spectrum.types) },
+    { label: "Types", value: formatNumber(spectrum.types), glossaryId: "type" },
   ]));
   panel.appendChild(createCompositionBar("Frequency-class spectrum", spectrum.types, [
     {
