@@ -542,6 +542,7 @@ function createGlossaryDisclosure(
 function createSampleTypesDisclosure(
   sampleTypes: string[],
   sampleTypeCount: number,
+  colSpan = 3,
 ): { button: HTMLButtonElement; row: HTMLTableRowElement; panel: HTMLDivElement } {
   const panelId = `overview-sample-types-${++overviewSampleControlId}`;
   const button = createOverviewDisclosureButton("Show types", panelId);
@@ -552,7 +553,7 @@ function createSampleTypesDisclosure(
   row.hidden = true;
 
   const detailCell = document.createElement("td");
-  detailCell.colSpan = 3;
+  detailCell.colSpan = colSpan;
 
   const panel = document.createElement("div");
   panel.id = panelId;
@@ -585,7 +586,12 @@ function createSampleTypesDisclosure(
 
 function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTableElement {
   const table = document.createElement("table");
-  table.className = ["analysis-metric-table", className].filter(Boolean).join(" ");
+  const hasShareColumn = rows.some((row) => Boolean(row.share));
+  table.className = [
+    "analysis-metric-table",
+    hasShareColumn ? "has-share-column" : "has-no-share-column",
+    className,
+  ].filter(Boolean).join(" ");
 
   const body = document.createElement("tbody");
   for (const row of rows) {
@@ -634,7 +640,11 @@ function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTable
 
     let sampleRow: HTMLTableRowElement | null = null;
     if (row.sampleTypes?.length && row.sampleTypeCount !== undefined) {
-      const sampleDisclosure = createSampleTypesDisclosure(row.sampleTypes, row.sampleTypeCount);
+      const sampleDisclosure = createSampleTypesDisclosure(
+        row.sampleTypes,
+        row.sampleTypeCount,
+        hasShareColumn ? 3 : 2,
+      );
       value.appendChild(sampleDisclosure.button);
       sampleRow = sampleDisclosure.row;
     }
@@ -651,7 +661,7 @@ function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTable
     body.appendChild(item);
     if (glossaryPanel && glossaryRow) {
       const detailCell = document.createElement("td");
-      detailCell.colSpan = 3;
+      detailCell.colSpan = hasShareColumn ? 3 : 2;
       detailCell.appendChild(glossaryPanel);
       glossaryRow.appendChild(detailCell);
       body.appendChild(glossaryRow);
@@ -914,6 +924,31 @@ function renderDocumentLengthDistribution(corpus: AnalysisCorpus): HTMLElement {
     empty.textContent = "No documents in the surface analysis.";
     distribution.appendChild(empty);
     return distribution;
+  }
+
+  if (corpus.documentsTruncated) {
+    const header = document.createElement("div");
+    header.className = "document-length-header";
+    header.setAttribute("aria-hidden", "true");
+
+    const documentLabel = document.createElement("span");
+    documentLabel.className = "document-length-name";
+    documentLabel.textContent = "Document";
+
+    const shareOfTokensLabel = document.createElement("span");
+    shareOfTokensLabel.className = "document-length-track";
+    shareOfTokensLabel.textContent = "Share of tokens";
+
+    const tokensLabel = document.createElement("span");
+    tokensLabel.className = "document-length-count";
+    tokensLabel.textContent = "Tokens";
+
+    const percentLabel = document.createElement("span");
+    percentLabel.className = "document-length-share";
+    percentLabel.textContent = "%";
+
+    header.append(documentLabel, shareOfTokensLabel, tokensLabel, percentLabel);
+    distribution.appendChild(header);
   }
 
   for (const documentRecord of corpus.documents) {
