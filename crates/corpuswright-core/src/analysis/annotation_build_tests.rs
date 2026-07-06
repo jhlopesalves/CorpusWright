@@ -1136,6 +1136,21 @@ fn annotation_chunk_parallel_cancellation_after_input_load_reports_cancelled() {
 }
 
 #[test]
+fn annotation_model_preflight_honours_cancel_before_loading_model() {
+    let mut languages = BTreeSet::new();
+    languages.insert("en".to_string());
+    let cancel = AtomicBool::new(true);
+    let timing = AnnotationBuildTimingCounters::new();
+    let model_dir = default_model_dir();
+    let mut manager = new_annotation_model_manager(&model_dir, Some(&timing));
+
+    let result = preflight_annotation_languages(&languages, &mut manager, &cancel, Some(&timing));
+
+    assert_eq!(result.unwrap_err(), AnnotationLayerBuildError::Cancelled);
+    assert_eq!(timing.model_load_attempts.load(AtomicOrdering::Relaxed), 0);
+}
+
+#[test]
 fn annotation_chunk_parallel_progress_counts_each_document_once() {
     let texts = [
         ("c.txt", "Cats run."),
