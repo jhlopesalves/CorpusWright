@@ -302,6 +302,15 @@
   --cw-viz-composition-quality-other: #5abf8a;
   --cw-viz-composition-numeric: #e0a526;
   --cw-viz-composition-single: #ef7d57;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: #9bc7fc;
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #76fff7;
+  --cw-plot-ramp-1: #57dbff;
+  --cw-plot-ramp-2: #57a4ff;
+  --cw-plot-ramp-3: #576dff;
+  --cw-plot-ramp-4: #9076ff;
   --cw-brand-blue: #0058a6;
   --focus-ring: #93c5fd;
 }
@@ -393,6 +402,15 @@
   --cw-viz-composition-quality-other: #0072b2;
   --cw-viz-composition-numeric: #b26f00;
   --cw-viz-composition-single: #c44517;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: var(--accent-color);
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #009078;
+  --cw-plot-ramp-1: #008faa;
+  --cw-plot-ramp-2: #0058aa;
+  --cw-plot-ramp-3: #0021aa;
+  --cw-plot-ramp-4: #0c0090;
   --focus-ring: #1d4ed8;
 }
 
@@ -483,6 +501,15 @@
   --cw-viz-composition-quality-other: #0969da;
   --cw-viz-composition-numeric: #9a6700;
   --cw-viz-composition-single: #cf222e;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: var(--accent-color);
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #10af8f;
+  --cw-plot-ramp-1: #12b1c6;
+  --cw-plot-ramp-2: #1278c6;
+  --cw-plot-ramp-3: #123ec6;
+  --cw-plot-ramp-4: #1b10af;
   --focus-ring: #007acc;
 }
 
@@ -573,6 +600,15 @@
   --cw-viz-composition-quality-other: #79c0ff;
   --cw-viz-composition-numeric: #d29922;
   --cw-viz-composition-single: #ff7b72;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: #0a9dff;
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #3cffda;
+  --cw-plot-ramp-1: #1cf7ff;
+  --cw-plot-ramp-2: #1cabff;
+  --cw-plot-ramp-3: #1c5fff;
+  --cw-plot-ramp-4: #443cff;
   --focus-ring: #3794ff;
 }
 
@@ -667,6 +703,15 @@
   --cw-viz-composition-quality-other: #2c6e9f;
   --cw-viz-composition-numeric: #a36800;
   --cw-viz-composition-single: #b8326a;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: var(--accent-color);
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #009078;
+  --cw-plot-ramp-1: #008faa;
+  --cw-plot-ramp-2: #0058aa;
+  --cw-plot-ramp-3: #0021aa;
+  --cw-plot-ramp-4: #0c0090;
   --focus-ring: #000080;
   --cw-retro-highlight: #ffffff;
   --cw-retro-shadow: #808080;
@@ -764,6 +809,15 @@
   --cw-viz-composition-quality-other: #7de3ff;
   --cw-viz-composition-numeric: #ffd166;
   --cw-viz-composition-single: #ff6f91;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: #87c2ff;
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #60fff3;
+  --cw-plot-ramp-1: #3fe3ff;
+  --cw-plot-ramp-2: #3fa3ff;
+  --cw-plot-ramp-3: #3f63ff;
+  --cw-plot-ramp-4: #7760ff;
   --focus-ring: #00ffcc;
 }
 
@@ -859,6 +913,15 @@
   --cw-viz-composition-quality-other: #0072b2;
   --cw-viz-composition-numeric: #a86d00;
   --cw-viz-composition-single: #b94317;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: var(--accent-color);
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #44675e;
+  --cw-plot-ramp-1: #4e7376;
+  --cw-plot-ramp-2: #4e6676;
+  --cw-plot-ramp-3: #4e5a76;
+  --cw-plot-ramp-4: #454467;
   --focus-ring: #5f7685;
 }
 
@@ -949,6 +1012,15 @@
   --cw-viz-composition-quality-other: #62c79a;
   --cw-viz-composition-numeric: #d9a337;
   --cw-viz-composition-single: #ee835f;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: #aab8c0;
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #97b5ad;
+  --cw-plot-ramp-1: #85a5a8;
+  --cw-plot-ramp-2: #859aa8;
+  --cw-plot-ramp-3: #858fa8;
+  --cw-plot-ramp-4: #9897b5;
   --focus-ring: #aebdca;
 }
 
@@ -1040,6 +1112,15 @@
   --cw-viz-composition-quality-other: #0072b2;
   --cw-viz-composition-numeric: #9f6500;
   --cw-viz-composition-single: #b94317;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: var(--accent-color);
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #1e966b;
+  --cw-plot-ramp-1: #23aba6;
+  --cw-plot-ramp-2: #2385ab;
+  --cw-plot-ramp-3: #235aab;
+  --cw-plot-ramp-4: #1e2996;
   --focus-ring: #2684a8;
 }
 
@@ -1130,6 +1211,15 @@
   --cw-viz-composition-quality-other: #78d6a6;
   --cw-viz-composition-numeric: #e4ad3d;
   --cw-viz-composition-single: #f18464;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: #83c9d2;
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #73d3a1;
+  --cw-plot-ramp-1: #5cccb5;
+  --cw-plot-ramp-2: #5cc0cc;
+  --cw-plot-ramp-3: #5c9ccc;
+  --cw-plot-ramp-4: #738cd3;
   --focus-ring: #8bdbe4;
 }
 
@@ -1222,6 +1312,15 @@
   --cw-viz-composition-quality-other: #0072b2;
   --cw-viz-composition-numeric: #955f00;
   --cw-viz-composition-single: #b3451b;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: var(--accent-color);
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #7a2b37;
+  --cw-plot-ramp-1: #8d4132;
+  --cw-plot-ramp-2: #8d5e32;
+  --cw-plot-ramp-3: #8d7b32;
+  --cw-plot-ramp-4: #717a2b;
   --focus-ring: #9b6b3d;
 }
 
@@ -1312,6 +1411,15 @@
   --cw-viz-composition-quality-other: #0072b2;
   --cw-viz-composition-numeric: #955f00;
   --cw-viz-composition-single: #b3451b;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: var(--accent-color);
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #4b6f35;
+  --cw-plot-ramp-1: #42813d;
+  --cw-plot-ramp-2: #3d814e;
+  --cw-plot-ramp-3: #3d8163;
+  --cw-plot-ramp-4: #356f69;
   --focus-ring: #4e8f5a;
 }
 
@@ -1402,6 +1510,15 @@
   --cw-viz-composition-quality-other: #78d6a6;
   --cw-viz-composition-numeric: #e4ad3d;
   --cw-viz-composition-single: #f18464;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: #a2c893;
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #bfc582;
+  --cw-plot-ramp-1: #9cbb6d;
+  --cw-plot-ramp-2: #83bb6d;
+  --cw-plot-ramp-3: #6dbb6f;
+  --cw-plot-ramp-4: #82c599;
   --focus-ring: #a4d58f;
 }
 
@@ -1493,6 +1610,15 @@
   --cw-viz-composition-quality-other: #75ddff;
   --cw-viz-composition-numeric: #ffd166;
   --cw-viz-composition-single: #ff8a80;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: #3debff;
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #00e5ff;
+  --cw-plot-ramp-1: #00e5ff;
+  --cw-plot-ramp-2: #00e5ff;
+  --cw-plot-ramp-3: #00e5ff;
+  --cw-plot-ramp-4: #00e5ff;
   --focus-ring: #ffff00;
 }
 
@@ -7557,6 +7683,15 @@ mark.search-match.current-match {
   --cw-viz-composition-quality-other: #78d6a6;
   --cw-viz-composition-numeric: #e4ad3d;
   --cw-viz-composition-single: #f18464;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: #dfb995;
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #de7887;
+  --cw-plot-ramp-1: #d77460;
+  --cw-plot-ramp-2: #d79a60;
+  --cw-plot-ramp-3: #d7c060;
+  --cw-plot-ramp-4: #d1de78;
   --focus-ring: #f0c28f;
 }
 
@@ -7648,6 +7783,15 @@ mark.search-match.current-match {
   --cw-viz-composition-quality-other: #75ddff;
   --cw-viz-composition-numeric: #ffd166;
   --cw-viz-composition-single: #ff8a80;
+  --cw-plot-point: var(--accent-color);
+  --cw-plot-fit: var(--accent-color);
+  --cw-plot-excluded: var(--text-muted);
+  --cw-plot-grid: var(--border-color);
+  --cw-plot-ramp-0: #000000;
+  --cw-plot-ramp-1: #000000;
+  --cw-plot-ramp-2: #000000;
+  --cw-plot-ramp-3: #000000;
+  --cw-plot-ramp-4: #000000;
   --focus-ring: #0000ff;
 }
 
