@@ -178,7 +178,10 @@ export function estimateAnnotationTokenThroughput(
 }
 
 export function formatAnnotationTokenRate(tokensPerSecond: number): string {
-  const rounded = Math.max(100, Math.round(tokensPerSecond / 100) * 100);
+  if (tokensPerSecond < 100) {
+    return "under 100 tokens/s";
+  }
+  const rounded = Math.round(tokensPerSecond / 100) * 100;
   return `${formatNumber(rounded)} tokens/s`;
 }
 
