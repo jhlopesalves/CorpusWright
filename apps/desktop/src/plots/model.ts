@@ -1,0 +1,775 @@
+export type PlotScaleKind = "linear" | "log";
+export type PlotAnchor = "start" | "middle" | "end";
+
+export interface PlotMargin {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+export interface PlotBox {
+  width: number;
+  height: number;
+  margin: PlotMargin;
+  innerWidth: number;
+  innerHeight: number;
+}
+
+export interface PlotScale {
+  kind: PlotScaleKind;
+  domain: [number, number];
+  range: [number, number];
+}
+
+export interface PlotTick {
+  value: number;
+  position: number;
+  label: string;
+  major: boolean;
+}
+
+export interface PlotPointGeometry<TDatum = unknown> {
+  x: number;
+  y: number;
+  rawX: number;
+  rawY: number;
+  datum: TDatum;
+  rampIndex: number;
+  excluded?: boolean;
+  label?: string;
+  tooltipTitle?: string;
+  tooltipRows?: string[];
+}
+
+export interface PlotLabelGeometry {
+  x: number;
+  y: number;
+  text: string;
+  anchor: PlotAnchor;
+  className?: string;
+}
+
+export interface PlotPathGeometry {
+  d: string;
+  className: string;
+}
+
+export interface PlotLineGeometry {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  className: string;
+}
+
+export interface PlotBracketGeometry {
+  x1: number;
+  x2: number;
+  y: number;
+  label: string;
+}
+
+export interface RankFrequencyDatum {
+  rank: number;
+  frequency: number;
+  ratePerMillion: number;
+  token?: string;
+}
+
+export interface RankFrequencyGeometry {
+  box: PlotBox;
+  xScale: PlotScale;
+  yScale: PlotScale;
+  xTicks: PlotTick[];
+  yTicks: PlotTick[];
+  points: Array<PlotPointGeometry<RankFrequencyDatum>>;
+  fitPath: PlotPathGeometry | null;
+  labels: PlotLabelGeometry[];
+  bracket: PlotBracketGeometry | null;
+}
+
+export interface VocabularyGrowthDatum {
+  tokens: number;
+  types: number;
+}
+
+export interface VocabularyGrowthGeometry {
+  box: PlotBox;
+  xScale: PlotScale;
+  yScale: PlotScale;
+  xTicks: PlotTick[];
+  yTicks: PlotTick[];
+  points: Array<PlotPointGeometry<VocabularyGrowthDatum>>;
+  linePath: PlotPathGeometry | null;
+  areaPath: PlotPathGeometry | null;
+  labels: PlotLabelGeometry[];
+}
+
+export interface FrequencySpectrumDatum {
+  frequency: number;
+  typeCount: number;
+}
+
+export interface LexicalSpectrumGeometry {
+  box: PlotBox;
+  xScale: PlotScale;
+  yScale: PlotScale;
+  xTicks: PlotTick[];
+  yTicks: PlotTick[];
+  points: Array<PlotPointGeometry<FrequencySpectrumDatum>>;
+  labels: PlotLabelGeometry[];
+}
+
+export interface CoverageDatum {
+  k: number;
+  share: number;
+}
+
+export interface CoverageMilestone {
+  k: number;
+  share: number | null;
+}
+
+export interface CoverageCrossing {
+  k: number;
+  share: number;
+  x: number;
+  y: number;
+}
+
+export interface CoverageGeometry {
+  box: PlotBox;
+  xScale: PlotScale;
+  yScale: PlotScale;
+  xTicks: PlotTick[];
+  yTicks: PlotTick[];
+  points: Array<PlotPointGeometry<CoverageDatum>>;
+  linePath: PlotPathGeometry | null;
+  areaPath: PlotPathGeometry | null;
+  milestones: Array<PlotPointGeometry<CoverageDatum>>;
+  labels: PlotLabelGeometry[];
+  halfCrossing: CoverageCrossing | null;
+}
+
+export interface DispersionBucketDatum {
+  key: string;
+  label: string;
+  count: number;
+  share: number | null;
+  highlighted?: boolean;
+  detail?: string;
+}
+
+export interface DispersionGeometry {
+  box: PlotBox;
+  xScale: PlotScale;
+  xTicks: PlotTick[];
+  points: Array<PlotPointGeometry<DispersionBucketDatum>>;
+  stems: PlotLineGeometry[];
+  labels: PlotLabelGeometry[];
+}
+
+export const DEFAULT_PLOT_WIDTH = 720;
+export const DEFAULT_PLOT_HEIGHT = 360;
+export const DEFAULT_PLOT_MARGIN: PlotMargin = {
+  top: 28,
+  right: 34,
+  bottom: 54,
+  left: 72,
+};
+
+const LOG_MINIMUM = 1e-9;
+
+export function createPlotBox(
+  width = DEFAULT_PLOT_WIDTH,
+  height = DEFAULT_PLOT_HEIGHT,
+  margin: PlotMargin = DEFAULT_PLOT_MARGIN,
+): PlotBox {
+  return {
+    width,
+    height,
+    margin,
+    innerWidth: Math.max(1, width - margin.left - margin.right),
+    innerHeight: Math.max(1, height - margin.top - margin.bottom),
+  };
+}
+
+export function createScale(kind: PlotScaleKind, domain: [number, number], range: [number, number]): PlotScale {
+  const normalised = kind === "log" ? normaliseLogDomain(domain) : normaliseLinearDomain(domain);
+  return { kind, domain: normalised, range };
+}
+
+export function scaleValue(scale: PlotScale, value: number): number {
+  const [domainMin, domainMax] = scale.domain;
+  const [rangeMin, rangeMax] = scale.range;
+  if (domainMin === domainMax) {
+    return (rangeMin + rangeMax) / 2;
+  }
+  const domainValue = scale.kind === "log" ? Math.log10(Math.max(value, LOG_MINIMUM)) : value;
+  const start = scale.kind === "log" ? Math.log10(domainMin) : domainMin;
+  const end = scale.kind === "log" ? Math.log10(domainMax) : domainMax;
+  const t = (domainValue - start) / (end - start);
+  return rangeMin + t * (rangeMax - rangeMin);
+}
+
+export function logTicks(scale: PlotScale): PlotTick[] {
+  if (scale.kind !== "log") {
+    throw new Error("logTicks requires a log scale");
+  }
+  const [min, max] = scale.domain;
+  const startPower = Math.floor(Math.log10(min));
+  const endPower = Math.ceil(Math.log10(max));
+  const ticks: PlotTick[] = [];
+  for (let power = startPower; power <= endPower; power += 1) {
+    const decade = 10 ** power;
+    for (let multiplier = 1; multiplier <= 9; multiplier += 1) {
+      const value = multiplier * decade;
+      if (value < min || value > max) continue;
+      ticks.push({
+        value,
+        position: scaleValue(scale, value),
+        label: multiplier === 1 ? formatTickNumber(value) : "",
+        major: multiplier === 1,
+      });
+    }
+  }
+  return ticks;
+}
+
+export function linearTicks(scale: PlotScale, targetCount = 5): PlotTick[] {
+  if (scale.kind !== "linear") {
+    throw new Error("linearTicks requires a linear scale");
+  }
+  const [min, max] = scale.domain;
+  if (min === max) {
+    return [{ value: min, position: scaleValue(scale, min), label: formatTickNumber(min), major: true }];
+  }
+  const span = niceNumber(max - min, false);
+  const step = niceNumber(span / Math.max(1, targetCount - 1), true);
+  const tickMin = Math.ceil(min / step) * step;
+  const tickMax = Math.floor(max / step) * step;
+  const ticks: PlotTick[] = [];
+  for (let value = tickMin; value <= tickMax + step / 2; value += step) {
+    const rounded = Number(value.toPrecision(12));
+    ticks.push({
+      value: rounded,
+      position: scaleValue(scale, rounded),
+      label: formatTickNumber(rounded),
+      major: true,
+    });
+  }
+  return ticks;
+}
+
+export function pointsToPath(points: Array<{ x: number; y: number }>): string {
+  return points
+    .map((point, index) => `${index === 0 ? "M" : "L"}${roundSvg(point.x)} ${roundSvg(point.y)}`)
+    .join(" ");
+}
+
+export function pointsToAreaPath(points: Array<{ x: number; y: number }>, baselineY: number): string {
+  if (points.length === 0) return "";
+  const line = pointsToPath(points);
+  const last = points[points.length - 1];
+  const first = points[0];
+  return `${line} L${roundSvg(last.x)} ${roundSvg(baselineY)} L${roundSvg(first.x)} ${roundSvg(baselineY)} Z`;
+}
+
+export function findMilestoneShare(points: CoverageDatum[], k: number): number | null {
+  return points.find((point) => point.k === k)?.share ?? null;
+}
+
+export function findFirstCoverageCrossing(points: CoverageDatum[], targetShare: number): CoverageDatum | null {
+  return points.find((point) => point.share >= targetShare) ?? null;
+}
+
+export function labelCollisionOffsets(
+  labels: Array<{ x: number; y: number }>,
+  minDistance = 14,
+): number[] {
+  const indexed = labels
+    .map((label, index) => ({ ...label, index }))
+    .sort((left, right) => left.y - right.y || left.x - right.x);
+  const offsets = new Array(labels.length).fill(0) as number[];
+  let previousY = Number.NEGATIVE_INFINITY;
+  for (const label of indexed) {
+    const desiredY = label.y + offsets[label.index];
+    if (desiredY - previousY < minDistance) {
+      offsets[label.index] += minDistance - (desiredY - previousY);
+    }
+    previousY = label.y + offsets[label.index];
+  }
+  return offsets;
+}
+
+export function buildRankFrequencyGeometry(options: {
+  points: RankFrequencyDatum[];
+  yMode: "rate" | "raw";
+  totalTokens: number;
+  zipfExponent: number | null;
+  zipfCoefficient: number | null;
+  fittedRankStart: number | null;
+  fittedRankEnd: number | null;
+  box?: PlotBox;
+}): RankFrequencyGeometry {
+  const box = options.box ?? createPlotBox();
+  const visible = options.points.filter((point) => point.rank > 0 && yValueForRank(point, options.yMode) > 0);
+  const xDomain = extent(visible.map((point) => point.rank));
+  const yDomain = extent(visible.map((point) => yValueForRank(point, options.yMode)));
+  const xScale = createScale("log", xDomain, [box.margin.left, box.width - box.margin.right]);
+  const yScale = createScale("log", yDomain, [box.height - box.margin.bottom, box.margin.top]);
+  const fittedStart = options.fittedRankStart;
+  const fittedEnd = options.fittedRankEnd;
+  const points = visible.map((point) => {
+    const rawY = yValueForRank(point, options.yMode);
+    const excluded = fittedStart === null || fittedEnd === null || point.rank < fittedStart || point.rank > fittedEnd
+      || point.frequency <= 1;
+    return {
+      x: scaleValue(xScale, point.rank),
+      y: scaleValue(yScale, rawY),
+      rawX: point.rank,
+      rawY,
+      datum: point,
+      rampIndex: rampIndex(point.rank, xScale.domain, true),
+      excluded,
+      tooltipTitle: point.token ?? `rank ${formatInteger(point.rank)}`,
+      tooltipRows: [
+        `rank ${formatInteger(point.rank)}`,
+        options.yMode === "rate"
+          ? `${formatFixed(rawY, 2)} per million`
+          : `${formatInteger(point.frequency)} tokens`,
+      ],
+    };
+  });
+  const headLabels = points
+    .filter((point) => point.datum.token && point.datum.rank <= 3)
+    .map((point, index) => ({
+      x: point.x + 8,
+      y: point.y + [-10, 2, 14][index]!,
+      text: point.datum.token ?? "",
+      anchor: "start" as const,
+      className: "cw-plot-label-muted",
+    }));
+  const fitPath = fitPathForRank(options, xScale, yScale);
+  const bracket = fittedStart !== null && fittedEnd !== null && fittedEnd >= fittedStart
+    ? {
+        x1: scaleValue(xScale, fittedStart),
+        x2: scaleValue(xScale, fittedEnd),
+        y: box.height - box.margin.bottom + 22,
+        label: "FITTED RANGE",
+      }
+    : null;
+  return {
+    box,
+    xScale,
+    yScale,
+    xTicks: logTicks(xScale),
+    yTicks: logTicks(yScale),
+    points,
+    fitPath,
+    labels: headLabels,
+    bracket,
+  };
+}
+
+export function buildVocabularyGrowthGeometry(options: {
+  points: VocabularyGrowthDatum[];
+  box?: PlotBox;
+}): VocabularyGrowthGeometry {
+  const box = options.box ?? createPlotBox();
+  const visible = options.points.filter((point) => point.tokens > 0 && point.types > 0);
+  const xScale = createScale("log", extent(visible.map((point) => point.tokens)), [
+    box.margin.left,
+    box.width - box.margin.right,
+  ]);
+  const yScale = createScale("log", extent(visible.map((point) => point.types)), [
+    box.height - box.margin.bottom,
+    box.margin.top,
+  ]);
+  const points = visible.map((point) => ({
+    x: scaleValue(xScale, point.tokens),
+    y: scaleValue(yScale, point.types),
+    rawX: point.tokens,
+    rawY: point.types,
+    datum: point,
+    rampIndex: rampIndex(point.tokens, xScale.domain, true),
+    tooltipTitle: `${formatInteger(point.types)} types`,
+    tooltipRows: [`${formatInteger(point.tokens)} tokens`, `${formatInteger(point.types)} types`],
+  }));
+  const linePath = points.length > 0 ? { d: pointsToPath(points), className: "cw-plot-line cw-plot-line-glow" } : null;
+  const areaPath = points.length > 0
+    ? { d: pointsToAreaPath(points, box.height - box.margin.bottom), className: "cw-plot-area" }
+    : null;
+  const last = points[points.length - 1];
+  const labels = last
+    ? [{
+        x: Math.min(last.x + 16, box.width - box.margin.right - 96),
+        y: Math.min(last.y + 54, box.height - box.margin.bottom - 10),
+        text: `${formatInteger(last.datum.types)} types / at ${formatMillions(last.datum.tokens)} tokens`,
+        anchor: "start" as const,
+        className: "cw-plot-label-callout",
+      }]
+    : [];
+  return {
+    box,
+    xScale,
+    yScale,
+    xTicks: logTicks(xScale),
+    yTicks: logTicks(yScale),
+    points,
+    linePath,
+    areaPath,
+    labels,
+  };
+}
+
+export function buildLexicalSpectrumGeometry(options: {
+  points: FrequencySpectrumDatum[];
+  hapaxCount: number;
+  disLegomenaCount: number;
+  box?: PlotBox;
+}): LexicalSpectrumGeometry {
+  const box = options.box ?? createPlotBox();
+  const visible = options.points.filter((point) => point.frequency > 0 && point.typeCount > 0);
+  const xScale = createScale("log", extent(visible.map((point) => point.frequency)), [
+    box.margin.left,
+    box.width - box.margin.right,
+  ]);
+  const yScale = createScale("log", extent(visible.map((point) => point.typeCount)), [
+    box.height - box.margin.bottom,
+    box.margin.top,
+  ]);
+  const points = visible.map((point) => ({
+    x: scaleValue(xScale, point.frequency),
+    y: scaleValue(yScale, point.typeCount),
+    rawX: point.frequency,
+    rawY: point.typeCount,
+    datum: point,
+    rampIndex: rampIndex(point.frequency, xScale.domain, true),
+    tooltipTitle: `${formatInteger(point.typeCount)} types`,
+    tooltipRows: [`frequency ${formatInteger(point.frequency)}`, `${formatInteger(point.typeCount)} types`],
+  }));
+  const labels = [
+    labelForExactFrequency(points, 1, `hapax ${formatInteger(options.hapaxCount)}`),
+    labelForExactFrequency(points, 2, `dis ${formatInteger(options.disLegomenaCount)}`),
+  ].filter((label): label is PlotLabelGeometry => label !== null);
+  return {
+    box,
+    xScale,
+    yScale,
+    xTicks: logTicks(xScale),
+    yTicks: logTicks(yScale),
+    points,
+    labels,
+  };
+}
+
+export function buildCoverageGeometry(options: {
+  points: CoverageDatum[];
+  milestones: CoverageMilestone[];
+  box?: PlotBox;
+}): CoverageGeometry {
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, DEFAULT_PLOT_HEIGHT, {
+    top: 28,
+    right: 34,
+    bottom: 54,
+    left: 76,
+  });
+  const visible = options.points.filter((point) => point.k > 0 && point.share >= 0);
+  const xScale = createScale("log", extent(visible.map((point) => point.k)), [
+    box.margin.left,
+    box.width - box.margin.right,
+  ]);
+  const yScale = createScale("linear", [0, 1], [box.height - box.margin.bottom, box.margin.top]);
+  const points = visible.map((point) => ({
+    x: scaleValue(xScale, point.k),
+    y: scaleValue(yScale, point.share),
+    rawX: point.k,
+    rawY: point.share,
+    datum: point,
+    rampIndex: rampIndex(point.k, xScale.domain, true),
+    tooltipTitle: `top ${formatInteger(point.k)}`,
+    tooltipRows: [`${formatPercent(point.share)} of tokens`],
+  }));
+  const linePath = points.length > 0 ? { d: pointsToPath(points), className: "cw-plot-line cw-plot-line-glow" } : null;
+  const areaPath = points.length > 0
+    ? { d: pointsToAreaPath(points, box.height - box.margin.bottom), className: "cw-plot-area" }
+    : null;
+  const milestones: Array<PlotPointGeometry<CoverageDatum>> = options.milestones
+    .map<PlotPointGeometry<CoverageDatum> | null>((milestone) => {
+      const share = milestone.share ?? findMilestoneShare(visible, milestone.k);
+      if (share === null) return null;
+      const datum = { k: milestone.k, share };
+      return {
+        x: scaleValue(xScale, datum.k),
+        y: scaleValue(yScale, datum.share),
+        rawX: datum.k,
+        rawY: datum.share,
+        datum,
+        rampIndex: rampIndex(datum.k, xScale.domain, true),
+        tooltipTitle: `top ${formatInteger(datum.k)}`,
+        tooltipRows: [`${formatPercent(datum.share)} of tokens`],
+      };
+    })
+    .filter((point): point is PlotPointGeometry<CoverageDatum> => point !== null);
+  const labelOffsets = labelCollisionOffsets(milestones);
+  const labels = milestones.map((point, index) => ({
+    x: Math.min(point.x + 8, box.width - box.margin.right - 96),
+    y: point.y - 8 + labelOffsets[index],
+    text: `top ${formatInteger(point.datum.k)} - ${formatPercent(point.datum.share)}`,
+    anchor: "start" as const,
+    className: "cw-plot-label-muted",
+  }));
+  const crossingDatum = findFirstCoverageCrossing(visible, 0.5);
+  const halfCrossing = crossingDatum
+    ? {
+        k: crossingDatum.k,
+        share: crossingDatum.share,
+        x: scaleValue(xScale, crossingDatum.k),
+        y: scaleValue(yScale, crossingDatum.share),
+      }
+    : null;
+  if (halfCrossing) {
+    labels.push({
+      x: box.margin.left + 6,
+      y: halfCrossing.y - 8,
+      text: `half the corpus = ${formatInteger(halfCrossing.k)} types`,
+      anchor: "start",
+      className: "cw-plot-label-callout",
+    });
+  }
+  return {
+    box,
+    xScale,
+    yScale,
+    xTicks: logTicks(xScale),
+    yTicks: linearTicks(yScale, 6).map((tick) => ({ ...tick, label: `${Math.round(tick.value * 100)}%` })),
+    points,
+    linePath,
+    areaPath,
+    milestones,
+    labels,
+    halfCrossing,
+  };
+}
+
+export function buildDispersionGeometry(options: {
+  buckets: DispersionBucketDatum[];
+  box?: PlotBox;
+}): DispersionGeometry {
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 340, {
+    top: 30,
+    right: 36,
+    bottom: 48,
+    left: 132,
+  });
+  const visible = options.buckets.filter((bucket) => bucket.count > 0);
+  const xScale = createScale("log", extent(visible.map((bucket) => bucket.count)), [
+    box.margin.left,
+    box.width - box.margin.right,
+  ]);
+  const yStep = visible.length > 1 ? box.innerHeight / (visible.length - 1) : 0;
+  const points = visible.map((bucket, index) => {
+    const y = visible.length > 1 ? box.margin.top + index * yStep : box.margin.top + box.innerHeight / 2;
+    return {
+      x: scaleValue(xScale, bucket.count),
+      y,
+      rawX: bucket.count,
+      rawY: index,
+      datum: bucket,
+      rampIndex: visible.length <= 1 ? 2 : Math.round(index / (visible.length - 1) * 4),
+      tooltipTitle: bucket.label,
+      tooltipRows: [
+        `${formatInteger(bucket.count)} types`,
+        bucket.share === null ? "" : `${formatPercent(bucket.share)} of vocabulary`,
+      ].filter(Boolean),
+    };
+  });
+  const stems = points.map((point) => ({
+    x1: box.margin.left,
+    y1: point.y,
+    x2: point.x,
+    y2: point.y,
+    className: `cw-plot-lollipop-stem cw-plot-ramp-${point.rampIndex}`,
+  }));
+  const labels: PlotLabelGeometry[] = points.map((point) => ({
+    x: box.margin.left - 10,
+    y: point.y + 4,
+    text: point.datum.label,
+    anchor: "end" as const,
+    className: point.datum.highlighted ? "cw-plot-label-strong" : "cw-plot-label-muted",
+  }));
+  labels.push(...points.map((point) => ({
+    x: Math.min(point.x + 10, box.width - box.margin.right - 10),
+    y: point.y + 4,
+    text: point.datum.detail ?? formatInteger(point.datum.count),
+    anchor: "start" as const,
+    className: "cw-plot-label-mono",
+  })));
+  return {
+    box,
+    xScale,
+    xTicks: logTicks(xScale),
+    points,
+    stems,
+    labels,
+  };
+}
+
+export function formatInteger(value: number): string {
+  return Math.round(value).toLocaleString("en-US");
+}
+
+export function formatFixed(value: number, digits: number): string {
+  return value.toLocaleString("en-US", {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  });
+}
+
+export function formatPercent(value: number, digits = 1): string {
+  return `${(value * 100).toLocaleString("en-US", {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  })}%`;
+}
+
+export function formatMillions(value: number): string {
+  return `${(value / 1_000_000).toLocaleString("en-US", {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  })}M`;
+}
+
+function normaliseLinearDomain(domain: [number, number]): [number, number] {
+  let [min, max] = domain;
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+  if (min === max) {
+    const padding = Math.abs(min) > 0 ? Math.abs(min) * 0.1 : 1;
+    min -= padding;
+    max += padding;
+  }
+  if (min > max) return [max, min];
+  return [min, max];
+}
+
+function normaliseLogDomain(domain: [number, number]): [number, number] {
+  let [min, max] = domain;
+  min = Number.isFinite(min) ? Math.max(min, LOG_MINIMUM) : 1;
+  max = Number.isFinite(max) ? Math.max(max, min) : min * 10;
+  if (min === max) {
+    min = Math.max(LOG_MINIMUM, min / 10);
+    max *= 10;
+  }
+  if (min > max) return [max, min];
+  return [min, max];
+}
+
+function niceNumber(value: number, round: boolean): number {
+  const exponent = Math.floor(Math.log10(value));
+  const fraction = value / (10 ** exponent);
+  let niceFraction: number;
+  if (round) {
+    if (fraction < 1.5) niceFraction = 1;
+    else if (fraction < 3) niceFraction = 2;
+    else if (fraction < 7) niceFraction = 5;
+    else niceFraction = 10;
+  } else if (fraction <= 1) niceFraction = 1;
+  else if (fraction <= 2) niceFraction = 2;
+  else if (fraction <= 5) niceFraction = 5;
+  else niceFraction = 10;
+  return niceFraction * (10 ** exponent);
+}
+
+function formatTickNumber(value: number): string {
+  if (value >= 1_000_000) return `${formatFixed(value / 1_000_000, value % 1_000_000 === 0 ? 0 : 1)}M`;
+  if (value >= 1_000) return `${formatFixed(value / 1_000, value % 1_000 === 0 ? 0 : 1)}k`;
+  if (value >= 1) return formatInteger(value);
+  return value.toLocaleString("en-US", { maximumFractionDigits: 3 });
+}
+
+function extent(values: number[]): [number, number] {
+  if (values.length === 0) return [1, 10];
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [1, 10];
+  return [min, max];
+}
+
+function roundSvg(value: number): string {
+  return Number(value.toFixed(2)).toString();
+}
+
+function rampIndex(value: number, domain: [number, number], log: boolean): number {
+  const [min, max] = domain;
+  const start = log ? Math.log10(Math.max(min, LOG_MINIMUM)) : min;
+  const end = log ? Math.log10(Math.max(max, LOG_MINIMUM)) : max;
+  const current = log ? Math.log10(Math.max(value, LOG_MINIMUM)) : value;
+  if (start === end) return 2;
+  return Math.max(0, Math.min(4, Math.floor(((current - start) / (end - start)) * 5)));
+}
+
+function yValueForRank(point: RankFrequencyDatum, mode: "rate" | "raw"): number {
+  return mode === "rate" ? point.ratePerMillion : point.frequency;
+}
+
+function fitPathForRank(
+  options: {
+    yMode: "rate" | "raw";
+    totalTokens: number;
+    zipfExponent: number | null;
+    zipfCoefficient: number | null;
+    fittedRankStart: number | null;
+    fittedRankEnd: number | null;
+  },
+  xScale: PlotScale,
+  yScale: PlotScale,
+): PlotPathGeometry | null {
+  if (
+    options.zipfExponent === null
+    || options.zipfCoefficient === null
+    || options.fittedRankStart === null
+    || options.fittedRankEnd === null
+    || options.fittedRankEnd < options.fittedRankStart
+  ) {
+    return null;
+  }
+  const start = Math.max(options.fittedRankStart, xScale.domain[0]);
+  const end = Math.min(options.fittedRankEnd, xScale.domain[1]);
+  const ranks = start === end ? [start] : [start, Math.sqrt(start * end), end];
+  const points = ranks.map((rank) => {
+    const raw = options.zipfCoefficient === null || options.zipfExponent === null
+      ? 0
+      : options.zipfCoefficient * (rank ** -options.zipfExponent);
+    const yValue = options.yMode === "rate" && options.totalTokens > 0
+      ? raw / options.totalTokens * 1_000_000
+      : raw;
+    return {
+      x: scaleValue(xScale, rank),
+      y: scaleValue(yScale, yValue),
+    };
+  });
+  return { d: pointsToPath(points), className: "cw-plot-fit-line cw-plot-line-glow" };
+}
+
+function labelForExactFrequency(
+  points: Array<PlotPointGeometry<FrequencySpectrumDatum>>,
+  frequency: number,
+  text: string,
+): PlotLabelGeometry | null {
+  const point = points.find((candidate) => candidate.datum.frequency === frequency);
+  if (!point) return null;
+  return {
+    x: point.x + 8,
+    y: point.y - 8,
+    text,
+    anchor: "start",
+    className: "cw-plot-label-muted",
+  };
+}
