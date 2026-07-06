@@ -1627,6 +1627,51 @@ fn test_annotation_cache_seam_stale_cache() {
 }
 
 #[test]
+fn annotation_cache_decision_diagnostics_name_first_manifest_mismatch() {
+    let records = vec![record("doc.txt")];
+    let mut options = build_options();
+    options.udpipe_model_dir = Some(default_model_dir());
+    options.language_overrides = english_overrides(records.len());
+    let corpus = build_analysis_corpus(
+        &records,
+        options.clone(),
+        &AtomicBool::new(false),
+        |record| Ok(processed_resolution(record, "The quick brown fox.")),
+        |_| {},
+    )
+    .unwrap();
+    let expected = build_expected_manifest(
+        &corpus,
+        &records,
+        options.udpipe_model_dir.as_deref(),
+        &options.language_overrides,
+    )
+    .unwrap();
+
+    let mut processed_mismatch = expected.clone();
+    processed_mismatch.corpus.processed_texts_hash_sha256 = "different".to_string();
+    assert_eq!(
+        annotation_manifest_mismatch_for_diagnostics(
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION,
+            &processed_mismatch,
+            &expected,
+        ),
+        Some("processed_texts_hash")
+    );
+
+    let mut model_mismatch = expected.clone();
+    model_mismatch.models[0].sha256 = "different".to_string();
+    assert_eq!(
+        annotation_manifest_mismatch_for_diagnostics(
+            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION,
+            &model_mismatch,
+            &expected,
+        ),
+        Some("model_identity")
+    );
+}
+
+#[test]
 fn test_annotation_cache_seam_invalid_cache() {
     let temp_dir = tempfile::tempdir().unwrap();
     let records = vec![record("doc.txt")];

@@ -334,6 +334,172 @@ fn annotation_timing_enabled() -> bool {
     std::env::var(ANNOTATION_TIMING_ENV).as_deref() == Ok("1")
 }
 
+fn log_annotation_cache_decision(outcome: &str, mismatch: Option<&str>) {
+    if !annotation_timing_enabled() {
+        return;
+    }
+
+    if let Some(mismatch) = mismatch {
+        eprintln!("annotation-cache decision: {outcome} (mismatch: {mismatch})");
+    } else {
+        eprintln!("annotation-cache decision: {outcome}");
+    }
+}
+
+fn annotation_cache_file_path(cache_root: &Path) -> PathBuf {
+    cache_root.join(format!(
+        "annotation-layer.v{}.json",
+        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+    ))
+}
+
+fn read_annotation_cache_envelope_for_diagnostics(
+    cache_root: &Path,
+) -> Option<AnnotationLayerCacheEnvelope> {
+    let bytes = std::fs::read(annotation_cache_file_path(cache_root)).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn annotation_manifest_mismatch_for_diagnostics(
+    cache_file_version: u32,
+    cached: &AnnotationManifest,
+    expected: &AnnotationManifest,
+) -> Option<&'static str> {
+    if cache_file_version != crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION {
+        return Some("schema_version");
+    }
+    if cached.schema_version != expected.schema_version {
+        return Some("schema_version");
+    }
+    if cached.annotation_pipeline_version != expected.annotation_pipeline_version {
+        return Some("annotation_pipeline_version");
+    }
+    if cached.tokenization != expected.tokenization {
+        return Some("tokenization_config");
+    }
+    if cached.corpus.documents_hash_sha256 != expected.corpus.documents_hash_sha256 {
+        return Some("documents_hash");
+    }
+    if cached.corpus.surface_terms_hash_sha256 != expected.corpus.surface_terms_hash_sha256 {
+        return Some("surface_terms_hash");
+    }
+    if cached.corpus.processed_texts_hash_sha256 != expected.corpus.processed_texts_hash_sha256
+        || cached.corpus.decode_policy_version != expected.corpus.decode_policy_version
+    {
+        return Some("processed_texts_hash");
+    }
+    if cached.models != expected.models {
+        return Some("model_identity");
+    }
+    if cached.corpus.documents != expected.corpus.documents {
+        return Some("documents_hash");
+    }
+    if cached.corpus.surface_term_count != expected.corpus.surface_term_count {
+        return Some("surface_terms_hash");
+    }
+    if cached.languages != expected.languages {
+        return Some("language_identity");
+    }
+    if cached.corpus != expected.corpus {
+        return Some("documents_hash");
+    }
+    if cached != expected {
+        return Some("manifest_identity");
+    }
+    None
+}
+
+fn annotation_cache_invalid_mismatch_for_diagnostics(detail: &str) -> &'static str {
+    let detail = detail.to_ascii_lowercase();
+    if detail.contains("surface term") {
+        "surface_terms_hash"
+    } else if detail.contains("document") {
+        "documents_hash"
+    } else if detail.contains("schema") {
+        "schema_version"
+    } else if detail.contains("model") {
+        "model_identity"
+    } else {
+        "cache_file"
+    }
+}
+
+fn annotation_cache_mismatch_for_diagnostics(
+    cache_root: &Path,
+    expected_manifest: &AnnotationManifest,
+    invalid_detail: Option<&str>,
+) -> Option<&'static str> {
+    read_annotation_cache_envelope_for_diagnostics(cache_root)
+        .and_then(|envelope| {
+            annotation_manifest_mismatch_for_diagnostics(
+                envelope.cache_file_version,
+                &envelope.manifest,
+                expected_manifest,
+            )
+        })
+        .or_else(|| invalid_detail.map(annotation_cache_invalid_mismatch_for_diagnostics))
+}
+
+fn log_annotation_cache_load_decision(
+    cache_root: &Path,
+    expected_manifest: &AnnotationManifest,
+    load: &crate::annotation_cache::AnnotationLayerCacheLoad,
+) {
+    match load {
+        crate::annotation_cache::AnnotationLayerCacheLoad::Ready(_) => {
+            log_annotation_cache_decision("ready", None);
+        }
+        crate::annotation_cache::AnnotationLayerCacheLoad::Missing => {
+            log_annotation_cache_decision("missing", None);
+        }
+        crate::annotation_cache::AnnotationLayerCacheLoad::Stale => {
+            log_annotation_cache_decision(
+                "stale",
+                annotation_cache_mismatch_for_diagnostics(cache_root, expected_manifest, None),
+            );
+        }
+        crate::annotation_cache::AnnotationLayerCacheLoad::Invalid(detail) => {
+            log_annotation_cache_decision(
+                "invalid",
+                annotation_cache_mismatch_for_diagnostics(
+                    cache_root,
+                    expected_manifest,
+                    Some(detail.as_str()),
+                ),
+            );
+        }
+    }
+}
+
+fn log_annotation_cache_envelope_decision(
+    cache_root: &Path,
+    expected_manifest: &AnnotationManifest,
+    load: &crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad,
+) {
+    match load {
+        crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Ready(_) => {}
+        crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Missing => {
+            log_annotation_cache_decision("missing", None);
+        }
+        crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Stale => {
+            log_annotation_cache_decision(
+                "stale",
+                annotation_cache_mismatch_for_diagnostics(cache_root, expected_manifest, None),
+            );
+        }
+        crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Invalid(detail) => {
+            log_annotation_cache_decision(
+                "invalid",
+                annotation_cache_mismatch_for_diagnostics(
+                    cache_root,
+                    expected_manifest,
+                    Some(detail.as_str()),
+                ),
+            );
+        }
+    }
+}
+
 fn duration_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
 }
@@ -999,6 +1165,7 @@ where
     };
 
     let cache_load = crate::annotation_cache::load_annotation_layer_cache(&cache_root, &manifest);
+    log_annotation_cache_load_decision(&cache_root, &manifest, &cache_load);
     if let Some(timing) = timing_ref {
         timing.record_manifest_cache_ready(manifest_cache_started.elapsed());
     }
@@ -1043,63 +1210,64 @@ where
         });
     }
 
-    let salvage_plan =
-        match crate::annotation_cache::read_annotation_layer_cache_envelope(&cache_root) {
-            crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Ready(envelope) => {
-                let surface_term_lookup = match build_surface_term_lookup(corpus) {
-                    Ok(lookup) => lookup,
-                    Err(error) => {
-                        report_progress(annotation_build_progress_with_tokens(
-                            0,
-                            annotation_files_total,
-                            0,
-                            annotation_tokens_total,
-                            AnnotationCacheBuildPhase::Failed,
-                        ));
-                        return Err(AnnotationCacheBuildError::AnnotationFailed {
-                            error: error.to_string(),
-                        });
-                    }
-                };
-                match plan_annotation_cache_salvage(
-                    corpus,
-                    &manifest,
-                    &envelope,
-                    &surface_term_lookup,
-                    cancel,
-                ) {
-                    Ok(plan) => Some((plan, surface_term_lookup)),
-                    Err(error) => {
-                        let cancelled = matches!(&error, AnnotationLayerBuildError::Cancelled);
-                        report_progress(annotation_build_progress_with_tokens(
-                            0,
-                            annotation_files_total,
-                            0,
-                            annotation_tokens_total,
-                            if cancelled {
-                                AnnotationCacheBuildPhase::Cancelled
-                            } else {
-                                AnnotationCacheBuildPhase::Failed
-                            },
-                        ));
-                        return Err(match error {
-                            AnnotationLayerBuildError::Cancelled => {
-                                AnnotationCacheBuildError::Cancelled
-                            }
-                            AnnotationLayerBuildError::UnsupportedLanguages { languages } => {
-                                AnnotationCacheBuildError::UnsupportedLanguages { languages }
-                            }
-                            other => AnnotationCacheBuildError::AnnotationFailed {
-                                error: other.to_string(),
-                            },
-                        });
-                    }
+    let envelope_load = crate::annotation_cache::read_annotation_layer_cache_envelope(&cache_root);
+    log_annotation_cache_envelope_decision(&cache_root, &manifest, &envelope_load);
+    let salvage_plan = match envelope_load {
+        crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Ready(envelope) => {
+            let surface_term_lookup = match build_surface_term_lookup(corpus) {
+                Ok(lookup) => lookup,
+                Err(error) => {
+                    report_progress(annotation_build_progress_with_tokens(
+                        0,
+                        annotation_files_total,
+                        0,
+                        annotation_tokens_total,
+                        AnnotationCacheBuildPhase::Failed,
+                    ));
+                    return Err(AnnotationCacheBuildError::AnnotationFailed {
+                        error: error.to_string(),
+                    });
+                }
+            };
+            match plan_annotation_cache_salvage(
+                corpus,
+                &manifest,
+                &envelope,
+                &surface_term_lookup,
+                cancel,
+            ) {
+                Ok(plan) => Some((plan, surface_term_lookup)),
+                Err(error) => {
+                    let cancelled = matches!(&error, AnnotationLayerBuildError::Cancelled);
+                    report_progress(annotation_build_progress_with_tokens(
+                        0,
+                        annotation_files_total,
+                        0,
+                        annotation_tokens_total,
+                        if cancelled {
+                            AnnotationCacheBuildPhase::Cancelled
+                        } else {
+                            AnnotationCacheBuildPhase::Failed
+                        },
+                    ));
+                    return Err(match error {
+                        AnnotationLayerBuildError::Cancelled => {
+                            AnnotationCacheBuildError::Cancelled
+                        }
+                        AnnotationLayerBuildError::UnsupportedLanguages { languages } => {
+                            AnnotationCacheBuildError::UnsupportedLanguages { languages }
+                        }
+                        other => AnnotationCacheBuildError::AnnotationFailed {
+                            error: other.to_string(),
+                        },
+                    });
                 }
             }
-            crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Stale
-            | crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Missing
-            | crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Invalid(_) => None,
-        };
+        }
+        crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Stale
+        | crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Missing
+        | crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Invalid(_) => None,
+    };
 
     report_progress(annotation_build_progress_with_tokens(
         0,
@@ -3221,6 +3389,7 @@ pub fn annotation_cache_availability_for_corpus(
     language_overrides: &HashMap<usize, String>,
 ) -> AnnotationCacheAvailability {
     let Some(cache_root) = cache_root else {
+        log_annotation_cache_decision("missing", None);
         return AnnotationCacheAvailability {
             state: AnnotationCacheState::Missing,
             detail: None,
@@ -3230,6 +3399,7 @@ pub fn annotation_cache_availability_for_corpus(
         match build_expected_manifest(corpus, records, model_dir, language_overrides) {
             Ok(manifest) => manifest,
             Err(error) => {
+                log_annotation_cache_decision("invalid", Some("manifest_identity"));
                 return AnnotationCacheAvailability {
                     state: AnnotationCacheState::Invalid,
                     detail: Some(format!("{error:?}")),
@@ -3237,7 +3407,10 @@ pub fn annotation_cache_availability_for_corpus(
             }
         };
 
-    match crate::annotation_cache::load_annotation_layer_cache(cache_root, &expected_manifest) {
+    let load = crate::annotation_cache::load_annotation_layer_cache(cache_root, &expected_manifest);
+    log_annotation_cache_load_decision(cache_root, &expected_manifest, &load);
+
+    match load {
         crate::annotation_cache::AnnotationLayerCacheLoad::Ready(_) => {
             AnnotationCacheAvailability {
                 state: AnnotationCacheState::Ready,
