@@ -619,6 +619,8 @@ struct AnnotationLayerBuildRuntime<'a> {
     tokens_done: &'a AtomicU64,
     document_token_counts: &'a [u64],
     timing: Option<&'a AnnotationBuildTimingCounters>,
+    loading_steps_done: Option<&'a std::sync::atomic::AtomicUsize>,
+    annotating_started: Option<&'a AtomicBool>,
 }
 
 impl AnnotationLayerBuildRuntime<'_> {
@@ -638,6 +640,18 @@ impl AnnotationLayerBuildRuntime<'_> {
             self.tokens_done.fetch_add(count, AtomicOrdering::Relaxed);
         }
     }
+
+    fn record_loading_step(&self) {
+        if let Some(loading_steps_done) = self.loading_steps_done {
+            loading_steps_done.fetch_add(1, AtomicOrdering::Relaxed);
+        }
+    }
+
+    fn mark_annotating_started(&self) {
+        if let Some(annotating_started) = self.annotating_started {
+            annotating_started.store(true, AtomicOrdering::Relaxed);
+        }
+    }
 }
 
 fn ensure_annotation_not_cancelled(cancel: &AtomicBool) -> Result<(), AnnotationLayerBuildError> {
@@ -645,6 +659,12 @@ fn ensure_annotation_not_cancelled(cancel: &AtomicBool) -> Result<(), Annotation
         Err(AnnotationLayerBuildError::Cancelled)
     } else {
         Ok(())
+    }
+}
+
+fn record_annotation_loading_step(loading_steps_done: Option<&std::sync::atomic::AtomicUsize>) {
+    if let Some(loading_steps_done) = loading_steps_done {
+        loading_steps_done.fetch_add(1, AtomicOrdering::Relaxed);
     }
 }
 
@@ -1090,6 +1110,8 @@ where
     ));
 
     let docs_done = std::sync::atomic::AtomicUsize::new(0);
+    let loading_steps_done = std::sync::atomic::AtomicUsize::new(0);
+    let annotating_started = AtomicBool::new(false);
     if let Some((plan, _)) = &salvage_plan {
         docs_done.store(
             plan.reused_documents.len(),
@@ -1106,6 +1128,9 @@ where
             })
             .sum::<u64>();
         tokens_done.store(reused_tokens, AtomicOrdering::Relaxed);
+        if !plan.reused_documents.is_empty() {
+            annotating_started.store(true, AtomicOrdering::Relaxed);
+        }
     }
     report_progress(annotation_build_progress_with_tokens(
         docs_done
@@ -1116,7 +1141,11 @@ where
             .load(AtomicOrdering::Relaxed)
             .min(annotation_tokens_total),
         annotation_tokens_total,
-        AnnotationCacheBuildPhase::Annotating,
+        if annotating_started.load(AtomicOrdering::Relaxed) {
+            AnnotationCacheBuildPhase::Annotating
+        } else {
+            AnnotationCacheBuildPhase::LoadingModel
+        },
     ));
 
     let layer = if let Some((salvage_plan, surface_term_lookup)) = salvage_plan {
@@ -1136,6 +1165,8 @@ where
                             tokens_done: &tokens_done,
                             document_token_counts: &annotation_token_counts,
                             timing: timing_ref,
+                            loading_steps_done: Some(&loading_steps_done),
+                            annotating_started: Some(&annotating_started),
                         },
                     },
                     salvage_plan,
@@ -1145,6 +1176,11 @@ where
 
             while !handle.is_finished() {
                 let done = docs_done.load(std::sync::atomic::Ordering::Relaxed);
+                let current_phase = if annotating_started.load(AtomicOrdering::Relaxed) {
+                    AnnotationCacheBuildPhase::Annotating
+                } else {
+                    AnnotationCacheBuildPhase::LoadingModel
+                };
                 report_progress(annotation_build_progress_with_tokens(
                     done.min(annotation_files_total),
                     annotation_files_total,
@@ -1152,7 +1188,7 @@ where
                         .load(AtomicOrdering::Relaxed)
                         .min(annotation_tokens_total),
                     annotation_tokens_total,
-                    AnnotationCacheBuildPhase::Annotating,
+                    current_phase,
                 ));
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
@@ -1174,12 +1210,19 @@ where
                         tokens_done: &tokens_done,
                         document_token_counts: &annotation_token_counts,
                         timing: timing_ref,
+                        loading_steps_done: Some(&loading_steps_done),
+                        annotating_started: Some(&annotating_started),
                     },
                 )
             });
 
             while !handle.is_finished() {
                 let done = docs_done.load(std::sync::atomic::Ordering::Relaxed);
+                let current_phase = if annotating_started.load(AtomicOrdering::Relaxed) {
+                    AnnotationCacheBuildPhase::Annotating
+                } else {
+                    AnnotationCacheBuildPhase::LoadingModel
+                };
                 report_progress(annotation_build_progress_with_tokens(
                     done.min(annotation_files_total),
                     annotation_files_total,
@@ -1187,7 +1230,7 @@ where
                         .load(AtomicOrdering::Relaxed)
                         .min(annotation_tokens_total),
                     annotation_tokens_total,
-                    AnnotationCacheBuildPhase::Annotating,
+                    current_phase,
                 ));
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
@@ -1260,13 +1303,31 @@ where
         .surface_term_tokens()
         .map(str::to_string)
         .collect::<Vec<_>>();
-    if let Err(error) = crate::annotation_cache::write_annotation_layer_cache_with_timing(
-        &cache_root,
-        &manifest,
-        &surface_terms,
-        &layer,
-        timing_ref,
-    ) {
+    let write_result = std::thread::scope(|s| {
+        let handle = s.spawn(|| {
+            crate::annotation_cache::write_annotation_layer_cache_with_timing(
+                &cache_root,
+                &manifest,
+                &surface_terms,
+                &layer,
+                timing_ref,
+            )
+        });
+
+        while !handle.is_finished() {
+            report_progress(annotation_build_progress_with_tokens(
+                annotation_files_total,
+                annotation_files_total,
+                annotation_tokens_total,
+                annotation_tokens_total,
+                AnnotationCacheBuildPhase::WritingCache,
+            ));
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+
+        handle.join().unwrap()
+    });
+    if let Err(error) = write_result {
         report_progress(annotation_build_progress_with_tokens(
             annotation_files_total,
             annotation_files_total,
@@ -1511,6 +1572,8 @@ where
             tokens_done: &tokens_done,
             document_token_counts: &document_token_counts,
             timing: None,
+            loading_steps_done: None,
+            annotating_started: None,
         },
     )
 }
@@ -1535,6 +1598,7 @@ where
         cancel,
         &mut load_text,
         runtime.timing,
+        runtime.loading_steps_done,
     )?;
     let surface_term_lookup = build_surface_term_lookup(corpus)?;
     let languages_used = inputs
@@ -1584,6 +1648,7 @@ where
         context.cancel,
         &mut load_text,
         context.runtime.timing,
+        context.runtime.loading_steps_done,
     )?;
     let miss_languages_used = miss_inputs
         .iter()
@@ -1630,6 +1695,7 @@ pub(super) fn load_annotation_document_inputs<TextLoader>(
     cancel: &AtomicBool,
     load_text: &mut TextLoader,
     timing: Option<&AnnotationBuildTimingCounters>,
+    loading_steps_done: Option<&std::sync::atomic::AtomicUsize>,
 ) -> Result<Vec<AnnotationDocumentInput>, AnnotationLayerBuildError>
 where
     TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
@@ -1697,6 +1763,7 @@ where
                     .resolution
                     .effective_language
             };
+        record_annotation_loading_step(loading_steps_done);
         ensure_annotation_not_cancelled(cancel)?;
 
         inputs.push(AnnotationDocumentInput {
@@ -1729,6 +1796,7 @@ fn load_annotation_document_inputs_for_indices<TextLoader>(
     cancel: &AtomicBool,
     load_text: &mut TextLoader,
     timing: Option<&AnnotationBuildTimingCounters>,
+    loading_steps_done: Option<&std::sync::atomic::AtomicUsize>,
 ) -> Result<Vec<AnnotationDocumentInput>, AnnotationLayerBuildError>
 where
     TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
@@ -1822,6 +1890,7 @@ where
                 ),
             })?
             .clone();
+        record_annotation_loading_step(loading_steps_done);
 
         inputs.push(AnnotationDocumentInput {
             analysis_document_index,
@@ -2069,6 +2138,7 @@ fn preflight_annotation_languages(
     languages: &BTreeSet<String>,
     manager: &mut ModelManager,
     cancel: &AtomicBool,
+    loading_steps_done: Option<&std::sync::atomic::AtomicUsize>,
     timing: Option<&AnnotationBuildTimingCounters>,
 ) -> Result<(), AnnotationLayerBuildError> {
     let mut unsupported = Vec::new();
@@ -2076,6 +2146,7 @@ fn preflight_annotation_languages(
         ensure_annotation_not_cancelled(cancel)?;
         let load_result = load_annotation_model(manager, language, timing);
         ensure_annotation_not_cancelled(cancel)?;
+        record_annotation_loading_step(loading_steps_done);
         match load_result {
             Ok(()) => {}
             Err(AnnotationError::ModelNotFound { language }) => unsupported.push(language),
@@ -2121,8 +2192,11 @@ fn annotate_annotation_documents(
             model_context.languages_used,
             &mut manager,
             cancel,
+            runtime.loading_steps_done,
             runtime.timing,
         )?;
+        runtime.record_loading_step();
+        runtime.mark_annotating_started();
         inputs
             .iter()
             .map(|input| {
@@ -2195,9 +2269,12 @@ fn annotate_annotation_documents_in_staged_waves_with_budget(
             model_context.languages_used,
             &mut manager,
             cancel,
+            runtime.loading_steps_done,
             runtime.timing,
         )?;
     }
+    runtime.record_loading_step();
+    runtime.mark_annotating_started();
 
     let mut worker_documents = Vec::with_capacity(inputs.len());
     let mut next_input = 0usize;
