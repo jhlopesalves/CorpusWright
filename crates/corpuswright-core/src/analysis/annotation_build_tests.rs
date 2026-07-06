@@ -85,6 +85,8 @@ fn annotation_layer_result_for_with_timing(
             tokens_done: &tokens_done,
             document_token_counts: &document_token_counts,
             timing,
+            loading_steps_done: None,
+            annotating_started: None,
         },
     )?;
     Ok((corpus, layer))
@@ -124,6 +126,7 @@ fn annotation_layer_result_for_with_wave_budget(
         cancel,
         &mut load_text,
         timing,
+        None,
     )?;
     let surface_term_lookup = build_surface_term_lookup(&corpus)?;
     let languages_used = inputs
@@ -145,6 +148,8 @@ fn annotation_layer_result_for_with_wave_budget(
             tokens_done: &tokens_done,
             document_token_counts: &document_token_counts,
             timing,
+            loading_steps_done: None,
+            annotating_started: None,
         },
         wave_budget,
     )?;
@@ -606,6 +611,7 @@ fn annotation_input_language_overrides_use_original_record_indices() {
         &language_overrides,
         &AtomicBool::new(false),
         &mut load_text,
+        None,
         None,
     )
     .unwrap();
@@ -1144,7 +1150,8 @@ fn annotation_model_preflight_honours_cancel_before_loading_model() {
     let model_dir = default_model_dir();
     let mut manager = new_annotation_model_manager(&model_dir, Some(&timing));
 
-    let result = preflight_annotation_languages(&languages, &mut manager, &cancel, Some(&timing));
+    let result =
+        preflight_annotation_languages(&languages, &mut manager, &cancel, None, Some(&timing));
 
     assert_eq!(result.unwrap_err(), AnnotationLayerBuildError::Cancelled);
     assert_eq!(timing.model_load_attempts.load(AtomicOrdering::Relaxed), 0);
@@ -2722,6 +2729,52 @@ fn test_annotation_cache_build_reports_phase_progress() {
             .all(|window| window[0] <= window[1])
     );
     assert_eq!(annotating_tokens_done.last(), Some(&completed.tokens_total));
+}
+
+#[test]
+fn annotation_cache_build_emits_loading_model_heartbeat_before_annotation() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let texts = [("slow.txt", "The quick brown fox.")];
+    let language_overrides = english_overrides(texts.len());
+    let reusable_surface_corpus = cache_surface_corpus_for(&texts, language_overrides.clone());
+    let records = cache_records(&texts);
+    let mut options = build_options();
+    options.annotation_cache_root = Some(temp_dir.path().to_path_buf());
+    options.udpipe_model_dir = Some(default_model_dir());
+    options.language_overrides = language_overrides.clone();
+    let annotation_options = AnnotationLayerBuildOptions {
+        udpipe_model_dir: options.udpipe_model_dir.clone(),
+        language_overrides,
+    };
+    let mut progress_events = Vec::new();
+
+    build_and_write_annotation_cache_with_reusable_surface_corpus(
+        &records,
+        options,
+        annotation_options,
+        &AtomicBool::new(false),
+        |record| {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            Ok(processed_resolution(record, texts[0].1))
+        },
+        |progress| progress_events.push(progress),
+        Some(&reusable_surface_corpus),
+    )
+    .unwrap();
+
+    let loading_model_events = progress_events
+        .iter()
+        .filter(|progress| {
+            matches!(
+                progress.current_phase,
+                AnnotationCacheBuildPhase::LoadingModel
+            )
+        })
+        .count();
+    assert!(
+        loading_model_events >= 2,
+        "expected repeated LoadingModel heartbeat events, got {loading_model_events}"
+    );
 }
 
 #[test]

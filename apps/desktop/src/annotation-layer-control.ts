@@ -6,7 +6,7 @@ import type { AnnotationCacheBuildProgress } from "./generated/AnnotationCacheBu
 export type AnnotationLayerTransientState =
   | {
       status: "building";
-      elapsedMs: number | null;
+      elapsedMs: number;
       annotatingElapsedMs: number | null;
       progress: AnnotationCacheBuildProgress | null;
       progressSamples: AnnotationTokenProgressSample[];
@@ -84,10 +84,7 @@ export function formatCoarseDuration(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
-export function formatAnnotationElapsed(elapsedMs: number | null): string | null {
-  if (elapsedMs === null) {
-    return null;
-  }
+export function formatAnnotationElapsed(elapsedMs: number): string {
   return `${formatCoarseDuration(elapsedMs)} elapsed`;
 }
 
