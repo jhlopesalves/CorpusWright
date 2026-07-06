@@ -1815,8 +1815,7 @@ where
         &salvage_plan.miss_indices,
         context.cancel,
         &mut load_text,
-        context.runtime.timing,
-        context.runtime.loading_steps_done,
+        context.runtime,
     )?;
     let miss_languages_used = miss_inputs
         .iter()
@@ -1963,8 +1962,7 @@ fn load_annotation_document_inputs_for_indices<TextLoader>(
     analysis_document_indices: &[usize],
     cancel: &AtomicBool,
     load_text: &mut TextLoader,
-    timing: Option<&AnnotationBuildTimingCounters>,
-    loading_steps_done: Option<&std::sync::atomic::AtomicUsize>,
+    runtime: AnnotationLayerBuildRuntime<'_>,
 ) -> Result<Vec<AnnotationDocumentInput>, AnnotationLayerBuildError>
 where
     TextLoader: FnMut(&DocumentRecord) -> Result<AnalysisInputResolution, String>,
@@ -2011,7 +2009,7 @@ where
         let relative_path = record.relative_path.to_string_lossy().into_owned();
         let load_started = Instant::now();
         let resolution_result = load_text(record);
-        if let Some(timing) = timing {
+        if let Some(timing) = runtime.timing {
             timing.record_annotation_input_load(load_started.elapsed());
         }
         let resolution =
@@ -2045,7 +2043,7 @@ where
             &text,
             &corpus.tokenization,
         )?;
-        if let Some(timing) = timing {
+        if let Some(timing) = runtime.timing {
             timing.record_identity_verification(verify_started.elapsed());
         }
 
@@ -2058,7 +2056,7 @@ where
                 ),
             })?
             .clone();
-        record_annotation_loading_step(loading_steps_done);
+        runtime.record_loading_step();
 
         inputs.push(AnnotationDocumentInput {
             analysis_document_index,
