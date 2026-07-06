@@ -8,6 +8,7 @@ export type AnnotationLayerTransientState =
       status: "building";
       elapsedMs: number;
       annotatingElapsedMs: number | null;
+      cancellationRequested: boolean;
       progress: AnnotationCacheBuildProgress | null;
       progressSamples: AnnotationTokenProgressSample[];
     }
@@ -33,7 +34,7 @@ export interface AnnotationLayerControlViewModel {
   help: string;
   progress: AnnotationLayerProgressViewModel | null;
   action: AnnotationLayerAction;
-  actionLabel: "Build annotations" | "Cancel" | "Rebuild annotations";
+  actionLabel: "Build annotations" | "Cancel" | "Cancelling..." | "Rebuild annotations";
   actionDisabled: boolean;
   actionDisabledReason: string | null;
 }
@@ -297,13 +298,16 @@ export function annotationLayerControlViewModel(
 ): AnnotationLayerControlViewModel {
   const status = input.transient?.status ?? input.cache.state;
   const action: AnnotationLayerAction = status === "building" ? "cancel" : "start";
+  const cancellationRequested =
+    input.transient?.status === "building" && input.transient.cancellationRequested;
   const actionLabel = status === "building"
-    ? "Cancel"
+    ? cancellationRequested ? "Cancelling..." : "Cancel"
     : status === "ready" || status === "stale"
       ? "Rebuild annotations"
       : "Build annotations";
   const actionDisabled =
-    action === "start" && input.surfaceAnalysisRequired && !input.surfaceAnalysisBuilt;
+    cancellationRequested
+      || (action === "start" && input.surfaceAnalysisRequired && !input.surfaceAnalysisBuilt);
   const label = statusLabel(status);
   const progress = status === "building" && input.transient?.status === "building" && input.transient.progress
     ? annotationProgressViewModel(
@@ -322,6 +326,8 @@ export function annotationLayerControlViewModel(
     action,
     actionLabel,
     actionDisabled,
-    actionDisabledReason: actionDisabled ? "Build surface analysis first." : null,
+    actionDisabledReason: cancellationRequested
+      ? "Cancellation requested."
+      : actionDisabled ? "Build surface analysis first." : null,
   };
 }
