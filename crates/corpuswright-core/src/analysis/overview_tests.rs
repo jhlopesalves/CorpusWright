@@ -242,9 +242,51 @@ fn zipf_fit_recovers_known_synthetic_exponent() {
     let frequencies = (1..=20u64)
         .map(|rank| 1_000_000 / rank.pow(2))
         .collect::<Vec<_>>();
-    let summary = rank_frequency_summary(&frequencies, frequencies.iter().sum());
+    let tokens = (1..=20u64)
+        .map(|rank| format!("type-{rank}"))
+        .collect::<Vec<_>>();
+    let summary = rank_frequency_summary(&frequencies, &tokens, frequencies.iter().sum());
     assert!((summary.zipf_exponent.unwrap() - 2.0).abs() < 0.02);
     assert!(summary.r_squared.unwrap() > 0.999);
+    assert_eq!(
+        summary.points.first().unwrap().token.as_deref(),
+        Some("type-1")
+    );
+}
+
+#[test]
+fn cumulative_coverage_uses_125_ladder_and_full_vocabulary() {
+    assert!(cumulative_coverage_checkpoints(&[], 0).is_empty());
+
+    let single = cumulative_coverage_checkpoints(&[7], 7);
+    assert_eq!(single, vec![CumulativeCoveragePoint { k: 1, share: 1.0 }]);
+
+    let frequencies = vec![50, 25, 10, 5, 5, 3, 1, 1];
+    let points = cumulative_coverage_checkpoints(&frequencies, 100);
+    let ks = points.iter().map(|point| point.k).collect::<Vec<_>>();
+    assert_eq!(ks, vec![1, 2, 5, 8]);
+    assert_eq!(points.last().unwrap().share, 1.0);
+}
+
+#[test]
+fn universal_types_are_thresholded_sorted_and_capped() {
+    let terms = (0..14usize)
+        .map(|index| AnalysisTerm {
+            token: format!("u{index:02}"),
+            frequency: 100 - index as u64,
+            document_frequency: if index == 13 { 8 } else { 9 },
+            document_counts: Vec::new(),
+            dispersion: 0.0,
+        })
+        .collect::<Vec<_>>();
+    let refs = terms.iter().collect::<Vec<_>>();
+
+    let universal = universal_types(&refs, 9);
+    assert_eq!(universal.len(), 12);
+    assert_eq!(universal.first().unwrap().token, "u00");
+    assert_eq!(universal.last().unwrap().token, "u11");
+    assert!(universal.iter().all(|term| term.document_frequency >= 9));
+    assert!(universal_types(&refs, 0).is_empty());
 }
 
 #[test]
