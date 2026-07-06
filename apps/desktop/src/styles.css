@@ -2353,6 +2353,7 @@ main {
 }
 
 .analysis-panel {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -2516,9 +2517,10 @@ main {
   width: 100%;
   max-width: 620px;
   border-collapse: collapse;
-  table-layout: auto;
-  font-size: 0.82rem;
+  table-layout: fixed;
+  font-size: 0.88rem;
   line-height: 1.35;
+  overflow: visible;
 }
 
 .analysis-metric-table tr {
@@ -2545,6 +2547,7 @@ main {
 }
 
 .analysis-metric-value {
+  width: 31%;
   min-width: 96px;
   overflow: visible;
   text-align: right;
@@ -2553,6 +2556,7 @@ main {
 }
 
 .analysis-metric-share {
+  width: 17%;
   min-width: 52px;
   padding-left: 14px !important;
   color: var(--text-muted) !important;
@@ -2631,6 +2635,7 @@ main {
 
 .analysis-glossary-row > td {
   padding: 0 0 8px !important;
+  overflow: visible;
 }
 
 .analysis-dispersion-sample-row > td {
@@ -2647,6 +2652,11 @@ main {
   font-size: 0.84rem;
   line-height: 1.45;
   overflow: visible;
+}
+
+.analysis-glossary-row .analysis-glossary-detail {
+  width: min(960px, 100cqw);
+  max-width: min(960px, 100cqw);
 }
 
 .analysis-dispersion-sample-detail {
@@ -2767,6 +2777,10 @@ main {
   font-family: var(--cw-font-math);
   font-size: 0.82rem;
   line-height: 1.35;
+}
+
+.analysis-glossary-row .analysis-glossary-formula {
+  font-size: 1rem;
 }
 
 .analysis-glossary-formula .katex-display {
@@ -2908,13 +2922,30 @@ main {
   gap: 7px;
 }
 
+.document-length-header,
 .document-length-row {
   display: grid;
   grid-template-columns: minmax(120px, 1.4fr) minmax(90px, 2fr) minmax(80px, max-content) minmax(64px, max-content);
   gap: 10px;
   align-items: center;
-  font-size: 0.82rem;
   min-width: 0;
+}
+
+.document-length-header {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.document-length-header .document-length-track {
+  height: auto;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+.document-length-row {
+  font-size: 0.82rem;
 }
 
 .document-length-name {
@@ -2945,6 +2976,8 @@ main {
 }
 
 .analysis-panel-note {
+  width: 100%;
+  max-width: 620px;
   margin: 0;
   color: var(--text-muted);
   font-size: 0.82rem;
@@ -4653,6 +4686,7 @@ main {
     min-width: 132px;
   }
 
+  .document-length-header,
   .document-length-row {
     grid-template-columns: minmax(90px, 1fr) minmax(72px, 1fr) minmax(72px, max-content);
   }

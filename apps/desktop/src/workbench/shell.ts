@@ -916,6 +916,31 @@ function renderDocumentLengthDistribution(corpus: AnalysisCorpus): HTMLElement {
     return distribution;
   }
 
+  if (corpus.documentsTruncated) {
+    const header = document.createElement("div");
+    header.className = "document-length-header";
+    header.setAttribute("aria-hidden", "true");
+
+    const documentLabel = document.createElement("span");
+    documentLabel.className = "document-length-name";
+    documentLabel.textContent = "Document";
+
+    const shareOfTokensLabel = document.createElement("span");
+    shareOfTokensLabel.className = "document-length-track";
+    shareOfTokensLabel.textContent = "Share of tokens";
+
+    const tokensLabel = document.createElement("span");
+    tokensLabel.className = "document-length-count";
+    tokensLabel.textContent = "Tokens";
+
+    const percentLabel = document.createElement("span");
+    percentLabel.className = "document-length-share";
+    percentLabel.textContent = "%";
+
+    header.append(documentLabel, shareOfTokensLabel, tokensLabel, percentLabel);
+    distribution.appendChild(header);
+  }
+
   for (const documentRecord of corpus.documents) {
     const row = document.createElement("div");
     row.className = "document-length-row";
