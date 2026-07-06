@@ -153,13 +153,20 @@ export interface CorpusOverviewLexicalSpectrum {
 }
 
 export interface CorpusOverviewFrequencyConcentration {
+  top10Coverage: number | null;
   top100Coverage: number | null;
   top1000Coverage: number | null;
   top10000Coverage: number | null;
+  cumulativeCoverage: CumulativeCoveragePoint[];
   shannonEntropyBits: number | null;
   evennessJ: number | null;
   effectiveVocabularyEntropy: number | null;
   reading: string;
+}
+
+export interface CumulativeCoveragePoint {
+  k: number;
+  share: number;
 }
 
 export interface FrequencySpectrumPoint {
@@ -169,6 +176,7 @@ export interface FrequencySpectrumPoint {
 
 export interface RankFrequencyPoint {
   rank: number;
+  token: string | null;
   frequency: number;
   ratePerMillion: number;
 }
@@ -227,8 +235,14 @@ export interface CorpusOverviewDispersion {
   dfAtLeast90pctCount: number;
   dfAtLeast90pctSampleTypes: string[];
   dfAtLeast90pctShare: number | null;
+  universalTypes: UniversalType[];
   medianDocumentsPerType: number | null;
   reading: string;
+}
+
+export interface UniversalType {
+  token: string;
+  documentFrequency: number;
 }
 
 export interface CorpusOverviewFinding {

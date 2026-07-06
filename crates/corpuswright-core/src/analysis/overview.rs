@@ -8,6 +8,7 @@ pub(super) const OVERVIEW_DOCUMENT_LIMIT: usize = 20;
 const FREQUENT_TERM_THRESHOLD: u64 = 10;
 const HIGH_DISPERSION_THRESHOLD: f64 = 0.5;
 const DISPERSION_SAMPLE_TYPE_LIMIT: usize = 20;
+const UNIVERSAL_TYPE_LIMIT: usize = 12;
 
 const MAX_DISTRIBUTION_POINTS: usize = 200;
 
@@ -125,13 +126,23 @@ pub struct CorpusOverviewLexicalSpectrum {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewFrequencyConcentration {
+    pub top_10_coverage: Option<f64>,
     pub top_100_coverage: Option<f64>,
     pub top_1000_coverage: Option<f64>,
     pub top_10000_coverage: Option<f64>,
+    pub cumulative_coverage: Vec<CumulativeCoveragePoint>,
     pub shannon_entropy_bits: Option<f64>,
     pub evenness_j: Option<f64>,
     pub effective_vocabulary_entropy: Option<f64>,
     pub reading: String,
+}
+
+/// Cumulative token share covered by the top k ranked types.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CumulativeCoveragePoint {
+    pub k: usize,
+    pub share: f64,
 }
 
 /// Number of types observed at one exact corpus frequency.
@@ -147,6 +158,7 @@ pub struct FrequencySpectrumPoint {
 #[serde(rename_all = "camelCase")]
 pub struct RankFrequencyPoint {
     pub rank: u64,
+    pub token: Option<String>,
     pub frequency: u64,
     pub rate_per_million: f64,
 }
@@ -217,8 +229,17 @@ pub struct CorpusOverviewDispersion {
     pub df_at_least_90pct_count: usize,
     pub df_at_least_90pct_sample_types: Vec<String>,
     pub df_at_least_90pct_share: Option<f64>,
+    pub universal_types: Vec<UniversalType>,
     pub median_documents_per_type: Option<f64>,
     pub reading: String,
+}
+
+/// One type present in at least 90% of documents, capped for overview display.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UniversalType {
+    pub token: String,
+    pub document_frequency: usize,
 }
 
 /// Overview finding category.
@@ -521,6 +542,7 @@ fn sampled_indices(length: usize, maximum: usize) -> Vec<usize> {
 
 pub(super) fn rank_frequency_summary(
     frequencies: &[u64],
+    tokens: &[String],
     total_tokens: u64,
 ) -> CorpusOverviewRankFrequency {
     let fit_points = frequencies
@@ -538,6 +560,7 @@ pub(super) fn rank_frequency_summary(
         .into_iter()
         .map(|index| RankFrequencyPoint {
             rank: u64::try_from(index + 1).unwrap_or(u64::MAX),
+            token: tokens.get(index).cloned(),
             frequency: frequencies[index],
             rate_per_million: if total_tokens > 0 {
                 frequencies[index] as f64 / total_tokens as f64 * 1_000_000.0
@@ -595,6 +618,93 @@ pub(super) fn frequency_spectrum(frequencies: &[u64]) -> (Vec<FrequencySpectrumP
         .map(|index| all_points[index].clone())
         .collect();
     (points, truncated)
+}
+
+pub(super) fn cumulative_coverage_checkpoints(
+    frequencies: &[u64],
+    total_tokens: u64,
+) -> Vec<CumulativeCoveragePoint> {
+    if frequencies.is_empty() || total_tokens == 0 {
+        return Vec::new();
+    }
+    let checkpoints = coverage_checkpoint_ladder(frequencies.len());
+    let mut checkpoint_index = 0usize;
+    let mut cumulative = 0u64;
+    let mut points = Vec::with_capacity(checkpoints.len());
+    for (index, frequency) in frequencies.iter().enumerate() {
+        cumulative = cumulative.saturating_add(*frequency);
+        let k = index + 1;
+        while checkpoint_index < checkpoints.len() && checkpoints[checkpoint_index] == k {
+            points.push(CumulativeCoveragePoint {
+                k,
+                share: cumulative as f64 / total_tokens as f64,
+            });
+            checkpoint_index += 1;
+        }
+    }
+    points
+}
+
+fn coverage_checkpoint_ladder(vocabulary_size: usize) -> Vec<usize> {
+    if vocabulary_size == 0 {
+        return Vec::new();
+    }
+    let mut checkpoints = Vec::new();
+    let mut scale = 1usize;
+    loop {
+        let mut added_at_scale = false;
+        for multiplier in [1usize, 2, 5] {
+            let Some(k) = multiplier.checked_mul(scale) else {
+                break;
+            };
+            if k > vocabulary_size {
+                continue;
+            }
+            checkpoints.push(k);
+            added_at_scale = true;
+        }
+        let Some(next_scale) = scale.checked_mul(10) else {
+            break;
+        };
+        if next_scale > vocabulary_size && !added_at_scale {
+            break;
+        }
+        if scale > vocabulary_size {
+            break;
+        }
+        scale = next_scale;
+    }
+    if checkpoints.last().copied() != Some(vocabulary_size) {
+        checkpoints.push(vocabulary_size);
+    }
+    checkpoints.sort_unstable();
+    checkpoints.dedup();
+    checkpoints
+}
+
+pub(super) fn universal_types(
+    terms: &[&AnalysisTerm],
+    document_frequency_threshold: usize,
+) -> Vec<UniversalType> {
+    if document_frequency_threshold == 0 {
+        return Vec::new();
+    }
+    let mut candidates = terms
+        .iter()
+        .filter(|term| term.document_frequency >= document_frequency_threshold)
+        .copied()
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| {
+        compare_type_sample(left.frequency, &left.token, right.frequency, &right.token)
+    });
+    candidates
+        .into_iter()
+        .take(UNIVERSAL_TYPE_LIMIT)
+        .map(|term| UniversalType {
+            token: term.token.clone(),
+            document_frequency: term.document_frequency,
+        })
+        .collect()
 }
 
 pub(super) fn gini_coefficient(values: &[u64]) -> Option<f64> {
@@ -1033,16 +1143,29 @@ pub(super) fn build_overview(
     let lexical_severity = lexical_severity(total_tokens, total_types);
     let dispersion_severity = dispersion_severity(document_count, frequent_terms.len(), median_dp);
 
-    let mut frequencies = terms.iter().map(|term| term.frequency).collect::<Vec<_>>();
-    frequencies.sort_unstable_by(|left, right| right.cmp(left));
+    let mut ranked_terms = terms.iter().collect::<Vec<_>>();
+    ranked_terms.sort_by(|left, right| {
+        compare_type_sample(left.frequency, &left.token, right.frequency, &right.token)
+    });
+    let frequencies = ranked_terms
+        .iter()
+        .map(|term| term.frequency)
+        .collect::<Vec<_>>();
+    let rank_tokens = ranked_terms
+        .iter()
+        .map(|term| term.token.clone())
+        .collect::<Vec<_>>();
+    let top_10_coverage = coverage_at(&frequencies, 10, total_tokens);
     let top_100_coverage = coverage_at(&frequencies, 100, total_tokens);
     let top_1000_coverage = coverage_at(&frequencies, 1_000, total_tokens);
     let top_10000_coverage = coverage_at(&frequencies, 10_000, total_tokens);
+    let cumulative_coverage = cumulative_coverage_checkpoints(&frequencies, total_tokens);
     let (shannon_entropy_bits, evenness_j, effective_vocabulary_entropy) =
         entropy_metrics(&frequencies, total_tokens);
     let (frequency_spectrum, frequency_spectrum_truncated) = frequency_spectrum(&frequencies);
-    let rank_frequency = rank_frequency_summary(&frequencies, total_tokens);
+    let rank_frequency = rank_frequency_summary(&frequencies, &rank_tokens, total_tokens);
     let vocabulary_growth = vocabulary_growth_summary(&metadata.vocabulary_growth);
+    let universal_types = universal_types(&ranked_terms, df_at_least_90pct_threshold);
 
     let sources_in_project = metadata
         .overview_context
@@ -1284,9 +1407,11 @@ pub(super) fn build_overview(
                 .to_string(),
         },
         frequency_concentration: CorpusOverviewFrequencyConcentration {
+            top_10_coverage,
             top_100_coverage,
             top_1000_coverage,
             top_10000_coverage,
+            cumulative_coverage,
             shannon_entropy_bits,
             evenness_j,
             effective_vocabulary_entropy,
@@ -1326,6 +1451,7 @@ pub(super) fn build_overview(
             df_at_least_90pct_count,
             df_at_least_90pct_sample_types: df_at_least_90pct_samples.into_ordered_tokens(),
             df_at_least_90pct_share: type_share(df_at_least_90pct_count, total_types),
+            universal_types,
             median_documents_per_type,
             reading: if document_count < 2 {
                 "Dispersion and document-frequency spread require at least two documents."
