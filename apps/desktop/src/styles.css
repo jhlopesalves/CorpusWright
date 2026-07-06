@@ -2534,7 +2534,6 @@ main {
 }
 
 .analysis-metric-table th {
-  width: 52%;
   padding-right: 14px;
   color: var(--text-muted);
   font-weight: 600;
@@ -2547,7 +2546,6 @@ main {
 }
 
 .analysis-metric-value {
-  width: 31%;
   min-width: 96px;
   overflow: visible;
   text-align: right;
@@ -2556,12 +2554,35 @@ main {
 }
 
 .analysis-metric-share {
-  width: 17%;
   min-width: 52px;
   padding-left: 14px !important;
   color: var(--text-muted) !important;
   text-align: right;
   white-space: nowrap;
+}
+
+.analysis-metric-table.has-share-column th {
+  width: 52%;
+}
+
+.analysis-metric-table.has-share-column .analysis-metric-value {
+  width: 31%;
+}
+
+.analysis-metric-table.has-share-column .analysis-metric-share {
+  width: 17%;
+}
+
+.analysis-metric-table.has-no-share-column th {
+  width: 62%;
+}
+
+.analysis-metric-table.has-no-share-column .analysis-metric-value {
+  width: 38%;
+}
+
+.analysis-metric-table.has-no-share-column .analysis-metric-share {
+  display: none;
 }
 
 .analysis-metric-share:empty {
