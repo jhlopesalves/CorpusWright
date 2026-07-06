@@ -222,6 +222,10 @@ assert(
   "Token rate formatting should round to hundreds",
 );
 assert(
+  formatAnnotationTokenRate(99) === "under 100 tokens/s",
+  "Token rate formatting should not floor slow throughput to 100",
+);
+assert(
   appendAnnotationTokenProgressSample([{ atMs: 0, tokensDone: 0n }], { atMs: 61000, tokensDone: 61000n }).length === 1,
   "Token sample history should keep only the trailing throughput window",
 );
