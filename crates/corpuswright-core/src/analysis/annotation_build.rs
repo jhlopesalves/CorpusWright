@@ -640,6 +640,14 @@ impl AnnotationLayerBuildRuntime<'_> {
     }
 }
 
+fn ensure_annotation_not_cancelled(cancel: &AtomicBool) -> Result<(), AnnotationLayerBuildError> {
+    if cancel.load(AtomicOrdering::Relaxed) {
+        Err(AnnotationLayerBuildError::Cancelled)
+    } else {
+        Ok(())
+    }
+}
+
 fn annotation_document_token_counts(corpus: &AnalysisCorpus) -> Vec<u64> {
     corpus
         .documents
@@ -1631,9 +1639,7 @@ where
 
     let mut inputs = Vec::with_capacity(corpus.documents.len());
     for (original_record_index, record) in ordered_records {
-        if cancel.load(AtomicOrdering::Relaxed) {
-            return Err(AnnotationLayerBuildError::Cancelled);
-        }
+        ensure_annotation_not_cancelled(cancel)?;
 
         let source_path = record.source_path.to_string_lossy().into_owned();
         let relative_path = record.relative_path.to_string_lossy().into_owned();
@@ -1678,6 +1684,7 @@ where
             timing.record_identity_verification(verify_started.elapsed());
         }
 
+        ensure_annotation_not_cancelled(cancel)?;
         let language =
             if let Some(override_language) = language_overrides.get(&original_record_index) {
                 detect_and_resolve(&text, Some(override_language))
@@ -1690,6 +1697,7 @@ where
                     .resolution
                     .effective_language
             };
+        ensure_annotation_not_cancelled(cancel)?;
 
         inputs.push(AnnotationDocumentInput {
             analysis_document_index,
@@ -1745,9 +1753,7 @@ where
 
     let mut inputs = Vec::with_capacity(analysis_document_indices.len());
     for &analysis_document_index in analysis_document_indices {
-        if cancel.load(AtomicOrdering::Relaxed) {
-            return Err(AnnotationLayerBuildError::Cancelled);
-        }
+        ensure_annotation_not_cancelled(cancel)?;
 
         let document_identity = document_identity_by_index.get(&analysis_document_index).ok_or_else(
             || AnnotationLayerBuildError::CorpusDocumentMismatch {
@@ -1807,6 +1813,7 @@ where
             timing.record_identity_verification(verify_started.elapsed());
         }
 
+        ensure_annotation_not_cancelled(cancel)?;
         let language = language_by_document_index
             .get(&analysis_document_index)
             .ok_or_else(|| AnnotationLayerBuildError::CorpusDocumentMismatch {
@@ -2061,11 +2068,15 @@ fn remap_cached_annotation_document(
 fn preflight_annotation_languages(
     languages: &BTreeSet<String>,
     manager: &mut ModelManager,
+    cancel: &AtomicBool,
     timing: Option<&AnnotationBuildTimingCounters>,
 ) -> Result<(), AnnotationLayerBuildError> {
     let mut unsupported = Vec::new();
     for language in languages {
-        match load_annotation_model(manager, language, timing) {
+        ensure_annotation_not_cancelled(cancel)?;
+        let load_result = load_annotation_model(manager, language, timing);
+        ensure_annotation_not_cancelled(cancel)?;
+        match load_result {
             Ok(()) => {}
             Err(AnnotationError::ModelNotFound { language }) => unsupported.push(language),
             Err(error) => {
@@ -2106,7 +2117,12 @@ fn annotate_annotation_documents(
         )
     } else {
         let mut manager = new_annotation_model_manager(model_context.model_dir, runtime.timing);
-        preflight_annotation_languages(model_context.languages_used, &mut manager, runtime.timing)?;
+        preflight_annotation_languages(
+            model_context.languages_used,
+            &mut manager,
+            cancel,
+            runtime.timing,
+        )?;
         inputs
             .iter()
             .map(|input| {
@@ -2175,7 +2191,12 @@ fn annotate_annotation_documents_in_staged_waves_with_budget(
                     language: "*".to_string(),
                     error: "annotation model manager lock poisoned".to_string(),
                 })?;
-        preflight_annotation_languages(model_context.languages_used, &mut manager, runtime.timing)?;
+        preflight_annotation_languages(
+            model_context.languages_used,
+            &mut manager,
+            cancel,
+            runtime.timing,
+        )?;
     }
 
     let mut worker_documents = Vec::with_capacity(inputs.len());
