@@ -131,22 +131,9 @@ globalThis.localStorage = new FakeStorage() as unknown as Storage;
 
 const appearance = await import("../src/appearance.ts");
 const key = appearance.APPEARANCE_STORAGE_KEY;
-const singletonIds = new Set<string>(appearance.INTENTIONAL_SINGLETONS);
-const pairs = new Map<string, typeof appearance.THEME_PRESETS>();
-for (const theme of appearance.THEME_PRESETS) {
-  assert(theme.mode === "light" || theme.mode === "dark", `${theme.id} must declare a light/dark mode`);
-  if (!theme.pairId) {
-    assert(singletonIds.has(theme.id), `${theme.id} must be paired or intentionally listed as a singleton`);
-    continue;
-  }
-  pairs.set(theme.pairId, [...(pairs.get(theme.pairId) ?? []), theme]);
-}
-for (const [pairId, pairThemes] of pairs) {
-  assert(pairThemes.length === 2, `${pairId} must have exactly two theme variants`);
-  assert(
-    pairThemes.some(theme => theme.mode === "light") && pairThemes.some(theme => theme.mode === "dark"),
-    `${pairId} must have one light and one dark variant`,
-  );
+for (const family of appearance.THEME_FAMILIES) {
+  assert(typeof family.id === "string" && family.id.length > 0, "theme families must have stable ids");
+  assert(typeof family.name === "string" && family.name.length > 0, `${family.id} must have a display name`);
 }
 
 const gentium = appearance.FONT_OPTIONS.find(font => font.id === "gentium-plus");
@@ -157,13 +144,13 @@ assert(roboto, "Roboto must be in the fixed font shortlist");
 assert(firaCode, "Fira Code must be in the fixed monospace shortlist");
 
 appearance.initAppearanceDialog();
-assert(root.dataset.theme === "dark", "initial appearance must apply the default dark theme");
+assert(root.dataset.theme === "corpus-dark", "initial appearance must apply the default dark theme");
 assert(root.style.values.get("--cw-font-size-base") === "16px", "initial appearance must apply the default font size");
 assert(element("theme-toggle").disabled === false, "paired default theme must leave the quick toggle enabled");
 assert(element("menu-toggle-theme").textContent === "Switch to light variant", "dark themes must target their light pair");
 
 element("menu-appearance").dispatch("click");
-element("appearance-theme-select").value = "solar-paper";
+element("appearance-theme-select").value = "solar";
 element("appearance-theme-select").dispatch("change");
 element("appearance-font-select").value = "gentium-plus";
 element("appearance-font-select").dispatch("change");
@@ -171,14 +158,15 @@ element("appearance-mono-font-select").value = "fira-code";
 element("appearance-mono-font-select").dispatch("change");
 element("appearance-font-size-input").valueAsNumber = 18;
 element("appearance-font-size-input").dispatch("input");
-assert(root.dataset.theme === "solar-paper", "theme selection must preview immediately");
+assert(root.dataset.theme === "solar-dark", "theme selection must preview immediately");
 assert(root.style.values.get("--cw-font-ui") === gentium.stack, "font selection must preview immediately");
 assert(root.style.values.get("--cw-font-mono") === firaCode.stack, "monospace selection must preview immediately");
 assert(root.style.values.get("--cw-font-size-base") === "18px", "font size must preview immediately");
 element("appearance-save-button").dispatch("click");
 
 let saved = JSON.parse(localStorage.getItem(key) ?? "{}");
-assert(saved.themeId === "solar-paper", "saved appearance must persist the selected theme");
+assert(saved.themeFamilyId === "solar", "saved appearance must persist the selected theme family");
+assert(saved.themeVariant === "dark", "saved appearance must persist the selected theme variant");
 assert(saved.fontFamily === gentium.stack, "saved appearance must persist the selected font stack");
 assert(saved.monoFontFamily === firaCode.stack, "saved appearance must persist the selected monospace stack");
 assert(saved.fontSize === 18, "saved appearance must persist the selected font size");
@@ -186,31 +174,25 @@ assert(saved.fontSize === 18, "saved appearance must persist the selected font s
 element("menu-appearance").dispatch("click");
 element("appearance-theme-select").value = "high-contrast";
 element("appearance-theme-select").dispatch("change");
-assert(root.dataset.theme === "high-contrast", "cancelled edits must still preview before cancellation");
-assert(element("theme-toggle").disabled === true, "singleton themes must disable the title-bar toggle");
-assert(
-  element("menu-toggle-theme").getAttribute("aria-disabled") === "true",
-  "singleton themes must disable the menu toggle",
-);
-assert(
-  element("menu-toggle-theme").title === "No light variant for High Contrast",
-  "singleton themes must explain why the pair toggle is unavailable",
-);
-element("appearance-cancel-button").dispatch("click");
-assert(root.dataset.theme === "solar-paper", "cancel must restore the last saved theme");
-assert(element("theme-toggle").disabled === false, "restoring a paired theme must re-enable the title-bar toggle");
-assert(element("menu-toggle-theme").textContent === "Switch to dark variant", "light themes must target their dark pair");
-
-appearance.toggleLightDarkTheme();
-saved = JSON.parse(localStorage.getItem(key) ?? "{}");
-assert(saved.themeId === "solar-night", "quick toggle must persist the active theme's dark pair");
-assert(root.dataset.theme === "solar-night", "quick toggle must apply the active theme's dark pair immediately");
+assert(root.dataset.theme === "high-contrast-dark", "cancelled edits must still preview before cancellation");
+assert(element("theme-toggle").disabled === false, "all current theme families have light/dark variants");
 assert(element("menu-toggle-theme").textContent === "Switch to light variant", "dark paired themes must target their light pair");
+element("appearance-cancel-button").dispatch("click");
+assert(root.dataset.theme === "solar-dark", "cancel must restore the last saved theme");
+assert(element("theme-toggle").disabled === false, "restoring a paired theme must re-enable the title-bar toggle");
+assert(element("menu-toggle-theme").textContent === "Switch to light variant", "dark themes must target their light pair");
 
 appearance.toggleLightDarkTheme();
 saved = JSON.parse(localStorage.getItem(key) ?? "{}");
-assert(saved.themeId === "solar-paper", "quick toggle must persist the active theme's light pair");
-assert(root.dataset.theme === "solar-paper", "quick toggle must apply the active theme's light pair immediately");
+assert(saved.themeFamilyId === "solar", "quick toggle must preserve the active theme family");
+assert(saved.themeVariant === "light", "quick toggle must persist the active theme's light variant");
+assert(root.dataset.theme === "solar-light", "quick toggle must apply the active theme's light pair immediately");
+assert(element("menu-toggle-theme").textContent === "Switch to dark variant", "light paired themes must target their dark pair");
+
+appearance.toggleLightDarkTheme();
+saved = JSON.parse(localStorage.getItem(key) ?? "{}");
+assert(saved.themeVariant === "dark", "quick toggle must persist the active theme's dark variant");
+assert(root.dataset.theme === "solar-dark", "quick toggle must apply the active theme's dark pair immediately");
 
 element("menu-appearance").dispatch("click");
 element("appearance-font-size-input").valueAsNumber = 99;
@@ -220,5 +202,6 @@ element("appearance-reset-button").dispatch("click");
 element("appearance-save-button").dispatch("click");
 
 saved = JSON.parse(localStorage.getItem(key) ?? "{}");
-assert(saved.themeId === "dark", "reset must restore the default theme");
+assert(saved.themeFamilyId === "corpus", "reset must restore the default theme family");
+assert(saved.themeVariant === "dark", "reset must restore the default theme variant");
 assert(saved.fontSize === 16, "reset must restore the default font size");
