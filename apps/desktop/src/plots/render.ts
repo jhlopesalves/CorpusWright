@@ -8,7 +8,9 @@ import type {
   DispersionGeometry,
   DispersionPlaneGeometry,
   DispersionRosterGeometry,
+  LengthHistogramGeometry,
   LexicalSpectrumGeometry,
+  PlotBarGeometry,
   PlotBox,
   PlotBracketGeometry,
   PlotLabelGeometry,
@@ -158,6 +160,21 @@ export function renderDispersionRosterSvg(plotId: string, geometry: DispersionRo
   renderLine(svg, geometry.thresholdLine);
   renderLabels(svg, [...geometry.rows.map((row) => row.tokenLabel), geometry.thresholdLabel]);
   renderRosterDots(svg, geometry);
+  renderInteractionLayer(svg, geometry.box);
+  return svg;
+}
+
+export function renderLengthHistogramSvg(plotId: string, geometry: LengthHistogramGeometry): SVGSVGElement {
+  const svg = createBaseSvg(plotId, geometry.box);
+  renderDefinitions(svg, plotId);
+  renderAxes(svg, geometry.box, geometry.xScale, geometry.yScale, geometry.xTicks, geometry.yTicks, {
+    x: "tokens per document",
+    y: "documents",
+    valueAxis: "y",
+  });
+  renderBars(svg, geometry.bars, "cw-plot-bar");
+  if (geometry.medianLine) renderLine(svg, geometry.medianLine);
+  renderLabels(svg, geometry.labels);
   renderInteractionLayer(svg, geometry.box);
   return svg;
 }
@@ -535,6 +552,30 @@ function renderRosterDots(svg: SVGSVGElement, geometry: DispersionRosterGeometry
       style: `--cw-plot-stagger: ${Math.min(index, 30) * 12}ms;`,
     });
     group.appendChild(circle);
+  });
+  svg.appendChild(group);
+}
+
+function renderBars(svg: SVGSVGElement, bars: Array<PlotBarGeometry>, baseClass: string): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-bars");
+  bars.forEach((bar, index) => {
+    const rect = createSvgElement("rect");
+    setAttrs(rect, {
+      x: bar.x,
+      y: bar.y,
+      width: bar.width,
+      height: bar.height,
+      rx: 2,
+      class: `${baseClass} cw-plot-hover-target`,
+      tabindex: "0",
+      "data-plot-x": bar.x + bar.width / 2,
+      "data-plot-y": bar.y,
+      "data-tooltip-title": bar.tooltipTitle ?? "",
+      "data-tooltip-rows": (bar.tooltipRows ?? []).join("\n"),
+      style: `--cw-plot-stagger: ${Math.min(index, 30) * 14}ms;`,
+    });
+    group.appendChild(rect);
   });
   svg.appendChild(group);
 }

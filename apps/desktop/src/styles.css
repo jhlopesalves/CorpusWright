@@ -2909,6 +2909,14 @@ main {
   shape-rendering: crispEdges;
 }
 
+.cw-plot-bar {
+  fill: var(--cw-plot-point);
+  fill-opacity: 0.85;
+  stroke: none;
+  transform-box: fill-box;
+  transform-origin: bottom center;
+}
+
 .cw-plot-threshold-line {
   fill: none;
   stroke: var(--text-muted);
@@ -3067,7 +3075,9 @@ main {
 }
 
 .cw-plot-density-cell.cw-plot-hover-target:hover,
-.cw-plot-density-cell.cw-plot-hover-target:focus {
+.cw-plot-density-cell.cw-plot-hover-target:focus,
+.cw-plot-bar.cw-plot-hover-target:hover,
+.cw-plot-bar.cw-plot-hover-target:focus {
   transform: none;
 }
 

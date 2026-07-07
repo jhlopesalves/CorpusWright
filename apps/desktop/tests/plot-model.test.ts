@@ -3,6 +3,7 @@ import {
   buildDispersionGeometry,
   buildDispersionPlaneGeometry,
   buildDispersionRosterGeometry,
+  buildLengthHistogramGeometry,
   buildVocabularyGrowthGeometry,
   createPlotBox,
   createScale,
@@ -12,6 +13,7 @@ import {
   formatDispersionPlaneStats,
   formatDispersionProfileStats,
   formatDispersionRosterStats,
+  formatLengthHistogramStats,
   formatUniversalTypeCaption,
   linearTicks,
   logTicks,
@@ -254,6 +256,35 @@ assert(
   formatDispersionRosterStats(3, dispersionRoster.aboveThresholdCount, 0.5)
     === "top 3 types by frequency · 2 above DP 0.5",
   "Dispersion roster stats caption should report the threshold count",
+);
+
+const lengthHistogram = buildLengthHistogramGeometry({
+  bins: [
+    { lowerTokens: 256, upperTokens: 512, count: 2 },
+    { lowerTokens: 512, upperTokens: 1024, count: 5 },
+    { lowerTokens: 1024, upperTokens: 2048, count: 3 },
+  ],
+  documents: 10,
+  medianTokens: 800,
+  minimumTokens: 260,
+  maximumTokens: 1_500,
+  box: createPlotBox(520, 300, { top: 34, right: 40, bottom: 72, left: 72 }),
+});
+assert(lengthHistogram.bars.length === 3, "Length histogram should emit one bar per payload bin");
+const medianX = lengthHistogram.medianLine?.x1 ?? 0;
+const medianBinBar = lengthHistogram.bars[1]!;
+assert(
+  medianX >= medianBinBar.x && medianX <= medianBinBar.x + medianBinBar.width,
+  "Length histogram median line should land inside the bin containing medianTokens",
+);
+assert(
+  lengthHistogram.xTicks.map((tick) => tick.label).join(",") === "256–512,512–1k,1k–2k",
+  "Length histogram should format power-of-two bin labels compactly",
+);
+assert(
+  formatLengthHistogramStats(10, 800, 260, 1_500)
+    === "10 documents · median 800 · range 260–1,500 tokens",
+  "Length histogram stats caption should match the specified template",
 );
 
 const vocabulary = buildVocabularyGrowthGeometry({
