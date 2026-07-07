@@ -216,8 +216,9 @@ fn entropy_metrics_omit_single_type_and_empty_distributions() {
 
 #[test]
 fn frequency_spectrum_counts_exact_frequency_classes() {
-    let (points, truncated) = frequency_spectrum(&[5, 2, 2, 1]);
+    let (points, truncated, total) = frequency_spectrum(&[5, 2, 2, 1]);
     assert!(!truncated);
+    assert_eq!(total, 3);
     assert_eq!(
         points,
         vec![
