@@ -312,6 +312,7 @@
   --cw-plot-ramp-2: #57a4ff;
   --cw-plot-ramp-3: #576dff;
   --cw-plot-ramp-4: #9076ff;
+  --cw-plot-ramp-5: #9076ff;
   --cw-brand-blue: #0058a6;
   --focus-ring: #93c5fd;
 }
@@ -413,6 +414,7 @@
   --cw-plot-ramp-2: #0058aa;
   --cw-plot-ramp-3: #0021aa;
   --cw-plot-ramp-4: #0c0090;
+  --cw-plot-ramp-5: #0c0090;
   --focus-ring: #1d4ed8;
 }
 
@@ -513,6 +515,7 @@
   --cw-plot-ramp-2: #1278c6;
   --cw-plot-ramp-3: #123ec6;
   --cw-plot-ramp-4: #1b10af;
+  --cw-plot-ramp-5: #1b10af;
   --focus-ring: #007acc;
 }
 
@@ -613,6 +616,7 @@
   --cw-plot-ramp-2: #1cabff;
   --cw-plot-ramp-3: #1c5fff;
   --cw-plot-ramp-4: #443cff;
+  --cw-plot-ramp-5: #443cff;
   --focus-ring: #3794ff;
 }
 
@@ -717,6 +721,7 @@
   --cw-plot-ramp-2: #0058aa;
   --cw-plot-ramp-3: #0021aa;
   --cw-plot-ramp-4: #0c0090;
+  --cw-plot-ramp-5: #0c0090;
   --focus-ring: #000080;
   --cw-retro-highlight: #ffffff;
   --cw-retro-shadow: #808080;
@@ -824,6 +829,7 @@
   --cw-plot-ramp-2: #3fa3ff;
   --cw-plot-ramp-3: #3f63ff;
   --cw-plot-ramp-4: #7760ff;
+  --cw-plot-ramp-5: #7760ff;
   --focus-ring: #00ffcc;
 }
 
@@ -929,6 +935,7 @@
   --cw-plot-ramp-2: #4e6676;
   --cw-plot-ramp-3: #4e5a76;
   --cw-plot-ramp-4: #454467;
+  --cw-plot-ramp-5: #454467;
   --focus-ring: #5f7685;
 }
 
@@ -1029,6 +1036,7 @@
   --cw-plot-ramp-2: #859aa8;
   --cw-plot-ramp-3: #858fa8;
   --cw-plot-ramp-4: #9897b5;
+  --cw-plot-ramp-5: #9897b5;
   --focus-ring: #aebdca;
 }
 
@@ -1130,6 +1138,7 @@
   --cw-plot-ramp-2: #2385ab;
   --cw-plot-ramp-3: #235aab;
   --cw-plot-ramp-4: #1e2996;
+  --cw-plot-ramp-5: #1e2996;
   --focus-ring: #2684a8;
 }
 
@@ -1230,6 +1239,7 @@
   --cw-plot-ramp-2: #5cc0cc;
   --cw-plot-ramp-3: #5c9ccc;
   --cw-plot-ramp-4: #738cd3;
+  --cw-plot-ramp-5: #738cd3;
   --focus-ring: #8bdbe4;
 }
 
@@ -1332,6 +1342,7 @@
   --cw-plot-ramp-2: #8d5e32;
   --cw-plot-ramp-3: #8d7b32;
   --cw-plot-ramp-4: #717a2b;
+  --cw-plot-ramp-5: #717a2b;
   --focus-ring: #9b6b3d;
 }
 
@@ -1432,6 +1443,7 @@
   --cw-plot-ramp-2: #3d814e;
   --cw-plot-ramp-3: #3d8163;
   --cw-plot-ramp-4: #356f69;
+  --cw-plot-ramp-5: #356f69;
   --focus-ring: #4e8f5a;
 }
 
@@ -1532,6 +1544,7 @@
   --cw-plot-ramp-2: #83bb6d;
   --cw-plot-ramp-3: #6dbb6f;
   --cw-plot-ramp-4: #82c599;
+  --cw-plot-ramp-5: #82c599;
   --focus-ring: #a4d58f;
 }
 
@@ -1633,6 +1646,7 @@
   --cw-plot-ramp-2: #00e5ff;
   --cw-plot-ramp-3: #00e5ff;
   --cw-plot-ramp-4: #00e5ff;
+  --cw-plot-ramp-5: #00e5ff;
   --focus-ring: #ffff00;
 }
 
@@ -2849,6 +2863,11 @@ main {
   stroke-color: var(--cw-plot-ramp-4);
 }
 
+.cw-plot-ramp-5 {
+  fill: var(--cw-plot-ramp-5);
+  stroke-color: var(--cw-plot-ramp-5);
+}
+
 .cw-plot-point.is-excluded {
   fill: none;
   stroke: var(--cw-plot-excluded);
@@ -2879,6 +2898,44 @@ main {
 
 .cw-plot-lollipop-stem.cw-plot-ramp-4 {
   color: var(--cw-plot-ramp-4);
+}
+
+.cw-plot-lollipop-stem.cw-plot-ramp-5 {
+  color: var(--cw-plot-ramp-5);
+}
+
+.cw-plot-density-cell {
+  stroke: none;
+  shape-rendering: crispEdges;
+}
+
+.cw-plot-threshold-line {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-dasharray: 5 4;
+  stroke-opacity: 0.7;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-quadrant-pill-bg {
+  fill: var(--panel-bg);
+  opacity: 0.78;
+  stroke: none;
+}
+
+.cw-plot-quadrant-pill-label {
+  fill: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.cw-plot-plane-witness {
+  fill: var(--cw-plot-point);
+  stroke: var(--panel-bg);
+  stroke-width: 1.6;
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 .cw-plot-halo {
@@ -2990,13 +3047,19 @@ main {
   transform: scale(1.25);
 }
 
+.cw-plot-density-cell.cw-plot-hover-target:hover,
+.cw-plot-density-cell.cw-plot-hover-target:focus {
+  transform: none;
+}
+
 .cw-plot-animated-path {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
   animation: cw-plot-path-draw 700ms ease-out forwards;
 }
 
-.cw-plot-point {
+.cw-plot-point,
+.cw-plot-plane-witness {
   opacity: 0;
   transform: scale(0.82);
   animation: cw-plot-point-in 360ms ease-out forwards;
@@ -3018,7 +3081,8 @@ main {
 
 @media (prefers-reduced-motion: reduce) {
   .cw-plot-animated-path,
-  .cw-plot-point {
+  .cw-plot-point,
+  .cw-plot-plane-witness {
     animation: none;
     opacity: 1;
     stroke-dashoffset: 0;
@@ -8229,6 +8293,7 @@ mark.search-match.current-match {
   --cw-plot-ramp-2: #d79a60;
   --cw-plot-ramp-3: #d7c060;
   --cw-plot-ramp-4: #d1de78;
+  --cw-plot-ramp-5: #d1de78;
   --focus-ring: #f0c28f;
 }
 
@@ -8330,6 +8395,7 @@ mark.search-match.current-match {
   --cw-plot-ramp-2: #000000;
   --cw-plot-ramp-3: #000000;
   --cw-plot-ramp-4: #000000;
+  --cw-plot-ramp-5: #000000;
   --focus-ring: #0000ff;
 }
 

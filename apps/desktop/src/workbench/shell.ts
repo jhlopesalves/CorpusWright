@@ -24,14 +24,17 @@ import {
 import {
   buildCoverageGeometry,
   buildDispersionGeometry,
+  buildDispersionPlaneGeometry,
   buildLexicalSpectrumGeometry,
   buildRankFrequencyGeometry,
   buildVocabularyGrowthGeometry,
+  formatDispersionPlaneStats,
   formatDispersionProfileStats,
   formatUniversalTypeCaption,
 } from "../plots/model";
 import {
   renderCoverageSvg,
+  renderDispersionPlaneSvg,
   renderDispersionSvg,
   renderLexicalSpectrumSvg,
   renderRankFrequencySvg,
@@ -1261,6 +1264,32 @@ function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
   });
 }
 
+function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null {
+  const plane = corpus.dispersion.plane;
+  if (plane === null) return null;
+  return createOverviewFigure({
+    id: "overview-dispersion-plane",
+    title: "Dispersion plane",
+    subtitle: "Frequency against Gries DP.",
+    captionStats: formatDispersionPlaneStats(
+      corpus.totals.types,
+      plane.xBins,
+      plane.yBins,
+      plane.loudButLocalCount,
+      plane.loudButLocalMinFrequency,
+      plane.highDispersionThreshold,
+    ),
+    captionReading: plane.reading,
+    renderSvg: () => renderDispersionPlaneSvg(
+      "overview-dispersion-plane",
+      buildDispersionPlaneGeometry({
+        plane,
+        totalTypes: corpus.totals.types,
+      }),
+    ),
+  });
+}
+
 function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Lexical spectrum");
   const spectrum = corpus.lexicalSpectrum;
@@ -1603,6 +1632,8 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
   universe.textContent = "Universe: all analysis types - independent of Frequency List filters.";
   panel.appendChild(universe);
   panel.appendChild(renderDispersionFigure(corpus));
+  const planeFigure = renderDispersionPlaneFigure(corpus);
+  if (planeFigure) panel.appendChild(planeFigure);
 
   appendPanelReading(panel, dispersion.reading);
   return panel;
