@@ -2965,6 +2965,13 @@ main {
   fill: var(--cw-plot-ramp-5);
 }
 
+.cw-plot-mattr-witness-tick {
+  stroke: var(--cw-plot-point);
+  stroke-linecap: round;
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
 .cw-plot-halo {
   fill: none;
   stroke: var(--accent-color);

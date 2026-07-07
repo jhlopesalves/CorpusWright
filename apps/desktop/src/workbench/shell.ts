@@ -28,12 +28,14 @@ import {
   buildDispersionRosterGeometry,
   buildLengthHistogramGeometry,
   buildLexicalSpectrumGeometry,
+  buildMattrDistributionGeometry,
   buildRankFrequencyGeometry,
   buildVocabularyGrowthGeometry,
   formatDispersionPlaneStats,
   formatDispersionProfileStats,
   formatDispersionRosterStats,
   formatLengthHistogramStats,
+  formatMattrDistributionStats,
   formatUniversalTypeCaption,
 } from "../plots/model";
 import {
@@ -43,6 +45,7 @@ import {
   renderDispersionSvg,
   renderLengthHistogramSvg,
   renderLexicalSpectrumSvg,
+  renderMattrDistributionSvg,
   renderRankFrequencySvg,
   renderVocabularyGrowthSvg,
 } from "../plots/render";
@@ -1234,6 +1237,31 @@ function renderLexicalSpectrumFigure(corpus: AnalysisCorpus): HTMLElement {
   });
 }
 
+function renderMattrDistributionFigure(corpus: AnalysisCorpus): HTMLElement | null {
+  const spectrum = corpus.lexicalSpectrum;
+  const distribution = spectrum.mattrDistribution;
+  if (distribution === null) return null;
+  return createOverviewFigure({
+    id: "overview-mattr-distribution",
+    title: "MATTR distribution",
+    subtitle: "Per-document lexical diversity across eligible documents.",
+    captionStats: formatMattrDistributionStats(
+      distribution.usedDocuments,
+      spectrum.mattrMedian,
+      distribution.excludedDocuments,
+      spectrum.mattrWindow,
+    ),
+    captionReading: distribution.reading,
+    renderSvg: () => renderMattrDistributionSvg(
+      "overview-mattr-distribution",
+      buildMattrDistributionGeometry({
+        distribution,
+        median: spectrum.mattrMedian,
+      }),
+    ),
+  });
+}
+
 function renderCoverageFigure(corpus: AnalysisCorpus): HTMLElement {
   const concentration = corpus.frequencyConcentration;
   const half = concentration.cumulativeCoverage.find((point) => point.share >= 0.5) ?? null;
@@ -1440,6 +1468,8 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
   ];
   lexicalDiversity.append(lexicalDiversityTitle, createMetricTable(diversityRows));
   panel.appendChild(lexicalDiversity);
+  const mattrDistributionFigure = renderMattrDistributionFigure(corpus);
+  if (mattrDistributionFigure) panel.appendChild(mattrDistributionFigure);
   appendPanelReading(panel, spectrum.reading);
   return panel;
 }
