@@ -263,6 +263,32 @@ export interface DispersionPlaneGeometry {
   witnessObstacles: LabelObstacle[];
 }
 
+export interface DispersionRosterEntryDatum {
+  token: string;
+  frequency: number;
+  documentFrequency: number;
+  dp: number;
+}
+
+export interface DispersionRosterRowGeometry {
+  entry: DispersionRosterEntryDatum;
+  y: number;
+  guide: PlotLineGeometry;
+  point: PlotPointGeometry<DispersionRosterEntryDatum>;
+  tokenLabel: PlotLabelGeometry;
+  aboveThreshold: boolean;
+}
+
+export interface DispersionRosterGeometry {
+  box: PlotBox;
+  xScale: PlotScale;
+  xTicks: PlotTick[];
+  rows: DispersionRosterRowGeometry[];
+  thresholdLine: PlotLineGeometry;
+  thresholdLabel: PlotLabelGeometry;
+  aboveThresholdCount: number;
+}
+
 export const DEFAULT_PLOT_WIDTH = 720;
 export const DEFAULT_PLOT_HEIGHT = 360;
 export const DEFAULT_PLOT_MARGIN: PlotMargin = {
@@ -1094,6 +1120,99 @@ export function formatDispersionPlaneStats(
   return `${formatInteger(totalTypes)} types · grid ${formatInteger(xBins)}×${formatInteger(yBins)} · ${formatInteger(loudButLocalCount)} loud-but-local (f ≥ ${formatCompactFrequency(loudButLocalMinFrequency)}, DP ≥ ${formatFixed(highDispersionThreshold, 1)})`;
 }
 
+export function buildDispersionRosterGeometry(options: {
+  entries: DispersionRosterEntryDatum[];
+  highDispersionThreshold: number;
+  box?: PlotBox;
+}): DispersionRosterGeometry {
+  const rowCount = Math.max(1, options.entries.length);
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 92 + (rowCount * 16), {
+    top: 34,
+    right: 48,
+    bottom: 58,
+    left: 156,
+  });
+  const xScale = createScale("linear", [0, 1], [
+    box.margin.left,
+    box.width - box.margin.right,
+  ]);
+  const thresholdX = scaleValue(xScale, options.highDispersionThreshold);
+  const thresholdLine = {
+    x1: thresholdX,
+    y1: box.margin.top,
+    x2: thresholdX,
+    y2: box.height - box.margin.bottom,
+    className: "cw-plot-threshold-line",
+  };
+  const thresholdLabel = {
+    x: thresholdX,
+    y: box.margin.top - 10,
+    text: `DP ${formatDpThreshold(options.highDispersionThreshold)}`,
+    anchor: "middle" as const,
+    className: "cw-plot-label-mono cw-plot-label-muted",
+    fontSize: 10.5,
+  };
+  let aboveThresholdCount = 0;
+  const rows = options.entries.map((entry, index) => {
+    const y = box.margin.top + 8 + (index * 16);
+    const aboveThreshold = entry.dp >= options.highDispersionThreshold;
+    if (aboveThreshold) aboveThresholdCount += 1;
+    const point = {
+      x: scaleValue(xScale, clamp(entry.dp, 0, 1)),
+      y,
+      rawX: entry.dp,
+      rawY: index,
+      datum: entry,
+      rampIndex: aboveThreshold ? 5 : 2,
+      tooltipTitle: entry.token,
+      tooltipRows: [
+        `frequency ${formatInteger(entry.frequency)}`,
+        `document frequency ${formatInteger(entry.documentFrequency)}`,
+        `DP ${formatFixed(entry.dp, 3)}`,
+      ],
+    };
+    return {
+      entry,
+      y,
+      guide: {
+        x1: box.margin.left,
+        y1: y,
+        x2: box.width - box.margin.right,
+        y2: y,
+        className: "cw-plot-roster-guide",
+      },
+      point,
+      tokenLabel: {
+        x: box.margin.left - 10,
+        y: y + 4,
+        text: entry.token,
+        anchor: "end" as const,
+        className: "cw-plot-label-mono cw-plot-label-muted",
+        fontSize: 10.5,
+      },
+      aboveThreshold,
+    };
+  });
+  return {
+    box,
+    xScale,
+    xTicks: [0, 0.25, 0.5, 0.75, 1].map((value) => ({
+      value,
+      position: scaleValue(xScale, value),
+      label: formatDpTick(value),
+      major: true,
+    })),
+    rows,
+    thresholdLine,
+    thresholdLabel,
+    aboveThresholdCount,
+  };
+}
+
+export function formatDispersionRosterStats(topCount: number, aboveThresholdCount: number, highDispersionThreshold: number): string {
+  return `top ${formatInteger(topCount)} types by frequency · ${formatInteger(aboveThresholdCount)} above DP ${formatDpThreshold(highDispersionThreshold)}`;
+}
+
 export function formatDispersionProfileStats(totalTypes: number, reachBandCount: number, universalCount: number): string {
   return `${formatInteger(totalTypes)} types · ${formatInteger(reachBandCount)} reach bands · ${formatInteger(universalCount)} types in ≥90% of documents`;
 }
@@ -1366,6 +1485,16 @@ function formatCompactFrequency(value: number): string {
   if (value >= 1_000_000 && value % 1_000_000 === 0) return `${formatInteger(value / 1_000_000)}M`;
   if (value >= 1_000 && value % 1_000 === 0) return `${formatInteger(value / 1_000)}k`;
   return formatInteger(value);
+}
+
+function formatDpThreshold(value: number): string {
+  return formatFixed(value, value === 0 || value === 1 ? 0 : 1);
+}
+
+function formatDpTick(value: number): string {
+  if (value === 0 || value === 1) return formatFixed(value, 0);
+  if (value === 0.5) return formatFixed(value, 1);
+  return formatFixed(value, 2);
 }
 
 function formatFrequencyRangeBoundary(value: number): string {

@@ -2938,6 +2938,25 @@ main {
   transform-origin: center;
 }
 
+.cw-plot-roster-guide {
+  stroke: var(--text-muted);
+  stroke-opacity: 0.24;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-roster-dot {
+  fill: var(--cw-plot-point);
+  stroke: var(--panel-bg);
+  stroke-width: 1.4;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.cw-plot-roster-dot.cw-plot-ramp-5 {
+  fill: var(--cw-plot-ramp-5);
+}
+
 .cw-plot-halo {
   fill: none;
   stroke: var(--accent-color);
@@ -3059,7 +3078,8 @@ main {
 }
 
 .cw-plot-point,
-.cw-plot-plane-witness {
+.cw-plot-plane-witness,
+.cw-plot-roster-dot {
   opacity: 0;
   transform: scale(0.82);
   animation: cw-plot-point-in 360ms ease-out forwards;
@@ -3082,7 +3102,8 @@ main {
 @media (prefers-reduced-motion: reduce) {
   .cw-plot-animated-path,
   .cw-plot-point,
-  .cw-plot-plane-witness {
+  .cw-plot-plane-witness,
+  .cw-plot-roster-dot {
     animation: none;
     opacity: 1;
     stroke-dashoffset: 0;
