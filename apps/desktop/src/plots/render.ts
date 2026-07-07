@@ -1,3 +1,8 @@
+import {
+  estimateLabelBox,
+  labelLineHeight,
+  labelTextLines,
+} from "./model";
 import type {
   CoverageGeometry,
   DispersionGeometry,
@@ -198,13 +203,8 @@ function renderDefinitions(svg: SVGSVGElement, plotId: string): void {
     height: "140%",
   });
   const blur = createSvgElement("feGaussianBlur");
-  setAttrs(blur, { stdDeviation: 3, result: "blur" });
-  const merge = createSvgElement("feMerge");
-  merge.appendChild(createSvgElement("feMergeNode"));
-  const crisp = createSvgElement("feMergeNode");
-  crisp.setAttribute("in", "SourceGraphic");
-  merge.appendChild(crisp);
-  filter.append(blur, merge);
+  setAttrs(blur, { stdDeviation: 3.2 });
+  filter.appendChild(blur);
 
   const gradient = createSvgElement("linearGradient");
   setAttrs(gradient, {
@@ -360,6 +360,15 @@ function renderAxisTitles(svg: SVGSVGElement, box: PlotBox, xLabel: string, yLab
 }
 
 function renderPath(svg: SVGSVGElement, path: PlotPathGeometry, plotId: string): void {
+  if (path.className.includes("cw-plot-line-glow")) {
+    const halo = createSvgElement("path");
+    setAttrs(halo, {
+      d: path.d,
+      class: `${path.className} cw-plot-line-halo`,
+      filter: `url(#${plotId}-glow)`,
+    });
+    svg.appendChild(halo);
+  }
   const element = createSvgElement("path");
   const className = path.className.includes("cw-plot-area") ? path.className : `${path.className} cw-plot-animated-path`;
   setAttrs(element, {
@@ -369,9 +378,6 @@ function renderPath(svg: SVGSVGElement, path: PlotPathGeometry, plotId: string):
   });
   if (path.className.includes("cw-plot-area")) {
     element.setAttribute("fill", `url(#${plotId}-area)`);
-  }
-  if (path.className.includes("cw-plot-line-glow")) {
-    element.setAttribute("filter", `url(#${plotId}-glow)`);
   }
   svg.appendChild(element);
 }
@@ -413,7 +419,20 @@ function renderLabels(svg: SVGSVGElement, labels: PlotLabelGeometry[]): void {
       class: `cw-plot-label ${label.className ?? ""}`.trim(),
       "text-anchor": label.anchor,
     });
-    text.textContent = label.text;
+    const lines = labelTextLines(label);
+    if (lines.length === 1) {
+      text.textContent = lines[0] ?? "";
+    } else {
+      lines.forEach((line, index) => {
+        const tspan = createSvgElement("tspan");
+        setAttrs(tspan, {
+          x: label.x,
+          y: label.y + index * labelLineHeight(label),
+        });
+        tspan.textContent = line;
+        text.appendChild(tspan);
+      });
+    }
     svg.appendChild(text);
   }
 }
@@ -448,11 +467,13 @@ function renderEndpointLeader(
 ): void {
   const last = points[points.length - 1];
   if (!last || !label) return;
+  const labelBox = estimateLabelBox(label);
+  const targetX = Math.max(labelBox.x, Math.min(last.x, labelBox.x + labelBox.width));
   renderLine(svg, {
     x1: last.x + 4,
     y1: last.y + 4,
-    x2: label.x - 5,
-    y2: label.y - 5,
+    x2: targetX,
+    y2: labelBox.y - 4,
     className: "cw-plot-leader",
   });
 }

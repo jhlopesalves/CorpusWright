@@ -1,12 +1,14 @@
 import {
   buildCoverageGeometry,
+  buildVocabularyGrowthGeometry,
   createPlotBox,
   createScale,
+  estimateLabelBox,
   findFirstCoverageCrossing,
   findMilestoneShare,
-  labelCollisionOffsets,
   linearTicks,
   logTicks,
+  placeLabels,
   scaleValue,
 } from "../src/plots/model.ts";
 
@@ -44,19 +46,69 @@ const coverage = [
   { k: 2, share: 0.21 },
   { k: 5, share: 0.38 },
   { k: 10, share: 0.55 },
+  { k: 100, share: 0.72 },
 ];
 assertClose(findMilestoneShare(coverage, 5) ?? 0, 0.38, "Milestone lookup should return exact shares");
-assert(findMilestoneShare(coverage, 100) === null, "Missing milestones should stay null");
+assert(findMilestoneShare(coverage, 1000) === null, "Missing milestones should stay null");
 assert(findFirstCoverageCrossing(coverage, 0.5)?.k === 10, "50% crossing should use first real checkpoint");
 
-const offsets = labelCollisionOffsets([
-  { x: 10, y: 10 },
-  { x: 20, y: 15 },
-  { x: 30, y: 40 },
-], 14);
-assert(offsets[0] === 0, "First label should keep its requested offset");
-assert(offsets[1] > 0, "Overlapping labels should be pushed down");
-assert(offsets[2] === 0, "Separated labels should not be moved");
+const labelBox = estimateLabelBox({
+  x: 100,
+  y: 50,
+  text: "hello",
+  anchor: "end",
+  fontSize: 10,
+});
+assertClose(labelBox.width, 31, "Label width estimate should use character count and font size");
+assertClose(labelBox.height, 13, "Label height estimate should use the line-height multiplier");
+assertClose(labelBox.x, 69, "End-anchored label boxes should extend left from x");
+assertClose(labelBox.y, 40, "Label box top should account for the baseline");
+
+const rejected = placeLabels(
+  [{
+    x: 20,
+    y: 20,
+    text: "hit",
+    candidates: [
+      { dx: 0, dy: 0, anchor: "start" },
+      { dx: 50, dy: 0, anchor: "start" },
+    ],
+  }],
+  [{ kind: "point", x: 25, y: 15, radius: 8 }],
+  { left: 0, top: 0, right: 120, bottom: 80 },
+);
+assert(rejected[0]?.x === 70, "Placement should reject a candidate that intersects an obstacle");
+
+const clamped = placeLabels(
+  [{
+    x: 116,
+    y: 40,
+    text: "wide label",
+    candidates: [{ dx: 0, dy: 0, anchor: "start" }],
+  }],
+  [],
+  { left: 0, top: 0, right: 120, bottom: 80 },
+);
+const clampedBox = estimateLabelBox(clamped[0]!);
+assert(clampedBox.x + clampedBox.width <= 120 + 1e-9, "Fallback labels should be clamped inside bounds");
+
+const fallback = placeLabels(
+  [{
+    x: 20,
+    y: 20,
+    text: "fallback",
+    candidates: [
+      { dx: 0, dy: 0, anchor: "start" },
+      { dx: 60, dy: 0, anchor: "start" },
+    ],
+  }],
+  [
+    { kind: "box", box: { x: 18, y: 8, width: 60, height: 26 } },
+    { kind: "box", box: { x: 80, y: 8, width: 8, height: 26 } },
+  ],
+  { left: 0, top: 0, right: 160, bottom: 80 },
+);
+assert(fallback[0]?.x === 80, "When all candidates collide, placement should keep the least-overlapping one");
 
 const geometry = buildCoverageGeometry({
   points: coverage,
@@ -65,3 +117,22 @@ const geometry = buildCoverageGeometry({
 });
 assert(geometry.halfCrossing?.k === 10, "Coverage geometry should expose the half-corpus crossing");
 assert(geometry.milestones.length === 1, "Coverage geometry should emit milestone dots");
+assert(
+  geometry.labels.some((label) => label.text.startsWith("top 10") && label.x > geometry.milestones[0]!.x && label.y > geometry.milestones[0]!.y),
+  "Coverage milestone labels should try the below-right empty region first",
+);
+assert(
+  geometry.labels.some((label) => label.text.startsWith("half the corpus") && label.y < geometry.halfCrossing!.y),
+  "Half-corpus label should sit above the 50% reference",
+);
+
+const vocabulary = buildVocabularyGrowthGeometry({
+  points: [
+    { tokens: 1_000, types: 120 },
+    { tokens: 10_000, types: 600 },
+    { tokens: 100_000, types: 2_200 },
+  ],
+  box: createPlotBox(420, 260),
+});
+assert(vocabulary.labels[0]?.lines?.length === 2, "Vocabulary endpoint label should render as two measured lines");
+assert(vocabulary.labels[0]?.anchor === "end", "Vocabulary endpoint label should be end anchored near the endpoint");

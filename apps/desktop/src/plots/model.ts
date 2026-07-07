@@ -48,7 +48,43 @@ export interface PlotLabelGeometry {
   text: string;
   anchor: PlotAnchor;
   className?: string;
+  lines?: string[];
+  fontSize?: number;
 }
+
+export interface LabelBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface LabelBounds {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export interface LabelPlacementCandidate {
+  dx: number;
+  dy: number;
+  anchor: PlotAnchor;
+}
+
+export interface LabelPlacementRequest {
+  x: number;
+  y: number;
+  text: string;
+  candidates: LabelPlacementCandidate[];
+  className?: string;
+  lines?: string[];
+  fontSize?: number;
+}
+
+export type LabelObstacle =
+  | { kind: "box"; box: LabelBox }
+  | { kind: "point"; x: number; y: number; radius: number };
 
 export interface PlotPathGeometry {
   d: string;
@@ -180,6 +216,10 @@ export const DEFAULT_PLOT_MARGIN: PlotMargin = {
 };
 
 const LOG_MINIMUM = 1e-9;
+const DEFAULT_LABEL_FONT_SIZE = 11;
+const MONO_SMALL_LABEL_FONT_SIZE = 10.5;
+const LABEL_WIDTH_FACTOR = 0.62;
+const LABEL_LINE_HEIGHT_FACTOR = 1.3;
 
 export function createPlotBox(
   width = DEFAULT_PLOT_WIDTH,
@@ -284,23 +324,162 @@ export function findFirstCoverageCrossing(points: CoverageDatum[], targetShare: 
   return points.find((point) => point.share >= targetShare) ?? null;
 }
 
-export function labelCollisionOffsets(
-  labels: Array<{ x: number; y: number }>,
-  minDistance = 14,
-): number[] {
-  const indexed = labels
-    .map((label, index) => ({ ...label, index }))
-    .sort((left, right) => left.y - right.y || left.x - right.x);
-  const offsets = new Array(labels.length).fill(0) as number[];
-  let previousY = Number.NEGATIVE_INFINITY;
-  for (const label of indexed) {
-    const desiredY = label.y + offsets[label.index];
-    if (desiredY - previousY < minDistance) {
-      offsets[label.index] += minDistance - (desiredY - previousY);
+export function labelTextLines(label: Pick<PlotLabelGeometry, "lines" | "text">): string[] {
+  return label.lines && label.lines.length > 0 ? label.lines : label.text.split("\n");
+}
+
+export function labelFontSize(label: Pick<PlotLabelGeometry, "className" | "fontSize">): number {
+  if (label.fontSize !== undefined) return label.fontSize;
+  return label.className?.includes("cw-plot-label-mono") ? MONO_SMALL_LABEL_FONT_SIZE : DEFAULT_LABEL_FONT_SIZE;
+}
+
+export function labelLineHeight(label: Pick<PlotLabelGeometry, "className" | "fontSize">): number {
+  return labelFontSize(label) * LABEL_LINE_HEIGHT_FACTOR;
+}
+
+export function estimateLabelBox(label: Pick<PlotLabelGeometry, "x" | "y" | "text" | "anchor" | "className" | "fontSize" | "lines">): LabelBox {
+  const fontSize = labelFontSize(label);
+  const lines = labelTextLines(label);
+  const width = Math.max(1, ...lines.map((line) => line.length)) * fontSize * LABEL_WIDTH_FACTOR;
+  const height = lines.length * labelLineHeight(label);
+  const x = label.anchor === "end" ? label.x - width : label.anchor === "middle" ? label.x - width / 2 : label.x;
+  return {
+    x,
+    y: label.y - fontSize,
+    width,
+    height,
+  };
+}
+
+export function placeLabels(
+  labels: LabelPlacementRequest[],
+  obstacles: LabelObstacle[],
+  bounds: LabelBounds,
+): PlotLabelGeometry[] {
+  const placed: PlotLabelGeometry[] = [];
+  const activeObstacles = [...obstacles];
+  for (const label of labels) {
+    let chosen: PlotLabelGeometry | null = null;
+    let fallback: { label: PlotLabelGeometry; score: number } | null = null;
+    for (const candidate of label.candidates) {
+      const proposed = applyLabelCandidate(label, candidate);
+      const proposedBox = estimateLabelBox(proposed);
+      const outsideBounds = boxLeavesBounds(proposedBox, bounds);
+      const clamped = clampLabelToBounds(proposed, bounds);
+      const clampedBox = estimateLabelBox(clamped);
+      const overlapScore = scoreLabelBox(clampedBox, activeObstacles);
+      const candidateScore = overlapScore + (outsideBounds ? 1_000_000 : 0);
+      if (!fallback || candidateScore < fallback.score) {
+        fallback = { label: clamped, score: candidateScore };
+      }
+      if (!outsideBounds && overlapScore === 0) {
+        chosen = proposed;
+        break;
+      }
     }
-    previousY = label.y + offsets[label.index];
+    const placedLabel = chosen ?? fallback?.label ?? applyLabelCandidate(label, {
+      dx: 0,
+      dy: 0,
+      anchor: "start",
+    });
+    placed.push(placedLabel);
+    activeObstacles.push({ kind: "box", box: estimateLabelBox(placedLabel) });
   }
-  return offsets;
+  return placed;
+}
+
+function applyLabelCandidate(label: LabelPlacementRequest, candidate: LabelPlacementCandidate): PlotLabelGeometry {
+  return {
+    x: label.x + candidate.dx,
+    y: label.y + candidate.dy,
+    text: label.text,
+    anchor: candidate.anchor,
+    className: label.className,
+    lines: label.lines,
+    fontSize: label.fontSize,
+  };
+}
+
+function clampLabelToBounds(label: PlotLabelGeometry, bounds: LabelBounds): PlotLabelGeometry {
+  const box = estimateLabelBox(label);
+  const maxWidth = bounds.right - bounds.left;
+  const maxHeight = bounds.bottom - bounds.top;
+  let dx = 0;
+  let dy = 0;
+  if (box.width > maxWidth) {
+    dx = bounds.left - box.x;
+  } else if (box.x < bounds.left) {
+    dx = bounds.left - box.x;
+  } else if (box.x + box.width > bounds.right) {
+    dx = bounds.right - (box.x + box.width);
+  }
+  if (box.height > maxHeight) {
+    dy = bounds.top - box.y;
+  } else if (box.y < bounds.top) {
+    dy = bounds.top - box.y;
+  } else if (box.y + box.height > bounds.bottom) {
+    dy = bounds.bottom - (box.y + box.height);
+  }
+  return dx === 0 && dy === 0 ? label : { ...label, x: label.x + dx, y: label.y + dy };
+}
+
+function boxLeavesBounds(box: LabelBox, bounds: LabelBounds): boolean {
+  return box.x < bounds.left || box.y < bounds.top || box.x + box.width > bounds.right || box.y + box.height > bounds.bottom;
+}
+
+function scoreLabelBox(box: LabelBox, obstacles: LabelObstacle[]): number {
+  return obstacles.reduce((total, obstacle) => total + labelObstacleOverlap(box, obstacle), 0);
+}
+
+function labelObstacleOverlap(box: LabelBox, obstacle: LabelObstacle): number {
+  if (obstacle.kind === "box") return boxOverlapArea(box, obstacle.box);
+  const closestX = Math.max(box.x, Math.min(obstacle.x, box.x + box.width));
+  const closestY = Math.max(box.y, Math.min(obstacle.y, box.y + box.height));
+  const distance = Math.hypot(obstacle.x - closestX, obstacle.y - closestY);
+  return distance >= obstacle.radius ? 0 : (obstacle.radius - distance) ** 2;
+}
+
+function boxOverlapArea(left: LabelBox, right: LabelBox): number {
+  const width = Math.min(left.x + left.width, right.x + right.width) - Math.max(left.x, right.x);
+  const height = Math.min(left.y + left.height, right.y + right.height) - Math.max(left.y, right.y);
+  return width <= 0 || height <= 0 ? 0 : width * height;
+}
+
+function plotLabelBounds(box: PlotBox): LabelBounds {
+  return {
+    left: box.margin.left,
+    top: box.margin.top,
+    right: box.width - box.margin.right,
+    bottom: box.height - box.margin.bottom,
+  };
+}
+
+function pointLabelObstacles(points: Array<{ x: number; y: number }>, radius = 7): LabelObstacle[] {
+  return points.map((point) => ({ kind: "point" as const, x: point.x, y: point.y, radius }));
+}
+
+function polylineLabelObstacles(points: Array<{ x: number; y: number }>, radius = 5, spacing = 7): LabelObstacle[] {
+  return samplePolylinePoints(points, spacing).map((point) => ({ kind: "point" as const, x: point.x, y: point.y, radius }));
+}
+
+function samplePolylinePoints(points: Array<{ x: number; y: number }>, spacing: number): Array<{ x: number; y: number }> {
+  if (points.length <= 1) return points;
+  const sampled: Array<{ x: number; y: number }> = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index]!;
+    const end = points[index + 1]!;
+    const distance = Math.hypot(end.x - start.x, end.y - start.y);
+    const steps = Math.max(1, Math.ceil(distance / spacing));
+    for (let step = 0; step < steps; step += 1) {
+      const t = step / steps;
+      sampled.push({
+        x: start.x + (end.x - start.x) * t,
+        y: start.y + (end.y - start.y) * t,
+      });
+    }
+  }
+  sampled.push(points[points.length - 1]!);
+  return sampled;
 }
 
 export function buildRankFrequencyGeometry(options: {
@@ -342,16 +521,29 @@ export function buildRankFrequencyGeometry(options: {
       ],
     };
   });
-  const headLabels = points
-    .filter((point) => point.datum.token && point.datum.rank <= 3)
-    .map((point, index) => ({
-      x: point.x + 8,
-      y: point.y + [-10, 2, 14][index]!,
+  const fitPoints = fitPointsForRank(options, xScale, yScale);
+  const fitPath = fitPoints.length > 0 ? { d: pointsToPath(fitPoints), className: "cw-plot-fit-line cw-plot-line-glow" } : null;
+  const headPoints = points.filter((point) => point.datum.token && point.datum.rank <= 3);
+  const headLabels = placeLabels(
+    headPoints.map((point) => ({
+      x: point.x,
+      y: point.y,
       text: point.datum.token ?? "",
-      anchor: "start" as const,
       className: "cw-plot-label-muted",
-    }));
-  const fitPath = fitPathForRank(options, xScale, yScale);
+      candidates: [
+        { dx: 8, dy: -8, anchor: "start" },
+        { dx: 12, dy: 6, anchor: "start" },
+        { dx: 8, dy: 18, anchor: "start" },
+        { dx: -10, dy: -8, anchor: "end" },
+        { dx: -12, dy: 6, anchor: "end" },
+      ],
+    })),
+    [
+      ...pointLabelObstacles(headPoints, 7),
+      ...polylineLabelObstacles(fitPoints, 4),
+    ],
+    plotLabelBounds(box),
+  );
   const bracket = fittedStart !== null && fittedEnd !== null && fittedEnd >= fittedStart
     ? {
         x1: scaleValue(xScale, fittedStart),
@@ -403,13 +595,27 @@ export function buildVocabularyGrowthGeometry(options: {
     : null;
   const last = points[points.length - 1];
   const labels = last
-    ? [{
-        x: Math.min(last.x + 16, box.width - box.margin.right - 96),
-        y: Math.min(last.y + 54, box.height - box.margin.bottom - 10),
-        text: `${formatInteger(last.datum.types)} types / at ${formatMillions(last.datum.tokens)} tokens`,
-        anchor: "start" as const,
-        className: "cw-plot-label-callout",
-      }]
+    ? placeLabels(
+        [{
+          x: last.x,
+          y: last.y,
+          text: `${formatInteger(last.datum.types)} types at ${formatMillions(last.datum.tokens)} tokens`,
+          lines: [`${formatInteger(last.datum.types)} types`, `at ${formatMillions(last.datum.tokens)} tokens`],
+          className: "cw-plot-label-callout",
+          candidates: [
+            { dx: -4, dy: 38, anchor: "end" },
+            { dx: -14, dy: 50, anchor: "end" },
+            { dx: -18, dy: 28, anchor: "end" },
+            { dx: -10, dy: 18, anchor: "end" },
+            { dx: 12, dy: 38, anchor: "start" },
+          ],
+        }],
+        [
+          ...polylineLabelObstacles(points, 5),
+          ...pointLabelObstacles(points, 7),
+        ],
+        plotLabelBounds(box),
+      )
     : [];
   return {
     box,
@@ -450,10 +656,15 @@ export function buildLexicalSpectrumGeometry(options: {
     tooltipTitle: `${formatInteger(point.typeCount)} types`,
     tooltipRows: [`frequency ${formatInteger(point.frequency)}`, `${formatInteger(point.typeCount)} types`],
   }));
-  const labels = [
-    labelForExactFrequency(points, 1, `hapax ${formatInteger(options.hapaxCount)}`),
-    labelForExactFrequency(points, 2, `dis ${formatInteger(options.disLegomenaCount)}`),
-  ].filter((label): label is PlotLabelGeometry => label !== null);
+  const labelRequests = [
+    labelRequestForExactFrequency(points, 1, `hapax ${formatInteger(options.hapaxCount)}`),
+    labelRequestForExactFrequency(points, 2, `dis ${formatInteger(options.disLegomenaCount)}`),
+  ].filter((label): label is LabelPlacementRequest => label !== null);
+  const labels = placeLabels(
+    labelRequests,
+    pointLabelObstacles(points, 7),
+    plotLabelBounds(box),
+  );
   return {
     box,
     xScale,
@@ -513,14 +724,6 @@ export function buildCoverageGeometry(options: {
       };
     })
     .filter((point): point is PlotPointGeometry<CoverageDatum> => point !== null);
-  const labelOffsets = labelCollisionOffsets(milestones);
-  const labels = milestones.map((point, index) => ({
-    x: Math.min(point.x + 8, box.width - box.margin.right - 96),
-    y: point.y - 8 + labelOffsets[index],
-    text: `top ${formatInteger(point.datum.k)} - ${formatPercent(point.datum.share)}`,
-    anchor: "start" as const,
-    className: "cw-plot-label-muted",
-  }));
   const crossingDatum = findFirstCoverageCrossing(visible, 0.5);
   const halfCrossing = crossingDatum
     ? {
@@ -530,15 +733,40 @@ export function buildCoverageGeometry(options: {
         y: scaleValue(yScale, crossingDatum.share),
       }
     : null;
+  const labelRequests: LabelPlacementRequest[] = milestones.map((point) => ({
+    x: point.x,
+    y: point.y,
+    text: `top ${formatInteger(point.datum.k)} - ${formatPercent(point.datum.share)}`,
+    className: "cw-plot-label-muted",
+    candidates: [
+      { dx: 10, dy: 18, anchor: "start" },
+      { dx: 12, dy: -10, anchor: "start" },
+      { dx: -10, dy: 18, anchor: "end" },
+      { dx: -10, dy: -10, anchor: "end" },
+      { dx: 18, dy: 4, anchor: "start" },
+    ],
+  }));
   if (halfCrossing) {
-    labels.push({
-      x: box.margin.left + 6,
-      y: halfCrossing.y - 8,
+    labelRequests.push({
+      x: box.margin.left + 10,
+      y: halfCrossing.y - 10,
       text: `half the corpus = ${formatInteger(halfCrossing.k)} types`,
-      anchor: "start",
       className: "cw-plot-label-callout",
+      candidates: [
+        { dx: 0, dy: 0, anchor: "start" },
+        { dx: 12, dy: -8, anchor: "start" },
+        { dx: 0, dy: -18, anchor: "start" },
+      ],
     });
   }
+  const labels = placeLabels(
+    labelRequests,
+    [
+      ...polylineLabelObstacles(points, 5),
+      ...pointLabelObstacles(milestones, 7),
+    ],
+    plotLabelBounds(box),
+  );
   return {
     box,
     xScale,
@@ -719,7 +947,7 @@ function yValueForRank(point: RankFrequencyDatum, mode: "rate" | "raw"): number 
   return mode === "rate" ? point.ratePerMillion : point.frequency;
 }
 
-function fitPathForRank(
+function fitPointsForRank(
   options: {
     yMode: "rate" | "raw";
     totalTokens: number;
@@ -730,7 +958,7 @@ function fitPathForRank(
   },
   xScale: PlotScale,
   yScale: PlotScale,
-): PlotPathGeometry | null {
+): Array<{ x: number; y: number }> {
   if (
     options.zipfExponent === null
     || options.zipfCoefficient === null
@@ -738,12 +966,12 @@ function fitPathForRank(
     || options.fittedRankEnd === null
     || options.fittedRankEnd < options.fittedRankStart
   ) {
-    return null;
+    return [];
   }
   const start = Math.max(options.fittedRankStart, xScale.domain[0]);
   const end = Math.min(options.fittedRankEnd, xScale.domain[1]);
   const ranks = start === end ? [start] : [start, Math.sqrt(start * end), end];
-  const points = ranks.map((rank) => {
+  return ranks.map((rank) => {
     const raw = options.zipfCoefficient === null || options.zipfExponent === null
       ? 0
       : options.zipfCoefficient * (rank ** -options.zipfExponent);
@@ -755,21 +983,25 @@ function fitPathForRank(
       y: scaleValue(yScale, yValue),
     };
   });
-  return { d: pointsToPath(points), className: "cw-plot-fit-line cw-plot-line-glow" };
 }
 
-function labelForExactFrequency(
+function labelRequestForExactFrequency(
   points: Array<PlotPointGeometry<FrequencySpectrumDatum>>,
   frequency: number,
   text: string,
-): PlotLabelGeometry | null {
+): LabelPlacementRequest | null {
   const point = points.find((candidate) => candidate.datum.frequency === frequency);
   if (!point) return null;
   return {
-    x: point.x + 8,
-    y: point.y - 8,
+    x: point.x,
+    y: point.y,
     text,
-    anchor: "start",
     className: "cw-plot-label-muted",
+    candidates: [
+      { dx: 10, dy: 4, anchor: "start" },
+      { dx: 10, dy: -10, anchor: "start" },
+      { dx: -10, dy: 4, anchor: "end" },
+      { dx: -10, dy: -10, anchor: "end" },
+    ],
   };
 }
