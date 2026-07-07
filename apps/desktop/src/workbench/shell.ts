@@ -25,16 +25,19 @@ import {
   buildCoverageGeometry,
   buildDispersionGeometry,
   buildDispersionPlaneGeometry,
+  buildDispersionRosterGeometry,
   buildLexicalSpectrumGeometry,
   buildRankFrequencyGeometry,
   buildVocabularyGrowthGeometry,
   formatDispersionPlaneStats,
   formatDispersionProfileStats,
+  formatDispersionRosterStats,
   formatUniversalTypeCaption,
 } from "../plots/model";
 import {
   renderCoverageSvg,
   renderDispersionPlaneSvg,
+  renderDispersionRosterSvg,
   renderDispersionSvg,
   renderLexicalSpectrumSvg,
   renderRankFrequencySvg,
@@ -108,6 +111,7 @@ const FUTURE_ANALYSIS_TOOLS = [
   "Exports",
 ];
 const BALANCE_ATTENTION_SHARE = 0.15;
+const HIGH_DISPERSION_THRESHOLD = 0.5;
 
 type AnalysisToolId = "overview" | "frequency" | "concordance";
 
@@ -1290,6 +1294,27 @@ function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null
   });
 }
 
+function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | null {
+  const entries = corpus.dispersion.roster;
+  if (entries.length === 0) return null;
+  const highDispersionThreshold = corpus.dispersion.plane?.highDispersionThreshold ?? HIGH_DISPERSION_THRESHOLD;
+  const aboveThresholdCount = entries.filter((entry) => entry.dp >= highDispersionThreshold).length;
+  return createOverviewFigure({
+    id: "overview-dispersion-roster",
+    title: "Dispersion roster",
+    subtitle: "Top-frequency types ranked against DP.",
+    captionStats: formatDispersionRosterStats(entries.length, aboveThresholdCount, highDispersionThreshold),
+    captionReading: "Frequent is not the same as general: rows to the right of the line are loud in few places.",
+    renderSvg: () => renderDispersionRosterSvg(
+      "overview-dispersion-roster",
+      buildDispersionRosterGeometry({
+        entries,
+        highDispersionThreshold,
+      }),
+    ),
+  });
+}
+
 function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Lexical spectrum");
   const spectrum = corpus.lexicalSpectrum;
@@ -1634,6 +1659,8 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
   panel.appendChild(renderDispersionFigure(corpus));
   const planeFigure = renderDispersionPlaneFigure(corpus);
   if (planeFigure) panel.appendChild(planeFigure);
+  const rosterFigure = renderDispersionRosterFigure(corpus);
+  if (rosterFigure) panel.appendChild(rosterFigure);
 
   appendPanelReading(panel, dispersion.reading);
   return panel;
