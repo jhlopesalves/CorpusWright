@@ -106,6 +106,7 @@ pub struct CorpusOverviewLexicalSpectrum {
     pub band_10plus_share: Option<f64>,
     pub frequency_spectrum: Vec<FrequencySpectrumPoint>,
     pub frequency_spectrum_truncated: bool,
+    pub frequency_spectrum_total: usize,
     pub mattr_window: u32,
     pub mattr_median: Option<f64>,
     pub mattr_min: Option<f64>,
@@ -548,11 +549,11 @@ pub(super) fn rank_frequency_summary(
     let fit_points = frequencies
         .iter()
         .enumerate()
-        .filter(|(index, frequency)| *index > 0 && **frequency > 1)
+        .filter(|(index, frequency)| *index >= 3 && **frequency > 1)
         .map(|(index, frequency)| (((index + 1) as f64).ln(), (*frequency as f64).ln()))
         .collect::<Vec<_>>();
     let fit = linear_regression(&fit_points);
-    let fitted_rank_start = fit.as_ref().map(|_| 2);
+    let fitted_rank_start = fit.as_ref().map(|_| 4);
     let fitted_rank_end = fit
         .as_ref()
         .map(|_| u64::try_from(fit_points.len() + 1).unwrap_or(u64::MAX));
@@ -576,7 +577,7 @@ pub(super) fn rank_frequency_summary(
         fitted_rank_start,
         fitted_rank_end,
         points,
-        reading: "The Zipf fit uses log frequency against log rank, excluding the highest-frequency type and the frequency-one tail where the classic law is least reliable."
+        reading: "The Zipf fit uses log frequency against log rank, excluding the three highest-frequency types and the frequency-one tail where the classic law is least reliable."
             .to_string(),
     }
 }
@@ -600,7 +601,9 @@ pub(super) fn vocabulary_growth_summary(
     }
 }
 
-pub(super) fn frequency_spectrum(frequencies: &[u64]) -> (Vec<FrequencySpectrumPoint>, bool) {
+pub(super) fn frequency_spectrum(
+    frequencies: &[u64],
+) -> (Vec<FrequencySpectrumPoint>, bool, usize) {
     let mut counts = BTreeMap::<u64, usize>::new();
     for &frequency in frequencies {
         *counts.entry(frequency).or_default() += 1;
@@ -613,11 +616,12 @@ pub(super) fn frequency_spectrum(frequencies: &[u64]) -> (Vec<FrequencySpectrumP
         })
         .collect::<Vec<_>>();
     let truncated = all_points.len() > MAX_DISTRIBUTION_POINTS;
+    let total = all_points.len();
     let points = sampled_indices(all_points.len(), MAX_DISTRIBUTION_POINTS)
         .into_iter()
         .map(|index| all_points[index].clone())
         .collect();
-    (points, truncated)
+    (points, truncated, total)
 }
 
 pub(super) fn cumulative_coverage_checkpoints(
@@ -1162,7 +1166,8 @@ pub(super) fn build_overview(
     let cumulative_coverage = cumulative_coverage_checkpoints(&frequencies, total_tokens);
     let (shannon_entropy_bits, evenness_j, effective_vocabulary_entropy) =
         entropy_metrics(&frequencies, total_tokens);
-    let (frequency_spectrum, frequency_spectrum_truncated) = frequency_spectrum(&frequencies);
+    let (frequency_spectrum, frequency_spectrum_truncated, frequency_spectrum_total) =
+        frequency_spectrum(&frequencies);
     let rank_frequency = rank_frequency_summary(&frequencies, &rank_tokens, total_tokens);
     let vocabulary_growth = vocabulary_growth_summary(&metadata.vocabulary_growth);
     let universal_types = universal_types(&ranked_terms, df_at_least_90pct_threshold);
@@ -1388,6 +1393,7 @@ pub(super) fn build_overview(
             band_10plus_share: type_share(band_10plus_count, total_types),
             frequency_spectrum,
             frequency_spectrum_truncated,
+            frequency_spectrum_total,
             mattr_window: MATTR_WINDOW_TOKENS as u32,
             mattr_median: mattr_summary.median,
             mattr_min: mattr_summary.minimum,

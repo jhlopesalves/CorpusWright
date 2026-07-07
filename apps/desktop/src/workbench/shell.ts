@@ -16,6 +16,25 @@ import {
   type OverviewGlossaryEntry,
   type OverviewGlossaryId,
 } from "../overview-glossary";
+import {
+  createOverviewFigure,
+  createSegmentedControl,
+  replaceFigureSvg,
+} from "../plots/figure";
+import {
+  buildCoverageGeometry,
+  buildDispersionGeometry,
+  buildLexicalSpectrumGeometry,
+  buildRankFrequencyGeometry,
+  buildVocabularyGrowthGeometry,
+} from "../plots/model";
+import {
+  renderCoverageSvg,
+  renderDispersionSvg,
+  renderLexicalSpectrumSvg,
+  renderRankFrequencySvg,
+  renderVocabularyGrowthSvg,
+} from "../plots/render";
 import type { ProjectLanguage } from "../generated/ProjectLanguage.js";
 import { projectLanguageLabel } from "../project-creation-dialog";
 import { sourceHasExtractedText } from "../sources";
@@ -179,6 +198,20 @@ export function formatFixedNumber(value: number, fractionDigits: number): string
 
 function formatPercent(value: number, fractionDigits = 1): string {
   return `${formatFixedNumber(value * 100, fractionDigits)}%`;
+}
+
+function formatOptionalFixed(value: number | null, fractionDigits: number): string {
+  return value === null ? "unavailable" : formatFixedNumber(value, fractionDigits);
+}
+
+function formatOptionalPercent(value: number | null, fractionDigits = 1): string {
+  return value === null ? "unavailable" : formatPercent(value, fractionDigits);
+}
+
+function formatRankRange(start: number | null, end: number | null): string {
+  return start === null || end === null
+    ? "unavailable"
+    : `${formatNumber(start)}-${formatNumber(end)}`;
 }
 
 function formatDocumentMetricSummary(
@@ -1071,6 +1104,184 @@ function renderExtractionQuality(corpus: AnalysisCorpus): HTMLElement {
   return panel;
 }
 
+function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
+  const rank = corpus.rankFrequency;
+  let yMode: "rate" | "raw" = "rate";
+  let figure: HTMLElement | null = null;
+  const renderSvg = () => renderRankFrequencySvg(
+    "overview-rank-frequency",
+    buildRankFrequencyGeometry({
+      points: rank.points.map((point) => ({
+        rank: point.rank,
+        token: point.token ?? undefined,
+        frequency: point.frequency,
+        ratePerMillion: point.ratePerMillion,
+      })),
+      yMode,
+      totalTokens: corpus.totals.tokens,
+      zipfExponent: rank.zipfExponent,
+      zipfCoefficient: rank.zipfCoefficient,
+      fittedRankStart: rank.fittedRankStart,
+      fittedRankEnd: rank.fittedRankEnd,
+    }),
+    yMode === "rate" ? "rate per million" : "raw count",
+  );
+  const controls = createSegmentedControl(
+    "Rank-frequency y axis",
+    [
+      { value: "rate", label: "per M" },
+      { value: "raw", label: "raw" },
+    ],
+    yMode,
+    (value) => {
+      yMode = value;
+      if (figure) replaceFigureSvg(figure, renderSvg());
+    },
+  );
+  const rarity = rank.zipfExponent === null
+    ? "the fitted rarity ratio is unavailable"
+    : `ten times deeper in the rank list = ~${formatFixedNumber(10 ** rank.zipfExponent, 1)}x rarer`;
+  figure = createOverviewFigure({
+    id: "overview-rank-frequency",
+    title: "Rank-frequency",
+    subtitle: "Zipf fit on log rank and log frequency.",
+    controls,
+    captionStats: `alpha ${formatOptionalFixed(rank.zipfExponent, 3)} · R-squared ${formatOptionalFixed(rank.rSquared, 3)} · fitted ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)}`,
+    captionReading: `${rarity}; hollow points are excluded from the fit.`,
+    renderSvg,
+  });
+  return figure;
+}
+
+function renderVocabularyGrowthFigure(corpus: AnalysisCorpus): HTMLElement {
+  const growth = corpus.vocabularyGrowth;
+  const betaYield = growth.heapsBeta === null
+    ? "unavailable"
+    : `${formatFixedNumber(((2 ** growth.heapsBeta) - 1) * 100, 1)}%`;
+  return createOverviewFigure({
+    id: "overview-vocabulary-growth",
+    title: "Vocabulary growth",
+    subtitle: "Heaps-law shape from stable source-order checkpoints.",
+    captionStats: `k ${formatOptionalFixed(growth.heapsK, 3)} · beta ${formatOptionalFixed(growth.heapsBeta, 3)} · R-squared ${formatOptionalFixed(growth.rSquared, 3)}`,
+    captionReading: `Each doubling of tokens yields ~${betaYield} more types; stable source order, not a ceiling.`,
+    renderSvg: () => renderVocabularyGrowthSvg(
+      "overview-vocabulary-growth",
+      buildVocabularyGrowthGeometry({ points: growth.points }),
+    ),
+  });
+}
+
+function renderLexicalSpectrumFigure(corpus: AnalysisCorpus): HTMLElement {
+  const spectrum = corpus.lexicalSpectrum;
+  const truncation = spectrum.frequencySpectrumTruncated
+    ? `showing ${formatNumber(spectrum.frequencySpectrum.length)} of ${formatNumber(spectrum.frequencySpectrumTotal)} observed frequencies`
+    : `${formatNumber(spectrum.frequencySpectrumTotal)} observed frequencies`;
+  return createOverviewFigure({
+    id: "overview-lexical-spectrum",
+    title: "Lexical spectrum",
+    subtitle: "Exact frequency classes on log-log axes.",
+    captionStats: `hapax ${formatNumber(spectrum.hapaxCount)} · dis ${formatNumber(spectrum.disLegomenaCount)} · ${truncation}`,
+    captionReading: "Each point is V(f) for one exact integer frequency; bars are avoided because log-scale bar lengths would imply intervals that were not observed.",
+    renderSvg: () => renderLexicalSpectrumSvg(
+      "overview-lexical-spectrum",
+      buildLexicalSpectrumGeometry({
+        points: spectrum.frequencySpectrum,
+        hapaxCount: spectrum.hapaxCount,
+        disLegomenaCount: spectrum.disLegomenaCount,
+      }),
+    ),
+  });
+}
+
+function renderCoverageFigure(corpus: AnalysisCorpus): HTMLElement {
+  const concentration = corpus.frequencyConcentration;
+  const half = concentration.cumulativeCoverage.find((point) => point.share >= 0.5) ?? null;
+  const halfPhrase = half === null
+    ? "half-corpus coverage is unavailable"
+    : `half the corpus is written with just ${formatNumber(half.k)} of its ${formatNumber(corpus.totals.types)} types`;
+  const tenTypes = concentration.top10Coverage === null
+    ? "Ten-type coverage is unavailable"
+    : `Ten types carry ${formatPercent(concentration.top10Coverage)} of every token`;
+  return createOverviewFigure({
+    id: "overview-cumulative-coverage",
+    title: "Cumulative coverage",
+    subtitle: "Token mass carried by the top-ranked vocabulary.",
+    captionStats: `top 10 ${formatOptionalPercent(concentration.top10Coverage)} · top 100 ${formatOptionalPercent(concentration.top100Coverage)} · top 1,000 ${formatOptionalPercent(concentration.top1000Coverage)} · top 10,000 ${formatOptionalPercent(concentration.top10000Coverage)}`,
+    captionReading: `${tenTypes}; ${halfPhrase}.`,
+    renderSvg: () => renderCoverageSvg(
+      "overview-cumulative-coverage",
+      buildCoverageGeometry({
+        points: concentration.cumulativeCoverage,
+        milestones: [
+          { k: 10, share: concentration.top10Coverage },
+          { k: 100, share: concentration.top100Coverage },
+          { k: 1_000, share: concentration.top1000Coverage },
+          { k: 10_000, share: concentration.top10000Coverage },
+        ],
+      }),
+    ),
+  });
+}
+
+function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
+  const dispersion = corpus.dispersion;
+  return createOverviewFigure({
+    id: "overview-dispersion-profile",
+    title: "Dispersion profile",
+    subtitle: "Document-frequency buckets as log-scale lollipops.",
+    captionStats: `>=90% count ${formatNumber(dispersion.dfAtLeast90pctCount)} · exactly-one count ${formatNumber(dispersion.dfIn1Count)} (${formatOptionalPercent(dispersion.dfIn1Share)})`,
+    captionReading: `Almost everything is local: ${formatOptionalPercent(dispersion.dfIn1Share)} of the vocabulary never leaves its home document.`,
+    renderSvg: () => renderDispersionSvg(
+      "overview-dispersion-profile",
+      buildDispersionGeometry({
+        buckets: [
+          {
+            key: "df-1",
+            label: "1 doc",
+            count: dispersion.dfIn1Count,
+            share: dispersion.dfIn1Share,
+          },
+          {
+            key: "df-2-9",
+            label: "2-9 docs",
+            count: dispersion.dfIn2To9Count,
+            share: dispersion.dfIn2To9Share,
+          },
+          {
+            key: "df-10-99",
+            label: "10-99 docs",
+            count: dispersion.dfIn10To99Count,
+            share: dispersion.dfIn10To99Share,
+          },
+          {
+            key: "df-100-plus",
+            label: "100+ docs",
+            count: dispersion.dfIn100PlusCount,
+            share: dispersion.dfIn100PlusShare,
+          },
+          {
+            key: "df-90pct",
+            label: ">=90%",
+            count: dispersion.dfAtLeast90pctCount,
+            share: dispersion.dfAtLeast90pctShare,
+            highlighted: true,
+            detail: universalTypeLabel(dispersion),
+          },
+        ],
+      }),
+    ),
+  });
+}
+
+function universalTypeLabel(dispersion: AnalysisCorpus["dispersion"]): string {
+  const tokens = dispersion.universalTypes.map((type) => type.token);
+  const remaining = Math.max(0, dispersion.dfAtLeast90pctCount - tokens.length);
+  const tokenText = tokens.length === 0
+    ? ""
+    : ` - ${tokens.join(" · ")}${remaining > 0 ? ` · +${formatNumber(remaining)} more` : ""}`;
+  return `${formatNumber(dispersion.dfAtLeast90pctCount)}${tokenText}`;
+}
+
 function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Lexical spectrum");
   const spectrum = corpus.lexicalSpectrum;
@@ -1104,6 +1315,7 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
   band10PlusNote.className = "analysis-panel-note";
   band10PlusNote.textContent = "10+: frequent types - the same threshold feeds the dispersion profile.";
   panel.append(band3To9Note, band10PlusNote);
+  panel.appendChild(renderLexicalSpectrumFigure(corpus));
 
   const lexicalDiversity = document.createElement("div");
   lexicalDiversity.className = "analysis-metric-group";
@@ -1217,6 +1429,7 @@ function renderFrequencyConcentration(corpus: AnalysisCorpus): HTMLElement {
   if (rows.length > 0) {
     panel.appendChild(createMetricTable(rows));
   }
+  panel.appendChild(renderCoverageFigure(corpus));
   appendPanelReading(panel, concentration.reading);
   return panel;
 }
@@ -1252,6 +1465,7 @@ function renderRankFrequency(corpus: AnalysisCorpus): HTMLElement {
     });
   }
   panel.appendChild(createMetricTable(rows));
+  panel.appendChild(renderRankFrequencyFigure(corpus));
   appendPanelReading(panel, rank.reading);
   return panel;
 }
@@ -1280,6 +1494,7 @@ function renderVocabularyGrowth(corpus: AnalysisCorpus): HTMLElement {
     rows.push({ label: "Fit R²", value: formatFixedNumber(growth.rSquared, 3), glossaryId: "heapsFit" });
   }
   panel.appendChild(createMetricTable(rows));
+  panel.appendChild(renderVocabularyGrowthFigure(corpus));
   appendPanelReading(panel, growth.reading);
   return panel;
 }
@@ -1408,6 +1623,7 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
   universe.className = "analysis-panel-note";
   universe.textContent = "Universe: all analysis types - independent of Frequency List filters.";
   panel.appendChild(universe);
+  panel.appendChild(renderDispersionFigure(corpus));
 
   appendPanelReading(panel, dispersion.reading);
   return panel;
