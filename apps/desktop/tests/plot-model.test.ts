@@ -1,11 +1,14 @@
 import {
   buildCoverageGeometry,
+  buildDispersionGeometry,
   buildVocabularyGrowthGeometry,
   createPlotBox,
   createScale,
   estimateLabelBox,
   findFirstCoverageCrossing,
   findMilestoneShare,
+  formatDispersionProfileStats,
+  formatUniversalTypeCaption,
   linearTicks,
   logTicks,
   placeLabels,
@@ -124,6 +127,52 @@ assert(
 assert(
   geometry.labels.some((label) => label.text.startsWith("half the corpus") && label.y < geometry.halfCrossing!.y),
   "Half-corpus label should sit above the 50% reference",
+);
+
+const dispersionProfile = buildDispersionGeometry({
+  buckets: [
+    { key: "df-1", label: "1", count: 50, share: 0.5 },
+    { key: "df-2", label: "2", count: 0, share: 0 },
+    { key: "df-3-4", label: "3–4", count: 10, share: 0.1 },
+    {
+      key: "df-90pct",
+      label: "≥90% of documents",
+      count: 3,
+      share: 0.03,
+      highlighted: true,
+      detail: "3",
+    },
+  ],
+  box: createPlotBox(500, 280, { top: 30, right: 36, bottom: 48, left: 156 }),
+});
+assert(dispersionProfile.xScale.kind === "log", "Dispersion profile should use a log count axis");
+assert(dispersionProfile.xScale.domain[0] > 0, "Dispersion log domain should stay positive");
+assert(dispersionProfile.points.length === 4, "Dispersion profile should keep one point per emitted bucket plus the overlay row");
+assert(
+  dispersionProfile.points.filter((point) => !point.datum.highlighted).length === 3,
+  "Dispersion profile should keep all emitted reach bands without coarsening",
+);
+assert(
+  dispersionProfile.points.some((point) => point.rawX === 0 && point.excluded),
+  "Zero-count reach bands should remain truthful rows anchored at the log-axis floor",
+);
+assert(
+  dispersionProfile.points.at(-1)?.datum.highlighted === true && dispersionProfile.dividers.length === 1,
+  "The ≥90% overlay row should be distinct and divided from the ladder",
+);
+assert(
+  dispersionProfile.labels.some((label) => label.text === "3")
+    && !dispersionProfile.labels.some((label) => label.text.includes("the · of")),
+  "Universal type tokens must not be emitted as axis-adjacent labels",
+);
+assert(
+  formatDispersionProfileStats(587_151, 13, 101)
+    === "587,151 types · 13 reach bands · 101 types in ≥90% of documents",
+  "Dispersion profile stats caption should be assembled from payload counts",
+);
+assert(
+  formatUniversalTypeCaption(["the", "of", "and", "to"], 101) === "the · of · and +98 more",
+  "Universal type caption should show the first three tokens and the remaining count",
 );
 
 const vocabulary = buildVocabularyGrowthGeometry({
