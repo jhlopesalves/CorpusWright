@@ -26,12 +26,14 @@ import {
   buildDispersionGeometry,
   buildDispersionPlaneGeometry,
   buildDispersionRosterGeometry,
+  buildLengthHistogramGeometry,
   buildLexicalSpectrumGeometry,
   buildRankFrequencyGeometry,
   buildVocabularyGrowthGeometry,
   formatDispersionPlaneStats,
   formatDispersionProfileStats,
   formatDispersionRosterStats,
+  formatLengthHistogramStats,
   formatUniversalTypeCaption,
 } from "../plots/model";
 import {
@@ -39,6 +41,7 @@ import {
   renderDispersionPlaneSvg,
   renderDispersionRosterSvg,
   renderDispersionSvg,
+  renderLengthHistogramSvg,
   renderLexicalSpectrumSvg,
   renderRankFrequencySvg,
   renderVocabularyGrowthSvg,
@@ -1040,10 +1043,39 @@ function renderDocumentLengthDistribution(corpus: AnalysisCorpus): HTMLElement {
   return distribution;
 }
 
+function renderLengthHistogramFigure(corpus: AnalysisCorpus): HTMLElement | null {
+  const balance = corpus.balance;
+  if (balance.lengthHistogram.length === 0) return null;
+  return createOverviewFigure({
+    id: "overview-length-histogram",
+    title: "Document-length distribution",
+    subtitle: "Power-of-two token bins by document count.",
+    captionStats: formatLengthHistogramStats(
+      corpus.totals.documents,
+      balance.medianTokens,
+      balance.minimumTokens,
+      balance.maximumTokens,
+    ),
+    captionReading: "Aggregate frequencies inherit the shape of this histogram: a long right tail means a few documents speak with a disproportionate voice.",
+    renderSvg: () => renderLengthHistogramSvg(
+      "overview-length-histogram",
+      buildLengthHistogramGeometry({
+        bins: balance.lengthHistogram,
+        documents: corpus.totals.documents,
+        medianTokens: balance.medianTokens,
+        minimumTokens: balance.minimumTokens,
+        maximumTokens: balance.maximumTokens,
+      }),
+    ),
+  });
+}
+
 function renderDocumentBalance(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Document balance");
   const balance = corpus.balance;
   panel.appendChild(renderDocumentLengthDistribution(corpus));
+  const lengthHistogramFigure = renderLengthHistogramFigure(corpus);
+  if (lengthHistogramFigure) panel.appendChild(lengthHistogramFigure);
 
   const rows: OverviewMetricRow[] = [];
   if (balance.largestShare !== null) {

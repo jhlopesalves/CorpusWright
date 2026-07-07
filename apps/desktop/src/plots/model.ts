@@ -99,6 +99,16 @@ export interface PlotLineGeometry {
   className: string;
 }
 
+export interface PlotBarGeometry<TDatum = unknown> {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  datum: TDatum;
+  tooltipTitle?: string;
+  tooltipRows?: string[];
+}
+
 export interface PlotBracketGeometry {
   x1: number;
   x2: number;
@@ -287,6 +297,23 @@ export interface DispersionRosterGeometry {
   thresholdLine: PlotLineGeometry;
   thresholdLabel: PlotLabelGeometry;
   aboveThresholdCount: number;
+}
+
+export interface LengthHistogramBinDatum {
+  lowerTokens: number;
+  upperTokens: number | null;
+  count: number;
+}
+
+export interface LengthHistogramGeometry {
+  box: PlotBox;
+  xScale: PlotScale;
+  yScale: PlotScale;
+  xTicks: PlotTick[];
+  yTicks: PlotTick[];
+  bars: Array<PlotBarGeometry<LengthHistogramBinDatum>>;
+  medianLine: PlotLineGeometry | null;
+  labels: PlotLabelGeometry[];
 }
 
 export const DEFAULT_PLOT_WIDTH = 720;
@@ -1213,6 +1240,97 @@ export function formatDispersionRosterStats(topCount: number, aboveThresholdCoun
   return `top ${formatInteger(topCount)} types by frequency · ${formatInteger(aboveThresholdCount)} above DP ${formatDpThreshold(highDispersionThreshold)}`;
 }
 
+export function buildLengthHistogramGeometry(options: {
+  bins: LengthHistogramBinDatum[];
+  documents: number;
+  medianTokens: number | null;
+  minimumTokens: number | null;
+  maximumTokens: number | null;
+  box?: PlotBox;
+}): LengthHistogramGeometry {
+  const binCount = Math.max(1, options.bins.length);
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 360, {
+    top: 34,
+    right: 40,
+    bottom: 72,
+    left: 72,
+  });
+  const xScale = createScale("linear", [0, binCount], [
+    box.margin.left,
+    box.width - box.margin.right,
+  ]);
+  const maxCount = Math.max(1, ...options.bins.map((bin) => bin.count));
+  const yScale = createScale("linear", [0, maxCount], [box.height - box.margin.bottom, box.margin.top]);
+  const slotWidth = box.innerWidth / binCount;
+  const barGap = Math.min(2, slotWidth * 0.28);
+  // Bars are truthful here because the encoded value is linear document count; the power-of-two ranges are categorical slots, not log-scaled bar lengths.
+  const bars = options.bins.map((bin, index) => {
+    const x = box.margin.left + (index * slotWidth) + (barGap / 2);
+    const y = scaleValue(yScale, bin.count);
+    return {
+      x,
+      y,
+      width: Math.max(1, slotWidth - barGap),
+      height: Math.max(0, box.height - box.margin.bottom - y),
+      datum: bin,
+      tooltipTitle: `${formatInteger(bin.count)} documents`,
+      tooltipRows: [`${formatLengthBinLabel(bin)} tokens`],
+    };
+  });
+  const median = options.medianTokens;
+  const medianIndex = median === null ? -1 : findLengthHistogramBinIndex(options.bins, median);
+  const medianLine = medianIndex < 0
+    ? null
+    : {
+        x1: lengthHistogramMedianX(options.bins[medianIndex]!, median!, medianIndex, slotWidth, box.margin.left),
+        y1: box.margin.top,
+        x2: lengthHistogramMedianX(options.bins[medianIndex]!, median!, medianIndex, slotWidth, box.margin.left),
+        y2: box.height - box.margin.bottom,
+        className: "cw-plot-threshold-line",
+      };
+  const labels = medianLine === null || median === null
+    ? []
+    : placeLabels(
+        [{
+          x: medianLine.x1,
+          y: box.margin.top + 15,
+          text: `median ${formatInteger(median)} tokens`,
+          className: "cw-plot-label-mono",
+          fontSize: 10.5,
+          candidates: [
+            { dx: 8, dy: 0, anchor: "start" },
+            { dx: -8, dy: 0, anchor: "end" },
+            { dx: 0, dy: 18, anchor: "middle" },
+          ],
+        }],
+        bars.map((bar) => ({ kind: "box" as const, box: { x: bar.x, y: bar.y, width: bar.width, height: bar.height } })),
+        plotLabelBounds(box),
+      );
+  return {
+    box,
+    xScale,
+    yScale,
+    xTicks: options.bins.map((bin, index) => ({
+      value: index + 0.5,
+      position: box.margin.left + (index + 0.5) * slotWidth,
+      label: formatLengthBinLabel(bin),
+      major: true,
+    })),
+    yTicks: linearTicks(yScale, 5),
+    bars,
+    medianLine,
+    labels,
+  };
+}
+
+export function formatLengthHistogramStats(documents: number, medianTokens: number | null, minimumTokens: number | null, maximumTokens: number | null): string {
+  const median = medianTokens === null ? "n/a" : formatInteger(medianTokens);
+  const range = minimumTokens === null || maximumTokens === null
+    ? "n/a"
+    : `${formatInteger(minimumTokens)}–${formatInteger(maximumTokens)}`;
+  return `${formatInteger(documents)} documents · median ${median} · range ${range} tokens`;
+}
+
 export function formatDispersionProfileStats(totalTypes: number, reachBandCount: number, universalCount: number): string {
   return `${formatInteger(totalTypes)} types · ${formatInteger(reachBandCount)} reach bands · ${formatInteger(universalCount)} types in ≥90% of documents`;
 }
@@ -1503,6 +1621,40 @@ function formatFrequencyRangeBoundary(value: number): string {
   if (value >= 100) return formatInteger(value);
   if (value >= 10) return formatFixed(value, value % 1 === 0 ? 0 : 1);
   return formatFixed(value, value % 1 === 0 ? 0 : 2);
+}
+
+function formatLengthBinLabel(bin: LengthHistogramBinDatum): string {
+  const upper = bin.upperTokens ?? bin.lowerTokens;
+  return `${formatCompactTokenBoundary(bin.lowerTokens)}–${formatCompactTokenBoundary(upper)}`;
+}
+
+function formatCompactTokenBoundary(value: number): string {
+  if (value >= 1_048_576 && value % 1_048_576 === 0) return `${formatInteger(value / 1_048_576)}M`;
+  if (value >= 1_024 && value % 1_024 === 0) return `${formatInteger(value / 1_024)}k`;
+  if (value >= 1_000_000) return `${formatFixed(value / 1_000_000, 1)}M`;
+  if (value >= 1_000) return `${formatFixed(value / 1_000, 1)}k`;
+  return formatInteger(value);
+}
+
+function findLengthHistogramBinIndex(bins: LengthHistogramBinDatum[], medianTokens: number): number {
+  const exact = bins.findIndex((bin) => medianTokens >= bin.lowerTokens && medianTokens < (bin.upperTokens ?? Number.POSITIVE_INFINITY));
+  if (exact >= 0) return exact;
+  if (bins.length === 0) return -1;
+  if (medianTokens < bins[0]!.lowerTokens) return 0;
+  return bins.length - 1;
+}
+
+function lengthHistogramMedianX(
+  bin: LengthHistogramBinDatum,
+  medianTokens: number,
+  index: number,
+  slotWidth: number,
+  plotLeft: number,
+): number {
+  const upper = bin.upperTokens ?? bin.lowerTokens + 1;
+  const span = Math.max(1, upper - bin.lowerTokens);
+  const t = clamp((medianTokens - bin.lowerTokens) / span, 0.08, 0.92);
+  return plotLeft + (index + t) * slotWidth;
 }
 
 function roundSvg(value: number): string {
