@@ -4,6 +4,7 @@ import {
   buildDispersionPlaneGeometry,
   buildDispersionRosterGeometry,
   buildLengthHistogramGeometry,
+  buildMattrDistributionGeometry,
   buildVocabularyGrowthGeometry,
   createPlotBox,
   createScale,
@@ -14,6 +15,7 @@ import {
   formatDispersionProfileStats,
   formatDispersionRosterStats,
   formatLengthHistogramStats,
+  formatMattrDistributionStats,
   formatUniversalTypeCaption,
   linearTicks,
   logTicks,
@@ -285,6 +287,40 @@ assert(
   formatLengthHistogramStats(10, 800, 260, 1_500)
     === "10 documents · median 800 · range 260–1,500 tokens",
   "Length histogram stats caption should match the specified template",
+);
+
+const mattrCounts = new Array<number>(40).fill(0);
+mattrCounts[10] = 2;
+mattrCounts[11] = 3;
+mattrCounts[14] = 1;
+const mattrDistribution = buildMattrDistributionGeometry({
+  distribution: {
+    binWidth: 0.025,
+    counts: mattrCounts,
+    usedDocuments: 6,
+    excludedDocuments: 1,
+    lowWitnesses: [
+      { name: "a-very-long-document-name-for-testing.txt", mattr: 0.255, tokens: 1_200 },
+    ],
+    highWitnesses: [
+      { name: "compact.txt", mattr: 0.365, tokens: 900 },
+    ],
+    reading: "Low-MATTR outliers are where cleaning failures hide.",
+  },
+  median: 0.3,
+  box: createPlotBox(520, 320, { top: 34, right: 40, bottom: 104, left: 72 }),
+});
+assertClose(mattrDistribution.domain[0], 0.225, "MATTR occupied domain should pad one bin below the first nonzero bin");
+assertClose(mattrDistribution.domain[1], 0.4, "MATTR occupied domain should pad one bin above the last nonzero bin");
+assert(mattrDistribution.bars.length === 7, "MATTR distribution should emit one bar per visible bin in the occupied window");
+assert(
+  mattrDistribution.witnessTicks.some((tick) => tick.label.text.length === 24 && tick.label.text.includes("…")),
+  "MATTR witness labels should be middle-ellipsized to 24 characters",
+);
+assert(
+  formatMattrDistributionStats(6, 0.3, 1, 100)
+    === "6 documents · median 0.300 · 1 excluded (< 100 tokens)",
+  "MATTR distribution stats caption should match the specified template",
 );
 
 const vocabulary = buildVocabularyGrowthGeometry({

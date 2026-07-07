@@ -10,6 +10,7 @@ import type {
   DispersionRosterGeometry,
   LengthHistogramGeometry,
   LexicalSpectrumGeometry,
+  MattrDistributionGeometry,
   PlotBarGeometry,
   PlotBox,
   PlotBracketGeometry,
@@ -174,6 +175,22 @@ export function renderLengthHistogramSvg(plotId: string, geometry: LengthHistogr
   });
   renderBars(svg, geometry.bars, "cw-plot-bar");
   if (geometry.medianLine) renderLine(svg, geometry.medianLine);
+  renderLabels(svg, geometry.labels);
+  renderInteractionLayer(svg, geometry.box);
+  return svg;
+}
+
+export function renderMattrDistributionSvg(plotId: string, geometry: MattrDistributionGeometry): SVGSVGElement {
+  const svg = createBaseSvg(plotId, geometry.box);
+  renderDefinitions(svg, plotId);
+  renderAxes(svg, geometry.box, geometry.xScale, geometry.yScale, geometry.xTicks, geometry.yTicks, {
+    x: "MATTR",
+    y: "documents",
+    valueAxis: "y",
+  });
+  renderBars(svg, geometry.bars, "cw-plot-bar");
+  if (geometry.medianLine) renderLine(svg, geometry.medianLine);
+  renderMattrWitnessTicks(svg, geometry);
   renderLabels(svg, geometry.labels);
   renderInteractionLayer(svg, geometry.box);
   return svg;
@@ -576,6 +593,28 @@ function renderBars(svg: SVGSVGElement, bars: Array<PlotBarGeometry>, baseClass:
       style: `--cw-plot-stagger: ${Math.min(index, 30) * 14}ms;`,
     });
     group.appendChild(rect);
+  });
+  svg.appendChild(group);
+}
+
+function renderMattrWitnessTicks(svg: SVGSVGElement, geometry: MattrDistributionGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-mattr-witnesses");
+  geometry.witnessTicks.forEach((witness) => {
+    const line = createSvgElement("line");
+    setAttrs(line, {
+      x1: witness.x,
+      y1: witness.y1,
+      x2: witness.x,
+      y2: witness.y2,
+      class: "cw-plot-mattr-witness-tick cw-plot-hover-target",
+      tabindex: "0",
+      "data-plot-x": witness.x,
+      "data-plot-y": witness.y2,
+      "data-tooltip-title": witness.tooltipTitle,
+      "data-tooltip-rows": witness.tooltipRows.join("\n"),
+    });
+    group.appendChild(line);
   });
   svg.appendChild(group);
 }
