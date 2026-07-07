@@ -148,7 +148,25 @@ export function serializeSvgWithResolvedTokens(svg: SVGSVGElement): string {
     const original = originalElements[index]!;
     const cloned = cloneElements[index]!;
     const style = window.getComputedStyle(original);
-    for (const property of ["fill", "stroke", "color", "font-family", "font-size", "font-weight", "opacity", "stroke-width"]) {
+    for (const property of [
+      "fill",
+      "fill-opacity",
+      "filter",
+      "opacity",
+      "stop-color",
+      "stop-opacity",
+      "stroke",
+      "stroke-dasharray",
+      "stroke-dashoffset",
+      "stroke-linecap",
+      "stroke-linejoin",
+      "stroke-opacity",
+      "stroke-width",
+      "color",
+      "font-family",
+      "font-size",
+      "font-weight",
+    ]) {
       const value = style.getPropertyValue(property);
       if (value) cloned.style.setProperty(property, value);
     }

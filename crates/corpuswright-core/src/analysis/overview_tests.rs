@@ -249,6 +249,8 @@ fn zipf_fit_recovers_known_synthetic_exponent() {
     let summary = rank_frequency_summary(&frequencies, &tokens, frequencies.iter().sum());
     assert!((summary.zipf_exponent.unwrap() - 2.0).abs() < 0.02);
     assert!(summary.r_squared.unwrap() > 0.999);
+    assert_eq!(summary.fitted_rank_start, Some(4));
+    assert_eq!(summary.fitted_rank_end, Some(20));
     assert_eq!(
         summary.points.first().unwrap().token.as_deref(),
         Some("type-1")
