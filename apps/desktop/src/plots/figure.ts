@@ -11,6 +11,7 @@ export interface OverviewFigureOptions {
   title: string;
   subtitle: string;
   captionStats: string;
+  captionDetail?: string;
   captionReading: string;
   controls?: HTMLElement;
   renderSvg: () => SVGSVGElement;
@@ -101,10 +102,17 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
   const stats = document.createElement("p");
   stats.className = "cw-overview-figure-caption-stats";
   appendCaptionStats(stats, options.captionStats);
+  const detail = options.captionDetail ? document.createElement("p") : null;
+  if (detail) {
+    detail.className = "cw-overview-figure-caption-reading";
+    detail.textContent = options.captionDetail ?? "";
+  }
   const reading = document.createElement("p");
   reading.className = "cw-overview-figure-caption-reading";
   reading.textContent = options.captionReading;
-  caption.append(stats, reading);
+  caption.append(stats);
+  if (detail) caption.append(detail);
+  caption.append(reading);
 
   const collapsed = readCollapsedFigures().has(options.id);
   setFigureCollapsed(figure, collapseButton, collapseLabel, options.title, collapsed);

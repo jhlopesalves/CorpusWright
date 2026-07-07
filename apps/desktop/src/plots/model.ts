@@ -203,6 +203,7 @@ export interface DispersionGeometry {
   xTicks: PlotTick[];
   points: Array<PlotPointGeometry<DispersionBucketDatum>>;
   stems: PlotLineGeometry[];
+  dividers: PlotLineGeometry[];
   labels: PlotLabelGeometry[];
 }
 
@@ -460,6 +461,18 @@ function pointLabelObstacles(points: Array<{ x: number; y: number }>, radius = 7
 
 function polylineLabelObstacles(points: Array<{ x: number; y: number }>, radius = 5, spacing = 7): LabelObstacle[] {
   return samplePolylinePoints(points, spacing).map((point) => ({ kind: "point" as const, x: point.x, y: point.y, radius }));
+}
+
+function lineLabelObstacles(lines: PlotLineGeometry[], thickness = 6): LabelObstacle[] {
+  return lines.map((line) => ({
+    kind: "box" as const,
+    box: {
+      x: Math.min(line.x1, line.x2),
+      y: Math.min(line.y1, line.y2) - thickness / 2,
+      width: Math.max(1, Math.abs(line.x2 - line.x1)),
+      height: Math.max(1, Math.abs(line.y2 - line.y1) + thickness),
+    },
+  }));
 }
 
 function samplePolylinePoints(points: Array<{ x: number; y: number }>, spacing: number): Array<{ x: number; y: number }> {
@@ -786,27 +799,38 @@ export function buildDispersionGeometry(options: {
   buckets: DispersionBucketDatum[];
   box?: PlotBox;
 }): DispersionGeometry {
-  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 340, {
+  const rowCount = Math.max(1, options.buckets.length);
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, Math.max(360, 132 + rowCount * 19), {
     top: 30,
     right: 36,
     bottom: 48,
-    left: 132,
+    left: 156,
   });
-  const visible = options.buckets.filter((bucket) => bucket.count > 0);
-  const xScale = createScale("log", extent(visible.map((bucket) => bucket.count)), [
+  const buckets = options.buckets;
+  const positiveCounts = buckets.filter((bucket) => bucket.count > 0).map((bucket) => bucket.count);
+  const xScale = createScale("log", extent(positiveCounts), [
     box.margin.left,
     box.width - box.margin.right,
   ]);
-  const yStep = visible.length > 1 ? box.innerHeight / (visible.length - 1) : 0;
-  const points = visible.map((bucket, index) => {
-    const y = visible.length > 1 ? box.margin.top + index * yStep : box.margin.top + box.innerHeight / 2;
+  const hasDistinctFinalRow = buckets.some((bucket) => bucket.highlighted);
+  const rowGap = hasDistinctFinalRow ? 0.8 : 0;
+  const lastVirtualRow = Math.max(1, buckets.length - 1 + rowGap);
+  let virtualRow = 0;
+  const points = buckets.map((bucket, index) => {
+    if (bucket.highlighted && index > 0) virtualRow += rowGap;
+    const y = buckets.length > 1
+      ? box.margin.top + (virtualRow / lastVirtualRow) * box.innerHeight
+      : box.margin.top + box.innerHeight / 2;
+    virtualRow += 1;
+    const plotCount = Math.max(1, bucket.count);
     return {
-      x: scaleValue(xScale, bucket.count),
+      x: bucket.count > 0 ? scaleValue(xScale, bucket.count) : scaleValue(xScale, xScale.domain[0]),
       y,
       rawX: bucket.count,
       rawY: index,
       datum: bucket,
-      rampIndex: visible.length <= 1 ? 2 : Math.round(index / (visible.length - 1) * 4),
+      rampIndex: buckets.length <= 1 ? 2 : rampIndex(plotCount, xScale.domain, true),
+      excluded: bucket.count === 0,
       tooltipTitle: bucket.label,
       tooltipRows: [
         `${formatInteger(bucket.count)} types`,
@@ -821,28 +845,83 @@ export function buildDispersionGeometry(options: {
     y2: point.y,
     className: `cw-plot-lollipop-stem cw-plot-ramp-${point.rampIndex}`,
   }));
-  const labels: PlotLabelGeometry[] = points.map((point) => ({
-    x: box.margin.left - 10,
-    y: point.y + 4,
-    text: point.datum.label,
-    anchor: "end" as const,
-    className: point.datum.highlighted ? "cw-plot-label-strong" : "cw-plot-label-muted",
-  }));
-  labels.push(...points.map((point) => ({
-    x: Math.min(point.x + 10, box.width - box.margin.right - 10),
-    y: point.y + 4,
-    text: point.datum.detail ?? formatInteger(point.datum.count),
-    anchor: "start" as const,
-    className: "cw-plot-label-mono",
-  })));
+  const distinctPoint = points.find((point) => point.datum.highlighted);
+  const previousPoint = distinctPoint ? points[points.indexOf(distinctPoint) - 1] : undefined;
+  const dividers = distinctPoint && previousPoint
+    ? [{
+        x1: box.margin.left,
+        y1: (distinctPoint.y + previousPoint.y) / 2,
+        x2: box.width - box.margin.right,
+        y2: (distinctPoint.y + previousPoint.y) / 2,
+        className: "cw-plot-reference-line",
+      }]
+    : [];
+  const dotAndStemObstacles = [
+    ...pointLabelObstacles(points, 8),
+    ...lineLabelObstacles(stems, 5),
+  ];
+  const rowLabels = placeLabels(
+    points.map((point) => ({
+      x: box.margin.left - 10,
+      y: point.y + 4,
+      text: point.datum.label,
+      className: point.datum.highlighted ? "cw-plot-label-strong" : "cw-plot-label-muted",
+      candidates: [
+        { dx: 0, dy: 0, anchor: "end" },
+        { dx: -4, dy: 0, anchor: "end" },
+        { dx: 0, dy: -8, anchor: "end" },
+        { dx: 0, dy: 10, anchor: "end" },
+      ],
+    })),
+    dotAndStemObstacles,
+    {
+      left: 10,
+      top: box.margin.top - 8,
+      right: box.margin.left - 8,
+      bottom: box.height - box.margin.bottom + 8,
+    },
+  );
+  const countLabels = placeLabels(
+    points.map((point) => ({
+      x: Math.min(point.x + 10, box.width - box.margin.right - 10),
+      y: point.y + 4,
+      text: point.datum.detail ?? formatInteger(point.datum.count),
+      className: "cw-plot-label-mono",
+      candidates: [
+        { dx: 0, dy: 0, anchor: "start" },
+        { dx: 10, dy: -8, anchor: "start" },
+        { dx: 10, dy: 10, anchor: "start" },
+        { dx: -10, dy: -8, anchor: "end" },
+        { dx: -10, dy: 10, anchor: "end" },
+      ],
+    })),
+    [
+      ...dotAndStemObstacles,
+      ...lineLabelObstacles(dividers, 4),
+      ...rowLabels.map((label) => ({ kind: "box" as const, box: estimateLabelBox(label) })),
+    ],
+    plotLabelBounds(box),
+  );
   return {
     box,
     xScale,
     xTicks: logTicks(xScale),
     points,
     stems,
-    labels,
+    dividers,
+    labels: [...rowLabels, ...countLabels],
   };
+}
+
+export function formatDispersionProfileStats(totalTypes: number, reachBandCount: number, universalCount: number): string {
+  return `${formatInteger(totalTypes)} types · ${formatInteger(reachBandCount)} reach bands · ${formatInteger(universalCount)} types in ≥90% of documents`;
+}
+
+export function formatUniversalTypeCaption(tokens: string[], totalCount: number): string | undefined {
+  const visibleTokens = tokens.slice(0, 3);
+  if (visibleTokens.length === 0) return undefined;
+  const remaining = Math.max(0, totalCount - 3);
+  return `${visibleTokens.join(" · ")}${remaining > 0 ? ` +${formatInteger(remaining)} more` : ""}`;
 }
 
 export function formatInteger(value: number): string {

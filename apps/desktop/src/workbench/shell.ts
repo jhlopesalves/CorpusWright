@@ -27,6 +27,8 @@ import {
   buildLexicalSpectrumGeometry,
   buildRankFrequencyGeometry,
   buildVocabularyGrowthGeometry,
+  formatDispersionProfileStats,
+  formatUniversalTypeCaption,
 } from "../plots/model";
 import {
   renderCoverageSvg,
@@ -1228,58 +1230,35 @@ function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
   return createOverviewFigure({
     id: "overview-dispersion-profile",
     title: "Dispersion profile",
-    subtitle: "Document-frequency buckets as log-scale lollipops.",
-    captionStats: `>=90% count ${formatNumber(dispersion.dfAtLeast90pctCount)} · exactly-one count ${formatNumber(dispersion.dfIn1Count)} (${formatOptionalPercent(dispersion.dfIn1Share)})`,
-    captionReading: `Almost everything is local: ${formatOptionalPercent(dispersion.dfIn1Share)} of the vocabulary never leaves its home document.`,
+    subtitle: "Document-frequency reach bands as log-scale lollipops.",
+    captionStats: formatDispersionProfileStats(corpus.totals.types, dispersion.profileBuckets.length, dispersion.dfAtLeast90pctCount),
+    captionDetail: formatUniversalTypeCaption(
+      dispersion.universalTypes.map((type) => type.token),
+      dispersion.dfAtLeast90pctCount,
+    ),
+    captionReading: dispersion.reading,
     renderSvg: () => renderDispersionSvg(
       "overview-dispersion-profile",
       buildDispersionGeometry({
         buckets: [
-          {
-            key: "df-1",
-            label: "1 doc",
-            count: dispersion.dfIn1Count,
-            share: dispersion.dfIn1Share,
-          },
-          {
-            key: "df-2-9",
-            label: "2-9 docs",
-            count: dispersion.dfIn2To9Count,
-            share: dispersion.dfIn2To9Share,
-          },
-          {
-            key: "df-10-99",
-            label: "10-99 docs",
-            count: dispersion.dfIn10To99Count,
-            share: dispersion.dfIn10To99Share,
-          },
-          {
-            key: "df-100-plus",
-            label: "100+ docs",
-            count: dispersion.dfIn100PlusCount,
-            share: dispersion.dfIn100PlusShare,
-          },
+          ...dispersion.profileBuckets.map((bucket) => ({
+            key: `df-profile-${bucket.lowerBound}-${bucket.upperBound ?? "plus"}`,
+            label: bucket.label,
+            count: bucket.count,
+            share: bucket.share,
+          })),
           {
             key: "df-90pct",
-            label: ">=90%",
+            label: "≥90% of documents",
             count: dispersion.dfAtLeast90pctCount,
             share: dispersion.dfAtLeast90pctShare,
             highlighted: true,
-            detail: universalTypeLabel(dispersion),
+            detail: formatNumber(dispersion.dfAtLeast90pctCount),
           },
         ],
       }),
     ),
   });
-}
-
-function universalTypeLabel(dispersion: AnalysisCorpus["dispersion"]): string {
-  const tokens = dispersion.universalTypes.map((type) => type.token);
-  const remaining = Math.max(0, dispersion.dfAtLeast90pctCount - tokens.length);
-  const tokenText = tokens.length === 0
-    ? ""
-    : ` - ${tokens.join(" · ")}${remaining > 0 ? ` · +${formatNumber(remaining)} more` : ""}`;
-  return `${formatNumber(dispersion.dfAtLeast90pctCount)}${tokenText}`;
 }
 
 function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {

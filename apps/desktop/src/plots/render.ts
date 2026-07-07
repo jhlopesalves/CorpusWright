@@ -108,6 +108,7 @@ export function renderDispersionSvg(plotId: string, geometry: DispersionGeometry
     y: "",
     valueAxis: "x",
   });
+  for (const divider of geometry.dividers) renderLine(svg, divider);
   for (const stem of geometry.stems) renderLine(svg, stem);
   renderPoints(svg, geometry.points, "cw-plot-point is-panel-stroked is-lollipop");
   for (const point of geometry.points.filter((candidate) => candidate.datum.highlighted)) {
