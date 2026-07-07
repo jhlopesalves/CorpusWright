@@ -306,6 +306,7 @@
   --cw-plot-fit: #9bc7fc;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #76fff7;
   --cw-plot-ramp-1: #57dbff;
   --cw-plot-ramp-2: #57a4ff;
@@ -406,6 +407,7 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #009078;
   --cw-plot-ramp-1: #008faa;
   --cw-plot-ramp-2: #0058aa;
@@ -505,6 +507,7 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #10af8f;
   --cw-plot-ramp-1: #12b1c6;
   --cw-plot-ramp-2: #1278c6;
@@ -604,6 +607,7 @@
   --cw-plot-fit: #0a9dff;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #3cffda;
   --cw-plot-ramp-1: #1cf7ff;
   --cw-plot-ramp-2: #1cabff;
@@ -707,6 +711,7 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #009078;
   --cw-plot-ramp-1: #008faa;
   --cw-plot-ramp-2: #0058aa;
@@ -813,6 +818,7 @@
   --cw-plot-fit: #87c2ff;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #60fff3;
   --cw-plot-ramp-1: #3fe3ff;
   --cw-plot-ramp-2: #3fa3ff;
@@ -917,6 +923,7 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #44675e;
   --cw-plot-ramp-1: #4e7376;
   --cw-plot-ramp-2: #4e6676;
@@ -1016,6 +1023,7 @@
   --cw-plot-fit: #aab8c0;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #97b5ad;
   --cw-plot-ramp-1: #85a5a8;
   --cw-plot-ramp-2: #859aa8;
@@ -1116,6 +1124,7 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #1e966b;
   --cw-plot-ramp-1: #23aba6;
   --cw-plot-ramp-2: #2385ab;
@@ -1215,6 +1224,7 @@
   --cw-plot-fit: #83c9d2;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #73d3a1;
   --cw-plot-ramp-1: #5cccb5;
   --cw-plot-ramp-2: #5cc0cc;
@@ -1316,6 +1326,7 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #7a2b37;
   --cw-plot-ramp-1: #8d4132;
   --cw-plot-ramp-2: #8d5e32;
@@ -1415,6 +1426,7 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #4b6f35;
   --cw-plot-ramp-1: #42813d;
   --cw-plot-ramp-2: #3d814e;
@@ -1514,6 +1526,7 @@
   --cw-plot-fit: #a2c893;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #bfc582;
   --cw-plot-ramp-1: #9cbb6d;
   --cw-plot-ramp-2: #83bb6d;
@@ -1614,6 +1627,7 @@
   --cw-plot-fit: #3debff;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #00e5ff;
   --cw-plot-ramp-1: #00e5ff;
   --cw-plot-ramp-2: #00e5ff;
@@ -2507,10 +2521,62 @@ main {
 }
 
 .cw-overview-figure-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
+}
+
+.cw-overview-figure.is-collapsed {
+  gap: 0;
+  padding-block: 10px;
+}
+
+.cw-overview-figure.is-collapsed .cw-overview-figure-header {
+  align-items: center;
+}
+
+.cw-overview-figure-sparkline {
+  display: inline-grid;
+  width: 28px;
+  height: 18px;
+  place-items: center;
+  margin-top: 2px;
+  color: var(--cw-plot-point);
+}
+
+.cw-overview-figure.is-collapsed .cw-overview-figure-sparkline {
+  margin-top: 0;
+}
+
+.cw-overview-figure-sparkline-svg {
+  display: block;
+  overflow: visible;
+}
+
+.cw-overview-figure-sparkline-line {
+  fill: none;
+  stroke: var(--cw-plot-point);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.cw-overview-figure-sparkline-dot {
+  stroke: var(--panel-bg);
+  stroke-width: 0.8;
+}
+
+.cw-overview-figure-sparkline-dot-0 {
+  fill: var(--cw-plot-ramp-0);
+}
+
+.cw-overview-figure-sparkline-dot-1 {
+  fill: var(--cw-plot-ramp-2);
+}
+
+.cw-overview-figure-sparkline-dot-2 {
+  fill: var(--cw-plot-ramp-4);
 }
 
 .cw-overview-figure-title-block {
@@ -2530,6 +2596,12 @@ main {
   color: var(--text-muted);
   font-size: 12.5px;
   line-height: 1.35;
+}
+
+.cw-overview-figure.is-collapsed .cw-overview-figure-title-block h4 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cw-overview-figure-actions {
@@ -2556,22 +2628,45 @@ main {
 }
 
 .cw-overview-figure-collapse {
-  width: 32px;
+  min-width: 88px;
+  justify-content: center;
+}
+
+.cw-overview-figure-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 8px;
+  font-family: var(--cw-font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .cw-overview-figure-chevron {
   display: inline-block;
+  flex: 0 0 auto;
   transform-origin: center;
   transition: transform 160ms ease-out;
 }
 
-.cw-overview-figure.is-collapsed .cw-overview-figure-chevron {
-  transform: rotate(-90deg);
+.cw-overview-figure:not(.is-collapsed) .cw-overview-figure-chevron {
+  transform: rotate(180deg);
 }
 
 .cw-overview-figure-body {
   min-width: 0;
   overflow-x: auto;
+}
+
+.cw-overview-figure.is-collapsed .cw-overview-figure-body,
+.cw-overview-figure.is-collapsed .cw-overview-figure-caption,
+.cw-overview-figure.is-collapsed .cw-overview-figure-subtitle,
+.cw-overview-figure.is-collapsed .cw-overview-figure-export,
+.cw-overview-figure.is-collapsed .cw-overview-figure-controls,
+.cw-overview-figure.is-collapsed .cw-overview-figure-badge-slot {
+  display: none;
 }
 
 .cw-overview-figure-caption {
@@ -2584,15 +2679,22 @@ main {
 }
 
 .cw-overview-figure-caption-stats {
-  color: var(--text-color);
   font-family: var(--cw-font-mono);
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   line-height: 1.4;
+}
+
+.cw-overview-figure-caption-metric {
+  color: var(--text-muted);
+}
+
+.cw-overview-figure-caption-value {
+  color: var(--text-color);
 }
 
 .cw-overview-figure-caption-reading {
   color: var(--text-muted);
-  font-size: 0.81rem;
+  font-size: 0.78rem;
   line-height: 1.45;
 }
 
@@ -2688,6 +2790,12 @@ main {
 .cw-plot-fit-line {
   stroke: var(--cw-plot-fit);
   stroke-width: 2.4;
+}
+
+.cw-plot-line-halo {
+  opacity: var(--cw-plot-glow-opacity);
+  pointer-events: none;
+  stroke-width: 4;
 }
 
 .cw-plot-area {
@@ -8115,6 +8223,7 @@ mark.search-match.current-match {
   --cw-plot-fit: #dfb995;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #de7887;
   --cw-plot-ramp-1: #d77460;
   --cw-plot-ramp-2: #d79a60;
@@ -8215,6 +8324,7 @@ mark.search-match.current-match {
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #000000;
   --cw-plot-ramp-1: #000000;
   --cw-plot-ramp-2: #000000;
