@@ -2641,6 +2641,11 @@ main {
   line-height: 1;
 }
 
+.cw-overview-figure-download-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
 .cw-overview-figure-collapse {
   min-width: 88px;
   justify-content: center;

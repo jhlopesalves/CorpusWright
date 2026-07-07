@@ -62,7 +62,23 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
   exportButton.className = "secondary-btn cw-overview-figure-icon-btn cw-overview-figure-export";
   exportButton.title = "Export SVG";
   exportButton.setAttribute("aria-label", `Export ${options.title} as SVG`);
-  exportButton.textContent = "SVG";
+  const exportIcon = document.createElementNS(SVG_NS, "svg");
+  exportIcon.classList.add("cw-overview-figure-download-icon");
+  exportIcon.setAttribute("aria-hidden", "true");
+  exportIcon.setAttribute("viewBox", "0 0 14 14");
+  exportIcon.setAttribute("width", "14");
+  exportIcon.setAttribute("height", "14");
+  exportIcon.setAttribute("fill", "none");
+  exportIcon.setAttribute("stroke", "currentColor");
+  exportIcon.setAttribute("stroke-width", "1.6");
+  exportIcon.setAttribute("stroke-linecap", "round");
+  exportIcon.setAttribute("stroke-linejoin", "round");
+  for (const d of ["M7 1.5 V8.5 M4 6 L7 9 L10 6", "M2 11.5 H12"]) {
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", d);
+    exportIcon.appendChild(path);
+  }
+  exportButton.appendChild(exportIcon);
 
   const collapseButton = document.createElement("button");
   collapseButton.type = "button";
