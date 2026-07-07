@@ -554,9 +554,14 @@ pub(super) fn rank_frequency_summary(
         .collect::<Vec<_>>();
     let fit = linear_regression(&fit_points);
     let fitted_rank_start = fit.as_ref().map(|_| 4);
-    let fitted_rank_end = fit
-        .as_ref()
-        .map(|_| u64::try_from(fit_points.len() + 1).unwrap_or(u64::MAX));
+    let fitted_rank_end = fit.as_ref().and_then(|_| {
+        frequencies
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(index, frequency)| *index >= 3 && **frequency > 1)
+            .map(|(index, _)| u64::try_from(index + 1).unwrap_or(u64::MAX))
+    });
     let points = sampled_indices(frequencies.len(), MAX_DISTRIBUTION_POINTS)
         .into_iter()
         .map(|index| RankFrequencyPoint {
