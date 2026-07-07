@@ -7,8 +7,16 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 pub(super) const OVERVIEW_DOCUMENT_LIMIT: usize = 20;
 const FREQUENT_TERM_THRESHOLD: u64 = 10;
 const HIGH_DISPERSION_THRESHOLD: f64 = 0.5;
+const PLANE_LOUD_MIN_FREQUENCY: u64 = 1000;
 const DISPERSION_SAMPLE_TYPE_LIMIT: usize = 20;
 const UNIVERSAL_TYPE_LIMIT: usize = 12;
+const DISPERSION_PLANE_X_BINS: usize = 48;
+const DISPERSION_PLANE_Y_BINS: usize = 32;
+const DISPERSION_PLANE_WITNESS_LIMIT: usize = 16;
+const DISPERSION_ROSTER_LIMIT: usize = 40;
+const MATTR_DISTRIBUTION_BIN_WIDTH: f64 = 0.025;
+const MATTR_DISTRIBUTION_BINS: usize = 40;
+const MATTR_WITNESS_LIMIT: usize = 5;
 
 const MAX_DISTRIBUTION_POINTS: usize = 200;
 
@@ -74,8 +82,18 @@ pub struct CorpusOverviewBalance {
     pub median_tokens: Option<f64>,
     pub minimum_tokens: Option<u64>,
     pub maximum_tokens: Option<u64>,
+    pub length_histogram: Vec<LengthHistogramBin>,
     pub remaining_documents: usize,
     pub reading: String,
+}
+
+/// One power-of-two document-length histogram bin.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LengthHistogramBin {
+    pub lower_tokens: u64,
+    pub upper_tokens: Option<u64>,
+    pub count: usize,
 }
 
 /// Type-form diagnostics computed from the indexed vocabulary.
@@ -113,6 +131,7 @@ pub struct CorpusOverviewLexicalSpectrum {
     pub mattr_max: Option<f64>,
     pub mattr_docs_excluded: u32,
     pub mattr_docs_used: u32,
+    pub mattr_distribution: Option<CorpusOverviewMattrDistribution>,
     pub mtld_threshold: f64,
     pub mtld_min_document_tokens: u32,
     pub mtld_median: Option<f64>,
@@ -120,6 +139,28 @@ pub struct CorpusOverviewLexicalSpectrum {
     pub mtld_max: Option<f64>,
     pub mtld_docs_excluded: u32,
     pub mtld_docs_used: u32,
+    pub reading: String,
+}
+
+/// One bounded document witness from the MATTR distribution.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MattrWitness {
+    pub name: String,
+    pub mattr: f64,
+    pub tokens: u64,
+}
+
+/// Fixed-bin distribution of per-document MATTR values.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusOverviewMattrDistribution {
+    pub bin_width: f64,
+    pub counts: Vec<u32>,
+    pub used_documents: usize,
+    pub excluded_documents: usize,
+    pub low_witnesses: Vec<MattrWitness>,
+    pub high_witnesses: Vec<MattrWitness>,
     pub reading: String,
 }
 
@@ -203,6 +244,9 @@ pub struct CorpusOverviewDispersion {
     pub frequent_types: usize,
     pub high_dp_frequent_types: usize,
     pub median_dp: Option<f64>,
+    pub profile_buckets: Vec<DispersionProfileBucket>,
+    pub plane: Option<CorpusOverviewDispersionPlane>,
+    pub roster: Vec<DispersionRosterEntry>,
     pub df_in_1_count: usize,
     pub df_in_2_to_9_count: usize,
     pub df_in_10_to_99_count: usize,
@@ -233,6 +277,65 @@ pub struct CorpusOverviewDispersion {
     pub universal_types: Vec<UniversalType>,
     pub median_documents_per_type: Option<f64>,
     pub reading: String,
+}
+
+/// One document-frequency reach band in the fine-grained dispersion profile.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DispersionProfileBucket {
+    pub label: String,
+    pub lower_bound: usize,
+    pub upper_bound: Option<usize>,
+    pub count: usize,
+    pub share: Option<f64>,
+    pub sample_types: Vec<String>,
+}
+
+/// Semantic category for a labelled witness in the dispersion plane.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DispersionWitnessKind {
+    Core,
+    LoudButLocal,
+    QuietAndEven,
+    RareAndLocal,
+}
+
+/// One capped witness point for the dispersion plane.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DispersionWitness {
+    pub token: String,
+    pub frequency: u64,
+    pub document_frequency: usize,
+    pub dp: f64,
+    pub kind: DispersionWitnessKind,
+}
+
+/// Fixed density grid over frequency and DP.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusOverviewDispersionPlane {
+    pub x_bins: usize,
+    pub y_bins: usize,
+    pub freq_log10_max: f64,
+    pub counts: Vec<u32>,
+    pub max_cell_count: u32,
+    pub witnesses: Vec<DispersionWitness>,
+    pub loud_but_local_count: usize,
+    pub loud_but_local_min_frequency: u64,
+    pub high_dispersion_threshold: f64,
+    pub reading: String,
+}
+
+/// One high-frequency type shown in the DP roster.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DispersionRosterEntry {
+    pub token: String,
+    pub frequency: u64,
+    pub document_frequency: usize,
+    pub dp: f64,
 }
 
 /// One type present in at least 90% of documents, capped for overview display.
@@ -876,6 +979,389 @@ fn compare_type_sample(
         .then_with(|| left_token.cmp(right_token))
 }
 
+struct DispersionProfileAccumulator {
+    label: &'static str,
+    lower_bound: usize,
+    upper_bound: Option<usize>,
+    count: usize,
+    samples: TypeSampleCollector,
+}
+
+fn dispersion_profile_buckets(
+    terms: &[AnalysisTerm],
+    document_count: usize,
+    total_types: usize,
+) -> Vec<DispersionProfileBucket> {
+    let mut buckets = [
+        ("1", 1usize, Some(1usize)),
+        ("2", 2, Some(2)),
+        ("3–4", 3, Some(4)),
+        ("5–9", 5, Some(9)),
+        ("10–19", 10, Some(19)),
+        ("20–49", 20, Some(49)),
+        ("50–99", 50, Some(99)),
+        ("100–199", 100, Some(199)),
+        ("200–499", 200, Some(499)),
+        ("500–999", 500, Some(999)),
+        ("1,000–1,999", 1_000, Some(1_999)),
+        ("2,000–4,999", 2_000, Some(4_999)),
+        ("5,000+", 5_000, None),
+    ]
+    .into_iter()
+    .filter(|(_, lower_bound, _)| *lower_bound <= document_count)
+    .map(
+        |(label, lower_bound, upper_bound)| DispersionProfileAccumulator {
+            label,
+            lower_bound,
+            upper_bound,
+            count: 0,
+            samples: TypeSampleCollector::default(),
+        },
+    )
+    .collect::<Vec<_>>();
+
+    for term in terms {
+        let document_frequency = term.document_frequency;
+        let Some(bucket) = buckets.iter_mut().find(|bucket| {
+            document_frequency >= bucket.lower_bound
+                && bucket
+                    .upper_bound
+                    .is_none_or(|upper_bound| document_frequency <= upper_bound)
+        }) else {
+            continue;
+        };
+        bucket.count += 1;
+        bucket.samples.consider(term);
+    }
+
+    buckets
+        .into_iter()
+        .map(|bucket| DispersionProfileBucket {
+            label: bucket.label.to_string(),
+            lower_bound: bucket.lower_bound,
+            upper_bound: bucket.upper_bound,
+            count: bucket.count,
+            share: type_share(bucket.count, total_types),
+            sample_types: bucket.samples.into_ordered_tokens(),
+        })
+        .collect()
+}
+
+fn floor_log2_u64(value: u64) -> u32 {
+    u64::BITS - 1 - value.leading_zeros()
+}
+
+fn document_length_histogram(sorted_token_counts: &[u64]) -> Vec<LengthHistogramBin> {
+    let Some(&minimum_tokens) = sorted_token_counts.first() else {
+        return Vec::new();
+    };
+    let maximum_tokens = sorted_token_counts
+        .last()
+        .copied()
+        .unwrap_or(minimum_tokens);
+    let first_power = floor_log2_u64(minimum_tokens.max(1));
+    let last_power = floor_log2_u64(maximum_tokens.max(1));
+    let mut bins = (first_power..=last_power)
+        .map(|power| LengthHistogramBin {
+            lower_tokens: 1u64.checked_shl(power).unwrap_or(0),
+            upper_tokens: 1u64.checked_shl(power + 1),
+            count: 0,
+        })
+        .collect::<Vec<_>>();
+
+    for &token_count in sorted_token_counts {
+        let offset = if token_count == 0 {
+            0
+        } else {
+            floor_log2_u64(token_count).saturating_sub(first_power) as usize
+        };
+        let index = offset.min(bins.len().saturating_sub(1));
+        if let Some(bin) = bins.get_mut(index) {
+            bin.count += 1;
+        }
+    }
+
+    bins
+}
+
+#[derive(Debug, Clone)]
+struct MattrDocumentValue {
+    name: String,
+    mattr: f64,
+    tokens: u64,
+}
+
+fn mattr_witness(value: MattrDocumentValue) -> MattrWitness {
+    MattrWitness {
+        name: value.name,
+        mattr: value.mattr,
+        tokens: value.tokens,
+    }
+}
+
+fn mattr_distribution(documents: &[AnalysisDocument]) -> Option<CorpusOverviewMattrDistribution> {
+    let mut values = documents
+        .iter()
+        .filter_map(|document| {
+            document
+                .mattr
+                .filter(|mattr| mattr.is_finite())
+                .map(|mattr| MattrDocumentValue {
+                    name: document_name(&document.summary).to_string(),
+                    mattr,
+                    tokens: document.summary.token_count,
+                })
+        })
+        .collect::<Vec<_>>();
+    let used_documents = values.len();
+    if used_documents == 0 {
+        return None;
+    }
+
+    let mut counts = vec![0u32; MATTR_DISTRIBUTION_BINS];
+    for value in &values {
+        let clamped = value.mattr.clamp(0.0, 1.0);
+        let index = if clamped >= 1.0 {
+            MATTR_DISTRIBUTION_BINS - 1
+        } else {
+            (clamped / MATTR_DISTRIBUTION_BIN_WIDTH).floor() as usize
+        };
+        counts[index.min(MATTR_DISTRIBUTION_BINS - 1)] += 1;
+    }
+
+    values.sort_by(|left, right| {
+        left.mattr
+            .total_cmp(&right.mattr)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    let low_witnesses = values
+        .iter()
+        .take(MATTR_WITNESS_LIMIT)
+        .cloned()
+        .map(mattr_witness)
+        .collect::<Vec<_>>();
+    values.sort_by(|left, right| {
+        right
+            .mattr
+            .total_cmp(&left.mattr)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    let high_witnesses = values
+        .into_iter()
+        .take(MATTR_WITNESS_LIMIT)
+        .map(mattr_witness)
+        .collect::<Vec<_>>();
+
+    Some(CorpusOverviewMattrDistribution {
+        bin_width: MATTR_DISTRIBUTION_BIN_WIDTH,
+        counts,
+        used_documents,
+        excluded_documents: documents.len().saturating_sub(used_documents),
+        low_witnesses,
+        high_witnesses,
+        reading: "Low-MATTR outliers are where cleaning failures hide: repeated boilerplate, OCR stutter, and template text all crater a document's diversity."
+            .to_string(),
+    })
+}
+
+fn dispersion_witness(term: &AnalysisTerm, kind: DispersionWitnessKind) -> DispersionWitness {
+    DispersionWitness {
+        token: term.token.clone(),
+        frequency: term.frequency,
+        document_frequency: term.document_frequency,
+        dp: term.dispersion.clamp(0.0, 1.0),
+        kind,
+    }
+}
+
+fn push_dispersion_witness(
+    witnesses: &mut Vec<DispersionWitness>,
+    selected_tokens: &mut HashSet<String>,
+    term: &AnalysisTerm,
+    kind: DispersionWitnessKind,
+) {
+    if witnesses.len() >= DISPERSION_PLANE_WITNESS_LIMIT
+        || selected_tokens.contains(term.token.as_str())
+    {
+        return;
+    }
+    selected_tokens.insert(term.token.clone());
+    witnesses.push(dispersion_witness(term, kind));
+}
+
+fn dispersion_plane_witnesses(terms: &[AnalysisTerm]) -> Vec<DispersionWitness> {
+    let mut witnesses = Vec::with_capacity(DISPERSION_PLANE_WITNESS_LIMIT);
+    let mut selected_tokens = HashSet::<String>::new();
+
+    let mut core_candidates = terms.iter().collect::<Vec<_>>();
+    core_candidates.sort_by(|left, right| {
+        compare_type_sample(left.frequency, &left.token, right.frequency, &right.token)
+    });
+    for term in core_candidates.into_iter().take(3) {
+        push_dispersion_witness(
+            &mut witnesses,
+            &mut selected_tokens,
+            term,
+            DispersionWitnessKind::Core,
+        );
+    }
+
+    let mut loud_candidates = terms
+        .iter()
+        .filter(|term| {
+            term.frequency >= PLANE_LOUD_MIN_FREQUENCY
+                && term.dispersion >= HIGH_DISPERSION_THRESHOLD
+        })
+        .collect::<Vec<_>>();
+    loud_candidates.sort_by(|left, right| {
+        right
+            .dispersion
+            .total_cmp(&left.dispersion)
+            .then_with(|| right.frequency.cmp(&left.frequency))
+            .then_with(|| left.token.cmp(&right.token))
+    });
+    for term in loud_candidates {
+        if witnesses
+            .iter()
+            .filter(|witness| witness.kind == DispersionWitnessKind::LoudButLocal)
+            .count()
+            >= 8
+        {
+            break;
+        }
+        push_dispersion_witness(
+            &mut witnesses,
+            &mut selected_tokens,
+            term,
+            DispersionWitnessKind::LoudButLocal,
+        );
+    }
+
+    let mut quiet_candidates = terms
+        .iter()
+        .filter(|term| (100..10_000).contains(&term.frequency) && term.dispersion < 0.25)
+        .collect::<Vec<_>>();
+    quiet_candidates.sort_by(|left, right| {
+        left.dispersion
+            .total_cmp(&right.dispersion)
+            .then_with(|| right.frequency.cmp(&left.frequency))
+            .then_with(|| left.token.cmp(&right.token))
+    });
+    for term in quiet_candidates {
+        if witnesses
+            .iter()
+            .filter(|witness| witness.kind == DispersionWitnessKind::QuietAndEven)
+            .count()
+            >= 3
+        {
+            break;
+        }
+        push_dispersion_witness(
+            &mut witnesses,
+            &mut selected_tokens,
+            term,
+            DispersionWitnessKind::QuietAndEven,
+        );
+    }
+
+    let mut rare_candidates = terms
+        .iter()
+        .filter(|term| term.document_frequency == 1)
+        .collect::<Vec<_>>();
+    rare_candidates.sort_by(|left, right| {
+        compare_type_sample(left.frequency, &left.token, right.frequency, &right.token)
+    });
+    for term in rare_candidates {
+        if witnesses
+            .iter()
+            .filter(|witness| witness.kind == DispersionWitnessKind::RareAndLocal)
+            .count()
+            >= 2
+        {
+            break;
+        }
+        push_dispersion_witness(
+            &mut witnesses,
+            &mut selected_tokens,
+            term,
+            DispersionWitnessKind::RareAndLocal,
+        );
+    }
+
+    witnesses
+}
+
+fn dispersion_plane(
+    terms: &[AnalysisTerm],
+    document_count: usize,
+) -> Option<CorpusOverviewDispersionPlane> {
+    if document_count < 2 {
+        return None;
+    }
+
+    let maximum_frequency = terms.iter().map(|term| term.frequency).max().unwrap_or(0);
+    let freq_log10_max = if maximum_frequency > 0 {
+        (maximum_frequency as f64).log10() * 1.005
+    } else {
+        0.0
+    };
+    let x_denominator = if freq_log10_max > 0.0 {
+        freq_log10_max
+    } else {
+        1.0
+    };
+    let mut counts = vec![0u32; DISPERSION_PLANE_X_BINS * DISPERSION_PLANE_Y_BINS];
+    for term in terms.iter().filter(|term| term.frequency >= 1) {
+        let x = (term.frequency as f64).log10();
+        let xi = ((x / x_denominator * DISPERSION_PLANE_X_BINS as f64).floor() as isize)
+            .clamp(0, (DISPERSION_PLANE_X_BINS - 1) as isize) as usize;
+        let y = if term.dispersion.is_finite() {
+            term.dispersion.clamp(0.0, 0.999_999)
+        } else {
+            0.0
+        };
+        let yi = ((y * DISPERSION_PLANE_Y_BINS as f64).floor() as isize)
+            .clamp(0, (DISPERSION_PLANE_Y_BINS - 1) as isize) as usize;
+        let index = yi * DISPERSION_PLANE_X_BINS + xi;
+        counts[index] = counts[index].saturating_add(1);
+    }
+    let max_cell_count = counts.iter().copied().max().unwrap_or(0);
+    let loud_but_local_count = terms
+        .iter()
+        .filter(|term| {
+            term.frequency >= PLANE_LOUD_MIN_FREQUENCY
+                && term.dispersion >= HIGH_DISPERSION_THRESHOLD
+        })
+        .count();
+
+    Some(CorpusOverviewDispersionPlane {
+        x_bins: DISPERSION_PLANE_X_BINS,
+        y_bins: DISPERSION_PLANE_Y_BINS,
+        freq_log10_max,
+        counts,
+        max_cell_count,
+        witnesses: dispersion_plane_witnesses(terms),
+        loud_but_local_count,
+        loud_but_local_min_frequency: PLANE_LOUD_MIN_FREQUENCY,
+        high_dispersion_threshold: HIGH_DISPERSION_THRESHOLD,
+        reading: "A frequency list cannot separate the core (bottom right) from boilerplate and topic words (top right); the plane can."
+            .to_string(),
+    })
+}
+
+fn dispersion_roster(ranked_terms: &[&AnalysisTerm]) -> Vec<DispersionRosterEntry> {
+    ranked_terms
+        .iter()
+        .take(DISPERSION_ROSTER_LIMIT)
+        .map(|term| DispersionRosterEntry {
+            token: term.token.clone(),
+            frequency: term.frequency,
+            document_frequency: term.document_frequency,
+            dp: term.dispersion.clamp(0.0, 1.0),
+        })
+        .collect()
+}
+
 pub(super) fn balance_severity(
     document_count: usize,
     total_tokens: u64,
@@ -997,6 +1483,7 @@ pub(super) fn build_overview(
         .map(|document| document.summary.token_count)
         .collect::<Vec<_>>();
     token_counts.sort_unstable();
+    let length_histogram = document_length_histogram(&token_counts);
     let median_tokens = percentile(&token_counts, 0.5);
     let largest_share = sorted_documents
         .first()
@@ -1014,6 +1501,7 @@ pub(super) fn build_overview(
     let coefficient_of_variation = coefficient_of_variation(&token_counts);
     let effective_documents = effective_document_count(&token_counts, total_tokens);
     let mattr_summary = summarise_document_metric(documents, |document| document.mattr);
+    let mattr_distribution = mattr_distribution(documents);
     let mtld_summary = summarise_document_metric(documents, |document| document.mtld);
     let balance_severity = balance_severity(
         documents.len(),
@@ -1176,6 +1664,9 @@ pub(super) fn build_overview(
     let rank_frequency = rank_frequency_summary(&frequencies, &rank_tokens, total_tokens);
     let vocabulary_growth = vocabulary_growth_summary(&metadata.vocabulary_growth);
     let universal_types = universal_types(&ranked_terms, df_at_least_90pct_threshold);
+    let profile_buckets = dispersion_profile_buckets(terms, document_count, total_types);
+    let plane = dispersion_plane(terms, document_count);
+    let roster = dispersion_roster(&ranked_terms);
 
     let sources_in_project = metadata
         .overview_context
@@ -1373,6 +1864,7 @@ pub(super) fn build_overview(
             median_tokens,
             minimum_tokens: token_counts.first().copied(),
             maximum_tokens: token_counts.last().copied(),
+            length_histogram,
             remaining_documents: document_count.saturating_sub(displayed_document_count),
             reading: balance_reading,
         },
@@ -1406,6 +1898,7 @@ pub(super) fn build_overview(
             mattr_docs_excluded: u32::try_from(mattr_summary.documents_excluded)
                 .unwrap_or(u32::MAX),
             mattr_docs_used: u32::try_from(mattr_summary.documents_used).unwrap_or(u32::MAX),
+            mattr_distribution,
             mtld_threshold: MTLD_TTR_THRESHOLD,
             mtld_min_document_tokens: MTLD_MIN_DOCUMENT_TOKENS as u32,
             mtld_median: mtld_summary.median,
@@ -1435,6 +1928,9 @@ pub(super) fn build_overview(
             frequent_types: frequent_terms.len(),
             high_dp_frequent_types,
             median_dp,
+            profile_buckets,
+            plane,
+            roster,
             df_in_1_count,
             df_in_2_to_9_count,
             df_in_10_to_99_count,
