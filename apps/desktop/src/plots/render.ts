@@ -6,6 +6,7 @@ import {
 import type {
   CoverageGeometry,
   DispersionGeometry,
+  DispersionPlaneGeometry,
   LexicalSpectrumGeometry,
   PlotBox,
   PlotBracketGeometry,
@@ -121,6 +122,24 @@ export function renderDispersionSvg(plotId: string, geometry: DispersionGeometry
     });
     svg.appendChild(halo);
   }
+  renderLabels(svg, geometry.labels);
+  renderInteractionLayer(svg, geometry.box);
+  return svg;
+}
+
+export function renderDispersionPlaneSvg(plotId: string, geometry: DispersionPlaneGeometry): SVGSVGElement {
+  const svg = createBaseSvg(plotId, geometry.box);
+  renderDefinitions(svg, plotId);
+  renderAxes(svg, geometry.box, geometry.xScale, geometry.yScale, geometry.xTicks, geometry.yTicks, {
+    x: "TOKEN FREQUENCY",
+    y: "DISPERSION (DP) · 0 EVEN — 1 CONCENTRATED",
+    valueAxis: "y",
+  });
+  renderDensityCells(svg, geometry);
+  renderLine(svg, geometry.thresholdLine);
+  renderQuadrantPills(svg, geometry);
+  renderLabels(svg, [geometry.thresholdLabel]);
+  renderPlaneWitnesses(svg, geometry);
   renderLabels(svg, geometry.labels);
   renderInteractionLayer(svg, geometry.box);
   return svg;
@@ -292,7 +311,7 @@ function renderTickLabels(
   scaleKind: "linear" | "log",
 ): void {
   for (const tick of ticks) {
-    if (!tick.major && scaleKind === "log") {
+    if (!tick.major && (scaleKind === "log" || scaleKind === "linear")) {
       const mark = createSvgElement("line");
       if (axis === "x") {
         setAttrs(mark, {
@@ -404,6 +423,71 @@ function renderPoints(svg: SVGSVGElement, points: Array<PlotPointGeometry>, base
       "data-plot-y": point.y,
       "data-tooltip-title": point.tooltipTitle ?? "",
       "data-tooltip-rows": (point.tooltipRows ?? []).join("\n"),
+      style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms;`,
+    });
+    group.appendChild(circle);
+  });
+  svg.appendChild(group);
+}
+
+function renderDensityCells(svg: SVGSVGElement, geometry: DispersionPlaneGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-density-cells");
+  for (const cell of geometry.cells) {
+    const rect = createSvgElement("rect");
+    setAttrs(rect, {
+      x: cell.x,
+      y: cell.y,
+      width: cell.width,
+      height: cell.height,
+      rx: 1.5,
+      class: "cw-plot-density-cell cw-plot-hover-target",
+      tabindex: "0",
+      "data-plot-x": cell.x + cell.width / 2,
+      "data-plot-y": cell.y + cell.height / 2,
+      "data-tooltip-title": cell.tooltipTitle,
+      "data-tooltip-rows": cell.tooltipRows.join("\n"),
+      style: `fill: ${cell.fill}; opacity: ${cell.opacity};`,
+    });
+    group.appendChild(rect);
+  }
+  svg.appendChild(group);
+}
+
+function renderQuadrantPills(svg: SVGSVGElement, geometry: DispersionPlaneGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-quadrant-pills");
+  for (const pill of geometry.quadrantPills) {
+    const rect = createSvgElement("rect");
+    setAttrs(rect, {
+      x: pill.box.x,
+      y: pill.box.y,
+      width: pill.box.width,
+      height: pill.box.height,
+      rx: 10,
+      class: "cw-plot-quadrant-pill-bg",
+    });
+    group.appendChild(rect);
+  }
+  svg.appendChild(group);
+  renderLabels(svg, geometry.quadrantPills.map((pill) => pill.label));
+}
+
+function renderPlaneWitnesses(svg: SVGSVGElement, geometry: DispersionPlaneGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-plane-witnesses");
+  geometry.witnesses.forEach((witness, index) => {
+    const circle = createSvgElement("circle");
+    setAttrs(circle, {
+      cx: witness.x,
+      cy: witness.y,
+      r: 5,
+      class: "cw-plot-plane-witness cw-plot-hover-target",
+      tabindex: "0",
+      "data-plot-x": witness.x,
+      "data-plot-y": witness.y,
+      "data-tooltip-title": witness.tooltipTitle ?? "",
+      "data-tooltip-rows": (witness.tooltipRows ?? []).join("\n"),
       style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms;`,
     });
     group.appendChild(circle);
