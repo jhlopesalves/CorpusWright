@@ -110,8 +110,15 @@ export interface CorpusOverviewBalance {
   medianTokens: number | null;
   minimumTokens: number | null;
   maximumTokens: number | null;
+  lengthHistogram: LengthHistogramBin[];
   remainingDocuments: number;
   reading: string;
+}
+
+export interface LengthHistogramBin {
+  lowerTokens: number;
+  upperTokens: number | null;
+  count: number;
 }
 
 export interface CorpusOverviewExtractionQuality {
@@ -143,6 +150,7 @@ export interface CorpusOverviewLexicalSpectrum {
   mattrMax: number | null;
   mattrDocsExcluded: number;
   mattrDocsUsed: number;
+  mattrDistribution: CorpusOverviewMattrDistribution | null;
   mtldThreshold: number;
   mtldMinDocumentTokens: number;
   mtldMedian: number | null;
@@ -150,6 +158,22 @@ export interface CorpusOverviewLexicalSpectrum {
   mtldMax: number | null;
   mtldDocsExcluded: number;
   mtldDocsUsed: number;
+  reading: string;
+}
+
+export interface MattrWitness {
+  name: string;
+  mattr: number;
+  tokens: number;
+}
+
+export interface CorpusOverviewMattrDistribution {
+  binWidth: number;
+  counts: number[];
+  usedDocuments: number;
+  excludedDocuments: number;
+  lowWitnesses: MattrWitness[];
+  highWitnesses: MattrWitness[];
   reading: string;
 }
 
@@ -209,6 +233,9 @@ export interface CorpusOverviewDispersion {
   frequentTypes: number;
   highDpFrequentTypes: number;
   medianDp: number | null;
+  profileBuckets: DispersionProfileBucket[];
+  plane: CorpusOverviewDispersionPlane | null;
+  roster: DispersionRosterEntry[];
   dfIn1Count: number;
   dfIn2To9Count: number;
   dfIn10To99Count: number;
@@ -239,6 +266,45 @@ export interface CorpusOverviewDispersion {
   universalTypes: UniversalType[];
   medianDocumentsPerType: number | null;
   reading: string;
+}
+
+export interface DispersionProfileBucket {
+  label: string;
+  lowerBound: number;
+  upperBound: number | null;
+  count: number;
+  share: number | null;
+  sampleTypes: string[];
+}
+
+export type DispersionWitnessKind = "core" | "loudButLocal" | "quietAndEven" | "rareAndLocal";
+
+export interface DispersionWitness {
+  token: string;
+  frequency: number;
+  documentFrequency: number;
+  dp: number;
+  kind: DispersionWitnessKind;
+}
+
+export interface CorpusOverviewDispersionPlane {
+  xBins: number;
+  yBins: number;
+  freqLog10Max: number;
+  counts: number[];
+  maxCellCount: number;
+  witnesses: DispersionWitness[];
+  loudButLocalCount: number;
+  loudButLocalMinFrequency: number;
+  highDispersionThreshold: number;
+  reading: string;
+}
+
+export interface DispersionRosterEntry {
+  token: string;
+  frequency: number;
+  documentFrequency: number;
+  dp: number;
 }
 
 export interface UniversalType {
