@@ -399,6 +399,7 @@ function refreshAnnotationBuildElapsed(): void {
     status: "building",
     elapsedMs: now - annotationBuildStartedAt,
     annotatingElapsedMs,
+    cancellationRequested: annotationBuildTransient.cancellationRequested,
     progress: annotationBuildTransient?.status === "building" ? annotationBuildTransient.progress : null,
     progressSamples: annotationBuildTransient?.status === "building"
       && annotationBuildTransient.progress?.current_phase.type === "Annotating"
@@ -487,15 +488,15 @@ export async function handleAnnotationLayerAction(): Promise<void> {
   }
 
   if (view.action === "cancel") {
-    annotationBuildGeneration += 1;
-    stopAnnotationBuildTimer();
-    annotationBuildStartedAt = null;
-    annotationBuildAnnotatingStartedAt = null;
-    annotationBuildTransient = { status: "cancelled" };
+    if (annotationBuildTransient?.status === "building") {
+      annotationBuildTransient = {
+        ...annotationBuildTransient,
+        cancellationRequested: true,
+      };
+    }
     dom.statusBar.textContent = "Cancelling annotation build...";
     renderFrequencyList();
     await cancelAnnotationBuild().catch(() => undefined);
-    dom.statusBar.textContent = "Annotation build cancelled.";
     renderFrequencyList();
     return;
   }
@@ -520,6 +521,7 @@ export async function handleAnnotationLayerAction(): Promise<void> {
     status: "building",
     elapsedMs: 0,
     annotatingElapsedMs: null,
+    cancellationRequested: false,
     progress: null,
     progressSamples: [],
   };
