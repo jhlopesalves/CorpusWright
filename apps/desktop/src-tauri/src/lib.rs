@@ -58,6 +58,12 @@ use rayon::prelude::*;
 
 mod project;
 
+const ANNOTATION_TIMING_ENV: &str = "CORPUSWRIGHT_ANNOTATION_TIMING";
+
+fn annotation_timing_enabled() -> bool {
+    std::env::var(ANNOTATION_TIMING_ENV).as_deref() == Ok("1")
+}
+
 struct ScanState {
     cancel: CancellationFlag,
 }
@@ -3913,10 +3919,62 @@ async fn query_frequency_list_command(
     cleaning_config: CleaningConfig,
     analysis: tauri::State<'_, AnalysisState>,
 ) -> Result<FrequencyPage, String> {
-    let corpus = analysis.corpus(&cleaning_config)?;
-    tauri::async_runtime::spawn_blocking(move || query_frequency_list(&corpus, &query))
-        .await
-        .map_err(|error| format!("Frequency query task failed: {error}"))
+    let timing_enabled = annotation_timing_enabled();
+    let started_at = Instant::now();
+    if timing_enabled {
+        eprintln!(
+            "annotation-frequency-query entry offset={} limit={} group_by={:?} case_fold={} pos_filter={:?}",
+            query.offset, query.limit, query.group_by, query.case_fold, query.pos_filter
+        );
+    }
+
+    let corpus = match analysis.corpus(&cleaning_config) {
+        Ok(corpus) => corpus,
+        Err(error) => {
+            if timing_enabled {
+                eprintln!(
+                    "annotation-frequency-query exit duration_ms={} error={:?}",
+                    duration_ms(started_at.elapsed()),
+                    error
+                );
+            }
+            return Err(error);
+        }
+    };
+    let result =
+        tauri::async_runtime::spawn_blocking(move || query_frequency_list(&corpus, &query))
+            .await
+            .map_err(|error| format!("Frequency query task failed: {error}"));
+
+    if timing_enabled {
+        match &result {
+            Ok(page) => {
+                if let Some(error) = &page.query_error {
+                    eprintln!(
+                        "annotation-frequency-query exit duration_ms={} error={:?}",
+                        duration_ms(started_at.elapsed()),
+                        error
+                    );
+                } else {
+                    eprintln!(
+                        "annotation-frequency-query exit duration_ms={} rows={} total_terms={}",
+                        duration_ms(started_at.elapsed()),
+                        page.items.len(),
+                        page.total_terms
+                    );
+                }
+            }
+            Err(error) => {
+                eprintln!(
+                    "annotation-frequency-query exit duration_ms={} error={:?}",
+                    duration_ms(started_at.elapsed()),
+                    error
+                );
+            }
+        }
+    }
+
+    result
 }
 
 #[tauri::command]

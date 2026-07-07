@@ -39,11 +39,13 @@ function building(
   elapsedMs = 38000,
   annotatingElapsedMs: number | null = null,
   progressSamples: AnnotationTokenProgressSample[] = [],
+  cancellationRequested = false,
 ): Parameters<typeof annotationLayerControlViewModel>[0]["transient"] {
   return {
     status: "building",
     elapsedMs,
     annotatingElapsedMs,
+    cancellationRequested,
     progress,
     progressSamples,
   };
@@ -96,6 +98,9 @@ assert(
   model("missing", building()).action === "cancel",
   "Building should wire the action to cancel",
 );
+const cancelling = model("missing", building(null, 38000, null, [], true));
+assert(cancelling.actionLabel === "Cancelling...", "Requested cancellation should be acknowledged");
+assert(cancelling.actionDisabled, "Requested cancellation should disable a second cancel click");
 assert(model("ready").actionLabel === "Rebuild annotations", "Ready should rebuild");
 assert(model("stale").actionLabel === "Rebuild annotations", "Stale should rebuild");
 assert(
@@ -215,6 +220,10 @@ assert(
 assert(
   formatAnnotationTokenRate(1249) === "1,200 tokens/s",
   "Token rate formatting should round to hundreds",
+);
+assert(
+  formatAnnotationTokenRate(99) === "under 100 tokens/s",
+  "Token rate formatting should not floor slow throughput to 100",
 );
 assert(
   appendAnnotationTokenProgressSample([{ atMs: 0, tokensDone: 0n }], { atMs: 61000, tokensDone: 61000n }).length === 1,

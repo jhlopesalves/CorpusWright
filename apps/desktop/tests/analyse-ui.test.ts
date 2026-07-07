@@ -69,6 +69,14 @@ assert(
   !html.includes("Build annotation cache"),
   "Primary UI copy should not say Build annotation cache",
 );
+const annotationBuildCalls = workbench.match(/buildAnnotationCache\(/g) ?? [];
+assert(
+  annotationBuildCalls.length === 1
+    && workbench.includes('dom.frequencyAnnotationLayer.addEventListener("click", handleAnnotationLayerClick)')
+    && workbench.includes('closest<HTMLButtonElement>("[data-annotation-layer-action]")')
+    && workbench.includes("void handleAnnotationLayerAction();"),
+  "Annotation builds should only start from the explicit annotation-layer action click",
+);
 
 const frequencyHeadMatch = html.match(/<thead id="frequency-table-head">([\s\S]*?)<\/thead>/);
 assert(frequencyHeadMatch, "Frequency table head should exist");
