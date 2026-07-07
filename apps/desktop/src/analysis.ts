@@ -136,6 +136,7 @@ export interface CorpusOverviewLexicalSpectrum {
   band10plusShare: number | null;
   frequencySpectrum: FrequencySpectrumPoint[];
   frequencySpectrumTruncated: boolean;
+  frequencySpectrumTotal: number;
   mattrWindow: number;
   mattrMedian: number | null;
   mattrMin: number | null;
