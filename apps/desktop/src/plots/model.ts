@@ -316,6 +316,52 @@ export interface LengthHistogramGeometry {
   labels: PlotLabelGeometry[];
 }
 
+export interface MattrWitnessDatum {
+  name: string;
+  mattr: number;
+  tokens: number;
+}
+
+export interface MattrDistributionPayload {
+  binWidth: number;
+  counts: number[];
+  usedDocuments: number;
+  excludedDocuments: number;
+  lowWitnesses: MattrWitnessDatum[];
+  highWitnesses: MattrWitnessDatum[];
+  reading: string;
+}
+
+export interface MattrDistributionBinDatum {
+  index: number;
+  lower: number;
+  upper: number;
+  count: number;
+}
+
+export interface MattrWitnessTickGeometry {
+  x: number;
+  y1: number;
+  y2: number;
+  datum: MattrWitnessDatum;
+  label: PlotLabelGeometry;
+  tooltipTitle: string;
+  tooltipRows: string[];
+}
+
+export interface MattrDistributionGeometry {
+  box: PlotBox;
+  xScale: PlotScale;
+  yScale: PlotScale;
+  xTicks: PlotTick[];
+  yTicks: PlotTick[];
+  bars: Array<PlotBarGeometry<MattrDistributionBinDatum>>;
+  medianLine: PlotLineGeometry | null;
+  labels: PlotLabelGeometry[];
+  witnessTicks: MattrWitnessTickGeometry[];
+  domain: [number, number];
+}
+
 export const DEFAULT_PLOT_WIDTH = 720;
 export const DEFAULT_PLOT_HEIGHT = 360;
 export const DEFAULT_PLOT_MARGIN: PlotMargin = {
@@ -1331,6 +1377,125 @@ export function formatLengthHistogramStats(documents: number, medianTokens: numb
   return `${formatInteger(documents)} documents · median ${median} · range ${range} tokens`;
 }
 
+export function buildMattrDistributionGeometry(options: {
+  distribution: MattrDistributionPayload;
+  median: number | null;
+  box?: PlotBox;
+}): MattrDistributionGeometry {
+  const distribution = options.distribution;
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 380, {
+    top: 34,
+    right: 40,
+    bottom: 104,
+    left: 72,
+  });
+  const domain = mattrOccupiedDomain(distribution.counts, distribution.binWidth);
+  const xScale = createScale("linear", domain, [box.margin.left, box.width - box.margin.right]);
+  const visibleBins = visibleMattrBins(distribution.counts, distribution.binWidth, domain);
+  const maxCount = Math.max(1, ...visibleBins.map((bin) => bin.count));
+  const yScale = createScale("linear", [0, maxCount], [box.height - box.margin.bottom, box.margin.top]);
+  const bars = visibleBins.map((bin) => {
+    const x1 = scaleValue(xScale, bin.lower);
+    const x2 = scaleValue(xScale, bin.upper);
+    const gap = Math.min(2, Math.max(0, (x2 - x1) * 0.28));
+    const y = scaleValue(yScale, bin.count);
+    return {
+      x: x1 + (gap / 2),
+      y,
+      width: Math.max(1, x2 - x1 - gap),
+      height: Math.max(0, box.height - box.margin.bottom - y),
+      datum: bin,
+      tooltipTitle: `${formatInteger(bin.count)} documents`,
+      tooltipRows: [`MATTR ${formatFixed(bin.lower, 3)}–${formatFixed(bin.upper, 3)}`],
+    };
+  });
+  const median = options.median;
+  const medianX = median === null ? null : scaleValue(xScale, clamp(median, domain[0], domain[1]));
+  const medianLine = medianX === null
+    ? null
+    : {
+        x1: medianX,
+        y1: box.margin.top,
+        x2: medianX,
+        y2: box.height - box.margin.bottom,
+        className: "cw-plot-threshold-line",
+      };
+  const witnessRequests = [...distribution.lowWitnesses, ...distribution.highWitnesses].map((witness) => ({
+    x: scaleValue(xScale, clamp(witness.mattr, domain[0], domain[1])),
+    y: box.height - box.margin.bottom + 43,
+    text: middleEllipsis(witness.name, 24),
+    className: "cw-plot-label-mono cw-plot-label-muted",
+    fontSize: 10,
+    candidates: [
+      { dx: 0, dy: 0, anchor: "middle" as const },
+      { dx: 0, dy: 13, anchor: "middle" as const },
+      { dx: -8, dy: 0, anchor: "end" as const },
+      { dx: 8, dy: 0, anchor: "start" as const },
+    ],
+  }));
+  const witnessLabels = placeLabels(
+    witnessRequests,
+    [],
+    {
+      left: box.margin.left,
+      top: box.height - box.margin.bottom + 26,
+      right: box.width - box.margin.right,
+      bottom: box.height - 30,
+    },
+  );
+  const witnessTicks = [...distribution.lowWitnesses, ...distribution.highWitnesses].map((witness, index) => ({
+    x: scaleValue(xScale, clamp(witness.mattr, domain[0], domain[1])),
+    y1: box.height - box.margin.bottom + 5,
+    y2: box.height - box.margin.bottom + 15,
+    datum: witness,
+    label: witnessLabels[index]!,
+    tooltipTitle: witness.name,
+    tooltipRows: [
+      `MATTR ${formatFixed(witness.mattr, 3)}`,
+      `${formatInteger(witness.tokens)} tokens`,
+    ],
+  }));
+  const medianLabel = medianLine === null || median === null
+    ? []
+    : placeLabels(
+        [{
+          x: medianLine.x1,
+          y: box.margin.top + 15,
+          text: `median ${formatFixed(median, 3)}`,
+          className: "cw-plot-label-mono",
+          fontSize: 10.5,
+          candidates: [
+            { dx: 8, dy: 0, anchor: "start" },
+            { dx: -8, dy: 0, anchor: "end" },
+            { dx: 0, dy: 18, anchor: "middle" },
+          ],
+        }],
+        bars.map((bar) => ({ kind: "box" as const, box: { x: bar.x, y: bar.y, width: bar.width, height: bar.height } })),
+        plotLabelBounds(box),
+      );
+  return {
+    box,
+    xScale,
+    yScale,
+    xTicks: mattrTicks(domain, xScale),
+    yTicks: linearTicks(yScale, 5),
+    bars,
+    medianLine,
+    labels: [...medianLabel, ...witnessLabels],
+    witnessTicks,
+    domain,
+  };
+}
+
+export function formatMattrDistributionStats(
+  usedDocuments: number,
+  median: number | null,
+  excludedDocuments: number,
+  windowTokens: number,
+): string {
+  return `${formatInteger(usedDocuments)} documents · median ${median === null ? "n/a" : formatFixed(median, 3)} · ${formatInteger(excludedDocuments)} excluded (< ${formatInteger(windowTokens)} tokens)`;
+}
+
 export function formatDispersionProfileStats(totalTypes: number, reachBandCount: number, universalCount: number): string {
   return `${formatInteger(totalTypes)} types · ${formatInteger(reachBandCount)} reach bands · ${formatInteger(universalCount)} types in ≥90% of documents`;
 }
@@ -1655,6 +1820,56 @@ function lengthHistogramMedianX(
   const span = Math.max(1, upper - bin.lowerTokens);
   const t = clamp((medianTokens - bin.lowerTokens) / span, 0.08, 0.92);
   return plotLeft + (index + t) * slotWidth;
+}
+
+function mattrOccupiedDomain(counts: number[], binWidth: number): [number, number] {
+  const first = counts.findIndex((count) => count > 0);
+  if (first < 0) return [0, 1];
+  let last = counts.length - 1;
+  while (last > first && (counts[last] ?? 0) <= 0) last -= 1;
+  const lower = Math.max(0, (first - 1) * binWidth);
+  const upper = Math.min(1, (last + 2) * binWidth);
+  return lower === upper ? [Math.max(0, lower - binWidth), Math.min(1, upper + binWidth)] : [lower, upper];
+}
+
+function visibleMattrBins(counts: number[], binWidth: number, domain: [number, number]): MattrDistributionBinDatum[] {
+  const bins: MattrDistributionBinDatum[] = [];
+  for (let index = 0; index < counts.length; index += 1) {
+    const lower = index * binWidth;
+    const upper = Math.min(1, lower + binWidth);
+    if (upper <= domain[0] || lower >= domain[1]) continue;
+    bins.push({
+      index,
+      lower,
+      upper,
+      count: counts[index] ?? 0,
+    });
+  }
+  return bins;
+}
+
+function mattrTicks(domain: [number, number], scale: PlotScale): PlotTick[] {
+  const ticks: PlotTick[] = [];
+  const start = Math.ceil((domain[0] - 1e-9) / 0.05) * 0.05;
+  const end = Math.floor((domain[1] + 1e-9) / 0.05) * 0.05;
+  for (let value = start; value <= end + 1e-9; value += 0.05) {
+    const rounded = Number(value.toFixed(2));
+    ticks.push({
+      value: rounded,
+      position: scaleValue(scale, rounded),
+      label: formatFixed(rounded, 2),
+      major: true,
+    });
+  }
+  return ticks;
+}
+
+function middleEllipsis(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  const keep = Math.max(1, maxLength - 1);
+  const head = Math.ceil(keep / 2);
+  const tail = Math.floor(keep / 2);
+  return `${value.slice(0, head)}…${value.slice(value.length - tail)}`;
 }
 
 function roundSvg(value: number): string {
