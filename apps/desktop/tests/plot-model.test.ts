@@ -2,6 +2,7 @@ import {
   buildCoverageGeometry,
   buildDispersionGeometry,
   buildDispersionPlaneGeometry,
+  buildDispersionRosterGeometry,
   buildVocabularyGrowthGeometry,
   createPlotBox,
   createScale,
@@ -10,6 +11,7 @@ import {
   findMilestoneShare,
   formatDispersionPlaneStats,
   formatDispersionProfileStats,
+  formatDispersionRosterStats,
   formatUniversalTypeCaption,
   linearTicks,
   logTicks,
@@ -226,6 +228,32 @@ assert(
   formatDispersionPlaneStats(100, 48, 32, 2, 1_000, 0.5)
     === "100 types · grid 48×32 · 2 loud-but-local (f ≥ 1k, DP ≥ 0.5)",
   "Dispersion plane stats caption should use the exact computed template",
+);
+
+const dispersionRoster = buildDispersionRosterGeometry({
+  entries: [
+    { token: "the", frequency: 1_000, documentFrequency: 10, dp: 0.12 },
+    { token: "chapter", frequency: 900, documentFrequency: 2, dp: 0.64 },
+    { token: "boilerplate", frequency: 800, documentFrequency: 1, dp: 0.5 },
+  ],
+  highDispersionThreshold: 0.5,
+  box: createPlotBox(520, 150, { top: 34, right: 48, bottom: 58, left: 156 }),
+});
+assert(
+  dispersionRoster.rows.map((row) => row.entry.token).join(",") === "the,chapter,boilerplate",
+  "Dispersion roster should preserve descending-frequency payload order",
+);
+assert(
+  dispersionRoster.rows[0]?.point.rampIndex === 2
+    && dispersionRoster.rows[1]?.point.rampIndex === 5
+    && dispersionRoster.rows[2]?.point.rampIndex === 5,
+  "Dispersion roster should use the hottest ramp stop only at or above the DP threshold",
+);
+assert(dispersionRoster.aboveThresholdCount === 2, "Dispersion roster should count rows at or above DP 0.5");
+assert(
+  formatDispersionRosterStats(3, dispersionRoster.aboveThresholdCount, 0.5)
+    === "top 3 types by frequency · 2 above DP 0.5",
+  "Dispersion roster stats caption should report the threshold count",
 );
 
 const vocabulary = buildVocabularyGrowthGeometry({

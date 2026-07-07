@@ -7,6 +7,7 @@ import type {
   CoverageGeometry,
   DispersionGeometry,
   DispersionPlaneGeometry,
+  DispersionRosterGeometry,
   LexicalSpectrumGeometry,
   PlotBox,
   PlotBracketGeometry,
@@ -141,6 +142,22 @@ export function renderDispersionPlaneSvg(plotId: string, geometry: DispersionPla
   renderLabels(svg, [geometry.thresholdLabel]);
   renderPlaneWitnesses(svg, geometry);
   renderLabels(svg, geometry.labels);
+  renderInteractionLayer(svg, geometry.box);
+  return svg;
+}
+
+export function renderDispersionRosterSvg(plotId: string, geometry: DispersionRosterGeometry): SVGSVGElement {
+  const svg = createBaseSvg(plotId, geometry.box);
+  renderDefinitions(svg, plotId);
+  renderAxes(svg, geometry.box, geometry.xScale, null, geometry.xTicks, [], {
+    x: "DP",
+    y: "",
+    valueAxis: "x",
+  });
+  for (const row of geometry.rows) renderLine(svg, row.guide);
+  renderLine(svg, geometry.thresholdLine);
+  renderLabels(svg, [...geometry.rows.map((row) => row.tokenLabel), geometry.thresholdLabel]);
+  renderRosterDots(svg, geometry);
   renderInteractionLayer(svg, geometry.box);
   return svg;
 }
@@ -489,6 +506,33 @@ function renderPlaneWitnesses(svg: SVGSVGElement, geometry: DispersionPlaneGeome
       "data-tooltip-title": witness.tooltipTitle ?? "",
       "data-tooltip-rows": (witness.tooltipRows ?? []).join("\n"),
       style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms;`,
+    });
+    group.appendChild(circle);
+  });
+  svg.appendChild(group);
+}
+
+function renderRosterDots(svg: SVGSVGElement, geometry: DispersionRosterGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-roster-dots");
+  geometry.rows.forEach((row, index) => {
+    const point = row.point;
+    const circle = createSvgElement("circle");
+    setAttrs(circle, {
+      cx: point.x,
+      cy: point.y,
+      r: 4.5,
+      class: [
+        "cw-plot-roster-dot",
+        row.aboveThreshold ? "cw-plot-ramp-5" : "",
+        "cw-plot-hover-target",
+      ].filter(Boolean).join(" "),
+      tabindex: "0",
+      "data-plot-x": point.x,
+      "data-plot-y": point.y,
+      "data-tooltip-title": point.tooltipTitle ?? "",
+      "data-tooltip-rows": (point.tooltipRows ?? []).join("\n"),
+      style: `--cw-plot-stagger: ${Math.min(index, 30) * 12}ms;`,
     });
     group.appendChild(circle);
   });
