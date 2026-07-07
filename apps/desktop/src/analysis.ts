@@ -110,8 +110,15 @@ export interface CorpusOverviewBalance {
   medianTokens: number | null;
   minimumTokens: number | null;
   maximumTokens: number | null;
+  lengthHistogram: LengthHistogramBin[];
   remainingDocuments: number;
   reading: string;
+}
+
+export interface LengthHistogramBin {
+  lowerTokens: number;
+  upperTokens: number | null;
+  count: number;
 }
 
 export interface CorpusOverviewExtractionQuality {
@@ -136,12 +143,14 @@ export interface CorpusOverviewLexicalSpectrum {
   band10plusShare: number | null;
   frequencySpectrum: FrequencySpectrumPoint[];
   frequencySpectrumTruncated: boolean;
+  frequencySpectrumTotal: number;
   mattrWindow: number;
   mattrMedian: number | null;
   mattrMin: number | null;
   mattrMax: number | null;
   mattrDocsExcluded: number;
   mattrDocsUsed: number;
+  mattrDistribution: CorpusOverviewMattrDistribution | null;
   mtldThreshold: number;
   mtldMinDocumentTokens: number;
   mtldMedian: number | null;
@@ -152,14 +161,37 @@ export interface CorpusOverviewLexicalSpectrum {
   reading: string;
 }
 
+export interface MattrWitness {
+  name: string;
+  mattr: number;
+  tokens: number;
+}
+
+export interface CorpusOverviewMattrDistribution {
+  binWidth: number;
+  counts: number[];
+  usedDocuments: number;
+  excludedDocuments: number;
+  lowWitnesses: MattrWitness[];
+  highWitnesses: MattrWitness[];
+  reading: string;
+}
+
 export interface CorpusOverviewFrequencyConcentration {
+  top10Coverage: number | null;
   top100Coverage: number | null;
   top1000Coverage: number | null;
   top10000Coverage: number | null;
+  cumulativeCoverage: CumulativeCoveragePoint[];
   shannonEntropyBits: number | null;
   evennessJ: number | null;
   effectiveVocabularyEntropy: number | null;
   reading: string;
+}
+
+export interface CumulativeCoveragePoint {
+  k: number;
+  share: number;
 }
 
 export interface FrequencySpectrumPoint {
@@ -169,6 +201,7 @@ export interface FrequencySpectrumPoint {
 
 export interface RankFrequencyPoint {
   rank: number;
+  token: string | null;
   frequency: number;
   ratePerMillion: number;
 }
@@ -200,6 +233,9 @@ export interface CorpusOverviewDispersion {
   frequentTypes: number;
   highDpFrequentTypes: number;
   medianDp: number | null;
+  profileBuckets: DispersionProfileBucket[];
+  plane: CorpusOverviewDispersionPlane | null;
+  roster: DispersionRosterEntry[];
   dfIn1Count: number;
   dfIn2To9Count: number;
   dfIn10To99Count: number;
@@ -227,8 +263,53 @@ export interface CorpusOverviewDispersion {
   dfAtLeast90pctCount: number;
   dfAtLeast90pctSampleTypes: string[];
   dfAtLeast90pctShare: number | null;
+  universalTypes: UniversalType[];
   medianDocumentsPerType: number | null;
   reading: string;
+}
+
+export interface DispersionProfileBucket {
+  label: string;
+  lowerBound: number;
+  upperBound: number | null;
+  count: number;
+  share: number | null;
+  sampleTypes: string[];
+}
+
+export type DispersionWitnessKind = "core" | "loudButLocal" | "quietAndEven" | "rareAndLocal";
+
+export interface DispersionWitness {
+  token: string;
+  frequency: number;
+  documentFrequency: number;
+  dp: number;
+  kind: DispersionWitnessKind;
+}
+
+export interface CorpusOverviewDispersionPlane {
+  xBins: number;
+  yBins: number;
+  freqLog10Max: number;
+  counts: number[];
+  maxCellCount: number;
+  witnesses: DispersionWitness[];
+  loudButLocalCount: number;
+  loudButLocalMinFrequency: number;
+  highDispersionThreshold: number;
+  reading: string;
+}
+
+export interface DispersionRosterEntry {
+  token: string;
+  frequency: number;
+  documentFrequency: number;
+  dp: number;
+}
+
+export interface UniversalType {
+  token: string;
+  documentFrequency: number;
 }
 
 export interface CorpusOverviewFinding {

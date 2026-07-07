@@ -75,8 +75,8 @@ pub use overview::{
     CorpusOverviewFinding, CorpusOverviewFindingKind, CorpusOverviewFindingSeverity,
     CorpusOverviewFrequencyConcentration, CorpusOverviewLexicalSpectrum, CorpusOverviewPopulation,
     CorpusOverviewRankFrequency, CorpusOverviewReading, CorpusOverviewTotals,
-    CorpusOverviewVocabularyGrowth, FrequencySpectrumPoint, RankFrequencyPoint,
-    VocabularyGrowthPoint,
+    CorpusOverviewVocabularyGrowth, CumulativeCoveragePoint, FrequencySpectrumPoint,
+    RankFrequencyPoint, UniversalType, VocabularyGrowthPoint,
 };
 #[cfg(test)]
 mod test_support;
