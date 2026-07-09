@@ -34,6 +34,12 @@ export interface SegmentedControlOption<TValue extends string> {
   label: string;
 }
 
+export interface OverviewFigureTextUpdate {
+  subtitle?: string;
+  captionStats?: string;
+  captionReading?: string;
+}
+
 export function createOverviewFigure(options: OverviewFigureOptions): HTMLElement {
   const figure = document.createElement("section");
   figure.className = "cw-overview-figure";
@@ -132,14 +138,38 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
   return figure;
 }
 
-export function replaceFigureSvg(figure: HTMLElement, svg: SVGSVGElement): void {
+export function replaceFigureSvg(
+  figure: HTMLElement,
+  svg: SVGSVGElement,
+  textUpdate?: OverviewFigureTextUpdate,
+): void {
   const mount = figure.querySelector<HTMLElement>("[data-figure-svg-mount='true']");
   if (!mount) return;
-  const options = figureMetadata.get(figure);
+  const previous = figureMetadata.get(figure);
+  const options = previous && textUpdate ? { ...previous, ...textUpdate } : previous;
+  if (options && textUpdate) {
+    figureMetadata.set(figure, options);
+    refreshFigureText(figure, options);
+  }
   if (options) decorateFigureSvg(svg, options);
   replaceFigureSvgElement(mount, svg);
   const sparkline = figure.querySelector<HTMLElement>("[data-figure-sparkline='true']");
   if (sparkline) renderSparklineGlyph(sparkline, svg);
+}
+
+function refreshFigureText(figure: HTMLElement, options: OverviewFigureOptions): void {
+  figure.setAttribute("aria-label", `${options.title}. ${options.subtitle}`);
+  const titleBlock = figure.querySelector<HTMLElement>(".cw-overview-figure-title-block");
+  if (titleBlock) titleBlock.setAttribute("aria-label", `${options.title}. ${options.subtitle}`);
+  const subtitle = figure.querySelector<HTMLElement>(".cw-overview-figure-subtitle");
+  if (subtitle) subtitle.textContent = options.subtitle;
+  const stats = figure.querySelector<HTMLElement>(".cw-overview-figure-caption-stats");
+  if (stats) {
+    stats.replaceChildren();
+    appendCaptionStats(stats, options.captionStats);
+  }
+  const reading = figure.querySelector<HTMLElement>(".cw-overview-figure-caption-reading:last-child");
+  if (reading) reading.textContent = options.captionReading;
 }
 
 export function createSegmentedControl<TValue extends string>(

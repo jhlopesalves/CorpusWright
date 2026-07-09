@@ -6,6 +6,7 @@ import {
   buildLengthHistogramGeometry,
   buildLexicalSpectrumGeometry,
   buildMattrDistributionGeometry,
+  buildRankFrequencyGeometry,
   buildVocabularyGrowthGeometry,
   createPlotBox,
   createScale,
@@ -91,6 +92,47 @@ assert(
   lexicalSpectrum.labels.some((label) => label.text.startsWith("hapax"))
     && lexicalSpectrum.labels.some((label) => label.text.startsWith("dis")),
   "Lexical spectrum should retain both hapax and dis witnesses through label placement",
+);
+
+const rankFrequencyRaw = buildRankFrequencyGeometry({
+  points: [
+    { rank: 1, frequency: 1_000, ratePerMillion: 100_000, token: "the" },
+    { rank: 2, frequency: 700, ratePerMillion: 70_000, token: "of" },
+    { rank: 3, frequency: 500, ratePerMillion: 50_000, token: "and" },
+    { rank: 4, frequency: 300, ratePerMillion: 30_000, token: "word" },
+    { rank: 5, frequency: 1, ratePerMillion: 100, token: "rare" },
+  ],
+  yMode: "raw",
+  totalTokens: 10_000,
+  zipfExponent: 1,
+  zipfCoefficient: 1_200,
+  fittedRankStart: 4,
+  fittedRankEnd: 4,
+});
+const rankFrequencyRate = buildRankFrequencyGeometry({
+  points: rankFrequencyRaw.points.map((point) => point.datum),
+  yMode: "rate",
+  totalTokens: 10_000,
+  zipfExponent: 1,
+  zipfCoefficient: 1_200,
+  fittedRankStart: 4,
+  fittedRankEnd: 4,
+});
+assert(
+  rankFrequencyRaw.points.map((point) => `${point.x},${point.y}`).join(",")
+    === rankFrequencyRate.points.map((point) => `${point.x},${point.y}`).join(","),
+  "Rank-frequency unit changes should relabel a single series rather than rescale its geometry",
+);
+assert(
+  rankFrequencyRate.points[0]?.tooltipRows?.join(" ").includes("1,000 tokens")
+    && rankFrequencyRate.points[0]?.tooltipRows?.join(" ").includes("100,000.00 per million"),
+  "Rank-frequency hover should always expose both raw frequency and rate per million",
+);
+assert(
+  rankFrequencyRaw.points.filter((point) => point.excluded).length === 4
+    && rankFrequencyRaw.legend[0]?.label === "fit: ranks 4–4"
+    && rankFrequencyRaw.legend[1]?.label === "excluded: top 3 and f=1 tail",
+  "Rank-frequency should explicitly disclose the fitted range and hollow exclusions",
 );
 assertClose(findMilestoneShare(coverage, 5) ?? 0, 0.38, "Milestone lookup should return exact shares");
 assert(findMilestoneShare(coverage, 1000) === null, "Missing milestones should stay null");
