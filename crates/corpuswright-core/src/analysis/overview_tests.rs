@@ -503,8 +503,47 @@ fn dispersion_plane_grid_witnesses_and_loud_count_are_deterministic() {
 }
 
 #[test]
+fn dispersion_plane_witnesses_apply_document_floor_before_kind_ranking() {
+    let terms = vec![
+        overview_test_term("noise-high", 12_000, 2, 0.10),
+        overview_test_term("core-wide", 9_000, 7, 0.12),
+        overview_test_term("core-tie-a", 8_000, 5, 0.11),
+        overview_test_term("core-tie-b", 8_000, 5, 0.11),
+        overview_test_term("loud-low-df", 5_000, 2, 0.98),
+        overview_test_term("loud-wide", 4_000, 9, 0.90),
+        overview_test_term("quiet-low-df", 500, 2, 0.01),
+        overview_test_term("quiet-wide", 400, 6, 0.02),
+        overview_test_term("rare-local", 300, 1, 0.80),
+    ];
+
+    let plane = dispersion_plane(&terms, 10).unwrap();
+    let core_tokens = plane
+        .witnesses
+        .iter()
+        .filter(|witness| witness.kind == DispersionWitnessKind::Core)
+        .map(|witness| witness.token.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(core_tokens, vec!["core-wide", "core-tie-a", "core-tie-b"]);
+    assert!(plane.witnesses.iter().any(|witness| {
+        witness.kind == DispersionWitnessKind::LoudButLocal && witness.token == "loud-wide"
+    }));
+    assert!(plane.witnesses.iter().any(|witness| {
+        witness.kind == DispersionWitnessKind::QuietAndEven && witness.token == "quiet-wide"
+    }));
+    assert!(!plane.witnesses.iter().any(|witness| {
+        matches!(
+            witness.token.as_str(),
+            "noise-high" | "loud-low-df" | "quiet-low-df"
+        )
+    }));
+    assert!(plane.witnesses.iter().any(|witness| {
+        witness.kind == DispersionWitnessKind::RareAndLocal && witness.token == "rare-local"
+    }));
+}
+
+#[test]
 fn dispersion_roster_is_capped_ordered_and_bounded() {
-    let terms = (0..45)
+    let terms = (0..125)
         .map(|index| {
             overview_test_term(
                 &format!("term-{index:02}"),
@@ -520,7 +559,7 @@ fn dispersion_roster_is_capped_ordered_and_bounded() {
     });
 
     let roster = dispersion_roster(&ranked_terms);
-    assert_eq!(roster.len(), 40);
+    assert_eq!(roster.len(), 120);
     assert_eq!(roster.first().unwrap().token, "term-00");
     assert!(
         roster
