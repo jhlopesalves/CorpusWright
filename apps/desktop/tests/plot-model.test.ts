@@ -414,7 +414,13 @@ const vocabulary = buildVocabularyGrowthGeometry({
     { tokens: 10_000, types: 600 },
     { tokens: 100_000, types: 2_200 },
   ],
+  heapsK: 1.5,
+  heapsBeta: 0.7,
   box: createPlotBox(420, 260),
 });
 assert(vocabulary.labels[0]?.lines?.length === 2, "Vocabulary endpoint label should render as two measured lines");
 assert(vocabulary.labels[0]?.anchor === "end", "Vocabulary endpoint label should be end anchored near the endpoint");
+assert(
+  vocabulary.fitPath !== null && vocabulary.legend.map((item) => item.label).join(",") === "observed,Heaps fit",
+  "Vocabulary growth should show a distinct Heaps fitted series and legend",
+);

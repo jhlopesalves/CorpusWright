@@ -2824,6 +2824,10 @@ main {
   stroke-width: 2.4;
 }
 
+.cw-plot-heaps-fit {
+  stroke-dasharray: 6 4;
+}
+
 .cw-plot-line-halo {
   opacity: var(--cw-plot-glow-opacity);
   pointer-events: none;
@@ -3044,7 +3048,11 @@ main {
 .cw-plot-label-callout {
   fill: var(--text-color);
   font-family: var(--cw-font-mono);
-  font-size: 11px;
+  font-size: 11.5px;
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 .cw-plot-bracket line {
@@ -3060,8 +3068,7 @@ main {
   font-weight: 700;
 }
 
-.cw-plot-reference-line,
-.cw-plot-leader {
+.cw-plot-reference-line {
   fill: none;
   stroke: var(--text-muted);
   stroke-dasharray: 4 4;
@@ -3111,11 +3118,6 @@ main {
 .cw-plot-figure-stats {
   fill: var(--text-color);
   font-family: var(--cw-font-mono);
-}
-
-.cw-plot-leader {
-  stroke-dasharray: none;
-  stroke-opacity: 0.45;
 }
 
 .cw-plot-crosshair-x,

@@ -1217,7 +1217,11 @@ function renderVocabularyGrowthFigure(corpus: AnalysisCorpus): HTMLElement {
     captionReading: `Each doubling of tokens yields ~${betaYield} more types; stable source order, not a ceiling.`,
     renderSvg: () => renderVocabularyGrowthSvg(
       "overview-vocabulary-growth",
-      buildVocabularyGrowthGeometry({ points: growth.points }),
+      buildVocabularyGrowthGeometry({
+        points: growth.points,
+        heapsK: growth.heapsK,
+        heapsBeta: growth.heapsBeta,
+      }),
     ),
   });
 }
