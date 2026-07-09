@@ -1152,6 +1152,10 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
   const rank = corpus.rankFrequency;
   let yMode: "rate" | "raw" = "rate";
   let figure: HTMLElement | null = null;
+  const figureSubtitle = () => yMode === "rate"
+    ? "Zipf fit on log rank and log frequency. Per-million relabels a constant scale."
+    : "Zipf fit on log rank and log frequency.";
+  const figureStats = () => `alpha ${formatOptionalFixed(rank.zipfExponent, 3)} · R-squared ${formatOptionalFixed(rank.rSquared, 3)} · fitted ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)} · ${yMode === "rate" ? "per-million scale" : "raw-count scale"}`;
   const renderSvg = () => renderRankFrequencySvg(
     "overview-rank-frequency",
     buildRankFrequencyGeometry({
@@ -1179,7 +1183,10 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
     yMode,
     (value) => {
       yMode = value;
-      if (figure) replaceFigureSvg(figure, renderSvg());
+      if (figure) replaceFigureSvg(figure, renderSvg(), {
+        subtitle: figureSubtitle(),
+        captionStats: figureStats(),
+      });
     },
   );
   const rarity = rank.zipfExponent === null
@@ -1188,9 +1195,9 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
   figure = createOverviewFigure({
     id: "overview-rank-frequency",
     title: "Rank-frequency",
-    subtitle: "Zipf fit on log rank and log frequency.",
+    subtitle: figureSubtitle(),
     controls,
-    captionStats: `alpha ${formatOptionalFixed(rank.zipfExponent, 3)} · R-squared ${formatOptionalFixed(rank.rSquared, 3)} · fitted ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)}`,
+    captionStats: figureStats(),
     captionReading: `${rarity}; hollow points are excluded from the fit.`,
     renderSvg,
   });
