@@ -2,6 +2,10 @@ import {
   attachPlotHover,
   serializeSvgWithResolvedTokens,
 } from "./render";
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
+
+import { dom } from "../dom";
 
 const FIGURE_COLLAPSE_STORAGE_KEY = "corpuswright.overview.figureCollapse";
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -122,11 +126,7 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
     setFigureCollapsed(figure, collapseButton, collapseLabel, options.title, next);
   });
 
-  exportButton.addEventListener("click", () => {
-    const svg = figure.querySelector<SVGSVGElement>(".cw-plot-svg");
-    if (!svg) return;
-    downloadSvg(`${options.id}.svg`, serializeSvgWithResolvedTokens(svg));
-  });
+  exportButton.addEventListener("click", () => void saveFigureSvg(figure, options.id));
 
   figure.append(header, body, caption);
   return figure;
@@ -330,15 +330,22 @@ function writeCollapsedFigures(values: Set<string>): void {
   }
 }
 
-function downloadSvg(filename: string, contents: string): void {
-  const blob = new Blob([contents], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.style.display = "none";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+async function saveFigureSvg(figure: HTMLElement, figureId: string): Promise<void> {
+  const svg = figure.querySelector<SVGSVGElement>(".cw-plot-svg");
+  if (!svg) return;
+  const path = await save({
+    defaultPath: `${figureId}.svg`,
+    filters: [{ name: "SVG", extensions: ["svg"] }],
+  });
+  if (path === null) return;
+  try {
+    await invoke("save_svg_file_command", {
+      path,
+      content: serializeSvgWithResolvedTokens(svg),
+    });
+    dom.statusBar.textContent = `Saved SVG: ${path}`;
+  } catch (error) {
+    dom.statusBar.textContent = `SVG export error: ${error}`;
+    console.error("SVG export error", error);
+  }
 }
