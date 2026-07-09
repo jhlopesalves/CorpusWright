@@ -1,5 +1,4 @@
 import {
-  estimateLabelBox,
   labelLineHeight,
   labelTextLines,
   placeAxisTickLabels,
@@ -55,9 +54,10 @@ export function renderVocabularyGrowthSvg(plotId: string, geometry: VocabularyGr
   });
   if (geometry.areaPath) renderPath(svg, geometry.areaPath, plotId);
   if (geometry.linePath) renderPath(svg, geometry.linePath, plotId);
+  if (geometry.fitPath) renderPath(svg, geometry.fitPath, plotId);
   renderPoints(svg, geometry.points, "cw-plot-point is-panel-stroked");
+  renderSvgLegend(svg, geometry.box, geometry.legend);
   renderLabels(svg, geometry.labels);
-  renderEndpointLeader(svg, geometry.points, geometry.labels[0]);
   renderInteractionLayer(svg, geometry.box);
   return svg;
 }
@@ -753,24 +753,6 @@ function renderBracket(svg: SVGSVGElement, bracket: PlotBracketGeometry): void {
   label.textContent = bracket.label;
   group.appendChild(label);
   svg.appendChild(group);
-}
-
-function renderEndpointLeader(
-  svg: SVGSVGElement,
-  points: Array<PlotPointGeometry>,
-  label: PlotLabelGeometry | undefined,
-): void {
-  const last = points[points.length - 1];
-  if (!last || !label) return;
-  const labelBox = estimateLabelBox(label);
-  const targetX = Math.max(labelBox.x, Math.min(last.x, labelBox.x + labelBox.width));
-  renderLine(svg, {
-    x1: last.x + 4,
-    y1: last.y + 4,
-    x2: targetX,
-    y2: labelBox.y - 4,
-    className: "cw-plot-leader",
-  });
 }
 
 function renderInteractionLayer(svg: SVGSVGElement, box: PlotBox): void {
