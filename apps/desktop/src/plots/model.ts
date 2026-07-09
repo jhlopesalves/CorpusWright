@@ -238,7 +238,20 @@ export interface DispersionGeometry {
   points: Array<PlotPointGeometry<DispersionBucketDatum>>;
   stems: PlotLineGeometry[];
   dividers: PlotLineGeometry[];
+  compositionSegments: DispersionCompositionSegmentGeometry[];
   labels: PlotLabelGeometry[];
+}
+
+export interface DispersionCompositionSegmentGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string | null;
+  datum: DispersionBucketDatum;
+  rampIndex: number;
+  tooltipTitle: string;
+  tooltipRows: string[];
 }
 
 export type DispersionWitnessKind = "core" | "loudButLocal" | "quietAndEven" | "rareAndLocal";
@@ -1061,7 +1074,7 @@ export function buildDispersionGeometry(options: {
   box?: PlotBox;
 }): DispersionGeometry {
   const rowCount = Math.max(1, options.buckets.length);
-  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, Math.max(360, 132 + rowCount * 19), {
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, Math.max(360, 162 + rowCount * 19), {
     top: 30,
     right: 36,
     bottom: 48,
@@ -1076,12 +1089,16 @@ export function buildDispersionGeometry(options: {
   const hasDistinctFinalRow = buckets.some((bucket) => bucket.highlighted);
   const rowGap = hasDistinctFinalRow ? 0.8 : 0;
   const lastVirtualRow = Math.max(1, buckets.length - 1 + rowGap);
+  const compositionBarHeight = 12;
+  const compositionBarY = box.margin.top;
+  const rowTop = compositionBarY + compositionBarHeight + 28;
+  const rowHeight = Math.max(1, box.height - box.margin.bottom - rowTop);
   let virtualRow = 0;
   const points = buckets.map((bucket, index) => {
     if (bucket.highlighted && index > 0) virtualRow += rowGap;
     const y = buckets.length > 1
-      ? box.margin.top + (virtualRow / lastVirtualRow) * box.innerHeight
-      : box.margin.top + box.innerHeight / 2;
+      ? rowTop + (virtualRow / lastVirtualRow) * rowHeight
+      : rowTop + rowHeight / 2;
     virtualRow += 1;
     const plotCount = Math.max(1, bucket.count);
     return {
@@ -1163,6 +1180,32 @@ export function buildDispersionGeometry(options: {
     ],
     plotLabelBounds(box),
   );
+  const exclusivePoints = points.filter((point) => !point.datum.highlighted);
+  const countedTypes = exclusivePoints.reduce((total, point) => total + point.datum.count, 0);
+  let compositionX = box.margin.left;
+  const compositionSegments = exclusivePoints.map((point, index) => {
+    const remainingWidth = box.width - box.margin.right - compositionX;
+    const share = point.datum.share ?? (countedTypes > 0 ? point.datum.count / countedTypes : 0);
+    const width = index === exclusivePoints.length - 1
+      ? remainingWidth
+      : Math.max(0, box.innerWidth * share);
+    const segment = {
+      x: compositionX,
+      y: compositionBarY,
+      width,
+      height: compositionBarHeight,
+      label: share >= 0.055 ? `${formatPercent(share, 0)}` : null,
+      datum: point.datum,
+      rampIndex: point.rampIndex,
+      tooltipTitle: point.datum.label,
+      tooltipRows: [
+        `${formatInteger(point.datum.count)} types`,
+        `${formatPercent(share)} of vocabulary`,
+      ],
+    };
+    compositionX += width;
+    return segment;
+  });
   return {
     box,
     xScale,
@@ -1170,6 +1213,7 @@ export function buildDispersionGeometry(options: {
     points,
     stems,
     dividers,
+    compositionSegments,
     labels: [...rowLabels, ...countLabels],
   };
 }
