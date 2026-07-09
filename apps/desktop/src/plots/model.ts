@@ -365,7 +365,6 @@ export interface MattrWitnessTickGeometry {
   y1: number;
   y2: number;
   datum: MattrWitnessDatum;
-  label: PlotLabelGeometry;
   tooltipTitle: string;
   tooltipRows: string[];
 }
@@ -1455,7 +1454,7 @@ export function buildMattrDistributionGeometry(options: {
   const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 380, {
     top: 34,
     right: 40,
-    bottom: 104,
+    bottom: 72,
     left: 72,
   });
   const domain = mattrOccupiedDomain(distribution.counts, distribution.binWidth);
@@ -1489,41 +1488,32 @@ export function buildMattrDistributionGeometry(options: {
         y2: box.height - box.margin.bottom,
         className: "cw-plot-threshold-line",
       };
-  const witnessRequests = [...distribution.lowWitnesses, ...distribution.highWitnesses].map((witness) => ({
-    x: scaleValue(xScale, clamp(witness.mattr, domain[0], domain[1])),
-    y: box.height - box.margin.bottom + 43,
-    text: middleEllipsis(witness.name, 24),
-    className: "cw-plot-label-mono cw-plot-label-muted",
-    fontSize: 10,
-    candidates: [
-      { dx: 0, dy: 0, anchor: "middle" as const },
-      { dx: 0, dy: 13, anchor: "middle" as const },
-      { dx: -8, dy: 0, anchor: "end" as const },
-      { dx: 8, dy: 0, anchor: "start" as const },
-    ],
-  }));
-  const witnessLabels = placeLabels(
-    witnessRequests,
-    [],
-    {
-      left: box.margin.left,
-      top: box.height - box.margin.bottom + 26,
-      right: box.width - box.margin.right,
-      bottom: box.height - 30,
-    },
-  );
-  const witnessTicks = [...distribution.lowWitnesses, ...distribution.highWitnesses].map((witness, index) => ({
+  const witnessTicks = [...distribution.lowWitnesses, ...distribution.highWitnesses].map((witness) => ({
     x: scaleValue(xScale, clamp(witness.mattr, domain[0], domain[1])),
     y1: box.height - box.margin.bottom + 5,
     y2: box.height - box.margin.bottom + 15,
     datum: witness,
-    label: witnessLabels[index]!,
     tooltipTitle: witness.name,
     tooltipRows: [
       `MATTR ${formatFixed(witness.mattr, 3)}`,
       `${formatInteger(witness.tokens)} tokens`,
     ],
   }));
+  const extremeWitnesses = [distribution.lowWitnesses[0], distribution.highWitnesses[0]]
+    .filter((witness): witness is MattrWitnessDatum => witness !== undefined)
+    .filter((witness, index, values) => values.findIndex((candidate) => candidate.name === witness.name) === index);
+  const witnessLabels = placeLabels(extremeWitnesses.map((witness) => ({
+    x: scaleValue(xScale, clamp(witness.mattr, domain[0], domain[1])),
+    y: box.height - box.margin.bottom - 8,
+    text: middleEllipsis(witness.name, 24),
+    className: "cw-plot-label-mono cw-plot-label-muted",
+    candidates: [
+      { dx: 0, dy: 0, anchor: "middle" as const },
+      { dx: 0, dy: -16, anchor: "middle" as const },
+      { dx: -8, dy: -8, anchor: "end" as const },
+      { dx: 8, dy: -8, anchor: "start" as const },
+    ],
+  })), bars.map((bar) => ({ kind: "box" as const, box: { x: bar.x, y: bar.y, width: bar.width, height: bar.height } })), plotLabelBounds(box));
   const medianLabel = medianLine === null || median === null
     ? []
     : placeLabels(

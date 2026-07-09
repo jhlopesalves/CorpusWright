@@ -351,8 +351,14 @@ assertClose(mattrDistribution.domain[0], 0.225, "MATTR occupied domain should pa
 assertClose(mattrDistribution.domain[1], 0.4, "MATTR occupied domain should pad one bin above the last nonzero bin");
 assert(mattrDistribution.bars.length === 7, "MATTR distribution should emit one bar per visible bin in the occupied window");
 assert(
-  mattrDistribution.witnessTicks.some((tick) => tick.label.text.length === 24 && tick.label.text.includes("…")),
-  "MATTR witness labels should be middle-ellipsized to 24 characters",
+  mattrDistribution.labels.filter((label) => label.text.includes("document") || label.text.includes("compact")).length <= 2
+    && mattrDistribution.labels.some((label) => label.text.length === 24 && label.text.includes("…")),
+  "MATTR should label only the extreme witnesses, middle-ellipsized to 24 characters",
+);
+assert(
+  mattrDistribution.witnessTicks.length === 2
+    && mattrDistribution.witnessTicks.every((tick) => tick.tooltipTitle.length > 0),
+  "MATTR witness identities should remain reachable on hover",
 );
 assert(
   formatMattrDistributionStats(6, 0.3, 1, 100)
