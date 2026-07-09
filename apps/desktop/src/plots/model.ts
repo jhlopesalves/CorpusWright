@@ -417,6 +417,7 @@ const LABEL_LINE_HEIGHT_FACTOR = 1.3;
 const DENSITY_CELL_LABEL_OBSTACLE_OPACITY = 0.52;
 const QUADRANT_PILL_HEIGHT = 20;
 const QUADRANT_PILL_PADDING_X = 10;
+const DISPERSION_ROSTER_ROW_PITCH = 22;
 
 export function createPlotBox(
   width = DEFAULT_PLOT_WIDTH,
@@ -1221,6 +1222,7 @@ export function buildDispersionGeometry(options: {
 export function buildDispersionPlaneGeometry(options: {
   plane: DispersionPlanePayload;
   totalTypes: number;
+  showWitnessLabels?: boolean;
   box?: PlotBox;
 }): DispersionPlaneGeometry {
   const plane = options.plane;
@@ -1279,8 +1281,11 @@ export function buildDispersionPlaneGeometry(options: {
     { kind: "box", box: estimateLabelBox(thresholdLabel) },
     ...lineLabelObstacles([thresholdLine], 4),
   ];
+  const witnessLabelRequests = options.showWitnessLabels === false
+    ? []
+    : buildDispersionPlaneWitnessLabelRequests(permanentDispersionPlaneWitnesses(witnesses));
   const preliminaryWitnessLabels = placeLabels(
-    buildDispersionPlaneWitnessLabelRequests(witnesses),
+    witnessLabelRequests,
     [
       ...denseCellObstacles,
       ...witnessDotObstacles,
@@ -1304,7 +1309,7 @@ export function buildDispersionPlaneGeometry(options: {
     ...pillObstacles,
   ];
   const labels = placeLabels(
-    buildDispersionPlaneWitnessLabelRequests(witnesses),
+    witnessLabelRequests,
     witnessObstacles,
     plotLabelBounds(box),
   );
@@ -1346,7 +1351,7 @@ export function buildDispersionRosterGeometry(options: {
   box?: PlotBox;
 }): DispersionRosterGeometry {
   const rowCount = Math.max(1, options.entries.length);
-  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 92 + (rowCount * 16), {
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 92 + (rowCount * DISPERSION_ROSTER_ROW_PITCH), {
     top: 34,
     right: 48,
     bottom: 58,
@@ -1374,7 +1379,7 @@ export function buildDispersionRosterGeometry(options: {
   };
   let aboveThresholdCount = 0;
   const rows = options.entries.map((entry, index) => {
-    const y = box.margin.top + 8 + (index * 16);
+    const y = box.margin.top + (DISPERSION_ROSTER_ROW_PITCH / 2) + (index * DISPERSION_ROSTER_ROW_PITCH);
     const aboveThreshold = entry.dp >= options.highDispersionThreshold;
     if (aboveThreshold) aboveThresholdCount += 1;
     const point = {
@@ -1429,8 +1434,16 @@ export function buildDispersionRosterGeometry(options: {
   };
 }
 
-export function formatDispersionRosterStats(topCount: number, aboveThresholdCount: number, highDispersionThreshold: number): string {
-  return `top ${formatInteger(topCount)} types by frequency · ${formatInteger(aboveThresholdCount)} above DP ${formatDpThreshold(highDispersionThreshold)}`;
+export function formatDispersionRosterStats(
+  shownCount: number,
+  shippedCount: number,
+  aboveThresholdCount: number,
+  highDispersionThreshold: number,
+): string {
+  const countText = shownCount === shippedCount
+    ? `top ${formatInteger(shownCount)} types by frequency`
+    : `shown ${formatInteger(shownCount)} of ${formatInteger(shippedCount)} frequent types`;
+  return `${countText} · ${formatInteger(aboveThresholdCount)} above DP ${formatDpThreshold(highDispersionThreshold)}`;
 }
 
 export function buildLengthHistogramGeometry(options: {
@@ -1773,7 +1786,6 @@ function buildDispersionPlaneWitnessLabelRequests(
     y: witness.y,
     text: witness.datum.token,
     className: "cw-plot-label-mono",
-    fontSize: 11,
     candidates: [
       { dx: 10, dy: -8, anchor: "start" },
       { dx: 10, dy: 14, anchor: "start" },
@@ -1783,6 +1795,15 @@ function buildDispersionPlaneWitnessLabelRequests(
       { dx: 0, dy: 24, anchor: "middle" },
     ],
   }));
+}
+
+function permanentDispersionPlaneWitnesses(
+  witnesses: Array<PlotPointGeometry<DispersionWitnessDatum>>,
+): Array<PlotPointGeometry<DispersionWitnessDatum>> {
+  const core = witnesses.filter((witness) => witness.datum.kind === "core").slice(0, 3);
+  const loudButLocal = witnesses.filter((witness) => witness.datum.kind === "loudButLocal").slice(0, 2);
+  const quietAndEven = witnesses.filter((witness) => witness.datum.kind === "quietAndEven").slice(0, 1);
+  return [...core, ...loudButLocal, ...quietAndEven].slice(0, 6);
 }
 
 function buildDispersionPlaneQuadrantPills(

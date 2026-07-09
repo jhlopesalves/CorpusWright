@@ -16,6 +16,7 @@ import {
   type OverviewGlossaryEntry,
   type OverviewGlossaryId,
 } from "../overview-glossary";
+import { isOverviewStopword } from "../overview-stopwords";
 import {
   createOverviewFigure,
   createSegmentedControl,
@@ -1342,10 +1343,35 @@ function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
 function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null {
   const plane = corpus.dispersion.plane;
   if (plane === null) return null;
-  return createOverviewFigure({
+  let labelsVisible = true;
+  let figure: HTMLElement | null = null;
+  const labelsControl = document.createElement("button");
+  labelsControl.type = "button";
+  labelsControl.className = "cw-overview-figure-action";
+  const updateLabelsControl = () => {
+    labelsControl.textContent = labelsVisible ? "Labels: key examples" : "Labels: off";
+    labelsControl.setAttribute("aria-pressed", String(labelsVisible));
+    labelsControl.setAttribute("aria-label", labelsVisible ? "Turn off key example labels" : "Show key example labels");
+  };
+  updateLabelsControl();
+  const renderSvg = () => renderDispersionPlaneSvg(
+    "overview-dispersion-plane",
+    buildDispersionPlaneGeometry({
+      plane,
+      totalTypes: corpus.totals.types,
+      showWitnessLabels: labelsVisible,
+    }),
+  );
+  labelsControl.addEventListener("click", () => {
+    labelsVisible = !labelsVisible;
+    updateLabelsControl();
+    if (figure) replaceFigureSvg(figure, renderSvg());
+  });
+  figure = createOverviewFigure({
     id: "overview-dispersion-plane",
     title: "Dispersion plane",
     subtitle: "Frequency against Gries DP.",
+    controls: labelsControl,
     captionStats: formatDispersionPlaneStats(
       corpus.totals.types,
       plane.xBins,
@@ -1355,35 +1381,74 @@ function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null
       plane.highDispersionThreshold,
     ),
     captionReading: plane.reading,
-    renderSvg: () => renderDispersionPlaneSvg(
-      "overview-dispersion-plane",
-      buildDispersionPlaneGeometry({
-        plane,
-        totalTypes: corpus.totals.types,
-      }),
-    ),
+    renderSvg,
   });
+  return figure;
 }
 
 function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | null {
   const entries = corpus.dispersion.roster;
   if (entries.length === 0) return null;
   const highDispersionThreshold = corpus.dispersion.plane?.highDispersionThreshold ?? HIGH_DISPERSION_THRESHOLD;
-  const aboveThresholdCount = entries.filter((entry) => entry.dp >= highDispersionThreshold).length;
-  return createOverviewFigure({
+  let stopwordsHidden = false;
+  let figure: HTMLElement | null = null;
+  const controls = document.createElement("div");
+  controls.setAttribute("role", "group");
+  controls.setAttribute("aria-label", "Dispersion roster filtering");
+  const showAllButton = document.createElement("button");
+  const hideStopwordsButton = document.createElement("button");
+  for (const button of [showAllButton, hideStopwordsButton]) {
+    button.type = "button";
+    button.className = "cw-overview-figure-action";
+  }
+  showAllButton.textContent = "All frequent types";
+  hideStopwordsButton.textContent = "Hide stopwords";
+  controls.append(showAllButton, hideStopwordsButton);
+  const shownEntries = () => stopwordsHidden
+    ? entries.filter((entry) => !isOverviewStopword(entry.token, activeProjectLanguageCode()))
+    : entries;
+  const subtitle = () => stopwordsHidden
+    ? "Top-frequency types ranked against DP; stopwords are hidden."
+    : "Top-frequency types ranked against DP.";
+  const captionStats = () => {
+    const shown = shownEntries();
+    const aboveThresholdCount = shown.filter((entry) => entry.dp >= highDispersionThreshold).length;
+    return formatDispersionRosterStats(shown.length, entries.length, aboveThresholdCount, highDispersionThreshold);
+  };
+  const renderSvg = () => renderDispersionRosterSvg(
+    "overview-dispersion-roster",
+    buildDispersionRosterGeometry({
+      entries: shownEntries(),
+      highDispersionThreshold,
+    }),
+  );
+  const refresh = () => {
+    showAllButton.setAttribute("aria-pressed", String(!stopwordsHidden));
+    hideStopwordsButton.setAttribute("aria-pressed", String(stopwordsHidden));
+    if (figure) replaceFigureSvg(figure, renderSvg(), {
+      subtitle: subtitle(),
+      captionStats: captionStats(),
+    });
+  };
+  showAllButton.addEventListener("click", () => {
+    stopwordsHidden = false;
+    refresh();
+  });
+  hideStopwordsButton.addEventListener("click", () => {
+    stopwordsHidden = true;
+    refresh();
+  });
+  refresh();
+  figure = createOverviewFigure({
     id: "overview-dispersion-roster",
     title: "Dispersion roster",
-    subtitle: "Top-frequency types ranked against DP.",
-    captionStats: formatDispersionRosterStats(entries.length, aboveThresholdCount, highDispersionThreshold),
+    subtitle: subtitle(),
+    controls,
+    captionStats: captionStats(),
     captionReading: "Frequent is not the same as general: rows to the right of the line are loud in few places.",
-    renderSvg: () => renderDispersionRosterSvg(
-      "overview-dispersion-roster",
-      buildDispersionRosterGeometry({
-        entries,
-        highDispersionThreshold,
-      }),
-    ),
+    renderSvg,
   });
+  return figure;
 }
 
 function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
