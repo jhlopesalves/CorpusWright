@@ -4,6 +4,7 @@ import {
   buildDispersionPlaneGeometry,
   buildDispersionRosterGeometry,
   buildLengthHistogramGeometry,
+  buildLexicalSpectrumGeometry,
   buildMattrDistributionGeometry,
   buildVocabularyGrowthGeometry,
   createPlotBox,
@@ -59,6 +60,38 @@ const coverage = [
   { k: 10, share: 0.55 },
   { k: 100, share: 0.72 },
 ];
+
+const lexicalSpectrum = buildLexicalSpectrumGeometry({
+  points: [
+    { frequency: 1, typeCount: 42 },
+    { frequency: 2, typeCount: 20 },
+    { frequency: 3, typeCount: 11 },
+    { frequency: 9, typeCount: 3 },
+    { frequency: 10, typeCount: 2 },
+    { frequency: 100, typeCount: 1 },
+  ],
+  hapaxCount: 42,
+  disLegomenaCount: 20,
+  box: createPlotBox(600, 320),
+});
+assert(
+  lexicalSpectrum.bands.map((band) => band.label).join(",") === "HAPAX,DIS,3–9,10+",
+  "Lexical spectrum should render its four exclusive frequency-class bands",
+);
+assert(
+  lexicalSpectrum.points.map((point) => point.rampIndex).join(",") === "0,1,2,2,4,4",
+  "Lexical spectrum points should take their colour from the frequency class",
+);
+assert(
+  lexicalSpectrum.points.at(-1)?.fillOpacity === 0.42
+    && lexicalSpectrum.points[0]?.fillOpacity === 0.6,
+  "Frequency-singleton tail points should have lower opacity than the main sequence",
+);
+assert(
+  lexicalSpectrum.labels.some((label) => label.text.startsWith("hapax"))
+    && lexicalSpectrum.labels.some((label) => label.text.startsWith("dis")),
+  "Lexical spectrum should retain both hapax and dis witnesses through label placement",
+);
 assertClose(findMilestoneShare(coverage, 5) ?? 0, 0.38, "Milestone lookup should return exact shares");
 assert(findMilestoneShare(coverage, 1000) === null, "Missing milestones should stay null");
 assert(findFirstCoverageCrossing(coverage, 0.5)?.k === 10, "50% crossing should use first real checkpoint");
