@@ -273,23 +273,24 @@ const planeCounts = new Array<number>(48 * 32).fill(0);
 planeCounts[0] = 1;
 planeCounts[47] = 4;
 planeCounts[(16 * 48) + 20] = 9;
-const dispersionPlane = buildDispersionPlaneGeometry({
-  plane: {
+const dispersionPlanePayload = {
     xBins: 48,
     yBins: 32,
     freqLog10Max: 5.025,
     counts: planeCounts,
     maxCellCount: 9,
     witnesses: [
-      { token: "the", frequency: 40_000, documentFrequency: 180, dp: 0.08, kind: "core" },
-      { token: "boilerplate", frequency: 3_500, documentFrequency: 12, dp: 0.72, kind: "loudButLocal" },
-      { token: "folio", frequency: 2, documentFrequency: 1, dp: 0.91, kind: "rareAndLocal" },
+      { token: "the", frequency: 40_000, documentFrequency: 180, dp: 0.08, kind: "core" as const },
+      { token: "boilerplate", frequency: 3_500, documentFrequency: 12, dp: 0.72, kind: "loudButLocal" as const },
+      { token: "folio", frequency: 2, documentFrequency: 1, dp: 0.91, kind: "rareAndLocal" as const },
     ],
     loudButLocalCount: 2,
     loudButLocalMinFrequency: 1_000,
     highDispersionThreshold: 0.5,
     reading: "A frequency list cannot separate the core from boilerplate; the plane can.",
-  },
+};
+const dispersionPlane = buildDispersionPlaneGeometry({
+  plane: dispersionPlanePayload,
   totalTypes: 100,
   box: createPlotBox(720, 420, { top: 34, right: 48, bottom: 62, left: 112 }),
 });
@@ -313,6 +314,21 @@ assert(
   dispersionPlane.witnessObstacles.length > dispersionPlane.witnesses.length
     && dispersionPlane.witnessObstacles.some((obstacle) => obstacle.kind === "box"),
   "Dispersion plane witness placement should carry point and box obstacles",
+);
+assert(
+  dispersionPlane.labels.length <= 6
+    && !dispersionPlane.labels.some((label) => label.text === "folio"),
+  "Dispersion plane should permanently label only key non-rare witness examples",
+);
+const dispersionPlaneWithoutLabels = buildDispersionPlaneGeometry({
+  plane: dispersionPlanePayload,
+  totalTypes: 100,
+  showWitnessLabels: false,
+  box: createPlotBox(720, 420, { top: 34, right: 48, bottom: 62, left: 112 }),
+});
+assert(
+  dispersionPlaneWithoutLabels.labels.length === 0,
+  "Dispersion plane labels control should remove permanent labels without removing hover witnesses",
 );
 assert(
   formatDispersionPlaneStats(100, 48, 32, 2, 1_000, 0.5)
@@ -340,10 +356,20 @@ assert(
   "Dispersion roster should use the hottest ramp stop only at or above the DP threshold",
 );
 assert(dispersionRoster.aboveThresholdCount === 2, "Dispersion roster should count rows at or above DP 0.5");
+assertClose(
+  dispersionRoster.rows[1]!.y - dispersionRoster.rows[0]!.y,
+  22,
+  "Dispersion roster should retain a readable row pitch at the shared label scale",
+);
 assert(
-  formatDispersionRosterStats(3, dispersionRoster.aboveThresholdCount, 0.5)
+  formatDispersionRosterStats(3, 3, dispersionRoster.aboveThresholdCount, 0.5)
     === "top 3 types by frequency · 2 above DP 0.5",
   "Dispersion roster stats caption should report the threshold count",
+);
+assert(
+  formatDispersionRosterStats(2, 3, 1, 0.5)
+    === "shown 2 of 3 frequent types · 1 above DP 0.5",
+  "Filtered dispersion roster stats should state the shown count against the shipped count",
 );
 
 const lengthHistogram = buildLengthHistogramGeometry({

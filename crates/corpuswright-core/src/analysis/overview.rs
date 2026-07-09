@@ -13,7 +13,7 @@ const UNIVERSAL_TYPE_LIMIT: usize = 12;
 const DISPERSION_PLANE_X_BINS: usize = 48;
 const DISPERSION_PLANE_Y_BINS: usize = 32;
 const DISPERSION_PLANE_WITNESS_LIMIT: usize = 16;
-const DISPERSION_ROSTER_LIMIT: usize = 40;
+const DISPERSION_ROSTER_LIMIT: usize = 120;
 const MATTR_DISTRIBUTION_BIN_WIDTH: f64 = 0.025;
 const MATTR_DISTRIBUTION_BINS: usize = 40;
 const MATTR_WITNESS_LIMIT: usize = 5;
@@ -1189,13 +1189,24 @@ fn push_dispersion_witness(
     witnesses.push(dispersion_witness(term, kind));
 }
 
-fn dispersion_plane_witnesses(terms: &[AnalysisTerm]) -> Vec<DispersionWitness> {
+fn dispersion_plane_witnesses(
+    terms: &[AnalysisTerm],
+    document_count: usize,
+) -> Vec<DispersionWitness> {
     let mut witnesses = Vec::with_capacity(DISPERSION_PLANE_WITNESS_LIMIT);
     let mut selected_tokens = HashSet::<String>::new();
+    let witness_df_floor = if document_count >= 10 { 3 } else { 1 };
 
-    let mut core_candidates = terms.iter().collect::<Vec<_>>();
+    let mut core_candidates = terms
+        .iter()
+        .filter(|term| term.document_frequency >= witness_df_floor)
+        .collect::<Vec<_>>();
     core_candidates.sort_by(|left, right| {
-        compare_type_sample(left.frequency, &left.token, right.frequency, &right.token)
+        right
+            .frequency
+            .cmp(&left.frequency)
+            .then_with(|| right.document_frequency.cmp(&left.document_frequency))
+            .then_with(|| left.token.cmp(&right.token))
     });
     for term in core_candidates.into_iter().take(3) {
         push_dispersion_witness(
@@ -1211,12 +1222,14 @@ fn dispersion_plane_witnesses(terms: &[AnalysisTerm]) -> Vec<DispersionWitness> 
         .filter(|term| {
             term.frequency >= PLANE_LOUD_MIN_FREQUENCY
                 && term.dispersion >= HIGH_DISPERSION_THRESHOLD
+                && term.document_frequency >= witness_df_floor
         })
         .collect::<Vec<_>>();
     loud_candidates.sort_by(|left, right| {
         right
             .dispersion
             .total_cmp(&left.dispersion)
+            .then_with(|| right.document_frequency.cmp(&left.document_frequency))
             .then_with(|| right.frequency.cmp(&left.frequency))
             .then_with(|| left.token.cmp(&right.token))
     });
@@ -1239,7 +1252,11 @@ fn dispersion_plane_witnesses(terms: &[AnalysisTerm]) -> Vec<DispersionWitness> 
 
     let mut quiet_candidates = terms
         .iter()
-        .filter(|term| (100..10_000).contains(&term.frequency) && term.dispersion < 0.25)
+        .filter(|term| {
+            (100..10_000).contains(&term.frequency)
+                && term.dispersion < 0.25
+                && term.document_frequency >= witness_df_floor
+        })
         .collect::<Vec<_>>();
     quiet_candidates.sort_by(|left, right| {
         left.dispersion
@@ -1340,7 +1357,7 @@ fn dispersion_plane(
         freq_log10_max,
         counts,
         max_cell_count,
-        witnesses: dispersion_plane_witnesses(terms),
+        witnesses: dispersion_plane_witnesses(terms, document_count),
         loud_but_local_count,
         loud_but_local_min_frequency: PLANE_LOUD_MIN_FREQUENCY,
         high_dispersion_threshold: HIGH_DISPERSION_THRESHOLD,
