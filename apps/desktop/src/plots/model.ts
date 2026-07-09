@@ -26,6 +26,7 @@ export interface PlotTick {
   value: number;
   position: number;
   label: string;
+  accessibleLabel?: string;
   major: boolean;
 }
 
@@ -1380,7 +1381,7 @@ export function buildLengthHistogramGeometry(options: {
       height: Math.max(0, box.height - box.margin.bottom - y),
       datum: bin,
       tooltipTitle: `${formatInteger(bin.count)} documents`,
-      tooltipRows: [`${formatLengthBinLabel(bin)} tokens`],
+      tooltipRows: [`${formatExactLengthBinBounds(bin)} tokens`],
     };
   });
   const median = options.medianTokens;
@@ -1416,12 +1417,7 @@ export function buildLengthHistogramGeometry(options: {
     box,
     xScale,
     yScale,
-    xTicks: options.bins.map((bin, index) => ({
-      value: index + 0.5,
-      position: box.margin.left + (index + 0.5) * slotWidth,
-      label: formatLengthBinLabel(bin),
-      major: true,
-    })),
+    xTicks: lengthHistogramBoundaryTicks(options.bins, slotWidth, box.margin.left),
     yTicks: linearTicks(yScale, 5),
     bars,
     medianLine,
@@ -1848,9 +1844,27 @@ function formatFrequencyRangeBoundary(value: number): string {
   return formatFixed(value, value % 1 === 0 ? 0 : 2);
 }
 
-function formatLengthBinLabel(bin: LengthHistogramBinDatum): string {
+function formatExactLengthBinBounds(bin: LengthHistogramBinDatum): string {
   const upper = bin.upperTokens ?? bin.lowerTokens;
-  return `${formatCompactTokenBoundary(bin.lowerTokens)}–${formatCompactTokenBoundary(upper)}`;
+  return `${formatInteger(bin.lowerTokens)}–${formatInteger(upper)}`;
+}
+
+function lengthHistogramBoundaryTicks(
+  bins: LengthHistogramBinDatum[],
+  slotWidth: number,
+  left: number,
+): PlotTick[] {
+  if (bins.length === 0) return [];
+  const boundaries = [bins[0]!.lowerTokens, ...bins.map((bin) => bin.upperTokens ?? bin.lowerTokens)];
+  return boundaries.map((boundary, index) => ({
+    value: index,
+    position: left + (index * slotWidth),
+    label: index === 0 || index === boundaries.length - 1 || index % 2 === 0
+      ? formatCompactTokenBoundary(boundary)
+      : "",
+    accessibleLabel: formatCompactTokenBoundary(boundary),
+    major: true,
+  }));
 }
 
 function formatCompactTokenBoundary(value: number): string {
