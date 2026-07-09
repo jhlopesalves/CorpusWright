@@ -162,7 +162,9 @@ export interface VocabularyGrowthGeometry {
   yTicks: PlotTick[];
   points: Array<PlotPointGeometry<VocabularyGrowthDatum>>;
   linePath: PlotPathGeometry | null;
+  fitPath: PlotPathGeometry | null;
   areaPath: PlotPathGeometry | null;
+  legend: PlotLegendItem[];
   labels: PlotLabelGeometry[];
 }
 
@@ -817,15 +819,18 @@ export function buildRankFrequencyGeometry(options: {
 
 export function buildVocabularyGrowthGeometry(options: {
   points: VocabularyGrowthDatum[];
+  heapsK: number | null;
+  heapsBeta: number | null;
   box?: PlotBox;
 }): VocabularyGrowthGeometry {
   const box = options.box ?? createPlotBox();
   const visible = options.points.filter((point) => point.tokens > 0 && point.types > 0);
+  const fittedValues = vocabularyGrowthFitValues(visible, options.heapsK, options.heapsBeta);
   const xScale = createScale("log", extent(visible.map((point) => point.tokens)), [
     box.margin.left,
     box.width - box.margin.right,
   ]);
-  const yScale = createScale("log", extent(visible.map((point) => point.types)), [
+  const yScale = createScale("log", extent([...visible.map((point) => point.types), ...fittedValues.map((point) => point.types)]), [
     box.height - box.margin.bottom,
     box.margin.top,
   ]);
@@ -840,6 +845,15 @@ export function buildVocabularyGrowthGeometry(options: {
     tooltipRows: [`${formatInteger(point.tokens)} tokens`, `${formatInteger(point.types)} types`],
   }));
   const linePath = points.length > 0 ? { d: pointsToPath(points), className: "cw-plot-line cw-plot-line-glow" } : null;
+  const fitPath = fittedValues.length > 0
+    ? {
+        d: pointsToPath(fittedValues.map((point) => ({
+          x: scaleValue(xScale, point.tokens),
+          y: scaleValue(yScale, point.types),
+        }))),
+        className: "cw-plot-fit-line cw-plot-heaps-fit",
+      }
+    : null;
   const areaPath = points.length > 0
     ? { d: pointsToAreaPath(points, box.height - box.margin.bottom), className: "cw-plot-area" }
     : null;
@@ -875,7 +889,14 @@ export function buildVocabularyGrowthGeometry(options: {
     yTicks: logTicks(yScale),
     points,
     linePath,
+    fitPath,
     areaPath,
+    legend: fitPath
+      ? [
+          { label: "observed", className: "cw-plot-line" },
+          { label: "Heaps fit", className: "cw-plot-fit-line", dashed: true },
+        ]
+      : [],
     labels,
   };
 }
@@ -1976,6 +1997,25 @@ function lexicalSpectrumRampIndex(frequency: number): number {
   if (frequency === 2) return 1;
   if (frequency <= 9) return 2;
   return 4;
+}
+
+function vocabularyGrowthFitValues(
+  observed: VocabularyGrowthDatum[],
+  heapsK: number | null,
+  heapsBeta: number | null,
+): VocabularyGrowthDatum[] {
+  if (observed.length === 0 || heapsK === null || heapsBeta === null || heapsK <= 0 || heapsBeta <= 0) {
+    return [];
+  }
+  const start = Math.min(...observed.map((point) => point.tokens));
+  const end = Math.max(...observed.map((point) => point.tokens));
+  if (start <= 0 || end < start) return [];
+  const count = Math.max(2, Math.min(48, observed.length * 4));
+  return Array.from({ length: count }, (_, index) => {
+    const t = index / (count - 1);
+    const tokens = start * ((end / start) ** t);
+    return { tokens, types: heapsK * (tokens ** heapsBeta) };
+  });
 }
 
 function buildLexicalSpectrumBands(scale: PlotScale): LexicalSpectrumBandGeometry[] {
