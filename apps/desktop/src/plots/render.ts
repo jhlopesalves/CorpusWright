@@ -366,7 +366,7 @@ function renderTickLabels(
   const visibleLabels = placeAxisTickLabels(ticks, axis, box);
   const visibleByTick = new Map(visibleLabels.map((label) => [label.tick, label]));
   for (const tick of ticks) {
-    if (tick.major && tick.label) renderAxisTickMark(svg, tick, axis, box);
+    if (tick.major && (tick.label || tick.accessibleLabel)) renderAxisTickMark(svg, tick, axis, box);
     if (!tick.major && (scaleKind === "log" || scaleKind === "linear")) {
       const mark = createSvgElement("line");
       if (axis === "x") {
@@ -423,7 +423,7 @@ function renderAxisTickMark(svg: SVGSVGElement, tick: PlotTick, axis: "x" | "y",
     });
   }
   const title = createSvgElement("title");
-  title.textContent = tick.label;
+  title.textContent = tick.accessibleLabel ?? tick.label;
   mark.appendChild(title);
   svg.appendChild(mark);
 }

@@ -280,8 +280,12 @@ assert(
   "Length histogram median line should land inside the bin containing medianTokens",
 );
 assert(
-  lengthHistogram.xTicks.map((tick) => tick.label).join(",") === "256–512,512–1k,1k–2k",
-  "Length histogram should format power-of-two bin labels compactly",
+  lengthHistogram.xTicks.map((tick) => tick.label).join(",") === "256,,1k,2k",
+  "Length histogram should label stable power-of-two bin boundaries without range collisions",
+);
+assert(
+  lengthHistogram.bars[1]?.tooltipRows?.[0] === "512–1,024 tokens",
+  "Length histogram hover should retain each bar's exact bin bounds",
 );
 assert(
   formatLengthHistogramStats(10, 800, 260, 1_500)
