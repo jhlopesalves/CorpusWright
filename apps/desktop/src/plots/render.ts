@@ -118,21 +118,68 @@ export function renderDispersionSvg(plotId: string, geometry: DispersionGeometry
     valueAxis: "x",
   });
   for (const divider of geometry.dividers) renderLine(svg, divider);
-  for (const stem of geometry.stems) renderLine(svg, stem);
-  renderPoints(svg, geometry.points, "cw-plot-point is-panel-stroked is-lollipop");
-  for (const point of geometry.points.filter((candidate) => candidate.datum.highlighted)) {
-    const halo = createSvgElement("circle");
-    setAttrs(halo, {
-      cx: point.x,
-      cy: point.y,
-      r: 9,
-      class: `cw-plot-halo cw-plot-ramp-${point.rampIndex}`,
-    });
-    svg.appendChild(halo);
-  }
+  renderDispersionCompositionBar(svg, geometry);
+  for (const stem of geometry.stems.filter((_stem, index) => !geometry.points[index]?.datum.highlighted)) renderLine(svg, stem);
+  renderPoints(svg, geometry.points.filter((point) => !point.datum.highlighted), "cw-plot-point is-panel-stroked is-lollipop");
+  renderDispersionCumulativeAnnotations(svg, geometry);
   renderLabels(svg, geometry.labels);
   renderInteractionLayer(svg, geometry.box);
   return svg;
+}
+
+function renderDispersionCompositionBar(svg: SVGSVGElement, geometry: DispersionGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-dispersion-composition");
+  for (const segment of geometry.compositionSegments) {
+    const rect = createSvgElement("rect");
+    setAttrs(rect, {
+      x: segment.x,
+      y: segment.y,
+      width: segment.width,
+      height: segment.height,
+      class: `cw-plot-composition-segment cw-plot-ramp-${segment.rampIndex} cw-plot-hover-target`,
+      tabindex: "0",
+      "data-plot-x": segment.x + segment.width / 2,
+      "data-plot-y": segment.y + segment.height / 2,
+      "data-tooltip-title": segment.tooltipTitle,
+      "data-tooltip-rows": segment.tooltipRows.join("\n"),
+    });
+    group.appendChild(rect);
+    if (segment.label) {
+      const label = createSvgElement("text");
+      setAttrs(label, {
+        x: segment.x + segment.width / 2,
+        y: segment.y + segment.height - 3,
+        class: "cw-plot-composition-label",
+        "text-anchor": "middle",
+      });
+      label.textContent = segment.label;
+      group.appendChild(label);
+    }
+  }
+  svg.appendChild(group);
+}
+
+function renderDispersionCumulativeAnnotations(svg: SVGSVGElement, geometry: DispersionGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-dispersion-cumulative");
+  for (const point of geometry.points.filter((candidate) => candidate.datum.highlighted)) {
+    const marker = createSvgElement("rect");
+    setAttrs(marker, {
+      x: point.x - 4,
+      y: point.y - 4,
+      width: 8,
+      height: 8,
+      class: `cw-plot-cumulative-marker cw-plot-ramp-${point.rampIndex} cw-plot-hover-target`,
+      tabindex: "0",
+      "data-plot-x": point.x,
+      "data-plot-y": point.y,
+      "data-tooltip-title": point.tooltipTitle ?? "",
+      "data-tooltip-rows": (point.tooltipRows ?? []).join("\n"),
+    });
+    group.appendChild(marker);
+  }
+  svg.appendChild(group);
 }
 
 export function renderDispersionPlaneSvg(plotId: string, geometry: DispersionPlaneGeometry): SVGSVGElement {

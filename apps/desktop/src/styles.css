@@ -2958,6 +2958,25 @@ main {
   transform-origin: bottom center;
 }
 
+.cw-plot-composition-segment {
+  stroke: var(--panel-bg);
+  stroke-width: 1;
+}
+
+.cw-plot-composition-label {
+  fill: var(--panel-bg);
+  font-family: var(--cw-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.cw-plot-cumulative-marker {
+  fill: var(--cw-plot-point);
+  stroke: var(--panel-bg);
+  stroke-width: 1.2;
+}
+
 .cw-plot-threshold-line {
   fill: none;
   stroke: var(--text-muted);
@@ -3170,7 +3189,9 @@ main {
 .cw-plot-density-cell.cw-plot-hover-target:hover,
 .cw-plot-density-cell.cw-plot-hover-target:focus,
 .cw-plot-bar.cw-plot-hover-target:hover,
-.cw-plot-bar.cw-plot-hover-target:focus {
+.cw-plot-bar.cw-plot-hover-target:focus,
+.cw-plot-composition-segment.cw-plot-hover-target:hover,
+.cw-plot-composition-segment.cw-plot-hover-target:focus {
   transform: none;
 }
 
