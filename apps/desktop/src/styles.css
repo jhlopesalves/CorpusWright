@@ -2612,6 +2612,10 @@ main {
   line-height: 1.35;
 }
 
+.cw-overview-figure:not(.is-collapsed) .cw-overview-figure-title-block {
+  display: none;
+}
+
 .cw-overview-figure.is-collapsed .cw-overview-figure-title-block h4 {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2632,46 +2636,25 @@ main {
   border-radius: 999px;
 }
 
-.cw-overview-figure-icon-btn {
-  min-width: 32px;
-  min-height: 28px;
-  padding: 4px 7px;
-  font-family: var(--cw-font-mono);
-  font-size: 0.68rem;
-  line-height: 1;
+.cw-overview-figure-action {
+  min-height: 24px;
+  padding: 2px 3px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: 500 12px/1.2 var(--cw-font-ui);
 }
 
-.cw-overview-figure-download-icon {
-  display: block;
-  flex: 0 0 auto;
+.cw-overview-figure-action:hover {
+  color: var(--text-color);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
-.cw-overview-figure-collapse {
-  min-width: 88px;
-  justify-content: center;
-}
-
-.cw-overview-figure-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 4px 8px;
-  font-family: var(--cw-font-ui);
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.cw-overview-figure-chevron {
-  display: inline-block;
-  flex: 0 0 auto;
-  transform-origin: center;
-  transition: transform 160ms ease-out;
-}
-
-.cw-overview-figure:not(.is-collapsed) .cw-overview-figure-chevron {
-  transform: rotate(180deg);
+.cw-overview-figure-action:focus-visible {
+  outline: none;
+  box-shadow: var(--cw-interaction-focus-ring);
 }
 
 .cw-overview-figure-body {
@@ -2745,7 +2728,6 @@ main {
   color: var(--cw-text-selected, var(--text-color));
 }
 
-.cw-overview-figure-icon-btn:focus-visible,
 .cw-overview-segment:focus-visible {
   outline: none;
   box-shadow: var(--cw-interaction-focus-ring);
@@ -2775,7 +2757,8 @@ main {
 }
 
 .cw-plot-axis-baseline,
-.cw-plot-minor-tick {
+.cw-plot-minor-tick,
+.cw-plot-axis-tick {
   stroke: var(--text-muted);
   stroke-opacity: 0.55;
   stroke-width: 1;
@@ -2792,6 +2775,8 @@ main {
   fill: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .cw-plot-line,
@@ -2997,7 +2982,11 @@ main {
 
 .cw-plot-label-mono {
   fill: var(--text-color);
-  font-size: 10.5px;
+  font-size: 11.5px;
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 .cw-plot-label-strong {
@@ -3032,6 +3021,49 @@ main {
   stroke-opacity: 0.7;
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-legend-bg {
+  fill: var(--panel-bg);
+  opacity: 0.9;
+  stroke: var(--border-color);
+  stroke-width: 1;
+}
+
+.cw-plot-legend-swatch {
+  stroke: var(--cw-plot-point);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.cw-plot-legend-swatch.cw-plot-fit-line {
+  stroke: var(--cw-plot-fit);
+}
+
+.cw-plot-legend-swatch.is-dashed {
+  stroke-dasharray: 4 3;
+}
+
+.cw-plot-legend-label {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-mono);
+  font-size: 11.5px;
+}
+
+.cw-plot-figure-title {
+  fill: var(--text-color);
+  font-family: var(--cw-font-ui);
+}
+
+.cw-plot-figure-subtitle,
+.cw-plot-figure-reading {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-ui);
+}
+
+.cw-plot-figure-stats {
+  fill: var(--text-color);
+  font-family: var(--cw-font-mono);
 }
 
 .cw-plot-leader {
@@ -3133,9 +3165,6 @@ main {
     transition: none;
   }
 
-  .cw-overview-figure-chevron {
-    transition: none;
-  }
 }
 
 .analysis-reading-panel {

@@ -5,6 +5,14 @@ import {
 
 const FIGURE_COLLAPSE_STORAGE_KEY = "corpuswright.overview.figureCollapse";
 const SVG_NS = "http://www.w3.org/2000/svg";
+const FIGURE_SVG_TOP_INSET = 52;
+const FIGURE_SVG_BOTTOM_INSET = 62;
+const FIGURE_TITLE_FONT_SIZE = 17;
+const FIGURE_SUBTITLE_FONT_SIZE = 12.5;
+const FIGURE_STATS_FONT_SIZE = 12;
+const FIGURE_READING_FONT_SIZE = 11.5;
+
+const figureMetadata = new WeakMap<HTMLElement, OverviewFigureOptions>();
 
 export interface OverviewFigureOptions {
   id: string;
@@ -26,6 +34,9 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
   const figure = document.createElement("section");
   figure.className = "cw-overview-figure";
   figure.dataset.figureId = options.id;
+  figure.setAttribute("role", "region");
+  figure.setAttribute("aria-label", `${options.title}. ${options.subtitle}`);
+  figureMetadata.set(figure, options);
   const initialSvg = options.renderSvg();
 
   const header = document.createElement("div");
@@ -39,6 +50,7 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
 
   const titleBlock = document.createElement("div");
   titleBlock.className = "cw-overview-figure-title-block";
+  titleBlock.setAttribute("aria-label", `${options.title}. ${options.subtitle}`);
   const title = document.createElement("h4");
   title.textContent = options.title;
   const subtitle = document.createElement("p");
@@ -59,52 +71,20 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
 
   const exportButton = document.createElement("button");
   exportButton.type = "button";
-  exportButton.className = "secondary-btn cw-overview-figure-icon-btn cw-overview-figure-export";
+  exportButton.className = "cw-overview-figure-action cw-overview-figure-export";
   exportButton.title = "Export SVG";
   exportButton.setAttribute("aria-label", `Export ${options.title} as SVG`);
-  const exportIcon = document.createElementNS(SVG_NS, "svg");
-  exportIcon.classList.add("cw-overview-figure-download-icon");
-  exportIcon.setAttribute("aria-hidden", "true");
-  exportIcon.setAttribute("viewBox", "0 0 14 14");
-  exportIcon.setAttribute("width", "14");
-  exportIcon.setAttribute("height", "14");
-  exportIcon.setAttribute("fill", "none");
-  exportIcon.setAttribute("stroke", "currentColor");
-  exportIcon.setAttribute("stroke-width", "1.6");
-  exportIcon.setAttribute("stroke-linecap", "round");
-  exportIcon.setAttribute("stroke-linejoin", "round");
-  for (const d of ["M7 1.5 V8.5 M4 6 L7 9 L10 6", "M2 11.5 H12"]) {
-    const path = document.createElementNS(SVG_NS, "path");
-    path.setAttribute("d", d);
-    exportIcon.appendChild(path);
-  }
-  exportButton.appendChild(exportIcon);
+  exportButton.textContent = "Export SVG";
 
   const collapseButton = document.createElement("button");
   collapseButton.type = "button";
-  collapseButton.className = "secondary-btn cw-overview-figure-toggle cw-overview-figure-collapse";
+  collapseButton.className = "cw-overview-figure-action cw-overview-figure-collapse";
   collapseButton.title = "Collapse figure";
   collapseButton.setAttribute("aria-label", `Collapse ${options.title}`);
 
   const collapseLabel = document.createElement("span");
-  collapseLabel.className = "cw-overview-figure-toggle-label";
-  collapseLabel.textContent = "Hide";
-
-  const chevron = document.createElementNS(SVG_NS, "svg");
-  chevron.classList.add("cw-overview-figure-chevron");
-  chevron.setAttribute("aria-hidden", "true");
-  chevron.setAttribute("viewBox", "0 0 12 8");
-  chevron.setAttribute("width", "12");
-  chevron.setAttribute("height", "8");
-  const chevronPath = document.createElementNS(SVG_NS, "path");
-  chevronPath.setAttribute("d", "M1 1.5 6 6.5 11 1.5");
-  chevronPath.setAttribute("fill", "none");
-  chevronPath.setAttribute("stroke", "currentColor");
-  chevronPath.setAttribute("stroke-width", "1.8");
-  chevronPath.setAttribute("stroke-linecap", "round");
-  chevronPath.setAttribute("stroke-linejoin", "round");
-  chevron.appendChild(chevronPath);
-  collapseButton.append(collapseLabel, chevron);
+  collapseLabel.textContent = "Collapse";
+  collapseButton.appendChild(collapseLabel);
   actions.append(badgeSlot, exportButton, collapseButton);
   header.append(sparkline, titleBlock, actions);
 
@@ -155,6 +135,8 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
 export function replaceFigureSvg(figure: HTMLElement, svg: SVGSVGElement): void {
   const mount = figure.querySelector<HTMLElement>("[data-figure-svg-mount='true']");
   if (!mount) return;
+  const options = figureMetadata.get(figure);
+  if (options) decorateFigureSvg(svg, options);
   replaceFigureSvgElement(mount, svg);
   const sparkline = figure.querySelector<HTMLElement>("[data-figure-sparkline='true']");
   if (sparkline) renderSparklineGlyph(sparkline, svg);
@@ -194,6 +176,9 @@ export function overviewFigureSvgString(figure: HTMLElement): string | null {
 }
 
 function replaceFigureSvgElement(mount: HTMLElement, svg: SVGSVGElement): void {
+  const figure = mount.closest<HTMLElement>(".cw-overview-figure");
+  const options = figure ? figureMetadata.get(figure) : undefined;
+  if (options && !svg.querySelector(".cw-plot-figure-identity")) decorateFigureSvg(svg, options);
   mount.replaceChildren(svg);
   attachPlotHover(svg);
 }
@@ -207,9 +192,42 @@ function setFigureCollapsed(
 ): void {
   figure.classList.toggle("is-collapsed", collapsed);
   button.setAttribute("aria-expanded", String(!collapsed));
-  button.title = collapsed ? "Show plot" : "Hide plot";
-  button.setAttribute("aria-label", collapsed ? `Show plot for ${title}` : `Hide plot for ${title}`);
-  label.textContent = collapsed ? "Show plot" : "Hide";
+  button.title = collapsed ? "Expand figure" : "Collapse figure";
+  button.setAttribute("aria-label", collapsed ? `Expand ${title}` : `Collapse ${title}`);
+  label.textContent = collapsed ? "Expand" : "Collapse";
+}
+
+function decorateFigureSvg(svg: SVGSVGElement, options: OverviewFigureOptions): void {
+  const viewBox = svg.viewBox.baseVal;
+  const width = viewBox.width || 720;
+  const height = viewBox.height || 360;
+  svg.setAttribute("viewBox", `0 ${-FIGURE_SVG_TOP_INSET} ${width} ${height + FIGURE_SVG_TOP_INSET + FIGURE_SVG_BOTTOM_INSET}`);
+  svg.setAttribute("aria-label", `${options.title}. ${options.subtitle}. ${options.captionStats}. ${options.captionReading}`);
+
+  const identity = document.createElementNS(SVG_NS, "g");
+  identity.setAttribute("class", "cw-plot-figure-identity");
+  identity.setAttribute("aria-hidden", "true");
+
+  const title = createSvgText(0, -30, "cw-plot-figure-title", options.title);
+  title.setAttribute("font-size", String(FIGURE_TITLE_FONT_SIZE));
+  title.setAttribute("font-weight", "650");
+  const subtitle = createSvgText(0, -11, "cw-plot-figure-subtitle", options.subtitle);
+  subtitle.setAttribute("font-size", String(FIGURE_SUBTITLE_FONT_SIZE));
+  const stats = createSvgText(0, height + 24, "cw-plot-figure-stats", options.captionStats);
+  stats.setAttribute("font-size", String(FIGURE_STATS_FONT_SIZE));
+  const reading = createSvgText(0, height + 45, "cw-plot-figure-reading", options.captionReading);
+  reading.setAttribute("font-size", String(FIGURE_READING_FONT_SIZE));
+  identity.append(title, subtitle, stats, reading);
+  svg.appendChild(identity);
+}
+
+function createSvgText(x: number, y: number, className: string, text: string): SVGTextElement {
+  const element = document.createElementNS(SVG_NS, "text");
+  element.setAttribute("x", String(x));
+  element.setAttribute("y", String(y));
+  element.setAttribute("class", className);
+  element.textContent = text;
+  return element;
 }
 
 function appendCaptionStats(container: HTMLElement, value: string): void {
