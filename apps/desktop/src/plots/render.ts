@@ -64,6 +64,7 @@ export function renderVocabularyGrowthSvg(plotId: string, geometry: VocabularyGr
 export function renderLexicalSpectrumSvg(plotId: string, geometry: LexicalSpectrumGeometry): SVGSVGElement {
   const svg = createBaseSvg(plotId, geometry.box);
   renderDefinitions(svg, plotId);
+  renderLexicalSpectrumBands(svg, geometry);
   renderAxes(svg, geometry.box, geometry.xScale, geometry.yScale, geometry.xTicks, geometry.yTicks, {
     x: "frequency",
     y: "types",
@@ -520,6 +521,7 @@ function renderPoints(svg: SVGSVGElement, points: Array<PlotPointGeometry>, base
       baseClass,
       `cw-plot-ramp-${point.rampIndex}`,
       point.excluded ? "is-excluded" : "",
+      point.className ?? "",
       "cw-plot-hover-target",
     ].filter(Boolean).join(" ");
     setAttrs(circle, {
@@ -532,10 +534,35 @@ function renderPoints(svg: SVGSVGElement, points: Array<PlotPointGeometry>, base
       "data-plot-y": point.y,
       "data-tooltip-title": point.tooltipTitle ?? "",
       "data-tooltip-rows": (point.tooltipRows ?? []).join("\n"),
-      style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms;`,
+      style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms; --cw-plot-fill-opacity: ${point.fillOpacity ?? 1};`,
     });
     group.appendChild(circle);
   });
+  svg.appendChild(group);
+}
+
+function renderLexicalSpectrumBands(svg: SVGSVGElement, geometry: LexicalSpectrumGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-spectrum-bands");
+  for (const band of geometry.bands) {
+    const rect = createSvgElement("rect");
+    setAttrs(rect, {
+      x: band.x,
+      y: geometry.box.margin.top,
+      width: band.width,
+      height: geometry.box.innerHeight,
+      class: `cw-plot-spectrum-band ${band.alternate ? "is-alternate" : ""}`.trim(),
+    });
+    const label = createSvgElement("text");
+    setAttrs(label, {
+      x: band.x + (band.width / 2),
+      y: geometry.box.margin.top + 14,
+      class: "cw-plot-spectrum-band-label",
+      "text-anchor": "middle",
+    });
+    label.textContent = band.label;
+    group.append(rect, label);
+  }
   svg.appendChild(group);
 }
 

@@ -48,6 +48,8 @@ export interface PlotPointGeometry<TDatum = unknown> {
   datum: TDatum;
   rampIndex: number;
   excluded?: boolean;
+  className?: string;
+  fillOpacity?: number;
   label?: string;
   tooltipTitle?: string;
   tooltipRows?: string[];
@@ -168,6 +170,13 @@ export interface FrequencySpectrumDatum {
   typeCount: number;
 }
 
+export interface LexicalSpectrumBandGeometry {
+  x: number;
+  width: number;
+  label: string;
+  alternate: boolean;
+}
+
 export interface LexicalSpectrumGeometry {
   box: PlotBox;
   xScale: PlotScale;
@@ -175,6 +184,7 @@ export interface LexicalSpectrumGeometry {
   xTicks: PlotTick[];
   yTicks: PlotTick[];
   points: Array<PlotPointGeometry<FrequencySpectrumDatum>>;
+  bands: LexicalSpectrumBandGeometry[];
   labels: PlotLabelGeometry[];
 }
 
@@ -884,7 +894,9 @@ export function buildLexicalSpectrumGeometry(options: {
     rawX: point.frequency,
     rawY: point.typeCount,
     datum: point,
-    rampIndex: rampIndex(point.frequency, xScale.domain, true),
+    rampIndex: lexicalSpectrumRampIndex(point.frequency),
+    className: point.typeCount === 1 ? "is-frequency-singleton" : "",
+    fillOpacity: point.typeCount === 1 ? 0.42 : 0.6,
     tooltipTitle: `${formatInteger(point.typeCount)} types`,
     tooltipRows: [`frequency ${formatInteger(point.frequency)}`, `${formatInteger(point.typeCount)} types`],
   }));
@@ -904,6 +916,7 @@ export function buildLexicalSpectrumGeometry(options: {
     xTicks: logTicks(xScale),
     yTicks: logTicks(yScale),
     points,
+    bands: buildLexicalSpectrumBands(xScale),
     labels,
   };
 }
@@ -1959,6 +1972,36 @@ function rampIndex(value: number, domain: [number, number], log: boolean): numbe
   return Math.max(0, Math.min(4, Math.floor(((current - start) / (end - start)) * 5)));
 }
 
+function lexicalSpectrumRampIndex(frequency: number): number {
+  if (frequency <= 1) return 0;
+  if (frequency === 2) return 1;
+  if (frequency <= 9) return 2;
+  return 4;
+}
+
+function buildLexicalSpectrumBands(scale: PlotScale): LexicalSpectrumBandGeometry[] {
+  const [domainStart, domainEnd] = scale.domain;
+  const boundaries = [
+    { start: 1, end: Math.SQRT2, label: "HAPAX", alternate: false },
+    { start: Math.SQRT2, end: Math.sqrt(6), label: "DIS", alternate: true },
+    { start: Math.sqrt(6), end: Math.sqrt(90), label: "3–9", alternate: false },
+    { start: Math.sqrt(90), end: domainEnd, label: "10+", alternate: true },
+  ];
+  return boundaries.flatMap((band) => {
+    const start = Math.max(domainStart, band.start);
+    const end = Math.min(domainEnd, band.end);
+    if (end <= start) return [];
+    const x = scaleValue(scale, start);
+    const right = scaleValue(scale, end);
+    return [{
+      x,
+      width: Math.max(0, right - x),
+      label: band.label,
+      alternate: band.alternate,
+    }];
+  });
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -2016,7 +2059,7 @@ function labelRequestForExactFrequency(
     x: point.x,
     y: point.y,
     text,
-    className: "cw-plot-label-muted",
+    className: "cw-plot-label-mono cw-plot-label-muted",
     candidates: [
       { dx: 10, dy: 4, anchor: "start" },
       { dx: 10, dy: -10, anchor: "start" },
