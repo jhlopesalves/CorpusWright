@@ -144,6 +144,7 @@ export interface RankFrequencyGeometry {
   yTicks: PlotTick[];
   points: Array<PlotPointGeometry<RankFrequencyDatum>>;
   fitPath: PlotPathGeometry | null;
+  legend: PlotLegendItem[];
   labels: PlotLabelGeometry[];
   bracket: PlotBracketGeometry | null;
 }
@@ -734,15 +735,15 @@ export function buildRankFrequencyGeometry(options: {
   box?: PlotBox;
 }): RankFrequencyGeometry {
   const box = options.box ?? createPlotBox();
-  const visible = options.points.filter((point) => point.rank > 0 && yValueForRank(point, options.yMode) > 0);
+  const visible = options.points.filter((point) => point.rank > 0 && point.frequency > 0);
   const xDomain = extent(visible.map((point) => point.rank));
-  const yDomain = extent(visible.map((point) => yValueForRank(point, options.yMode)));
+  const yDomain = extent(visible.map((point) => point.frequency));
   const xScale = createScale("log", xDomain, [box.margin.left, box.width - box.margin.right]);
   const yScale = createScale("log", yDomain, [box.height - box.margin.bottom, box.margin.top]);
   const fittedStart = options.fittedRankStart;
   const fittedEnd = options.fittedRankEnd;
   const points = visible.map((point) => {
-    const rawY = yValueForRank(point, options.yMode);
+    const rawY = point.frequency;
     const excluded = fittedStart === null || fittedEnd === null || point.rank < fittedStart || point.rank > fittedEnd
       || point.frequency <= 1;
     return {
@@ -756,9 +757,8 @@ export function buildRankFrequencyGeometry(options: {
       tooltipTitle: point.token ?? `rank ${formatInteger(point.rank)}`,
       tooltipRows: [
         `rank ${formatInteger(point.rank)}`,
-        options.yMode === "rate"
-          ? `${formatFixed(rawY, 2)} per million`
-          : `${formatInteger(point.frequency)} tokens`,
+        `${formatInteger(point.frequency)} tokens`,
+        `${formatFixed(point.ratePerMillion, 2)} per million`,
       ],
     };
   });
@@ -798,9 +798,18 @@ export function buildRankFrequencyGeometry(options: {
     xScale,
     yScale,
     xTicks: logTicks(xScale),
-    yTicks: logTicks(yScale),
+    yTicks: rankFrequencyTicks(yScale, options.yMode, options.totalTokens),
     points,
     fitPath,
+    legend: fittedStart !== null && fittedEnd !== null && fitPath
+      ? [
+          {
+            label: `fit: ranks ${formatInteger(fittedStart)}–${formatInteger(fittedEnd)}`,
+            className: "cw-plot-fit-line",
+          },
+          { label: "excluded: top 3 and f=1 tail", className: "cw-plot-excluded" },
+        ]
+      : [],
     labels: headLabels,
     bracket,
   };
@@ -1996,14 +2005,8 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function yValueForRank(point: RankFrequencyDatum, mode: "rate" | "raw"): number {
-  return mode === "rate" ? point.ratePerMillion : point.frequency;
-}
-
 function fitPointsForRank(
   options: {
-    yMode: "rate" | "raw";
-    totalTokens: number;
     zipfExponent: number | null;
     zipfCoefficient: number | null;
     fittedRankStart: number | null;
@@ -2028,14 +2031,25 @@ function fitPointsForRank(
     const raw = options.zipfCoefficient === null || options.zipfExponent === null
       ? 0
       : options.zipfCoefficient * (rank ** -options.zipfExponent);
-    const yValue = options.yMode === "rate" && options.totalTokens > 0
-      ? raw / options.totalTokens * 1_000_000
-      : raw;
     return {
       x: scaleValue(xScale, rank),
-      y: scaleValue(yScale, yValue),
+      y: scaleValue(yScale, raw),
     };
   });
+}
+
+function rankFrequencyTicks(scale: PlotScale, mode: "rate" | "raw", totalTokens: number): PlotTick[] {
+  return logTicks(scale).map((tick) => ({
+    ...tick,
+    label: !tick.major || mode === "raw"
+      ? tick.label
+      : formatRatePerMillion(tick.value, totalTokens),
+  }));
+}
+
+function formatRatePerMillion(frequency: number, totalTokens: number): string {
+  if (totalTokens <= 0) return "0";
+  return formatTickNumber(frequency / totalTokens * 1_000_000);
 }
 
 function labelRequestForExactFrequency(

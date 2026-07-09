@@ -38,6 +38,7 @@ export function renderRankFrequencySvg(plotId: string, geometry: RankFrequencyGe
   });
   if (geometry.fitPath) renderPath(svg, geometry.fitPath, plotId);
   renderPoints(svg, geometry.points, "cw-plot-point");
+  renderSvgLegend(svg, geometry.box, geometry.legend);
   renderLabels(svg, geometry.labels);
   if (geometry.bracket) renderBracket(svg, geometry.bracket);
   renderInteractionLayer(svg, geometry.box);
