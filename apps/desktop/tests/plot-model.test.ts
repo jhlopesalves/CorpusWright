@@ -244,6 +244,17 @@ assert(
   "The ≥90% overlay row should be distinct and divided from the ladder",
 );
 assert(
+  dispersionProfile.compositionSegments.length === 3
+    && dispersionProfile.compositionSegments.reduce((total, segment) => total + segment.width, 0) > 0
+    && dispersionProfile.compositionSegments.some((segment) => segment.label !== null),
+  "Dispersion profile should add a labelled stacked composition strip for exclusive bands",
+);
+assert(
+  dispersionProfile.stems.at(-1) !== undefined
+    && dispersionProfile.points.at(-1)?.datum.highlighted === true,
+  "Dispersion profile should preserve the distinct cumulative annotation datum for square rendering",
+);
+assert(
   dispersionProfile.labels.some((label) => label.text === "3")
     && !dispersionProfile.labels.some((label) => label.text.includes("the · of")),
   "Universal type tokens must not be emitted as axis-adjacent labels",

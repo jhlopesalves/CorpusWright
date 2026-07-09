@@ -1331,7 +1331,7 @@ function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
             count: dispersion.dfAtLeast90pctCount,
             share: dispersion.dfAtLeast90pctShare,
             highlighted: true,
-            detail: formatNumber(dispersion.dfAtLeast90pctCount),
+            detail: `${formatNumber(dispersion.dfAtLeast90pctCount)} types · cumulative, not a band`,
           },
         ],
       }),
