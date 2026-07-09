@@ -2,6 +2,7 @@ import {
   estimateLabelBox,
   labelLineHeight,
   labelTextLines,
+  placeAxisTickLabels,
 } from "./model";
 import type {
   CoverageGeometry,
@@ -15,6 +16,7 @@ import type {
   PlotBox,
   PlotBracketGeometry,
   PlotLabelGeometry,
+  PlotLegendItem,
   PlotLineGeometry,
   PlotPathGeometry,
   PlotPointGeometry,
@@ -361,7 +363,10 @@ function renderTickLabels(
   box: PlotBox,
   scaleKind: "linear" | "log",
 ): void {
+  const visibleLabels = placeAxisTickLabels(ticks, axis, box);
+  const visibleByTick = new Map(visibleLabels.map((label) => [label.tick, label]));
   for (const tick of ticks) {
+    if (tick.major && tick.label) renderAxisTickMark(svg, tick, axis, box);
     if (!tick.major && (scaleKind === "log" || scaleKind === "linear")) {
       const mark = createSvgElement("line");
       if (axis === "x") {
@@ -384,26 +389,79 @@ function renderTickLabels(
       svg.appendChild(mark);
       continue;
     }
-    if (!tick.label) continue;
+    const label = visibleByTick.get(tick);
+    if (!label) continue;
     const text = createSvgElement("text");
-    if (axis === "x") {
-      setAttrs(text, {
-        x: tick.position,
-        y: box.height - box.margin.bottom + 19,
-        class: "cw-plot-tick-label",
-        "text-anchor": "middle",
-      });
-    } else {
-      setAttrs(text, {
-        x: box.margin.left - 10,
-        y: tick.position + 4,
-        class: "cw-plot-tick-label",
-        "text-anchor": "end",
-      });
-    }
-    text.textContent = tick.label;
+    setAttrs(text, {
+      x: label.x,
+      y: label.y,
+      class: "cw-plot-tick-label",
+      "text-anchor": label.anchor,
+    });
+    text.textContent = label.text;
     svg.appendChild(text);
   }
+}
+
+function renderAxisTickMark(svg: SVGSVGElement, tick: PlotTick, axis: "x" | "y", box: PlotBox): void {
+  const mark = createSvgElement("line");
+  if (axis === "x") {
+    setAttrs(mark, {
+      x1: tick.position,
+      y1: box.height - box.margin.bottom,
+      x2: tick.position,
+      y2: box.height - box.margin.bottom + 4,
+      class: "cw-plot-axis-tick",
+    });
+  } else {
+    setAttrs(mark, {
+      x1: box.margin.left - 4,
+      y1: tick.position,
+      x2: box.margin.left,
+      y2: tick.position,
+      class: "cw-plot-axis-tick",
+    });
+  }
+  const title = createSvgElement("title");
+  title.textContent = tick.label;
+  mark.appendChild(title);
+  svg.appendChild(mark);
+}
+
+export function renderSvgLegend(svg: SVGSVGElement, box: PlotBox, items: PlotLegendItem[]): void {
+  if (items.length === 0) return;
+  const rowHeight = 16;
+  const padding = 8;
+  const maxTextLength = Math.max(...items.map((item) => item.label.length));
+  const width = Math.min(box.innerWidth, Math.max(116, maxTextLength * 6.6 + 34));
+  const height = items.length * rowHeight + padding * 2;
+  const x = box.width - box.margin.right - width;
+  const y = box.margin.top + 8;
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-legend");
+  const background = createSvgElement("rect");
+  setAttrs(background, { x, y, width, height, rx: 4, class: "cw-plot-legend-bg" });
+  group.appendChild(background);
+  for (const [index, item] of items.entries()) {
+    const rowY = y + padding + rowHeight * index + rowHeight / 2;
+    const swatch = createSvgElement("line");
+    setAttrs(swatch, {
+      x1: x + padding,
+      y1: rowY,
+      x2: x + padding + 15,
+      y2: rowY,
+      class: `cw-plot-legend-swatch ${item.className ?? ""} ${item.dashed ? "is-dashed" : ""}`.trim(),
+    });
+    const text = createSvgElement("text");
+    setAttrs(text, {
+      x: x + padding + 21,
+      y: rowY + 4,
+      class: "cw-plot-legend-label",
+    });
+    text.textContent = item.label;
+    group.append(swatch, text);
+  }
+  svg.appendChild(group);
 }
 
 function renderAxisTitles(svg: SVGSVGElement, box: PlotBox, xLabel: string, yLabel: string): void {

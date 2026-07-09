@@ -29,6 +29,16 @@ export interface PlotTick {
   major: boolean;
 }
 
+export interface PlotTickLabelGeometry extends PlotLabelGeometry {
+  tick: PlotTick;
+}
+
+export interface PlotLegendItem {
+  label: string;
+  className?: string;
+  dashed?: boolean;
+}
+
 export interface PlotPointGeometry<TDatum = unknown> {
   x: number;
   y: number;
@@ -372,8 +382,10 @@ export const DEFAULT_PLOT_MARGIN: PlotMargin = {
 };
 
 const LOG_MINIMUM = 1e-9;
-const DEFAULT_LABEL_FONT_SIZE = 11;
-const MONO_SMALL_LABEL_FONT_SIZE = 10.5;
+export const AXIS_TITLE_FONT_SIZE = 12;
+export const TICK_LABEL_FONT_SIZE = 11.5;
+export const ANNOTATION_LABEL_FONT_SIZE = 11.5;
+export const MONO_SMALL_LABEL_FONT_SIZE = ANNOTATION_LABEL_FONT_SIZE;
 const LABEL_WIDTH_FACTOR = 0.62;
 const LABEL_LINE_HEIGHT_FACTOR = 1.3;
 const DENSITY_CELL_LABEL_OBSTACLE_OPACITY = 0.52;
@@ -489,7 +501,7 @@ export function labelTextLines(label: Pick<PlotLabelGeometry, "lines" | "text">)
 
 export function labelFontSize(label: Pick<PlotLabelGeometry, "className" | "fontSize">): number {
   if (label.fontSize !== undefined) return label.fontSize;
-  return label.className?.includes("cw-plot-label-mono") ? MONO_SMALL_LABEL_FONT_SIZE : DEFAULT_LABEL_FONT_SIZE;
+  return label.className?.includes("cw-plot-label-mono") ? MONO_SMALL_LABEL_FONT_SIZE : ANNOTATION_LABEL_FONT_SIZE;
 }
 
 export function labelLineHeight(label: Pick<PlotLabelGeometry, "className" | "fontSize">): number {
@@ -545,6 +557,54 @@ export function placeLabels(
     activeObstacles.push({ kind: "box", box: estimateLabelBox(placedLabel) });
   }
   return placed;
+}
+
+export function placeAxisTickLabels(
+  ticks: PlotTick[],
+  axis: "x" | "y",
+  box: PlotBox,
+): PlotTickLabelGeometry[] {
+  const labelledTicks = ticks.filter((tick) => tick.major && tick.label);
+  if (labelledTicks.length === 0) return [];
+  const requests = labelledTicks.map((tick) => ({
+    x: axis === "x" ? tick.position : box.margin.left - 10,
+    y: axis === "x" ? box.height - box.margin.bottom + 19 : tick.position + 4,
+    text: middleEllipsise(tick.label, axis === "x" ? 16 : 10),
+    className: "cw-plot-tick-label",
+    fontSize: TICK_LABEL_FONT_SIZE,
+    candidates: [{ dx: 0, dy: 0, anchor: axis === "x" ? "middle" as const : "end" as const }],
+  }));
+  const placed = placeLabels(requests, [], {
+    left: 0,
+    top: 0,
+    right: box.width,
+    bottom: box.height,
+  });
+  const anchors = new Set<number>([0, placed.length - 1]);
+  const accepted: PlotTickLabelGeometry[] = [];
+  for (const index of anchors) {
+    const label = placed[index];
+    const tick = labelledTicks[index];
+    if (label && tick) accepted.push({ ...label, tick });
+  }
+  for (let index = 1; index < placed.length - 1; index += 1) {
+    const label = placed[index];
+    const tick = labelledTicks[index];
+    if (!label || !tick) continue;
+    const candidateBox = estimateLabelBox(label);
+    if (accepted.every((existing) => boxOverlapArea(candidateBox, estimateLabelBox(existing)) === 0)) {
+      accepted.push({ ...label, tick });
+    }
+  }
+  return accepted.sort((left, right) => left.tick.position - right.tick.position);
+}
+
+export function middleEllipsise(value: string, maxLength: number): string {
+  if (value.length <= maxLength || maxLength < 2) return value;
+  const preserved = maxLength - 1;
+  const start = Math.ceil(preserved / 2);
+  const end = Math.floor(preserved / 2);
+  return `${value.slice(0, start)}…${value.slice(value.length - end)}`;
 }
 
 function applyLabelCandidate(label: LabelPlacementRequest, candidate: LabelPlacementCandidate): PlotLabelGeometry {
