@@ -122,8 +122,9 @@ pub use repeated_artifact_promotion::{
 pub use repeated_artifacts::{
     ArtifactRiskLabel, CancellationFlag, CandidateContentClass, PositionSummary,
     RepeatedArtifactCandidate, RepeatedArtifactExample, RepeatedArtifactKind,
-    RepeatedArtifactScanConfig, classify_content, no_cancellation, scan_repeated_artifacts,
-    scan_repeated_artifacts_with_cancel,
+    RepeatedArtifactMemoryStage, RepeatedArtifactScanConfig, RepeatedArtifactScanError,
+    RepeatedArtifactScanPhase, RepeatedArtifactScanProgress, classify_content, no_cancellation,
+    scan_repeated_artifacts, scan_repeated_artifacts_with_cancel,
 };
 pub use scan::{
     CorpusSummary, DocumentRecord, DocumentType, DocumentTypeCounts, ScanError, ScanReport,

@@ -41,4 +41,8 @@ include_symbol_noise: boolean, min_occurrences: number, min_files: number,
 /**
  * Optional returned-candidate cap. `None` returns every qualifying candidate.
  */
-max_candidates: number | null, max_examples_per_candidate: number, min_line_chars: number, max_line_chars: number, };
+max_candidates: number | null, max_examples_per_candidate: number, min_line_chars: number, max_line_chars: number, 
+/**
+ * Maximum estimated bytes used by pass-1 accounting or survivor materialisation.
+ */
+memory_ceiling_bytes: number, };

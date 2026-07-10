@@ -52,7 +52,9 @@ use corpuswright_core::repeated_artifact_promotion::{
 use corpuswright_core::repeated_artifacts::{
     ArtifactRiskLabel, CandidateContentClass, CandidateTextProfile, CandidateTextSignalLabel,
     PositionSummary, RepeatedArtifactCandidate, RepeatedArtifactExample, RepeatedArtifactKind,
-    RepeatedArtifactScanConfig, RepeatedArtifactScanDiagnostics, RepeatedArtifactScanReport,
+    RepeatedArtifactMemoryStage, RepeatedArtifactScanConfig, RepeatedArtifactScanDiagnostics,
+    RepeatedArtifactScanError, RepeatedArtifactScanPhase, RepeatedArtifactScanProgress,
+    RepeatedArtifactScanReport,
 };
 use corpuswright_core::scan::{
     CorpusSummary, DocumentRecord, DocumentType, DocumentTypeCounts, ScanReport,
@@ -886,6 +888,24 @@ fn main() {
     );
 
     export_type::<RepeatedArtifactScanConfig>(&out_dir, &[], &[]);
+    export_type::<RepeatedArtifactScanPhase>(&out_dir, &[], &[]);
+    export_type::<RepeatedArtifactScanProgress>(
+        &out_dir,
+        &[TypeImport {
+            name: "RepeatedArtifactScanPhase",
+            file: "RepeatedArtifactScanPhase",
+        }],
+        &[],
+    );
+    export_type::<RepeatedArtifactMemoryStage>(&out_dir, &[], &[]);
+    export_type::<RepeatedArtifactScanError>(
+        &out_dir,
+        &[TypeImport {
+            name: "RepeatedArtifactMemoryStage",
+            file: "RepeatedArtifactMemoryStage",
+        }],
+        &[],
+    );
     export_type::<RepeatedArtifactKind>(&out_dir, &[], &[]);
     export_type::<ArtifactRiskLabel>(&out_dir, &[], &[]);
     export_type::<CandidateContentClass>(&out_dir, &[], &[]);
