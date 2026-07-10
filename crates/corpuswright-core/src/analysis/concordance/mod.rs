@@ -926,7 +926,7 @@ fn index_context_filter_matches(
     direction: ConcordanceContextFilterDirection,
     case_sensitive: bool,
 ) -> Result<bool, ConcordanceError> {
-    let records = store.records_for_document(hit.document_id).ok_or_else(|| {
+    let records = store.records_for_document(hit.document_id).ok_or({
         ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
             document_id: hit.document_id,
             token_ordinal_in_document: hit.token_ordinal_in_document,
@@ -936,7 +936,7 @@ fn index_context_filter_matches(
     let node_end = hit
         .token_ordinal_in_document
         .checked_add(hit.node_token_length)
-        .ok_or_else(|| {
+        .ok_or({
             ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
                 document_id: hit.document_id,
                 token_ordinal_in_document: hit.token_ordinal_in_document,
@@ -995,7 +995,7 @@ fn index_record_sequence_matches(
         for (record, query_key) in window.iter().zip(query_keys) {
             let record_key = store
                 .concordance_key_for_record(record, case_sensitive)
-                .ok_or_else(|| {
+                .ok_or({
                     ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
                         document_id: record.document_id,
                         token_ordinal_in_document: record.token_ordinal_in_document,
@@ -1097,7 +1097,7 @@ fn index_context_sort_key(
     };
     let key = store
         .concordance_key_for_record(record, case_sensitive)
-        .ok_or_else(|| {
+        .ok_or({
             ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
                 document_id: record.document_id,
                 token_ordinal_in_document: record.token_ordinal_in_document,
