@@ -2440,7 +2440,6 @@ where
                 files_total: files_requested,
             });
         }
-        drop(accumulation);
     }
 
     if materialized.len() != survivors.len() {
