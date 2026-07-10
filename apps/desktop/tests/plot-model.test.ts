@@ -4,7 +4,9 @@ import {
   buildDispersionPlaneGeometry,
   buildDispersionRosterGeometry,
   buildLengthHistogramGeometry,
+  buildLexicalSpectrumGeometry,
   buildMattrDistributionGeometry,
+  buildRankFrequencyGeometry,
   buildVocabularyGrowthGeometry,
   createPlotBox,
   createScale,
@@ -59,6 +61,79 @@ const coverage = [
   { k: 10, share: 0.55 },
   { k: 100, share: 0.72 },
 ];
+
+const lexicalSpectrum = buildLexicalSpectrumGeometry({
+  points: [
+    { frequency: 1, typeCount: 42 },
+    { frequency: 2, typeCount: 20 },
+    { frequency: 3, typeCount: 11 },
+    { frequency: 9, typeCount: 3 },
+    { frequency: 10, typeCount: 2 },
+    { frequency: 100, typeCount: 1 },
+  ],
+  hapaxCount: 42,
+  disLegomenaCount: 20,
+  box: createPlotBox(600, 320),
+});
+assert(
+  lexicalSpectrum.bands.map((band) => band.label).join(",") === "HAPAX,DIS,3–9,10+",
+  "Lexical spectrum should render its four exclusive frequency-class bands",
+);
+assert(
+  lexicalSpectrum.points.map((point) => point.rampIndex).join(",") === "0,1,2,2,4,4",
+  "Lexical spectrum points should take their colour from the frequency class",
+);
+assert(
+  lexicalSpectrum.points.at(-1)?.fillOpacity === 0.42
+    && lexicalSpectrum.points[0]?.fillOpacity === 0.6,
+  "Frequency-singleton tail points should have lower opacity than the main sequence",
+);
+assert(
+  lexicalSpectrum.labels.some((label) => label.text.startsWith("hapax"))
+    && lexicalSpectrum.labels.some((label) => label.text.startsWith("dis")),
+  "Lexical spectrum should retain both hapax and dis witnesses through label placement",
+);
+
+const rankFrequencyRaw = buildRankFrequencyGeometry({
+  points: [
+    { rank: 1, frequency: 1_000, ratePerMillion: 100_000, token: "the" },
+    { rank: 2, frequency: 700, ratePerMillion: 70_000, token: "of" },
+    { rank: 3, frequency: 500, ratePerMillion: 50_000, token: "and" },
+    { rank: 4, frequency: 300, ratePerMillion: 30_000, token: "word" },
+    { rank: 5, frequency: 1, ratePerMillion: 100, token: "rare" },
+  ],
+  yMode: "raw",
+  totalTokens: 10_000,
+  zipfExponent: 1,
+  zipfCoefficient: 1_200,
+  fittedRankStart: 4,
+  fittedRankEnd: 4,
+});
+const rankFrequencyRate = buildRankFrequencyGeometry({
+  points: rankFrequencyRaw.points.map((point) => point.datum),
+  yMode: "rate",
+  totalTokens: 10_000,
+  zipfExponent: 1,
+  zipfCoefficient: 1_200,
+  fittedRankStart: 4,
+  fittedRankEnd: 4,
+});
+assert(
+  rankFrequencyRaw.points.map((point) => `${point.x},${point.y}`).join(",")
+    === rankFrequencyRate.points.map((point) => `${point.x},${point.y}`).join(","),
+  "Rank-frequency unit changes should relabel a single series rather than rescale its geometry",
+);
+assert(
+  rankFrequencyRate.points[0]?.tooltipRows?.join(" ").includes("1,000 tokens")
+    && rankFrequencyRate.points[0]?.tooltipRows?.join(" ").includes("100,000.00 per million"),
+  "Rank-frequency hover should always expose both raw frequency and rate per million",
+);
+assert(
+  rankFrequencyRaw.points.filter((point) => point.excluded).length === 4
+    && rankFrequencyRaw.legend[0]?.label === "fit: ranks 4–4"
+    && rankFrequencyRaw.legend[1]?.label === "excluded: top 3 and f=1 tail",
+  "Rank-frequency should explicitly disclose the fitted range and hollow exclusions",
+);
 assertClose(findMilestoneShare(coverage, 5) ?? 0, 0.38, "Milestone lookup should return exact shares");
 assert(findMilestoneShare(coverage, 1000) === null, "Missing milestones should stay null");
 assert(findFirstCoverageCrossing(coverage, 0.5)?.k === 10, "50% crossing should use first real checkpoint");
@@ -169,6 +244,17 @@ assert(
   "The ≥90% overlay row should be distinct and divided from the ladder",
 );
 assert(
+  dispersionProfile.compositionSegments.length === 3
+    && dispersionProfile.compositionSegments.reduce((total, segment) => total + segment.width, 0) > 0
+    && dispersionProfile.compositionSegments.some((segment) => segment.label !== null),
+  "Dispersion profile should add a labelled stacked composition strip for exclusive bands",
+);
+assert(
+  dispersionProfile.stems.at(-1) !== undefined
+    && dispersionProfile.points.at(-1)?.datum.highlighted === true,
+  "Dispersion profile should preserve the distinct cumulative annotation datum for square rendering",
+);
+assert(
   dispersionProfile.labels.some((label) => label.text === "3")
     && !dispersionProfile.labels.some((label) => label.text.includes("the · of")),
   "Universal type tokens must not be emitted as axis-adjacent labels",
@@ -187,23 +273,24 @@ const planeCounts = new Array<number>(48 * 32).fill(0);
 planeCounts[0] = 1;
 planeCounts[47] = 4;
 planeCounts[(16 * 48) + 20] = 9;
-const dispersionPlane = buildDispersionPlaneGeometry({
-  plane: {
+const dispersionPlanePayload = {
     xBins: 48,
     yBins: 32,
     freqLog10Max: 5.025,
     counts: planeCounts,
     maxCellCount: 9,
     witnesses: [
-      { token: "the", frequency: 40_000, documentFrequency: 180, dp: 0.08, kind: "core" },
-      { token: "boilerplate", frequency: 3_500, documentFrequency: 12, dp: 0.72, kind: "loudButLocal" },
-      { token: "folio", frequency: 2, documentFrequency: 1, dp: 0.91, kind: "rareAndLocal" },
+      { token: "the", frequency: 40_000, documentFrequency: 180, dp: 0.08, kind: "core" as const },
+      { token: "boilerplate", frequency: 3_500, documentFrequency: 12, dp: 0.72, kind: "loudButLocal" as const },
+      { token: "folio", frequency: 2, documentFrequency: 1, dp: 0.91, kind: "rareAndLocal" as const },
     ],
     loudButLocalCount: 2,
     loudButLocalMinFrequency: 1_000,
     highDispersionThreshold: 0.5,
     reading: "A frequency list cannot separate the core from boilerplate; the plane can.",
-  },
+};
+const dispersionPlane = buildDispersionPlaneGeometry({
+  plane: dispersionPlanePayload,
   totalTypes: 100,
   box: createPlotBox(720, 420, { top: 34, right: 48, bottom: 62, left: 112 }),
 });
@@ -227,6 +314,21 @@ assert(
   dispersionPlane.witnessObstacles.length > dispersionPlane.witnesses.length
     && dispersionPlane.witnessObstacles.some((obstacle) => obstacle.kind === "box"),
   "Dispersion plane witness placement should carry point and box obstacles",
+);
+assert(
+  dispersionPlane.labels.length <= 6
+    && !dispersionPlane.labels.some((label) => label.text === "folio"),
+  "Dispersion plane should permanently label only key non-rare witness examples",
+);
+const dispersionPlaneWithoutLabels = buildDispersionPlaneGeometry({
+  plane: dispersionPlanePayload,
+  totalTypes: 100,
+  showWitnessLabels: false,
+  box: createPlotBox(720, 420, { top: 34, right: 48, bottom: 62, left: 112 }),
+});
+assert(
+  dispersionPlaneWithoutLabels.labels.length === 0,
+  "Dispersion plane labels control should remove permanent labels without removing hover witnesses",
 );
 assert(
   formatDispersionPlaneStats(100, 48, 32, 2, 1_000, 0.5)
@@ -254,10 +356,20 @@ assert(
   "Dispersion roster should use the hottest ramp stop only at or above the DP threshold",
 );
 assert(dispersionRoster.aboveThresholdCount === 2, "Dispersion roster should count rows at or above DP 0.5");
+assertClose(
+  dispersionRoster.rows[1]!.y - dispersionRoster.rows[0]!.y,
+  22,
+  "Dispersion roster should retain a readable row pitch at the shared label scale",
+);
 assert(
-  formatDispersionRosterStats(3, dispersionRoster.aboveThresholdCount, 0.5)
+  formatDispersionRosterStats(3, 3, dispersionRoster.aboveThresholdCount, 0.5)
     === "top 3 types by frequency · 2 above DP 0.5",
   "Dispersion roster stats caption should report the threshold count",
+);
+assert(
+  formatDispersionRosterStats(2, 3, 1, 0.5)
+    === "shown 2 of 3 frequent types · 1 above DP 0.5",
+  "Filtered dispersion roster stats should state the shown count against the shipped count",
 );
 
 const lengthHistogram = buildLengthHistogramGeometry({
@@ -280,8 +392,12 @@ assert(
   "Length histogram median line should land inside the bin containing medianTokens",
 );
 assert(
-  lengthHistogram.xTicks.map((tick) => tick.label).join(",") === "256–512,512–1k,1k–2k",
-  "Length histogram should format power-of-two bin labels compactly",
+  lengthHistogram.xTicks.map((tick) => tick.label).join(",") === "256,,1k,2k",
+  "Length histogram should label stable power-of-two bin boundaries without range collisions",
+);
+assert(
+  lengthHistogram.bars[1]?.tooltipRows?.[0] === "512–1,024 tokens",
+  "Length histogram hover should retain each bar's exact bin bounds",
 );
 assert(
   formatLengthHistogramStats(10, 800, 260, 1_500)
@@ -314,8 +430,14 @@ assertClose(mattrDistribution.domain[0], 0.225, "MATTR occupied domain should pa
 assertClose(mattrDistribution.domain[1], 0.4, "MATTR occupied domain should pad one bin above the last nonzero bin");
 assert(mattrDistribution.bars.length === 7, "MATTR distribution should emit one bar per visible bin in the occupied window");
 assert(
-  mattrDistribution.witnessTicks.some((tick) => tick.label.text.length === 24 && tick.label.text.includes("…")),
-  "MATTR witness labels should be middle-ellipsized to 24 characters",
+  mattrDistribution.labels.filter((label) => label.text.includes("document") || label.text.includes("compact")).length <= 2
+    && mattrDistribution.labels.some((label) => label.text.length === 24 && label.text.includes("…")),
+  "MATTR should label only the extreme witnesses, middle-ellipsized to 24 characters",
+);
+assert(
+  mattrDistribution.witnessTicks.length === 2
+    && mattrDistribution.witnessTicks.every((tick) => tick.tooltipTitle.length > 0),
+  "MATTR witness identities should remain reachable on hover",
 );
 assert(
   formatMattrDistributionStats(6, 0.3, 1, 100)
@@ -329,7 +451,13 @@ const vocabulary = buildVocabularyGrowthGeometry({
     { tokens: 10_000, types: 600 },
     { tokens: 100_000, types: 2_200 },
   ],
+  heapsK: 1.5,
+  heapsBeta: 0.7,
   box: createPlotBox(420, 260),
 });
 assert(vocabulary.labels[0]?.lines?.length === 2, "Vocabulary endpoint label should render as two measured lines");
 assert(vocabulary.labels[0]?.anchor === "end", "Vocabulary endpoint label should be end anchored near the endpoint");
+assert(
+  vocabulary.fitPath !== null && vocabulary.legend.map((item) => item.label).join(",") === "observed,Heaps fit",
+  "Vocabulary growth should show a distinct Heaps fitted series and legend",
+);

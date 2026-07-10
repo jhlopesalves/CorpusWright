@@ -306,6 +306,8 @@
   --cw-plot-fit: #9bc7fc;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #76fff7;
   --cw-plot-ramp-1: #57dbff;
@@ -408,6 +410,8 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #009078;
   --cw-plot-ramp-1: #008faa;
@@ -509,6 +513,8 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #10af8f;
   --cw-plot-ramp-1: #12b1c6;
@@ -610,6 +616,8 @@
   --cw-plot-fit: #0a9dff;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #3cffda;
   --cw-plot-ramp-1: #1cf7ff;
@@ -715,6 +723,8 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #009078;
   --cw-plot-ramp-1: #008faa;
@@ -823,6 +833,8 @@
   --cw-plot-fit: #87c2ff;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #60fff3;
   --cw-plot-ramp-1: #3fe3ff;
@@ -929,6 +941,8 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #44675e;
   --cw-plot-ramp-1: #4e7376;
@@ -1030,6 +1044,8 @@
   --cw-plot-fit: #aab8c0;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #97b5ad;
   --cw-plot-ramp-1: #85a5a8;
@@ -1132,6 +1148,8 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #1e966b;
   --cw-plot-ramp-1: #23aba6;
@@ -1233,6 +1251,8 @@
   --cw-plot-fit: #83c9d2;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #73d3a1;
   --cw-plot-ramp-1: #5cccb5;
@@ -1336,6 +1356,8 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #7a2b37;
   --cw-plot-ramp-1: #8d4132;
@@ -1437,6 +1459,8 @@
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #4b6f35;
   --cw-plot-ramp-1: #42813d;
@@ -1538,6 +1562,8 @@
   --cw-plot-fit: #a2c893;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #bfc582;
   --cw-plot-ramp-1: #9cbb6d;
@@ -1640,6 +1666,8 @@
   --cw-plot-fit: #3debff;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #00e5ff;
   --cw-plot-ramp-1: #00e5ff;
@@ -2612,6 +2640,10 @@ main {
   line-height: 1.35;
 }
 
+.cw-overview-figure:not(.is-collapsed) .cw-overview-figure-title-block {
+  display: none;
+}
+
 .cw-overview-figure.is-collapsed .cw-overview-figure-title-block h4 {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2632,46 +2664,25 @@ main {
   border-radius: 999px;
 }
 
-.cw-overview-figure-icon-btn {
-  min-width: 32px;
-  min-height: 28px;
-  padding: 4px 7px;
-  font-family: var(--cw-font-mono);
-  font-size: 0.68rem;
-  line-height: 1;
+.cw-overview-figure-action {
+  min-height: 24px;
+  padding: 2px 3px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: 500 12px/1.2 var(--cw-font-ui);
 }
 
-.cw-overview-figure-download-icon {
-  display: block;
-  flex: 0 0 auto;
+.cw-overview-figure-action:hover {
+  color: var(--text-color);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
-.cw-overview-figure-collapse {
-  min-width: 88px;
-  justify-content: center;
-}
-
-.cw-overview-figure-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 4px 8px;
-  font-family: var(--cw-font-ui);
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.cw-overview-figure-chevron {
-  display: inline-block;
-  flex: 0 0 auto;
-  transform-origin: center;
-  transition: transform 160ms ease-out;
-}
-
-.cw-overview-figure:not(.is-collapsed) .cw-overview-figure-chevron {
-  transform: rotate(180deg);
+.cw-overview-figure-action:focus-visible {
+  outline: none;
+  box-shadow: var(--cw-interaction-focus-ring);
 }
 
 .cw-overview-figure-body {
@@ -2745,7 +2756,6 @@ main {
   color: var(--cw-text-selected, var(--text-color));
 }
 
-.cw-overview-figure-icon-btn:focus-visible,
 .cw-overview-segment:focus-visible {
   outline: none;
   box-shadow: var(--cw-interaction-focus-ring);
@@ -2775,7 +2785,8 @@ main {
 }
 
 .cw-plot-axis-baseline,
-.cw-plot-minor-tick {
+.cw-plot-minor-tick,
+.cw-plot-axis-tick {
   stroke: var(--text-muted);
   stroke-opacity: 0.55;
   stroke-width: 1;
@@ -2792,6 +2803,8 @@ main {
   fill: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .cw-plot-line,
@@ -2811,6 +2824,10 @@ main {
   stroke-width: 2.4;
 }
 
+.cw-plot-heaps-fit {
+  stroke-dasharray: 6 4;
+}
+
 .cw-plot-line-halo {
   opacity: var(--cw-plot-glow-opacity);
   pointer-events: none;
@@ -2827,6 +2844,7 @@ main {
 
 .cw-plot-point {
   fill: var(--cw-plot-point);
+  fill-opacity: var(--cw-plot-fill-opacity, 1);
   stroke: transparent;
   stroke-width: 1.4;
   transform-box: fill-box;
@@ -2914,12 +2932,49 @@ main {
   shape-rendering: crispEdges;
 }
 
+.cw-plot-spectrum-band {
+  fill: var(--cw-plot-band-fill-a);
+  pointer-events: none;
+}
+
+.cw-plot-spectrum-band.is-alternate {
+  fill: var(--cw-plot-band-fill-b);
+}
+
+.cw-plot-spectrum-band-label {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+
 .cw-plot-bar {
   fill: var(--cw-plot-point);
   fill-opacity: 0.85;
   stroke: none;
   transform-box: fill-box;
   transform-origin: bottom center;
+}
+
+.cw-plot-composition-segment {
+  stroke: var(--panel-bg);
+  stroke-width: 1;
+}
+
+.cw-plot-composition-label {
+  fill: var(--panel-bg);
+  font-family: var(--cw-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.cw-plot-cumulative-marker {
+  fill: var(--cw-plot-point);
+  stroke: var(--panel-bg);
+  stroke-width: 1.2;
 }
 
 .cw-plot-threshold-line {
@@ -2997,7 +3052,11 @@ main {
 
 .cw-plot-label-mono {
   fill: var(--text-color);
-  font-size: 10.5px;
+  font-size: 11.5px;
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 .cw-plot-label-strong {
@@ -3008,7 +3067,11 @@ main {
 .cw-plot-label-callout {
   fill: var(--text-color);
   font-family: var(--cw-font-mono);
-  font-size: 11px;
+  font-size: 11.5px;
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 .cw-plot-bracket line {
@@ -3024,8 +3087,7 @@ main {
   font-weight: 700;
 }
 
-.cw-plot-reference-line,
-.cw-plot-leader {
+.cw-plot-reference-line {
   fill: none;
   stroke: var(--text-muted);
   stroke-dasharray: 4 4;
@@ -3034,9 +3096,47 @@ main {
   vector-effect: non-scaling-stroke;
 }
 
-.cw-plot-leader {
-  stroke-dasharray: none;
-  stroke-opacity: 0.45;
+.cw-plot-legend-bg {
+  fill: var(--panel-bg);
+  opacity: 0.9;
+  stroke: var(--border-color);
+  stroke-width: 1;
+}
+
+.cw-plot-legend-swatch {
+  stroke: var(--cw-plot-point);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.cw-plot-legend-swatch.cw-plot-fit-line {
+  stroke: var(--cw-plot-fit);
+}
+
+.cw-plot-legend-swatch.is-dashed {
+  stroke-dasharray: 4 3;
+}
+
+.cw-plot-legend-label {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-mono);
+  font-size: 11.5px;
+}
+
+.cw-plot-figure-title {
+  fill: var(--text-color);
+  font-family: var(--cw-font-ui);
+}
+
+.cw-plot-figure-subtitle,
+.cw-plot-figure-reading {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-ui);
+}
+
+.cw-plot-figure-stats {
+  fill: var(--text-color);
+  font-family: var(--cw-font-mono);
 }
 
 .cw-plot-crosshair-x,
@@ -3089,7 +3189,9 @@ main {
 .cw-plot-density-cell.cw-plot-hover-target:hover,
 .cw-plot-density-cell.cw-plot-hover-target:focus,
 .cw-plot-bar.cw-plot-hover-target:hover,
-.cw-plot-bar.cw-plot-hover-target:focus {
+.cw-plot-bar.cw-plot-hover-target:focus,
+.cw-plot-composition-segment.cw-plot-hover-target:hover,
+.cw-plot-composition-segment.cw-plot-hover-target:focus {
   transform: none;
 }
 
@@ -3133,9 +3235,6 @@ main {
     transition: none;
   }
 
-  .cw-overview-figure-chevron {
-    transition: none;
-  }
 }
 
 .analysis-reading-panel {
@@ -8330,6 +8429,8 @@ mark.search-match.current-match {
   --cw-plot-fit: #dfb995;
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #de7887;
   --cw-plot-ramp-1: #d77460;
@@ -8432,6 +8533,8 @@ mark.search-match.current-match {
   --cw-plot-fit: var(--accent-color);
   --cw-plot-excluded: var(--text-muted);
   --cw-plot-grid: var(--border-color);
+  --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
+  --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #000000;
   --cw-plot-ramp-1: #000000;
