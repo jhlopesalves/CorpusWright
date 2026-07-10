@@ -307,7 +307,7 @@ fn add_collocation_window_record_keys(
 
         let candidate = store
             .concordance_key_for_record(record, case_sensitive)
-            .ok_or_else(|| {
+            .ok_or({
                 ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
                     document_id: record.document_id,
                     token_ordinal_in_document: record.token_ordinal_in_document,
