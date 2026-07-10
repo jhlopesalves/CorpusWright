@@ -429,7 +429,9 @@ impl<Value> ShardedFingerprintMap<Value> {
     }
 
     fn into_values(self) -> impl Iterator<Item = Value> {
-        self.shards.into_iter().flat_map(|shard| shard.into_values())
+        self.shards
+            .into_iter()
+            .flat_map(|shard| shard.into_values())
     }
 
     fn into_entries(self) -> impl Iterator<Item = (CandidateFingerprint, Value)> {
@@ -618,9 +620,7 @@ impl CandidateTextParts<'_> {
         match self {
             Self::Single(text) => text.len(),
             Self::Two(first, second) => first.len() + second.len() + 1,
-            Self::Three(first, second, third) => {
-                first.len() + second.len() + third.len() + 2
-            }
+            Self::Three(first, second, third) => first.len() + second.len() + third.len() + 2,
         }
     }
 
@@ -630,16 +630,20 @@ impl CandidateTextParts<'_> {
         }
         match self {
             Self::Single(text) => value == text,
-            Self::Two(first, second) => value
-                .strip_prefix(first)
-                .and_then(|rest| rest.strip_prefix('\n'))
-                == Some(second),
-            Self::Three(first, second, third) => value
-                .strip_prefix(first)
-                .and_then(|rest| rest.strip_prefix('\n'))
-                .and_then(|rest| rest.strip_prefix(second))
-                .and_then(|rest| rest.strip_prefix('\n'))
-                == Some(third),
+            Self::Two(first, second) => {
+                value
+                    .strip_prefix(first)
+                    .and_then(|rest| rest.strip_prefix('\n'))
+                    == Some(second)
+            }
+            Self::Three(first, second, third) => {
+                value
+                    .strip_prefix(first)
+                    .and_then(|rest| rest.strip_prefix('\n'))
+                    .and_then(|rest| rest.strip_prefix(second))
+                    .and_then(|rest| rest.strip_prefix('\n'))
+                    == Some(third)
+            }
         }
     }
 
@@ -648,9 +652,7 @@ impl CandidateTextParts<'_> {
             (
                 text.chars().count(),
                 text.chars()
-                    .filter(|character| {
-                        !character.is_alphanumeric() && !character.is_whitespace()
-                    })
+                    .filter(|character| !character.is_alphanumeric() && !character.is_whitespace())
                     .count(),
             )
         };
@@ -659,7 +661,10 @@ impl CandidateTextParts<'_> {
             Self::Two(first, second) => {
                 let first_counts = count_text(first);
                 let second_counts = count_text(second);
-                (first_counts.0 + second_counts.0 + 1, first_counts.1 + second_counts.1)
+                (
+                    first_counts.0 + second_counts.0 + 1,
+                    first_counts.1 + second_counts.1,
+                )
             }
             Self::Three(first, second, third) => {
                 let first_counts = count_text(first);
@@ -740,7 +745,11 @@ fn stable_id_prefix(key: CandidateTextParts<'_>) -> u64 {
     let mut hasher = Sha256::new();
     key.update_digest(&mut hasher);
     let digest = hasher.finalize();
-    u64::from_be_bytes(digest[..8].try_into().expect("SHA-256 prefix is eight bytes"))
+    u64::from_be_bytes(
+        digest[..8]
+            .try_into()
+            .expect("SHA-256 prefix is eight bytes"),
+    )
 }
 
 fn stable_kind_order(kind: RepeatedArtifactKind) -> u8 {
@@ -1302,9 +1311,7 @@ fn count_file_fingerprints(
     let mut inline_matches_since_cancel_check = 0usize;
 
     for (line_index, source_line) in ft.raw_lines.iter().enumerate() {
-        if line_index % CANCELLATION_CHECK_LINE_INTERVAL == 0
-            && cancel.load(Ordering::Relaxed)
-        {
+        if line_index % CANCELLATION_CHECK_LINE_INTERVAL == 0 && cancel.load(Ordering::Relaxed) {
             return Err(RepeatedArtifactScanError::Cancelled);
         }
 
@@ -1349,8 +1356,7 @@ fn count_file_fingerprints(
         let mut exact_fingerprint = None;
 
         if config.include_exact_lines && should_include_content_class(content_class, config) {
-            let fingerprint =
-                candidate_fingerprint(RepeatedArtifactKind::ExactLine, raw_text);
+            let fingerprint = candidate_fingerprint(RepeatedArtifactKind::ExactLine, raw_text);
             increment_pass1_candidate(
                 &mut local_counts,
                 global_key_count,
@@ -1402,8 +1408,7 @@ fn count_file_fingerprints(
             && current.index == previous.index + 1
             && ft.lines_share_page(previous.index, current.index)
         {
-            let block_class =
-                dominant_content_class(previous.content_class, current.content_class);
+            let block_class = dominant_content_class(previous.content_class, current.content_class);
             if should_include_content_class(block_class, config) {
                 let raw_block = CandidateTextParts::Two(previous.raw, current.raw);
                 let block_fingerprint =
@@ -1423,8 +1428,7 @@ fn count_file_fingerprints(
         }
 
         if config.include_three_line_blocks
-            && let (Some(first), Some(second)) =
-                (previous_two.as_ref(), previous_one.as_ref())
+            && let (Some(first), Some(second)) = (previous_two.as_ref(), previous_one.as_ref())
             && second.index == first.index + 1
             && current.index == second.index + 1
             && ft.lines_share_page(first.index, second.index)
@@ -1492,8 +1496,7 @@ fn pass1_scan_file(
     let ft = build_file_text(record, &extracted.text, extracted.page_texts.as_deref());
     let raw_line_count = ft.raw_lines.len();
     let empty_after_extraction = ft.raw_lines.is_empty();
-    let local_counts =
-        count_file_fingerprints(&ft, config, global_key_count, cancel)?;
+    let local_counts = count_file_fingerprints(&ft, config, global_key_count, cancel)?;
     Ok(Pass1FileResult {
         local_counts,
         extraction_failed,
@@ -1688,9 +1691,7 @@ fn filter_fingerprints(
 
     let mut selected = std::collections::BinaryHeap::<RankedFingerprint>::new();
     for (index, (fingerprint, stats)) in global_counts.iter().enumerate() {
-        if index % CANCELLATION_CHECK_LINE_INTERVAL == 0
-            && cancel.load(Ordering::Relaxed)
-        {
+        if index % CANCELLATION_CHECK_LINE_INTERVAL == 0 && cancel.load(Ordering::Relaxed) {
             return Err(RepeatedArtifactScanError::Cancelled);
         }
         if !fingerprint_passes_thresholds(stats, config)
@@ -1873,12 +1874,7 @@ fn materialize_occurrence(
             let line = &ft.raw_lines[occurrence.start_line];
             (
                 safe_context_before(line, byte_position, 80),
-                safe_context_after(
-                    line,
-                    byte_position,
-                    occurrence.display_text.byte_len(),
-                    80,
-                ),
+                safe_context_after(line, byte_position, occurrence.display_text.byte_len(), 80),
             )
         } else {
             let before = if occurrence.start_line > 0 {
@@ -1924,9 +1920,7 @@ fn materialize_file_survivors(
     let mut inline_matches_since_cancel_check = 0usize;
 
     for (line_index, source_line) in ft.raw_lines.iter().enumerate() {
-        if line_index % CANCELLATION_CHECK_LINE_INTERVAL == 0
-            && cancel.load(Ordering::Relaxed)
-        {
+        if line_index % CANCELLATION_CHECK_LINE_INTERVAL == 0 && cancel.load(Ordering::Relaxed) {
             return Err(RepeatedArtifactScanError::Cancelled);
         }
 
@@ -2028,8 +2022,7 @@ fn materialize_file_survivors(
             && current.index == previous.index + 1
             && ft.lines_share_page(previous.index, current.index)
         {
-            let block_class =
-                dominant_content_class(previous.content_class, current.content_class);
+            let block_class = dominant_content_class(previous.content_class, current.content_class);
             if should_include_content_class(block_class, config) {
                 materialize_occurrence(
                     ft,
@@ -2055,8 +2048,7 @@ fn materialize_file_survivors(
         }
 
         if config.include_three_line_blocks
-            && let (Some(first), Some(second)) =
-                (previous_two.as_ref(), previous_one.as_ref())
+            && let (Some(first), Some(second)) = (previous_two.as_ref(), previous_one.as_ref())
             && second.index == first.index + 1
             && current.index == second.index + 1
             && ft.lines_share_page(first.index, second.index)
@@ -2082,11 +2074,7 @@ fn materialize_file_survivors(
                             &second.normalized,
                             &current.normalized,
                         ),
-                        display_text: CandidateTextParts::Three(
-                            first.raw,
-                            second.raw,
-                            current.raw,
-                        ),
+                        display_text: CandidateTextParts::Three(first.raw, second.raw, current.raw),
                         start_line: first.index,
                         end_line: current.index,
                         inline_byte_position: None,
@@ -2136,14 +2124,7 @@ fn materialize_file_record(
         return Err(RepeatedArtifactScanError::Cancelled);
     }
     let ft = build_file_text(record, &extracted.text, extracted.page_texts.as_deref());
-    materialize_file_survivors(
-        &ft,
-        config,
-        survivors,
-        materialized,
-        cancel,
-        budget,
-    )
+    materialize_file_survivors(&ft, config, survivors, materialized, cancel, budget)
 }
 
 fn finalize_materialized_candidates(
@@ -2151,11 +2132,9 @@ fn finalize_materialized_candidates(
     budget: &mut MaterializationBudget,
 ) -> Result<Vec<RepeatedArtifactCandidate>, RepeatedArtifactScanError> {
     let candidate_count = materialized.len();
-    budget.reserve(
-        candidate_count.saturating_mul(
-            std::mem::size_of::<RepeatedArtifactCandidate>() + std::mem::size_of::<f64>(),
-        ),
-    )?;
+    budget.reserve(candidate_count.saturating_mul(
+        std::mem::size_of::<RepeatedArtifactCandidate>() + std::mem::size_of::<f64>(),
+    ))?;
     let mut scored = Vec::new();
     scored.try_reserve(candidate_count).map_err(|_| {
         RepeatedArtifactScanError::corpus_too_large(
@@ -2234,6 +2213,11 @@ fn finalize_materialized_candidates(
             .0
             .partial_cmp(&first.0)
             .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| first.1.candidate_id.cmp(&second.1.candidate_id))
+    });
+    Ok(scored.into_iter().map(|(_, candidate)| candidate).collect())
+}
+
 /// Performs a corpus-wide scan for repeated lines and blocks.
 pub fn scan_repeated_artifacts_report(
     records: &[DocumentRecord],
@@ -2472,10 +2456,6 @@ where
             final_candidates,
             analysed_processed_text,
             custom_removals_active,
-            max_examples_per_candidate,
-        },
-    })
-}
             max_examples_per_candidate,
         },
     })
@@ -5286,12 +5266,8 @@ mod tests {
             ..RepeatedArtifactScanConfig::default()
         };
 
-        let report = scan_repeated_artifacts_report(
-            &records,
-            &config,
-            &CleaningConfig::default(),
-        )
-        .unwrap();
+        let report =
+            scan_repeated_artifacts_report(&records, &config, &CleaningConfig::default()).unwrap();
 
         // This is the complete filter-late reference snapshot for the fixture.
         let actual = report
@@ -5311,8 +5287,14 @@ mod tests {
             ("ExactLine|Repeated block second", (4, 4)),
             ("ExactLine|Late Survivor", (2, 2)),
             ("NormalizedLine|Page 1", (4, 4)),
-            ("TwoLineBlock|Boilerplate line\nRepeated block first", (4, 4)),
-            ("TwoLineBlock|Repeated block first\nRepeated block second", (4, 4)),
+            (
+                "TwoLineBlock|Boilerplate line\nRepeated block first",
+                (4, 4),
+            ),
+            (
+                "TwoLineBlock|Repeated block first\nRepeated block second",
+                (4, 4),
+            ),
             ("InlineArtifact|<br/>", (4, 4)),
         ]
         .into_iter()
@@ -5366,14 +5348,13 @@ mod tests {
             ..RepeatedArtifactScanConfig::default()
         };
 
-        let report = scan_repeated_artifacts_report(
-            &[record],
-            &config,
-            &CleaningConfig::default(),
-        )
-        .unwrap();
+        let report =
+            scan_repeated_artifacts_report(&[record], &config, &CleaningConfig::default()).unwrap();
 
-        assert_eq!(report.diagnostics.total_candidate_keys_before_filtering, 100_001);
+        assert_eq!(
+            report.diagnostics.total_candidate_keys_before_filtering,
+            100_001
+        );
         assert_eq!(report.candidates.len(), 1);
         assert_eq!(report.candidates[0].display_text, "Shared survivor");
         assert_eq!(report.candidates[0].occurrence_count, 3);
