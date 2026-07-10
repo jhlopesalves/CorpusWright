@@ -1,13 +1,20 @@
 use crate::analysis::concordance_key;
 use crate::decode::DECODE_POLICY_VERSION;
 use crate::tokenization::{TokenizationConfig, TokenizationManifest, tokenize};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::fs::File;
+use std::hash::{Hash, Hasher};
+use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
 
-pub const INDEX_SCHEMA_VERSION: u32 = 2;
+pub const INDEX_SCHEMA_VERSION: u32 = 3;
+pub const SURFACE_INDEX_CACHE_FILE_VERSION: u32 = 1;
 
 const DEFAULT_WINDOW_TOKENS: usize = 5;
 const MAX_WINDOW_TOKENS: usize = 20;
+const PARALLEL_INDEX_DOCUMENT_BATCH_SIZE: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SurfaceIndexDocumentInput<'text> {
@@ -17,7 +24,7 @@ pub struct SurfaceIndexDocumentInput<'text> {
     pub prepared_text: &'text str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SurfaceIndexDocument {
     pub document_id: usize,
     pub source_path: String,
@@ -29,20 +36,70 @@ pub struct SurfaceIndexDocument {
 pub struct SurfaceIndexTokenRecord {
     pub document_id: usize,
     pub token_ordinal_in_document: usize,
-    pub surface: String,
-    pub normalised_surface: String,
-    pub exact_surface: String,
+    surface_symbol_id: u32,
+    normalised_surface_symbol_id: u32,
+    exact_surface_symbol_id: u32,
     pub prepared_char_start: usize,
     pub prepared_char_end: usize,
     pub counts_as_word: bool,
 }
 
+impl Serialize for SurfaceIndexTokenRecord {
+    fn serialize<Serializer>(
+        &self,
+        serializer: Serializer,
+    ) -> Result<Serializer::Ok, Serializer::Error>
+    where
+        Serializer: serde::Serializer,
+    {
+        (
+            self.document_id,
+            self.token_ordinal_in_document,
+            self.surface_symbol_id,
+            self.normalised_surface_symbol_id,
+            self.exact_surface_symbol_id,
+            self.prepared_char_start,
+            self.prepared_char_end,
+            self.counts_as_word,
+        )
+            .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for SurfaceIndexTokenRecord {
+    fn deserialize<Deserializer>(deserializer: Deserializer) -> Result<Self, Deserializer::Error>
+    where
+        Deserializer: serde::Deserializer<'de>,
+    {
+        let (
+            document_id,
+            token_ordinal_in_document,
+            surface_symbol_id,
+            normalised_surface_symbol_id,
+            exact_surface_symbol_id,
+            prepared_char_start,
+            prepared_char_end,
+            counts_as_word,
+        ) = <(usize, usize, u32, u32, u32, usize, usize, bool)>::deserialize(deserializer)?;
+        Ok(Self {
+            document_id,
+            token_ordinal_in_document,
+            surface_symbol_id,
+            normalised_surface_symbol_id,
+            exact_surface_symbol_id,
+            prepared_char_start,
+            prepared_char_end,
+            counts_as_word,
+        })
+    }
+}
+
 impl SurfaceIndexTokenRecord {
-    pub(crate) fn concordance_key(&self, case_sensitive: bool) -> &str {
+    fn concordance_symbol_id(&self, case_sensitive: bool) -> u32 {
         if case_sensitive {
-            &self.exact_surface
+            self.exact_surface_symbol_id
         } else {
-            &self.normalised_surface
+            self.normalised_surface_symbol_id
         }
     }
 }
@@ -51,8 +108,31 @@ impl SurfaceIndexTokenRecord {
 pub struct SurfacePosting {
     pub document_id: usize,
     pub token_ordinal_in_document: usize,
-    pub prepared_char_start: usize,
-    pub prepared_char_end: usize,
+}
+
+impl Serialize for SurfacePosting {
+    fn serialize<Serializer>(
+        &self,
+        serializer: Serializer,
+    ) -> Result<Serializer::Ok, Serializer::Error>
+    where
+        Serializer: serde::Serializer,
+    {
+        (self.document_id, self.token_ordinal_in_document).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for SurfacePosting {
+    fn deserialize<Deserializer>(deserializer: Deserializer) -> Result<Self, Deserializer::Error>
+    where
+        Deserializer: serde::Deserializer<'de>,
+    {
+        let (document_id, token_ordinal_in_document) = <(usize, usize)>::deserialize(deserializer)?;
+        Ok(Self {
+            document_id,
+            token_ordinal_in_document,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +150,7 @@ pub enum SurfaceIndexError {
         token_ordinal_in_document: usize,
         node_token_length: usize,
     },
+    Allocation(String),
 }
 
 impl std::fmt::Display for SurfaceIndexError {
@@ -102,6 +183,9 @@ impl std::fmt::Display for SurfaceIndexError {
                 formatter,
                 "surface index store is missing token span document={document_id} ordinal={token_ordinal_in_document} length={node_token_length}"
             ),
+            Self::Allocation(detail) => {
+                write!(formatter, "surface index allocation failed: {detail}")
+            }
         }
     }
 }
@@ -120,6 +204,15 @@ pub trait IndexStore {
     fn indexed_documents<'store>(
         &'store self,
     ) -> Box<dyn Iterator<Item = &'store SurfaceIndexDocument> + 'store>;
+    fn surface_for_record<'store>(
+        &'store self,
+        record: &SurfaceIndexTokenRecord,
+    ) -> Option<&'store str>;
+    fn concordance_key_for_record<'store>(
+        &'store self,
+        record: &SurfaceIndexTokenRecord,
+        case_sensitive: bool,
+    ) -> Option<&'store str>;
 
     fn document_frequency(&self, normalised_surface: &str) -> usize {
         let Some(postings) = self.postings(normalised_surface) else {
@@ -160,16 +253,36 @@ pub trait IndexStore {
     }
 }
 
-/// In-memory storage only. Persistent, mmap-backed, or incremental stores are deferred.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct InMemoryIndexStore {
-    documents: BTreeMap<usize, SurfaceIndexDocument>,
-    records_by_document: BTreeMap<usize, Vec<SurfaceIndexTokenRecord>>,
-    // The index carries two Concordance parity dimensions: normalised keys for
-    // case-insensitive search, and exact-surface keys for case-sensitive search.
-    postings_by_normalised_surface: BTreeMap<String, Vec<SurfacePosting>>,
-    postings_by_exact_surface: BTreeMap<String, Vec<SurfacePosting>>,
+    documents: Vec<SurfaceIndexDocument>,
+    records_by_document: Vec<SurfaceIndexDocumentRecords>,
+    symbols: Vec<String>,
+    #[serde(skip)]
+    symbol_ids_by_hash: HashMap<u64, Vec<u32>>,
+    postings_by_normalised_symbol: Vec<Vec<SurfacePosting>>,
+    postings_by_exact_symbol: Vec<Vec<SurfacePosting>>,
     total_indexed_tokens: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct SurfaceIndexDocumentRecords {
+    document_id: usize,
+    records: Vec<SurfaceIndexTokenRecord>,
+}
+
+#[derive(Debug)]
+struct TokenizedIndexDocument {
+    document_id: usize,
+    records: Vec<TokenizedIndexRecord>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TokenizedIndexRecord {
+    byte_start: usize,
+    byte_end: usize,
+    prepared_char_start: usize,
+    prepared_char_end: usize,
 }
 
 impl InMemoryIndexStore {
@@ -177,115 +290,342 @@ impl InMemoryIndexStore {
         documents: &[SurfaceIndexDocumentInput<'_>],
         tokenization_config: &TokenizationConfig,
     ) -> Result<Self, SurfaceIndexError> {
-        let mut store = Self::default();
-
-        for document in documents {
-            if store.documents.contains_key(&document.document_id) {
-                return Err(SurfaceIndexError::DuplicateDocumentId(document.document_id));
+        let mut sorted_documents = Vec::new();
+        try_reserve(
+            &mut sorted_documents,
+            documents.len(),
+            "document input ordering",
+        )?;
+        sorted_documents.extend(documents.iter());
+        sorted_documents.sort_by_key(|document| document.document_id);
+        for pair in sorted_documents.windows(2) {
+            if pair[0].document_id == pair[1].document_id {
+                return Err(SurfaceIndexError::DuplicateDocumentId(pair[0].document_id));
             }
-
-            let tokenizer_document_id = u32::try_from(document.document_id)
-                .map_err(|_| SurfaceIndexError::DocumentIdTooLarge(document.document_id))?;
-            let word_tokens = tokenize(
-                document.prepared_text,
-                tokenizer_document_id,
-                tokenization_config,
-            )
-            .into_iter()
-            .filter(|token| token.counts_as_word())
-            .collect::<Vec<_>>();
-            let token_byte_offsets = word_tokens
-                .iter()
-                .map(|token| (token.byte_start, token.byte_end))
-                .collect::<Vec<_>>();
-            let prepared_char_offsets = prepared_char_offsets_for_token_bytes(
-                document.prepared_text,
-                document.document_id,
-                &token_byte_offsets,
-            )?;
-
-            let mut records = Vec::new();
-            for (token, (prepared_char_start, prepared_char_end)) in
-                word_tokens.into_iter().zip(prepared_char_offsets)
-            {
-                records.push(SurfaceIndexTokenRecord {
-                    document_id: document.document_id,
-                    token_ordinal_in_document: records.len(),
-                    surface: token.surface.to_string(),
-                    normalised_surface: concordance_key(token.surface, false),
-                    exact_surface: concordance_key(token.surface, true),
-                    prepared_char_start,
-                    prepared_char_end,
-                    counts_as_word: token.counts_as_word(),
-                });
-            }
-
-            for record in &records {
-                store
-                    .postings_by_normalised_surface
-                    .entry(record.normalised_surface.clone())
-                    .or_default()
-                    .push(SurfacePosting {
-                        document_id: record.document_id,
-                        token_ordinal_in_document: record.token_ordinal_in_document,
-                        prepared_char_start: record.prepared_char_start,
-                        prepared_char_end: record.prepared_char_end,
-                    });
-                store
-                    .postings_by_exact_surface
-                    .entry(record.exact_surface.clone())
-                    .or_default()
-                    .push(SurfacePosting {
-                        document_id: record.document_id,
-                        token_ordinal_in_document: record.token_ordinal_in_document,
-                        prepared_char_start: record.prepared_char_start,
-                        prepared_char_end: record.prepared_char_end,
-                    });
-            }
-
-            store.total_indexed_tokens += records.len();
-            store.documents.insert(
-                document.document_id,
-                SurfaceIndexDocument {
-                    document_id: document.document_id,
-                    source_path: document.source_path.clone(),
-                    display_name: document.display_name.clone(),
-                    token_count: records.len(),
-                },
-            );
-            store
-                .records_by_document
-                .insert(document.document_id, records);
         }
 
-        sort_posting_map(&mut store.postings_by_normalised_surface);
-        sort_posting_map(&mut store.postings_by_exact_surface);
+        let mut store = Self::default();
+        try_reserve(
+            &mut store.documents,
+            sorted_documents.len(),
+            "indexed documents",
+        )?;
+        try_reserve(
+            &mut store.records_by_document,
+            sorted_documents.len(),
+            "per-document record lists",
+        )?;
+
+        for document_batch in sorted_documents.chunks(PARALLEL_INDEX_DOCUMENT_BATCH_SIZE) {
+            let mut tokenized = document_batch
+                .par_iter()
+                .map(|document| tokenize_index_document(document, tokenization_config))
+                .try_fold(Vec::new, |mut chunk, document| {
+                    let document = document?;
+                    try_reserve(&mut chunk, 1, "parallel document results")?;
+                    chunk.push(document);
+                    Ok(chunk)
+                })
+                .try_reduce(Vec::new, |mut left, mut right| {
+                    try_reserve(&mut left, right.len(), "merged parallel document results")?;
+                    left.append(&mut right);
+                    Ok(left)
+                })?;
+            tokenized.sort_by_key(|document| document.document_id);
+            for (document, tokenized_document) in document_batch.iter().copied().zip(tokenized) {
+                debug_assert_eq!(document.document_id, tokenized_document.document_id);
+                store.merge_tokenized_document(document, tokenized_document)?;
+            }
+        }
 
         Ok(store)
+    }
+
+    fn merge_tokenized_document(
+        &mut self,
+        document: &SurfaceIndexDocumentInput<'_>,
+        tokenized_document: TokenizedIndexDocument,
+    ) -> Result<(), SurfaceIndexError> {
+        let mut records = Vec::new();
+        try_reserve(
+            &mut records,
+            tokenized_document.records.len(),
+            "token records",
+        )?;
+        for raw_record in tokenized_document.records {
+            let surface = &document.prepared_text[raw_record.byte_start..raw_record.byte_end];
+            let surface_symbol_id = self.intern_symbol(surface)?;
+            let normalised_surface = concordance_key(surface, false);
+            let normalised_surface_symbol_id = self.intern_symbol(&normalised_surface)?;
+            let exact_surface = concordance_key(surface, true);
+            let exact_surface_symbol_id = self.intern_symbol(&exact_surface)?;
+            let record = SurfaceIndexTokenRecord {
+                document_id: document.document_id,
+                token_ordinal_in_document: records.len(),
+                surface_symbol_id,
+                normalised_surface_symbol_id,
+                exact_surface_symbol_id,
+                prepared_char_start: raw_record.prepared_char_start,
+                prepared_char_end: raw_record.prepared_char_end,
+                counts_as_word: true,
+            };
+            self.push_posting(
+                normalised_surface_symbol_id,
+                exact_surface_symbol_id,
+                &record,
+            )?;
+            records.push(record);
+        }
+
+        self.total_indexed_tokens = self
+            .total_indexed_tokens
+            .checked_add(records.len())
+            .ok_or_else(|| SurfaceIndexError::Allocation("token count overflow".to_string()))?;
+        self.documents.push(SurfaceIndexDocument {
+            document_id: document.document_id,
+            source_path: fallible_string_clone(&document.source_path, "source path")?,
+            display_name: fallible_string_clone(&document.display_name, "display name")?,
+            token_count: records.len(),
+        });
+        self.records_by_document.push(SurfaceIndexDocumentRecords {
+            document_id: document.document_id,
+            records,
+        });
+        Ok(())
+    }
+
+    fn intern_symbol(&mut self, symbol: &str) -> Result<u32, SurfaceIndexError> {
+        let hash = symbol_hash(symbol);
+        if let Some(ids) = self.symbol_ids_by_hash.get(&hash) {
+            for &id in ids {
+                if self
+                    .symbols
+                    .get(id as usize)
+                    .is_some_and(|known| known == symbol)
+                {
+                    return Ok(id);
+                }
+            }
+        }
+
+        let id = u32::try_from(self.symbols.len()).map_err(|_| {
+            SurfaceIndexError::Allocation("symbol table exceeds u32 capacity".to_string())
+        })?;
+        try_reserve(&mut self.symbols, 1, "symbol table")?;
+        try_reserve(
+            &mut self.postings_by_normalised_symbol,
+            1,
+            "normalised posting table",
+        )?;
+        try_reserve(&mut self.postings_by_exact_symbol, 1, "exact posting table")?;
+        self.symbols
+            .push(fallible_string_clone(symbol, "interned symbol")?);
+        self.postings_by_normalised_symbol.push(Vec::new());
+        self.postings_by_exact_symbol.push(Vec::new());
+
+        if !self.symbol_ids_by_hash.contains_key(&hash) {
+            self.symbol_ids_by_hash
+                .try_reserve(1)
+                .map_err(|error| allocation_error("symbol hash table", error))?;
+        }
+        let ids = self.symbol_ids_by_hash.entry(hash).or_default();
+        try_reserve(ids, 1, "symbol collision bucket")?;
+        ids.push(id);
+        Ok(id)
+    }
+
+    fn push_posting(
+        &mut self,
+        normalised_symbol_id: u32,
+        exact_symbol_id: u32,
+        record: &SurfaceIndexTokenRecord,
+    ) -> Result<(), SurfaceIndexError> {
+        let posting = SurfacePosting {
+            document_id: record.document_id,
+            token_ordinal_in_document: record.token_ordinal_in_document,
+        };
+        let normalised = &mut self.postings_by_normalised_symbol[normalised_symbol_id as usize];
+        try_reserve(normalised, 1, "normalised postings")?;
+        normalised.push(posting.clone());
+        let exact = &mut self.postings_by_exact_symbol[exact_symbol_id as usize];
+        try_reserve(exact, 1, "exact postings")?;
+        exact.push(posting);
+        Ok(())
+    }
+
+    fn symbol_id(&self, symbol: &str) -> Option<u32> {
+        let hash = symbol_hash(symbol);
+        self.symbol_ids_by_hash.get(&hash).and_then(|ids| {
+            ids.iter().copied().find(|&id| {
+                self.symbols
+                    .get(id as usize)
+                    .is_some_and(|known| known == symbol)
+            })
+        })
+    }
+
+    fn symbol(&self, symbol_id: u32) -> Option<&str> {
+        self.symbols.get(symbol_id as usize).map(String::as_str)
+    }
+
+    pub(crate) fn rebuild_symbol_lookup(&mut self) -> Result<(), SurfaceIndexError> {
+        self.symbol_ids_by_hash.clear();
+        self.symbol_ids_by_hash
+            .try_reserve(self.symbols.len())
+            .map_err(|error| allocation_error("symbol hash table", error))?;
+        for (index, symbol) in self.symbols.iter().enumerate() {
+            let id = u32::try_from(index).map_err(|_| {
+                SurfaceIndexError::Allocation("symbol table exceeds u32 capacity".to_string())
+            })?;
+            let ids = self
+                .symbol_ids_by_hash
+                .entry(symbol_hash(symbol))
+                .or_default();
+            try_reserve(ids, 1, "symbol collision bucket")?;
+            ids.push(id);
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn total_postings(&self) -> usize {
+        self.postings_by_normalised_symbol
+            .iter()
+            .map(Vec::len)
+            .sum()
+    }
+
+    pub(crate) fn refresh_document_metadata(
+        &mut self,
+        inputs: &[SurfaceIndexDocumentInput<'_>],
+    ) -> Result<(), SurfaceIndexError> {
+        if inputs.len() != self.documents.len() {
+            return Err(SurfaceIndexError::InconsistentStore {
+                document_id: 0,
+                token_ordinal_in_document: 0,
+                node_token_length: 0,
+            });
+        }
+        for input in inputs {
+            let document = self.document_mut(input.document_id).ok_or(
+                SurfaceIndexError::InconsistentStore {
+                    document_id: input.document_id,
+                    token_ordinal_in_document: 0,
+                    node_token_length: 0,
+                },
+            )?;
+            document.source_path = fallible_string_clone(&input.source_path, "source path")?;
+            document.display_name = fallible_string_clone(&input.display_name, "display name")?;
+        }
+        Ok(())
+    }
+
+    fn document_mut(&mut self, document_id: usize) -> Option<&mut SurfaceIndexDocument> {
+        self.documents
+            .binary_search_by_key(&document_id, |document| document.document_id)
+            .ok()
+            .map(|index| &mut self.documents[index])
+    }
+
+    fn has_valid_internal_references(&self) -> bool {
+        if self.postings_by_normalised_symbol.len() != self.symbols.len()
+            || self.postings_by_exact_symbol.len() != self.symbols.len()
+            || self.documents.len() != self.records_by_document.len()
+            || self
+                .documents
+                .windows(2)
+                .any(|pair| pair[0].document_id >= pair[1].document_id)
+        {
+            return false;
+        }
+        let mut token_total = 0usize;
+        for (document, document_records) in self.documents.iter().zip(&self.records_by_document) {
+            if document.document_id != document_records.document_id
+                || document.token_count != document_records.records.len()
+            {
+                return false;
+            }
+            let Some(next_total) = token_total.checked_add(document_records.records.len()) else {
+                return false;
+            };
+            token_total = next_total;
+            for (ordinal, record) in document_records.records.iter().enumerate() {
+                if record.document_id != document.document_id
+                    || record.token_ordinal_in_document != ordinal
+                    || record.prepared_char_start > record.prepared_char_end
+                    || record.surface_symbol_id as usize >= self.symbols.len()
+                    || record.normalised_surface_symbol_id as usize >= self.symbols.len()
+                    || record.exact_surface_symbol_id as usize >= self.symbols.len()
+                {
+                    return false;
+                }
+            }
+        }
+        if token_total != self.total_indexed_tokens {
+            return false;
+        }
+        self.postings_are_valid(&self.postings_by_normalised_symbol, false)
+            && self.postings_are_valid(&self.postings_by_exact_symbol, true)
+    }
+
+    fn postings_are_valid(&self, posting_table: &[Vec<SurfacePosting>], exact: bool) -> bool {
+        for (symbol_id, postings) in posting_table.iter().enumerate() {
+            if postings.windows(2).any(|pair| {
+                (pair[0].document_id, pair[0].token_ordinal_in_document)
+                    >= (pair[1].document_id, pair[1].token_ordinal_in_document)
+            }) {
+                return false;
+            }
+            for posting in postings {
+                let Some(records) = self.records_for_document(posting.document_id) else {
+                    return false;
+                };
+                let Some(record) = records.get(posting.token_ordinal_in_document) else {
+                    return false;
+                };
+                let record_symbol_id = if exact {
+                    record.exact_surface_symbol_id
+                } else {
+                    record.normalised_surface_symbol_id
+                };
+                if record_symbol_id as usize != symbol_id {
+                    return false;
+                }
+            }
+        }
+        true
     }
 }
 
 impl IndexStore for InMemoryIndexStore {
     fn postings(&self, normalised_surface: &str) -> Option<&[SurfacePosting]> {
-        self.postings_by_normalised_surface
-            .get(normalised_surface)
+        let symbol_id = self.symbol_id(normalised_surface)?;
+        self.postings_by_normalised_symbol
+            .get(symbol_id as usize)
+            .filter(|postings| !postings.is_empty())
             .map(Vec::as_slice)
     }
 
     fn exact_surface_postings(&self, exact_surface: &str) -> Option<&[SurfacePosting]> {
-        self.postings_by_exact_surface
-            .get(exact_surface)
+        let symbol_id = self.symbol_id(exact_surface)?;
+        self.postings_by_exact_symbol
+            .get(symbol_id as usize)
+            .filter(|postings| !postings.is_empty())
             .map(Vec::as_slice)
     }
 
     fn records_for_document(&self, document_id: usize) -> Option<&[SurfaceIndexTokenRecord]> {
         self.records_by_document
-            .get(&document_id)
-            .map(Vec::as_slice)
+            .binary_search_by_key(&document_id, |entry| entry.document_id)
+            .ok()
+            .map(|index| self.records_by_document[index].records.as_slice())
     }
 
     fn document(&self, document_id: usize) -> Option<&SurfaceIndexDocument> {
-        self.documents.get(&document_id)
+        self.documents
+            .binary_search_by_key(&document_id, |document| document.document_id)
+            .ok()
+            .map(|index| &self.documents[index])
     }
 
     fn total_indexed_tokens(&self) -> usize {
@@ -298,20 +638,46 @@ impl IndexStore for InMemoryIndexStore {
 
     fn indexed_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store> {
         Box::new(
-            self.postings_by_normalised_surface
-                .keys()
-                .map(String::as_str),
+            self.symbols
+                .iter()
+                .enumerate()
+                .filter_map(|(index, symbol)| {
+                    (!self.postings_by_normalised_symbol[index].is_empty())
+                        .then_some(symbol.as_str())
+                }),
         )
     }
 
     fn indexed_exact_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store> {
-        Box::new(self.postings_by_exact_surface.keys().map(String::as_str))
+        Box::new(
+            self.symbols
+                .iter()
+                .enumerate()
+                .filter_map(|(index, symbol)| {
+                    (!self.postings_by_exact_symbol[index].is_empty()).then_some(symbol.as_str())
+                }),
+        )
     }
 
     fn indexed_documents<'store>(
         &'store self,
     ) -> Box<dyn Iterator<Item = &'store SurfaceIndexDocument> + 'store> {
-        Box::new(self.documents.values())
+        Box::new(self.documents.iter())
+    }
+
+    fn surface_for_record<'store>(
+        &'store self,
+        record: &SurfaceIndexTokenRecord,
+    ) -> Option<&'store str> {
+        self.symbol(record.surface_symbol_id)
+    }
+
+    fn concordance_key_for_record<'store>(
+        &'store self,
+        record: &SurfaceIndexTokenRecord,
+        case_sensitive: bool,
+    ) -> Option<&'store str> {
+        self.symbol(record.concordance_symbol_id(case_sensitive))
     }
 }
 
@@ -482,9 +848,14 @@ pub fn search_surface_index_kwic(
 ) -> Result<SurfaceIndexKwicResult, SurfaceIndexError> {
     let window_tokens = surface_index_window_tokens(window_tokens);
     let search = search_surface_index(store, query)?;
-    let mut rows = Vec::with_capacity(search.hits.len());
+    let mut rows = Vec::new();
+    try_reserve(&mut rows, search.hits.len(), "materialized KWIC rows")?;
     for hit in &search.hits {
-        rows.push(kwic_row(store, hit, window_tokens)?);
+        rows.push(materialize_surface_index_kwic_row(
+            store,
+            hit,
+            window_tokens,
+        )?);
     }
 
     Ok(SurfaceIndexKwicResult {
@@ -504,6 +875,118 @@ pub struct SurfaceIndexManifest {
     pub processed_texts_hash_sha256: String,
     pub decode_policy_version: u32,
     pub tokenization: TokenizationManifest,
+}
+
+#[derive(Debug)]
+pub enum SurfaceIndexCacheLoad {
+    Ready(InMemoryIndexStore),
+    Missing,
+    Stale,
+    Invalid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SurfaceIndexCacheError(String);
+
+impl std::fmt::Display for SurfaceIndexCacheError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for SurfaceIndexCacheError {}
+
+#[derive(Serialize)]
+struct SurfaceIndexCacheEnvelopeRef<'store> {
+    cache_file_version: u32,
+    manifest: &'store SurfaceIndexManifest,
+    store: &'store InMemoryIndexStore,
+}
+
+#[derive(Deserialize)]
+struct SurfaceIndexCacheEnvelope {
+    cache_file_version: u32,
+    manifest: SurfaceIndexManifest,
+    store: InMemoryIndexStore,
+}
+
+pub fn surface_index_cache_path(cache_root: &Path, manifest: &SurfaceIndexManifest) -> PathBuf {
+    let mut key_bytes = Vec::new();
+    key_bytes.extend_from_slice(b"corpuswright-surface-index-cache-key-v1\0");
+    key_bytes.extend_from_slice(&SURFACE_INDEX_CACHE_FILE_VERSION.to_le_bytes());
+    if let Ok(manifest_bytes) = serde_json::to_vec(manifest) {
+        key_bytes.extend_from_slice(&manifest_bytes);
+    }
+    let key = crate::hash::sha256_hex(&key_bytes);
+    cache_root.join(format!(
+        "surface-index.v{}.{}.json",
+        SURFACE_INDEX_CACHE_FILE_VERSION, key
+    ))
+}
+
+pub fn write_surface_index_cache(
+    cache_root: &Path,
+    manifest: &SurfaceIndexManifest,
+    store: &InMemoryIndexStore,
+) -> Result<(), SurfaceIndexCacheError> {
+    std::fs::create_dir_all(cache_root)
+        .map_err(|error| SurfaceIndexCacheError(error.to_string()))?;
+    let final_path = surface_index_cache_path(cache_root, manifest);
+    let temp_path = final_path.with_extension("tmp");
+    let file =
+        File::create(&temp_path).map_err(|error| SurfaceIndexCacheError(error.to_string()))?;
+    let mut writer = BufWriter::new(file);
+    let envelope = SurfaceIndexCacheEnvelopeRef {
+        cache_file_version: SURFACE_INDEX_CACHE_FILE_VERSION,
+        manifest,
+        store,
+    };
+    serde_json::to_writer(&mut writer, &envelope)
+        .map_err(|error| SurfaceIndexCacheError(error.to_string()))?;
+    writer
+        .flush()
+        .map_err(|error| SurfaceIndexCacheError(error.to_string()))?;
+    drop(writer);
+    if let Err(first_error) = std::fs::rename(&temp_path, &final_path) {
+        let _ = std::fs::remove_file(&final_path);
+        std::fs::rename(&temp_path, &final_path).map_err(|second_error| {
+            SurfaceIndexCacheError(format!(
+                "cache rename failed: {first_error}; retry failed: {second_error}"
+            ))
+        })?;
+    }
+    Ok(())
+}
+
+pub fn load_surface_index_cache(
+    cache_root: &Path,
+    expected_manifest: &SurfaceIndexManifest,
+) -> SurfaceIndexCacheLoad {
+    let path = surface_index_cache_path(cache_root, expected_manifest);
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return SurfaceIndexCacheLoad::Missing;
+        }
+        Err(_) => return SurfaceIndexCacheLoad::Invalid,
+    };
+    let mut envelope: SurfaceIndexCacheEnvelope =
+        match serde_json::from_reader(std::io::BufReader::new(file)) {
+            Ok(envelope) => envelope,
+            Err(_) => return SurfaceIndexCacheLoad::Invalid,
+        };
+    if envelope.cache_file_version != SURFACE_INDEX_CACHE_FILE_VERSION
+        || envelope.manifest.schema_version != INDEX_SCHEMA_VERSION
+        || !envelope.manifest.is_valid_for(expected_manifest)
+    {
+        return SurfaceIndexCacheLoad::Stale;
+    }
+    if envelope.store.rebuild_symbol_lookup().is_err()
+        || !envelope.store.has_valid_internal_references()
+    {
+        return SurfaceIndexCacheLoad::Invalid;
+    }
+    SurfaceIndexCacheLoad::Ready(envelope.store)
 }
 
 impl SurfaceIndexManifest {
@@ -539,15 +1022,78 @@ struct PreparedOffsetRequest {
     kind: PreparedOffsetKind,
 }
 
-fn sort_posting_map(posting_map: &mut BTreeMap<String, Vec<SurfacePosting>>) {
-    for postings in posting_map.values_mut() {
-        postings.sort_by(|left, right| {
-            left.document_id.cmp(&right.document_id).then_with(|| {
-                left.token_ordinal_in_document
-                    .cmp(&right.token_ordinal_in_document)
-            })
-        });
-    }
+fn tokenize_index_document(
+    document: &SurfaceIndexDocumentInput<'_>,
+    tokenization_config: &TokenizationConfig,
+) -> Result<TokenizedIndexDocument, SurfaceIndexError> {
+    let tokenizer_document_id = u32::try_from(document.document_id)
+        .map_err(|_| SurfaceIndexError::DocumentIdTooLarge(document.document_id))?;
+    let mut word_tokens = tokenize(
+        document.prepared_text,
+        tokenizer_document_id,
+        tokenization_config,
+    );
+    word_tokens.retain(|token| token.counts_as_word());
+
+    let mut token_byte_offsets = Vec::new();
+    try_reserve(
+        &mut token_byte_offsets,
+        word_tokens.len(),
+        "token byte offsets",
+    )?;
+    token_byte_offsets.extend(
+        word_tokens
+            .iter()
+            .map(|token| (token.byte_start, token.byte_end)),
+    );
+    let prepared_char_offsets = prepared_char_offsets_for_token_bytes(
+        document.prepared_text,
+        document.document_id,
+        &token_byte_offsets,
+    )?;
+    let mut records = Vec::new();
+    try_reserve(&mut records, word_tokens.len(), "parallel token records")?;
+    records.extend(word_tokens.into_iter().zip(prepared_char_offsets).map(
+        |(token, (prepared_char_start, prepared_char_end))| TokenizedIndexRecord {
+            byte_start: token.byte_start,
+            byte_end: token.byte_end,
+            prepared_char_start,
+            prepared_char_end,
+        },
+    ));
+    Ok(TokenizedIndexDocument {
+        document_id: document.document_id,
+        records,
+    })
+}
+
+fn symbol_hash(symbol: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    symbol.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn try_reserve<T>(
+    values: &mut Vec<T>,
+    additional: usize,
+    purpose: &str,
+) -> Result<(), SurfaceIndexError> {
+    values
+        .try_reserve(additional)
+        .map_err(|error| allocation_error(purpose, error))
+}
+
+fn allocation_error(purpose: &str, error: impl std::fmt::Display) -> SurfaceIndexError {
+    SurfaceIndexError::Allocation(format!("{purpose}: {error}"))
+}
+
+fn fallible_string_clone(value: &str, purpose: &str) -> Result<String, SurfaceIndexError> {
+    let mut cloned = String::new();
+    cloned
+        .try_reserve(value.len())
+        .map_err(|error| allocation_error(purpose, error))?;
+    cloned.push_str(value);
+    Ok(cloned)
 }
 
 fn prepared_char_offsets_for_token_bytes(
@@ -562,7 +1108,11 @@ fn prepared_char_offsets_for_token_bytes(
     // Resolve every requested byte offset during one UTF-8 boundary walk. Any
     // tokenizer offset that is out of range or inside a multi-byte character
     // remains unresolved and is reported loudly.
-    let mut requests = Vec::with_capacity(token_byte_offsets.len() * 2);
+    let request_count = token_byte_offsets.len().checked_mul(2).ok_or_else(|| {
+        SurfaceIndexError::Allocation("prepared offset count overflow".to_string())
+    })?;
+    let mut requests = Vec::new();
+    try_reserve(&mut requests, request_count, "prepared offset requests")?;
     for (token_index, (byte_start, byte_end)) in token_byte_offsets.iter().copied().enumerate() {
         requests.push(PreparedOffsetRequest {
             token_index,
@@ -589,7 +1139,13 @@ fn prepared_char_offsets_for_token_bytes(
             })
     });
 
-    let mut resolved = vec![(0usize, 0usize); token_byte_offsets.len()];
+    let mut resolved = Vec::new();
+    try_reserve(
+        &mut resolved,
+        token_byte_offsets.len(),
+        "resolved prepared offsets",
+    )?;
+    resolved.resize(token_byte_offsets.len(), (0usize, 0usize));
     let mut next_request = 0usize;
 
     resolve_prepared_offset_requests(&requests, &mut next_request, 0, 0, &mut resolved);
@@ -670,12 +1226,17 @@ fn term_hits(
         .postings_for_concordance_key(term.concordance_key(case_sensitive), case_sensitive)
         .unwrap_or_default()
         .iter()
-        .map(|posting| SurfaceIndexHit {
-            document_id: posting.document_id,
-            token_ordinal_in_document: posting.token_ordinal_in_document,
-            node_token_length: 1,
-            prepared_char_start: posting.prepared_char_start,
-            prepared_char_end: posting.prepared_char_end,
+        .filter_map(|posting| {
+            let record = store
+                .records_for_document(posting.document_id)?
+                .get(posting.token_ordinal_in_document)?;
+            Some(SurfaceIndexHit {
+                document_id: posting.document_id,
+                token_ordinal_in_document: posting.token_ordinal_in_document,
+                node_token_length: 1,
+                prepared_char_start: record.prepared_char_start,
+                prepared_char_end: record.prepared_char_end,
+            })
         })
         .collect()
 }
@@ -704,6 +1265,9 @@ fn phrase_hits(
         let Some(last_record) = records.get(last_index) else {
             continue;
         };
+        let Some(first_record) = records.get(posting.token_ordinal_in_document) else {
+            continue;
+        };
         let mut matches = true;
         for (offset, term) in terms.iter().enumerate() {
             let Some(token_ordinal) = posting.token_ordinal_in_document.checked_add(offset) else {
@@ -714,7 +1278,9 @@ fn phrase_hits(
                 matches = false;
                 break;
             };
-            if record.concordance_key(case_sensitive) != term.concordance_key(case_sensitive) {
+            if store.concordance_key_for_record(record, case_sensitive)
+                != Some(term.concordance_key(case_sensitive))
+            {
                 matches = false;
                 break;
             }
@@ -724,7 +1290,7 @@ fn phrase_hits(
                 document_id: posting.document_id,
                 token_ordinal_in_document: posting.token_ordinal_in_document,
                 node_token_length: terms.len(),
-                prepared_char_start: posting.prepared_char_start,
+                prepared_char_start: first_record.prepared_char_start,
                 prepared_char_end: last_record.prepared_char_end,
             });
         }
@@ -732,7 +1298,7 @@ fn phrase_hits(
     hits
 }
 
-fn kwic_row(
+pub fn materialize_surface_index_kwic_row(
     store: &impl IndexStore,
     hit: &SurfaceIndexHit,
     window_tokens: usize,
@@ -769,9 +1335,9 @@ fn kwic_row(
 
     let left_start = hit.token_ordinal_in_document.saturating_sub(window_tokens);
     let right_end = (node_end + window_tokens).min(records.len());
-    let left_context = surfaces(&records[left_start..hit.token_ordinal_in_document]);
-    let node_tokens = surfaces(&records[hit.token_ordinal_in_document..node_end]);
-    let right_context = surfaces(&records[node_end..right_end]);
+    let left_context = surfaces(store, &records[left_start..hit.token_ordinal_in_document])?;
+    let node_tokens = surfaces(store, &records[hit.token_ordinal_in_document..node_end])?;
+    let right_context = surfaces(store, &records[node_end..right_end])?;
 
     Ok(SurfaceIndexKwicRow {
         document_id: hit.document_id,
@@ -787,11 +1353,24 @@ fn kwic_row(
     })
 }
 
-fn surfaces(records: &[SurfaceIndexTokenRecord]) -> Vec<String> {
-    records
-        .iter()
-        .map(|record| record.surface.clone())
-        .collect()
+fn surfaces(
+    store: &impl IndexStore,
+    records: &[SurfaceIndexTokenRecord],
+) -> Result<Vec<String>, SurfaceIndexError> {
+    let mut surfaces = Vec::new();
+    try_reserve(&mut surfaces, records.len(), "materialized KWIC surfaces")?;
+    for record in records {
+        let surface =
+            store
+                .surface_for_record(record)
+                .ok_or(SurfaceIndexError::InconsistentStore {
+                    document_id: record.document_id,
+                    token_ordinal_in_document: record.token_ordinal_in_document,
+                    node_token_length: 1,
+                })?;
+        surfaces.push(surface.to_string());
+    }
+    Ok(surfaces)
 }
 
 fn surface_index_window_tokens(window_tokens: usize) -> usize {
@@ -806,8 +1385,9 @@ fn surface_index_window_tokens(window_tokens: usize) -> usize {
 mod tests {
     use super::*;
     use crate::analysis::{
-        AnalysisDocumentSelection, ConcordanceContextFilterDirection, ConcordanceDocument,
-        ConcordanceQuery, ConcordanceSortKey, search_concordance_documents,
+        AnalysisDocumentSelection, ConcordanceBackend, ConcordanceContextFilterDirection,
+        ConcordanceDocument, ConcordanceQuery, ConcordanceSearchContext, ConcordanceSortKey,
+        search_concordance_documents, search_concordance_documents_routed,
     };
     use crate::decode::{DecodeStrategy, SourceEncoding, decode_source_bytes};
 
@@ -967,13 +1547,22 @@ mod tests {
         assert_eq!(
             records
                 .iter()
-                .map(|record| record.surface.as_str())
+                .map(|record| store.surface_for_record(record).unwrap())
                 .collect::<Vec<_>>(),
             ["ação", "coração", "não", "João", "maçã", "42"]
         );
-        assert_eq!(records[0].normalised_surface, "ação");
-        assert_eq!(records[3].normalised_surface, "joão");
-        assert_eq!(records[3].exact_surface, "João");
+        assert_eq!(
+            store.concordance_key_for_record(&records[0], false),
+            Some("ação")
+        );
+        assert_eq!(
+            store.concordance_key_for_record(&records[3], false),
+            Some("joão")
+        );
+        assert_eq!(
+            store.concordance_key_for_record(&records[3], true),
+            Some("João")
+        );
         assert_eq!(records[3].token_ordinal_in_document, 3);
         assert_eq!(records[0].prepared_char_start, 0);
         assert_eq!(records[0].prepared_char_end, 4);
@@ -1210,7 +1799,7 @@ mod tests {
         ] {
             let record = records
                 .iter()
-                .find(|record| record.surface == expected_surface)
+                .find(|record| store.surface_for_record(record) == Some(expected_surface))
                 .unwrap();
             assert_eq!(
                 surface_at_char_offsets(
@@ -1223,12 +1812,20 @@ mod tests {
         }
         let acao = records
             .iter()
-            .find(|record| record.surface == "ação")
+            .find(|record| store.surface_for_record(record) == Some("ação"))
             .unwrap();
         assert_eq!((acao.prepared_char_start, acao.prepared_char_end), (5, 9));
 
-        assert!(records.iter().any(|record| record.surface == "João"));
-        assert!(records.iter().any(|record| record.surface == "joão"));
+        assert!(
+            records
+                .iter()
+                .any(|record| store.surface_for_record(record) == Some("João"))
+        );
+        assert!(
+            records
+                .iter()
+                .any(|record| store.surface_for_record(record) == Some("joão"))
+        );
 
         let concordance_documents = [concordance_document(
             0,
@@ -1290,10 +1887,10 @@ mod tests {
             "processed-hash".to_string(),
             TokenizationManifest::default(),
         );
-        assert_eq!(expected.schema_version, 2);
+        assert_eq!(expected.schema_version, 3);
 
         let mut changed_schema = expected.clone();
-        changed_schema.schema_version = 1;
+        changed_schema.schema_version = 2;
         assert!(!changed_schema.is_valid_for(&expected));
 
         let mut changed_decode = expected.clone();
@@ -1317,5 +1914,233 @@ mod tests {
 
         assert!(!source.contains(ts_export_attr));
         assert!(!source.contains(ts_derive));
+    }
+
+    #[test]
+    fn parallel_index_build_is_deterministic_across_thread_counts_and_input_order() {
+        let texts = (0..256)
+            .map(|index| {
+                format!(
+                    "shared Movie movie MOVIE alpha{} beta{} shared ação João ",
+                    index % 17,
+                    index % 11
+                )
+                .repeat(12)
+            })
+            .collect::<Vec<_>>();
+        let one_thread_inputs = (0..texts.len())
+            .map(|document_id| SurfaceIndexDocumentInput {
+                document_id,
+                source_path: format!("{document_id}.txt"),
+                display_name: format!("{document_id}.txt"),
+                prepared_text: texts[document_id].as_str(),
+            })
+            .collect::<Vec<_>>();
+        let four_thread_inputs = (0..texts.len())
+            .rev()
+            .map(|document_id| SurfaceIndexDocumentInput {
+                document_id,
+                source_path: format!("{document_id}.txt"),
+                display_name: format!("{document_id}.txt"),
+                prepared_text: texts[document_id].as_str(),
+            })
+            .collect::<Vec<_>>();
+        let one_thread_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
+        let four_thread_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(4)
+            .build()
+            .unwrap();
+        assert_eq!(one_thread_pool.current_num_threads(), 1);
+        assert_eq!(four_thread_pool.current_num_threads(), 4);
+
+        let one_thread = one_thread_pool.install(|| build_index(&one_thread_inputs));
+        let four_thread = four_thread_pool.install(|| build_index(&four_thread_inputs));
+        assert_eq!(one_thread, four_thread);
+        assert_eq!(
+            search_positions(&one_thread, "movie", false),
+            search_positions(&four_thread, "movie", false)
+        );
+        assert_eq!(
+            search_positions(&one_thread, "Movie", true),
+            search_positions(&four_thread, "Movie", true)
+        );
+    }
+
+    #[test]
+    fn interned_surfaces_resolve_across_case_handling_paths() {
+        let documents = [document_input(
+            0,
+            "case.txt",
+            "Movie movie MOVIE Movie movie MOVIE",
+        )];
+        let store = build_index(&documents);
+        let records = store.records_for_document(0).unwrap();
+
+        assert_eq!(store.symbols.len(), 3);
+        assert_eq!(store.surface_for_record(&records[0]), Some("Movie"));
+        assert_eq!(store.surface_for_record(&records[1]), Some("movie"));
+        assert_eq!(store.surface_for_record(&records[2]), Some("MOVIE"));
+        assert_eq!(
+            store.concordance_key_for_record(&records[0], false),
+            Some("movie")
+        );
+        assert_eq!(
+            store.concordance_key_for_record(&records[0], true),
+            Some("Movie")
+        );
+        assert_eq!(search_positions(&store, "movie", false).len(), 6);
+        assert_eq!(search_positions(&store, "Movie", true).len(), 2);
+    }
+
+    #[test]
+    fn surface_index_disk_cache_round_trip_and_miss_states() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let documents = [
+            document_input(1, "b.txt", "Movie alpha movie"),
+            document_input(0, "a.txt", "ação Movie João"),
+        ];
+        let store = build_index(&documents);
+        let manifest =
+            SurfaceIndexManifest::new("content-hash".to_string(), TokenizationManifest::default());
+        write_surface_index_cache(temp_dir.path(), &manifest, &store).unwrap();
+        let loaded = match load_surface_index_cache(temp_dir.path(), &manifest) {
+            SurfaceIndexCacheLoad::Ready(store) => store,
+            state => panic!("expected ready cache, got {state:?}"),
+        };
+        assert_eq!(loaded, store);
+
+        let mut changed_config = manifest.clone();
+        changed_config.tokenization.config.include_punctuation = false;
+        assert!(matches!(
+            load_surface_index_cache(temp_dir.path(), &changed_config),
+            SurfaceIndexCacheLoad::Missing
+        ));
+
+        let cache_path = surface_index_cache_path(temp_dir.path(), &manifest);
+        let mut envelope: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&cache_path).unwrap()).unwrap();
+        envelope["cache_file_version"] =
+            serde_json::Value::from(SURFACE_INDEX_CACHE_FILE_VERSION + 1);
+        std::fs::write(&cache_path, serde_json::to_vec(&envelope).unwrap()).unwrap();
+        assert!(matches!(
+            load_surface_index_cache(temp_dir.path(), &manifest),
+            SurfaceIndexCacheLoad::Stale
+        ));
+
+        std::fs::write(&cache_path, b"{\"cache_file_version\":").unwrap();
+        assert!(matches!(
+            load_surface_index_cache(temp_dir.path(), &manifest),
+            SurfaceIndexCacheLoad::Invalid
+        ));
+        std::fs::write(&cache_path, b"not an index").unwrap();
+        assert!(matches!(
+            load_surface_index_cache(temp_dir.path(), &manifest),
+            SurfaceIndexCacheLoad::Invalid
+        ));
+    }
+
+    #[test]
+    fn concordance_index_performance_instrumentation() {
+        let texts = (0..2_000)
+            .map(|index| {
+                format!(
+                    "alpha beta target blue gamma Movie ação document{} ",
+                    index % 97
+                )
+                .repeat(5)
+            })
+            .collect::<Vec<_>>();
+        let documents = texts
+            .iter()
+            .enumerate()
+            .map(|(document_index, text)| ConcordanceDocument {
+                document_index,
+                source_path: format!("{document_index}.txt"),
+                display_name: format!("{document_index}.txt"),
+                text: text.clone(),
+            })
+            .collect::<Vec<_>>();
+        let inputs = documents
+            .iter()
+            .map(|document| SurfaceIndexDocumentInput {
+                document_id: document.document_index,
+                source_path: document.source_path.clone(),
+                display_name: document.display_name.clone(),
+                prepared_text: document.text.as_str(),
+            })
+            .collect::<Vec<_>>();
+        let config = TokenizationConfig::default();
+        let build_started = std::time::Instant::now();
+        let store = InMemoryIndexStore::build(&inputs, &config).unwrap();
+        let build_ms = build_started.elapsed().as_secs_f64() * 1_000.0;
+        let postings_count = store.total_postings();
+
+        let mut query = scan_query("target", false);
+        query.context_filter = Some("blue".to_string());
+        query.context_filter_direction = ConcordanceContextFilterDirection::Right;
+        let scan_started = std::time::Instant::now();
+        let scan = search_concordance_documents(&documents, &query, &config).unwrap();
+        let scan_ms = scan_started.elapsed().as_secs_f64() * 1_000.0;
+
+        let cache_dir = tempfile::tempdir().unwrap();
+        let mut context = ConcordanceSearchContext::with_cache_root(cache_dir.path().to_path_buf());
+        let first_started = std::time::Instant::now();
+        let first = search_concordance_documents_routed(
+            &documents,
+            &query,
+            &config,
+            &mut context,
+            ConcordanceBackend::Index,
+        )
+        .unwrap();
+        let first_ms = first_started.elapsed().as_secs_f64() * 1_000.0;
+        let warm_started = std::time::Instant::now();
+        let warm = search_concordance_documents_routed(
+            &documents,
+            &query,
+            &config,
+            &mut context,
+            ConcordanceBackend::Index,
+        )
+        .unwrap();
+        let warm_ms = warm_started.elapsed().as_secs_f64() * 1_000.0;
+        let mut restarted_context =
+            ConcordanceSearchContext::with_cache_root(cache_dir.path().to_path_buf());
+        let disk_started = std::time::Instant::now();
+        let disk = search_concordance_documents_routed(
+            &documents,
+            &query,
+            &config,
+            &mut restarted_context,
+            ConcordanceBackend::Index,
+        )
+        .unwrap();
+        let disk_ms = disk_started.elapsed().as_secs_f64() * 1_000.0;
+
+        assert_eq!(first.result, scan);
+        assert_eq!(warm.result, scan);
+        assert_eq!(disk.result, scan);
+        assert!(first.index_rebuilt);
+        assert!(!warm.index_rebuilt);
+        assert!(!disk.index_rebuilt);
+        let evidence = serde_json::json!({
+            "documents": documents.len(),
+            "tokens": store.total_indexed_tokens(),
+            "postings": postings_count,
+            "build_ms": build_ms,
+            "scan_first_query_ms": scan_ms,
+            "first_query_ms": first_ms,
+            "warm_query_ms": warm_ms,
+            "cold_start_with_disk_cache_ms": disk_ms,
+        });
+        std::fs::write(
+            "/tmp/corpuswright-concordance-index-timing.json",
+            serde_json::to_vec_pretty(&evidence).unwrap(),
+        )
+        .unwrap();
+        eprintln!("concordance index timing: {evidence}");
     }
 }

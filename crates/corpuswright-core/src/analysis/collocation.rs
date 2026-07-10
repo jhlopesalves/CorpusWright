@@ -285,13 +285,14 @@ fn add_collocation_window_token_keys(
 }
 
 fn add_collocation_window_record_keys(
+    store: &impl IndexStore,
     records: &[SurfaceIndexTokenRecord],
     window: CollocationWindow,
     query_keys: &HashSet<String>,
     case_sensitive: bool,
     r1: &mut ConcordanceCollocationDistanceCounts,
     candidate_counts: &mut HashMap<String, ConcordanceCollocationDistanceCounts>,
-) {
+) -> Result<(), ConcordanceError> {
     for (token_index, record) in records
         .iter()
         .enumerate()
@@ -304,7 +305,15 @@ fn add_collocation_window_record_keys(
         };
         r1.add(window.side, distance, 1);
 
-        let candidate = record.concordance_key(case_sensitive);
+        let candidate = store
+            .concordance_key_for_record(record, case_sensitive)
+            .ok_or_else(|| {
+                ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
+                    document_id: record.document_id,
+                    token_ordinal_in_document: record.token_ordinal_in_document,
+                    node_token_length: 1,
+                })
+            })?;
         if query_keys.contains(candidate) {
             continue;
         }
@@ -313,6 +322,7 @@ fn add_collocation_window_record_keys(
             .or_default()
             .add(window.side, distance, 1);
     }
+    Ok(())
 }
 
 fn finite_score(value: f64) -> Option<f64> {
@@ -727,6 +737,7 @@ pub fn aggregate_concordance_collocations_index(
             .token_ordinal_in_document
             .saturating_sub(CONCORDANCE_COLLOCATION_MAX_SPAN);
         add_collocation_window_record_keys(
+            store,
             records,
             CollocationWindow {
                 start: left_start,
@@ -738,12 +749,13 @@ pub fn aggregate_concordance_collocations_index(
             query.case_sensitive,
             &mut aggregate.r1,
             &mut aggregate.candidate_counts,
-        );
+        )?;
 
         let right_end = node_end
             .saturating_add(CONCORDANCE_COLLOCATION_MAX_SPAN)
             .min(records.len());
         add_collocation_window_record_keys(
+            store,
             records,
             CollocationWindow {
                 start: node_end,
@@ -755,7 +767,7 @@ pub fn aggregate_concordance_collocations_index(
             query.case_sensitive,
             &mut aggregate.r1,
             &mut aggregate.candidate_counts,
-        );
+        )?;
     }
 
     Ok(aggregate)
