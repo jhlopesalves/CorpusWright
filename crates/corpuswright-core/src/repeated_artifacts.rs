@@ -5069,14 +5069,13 @@ mod tests {
             ..RepeatedArtifactScanConfig::default()
         };
 
-        let ft = phase1_scan_file(
+        let extracted = get_document_text_with_status(
             &doc,
-            &config,
+            config.analyse_processed_text,
             &cleaning_config,
             Some(&cache),
-            &no_cancellation(),
-        )
-        .ft;
+        );
+        let ft = build_file_text(&doc, &extracted.text, extracted.page_texts.as_deref());
 
         assert!(ft.has_page_metadata);
         assert_eq!(ft.document.pages.len(), 2);
@@ -5116,14 +5115,13 @@ mod tests {
             ..RepeatedArtifactScanConfig::default()
         };
 
-        let ft = phase1_scan_file(
+        let extracted = get_document_text_with_status(
             &doc,
-            &config,
+            config.analyse_processed_text,
             &cleaning_config,
             Some(&cache),
-            &no_cancellation(),
-        )
-        .ft;
+        );
+        let ft = build_file_text(&doc, &extracted.text, extracted.page_texts.as_deref());
 
         assert!(!ft.has_page_metadata);
         assert_eq!(ft.document.pages.len(), 1);
