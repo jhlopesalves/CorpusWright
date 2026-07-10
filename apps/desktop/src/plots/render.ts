@@ -1,7 +1,7 @@
 import {
-  estimateLabelBox,
   labelLineHeight,
   labelTextLines,
+  placeAxisTickLabels,
 } from "./model";
 import type {
   CoverageGeometry,
@@ -15,6 +15,7 @@ import type {
   PlotBox,
   PlotBracketGeometry,
   PlotLabelGeometry,
+  PlotLegendItem,
   PlotLineGeometry,
   PlotPathGeometry,
   PlotPointGeometry,
@@ -36,6 +37,7 @@ export function renderRankFrequencySvg(plotId: string, geometry: RankFrequencyGe
   });
   if (geometry.fitPath) renderPath(svg, geometry.fitPath, plotId);
   renderPoints(svg, geometry.points, "cw-plot-point");
+  renderSvgLegend(svg, geometry.box, geometry.legend);
   renderLabels(svg, geometry.labels);
   if (geometry.bracket) renderBracket(svg, geometry.bracket);
   renderInteractionLayer(svg, geometry.box);
@@ -52,9 +54,10 @@ export function renderVocabularyGrowthSvg(plotId: string, geometry: VocabularyGr
   });
   if (geometry.areaPath) renderPath(svg, geometry.areaPath, plotId);
   if (geometry.linePath) renderPath(svg, geometry.linePath, plotId);
+  if (geometry.fitPath) renderPath(svg, geometry.fitPath, plotId);
   renderPoints(svg, geometry.points, "cw-plot-point is-panel-stroked");
+  renderSvgLegend(svg, geometry.box, geometry.legend);
   renderLabels(svg, geometry.labels);
-  renderEndpointLeader(svg, geometry.points, geometry.labels[0]);
   renderInteractionLayer(svg, geometry.box);
   return svg;
 }
@@ -62,6 +65,7 @@ export function renderVocabularyGrowthSvg(plotId: string, geometry: VocabularyGr
 export function renderLexicalSpectrumSvg(plotId: string, geometry: LexicalSpectrumGeometry): SVGSVGElement {
   const svg = createBaseSvg(plotId, geometry.box);
   renderDefinitions(svg, plotId);
+  renderLexicalSpectrumBands(svg, geometry);
   renderAxes(svg, geometry.box, geometry.xScale, geometry.yScale, geometry.xTicks, geometry.yTicks, {
     x: "frequency",
     y: "types",
@@ -114,21 +118,68 @@ export function renderDispersionSvg(plotId: string, geometry: DispersionGeometry
     valueAxis: "x",
   });
   for (const divider of geometry.dividers) renderLine(svg, divider);
-  for (const stem of geometry.stems) renderLine(svg, stem);
-  renderPoints(svg, geometry.points, "cw-plot-point is-panel-stroked is-lollipop");
-  for (const point of geometry.points.filter((candidate) => candidate.datum.highlighted)) {
-    const halo = createSvgElement("circle");
-    setAttrs(halo, {
-      cx: point.x,
-      cy: point.y,
-      r: 9,
-      class: `cw-plot-halo cw-plot-ramp-${point.rampIndex}`,
-    });
-    svg.appendChild(halo);
-  }
+  renderDispersionCompositionBar(svg, geometry);
+  for (const stem of geometry.stems.filter((_stem, index) => !geometry.points[index]?.datum.highlighted)) renderLine(svg, stem);
+  renderPoints(svg, geometry.points.filter((point) => !point.datum.highlighted), "cw-plot-point is-panel-stroked is-lollipop");
+  renderDispersionCumulativeAnnotations(svg, geometry);
   renderLabels(svg, geometry.labels);
   renderInteractionLayer(svg, geometry.box);
   return svg;
+}
+
+function renderDispersionCompositionBar(svg: SVGSVGElement, geometry: DispersionGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-dispersion-composition");
+  for (const segment of geometry.compositionSegments) {
+    const rect = createSvgElement("rect");
+    setAttrs(rect, {
+      x: segment.x,
+      y: segment.y,
+      width: segment.width,
+      height: segment.height,
+      class: `cw-plot-composition-segment cw-plot-ramp-${segment.rampIndex} cw-plot-hover-target`,
+      tabindex: "0",
+      "data-plot-x": segment.x + segment.width / 2,
+      "data-plot-y": segment.y + segment.height / 2,
+      "data-tooltip-title": segment.tooltipTitle,
+      "data-tooltip-rows": segment.tooltipRows.join("\n"),
+    });
+    group.appendChild(rect);
+    if (segment.label) {
+      const label = createSvgElement("text");
+      setAttrs(label, {
+        x: segment.x + segment.width / 2,
+        y: segment.y + segment.height - 3,
+        class: "cw-plot-composition-label",
+        "text-anchor": "middle",
+      });
+      label.textContent = segment.label;
+      group.appendChild(label);
+    }
+  }
+  svg.appendChild(group);
+}
+
+function renderDispersionCumulativeAnnotations(svg: SVGSVGElement, geometry: DispersionGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-dispersion-cumulative");
+  for (const point of geometry.points.filter((candidate) => candidate.datum.highlighted)) {
+    const marker = createSvgElement("rect");
+    setAttrs(marker, {
+      x: point.x - 4,
+      y: point.y - 4,
+      width: 8,
+      height: 8,
+      class: `cw-plot-cumulative-marker cw-plot-ramp-${point.rampIndex} cw-plot-hover-target`,
+      tabindex: "0",
+      "data-plot-x": point.x,
+      "data-plot-y": point.y,
+      "data-tooltip-title": point.tooltipTitle ?? "",
+      "data-tooltip-rows": (point.tooltipRows ?? []).join("\n"),
+    });
+    group.appendChild(marker);
+  }
+  svg.appendChild(group);
 }
 
 export function renderDispersionPlaneSvg(plotId: string, geometry: DispersionPlaneGeometry): SVGSVGElement {
@@ -361,7 +412,10 @@ function renderTickLabels(
   box: PlotBox,
   scaleKind: "linear" | "log",
 ): void {
+  const visibleLabels = placeAxisTickLabels(ticks, axis, box);
+  const visibleByTick = new Map(visibleLabels.map((label) => [label.tick, label]));
   for (const tick of ticks) {
+    if (tick.major && (tick.label || tick.accessibleLabel)) renderAxisTickMark(svg, tick, axis, box);
     if (!tick.major && (scaleKind === "log" || scaleKind === "linear")) {
       const mark = createSvgElement("line");
       if (axis === "x") {
@@ -384,26 +438,79 @@ function renderTickLabels(
       svg.appendChild(mark);
       continue;
     }
-    if (!tick.label) continue;
+    const label = visibleByTick.get(tick);
+    if (!label) continue;
     const text = createSvgElement("text");
-    if (axis === "x") {
-      setAttrs(text, {
-        x: tick.position,
-        y: box.height - box.margin.bottom + 19,
-        class: "cw-plot-tick-label",
-        "text-anchor": "middle",
-      });
-    } else {
-      setAttrs(text, {
-        x: box.margin.left - 10,
-        y: tick.position + 4,
-        class: "cw-plot-tick-label",
-        "text-anchor": "end",
-      });
-    }
-    text.textContent = tick.label;
+    setAttrs(text, {
+      x: label.x,
+      y: label.y,
+      class: "cw-plot-tick-label",
+      "text-anchor": label.anchor,
+    });
+    text.textContent = label.text;
     svg.appendChild(text);
   }
+}
+
+function renderAxisTickMark(svg: SVGSVGElement, tick: PlotTick, axis: "x" | "y", box: PlotBox): void {
+  const mark = createSvgElement("line");
+  if (axis === "x") {
+    setAttrs(mark, {
+      x1: tick.position,
+      y1: box.height - box.margin.bottom,
+      x2: tick.position,
+      y2: box.height - box.margin.bottom + 4,
+      class: "cw-plot-axis-tick",
+    });
+  } else {
+    setAttrs(mark, {
+      x1: box.margin.left - 4,
+      y1: tick.position,
+      x2: box.margin.left,
+      y2: tick.position,
+      class: "cw-plot-axis-tick",
+    });
+  }
+  const title = createSvgElement("title");
+  title.textContent = tick.accessibleLabel ?? tick.label;
+  mark.appendChild(title);
+  svg.appendChild(mark);
+}
+
+export function renderSvgLegend(svg: SVGSVGElement, box: PlotBox, items: PlotLegendItem[]): void {
+  if (items.length === 0) return;
+  const rowHeight = 16;
+  const padding = 8;
+  const maxTextLength = Math.max(...items.map((item) => item.label.length));
+  const width = Math.min(box.innerWidth, Math.max(116, maxTextLength * 6.6 + 34));
+  const height = items.length * rowHeight + padding * 2;
+  const x = box.width - box.margin.right - width;
+  const y = box.margin.top + 8;
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-legend");
+  const background = createSvgElement("rect");
+  setAttrs(background, { x, y, width, height, rx: 4, class: "cw-plot-legend-bg" });
+  group.appendChild(background);
+  for (const [index, item] of items.entries()) {
+    const rowY = y + padding + rowHeight * index + rowHeight / 2;
+    const swatch = createSvgElement("line");
+    setAttrs(swatch, {
+      x1: x + padding,
+      y1: rowY,
+      x2: x + padding + 15,
+      y2: rowY,
+      class: `cw-plot-legend-swatch ${item.className ?? ""} ${item.dashed ? "is-dashed" : ""}`.trim(),
+    });
+    const text = createSvgElement("text");
+    setAttrs(text, {
+      x: x + padding + 21,
+      y: rowY + 4,
+      class: "cw-plot-legend-label",
+    });
+    text.textContent = item.label;
+    group.append(swatch, text);
+  }
+  svg.appendChild(group);
 }
 
 function renderAxisTitles(svg: SVGSVGElement, box: PlotBox, xLabel: string, yLabel: string): void {
@@ -462,6 +569,7 @@ function renderPoints(svg: SVGSVGElement, points: Array<PlotPointGeometry>, base
       baseClass,
       `cw-plot-ramp-${point.rampIndex}`,
       point.excluded ? "is-excluded" : "",
+      point.className ?? "",
       "cw-plot-hover-target",
     ].filter(Boolean).join(" ");
     setAttrs(circle, {
@@ -474,10 +582,35 @@ function renderPoints(svg: SVGSVGElement, points: Array<PlotPointGeometry>, base
       "data-plot-y": point.y,
       "data-tooltip-title": point.tooltipTitle ?? "",
       "data-tooltip-rows": (point.tooltipRows ?? []).join("\n"),
-      style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms;`,
+      style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms; --cw-plot-fill-opacity: ${point.fillOpacity ?? 1};`,
     });
     group.appendChild(circle);
   });
+  svg.appendChild(group);
+}
+
+function renderLexicalSpectrumBands(svg: SVGSVGElement, geometry: LexicalSpectrumGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-spectrum-bands");
+  for (const band of geometry.bands) {
+    const rect = createSvgElement("rect");
+    setAttrs(rect, {
+      x: band.x,
+      y: geometry.box.margin.top,
+      width: band.width,
+      height: geometry.box.innerHeight,
+      class: `cw-plot-spectrum-band ${band.alternate ? "is-alternate" : ""}`.trim(),
+    });
+    const label = createSvgElement("text");
+    setAttrs(label, {
+      x: band.x + (band.width / 2),
+      y: geometry.box.margin.top + 14,
+      class: "cw-plot-spectrum-band-label",
+      "text-anchor": "middle",
+    });
+    label.textContent = band.label;
+    group.append(rect, label);
+  }
   svg.appendChild(group);
 }
 
@@ -667,24 +800,6 @@ function renderBracket(svg: SVGSVGElement, bracket: PlotBracketGeometry): void {
   label.textContent = bracket.label;
   group.appendChild(label);
   svg.appendChild(group);
-}
-
-function renderEndpointLeader(
-  svg: SVGSVGElement,
-  points: Array<PlotPointGeometry>,
-  label: PlotLabelGeometry | undefined,
-): void {
-  const last = points[points.length - 1];
-  if (!last || !label) return;
-  const labelBox = estimateLabelBox(label);
-  const targetX = Math.max(labelBox.x, Math.min(last.x, labelBox.x + labelBox.width));
-  renderLine(svg, {
-    x1: last.x + 4,
-    y1: last.y + 4,
-    x2: targetX,
-    y2: labelBox.y - 4,
-    className: "cw-plot-leader",
-  });
 }
 
 function renderInteractionLayer(svg: SVGSVGElement, box: PlotBox): void {

@@ -4685,6 +4685,22 @@ fn save_config_file_command(path: String, content: String) -> Result<(), String>
     std::fs::write(&path, &content).map_err(|e| format!("Cannot write file: {}", e))
 }
 
+#[tauri::command(async)]
+fn save_svg_file_command(path: String, content: String) -> Result<(), String> {
+    let path_buf = PathBuf::from(&path);
+    let is_svg = path_buf
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"));
+    if !is_svg {
+        return Err("Only .svg files are supported.".to_string());
+    }
+    if !content.trim_start().starts_with("<svg") {
+        return Err("SVG content must have an <svg> root element.".to_string());
+    }
+    std::fs::write(&path_buf, content).map_err(|error| format!("Cannot write SVG file: {error}"))
+}
+
 #[cfg(target_os = "windows")]
 mod win32 {
     use std::ffi::c_void;
@@ -4826,6 +4842,7 @@ pub fn run() {
             scan_repeated_artifacts_command,
             cancel_repeated_artifacts_command,
             save_config_file_command,
+            save_svg_file_command,
             read_config_file_command,
             set_window_titlebar_color,
             project::create_corpus_project_command,
