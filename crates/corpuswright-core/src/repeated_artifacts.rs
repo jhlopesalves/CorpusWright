@@ -1229,24 +1229,28 @@ struct Pass1Line<'a> {
     content_class: CandidateContentClass,
 }
 
+struct Pass1Occurrence<'a> {
+    kind: RepeatedArtifactKind,
+    candidate_key: CandidateTextParts<'a>,
+    display_text: CandidateTextParts<'a>,
+    first_display_fingerprint: CandidateFingerprint,
+    first_display_has_exact_candidate: bool,
+    position: LinePosition,
+}
+
 fn increment_pass1_candidate(
     local_counts: &mut ShardedFingerprintMap<FingerprintStats>,
     global_key_count: usize,
     config: &RepeatedArtifactScanConfig,
-    kind: RepeatedArtifactKind,
-    candidate_key: CandidateTextParts<'_>,
-    display_text: CandidateTextParts<'_>,
-    first_display_fingerprint: CandidateFingerprint,
-    first_display_has_exact_candidate: bool,
-    position: LinePosition,
+    occurrence: Pass1Occurrence<'_>,
 ) -> Result<CandidateFingerprint, RepeatedArtifactScanError> {
-    let fingerprint = candidate_fingerprint(kind, candidate_key);
+    let fingerprint = candidate_fingerprint(occurrence.kind, occurrence.candidate_key);
     if let Some(stats) = local_counts.get_mut(&fingerprint) {
         stats.occurrence_count = stats
             .occurrence_count
             .checked_add(1)
             .ok_or_else(|| pass1_allocation_error(config.memory_ceiling_bytes))?;
-        match position {
+        match occurrence.position {
             LinePosition::Top => {
                 stats.top_count = stats
                     .top_count
@@ -1261,8 +1265,8 @@ fn increment_pass1_candidate(
             }
             LinePosition::Middle => {}
         }
-        if kind == RepeatedArtifactKind::NormalizedLine
-            && stats.first_display_fingerprint != first_display_fingerprint
+        if occurrence.kind == RepeatedArtifactKind::NormalizedLine
+            && stats.first_display_fingerprint != occurrence.first_display_fingerprint
         {
             stats.has_multiple_raw_variants = true;
         }
@@ -1274,21 +1278,22 @@ fn increment_pass1_candidate(
         local_counts.len().saturating_add(1),
         config.memory_ceiling_bytes,
     )?;
-    let (display_char_count, display_symbol_count) = display_text.char_and_symbol_counts();
+    let (display_char_count, display_symbol_count) =
+        occurrence.display_text.char_and_symbol_counts();
     let mut stats = FingerprintStats {
-        kind,
+        kind: occurrence.kind,
         occurrence_count: 1,
         file_count: 1,
         top_count: 0,
         bottom_count: 0,
         display_char_count,
         display_symbol_count,
-        stable_id_prefix: stable_id_prefix(candidate_key),
-        first_display_fingerprint,
-        first_display_has_exact_candidate,
+        stable_id_prefix: stable_id_prefix(occurrence.candidate_key),
+        first_display_fingerprint: occurrence.first_display_fingerprint,
+        first_display_has_exact_candidate: occurrence.first_display_has_exact_candidate,
         has_multiple_raw_variants: false,
     };
-    match position {
+    match occurrence.position {
         LinePosition::Top => stats.top_count = 1,
         LinePosition::Bottom => stats.bottom_count = 1,
         LinePosition::Middle => {}
@@ -1332,12 +1337,14 @@ fn count_file_fingerprints(
                     &mut local_counts,
                     global_key_count,
                     config,
-                    RepeatedArtifactKind::InlineArtifact,
-                    pattern_text,
-                    pattern_text,
-                    fingerprint,
-                    true,
-                    compute_position_for_line(ft, line_index),
+                    Pass1Occurrence {
+                        kind: RepeatedArtifactKind::InlineArtifact,
+                        candidate_key: pattern_text,
+                        display_text: pattern_text,
+                        first_display_fingerprint: fingerprint,
+                        first_display_has_exact_candidate: true,
+                        position: compute_position_for_line(ft, line_index),
+                    },
                 )?;
             }
         }
@@ -1361,12 +1368,14 @@ fn count_file_fingerprints(
                 &mut local_counts,
                 global_key_count,
                 config,
-                RepeatedArtifactKind::ExactLine,
-                raw_text,
-                raw_text,
-                fingerprint,
-                true,
-                position,
+                Pass1Occurrence {
+                    kind: RepeatedArtifactKind::ExactLine,
+                    candidate_key: raw_text,
+                    display_text: raw_text,
+                    first_display_fingerprint: fingerprint,
+                    first_display_has_exact_candidate: true,
+                    position,
+                },
             )?;
             exact_fingerprint = Some(fingerprint);
         }
@@ -1387,12 +1396,14 @@ fn count_file_fingerprints(
                 &mut local_counts,
                 global_key_count,
                 config,
-                RepeatedArtifactKind::NormalizedLine,
-                CandidateTextParts::Single(&normalized),
-                raw_text,
-                first_display_fingerprint,
-                exact_fingerprint.is_some(),
-                position,
+                Pass1Occurrence {
+                    kind: RepeatedArtifactKind::NormalizedLine,
+                    candidate_key: CandidateTextParts::Single(&normalized),
+                    display_text: raw_text,
+                    first_display_fingerprint,
+                    first_display_has_exact_candidate: exact_fingerprint.is_some(),
+                    position,
+                },
             )?;
         }
 
@@ -1417,12 +1428,14 @@ fn count_file_fingerprints(
                     &mut local_counts,
                     global_key_count,
                     config,
-                    RepeatedArtifactKind::TwoLineBlock,
-                    raw_block,
-                    raw_block,
-                    block_fingerprint,
-                    true,
-                    compute_position_for_line(ft, previous.index),
+                    Pass1Occurrence {
+                        kind: RepeatedArtifactKind::TwoLineBlock,
+                        candidate_key: raw_block,
+                        display_text: raw_block,
+                        first_display_fingerprint: block_fingerprint,
+                        first_display_has_exact_candidate: true,
+                        position: compute_position_for_line(ft, previous.index),
+                    },
                 )?;
             }
         }
@@ -1447,12 +1460,14 @@ fn count_file_fingerprints(
                     &mut local_counts,
                     global_key_count,
                     config,
-                    RepeatedArtifactKind::ThreeLineBlock,
-                    raw_block,
-                    raw_block,
-                    block_fingerprint,
-                    true,
-                    compute_position_for_line(ft, first.index),
+                    Pass1Occurrence {
+                        kind: RepeatedArtifactKind::ThreeLineBlock,
+                        candidate_key: raw_block,
+                        display_text: raw_block,
+                        first_display_fingerprint: block_fingerprint,
+                        first_display_has_exact_candidate: true,
+                        position: compute_position_for_line(ft, first.index),
+                    },
                 )?;
             }
         }
@@ -2098,17 +2113,21 @@ fn materialize_file_survivors(
     Ok(())
 }
 
+struct Pass2Accumulation<'a> {
+    survivors: &'a ShardedFingerprintMap<FingerprintStats>,
+    materialized: &'a mut ShardedFingerprintMap<MaterializedCandidate>,
+    cancel: &'a CancellationFlag,
+    budget: &'a mut MaterializationBudget,
+}
+
 fn materialize_file_record(
     record: &DocumentRecord,
     config: &RepeatedArtifactScanConfig,
     cleaning_config: &CleaningConfig,
     cache: Option<&ExtractionCache>,
-    survivors: &ShardedFingerprintMap<FingerprintStats>,
-    materialized: &mut ShardedFingerprintMap<MaterializedCandidate>,
-    cancel: &CancellationFlag,
-    budget: &mut MaterializationBudget,
+    accumulation: &mut Pass2Accumulation<'_>,
 ) -> Result<(), RepeatedArtifactScanError> {
-    if cancel.load(Ordering::Relaxed) {
+    if accumulation.cancel.load(Ordering::Relaxed) {
         return Err(RepeatedArtifactScanError::Cancelled);
     }
     let extracted = get_document_text_with_status(
@@ -2120,11 +2139,18 @@ fn materialize_file_record(
     if let Some(message) = extracted.fatal_error {
         return Err(RepeatedArtifactScanError::ScanFailed { message });
     }
-    if cancel.load(Ordering::Relaxed) {
+    if accumulation.cancel.load(Ordering::Relaxed) {
         return Err(RepeatedArtifactScanError::Cancelled);
     }
     let ft = build_file_text(record, &extracted.text, extracted.page_texts.as_deref());
-    materialize_file_survivors(&ft, config, survivors, materialized, cancel, budget)
+    materialize_file_survivors(
+        &ft,
+        config,
+        accumulation.survivors,
+        accumulation.materialized,
+        accumulation.cancel,
+        accumulation.budget,
+    )
 }
 
 fn finalize_materialized_candidates(
@@ -2400,23 +2426,21 @@ where
             files_total: files_requested,
         });
     } else {
+        let mut accumulation = Pass2Accumulation {
+            survivors: &survivors,
+            materialized: &mut materialized,
+            cancel,
+            budget: &mut budget,
+        };
         for (file_index, record) in ordered_records.iter().enumerate() {
-            materialize_file_record(
-                record,
-                config,
-                cleaning_config,
-                cache,
-                &survivors,
-                &mut materialized,
-                cancel,
-                &mut budget,
-            )?;
+            materialize_file_record(record, config, cleaning_config, cache, &mut accumulation)?;
             report_progress(RepeatedArtifactScanProgress {
                 phase: RepeatedArtifactScanPhase::Pass2Materialising,
                 files_completed: file_index + 1,
                 files_total: files_requested,
             });
         }
+        drop(accumulation);
     }
 
     if materialized.len() != survivors.len() {
