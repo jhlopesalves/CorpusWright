@@ -3,6 +3,7 @@ use super::build::{AnalysisBuildProduct, build_analysis_corpus_with_mapping};
 use super::*;
 use crate::annotation::{UniversalPos, default_model_dir};
 use crate::clean::{CleaningConfig, RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope};
+use crate::index::SurfaceIndexCancellationToken;
 use crate::scan::{DocumentRecord, DocumentType};
 use crate::tokenization::TokenizationConfig;
 use std::collections::HashMap;
@@ -254,14 +255,14 @@ pub(super) fn collocations_for(
     documents: &[ConcordanceDocument],
     query: ConcordanceCollocationQuery,
 ) -> Result<ConcordanceCollocationResult, ConcordanceError> {
-    query_concordance_collocations_documents(documents, &query, &TokenizationConfig::default())
+    query_concordance_collocations_documents(documents, &query, &TokenizationConfig::default(), &SurfaceIndexCancellationToken::default())
 }
 
 pub(super) fn collocation_aggregate_for(
     documents: &[ConcordanceDocument],
     query: &ConcordanceCollocationQuery,
 ) -> Result<ConcordanceCollocationAggregate, ConcordanceError> {
-    aggregate_concordance_collocations_documents(documents, query, &TokenizationConfig::default())
+    aggregate_concordance_collocations_documents(documents, query, &TokenizationConfig::default(), SurfaceIndexCancellationToken::default())
 }
 
 pub(super) fn collocate<'a>(

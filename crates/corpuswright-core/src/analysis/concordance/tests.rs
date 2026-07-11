@@ -485,6 +485,7 @@ fn provider_index_reuses_full_corpus_store_across_selection_changes_and_warm_que
             resolutions.set(resolutions.get() + 1);
             Some(documents[index].clone())
         },
+        |_| {},
     )
     .unwrap();
     let cold_resolutions = resolutions.get();
@@ -504,6 +505,7 @@ fn provider_index_reuses_full_corpus_store_across_selection_changes_and_warm_que
             resolutions.set(resolutions.get() + 1);
             Some(documents[index].clone())
         },
+        |_| {},
     )
     .unwrap();
 
@@ -531,6 +533,7 @@ fn provider_cache_load_streams_identity_once_and_content_changes_invalidate() {
         &config,
         &mut first,
         |index| Some(documents[index].clone()),
+        |_| {},
     )
     .unwrap();
 
@@ -545,6 +548,7 @@ fn provider_cache_load_streams_identity_once_and_content_changes_invalidate() {
             cache_resolutions.set(cache_resolutions.get() + 1);
             Some(documents[index].clone())
         },
+        |_| {},
     )
     .unwrap();
     assert!(!cached.index_rebuilt);
@@ -560,11 +564,45 @@ fn provider_cache_load_streams_identity_once_and_content_changes_invalidate() {
         &config,
         &mut changed,
         |index| (index != 1).then(|| changed_documents[index].clone()),
+        |_| {},
     )
     .unwrap();
     assert!(changed_result.index_rebuilt);
     assert_eq!(changed.index_build_count(), 1);
     assert_eq!(changed_result.result.total_hits, 2);
+}
+
+#[test]
+fn provider_reports_progress_during_index_build_and_search() {
+    let documents = vec![
+        concordance_document(0, "a.txt", "alpha beta"),
+        concordance_document(1, "b.txt", "gamma alpha"),
+    ];
+    let query = parity_concordance_query("alpha", false);
+    let config = TokenizationConfig::default();
+    let mut context = ConcordanceSearchContext::default();
+    
+    let mut recorded_phases = Vec::new();
+    let mut total_files_reported = 0;
+    
+    search_concordance_documents_routed_provider(
+        documents.len(),
+        &query,
+        &config,
+        &mut context,
+        |index| Some(documents[index].clone()),
+        |progress| {
+            if !recorded_phases.contains(&progress.current_phase) {
+                recorded_phases.push(progress.current_phase);
+            }
+            total_files_reported = progress.files_total;
+        },
+    )
+    .unwrap();
+
+    assert!(recorded_phases.contains(&ConcordancePhase::BuildingIndex));
+    assert!(recorded_phases.contains(&ConcordancePhase::Searching));
+    assert_eq!(total_files_reported, 2);
 }
 
 #[test]

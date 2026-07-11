@@ -42,6 +42,7 @@ export const dom = {
   concordancePagePreviousButton: getElement<HTMLButtonElement>("concordance-page-previous"),
   concordancePageNextButton: getElement<HTMLButtonElement>("concordance-page-next"),
   concordancePageStatus: getElement<HTMLSpanElement>("concordance-page-status"),
+  concordanceCancelButton: getElement<HTMLButtonElement>("concordance-cancel-button"),
   concordanceDistribution: getElement<HTMLDivElement>("concordance-distribution"),
   concordanceCollocationsSummary: getElement<HTMLParagraphElement>("concordance-collocations-summary"),
   concordanceCollocationSpanInput: getElement<HTMLInputElement>("concordance-collocation-span"),

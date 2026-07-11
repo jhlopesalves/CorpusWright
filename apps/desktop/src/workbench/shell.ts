@@ -6,6 +6,7 @@ import {
   type CorpusOverview as AnalysisCorpus,
   type CorpusOverviewFinding,
   type CorpusOverviewFindingSeverity,
+  cancelConcordance,
 } from "../analysis";
 import { BOOLEAN_CLEANING_CONFIG_KEYS } from "../config";
 import { dom } from "../dom";
@@ -109,6 +110,7 @@ import {
   handleConcordanceCaseChange,
   handleConcordanceQueryInput,
   handleConcordanceViewTabClick,
+  initialiseConcordanceState,
   renderConcordance,
   runConcordanceSearch,
 } from "./concordance/shared";
@@ -2009,6 +2011,9 @@ export function initWorkbenchSwitcher(): void {
   dom.analyseToolsList.addEventListener("click", handleAnalysisToolClick);
   dom.concordanceViewTabs.addEventListener("click", handleConcordanceViewTabClick);
   dom.concordanceSearchButton.addEventListener("click", runConcordanceSearch);
+  dom.concordanceCancelButton.addEventListener("click", () => {
+    void cancelConcordance();
+  });
   dom.concordanceQueryInput.addEventListener("input", handleConcordanceQueryInput);
   dom.concordanceQueryInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -2078,6 +2083,7 @@ export function initWorkbenchSwitcher(): void {
   document.addEventListener("keydown", handleFrequencyModalKeydown);
 
   void initialiseAnalysisBuildState();
+  void initialiseConcordanceState();
 
   refreshStageNavigator();
   renderAnalysisTools();
