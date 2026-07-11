@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  CONCORDANCE_DEFAULT_WINDOW,
   CONCORDANCE_COLLOCATION_INITIAL_ROWS,
   CONCORDANCE_COLLOCATION_SHOW_MORE_STEP,
   concordanceContextSortLevels,
@@ -29,6 +30,9 @@ for (const card of ["lines", "collocates", "distribution"]) {
   assert(!html.includes(`id="concordance-${card}-collapse"`), `${card} must not expose a collapse control`);
 }
 assert(!shared.includes("CollapsedCards"), "main-card collapse persistence must be removed");
+assert.equal(CONCORDANCE_DEFAULT_WINDOW, 10);
+assert.match(html, /id="concordance-window-input"[^>]+value="10"/);
+assert(state.includes("window: CONCORDANCE_DEFAULT_WINDOW"));
 
 assert.match(
   html,
