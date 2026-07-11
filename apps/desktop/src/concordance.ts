@@ -24,7 +24,9 @@ export const CONCORDANCE_COLLOCATION_MIN_SPAN = 1;
 export const CONCORDANCE_COLLOCATION_DEFAULT_SPAN = 5;
 export const CONCORDANCE_COLLOCATION_MAX_SPAN = 20;
 export const CONCORDANCE_COLLOCATION_DEFAULT_FLOOR = 5;
-export const CONCORDANCE_COLLOCATION_LIMIT = 100;
+export const CONCORDANCE_COLLOCATION_LIMIT = 500;
+export const CONCORDANCE_COLLOCATION_INITIAL_ROWS = 10;
+export const CONCORDANCE_COLLOCATION_SHOW_MORE_STEP = 25;
 export const CONCORDANCE_COLLOCATION_NO_QUERY_MESSAGE =
   "Enter a word or phrase to build a collocate profile.";
 export const CONCORDANCE_COLLOCATION_NO_ROWS_MESSAGE =
@@ -203,6 +205,104 @@ export function concordanceCollocationMeasureLabel(
   return CONCORDANCE_COLLOCATION_MEASURE_OPTIONS.find((option) => option.value === measure)?.label ?? "logDice";
 }
 
+export type ConcordanceStrengthDirection = "negative" | "zero" | "positive" | "nonNegative";
+
+export interface ConcordanceStrengthBarModel {
+  signed: boolean;
+  direction: ConcordanceStrengthDirection;
+  magnitudePercent: number;
+  ramp: 1 | 2 | 3 | 4 | 5;
+}
+
+export function concordanceCollocationMeasureIsSigned(
+  measure: ConcordanceCollocationMeasure,
+): boolean {
+  return measure === "mi"
+    || measure === "mi3"
+    || measure === "tScore"
+    || measure === "zScore"
+    || measure === "logRatio";
+}
+
+export function concordanceCollocationStrengthBar(
+  value: number | null,
+  measure: ConcordanceCollocationMeasure,
+  loadedScores: Array<number | null>,
+): ConcordanceStrengthBarModel | null {
+  if (value === null || !Number.isFinite(value)) return null;
+  const finite = loadedScores.filter((score): score is number => score !== null && Number.isFinite(score));
+  const signed = concordanceCollocationMeasureIsSigned(measure);
+  const maximum = signed
+    ? Math.max(0, ...finite.map((score) => Math.abs(score)))
+    : Math.max(0, ...finite);
+  const magnitudePercent = maximum === 0
+    ? 0
+    : Math.min(100, Math.abs(value) / maximum * 100);
+  const ramp = Math.min(5, Math.max(1, Math.ceil(magnitudePercent / 20))) as 1 | 2 | 3 | 4 | 5;
+  const direction: ConcordanceStrengthDirection = signed
+    ? value < 0
+      ? "negative"
+      : value > 0
+        ? "positive"
+        : "zero"
+    : "nonNegative";
+  return { signed, direction, magnitudePercent, ramp };
+}
+
+export function nextConcordanceCollocateDisplayCount(
+  current: number,
+  loadedRows: number,
+): number {
+  return Math.min(loadedRows, Math.max(CONCORDANCE_COLLOCATION_INITIAL_ROWS, current) + CONCORDANCE_COLLOCATION_SHOW_MORE_STEP);
+}
+
+export interface ConcordancePositionGlyphBin {
+  label: `L${1 | 2 | 3 | 4 | 5}` | `R${1 | 2 | 3 | 4 | 5}`;
+  count: number;
+  active: boolean;
+  intensity: number;
+}
+
+export function concordanceCollocatePositionGlyph(
+  left: number[],
+  right: number[],
+  span: number,
+  direction: ConcordanceCollocationDirection,
+): ConcordancePositionGlyphBin[] {
+  const countAt = (values: number[], distance: number) => values[distance - 1] ?? 0;
+  const leftActive = direction === "left" || direction === "both";
+  const rightActive = direction === "right" || direction === "both";
+  const bins: ConcordancePositionGlyphBin[] = [];
+  for (const distance of [5, 4, 3, 2, 1] as const) {
+    bins.push({
+      label: `L${distance}`,
+      count: countAt(left, distance),
+      active: leftActive && distance <= span,
+      intensity: 0,
+    });
+  }
+  for (const distance of [1, 2, 3, 4, 5] as const) {
+    bins.push({
+      label: `R${distance}`,
+      count: countAt(right, distance),
+      active: rightActive && distance <= span,
+      intensity: 0,
+    });
+  }
+  const maximum = Math.max(0, ...bins.filter((bin) => bin.active).map((bin) => bin.count));
+  return bins.map((bin) => ({
+    ...bin,
+    intensity: !bin.active || maximum === 0 ? 0 : bin.count / maximum,
+  }));
+}
+
+export function concordancePositionGlyphAccessibleText(
+  surface: string,
+  bins: ConcordancePositionGlyphBin[],
+): string {
+  return `${surface}: ${bins.map((bin) => `${bin.label} ${bin.count}`).join(", ")}`;
+}
+
 export function concordanceCollocationDirectionLabel(
   direction: ConcordanceCollocationDirection,
 ): string {
@@ -318,33 +418,6 @@ export function concordanceCollocationSortHeaderLabel(
   }
   return CONCORDANCE_COLLOCATION_SORT_OPTIONS.find((option) => option.value === sortKey)?.label
     ?? "Association";
-}
-
-export function concordanceCollocationScoreBarPercent(
-  value: number | null,
-  measure: ConcordanceCollocationMeasure,
-  visibleScores: Array<number | null> = [],
-): number | null {
-  if (value === null || !Number.isFinite(value)) {
-    return null;
-  }
-  if (measure === "logDice") {
-    return Math.min(100, Math.max(0, value / 14 * 100));
-  }
-
-  const finiteScores = visibleScores.filter((score): score is number =>
-    score !== null && Number.isFinite(score)
-  );
-  if (finiteScores.length === 0) {
-    return null;
-  }
-
-  const minimum = Math.min(...finiteScores);
-  const maximum = Math.max(...finiteScores);
-  if (maximum === minimum) {
-    return 100;
-  }
-  return Math.min(100, Math.max(0, (value - minimum) / (maximum - minimum) * 100));
 }
 
 export interface ConcordanceExpansionStateSnapshot {

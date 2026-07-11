@@ -3,6 +3,7 @@ import {
   CONCORDANCE_COLLOCATION_DEFAULT_FLOOR,
   CONCORDANCE_COLLOCATION_DEFAULT_SPAN,
   CONCORDANCE_COLLOCATION_LIMIT,
+  CONCORDANCE_COLLOCATION_INITIAL_ROWS,
   CONCORDANCE_COLLOCATION_MEASURE_OPTIONS,
   CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE,
   CONCORDANCE_COLLOCATION_STALE_MESSAGE,
@@ -23,14 +24,16 @@ import {
   concordanceCollocationExplanation,
   concordanceCollocationMeasureLabel,
   concordanceCollocationScore,
-  concordanceCollocationScoreBarPercent,
+  concordanceCollocationStrengthBar,
   concordanceCollocationSortHeaderLabel,
   concordanceContextTokenSegments,
+  concordanceCollocatePositionGlyph,
   concordanceContextSortLevels,
   concordanceExpansionViewModel,
   concordanceIsSparse,
   concordanceRangePercent,
   concordanceMiddleEllipsis,
+  concordancePositionGlyphAccessibleText,
   concordanceRowExpansionKey,
   concordanceRowText,
   concordanceSortLabel,
@@ -39,6 +42,7 @@ import {
   formatConcordanceProgress,
   normaliseConcordanceQuery,
   toggleConcordanceExpansionKey,
+  nextConcordanceCollocateDisplayCount,
 } from "../src/concordance.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -81,7 +85,8 @@ assert(
 );
 assert(CONCORDANCE_COLLOCATION_DEFAULT_SPAN === 5, "Default collocation span should be +/-5");
 assert(CONCORDANCE_COLLOCATION_DEFAULT_FLOOR === 5, "Default collocation floors should be 5");
-assert(CONCORDANCE_COLLOCATION_LIMIT === 100, "Collocation results should request the default top 100");
+assert(CONCORDANCE_COLLOCATION_LIMIT === 500, "Collocation results should request the bounded top 500");
+assert(CONCORDANCE_COLLOCATION_INITIAL_ROWS === 10, "Collocates should initially show 10 rows");
 assert(
   CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE === "The collocate profile has not been computed yet.",
   "Collocate Profile should expose an explicit not-computed state",
@@ -236,13 +241,56 @@ const collocates = [
   { surface: "gamma", o11: 4, o12: 11, o21: 1, o22: 41, collocateFrequency: 5, mi: null, mi3: null, tScore: null, zScore: null, g2: null, logDice: null, logRatio: null },
 ];
 assert(concordanceCollocationScore(collocates[0], "mi") === 2, "Score lookup should use selected measure");
-assert(concordanceCollocationScoreBarPercent(-1, "logDice") === 0, "logDice bars should clamp below zero");
-assert(concordanceCollocationScoreBarPercent(7, "logDice") === 50, "logDice bars should use a fixed 0-14 scale");
-assert(concordanceCollocationScoreBarPercent(20, "logDice") === 100, "logDice bars should clamp above 14");
-assert(concordanceCollocationScoreBarPercent(null, "logDice") === null, "Null association scores should not render bars");
+assertDeepEqual(concordanceCollocationStrengthBar(5, "logDice", [1, 5, 10]), {
+  signed: false,
+  direction: "nonNegative",
+  magnitudePercent: 50,
+  ramp: 3,
+});
+assertDeepEqual(concordanceCollocationStrengthBar(4, "mi", [-8, 0, 4]), {
+  signed: true,
+  direction: "positive",
+  magnitudePercent: 50,
+  ramp: 3,
+});
+assertDeepEqual(concordanceCollocationStrengthBar(-8, "mi", [-8, 0, 4]), {
+  signed: true,
+  direction: "negative",
+  magnitudePercent: 100,
+  ramp: 5,
+});
+assertDeepEqual(concordanceCollocationStrengthBar(0, "tScore", [-2, 0, 1]), {
+  signed: true,
+  direction: "zero",
+  magnitudePercent: 0,
+  ramp: 1,
+});
 assert(
-  concordanceCollocationScoreBarPercent(4, "mi", [2, 4, 6]) === 50,
-  "Unbounded association bars should be relative to the visible scores",
+  concordanceCollocationStrengthBar(4, "mi", [-8, 0, 4])?.magnitudePercent
+    === concordanceCollocationStrengthBar(4, "mi", [-8, 0, 4, 2, 1])?.magnitudePercent,
+  "Strength scaling should remain stable when only the visible row count changes",
+);
+assert(nextConcordanceCollocateDisplayCount(10, 100) === 35);
+assert(nextConcordanceCollocateDisplayCount(35, 100) === 60);
+assert(nextConcordanceCollocateDisplayCount(60, 100) === 85);
+assert(nextConcordanceCollocateDisplayCount(85, 90) === 90);
+
+const positionBins = concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 5, "both");
+assertDeepEqual(positionBins.map((bin) => bin.label), ["L5", "L4", "L3", "L2", "L1", "R1", "R2", "R3", "R4", "R5"]);
+assert(positionBins[9]!.intensity === 1 && positionBins[0]!.intensity === 0.5);
+assertDeepEqual(
+  concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 2, "left").map((bin) => bin.active),
+  [false, false, false, true, true, false, false, false, false, false],
+);
+assert(
+  concordanceCollocatePositionGlyph([0, 0, 0, 0, 0], [0, 0, 0, 0, 0], 5, "both")
+    .every((bin) => bin.intensity === 0),
+  "All-zero positional profiles should remain finite",
+);
+assert(
+  concordancePositionGlyphAccessibleText("alpha", positionBins).includes("L5 5")
+    && concordancePositionGlyphAccessibleText("alpha", positionBins).includes("R5 10"),
+  "Exact positional counts should remain available without hover",
 );
 
 const row = {
