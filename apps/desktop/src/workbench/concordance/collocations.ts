@@ -1,4 +1,5 @@
 import {
+  cancelConcordance,
   expandConcordanceContext,
   queryConcordanceCollocations,
   searchConcordance,
@@ -78,8 +79,6 @@ let concordanceCollocationGeneration = 0;
 let concordanceCollocationFreshAggregationKey: string | null = null;
 
 let concordanceCollocationEverComputed = false;
-
-let concordanceCollocationAutoComputedAggregationKeys = new Set<string>();
 
 let concordanceCollocationInFlightRequestKey: string | null = null;
 
@@ -237,12 +236,19 @@ export function markConcordanceCollocationsForAggregationChange(): void {
     return;
   }
 
+  const shouldCancel = concordanceCollocationPending;
   concordanceCollocationGeneration += 1;
   concordanceCollocationPending = false;
   concordanceCollocationInFlightRequestKey = null;
   concordanceCollocationFailure = null;
   concordanceCollocationSupersededNotice = null;
   concordanceCollocationResult = null;
+
+  if (shouldCancel) {
+    void cancelConcordance().catch(() => {
+      // Generation invalidation remains authoritative if cancellation loses a race.
+    });
+  }
 
   if (aggregationKey === null) {
     concordanceCollocationState = "idle_not_computed";
@@ -276,27 +282,6 @@ function refreshConcordanceCollocationsForPresentationChange(): void {
   } else {
     renderConcordanceCollocations();
   }
-}
-
-export function maybeAutoComputeConcordanceCollocations(): void {
-  if (!concordanceCardIsExpanded("collocates")) {
-    return;
-  }
-  const aggregationKey = currentConcordanceCollocationAggregationKey();
-  if (currentConcordanceCollocationResultIsFresh()) {
-    renderConcordanceCollocations();
-    return;
-  }
-  if (
-    concordanceCollocationState === "idle_not_computed"
-    && aggregationKey !== null
-    && !concordanceCollocationAutoComputedAggregationKeys.has(aggregationKey)
-  ) {
-    concordanceCollocationAutoComputedAggregationKeys.add(aggregationKey);
-    void refreshConcordanceCollocations();
-    return;
-  }
-  renderConcordanceCollocations();
 }
 
 function renderConcordanceCollocationStatus(content: string | Node | null, isError = false): void {
@@ -946,7 +931,7 @@ export function renderConcordanceCollocations(): void {
       renderConcordanceCollocationAction(
         staleMessage,
         concordanceCollocationSupersededNotice,
-        "Update profile",
+        "Compute collocates",
       ),
     );
     renderConcordanceCollocationTableState(staleMessage);
@@ -959,7 +944,13 @@ export function renderConcordanceCollocations(): void {
     || concordanceCollocationState === "idle_not_computed"
     || !currentConcordanceCollocationResultIsFresh()
   ) {
-    renderConcordanceCollocationStatus(null);
+    renderConcordanceCollocationStatus(
+      renderConcordanceCollocationAction(
+        CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE,
+        null,
+        "Compute collocates",
+      ),
+    );
     renderConcordanceCollocationTableState(CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE);
     return;
   }
@@ -1137,7 +1128,6 @@ export async function refreshConcordanceCollocations(): Promise<void> {
     concordanceCollocationResult = result;
     concordanceCollocationFreshAggregationKey = aggregationKey;
     concordanceCollocationEverComputed = true;
-    concordanceCollocationAutoComputedAggregationKeys.add(aggregationKey);
     concordanceCollocationState = "ready";
   } catch (error) {
     if (generation !== concordanceCollocationGeneration) {
@@ -1196,7 +1186,6 @@ export function resetConcordanceCollocationCorpusState(): void {
   concordanceCollocationFailure = null;
   concordanceCollocationFreshAggregationKey = null;
   concordanceCollocationEverComputed = false;
-  concordanceCollocationAutoComputedAggregationKeys = new Set<string>();
   concordanceCollocationInFlightRequestKey = null;
   concordanceCollocationSupersededNotice = null;
   concordanceCollocationMeasure = DEFAULT_CONCORDANCE_COLLOCATION_MEASURE;
@@ -1226,7 +1215,14 @@ export function concordanceCollocationStatsText(): string {
   );
   const total = concordanceCollocationResult?.totalCandidates ?? 0;
   const loaded = concordanceCollocationResult?.rows.length ?? 0;
-  return concordanceCollocatesCardStatsText({
+  const status = concordanceCollocationPending || concordanceCollocationState === "loading"
+    ? "aggregating"
+    : concordanceCollocationState === "ready" && currentConcordanceCollocationResultIsFresh()
+      ? "computed"
+      : concordanceCollocationState === "stale"
+        ? "stale — recompute required"
+        : "not computed";
+  return `${status} · ${concordanceCollocatesCardStatsText({
     span,
     direction,
     measure: concordanceCollocationMeasure,
@@ -1234,5 +1230,5 @@ export function concordanceCollocationStatsText(): string {
     shown,
     loadedRows: loaded,
     totalCandidates: total,
-  });
+  })}`;
 }

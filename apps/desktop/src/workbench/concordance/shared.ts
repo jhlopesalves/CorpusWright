@@ -23,8 +23,6 @@ import {
   concordanceCollocationsArePending,
   makeConcordanceCollocationsDormant,
   markConcordanceCollocationsForAggregationChange,
-  maybeAutoComputeConcordanceCollocations,
-  refreshConcordanceCollocations,
   renderConcordanceCollocations,
   resetConcordanceCollocationCorpusState,
   syncConcordanceCollocationStopwordsToggle,
@@ -452,14 +450,11 @@ export function runConcordanceSearch(): void {
   workbenchState.lines.contextFilterDirection = "both";
   syncLiveRequestState(query);
   markConcordanceCollocationsForAggregationChange();
-  const tasks: Promise<void>[] = [];
   if (concordanceCardIsExpanded("lines") || concordanceCardIsExpanded("distribution")) {
-    tasks.push(refreshConcordance());
+    void refreshConcordance().finally(renderConcordance);
+  } else {
+    renderConcordance();
   }
-  if (concordanceCardIsExpanded("collocates") && query.length > 0) {
-    tasks.push(refreshConcordanceCollocations());
-  }
-  void Promise.all(tasks).finally(renderConcordance);
 }
 
 export function handleConcordanceCardAction(event: MouseEvent): void {
@@ -485,7 +480,6 @@ export function handleConcordanceCardAction(event: MouseEvent): void {
     if (disposition === "query") {
       if (card === "lines") void refreshConcordanceLines();
       if (card === "distribution") void refreshConcordanceDistribution();
-      if (card === "collocates") maybeAutoComputeConcordanceCollocations();
     }
     cardElements(card).panel.focus({ preventScroll: true });
     return;
