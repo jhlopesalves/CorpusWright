@@ -24,6 +24,27 @@ const CONCORDANCE_DEFAULT_LIMIT: usize = 100;
 const CONCORDANCE_MAX_LIMIT: usize = 500;
 const CONCORDANCE_DEFAULT_DISTRIBUTION_LIMIT: usize = 10;
 
+/// Phases of concordance indexing and collocation aggregation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ConcordancePhase {
+    BuildingIndex,
+    Searching,
+    AggregatingCollocations,
+}
+
+/// Progress reported during concordance index preparation or searching.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ConcordanceProgress {
+    pub files_done: usize,
+    pub files_total: usize,
+    pub current_phase: ConcordancePhase,
+}
+
+
 /// Server-side sort key for a bounded surface-token concordance query.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
@@ -290,14 +311,16 @@ impl ConcordanceSearchContext {
 
     /// Prepares the full usable-corpus index by resolving one document at a
     /// time. A warm in-process store returns before invoking the provider.
-    pub fn index_store_for_provider<Resolve>(
+    pub fn index_store_for_provider<Resolve, Progress>(
         &mut self,
         document_slots: usize,
         tokenization_config: &TokenizationConfig,
         mut resolve: Resolve,
+        mut report_progress: Progress,
     ) -> Result<(&InMemoryIndexStore, bool), ConcordanceError>
     where
         Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
+        Progress: FnMut(ConcordanceProgress),
     {
         if self.index_cache.is_some() {
             return Ok((
@@ -318,6 +341,11 @@ impl ConcordanceSearchContext {
                 )))
             })?;
         for document_index in 0..document_slots {
+            report_progress(ConcordanceProgress {
+                files_done: document_index,
+                files_total: document_slots,
+                current_phase: ConcordancePhase::BuildingIndex,
+            });
             hasher.update((document_index as u64).to_le_bytes());
             if let Some(document) = resolve(document_index) {
                 if document.document_index != document_index {
@@ -365,6 +393,11 @@ impl ConcordanceSearchContext {
                 SurfaceIndexResourceLimits::default(),
             );
             for document_index in 0..document_slots {
+                report_progress(ConcordanceProgress {
+                    files_done: document_index,
+                    files_total: document_slots,
+                    current_phase: ConcordancePhase::BuildingIndex,
+                });
                 if let Some(document) = resolve(document_index) {
                     if document.document_index != document_index {
                         return Err(ConcordanceError::InvalidDocumentIdentity);
@@ -1130,18 +1163,20 @@ pub fn search_concordance_documents_routed(
     }
 }
 
-pub fn search_concordance_documents_routed_provider<Resolve>(
+pub fn search_concordance_documents_routed_provider<Resolve, Progress>(
     document_slots: usize,
     query: &ConcordanceQuery,
     tokenization_config: &TokenizationConfig,
     context: &mut ConcordanceSearchContext,
     resolve: Resolve,
+    mut report_progress: Progress,
 ) -> Result<RoutedConcordanceResult, ConcordanceError>
 where
     Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
+    Progress: FnMut(ConcordanceProgress),
 {
     let (store, index_rebuilt) =
-        context.index_store_for_provider(document_slots, tokenization_config, resolve)?;
+        context.index_store_for_provider(document_slots, tokenization_config, resolve, &mut report_progress)?;
     let documents = store
         .indexed_documents()
         .map(|document| ConcordanceDocument {
@@ -1152,6 +1187,11 @@ where
         })
         .collect::<Vec<_>>();
     let selected_document_ids = selected_concordance_document_ids(&documents, &query.selection);
+    report_progress(ConcordanceProgress {
+        current_phase: ConcordancePhase::Searching,
+        files_done: 0,
+        files_total: documents.len(),
+    });
     let (result, _, execution_stats) = search_concordance_documents_index_from_store(
         &documents,
         query,

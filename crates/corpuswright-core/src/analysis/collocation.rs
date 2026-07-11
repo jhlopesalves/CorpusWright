@@ -1201,19 +1201,21 @@ pub fn aggregate_concordance_collocations_documents_routed(
     }
 }
 
-pub fn aggregate_concordance_collocations_routed_provider<Resolve>(
+pub fn aggregate_concordance_collocations_routed_provider<Resolve, Progress>(
     document_slots: usize,
     query: &ConcordanceCollocationQuery,
     tokenization_config: &TokenizationConfig,
     context: &mut ConcordanceSearchContext,
     cancellation: &SurfaceIndexCancellationToken,
     resolve: Resolve,
+    report_progress: Progress,
 ) -> Result<RoutedConcordanceCollocationAggregate, ConcordanceError>
 where
     Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
+    Progress: FnMut(crate::analysis::ConcordanceProgress),
 {
     let (store, index_rebuilt) =
-        context.index_store_for_provider(document_slots, tokenization_config, resolve)?;
+        context.index_store_for_provider(document_slots, tokenization_config, resolve, report_progress)?;
     let (aggregate, _stats) = aggregate_concordance_collocations_index(store, query, tokenization_config, cancellation.clone())?;
     Ok(RoutedConcordanceCollocationAggregate {
         aggregate,
