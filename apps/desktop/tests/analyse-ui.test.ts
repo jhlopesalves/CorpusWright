@@ -429,8 +429,8 @@ assert(
     && handleConcordanceCollocateBody.includes("void refreshCollocateEvidence();")
     && !handleConcordanceCollocateBody.includes("preserveResult")
     && !handleConcordanceCollocateBody.includes("setActiveConcordanceView")
-    && !workbench.includes("concordanceContextFilter"),
-  "Collocate clicks should open dedicated inline evidence without switching to Concordance lines or mutating the base context filter",
+    && !handleConcordanceCollocateBody.includes("openCollocateInConcordanceLines"),
+  "Collocate clicks should open dedicated inline evidence without implicitly switching to Concordance Lines",
 );
 const refreshConcordanceStart = workbench.indexOf("async function refreshConcordanceCards(");
 const refreshConcordanceEnd = workbench.indexOf("export async function refreshConcordanceLines", refreshConcordanceStart);
@@ -448,6 +448,8 @@ const refreshCollocateEvidenceBody = workbench.slice(refreshCollocateEvidenceSta
 assert(
   refreshConcordanceBody.includes("contextFilter: includeDistribution ? null : workbenchState.lines.contextFilter")
     && refreshConcordanceBody.includes("contextFilterDirection: workbenchState.lines.contextFilterDirection")
+    && refreshConcordanceBody.includes('refreshConcordanceCards(["lines"])')
+    && refreshConcordanceBody.includes('refreshConcordanceCards(["distribution"])')
     && refreshCollocateEvidenceBody.includes("const result = await searchConcordance(")
     && refreshCollocateEvidenceBody.includes("contextFilter: selection.surface")
     && refreshCollocateEvidenceBody.includes("contextFilterDirection: selection.direction")
@@ -455,9 +457,11 @@ assert(
     && refreshCollocateEvidenceBody.includes("limit: collocateEvidenceLimit")
     && refreshCollocateEvidenceBody.includes("options: { preserveResult?: boolean } = {}")
     && refreshCollocateEvidenceBody.includes("if (!options.preserveResult) {\n    collocateEvidenceResult = null;\n  }")
+    && refreshCollocateEvidenceBody.includes("const generation = ++collocateEvidenceGeneration;")
+    && refreshCollocateEvidenceBody.includes("if (generation !== collocateEvidenceGeneration)")
     && !refreshCollocateEvidenceBody.includes("collocateEvidenceFailure = null;\n  collocateEvidenceResult = null;\n  renderConcordanceCollocations();")
     && !refreshCollocateEvidenceBody.includes("collocateEvidenceOffset"),
-  "Base Concordance refresh should stay unfiltered while the collocate drawer performs a separate direction-aware cumulative evidence search with optional preserved results",
+  "Distribution should stay unfiltered while Lines and the stale-safe collocate drawer perform separate direction-aware searches",
 );
 const collocateEvidenceLimitMatch = workbench.match(/const CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT = (\d+);/);
 assert(
@@ -580,11 +584,12 @@ assert(
     && workbench.includes("concordanceContextTokenSegments(tokens, activeFilter, caseSensitive)")
     && workbench.includes("document.createTextNode(\" \")")
     && workbench.includes('const token = document.createElement("span");')
-    && workbench.includes('token.className = "concordance-collocate";')
+    && workbench.includes('token.className = collocateClass;')
     && workbench.includes("token.textContent = segment.text;")
     && workbench.includes("function appendConcordanceKwicCells(")
     && workbench.includes("concordanceContextSortLevels(")
     && workbench.includes('token.className = "concordance-context-token";')
+    && workbench.includes('if (segment.collocate) token.classList.add("concordance-kwic-pair");')
     && workbench.includes('token.classList.add(`is-sort-level-${level}`)')
     && workbench.includes("const activeContextFilter = concordanceResult?.contextFilter ?? null;")
     && workbench.includes("const contextFilterCaseSensitive = concordanceResult?.caseSensitive ?? false;")
@@ -602,8 +607,10 @@ assert(
   "Concordance context rendering should use safe token spans in KWIC and plain continuous context in expansions while retaining inline drawer evidence",
 );
 assert(
-  collocateEvidenceRendererBody.includes("renderContextTokens(row.leftContext, activeFilter, caseSensitive)")
-    && collocateEvidenceRendererBody.includes("renderContextTokens(row.rightContext, activeFilter, caseSensitive)")
+  collocateEvidenceRendererBody.includes("renderContextTokens(")
+    && collocateEvidenceRendererBody.includes("row.leftContext,")
+    && collocateEvidenceRendererBody.includes("row.rightContext,")
+    && collocateEvidenceRendererBody.includes('"concordance-kwic-pair"')
     && collocateEvidenceRendererBody.includes('const node = document.createElement("mark");')
     && collocateEvidenceRendererBody.includes('node.className = "concordance-node";')
     && collocateEvidenceRendererBody.includes("node.textContent = row.node;")
@@ -619,14 +626,15 @@ assert(
   collocateEvidenceSnippetBody.includes("if (row.leftContext.length > 0)")
     && collocateEvidenceSnippetBody.includes("if (row.rightContext.length > 0)")
     && collocateEvidenceSnippetSpaceCount === 2
-    && collocateEvidenceSnippetBody.indexOf("renderContextTokens(row.leftContext") < collocateEvidenceSnippetBody.indexOf("node.textContent = row.node;")
-    && collocateEvidenceSnippetBody.indexOf("node.textContent = row.node;") < collocateEvidenceSnippetBody.indexOf("renderContextTokens(row.rightContext"),
+    && collocateEvidenceSnippetBody.indexOf("row.leftContext,") < collocateEvidenceSnippetBody.indexOf("node.textContent = row.node;")
+    && collocateEvidenceSnippetBody.indexOf("node.textContent = row.node;") < collocateEvidenceSnippetBody.indexOf("row.rightContext,"),
   "Collocate evidence snippets should use ordinary conditional text spaces in left-context, node, right-context order",
 );
 assert(
-  styles.includes(".concordance-collocate {\n  background: var(--cw-collocate-bg);\n  color: var(--cw-collocate-text);")
-    && !styles.includes("mark.concordance-collocate"),
-  "Concordance collocate tokens should use the quiet collocate colour role, not mark styling",
+  styles.includes(".concordance-kwic-pair {\n  color: var(--cw-kwic-pair);")
+    && styles.includes("text-decoration: underline;")
+    && !styles.includes("mark.concordance-kwic-pair"),
+  "Inspected pair tokens should use the dedicated theme role plus a non-colour underline cue",
 );
 assert(
   workbench.includes('item.className = "concordance-collocation-row"')
@@ -670,6 +678,41 @@ assert(
     && !workbench.includes('"Loading evidence..."')
     && !workbench.includes("No evidence lines found"),
   "Collocate drawer user-visible terminology should use co-occurrence lines rather than Evidence copy",
+);
+const openInLinesStart = workbench.indexOf("export function openCollocateInConcordanceLines");
+const openInLinesEnd = workbench.indexOf(
+  "export function handleClearConcordanceLinesContextFilter",
+  openInLinesStart,
+);
+assert(openInLinesStart >= 0 && openInLinesEnd > openInLinesStart, "Open-in-Lines action should exist");
+const openInLinesBody = workbench.slice(openInLinesStart, openInLinesEnd);
+const clearLinesFilterStart = openInLinesEnd;
+const clearLinesFilterEnd = workbench.indexOf(
+  "export async function refreshConcordanceDistribution",
+  clearLinesFilterStart,
+);
+assert(
+  clearLinesFilterStart >= 0 && clearLinesFilterEnd > clearLinesFilterStart,
+  "Lines context-filter clear action should exist",
+);
+const clearLinesFilterBody = workbench.slice(clearLinesFilterStart, clearLinesFilterEnd);
+assert(
+  html.includes('id="concordance-lines-filter" class="concordance-filter-chip hidden" role="status"')
+    && html.includes('id="concordance-lines-filter-clear"')
+    && html.includes('id="concordance-lines-panel" class="concordance-card concordance-kwic-panel" aria-labelledby="concordance-lines-title" tabindex="-1"')
+    && collocateEvidenceDrawerBody.includes('openInLines.textContent = "Open in concordance lines";')
+    && collocateEvidenceDrawerBody.includes("openCollocateInConcordanceLines(row.surface, direction);")
+    && openInLinesBody.includes("applyConcordanceLinesContextFilter(workbenchState, surface, direction);")
+    && openInLinesBody.includes("writeConcordanceCollapsedCards(workbenchState);")
+    && openInLinesBody.includes("dom.concordanceLinesPanel.focus({ preventScroll: true });")
+    && openInLinesBody.includes('dom.concordanceLinesPanel.scrollIntoView({ behavior: "smooth", block: "start" });')
+    && openInLinesBody.includes("void refreshConcordanceLines();")
+    && !openInLinesBody.includes("refreshConcordanceCollocations")
+    && !openInLinesBody.includes("refreshConcordanceDistribution")
+    && clearLinesFilterBody.includes("clearConcordanceLinesContextFilter(workbenchState);")
+    && clearLinesFilterBody.includes("void refreshConcordanceLines();")
+    && workbench.includes('dom.concordanceLinesFilterSummary.textContent = `Context filter: “${filter}” ${location}`;'),
+  "Open in Concordance Lines should set only the local removable Lines filter, expand and focus Lines, and re-drive only that card",
 );
 assert(
   collocateEvidenceDrawerBody.includes("collocateEvidenceResult !== null && collocateEvidenceResult.totalHits > 0")

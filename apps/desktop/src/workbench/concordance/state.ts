@@ -357,3 +357,24 @@ export function planConcordanceLocalRequest(
 ): ConcordanceCardId[] {
   return invalidateConcordanceCard(state, card) ? [card] : [];
 }
+
+export function applyConcordanceLinesContextFilter(
+  state: ConcordanceWorkbenchState,
+  contextFilter: string,
+  direction: ConcordanceContextFilterDirection,
+): void {
+  state.lines.contextFilter = contextFilter;
+  state.lines.contextFilterDirection = direction;
+  state.lines.offset = 0;
+  state.lines.collapsed = false;
+  invalidateConcordanceCard(state, "lines");
+}
+
+export function clearConcordanceLinesContextFilter(
+  state: ConcordanceWorkbenchState,
+): void {
+  state.lines.contextFilter = null;
+  state.lines.contextFilterDirection = "both";
+  state.lines.offset = 0;
+  invalidateConcordanceCard(state, "lines");
+}

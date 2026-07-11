@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import {
   searchConcordance,
+  type ConcordanceContextFilterDirection,
   type ConcordanceProgress,
   type ConcordanceResult,
 } from "../../analysis";
@@ -49,7 +50,9 @@ import {
 } from "./lines";
 import {
   acceptConcordanceCardResponse,
+  applyConcordanceLinesContextFilter,
   beginConcordanceCardRequest,
+  clearConcordanceLinesContextFilter,
   collapseConcordanceCard,
   concordanceCardRequestKey,
   createConcordanceWorkbenchState,
@@ -107,6 +110,7 @@ export function renderContextTokens(
   tokens: string[],
   activeFilter: string | null,
   caseSensitive: boolean,
+  collocateClass = "concordance-collocate",
 ): DocumentFragment {
   const fragment = document.createDocumentFragment();
   const segments = concordanceContextTokenSegments(tokens, activeFilter, caseSensitive);
@@ -117,11 +121,28 @@ export function renderContextTokens(
       return;
     }
     const token = document.createElement("span");
-    token.className = "concordance-collocate";
+    token.className = collocateClass;
     token.textContent = segment.text;
     fragment.appendChild(token);
   });
   return fragment;
+}
+
+function renderConcordanceLinesContextFilter(): void {
+  const filter = workbenchState.lines.contextFilter;
+  dom.concordanceLinesFilter.classList.toggle("hidden", filter === null);
+  if (filter === null) {
+    dom.concordanceLinesFilterSummary.textContent = "";
+    return;
+  }
+  const window = currentConcordanceLineWindow();
+  const direction = workbenchState.lines.contextFilterDirection;
+  const location = direction === "left"
+    ? `within ${window} tokens to the left`
+    : direction === "right"
+      ? `within ${window} tokens to the right`
+      : `within ${window} tokens`;
+  dom.concordanceLinesFilterSummary.textContent = `Context filter: “${filter}” ${location}`;
 }
 
 function renderConcordanceSummary(result: ConcordanceResult): void {
@@ -191,6 +212,7 @@ function syncConcordanceCardChrome(): void {
     elements.collapse.textContent = cardState.collapsed ? "Expand" : "Collapse";
   }
   dom.concordanceLinesStats.textContent = linesStatsText();
+  renderConcordanceLinesContextFilter();
   dom.concordanceCollocatesStats.textContent = concordanceCollocationStatsText();
   dom.concordanceDistributionStats.textContent = distributionStatsText();
 }
@@ -291,6 +313,17 @@ export function renderConcordance(): void {
 async function refreshConcordanceCards(
   requestedCards: ReadonlyArray<"lines" | "distribution">,
 ): Promise<void> {
+  if (
+    requestedCards.includes("lines")
+    && requestedCards.includes("distribution")
+    && workbenchState.lines.contextFilter !== null
+  ) {
+    await Promise.all([
+      refreshConcordanceCards(["lines"]),
+      refreshConcordanceCards(["distribution"]),
+    ]);
+    return;
+  }
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   syncLiveRequestState(query);
   const cards = requestedCards.filter((card) => concordanceCardIsExpanded(card));
@@ -373,6 +406,28 @@ async function refreshConcordanceCards(
 
 export async function refreshConcordanceLines(): Promise<void> {
   await refreshConcordanceCards(["lines"]);
+}
+
+export function openCollocateInConcordanceLines(
+  surface: string,
+  direction: ConcordanceContextFilterDirection,
+): void {
+  collapseConcordanceExpansion();
+  resetConcordanceLineOffset();
+  applyConcordanceLinesContextFilter(workbenchState, surface, direction);
+  writeConcordanceCollapsedCards(workbenchState);
+  void refreshConcordanceLines();
+  requestAnimationFrame(() => {
+    dom.concordanceLinesPanel.focus({ preventScroll: true });
+    dom.concordanceLinesPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+export function handleClearConcordanceLinesContextFilter(): void {
+  collapseConcordanceExpansion();
+  resetConcordanceLineOffset();
+  clearConcordanceLinesContextFilter(workbenchState);
+  void refreshConcordanceLines();
 }
 
 export async function refreshConcordanceDistribution(): Promise<void> {
