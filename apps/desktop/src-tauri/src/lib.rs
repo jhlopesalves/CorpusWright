@@ -377,7 +377,6 @@ impl ConcordanceCollocationCache {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ConcordanceIndexContextKey {
     corpus_version: u64,
-    project_root: Option<String>,
     cleaning_config_signature: String,
 }
 
@@ -402,6 +401,7 @@ struct ConcordanceDefaultIndexFailure {
 struct ConcordanceIndexContextCache {
     entry: Option<ConcordanceIndexContextEntry>,
     default_index_failure: Option<ConcordanceDefaultIndexFailure>,
+    cache_root: Option<PathBuf>,
 }
 
 type ConcordanceIndexContextHandle = Arc<Mutex<ConcordanceIndexContextCache>>;
@@ -411,9 +411,12 @@ struct ConcordanceIndexContextState {
 }
 
 impl ConcordanceIndexContextState {
-    fn new() -> Self {
+    fn new(cache_root: Option<PathBuf>) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(ConcordanceIndexContextCache::default())),
+            inner: Arc::new(Mutex::new(ConcordanceIndexContextCache {
+                cache_root,
+                ..ConcordanceIndexContextCache::default()
+            })),
         }
     }
 
@@ -422,7 +425,12 @@ impl ConcordanceIndexContextState {
     }
 
     fn clear(&self) {
-        *self.inner.lock().unwrap() = ConcordanceIndexContextCache::default();
+        let mut inner = self.inner.lock().unwrap();
+        let cache_root = inner.cache_root.clone();
+        *inner = ConcordanceIndexContextCache {
+            cache_root,
+            ..ConcordanceIndexContextCache::default()
+        };
     }
 }
 
@@ -2128,7 +2136,6 @@ fn concordance_backend_used_label(backend: ConcordanceBackendUsed) -> &'static s
 
 fn concordance_fallback_reason_label(reason: ConcordanceFallbackReason) -> &'static str {
     match reason {
-        ConcordanceFallbackReason::UnsupportedFilter => "unsupported_filter",
         ConcordanceFallbackReason::IndexError => "index_error",
     }
 }
@@ -2413,9 +2420,14 @@ fn search_concordance_documents_with_warm_index(
         .as_ref()
         .is_none_or(|cached_entry| cached_entry.key != key)
     {
+        let context = cache
+            .cache_root
+            .clone()
+            .map(ConcordanceSearchContext::with_cache_root)
+            .unwrap_or_default();
         cache.entry = Some(ConcordanceIndexContextEntry {
             key: key.clone(),
-            context: ConcordanceSearchContext::default(),
+            context,
         });
     }
     let entry = cache
@@ -2448,9 +2460,14 @@ fn aggregate_concordance_collocations_with_warm_index(
         .as_ref()
         .is_none_or(|cached_entry| cached_entry.key != key)
     {
+        let context = cache
+            .cache_root
+            .clone()
+            .map(ConcordanceSearchContext::with_cache_root)
+            .unwrap_or_default();
         cache.entry = Some(ConcordanceIndexContextEntry {
             key: key.clone(),
-            context: ConcordanceSearchContext::default(),
+            context,
         });
     }
     let entry = cache
@@ -3684,7 +3701,6 @@ async fn search_concordance_command(
     let mode = concordance_backend_mode_from_env();
     let context_key = ConcordanceIndexContextKey {
         corpus_version,
-        project_root: project_root_cache_key(project_root.as_deref()),
         cleaning_config_signature: cleaning_config_signature(&cleaning_config),
     };
     let index_context = index_context.context_handle();
@@ -3794,7 +3810,6 @@ async fn query_concordance_collocations_command(
     let cleaning_config_signature = cleaning_config_signature(&cleaning_config);
     let context_key = ConcordanceIndexContextKey {
         corpus_version,
-        project_root: project_root_key.clone(),
         cleaning_config_signature: cleaning_config_signature.clone(),
     };
     let cache_key = ConcordanceCollocationCacheKey {
@@ -4774,6 +4789,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            let concordance_cache_root = app
+                .path()
+                .app_cache_dir()
+                .ok()
+                .map(|path| path.join("concordance"));
+            app.manage(ConcordanceIndexContextState::new(concordance_cache_root));
             if let Ok(pdfium_path) = app
                 .path()
                 .resolve("ocr/pdfium.dll", BaseDirectory::Resource)
@@ -4807,7 +4828,6 @@ pub fn run() {
         .manage(ExtractionCache::new())
         .manage(PdfPageRangeCache::new())
         .manage(ConcordanceCollocationCache::new())
-        .manage(ConcordanceIndexContextState::new())
         .manage(project::ProjectSourceInventoryState::new())
         .invoke_handler(tauri::generate_handler![
             scan_directory_command,
@@ -5006,7 +5026,6 @@ mod tests {
     fn concordance_test_context_key(corpus_version: u64) -> ConcordanceIndexContextKey {
         ConcordanceIndexContextKey {
             corpus_version,
-            project_root: Some("project".to_string()),
             cleaning_config_signature: "cleaning-v1".to_string(),
         }
     }
@@ -5108,7 +5127,7 @@ mod tests {
     }
 
     #[test]
-    fn concordance_default_index_falls_back_for_unsupported_filter() {
+    fn concordance_default_index_handles_context_filter() {
         let documents = concordance_test_documents();
         let mut query = concordance_test_query("movie");
         query.context_filter = Some("good".to_string());
@@ -5127,14 +5146,9 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(
-            outcome.backend_used,
-            ConcordanceBackendUsed::ScanFallback {
-                reason: ConcordanceFallbackReason::UnsupportedFilter,
-            }
-        );
+        assert_eq!(outcome.backend_used, ConcordanceBackendUsed::Index);
         assert_eq!(outcome.recovery_reason, None);
-        assert_eq!(outcome.index_rebuilt, Some(false));
+        assert_eq!(outcome.index_rebuilt, Some(true));
         assert_eq!(outcome.result, scan);
     }
 
@@ -5541,7 +5555,7 @@ mod tests {
     }
 
     #[test]
-    fn concordance_index_fallback_returns_scan_without_rebuild() {
+    fn concordance_index_context_filter_uses_index() {
         let documents = concordance_test_documents();
         let mut query = concordance_test_query("movie");
         query.context_filter = Some("good".to_string());
@@ -5558,13 +5572,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(
-            routed.backend_used,
-            ConcordanceBackendUsed::ScanFallback {
-                reason: ConcordanceFallbackReason::UnsupportedFilter,
-            }
-        );
-        assert!(!routed.index_rebuilt);
+        assert_eq!(routed.backend_used, ConcordanceBackendUsed::Index);
+        assert!(routed.index_rebuilt);
         assert_eq!(routed.result, scan);
     }
 
@@ -5688,6 +5697,15 @@ mod tests {
             direction_change.direction,
             corpuswright_core::analysis::ConcordanceCollocationDirection::Left
         );
+
+        let mut frequency_query = query.clone();
+        frequency_query.min_collocate_frequency = 10;
+        frequency_query.min_cooccurrence = 4;
+        let frequency_change =
+            query_cached_collocations_for_test(&cache, &frequency_query, &mut aggregate);
+        assert_eq!(aggregation_runs.get(), 1);
+        assert_eq!(frequency_change.min_collocate_frequency, 10);
+        assert_eq!(frequency_change.min_cooccurrence, 4);
     }
 
     #[test]

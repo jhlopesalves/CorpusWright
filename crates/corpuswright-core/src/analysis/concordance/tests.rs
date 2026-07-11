@@ -462,7 +462,7 @@ fn routed_index_parity_holds_for_selection_and_pagination() {
 }
 
 #[test]
-fn routed_index_falls_back_for_context_filter_and_matches_scan() {
+fn routed_index_handles_context_filter_and_matches_scan() {
     let documents = vec![concordance_document(
         0,
         "doc.txt",
@@ -479,14 +479,52 @@ fn routed_index_falls_back_for_context_filter_and_matches_scan() {
         routed_concordance_for(&documents, &query, &mut context, ConcordanceBackend::Index)
             .unwrap();
 
-    assert_eq!(
-        routed.backend_used,
-        ConcordanceBackendUsed::ScanFallback {
-            reason: ConcordanceFallbackReason::UnsupportedFilter,
-        }
-    );
+    assert_eq!(routed.backend_used, ConcordanceBackendUsed::Index);
     assert_eq!(routed.result, scan);
-    assert_eq!(context.index_build_count(), 0);
+    assert_eq!(context.index_build_count(), 1);
+}
+
+#[test]
+fn routed_index_mixed_fixture_context_filter_has_literal_parity() {
+    let documents = vec![
+        concordance_document(0, "a.txt", "Blue target red target blue unique"),
+        concordance_document(
+            1,
+            "b.txt",
+            "target green TARGET blue target repeated repeated",
+        ),
+        concordance_document(2, "c.txt", "unique words only"),
+    ];
+    let mut query = parity_concordance_query("target", false);
+    query.window_tokens = 1;
+    query.context_filter = Some("blue".to_string());
+    query.context_filter_direction = ConcordanceContextFilterDirection::Both;
+    let scan =
+        search_concordance_documents(&documents, &query, &TokenizationConfig::default()).unwrap();
+    let mut context = ConcordanceSearchContext::default();
+    let indexed =
+        routed_concordance_for(&documents, &query, &mut context, ConcordanceBackend::Index)
+            .unwrap();
+
+    assert_eq!(indexed.backend_used, ConcordanceBackendUsed::Index);
+    assert_eq!(indexed.result, scan);
+    assert_eq!(indexed.result.total_hits, 4);
+    assert_eq!(indexed.result.documents_with_hits, 2);
+    assert_eq!(indexed.result.context_filter.as_deref(), Some("blue"));
+    assert_eq!(
+        indexed
+            .result
+            .rows
+            .iter()
+            .map(|row| (row.document_index, row.token_index, row.node.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            (0, 1, "target"),
+            (0, 3, "target"),
+            (1, 2, "TARGET"),
+            (1, 4, "target"),
+        ]
+    );
 }
 
 #[test]
@@ -515,6 +553,91 @@ fn routed_index_cache_reuses_store_and_rebuilds_when_manifest_changes() {
     assert_eq!(first.result.total_hits, 4);
     assert_eq!(second.result.total_hits, 2);
     assert_eq!(third.result.total_hits, 5);
+}
+
+#[test]
+fn routed_index_disk_cache_reuses_content_across_restart_and_recovers_from_corruption() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let documents = vec![
+        concordance_document(0, "a.txt", "Movie movie good movie"),
+        concordance_document(1, "b.txt", "Good movie"),
+    ];
+    let query = parity_concordance_query("movie", false);
+    let config = TokenizationConfig::default();
+    let mut first_context =
+        ConcordanceSearchContext::with_cache_root(temp_dir.path().to_path_buf());
+    let first = search_concordance_documents_routed(
+        &documents,
+        &query,
+        &config,
+        &mut first_context,
+        ConcordanceBackend::Index,
+    )
+    .unwrap();
+    assert!(first.index_rebuilt);
+    assert_eq!(first_context.index_build_count(), 1);
+
+    let renamed_documents = vec![
+        concordance_document(0, "renamed-a.txt", "Movie movie good movie"),
+        concordance_document(1, "renamed-b.txt", "Good movie"),
+    ];
+    let mut restarted_context =
+        ConcordanceSearchContext::with_cache_root(temp_dir.path().to_path_buf());
+    let restarted = search_concordance_documents_routed(
+        &renamed_documents,
+        &query,
+        &config,
+        &mut restarted_context,
+        ConcordanceBackend::Index,
+    )
+    .unwrap();
+    assert!(!restarted.index_rebuilt);
+    assert_eq!(restarted_context.index_build_count(), 0);
+    assert_eq!(restarted_context.index_cache_load_count(), 1);
+    assert!(
+        restarted
+            .result
+            .rows
+            .iter()
+            .all(|row| row.source_path.starts_with("renamed-"))
+    );
+
+    let mut changed_config = config;
+    changed_config.include_punctuation = false;
+    let mut changed_config_context =
+        ConcordanceSearchContext::with_cache_root(temp_dir.path().to_path_buf());
+    let changed = search_concordance_documents_routed(
+        &renamed_documents,
+        &query,
+        &changed_config,
+        &mut changed_config_context,
+        ConcordanceBackend::Index,
+    )
+    .unwrap();
+    assert!(changed.index_rebuilt);
+    assert_eq!(changed_config_context.index_build_count(), 1);
+
+    let selected_ids = selected_concordance_document_ids(
+        &renamed_documents,
+        &AnalysisDocumentSelection::default(),
+    );
+    let manifest =
+        concordance_surface_index_manifest(&renamed_documents, &selected_ids, &config).unwrap();
+    let cache_path = crate::index::surface_index_cache_path(temp_dir.path(), &manifest);
+    std::fs::write(&cache_path, b"truncated").unwrap();
+    let mut corrupted_context =
+        ConcordanceSearchContext::with_cache_root(temp_dir.path().to_path_buf());
+    let recovered = search_concordance_documents_routed(
+        &renamed_documents,
+        &query,
+        &config,
+        &mut corrupted_context,
+        ConcordanceBackend::Index,
+    )
+    .unwrap();
+    assert!(recovered.index_rebuilt);
+    assert_eq!(corrupted_context.index_build_count(), 1);
+    assert_eq!(recovered.result, restarted.result);
 }
 
 #[test]
@@ -552,7 +675,7 @@ fn routed_index_windows_1252_portuguese_offsets_and_parity_hold() {
     ] {
         let record = records
             .iter()
-            .find(|record| record.surface == expected_surface)
+            .find(|record| store.surface_for_record(record) == Some(expected_surface))
             .unwrap();
         let recovered = decoded
             .text
@@ -564,7 +687,7 @@ fn routed_index_windows_1252_portuguese_offsets_and_parity_hold() {
     }
     let acao = records
         .iter()
-        .find(|record| record.surface == "ação")
+        .find(|record| store.surface_for_record(record) == Some("ação"))
         .unwrap();
     assert_eq!((acao.prepared_char_start, acao.prepared_char_end), (5, 9));
 

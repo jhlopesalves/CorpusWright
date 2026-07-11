@@ -932,6 +932,34 @@ fn surface_collocation_aggregate_post_processing_matches_full_query() {
 }
 
 #[test]
+fn cached_collocation_aggregate_derives_span_frequency_and_direction_views() {
+    let documents = vec![
+        concordance_document(
+            0,
+            "a.txt",
+            "rare far near target common near target common common target far",
+        ),
+        concordance_document(1, "b.txt", "common target near common target rare"),
+    ];
+    let base_query = collocation_query("target");
+    let aggregate = collocation_aggregate_for(&documents, &base_query).unwrap();
+
+    let mut narrowed_span = base_query.clone();
+    narrowed_span.span = 1;
+    let mut raised_frequency = base_query.clone();
+    raised_frequency.min_collocate_frequency = 3;
+    raised_frequency.min_cooccurrence = 2;
+    let mut single_direction = base_query.clone();
+    single_direction.direction = ConcordanceCollocationDirection::Left;
+
+    for query in [narrowed_span, raised_frequency, single_direction] {
+        let cached = query_concordance_collocations_from_aggregate(&aggregate, &query);
+        let direct = naive_collocations_for(&documents, &query).unwrap();
+        assert_eq!(cached, direct);
+    }
+}
+
+#[test]
 fn surface_collocation_presentation_changes_reuse_full_aggregate() {
     let documents = vec![concordance_document(
         0,
