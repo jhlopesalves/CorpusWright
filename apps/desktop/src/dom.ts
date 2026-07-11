@@ -38,6 +38,7 @@ export const dom = {
   concordanceLinesCollapse: getElement<HTMLButtonElement>("concordance-lines-collapse"),
   concordanceLinesControls: getElement<HTMLDivElement>("concordance-lines-controls"),
   concordanceLinesBody: getElement<HTMLDivElement>("concordance-lines-body"),
+  concordanceSortLegend: getElement<HTMLDivElement>("concordance-sort-legend"),
   concordanceCollocationsPanel: getElement<HTMLElement>("concordance-collocations-panel"),
   concordanceCollocatesStats: getElement<HTMLButtonElement>("concordance-collocates-stats"),
   concordanceCollocatesCollapse: getElement<HTMLButtonElement>("concordance-collocates-collapse"),
