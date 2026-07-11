@@ -33,7 +33,7 @@ pub use input::{
 };
 
 pub use collocation::{
-    ConcordanceCollocateRow, ConcordanceCollocationAggregate,
+    ConcordanceCollocatePositionCounts, ConcordanceCollocateRow, ConcordanceCollocationAggregate,
     ConcordanceCollocationAggregationSignature, ConcordanceCollocationDirection,
     ConcordanceCollocationMeasure, ConcordanceCollocationQuery, ConcordanceCollocationResult,
     ConcordanceCollocationSortKey, RoutedConcordanceCollocationAggregate,

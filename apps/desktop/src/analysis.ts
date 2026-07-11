@@ -21,6 +21,7 @@ import type { ConcordanceExpansionResult as GeneratedConcordanceExpansionResult 
 import type { ConcordancePhase as GeneratedConcordancePhase } from "./generated/ConcordancePhase.js";
 import type { ConcordanceProgress as GeneratedConcordanceProgress } from "./generated/ConcordanceProgress.js";
 import type { ConcordanceCollocateRow as GeneratedConcordanceCollocateRow } from "./generated/ConcordanceCollocateRow.js";
+import type { ConcordanceCollocatePositionCounts as GeneratedConcordanceCollocatePositionCounts } from "./generated/ConcordanceCollocatePositionCounts.js";
 import type { ConcordanceCollocationDirection as GeneratedConcordanceCollocationDirection } from "./generated/ConcordanceCollocationDirection.js";
 import type { ConcordanceCollocationMeasure as GeneratedConcordanceCollocationMeasure } from "./generated/ConcordanceCollocationMeasure.js";
 import type { ConcordanceCollocationQuery as GeneratedConcordanceCollocationQuery } from "./generated/ConcordanceCollocationQuery.js";
@@ -391,6 +392,7 @@ export type ConcordanceExpansionResult = GeneratedConcordanceExpansionResult;
 export type ConcordancePhase = GeneratedConcordancePhase;
 export type ConcordanceProgress = GeneratedConcordanceProgress;
 export type ConcordanceCollocateRow = GeneratedConcordanceCollocateRow;
+export type ConcordanceCollocatePositionCounts = GeneratedConcordanceCollocatePositionCounts;
 export type ConcordanceCollocationDirection = GeneratedConcordanceCollocationDirection;
 export type ConcordanceCollocationMeasure = GeneratedConcordanceCollocationMeasure;
 export type ConcordanceCollocationQuery = GeneratedConcordanceCollocationQuery;
