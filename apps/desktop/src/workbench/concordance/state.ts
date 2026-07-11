@@ -8,9 +8,6 @@ import type {
   SortDirection,
 } from "../../analysis";
 
-export const CONCORDANCE_WORKBENCH_COLLAPSE_STORAGE_KEY =
-  "corpuswright.concordance-workbench.collapsed-cards.v1";
-
 export type ConcordanceCardId = "lines" | "collocates" | "distribution";
 export type ConcordanceDistributionOrdering = "hitsDescending";
 
@@ -23,8 +20,6 @@ export interface ConcordanceWorkbenchSharedState {
 }
 
 export interface ConcordanceCardState<TData = unknown> {
-  collapsed: boolean;
-  controlsOpen: boolean;
   loading: boolean;
   error: string | null;
   data: TData | null;
@@ -79,28 +74,18 @@ export interface ConcordanceSharedRequestPlan {
 
 export async function executeConcordanceSharedRequest(
   plan: ConcordanceSharedRequestPlan,
-  refreshConcordance: () => Promise<void>,
-): Promise<void> {
-  if (plan.concordance !== null) await refreshConcordance();
-}
-
-export async function executeExplicitConcordanceCollocationRequest(
+  refreshConcordance: () => Promise<boolean>,
   refreshCollocations: () => Promise<void>,
 ): Promise<void> {
-  await refreshCollocations();
+  if (plan.concordance === null) return;
+  const concordanceSucceeded = await refreshConcordance();
+  if (concordanceSucceeded && plan.collocates) await refreshCollocations();
 }
 
 export type ConcordanceSectionRequest = { generation: number; requestKey: string };
 
-export interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
-
-function cardState<TData>(collapsed: boolean): ConcordanceCardState<TData> {
+function cardState<TData>(): ConcordanceCardState<TData> {
   return {
-    collapsed,
-    controlsOpen: false,
     loading: false,
     error: null,
     data: null,
@@ -109,58 +94,13 @@ function cardState<TData>(collapsed: boolean): ConcordanceCardState<TData> {
   };
 }
 
-function availableStorage(): StorageLike | null {
-  try {
-    return typeof localStorage === "undefined" ? null : localStorage;
-  } catch {
-    return null;
-  }
-}
-
-export function readConcordanceCollapsedCards(
-  storage: StorageLike | null = availableStorage(),
-): Set<ConcordanceCardId> | null {
-  if (!storage) return null;
-  try {
-    const raw = storage.getItem(CONCORDANCE_WORKBENCH_COLLAPSE_STORAGE_KEY);
-    if (raw === null) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    return new Set(
-      parsed.filter(
-        (value): value is ConcordanceCardId =>
-          value === "lines" || value === "collocates" || value === "distribution",
-      ),
-    );
-  } catch {
-    return null;
-  }
-}
-
-export function writeConcordanceCollapsedCards(
-  state: ConcordanceWorkbenchState,
-  storage: StorageLike | null = availableStorage(),
-): void {
-  if (!storage) return;
-  const collapsed = (["lines", "collocates", "distribution"] as const)
-    .filter((card) => state[card].collapsed)
-    .sort();
-  try {
-    storage.setItem(CONCORDANCE_WORKBENCH_COLLAPSE_STORAGE_KEY, JSON.stringify(collapsed));
-  } catch {
-    // Collapse persistence is best-effort; the workbench remains usable without storage.
-  }
-}
-
 export function createConcordanceWorkbenchState(
   shared: ConcordanceWorkbenchSharedState,
-  collapsedCards: ReadonlySet<ConcordanceCardId> | null = readConcordanceCollapsedCards(),
 ): ConcordanceWorkbenchState {
-  const initialCollapsedCards = collapsedCards ?? new Set<ConcordanceCardId>(["collocates"]);
   return {
     shared: { ...shared },
     lines: {
-      ...cardState(initialCollapsedCards.has("lines")),
+      ...cardState(),
       window: 5,
       sort: "filePosition",
       pageSize: 100,
@@ -169,7 +109,7 @@ export function createConcordanceWorkbenchState(
       contextFilterDirection: "both",
     },
     collocates: {
-      ...cardState(initialCollapsedCards.has("collocates")),
+      ...cardState(),
       span: 5,
       direction: "both",
       measure: "logDice",
@@ -183,7 +123,7 @@ export function createConcordanceWorkbenchState(
       selectedEvidenceRow: null,
     },
     distribution: {
-      ...cardState(initialCollapsedCards.has("distribution")),
+      ...cardState(),
       ordering: "hitsDescending",
       pageSize: 10,
       offset: 0,
@@ -262,20 +202,16 @@ export function updateConcordanceSharedState(
 }
 
 export function planConcordanceSharedRequest(
-  state: ConcordanceWorkbenchState,
+  _state: ConcordanceWorkbenchState,
 ): ConcordanceSharedRequestPlan {
-  const cards: Array<"lines" | "distribution"> = [];
-  if (!state.lines.collapsed) cards.push("lines");
-  if (!state.distribution.collapsed) cards.push("distribution");
+  const cards: Array<"lines" | "distribution"> = ["lines", "distribution"];
   return {
-    concordance: cards.length === 0
-      ? null
-      : {
-          includeRows: cards.includes("lines"),
-          includeDistribution: cards.includes("distribution"),
-          cards,
-        },
-    collocates: false,
+    concordance: {
+      includeRows: true,
+      includeDistribution: true,
+      cards,
+    },
+    collocates: true,
   };
 }
 
@@ -284,7 +220,6 @@ export function beginConcordanceCardRequest(
   card: ConcordanceCardId,
 ): { generation: number; requestKey: string } | null {
   const target = state[card];
-  if (target.collapsed) return null;
   target.loading = true;
   target.error = null;
   target.requestGeneration += 1;
@@ -303,8 +238,7 @@ export function acceptConcordanceCardResponse(
 ): boolean {
   const target = state[card];
   if (
-    target.collapsed
-    || generation !== target.requestGeneration
+    generation !== target.requestGeneration
     || requestKey !== concordanceCardRequestKey(state, card)
   ) {
     return false;
@@ -358,8 +292,7 @@ export function rejectConcordanceCardResponse(
 ): boolean {
   const target = state[card];
   if (
-    target.collapsed
-    || generation !== target.requestGeneration
+    generation !== target.requestGeneration
     || requestKey !== concordanceCardRequestKey(state, card)
   ) {
     return false;
@@ -367,27 +300,6 @@ export function rejectConcordanceCardResponse(
   target.loading = false;
   target.error = error;
   return true;
-}
-
-export function collapseConcordanceCard(
-  state: ConcordanceWorkbenchState,
-  card: ConcordanceCardId,
-): void {
-  const target = state[card];
-  target.collapsed = true;
-  target.loading = false;
-  target.requestGeneration += 1;
-}
-
-export function expandConcordanceCard(
-  state: ConcordanceWorkbenchState,
-  card: ConcordanceCardId,
-): "cache" | "query" {
-  const target = state[card];
-  target.collapsed = false;
-  return target.data !== null && target.requestKey === concordanceCardRequestKey(state, card)
-    ? "cache"
-    : "query";
 }
 
 export function invalidateConcordanceCard(
@@ -398,7 +310,7 @@ export function invalidateConcordanceCard(
   target.loading = false;
   target.error = null;
   target.requestGeneration += 1;
-  return !target.collapsed;
+  return true;
 }
 
 export function planConcordanceLocalRequest(
@@ -420,7 +332,6 @@ export function applyConcordanceLinesContextFilter(
   state.lines.contextFilter = contextFilter;
   state.lines.contextFilterDirection = direction;
   state.lines.offset = 0;
-  state.lines.collapsed = false;
   invalidateConcordanceCard(state, "lines");
 }
 
