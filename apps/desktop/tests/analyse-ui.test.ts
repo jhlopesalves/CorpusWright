@@ -226,7 +226,7 @@ for (const label of ["Collocate", "Near query", "O11", "Corpus frequency", "f_c"
 for (const label of [
   "CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE",
   "CONCORDANCE_COLLOCATION_STALE_MESSAGE",
-  "Update profile",
+  "Compute collocates",
 ]) {
   assert(workbench.includes(label), `Collocate Profile should render ${label}`);
 }
@@ -236,11 +236,22 @@ assert(
   "Collocate Profile stale copy should not concatenate repeated implementation-state text",
 );
 assert(
-  !workbench.includes("Compute collocates")
+  workbench.includes("Compute collocates")
     && !workbench.includes("Show lines")
     && !workbench.includes("Show KWIC lines"),
-  "Collocate Profile should avoid resting compute buttons and glued Show lines row text",
+  "Collocate Profile should expose explicit computation without glued Show lines row text",
 );
+const collocationActionStart = workbench.indexOf("function renderConcordanceCollocationAction(");
+const collocationActionEnd = workbench.indexOf("function collocateEvidenceExpansionDomId", collocationActionStart);
+const collocationActionBody = workbench.slice(collocationActionStart, collocationActionEnd);
+assert(
+  collocationActionStart >= 0
+    && (collocationActionBody.match(/refreshConcordanceCollocations\(\)/g) ?? []).length === 1,
+  "Compute collocates should issue exactly one collocation query",
+);
+for (const status of ["not computed", "stale — recompute required", "aggregating", "computed"]) {
+  assert(workbench.includes(`"${status}"`), `Collocates stats should distinguish ${status}`);
+}
 for (const measure of ["logDice", "mi", "mi3", "tScore", "zScore", "g2", "logRatio"]) {
   assert(html.includes(`value="${measure}"`), `Collocation measure should include ${measure}`);
 }
@@ -276,11 +287,11 @@ assert(runConcordanceSearchMatch, "Concordance search handler should exist");
 assert(
   runConcordanceSearchMatch[1].includes('concordanceCardIsExpanded("lines")')
     && runConcordanceSearchMatch[1].includes('concordanceCardIsExpanded("distribution")')
-    && runConcordanceSearchMatch[1].includes('concordanceCardIsExpanded("collocates")')
-    && runConcordanceSearchMatch[1].includes("tasks.push(refreshConcordance());")
-    && runConcordanceSearchMatch[1].includes("tasks.push(refreshConcordanceCollocations());")
+    && runConcordanceSearchMatch[1].includes("void refreshConcordance().finally(renderConcordance);")
+    && !runConcordanceSearchMatch[1].includes("refreshConcordanceCollocations")
+    && !runConcordanceSearchMatch[1].includes("Promise.all")
     && !workbench.includes("activeConcordanceView"),
-  "Search should coordinate expanded cards without an active-view model",
+  "Shared Search should coordinate Lines and Distribution without computing Collocates",
 );
 assert(
   workbench.includes("queryConcordanceCollocations")
@@ -291,10 +302,11 @@ assert(
     && workbench.includes("function handleConcordanceCollocationPresentationControlChange")
     && workbench.includes("refreshConcordanceCollocationsForPresentationChange")
     && workbench.includes("markConcordanceCollocationsForAggregationChange")
-    && workbench.includes("concordanceCollocationAutoComputedAggregationKeys")
+    && workbench.includes('action.textContent = label;')
+    && workbench.includes('"Compute collocates"')
     && !workbench.includes("sortConcordanceCollocates(result.rows, measure)")
     && workbench.includes("handleConcordanceCollocateClick"),
-  "Concordance collocations should query Rust for true top-N sorting, split aggregation/presentation controls, auto-compute fresh keys once, and support evidence drawers",
+  "Concordance collocations should query Rust only from an explicit action, split aggregation/presentation controls, and support evidence drawers",
 );
 assert(
   workbench.includes('export type ConcordanceCardId = "lines" | "collocates" | "distribution";')
@@ -303,11 +315,20 @@ assert(
     && workbench.includes("writeConcordanceCollapsedCards")
     && workbench.includes("beginConcordanceCardRequest")
     && workbench.includes("acceptConcordanceCardResponse")
-    && workbench.includes("function maybeAutoComputeConcordanceCollocations")
+    && !workbench.includes("function maybeAutoComputeConcordanceCollocations")
     && workbench.includes('dom.concordanceSection.addEventListener("click", handleConcordanceCardAction)')
     && !workbench.includes("syncConcordanceViewTabs")
     && !workbench.includes("handleConcordanceViewTabClick"),
-  "Concordance cards should persist collapse state, suppress stale responses, and lazy-compute on expansion",
+  "Concordance cards should persist collapse state, suppress stale responses, and avoid computing on expansion",
+);
+const cardActionStart = workbench.indexOf("function handleConcordanceCardAction");
+const cardActionEnd = workbench.indexOf("function handleConcordanceQueryInput", cardActionStart);
+const cardActionBody = workbench.slice(cardActionStart, cardActionEnd);
+assert(
+  cardActionStart >= 0
+    && !cardActionBody.includes("refreshConcordanceCollocations")
+    && !cardActionBody.includes("maybeAutoComputeConcordanceCollocations"),
+  "Expanding Collocates should not query",
 );
 assert(
   workbench.includes('table.className = "concordance-distribution-table"')
