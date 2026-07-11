@@ -38,8 +38,8 @@ pub use collocation::{
     ConcordanceCollocationMeasure, ConcordanceCollocationQuery, ConcordanceCollocationResult,
     ConcordanceCollocationSortKey, RoutedConcordanceCollocationAggregate,
     aggregate_concordance_collocations_documents,
-    aggregate_concordance_collocations_documents_routed,
     aggregate_concordance_collocations_routed_provider,
+    aggregate_concordance_collocations_scan_provider,
     concordance_collocation_aggregation_signature, query_concordance_collocations_documents,
     query_concordance_collocations_from_aggregate,
 };

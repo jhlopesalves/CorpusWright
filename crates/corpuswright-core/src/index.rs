@@ -157,6 +157,12 @@ impl SurfaceIndexCancellationToken {
     }
 }
 
+impl From<Arc<AtomicBool>> for SurfaceIndexCancellationToken {
+    fn from(cancel: Arc<AtomicBool>) -> Self {
+        Self(cancel)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SurfaceIndexDocumentInput<'text> {
     pub document_id: usize,
