@@ -154,6 +154,49 @@ export function concordanceSortLabel(sortKey: ConcordanceSortKey): string {
   return CONCORDANCE_SORT_OPTIONS.find((option) => option.value === sortKey)?.label ?? "File/position";
 }
 
+export type ConcordanceSortLevel = 1 | 2 | 3 | null;
+
+export interface ConcordanceContextSortLevels {
+  left: ConcordanceSortLevel[];
+  right: ConcordanceSortLevel[];
+}
+
+export function concordanceContextSortLevels(
+  sortKey: ConcordanceSortKey,
+  leftLength: number,
+  rightLength: number,
+): ConcordanceContextSortLevels {
+  const left = Array<ConcordanceSortLevel>(leftLength).fill(null);
+  const right = Array<ConcordanceSortLevel>(rightLength).fill(null);
+  const levelOrder = (primary: number): [number, number, number] => {
+    if (primary === 0) return [1, 2, 3];
+    if (primary === 1) return [2, 1, 3];
+    return [3, 2, 1];
+  };
+  const match = /^(left|right)([123])$/.exec(sortKey);
+  if (!match) return { left, right };
+  const side = match[1];
+  const primary = Number.parseInt(match[2]!, 10) - 1;
+  const levels = levelOrder(primary);
+  for (let distance = 0; distance < 3; distance += 1) {
+    if (side === "left") {
+      const index = leftLength - distance - 1;
+      if (index >= 0) left[index] = levels[distance]! as 1 | 2 | 3;
+    } else if (distance < rightLength) {
+      right[distance] = levels[distance]! as 1 | 2 | 3;
+    }
+  }
+  return { left, right };
+}
+
+export function concordanceMiddleEllipsis(value: string, maximumLength = 28): string {
+  if (value.length <= maximumLength || maximumLength < 5) return value;
+  const remaining = maximumLength - 1;
+  const startLength = Math.ceil(remaining / 2);
+  const endLength = Math.floor(remaining / 2);
+  return `${value.slice(0, startLength)}…${value.slice(value.length - endLength)}`;
+}
+
 export function concordanceCollocationMeasureLabel(
   measure: ConcordanceCollocationMeasure,
 ): string {

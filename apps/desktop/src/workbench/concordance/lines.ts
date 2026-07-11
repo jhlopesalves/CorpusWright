@@ -8,7 +8,10 @@ import {
 import {
   clampConcordancePageSize,
   clampConcordanceWindow,
+  concordanceContextSortLevels,
+  concordanceContextTokenSegments,
   concordanceExpansionViewModel,
+  concordanceMiddleEllipsis,
   concordanceRowExpansionKey,
   concordanceRowText,
   CONCORDANCE_COLUMNS,
@@ -27,7 +30,6 @@ import {
   currentConcordanceSearchResult,
   refreshConcordanceLines,
   renderConcordance,
-  renderContextTokens,
 } from "./shared";
 
 let concordanceOffset = 0;
@@ -188,18 +190,46 @@ function appendConcordanceKwicCells(
   activeFilter: string | null,
   caseSensitive: boolean,
 ): void {
+  const sortLevels = concordanceContextSortLevels(
+    concordanceSortKey,
+    row.leftContext.length,
+    row.rightContext.length,
+  );
   const file = document.createElement("td");
   file.className = "concordance-file";
   file.title = row.displayName || row.sourcePath;
-  file.textContent = row.displayName || row.sourcePath;
+  file.textContent = concordanceMiddleEllipsis(row.displayName || row.sourcePath);
+
+  const appendContext = (
+    cell: HTMLTableCellElement,
+    tokens: string[],
+    levels: Array<1 | 2 | 3 | null>,
+  ) => {
+    const run = document.createElement("span");
+    run.className = "concordance-context-run";
+    const segments = concordanceContextTokenSegments(tokens, activeFilter, caseSensitive);
+    segments.forEach((segment, index) => {
+      if (index > 0) run.appendChild(document.createTextNode(" "));
+      const token = document.createElement("span");
+      token.className = "concordance-context-token";
+      if (segment.collocate) token.classList.add("concordance-collocate");
+      const level = levels[index];
+      if (level !== null) {
+        const priority = level === 1 ? "primary" : level === 2 ? "secondary" : "tertiary";
+        token.classList.add(`is-sort-level-${level}`);
+        token.dataset.sortLevel = level.toString();
+        token.title = `${priority[0]!.toUpperCase()}${priority.slice(1)} sort key: ${segment.text}`;
+        token.setAttribute("aria-label", `${segment.text}, ${priority} sort key`);
+      }
+      token.textContent = segment.text;
+      run.appendChild(token);
+    });
+    cell.appendChild(run);
+  };
 
   const left = document.createElement("td");
   left.className = "concordance-left";
-  if (activeFilter === null) {
-    left.textContent = concordanceRowText(row.leftContext);
-  } else {
-    left.appendChild(renderContextTokens(row.leftContext, activeFilter, caseSensitive));
-  }
+  appendContext(left, row.leftContext, sortLevels.left);
 
   const nodeCell = document.createElement("td");
   nodeCell.className = "concordance-node-cell";
@@ -210,11 +240,7 @@ function appendConcordanceKwicCells(
 
   const right = document.createElement("td");
   right.className = "concordance-right";
-  if (activeFilter === null) {
-    right.textContent = concordanceRowText(row.rightContext);
-  } else {
-    right.appendChild(renderContextTokens(row.rightContext, activeFilter, caseSensitive));
-  }
+  appendContext(right, row.rightContext, sortLevels.right);
 
   item.append(file, left, nodeCell, right);
 }
@@ -277,11 +303,8 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
     context.className = "concordance-expansion-context";
     const left = document.createElement("span");
     left.className = "concordance-expansion-left";
-    const concordanceResult = currentConcordanceSearchResult();
-    const activeFilter = concordanceResult?.contextFilter ?? null;
-    const caseSensitive = concordanceResult?.caseSensitive ?? false;
     if (concordanceExpansionResult !== null) {
-      left.appendChild(renderContextTokens(concordanceExpansionResult.leftContext, activeFilter, caseSensitive));
+      left.textContent = concordanceRowText(concordanceExpansionResult.leftContext);
     } else {
       left.textContent = expansion.leftText;
     }
@@ -291,7 +314,7 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
     const right = document.createElement("span");
     right.className = "concordance-expansion-right";
     if (concordanceExpansionResult !== null) {
-      right.appendChild(renderContextTokens(concordanceExpansionResult.rightContext, activeFilter, caseSensitive));
+      right.textContent = concordanceRowText(concordanceExpansionResult.rightContext);
     } else {
       right.textContent = expansion.rightText;
     }
@@ -324,6 +347,10 @@ export function renderConcordanceLines(
   result: ConcordanceResult | null,
   emptyMessage = CONCORDANCE_NO_QUERY_MESSAGE,
 ): void {
+  dom.concordanceSortLegend.classList.toggle(
+    "hidden",
+    concordanceSortKey === "filePosition" || concordanceSortKey === "node",
+  );
   if (!result) {
     renderConcordanceTableState(emptyMessage);
     dom.concordancePagePreviousButton.disabled = true;
