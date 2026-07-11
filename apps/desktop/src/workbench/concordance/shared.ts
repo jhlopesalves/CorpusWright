@@ -202,6 +202,11 @@ function distributionStatsText(): string {
 }
 
 function syncConcordanceCardChrome(): void {
+  const labels: Record<ConcordanceCardId, string> = {
+    lines: "Concordance Lines",
+    collocates: "Collocates",
+    distribution: "Distribution",
+  };
   for (const card of ["lines", "collocates", "distribution"] as const) {
     const cardState = workbenchState[card];
     const elements = cardElements(card);
@@ -210,6 +215,11 @@ function syncConcordanceCardChrome(): void {
     elements.controls.classList.toggle("hidden", cardState.collapsed || !cardState.controlsOpen);
     elements.stats.setAttribute("aria-expanded", cardState.controlsOpen ? "true" : "false");
     elements.collapse.textContent = cardState.collapsed ? "Expand" : "Collapse";
+    elements.collapse.setAttribute("aria-expanded", cardState.collapsed ? "false" : "true");
+    elements.collapse.setAttribute(
+      "aria-label",
+      `${cardState.collapsed ? "Expand" : "Collapse"} ${labels[card]}`,
+    );
   }
   dom.concordanceLinesStats.textContent = linesStatsText();
   renderConcordanceLinesContextFilter();
@@ -277,6 +287,9 @@ export function renderConcordance(): void {
     || workbenchState.distribution.loading
     || concordanceCollocationsArePending();
   dom.concordanceCancelButton.classList.toggle("hidden", !pending);
+  dom.concordanceCancelButton.disabled = !pending;
+  dom.concordanceCancelButton.setAttribute("aria-hidden", pending ? "false" : "true");
+  dom.concordanceSection.setAttribute("aria-busy", pending ? "true" : "false");
 
   const summaryResult = currentConcordanceSearchResult();
   if (pending) {

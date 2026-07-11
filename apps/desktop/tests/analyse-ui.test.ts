@@ -136,7 +136,7 @@ assert(
     && !concordanceSharedControls.includes('id="concordance-page-size-input"'),
   "Concordance shared controls should contain only query, case, file scope, and search controls",
 );
-const concordanceWorkbenchStart = html.indexOf('<div class="concordance-workbench">', concordanceStatusStart);
+const concordanceWorkbenchStart = html.indexOf('<div id="concordance-workbench" class="concordance-workbench">', concordanceStatusStart);
 assert(
   concordanceWorkbenchStart > concordanceStatusStart
     && !html.includes('id="concordance-view-tabs"')
@@ -187,6 +187,20 @@ assert(
     && html.includes('id="concordance-distribution-stats"')
     && html.includes('aria-controls="concordance-distribution-controls"'),
   "Distribution should render as an expanded sibling card with truthful disclosure controls",
+);
+assert(
+  concordanceSharedControls.includes('id="concordance-query-input" type="search" autocomplete="off" aria-controls="concordance-workbench"')
+    && concordanceSharedControls.includes('id="concordance-search-button" class="primary-btn" type="button" aria-controls="concordance-workbench" aria-describedby="concordance-status"')
+    && concordanceSharedControls.includes('id="concordance-cancel-button" class="secondary-btn hidden" type="button" aria-label="Cancel concordance search"')
+    && concordanceSharedControls.includes('aria-hidden="true" disabled>Cancel</button>')
+    && concordanceLinesPanel.includes('aria-expanded="true" aria-controls="concordance-lines-body" aria-label="Collapse Concordance Lines"')
+    && concordanceCollocationsPanel.includes('aria-expanded="true" aria-controls="concordance-collocates-body" aria-label="Collapse Collocates"')
+    && workbench.includes('elements.collapse.setAttribute("aria-expanded", cardState.collapsed ? "false" : "true");')
+    && workbench.includes('`${cardState.collapsed ? "Expand" : "Collapse"} ${labels[card]}`')
+    && workbench.includes('dom.concordanceCancelButton.disabled = !pending;')
+    && workbench.includes('dom.concordanceCancelButton.setAttribute("aria-hidden", pending ? "false" : "true");')
+    && workbench.includes('dom.concordanceSection.setAttribute("aria-busy", pending ? "true" : "false");'),
+  "Search, Cancel, and every card disclosure should expose their live state and controlled region to assistive technology",
 );
 assert(
   !html.includes('id="concordance-source-preview"'),
@@ -966,4 +980,21 @@ assert(
     && styles.includes(".concordance-document-spread-header")
     && !styles.includes(".concordance-document-spread-toggle"),
   "Collocate Profile should render honest signed strength bars and ten-bin position evidence, while Distribution remains directly visible",
+);
+assert(
+  styles.includes("@media (max-width: 980px) {\n  .concordance-controls > label:first-child")
+    && styles.includes("@media (max-width: 760px) {\n  .concordance-section,")
+    && styles.includes(".concordance-controls {\n    display: grid;\n    grid-template-columns: repeat(2, minmax(0, 1fr));")
+    && styles.includes(".concordance-collocations-table {\n    min-width: 880px;")
+    && styles.includes(".concordance-position-glyph {\n    min-width: 130px;")
+    && styles.includes("@media (max-width: 640px) {\n  .concordance-controls")
+    && styles.includes(".concordance-table {\n    min-width: 640px;")
+    && styles.includes(".concordance-collocations-table {\n    min-width: 760px;")
+    && styles.includes(".concordance-search-actions button:focus-visible")
+    && styles.includes("outline: 2px solid var(--cw-interaction-focus-ring);")
+    && styles.includes("text-decoration-style: double;")
+    && styles.includes("text-decoration-style: dotted;")
+    && styles.includes(".concordance-kwic-pair {\n  color: var(--cw-kwic-pair);")
+    && workbench.includes("return signed && value > 0 ? `+${formatted}` : formatted;"),
+  "Concordance should wrap at medium and narrow widths with internal table scrolling, visible focus, and non-colour sort, pair, and score-direction cues",
 );
