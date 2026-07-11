@@ -21,8 +21,8 @@ import { currentFrequencyDocumentScope, renderFrequencyScopeControl } from "../f
 import {
   concordanceCollocationStatsText,
   concordanceCollocationsArePending,
-  makeConcordanceCollocationsDormant,
   markConcordanceCollocationsForAggregationChange,
+  refreshConcordanceCollocations,
   renderConcordanceCollocations,
   resetConcordanceCollocationCorpusState,
   syncConcordanceCollocationStopwordsToggle,
@@ -51,16 +51,12 @@ import {
   applyConcordanceLinesContextFilter,
   beginConcordanceCardRequest,
   clearConcordanceLinesContextFilter,
-  collapseConcordanceCard,
   concordanceCardRequestKey,
   createConcordanceWorkbenchState,
   executeConcordanceSharedRequest,
-  expandConcordanceCard,
-  readConcordanceCollapsedCards,
   rejectConcordanceCardResponse,
   planConcordanceSharedRequest,
   updateConcordanceSharedState,
-  writeConcordanceCollapsedCards,
   type ConcordanceCardId,
 } from "./state";
 
@@ -72,7 +68,6 @@ const workbenchState = createConcordanceWorkbenchState(
     corpusVersion: 0,
     cleaningConfigKey: "",
   },
-  readConcordanceCollapsedCards(),
 );
 
 let concordanceProgress: ConcordanceProgress | null = null;
@@ -92,10 +87,6 @@ export function syncConcordanceControls(): void {
   syncConcordanceCaseToggle();
   syncConcordanceCollocationStopwordsToggle();
   dom.concordanceSortSelect.value = currentConcordanceLineSortKey();
-}
-
-export function concordanceCardIsExpanded(card: ConcordanceCardId): boolean {
-  return !workbenchState[card].collapsed;
 }
 
 export function currentConcordanceSearchResult(): ConcordanceResult | null {
@@ -160,34 +151,6 @@ function renderConcordanceStatus(message: string | null, isError = false): void 
   dom.concordanceStatus.classList.toggle("warning", isError);
 }
 
-function cardElements(card: ConcordanceCardId) {
-  if (card === "lines") {
-    return {
-      panel: dom.concordanceLinesPanel,
-      stats: dom.concordanceLinesStats,
-      collapse: dom.concordanceLinesCollapse,
-      controls: dom.concordanceLinesControls,
-      body: dom.concordanceLinesBody,
-    };
-  }
-  if (card === "collocates") {
-    return {
-      panel: dom.concordanceCollocationsPanel,
-      stats: dom.concordanceCollocatesStats,
-      collapse: dom.concordanceCollocatesCollapse,
-      controls: dom.concordanceCollocatesControls,
-      body: dom.concordanceCollocatesBody,
-    };
-  }
-  return {
-    panel: dom.concordanceDistributionPanel,
-    stats: dom.concordanceDistributionStats,
-    collapse: dom.concordanceDistributionCollapse,
-    controls: dom.concordanceDistributionControls,
-    body: dom.concordanceDistributionBody,
-  };
-}
-
 function linesStatsText(): string {
   const result = resultFor("lines");
   const shown = result?.rows?.length ?? 0;
@@ -212,25 +175,6 @@ function distributionStatsText(): string {
 }
 
 function syncConcordanceCardChrome(): void {
-  const labels: Record<ConcordanceCardId, string> = {
-    lines: "Concordance Lines",
-    collocates: "Collocates",
-    distribution: "Distribution",
-  };
-  for (const card of ["lines", "collocates", "distribution"] as const) {
-    const cardState = workbenchState[card];
-    const elements = cardElements(card);
-    elements.panel.classList.toggle("is-collapsed", cardState.collapsed);
-    elements.body.classList.toggle("hidden", cardState.collapsed);
-    elements.controls.classList.toggle("hidden", cardState.collapsed || !cardState.controlsOpen);
-    elements.stats.setAttribute("aria-expanded", cardState.controlsOpen ? "true" : "false");
-    elements.collapse.textContent = cardState.collapsed ? "Expand" : "Collapse";
-    elements.collapse.setAttribute("aria-expanded", cardState.collapsed ? "false" : "true");
-    elements.collapse.setAttribute(
-      "aria-label",
-      `${cardState.collapsed ? "Expand" : "Collapse"} ${labels[card]}`,
-    );
-  }
   dom.concordanceLinesStats.textContent = linesStatsText();
   renderConcordanceLinesContextFilter();
   dom.concordanceCollocatesStats.textContent = concordanceCollocationStatsText();
@@ -313,43 +257,39 @@ export function renderConcordance(): void {
   const error = currentConcordanceSearchFailure();
   renderConcordanceStatus(error, error !== null);
 
-  if (concordanceCardIsExpanded("lines")) {
-    renderConcordanceLines(
-      workbenchState.lines.loading ? null : resultFor("lines"),
-      workbenchState.lines.loading
-        ? formatConcordanceProgress(concordanceProgress)
-        : workbenchState.lines.error ?? CONCORDANCE_NO_QUERY_MESSAGE,
-    );
-  }
-  if (concordanceCardIsExpanded("distribution")) {
-    renderConcordanceDistribution(
-      workbenchState.distribution.loading ? null : resultFor("distribution"),
-      workbenchState.distribution.loading
-        ? formatConcordanceProgress(concordanceProgress)
-        : workbenchState.distribution.error ?? CONCORDANCE_NO_QUERY_MESSAGE,
-    );
-  }
+  renderConcordanceLines(
+    workbenchState.lines.loading ? null : resultFor("lines"),
+    workbenchState.lines.loading
+      ? formatConcordanceProgress(concordanceProgress)
+      : workbenchState.lines.error ?? CONCORDANCE_NO_QUERY_MESSAGE,
+  );
+  renderConcordanceDistribution(
+    workbenchState.distribution.loading ? null : resultFor("distribution"),
+    workbenchState.distribution.loading
+      ? formatConcordanceProgress(concordanceProgress)
+      : workbenchState.distribution.error ?? CONCORDANCE_NO_QUERY_MESSAGE,
+  );
   renderConcordanceCollocations();
   syncConcordanceCardChrome();
 }
 
 async function refreshConcordanceCards(
   requestedCards: ReadonlyArray<"lines" | "distribution">,
-): Promise<void> {
+): Promise<boolean> {
   if (
     requestedCards.includes("lines")
     && requestedCards.includes("distribution")
     && workbenchState.lines.contextFilter !== null
   ) {
-    await Promise.all([
+    const results = await Promise.all([
       refreshConcordanceCards(["lines"]),
       refreshConcordanceCards(["distribution"]),
     ]);
-    return;
+    return results.every(Boolean);
   }
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   syncLiveRequestState(query);
-  const cards = requestedCards.filter((card) => concordanceCardIsExpanded(card));
+  const cards = [...requestedCards];
   if (query.length === 0 || cards.length === 0) {
     for (const card of cards) {
       workbenchState[card].data = null;
@@ -358,7 +298,7 @@ async function refreshConcordanceCards(
       workbenchState[card].error = null;
     }
     renderConcordance();
-    return;
+    return false;
   }
 
   const requests = new Map<"lines" | "distribution", { generation: number; requestKey: string }>();
@@ -366,12 +306,13 @@ async function refreshConcordanceCards(
     const request = beginConcordanceCardRequest(workbenchState, card);
     if (request) requests.set(card, request);
   }
-  if (requests.size === 0) return;
+  if (requests.size === 0) return false;
   concordanceProgress = null;
   renderConcordance();
 
   const includeRows = requests.has("lines");
   const includeDistribution = requests.has("distribution");
+  let succeeded = false;
   try {
     const result = await searchConcordance(
       {
@@ -394,6 +335,7 @@ async function refreshConcordanceCards(
     );
     const accepted = acceptConcordanceSectionResponse(workbenchState, requests, result);
     if (accepted.includes("lines")) setConcordanceLineOffset(result.offset);
+    succeeded = accepted.length === requests.size;
   } catch (error) {
     for (const [card, request] of requests) {
       rejectConcordanceCardResponse(
@@ -407,10 +349,11 @@ async function refreshConcordanceCards(
   } finally {
     renderConcordance();
   }
+  return succeeded;
 }
 
-export async function refreshConcordanceLines(): Promise<void> {
-  await refreshConcordanceCards(["lines"]);
+export async function refreshConcordanceLines(): Promise<boolean> {
+  return refreshConcordanceCards(["lines"]);
 }
 
 export function openCollocateInConcordanceLines(
@@ -420,7 +363,6 @@ export function openCollocateInConcordanceLines(
   collapseConcordanceExpansion();
   resetConcordanceLineOffset();
   applyConcordanceLinesContextFilter(workbenchState, surface, direction);
-  writeConcordanceCollapsedCards(workbenchState);
   void refreshConcordanceLines();
   requestAnimationFrame(() => {
     dom.concordanceLinesPanel.focus({ preventScroll: true });
@@ -435,12 +377,12 @@ export function handleClearConcordanceLinesContextFilter(): void {
   void refreshConcordanceLines();
 }
 
-export async function refreshConcordanceDistribution(): Promise<void> {
-  await refreshConcordanceCards(["distribution"]);
+export async function refreshConcordanceDistribution(): Promise<boolean> {
+  return refreshConcordanceCards(["distribution"]);
 }
 
-export async function refreshConcordance(): Promise<void> {
-  await refreshConcordanceCards(["lines", "distribution"]);
+export async function refreshConcordance(): Promise<boolean> {
+  return refreshConcordanceCards(["lines", "distribution"]);
 }
 
 export function runConcordanceSearch(): void {
@@ -454,49 +396,14 @@ export function runConcordanceSearch(): void {
   markConcordanceCollocationsForAggregationChange();
   const plan = planConcordanceSharedRequest(workbenchState);
   if (plan.concordance !== null) {
-    void executeConcordanceSharedRequest(plan, refreshConcordance).finally(renderConcordance);
+    void executeConcordanceSharedRequest(
+      plan,
+      refreshConcordance,
+      refreshConcordanceCollocations,
+    ).finally(renderConcordance);
   } else {
     renderConcordance();
   }
-}
-
-export function handleConcordanceCardAction(event: MouseEvent): void {
-  const button = event.target instanceof HTMLElement
-    ? event.target.closest<HTMLButtonElement>("[data-concordance-card-action]")
-    : null;
-  const card = button?.dataset.concordanceCard as ConcordanceCardId | undefined;
-  const action = button?.dataset.concordanceCardAction;
-  if (!button || !card || !(["lines", "collocates", "distribution"] as const).includes(card)) return;
-
-  if (action === "controls") {
-    workbenchState[card].controlsOpen = !workbenchState[card].controlsOpen;
-    renderConcordance();
-    return;
-  }
-  if (action !== "collapse") return;
-
-  if (workbenchState[card].collapsed) {
-    syncLiveRequestState(normaliseConcordanceQuery(dom.concordanceQueryInput.value));
-    const disposition = expandConcordanceCard(workbenchState, card);
-    writeConcordanceCollapsedCards(workbenchState);
-    renderConcordance();
-    if (disposition === "query") {
-      if (card === "lines") void refreshConcordanceLines();
-      if (card === "distribution") void refreshConcordanceDistribution();
-    }
-    cardElements(card).panel.focus({ preventScroll: true });
-    return;
-  }
-
-  collapseConcordanceCard(workbenchState, card);
-  if (card === "lines") dom.concordanceTableBody.replaceChildren();
-  if (card === "distribution") dom.concordanceDistribution.replaceChildren();
-  if (card === "collocates") {
-    makeConcordanceCollocationsDormant();
-    dom.concordanceCollocationsTableBody.replaceChildren();
-  }
-  writeConcordanceCollapsedCards(workbenchState);
-  renderConcordance();
 }
 
 export function handleConcordanceQueryInput(): void {

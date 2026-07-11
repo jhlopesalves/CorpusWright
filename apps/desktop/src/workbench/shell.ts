@@ -109,7 +109,6 @@ import {
 } from "./concordance/lines";
 import {
   handleConcordanceCaseChange,
-  handleConcordanceCardAction,
   handleClearConcordanceLinesContextFilter,
   handleConcordanceQueryInput,
   initialiseConcordanceState,
@@ -2011,7 +2010,6 @@ export function initWorkbenchSwitcher(): void {
     void handleBuildAnalysisCorpus();
   });
   dom.analyseToolsList.addEventListener("click", handleAnalysisToolClick);
-  dom.concordanceSection.addEventListener("click", handleConcordanceCardAction);
   dom.concordanceSearchButton.addEventListener("click", runConcordanceSearch);
   dom.concordanceCancelButton.addEventListener("click", () => {
     void cancelConcordance();
