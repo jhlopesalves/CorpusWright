@@ -252,6 +252,11 @@ assert(
 for (const status of ["not computed", "stale — recompute required", "aggregating", "computed"]) {
   assert(workbench.includes(`"${status}"`), `Collocates stats should distinguish ${status}`);
 }
+assert(
+  workbench.includes("renderConcordanceCollocationStatus(message, true)")
+    && workbench.includes("workbenchState.lines.error ?? workbenchState.distribution.error"),
+  "Collocate resource refusals should stay inside the Collocates card and preserve other results",
+);
 for (const measure of ["logDice", "mi", "mi3", "tScore", "zScore", "g2", "logRatio"]) {
   assert(html.includes(`value="${measure}"`), `Collocation measure should include ${measure}`);
 }

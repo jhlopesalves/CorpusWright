@@ -203,6 +203,23 @@ function sectionResult(
 }
 
 {
+  const state = createConcordanceWorkbenchState(shared(), new Set());
+  const lines = { rows: ["preserved"] };
+  state.lines.data = lines;
+  const request = beginConcordanceCardRequest(state, "collocates")!;
+  assert(rejectConcordanceCardResponse(
+    state,
+    "collocates",
+    request.generation,
+    request.requestKey,
+    "Narrow the file scope or use a less frequent node, then retry.",
+  ));
+  assert.equal(state.lines.data, lines);
+  assert.equal(state.lines.error, null);
+  assert.equal(state.collocates.data, null);
+}
+
+{
   const state = createConcordanceWorkbenchState(shared());
   collapseConcordanceCard(state, "distribution");
   const changed = updateConcordanceSharedState(state, shared("changed"));

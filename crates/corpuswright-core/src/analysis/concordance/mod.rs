@@ -452,6 +452,12 @@ pub enum ConcordanceError {
     NoResultViewsRequested,
     InvalidDocumentIdentity,
     InvalidHitIdentity,
+    AnalysisMemoryLimitExceeded {
+        estimated_resident_index_bytes: u64,
+        projected_aggregate_bytes: u64,
+        combined_limit_bytes: u64,
+        safety_margin_bytes: u64,
+    },
     Index(SurfaceIndexError),
 }
 
@@ -468,6 +474,15 @@ impl std::fmt::Display for ConcordanceError {
             Self::InvalidHitIdentity => {
                 formatter.write_str("The concordance hit no longer matches the document.")
             }
+            Self::AnalysisMemoryLimitExceeded {
+                estimated_resident_index_bytes,
+                projected_aggregate_bytes,
+                combined_limit_bytes,
+                safety_margin_bytes,
+            } => write!(
+                formatter,
+                "Collocates was not computed because the concordance analysis memory estimate exceeded its safety budget (resident index {estimated_resident_index_bytes} bytes + projected collocation aggregate {projected_aggregate_bytes} bytes + safety margin {safety_margin_bytes} bytes; configured combined limit {combined_limit_bytes} bytes). Narrow the file scope or use a less frequent node, then retry."
+            ),
             Self::Index(error) => write!(formatter, "The concordance index failed: {error}"),
         }
     }
@@ -487,7 +502,8 @@ impl ConcordanceError {
     /// is replaced by the shared bounded collector, resource and cancellation
     /// failures must fail closed instead of entering that fallback.
     pub fn prevents_unbounded_scan_fallback(&self) -> bool {
-        matches!(self, Self::Index(error) if error.is_resource_or_cancellation())
+        matches!(self, Self::AnalysisMemoryLimitExceeded { .. })
+            || matches!(self, Self::Index(error) if error.is_resource_or_cancellation())
     }
 }
 
