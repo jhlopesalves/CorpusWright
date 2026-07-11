@@ -106,13 +106,13 @@ function availableStorage(): StorageLike | null {
 
 export function readConcordanceCollapsedCards(
   storage: StorageLike | null = availableStorage(),
-): Set<ConcordanceCardId> {
-  if (!storage) return new Set();
+): Set<ConcordanceCardId> | null {
+  if (!storage) return null;
   try {
     const raw = storage.getItem(CONCORDANCE_WORKBENCH_COLLAPSE_STORAGE_KEY);
-    if (!raw) return new Set();
+    if (raw === null) return null;
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return new Set();
+    if (!Array.isArray(parsed)) return null;
     return new Set(
       parsed.filter(
         (value): value is ConcordanceCardId =>
@@ -120,7 +120,7 @@ export function readConcordanceCollapsedCards(
       ),
     );
   } catch {
-    return new Set();
+    return null;
   }
 }
 
@@ -141,12 +141,13 @@ export function writeConcordanceCollapsedCards(
 
 export function createConcordanceWorkbenchState(
   shared: ConcordanceWorkbenchSharedState,
-  collapsedCards: ReadonlySet<ConcordanceCardId> = readConcordanceCollapsedCards(),
+  collapsedCards: ReadonlySet<ConcordanceCardId> | null = readConcordanceCollapsedCards(),
 ): ConcordanceWorkbenchState {
+  const initialCollapsedCards = collapsedCards ?? new Set<ConcordanceCardId>(["collocates"]);
   return {
     shared: { ...shared },
     lines: {
-      ...cardState(collapsedCards.has("lines")),
+      ...cardState(initialCollapsedCards.has("lines")),
       window: 5,
       sort: "filePosition",
       pageSize: 100,
@@ -155,7 +156,7 @@ export function createConcordanceWorkbenchState(
       contextFilterDirection: "both",
     },
     collocates: {
-      ...cardState(collapsedCards.has("collocates")),
+      ...cardState(initialCollapsedCards.has("collocates")),
       span: 5,
       direction: "both",
       measure: "logDice",
@@ -169,7 +170,7 @@ export function createConcordanceWorkbenchState(
       selectedEvidenceRow: null,
     },
     distribution: {
-      ...cardState(collapsedCards.has("distribution")),
+      ...cardState(initialCollapsedCards.has("distribution")),
       ordering: "hitsDescending",
       pageSize: 10,
       offset: 0,
@@ -261,7 +262,7 @@ export function planConcordanceSharedRequest(
           includeDistribution: cards.includes("distribution"),
           cards,
         },
-    collocates: !state.collocates.collapsed,
+    collocates: false,
   };
 }
 
@@ -391,6 +392,10 @@ export function planConcordanceLocalRequest(
   state: ConcordanceWorkbenchState,
   card: ConcordanceCardId,
 ): ConcordanceCardId[] {
+  if (card === "collocates") {
+    invalidateConcordanceCard(state, card);
+    return [];
+  }
   return invalidateConcordanceCard(state, card) ? [card] : [];
 }
 

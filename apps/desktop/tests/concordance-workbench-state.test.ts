@@ -105,15 +105,29 @@ function sectionResult(
 
 {
   const storage = new MemoryStorage();
+  assert.equal(readConcordanceCollapsedCards(storage), null);
+  const firstUse = createConcordanceWorkbenchState(shared(), readConcordanceCollapsedCards(storage));
+  assert.equal(firstUse.lines.collapsed, false);
+  assert.equal(firstUse.collocates.collapsed, true);
+  assert.equal(firstUse.distribution.collapsed, false);
+
+  storage.values.set(CONCORDANCE_WORKBENCH_COLLAPSE_STORAGE_KEY, "[]");
+  const persistedEmpty = readConcordanceCollapsedCards(storage);
+  assert.deepEqual([...(persistedEmpty ?? [])], []);
+  const allExpanded = createConcordanceWorkbenchState(shared(), persistedEmpty);
+  assert.equal(allExpanded.lines.collapsed, false);
+  assert.equal(allExpanded.collocates.collapsed, false);
+  assert.equal(allExpanded.distribution.collapsed, false);
+
   const state = createConcordanceWorkbenchState(shared(), new Set(["lines", "distribution"]));
   writeConcordanceCollapsedCards(state, storage);
   assert.deepEqual(JSON.parse(storage.values.get(CONCORDANCE_WORKBENCH_COLLAPSE_STORAGE_KEY)!), [
     "distribution",
     "lines",
   ]);
-  assert.deepEqual([...readConcordanceCollapsedCards(storage)].sort(), ["distribution", "lines"]);
+  assert.deepEqual([...(readConcordanceCollapsedCards(storage) ?? [])].sort(), ["distribution", "lines"]);
   storage.values.set(CONCORDANCE_WORKBENCH_COLLAPSE_STORAGE_KEY, "not-json");
-  assert.deepEqual([...readConcordanceCollapsedCards(storage)], []);
+  assert.equal(readConcordanceCollapsedCards(storage), null);
 }
 
 {
@@ -124,7 +138,7 @@ function sectionResult(
       includeDistribution: true,
       cards: ["lines", "distribution"],
     },
-    collocates: true,
+    collocates: false,
   });
   collapseConcordanceCard(state, "lines");
   collapseConcordanceCard(state, "collocates");
@@ -145,7 +159,7 @@ function sectionResult(
 }
 
 {
-  const state = createConcordanceWorkbenchState(shared());
+  const state = createConcordanceWorkbenchState(shared(), new Set());
   const request = beginConcordanceCardRequest(state, "lines")!;
   assert(acceptConcordanceCardResponse(state, "lines", request.generation, request.requestKey, {
     rows: ["first"],
@@ -177,7 +191,7 @@ function sectionResult(
 }
 
 {
-  const state = createConcordanceWorkbenchState(shared());
+  const state = createConcordanceWorkbenchState(shared(), new Set());
   const request = beginConcordanceCardRequest(state, "collocates")!;
   collapseConcordanceCard(state, "collocates");
   assert.equal(state.collocates.loading, false);
@@ -213,14 +227,14 @@ function sectionResult(
 
   assert.deepEqual(planConcordanceLocalRequest(state, "lines"), []);
   assert.deepEqual(planConcordanceLocalRequest(state, "distribution"), ["distribution"]);
-  assert.deepEqual(planConcordanceLocalRequest(state, "collocates"), ["collocates"]);
+  assert.deepEqual(planConcordanceLocalRequest(state, "collocates"), []);
 }
 
 {
   const state = createConcordanceWorkbenchState(shared());
   assert.deepEqual(planConcordanceLocalRequest(state, "lines"), ["lines"]);
   assert.deepEqual(planConcordanceLocalRequest(state, "distribution"), ["distribution"]);
-  assert.deepEqual(planConcordanceLocalRequest(state, "collocates"), ["collocates"]);
+  assert.deepEqual(planConcordanceLocalRequest(state, "collocates"), []);
 }
 
 {
