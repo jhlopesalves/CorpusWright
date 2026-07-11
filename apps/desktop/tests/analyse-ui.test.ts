@@ -631,13 +631,15 @@ assert(
 assert(
   workbench.includes('item.className = "concordance-collocation-row"')
     && workbench.includes('item.classList.toggle("is-active", isActiveCollocateEvidenceRow(row));')
-    && workbench.includes('item.setAttribute("role", "button")')
-    && workbench.includes('item.setAttribute("aria-label", actionLabel)')
-    && workbench.includes('event.key !== "Enter" && event.key !== " "')
+    && workbench.includes('evidenceButton.type = "button";')
+    && workbench.includes('evidenceButton.className = "concordance-collocate-evidence-toggle";')
+    && workbench.includes('evidenceButton.textContent = expanded ? "Hide evidence" : "Inspect evidence";')
+    && workbench.includes('evidenceButton.setAttribute("aria-expanded", expanded ? "true" : "false");')
+    && workbench.includes('evidenceButton.addEventListener("click", () => handleConcordanceCollocateClick(row));')
     && workbench.includes('item.className = "concordance-collocate-evidence-row"')
     && workbench.includes("panel.appendChild(createCollocateEvidenceList(collocateEvidenceResult));")
     && workbench.includes("dom.concordanceCollocationsTableBody.appendChild(createCollocateEvidenceDrawerRow(row));"),
-  "Collocate rows should be clickable, keyboard accessible, mark the active evidence row, and render the drawer inline",
+  "Collocate rows should use a native labelled evidence control, mark the active evidence row, and render the drawer inline",
 );
 assert(
   collocateEvidenceRendererBody.includes('item.className = "concordance-collocate-evidence-line"')
@@ -776,10 +778,12 @@ const concordanceCollocationScoreColumnCssMatch = styles.match(
 assert(concordanceCollocationScoreColumnCssMatch, "Concordance collocation measure-score column CSS should exist");
 const concordanceCollocationScoreColumnCss = concordanceCollocationScoreColumnCssMatch[1];
 assert(
-  concordanceCollocationScoreColumnCss.includes("width: 24%;")
-    && styles.includes(".concordance-collocations-table-wrap {\n  max-width: 980px;")
-    && styles.includes(".concordance-collocations-table {\n  width: 100%;\n  min-width: 760px;"),
-  "Concordance collocation measure-score column should remain proportioned inside the capped collocations table",
+  concordanceCollocationScoreColumnCss.includes("width: 20%;")
+    && styles.includes(".concordance-collocations-table-wrap {\n  max-width: none;")
+    && styles.includes(".concordance-collocations-table {\n  width: 100%;\n  min-width: 1040px;")
+    && styles.includes(".concordance-collocations-table > thead > tr > th:nth-child(5)")
+    && styles.includes("width: 28%;"),
+  "Concordance collocation score and position columns should remain legible in the six-column table",
 );
 const concordanceAnalyseShellOverrides = styles.match(/\.analyse-workbench\.is-concordance-active \.analyse-content \{([\s\S]*?)\n\}/g) ?? [];
 assert(
@@ -818,11 +822,11 @@ assert(
   "Concordance lines should keep vertical scrolling inside the table wrap and reserve horizontal overflow for narrow viewports",
 );
 assert(
-  concordanceCollocationsTableWrapCss.includes("max-width: 980px;")
+  concordanceCollocationsTableWrapCss.includes("max-width: none;")
     && concordanceCollocationsTableWrapCss.includes("max-height: min(58vh, 680px);")
     && concordanceCollocationsTableWrapCss.includes("overflow-x: auto;")
     && concordanceCollocationsTableWrapCss.includes("overflow-y: auto;"),
-  "Concordance collocations table wrap should cap width and height while retaining horizontal overflow",
+  "Concordance collocations table wrap should use the card width, cap height, and retain horizontal overflow",
 );
 assert(
   concordanceDistributionTableWrapCss.includes("max-width: 1000px;")
@@ -898,10 +902,15 @@ assert(
 assert(
   styles.includes(".concordance-collocation-score-track")
     && styles.includes(".concordance-collocation-score-fill")
-    && styles.includes("--concordance-score-bar")
-    && styles.includes("background: var(--concordance-score-bar);")
+    && styles.includes(".concordance-collocation-score-track.is-positive .concordance-collocation-score-fill")
+    && styles.includes(".concordance-collocation-score-track.is-negative .concordance-collocation-score-fill")
+    && styles.includes(".concordance-collocation-score-fill.is-ramp-5 { background: var(--cw-plot-ramp-5); }")
+    && styles.includes(".concordance-position-glyph")
+    && styles.includes("grid-template-columns: repeat(5, minmax(3px, 1fr)) auto repeat(5, minmax(3px, 1fr));")
+    && html.includes("Bar length and colour are relative within the currently loaded collocate set; they do not represent statistical significance.")
+    && !styles.includes("--concordance-score-bar")
     && styles.includes(".concordance-collocation-row:hover td")
     && styles.includes(".concordance-document-spread-header")
     && !styles.includes(".concordance-document-spread-toggle"),
-  "Collocate Profile should render muted association bars, and Distribution should render directly without a collapsible toggle",
+  "Collocate Profile should render honest signed strength bars and ten-bin position evidence, while Distribution remains directly visible",
 );
