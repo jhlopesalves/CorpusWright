@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import type { ConcordanceResult } from "../src/generated/ConcordanceResult.ts";
 
 import {
   CONCORDANCE_WORKBENCH_COLLAPSE_STORAGE_KEY,
   acceptConcordanceCardResponse,
+  acceptConcordanceSectionResponse,
   applyConcordanceLinesContextFilter,
   beginConcordanceCardRequest,
   clearConcordanceLinesContextFilter,
@@ -64,6 +66,7 @@ class MemoryStorage implements StorageLike {
   assert.equal(state.lines.sort, "right2");
   assert.equal(state.lines.pageSize, 250);
   assert.deepEqual(state.shared, sharedBefore);
+  assert.equal(JSON.parse(concordanceCardRequestKey(state, "lines")).contextFilter, null);
 }
 
 function shared(query = "target") {
@@ -73,6 +76,30 @@ function shared(query = "target") {
     fileScopeKey: "all-files",
     corpusVersion: 7,
     cleaningConfigKey: "cleaning-v1",
+  };
+}
+
+function sectionResult(
+  rows: ConcordanceResult["rows"],
+  distribution: ConcordanceResult["distribution"],
+): ConcordanceResult {
+  return {
+    query: "target",
+    contextFilter: null,
+    caseSensitive: false,
+    sortKey: "filePosition",
+    windowTokens: 5,
+    totalHits: 0,
+    documentsWithHits: 0,
+    selectedDocumentsTotal: 2,
+    selectedTokensTotal: 20,
+    dp: 0,
+    dispersionLabel: "not available",
+    topDocumentShare: 0,
+    offset: 0,
+    limit: 100,
+    rows,
+    distribution,
   };
 }
 
@@ -187,4 +214,55 @@ function shared(query = "target") {
   assert.deepEqual(planConcordanceLocalRequest(state, "lines"), []);
   assert.deepEqual(planConcordanceLocalRequest(state, "distribution"), ["distribution"]);
   assert.deepEqual(planConcordanceLocalRequest(state, "collocates"), ["collocates"]);
+}
+
+{
+  const state = createConcordanceWorkbenchState(shared());
+  assert.deepEqual(planConcordanceLocalRequest(state, "lines"), ["lines"]);
+  assert.deepEqual(planConcordanceLocalRequest(state, "distribution"), ["distribution"]);
+  assert.deepEqual(planConcordanceLocalRequest(state, "collocates"), ["collocates"]);
+}
+
+{
+  const state = createConcordanceWorkbenchState(shared());
+  const lines = beginConcordanceCardRequest(state, "lines")!;
+  const accepted = acceptConcordanceSectionResponse(
+    state,
+    new Map([["lines", lines]]),
+    sectionResult([], null),
+  );
+  assert.deepEqual(accepted, ["lines"]);
+  assert.deepEqual((state.lines.data as ConcordanceResult).rows, []);
+  assert.equal(state.distribution.data, null);
+}
+
+{
+  const state = createConcordanceWorkbenchState(shared());
+  const distribution = beginConcordanceCardRequest(state, "distribution")!;
+  const page = { totalDocuments: 2, offset: 0, limit: 10, items: [], maxCount: 0 };
+  const accepted = acceptConcordanceSectionResponse(
+    state,
+    new Map([["distribution", distribution]]),
+    sectionResult(null, page),
+  );
+  assert.deepEqual(accepted, ["distribution"]);
+  assert.deepEqual((state.distribution.data as ConcordanceResult).distribution, page);
+  assert.equal(state.lines.data, null);
+}
+
+{
+  const state = createConcordanceWorkbenchState(shared());
+  const lines = beginConcordanceCardRequest(state, "lines")!;
+  const distribution = beginConcordanceCardRequest(state, "distribution")!;
+  const page = { totalDocuments: 2, offset: 0, limit: 10, items: [], maxCount: 0 };
+  const accepted = acceptConcordanceSectionResponse(
+    state,
+    new Map([
+      ["lines", lines],
+      ["distribution", distribution],
+    ]),
+    sectionResult([], page),
+  );
+  assert.deepEqual(accepted, ["lines", "distribution"]);
+  assert.equal(state.lines.data, state.distribution.data);
 }

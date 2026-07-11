@@ -16,6 +16,7 @@ import {
 import {
   clampConcordanceCollocationFloor,
   clampConcordanceCollocationSpan,
+  concordanceCollocatesCardStatsText,
   concordanceCollocationExplanation,
   concordanceCollocationMeasureLabel,
   concordanceCollocationScore,
@@ -524,7 +525,6 @@ function createCollocateEvidenceSnippet(row: ConcordanceRow): HTMLSpanElement {
       row.leftContext,
       activeFilter,
       caseSensitive,
-      "concordance-kwic-pair",
     ));
     snippet.appendChild(document.createTextNode(" "));
   }
@@ -540,7 +540,6 @@ function createCollocateEvidenceSnippet(row: ConcordanceRow): HTMLSpanElement {
       row.rightContext,
       activeFilter,
       caseSensitive,
-      "concordance-kwic-pair",
     ));
   }
 
@@ -575,7 +574,6 @@ function createCollocateEvidenceExpansionRow(row: ConcordanceRow): HTMLDivElemen
         collocateEvidenceExpansionResult.leftContext,
         activeFilter,
         caseSensitive,
-        "concordance-kwic-pair",
       ));
       context.appendChild(left);
       context.appendChild(document.createTextNode(" "));
@@ -594,7 +592,6 @@ function createCollocateEvidenceExpansionRow(row: ConcordanceRow): HTMLDivElemen
         collocateEvidenceExpansionResult.rightContext,
         activeFilter,
         caseSensitive,
-        "concordance-kwic-pair",
       ));
       context.appendChild(right);
     }
@@ -1223,19 +1220,19 @@ export function concordanceCollocationsArePending(): boolean {
 export function concordanceCollocationStatsText(): string {
   const span = currentConcordanceCollocationSpan();
   const direction = currentConcordanceCollocationDirection();
-  const spanText = direction === "left"
-    ? `${span}L`
-    : direction === "right"
-      ? `${span}R`
-      : `${span}L–${span}R`;
   const shown = Math.min(
     concordanceCollocationDisplayCount,
     concordanceCollocationResult?.rows.length ?? 0,
   );
   const total = concordanceCollocationResult?.totalCandidates ?? 0;
   const loaded = concordanceCollocationResult?.rows.length ?? 0;
-  const availability = total > loaded
-    ? `${formatNumber(loaded)} available · ${formatNumber(total)} qualifying`
-    : formatNumber(total);
-  return `span ${spanText} · ${concordanceCollocationMeasureLabel(concordanceCollocationMeasure)} · min freq ${formatNumber(currentConcordanceCollocationMinFrequency())} · showing ${formatNumber(shown)} of ${availability}`;
+  return concordanceCollocatesCardStatsText({
+    span,
+    direction,
+    measure: concordanceCollocationMeasure,
+    minimumFrequency: currentConcordanceCollocationMinFrequency(),
+    shown,
+    loadedRows: loaded,
+    totalCandidates: total,
+  });
 }
