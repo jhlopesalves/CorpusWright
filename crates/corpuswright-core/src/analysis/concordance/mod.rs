@@ -90,10 +90,12 @@ pub struct ConcordanceQuery {
     pub window_tokens: usize,
     pub offset: usize,
     pub limit: usize,
+    pub include_rows: bool,
     #[serde(default)]
     pub distribution_offset: usize,
     #[serde(default)]
     pub distribution_limit: usize,
+    pub include_distribution: bool,
 }
 
 /// Parameters for expanding one surface-token concordance hit in its document.
@@ -188,8 +190,8 @@ pub struct ConcordanceResult {
     pub top_document_share: f64,
     pub offset: usize,
     pub limit: usize,
-    pub rows: Vec<ConcordanceRow>,
-    pub distribution: ConcordanceDistributionPage,
+    pub rows: Option<Vec<ConcordanceRow>>,
+    pub distribution: Option<ConcordanceDistributionPage>,
 }
 
 /// Text supplied by the desktop layer for an on-demand concordance scan.
@@ -447,6 +449,7 @@ struct ConcordanceIndexCacheEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConcordanceError {
     EmptyQuery,
+    NoResultViewsRequested,
     InvalidDocumentIdentity,
     InvalidHitIdentity,
     Index(SurfaceIndexError),
@@ -456,6 +459,9 @@ impl std::fmt::Display for ConcordanceError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EmptyQuery => formatter.write_str("Enter a word or phrase to search."),
+            Self::NoResultViewsRequested => {
+                formatter.write_str("At least one concordance result view must be requested.")
+            }
             Self::InvalidDocumentIdentity => {
                 formatter.write_str("The concordance document no longer matches the result.")
             }
@@ -625,10 +631,12 @@ fn resolve_optional_concordance_query_tokens(
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ConcordanceExecutionStats {
+    pub candidate_traversals: usize,
     pub candidates_visited: u64,
     pub valid_hits: u64,
     pub compact_sort_records_peak: usize,
     pub rows_materialised: usize,
+    pub distribution_pages_materialised: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -693,6 +701,7 @@ impl SortSymbolArena {
 }
 
 struct BoundedConcordanceCollector {
+    include_rows: bool,
     sort_key: ConcordanceSortKey,
     offset: usize,
     limit: usize,
@@ -706,12 +715,15 @@ struct BoundedConcordanceCollector {
 
 impl BoundedConcordanceCollector {
     fn new(
+        include_rows: bool,
         sort_key: ConcordanceSortKey,
         offset: usize,
         limit: usize,
         limits: SurfaceIndexResourceLimits,
     ) -> Result<Self, ConcordanceError> {
-        let retained_depth = if sort_key == ConcordanceSortKey::FilePosition {
+        let retained_depth = if !include_rows {
+            0
+        } else if sort_key == ConcordanceSortKey::FilePosition {
             limit
         } else {
             offset.checked_add(limit).ok_or({
@@ -737,6 +749,7 @@ impl BoundedConcordanceCollector {
                 )))
             })?;
         Ok(Self {
+            include_rows,
             sort_key,
             offset,
             limit,
@@ -745,7 +758,10 @@ impl BoundedConcordanceCollector {
             arena: SortSymbolArena::default(),
             total_hits: 0,
             document_hit_counts: BTreeMap::new(),
-            stats: ConcordanceExecutionStats::default(),
+            stats: ConcordanceExecutionStats {
+                candidate_traversals: 1,
+                ..ConcordanceExecutionStats::default()
+            },
         })
     }
 
@@ -890,7 +906,7 @@ impl BoundedConcordanceCollector {
         BTreeMap<usize, u64>,
         ConcordanceExecutionStats,
     ) {
-        if self.sort_key != ConcordanceSortKey::FilePosition {
+        if self.include_rows && self.sort_key != ConcordanceSortKey::FilePosition {
             let sort_key = self.sort_key;
             let arena = &self.arena;
             self.heap.sort_by(|left, right| {
@@ -1136,6 +1152,7 @@ pub fn search_concordance_documents_routed(
     context: &mut ConcordanceSearchContext,
     backend: ConcordanceBackend,
 ) -> Result<RoutedConcordanceResult, ConcordanceError> {
+    validate_concordance_result_views(query)?;
     match backend {
         ConcordanceBackend::Scan => {
             let (result, execution_stats) = search_concordance_documents_scan_with_stats(
@@ -1175,6 +1192,7 @@ where
     Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
     Progress: FnMut(ConcordanceProgress),
 {
+    validate_concordance_result_views(query)?;
     let (store, index_rebuilt) = context.index_store_for_provider(
         document_slots,
         tokenization_config,
@@ -1221,6 +1239,7 @@ pub fn search_concordance_documents_routed_scan_provider<Resolve>(
 where
     Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
 {
+    validate_concordance_result_views(query)?;
     let window_tokens = concordance_window_tokens(query.window_tokens);
     let limit = concordance_limit(query.limit);
     let distribution_limit = concordance_distribution_limit(query.distribution_limit);
@@ -1240,6 +1259,7 @@ where
             .collect::<Vec<_>>()
     });
     let mut collector = BoundedConcordanceCollector::new(
+        query.include_rows,
         query.sort_key,
         query.offset,
         limit,
@@ -1247,7 +1267,7 @@ where
     )?;
     let mut document_counts = Vec::<(usize, u64)>::new();
     let mut document_token_counts = HashMap::<usize, u64>::new();
-    let mut document_stats = Vec::<ConcordanceDocumentStats>::new();
+    let mut document_stats = query.include_distribution.then(Vec::new);
     let mut selected_tokens_total = 0u64;
     let mut selected_documents_total = 0usize;
     for document_index in 0..document_slots {
@@ -1281,13 +1301,15 @@ where
         if hit_count > 0 {
             document_counts.push((document_index, hit_count));
         }
-        document_stats.push(ConcordanceDocumentStats {
-            document_id: document_index,
-            source_path: document.source_path,
-            display_name: document.display_name,
-            token_count,
-            hit_count,
-        });
+        if let Some(document_stats) = document_stats.as_mut() {
+            document_stats.push(ConcordanceDocumentStats {
+                document_id: document_index,
+                source_path: document.source_path,
+                display_name: document.display_name,
+                token_count,
+                hit_count,
+            });
+        }
     }
     let (page_hits, total_hits, _, mut execution_stats) = collector.finish();
     let offset = query.offset.min(total_hits);
@@ -1307,6 +1329,7 @@ where
         )?);
         execution_stats.rows_materialised += 1;
     }
+    let rows = query.include_rows.then_some(rows);
     let dp = compute_dispersion_from_token_counts(
         &document_counts,
         total_hits as u64,
@@ -1323,11 +1346,14 @@ where
             .unwrap_or(0) as f64
             / total_hits as f64
     };
-    let distribution = concordance_distribution_page(
-        document_stats,
-        query.distribution_offset,
-        distribution_limit,
-    );
+    let distribution = document_stats.map(|document_stats| {
+        execution_stats.distribution_pages_materialised += 1;
+        concordance_distribution_page(
+            document_stats,
+            query.distribution_offset,
+            distribution_limit,
+        )
+    });
     Ok(RoutedConcordanceResult {
         result: ConcordanceResult {
             query: query_tokens.join(" "),
@@ -1361,6 +1387,14 @@ fn selection_includes_document_id(
         !selection.excluded_ids.contains(&document_id)
     } else {
         selection.ids.contains(&document_id)
+    }
+}
+
+fn validate_concordance_result_views(query: &ConcordanceQuery) -> Result<(), ConcordanceError> {
+    if query.include_rows || query.include_distribution {
+        Ok(())
+    } else {
+        Err(ConcordanceError::NoResultViewsRequested)
     }
 }
 
@@ -1418,6 +1452,7 @@ fn search_concordance_documents_index_from_store(
     });
     let resolved_context_filter = context_filter_tokens.map(|tokens| tokens.join(" "));
     let mut collector = BoundedConcordanceCollector::new(
+        query.include_rows,
         query.sort_key,
         query.offset,
         limit,
@@ -1462,22 +1497,23 @@ fn search_concordance_documents_index_from_store(
                     })
                 })
         };
-        let (left_keys, right_keys) = if sort_key_context(query.sort_key).is_some() {
-            (
-                [
-                    key_at(candidate.token_ordinal_in_document.checked_sub(1))?,
-                    key_at(candidate.token_ordinal_in_document.checked_sub(2))?,
-                    key_at(candidate.token_ordinal_in_document.checked_sub(3))?,
-                ],
-                [
-                    key_at(Some(node_end))?,
-                    key_at(node_end.checked_add(1))?,
-                    key_at(node_end.checked_add(2))?,
-                ],
-            )
-        } else {
-            ([None; 3], [None; 3])
-        };
+        let (left_keys, right_keys) =
+            if query.include_rows && sort_key_context(query.sort_key).is_some() {
+                (
+                    [
+                        key_at(candidate.token_ordinal_in_document.checked_sub(1))?,
+                        key_at(candidate.token_ordinal_in_document.checked_sub(2))?,
+                        key_at(candidate.token_ordinal_in_document.checked_sub(3))?,
+                    ],
+                    [
+                        key_at(Some(node_end))?,
+                        key_at(node_end.checked_add(1))?,
+                        key_at(node_end.checked_add(2))?,
+                    ],
+                )
+            } else {
+                ([None; 3], [None; 3])
+            };
         collector.record(CandidateConcordanceHit {
             document_id: candidate.document_id,
             token_index: candidate.token_ordinal_in_document,
@@ -1518,12 +1554,13 @@ fn search_concordance_documents_index_from_store(
         });
         execution_stats.rows_materialised += 1;
     }
+    let rows = query.include_rows.then_some(rows);
 
     let offset = query.offset.min(total_hits);
 
     let mut document_counts = Vec::<(usize, u64)>::new();
     let mut document_token_counts = HashMap::<usize, u64>::new();
-    let mut document_stats = Vec::<ConcordanceDocumentStats>::new();
+    let mut document_stats = query.include_distribution.then(Vec::new);
     let mut selected_tokens_total = 0u64;
 
     for document in documents
@@ -1547,13 +1584,15 @@ fn search_concordance_documents_index_from_store(
         if hit_count > 0 {
             document_counts.push((document.document_index, hit_count));
         }
-        document_stats.push(ConcordanceDocumentStats {
-            document_id: document.document_index,
-            source_path: document.source_path.clone(),
-            display_name: document.display_name.clone(),
-            token_count,
-            hit_count,
-        });
+        if let Some(document_stats) = document_stats.as_mut() {
+            document_stats.push(ConcordanceDocumentStats {
+                document_id: document.document_index,
+                source_path: document.source_path.clone(),
+                display_name: document.display_name.clone(),
+                token_count,
+                hit_count,
+            });
+        }
     }
 
     let total_hits_u64 = total_hits as u64;
@@ -1573,11 +1612,14 @@ fn search_concordance_documents_index_from_store(
             .unwrap_or(0) as f64
             / total_hits as f64
     };
-    let distribution = concordance_distribution_page(
-        document_stats,
-        query.distribution_offset,
-        distribution_limit,
-    );
+    let distribution = document_stats.map(|document_stats| {
+        execution_stats.distribution_pages_materialised += 1;
+        concordance_distribution_page(
+            document_stats,
+            query.distribution_offset,
+            distribution_limit,
+        )
+    });
 
     Ok((
         ConcordanceResult {
@@ -1814,9 +1856,10 @@ fn search_concordance_documents_scan_with_stats(
     let selected_document_ids = selected_concordance_document_ids(documents, &query.selection);
     let mut document_counts = Vec::<(usize, u64)>::new();
     let mut document_token_counts = HashMap::<usize, u64>::new();
-    let mut document_stats = Vec::<ConcordanceDocumentStats>::new();
+    let mut document_stats = query.include_distribution.then(Vec::new);
     let mut selected_tokens_total = 0u64;
     let mut collector = BoundedConcordanceCollector::new(
+        query.include_rows,
         query.sort_key,
         query.offset,
         limit,
@@ -1857,13 +1900,15 @@ fn search_concordance_documents_scan_with_stats(
         if document_hit_count > 0 {
             document_counts.push((document.document_index, document_hit_count));
         }
-        document_stats.push(ConcordanceDocumentStats {
-            document_id: document.document_index,
-            source_path: document.source_path.clone(),
-            display_name: document.display_name.clone(),
-            token_count: document_token_count,
-            hit_count: document_hit_count,
-        });
+        if let Some(document_stats) = document_stats.as_mut() {
+            document_stats.push(ConcordanceDocumentStats {
+                document_id: document.document_index,
+                source_path: document.source_path.clone(),
+                display_name: document.display_name.clone(),
+                token_count: document_token_count,
+                hit_count: document_hit_count,
+            });
+        }
     }
     let (page_hits, total_hits, _, mut execution_stats) = collector.finish();
     let offset = query.offset.min(total_hits);
@@ -1886,6 +1931,7 @@ fn search_concordance_documents_scan_with_stats(
         )?);
         execution_stats.rows_materialised += 1;
     }
+    let rows = query.include_rows.then_some(rows);
     let total_hits_u64 = total_hits as u64;
     let dp = compute_dispersion_from_token_counts(
         &document_counts,
@@ -1903,11 +1949,14 @@ fn search_concordance_documents_scan_with_stats(
             .unwrap_or(0) as f64
             / total_hits as f64
     };
-    let distribution = concordance_distribution_page(
-        document_stats,
-        query.distribution_offset,
-        distribution_limit,
-    );
+    let distribution = document_stats.map(|document_stats| {
+        execution_stats.distribution_pages_materialised += 1;
+        concordance_distribution_page(
+            document_stats,
+            query.distribution_offset,
+            distribution_limit,
+        )
+    });
 
     Ok((
         ConcordanceResult {
@@ -2063,27 +2112,28 @@ fn process_streaming_scan_candidate(
         }
     }
 
-    let (left_owned, right_owned) = if sort_key_context(collector.sort_key).is_some() {
-        let key_at = |index: Option<usize>| {
-            index
-                .and_then(|index| streaming_scan_token(buffer, buffer_start, index))
-                .map(|token| concordance_key(token.surface, case_sensitive))
+    let (left_owned, right_owned) =
+        if collector.include_rows && sort_key_context(collector.sort_key).is_some() {
+            let key_at = |index: Option<usize>| {
+                index
+                    .and_then(|index| streaming_scan_token(buffer, buffer_start, index))
+                    .map(|token| concordance_key(token.surface, case_sensitive))
+            };
+            (
+                [
+                    key_at(token_index.checked_sub(1)),
+                    key_at(token_index.checked_sub(2)),
+                    key_at(token_index.checked_sub(3)),
+                ],
+                [
+                    key_at((node_end < total_tokens).then_some(node_end)),
+                    key_at((node_end + 1 < total_tokens).then_some(node_end + 1)),
+                    key_at((node_end + 2 < total_tokens).then_some(node_end + 2)),
+                ],
+            )
+        } else {
+            ([None, None, None], [None, None, None])
         };
-        (
-            [
-                key_at(token_index.checked_sub(1)),
-                key_at(token_index.checked_sub(2)),
-                key_at(token_index.checked_sub(3)),
-            ],
-            [
-                key_at((node_end < total_tokens).then_some(node_end)),
-                key_at((node_end + 1 < total_tokens).then_some(node_end + 1)),
-                key_at((node_end + 2 < total_tokens).then_some(node_end + 2)),
-            ],
-        )
-    } else {
-        ([None, None, None], [None, None, None])
-    };
     collector.record(CandidateConcordanceHit {
         document_id,
         token_index,
