@@ -7,7 +7,7 @@ import type {
   ConcordanceSortKey,
   SortDirection,
 } from "../../analysis";
-import { CONCORDANCE_DEFAULT_WINDOW } from "../../concordance";
+import { CONCORDANCE_DEFAULT_WINDOW } from "../../concordance.ts";
 
 export type ConcordanceCardId = "lines" | "collocates" | "distribution";
 export type ConcordanceDistributionOrdering = "hitsDescending";

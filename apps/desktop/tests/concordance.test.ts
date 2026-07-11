@@ -356,6 +356,13 @@ const positionBins = concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8
 assertDeepEqual(positionBins.map((bin) => bin.label), ["L5", "L4", "L3", "L2", "L1", "R1", "R2", "R3", "R4", "R5"]);
 assert(positionBins[9]!.intensity === 1 && positionBins[0]!.intensity === 0.5);
 assertDeepEqual(
+  concordanceCollocatePositionGlyph([5, 0, 0, 0, 0], [5, 0, 0, 0, 0], 5, "both")
+    .filter((bin) => bin.active && bin.count > 0 && bin.intensity === 1)
+    .map((bin) => bin.label),
+  ["L1", "R1"],
+  "Tied strongest non-zero position bins should share the dominant treatment",
+);
+assertDeepEqual(
   concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 2, "left").map((bin) => bin.active),
   [false, false, false, true, true, false, false, false, false, false],
 );
