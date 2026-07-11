@@ -315,9 +315,9 @@
   --cw-plot-ramp-3: #576dff;
   --cw-plot-ramp-4: #9076ff;
   --cw-plot-ramp-5: #9076ff;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --cw-brand-blue: #0058a6;
   --focus-ring: #93c5fd;
@@ -423,9 +423,9 @@
   --cw-plot-ramp-3: #0021aa;
   --cw-plot-ramp-4: #0c0090;
   --cw-plot-ramp-5: #0c0090;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #1d4ed8;
 }
@@ -530,9 +530,9 @@
   --cw-plot-ramp-3: #123ec6;
   --cw-plot-ramp-4: #1b10af;
   --cw-plot-ramp-5: #1b10af;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #007acc;
 }
@@ -637,9 +637,9 @@
   --cw-plot-ramp-3: #1c5fff;
   --cw-plot-ramp-4: #443cff;
   --cw-plot-ramp-5: #443cff;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #3794ff;
 }
@@ -748,9 +748,9 @@
   --cw-plot-ramp-3: #0021aa;
   --cw-plot-ramp-4: #0c0090;
   --cw-plot-ramp-5: #0c0090;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #000080;
   --cw-retro-highlight: #ffffff;
@@ -862,9 +862,9 @@
   --cw-plot-ramp-3: #3f63ff;
   --cw-plot-ramp-4: #7760ff;
   --cw-plot-ramp-5: #7760ff;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #00ffcc;
 }
@@ -974,9 +974,9 @@
   --cw-plot-ramp-3: #4e5a76;
   --cw-plot-ramp-4: #454467;
   --cw-plot-ramp-5: #454467;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #5f7685;
 }
@@ -1081,9 +1081,9 @@
   --cw-plot-ramp-3: #858fa8;
   --cw-plot-ramp-4: #9897b5;
   --cw-plot-ramp-5: #9897b5;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #aebdca;
 }
@@ -1189,9 +1189,9 @@
   --cw-plot-ramp-3: #235aab;
   --cw-plot-ramp-4: #1e2996;
   --cw-plot-ramp-5: #1e2996;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #2684a8;
 }
@@ -1296,9 +1296,9 @@
   --cw-plot-ramp-3: #5c9ccc;
   --cw-plot-ramp-4: #738cd3;
   --cw-plot-ramp-5: #738cd3;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #8bdbe4;
 }
@@ -1405,9 +1405,9 @@
   --cw-plot-ramp-3: #8d7b32;
   --cw-plot-ramp-4: #717a2b;
   --cw-plot-ramp-5: #717a2b;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #9b6b3d;
 }
@@ -1512,9 +1512,9 @@
   --cw-plot-ramp-3: #3d8163;
   --cw-plot-ramp-4: #356f69;
   --cw-plot-ramp-5: #356f69;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #4e8f5a;
 }
@@ -1619,9 +1619,9 @@
   --cw-plot-ramp-3: #6dbb6f;
   --cw-plot-ramp-4: #82c599;
   --cw-plot-ramp-5: #82c599;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #a4d58f;
 }
@@ -1727,9 +1727,9 @@
   --cw-plot-ramp-3: #00e5ff;
   --cw-plot-ramp-4: #00e5ff;
   --cw-plot-ramp-5: #00e5ff;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #ffff00;
 }
@@ -4293,37 +4293,13 @@ main {
   flex-wrap: wrap;
 }
 
-.concordance-card-stats,
-.concordance-card-collapse {
-  min-height: 30px;
-  padding: 4px 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font: inherit;
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-
 .concordance-card-stats {
+  margin: 0;
+  padding: 4px 0;
+  color: var(--text-muted);
   font-family: var(--cw-font-mono);
+  font-size: 0.78rem;
   text-align: right;
-}
-
-.concordance-card-collapse {
-  color: var(--text-color);
-  font-weight: 650;
-}
-
-.concordance-card-stats:hover,
-.concordance-card-collapse:hover {
-  color: var(--accent-color);
-}
-
-.concordance-card-stats:focus-visible,
-.concordance-card-collapse:focus-visible {
-  outline: 2px solid var(--cw-interaction-focus-ring);
-  outline-offset: 2px;
 }
 
 .concordance-card-controls {
@@ -4534,14 +4510,14 @@ main {
 
 .concordance-table tr {
   display: grid;
-  grid-template-columns: minmax(7rem, 10rem) minmax(0, 1fr) max-content minmax(0, 1fr);
+  grid-template-columns: 96px minmax(0, 1fr) 104px minmax(0, 1fr);
   width: 100%;
   min-width: 0;
 }
 
 .concordance-table th,
 .concordance-table td {
-  padding: 6px 10px;
+  padding: 3px 5px;
   border-bottom: 1px solid var(--border-color);
   vertical-align: middle;
 }
@@ -4574,7 +4550,7 @@ main {
 
 .concordance-file {
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
 }
 
 .concordance-left,
@@ -4666,12 +4642,10 @@ main {
 
 .concordance-node {
   display: inline-block;
-  padding: 1px 5px;
-  border: 1px solid var(--accent-color);
-  border-radius: 4px;
-  background: var(--cw-surface-subtle-strong);
-  color: var(--text-color);
-  box-shadow: inset 0 -2px 0 var(--accent-color);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-color);
   font-weight: 750;
   white-space: nowrap;
   vertical-align: middle;
@@ -4679,6 +4653,10 @@ main {
 
 .concordance-row {
   cursor: pointer;
+}
+
+.concordance-row:nth-of-type(even) td {
+  background: var(--cw-surface-subtle);
 }
 
 .concordance-row:hover td,
@@ -5336,23 +5314,38 @@ main {
   font-size: 0.78rem;
 }
 
-.concordance-collocation-action {
-  display: inline-flex;
+.concordance-collocation-progress {
+  display: grid;
+  grid-template-columns: minmax(12rem, max-content) minmax(8rem, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  padding: 7px 9px;
-  border: 1px solid var(--cw-warning-border-subtle);
-  border-radius: 4px;
-  background: var(--cw-warning-bg);
+  gap: 10px;
+  color: var(--text-color);
 }
 
-.concordance-collocation-action-copy {
-  min-width: 0;
+.concordance-collocation-progress-track {
+  position: relative;
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border-color);
 }
 
-.concordance-collocation-action-button {
-  flex: 0 0 auto;
+.concordance-collocation-progress-indicator {
+  position: absolute;
+  inset-block: 0;
+  width: 38%;
+  border-radius: inherit;
+  background: var(--accent-color);
+  animation: concordance-collocation-progress 1.3s ease-in-out infinite;
+}
+
+@keyframes concordance-collocation-progress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(370%); }
+}
+
+.concordance-collocation-progress-cancel {
   min-height: 28px;
   padding: 3px 8px;
   font-size: 0.78rem;
@@ -5485,14 +5478,20 @@ main {
 
 .concordance-collocate-evidence-toggle {
   min-height: 28px;
-  padding: 3px 6px;
-  border: 0;
-  background: transparent;
+  padding: 3px 7px;
+  border: 1px solid var(--cw-collocate-border);
+  border-radius: 4px;
+  background: var(--cw-collocate-bg);
   color: var(--accent-color);
   font: inherit;
   font-size: 0.72rem;
   font-weight: 650;
   cursor: pointer;
+}
+
+.concordance-collocate-evidence-toggle:hover {
+  border-color: var(--cw-interaction-border-hover);
+  background: var(--cw-interaction-bg-hover);
 }
 
 .concordance-collocate-evidence-toggle:focus-visible {
@@ -8831,9 +8830,9 @@ mark.search-match.current-match {
   --cw-plot-ramp-3: #d7c060;
   --cw-plot-ramp-4: #d1de78;
   --cw-plot-ramp-5: #d1de78;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #f0c28f;
 }
@@ -8939,9 +8938,9 @@ mark.search-match.current-match {
   --cw-plot-ramp-3: #000000;
   --cw-plot-ramp-4: #000000;
   --cw-plot-ramp-5: #000000;
-  --cw-kwic-sort-1: var(--cw-plot-ramp-1);
-  --cw-kwic-sort-2: var(--cw-plot-ramp-3);
-  --cw-kwic-sort-3: var(--cw-plot-ramp-5);
+  --cw-kwic-sort-1: var(--cw-collocate-text);
+  --cw-kwic-sort-2: var(--cw-success-text);
+  --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #0000ff;
 }

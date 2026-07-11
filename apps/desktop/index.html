@@ -495,11 +495,10 @@
                         <p>Where and how does the node occur in context?</p>
                       </div>
                       <div class="concordance-card-actions">
-                        <button id="concordance-lines-stats" class="concordance-card-stats" type="button" data-concordance-card="lines" data-concordance-card-action="controls" aria-expanded="false" aria-controls="concordance-lines-controls">window 5L–5R · file/position · showing 0 of 0</button>
-                        <button id="concordance-lines-collapse" class="concordance-card-collapse" type="button" data-concordance-card="lines" data-concordance-card-action="collapse" aria-expanded="true" aria-controls="concordance-lines-body" aria-label="Collapse Concordance Lines">Collapse</button>
+                        <p id="concordance-lines-stats" class="concordance-card-stats">window 5L–5R · file/position · showing 0 of 0</p>
                       </div>
                     </header>
-                    <div id="concordance-lines-controls" class="concordance-card-controls concordance-lines-controls hidden">
+                    <div id="concordance-lines-controls" class="concordance-card-controls concordance-lines-controls">
                       <label for="concordance-window-input">
                         <span>Window</span>
                         <input id="concordance-window-input" type="number" min="1" max="20" step="1" value="5" />
@@ -563,11 +562,10 @@
                         <p>Which words systematically occur near the node, and where relative to it?</p>
                       </div>
                       <div class="concordance-card-actions">
-                        <button id="concordance-collocates-stats" class="concordance-card-stats" type="button" data-concordance-card="collocates" data-concordance-card-action="controls" aria-expanded="false" aria-controls="concordance-collocates-controls">span 5L–5R · logDice · min freq 5 · showing 0 of 0</button>
-                        <button id="concordance-collocates-collapse" class="concordance-card-collapse" type="button" data-concordance-card="collocates" data-concordance-card-action="collapse" aria-expanded="true" aria-controls="concordance-collocates-body" aria-label="Collapse Collocates">Collapse</button>
+                        <p id="concordance-collocates-stats" class="concordance-card-stats">span 5L–5R · logDice · min freq 5 · showing 0 of 0</p>
                       </div>
                     </header>
-                    <div id="concordance-collocates-controls" class="concordance-card-controls concordance-collocation-controls hidden">
+                    <div id="concordance-collocates-controls" class="concordance-card-controls concordance-collocation-controls">
                       <label for="concordance-collocation-span">
                         <span>Span</span>
                         <input id="concordance-collocation-span" type="number" min="1" max="20" step="1" value="5" />
@@ -593,11 +591,11 @@
                         </select>
                       </label>
                       <label for="concordance-collocation-min-o11">
-                        <span>Min co-occ</span>
+                        <span>Min co-occurrence</span>
                         <input id="concordance-collocation-min-o11" type="number" min="0" step="1" value="5" />
                       </label>
                       <label for="concordance-collocation-min-freq">
-                        <span>Min freq</span>
+                        <span>Min corpus frequency</span>
                         <input id="concordance-collocation-min-freq" type="number" min="0" step="1" value="5" />
                       </label>
                       <label class="frequency-stopword-control" for="concordance-collocation-hide-stopwords">
@@ -645,11 +643,10 @@
                         <p>How are the node occurrences spread across documents?</p>
                       </div>
                       <div class="concordance-card-actions">
-                        <button id="concordance-distribution-stats" class="concordance-card-stats" type="button" data-concordance-card="distribution" data-concordance-card-action="controls" aria-expanded="false" aria-controls="concordance-distribution-controls">0 of 0 documents with hits · showing 0 of 0</button>
-                        <button id="concordance-distribution-collapse" class="concordance-card-collapse" type="button" data-concordance-card="distribution" data-concordance-card-action="collapse" aria-expanded="true" aria-controls="concordance-distribution-body" aria-label="Collapse Distribution">Collapse</button>
+                        <p id="concordance-distribution-stats" class="concordance-card-stats">0 of 0 documents with hits · showing 0 of 0</p>
                       </div>
                     </header>
-                    <div id="concordance-distribution-controls" class="concordance-card-controls concordance-distribution-controls hidden">
+                    <div id="concordance-distribution-controls" class="concordance-card-controls concordance-distribution-controls">
                       <p>Ranked by occurrence count · 10 documents per page</p>
                     </div>
                     <div id="concordance-distribution-body" class="concordance-card-body">
