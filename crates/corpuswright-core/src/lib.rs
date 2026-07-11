@@ -55,7 +55,7 @@ pub use analysis::{
     AnnotationCacheBuildProgress, AnnotationCacheState, AnnotationLayer, AnnotationLayerBuildError,
     AnnotationLayerBuildOptions, AnnotationLayerDocument, CompareDocumentCell, CompareDocumentRow,
     CompareExpressionSummary, CompareExpressionsQuery, CompareExpressionsResult,
-    ConcordanceCollocateRow, ConcordanceCollocationAggregate,
+    ConcordanceCollocatePositionCounts, ConcordanceCollocateRow, ConcordanceCollocationAggregate,
     ConcordanceCollocationAggregationSignature, ConcordanceCollocationDirection,
     ConcordanceCollocationMeasure, ConcordanceCollocationQuery, ConcordanceCollocationResult,
     ConcordanceCollocationSortKey, ConcordanceContextFilterDirection, ConcordanceDistributionItem,

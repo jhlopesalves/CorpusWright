@@ -94,6 +94,17 @@ pub struct ConcordanceCollocationQuery {
 }
 
 /// One surface-token collocate with contingency counts and association scores.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ConcordanceCollocatePositionCounts {
+    #[ts(type = "Array<number>")]
+    pub left: Vec<u64>,
+    #[ts(type = "Array<number>")]
+    pub right: Vec<u64>,
+}
+
+/// One surface-token collocate with contingency counts and association scores.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -109,6 +120,7 @@ pub struct ConcordanceCollocateRow {
     pub o22: i64,
     #[ts(type = "number")]
     pub collocate_frequency: u64,
+    pub position_counts: ConcordanceCollocatePositionCounts,
     pub mi: Option<f64>,
     pub mi3: Option<f64>,
     pub t_score: Option<f64>,
@@ -244,6 +256,30 @@ impl ConcordanceCollocationDistanceCounts {
             total += self.counts[start..start + span].iter().sum::<u64>();
         }
         total
+    }
+
+    fn first_five(
+        &self,
+        span: usize,
+        direction: ConcordanceCollocationDirection,
+    ) -> ConcordanceCollocatePositionCounts {
+        let active_span = span.min(5);
+        let mut left = vec![0; 5];
+        let mut right = vec![0; 5];
+        if matches!(
+            direction,
+            ConcordanceCollocationDirection::Left | ConcordanceCollocationDirection::Both
+        ) {
+            left[..active_span].copy_from_slice(&self.counts[..active_span]);
+        }
+        if matches!(
+            direction,
+            ConcordanceCollocationDirection::Right | ConcordanceCollocationDirection::Both
+        ) {
+            let start = CONCORDANCE_COLLOCATION_MAX_SPAN;
+            right[..active_span].copy_from_slice(&self.counts[start..start + active_span]);
+        }
+        ConcordanceCollocatePositionCounts { left, right }
     }
 }
 
@@ -383,6 +419,7 @@ fn collocation_row(
     collocate_frequency: u64,
     r1: u64,
     n: u64,
+    position_counts: ConcordanceCollocatePositionCounts,
 ) -> ConcordanceCollocateRow {
     let o12_i = i128_to_i64(r1 as i128 - o11 as i128);
     let o21_i = i128_to_i64(collocate_frequency as i128 - o11 as i128);
@@ -429,6 +466,7 @@ fn collocation_row(
         o21: o21_i,
         o22: o22_i,
         collocate_frequency,
+        position_counts,
         mi,
         mi3,
         t_score,
@@ -1281,7 +1319,14 @@ pub fn query_concordance_collocations_from_aggregate(
             &mut retained,
             NumericCollocationRow {
                 symbol_id,
-                row: collocation_row(String::new(), o11, collocate_frequency, r1, aggregate.n),
+                row: collocation_row(
+                    String::new(),
+                    o11,
+                    collocate_frequency,
+                    r1,
+                    aggregate.n,
+                    counts.first_five(span, direction),
+                ),
             },
             limit,
             query,
