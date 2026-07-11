@@ -54,9 +54,11 @@ import {
   collapseConcordanceCard,
   concordanceCardRequestKey,
   createConcordanceWorkbenchState,
+  executeConcordanceSharedRequest,
   expandConcordanceCard,
   readConcordanceCollapsedCards,
   rejectConcordanceCardResponse,
+  planConcordanceSharedRequest,
   updateConcordanceSharedState,
   writeConcordanceCollapsedCards,
   type ConcordanceCardId,
@@ -450,8 +452,9 @@ export function runConcordanceSearch(): void {
   workbenchState.lines.contextFilterDirection = "both";
   syncLiveRequestState(query);
   markConcordanceCollocationsForAggregationChange();
-  if (concordanceCardIsExpanded("lines") || concordanceCardIsExpanded("distribution")) {
-    void refreshConcordance().finally(renderConcordance);
+  const plan = planConcordanceSharedRequest(workbenchState);
+  if (plan.concordance !== null) {
+    void executeConcordanceSharedRequest(plan, refreshConcordance).finally(renderConcordance);
   } else {
     renderConcordance();
   }

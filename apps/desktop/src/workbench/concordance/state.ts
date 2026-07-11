@@ -77,6 +77,19 @@ export interface ConcordanceSharedRequestPlan {
   collocates: boolean;
 }
 
+export async function executeConcordanceSharedRequest(
+  plan: ConcordanceSharedRequestPlan,
+  refreshConcordance: () => Promise<void>,
+): Promise<void> {
+  if (plan.concordance !== null) await refreshConcordance();
+}
+
+export async function executeExplicitConcordanceCollocationRequest(
+  refreshCollocations: () => Promise<void>,
+): Promise<void> {
+  await refreshCollocations();
+}
+
 export type ConcordanceSectionRequest = { generation: number; requestKey: string };
 
 export interface StorageLike {

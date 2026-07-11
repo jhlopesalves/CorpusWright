@@ -246,7 +246,8 @@ const collocationActionEnd = workbench.indexOf("function collocateEvidenceExpans
 const collocationActionBody = workbench.slice(collocationActionStart, collocationActionEnd);
 assert(
   collocationActionStart >= 0
-    && (collocationActionBody.match(/refreshConcordanceCollocations\(\)/g) ?? []).length === 1,
+    && (collocationActionBody.match(/executeExplicitConcordanceCollocationRequest\(/g) ?? []).length === 1
+    && collocationActionBody.includes("refreshConcordanceCollocations"),
   "Compute collocates should issue exactly one collocation query",
 );
 for (const status of ["not computed", "stale — recompute required", "aggregating", "computed"]) {
@@ -290,11 +291,13 @@ const runConcordanceSearchMatch = workbench.match(
 );
 assert(runConcordanceSearchMatch, "Concordance search handler should exist");
 assert(
-  runConcordanceSearchMatch[1].includes('concordanceCardIsExpanded("lines")')
-    && runConcordanceSearchMatch[1].includes('concordanceCardIsExpanded("distribution")')
-    && runConcordanceSearchMatch[1].includes("void refreshConcordance().finally(renderConcordance);")
+  runConcordanceSearchMatch[1].includes("planConcordanceSharedRequest(workbenchState)")
+    && runConcordanceSearchMatch[1].includes("executeConcordanceSharedRequest(plan, refreshConcordance)")
     && !runConcordanceSearchMatch[1].includes("refreshConcordanceCollocations")
     && !runConcordanceSearchMatch[1].includes("Promise.all")
+    && workbench.includes('if (!state.lines.collapsed) cards.push("lines");')
+    && workbench.includes('if (!state.distribution.collapsed) cards.push("distribution");')
+    && workbench.includes("collocates: false")
     && !workbench.includes("activeConcordanceView"),
   "Shared Search should coordinate Lines and Distribution without computing Collocates",
 );
