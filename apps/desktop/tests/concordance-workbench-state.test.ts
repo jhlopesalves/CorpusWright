@@ -11,6 +11,8 @@ import {
   collapseConcordanceCard,
   concordanceCardRequestKey,
   createConcordanceWorkbenchState,
+  executeConcordanceSharedRequest,
+  executeExplicitConcordanceCollocationRequest,
   expandConcordanceCard,
   invalidateConcordanceCard,
   planConcordanceLocalRequest,
@@ -101,6 +103,30 @@ function sectionResult(
     rows,
     distribution,
   };
+}
+
+{
+  const storage = new MemoryStorage();
+  const state = createConcordanceWorkbenchState(shared("shared query"), readConcordanceCollapsedCards(storage));
+  let concordanceRequests = 0;
+  let collocationRequests = 0;
+
+  assert.equal(state.lines.collapsed, false);
+  assert.equal(state.distribution.collapsed, false);
+  assert.equal(state.collocates.collapsed, true);
+  await executeConcordanceSharedRequest(planConcordanceSharedRequest(state), async () => {
+    concordanceRequests += 1;
+  });
+  assert.equal(concordanceRequests, 1);
+  assert.equal(collocationRequests, 0);
+
+  assert.equal(expandConcordanceCard(state, "collocates"), "query");
+  assert.equal(collocationRequests, 0);
+  await executeExplicitConcordanceCollocationRequest(async () => {
+    collocationRequests += 1;
+  });
+  assert.equal(collocationRequests, 1);
+  assert.equal(concordanceRequests, 1);
 }
 
 {
