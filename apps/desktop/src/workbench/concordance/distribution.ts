@@ -2,6 +2,7 @@ import type { ConcordanceResult } from "../../analysis";
 import {
   CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,
+  concordanceDistributionMagnitudePercent,
   concordanceRangePercent,
 } from "../../concordance";
 import { dom } from "../../dom";
@@ -79,6 +80,12 @@ export function renderConcordanceDistribution(
 
     metrics.append(hitMetric, rangeMetric, topFileMetric, dispersionMetric);
     panel.appendChild(metrics);
+
+    const reading = document.createElement("p");
+    reading.className = "concordance-distribution-reading";
+    reading.textContent =
+      "Concentration in a few documents may suggest topic, genre, or source dependence; broad reach may suggest more corpus-general use.";
+    panel.appendChild(reading);
   }
 
   const tableWrap = document.createElement("div");
@@ -89,7 +96,7 @@ export function renderConcordanceDistribution(
 
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  for (const label of ["File", "Hits", "Tokens", "Hits per 10k", "Share of hits"]) {
+  for (const label of ["File", "Occurrences", "Tokens", "Hits per 10k", "Share of hits"]) {
     const cell = document.createElement("th");
     cell.textContent = label;
     header.appendChild(cell);
@@ -120,8 +127,21 @@ export function renderConcordanceDistribution(
       file.textContent = item.displayName || item.sourcePath;
 
       const count = document.createElement("td");
-      count.className = "numeric";
-      count.textContent = formatNumber(item.count);
+      count.className = "numeric concordance-distribution-occurrences";
+      const countValue = document.createElement("span");
+      countValue.className = "concordance-distribution-count";
+      countValue.textContent = formatNumber(item.count);
+      const countTrack = document.createElement("span");
+      countTrack.className = "concordance-distribution-bar-track";
+      countTrack.setAttribute("aria-hidden", "true");
+      const countBar = document.createElement("span");
+      countBar.className = "concordance-distribution-bar";
+      countBar.style.setProperty(
+        "--distribution-bar-width",
+        `${concordanceDistributionMagnitudePercent(item.count, distribution.maxCount)}%`,
+      );
+      countTrack.appendChild(countBar);
+      count.append(countValue, countTrack);
 
       const tokens = document.createElement("td");
       tokens.className = "numeric";

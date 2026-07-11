@@ -311,10 +311,14 @@ const renderConcordanceDistributionMatch = workbench.match(
 assert(renderConcordanceDistributionMatch, "Concordance Distribution renderer should exist");
 const renderConcordanceDistributionBody = renderConcordanceDistributionMatch[1];
 assert(
-  renderConcordanceDistributionBody.includes('for (const label of ["File", "Hits", "Tokens", "Hits per 10k", "Share of hits"])')
+  renderConcordanceDistributionBody.includes('for (const label of ["File", "Occurrences", "Tokens", "Hits per 10k", "Share of hits"])')
     && !renderConcordanceDistributionBody.includes('"Bar"')
-    && renderConcordanceDistributionBody.includes("cell.colSpan = 5;"),
-  "Concordance Distribution should expose metric-first columns and a five-column empty state",
+    && renderConcordanceDistributionBody.includes("cell.colSpan = 5;")
+    && renderConcordanceDistributionBody.includes('countValue.className = "concordance-distribution-count";')
+    && renderConcordanceDistributionBody.includes('countTrack.className = "concordance-distribution-bar-track";')
+    && renderConcordanceDistributionBody.includes('countBar.className = "concordance-distribution-bar";')
+    && renderConcordanceDistributionBody.includes("concordanceDistributionMagnitudePercent(item.count, distribution.maxCount)"),
+  "Concordance Distribution should expose a five-column ledger with exact occurrence counts and payload-scaled bars",
 );
 assert(
   renderConcordanceDistributionBody.includes('metrics.className = "concordance-distribution-metrics"')
@@ -333,8 +337,14 @@ assert(
   styles.includes(".concordance-distribution-metrics")
     && styles.includes(".concordance-distribution-metric")
     && styles.includes(".concordance-distribution-metric-label")
-    && styles.includes("grid-template-columns: repeat(auto-fit, minmax(8rem, max-content));"),
-  "Concordance Distribution metric strip should have compact wrapping CSS",
+    && styles.includes("grid-template-columns: repeat(auto-fit, minmax(8rem, max-content));")
+    && styles.includes(".concordance-distribution-bar {\n  display: block;")
+    && styles.includes("background: var(--cw-plot-ramp-3);")
+    && styles.includes(".concordance-distribution-reading")
+    && renderConcordanceDistributionBody.includes("Concentration in a few documents may suggest topic, genre, or source dependence; broad reach may suggest more corpus-general use.")
+    && !renderConcordanceDistributionBody.includes("significance")
+    && !renderConcordanceDistributionBody.includes("representative"),
+  "Concordance Distribution should retain its metrics and use a restrained shared-ramp ledger with cautious interpretive copy",
 );
 assert(
   renderConcordanceDistributionBody.includes("item.ratePer10k")
