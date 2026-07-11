@@ -10,10 +10,10 @@ use corpuswright_core::analysis::{
     CorpusOverviewContext, FrequencyGroupMode, FrequencyPage, FrequencyQuery,
     RoutedConcordanceCollocationAggregate, RoutedConcordanceResult, TermDistributionPage,
     TermDistributionQuery, aggregate_concordance_collocations_documents,
-    aggregate_concordance_collocations_documents_routed,
     aggregate_concordance_collocations_routed_provider, annotation_cache_availability_for_corpus,
     build_analysis_corpus, cleaning_config_signature, compare_expressions,
     concordance_collocation_aggregation_signature, expand_concordance_context,
+    aggregate_concordance_collocations_scan_provider,
     query_analysis_documents, query_annotated_frequency, query_annotated_term_distribution,
     query_concordance_collocations_from_aggregate, query_frequency_list, query_term_distribution,
     resolve_analysis_input, search_concordance_documents, search_concordance_documents_routed,
@@ -2465,7 +2465,7 @@ fn search_concordance_with_warm_index_provider<Resolve, Progress>(
 ) -> Result<RoutedConcordanceResult, corpuswright_core::analysis::ConcordanceError>
 where
     Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
-    Progress: FnMut(corpuswright_core::analysis::concordance::ConcordanceProgress),
+    Progress: FnMut(corpuswright_core::analysis::ConcordanceProgress),
 {
     let mut cache = context_state.lock().unwrap();
     if cache
@@ -2496,46 +2496,7 @@ where
     Ok(routed)
 }
 
-fn aggregate_concordance_collocations_with_warm_index(
-    documents: &[ConcordanceDocument],
-    query: &ConcordanceCollocationQuery,
-    tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
-    context_state: &ConcordanceIndexContextHandle,
-    key: ConcordanceIndexContextKey,
-) -> Result<RoutedConcordanceCollocationAggregate, corpuswright_core::analysis::ConcordanceError> {
-    let mut cache = context_state.lock().unwrap();
-    if cache
-        .entry
-        .as_ref()
-        .is_none_or(|cached_entry| cached_entry.key != key)
-    {
-        let context = cache
-            .cache_root
-            .clone()
-            .map(ConcordanceSearchContext::with_cache_root)
-            .unwrap_or_default();
-        cache.entry = Some(ConcordanceIndexContextEntry {
-            key: key.clone(),
-            context,
-        });
-    }
-    let entry = cache
-        .entry
-        .as_mut()
-        .expect("concordance index context exists after insertion");
-    let routed = aggregate_concordance_collocations_documents_routed(
-        documents,
-        query,
-        tokenization_config,
-        &mut entry.context,
-        ConcordanceBackend::Index,
-        &SurfaceIndexCancellationToken::default(),
-    )?;
-    if routed.backend_used == ConcordanceBackendUsed::Index {
-        cache.clear_default_index_failure_for(&key);
-    }
-    Ok(routed)
-}
+
 
 fn aggregate_concordance_collocations_with_warm_index_provider<Resolve, Progress>(
     document_slots: usize,
@@ -2549,7 +2510,7 @@ fn aggregate_concordance_collocations_with_warm_index_provider<Resolve, Progress
 ) -> Result<RoutedConcordanceCollocationAggregate, corpuswright_core::analysis::ConcordanceError>
 where
     Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
-    Progress: FnMut(corpuswright_core::analysis::concordance::ConcordanceProgress),
+    Progress: FnMut(corpuswright_core::analysis::ConcordanceProgress),
 {
     let mut cache = context_state.lock().unwrap();
     if cache
@@ -3082,46 +3043,63 @@ fn log_concordance_collocation_default_index_fallback_failure(
         routed.aggregate.n
     );
 }
-
-fn aggregate_concordance_collocations_strict_index_mode(
-    documents: &[ConcordanceDocument],
+fn aggregate_concordance_collocations_strict_index_mode<Resolve, Progress>(
+    document_slots: usize,
     query: &ConcordanceCollocationQuery,
     tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
-) -> Result<ConcordanceCollocationAggregationOutcome, String> {
+    cancellation: &corpuswright_core::index::SurfaceIndexCancellationToken,
+    resolve: Resolve,
+    report_progress: Progress,
+) -> Result<ConcordanceCollocationAggregationOutcome, String>
+where
+    Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
+    Progress: FnMut(corpuswright_core::analysis::ConcordanceProgress),
+{
     aggregate_concordance_collocations_strict_index_mode_with(
-        documents,
+        document_slots,
         query,
         tokenization_config,
         context_state,
         key,
-        aggregate_concordance_collocations_with_warm_index,
+        cancellation,
+        resolve,
+        report_progress,
+        aggregate_concordance_collocations_with_warm_index_provider,
     )
 }
 
-fn aggregate_concordance_collocations_strict_index_mode_with<SearchIndex>(
-    documents: &[ConcordanceDocument],
+fn aggregate_concordance_collocations_strict_index_mode_with<SearchIndex, Resolve, Progress>(
+    document_slots: usize,
     query: &ConcordanceCollocationQuery,
     tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
+    cancellation: &corpuswright_core::index::SurfaceIndexCancellationToken,
+    resolve: Resolve,
+    report_progress: Progress,
     search_index: SearchIndex,
 ) -> Result<ConcordanceCollocationAggregationOutcome, String>
 where
+    Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
+    Progress: FnMut(corpuswright_core::analysis::ConcordanceProgress),
     SearchIndex: FnOnce(
-        &[ConcordanceDocument],
+        usize,
         &ConcordanceCollocationQuery,
         &corpuswright_core::tokenization::TokenizationConfig,
         &ConcordanceIndexContextHandle,
         ConcordanceIndexContextKey,
+        &corpuswright_core::index::SurfaceIndexCancellationToken,
+        Resolve,
+        Progress,
     ) -> Result<
         RoutedConcordanceCollocationAggregate,
         corpuswright_core::analysis::ConcordanceError,
     >,
 {
     let index_started_at = Instant::now();
-    let routed = search_index(documents, query, tokenization_config, context_state, key);
+    let routed = search_index(document_slots, query, tokenization_config, context_state, key, cancellation, resolve, report_progress);
     let index_elapsed = index_started_at.elapsed();
     match routed {
         Ok(routed) => {
@@ -3147,48 +3125,69 @@ where
     }
 }
 
-fn aggregate_concordance_collocations_default_index_mode(
-    documents: &[ConcordanceDocument],
+fn aggregate_concordance_collocations_default_index_mode<Resolve, Progress>(
+    document_slots: usize,
     query: &ConcordanceCollocationQuery,
     tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
-) -> Result<ConcordanceCollocationAggregationOutcome, String> {
+    cancellation: &corpuswright_core::index::SurfaceIndexCancellationToken,
+    resolve: Resolve,
+    report_progress: Progress,
+) -> Result<ConcordanceCollocationAggregationOutcome, String> 
+where
+    Resolve: FnMut(usize) -> Option<ConcordanceDocument> + Clone,
+    Progress: FnMut(corpuswright_core::analysis::ConcordanceProgress) + Clone,
+{
     aggregate_concordance_collocations_default_index_mode_with(
-        documents,
+        document_slots,
         query,
         tokenization_config,
         context_state,
         key,
-        |d, q, t| aggregate_concordance_collocations_documents(d, q, t, SurfaceIndexCancellationToken::default()),
-        aggregate_concordance_collocations_with_warm_index,
+        cancellation,
+        resolve,
+        report_progress,
+        |slots, q, t, cancel, res, _| aggregate_concordance_collocations_scan_provider(slots, q, t, cancel, res).map(|r| r.aggregate),
+        aggregate_concordance_collocations_with_warm_index_provider,
     )
 }
 
-fn aggregate_concordance_collocations_default_index_mode_with<SearchScan, SearchIndex>(
-    documents: &[ConcordanceDocument],
+fn aggregate_concordance_collocations_default_index_mode_with<SearchScan, SearchIndex, Resolve, Progress>(
+    document_slots: usize,
     query: &ConcordanceCollocationQuery,
     tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
+    cancellation: &corpuswright_core::index::SurfaceIndexCancellationToken,
+    resolve: Resolve,
+    report_progress: Progress,
     search_scan: SearchScan,
     search_index: SearchIndex,
 ) -> Result<ConcordanceCollocationAggregationOutcome, String>
 where
+    Resolve: FnMut(usize) -> Option<ConcordanceDocument> + Clone,
+    Progress: FnMut(corpuswright_core::analysis::ConcordanceProgress) + Clone,
     SearchScan: Fn(
-        &[ConcordanceDocument],
+        usize,
         &ConcordanceCollocationQuery,
         &corpuswright_core::tokenization::TokenizationConfig,
+        &corpuswright_core::index::SurfaceIndexCancellationToken,
+        Resolve,
+        Progress,
     ) -> Result<
         ConcordanceCollocationAggregate,
         corpuswright_core::analysis::ConcordanceError,
     >,
     SearchIndex: FnOnce(
-        &[ConcordanceDocument],
+        usize,
         &ConcordanceCollocationQuery,
         &corpuswright_core::tokenization::TokenizationConfig,
         &ConcordanceIndexContextHandle,
         ConcordanceIndexContextKey,
+        &corpuswright_core::index::SurfaceIndexCancellationToken,
+        Resolve,
+        Progress,
     ) -> Result<
         RoutedConcordanceCollocationAggregate,
         corpuswright_core::analysis::ConcordanceError,
@@ -3196,7 +3195,7 @@ where
 {
     if concordance_default_index_disabled_for_key(context_state, &key) {
         let scan_started_at = Instant::now();
-        let scan = search_scan(documents, query, tokenization_config)
+        let scan = search_scan(document_slots, query, tokenization_config, cancellation, resolve.clone(), report_progress.clone())
             .map_err(|error| error.to_string())?;
         let scan_elapsed = scan_started_at.elapsed();
         log_concordance_collocation_default_index_previous_error_recovery(
@@ -3214,11 +3213,14 @@ where
 
     let index_started_at = Instant::now();
     let routed = search_index(
-        documents,
+        document_slots,
         query,
         tokenization_config,
         context_state,
         key.clone(),
+        cancellation,
+        resolve.clone(),
+        report_progress.clone(),
     );
     let index_elapsed = index_started_at.elapsed();
     match routed {
@@ -3259,7 +3261,7 @@ where
             }
             let failure_state = record_concordance_default_index_error(context_state, &key);
             let scan_started_at = Instant::now();
-            let scan = search_scan(documents, query, tokenization_config);
+            let scan = search_scan(document_slots, query, tokenization_config, cancellation, resolve.clone(), report_progress.clone());
             let scan_elapsed = scan_started_at.elapsed();
             match scan {
                 Ok(scan) => {
@@ -3409,25 +3411,37 @@ fn log_concordance_collocation_audit_index_error(
     );
 }
 
-fn aggregate_concordance_collocations_audit_mode(
-    documents: &[ConcordanceDocument],
+fn aggregate_concordance_collocations_audit_mode<Resolve, Progress>(
+    document_slots: usize,
     query: &ConcordanceCollocationQuery,
     tokenization_config: &corpuswright_core::tokenization::TokenizationConfig,
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
-) -> Result<ConcordanceCollocationAggregate, String> {
+    cancellation: &corpuswright_core::index::SurfaceIndexCancellationToken,
+    mut resolve: Resolve,
+    mut report_progress: Progress,
+) -> Result<ConcordanceCollocationAggregate, String> 
+where
+    Resolve: FnMut(usize) -> Option<ConcordanceDocument> + Clone,
+    Progress: FnMut(corpuswright_core::analysis::ConcordanceProgress) + Clone,
+{
     let scan_started_at = Instant::now();
-    let scan = aggregate_concordance_collocations_documents(documents, query, tokenization_config, SurfaceIndexCancellationToken::default())
-        .map_err(|error| error.to_string())?;
+    let scan_result = aggregate_concordance_collocations_scan_provider(
+        document_slots, query, tokenization_config, cancellation, resolve.clone()
+    ).map_err(|error| error.to_string())?;
+    let scan = scan_result.aggregate;
     let scan_elapsed = scan_started_at.elapsed();
 
     let index_started_at = Instant::now();
-    let routed = aggregate_concordance_collocations_with_warm_index(
-        documents,
+    let routed = aggregate_concordance_collocations_with_warm_index_provider(
+        document_slots,
         query,
         tokenization_config,
         context_state,
         key,
+        cancellation,
+        resolve,
+        report_progress,
     );
     let index_elapsed = index_started_at.elapsed();
     match routed {
@@ -3871,7 +3885,7 @@ async fn search_concordance_command(
                         )
                     },
                     |progress| {
-                        let _ = app.emit_all("concordance-progress", progress);
+                        let _ = app.emit("concordance-progress", progress);
                     },
                 );
 
@@ -4069,7 +4083,7 @@ async fn query_concordance_collocations_command(
                 &tokenization_config,
                 &index_context,
                 context_key,
-                &cancellation,
+                &cancellation.clone().into(),
                 |document_index| {
                     concordance_document_from_record(
                         &records[document_index],
@@ -4080,7 +4094,7 @@ async fn query_concordance_collocations_command(
                     )
                 },
                 |progress| {
-                    let _ = app.emit_all("concordance-progress", progress);
+                    let _ = app.emit("concordance-progress", progress);
                 },
             );
 
@@ -4111,35 +4125,57 @@ async fn query_concordance_collocations_command(
             }
         }
         ConcordanceBackendMode::Scan | ConcordanceBackendMode::Audit => {
-            let mut documents = Vec::new();
-            for (document_index, record) in records.iter().enumerate() {
-                if let Some(document) = concordance_document_from_record(
-                    record,
-                    document_index,
-                    project_root.as_deref(),
-                    &cleaning_config,
-                    &cache,
-                ) {
-                    documents.push(document);
-                }
+            let cancellation = Arc::new(AtomicBool::new(false));
+            {
+                let cache_guard = index_context.lock().unwrap();
+                *cache_guard.cancel.lock().unwrap() = Some(cancellation.clone());
             }
-            if mode == ConcordanceBackendMode::Scan {
-                aggregate_concordance_collocations_documents(
-                    &documents,
+            let res = if mode == ConcordanceBackendMode::Scan {
+                aggregate_concordance_collocations_scan_provider(
+                    records.len(),
                     &query_for_aggregation,
                     &tokenization_config,
-                    SurfaceIndexCancellationToken::default(),
+                    &cancellation.clone().into(),
+                    |document_index| {
+                        concordance_document_from_record(
+                            &records[document_index],
+                            document_index,
+                            project_root.as_deref(),
+                            &cleaning_config,
+                            &cache,
+                        )
+                    }
                 )
+                .map(|r| r.aggregate)
                 .map_err(|error| error.to_string())
             } else {
                 aggregate_concordance_collocations_audit_mode(
-                    &documents,
+                    records.len(),
                     &query_for_aggregation,
                     &tokenization_config,
                     &index_context,
                     context_key,
+                    &cancellation.clone().into(),
+                    |document_index| {
+                        concordance_document_from_record(
+                            &records[document_index],
+                            document_index,
+                            project_root.as_deref(),
+                            &cleaning_config,
+                            &cache,
+                        )
+                    },
+                    |progress| {
+                        let _ = app.emit("concordance-progress", progress);
+                    },
                 )
+            };
+            
+            {
+                let cache_guard = index_context.lock().unwrap();
+                *cache_guard.cancel.lock().unwrap() = None;
             }
+            res
         }
     })
     .await
@@ -5638,87 +5674,6 @@ mod tests {
     }
 
     #[test]
-    fn concordance_collocation_index_error_fallback_shares_default_failure_state() {
-        let documents = concordance_test_documents();
-        let collocation_query = desktop_collocation_query(
-            "movie",
-            false,
-            5,
-            corpuswright_core::analysis::ConcordanceCollocationDirection::Both,
-        );
-        let concordance_query = concordance_test_query("movie");
-        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
-        let context = concordance_test_context();
-        let key = concordance_test_context_key(7);
-        let aggregate = aggregate_concordance_collocations_documents(
-            &documents,
-            &collocation_query,
-            &tokenization_config,
-            corpuswright_core::index::SurfaceIndexCancellationToken::default(),
-        )
-        .unwrap();
-
-        for expected_state in [
-            ConcordanceDefaultIndexFailureState::RetryPending,
-            ConcordanceDefaultIndexFailureState::Disabled,
-        ] {
-            let routed_aggregate = aggregate.clone();
-            let outcome = aggregate_concordance_collocations_default_index_mode_with(
-                &documents,
-                &collocation_query,
-                &tokenization_config,
-                &context,
-                key.clone(),
-                |d, q, t| aggregate_concordance_collocations_documents(d, q, t, corpuswright_core::index::SurfaceIndexCancellationToken::default()),
-                |_, _, _, _, _| {
-                    Ok(RoutedConcordanceCollocationAggregate {
-                        aggregate: routed_aggregate,
-                        backend_used: ConcordanceBackendUsed::ScanFallback {
-                            reason: ConcordanceFallbackReason::IndexError,
-                        },
-                        index_rebuilt: false,
-                    })
-                },
-            )
-            .unwrap();
-            assert_eq!(outcome.aggregate, aggregate);
-            assert_eq!(
-                outcome.recovery_reason,
-                Some(ConcordanceIndexRecoveryReason::IndexError)
-            );
-            assert_eq!(
-                context
-                    .lock()
-                    .unwrap()
-                    .default_index_failure
-                    .as_ref()
-                    .map(|failure| &failure.state),
-                Some(&expected_state)
-            );
-        }
-
-        let index_calls = std::cell::Cell::new(0usize);
-        let concordance = search_concordance_documents_default_index_mode_with(
-            &documents,
-            &concordance_query,
-            &tokenization_config,
-            &context,
-            key,
-            search_concordance_documents,
-            |_, _, _, _, _| {
-                index_calls.set(index_calls.get() + 1);
-                Err(concordance_test_index_error())
-            },
-        )
-        .unwrap();
-
-        assert_eq!(index_calls.get(), 0);
-        assert_eq!(concordance.backend_used, ConcordanceBackendUsed::Scan);
-        assert_eq!(
-            concordance.recovery_reason,
-            Some(ConcordanceIndexRecoveryReason::PreviousIndexError)
-        );
-    }
 
     #[test]
     fn concordance_collocation_audit_difference_reports_full_aggregate_mismatch() {

@@ -1090,3 +1090,174 @@ fn kwic_expansion_retokenises_one_supplied_document() {
     assert_eq!(expansion.node_tokens, ["beta"]);
     assert_eq!(expansion.right_context, ["gamma"]);
 }
+
+#[test]
+#[ignore]
+fn benchmark_concordance_scale() {
+    use std::time::Instant;
+    use std::env;
+    use crate::analysis::concordance::{
+        ConcordanceDocument, ConcordanceQuery, ConcordanceSearchContext, ConcordanceSortKey,
+        search_concordance_documents_routed_provider, ConcordancePhase
+    };
+    use crate::analysis::collocation::{
+        ConcordanceCollocationQuery, aggregate_concordance_collocations_routed_provider,
+    };
+    use crate::analysis::AnalysisDocumentSelection;
+    use crate::tokenization::TokenizationConfig;
+    use crate::index::SurfaceIndexCancellationToken;
+
+    let num_tokens: usize = env::var("CONCORDANCE_BENCH_TOKENS")
+        .unwrap_or_else(|_| "5000000".to_string())
+        .parse()
+        .unwrap_or(5_000_000);
+    
+    let scenario = env::var("CONCORDANCE_BENCH_SCENARIO")
+        .unwrap_or_else(|_| "mixed".to_string());
+
+    println!("Running Concordance Scale Benchmark");
+    println!("Target tokens: {}", num_tokens);
+    println!("Scenario: {}", scenario);
+
+    let (documents, doc_len) = match scenario.as_str() {
+        "whale" => {
+            // One massive document
+            let text = "the quick brown fox jumps over the lazy dog alpha beta gamma ".repeat(num_tokens / 12);
+            let docs = vec![ConcordanceDocument {
+                document_index: 0,
+                source_path: "whale.txt".into(),
+                display_name: "whale.txt".into(),
+                text,
+            }];
+            (docs, 1)
+        }
+        "tiny-file" => {
+            // Many tiny documents
+            let num_docs = num_tokens / 10;
+            let mut docs = Vec::with_capacity(num_docs);
+            let text = "the quick brown fox jumps over the lazy dog";
+            for i in 0..num_docs {
+                docs.push(ConcordanceDocument {
+                    document_index: i,
+                    source_path: format!("doc_{}.txt", i).into(),
+                    display_name: format!("doc_{}.txt", i).into(),
+                    text: text.to_string(),
+                });
+            }
+            (docs, num_docs)
+        }
+        _ => {
+            // Mixed (typical corpus)
+            let num_docs = 1000;
+            let tokens_per_doc = num_tokens / num_docs;
+            let mut docs = Vec::with_capacity(num_docs);
+            for i in 0..num_docs {
+                let text = "the quick brown fox jumps over the lazy dog alpha beta gamma ".repeat(tokens_per_doc / 12);
+                docs.push(ConcordanceDocument {
+                    document_index: i,
+                    source_path: format!("mixed_{}.txt", i).into(),
+                    display_name: format!("mixed_{}.txt", i).into(),
+                    text,
+                });
+            }
+            (docs, num_docs)
+        }
+    };
+
+    println!("Generated {} documents", doc_len);
+
+    let config = TokenizationConfig::default();
+    let mut context = ConcordanceSearchContext::default();
+
+    let query = ConcordanceQuery {
+        query: "the".to_string(),
+        case_sensitive: false,
+        selection: AnalysisDocumentSelection {
+            all_documents: true,
+            ids: Vec::new(),
+            excluded_ids: Vec::new(),
+        },
+        context_filter: None,
+        context_filter_direction: crate::analysis::concordance::ConcordanceContextFilterDirection::Both,
+        sort_key: ConcordanceSortKey::Node,
+        window_tokens: 5,
+        offset: 0,
+        limit: 100,
+        distribution_offset: 0,
+        distribution_limit: 100,
+    };
+
+    let start = Instant::now();
+    let result = search_concordance_documents_routed_provider(
+        doc_len,
+        &query,
+        &config,
+        &mut context,
+        |idx| Some(documents[idx].clone()),
+        |progress| {
+            if progress.current_phase == ConcordancePhase::Searching && progress.files_done == 0 {
+                println!("  [Progress] Phase: {:?}", progress.current_phase);
+            }
+        },
+    ).expect("Concordance search failed");
+
+    let duration = start.elapsed();
+    println!("Concordance Search completed in {:?}", duration);
+    println!("Hits: {}", result.result.total_hits);
+    println!("Index rebuilt: {}", result.index_rebuilt);
+    
+    // Test Collocations
+    let col_query = ConcordanceCollocationQuery {
+        query: "the".to_string(),
+        case_sensitive: false,
+        selection: AnalysisDocumentSelection {
+            all_documents: true,
+            ids: Vec::new(),
+            excluded_ids: Vec::new(),
+        },
+        span: 5,
+        language: None,
+        direction: crate::analysis::collocation::ConcordanceCollocationDirection::Both,
+        min_cooccurrence: 1,
+        min_collocate_frequency: 1,
+        hide_stopwords: false,
+        sort_measure: crate::analysis::collocation::ConcordanceCollocationMeasure::LogDice,
+        sort_key: crate::analysis::collocation::ConcordanceCollocationSortKey::Association,
+        sort_direction: crate::analysis::frequency::SortDirection::Desc,
+        limit: 100,
+    };
+
+    let cancel = SurfaceIndexCancellationToken::default();
+    
+    let col_start = Instant::now();
+    let col_result = aggregate_concordance_collocations_routed_provider(
+        doc_len,
+        &col_query,
+        &config,
+        &mut context,
+        &cancel,
+        |idx| Some(documents[idx].clone()),
+        |_progress| {},
+    ).expect("Collocation aggregation failed");
+
+    let col_duration = col_start.elapsed();
+    println!("Collocation Aggregation completed in {:?}", col_duration);
+    println!("Collocates: {}", col_result.aggregate.candidate_counts.len());
+    println!("Total occurrences: {}", col_result.aggregate.n);
+    
+    // Now test warm cache performance
+    println!("Running Warm Cache Search...");
+    let warm_start = Instant::now();
+    let warm_result = search_concordance_documents_routed_provider(
+        doc_len,
+        &query,
+        &config,
+        &mut context,
+        |idx| Some(documents[idx].clone()),
+        |_progress| {},
+    ).expect("Warm Concordance search failed");
+    let warm_duration = warm_start.elapsed();
+    
+    println!("Warm Concordance Search completed in {:?}", warm_duration);
+    println!("Index rebuilt: {}", warm_result.index_rebuilt);
+}

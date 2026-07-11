@@ -1138,69 +1138,6 @@ pub fn aggregate_concordance_collocations_index(
     Ok((aggregate, stats))
 }
 
-pub fn aggregate_concordance_collocations_documents_routed(
-    documents: &[ConcordanceDocument],
-    query: &ConcordanceCollocationQuery,
-    tokenization_config: &TokenizationConfig,
-    context: &mut ConcordanceSearchContext,
-    backend: ConcordanceBackend,
-    cancellation: &SurfaceIndexCancellationToken,
-) -> Result<RoutedConcordanceCollocationAggregate, ConcordanceError> {
-    match backend {
-        ConcordanceBackend::Scan => Ok(RoutedConcordanceCollocationAggregate {
-            aggregate: aggregate_concordance_collocations_documents(
-                documents,
-                query,
-                tokenization_config,
-                cancellation.clone(),
-            )?,
-            backend_used: ConcordanceBackendUsed::Scan,
-            index_rebuilt: false,
-        }),
-        ConcordanceBackend::Index => {
-            let selected_document_ids =
-                selected_concordance_document_ids(documents, &query.selection);
-            let mut index_rebuilt = false;
-            let index_result = (|| {
-                let (store, rebuilt) = context.index_store_for(
-                    documents,
-                    &selected_document_ids,
-                    tokenization_config,
-                )?;
-                index_rebuilt = rebuilt;
-                aggregate_concordance_collocations_index(store, query, tokenization_config, cancellation.clone())
-                    .map(|(aggregate, _stats)| aggregate)
-            })();
-
-            match index_result {
-                Ok(aggregate) => Ok(RoutedConcordanceCollocationAggregate {
-                    aggregate,
-                    backend_used: ConcordanceBackendUsed::Index,
-                    index_rebuilt,
-                }),
-                Err(error @ ConcordanceError::Index(_))
-                    if error.prevents_unbounded_scan_fallback() =>
-                {
-                    Err(error)
-                }
-                Err(ConcordanceError::Index(_)) => Ok(RoutedConcordanceCollocationAggregate {
-                    aggregate: aggregate_concordance_collocations_documents(
-                        documents,
-                        query,
-                        tokenization_config,
-                        cancellation.clone(),
-                    )?,
-                    backend_used: ConcordanceBackendUsed::ScanFallback {
-                        reason: ConcordanceFallbackReason::IndexError,
-                    },
-                    index_rebuilt,
-                }),
-                Err(error) => Err(error),
-            }
-        }
-    }
-}
-
 pub fn aggregate_concordance_collocations_routed_provider<Resolve, Progress>(
     document_slots: usize,
     query: &ConcordanceCollocationQuery,
