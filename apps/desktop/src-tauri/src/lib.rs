@@ -5273,8 +5273,10 @@ mod tests {
             window_tokens: 5,
             offset: 0,
             limit: 100,
+            include_rows: true,
             distribution_offset: 0,
             distribution_limit: 10,
+            include_distribution: true,
         }
     }
 

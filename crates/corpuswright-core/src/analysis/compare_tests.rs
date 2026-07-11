@@ -50,6 +50,8 @@ fn assert_compare_agrees_with_concordance(
 
         let concordance_counts = concordance
             .distribution
+            .as_ref()
+            .expect("distribution was requested")
             .items
             .iter()
             .map(|item| (item.document_id, item.count))

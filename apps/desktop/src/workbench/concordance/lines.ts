@@ -331,12 +331,20 @@ export function renderConcordanceLines(
     dom.concordancePageStatus.textContent = "";
     return;
   }
+  const rows = result.rows;
+  if (rows === null) {
+    renderConcordanceTableState("Concordance lines were not included in this response.");
+    dom.concordancePagePreviousButton.disabled = true;
+    dom.concordancePageNextButton.disabled = true;
+    dom.concordancePageStatus.textContent = "";
+    return;
+  }
 
-  if (result.rows.length === 0) {
+  if (rows.length === 0) {
     renderConcordanceTableState(CONCORDANCE_NO_HITS_MESSAGE);
   } else {
     dom.concordanceTableBody.replaceChildren();
-    for (const row of result.rows) {
+    for (const row of rows) {
       const rowElement = createConcordanceRow(row);
       dom.concordanceTableBody.appendChild(rowElement);
       const rowKey = concordanceRowExpansionKey(row);
@@ -348,11 +356,11 @@ export function renderConcordanceLines(
   }
 
   const first = result.totalHits === 0 ? 0 : result.offset + 1;
-  const last = Math.min(result.totalHits, result.offset + result.rows.length);
+  const last = Math.min(result.totalHits, result.offset + rows.length);
   dom.concordancePageStatus.textContent =
     result.totalHits === 0 ? "0 of 0" : `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(result.totalHits)}`;
   dom.concordancePagePreviousButton.disabled = result.offset === 0;
-  dom.concordancePageNextButton.disabled = result.offset + result.rows.length >= result.totalHits;
+  dom.concordancePageNextButton.disabled = result.offset + rows.length >= result.totalHits;
 }
 
 export function showPreviousConcordancePage(): void {

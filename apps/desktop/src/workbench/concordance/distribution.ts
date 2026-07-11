@@ -17,6 +17,7 @@ export function renderConcordanceDistribution(
   emptyMessage = CONCORDANCE_NO_QUERY_MESSAGE,
 ): void {
   dom.concordanceDistribution.replaceChildren();
+  const distribution = result?.distribution ?? null;
 
   const panel = document.createElement("div");
   panel.className = "concordance-document-spread-panel";
@@ -97,16 +98,20 @@ export function renderConcordanceDistribution(
   table.appendChild(head);
 
   const body = document.createElement("tbody");
-  if (!result || result.totalHits === 0) {
+  if (!result || result.totalHits === 0 || distribution === null) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = 5;
     cell.className = "frequency-empty concordance-empty";
-    cell.textContent = result ? CONCORDANCE_NO_HITS_MESSAGE : emptyMessage;
+    cell.textContent = !result
+      ? emptyMessage
+      : distribution === null
+        ? "Distribution was not included in this response."
+        : CONCORDANCE_NO_HITS_MESSAGE;
     row.appendChild(cell);
     body.appendChild(row);
   } else {
-    for (const item of result.distribution.items) {
+    for (const item of distribution.items) {
       const row = document.createElement("tr");
 
       const file = document.createElement("td");
@@ -140,32 +145,32 @@ export function renderConcordanceDistribution(
   tableWrap.appendChild(table);
   panel.appendChild(tableWrap);
 
-  if (result && result.totalHits > 0) {
+  if (result && result.totalHits > 0 && distribution) {
     const pagination = document.createElement("div");
     pagination.className = "analysis-pagination";
     const previous = document.createElement("button");
     previous.type = "button";
     previous.className = "secondary-btn";
     previous.textContent = "Previous";
-    previous.disabled = result.distribution.offset === 0;
+    previous.disabled = distribution.offset === 0;
     previous.addEventListener("click", () => {
-      concordanceDistributionOffset = Math.max(0, result.distribution.offset - result.distribution.limit);
+      concordanceDistributionOffset = Math.max(0, distribution.offset - distribution.limit);
       void refreshConcordance(false, false, false);
     });
     const status = document.createElement("span");
-    const first = result.distribution.totalDocuments === 0 ? 0 : result.distribution.offset + 1;
+    const first = distribution.totalDocuments === 0 ? 0 : distribution.offset + 1;
     const last = Math.min(
-      result.distribution.totalDocuments,
-      result.distribution.offset + result.distribution.items.length,
+      distribution.totalDocuments,
+      distribution.offset + distribution.items.length,
     );
-    status.textContent = `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(result.distribution.totalDocuments)}`;
+    status.textContent = `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(distribution.totalDocuments)}`;
     const next = document.createElement("button");
     next.type = "button";
     next.className = "secondary-btn";
     next.textContent = "Next";
-    next.disabled = result.distribution.offset + result.distribution.items.length >= result.distribution.totalDocuments;
+    next.disabled = distribution.offset + distribution.items.length >= distribution.totalDocuments;
     next.addEventListener("click", () => {
-      concordanceDistributionOffset = result.distribution.offset + result.distribution.limit;
+      concordanceDistributionOffset = distribution.offset + distribution.limit;
       void refreshConcordance(false, false, false);
     });
     pagination.append(previous, status, next);
