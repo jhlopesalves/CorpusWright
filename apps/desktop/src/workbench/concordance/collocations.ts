@@ -633,7 +633,7 @@ function createCollocateEvidenceList(result: ConcordanceResult): HTMLDivElement 
   }
   list.appendChild(head);
 
-  for (const evidenceRow of result.rows) {
+  for (const evidenceRow of result.rows ?? []) {
     list.appendChild(createCollocateEvidenceLine(evidenceRow));
     if (collocateEvidenceExpansionKey === concordanceRowExpansionKey(evidenceRow)) {
       list.appendChild(createCollocateEvidenceExpansionRow(evidenceRow));
@@ -643,7 +643,7 @@ function createCollocateEvidenceList(result: ConcordanceResult): HTMLDivElement 
 }
 
 function appendCollocateEvidenceShowMore(parent: HTMLElement, result: ConcordanceResult): void {
-  const shown = Math.min(result.totalHits, result.rows.length);
+  const shown = Math.min(result.totalHits, result.rows?.length ?? 0);
   const remaining = Math.max(0, result.totalHits - shown);
   const nextCount = Math.min(CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT, remaining);
   if (remaining <= 0) {
@@ -936,8 +936,10 @@ async function refreshCollocateEvidence(
         windowTokens: selection.span,
         offset: 0,
         limit: collocateEvidenceLimit,
+        includeRows: true,
         distributionOffset: 0,
         distributionLimit: 1,
+        includeDistribution: false,
       },
       state.currentCorpusVersion,
       effectiveCleaningConfig(),

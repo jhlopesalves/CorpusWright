@@ -2092,8 +2092,10 @@ mod tests {
             window_tokens: 5,
             offset: 0,
             limit: 500,
+            include_rows: true,
             distribution_offset: 0,
             distribution_limit: 500,
+            include_distribution: true,
         }
     }
 
@@ -2144,14 +2146,17 @@ mod tests {
         assert_close(index.top_document_share, scan.top_document_share);
         let scan_hit_counts = scan
             .distribution
+            .as_ref()
+            .expect("distribution was requested")
             .items
             .iter()
             .filter(|item| item.count > 0)
             .map(|item| (item.document_id, item.count))
             .collect::<BTreeMap<_, _>>();
         assert_eq!(index.document_hit_counts, scan_hit_counts, "{message}");
-        assert_eq!(index.rows.len(), scan.rows.len(), "{message}");
-        for (index_row, scan_row) in index.rows.iter().zip(&scan.rows) {
+        let scan_rows = scan.rows.as_ref().expect("rows were requested");
+        assert_eq!(index.rows.len(), scan_rows.len(), "{message}");
+        for (index_row, scan_row) in index.rows.iter().zip(scan_rows) {
             assert_eq!(index_row.document_id, scan_row.document_index, "{message}");
             assert_eq!(
                 index_row.token_ordinal_in_document, scan_row.token_index,

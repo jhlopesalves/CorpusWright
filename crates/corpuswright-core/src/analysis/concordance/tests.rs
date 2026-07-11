@@ -4,6 +4,17 @@ use crate::decode::{DecodeStrategy, SourceEncoding, decode_source_bytes};
 use crate::index::{InMemoryIndexStore, IndexStore, SurfaceIndexDocumentInput, SurfaceIndexError};
 use crate::tokenization::TokenizationConfig;
 
+fn included_rows(result: &ConcordanceResult) -> &[ConcordanceRow] {
+    result.rows.as_deref().expect("rows were requested")
+}
+
+fn included_distribution(result: &ConcordanceResult) -> &ConcordanceDistributionPage {
+    result
+        .distribution
+        .as_ref()
+        .expect("distribution was requested")
+}
+
 #[test]
 fn concordance_routing_types_remain_rust_only_without_ts_export() {
     let source = include_str!("mod.rs");
@@ -32,11 +43,14 @@ fn kwic_finds_surface_token_with_token_windows() {
     let result = concordance_for(&documents, query).unwrap();
 
     assert_eq!(result.total_hits, 2);
-    assert_eq!(result.rows[0].left_context, ["alpha"]);
-    assert_eq!(result.rows[0].node, "beta");
-    assert_eq!(result.rows[0].right_context, ["gamma", "beta"]);
-    assert_eq!(result.rows[1].left_context, ["beta", "gamma"]);
-    assert_eq!(result.rows[1].right_context, ["delta", "epsilon"]);
+    assert_eq!(included_rows(&result)[0].left_context, ["alpha"]);
+    assert_eq!(included_rows(&result)[0].node, "beta");
+    assert_eq!(included_rows(&result)[0].right_context, ["gamma", "beta"]);
+    assert_eq!(included_rows(&result)[1].left_context, ["beta", "gamma"]);
+    assert_eq!(
+        included_rows(&result)[1].right_context,
+        ["delta", "epsilon"]
+    );
 }
 
 #[test]
@@ -52,11 +66,11 @@ fn kwic_finds_phrase_and_context_around_full_node() {
     let result = concordance_for(&documents, query).unwrap();
 
     assert_eq!(result.total_hits, 2);
-    assert_eq!(result.rows[0].left_context, ["alpha"]);
-    assert_eq!(result.rows[0].node, "not very good");
-    assert_eq!(result.rows[0].right_context, ["movie"]);
-    assert_eq!(result.rows[1].left_context, ["today"]);
-    assert_eq!(result.rows[1].right_context, ["ending"]);
+    assert_eq!(included_rows(&result)[0].left_context, ["alpha"]);
+    assert_eq!(included_rows(&result)[0].node, "not very good");
+    assert_eq!(included_rows(&result)[0].right_context, ["movie"]);
+    assert_eq!(included_rows(&result)[1].left_context, ["today"]);
+    assert_eq!(included_rows(&result)[1].right_context, ["ending"]);
 }
 
 #[test]
@@ -71,8 +85,7 @@ fn kwic_does_not_match_substrings_inside_tokens() {
 
     assert_eq!(result.total_hits, 2);
     assert_eq!(
-        result
-            .rows
+        included_rows(&result)
             .iter()
             .map(|row| row.node.as_str())
             .collect::<Vec<_>>(),
@@ -98,7 +111,7 @@ fn kwic_can_match_case_sensitive_when_enabled() {
     let result = concordance_for(&documents, query).unwrap();
 
     assert_eq!(result.total_hits, 1);
-    assert_eq!(result.rows[0].node, "the");
+    assert_eq!(included_rows(&result)[0].node, "the");
 }
 
 #[test]
@@ -108,6 +121,86 @@ fn kwic_rejects_empty_query() {
     let error = concordance_for(&documents, concordance_query("   ")).unwrap_err();
 
     assert_eq!(error, ConcordanceError::EmptyQuery);
+}
+
+#[test]
+fn concordance_result_views_are_independent_and_share_one_traversal() {
+    let documents = vec![
+        concordance_document(0, "a.txt", "alpha beta alpha"),
+        concordance_document(1, "b.txt", "beta alpha gamma"),
+    ];
+
+    for backend in [ConcordanceBackend::Scan, ConcordanceBackend::Index] {
+        let run = |include_rows: bool, include_distribution: bool| {
+            let mut query = concordance_query("alpha");
+            query.include_rows = include_rows;
+            query.include_distribution = include_distribution;
+            let mut context = ConcordanceSearchContext::default();
+            routed_concordance_for(&documents, &query, &mut context, backend).unwrap()
+        };
+
+        let both = run(true, true);
+        assert!(both.result.rows.is_some());
+        assert!(both.result.distribution.is_some());
+        assert_eq!(both.execution_stats.candidate_traversals, 1);
+        assert_eq!(both.execution_stats.distribution_pages_materialised, 1);
+
+        let rows_only = run(true, false);
+        assert_eq!(rows_only.result.rows, both.result.rows);
+        assert!(rows_only.result.distribution.is_none());
+        assert_eq!(rows_only.execution_stats.rows_materialised, 3);
+        assert_eq!(rows_only.execution_stats.distribution_pages_materialised, 0);
+        assert_eq!(rows_only.execution_stats.candidate_traversals, 1);
+
+        let distribution_only = run(false, true);
+        assert!(distribution_only.result.rows.is_none());
+        assert_eq!(
+            distribution_only.result.distribution,
+            both.result.distribution
+        );
+        assert_eq!(distribution_only.execution_stats.rows_materialised, 0);
+        assert_eq!(
+            distribution_only.execution_stats.compact_sort_records_peak,
+            0
+        );
+        assert_eq!(
+            distribution_only
+                .execution_stats
+                .distribution_pages_materialised,
+            1
+        );
+        assert_eq!(distribution_only.execution_stats.candidate_traversals, 1);
+
+        for result in [&rows_only.result, &distribution_only.result] {
+            assert_eq!(result.total_hits, both.result.total_hits);
+            assert_eq!(result.documents_with_hits, both.result.documents_with_hits);
+            assert_eq!(
+                result.selected_documents_total,
+                both.result.selected_documents_total
+            );
+            assert_eq!(
+                result.selected_tokens_total,
+                both.result.selected_tokens_total
+            );
+            assert_eq!(result.dp, both.result.dp);
+            assert_eq!(result.top_document_share, both.result.top_document_share);
+        }
+    }
+}
+
+#[test]
+fn concordance_rejects_requests_without_a_result_view_before_work() {
+    let documents = vec![concordance_document(0, "a.txt", "alpha beta alpha")];
+    let mut query = concordance_query("alpha");
+    query.include_rows = false;
+    query.include_distribution = false;
+
+    for backend in [ConcordanceBackend::Scan, ConcordanceBackend::Index] {
+        let mut context = ConcordanceSearchContext::default();
+        let error = routed_concordance_for(&documents, &query, &mut context, backend).unwrap_err();
+        assert_eq!(error, ConcordanceError::NoResultViewsRequested);
+        assert_eq!(context.index_build_count(), 0);
+    }
 }
 
 #[test]
@@ -135,7 +228,7 @@ fn kwic_stats_use_full_hit_set_and_document_token_proportions() {
 
     let result = concordance_for(&documents, query).unwrap();
 
-    assert_eq!(result.rows.len(), 1);
+    assert_eq!(included_rows(&result).len(), 1);
     assert_eq!(result.total_hits, 2);
     assert_eq!(result.documents_with_hits, 1);
     assert_eq!(result.selected_documents_total, 2);
@@ -160,8 +253,8 @@ fn kwic_context_filter_counts_full_filtered_hit_set() {
 
     assert_eq!(result.context_filter.as_deref(), Some("blue"));
     assert_eq!(result.total_hits, 2);
-    assert_eq!(result.rows.len(), 1);
-    assert_eq!(result.rows[0].right_context, ["blue"]);
+    assert_eq!(included_rows(&result).len(), 1);
+    assert_eq!(included_rows(&result)[0].right_context, ["blue"]);
 }
 
 #[test]
@@ -171,7 +264,9 @@ fn kwic_context_filter_direction_defaults_to_both_when_omitted() {
         "contextFilter": "blue",
         "windowTokens": 1,
         "offset": 0,
-        "limit": 100
+        "limit": 100,
+        "includeRows": true,
+        "includeDistribution": true
     }))
     .unwrap();
 
@@ -194,9 +289,8 @@ fn kwic_context_filter_respects_direction() {
         query.context_filter = Some("blue".to_string());
         query.context_filter_direction = direction;
 
-        concordance_for(&documents, query)
-            .unwrap()
-            .rows
+        let result = concordance_for(&documents, query).unwrap();
+        included_rows(&result)
             .iter()
             .map(|row| row.token_index)
             .collect()
@@ -232,10 +326,9 @@ fn kwic_respects_offset_and_limit() {
     assert_eq!(result.total_hits, 4);
     assert_eq!(result.offset, 1);
     assert_eq!(result.limit, 2);
-    assert_eq!(result.rows.len(), 2);
+    assert_eq!(included_rows(&result).len(), 2);
     assert_eq!(
-        result
-            .rows
+        included_rows(&result)
             .iter()
             .map(|row| row.token_index)
             .collect::<Vec<_>>(),
@@ -258,8 +351,8 @@ fn kwic_sorts_full_hit_set_before_pagination() {
     let result = concordance_for(&documents, query).unwrap();
 
     assert_eq!(result.total_hits, 3);
-    assert_eq!(result.rows.len(), 1);
-    assert_eq!(result.rows[0].right_context, ["m"]);
+    assert_eq!(included_rows(&result).len(), 1);
+    assert_eq!(included_rows(&result)[0].right_context, ["m"]);
 }
 
 #[test]
@@ -272,10 +365,13 @@ fn kwic_left_sort_uses_missing_context_last() {
 
     assert_eq!(result.total_hits, 2);
     assert_eq!(
-        result.rows[0].left_context.last().map(String::as_str),
+        included_rows(&result)[0]
+            .left_context
+            .last()
+            .map(String::as_str),
         Some("a")
     );
-    assert!(result.rows[1].left_context.is_empty());
+    assert!(included_rows(&result)[1].left_context.is_empty());
 }
 
 #[test]
@@ -288,8 +384,7 @@ fn kwic_file_position_sort_ties_by_document_and_offset() {
     let result = concordance_for(&documents, concordance_query("alpha")).unwrap();
 
     assert_eq!(
-        result
-            .rows
+        included_rows(&result)
             .iter()
             .map(|row| (row.document_index, row.token_index))
             .collect::<Vec<_>>(),
@@ -448,12 +543,14 @@ fn routed_index_parity_holds_for_selection_and_pagination() {
     assert_eq!(index.result.selected_documents_total, 2);
     assert_eq!(index.result.offset, 1);
     assert_eq!(index.result.limit, 2);
-    assert_eq!(index.result.rows.len(), 2);
-    assert!(index.result.rows.iter().all(|row| row.document_index != 0));
+    assert_eq!(included_rows(&index.result).len(), 2);
+    assert!(
+        included_rows(&index.result)
+            .iter()
+            .all(|row| row.document_index != 0)
+    );
     assert_eq!(
-        index
-            .result
-            .rows
+        included_rows(&index.result)
             .iter()
             .map(|row| (row.document_index, row.token_index))
             .collect::<Vec<_>>(),
@@ -639,7 +736,7 @@ fn million_hit_query_retains_and_materialises_only_requested_page() {
 
     for routed in [&indexed, &scanned] {
         assert_eq!(routed.result.total_hits, 1_000_000);
-        assert_eq!(routed.result.rows.len(), 100);
+        assert_eq!(included_rows(&routed.result).len(), 100);
         assert_eq!(routed.execution_stats.valid_hits, 1_000_000);
         assert!(routed.execution_stats.candidates_visited >= 1_000_000);
         assert!(routed.execution_stats.compact_sort_records_peak <= 100);
@@ -722,9 +819,7 @@ fn routed_index_mixed_fixture_context_filter_has_literal_parity() {
     assert_eq!(indexed.result.documents_with_hits, 2);
     assert_eq!(indexed.result.context_filter.as_deref(), Some("blue"));
     assert_eq!(
-        indexed
-            .result
-            .rows
+        included_rows(&indexed.result)
             .iter()
             .map(|row| (row.document_index, row.token_index, row.node.as_str()))
             .collect::<Vec<_>>(),
@@ -805,9 +900,7 @@ fn routed_index_disk_cache_reuses_content_across_restart_and_recovers_from_corru
     assert_eq!(restarted_context.index_build_count(), 0);
     assert_eq!(restarted_context.index_cache_load_count(), 1);
     assert!(
-        restarted
-            .result
-            .rows
+        included_rows(&restarted.result)
             .iter()
             .all(|row| row.source_path.starts_with("renamed-"))
     );
@@ -917,13 +1010,14 @@ fn kwic_distribution_counts_and_paginates_after_sorting() {
 
     let result = concordance_for(&documents, query).unwrap();
 
-    assert_eq!(result.distribution.total_documents, 3);
-    assert_eq!(result.distribution.offset, 1);
-    assert_eq!(result.distribution.items.len(), 1);
-    assert_eq!(result.distribution.items[0].display_name, "c.txt");
-    assert_eq!(result.distribution.items[0].count, 1);
-    assert_eq!(result.distribution.items[0].token_count, 2);
-    assert_eq!(result.distribution.max_count, 2);
+    let distribution = included_distribution(&result);
+    assert_eq!(distribution.total_documents, 3);
+    assert_eq!(distribution.offset, 1);
+    assert_eq!(distribution.items.len(), 1);
+    assert_eq!(distribution.items[0].display_name, "c.txt");
+    assert_eq!(distribution.items[0].count, 1);
+    assert_eq!(distribution.items[0].token_count, 2);
+    assert_eq!(distribution.max_count, 2);
 }
 
 #[test]
@@ -945,8 +1039,7 @@ fn kwic_honours_selected_file_scope() {
     assert_eq!(result.total_hits, 2);
     assert_eq!(result.selected_documents_total, 2);
     assert_eq!(
-        result
-            .rows
+        included_rows(&result)
             .iter()
             .map(|row| row.display_name.as_str())
             .collect::<Vec<_>>(),
@@ -966,7 +1059,7 @@ fn kwic_uses_canonical_tokenisation() {
     let single = concordance_for(&documents, concordance_query("state")).unwrap();
 
     assert_eq!(compound.total_hits, 1);
-    assert_eq!(compound.rows[0].node, "state-of-the-art");
+    assert_eq!(included_rows(&compound)[0].node, "state-of-the-art");
     assert_eq!(single.total_hits, 1);
 }
 
@@ -980,7 +1073,7 @@ fn kwic_expansion_returns_wider_context_for_same_hit() {
     let mut query = concordance_query("target phrase");
     query.window_tokens = 1;
     let result = concordance_for(&documents, query).unwrap();
-    let row = &result.rows[0];
+    let row = &included_rows(&result)[0];
 
     let expansion = concordance_expansion_for(
         &documents[0],
@@ -1185,8 +1278,10 @@ fn benchmark_concordance_scale() {
         window_tokens: 5,
         offset: 0,
         limit: 100,
+        include_rows: true,
         distribution_offset: 0,
         distribution_limit: 100,
+        include_distribution: true,
     };
 
     let start = Instant::now();
