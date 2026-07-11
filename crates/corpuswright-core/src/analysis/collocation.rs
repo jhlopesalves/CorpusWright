@@ -21,6 +21,78 @@ const CONCORDANCE_COLLOCATION_MAX_SPAN: usize = 20;
 const CONCORDANCE_COLLOCATION_DISTANCE_BUCKETS: usize = CONCORDANCE_COLLOCATION_MAX_SPAN * 2;
 const CONCORDANCE_COLLOCATION_DEFAULT_LIMIT: usize = 100;
 const CONCORDANCE_COLLOCATION_MAX_LIMIT: usize = 500;
+pub const CONCORDANCE_MAX_COMBINED_BYTES_ENV: &str = "CORPUSWRIGHT_CONCORDANCE_MAX_COMBINED_BYTES";
+pub const DEFAULT_CONCORDANCE_MAX_COMBINED_BYTES: u64 = 1_610_612_736;
+pub const DEFAULT_CONCORDANCE_ANALYSIS_SAFETY_MARGIN_BYTES: u64 = 268_435_456;
+
+/// A bounded estimate for the two large concordance-owned structures. This is
+/// deliberately not described as complete process RSS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConcordanceAnalysisMemoryLimits {
+    pub max_combined_bytes: u64,
+    pub safety_margin_bytes: u64,
+}
+
+impl Default for ConcordanceAnalysisMemoryLimits {
+    fn default() -> Self {
+        let max_combined_bytes = std::env::var(CONCORDANCE_MAX_COMBINED_BYTES_ENV)
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(DEFAULT_CONCORDANCE_MAX_COMBINED_BYTES);
+        Self {
+            max_combined_bytes,
+            safety_margin_bytes: DEFAULT_CONCORDANCE_ANALYSIS_SAFETY_MARGIN_BYTES,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConcordanceAnalysisMemoryEstimate {
+    pub estimated_resident_index_bytes: u64,
+    pub projected_aggregate_bytes: u64,
+    pub safety_margin_bytes: u64,
+    pub combined_limit_bytes: u64,
+    pub combined_projected_bytes: u64,
+    pub remaining_collocation_bytes: u64,
+}
+
+impl ConcordanceAnalysisMemoryEstimate {
+    pub fn admit(
+        estimated_resident_index_bytes: u64,
+        projected_aggregate_bytes: u64,
+        limits: ConcordanceAnalysisMemoryLimits,
+    ) -> Result<Self, ConcordanceError> {
+        let remaining_collocation_bytes = limits
+            .max_combined_bytes
+            .checked_sub(estimated_resident_index_bytes)
+            .and_then(|remaining| remaining.checked_sub(limits.safety_margin_bytes))
+            .ok_or(ConcordanceError::AnalysisMemoryLimitExceeded {
+                estimated_resident_index_bytes,
+                projected_aggregate_bytes,
+                combined_limit_bytes: limits.max_combined_bytes,
+                safety_margin_bytes: limits.safety_margin_bytes,
+            })?;
+        if projected_aggregate_bytes > remaining_collocation_bytes {
+            return Err(ConcordanceError::AnalysisMemoryLimitExceeded {
+                estimated_resident_index_bytes,
+                projected_aggregate_bytes,
+                combined_limit_bytes: limits.max_combined_bytes,
+                safety_margin_bytes: limits.safety_margin_bytes,
+            });
+        }
+        Ok(Self {
+            estimated_resident_index_bytes,
+            projected_aggregate_bytes,
+            safety_margin_bytes: limits.safety_margin_bytes,
+            combined_limit_bytes: limits.max_combined_bytes,
+            combined_projected_bytes: estimated_resident_index_bytes
+                .saturating_add(projected_aggregate_bytes)
+                .saturating_add(limits.safety_margin_bytes),
+            remaining_collocation_bytes,
+        })
+    }
+}
 
 /// Span side used for surface-token collocation around a concordance node.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -206,6 +278,11 @@ pub struct CollocationAggregationStats {
     pub final_projected_bytes: u64,
     pub candidate_symbol_bytes: u64,
     pub final_candidate_count: usize,
+    pub estimated_resident_index_bytes: u64,
+    pub combined_limit_bytes: u64,
+    pub safety_margin_bytes: u64,
+    pub remaining_collocation_bytes: u64,
+    pub combined_projected_bytes: u64,
     pub max_span_cache_reuse: bool,
     pub index_reuse: bool,
     pub fallback_used: bool,
@@ -1081,8 +1158,13 @@ pub fn aggregate_concordance_collocations_documents(
             .filter(|document| selected_document_ids.contains(&document.document_index)),
     );
     ordered_documents.sort_by_key(|document| document.document_index);
-    let mut builder =
-        NumericCollocationBuilder::new(SurfaceIndexResourceLimits::default(), cancellation.clone());
+    let analysis_limits = ConcordanceAnalysisMemoryLimits::default();
+    let admission = ConcordanceAnalysisMemoryEstimate::admit(0, 0, analysis_limits)?;
+    let mut surface_limits = SurfaceIndexResourceLimits::default();
+    surface_limits.max_projected_resident_index_bytes = surface_limits
+        .max_projected_resident_index_bytes
+        .min(admission.remaining_collocation_bytes);
+    let mut builder = NumericCollocationBuilder::new(surface_limits, cancellation.clone());
     for document in ordered_documents {
         if cancellation.is_cancelled() {
             return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
@@ -1287,13 +1369,67 @@ pub fn aggregate_concordance_collocations_index(
     tokenization_config: &TokenizationConfig,
     cancellation: SurfaceIndexCancellationToken,
 ) -> Result<(ConcordanceCollocationAggregate, CollocationAggregationStats), ConcordanceError> {
-    aggregate_concordance_collocations_index_with_limits(
+    aggregate_concordance_collocations_index_with_memory_limits(
         store,
         query,
         tokenization_config,
         cancellation,
         SurfaceIndexResourceLimits::default(),
+        ConcordanceAnalysisMemoryLimits::default(),
     )
+}
+
+fn aggregate_concordance_collocations_index_with_memory_limits(
+    store: &impl IndexStore,
+    query: &ConcordanceCollocationQuery,
+    tokenization_config: &TokenizationConfig,
+    cancellation: SurfaceIndexCancellationToken,
+    mut surface_limits: SurfaceIndexResourceLimits,
+    analysis_limits: ConcordanceAnalysisMemoryLimits,
+) -> Result<(ConcordanceCollocationAggregate, CollocationAggregationStats), ConcordanceError> {
+    let estimated_resident_index_bytes = store.estimated_resident_bytes();
+    let initial_estimate = ConcordanceAnalysisMemoryEstimate::admit(
+        estimated_resident_index_bytes,
+        0,
+        analysis_limits,
+    )?;
+    let combined_budget_is_binding = initial_estimate.remaining_collocation_bytes
+        < surface_limits.max_projected_resident_index_bytes;
+    surface_limits.max_projected_resident_index_bytes = surface_limits
+        .max_projected_resident_index_bytes
+        .min(initial_estimate.remaining_collocation_bytes);
+
+    match aggregate_concordance_collocations_index_with_limits(
+        store,
+        query,
+        tokenization_config,
+        cancellation,
+        surface_limits,
+    ) {
+        Ok((aggregate, mut stats)) => {
+            let estimate = ConcordanceAnalysisMemoryEstimate::admit(
+                estimated_resident_index_bytes,
+                stats.peak_projected_bytes,
+                analysis_limits,
+            )?;
+            stats.estimated_resident_index_bytes = estimate.estimated_resident_index_bytes;
+            stats.combined_limit_bytes = estimate.combined_limit_bytes;
+            stats.safety_margin_bytes = estimate.safety_margin_bytes;
+            stats.remaining_collocation_bytes = estimate.remaining_collocation_bytes;
+            stats.combined_projected_bytes = estimate.combined_projected_bytes;
+            Ok((aggregate, stats))
+        }
+        Err(ConcordanceError::Index(SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
+            projected_bytes,
+            ..
+        })) if combined_budget_is_binding => Err(ConcordanceError::AnalysisMemoryLimitExceeded {
+            estimated_resident_index_bytes,
+            projected_aggregate_bytes: projected_bytes,
+            combined_limit_bytes: analysis_limits.max_combined_bytes,
+            safety_margin_bytes: analysis_limits.safety_margin_bytes,
+        }),
+        Err(error) => Err(error),
+    }
 }
 
 fn aggregate_concordance_collocations_index_with_limits(
@@ -1459,8 +1595,13 @@ where
 {
     let (signature, query_keys, query_key_set) =
         resolve_concordance_collocation_aggregation(query, tokenization_config)?;
-    let mut builder =
-        NumericCollocationBuilder::new(SurfaceIndexResourceLimits::default(), cancellation.clone());
+    let analysis_limits = ConcordanceAnalysisMemoryLimits::default();
+    let admission = ConcordanceAnalysisMemoryEstimate::admit(0, 0, analysis_limits)?;
+    let mut surface_limits = SurfaceIndexResourceLimits::default();
+    surface_limits.max_projected_resident_index_bytes = surface_limits
+        .max_projected_resident_index_bytes
+        .min(admission.remaining_collocation_bytes);
+    let mut builder = NumericCollocationBuilder::new(surface_limits, cancellation.clone());
     for document_index in 0..document_slots {
         let selected = if query.selection.all_documents {
             !query.selection.excluded_ids.contains(&document_index)

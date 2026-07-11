@@ -33,11 +33,12 @@ pub use input::{
 };
 
 pub use collocation::{
-    ConcordanceCollocatePositionCounts, ConcordanceCollocateRow, ConcordanceCollocationAggregate,
-    ConcordanceCollocationAggregationSignature, ConcordanceCollocationDirection,
-    ConcordanceCollocationMeasure, ConcordanceCollocationQuery, ConcordanceCollocationResult,
-    ConcordanceCollocationSortKey, RoutedConcordanceCollocationAggregate,
-    aggregate_concordance_collocations_documents,
+    CONCORDANCE_MAX_COMBINED_BYTES_ENV, ConcordanceAnalysisMemoryEstimate,
+    ConcordanceAnalysisMemoryLimits, ConcordanceCollocatePositionCounts, ConcordanceCollocateRow,
+    ConcordanceCollocationAggregate, ConcordanceCollocationAggregationSignature,
+    ConcordanceCollocationDirection, ConcordanceCollocationMeasure, ConcordanceCollocationQuery,
+    ConcordanceCollocationResult, ConcordanceCollocationSortKey,
+    RoutedConcordanceCollocationAggregate, aggregate_concordance_collocations_documents,
     aggregate_concordance_collocations_routed_provider,
     aggregate_concordance_collocations_scan_provider,
     concordance_collocation_aggregation_signature, query_concordance_collocations_documents,

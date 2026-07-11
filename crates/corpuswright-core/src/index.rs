@@ -313,6 +313,7 @@ pub trait IndexStore {
     ) -> Option<u32>;
     fn total_indexed_tokens(&self) -> usize;
     fn total_indexed_documents(&self) -> usize;
+    fn estimated_resident_bytes(&self) -> u64;
     fn indexed_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store>;
     fn indexed_exact_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store>;
     fn indexed_documents<'store>(
@@ -931,6 +932,10 @@ impl IndexStore for InMemoryIndexStore {
 
     fn total_indexed_documents(&self) -> usize {
         self.documents.len()
+    }
+
+    fn estimated_resident_bytes(&self) -> u64 {
+        InMemoryIndexStore::estimated_resident_bytes(self)
     }
 
     fn indexed_terms<'store>(&'store self) -> Box<dyn Iterator<Item = &'store str> + 'store> {
