@@ -476,7 +476,7 @@ impl SurfaceIndexBuilder {
             &tokenization_config,
             |token| {
                 tokens_seen += 1;
-                if tokens_seen % 1_024 == 0 && self.cancellation.is_cancelled() {
+                if tokens_seen.is_multiple_of(1_024) && self.cancellation.is_cancelled() {
                     return Err(SurfaceIndexError::Cancelled);
                 }
                 if !token.counts_as_word() {
@@ -490,7 +490,7 @@ impl SurfaceIndexBuilder {
                 let surface_symbol_id = self.store.intern_surface(token.surface)?;
                 try_reserve(&mut self.store.token_surface_ids, 1, "token surface ids")?;
                 self.store.token_surface_ids.push(surface_symbol_id);
-                if self.store.token_surface_ids.len() % 4_096 == 0 {
+                if self.store.token_surface_ids.len().is_multiple_of(4_096) {
                     self.enforce_resident_limit()?;
                 }
                 Ok(())
@@ -1265,7 +1265,7 @@ pub struct SurfaceIndexManifest {
 
 #[derive(Debug)]
 pub enum SurfaceIndexCacheLoad {
-    Ready(InMemoryIndexStore),
+    Ready(Box<InMemoryIndexStore>),
     Missing,
     Stale,
     Invalid,
@@ -1501,7 +1501,7 @@ pub fn load_surface_index_cache_with_limits(
     match read_surface_index_cache(file, expected_manifest, limits) {
         Ok(store) => {
             prune_surface_index_cache(cache_root, Some(&path));
-            SurfaceIndexCacheLoad::Ready(store)
+            SurfaceIndexCacheLoad::Ready(Box::new(store))
         }
         Err(CacheReadFailure::Stale) => SurfaceIndexCacheLoad::Stale,
         Err(CacheReadFailure::Invalid) => SurfaceIndexCacheLoad::Invalid,
@@ -2785,7 +2785,7 @@ mod tests {
             SurfaceIndexCacheLoad::Ready(store) => store,
             state => panic!("expected ready cache, got {state:?}"),
         };
-        assert_eq!(loaded, store);
+        assert_eq!(*loaded, store);
 
         let mut changed_config = manifest.clone();
         changed_config.tokenization.config.include_punctuation = false;

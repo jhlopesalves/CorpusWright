@@ -54,8 +54,8 @@ pub use concordance::{
     ConcordanceError, ConcordanceExecutionStats, ConcordanceExpansionQuery,
     ConcordanceExpansionResult, ConcordanceFallbackReason, ConcordancePhase, ConcordanceProgress,
     ConcordanceQuery, ConcordanceResult, ConcordanceRow, ConcordanceSearchContext,
-    ConcordanceSortKey, RoutedConcordanceResult,
-    expand_concordance_context, search_concordance_documents, search_concordance_documents_routed,
+    ConcordanceSortKey, RoutedConcordanceResult, expand_concordance_context,
+    search_concordance_documents, search_concordance_documents_routed,
     search_concordance_documents_routed_provider,
     search_concordance_documents_routed_scan_provider,
 };
@@ -82,5 +82,60 @@ pub use overview::{
     CorpusOverviewVocabularyGrowth, CumulativeCoveragePoint, FrequencySpectrumPoint,
     RankFrequencyPoint, UniversalType, VocabularyGrowthPoint,
 };
+
+#[cfg(test)]
+pub(crate) fn aggregate_concordance_collocations_documents_routed(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceCollocationQuery,
+    tokenization_config: &crate::tokenization::TokenizationConfig,
+    context: &mut ConcordanceSearchContext,
+    backend: ConcordanceBackend,
+    cancellation: &crate::index::SurfaceIndexCancellationToken,
+) -> Result<RoutedConcordanceCollocationAggregate, ConcordanceError> {
+    match backend {
+        ConcordanceBackend::Scan => aggregate_concordance_collocations_scan_provider(
+            documents.len(),
+            query,
+            tokenization_config,
+            cancellation,
+            |document_index| Some(documents[document_index].clone()),
+        ),
+        ConcordanceBackend::Index => {
+            match aggregate_concordance_collocations_routed_provider(
+                documents.len(),
+                query,
+                tokenization_config,
+                context,
+                cancellation,
+                |document_index| Some(documents[document_index].clone()),
+                |_| {},
+            ) {
+                Ok(routed) => Ok(routed),
+                Err(error @ ConcordanceError::Index(_))
+                    if error.prevents_unbounded_scan_fallback() =>
+                {
+                    Err(error)
+                }
+                Err(ConcordanceError::Index(_) | ConcordanceError::InvalidDocumentIdentity) => {
+                    let aggregate = aggregate_concordance_collocations_documents(
+                        documents,
+                        query,
+                        tokenization_config,
+                        cancellation.clone(),
+                    )?;
+                    Ok(RoutedConcordanceCollocationAggregate {
+                        aggregate,
+                        backend_used: ConcordanceBackendUsed::ScanFallback {
+                            reason: ConcordanceFallbackReason::IndexError,
+                        },
+                        index_rebuilt: false,
+                    })
+                }
+                Err(error) => Err(error),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod test_support;
