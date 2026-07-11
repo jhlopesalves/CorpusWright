@@ -1,5 +1,6 @@
 import {
   CONCORDANCE_COLUMNS,
+  CONCORDANCE_DEFAULT_WINDOW,
   CONCORDANCE_COLLOCATION_DEFAULT_FLOOR,
   CONCORDANCE_COLLOCATION_DEFAULT_SPAN,
   CONCORDANCE_COLLOCATION_LIMIT,
@@ -58,10 +59,12 @@ function assertDeepEqual(actual: unknown, expected: unknown, message = "Values s
 }
 
 assert(normaliseConcordanceQuery("  alpha ") === "alpha", "Concordance query should be trimmed");
-assert(clampConcordanceWindow(Number.NaN) === 5, "Invalid windows should fall back to the default");
-assert(clampConcordanceWindow(0) === 5, "Zero windows should fall back to the default");
+assert(clampConcordanceWindow(Number.NaN) === 10, "Invalid windows should fall back to the default");
+assert(clampConcordanceWindow(0) === 10, "Zero windows should fall back to the default");
 assert(clampConcordanceWindow(24) === 20, "Windows should be capped at the hard maximum");
 assert(clampConcordanceWindow(3.8) === 3, "Windows should use whole tokens");
+assert(clampConcordanceWindow(5) === 5, "An explicit five-token window should remain unchanged");
+assert(clampConcordanceWindow(15) === 15, "An explicit fifteen-token window should remain unchanged");
 assert(clampConcordancePageSize(0) === 100, "Invalid page sizes should fall back to the default");
 assert(clampConcordancePageSize(12) === 25, "Page sizes should respect the minimum");
 assert(clampConcordancePageSize(900) === 500, "Page sizes should respect the maximum");
@@ -70,6 +73,7 @@ assert(clampConcordanceCollocationSpan(24) === 20, "Collocation spans should be 
 assert(clampConcordanceCollocationFloor(-1) === 5, "Invalid collocation floors should fall back");
 assert(clampConcordanceCollocationFloor(3.8) === 3, "Collocation floors should use whole counts");
 assert(DEFAULT_CONCORDANCE_SORT_KEY === "filePosition", "Default sort should be file/position");
+assert(CONCORDANCE_DEFAULT_WINDOW === 10, "Default KWIC context should be ten tokens per side");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_MEASURE === "logDice", "Default collocation measure should be logDice");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY === "association", "Default collocation sort should be association");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION === "desc", "Default collocation sort should descend");

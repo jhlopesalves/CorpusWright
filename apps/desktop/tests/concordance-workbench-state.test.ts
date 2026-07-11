@@ -53,6 +53,7 @@ function sectionResult(
 
 {
   const state = createConcordanceWorkbenchState(shared());
+  assert.equal(state.lines.window, 10);
   state.lines.window = 9;
   state.lines.sort = "right2";
   state.lines.pageSize = 250;
