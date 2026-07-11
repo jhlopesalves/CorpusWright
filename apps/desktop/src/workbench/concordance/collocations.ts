@@ -390,8 +390,10 @@ function renderConcordanceCollocationTableState(message: string): void {
   dom.concordanceCollocationsTableBody.replaceChildren(row);
 }
 
-function formatConcordanceCollocationScore(value: number | null): string {
-  return value === null ? "n/a" : formatFixedNumber(value, 2);
+function formatConcordanceCollocationScore(value: number | null, signed = false): string {
+  if (value === null) return "n/a";
+  const formatted = formatFixedNumber(value, 2);
+  return signed && value > 0 ? `+${formatted}` : formatted;
 }
 
 function appendConcordanceCollocationHeader(
@@ -832,11 +834,11 @@ function createConcordanceCollocationRow(
   const score = document.createElement("td");
   score.className = "numeric";
   const scoreValue = concordanceCollocationScore(row, measure);
+  const bar = concordanceCollocationStrengthBar(scoreValue, measure, loadedScores);
   const value = document.createElement("span");
   value.className = "concordance-collocation-score-value";
-  value.textContent = formatConcordanceCollocationScore(scoreValue);
+  value.textContent = formatConcordanceCollocationScore(scoreValue, bar?.signed ?? false);
   score.appendChild(value);
-  const bar = concordanceCollocationStrengthBar(scoreValue, measure, loadedScores);
   if (bar !== null) {
     const track = document.createElement("span");
     track.className = `concordance-collocation-score-track is-${bar.direction}`;
@@ -844,7 +846,7 @@ function createConcordanceCollocationRow(
     const fill = document.createElement("span");
     fill.className = `concordance-collocation-score-fill is-ramp-${bar.ramp}`;
     fill.style.setProperty("--bar-width", `${bar.signed ? bar.magnitudePercent / 2 : bar.magnitudePercent}%`);
-    track.title = `${concordanceCollocationMeasureLabel(measure)}: ${formatConcordanceCollocationScore(scoreValue)}`;
+    track.title = `${concordanceCollocationMeasureLabel(measure)}: ${formatConcordanceCollocationScore(scoreValue, bar.signed)}`;
     track.appendChild(fill);
     score.appendChild(track);
   }

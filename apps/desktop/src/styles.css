@@ -9064,3 +9064,133 @@ mark.search-match.current-match {
   outline: 1.5px solid #00e5ff !important;
   outline-offset: -1.5px;
 }
+
+.concordance-search-actions button:focus-visible,
+.concordance-collocation-sort:focus-visible,
+.concordance-card .analysis-pagination button:focus-visible,
+.concordance-card-controls input:focus-visible,
+.concordance-card-controls select:focus-visible {
+  outline: 2px solid var(--cw-interaction-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 980px) {
+  .concordance-controls > label:first-child {
+    flex: 1 1 280px;
+  }
+
+  .concordance-card-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .concordance-card-actions {
+    justify-content: flex-start;
+  }
+
+  .concordance-card-stats {
+    text-align: left;
+  }
+}
+
+@media (max-width: 760px) {
+  .concordance-section,
+  .concordance-header,
+  .concordance-workbench,
+  .concordance-card {
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .concordance-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+    gap: 10px 12px;
+  }
+
+  .concordance-controls > label:first-child,
+  .concordance-controls .concordance-search-actions {
+    grid-column: 1 / -1;
+  }
+
+  #concordance-query-input,
+  .concordance-controls .frequency-file-scope-control,
+  .concordance-controls .frequency-file-scope-control button {
+    width: 100%;
+  }
+
+  .concordance-card {
+    padding: 12px;
+  }
+
+  .concordance-card-actions,
+  .concordance-card-controls,
+  .concordance-lines-controls,
+  .concordance-collocation-controls {
+    max-width: 100%;
+  }
+
+  .concordance-collocations-table {
+    min-width: 880px;
+  }
+
+  .concordance-position-glyph {
+    min-width: 130px;
+  }
+
+  .concordance-collocate-evidence {
+    margin-left: 8px;
+  }
+
+  .concordance-collocate-evidence-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .concordance-collocate-evidence-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .concordance-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .concordance-controls > label:first-child,
+  .concordance-controls .concordance-search-actions {
+    grid-column: 1;
+  }
+
+  .concordance-table {
+    min-width: 640px;
+  }
+
+  .concordance-table tr {
+    grid-template-columns: minmax(6.5rem, 8rem) minmax(0, 1fr) max-content minmax(0, 1fr);
+  }
+
+  .concordance-collocations-table {
+    min-width: 760px;
+  }
+
+  .concordance-position-glyph {
+    min-width: 118px;
+  }
+
+  .concordance-distribution-table {
+    min-width: 700px;
+  }
+
+  .concordance-collocate-evidence-list-head,
+  .concordance-collocate-evidence-line {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .concordance-collocate-evidence-file {
+    white-space: normal;
+  }
+}
