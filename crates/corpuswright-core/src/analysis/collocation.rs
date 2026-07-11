@@ -309,8 +309,8 @@ fn add_collocation_window_record_keys(
             .concordance_key_for_record(record, case_sensitive)
             .ok_or({
                 ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
-                    document_id: record.document_id,
-                    token_ordinal_in_document: record.token_ordinal_in_document,
+                    document_id: 0,
+                    token_ordinal_in_document: 0,
                     node_token_length: 1,
                 })
             })?;
@@ -712,7 +712,25 @@ pub fn aggregate_concordance_collocations_index(
     for term in store.indexed_terms_for_concordance_key(query.case_sensitive) {
         let frequency = store
             .postings_for_concordance_key(term, query.case_sensitive)
-            .map(|postings| postings.len() as u64)
+            .map(|postings| {
+                postings
+                    .iter()
+                    .filter(|position| {
+                        let Some((document_id, ordinal)) =
+                            store.document_and_ordinal_for_position(**position)
+                        else {
+                            return false;
+                        };
+                        store
+                            .records_for_document(document_id)
+                            .and_then(|records| records.get(ordinal))
+                            .and_then(|record| {
+                                store.concordance_key_for_record(record, query.case_sensitive)
+                            })
+                            == Some(term)
+                    })
+                    .count() as u64
+            })
             .unwrap_or_default();
         if frequency > 0 {
             aggregate
@@ -810,6 +828,11 @@ pub fn aggregate_concordance_collocations_documents_routed(
                     backend_used: ConcordanceBackendUsed::Index,
                     index_rebuilt,
                 }),
+                Err(error @ ConcordanceError::Index(_))
+                    if error.prevents_unbounded_scan_fallback() =>
+                {
+                    Err(error)
+                }
                 Err(ConcordanceError::Index(_)) => Ok(RoutedConcordanceCollocationAggregate {
                     aggregate: aggregate_concordance_collocations_documents(
                         documents,
