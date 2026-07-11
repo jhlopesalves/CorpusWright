@@ -699,14 +699,43 @@ pub fn aggregate_concordance_collocations_index(
     .map_err(collocation_error_from_surface_index)?;
     let index =
         search_surface_index(store, &index_query).map_err(collocation_error_from_surface_index)?;
+    let selected_document_ids = if query.selection.all_documents {
+        let excluded = query
+            .selection
+            .excluded_ids
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
+        store
+            .indexed_documents()
+            .filter(|document| !excluded.contains(&document.document_id))
+            .map(|document| document.document_id)
+            .collect::<HashSet<_>>()
+    } else {
+        let requested = query.selection.ids.iter().copied().collect::<HashSet<_>>();
+        store
+            .indexed_documents()
+            .filter(|document| requested.contains(&document.document_id))
+            .map(|document| document.document_id)
+            .collect::<HashSet<_>>()
+    };
+    let selected_tokens = store
+        .indexed_documents()
+        .filter(|document| selected_document_ids.contains(&document.document_id))
+        .map(|document| document.token_count as u64)
+        .sum();
 
     let mut aggregate = ConcordanceCollocationAggregate {
         signature,
         candidate_counts: HashMap::new(),
         collocate_frequencies: HashMap::new(),
         r1: ConcordanceCollocationDistanceCounts::default(),
-        n: store.total_indexed_tokens() as u64,
-        f_node: index.hits.len() as u64,
+        n: selected_tokens,
+        f_node: index
+            .hits
+            .iter()
+            .filter(|hit| selected_document_ids.contains(&hit.document_id))
+            .count() as u64,
     };
 
     for term in store.indexed_terms_for_concordance_key(query.case_sensitive) {
@@ -721,6 +750,9 @@ pub fn aggregate_concordance_collocations_index(
                         else {
                             return false;
                         };
+                        if !selected_document_ids.contains(&document_id) {
+                            return false;
+                        }
                         store
                             .records_for_document(document_id)
                             .and_then(|records| records.get(ordinal))
@@ -740,6 +772,9 @@ pub fn aggregate_concordance_collocations_index(
     }
 
     for hit in index.hits {
+        if !selected_document_ids.contains(&hit.document_id) {
+            continue;
+        }
         let records = store
             .records_for_document(hit.document_id)
             .ok_or_else(|| collocation_inconsistent_index_error(&hit))?;
@@ -848,6 +883,26 @@ pub fn aggregate_concordance_collocations_documents_routed(
             }
         }
     }
+}
+
+pub fn aggregate_concordance_collocations_routed_provider<Resolve>(
+    document_slots: usize,
+    query: &ConcordanceCollocationQuery,
+    tokenization_config: &TokenizationConfig,
+    context: &mut ConcordanceSearchContext,
+    resolve: Resolve,
+) -> Result<RoutedConcordanceCollocationAggregate, ConcordanceError>
+where
+    Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
+{
+    let (store, index_rebuilt) =
+        context.index_store_for_provider(document_slots, tokenization_config, resolve)?;
+    let aggregate = aggregate_concordance_collocations_index(store, query, tokenization_config)?;
+    Ok(RoutedConcordanceCollocationAggregate {
+        aggregate,
+        backend_used: ConcordanceBackendUsed::Index,
+        index_rebuilt,
+    })
 }
 
 fn collocation_error_from_surface_index(error: SurfaceIndexError) -> ConcordanceError {

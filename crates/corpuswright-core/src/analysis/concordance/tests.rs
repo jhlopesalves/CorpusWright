@@ -462,6 +462,112 @@ fn routed_index_parity_holds_for_selection_and_pagination() {
 }
 
 #[test]
+fn provider_index_reuses_full_corpus_store_across_selection_changes_and_warm_queries() {
+    let documents = vec![
+        concordance_document(0, "a.txt", "alpha beta alpha"),
+        concordance_document(1, "b.txt", "alpha gamma"),
+        concordance_document(2, "c.txt", "delta alpha"),
+    ];
+    let resolutions = std::cell::Cell::new(0usize);
+    let mut context = ConcordanceSearchContext::default();
+    let mut first_query = parity_concordance_query("alpha", false);
+    first_query.selection = AnalysisDocumentSelection {
+        all_documents: false,
+        ids: vec![0],
+        excluded_ids: Vec::new(),
+    };
+    let first = search_concordance_documents_routed_provider(
+        documents.len(),
+        &first_query,
+        &TokenizationConfig::default(),
+        &mut context,
+        |index| {
+            resolutions.set(resolutions.get() + 1);
+            Some(documents[index].clone())
+        },
+    )
+    .unwrap();
+    let cold_resolutions = resolutions.get();
+
+    let mut second_query = parity_concordance_query("alpha", false);
+    second_query.selection = AnalysisDocumentSelection {
+        all_documents: false,
+        ids: vec![1, 2],
+        excluded_ids: Vec::new(),
+    };
+    let second = search_concordance_documents_routed_provider(
+        documents.len(),
+        &second_query,
+        &TokenizationConfig::default(),
+        &mut context,
+        |index| {
+            resolutions.set(resolutions.get() + 1);
+            Some(documents[index].clone())
+        },
+    )
+    .unwrap();
+
+    assert_eq!(first.result.total_hits, 2);
+    assert_eq!(second.result.total_hits, 2);
+    assert_eq!(context.index_build_count(), 1);
+    assert_eq!(context.index_cache_load_count(), 0);
+    assert_eq!(resolutions.get(), cold_resolutions);
+    assert_eq!(cold_resolutions, documents.len() * 2);
+}
+
+#[test]
+fn provider_cache_load_streams_identity_once_and_content_changes_invalidate() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let documents = vec![
+        concordance_document(0, "a.txt", "alpha beta"),
+        concordance_document(1, "b.txt", "gamma alpha"),
+    ];
+    let query = parity_concordance_query("alpha", false);
+    let config = TokenizationConfig::default();
+    let mut first = ConcordanceSearchContext::with_cache_root(temp_dir.path().to_path_buf());
+    search_concordance_documents_routed_provider(
+        documents.len(),
+        &query,
+        &config,
+        &mut first,
+        |index| Some(documents[index].clone()),
+    )
+    .unwrap();
+
+    let cache_resolutions = std::cell::Cell::new(0usize);
+    let mut restarted = ConcordanceSearchContext::with_cache_root(temp_dir.path().to_path_buf());
+    let cached = search_concordance_documents_routed_provider(
+        documents.len(),
+        &query,
+        &config,
+        &mut restarted,
+        |index| {
+            cache_resolutions.set(cache_resolutions.get() + 1);
+            Some(documents[index].clone())
+        },
+    )
+    .unwrap();
+    assert!(!cached.index_rebuilt);
+    assert_eq!(restarted.index_cache_load_count(), 1);
+    assert_eq!(cache_resolutions.get(), documents.len());
+
+    let mut changed_documents = documents.clone();
+    changed_documents[0].text.push_str(" alpha");
+    let mut changed = ConcordanceSearchContext::with_cache_root(temp_dir.path().to_path_buf());
+    let changed_result = search_concordance_documents_routed_provider(
+        changed_documents.len(),
+        &query,
+        &config,
+        &mut changed,
+        |index| (index != 1).then(|| changed_documents[index].clone()),
+    )
+    .unwrap();
+    assert!(changed_result.index_rebuilt);
+    assert_eq!(changed.index_build_count(), 1);
+    assert_eq!(changed_result.result.total_hits, 2);
+}
+
+#[test]
 fn routed_index_handles_context_filter_and_matches_scan() {
     let documents = vec![concordance_document(
         0,
@@ -617,12 +723,7 @@ fn routed_index_disk_cache_reuses_content_across_restart_and_recovers_from_corru
     assert!(changed.index_rebuilt);
     assert_eq!(changed_config_context.index_build_count(), 1);
 
-    let selected_ids = selected_concordance_document_ids(
-        &renamed_documents,
-        &AnalysisDocumentSelection::default(),
-    );
-    let manifest =
-        concordance_surface_index_manifest(&renamed_documents, &selected_ids, &config).unwrap();
+    let manifest = concordance_surface_index_manifest(&renamed_documents, &config).unwrap();
     let cache_path = crate::index::surface_index_cache_path(temp_dir.path(), &manifest);
     std::fs::write(&cache_path, b"truncated").unwrap();
     let mut corrupted_context =
