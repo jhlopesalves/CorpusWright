@@ -346,7 +346,7 @@ struct ConcordanceCollocationCache {
     inner: Mutex<
         Option<(
             ConcordanceCollocationCacheKey,
-            ConcordanceCollocationAggregate,
+            Arc<ConcordanceCollocationAggregate>,
         )>,
     >,
 }
@@ -358,17 +358,20 @@ impl ConcordanceCollocationCache {
         }
     }
 
-    fn get(&self, key: &ConcordanceCollocationCacheKey) -> Option<ConcordanceCollocationAggregate> {
+    fn get(
+        &self,
+        key: &ConcordanceCollocationCacheKey,
+    ) -> Option<Arc<ConcordanceCollocationAggregate>> {
         let inner = self.inner.lock().unwrap();
         inner
             .as_ref()
-            .and_then(|(cached_key, aggregate)| (cached_key == key).then(|| aggregate.clone()))
+            .and_then(|(cached_key, aggregate)| (cached_key == key).then(|| Arc::clone(aggregate)))
     }
 
     fn insert(
         &self,
         key: ConcordanceCollocationCacheKey,
-        aggregate: ConcordanceCollocationAggregate,
+        aggregate: Arc<ConcordanceCollocationAggregate>,
     ) {
         *self.inner.lock().unwrap() = Some((key, aggregate));
     }
@@ -4159,7 +4162,8 @@ async fn query_concordance_collocations_command(
     .await
     .map_err(|error| format!("Concordance collocation task failed: {error}"))?
     .map(|aggregate| {
-        collocation_cache.insert(cache_key, aggregate.clone());
+        let aggregate = Arc::new(aggregate);
+        collocation_cache.insert(cache_key, Arc::clone(&aggregate));
         query_concordance_collocations_from_aggregate(&aggregate, &query)
     })
 }
@@ -5270,8 +5274,8 @@ mod tests {
             return query_concordance_collocations_from_aggregate(&aggregate, query);
         }
 
-        let aggregate = aggregate(aggregation);
-        cache.insert(cache_key, aggregate.clone());
+        let aggregate = Arc::new(aggregate(aggregation));
+        cache.insert(cache_key, Arc::clone(&aggregate));
         query_concordance_collocations_from_aggregate(&aggregate, query)
     }
 
@@ -5847,7 +5851,10 @@ mod tests {
     fn concordance_collocation_cache_is_keyed_by_aggregation_inputs() {
         let cache = ConcordanceCollocationCache::new();
         let key = collocation_cache_key(7, AnalysisDocumentSelection::default(), "movie", false);
-        cache.insert(key.clone(), collocation_aggregate(key.aggregation.clone()));
+        cache.insert(
+            key.clone(),
+            Arc::new(collocation_aggregate(key.aggregation.clone())),
+        );
 
         assert!(cache.get(&key).is_some());
         let mut other_project = key.clone();
@@ -5900,6 +5907,51 @@ mod tests {
                 ))
                 .is_none()
         );
+    }
+
+    #[test]
+    fn concordance_collocation_cache_shares_and_releases_aggregate_allocations() {
+        let cache = ConcordanceCollocationCache::new();
+        let key = collocation_cache_key(7, AnalysisDocumentSelection::default(), "movie", false);
+        let mut owned = collocation_aggregate(key.aggregation.clone());
+        owned.symbols.push("candidate".to_string());
+        owned.collocate_frequencies.push(11);
+        owned.candidate_counts.insert(0, Default::default());
+        let aggregate = Arc::new(owned);
+        let symbol_ptr = aggregate.symbols[0].as_ptr();
+        cache.insert(key.clone(), Arc::clone(&aggregate));
+
+        let first = cache.get(&key).unwrap();
+        let second = cache.get(&key).unwrap();
+        assert!(Arc::ptr_eq(&aggregate, &first));
+        assert!(Arc::ptr_eq(&first, &second));
+        assert_eq!(first.symbols[0].as_ptr(), symbol_ptr);
+        let strong_count = Arc::strong_count(&aggregate);
+
+        let query = desktop_collocation_query(
+            "movie",
+            false,
+            5,
+            corpuswright_core::analysis::ConcordanceCollocationDirection::Both,
+        );
+        let _ = query_concordance_collocations_from_aggregate(&first, &query);
+        assert_eq!(Arc::strong_count(&aggregate), strong_count);
+        assert_eq!(first.symbols[0].as_ptr(), symbol_ptr);
+
+        drop(first);
+        drop(second);
+        let weak = Arc::downgrade(&aggregate);
+        drop(aggregate);
+        let replacement = Arc::new(collocation_aggregate(key.aggregation.clone()));
+        cache.insert(key.clone(), replacement);
+        assert!(weak.upgrade().is_none());
+
+        let replacement = cache.get(&key).unwrap();
+        let replacement_weak = Arc::downgrade(&replacement);
+        drop(replacement);
+        cache.clear();
+        assert!(cache.get(&key).is_none());
+        assert!(replacement_weak.upgrade().is_none());
     }
 
     #[test]
