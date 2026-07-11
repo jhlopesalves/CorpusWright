@@ -466,7 +466,7 @@
                   <div class="concordance-controls">
                     <label for="concordance-query-input">
                       <span>Surface word or phrase</span>
-                      <input id="concordance-query-input" type="search" autocomplete="off" />
+                      <input id="concordance-query-input" type="search" autocomplete="off" aria-controls="concordance-workbench" />
                     </label>
                     <label class="frequency-stopword-control" for="concordance-case-sensitive">
                       <span>Case</span>
@@ -481,13 +481,13 @@
                       <button id="concordance-files-button" type="button" class="secondary-btn">Files: 0 of 0</button>
                     </div>
                     <div class="concordance-search-actions">
-                      <button id="concordance-search-button" class="primary-btn" type="button">Search</button>
-                      <button id="concordance-cancel-button" class="secondary-btn hidden" type="button">Cancel</button>
+                      <button id="concordance-search-button" class="primary-btn" type="button" aria-controls="concordance-workbench" aria-describedby="concordance-status">Search</button>
+                      <button id="concordance-cancel-button" class="secondary-btn hidden" type="button" aria-label="Cancel concordance search" aria-controls="concordance-workbench" aria-hidden="true" disabled>Cancel</button>
                     </div>
                   </div>
                 </div>
                 <div id="concordance-status" class="frequency-query-notice hidden" role="status"></div>
-                <div class="concordance-workbench">
+                <div id="concordance-workbench" class="concordance-workbench">
                   <section id="concordance-lines-panel" class="concordance-card concordance-kwic-panel" aria-labelledby="concordance-lines-title" tabindex="-1">
                     <header class="concordance-card-header">
                       <div class="concordance-card-heading">
@@ -496,7 +496,7 @@
                       </div>
                       <div class="concordance-card-actions">
                         <button id="concordance-lines-stats" class="concordance-card-stats" type="button" data-concordance-card="lines" data-concordance-card-action="controls" aria-expanded="false" aria-controls="concordance-lines-controls">window 5L–5R · file/position · showing 0 of 0</button>
-                        <button id="concordance-lines-collapse" class="concordance-card-collapse" type="button" data-concordance-card="lines" data-concordance-card-action="collapse">Collapse</button>
+                        <button id="concordance-lines-collapse" class="concordance-card-collapse" type="button" data-concordance-card="lines" data-concordance-card-action="collapse" aria-expanded="true" aria-controls="concordance-lines-body" aria-label="Collapse Concordance Lines">Collapse</button>
                       </div>
                     </header>
                     <div id="concordance-lines-controls" class="concordance-card-controls concordance-lines-controls hidden">
@@ -564,7 +564,7 @@
                       </div>
                       <div class="concordance-card-actions">
                         <button id="concordance-collocates-stats" class="concordance-card-stats" type="button" data-concordance-card="collocates" data-concordance-card-action="controls" aria-expanded="false" aria-controls="concordance-collocates-controls">span 5L–5R · logDice · min freq 5 · showing 0 of 0</button>
-                        <button id="concordance-collocates-collapse" class="concordance-card-collapse" type="button" data-concordance-card="collocates" data-concordance-card-action="collapse">Collapse</button>
+                        <button id="concordance-collocates-collapse" class="concordance-card-collapse" type="button" data-concordance-card="collocates" data-concordance-card-action="collapse" aria-expanded="true" aria-controls="concordance-collocates-body" aria-label="Collapse Collocates">Collapse</button>
                       </div>
                     </header>
                     <div id="concordance-collocates-controls" class="concordance-card-controls concordance-collocation-controls hidden">
@@ -646,7 +646,7 @@
                       </div>
                       <div class="concordance-card-actions">
                         <button id="concordance-distribution-stats" class="concordance-card-stats" type="button" data-concordance-card="distribution" data-concordance-card-action="controls" aria-expanded="false" aria-controls="concordance-distribution-controls">0 of 0 documents with hits · showing 0 of 0</button>
-                        <button id="concordance-distribution-collapse" class="concordance-card-collapse" type="button" data-concordance-card="distribution" data-concordance-card-action="collapse">Collapse</button>
+                        <button id="concordance-distribution-collapse" class="concordance-card-collapse" type="button" data-concordance-card="distribution" data-concordance-card-action="collapse" aria-expanded="true" aria-controls="concordance-distribution-body" aria-label="Collapse Distribution">Collapse</button>
                       </div>
                     </header>
                     <div id="concordance-distribution-controls" class="concordance-card-controls concordance-distribution-controls hidden">
