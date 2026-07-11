@@ -12,14 +12,15 @@ use corpuswright_core::analysis::{
     AnnotationCacheAvailability, AnnotationCacheBuildError, AnnotationCacheBuildPhase,
     AnnotationCacheBuildProgress, AnnotationCacheBuildReport, AnnotationCacheState,
     CompareDocumentCell, CompareDocumentRow, CompareExpressionSummary, CompareExpressionsQuery,
-    CompareExpressionsResult, ConcordanceCollocateRow, ConcordanceCollocationDirection,
-    ConcordanceCollocationMeasure, ConcordanceCollocationQuery, ConcordanceCollocationResult,
-    ConcordanceCollocationSortKey, ConcordanceContextFilterDirection, ConcordanceDistributionItem,
-    ConcordanceDistributionPage, ConcordanceExpansionQuery, ConcordanceExpansionResult,
-    ConcordanceQuery, ConcordanceResult, ConcordanceRow, ConcordanceSortKey, FrequencyGroupMode,
-    FrequencyMatchMode, FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery,
-    FrequencySortKey, FrequencyTermItem, FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow,
-    SortDirection, TermDistributionItem, TermDistributionPage,
+    CompareExpressionsResult, ConcordanceCollocatePositionCounts, ConcordanceCollocateRow,
+    ConcordanceCollocationDirection, ConcordanceCollocationMeasure, ConcordanceCollocationQuery,
+    ConcordanceCollocationResult, ConcordanceCollocationSortKey, ConcordanceContextFilterDirection,
+    ConcordanceDistributionItem, ConcordanceDistributionPage, ConcordanceExpansionQuery,
+    ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult, ConcordanceRow,
+    ConcordanceSortKey, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
+    FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
+    FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow, SortDirection, TermDistributionItem,
+    TermDistributionPage,
 };
 use corpuswright_core::clean::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
@@ -832,7 +833,15 @@ fn main() {
         ],
         &[],
     );
-    export_type::<ConcordanceCollocateRow>(&out_dir, &[], &[]);
+    export_type::<ConcordanceCollocatePositionCounts>(&out_dir, &[], &[]);
+    export_type::<ConcordanceCollocateRow>(
+        &out_dir,
+        &[TypeImport {
+            name: "ConcordanceCollocatePositionCounts",
+            file: "ConcordanceCollocatePositionCounts",
+        }],
+        &[],
+    );
     export_type::<ConcordanceCollocationResult>(
         &out_dir,
         &[
