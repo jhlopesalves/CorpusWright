@@ -1,8 +1,8 @@
 use super::build::AnalysisDocumentSelection;
 use super::concordance::{
-    ConcordanceBackend, ConcordanceBackendUsed, ConcordanceDocument, ConcordanceError,
-    ConcordanceFallbackReason, ConcordanceSearchContext, concordance_key,
-    resolve_concordance_query_tokens, selected_concordance_document_ids, visit_index_query_hits,
+    ConcordanceBackendUsed, ConcordanceDocument, ConcordanceError, ConcordanceFallbackReason,
+    ConcordanceSearchContext, concordance_key, resolve_concordance_query_tokens,
+    selected_concordance_document_ids, visit_index_query_hits,
 };
 use super::frequency::SortDirection;
 use super::shared::{StopwordLanguage, stopword_matches};
@@ -179,6 +179,9 @@ pub struct RoutedConcordanceCollocationAggregate {
 }
 
 /// Test/benchmark-facing instrumentation for collocation aggregation.
+// These diagnostic fields are intentionally retained as evidence for focused tests and benchmarks;
+// production aggregation only constructs the snapshot.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct CollocationAggregationStats {
     pub candidates_visited: u64,
@@ -632,7 +635,10 @@ struct NumericCollocationBuilder {
 }
 
 impl NumericCollocationBuilder {
-    fn new(limits: SurfaceIndexResourceLimits, cancellation: SurfaceIndexCancellationToken) -> Self {
+    fn new(
+        limits: SurfaceIndexResourceLimits,
+        cancellation: SurfaceIndexCancellationToken,
+    ) -> Self {
         Self {
             symbols: Vec::new(),
             symbol_ids: HashMap::new(),
@@ -648,12 +654,11 @@ impl NumericCollocationBuilder {
     }
 
     fn check_cancelled(&self) -> Result<(), ConcordanceError> {
-        if self.f_node % 1_024 == 0 && self.cancellation.is_cancelled() {
+        if self.f_node.is_multiple_of(1_024) && self.cancellation.is_cancelled() {
             return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
         }
         Ok(())
     }
-
 
     fn intern(&mut self, key: &str) -> Result<u32, ConcordanceError> {
         if let Some(id) = self.symbol_ids.get(key) {
@@ -678,7 +683,9 @@ impl NumericCollocationBuilder {
                 "collocation symbol table exceeds u32 capacity".to_string(),
             ))
         })?;
-        self.symbols.try_reserve(1).map_err(collocation_allocation("collocation symbols"))?;
+        self.symbols
+            .try_reserve(1)
+            .map_err(collocation_allocation("collocation symbols"))?;
         self.collocate_frequencies
             .try_reserve(1)
             .map_err(collocation_allocation("collocation frequencies"))?;
@@ -700,7 +707,7 @@ impl NumericCollocationBuilder {
         let id = self.intern(key)?;
         self.collocate_frequencies[id as usize] = self.collocate_frequencies[id as usize]
             .checked_add(1)
-            .ok_or_else(|| {
+            .ok_or({
                 ConcordanceError::Index(SurfaceIndexError::Allocation(
                     "collocation frequency overflow".to_string(),
                 ))
@@ -748,7 +755,10 @@ impl NumericCollocationBuilder {
     }
 
     fn projected_bytes(&self) -> u64 {
-        self.symbols.iter().map(|symbol| symbol.len() as u64).sum::<u64>()
+        self.symbols
+            .iter()
+            .map(|symbol| symbol.len() as u64)
+            .sum::<u64>()
             + (self.symbols.len()
                 * (std::mem::size_of::<String>() + std::mem::size_of::<u64>() + 96))
                 as u64
@@ -785,9 +795,7 @@ fn collocation_allocation(
     purpose: &'static str,
 ) -> impl FnOnce(std::collections::TryReserveError) -> ConcordanceError {
     move |error| {
-        ConcordanceError::Index(SurfaceIndexError::Allocation(format!(
-            "{purpose}: {error}"
-        )))
+        ConcordanceError::Index(SurfaceIndexError::Allocation(format!("{purpose}: {error}")))
     }
 }
 
@@ -937,10 +945,8 @@ pub fn aggregate_concordance_collocations_documents(
             .filter(|document| selected_document_ids.contains(&document.document_index)),
     );
     ordered_documents.sort_by_key(|document| document.document_index);
-    let mut builder = NumericCollocationBuilder::new(
-        SurfaceIndexResourceLimits::default(),
-        cancellation.clone(),
-    );
+    let mut builder =
+        NumericCollocationBuilder::new(SurfaceIndexResourceLimits::default(), cancellation.clone());
     for document in ordered_documents {
         if cancellation.is_cancelled() {
             return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
@@ -1010,7 +1016,10 @@ pub fn aggregate_concordance_collocations_index(
         symbols.push(owned);
     }
     let limits = SurfaceIndexResourceLimits::default();
-    let base_estimate = symbols.iter().map(|symbol| symbol.len() as u64).sum::<u64>()
+    let base_estimate = symbols
+        .iter()
+        .map(|symbol| symbol.len() as u64)
+        .sum::<u64>()
         + (symbols.len() * (std::mem::size_of::<String>() + std::mem::size_of::<u64>() + 64))
             as u64;
     if base_estimate > limits.max_projected_resident_index_bytes {
@@ -1033,7 +1042,7 @@ pub fn aggregate_concordance_collocations_index(
         if cancellation.is_cancelled() {
             return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
         }
-        let records = store.records_for_document(document.document_id).ok_or_else(|| {
+        let records = store.records_for_document(document.document_id).ok_or({
             ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
                 document_id: document.document_id,
                 token_ordinal_in_document: 0,
@@ -1043,7 +1052,7 @@ pub fn aggregate_concordance_collocations_index(
         for record in records {
             let id = store
                 .concordance_symbol_id_for_record(record, query.case_sensitive)
-                .ok_or_else(|| {
+                .ok_or({
                     ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
                         document_id: document.document_id,
                         token_ordinal_in_document: 0,
@@ -1066,7 +1075,7 @@ pub fn aggregate_concordance_collocations_index(
     let mut peak_aggregate_entries = 0;
 
     visit_index_query_hits(store, &index_query, |hit| {
-        if aggregate.f_node % 1_024 == 0 && cancellation.is_cancelled() {
+        if aggregate.f_node.is_multiple_of(1_024) && cancellation.is_cancelled() {
             return Err(ConcordanceError::Index(SurfaceIndexError::Cancelled));
         }
         if !selected_document_ids.contains(&hit.document_id) {
@@ -1151,9 +1160,18 @@ where
     Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
     Progress: FnMut(crate::analysis::ConcordanceProgress),
 {
-    let (store, index_rebuilt) =
-        context.index_store_for_provider(document_slots, tokenization_config, resolve, report_progress)?;
-    let (aggregate, _stats) = aggregate_concordance_collocations_index(store, query, tokenization_config, cancellation.clone())?;
+    let (store, index_rebuilt) = context.index_store_for_provider(
+        document_slots,
+        tokenization_config,
+        resolve,
+        report_progress,
+    )?;
+    let (aggregate, _stats) = aggregate_concordance_collocations_index(
+        store,
+        query,
+        tokenization_config,
+        cancellation.clone(),
+    )?;
     Ok(RoutedConcordanceCollocationAggregate {
         aggregate,
         backend_used: ConcordanceBackendUsed::Index,
@@ -1173,7 +1191,8 @@ where
 {
     let (signature, query_keys, query_key_set) =
         resolve_concordance_collocation_aggregation(query, tokenization_config)?;
-    let mut builder = NumericCollocationBuilder::new(SurfaceIndexResourceLimits::default(), cancellation.clone());
+    let mut builder =
+        NumericCollocationBuilder::new(SurfaceIndexResourceLimits::default(), cancellation.clone());
     for document_index in 0..document_slots {
         let selected = if query.selection.all_documents {
             !query.selection.excluded_ids.contains(&document_index)
@@ -1262,13 +1281,7 @@ pub fn query_concordance_collocations_from_aggregate(
             &mut retained,
             NumericCollocationRow {
                 symbol_id,
-                row: collocation_row(
-                    String::new(),
-                    o11,
-                    collocate_frequency,
-                    r1,
-                    aggregate.n,
-                ),
+                row: collocation_row(String::new(), o11, collocate_frequency, r1, aggregate.n),
             },
             limit,
             query,
@@ -1313,8 +1326,12 @@ pub fn query_concordance_collocations_documents(
     tokenization_config: &TokenizationConfig,
     cancellation: &SurfaceIndexCancellationToken,
 ) -> Result<ConcordanceCollocationResult, ConcordanceError> {
-    let aggregate =
-        aggregate_concordance_collocations_documents(documents, query, tokenization_config, cancellation.clone())?;
+    let aggregate = aggregate_concordance_collocations_documents(
+        documents,
+        query,
+        tokenization_config,
+        cancellation.clone(),
+    )?;
     Ok(query_concordance_collocations_from_aggregate(
         &aggregate, query,
     ))

@@ -44,7 +44,6 @@ pub struct ConcordanceProgress {
     pub current_phase: ConcordancePhase,
 }
 
-
 /// Server-side sort key for a bounded surface-token concordance query.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
@@ -277,7 +276,7 @@ impl ConcordanceSearchContext {
                     SurfaceIndexCacheLoad::Ready(mut store) => store
                         .refresh_document_metadata(&inputs)
                         .ok()
-                        .map(|()| store),
+                        .map(|()| *store),
                     SurfaceIndexCacheLoad::Missing
                     | SurfaceIndexCacheLoad::Stale
                     | SurfaceIndexCacheLoad::Invalid => None,
@@ -311,6 +310,7 @@ impl ConcordanceSearchContext {
 
     /// Prepares the full usable-corpus index by resolving one document at a
     /// time. A warm in-process store returns before invoking the provider.
+    #[allow(clippy::unnecessary_unwrap)]
     pub fn index_store_for_provider<Resolve, Progress>(
         &mut self,
         document_slots: usize,
@@ -376,7 +376,7 @@ impl ConcordanceSearchContext {
                 SurfaceIndexCacheLoad::Ready(mut store) => store
                     .refresh_document_metadata(&metadata_inputs)
                     .ok()
-                    .map(|()| store),
+                    .map(|()| *store),
                 SurfaceIndexCacheLoad::Missing
                 | SurfaceIndexCacheLoad::Stale
                 | SurfaceIndexCacheLoad::Invalid => None,
@@ -714,7 +714,7 @@ impl BoundedConcordanceCollector {
         let retained_depth = if sort_key == ConcordanceSortKey::FilePosition {
             limit
         } else {
-            offset.checked_add(limit).ok_or_else(|| {
+            offset.checked_add(limit).ok_or({
                 ConcordanceError::Index(SurfaceIndexError::RetainedSortDepthExceedsQueryBudget {
                     requested_records: u64::MAX,
                     limit_records: limits.max_retained_query_sort_records,
@@ -1175,8 +1175,12 @@ where
     Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
     Progress: FnMut(ConcordanceProgress),
 {
-    let (store, index_rebuilt) =
-        context.index_store_for_provider(document_slots, tokenization_config, resolve, &mut report_progress)?;
+    let (store, index_rebuilt) = context.index_store_for_provider(
+        document_slots,
+        tokenization_config,
+        resolve,
+        &mut report_progress,
+    )?;
     let documents = store
         .indexed_documents()
         .map(|document| ConcordanceDocument {
@@ -1435,15 +1439,13 @@ fn search_concordance_documents_index_from_store(
         {
             return Ok(());
         }
-        let records = store
-            .records_for_document(candidate.document_id)
-            .ok_or_else(|| {
-                ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
-                    document_id: candidate.document_id,
-                    token_ordinal_in_document: candidate.token_ordinal_in_document,
-                    node_token_length: candidate.node_token_length,
-                })
-            })?;
+        let records = store.records_for_document(candidate.document_id).ok_or({
+            ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
+                document_id: candidate.document_id,
+                token_ordinal_in_document: candidate.token_ordinal_in_document,
+                node_token_length: candidate.node_token_length,
+            })
+        })?;
         let node_end = candidate.token_ordinal_in_document + candidate.node_token_length;
         let key_at = |index: Option<usize>| -> Result<Option<&str>, ConcordanceError> {
             let Some(record) = index.and_then(|index| records.get(index)) else {
@@ -1452,7 +1454,7 @@ fn search_concordance_documents_index_from_store(
             store
                 .concordance_key_for_record(record, query.case_sensitive)
                 .map(Some)
-                .ok_or_else(|| {
+                .ok_or({
                     ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
                         document_id: candidate.document_id,
                         token_ordinal_in_document: candidate.token_ordinal_in_document,
@@ -1627,7 +1629,7 @@ pub(super) fn visit_index_query_hits(
                 },
             ));
         };
-        let records = store.records_for_document(document_id).ok_or_else(|| {
+        let records = store.records_for_document(document_id).ok_or({
             ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
                 document_id,
                 token_ordinal_in_document,
@@ -1930,6 +1932,7 @@ fn search_concordance_documents_scan_with_stats(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn scan_concordance_document_into_collector(
     document: &ConcordanceDocument,
     query_keys: &[String],

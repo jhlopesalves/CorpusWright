@@ -463,7 +463,7 @@ fn routed_index_parity_holds_for_selection_and_pagination() {
 
 #[test]
 fn provider_index_reuses_full_corpus_store_across_selection_changes_and_warm_queries() {
-    let documents = vec![
+    let documents = [
         concordance_document(0, "a.txt", "alpha beta alpha"),
         concordance_document(1, "b.txt", "alpha gamma"),
         concordance_document(2, "c.txt", "delta alpha"),
@@ -574,17 +574,17 @@ fn provider_cache_load_streams_identity_once_and_content_changes_invalidate() {
 
 #[test]
 fn provider_reports_progress_during_index_build_and_search() {
-    let documents = vec![
+    let documents = [
         concordance_document(0, "a.txt", "alpha beta"),
         concordance_document(1, "b.txt", "gamma alpha"),
     ];
     let query = parity_concordance_query("alpha", false);
     let config = TokenizationConfig::default();
     let mut context = ConcordanceSearchContext::default();
-    
+
     let mut recorded_phases = Vec::new();
     let mut total_files_reported = 0;
-    
+
     search_concordance_documents_routed_provider(
         documents.len(),
         &query,
@@ -1094,26 +1094,25 @@ fn kwic_expansion_retokenises_one_supplied_document() {
 #[test]
 #[ignore]
 fn benchmark_concordance_scale() {
-    use std::time::Instant;
-    use std::env;
-    use crate::analysis::concordance::{
-        ConcordanceDocument, ConcordanceQuery, ConcordanceSearchContext, ConcordanceSortKey,
-        search_concordance_documents_routed_provider, ConcordancePhase
-    };
+    use crate::analysis::AnalysisDocumentSelection;
     use crate::analysis::collocation::{
         ConcordanceCollocationQuery, aggregate_concordance_collocations_routed_provider,
     };
-    use crate::analysis::AnalysisDocumentSelection;
-    use crate::tokenization::TokenizationConfig;
+    use crate::analysis::concordance::{
+        ConcordanceDocument, ConcordancePhase, ConcordanceQuery, ConcordanceSearchContext,
+        ConcordanceSortKey, search_concordance_documents_routed_provider,
+    };
     use crate::index::SurfaceIndexCancellationToken;
+    use crate::tokenization::TokenizationConfig;
+    use std::env;
+    use std::time::Instant;
 
     let num_tokens: usize = env::var("CONCORDANCE_BENCH_TOKENS")
         .unwrap_or_else(|_| "5000000".to_string())
         .parse()
         .unwrap_or(5_000_000);
-    
-    let scenario = env::var("CONCORDANCE_BENCH_SCENARIO")
-        .unwrap_or_else(|_| "mixed".to_string());
+
+    let scenario = env::var("CONCORDANCE_BENCH_SCENARIO").unwrap_or_else(|_| "mixed".to_string());
 
     println!("Running Concordance Scale Benchmark");
     println!("Target tokens: {}", num_tokens);
@@ -1122,7 +1121,8 @@ fn benchmark_concordance_scale() {
     let (documents, doc_len) = match scenario.as_str() {
         "whale" => {
             // One massive document
-            let text = "the quick brown fox jumps over the lazy dog alpha beta gamma ".repeat(num_tokens / 12);
+            let text = "the quick brown fox jumps over the lazy dog alpha beta gamma "
+                .repeat(num_tokens / 12);
             let docs = vec![ConcordanceDocument {
                 document_index: 0,
                 source_path: "whale.txt".into(),
@@ -1139,8 +1139,8 @@ fn benchmark_concordance_scale() {
             for i in 0..num_docs {
                 docs.push(ConcordanceDocument {
                     document_index: i,
-                    source_path: format!("doc_{}.txt", i).into(),
-                    display_name: format!("doc_{}.txt", i).into(),
+                    source_path: format!("doc_{}.txt", i),
+                    display_name: format!("doc_{}.txt", i),
                     text: text.to_string(),
                 });
             }
@@ -1152,11 +1152,12 @@ fn benchmark_concordance_scale() {
             let tokens_per_doc = num_tokens / num_docs;
             let mut docs = Vec::with_capacity(num_docs);
             for i in 0..num_docs {
-                let text = "the quick brown fox jumps over the lazy dog alpha beta gamma ".repeat(tokens_per_doc / 12);
+                let text = "the quick brown fox jumps over the lazy dog alpha beta gamma "
+                    .repeat(tokens_per_doc / 12);
                 docs.push(ConcordanceDocument {
                     document_index: i,
-                    source_path: format!("mixed_{}.txt", i).into(),
-                    display_name: format!("mixed_{}.txt", i).into(),
+                    source_path: format!("mixed_{}.txt", i),
+                    display_name: format!("mixed_{}.txt", i),
                     text,
                 });
             }
@@ -1178,7 +1179,8 @@ fn benchmark_concordance_scale() {
             excluded_ids: Vec::new(),
         },
         context_filter: None,
-        context_filter_direction: crate::analysis::concordance::ConcordanceContextFilterDirection::Both,
+        context_filter_direction:
+            crate::analysis::concordance::ConcordanceContextFilterDirection::Both,
         sort_key: ConcordanceSortKey::Node,
         window_tokens: 5,
         offset: 0,
@@ -1199,13 +1201,14 @@ fn benchmark_concordance_scale() {
                 println!("  [Progress] Phase: {:?}", progress.current_phase);
             }
         },
-    ).expect("Concordance search failed");
+    )
+    .expect("Concordance search failed");
 
     let duration = start.elapsed();
     println!("Concordance Search completed in {:?}", duration);
     println!("Hits: {}", result.result.total_hits);
     println!("Index rebuilt: {}", result.index_rebuilt);
-    
+
     // Test Collocations
     let col_query = ConcordanceCollocationQuery {
         query: "the".to_string(),
@@ -1228,7 +1231,7 @@ fn benchmark_concordance_scale() {
     };
 
     let cancel = SurfaceIndexCancellationToken::default();
-    
+
     let col_start = Instant::now();
     let col_result = aggregate_concordance_collocations_routed_provider(
         doc_len,
@@ -1238,13 +1241,17 @@ fn benchmark_concordance_scale() {
         &cancel,
         |idx| Some(documents[idx].clone()),
         |_progress| {},
-    ).expect("Collocation aggregation failed");
+    )
+    .expect("Collocation aggregation failed");
 
     let col_duration = col_start.elapsed();
     println!("Collocation Aggregation completed in {:?}", col_duration);
-    println!("Collocates: {}", col_result.aggregate.candidate_counts.len());
+    println!(
+        "Collocates: {}",
+        col_result.aggregate.candidate_counts.len()
+    );
     println!("Total occurrences: {}", col_result.aggregate.n);
-    
+
     // Now test warm cache performance
     println!("Running Warm Cache Search...");
     let warm_start = Instant::now();
@@ -1255,9 +1262,10 @@ fn benchmark_concordance_scale() {
         &mut context,
         |idx| Some(documents[idx].clone()),
         |_progress| {},
-    ).expect("Warm Concordance search failed");
+    )
+    .expect("Warm Concordance search failed");
     let warm_duration = warm_start.elapsed();
-    
+
     println!("Warm Concordance Search completed in {:?}", warm_duration);
     println!("Index rebuilt: {}", warm_result.index_rebuilt);
 }
