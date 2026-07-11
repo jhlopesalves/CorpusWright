@@ -222,47 +222,48 @@ pub fn visit_tokens<'text, E>(
     let mut current = None::<Boundary>;
     let mut pending_hyphen = None::<Boundary>;
 
-    let mut accept_boundary = |next: Boundary| -> Result<(), E> {
-        let Some(mut active) = current else {
-            current = Some(next);
-            return Ok(());
-        };
+    {
+        let mut accept_boundary = |next: Boundary| -> Result<(), E> {
+            let Some(mut active) = current else {
+                current = Some(next);
+                return Ok(());
+            };
 
-        if let Some(hyphen) = pending_hyphen.take() {
-            if hyphen.end == next.start && boundary_is_word_component(text, next) {
-                active.end = next.end;
-                current = Some(active);
+            if let Some(hyphen) = pending_hyphen.take() {
+                if hyphen.end == next.start && boundary_is_word_component(text, next) {
+                    active.end = next.end;
+                    current = Some(active);
+                    return Ok(());
+                }
+                emit_token_boundary(text, active, document_id, config, &mut visitor)?;
+                emit_token_boundary(text, hyphen, document_id, config, &mut visitor)?;
+                current = Some(next);
                 return Ok(());
             }
+
+            if config.retain_ascii_hyphen_compounds
+                && boundary_is_word_component(text, active)
+                && active.end == next.start
+                && &text[next.start..next.end] == "-"
+            {
+                current = Some(active);
+                pending_hyphen = Some(next);
+                return Ok(());
+            }
+
             emit_token_boundary(text, active, document_id, config, &mut visitor)?;
-            emit_token_boundary(text, hyphen, document_id, config, &mut visitor)?;
             current = Some(next);
-            return Ok(());
-        }
+            Ok(())
+        };
 
-        if config.retain_ascii_hyphen_compounds
-            && boundary_is_word_component(text, active)
-            && active.end == next.start
-            && &text[next.start..next.end] == "-"
-        {
-            current = Some(active);
-            pending_hyphen = Some(next);
-            return Ok(());
+        for (start, segment) in text.split_word_bound_indices() {
+            if segment.chars().all(char::is_whitespace) {
+                continue;
+            }
+            let end = start + segment.len();
+            visit_tailored_boundaries(text, start, end, config, &mut accept_boundary)?;
         }
-
-        emit_token_boundary(text, active, document_id, config, &mut visitor)?;
-        current = Some(next);
-        Ok(())
-    };
-
-    for (start, segment) in text.split_word_bound_indices() {
-        if segment.chars().all(char::is_whitespace) {
-            continue;
-        }
-        let end = start + segment.len();
-        visit_tailored_boundaries(text, start, end, config, &mut accept_boundary)?;
     }
-    drop(accept_boundary);
 
     if let Some(active) = current {
         emit_token_boundary(text, active, document_id, config, &mut visitor)?;
