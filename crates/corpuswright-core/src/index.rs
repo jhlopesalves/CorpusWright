@@ -2,10 +2,11 @@ use crate::analysis::concordance_key;
 use crate::decode::DECODE_POLICY_VERSION;
 use crate::tokenization::{TokenizationConfig, TokenizationManifest, tokenize, visit_tokens};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::hash::{Hash, Hasher};
-use std::io::{BufWriter, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::{
@@ -14,8 +15,14 @@ use std::{
     time::Instant,
 };
 
-pub const INDEX_SCHEMA_VERSION: u32 = 3;
-pub const SURFACE_INDEX_CACHE_FILE_VERSION: u32 = 1;
+pub const INDEX_SCHEMA_VERSION: u32 = 4;
+pub const SURFACE_INDEX_CACHE_FILE_VERSION: u32 = 2;
+
+const SURFACE_INDEX_CACHE_MAGIC: &[u8; 8] = b"CWIIDX02";
+const SURFACE_INDEX_CHECKSUM_BYTES: usize = 32;
+const SURFACE_INDEX_MAX_MANIFEST_BYTES: u64 = 1_048_576;
+const SURFACE_INDEX_MAX_RETAINED_FILES: usize = 2;
+const SURFACE_INDEX_MAX_RETAINED_AGGREGATE_BYTES: u64 = 2_147_483_648;
 
 const DEFAULT_WINDOW_TOKENS: usize = 5;
 const MAX_WINDOW_TOKENS: usize = 20;
@@ -1224,30 +1231,92 @@ impl std::fmt::Display for SurfaceIndexCacheError {
 
 impl std::error::Error for SurfaceIndexCacheError {}
 
-#[derive(Serialize)]
-struct SurfaceIndexCacheEnvelopeRef<'store> {
-    cache_file_version: u32,
-    manifest: &'store SurfaceIndexManifest,
-    store: &'store InMemoryIndexStore,
+struct ChecksummedWriter<W> {
+    inner: W,
+    hasher: Sha256,
 }
 
-#[derive(Deserialize)]
-struct SurfaceIndexCacheEnvelope {
-    cache_file_version: u32,
-    manifest: SurfaceIndexManifest,
-    store: InMemoryIndexStore,
+impl<W: Write> Write for ChecksummedWriter<W> {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        let written = self.inner.write(buffer)?;
+        self.hasher.update(&buffer[..written]);
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+impl<W: Write> ChecksummedWriter<W> {
+    fn new(inner: W) -> Self {
+        Self {
+            inner,
+            hasher: Sha256::new(),
+        }
+    }
+
+    fn finish(self) -> std::io::Result<W> {
+        let Self { mut inner, hasher } = self;
+        inner.write_all(&hasher.finalize())?;
+        inner.flush()?;
+        Ok(inner)
+    }
+}
+
+struct ChecksummedReader<R> {
+    inner: R,
+    hasher: Sha256,
+}
+
+impl<R: Read> Read for ChecksummedReader<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buffer)?;
+        self.hasher.update(&buffer[..read]);
+        Ok(read)
+    }
+}
+
+impl<R: Read> ChecksummedReader<R> {
+    fn new(inner: R) -> Self {
+        Self {
+            inner,
+            hasher: Sha256::new(),
+        }
+    }
+
+    fn verify_trailer(self) -> std::io::Result<()> {
+        let Self { mut inner, hasher } = self;
+        let expected = hasher.finalize();
+        let mut actual = [0u8; SURFACE_INDEX_CHECKSUM_BYTES];
+        inner.read_exact(&mut actual)?;
+        if actual.as_slice() != expected.as_slice() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "surface index checksum mismatch",
+            ));
+        }
+        let mut trailing = [0u8; 1];
+        if inner.read(&mut trailing)? != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "surface index contains trailing data",
+            ));
+        }
+        Ok(())
+    }
 }
 
 pub fn surface_index_cache_path(cache_root: &Path, manifest: &SurfaceIndexManifest) -> PathBuf {
     let mut key_bytes = Vec::new();
-    key_bytes.extend_from_slice(b"corpuswright-surface-index-cache-key-v1\0");
+    key_bytes.extend_from_slice(b"corpuswright-surface-index-cache-key-v2\0");
     key_bytes.extend_from_slice(&SURFACE_INDEX_CACHE_FILE_VERSION.to_le_bytes());
     if let Ok(manifest_bytes) = serde_json::to_vec(manifest) {
         key_bytes.extend_from_slice(&manifest_bytes);
     }
     let key = crate::hash::sha256_hex(&key_bytes);
     cache_root.join(format!(
-        "surface-index.v{}.{}.json",
+        "surface-index.v{}.{}.cwi",
         SURFACE_INDEX_CACHE_FILE_VERSION, key
     ))
 }
@@ -1260,29 +1329,97 @@ pub fn write_surface_index_cache(
     std::fs::create_dir_all(cache_root)
         .map_err(|error| SurfaceIndexCacheError(error.to_string()))?;
     let final_path = surface_index_cache_path(cache_root, manifest);
-    let temp_path = final_path.with_extension("tmp");
+    let temp_path = final_path.with_extension(format!("{}.tmp", std::process::id()));
     let file =
         File::create(&temp_path).map_err(|error| SurfaceIndexCacheError(error.to_string()))?;
-    let mut writer = BufWriter::new(file);
-    let envelope = SurfaceIndexCacheEnvelopeRef {
-        cache_file_version: SURFACE_INDEX_CACHE_FILE_VERSION,
-        manifest,
-        store,
-    };
-    serde_json::to_writer(&mut writer, &envelope)
-        .map_err(|error| SurfaceIndexCacheError(error.to_string()))?;
-    writer
-        .flush()
-        .map_err(|error| SurfaceIndexCacheError(error.to_string()))?;
-    drop(writer);
-    if let Err(first_error) = std::fs::rename(&temp_path, &final_path) {
-        let _ = std::fs::remove_file(&final_path);
-        std::fs::rename(&temp_path, &final_path).map_err(|second_error| {
-            SurfaceIndexCacheError(format!(
-                "cache rename failed: {first_error}; retry failed: {second_error}"
-            ))
-        })?;
+    let manifest_bytes =
+        serde_json::to_vec(manifest).map_err(|error| SurfaceIndexCacheError(error.to_string()))?;
+    if manifest_bytes.len() as u64 > SURFACE_INDEX_MAX_MANIFEST_BYTES {
+        return Err(SurfaceIndexCacheError(
+            "surface index manifest exceeds binary cache limit".to_string(),
+        ));
     }
+    let document_string_bytes = store
+        .documents
+        .iter()
+        .try_fold(0u64, |total, document| {
+            total
+                .checked_add(document.source_path.len() as u64)?
+                .checked_add(document.display_name.len() as u64)
+        })
+        .ok_or_else(|| SurfaceIndexCacheError("document string byte count overflow".to_string()))?;
+    let surface_utf8_bytes = store
+        .surface_symbols
+        .iter()
+        .try_fold(0u64, |total, symbol| total.checked_add(symbol.len() as u64))
+        .ok_or_else(|| SurfaceIndexCacheError("surface symbol byte count overflow".to_string()))?;
+    let normalised_utf8_bytes = store
+        .normalised_symbols
+        .iter()
+        .try_fold(0u64, |total, symbol| total.checked_add(symbol.len() as u64))
+        .ok_or_else(|| {
+            SurfaceIndexCacheError("normalised symbol byte count overflow".to_string())
+        })?;
+
+    let mut writer = ChecksummedWriter::new(BufWriter::new(file));
+    writer
+        .write_all(SURFACE_INDEX_CACHE_MAGIC)
+        .map_err(cache_io_error)?;
+    write_cache_u32(&mut writer, SURFACE_INDEX_CACHE_FILE_VERSION)?;
+    write_cache_u32(&mut writer, INDEX_SCHEMA_VERSION)?;
+    for value in [
+        manifest_bytes.len() as u64,
+        store.documents.len() as u64,
+        store.surface_symbols.len() as u64,
+        store.normalised_symbols.len() as u64,
+        store.surface_to_normalised.len() as u64,
+        store.token_surface_ids.len() as u64,
+        store.postings_offsets.len() as u64,
+        store.postings_positions.len() as u64,
+        document_string_bytes,
+        surface_utf8_bytes,
+        normalised_utf8_bytes,
+    ] {
+        write_cache_u64(&mut writer, value)?;
+    }
+    writer.write_all(&manifest_bytes).map_err(cache_io_error)?;
+    for document in &store.documents {
+        write_cache_u64(&mut writer, document.document_id as u64)?;
+        write_cache_u32(&mut writer, document.global_token_start)?;
+        write_cache_u32(&mut writer, document.token_count)?;
+        write_cache_string(&mut writer, &document.source_path)?;
+        write_cache_string(&mut writer, &document.display_name)?;
+    }
+    for symbol in &store.surface_symbols {
+        write_cache_string(&mut writer, symbol)?;
+    }
+    for symbol in &store.normalised_symbols {
+        write_cache_string(&mut writer, symbol)?;
+    }
+    for &value in &store.surface_to_normalised {
+        write_cache_u32(&mut writer, value)?;
+    }
+    for &value in &store.token_surface_ids {
+        write_cache_u32(&mut writer, value)?;
+    }
+    for &value in &store.postings_offsets {
+        write_cache_u64(&mut writer, value)?;
+    }
+    for &value in &store.postings_positions {
+        write_cache_u32(&mut writer, value)?;
+    }
+    let mut writer = writer.finish().map_err(cache_io_error)?;
+    writer.flush().map_err(cache_io_error)?;
+    writer.get_ref().sync_all().map_err(cache_io_error)?;
+    drop(writer);
+    std::fs::rename(&temp_path, &final_path).map_err(|error| {
+        let _ = std::fs::remove_file(&temp_path);
+        SurfaceIndexCacheError(format!("cache rename failed: {error}"))
+    })?;
+    if let Ok(directory) = File::open(cache_root) {
+        let _ = directory.sync_all();
+    }
+    prune_surface_index_cache(cache_root, Some(&final_path));
     Ok(())
 }
 
@@ -1290,31 +1427,333 @@ pub fn load_surface_index_cache(
     cache_root: &Path,
     expected_manifest: &SurfaceIndexManifest,
 ) -> SurfaceIndexCacheLoad {
+    load_surface_index_cache_with_limits(
+        cache_root,
+        expected_manifest,
+        SurfaceIndexResourceLimits::default(),
+    )
+}
+
+pub fn load_surface_index_cache_with_limits(
+    cache_root: &Path,
+    expected_manifest: &SurfaceIndexManifest,
+    limits: SurfaceIndexResourceLimits,
+) -> SurfaceIndexCacheLoad {
     let path = surface_index_cache_path(cache_root, expected_manifest);
-    let file = match File::open(path) {
+    let file = match File::open(&path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return SurfaceIndexCacheLoad::Missing;
         }
         Err(_) => return SurfaceIndexCacheLoad::Invalid,
     };
-    let mut envelope: SurfaceIndexCacheEnvelope =
-        match serde_json::from_reader(std::io::BufReader::new(file)) {
-            Ok(envelope) => envelope,
-            Err(_) => return SurfaceIndexCacheLoad::Invalid,
+    match read_surface_index_cache(file, expected_manifest, limits) {
+        Ok(store) => {
+            prune_surface_index_cache(cache_root, Some(&path));
+            SurfaceIndexCacheLoad::Ready(store)
+        }
+        Err(CacheReadFailure::Stale) => SurfaceIndexCacheLoad::Stale,
+        Err(CacheReadFailure::Invalid) => SurfaceIndexCacheLoad::Invalid,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum CacheReadFailure {
+    Stale,
+    Invalid,
+}
+
+fn read_surface_index_cache(
+    file: File,
+    expected_manifest: &SurfaceIndexManifest,
+    limits: SurfaceIndexResourceLimits,
+) -> Result<InMemoryIndexStore, CacheReadFailure> {
+    let mut reader = ChecksummedReader::new(BufReader::new(file));
+    let mut magic = [0u8; 8];
+    reader
+        .read_exact(&mut magic)
+        .map_err(|_| CacheReadFailure::Invalid)?;
+    if &magic != SURFACE_INDEX_CACHE_MAGIC {
+        return Err(CacheReadFailure::Invalid);
+    }
+    let cache_version = read_cache_u32(&mut reader)?;
+    let schema_version = read_cache_u32(&mut reader)?;
+    if cache_version != SURFACE_INDEX_CACHE_FILE_VERSION || schema_version != INDEX_SCHEMA_VERSION {
+        return Err(CacheReadFailure::Stale);
+    }
+    let manifest_bytes = read_cache_u64(&mut reader)?;
+    let document_count = read_cache_u64(&mut reader)?;
+    let surface_count = read_cache_u64(&mut reader)?;
+    let normalised_count = read_cache_u64(&mut reader)?;
+    let surface_map_count = read_cache_u64(&mut reader)?;
+    let token_count = read_cache_u64(&mut reader)?;
+    let offset_count = read_cache_u64(&mut reader)?;
+    let position_count = read_cache_u64(&mut reader)?;
+    let document_string_bytes = read_cache_u64(&mut reader)?;
+    let surface_utf8_bytes = read_cache_u64(&mut reader)?;
+    let normalised_utf8_bytes = read_cache_u64(&mut reader)?;
+
+    if manifest_bytes > SURFACE_INDEX_MAX_MANIFEST_BYTES
+        || token_count > u32::MAX as u64
+        || surface_count > u32::MAX as u64
+        || normalised_count > u32::MAX as u64
+        || surface_map_count != surface_count
+        || position_count != token_count
+        || offset_count != normalised_count.saturating_add(1)
+    {
+        return Err(CacheReadFailure::Invalid);
+    }
+    let fixed_bytes = surface_map_count
+        .checked_mul(4)
+        .and_then(|value| value.checked_add(token_count.checked_mul(4)?))
+        .and_then(|value| value.checked_add(offset_count.checked_mul(8)?))
+        .and_then(|value| value.checked_add(position_count.checked_mul(4)?))
+        .ok_or(CacheReadFailure::Invalid)?;
+    let projected_bytes = fixed_bytes
+        .checked_add(document_string_bytes)
+        .and_then(|value| value.checked_add(surface_utf8_bytes))
+        .and_then(|value| value.checked_add(normalised_utf8_bytes))
+        .and_then(|value| {
+            value.checked_add(
+                document_count.checked_mul(std::mem::size_of::<SurfaceIndexDocument>() as u64)?,
+            )
+        })
+        .and_then(|value| {
+            value.checked_add(
+                surface_count
+                    .checked_add(normalised_count)?
+                    .checked_mul(80)?,
+            )
+        })
+        .ok_or(CacheReadFailure::Invalid)?;
+    if projected_bytes > limits.max_projected_resident_index_bytes {
+        return Err(CacheReadFailure::Invalid);
+    }
+
+    let mut manifest_buffer = Vec::new();
+    reserve_cache_vec(&mut manifest_buffer, manifest_bytes)?;
+    manifest_buffer.resize(manifest_bytes as usize, 0);
+    reader
+        .read_exact(&mut manifest_buffer)
+        .map_err(|_| CacheReadFailure::Invalid)?;
+    let manifest: SurfaceIndexManifest =
+        serde_json::from_slice(&manifest_buffer).map_err(|_| CacheReadFailure::Invalid)?;
+    if manifest.schema_version != INDEX_SCHEMA_VERSION || !manifest.is_valid_for(expected_manifest)
+    {
+        return Err(CacheReadFailure::Stale);
+    }
+
+    let mut store = InMemoryIndexStore::default();
+    reserve_cache_vec(&mut store.documents, document_count)?;
+    let mut remaining_document_bytes = document_string_bytes;
+    for _ in 0..document_count {
+        let document_id =
+            usize::try_from(read_cache_u64(&mut reader)?).map_err(|_| CacheReadFailure::Invalid)?;
+        let global_token_start = read_cache_u32(&mut reader)?;
+        let token_count = read_cache_u32(&mut reader)?;
+        let source_path = read_cache_string(&mut reader, &mut remaining_document_bytes)?;
+        let display_name = read_cache_string(&mut reader, &mut remaining_document_bytes)?;
+        store.documents.push(SurfaceIndexDocument {
+            document_id,
+            source_path,
+            display_name,
+            global_token_start,
+            token_count,
+        });
+    }
+    if remaining_document_bytes != 0 {
+        return Err(CacheReadFailure::Invalid);
+    }
+    read_cache_symbol_table(
+        &mut reader,
+        &mut store.surface_symbols,
+        surface_count,
+        surface_utf8_bytes,
+    )?;
+    read_cache_symbol_table(
+        &mut reader,
+        &mut store.normalised_symbols,
+        normalised_count,
+        normalised_utf8_bytes,
+    )?;
+    read_cache_u32_vec(
+        &mut reader,
+        &mut store.surface_to_normalised,
+        surface_map_count,
+    )?;
+    read_cache_u32_vec(&mut reader, &mut store.token_surface_ids, token_count)?;
+    read_cache_u64_vec(&mut reader, &mut store.postings_offsets, offset_count)?;
+    read_cache_u32_vec(&mut reader, &mut store.postings_positions, position_count)?;
+    reader
+        .verify_trailer()
+        .map_err(|_| CacheReadFailure::Invalid)?;
+    store
+        .rebuild_symbol_lookup()
+        .map_err(|_| CacheReadFailure::Invalid)?;
+    if !store.has_valid_internal_references() {
+        return Err(CacheReadFailure::Invalid);
+    }
+    Ok(store)
+}
+
+fn cache_io_error(error: std::io::Error) -> SurfaceIndexCacheError {
+    SurfaceIndexCacheError(error.to_string())
+}
+
+fn write_cache_u32(writer: &mut impl Write, value: u32) -> Result<(), SurfaceIndexCacheError> {
+    writer
+        .write_all(&value.to_le_bytes())
+        .map_err(cache_io_error)
+}
+
+fn write_cache_u64(writer: &mut impl Write, value: u64) -> Result<(), SurfaceIndexCacheError> {
+    writer
+        .write_all(&value.to_le_bytes())
+        .map_err(cache_io_error)
+}
+
+fn write_cache_string(writer: &mut impl Write, value: &str) -> Result<(), SurfaceIndexCacheError> {
+    write_cache_u64(writer, value.len() as u64)?;
+    writer.write_all(value.as_bytes()).map_err(cache_io_error)
+}
+
+fn read_cache_u32(reader: &mut impl Read) -> Result<u32, CacheReadFailure> {
+    let mut bytes = [0u8; 4];
+    reader
+        .read_exact(&mut bytes)
+        .map_err(|_| CacheReadFailure::Invalid)?;
+    Ok(u32::from_le_bytes(bytes))
+}
+
+fn read_cache_u64(reader: &mut impl Read) -> Result<u64, CacheReadFailure> {
+    let mut bytes = [0u8; 8];
+    reader
+        .read_exact(&mut bytes)
+        .map_err(|_| CacheReadFailure::Invalid)?;
+    Ok(u64::from_le_bytes(bytes))
+}
+
+fn reserve_cache_vec<T>(values: &mut Vec<T>, count: u64) -> Result<(), CacheReadFailure> {
+    let count = usize::try_from(count).map_err(|_| CacheReadFailure::Invalid)?;
+    values
+        .try_reserve_exact(count)
+        .map_err(|_| CacheReadFailure::Invalid)
+}
+
+fn read_cache_string(
+    reader: &mut impl Read,
+    remaining_bytes: &mut u64,
+) -> Result<String, CacheReadFailure> {
+    let length = read_cache_u64(reader)?;
+    if length > *remaining_bytes {
+        return Err(CacheReadFailure::Invalid);
+    }
+    let length = usize::try_from(length).map_err(|_| CacheReadFailure::Invalid)?;
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(length)
+        .map_err(|_| CacheReadFailure::Invalid)?;
+    bytes.resize(length, 0);
+    reader
+        .read_exact(&mut bytes)
+        .map_err(|_| CacheReadFailure::Invalid)?;
+    *remaining_bytes -= length as u64;
+    String::from_utf8(bytes).map_err(|_| CacheReadFailure::Invalid)
+}
+
+fn read_cache_symbol_table(
+    reader: &mut impl Read,
+    symbols: &mut Vec<String>,
+    count: u64,
+    utf8_bytes: u64,
+) -> Result<(), CacheReadFailure> {
+    reserve_cache_vec(symbols, count)?;
+    let mut remaining = utf8_bytes;
+    for _ in 0..count {
+        symbols.push(read_cache_string(reader, &mut remaining)?);
+    }
+    (remaining == 0)
+        .then_some(())
+        .ok_or(CacheReadFailure::Invalid)
+}
+
+fn read_cache_u32_vec(
+    reader: &mut impl Read,
+    values: &mut Vec<u32>,
+    count: u64,
+) -> Result<(), CacheReadFailure> {
+    reserve_cache_vec(values, count)?;
+    for _ in 0..count {
+        values.push(read_cache_u32(reader)?);
+    }
+    Ok(())
+}
+
+fn read_cache_u64_vec(
+    reader: &mut impl Read,
+    values: &mut Vec<u64>,
+    count: u64,
+) -> Result<(), CacheReadFailure> {
+    reserve_cache_vec(values, count)?;
+    for _ in 0..count {
+        values.push(read_cache_u64(reader)?);
+    }
+    Ok(())
+}
+
+fn prune_surface_index_cache(cache_root: &Path, protected_path: Option<&Path>) {
+    let Ok(entries) = std::fs::read_dir(cache_root) else {
+        return;
+    };
+    let mut current_files = Vec::<(PathBuf, std::time::SystemTime, u64, bool)>::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
         };
-    if envelope.cache_file_version != SURFACE_INDEX_CACHE_FILE_VERSION
-        || envelope.manifest.schema_version != INDEX_SCHEMA_VERSION
-        || !envelope.manifest.is_valid_for(expected_manifest)
-    {
-        return SurfaceIndexCacheLoad::Stale;
+        if !name.starts_with("surface-index.v") {
+            continue;
+        }
+        if name.ends_with(".tmp") || name.ends_with(".json") {
+            let _ = std::fs::remove_file(path);
+            continue;
+        }
+        if !name.ends_with(".cwi") {
+            continue;
+        }
+        if let Ok(metadata) = entry.metadata() {
+            let protected = protected_path.is_some_and(|protected| protected == path);
+            current_files.push((
+                path,
+                metadata
+                    .modified()
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+                metadata.len(),
+                protected,
+            ));
+        }
     }
-    if envelope.store.rebuild_symbol_lookup().is_err()
-        || !envelope.store.has_valid_internal_references()
-    {
-        return SurfaceIndexCacheLoad::Invalid;
+    current_files.sort_by(|left, right| {
+        right
+            .3
+            .cmp(&left.3)
+            .then_with(|| right.1.cmp(&left.1))
+            .then_with(|| right.0.cmp(&left.0))
+    });
+    let mut retained = 0usize;
+    let mut retained_bytes = 0u64;
+    for (path, _, bytes, _) in current_files {
+        let keep = retained == 0
+            || (retained < SURFACE_INDEX_MAX_RETAINED_FILES
+                && retained_bytes.saturating_add(bytes)
+                    <= SURFACE_INDEX_MAX_RETAINED_AGGREGATE_BYTES);
+        if keep {
+            retained += 1;
+            retained_bytes = retained_bytes.saturating_add(bytes);
+        } else {
+            let _ = std::fs::remove_file(path);
+        }
     }
-    SurfaceIndexCacheLoad::Ready(envelope.store)
 }
 
 impl SurfaceIndexManifest {
@@ -1710,6 +2149,60 @@ mod tests {
             .iter()
             .map(|position| store.document_and_ordinal_for_position(*position).unwrap())
             .collect()
+    }
+
+    #[derive(Debug)]
+    struct CacheArrayOffsets {
+        first_surface_utf8: usize,
+        token_surface_ids: usize,
+        postings_offsets: usize,
+        postings_positions: usize,
+    }
+
+    fn test_cache_u64(bytes: &[u8], offset: usize) -> u64 {
+        u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap())
+    }
+
+    fn test_cache_array_offsets(bytes: &[u8]) -> CacheArrayOffsets {
+        let manifest_bytes = test_cache_u64(bytes, 16) as usize;
+        let document_count = test_cache_u64(bytes, 24) as usize;
+        let surface_count = test_cache_u64(bytes, 32) as usize;
+        let normalised_count = test_cache_u64(bytes, 40) as usize;
+        let surface_map_count = test_cache_u64(bytes, 48) as usize;
+        let token_count = test_cache_u64(bytes, 56) as usize;
+        let offset_count = test_cache_u64(bytes, 64) as usize;
+        let mut cursor = 104 + manifest_bytes;
+        for _ in 0..document_count {
+            cursor += 16;
+            let source_length = test_cache_u64(bytes, cursor) as usize;
+            cursor += 8 + source_length;
+            let display_length = test_cache_u64(bytes, cursor) as usize;
+            cursor += 8 + display_length;
+        }
+        let first_surface_utf8 = cursor + 8;
+        for _ in 0..surface_count {
+            let length = test_cache_u64(bytes, cursor) as usize;
+            cursor += 8 + length;
+        }
+        for _ in 0..normalised_count {
+            let length = test_cache_u64(bytes, cursor) as usize;
+            cursor += 8 + length;
+        }
+        let token_surface_ids = cursor + surface_map_count * 4;
+        let postings_offsets = token_surface_ids + token_count * 4;
+        let postings_positions = postings_offsets + offset_count * 8;
+        CacheArrayOffsets {
+            first_surface_utf8,
+            token_surface_ids,
+            postings_offsets,
+            postings_positions,
+        }
+    }
+
+    fn rewrite_test_cache_checksum(bytes: &mut [u8]) {
+        let payload_end = bytes.len() - SURFACE_INDEX_CHECKSUM_BYTES;
+        let checksum = Sha256::digest(&bytes[..payload_end]);
+        bytes[payload_end..].copy_from_slice(&checksum);
     }
 
     #[test]
@@ -2112,7 +2605,7 @@ mod tests {
             "processed-hash".to_string(),
             TokenizationManifest::default(),
         );
-        assert_eq!(expected.schema_version, 3);
+        assert_eq!(expected.schema_version, INDEX_SCHEMA_VERSION);
 
         let mut changed_schema = expected.clone();
         changed_schema.schema_version = 2;
@@ -2222,7 +2715,7 @@ mod tests {
     }
 
     #[test]
-    fn surface_index_disk_cache_round_trip_and_miss_states() {
+    fn surface_index_binary_cache_round_trip_and_corruption_misses() {
         let temp_dir = tempfile::tempdir().unwrap();
         let documents = [
             document_input(1, "b.txt", "Movie alpha movie"),
@@ -2232,6 +2725,11 @@ mod tests {
         let manifest =
             SurfaceIndexManifest::new("content-hash".to_string(), TokenizationManifest::default());
         write_surface_index_cache(temp_dir.path(), &manifest, &store).unwrap();
+        let cache_path = surface_index_cache_path(temp_dir.path(), &manifest);
+        assert_eq!(
+            cache_path.extension().and_then(|value| value.to_str()),
+            Some("cwi")
+        );
         let loaded = match load_surface_index_cache(temp_dir.path(), &manifest) {
             SurfaceIndexCacheLoad::Ready(store) => store,
             state => panic!("expected ready cache, got {state:?}"),
@@ -2245,27 +2743,106 @@ mod tests {
             SurfaceIndexCacheLoad::Missing
         ));
 
-        let cache_path = surface_index_cache_path(temp_dir.path(), &manifest);
-        let mut envelope: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(&cache_path).unwrap()).unwrap();
-        envelope["cache_file_version"] =
-            serde_json::Value::from(SURFACE_INDEX_CACHE_FILE_VERSION + 1);
-        std::fs::write(&cache_path, serde_json::to_vec(&envelope).unwrap()).unwrap();
+        let pristine = std::fs::read(&cache_path).unwrap();
+        let assert_invalid = |bytes: &[u8]| {
+            std::fs::write(&cache_path, bytes).unwrap();
+            assert!(matches!(
+                load_surface_index_cache(temp_dir.path(), &manifest),
+                SurfaceIndexCacheLoad::Invalid
+            ));
+        };
+
+        let mut bad_magic = pristine.clone();
+        bad_magic[0] ^= 0xff;
+        assert_invalid(&bad_magic);
+
+        let mut stale_version = pristine.clone();
+        stale_version[8..12].copy_from_slice(&(SURFACE_INDEX_CACHE_FILE_VERSION + 1).to_le_bytes());
+        std::fs::write(&cache_path, stale_version).unwrap();
         assert!(matches!(
             load_surface_index_cache(temp_dir.path(), &manifest),
             SurfaceIndexCacheLoad::Stale
         ));
 
-        std::fs::write(&cache_path, b"{\"cache_file_version\":").unwrap();
-        assert!(matches!(
-            load_surface_index_cache(temp_dir.path(), &manifest),
-            SurfaceIndexCacheLoad::Invalid
-        ));
-        std::fs::write(&cache_path, b"not an index").unwrap();
-        assert!(matches!(
-            load_surface_index_cache(temp_dir.path(), &manifest),
-            SurfaceIndexCacheLoad::Invalid
-        ));
+        assert_invalid(&pristine[..12]);
+        assert_invalid(&pristine[..pristine.len() - 40]);
+
+        let offsets = test_cache_array_offsets(&pristine);
+        let mut invalid_utf8 = pristine.clone();
+        invalid_utf8[offsets.first_surface_utf8] = 0xff;
+        rewrite_test_cache_checksum(&mut invalid_utf8);
+        assert_invalid(&invalid_utf8);
+
+        let mut invalid_checksum = pristine.clone();
+        let checksum_byte = invalid_checksum.len() - 1;
+        invalid_checksum[checksum_byte] ^= 1;
+        assert_invalid(&invalid_checksum);
+
+        let mut non_monotonic_offsets = pristine.clone();
+        non_monotonic_offsets[offsets.postings_offsets + 8..offsets.postings_offsets + 16]
+            .copy_from_slice(&u64::MAX.to_le_bytes());
+        rewrite_test_cache_checksum(&mut non_monotonic_offsets);
+        assert_invalid(&non_monotonic_offsets);
+
+        let mut out_of_range_symbol = pristine.clone();
+        out_of_range_symbol[offsets.token_surface_ids..offsets.token_surface_ids + 4]
+            .copy_from_slice(&u32::MAX.to_le_bytes());
+        rewrite_test_cache_checksum(&mut out_of_range_symbol);
+        assert_invalid(&out_of_range_symbol);
+
+        let mut out_of_range_position = pristine.clone();
+        out_of_range_position[offsets.postings_positions..offsets.postings_positions + 4]
+            .copy_from_slice(&u32::MAX.to_le_bytes());
+        rewrite_test_cache_checksum(&mut out_of_range_position);
+        assert_invalid(&out_of_range_position);
+
+        let mut huge_declared_token_count = pristine.clone();
+        huge_declared_token_count[56..64].copy_from_slice(&u64::MAX.to_le_bytes());
+        assert_invalid(&huge_declared_token_count);
+
+        let mut trailing_data = pristine.clone();
+        trailing_data.push(0);
+        assert_invalid(&trailing_data);
+    }
+
+    #[test]
+    fn surface_index_cache_prunes_only_dedicated_cache_artifacts() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let legacy = temp_dir.path().join("surface-index.v1.legacy.json");
+        let abandoned = temp_dir.path().join("surface-index.v2.abandoned.tmp");
+        let unrelated = temp_dir.path().join("keep-me.json");
+        std::fs::write(&legacy, b"legacy").unwrap();
+        std::fs::write(&abandoned, b"temporary").unwrap();
+        std::fs::write(&unrelated, b"unrelated").unwrap();
+        for index in 0..4 {
+            std::fs::write(
+                temp_dir
+                    .path()
+                    .join(format!("surface-index.v2.old-{index}.cwi")),
+                b"obsolete",
+            )
+            .unwrap();
+        }
+        let store = build_index(&[document_input(0, "a.txt", "alpha beta")]);
+        let manifest =
+            SurfaceIndexManifest::new("pruning".to_string(), TokenizationManifest::default());
+        let current = surface_index_cache_path(temp_dir.path(), &manifest);
+        write_surface_index_cache(temp_dir.path(), &manifest, &store).unwrap();
+
+        assert!(!legacy.exists());
+        assert!(!abandoned.exists());
+        assert!(unrelated.exists());
+        assert!(current.exists());
+        let retained = std::fs::read_dir(temp_dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|entry| {
+                entry.file_name().to_str().is_some_and(|name| {
+                    name.starts_with("surface-index.v2.") && name.ends_with(".cwi")
+                })
+            })
+            .count();
+        assert!(retained <= SURFACE_INDEX_MAX_RETAINED_FILES);
     }
 
     #[test]
