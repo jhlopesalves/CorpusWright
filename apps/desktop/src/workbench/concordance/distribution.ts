@@ -6,7 +6,7 @@ import {
 } from "../../concordance";
 import { dom } from "../../dom";
 import { formatFixedNumber, formatNumber } from "../shell";
-import { refreshConcordance } from "./shared";
+import { refreshConcordanceDistribution } from "./shared";
 
 export const CONCORDANCE_DISTRIBUTION_PAGE_SIZE = 10;
 
@@ -155,7 +155,7 @@ export function renderConcordanceDistribution(
     previous.disabled = distribution.offset === 0;
     previous.addEventListener("click", () => {
       concordanceDistributionOffset = Math.max(0, distribution.offset - distribution.limit);
-      void refreshConcordance(false, false, false);
+      void refreshConcordanceDistribution();
     });
     const status = document.createElement("span");
     const first = distribution.totalDocuments === 0 ? 0 : distribution.offset + 1;
@@ -171,7 +171,7 @@ export function renderConcordanceDistribution(
     next.disabled = distribution.offset + distribution.items.length >= distribution.totalDocuments;
     next.addEventListener("click", () => {
       concordanceDistributionOffset = distribution.offset + distribution.limit;
-      void refreshConcordance(false, false, false);
+      void refreshConcordanceDistribution();
     });
     pagination.append(previous, status, next);
     panel.appendChild(pagination);

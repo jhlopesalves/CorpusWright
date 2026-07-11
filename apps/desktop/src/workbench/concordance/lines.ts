@@ -25,7 +25,7 @@ import { state } from "../../state";
 import { formatNumber } from "../shell";
 import {
   currentConcordanceSearchResult,
-  refreshConcordance,
+  refreshConcordanceLines,
   renderConcordance,
   renderContextTokens,
 } from "./shared";
@@ -367,24 +367,36 @@ export function showPreviousConcordancePage(): void {
   const concordanceResult = currentConcordanceSearchResult();
   const pageSize = concordanceResult?.limit ?? currentConcordancePageSize();
   concordanceOffset = Math.max(0, concordanceOffset - pageSize);
-  void refreshConcordance(false, false);
+  collapseConcordanceExpansion();
+  void refreshConcordanceLines();
 }
 
 export function showNextConcordancePage(): void {
   const concordanceResult = currentConcordanceSearchResult();
   const pageSize = concordanceResult?.limit ?? currentConcordancePageSize();
   concordanceOffset += pageSize;
-  void refreshConcordance(false, false);
+  collapseConcordanceExpansion();
+  void refreshConcordanceLines();
 }
 
 export function handleConcordanceSortChange(): void {
   concordanceSortKey = currentConcordanceSortKey();
-  void refreshConcordance(true, true);
+  collapseConcordanceExpansion();
+  resetConcordanceLineOffset();
+  void refreshConcordanceLines();
 }
 
 export function handleConcordancePageSizeChange(): void {
   currentConcordancePageSize();
-  void refreshConcordance(true, true);
+  collapseConcordanceExpansion();
+  resetConcordanceLineOffset();
+  void refreshConcordanceLines();
+}
+
+export function handleConcordanceWindowChange(): void {
+  collapseConcordanceExpansion();
+  resetConcordanceLineOffset();
+  void refreshConcordanceLines();
 }
 
 export function collapseConcordanceExpansionFromControlChange(): void {
