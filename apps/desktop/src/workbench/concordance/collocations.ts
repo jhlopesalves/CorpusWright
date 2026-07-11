@@ -47,6 +47,7 @@ import { currentFrequencyDocumentScope } from "../frequency";
 import { activeProjectLanguageCode, formatFixedNumber, formatNumber } from "../shell";
 import {
   concordanceCardIsExpanded,
+  openCollocateInConcordanceLines,
   renderContextTokens,
   syncConcordanceControls,
 } from "./shared";
@@ -517,7 +518,12 @@ function createCollocateEvidenceSnippet(row: ConcordanceRow): HTMLSpanElement {
   const caseSensitive = selection?.caseSensitive ?? false;
 
   if (row.leftContext.length > 0) {
-    snippet.appendChild(renderContextTokens(row.leftContext, activeFilter, caseSensitive));
+    snippet.appendChild(renderContextTokens(
+      row.leftContext,
+      activeFilter,
+      caseSensitive,
+      "concordance-kwic-pair",
+    ));
     snippet.appendChild(document.createTextNode(" "));
   }
 
@@ -528,7 +534,12 @@ function createCollocateEvidenceSnippet(row: ConcordanceRow): HTMLSpanElement {
 
   if (row.rightContext.length > 0) {
     snippet.appendChild(document.createTextNode(" "));
-    snippet.appendChild(renderContextTokens(row.rightContext, activeFilter, caseSensitive));
+    snippet.appendChild(renderContextTokens(
+      row.rightContext,
+      activeFilter,
+      caseSensitive,
+      "concordance-kwic-pair",
+    ));
   }
 
   return snippet;
@@ -562,6 +573,7 @@ function createCollocateEvidenceExpansionRow(row: ConcordanceRow): HTMLDivElemen
         collocateEvidenceExpansionResult.leftContext,
         activeFilter,
         caseSensitive,
+        "concordance-kwic-pair",
       ));
       context.appendChild(left);
       context.appendChild(document.createTextNode(" "));
@@ -580,6 +592,7 @@ function createCollocateEvidenceExpansionRow(row: ConcordanceRow): HTMLDivElemen
         collocateEvidenceExpansionResult.rightContext,
         activeFilter,
         caseSensitive,
+        "concordance-kwic-pair",
       ));
       context.appendChild(right);
     }
@@ -723,6 +736,16 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
   }
   copy.append(title, meta);
 
+  const actions = document.createElement("div");
+  actions.className = "concordance-collocate-evidence-actions";
+  const openInLines = document.createElement("button");
+  openInLines.type = "button";
+  openInLines.className = "concordance-collocate-open-lines";
+  openInLines.textContent = "Open in concordance lines";
+  openInLines.addEventListener("click", () => {
+    openCollocateInConcordanceLines(row.surface, direction);
+  });
+
   const close = document.createElement("button");
   close.type = "button";
   close.className = "secondary-btn concordance-collocate-evidence-close";
@@ -731,7 +754,8 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
     clearCollocateEvidence();
     renderConcordanceCollocations();
   });
-  header.append(copy, close);
+  actions.append(openInLines, close);
+  header.append(copy, actions);
   panel.appendChild(header);
 
   if (collocateEvidenceResult !== null && collocateEvidenceResult.totalHits > 0) {
