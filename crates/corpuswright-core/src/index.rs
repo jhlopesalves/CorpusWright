@@ -333,6 +333,7 @@ pub trait IndexStore {
         case_sensitive: bool,
     ) -> Option<u32>;
     fn concordance_symbol_id(&self, key: &str, case_sensitive: bool) -> Option<u32>;
+    fn concordance_symbol_for_id(&self, symbol_id: u32, case_sensitive: bool) -> Option<&str>;
     fn concordance_symbols<'store>(
         &'store self,
         case_sensitive: bool,
@@ -995,6 +996,18 @@ impl IndexStore for InMemoryIndexStore {
             self.surface_symbol_id(key)
         } else {
             self.normalised_symbol_id(key)
+        }
+    }
+
+    fn concordance_symbol_for_id(&self, symbol_id: u32, case_sensitive: bool) -> Option<&str> {
+        if case_sensitive {
+            self.surface_symbols
+                .get(symbol_id as usize)
+                .map(String::as_str)
+        } else {
+            self.normalised_symbols
+                .get(symbol_id as usize)
+                .map(String::as_str)
         }
     }
 
