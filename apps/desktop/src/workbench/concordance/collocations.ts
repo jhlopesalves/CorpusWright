@@ -23,6 +23,7 @@ import {
   concordanceCollocationScore,
   concordanceCollocationStrengthBar,
   concordanceCollocationSortHeaderLabel,
+  concordanceCollocateEvidenceDomId,
   concordanceCollocatePositionGlyph,
   concordancePositionGlyphAccessibleText,
   concordanceRowExpansionKey,
@@ -368,7 +369,7 @@ async function toggleCollocateEvidenceExpansion(row: ConcordanceRow): Promise<vo
 function renderConcordanceCollocationTableState(message: string): void {
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 6;
+  cell.colSpan = 5;
   cell.className = "frequency-empty concordance-empty";
   cell.textContent = message;
   row.appendChild(cell);
@@ -454,7 +455,6 @@ function renderConcordanceCollocationTableHead(measure: ConcordanceCollocationMe
   positionLegend.textContent = "left of node · NODE · right of node";
   position.append(positionLabel, positionLegend);
   row.appendChild(position);
-  appendConcordanceCollocationHeader(row, "Evidence");
   dom.concordanceCollocationsTableHead.replaceChildren(row);
   updateConcordanceCollocationSortHeaders();
 }
@@ -686,12 +686,12 @@ function appendCollocateEvidenceShowMore(parent: HTMLElement, result: Concordanc
 
 function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTableRowElement {
   const item = document.createElement("tr");
-  item.id = `concordance-collocate-evidence-${row.surface.replace(/[^a-z0-9_-]/gi, "-")}`;
+  item.id = concordanceCollocateEvidenceDomId(row.surface);
   item.className = "concordance-collocate-evidence-row";
 
   const cell = document.createElement("td");
   cell.className = "concordance-collocate-evidence-cell";
-  cell.colSpan = 6;
+  cell.colSpan = 5;
 
   const selection = collocateEvidenceSelection;
   const panel = document.createElement("div");
@@ -794,9 +794,24 @@ function createConcordanceCollocationRow(
 ): HTMLTableRowElement {
   const item = document.createElement("tr");
   item.className = "concordance-collocation-row";
-  item.classList.toggle("is-active", isActiveCollocateEvidenceRow(row));
+  const expanded = isActiveCollocateEvidenceRow(row);
+  item.classList.toggle("is-active", expanded);
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
-  const actionLabel = `Show co-occurrence lines for "${row.surface}" with "${query}"`;
+  const actionLabel = `Inspect co-occurrence lines for “${row.surface}” with “${query}”`;
+  item.tabIndex = 0;
+  item.setAttribute("role", "button");
+  item.setAttribute("aria-label", actionLabel);
+  item.setAttribute("aria-expanded", expanded ? "true" : "false");
+  item.setAttribute("aria-controls", concordanceCollocateEvidenceDomId(row.surface));
+  item.title = actionLabel;
+  item.addEventListener("click", () => handleConcordanceCollocateClick(row));
+  item.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    handleConcordanceCollocateClick(row);
+  });
 
   const surface = document.createElement("td");
   const text = document.createElement("span");
@@ -862,25 +877,7 @@ function createConcordanceCollocationRow(
   });
   position.appendChild(glyph);
 
-  const evidence = document.createElement("td");
-  const evidenceButton = document.createElement("button");
-  const expanded = isActiveCollocateEvidenceRow(row);
-  evidenceButton.type = "button";
-  evidenceButton.className = "concordance-collocate-evidence-toggle";
-  evidenceButton.textContent = expanded ? "Hide evidence" : "Inspect evidence";
-  evidenceButton.setAttribute(
-    "aria-label",
-    expanded ? `Hide co-occurrence lines for "${row.surface}"` : actionLabel,
-  );
-  evidenceButton.setAttribute("aria-expanded", expanded ? "true" : "false");
-  evidenceButton.setAttribute(
-    "aria-controls",
-    `concordance-collocate-evidence-${row.surface.replace(/[^a-z0-9_-]/gi, "-")}`,
-  );
-  evidenceButton.addEventListener("click", () => handleConcordanceCollocateClick(row));
-  evidence.appendChild(evidenceButton);
-
-  item.append(surface, o11, frequency, score, position, evidence);
+  item.append(surface, o11, frequency, score, position);
   return item;
 }
 

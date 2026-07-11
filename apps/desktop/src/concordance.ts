@@ -113,6 +113,13 @@ export function concordanceRowText(tokens: string[]): string {
   return tokens.join(" ");
 }
 
+export function concordanceCollocateEvidenceDomId(surface: string): string {
+  const codePoints = Array.from(surface, (character) =>
+    character.codePointAt(0)!.toString(16).padStart(6, "0")
+  );
+  return `concordance-collocate-evidence-${codePoints.join("-") || "empty"}`;
+}
+
 export interface ConcordanceContextTokenSegment {
   text: string;
   collocate: boolean;
