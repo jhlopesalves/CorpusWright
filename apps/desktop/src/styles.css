@@ -4677,12 +4677,6 @@ main {
   vertical-align: middle;
 }
 
-.concordance-collocate {
-  background: var(--cw-collocate-bg);
-  color: var(--cw-collocate-text);
-  box-shadow: inset 0 -1px 0 var(--cw-collocate-border);
-}
-
 .concordance-row {
   cursor: pointer;
 }

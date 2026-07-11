@@ -2173,6 +2173,10 @@ fn concordance_row_identity(row: &ConcordanceRow) -> String {
     )
 }
 
+fn concordance_materialised_row_count(result: &ConcordanceResult) -> usize {
+    result.rows.as_ref().map_or(0, Vec::len)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ConcordanceAuditDifference {
     field: &'static str,
@@ -2212,15 +2216,24 @@ fn compare_concordance_results(
             index.documents_with_hits.to_string(),
         ));
     }
-    if scan.rows.len() != index.rows.len() {
+    if scan.rows.is_some() != index.rows.is_some() {
+        return Some(concordance_audit_difference(
+            "rows_included",
+            scan.rows.is_some().to_string(),
+            index.rows.is_some().to_string(),
+        ));
+    }
+    let scan_rows = scan.rows.as_deref().unwrap_or_default();
+    let index_rows = index.rows.as_deref().unwrap_or_default();
+    if scan_rows.len() != index_rows.len() {
         return Some(concordance_audit_difference(
             "rows_len",
-            scan.rows.len().to_string(),
-            index.rows.len().to_string(),
+            scan_rows.len().to_string(),
+            index_rows.len().to_string(),
         ));
     }
 
-    for (row_index, (scan_row, index_row)) in scan.rows.iter().zip(&index.rows).enumerate() {
+    for (row_index, (scan_row, index_row)) in scan_rows.iter().zip(index_rows).enumerate() {
         let scan_identity = concordance_row_identity(scan_row);
         let index_identity = concordance_row_identity(index_row);
         if scan_identity != index_identity {
@@ -2248,25 +2261,44 @@ fn compare_concordance_results(
             format!("{:.6}", index.top_document_share),
         ));
     }
-    if scan.distribution.total_documents != index.distribution.total_documents {
+    if scan.distribution.is_some() != index.distribution.is_some() {
+        return Some(concordance_audit_difference(
+            "distribution_included",
+            scan.distribution.is_some().to_string(),
+            index.distribution.is_some().to_string(),
+        ));
+    }
+    let Some(scan_distribution) = scan.distribution.as_ref() else {
+        return (scan != index).then(|| {
+            concordance_audit_difference(
+                "result",
+                "differs_after_checked_fields",
+                "differs_after_checked_fields",
+            )
+        });
+    };
+    let index_distribution = index
+        .distribution
+        .as_ref()
+        .expect("distribution presence checked above");
+    if scan_distribution.total_documents != index_distribution.total_documents {
         return Some(concordance_audit_difference(
             "distribution_total_documents",
-            scan.distribution.total_documents.to_string(),
-            index.distribution.total_documents.to_string(),
+            scan_distribution.total_documents.to_string(),
+            index_distribution.total_documents.to_string(),
         ));
     }
-    if scan.distribution.items.len() != index.distribution.items.len() {
+    if scan_distribution.items.len() != index_distribution.items.len() {
         return Some(concordance_audit_difference(
             "distribution_items_len",
-            scan.distribution.items.len().to_string(),
-            index.distribution.items.len().to_string(),
+            scan_distribution.items.len().to_string(),
+            index_distribution.items.len().to_string(),
         ));
     }
-    for (item_index, (scan_item, index_item)) in scan
-        .distribution
+    for (item_index, (scan_item, index_item)) in scan_distribution
         .items
         .iter()
-        .zip(&index.distribution.items)
+        .zip(&index_distribution.items)
         .enumerate()
     {
         let scan_summary = format!(
@@ -2563,7 +2595,7 @@ fn log_concordance_index_result(
         log_string(&query.query, 80),
         query.case_sensitive,
         routed.result.total_hits,
-        routed.result.rows.len()
+        concordance_materialised_row_count(&routed.result)
     );
 }
 
@@ -2599,7 +2631,7 @@ fn log_concordance_default_index_recovery(
         log_string(&query.query, 80),
         query.case_sensitive,
         scan.total_hits,
-        scan.rows.len(),
+        concordance_materialised_row_count(scan),
         log_string(&error.to_string(), 160)
     );
 }
@@ -2635,7 +2667,7 @@ fn log_concordance_default_index_previous_error_recovery(
         log_string(&query.query, 80),
         query.case_sensitive,
         scan.total_hits,
-        scan.rows.len()
+        concordance_materialised_row_count(scan)
     );
 }
 
@@ -2852,7 +2884,7 @@ fn log_concordance_audit_result(
         log_string(&query.query, 80),
         query.case_sensitive,
         scan.total_hits,
-        scan.rows.len(),
+        concordance_materialised_row_count(scan),
         difference_summary
     );
 }
@@ -2871,7 +2903,7 @@ fn log_concordance_audit_index_error(
         log_string(&query.query, 80),
         query.case_sensitive,
         scan.total_hits,
-        scan.rows.len(),
+        concordance_materialised_row_count(scan),
         log_string(&error.to_string(), 160)
     );
 }
@@ -5567,13 +5599,38 @@ mod tests {
         let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
         let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
         let mut index = scan.clone();
-        index.rows[0].token_index += 1;
+        index.rows.as_mut().expect("rows requested")[0].token_index += 1;
 
         let difference = compare_concordance_results(&scan, &index).unwrap();
 
         assert_eq!(difference.field, "row_identity");
         assert_eq!(difference.row_index, Some(0));
         assert_ne!(difference.scan, difference.index);
+    }
+
+    #[test]
+    fn concordance_audit_compares_omitted_result_sections() {
+        let documents = concordance_test_documents();
+        let mut query = concordance_test_query("movie");
+        query.include_rows = false;
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let scan = search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
+        let mut index = scan.clone();
+
+        assert_eq!(compare_concordance_results(&scan, &index), None);
+        index.rows = Some(Vec::new());
+        assert_eq!(
+            compare_concordance_results(&scan, &index)
+                .expect("section mismatch")
+                .field,
+            "rows_included"
+        );
+
+        query.include_rows = true;
+        query.include_distribution = false;
+        let rows_only =
+            search_concordance_documents(&documents, &query, &tokenization_config).unwrap();
+        assert_eq!(compare_concordance_results(&rows_only, &rows_only), None);
     }
 
     #[test]

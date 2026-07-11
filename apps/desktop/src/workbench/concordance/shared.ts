@@ -7,7 +7,8 @@ import {
 } from "../../analysis";
 import {
   concordanceContextTokenSegments,
-  concordanceSortLabel,
+  concordanceDistributionCardStatsText,
+  concordanceLinesCardStatsText,
   concordanceSummaryMetricsText,
   CONCORDANCE_NO_QUERY_MESSAGE,
   formatConcordanceProgress,
@@ -17,7 +18,6 @@ import { dom } from "../../dom";
 import { effectiveCleaningConfig } from "../../effective-cleaning-config";
 import { state } from "../../state";
 import { currentFrequencyDocumentScope, renderFrequencyScopeControl } from "../frequency";
-import { formatNumber } from "../shell";
 import {
   concordanceCollocationStatsText,
   concordanceCollocationsArePending,
@@ -49,7 +49,7 @@ import {
   syncConcordanceLineSortKeyFromControl,
 } from "./lines";
 import {
-  acceptConcordanceCardResponse,
+  acceptConcordanceSectionResponse,
   applyConcordanceLinesContextFilter,
   beginConcordanceCardRequest,
   clearConcordanceLinesContextFilter,
@@ -110,7 +110,6 @@ export function renderContextTokens(
   tokens: string[],
   activeFilter: string | null,
   caseSensitive: boolean,
-  collocateClass = "concordance-collocate",
 ): DocumentFragment {
   const fragment = document.createDocumentFragment();
   const segments = concordanceContextTokenSegments(tokens, activeFilter, caseSensitive);
@@ -121,7 +120,7 @@ export function renderContextTokens(
       return;
     }
     const token = document.createElement("span");
-    token.className = collocateClass;
+    token.className = "concordance-kwic-pair";
     token.textContent = segment.text;
     fragment.appendChild(token);
   });
@@ -192,13 +191,24 @@ function cardElements(card: ConcordanceCardId) {
 function linesStatsText(): string {
   const result = resultFor("lines");
   const shown = result?.rows?.length ?? 0;
-  return `window ${currentConcordanceLineWindow()}L–${currentConcordanceLineWindow()}R · ${concordanceSortLabel(currentConcordanceLineSortKey())} · showing ${formatNumber(shown)} of ${formatNumber(result?.totalHits ?? 0)}`;
+  return concordanceLinesCardStatsText({
+    windowTokens: currentConcordanceLineWindow(),
+    sortKey: currentConcordanceLineSortKey(),
+    shown,
+    totalHits: result?.totalHits ?? 0,
+    contextFilter: workbenchState.lines.contextFilter,
+  });
 }
 
 function distributionStatsText(): string {
   const result = resultFor("distribution");
   const distribution = result?.distribution;
-  return `${formatNumber(result?.documentsWithHits ?? 0)} of ${formatNumber(result?.selectedDocumentsTotal ?? 0)} documents with hits · showing ${formatNumber(distribution?.items.length ?? 0)} of ${formatNumber(distribution?.totalDocuments ?? 0)}`;
+  return concordanceDistributionCardStatsText({
+    documentsWithHits: result?.documentsWithHits ?? 0,
+    selectedDocumentsTotal: result?.selectedDocumentsTotal ?? 0,
+    shown: distribution?.items.length ?? 0,
+    totalDocuments: distribution?.totalDocuments ?? 0,
+  });
 }
 
 function syncConcordanceCardChrome(): void {
@@ -382,26 +392,8 @@ async function refreshConcordanceCards(
       state.currentCorpusVersion,
       effectiveCleaningConfig(),
     );
-    const linesRequest = requests.get("lines");
-    if (linesRequest && result.rows !== null) {
-      if (acceptConcordanceCardResponse(
-        workbenchState,
-        "lines",
-        linesRequest.generation,
-        linesRequest.requestKey,
-        result,
-      )) setConcordanceLineOffset(result.offset);
-    }
-    const distributionRequest = requests.get("distribution");
-    if (distributionRequest && result.distribution !== null) {
-      acceptConcordanceCardResponse(
-        workbenchState,
-        "distribution",
-        distributionRequest.generation,
-        distributionRequest.requestKey,
-        result,
-      );
-    }
+    const accepted = acceptConcordanceSectionResponse(workbenchState, requests, result);
+    if (accepted.includes("lines")) setConcordanceLineOffset(result.offset);
   } catch (error) {
     for (const [card, request] of requests) {
       rejectConcordanceCardResponse(

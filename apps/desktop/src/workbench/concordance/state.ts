@@ -3,6 +3,7 @@ import type {
   ConcordanceCollocationMeasure,
   ConcordanceCollocationSortKey,
   ConcordanceContextFilterDirection,
+  ConcordanceResult,
   ConcordanceSortKey,
   SortDirection,
 } from "../../analysis";
@@ -75,6 +76,8 @@ export interface ConcordanceSharedRequestPlan {
   };
   collocates: boolean;
 }
+
+export type ConcordanceSectionRequest = { generation: number; requestKey: string };
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -297,6 +300,39 @@ export function acceptConcordanceCardResponse(
   target.data = data;
   target.requestKey = requestKey;
   return true;
+}
+
+export function acceptConcordanceSectionResponse(
+  state: ConcordanceWorkbenchState,
+  requests: ReadonlyMap<"lines" | "distribution", ConcordanceSectionRequest>,
+  result: ConcordanceResult,
+): Array<"lines" | "distribution"> {
+  const accepted: Array<"lines" | "distribution"> = [];
+  const linesRequest = requests.get("lines");
+  if (
+    linesRequest
+    && result.rows !== null
+    && acceptConcordanceCardResponse(
+      state,
+      "lines",
+      linesRequest.generation,
+      linesRequest.requestKey,
+      result,
+    )
+  ) accepted.push("lines");
+  const distributionRequest = requests.get("distribution");
+  if (
+    distributionRequest
+    && result.distribution !== null
+    && acceptConcordanceCardResponse(
+      state,
+      "distribution",
+      distributionRequest.generation,
+      distributionRequest.requestKey,
+      result,
+    )
+  ) accepted.push("distribution");
+  return accepted;
 }
 
 export function rejectConcordanceCardResponse(

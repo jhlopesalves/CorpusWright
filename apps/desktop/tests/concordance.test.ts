@@ -20,6 +20,7 @@ import {
   clampConcordanceCollocationSpan,
   clampConcordancePageSize,
   clampConcordanceWindow,
+  concordanceCollocatesCardStatsText,
   concordanceCollocationDirectionLabel,
   concordanceCollocationExplanation,
   concordanceCollocationMeasureLabel,
@@ -27,11 +28,13 @@ import {
   concordanceCollocationStrengthBar,
   concordanceCollocationSortHeaderLabel,
   concordanceContextTokenSegments,
+  concordanceDistributionCardStatsText,
   concordanceDistributionMagnitudePercent,
   concordanceCollocatePositionGlyph,
   concordanceContextSortLevels,
   concordanceExpansionViewModel,
   concordanceIsSparse,
+  concordanceLinesCardStatsText,
   concordanceRangePercent,
   concordanceMiddleEllipsis,
   concordancePositionGlyphAccessibleText,
@@ -224,6 +227,60 @@ assert(concordanceDistributionMagnitudePercent(10, 40) === 25, "Distribution bar
 assert(concordanceDistributionMagnitudePercent(40, 40) === 100, "The maximum distribution count should fill its bar");
 assert(concordanceDistributionMagnitudePercent(80, 40) === 100, "Distribution bars should clamp unexpected values");
 assert(concordanceDistributionMagnitudePercent(4, 0) === 0, "Distribution bars should guard an empty maximum");
+const linesStats = concordanceLinesCardStatsText({
+  windowTokens: 5,
+  sortKey: "filePosition",
+  shown: 100,
+  totalHits: 8412,
+  contextFilter: null,
+});
+assert(
+  linesStats === `window 5L–5R · file/position · showing 100 of ${(8412).toLocaleString()}`,
+  "Lines stats should compose window, sort, and result counts truthfully",
+);
+assert(
+  concordanceLinesCardStatsText({
+    windowTokens: 9,
+    sortKey: "right2",
+    shown: 25,
+    totalHits: 60,
+    contextFilter: "pair",
+  }) === "window 9L–9R · 2R · context “pair” · showing 25 of 60",
+  "Filtered Lines stats should expose the local context filter without changing shared query copy",
+);
+assert(
+  concordanceCollocatesCardStatsText({
+    span: 5,
+    direction: "both",
+    measure: "logDice",
+    minimumFrequency: 5,
+    shown: 10,
+    loadedRows: 214,
+    totalCandidates: 214,
+  }) === "span 5L–5R · logDice · min freq 5 · showing 10 of 214",
+  "Uncapped Collocates stats should use the qualifying total directly",
+);
+assert(
+  concordanceCollocatesCardStatsText({
+    span: 2,
+    direction: "left",
+    measure: "mi",
+    minimumFrequency: 5,
+    shown: 35,
+    loadedRows: 500,
+    totalCandidates: 2143,
+  }) === `span 2L · MI · min freq 5 · showing 35 of 500 available rows · ${(2143).toLocaleString()} qualifying collocates`,
+  "Capped Collocates stats should distinguish loaded rows from all qualifying candidates",
+);
+assert(
+  concordanceDistributionCardStatsText({
+    documentsWithHits: 47,
+    selectedDocumentsTotal: 529,
+    shown: 10,
+    totalDocuments: 47,
+  }) === "47 of 529 documents with hits · showing 10 of 47",
+  "Distribution stats should distinguish selected documents, hit documents, and page rows",
+);
 assert(
   concordanceIsSparse({ totalHits: 19, documentsWithHits: 12, selectedDocumentsTotal: 12 }),
   "Thin hit counts should be sparse",
@@ -286,6 +343,11 @@ assert(positionBins[9]!.intensity === 1 && positionBins[0]!.intensity === 0.5);
 assertDeepEqual(
   concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 2, "left").map((bin) => bin.active),
   [false, false, false, true, true, false, false, false, false, false],
+);
+assertDeepEqual(
+  concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 2, "right").map((bin) => bin.active),
+  [false, false, false, false, false, true, true, false, false, false],
+  "Right-only profiles should activate R1 and R2 for a two-token span",
 );
 assert(
   concordanceCollocatePositionGlyph([0, 0, 0, 0, 0], [0, 0, 0, 0, 0], 5, "both")
