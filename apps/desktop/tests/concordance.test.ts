@@ -27,6 +27,7 @@ import {
   concordanceCollocationStrengthBar,
   concordanceCollocationSortHeaderLabel,
   concordanceContextTokenSegments,
+  concordanceDistributionMagnitudePercent,
   concordanceCollocatePositionGlyph,
   concordanceContextSortLevels,
   concordanceExpansionViewModel,
@@ -219,6 +220,10 @@ assert(!summaryMetrics.includes("good movie"), "Summary metrics should omit the 
 assert(summaryMetrics.includes("24 hits"), "Summary metrics should include hit count");
 assert(concordanceRangePercent({ documentsWithHits: 3, selectedDocumentsTotal: 12 }) === 25, "Range percent should divide hits by selected files");
 assert(concordanceRangePercent({ documentsWithHits: 3, selectedDocumentsTotal: 0 }) === 0, "Range percent should guard zero selected files");
+assert(concordanceDistributionMagnitudePercent(10, 40) === 25, "Distribution bars should scale against the payload maximum");
+assert(concordanceDistributionMagnitudePercent(40, 40) === 100, "The maximum distribution count should fill its bar");
+assert(concordanceDistributionMagnitudePercent(80, 40) === 100, "Distribution bars should clamp unexpected values");
+assert(concordanceDistributionMagnitudePercent(4, 0) === 0, "Distribution bars should guard an empty maximum");
 assert(
   concordanceIsSparse({ totalHits: 19, documentsWithHits: 12, selectedDocumentsTotal: 12 }),
   "Thin hit counts should be sparse",

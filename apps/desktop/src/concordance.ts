@@ -353,6 +353,14 @@ export function concordanceRangePercent(result: {
   return result.documentsWithHits / result.selectedDocumentsTotal * 100;
 }
 
+export function concordanceDistributionMagnitudePercent(
+  count: number,
+  maxCount: number,
+): number {
+  if (!Number.isFinite(count) || !Number.isFinite(maxCount) || maxCount <= 0) return 0;
+  return Math.min(100, Math.max(0, count / maxCount * 100));
+}
+
 export function concordanceIsSparse(result: {
   totalHits: number;
   documentsWithHits: number;
