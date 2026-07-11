@@ -667,16 +667,20 @@ assert(
 );
 assert(
   workbench.includes('item.className = "concordance-collocation-row"')
-    && workbench.includes('item.classList.toggle("is-active", isActiveCollocateEvidenceRow(row));')
-    && workbench.includes('evidenceButton.type = "button";')
-    && workbench.includes('evidenceButton.className = "concordance-collocate-evidence-toggle";')
-    && workbench.includes('evidenceButton.textContent = expanded ? "Hide evidence" : "Inspect evidence";')
-    && workbench.includes('evidenceButton.setAttribute("aria-expanded", expanded ? "true" : "false");')
-    && workbench.includes('evidenceButton.addEventListener("click", () => handleConcordanceCollocateClick(row));')
+    && workbench.includes('item.classList.toggle("is-active", expanded);')
+    && workbench.includes("item.tabIndex = 0;")
+    && workbench.includes('item.setAttribute("role", "button");')
+    && workbench.includes('item.setAttribute("aria-label", actionLabel);')
+    && workbench.includes('item.setAttribute("aria-expanded", expanded ? "true" : "false");')
+    && workbench.includes('item.setAttribute("aria-controls", concordanceCollocateEvidenceDomId(row.surface));')
+    && workbench.includes('item.addEventListener("click", () => handleConcordanceCollocateClick(row));')
+    && workbench.includes('if (event.key !== "Enter" && event.key !== " ")')
+    && workbench.includes("event.preventDefault();")
+    && !workbench.includes("evidenceButton")
     && workbench.includes('item.className = "concordance-collocate-evidence-row"')
     && workbench.includes("panel.appendChild(createCollocateEvidenceList(collocateEvidenceResult));")
     && workbench.includes("dom.concordanceCollocationsTableBody.appendChild(createCollocateEvidenceDrawerRow(row));"),
-  "Collocate rows should use a native labelled evidence control, mark the active evidence row, and render the drawer inline",
+  "Collocate rows should be labelled click and keyboard evidence controls, mark the active row, and render the drawer inline",
 );
 assert(
   collocateEvidenceRendererBody.includes('item.className = "concordance-collocate-evidence-line"')
@@ -701,7 +705,7 @@ assert(
 );
 assert(
   workbench.includes('title.textContent = `Co-occurrence lines for "${row.surface}" with "${query}"`;')
-    && workbench.includes('const actionLabel = `Show co-occurrence lines for "${row.surface}" with "${query}"`;')
+    && workbench.includes('const actionLabel = `Inspect co-occurrence lines for “${row.surface}” with “${query}”`;')
     && !workbench.includes('title.textContent = `Evidence for')
     && !workbench.includes('const actionLabel = `Show evidence')
     && !workbench.includes('"Loading evidence..."')

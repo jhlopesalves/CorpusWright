@@ -4983,6 +4983,14 @@ main {
   overflow-y: auto;
 }
 
+.concordance-collocations-inspection-hint {
+  margin: 0;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
 .concordance-collocations-table {
   width: 100%;
   min-width: 1040px;
@@ -5054,12 +5062,17 @@ main {
 }
 
 .concordance-collocation-row {
-  cursor: default;
+  cursor: pointer;
 }
 
 .concordance-collocation-row:hover td,
 .concordance-collocation-row:focus-visible td {
   background: var(--cw-interaction-bg-hover);
+}
+
+.concordance-collocation-row:hover .concordance-collocate-text,
+.concordance-collocation-row:focus-visible .concordance-collocate-text {
+  color: var(--accent-color);
 }
 
 .concordance-collocation-row.is-active td {
@@ -5445,29 +5458,6 @@ main {
   font-family: var(--cw-font-mono);
   font-size: 0.52rem;
   line-height: 28px;
-}
-
-.concordance-collocate-evidence-toggle {
-  min-height: 28px;
-  padding: 3px 7px;
-  border: 1px solid var(--cw-collocate-border);
-  border-radius: 4px;
-  background: var(--cw-collocate-bg);
-  color: var(--accent-color);
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.concordance-collocate-evidence-toggle:hover {
-  border-color: var(--cw-interaction-border-hover);
-  background: var(--cw-interaction-bg-hover);
-}
-
-.concordance-collocate-evidence-toggle:focus-visible {
-  outline: 2px solid var(--cw-interaction-focus-ring);
-  outline-offset: 2px;
 }
 
 .concordance-collocation-reading {
