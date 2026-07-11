@@ -583,12 +583,15 @@ assert(
     && workbench.includes('token.className = "concordance-collocate";')
     && workbench.includes("token.textContent = segment.text;")
     && workbench.includes("function appendConcordanceKwicCells(")
+    && workbench.includes("concordanceContextSortLevels(")
+    && workbench.includes('token.className = "concordance-context-token";')
+    && workbench.includes('token.classList.add(`is-sort-level-${level}`)')
     && workbench.includes("const activeContextFilter = concordanceResult?.contextFilter ?? null;")
     && workbench.includes("const contextFilterCaseSensitive = concordanceResult?.caseSensitive ?? false;")
-    && workbench.includes("const activeFilter = concordanceResult?.contextFilter ?? null;")
-    && workbench.includes("const caseSensitive = concordanceResult?.caseSensitive ?? false;")
-    && workbench.includes("left.appendChild(renderContextTokens(concordanceExpansionResult.leftContext, activeFilter, caseSensitive));")
-    && workbench.includes("right.appendChild(renderContextTokens(concordanceExpansionResult.rightContext, activeFilter, caseSensitive));")
+    && workbench.includes("left.textContent = concordanceRowText(concordanceExpansionResult.leftContext);")
+    && workbench.includes("right.textContent = concordanceRowText(concordanceExpansionResult.rightContext);")
+    && !workbench.includes("renderContextTokens(concordanceExpansionResult.leftContext")
+    && !workbench.includes("renderContextTokens(concordanceExpansionResult.rightContext")
     && workbench.includes("function createCollocateEvidenceSnippet(row: ConcordanceRow): HTMLSpanElement")
     && workbench.includes("function createCollocateEvidenceLine(row: ConcordanceRow): HTMLDivElement")
     && workbench.includes("function createCollocateEvidenceList(result: ConcordanceResult): HTMLDivElement")
@@ -596,7 +599,7 @@ assert(
     && !workbench.includes("function createCollocateEvidenceTable")
     && !workbench.includes("concordance-collocate-evidence-table")
     && !workbench.includes("innerHTML"),
-  "Concordance context rendering should use text nodes and shared span-based collocate highlights in KWIC, expanded context, and inline drawer evidence",
+  "Concordance context rendering should use safe token spans in KWIC and plain continuous context in expansions while retaining inline drawer evidence",
 );
 assert(
   collocateEvidenceRendererBody.includes("renderContextTokens(row.leftContext, activeFilter, caseSensitive)")
@@ -751,27 +754,11 @@ assert(
   "Very long Concordance nodes should expand into the table scroll region rather than adding a nested scrollbar",
 );
 assert(
-  styles.includes(".concordance-table td:nth-child(3)"),
-  "Concordance node column selector should remain present",
-);
-const concordanceContextColumnCssMatch = styles.match(
-  /\.concordance-table th:nth-child\(2\),\n\.concordance-table td:nth-child\(2\),\n\.concordance-table th:nth-child\(4\),\n\.concordance-table td:nth-child\(4\) \{([\s\S]*?)\n\}/,
-);
-assert(concordanceContextColumnCssMatch, "Concordance context column CSS should exist");
-const concordanceContextColumnCss = concordanceContextColumnCssMatch[1];
-const concordanceNodeColumnCssMatch = styles.match(
-  /\.concordance-table th:nth-child\(3\),\n\.concordance-table td:nth-child\(3\) \{([\s\S]*?)\n\}/,
-);
-assert(concordanceNodeColumnCssMatch, "Concordance node column CSS should exist");
-const concordanceNodeColumnCss = concordanceNodeColumnCssMatch[1];
-assert(
-  concordanceNodeColumnCss.includes("width: 9rem;")
-    && concordanceNodeColumnCss.includes("min-width: 7rem;")
-    && concordanceContextColumnCss.includes("width: calc((100% - 150px - 9rem) / 2);")
-    && !concordanceNodeColumnCss.includes("width: 180px;")
-    && !concordanceNodeColumnCss.includes("min-width: 140px;")
-    && !concordanceContextColumnCss.includes("330px"),
-  "Concordance node column should be materially narrower while context columns share the remaining space",
+  styles.includes(".concordance-table tr {\n  display: grid;")
+    && styles.includes("grid-template-columns: minmax(7rem, 10rem) minmax(0, 1fr) max-content minmax(0, 1fr);")
+    && styles.includes(".concordance-left {\n  color: var(--text-muted);\n  direction: rtl;")
+    && styles.includes(".concordance-context-run {\n  display: inline;\n  direction: ltr;"),
+  "Classic KWIC should use a restrained file column, symmetric flexible contexts, and an uncompressed node column",
 );
 
 const concordanceRightCssMatch = styles.match(/\.concordance-right \{\n  color: var\(--text-muted\);([\s\S]*?)\n\}/);

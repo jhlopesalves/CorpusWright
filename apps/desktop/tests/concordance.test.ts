@@ -26,9 +26,11 @@ import {
   concordanceCollocationScoreBarPercent,
   concordanceCollocationSortHeaderLabel,
   concordanceContextTokenSegments,
+  concordanceContextSortLevels,
   concordanceExpansionViewModel,
   concordanceIsSparse,
   concordanceRangePercent,
+  concordanceMiddleEllipsis,
   concordanceRowExpansionKey,
   concordanceRowText,
   concordanceSortLabel,
@@ -41,6 +43,10 @@ import {
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+function assertDeepEqual(actual: unknown, expected: unknown, message = "Values should match"): void {
+  assert(JSON.stringify(actual) === JSON.stringify(expected), message);
 }
 
 assert(normaliseConcordanceQuery("  alpha ") === "alpha", "Concordance query should be trimmed");
@@ -87,6 +93,26 @@ assert(
 assert(CONCORDANCE_EXPANSION_WINDOW === 40, "Expansion should request the default wide KWIC window");
 assert(concordanceSortLabel("left1") === "1L", "Left sort labels should use KWIC shorthand");
 assert(concordanceSortLabel("right3") === "3R", "Right sort labels should use KWIC shorthand");
+assertDeepEqual(
+  concordanceContextSortLevels("left1", 5, 5).left,
+  [null, null, 3, 2, 1],
+  "left1 should colour L1, L2, L3 from the end of left context",
+);
+assertDeepEqual(concordanceContextSortLevels("left2", 5, 5).left, [null, null, 3, 1, 2]);
+assertDeepEqual(concordanceContextSortLevels("left3", 5, 5).left, [null, null, 1, 2, 3]);
+assertDeepEqual(concordanceContextSortLevels("right1", 5, 5).right, [1, 2, 3, null, null]);
+assertDeepEqual(concordanceContextSortLevels("right2", 5, 5).right, [2, 1, 3, null, null]);
+assertDeepEqual(concordanceContextSortLevels("right3", 5, 5).right, [3, 2, 1, null, null]);
+for (const sort of ["filePosition", "node"] as const) {
+  assertDeepEqual(concordanceContextSortLevels(sort, 3, 3), {
+    left: [null, null, null],
+    right: [null, null, null],
+  });
+}
+assert(
+  concordanceMiddleEllipsis("a-very-long-document-filename.txt", 16) === "a-very-l…ame.txt",
+  "Long file names should retain recognisable start and end text",
+);
 assert(concordanceCollocationMeasureLabel("g2") === "log-likelihood", "Measure labels should be readable");
 assert(concordanceCollocationDirectionLabel("both") === "both sides", "Both-side direction should be readable");
 assert(
