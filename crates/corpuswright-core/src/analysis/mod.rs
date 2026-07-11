@@ -51,11 +51,12 @@ pub(crate) use concordance::concordance_key;
 pub use concordance::{
     ConcordanceBackend, ConcordanceBackendUsed, ConcordanceContextFilterDirection,
     ConcordanceDistributionItem, ConcordanceDistributionPage, ConcordanceDocument,
-    ConcordanceError, ConcordanceExpansionQuery, ConcordanceExpansionResult,
-    ConcordanceFallbackReason, ConcordanceQuery, ConcordanceResult, ConcordanceRow,
-    ConcordanceSearchContext, ConcordanceSortKey, RoutedConcordanceResult,
+    ConcordanceError, ConcordanceExecutionStats, ConcordanceExpansionQuery,
+    ConcordanceExpansionResult, ConcordanceFallbackReason, ConcordanceQuery, ConcordanceResult,
+    ConcordanceRow, ConcordanceSearchContext, ConcordanceSortKey, RoutedConcordanceResult,
     expand_concordance_context, search_concordance_documents, search_concordance_documents_routed,
     search_concordance_documents_routed_provider,
+    search_concordance_documents_routed_scan_provider,
 };
 
 pub use distribution::{
