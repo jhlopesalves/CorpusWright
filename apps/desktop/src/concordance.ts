@@ -3,6 +3,7 @@ import type { ConcordanceCollocationDirection } from "./generated/ConcordanceCol
 import type { ConcordanceCollocationMeasure } from "./generated/ConcordanceCollocationMeasure.js";
 import type { ConcordanceCollocationSortKey } from "./generated/ConcordanceCollocationSortKey.js";
 import type { ConcordanceExpansionResult } from "./generated/ConcordanceExpansionResult.js";
+import type { ConcordanceProgress } from "./generated/ConcordanceProgress.js";
 import type { ConcordanceRow } from "./generated/ConcordanceRow.js";
 import type { ConcordanceSortKey } from "./generated/ConcordanceSortKey.js";
 import type { SortDirection } from "./generated/SortDirection.js";
@@ -88,6 +89,22 @@ export const CONCORDANCE_COLLOCATION_SORT_OPTIONS: Array<{
 
 export function normaliseConcordanceQuery(value: string): string {
   return value.trim();
+}
+
+export function formatConcordanceProgress(progress: ConcordanceProgress | null): string {
+  if (!progress) {
+    return "Searching...";
+  }
+  const percent = progress.filesTotal > 0 ? Math.round((progress.filesDone / progress.filesTotal) * 100) : 0;
+  let phaseText = "Searching";
+  if (progress.currentPhase === "buildingIndex") {
+    phaseText = "Reading index";
+  } else if (progress.currentPhase === "searching") {
+    phaseText = "Searching";
+  } else if (progress.currentPhase === "aggregatingCollocations") {
+    phaseText = "Aggregating collocates";
+  }
+  return `${phaseText}... ${percent}%`;
 }
 
 export function concordanceRowText(tokens: string[]): string {

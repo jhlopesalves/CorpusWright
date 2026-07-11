@@ -1,11 +1,14 @@
+import { listen } from "@tauri-apps/api/event";
 import {
   searchConcordance,
+  type ConcordanceProgress,
   type ConcordanceResult,
 } from "../../analysis";
 import {
   concordanceContextTokenSegments,
   concordanceSummaryMetricsText,
   CONCORDANCE_NO_QUERY_MESSAGE,
+  formatConcordanceProgress,
   normaliseConcordanceQuery,
 } from "../../concordance";
 import { dom } from "../../dom";
@@ -48,6 +51,8 @@ let activeConcordanceView: ConcordanceViewId = "lines";
 let concordanceQueryGeneration = 0;
 let concordancePending = false;
 let concordanceFailure: string | null = null;
+let concordanceProgress: ConcordanceProgress | null = null;
+let concordanceProgressUnlisten: (() => void) | null = null;
 
 function syncConcordanceCaseToggle(): void {
   const isCaseSensitive = dom.concordanceCaseSensitiveInput.checked;
@@ -183,19 +188,35 @@ export function resetConcordanceCorpusState(): void {
   resetConcordanceCollocationCorpusState();
 }
 
+export async function initialiseConcordanceState(): Promise<void> {
+  if (concordanceProgressUnlisten) {
+    concordanceProgressUnlisten();
+  }
+  concordanceProgressUnlisten = await listen<ConcordanceProgress>("concordance-progress", (event) => {
+    if (!concordancePending) {
+      return;
+    }
+    concordanceProgress = event.payload;
+    renderConcordance();
+  });
+}
+
 export function renderConcordance(): void {
   renderFrequencyScopeControl(state.analysisCorpus);
   syncConcordanceControls();
   syncConcordanceViewTabs();
 
   if (concordancePending) {
-    dom.concordanceSummary.textContent = "Searching...";
+    dom.concordanceCancelButton.classList.remove("hidden");
+    const progressText = formatConcordanceProgress(concordanceProgress);
+    dom.concordanceSummary.textContent = progressText;
     renderConcordanceStatus(null);
-    renderConcordanceLines(null, "Searching...");
-    renderConcordanceDistribution(null, "Searching...");
+    renderConcordanceLines(null, progressText);
+    renderConcordanceDistribution(null, progressText);
     renderConcordanceCollocations();
     return;
   }
+  dom.concordanceCancelButton.classList.add("hidden");
 
   if (concordanceFailure) {
     dom.concordanceSummary.textContent = CONCORDANCE_NO_QUERY_MESSAGE;
