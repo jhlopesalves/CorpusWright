@@ -3,11 +3,11 @@ use crate::analysis::concordance::analysis_word_tokens;
 use crate::analysis::test_support::*;
 use crate::analysis::{ConcordanceBackend, aggregate_concordance_collocations_documents_routed};
 use crate::index::{
-    InMemoryIndexStore, SurfaceIndexCancellationToken, SurfaceIndexDocumentInput,
+    InMemoryIndexStore, IndexStore, SurfaceIndexCancellationToken, SurfaceIndexDocumentInput,
     SurfaceIndexQuery, search_surface_index,
 };
 use crate::tokenization::TokenizationConfig;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[test]
 fn collocation_routing_types_remain_rust_only_without_ts_export() {
@@ -422,7 +422,10 @@ fn surface_collocation_index_phrase_hits_match_overlapping_scan_nodes() {
 
     assert_eq!(scan.f_node, 4);
     assert_eq!(index.f_node, 4);
-    assert_eq!(index, scan);
+    assert_eq!(
+        query_concordance_collocations_from_aggregate(&index, &query),
+        query_concordance_collocations_from_aggregate(&scan, &query),
+    );
 }
 
 #[test]
@@ -1159,6 +1162,93 @@ fn surface_collocation_high_node_frequency_without_materializing_all_occurrences
 }
 
 #[test]
+fn surface_collocation_index_finalises_only_actual_candidates() {
+    let selected = "alpha target beta alpha";
+    let mut unrelated_vocabulary = String::new();
+    for index in 0..10_000 {
+        unrelated_vocabulary.push_str(&format!("vocabulary{index} "));
+    }
+    let tokenization_config = TokenizationConfig::default();
+    let inputs = [
+        SurfaceIndexDocumentInput {
+            document_id: 0,
+            source_path: "selected.txt".to_string(),
+            display_name: "selected.txt".to_string(),
+            prepared_text: selected,
+        },
+        SurfaceIndexDocumentInput {
+            document_id: 1,
+            source_path: "unselected.txt".to_string(),
+            display_name: "unselected.txt".to_string(),
+            prepared_text: &unrelated_vocabulary,
+        },
+    ];
+    let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
+    let complete_vocabulary = store.concordance_symbols(false).count();
+    let complete_symbol_bytes = store
+        .concordance_symbols(false)
+        .map(|symbol| symbol.len() as u64)
+        .sum::<u64>();
+    let mut query = collocation_query("target");
+    query.selection = AnalysisDocumentSelection {
+        all_documents: false,
+        ids: vec![0],
+        excluded_ids: Vec::new(),
+    };
+
+    let (aggregate, stats) = aggregate_concordance_collocations_index(
+        &store,
+        &query,
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+    )
+    .unwrap();
+    let (repeat, repeat_stats) = aggregate_concordance_collocations_index(
+        &store,
+        &query,
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+    )
+    .unwrap();
+
+    assert!(complete_vocabulary > 10_000);
+    assert_eq!(aggregate.symbols, ["alpha", "beta"]);
+    assert_eq!(aggregate.symbols, repeat.symbols);
+    assert_eq!(aggregate.candidate_counts, repeat.candidate_counts);
+    assert_eq!(aggregate.collocate_frequencies.len(), 2);
+    assert_eq!(stats.final_candidate_count, 2);
+    assert_eq!(stats.aggregate_entries, 2);
+    assert_eq!(stats.candidate_symbol_bytes, 9);
+    assert!(stats.candidate_symbol_bytes < complete_symbol_bytes);
+    assert_eq!(stats.final_projected_bytes, stats.projected_aggregate_bytes);
+    assert!(stats.peak_projected_bytes >= stats.final_projected_bytes);
+    assert_eq!(
+        stats.final_projected_bytes,
+        repeat_stats.final_projected_bytes
+    );
+
+    let result = query_concordance_collocations_from_aggregate(&aggregate, &query);
+    assert_eq!(
+        result
+            .rows
+            .iter()
+            .find(|row| row.surface == "alpha")
+            .unwrap()
+            .collocate_frequency,
+        2,
+    );
+    assert_eq!(
+        result
+            .rows
+            .iter()
+            .find(|row| row.surface == "beta")
+            .unwrap()
+            .collocate_frequency,
+        1,
+    );
+}
+
+#[test]
 fn surface_collocation_final_strings_materialised_only_for_returned_rows() {
     let documents = [concordance_document(
         0,
@@ -1204,6 +1294,78 @@ fn surface_collocation_vocabulary_sized_aggregate_resource_limit_failure() {
         ConcordanceError::Index(
             crate::index::SurfaceIndexError::ProjectedResidentIndexExceedsLimit { .. }
         )
+    ));
+}
+
+#[test]
+fn surface_collocation_index_refuses_candidate_growth_before_budget() {
+    let text = "alpha target beta";
+    let tokenization_config = TokenizationConfig::default();
+    let inputs = [SurfaceIndexDocumentInput {
+        document_id: 0,
+        source_path: "doc.txt".to_string(),
+        display_name: "doc.txt".to_string(),
+        prepared_text: text,
+    }];
+    let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
+    let limits = crate::index::SurfaceIndexResourceLimits {
+        max_projected_resident_index_bytes: 1,
+        ..Default::default()
+    };
+    let error = aggregate_concordance_collocations_index_with_limits(
+        &store,
+        &collocation_query("target"),
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+        limits,
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        ConcordanceError::Index(
+            crate::index::SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
+                projected_bytes,
+                limit_bytes: 1,
+            }
+        ) if projected_bytes > 1
+    ));
+}
+
+#[test]
+fn surface_collocation_cancellation_interrupts_frequency_finalisation() {
+    let text = "alpha target alpha alpha";
+    let tokenization_config = TokenizationConfig::default();
+    let inputs = [SurfaceIndexDocumentInput {
+        document_id: 0,
+        source_path: "doc.txt".to_string(),
+        display_name: "doc.txt".to_string(),
+        prepared_text: text,
+    }];
+    let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
+    let source_id = store.concordance_symbol_id("alpha", false).unwrap();
+    let mut candidates = IndexedCollocationCandidates::default();
+    candidates.counts.insert(source_id, Default::default());
+    candidates.peak_candidate_entries = 1;
+    let cancellation = SurfaceIndexCancellationToken::default();
+
+    let error = finalise_indexed_collocation_candidates(
+        &store,
+        ConcordanceCollocationAggregationSignature {
+            query: "target".to_string(),
+            case_sensitive: false,
+        },
+        &HashSet::from([0]),
+        4,
+        candidates,
+        false,
+        &cancellation,
+        crate::index::SurfaceIndexResourceLimits::default(),
+        || cancellation.cancel(),
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        ConcordanceError::Index(crate::index::SurfaceIndexError::Cancelled)
     ));
 }
 
