@@ -4893,6 +4893,14 @@ main {
   font-size: 0.9rem;
 }
 
+.concordance-distribution-reading {
+  max-width: 74ch;
+  margin: 0 0 4px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .concordance-distribution-table-wrap {
   max-width: 1000px;
   max-height: min(58vh, 680px);
@@ -4932,17 +4940,22 @@ main {
 
 .concordance-distribution-table th:nth-child(2),
 .concordance-distribution-table td:nth-child(2) {
-  width: 110px;
+  width: 220px;
 }
 
 .concordance-distribution-table th:nth-child(3),
 .concordance-distribution-table td:nth-child(3) {
-  width: 130px;
+  width: 110px;
 }
 
 .concordance-distribution-table th:nth-child(4),
 .concordance-distribution-table td:nth-child(4) {
-  width: 34%;
+  width: 120px;
+}
+
+.concordance-distribution-table th:nth-child(5),
+.concordance-distribution-table td:nth-child(5) {
+  width: 110px;
 }
 
 .concordance-distribution-table th:nth-child(n + 2),
@@ -4955,6 +4968,34 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.concordance-distribution-occurrences {
+  display: grid;
+  grid-template-columns: minmax(3ch, auto) minmax(64px, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.concordance-distribution-count {
+  color: var(--text-color);
+  font-weight: 650;
+}
+
+.concordance-distribution-bar-track {
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border-color);
+}
+
+.concordance-distribution-bar {
+  display: block;
+  width: var(--distribution-bar-width, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--cw-plot-ramp-3);
 }
 
 .concordance-collocation-controls {
