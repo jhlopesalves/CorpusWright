@@ -833,8 +833,9 @@ assert(
 assert(
   styles.includes(".concordance-table tr {\n  display: grid;")
     && styles.includes("grid-template-columns: 96px minmax(0, 1fr) 104px minmax(0, 1fr);")
-    && styles.includes("padding: 3px 5px;")
-    && styles.includes(".concordance-left {\n  color: var(--text-muted);\n  direction: rtl;")
+    && styles.includes("padding: 2px 4px;")
+    && styles.includes("line-height: 1.25;")
+    && styles.includes(".concordance-left {\n  color: var(--text-color);\n  direction: rtl;")
     && styles.includes(".concordance-context-run {\n  display: inline;\n  direction: ltr;")
     && styles.includes(".concordance-row:nth-of-type(even) td"),
   "Classic KWIC should use compact rows, a 96px file column, flexible outer-clipped contexts, a fixed node axis, and zebra treatment",

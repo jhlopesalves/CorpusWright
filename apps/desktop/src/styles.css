@@ -4171,6 +4171,8 @@ main {
   flex-wrap: wrap;
   gap: 10px 12px;
   align-items: flex-end;
+  padding-top: 6px;
+  padding-bottom: 0;
 }
 
 .concordance-lines-controls label {
@@ -4219,6 +4221,11 @@ main {
   border-radius: 6px;
   background: var(--panel-bg);
   box-shadow: var(--cw-interaction-shadow);
+}
+
+.concordance-kwic-panel {
+  gap: 8px;
+  padding-inline: 10px;
 }
 
 .concordance-card-header {
@@ -4480,7 +4487,7 @@ main {
 
 .concordance-table th,
 .concordance-table td {
-  padding: 3px 5px;
+  padding: 2px 4px;
   border-bottom: 1px solid var(--border-color);
   vertical-align: middle;
 }
@@ -4493,6 +4500,7 @@ main {
   color: var(--text-muted);
   font-size: 0.76rem;
   font-weight: 700;
+  line-height: 1.25;
   text-align: left;
 }
 
@@ -4521,11 +4529,11 @@ main {
 .concordance-right {
   font-family: var(--cw-font-mono);
   font-size: 0.86rem;
-  line-height: 1.45;
+  line-height: 1.25;
 }
 
 .concordance-left {
-  color: var(--text-muted);
+  color: var(--text-color);
   direction: rtl;
   overflow: hidden;
   text-align: right;
@@ -4540,7 +4548,7 @@ main {
 }
 
 .concordance-right {
-  color: var(--text-muted);
+  color: var(--text-color);
   overflow: hidden;
   text-align: left;
   text-overflow: ellipsis;

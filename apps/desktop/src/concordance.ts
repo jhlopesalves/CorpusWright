@@ -9,7 +9,7 @@ import type { ConcordanceSortKey } from "./generated/ConcordanceSortKey.js";
 import type { SortDirection } from "./generated/SortDirection.js";
 
 export const CONCORDANCE_MIN_WINDOW = 1;
-export const CONCORDANCE_DEFAULT_WINDOW = 5;
+export const CONCORDANCE_DEFAULT_WINDOW = 10;
 export const CONCORDANCE_MAX_WINDOW = 20;
 export const CONCORDANCE_EXPANSION_WINDOW = 40;
 export const CONCORDANCE_MIN_PAGE_SIZE = 25;
