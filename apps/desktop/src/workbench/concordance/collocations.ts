@@ -869,6 +869,7 @@ function createConcordanceCollocationRow(
     const element = document.createElement("span");
     element.className = "concordance-position-bin";
     element.classList.toggle("is-inactive", !bin.active);
+    element.classList.toggle("is-dominant", bin.active && bin.count > 0 && bin.intensity === 1);
     element.style.setProperty("--position-height", `${Math.max(12, bin.intensity * 100)}%`);
     element.style.setProperty("--position-intensity", bin.intensity.toString());
     element.title = `${row.surface} · ${bin.label} · ${formatNumber(bin.count)}`;
