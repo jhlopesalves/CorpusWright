@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   CONCORDANCE_WORKBENCH_COLLAPSE_STORAGE_KEY,
   acceptConcordanceCardResponse,
+  applyConcordanceLinesContextFilter,
   beginConcordanceCardRequest,
+  clearConcordanceLinesContextFilter,
   collapseConcordanceCard,
   concordanceCardRequestKey,
   createConcordanceWorkbenchState,
@@ -28,6 +30,40 @@ class MemoryStorage implements StorageLike {
   setItem(key: string, value: string): void {
     this.values.set(key, value);
   }
+}
+
+{
+  const state = createConcordanceWorkbenchState(shared());
+  state.lines.window = 9;
+  state.lines.sort = "right2";
+  state.lines.pageSize = 250;
+  state.lines.offset = 500;
+  state.lines.collapsed = true;
+  state.collocates.span = 3;
+  state.collocates.direction = "left";
+  const collocatesKey = concordanceCardRequestKey(state, "collocates");
+  const sharedBefore = { ...state.shared };
+
+  applyConcordanceLinesContextFilter(state, "pair", "right");
+  assert.deepEqual(state.shared, sharedBefore);
+  assert.equal(state.lines.window, 9);
+  assert.equal(state.lines.sort, "right2");
+  assert.equal(state.lines.pageSize, 250);
+  assert.equal(state.lines.offset, 0);
+  assert.equal(state.lines.collapsed, false);
+  assert.equal(state.lines.contextFilter, "pair");
+  assert.equal(state.lines.contextFilterDirection, "right");
+  assert.equal(concordanceCardRequestKey(state, "collocates"), collocatesKey);
+  assert.equal(state.collocates.span, 3);
+  assert.equal(state.collocates.direction, "left");
+
+  clearConcordanceLinesContextFilter(state);
+  assert.equal(state.lines.contextFilter, null);
+  assert.equal(state.lines.contextFilterDirection, "both");
+  assert.equal(state.lines.window, 9);
+  assert.equal(state.lines.sort, "right2");
+  assert.equal(state.lines.pageSize, 250);
+  assert.deepEqual(state.shared, sharedBefore);
 }
 
 function shared(query = "target") {

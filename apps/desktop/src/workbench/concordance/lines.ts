@@ -212,7 +212,7 @@ function appendConcordanceKwicCells(
       if (index > 0) run.appendChild(document.createTextNode(" "));
       const token = document.createElement("span");
       token.className = "concordance-context-token";
-      if (segment.collocate) token.classList.add("concordance-collocate");
+      if (segment.collocate) token.classList.add("concordance-kwic-pair");
       const level = levels[index];
       if (level !== null) {
         const priority = level === 1 ? "primary" : level === 2 ? "secondary" : "tertiary";

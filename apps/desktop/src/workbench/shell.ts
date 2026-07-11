@@ -110,6 +110,7 @@ import {
 import {
   handleConcordanceCaseChange,
   handleConcordanceCardAction,
+  handleClearConcordanceLinesContextFilter,
   handleConcordanceQueryInput,
   initialiseConcordanceState,
   renderConcordance,
@@ -2029,6 +2030,7 @@ export function initWorkbenchSwitcher(): void {
   dom.concordanceFilesButton.addEventListener("click", openFrequencyFilesModal);
   dom.concordancePagePreviousButton.addEventListener("click", showPreviousConcordancePage);
   dom.concordancePageNextButton.addEventListener("click", showNextConcordancePage);
+  dom.concordanceLinesFilterClear.addEventListener("click", handleClearConcordanceLinesContextFilter);
   dom.concordanceCollocationSpanInput.addEventListener("change", handleConcordanceCollocationAggregationControlChange);
   dom.concordanceCollocationDirectionSelect.addEventListener("change", handleConcordanceCollocationAggregationControlChange);
   dom.concordanceCollocationMeasureSelect.addEventListener("change", handleConcordanceCollocationMeasureChange);

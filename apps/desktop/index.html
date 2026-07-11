@@ -488,7 +488,7 @@
                 </div>
                 <div id="concordance-status" class="frequency-query-notice hidden" role="status"></div>
                 <div class="concordance-workbench">
-                  <section id="concordance-lines-panel" class="concordance-card concordance-kwic-panel" aria-labelledby="concordance-lines-title">
+                  <section id="concordance-lines-panel" class="concordance-card concordance-kwic-panel" aria-labelledby="concordance-lines-title" tabindex="-1">
                     <header class="concordance-card-header">
                       <div class="concordance-card-heading">
                         <h3 id="concordance-lines-title">Concordance Lines</h3>
@@ -523,6 +523,10 @@
                       </label>
                     </div>
                     <div id="concordance-lines-body" class="concordance-card-body">
+                      <div id="concordance-lines-filter" class="concordance-filter-chip hidden" role="status">
+                        <span id="concordance-lines-filter-summary"></span>
+                        <button id="concordance-lines-filter-clear" class="secondary-btn concordance-filter-clear" type="button">Clear</button>
+                      </div>
                       <div id="concordance-sort-legend" class="concordance-sort-legend hidden" aria-label="Context sort priority">
                         <span class="is-level-1"><strong>1</strong> Primary sort</span>
                         <span class="is-level-2"><strong>2</strong> Secondary sort</span>
@@ -622,7 +626,7 @@
                         </thead>
                         <tbody id="concordance-collocations-table-body">
                           <tr>
-                            <td colspan="4" class="frequency-empty">Enter a word or phrase to build a collocate profile.</td>
+                            <td colspan="6" class="frequency-empty">Enter a word or phrase to build a collocate profile.</td>
                           </tr>
                         </tbody>
                         </table>
