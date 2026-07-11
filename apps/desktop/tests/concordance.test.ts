@@ -34,6 +34,7 @@ import {
   concordanceSortLabel,
   concordanceSummaryMetricsText,
   concordanceSummaryText,
+  formatConcordanceProgress,
   normaliseConcordanceQuery,
   toggleConcordanceExpansionKey,
 } from "../src/concordance.ts";
@@ -58,6 +59,20 @@ assert(DEFAULT_CONCORDANCE_SORT_KEY === "filePosition", "Default sort should be 
 assert(DEFAULT_CONCORDANCE_COLLOCATION_MEASURE === "logDice", "Default collocation measure should be logDice");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY === "association", "Default collocation sort should be association");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION === "desc", "Default collocation sort should descend");
+
+assert(formatConcordanceProgress(null) === "Searching...", "Progress should fallback to Searching... when null");
+assert(
+  formatConcordanceProgress({ filesDone: 0, filesTotal: 10, currentPhase: "buildingIndex" }) === "Reading index... 0%",
+  "Progress should report reading index"
+);
+assert(
+  formatConcordanceProgress({ filesDone: 5, filesTotal: 10, currentPhase: "searching" }) === "Searching... 50%",
+  "Progress should report searching"
+);
+assert(
+  formatConcordanceProgress({ filesDone: 10, filesTotal: 10, currentPhase: "aggregatingCollocations" }) === "Aggregating collocates... 100%",
+  "Progress should report aggregating collocates"
+);
 assert(CONCORDANCE_COLLOCATION_DEFAULT_SPAN === 5, "Default collocation span should be +/-5");
 assert(CONCORDANCE_COLLOCATION_DEFAULT_FLOOR === 5, "Default collocation floors should be 5");
 assert(CONCORDANCE_COLLOCATION_LIMIT === 100, "Collocation results should request the default top 100");

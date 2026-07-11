@@ -260,7 +260,7 @@ assert(
   "Concordance summary should emphasise only the query and keep DP plain",
 );
 assert(
-  workbench.includes("Searching...") && workbench.includes("CONCORDANCE_NO_HITS_MESSAGE"),
+  workbench.includes("formatConcordanceProgress") && workbench.includes("CONCORDANCE_NO_HITS_MESSAGE"),
   "Concordance renderer should include loading and no-hit states",
 );
 const runConcordanceSearchMatch = workbench.match(
