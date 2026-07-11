@@ -43,6 +43,18 @@ for (const theme of expectedThemes) {
   for (const token of requiredTokens) {
     assert.match(body, new RegExp(`(?:^|\\n)\\s*${token}:`), `${theme} must define ${token}`);
   }
+  const sortValues = [1, 2, 3].map((level) => {
+    const match = body.match(new RegExp(`--cw-kwic-sort-${level}:\\s*([^;]+);`));
+    assert(match, `${theme} must define sort level ${level}`);
+    return match[1]!.trim();
+  });
+  assert.deepEqual(
+    sortValues,
+    ["var(--cw-collocate-text)", "var(--cw-success-text)", "var(--cw-category-numeric-text)"],
+    `${theme} must map sort priority to magenta, green, and amber categorical roles`,
+  );
+  assert.equal(new Set(sortValues).size, 3, `${theme} sort roles must remain distinct`);
+  assert(sortValues.every((value) => !value.includes("plot-ramp")), `${theme} sort roles must not use a sequential ramp`);
 }
 
 const componentRulePattern = /(?:^|\n)([^@{}][^{}]*)\{([^{}]*)\}/g;
