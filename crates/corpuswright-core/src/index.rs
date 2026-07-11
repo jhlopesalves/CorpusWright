@@ -1,7 +1,6 @@
 use crate::analysis::concordance_key;
 use crate::decode::DECODE_POLICY_VERSION;
-use crate::tokenization::{TokenizationConfig, TokenizationManifest, tokenize};
-use rayon::prelude::*;
+use crate::tokenization::{TokenizationConfig, TokenizationManifest, tokenize, visit_tokens};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
@@ -9,13 +8,17 @@ use std::hash::{Hash, Hasher};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use std::{
+    sync::Arc,
+    sync::atomic::{AtomicBool, Ordering as AtomicOrdering},
+    time::Instant,
+};
 
 pub const INDEX_SCHEMA_VERSION: u32 = 3;
 pub const SURFACE_INDEX_CACHE_FILE_VERSION: u32 = 1;
 
 const DEFAULT_WINDOW_TOKENS: usize = 5;
 const MAX_WINDOW_TOKENS: usize = 20;
-const PARALLEL_INDEX_DOCUMENT_BATCH_SIZE: usize = 256;
 
 const DEFAULT_MAX_PROJECTED_RESIDENT_INDEX_BYTES: u64 = 1_073_741_824;
 const DEFAULT_MAX_STAGED_PREPARED_TEXT_BYTES: u64 = 67_108_864;
@@ -129,8 +132,22 @@ pub struct SurfaceIndexBuildStats {
     pub maximum_staged_prepared_text_bytes: u64,
     pub maximum_staged_token_records: u64,
     pub final_estimated_resident_bytes: u64,
+    pub large_documents_streamed: u64,
     pub tokenization_elapsed: Duration,
     pub postings_elapsed: Duration,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SurfaceIndexCancellationToken(Arc<AtomicBool>);
+
+impl SurfaceIndexCancellationToken {
+    pub fn cancel(&self) {
+        self.0.store(true, AtomicOrdering::Release);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(AtomicOrdering::Acquire)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -353,16 +370,170 @@ pub struct InMemoryIndexStore {
     normalised_ids_by_hash: HashMap<u64, Vec<u32>>,
 }
 
-#[derive(Debug)]
-struct TokenizedIndexDocument {
-    document_id: usize,
-    records: Vec<TokenizedIndexRecord>,
+pub struct SurfaceIndexBuilder {
+    store: InMemoryIndexStore,
+    tokenization_config: TokenizationConfig,
+    limits: SurfaceIndexResourceLimits,
+    cancellation: SurfaceIndexCancellationToken,
+    stats: SurfaceIndexBuildStats,
+    last_document_id: Option<usize>,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct TokenizedIndexRecord {
-    byte_start: usize,
-    byte_end: usize,
+impl SurfaceIndexBuilder {
+    pub fn new(
+        tokenization_config: TokenizationConfig,
+        limits: SurfaceIndexResourceLimits,
+    ) -> Self {
+        Self::with_cancellation(
+            tokenization_config,
+            limits,
+            SurfaceIndexCancellationToken::default(),
+        )
+    }
+
+    pub fn with_cancellation(
+        tokenization_config: TokenizationConfig,
+        limits: SurfaceIndexResourceLimits,
+        cancellation: SurfaceIndexCancellationToken,
+    ) -> Self {
+        Self {
+            store: InMemoryIndexStore::default(),
+            tokenization_config,
+            limits,
+            cancellation,
+            stats: SurfaceIndexBuildStats::default(),
+            last_document_id: None,
+        }
+    }
+
+    pub fn add_document(
+        &mut self,
+        document: &SurfaceIndexDocumentInput<'_>,
+    ) -> Result<(), SurfaceIndexError> {
+        if self.cancellation.is_cancelled() {
+            return Err(SurfaceIndexError::Cancelled);
+        }
+        if self
+            .last_document_id
+            .is_some_and(|last| document.document_id <= last)
+        {
+            return Err(SurfaceIndexError::DuplicateDocumentId(document.document_id));
+        }
+        let tokenizer_document_id = u32::try_from(document.document_id)
+            .map_err(|_| SurfaceIndexError::DocumentIdTooLarge(document.document_id))?;
+        let prepared_text_bytes = document.prepared_text.len() as u64;
+        if prepared_text_bytes > self.limits.max_staged_prepared_text_bytes {
+            return Err(SurfaceIndexError::StagedBuildStateExceedsLimit {
+                prepared_text_bytes,
+                token_records: 0,
+                prepared_text_limit: self.limits.max_staged_prepared_text_bytes,
+                token_record_limit: self.limits.max_staged_token_records,
+            });
+        }
+        self.stats.maximum_staged_prepared_text_bytes = self
+            .stats
+            .maximum_staged_prepared_text_bytes
+            .max(prepared_text_bytes);
+        if prepared_text_bytes > self.limits.max_staged_prepared_text_bytes / 2 {
+            self.stats.large_documents_streamed += 1;
+        }
+
+        let global_token_start =
+            u32::try_from(self.store.token_surface_ids.len()).map_err(|_| {
+                SurfaceIndexError::TokenPopulationExceedsU32Capacity {
+                    token_count: self.store.token_surface_ids.len() as u64,
+                }
+            })?;
+        let tokenization_started = Instant::now();
+        let mut tokens_seen = 0usize;
+        let tokenization_config = self.tokenization_config;
+        visit_tokens(
+            document.prepared_text,
+            tokenizer_document_id,
+            &tokenization_config,
+            |token| {
+                tokens_seen += 1;
+                if tokens_seen % 1_024 == 0 && self.cancellation.is_cancelled() {
+                    return Err(SurfaceIndexError::Cancelled);
+                }
+                if !token.counts_as_word() {
+                    return Ok(());
+                }
+                if self.store.token_surface_ids.len() >= u32::MAX as usize {
+                    return Err(SurfaceIndexError::TokenPopulationExceedsU32Capacity {
+                        token_count: self.store.token_surface_ids.len() as u64 + 1,
+                    });
+                }
+                let surface_symbol_id = self.store.intern_surface(token.surface)?;
+                try_reserve(&mut self.store.token_surface_ids, 1, "token surface ids")?;
+                self.store.token_surface_ids.push(surface_symbol_id);
+                if self.store.token_surface_ids.len() % 4_096 == 0 {
+                    self.enforce_resident_limit()?;
+                }
+                Ok(())
+            },
+        )?;
+        self.stats.tokenization_elapsed += tokenization_started.elapsed();
+
+        let token_count =
+            u32::try_from(self.store.token_surface_ids.len() - global_token_start as usize)
+                .map_err(|_| SurfaceIndexError::TokenPopulationExceedsU32Capacity {
+                    token_count: self.store.token_surface_ids.len() as u64,
+                })?;
+        try_reserve(&mut self.store.documents, 1, "indexed documents")?;
+        self.store.documents.push(SurfaceIndexDocument {
+            document_id: document.document_id,
+            source_path: fallible_string_clone(&document.source_path, "source path")?,
+            display_name: fallible_string_clone(&document.display_name, "display name")?,
+            global_token_start,
+            token_count,
+        });
+        self.last_document_id = Some(document.document_id);
+        self.stats.total_documents += 1;
+        self.stats.total_tokens += token_count as u64;
+        self.enforce_resident_limit()
+    }
+
+    fn enforce_resident_limit(&self) -> Result<(), SurfaceIndexError> {
+        let projected_bytes = self
+            .store
+            .estimated_resident_bytes()
+            .saturating_add(
+                (self.store.token_surface_ids.len() * std::mem::size_of::<u32>()) as u64,
+            )
+            .saturating_add(
+                ((self.store.normalised_symbols.len() + 1) * std::mem::size_of::<u64>()) as u64,
+            );
+        if projected_bytes > self.limits.max_projected_resident_index_bytes {
+            return Err(SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
+                projected_bytes,
+                limit_bytes: self.limits.max_projected_resident_index_bytes,
+            });
+        }
+        Ok(())
+    }
+
+    pub fn finish(
+        mut self,
+    ) -> Result<(InMemoryIndexStore, SurfaceIndexBuildStats), SurfaceIndexError> {
+        self.enforce_resident_limit()?;
+        let postings_started = Instant::now();
+        self.store.build_postings(&self.cancellation)?;
+        self.stats.postings_elapsed = postings_started.elapsed();
+        self.stats.distinct_surfaces = self.store.surface_symbols.len() as u64;
+        self.stats.distinct_normalised_keys = self.store.normalised_symbols.len() as u64;
+        self.stats.final_estimated_resident_bytes = self.store.estimated_resident_bytes();
+        if self.stats.final_estimated_resident_bytes
+            > self.limits.max_projected_resident_index_bytes
+        {
+            return Err(SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
+                projected_bytes: self.stats.final_estimated_resident_bytes,
+                limit_bytes: self.limits.max_projected_resident_index_bytes,
+            });
+        }
+        debug_assert!(self.store.has_valid_internal_references());
+        Ok((self.store, self.stats))
+    }
 }
 
 impl InMemoryIndexStore {
@@ -382,6 +553,15 @@ impl InMemoryIndexStore {
         tokenization_config: &TokenizationConfig,
         limits: SurfaceIndexResourceLimits,
     ) -> Result<Self, SurfaceIndexError> {
+        Self::build_with_limits_and_stats(documents, tokenization_config, limits)
+            .map(|(store, _)| store)
+    }
+
+    pub fn build_with_limits_and_stats(
+        documents: &[SurfaceIndexDocumentInput<'_>],
+        tokenization_config: &TokenizationConfig,
+        limits: SurfaceIndexResourceLimits,
+    ) -> Result<(Self, SurfaceIndexBuildStats), SurfaceIndexError> {
         let mut sorted_documents = Vec::new();
         try_reserve(
             &mut sorted_documents,
@@ -396,91 +576,11 @@ impl InMemoryIndexStore {
             }
         }
 
-        let mut store = Self::default();
-        try_reserve(
-            &mut store.documents,
-            sorted_documents.len(),
-            "indexed documents",
-        )?;
-
-        for document_batch in sorted_documents.chunks(PARALLEL_INDEX_DOCUMENT_BATCH_SIZE) {
-            let mut tokenized = document_batch
-                .par_iter()
-                .map(|document| tokenize_index_document(document, tokenization_config))
-                .try_fold(Vec::new, |mut chunk, document| {
-                    let document = document?;
-                    try_reserve(&mut chunk, 1, "parallel document results")?;
-                    chunk.push(document);
-                    Ok(chunk)
-                })
-                .try_reduce(Vec::new, |mut left, mut right| {
-                    try_reserve(&mut left, right.len(), "merged parallel document results")?;
-                    left.append(&mut right);
-                    Ok(left)
-                })?;
-            tokenized.sort_by_key(|document| document.document_id);
-            for (document, tokenized_document) in document_batch.iter().copied().zip(tokenized) {
-                debug_assert_eq!(document.document_id, tokenized_document.document_id);
-                store.merge_tokenized_document(document, tokenized_document)?;
-                let estimate = store.estimated_resident_bytes();
-                if estimate > limits.max_projected_resident_index_bytes {
-                    return Err(SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
-                        projected_bytes: estimate,
-                        limit_bytes: limits.max_projected_resident_index_bytes,
-                    });
-                }
-            }
+        let mut builder = SurfaceIndexBuilder::new(*tokenization_config, limits);
+        for document in sorted_documents {
+            builder.add_document(document)?;
         }
-        store.build_postings()?;
-        let estimate = store.estimated_resident_bytes();
-        if estimate > limits.max_projected_resident_index_bytes {
-            return Err(SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
-                projected_bytes: estimate,
-                limit_bytes: limits.max_projected_resident_index_bytes,
-            });
-        }
-        debug_assert!(store.has_valid_internal_references());
-        Ok(store)
-    }
-
-    fn merge_tokenized_document(
-        &mut self,
-        document: &SurfaceIndexDocumentInput<'_>,
-        tokenized_document: TokenizedIndexDocument,
-    ) -> Result<(), SurfaceIndexError> {
-        let global_token_start = u32::try_from(self.token_surface_ids.len()).map_err(|_| {
-            SurfaceIndexError::TokenPopulationExceedsU32Capacity {
-                token_count: self.token_surface_ids.len() as u64,
-            }
-        })?;
-        try_reserve(
-            &mut self.token_surface_ids,
-            tokenized_document.records.len(),
-            "token surface ids",
-        )?;
-        for raw_record in tokenized_document.records {
-            let surface = &document.prepared_text[raw_record.byte_start..raw_record.byte_end];
-            let surface_symbol_id = self.intern_surface(surface)?;
-            if self.token_surface_ids.len() >= u32::MAX as usize {
-                return Err(SurfaceIndexError::TokenPopulationExceedsU32Capacity {
-                    token_count: self.token_surface_ids.len() as u64 + 1,
-                });
-            }
-            self.token_surface_ids.push(surface_symbol_id);
-        }
-
-        let token_count = u32::try_from(self.token_surface_ids.len() - global_token_start as usize)
-            .map_err(|_| SurfaceIndexError::TokenPopulationExceedsU32Capacity {
-                token_count: self.token_surface_ids.len() as u64,
-            })?;
-        self.documents.push(SurfaceIndexDocument {
-            document_id: document.document_id,
-            source_path: fallible_string_clone(&document.source_path, "source path")?,
-            display_name: fallible_string_clone(&document.display_name, "display name")?,
-            global_token_start,
-            token_count,
-        });
-        Ok(())
+        builder.finish()
     }
 
     fn intern_surface(&mut self, symbol: &str) -> Result<u32, SurfaceIndexError> {
@@ -575,11 +675,17 @@ impl InMemoryIndexStore {
         Ok(())
     }
 
-    fn build_postings(&mut self) -> Result<(), SurfaceIndexError> {
+    fn build_postings(
+        &mut self,
+        cancellation: &SurfaceIndexCancellationToken,
+    ) -> Result<(), SurfaceIndexError> {
         let mut counts = Vec::<u64>::new();
         try_reserve(&mut counts, self.normalised_symbols.len(), "posting counts")?;
         counts.resize(self.normalised_symbols.len(), 0);
-        for &surface_id in &self.token_surface_ids {
+        for (index, &surface_id) in self.token_surface_ids.iter().enumerate() {
+            if index % 16_384 == 0 && cancellation.is_cancelled() {
+                return Err(SurfaceIndexError::Cancelled);
+            }
             let normalised_id = self.surface_to_normalised[surface_id as usize] as usize;
             counts[normalised_id] = counts[normalised_id].checked_add(1).ok_or_else(|| {
                 SurfaceIndexError::Allocation("posting count overflow".to_string())
@@ -591,7 +697,10 @@ impl InMemoryIndexStore {
             "posting offsets",
         )?;
         self.postings_offsets.push(0);
-        for count in counts {
+        for (index, count) in counts.into_iter().enumerate() {
+            if index % 16_384 == 0 && cancellation.is_cancelled() {
+                return Err(SurfaceIndexError::Cancelled);
+            }
             let next = self
                 .postings_offsets
                 .last()
@@ -612,6 +721,9 @@ impl InMemoryIndexStore {
             .resize(self.token_surface_ids.len(), 0);
         let mut cursors = self.postings_offsets[..self.normalised_symbols.len()].to_vec();
         for (position, &surface_id) in self.token_surface_ids.iter().enumerate() {
+            if position % 16_384 == 0 && cancellation.is_cancelled() {
+                return Err(SurfaceIndexError::Cancelled);
+            }
             let position = u32::try_from(position).map_err(|_| {
                 SurfaceIndexError::TokenPopulationExceedsU32Capacity {
                     token_count: self.token_surface_ids.len() as u64,
@@ -1223,31 +1335,6 @@ impl SurfaceIndexManifest {
     }
 }
 
-fn tokenize_index_document(
-    document: &SurfaceIndexDocumentInput<'_>,
-    tokenization_config: &TokenizationConfig,
-) -> Result<TokenizedIndexDocument, SurfaceIndexError> {
-    let tokenizer_document_id = u32::try_from(document.document_id)
-        .map_err(|_| SurfaceIndexError::DocumentIdTooLarge(document.document_id))?;
-    let mut word_tokens = tokenize(
-        document.prepared_text,
-        tokenizer_document_id,
-        tokenization_config,
-    );
-    word_tokens.retain(|token| token.counts_as_word());
-
-    let mut records = Vec::new();
-    try_reserve(&mut records, word_tokens.len(), "parallel token records")?;
-    records.extend(word_tokens.into_iter().map(|token| TokenizedIndexRecord {
-        byte_start: token.byte_start,
-        byte_end: token.byte_end,
-    }));
-    Ok(TokenizedIndexDocument {
-        document_id: document.document_id,
-        records,
-    })
-}
-
 fn symbol_hash(symbol: &str) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     symbol.hash(&mut hasher);
@@ -1717,6 +1804,94 @@ mod tests {
         assert!(store.has_valid_internal_references());
         assert!(corpus_proportional_bytes / token_count <= 12);
         assert!(store.fixed_array_bytes() / token_count <= 12);
+    }
+
+    #[test]
+    fn incremental_builder_handles_fifty_thousand_tiny_documents_without_token_staging() {
+        let texts = (0..50_000)
+            .map(|index| format!("token{}", index % 17))
+            .collect::<Vec<_>>();
+        let inputs = texts
+            .iter()
+            .enumerate()
+            .map(|(document_id, text)| SurfaceIndexDocumentInput {
+                document_id,
+                source_path: format!("{document_id}.txt"),
+                display_name: format!("{document_id}.txt"),
+                prepared_text: text,
+            })
+            .collect::<Vec<_>>();
+        let (store, stats) = InMemoryIndexStore::build_with_limits_and_stats(
+            &inputs,
+            &TokenizationConfig::default(),
+            SurfaceIndexResourceLimits::default(),
+        )
+        .unwrap();
+
+        assert_eq!(store.total_indexed_documents(), 50_000);
+        assert_eq!(store.total_indexed_tokens(), 50_000);
+        assert_eq!(stats.maximum_staged_token_records, 0);
+        assert!(stats.maximum_staged_prepared_text_bytes <= 7);
+    }
+
+    #[test]
+    fn mixed_tiny_and_whale_build_is_streamed_and_bounded() {
+        let whale = "whale token ".repeat(50_000);
+        let inputs = [
+            document_input(0, "tiny.txt", "tiny token"),
+            document_input(1, "whale.txt", &whale),
+            document_input(2, "tiny-2.txt", "another tiny token"),
+        ];
+        let limits = SurfaceIndexResourceLimits {
+            max_staged_prepared_text_bytes: 1_048_576,
+            ..SurfaceIndexResourceLimits::default()
+        };
+        let (store, stats) = InMemoryIndexStore::build_with_limits_and_stats(
+            &inputs,
+            &TokenizationConfig::default(),
+            limits,
+        )
+        .unwrap();
+
+        assert_eq!(store.total_indexed_documents(), 3);
+        assert_eq!(stats.maximum_staged_token_records, 0);
+        assert!(stats.maximum_staged_prepared_text_bytes <= limits.max_staged_prepared_text_bytes);
+        assert_eq!(stats.large_documents_streamed, 1);
+    }
+
+    #[test]
+    fn large_document_visitor_observes_cancellation() {
+        let cancellation = SurfaceIndexCancellationToken::default();
+        let mut builder = SurfaceIndexBuilder::with_cancellation(
+            TokenizationConfig::default(),
+            SurfaceIndexResourceLimits::default(),
+            cancellation.clone(),
+        );
+        cancellation.cancel();
+        let whale = "token ".repeat(100_000);
+
+        assert_eq!(
+            builder.add_document(&document_input(0, "whale.txt", &whale)),
+            Err(SurfaceIndexError::Cancelled)
+        );
+    }
+
+    #[test]
+    fn resident_limit_fails_before_postings_overallocation() {
+        let text = "alpha beta gamma delta ".repeat(10_000);
+        let limits = SurfaceIndexResourceLimits {
+            max_projected_resident_index_bytes: 32_768,
+            ..SurfaceIndexResourceLimits::default()
+        };
+
+        assert!(matches!(
+            InMemoryIndexStore::build_with_limits(
+                &[document_input(0, "bounded.txt", &text)],
+                &TokenizationConfig::default(),
+                limits,
+            ),
+            Err(SurfaceIndexError::ProjectedResidentIndexExceedsLimit { .. })
+        ));
     }
 
     #[test]
