@@ -845,7 +845,7 @@ assert(
   "Classic KWIC should use compact rows, a 96px file column, flexible outer-clipped contexts, a fixed node axis, and zebra treatment",
 );
 
-const concordanceRightCssMatch = styles.match(/\.concordance-right \{\n  color: var\(--text-muted\);([\s\S]*?)\n\}/);
+const concordanceRightCssMatch = styles.match(/\.concordance-right \{\n  color: var\(--text-color\);([\s\S]*?)\n\}/);
 assert(concordanceRightCssMatch, "Concordance right-context CSS should exist");
 const concordanceRightCss = concordanceRightCssMatch[1];
 assert(
@@ -860,12 +860,13 @@ const concordanceCollocationScoreColumnCssMatch = styles.match(
 assert(concordanceCollocationScoreColumnCssMatch, "Concordance collocation measure-score column CSS should exist");
 const concordanceCollocationScoreColumnCss = concordanceCollocationScoreColumnCssMatch[1];
 assert(
-  concordanceCollocationScoreColumnCss.includes("width: 20%;")
+  concordanceCollocationScoreColumnCss.includes("width: 24%;")
     && styles.includes(".concordance-collocations-table-wrap {\n  max-width: none;")
-    && styles.includes(".concordance-collocations-table {\n  width: 100%;\n  min-width: 1040px;")
+    && styles.includes(".concordance-collocations-table {\n  width: 100%;\n  min-width: 0;")
     && styles.includes(".concordance-collocations-table > thead > tr > th:nth-child(5)")
-    && styles.includes("width: 28%;"),
-  "Concordance collocation score and position columns should remain legible in the six-column table",
+    && styles.includes("width: 35%;")
+    && !styles.includes(".concordance-collocations-table > thead > tr > th:nth-child(6)"),
+  "Concordance collocation score and position columns should remain legible in the five-column table",
 );
 const concordanceAnalyseShellOverrides = styles.match(/\.analyse-workbench\.is-concordance-active \.analyse-content \{([\s\S]*?)\n\}/g) ?? [];
 assert(
@@ -905,10 +906,11 @@ assert(
 );
 assert(
   concordanceCollocationsTableWrapCss.includes("max-width: none;")
-    && concordanceCollocationsTableWrapCss.includes("max-height: min(58vh, 680px);")
-    && concordanceCollocationsTableWrapCss.includes("overflow-x: auto;")
-    && concordanceCollocationsTableWrapCss.includes("overflow-y: auto;"),
-  "Concordance collocations table wrap should use the card width, cap height, and retain horizontal overflow",
+    && concordanceCollocationsTableWrapCss.includes("overflow: visible;")
+    && !concordanceCollocationsTableWrapCss.includes("max-height")
+    && !concordanceCollocationsTableWrapCss.includes("overflow-y")
+    && !concordanceCollocationsTableWrapCss.includes("overflow-x"),
+  "Concordance collocations should use the card width and normal page flow without ordinary nested scrolling",
 );
 assert(
   concordanceDistributionTableWrapCss.includes("max-width: 1000px;")
@@ -925,15 +927,15 @@ assert(
     && frequencyTableWrapCss.includes("background: var(--bg-color);"),
   "Frequency List table wrap should keep the existing internal scroll discipline",
 );
-const collocateTextCssMatch = styles.match(/\.concordance-collocate-text \{([\s\S]*?)\n\}/);
+const collocateTextCssMatch = styles.match(/^\.concordance-collocate-text \{([\s\S]*?)\n\}/m);
 assert(collocateTextCssMatch, "Collocate text CSS should exist");
 const collocateTextCss = collocateTextCssMatch[1];
 assert(
-  collocateTextCss.includes("font-weight: 500")
+  collocateTextCss.includes("font-weight: 650")
     && !styles.includes(".concordance-collocate-button")
     && !styles.includes(".concordance-collocate-action")
     && !collocateTextCss.includes("text-decoration"),
-  "Collocate identifiers should render as normal row text, not as glued link-style actions",
+  "Collocate identifiers should render as semibold row text, not as glued link-style actions",
 );
 const infoTokenCount = styles.match(/^  --cw-info-text:/gm)?.length ?? 0;
 assert(infoTokenCount > 0, "Theme info colour roles should exist");
@@ -989,6 +991,9 @@ assert(
     && styles.includes(".concordance-collocation-score-fill.is-ramp-5 { background: var(--cw-plot-ramp-5); }")
     && styles.includes(".concordance-position-glyph")
     && styles.includes("grid-template-columns: repeat(5, minmax(3px, 1fr)) auto repeat(5, minmax(3px, 1fr));")
+    && styles.includes(".concordance-position-bin.is-dominant {\n  background: var(--accent-color);")
+    && styles.includes("background: color-mix(in srgb, var(--text-muted) 58%, transparent);")
+    && workbench.includes('element.classList.toggle("is-dominant", bin.active && bin.count > 0 && bin.intensity === 1);')
     && html.includes("Bar length and colour are relative within the currently loaded collocate set; they do not represent statistical significance.")
     && !styles.includes("--concordance-score-bar")
     && styles.includes(".concordance-collocation-row:hover td")
@@ -1000,16 +1005,19 @@ assert(
   styles.includes("@media (max-width: 980px) {\n  .concordance-controls > label:first-child")
     && styles.includes("@media (max-width: 760px) {\n  .concordance-section,")
     && styles.includes(".concordance-controls {\n    display: grid;\n    grid-template-columns: repeat(2, minmax(0, 1fr));")
-    && styles.includes(".concordance-collocations-table {\n    min-width: 880px;")
-    && styles.includes(".concordance-position-glyph {\n    min-width: 130px;")
+    && styles.includes(".concordance-collocations-table > thead > tr > th,\n  .concordance-collocations-table > tbody > tr.concordance-collocation-row > td {\n    padding-inline: 5px;")
+    && styles.includes("grid-template-columns: repeat(5, minmax(2px, 1fr)) auto repeat(5, minmax(2px, 1fr));")
     && styles.includes("@media (max-width: 640px) {\n  .concordance-controls")
     && styles.includes(".concordance-table {\n    min-width: 640px;")
-    && styles.includes(".concordance-collocations-table {\n    min-width: 760px;")
+    && styles.includes(".concordance-collocations-table-wrap {\n    overflow-x: auto;")
+    && styles.includes(".concordance-collocations-table {\n    min-width: 620px;")
+    && !styles.includes("min-width: 1040px")
+    && !styles.includes("min-width: 880px")
     && styles.includes(".concordance-search-actions button:focus-visible")
     && styles.includes("outline: 2px solid var(--cw-interaction-focus-ring);")
     && styles.includes("text-decoration-style: double;")
     && styles.includes("text-decoration-style: dotted;")
     && styles.includes(".concordance-kwic-pair {\n  color: var(--cw-kwic-pair);")
     && workbench.includes("return signed && value > 0 ? `+${formatted}` : formatted;"),
-  "Concordance should wrap at medium and narrow widths with internal table scrolling, visible focus, and non-colour sort, pair, and score-direction cues",
+  "Concordance should fit at ordinary widths and reserve horizontal scrolling for the narrow fallback while retaining visible non-colour cues",
 );
