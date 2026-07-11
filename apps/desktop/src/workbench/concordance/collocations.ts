@@ -53,6 +53,7 @@ import {
   renderContextTokens,
   syncConcordanceControls,
 } from "./shared";
+import { executeExplicitConcordanceCollocationRequest } from "./state";
 
 const CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT = 8;
 
@@ -311,7 +312,7 @@ function renderConcordanceCollocationAction(
   action.textContent = label;
   action.disabled = concordanceCollocationPending;
   action.addEventListener("click", () => {
-    void refreshConcordanceCollocations();
+    void executeExplicitConcordanceCollocationRequest(refreshConcordanceCollocations);
   });
   prompt.append(copy, action);
   return prompt;

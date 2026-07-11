@@ -111,6 +111,16 @@ pub struct SurfaceIndexResourceEstimate {
 }
 
 impl SurfaceIndexResourceEstimate {
+    /// Lower bound for the compact store's two corpus-sized `u32` arrays:
+    /// token surface IDs and CSR posting positions. Vocabulary offsets,
+    /// symbols, maps, documents, Vec headers and allocation slack are omitted.
+    pub fn compact_token_array_lower_bound(token_count: u64) -> Option<u64> {
+        let bytes_per_token = u64::try_from(std::mem::size_of::<u32>())
+            .ok()?
+            .checked_mul(2)?;
+        token_count.checked_mul(bytes_per_token)
+    }
+
     /// Structural lower bound of the representation inherited by this branch:
     /// one token record plus two `(usize, usize)` postings per indexed token.
     /// Vec headers, allocation slack, symbols, documents and lookup maps are
