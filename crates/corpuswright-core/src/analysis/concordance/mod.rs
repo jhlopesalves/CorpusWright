@@ -2,10 +2,10 @@ use super::build::AnalysisDocumentSelection;
 use super::frequency::{annotated_dispersion_label, case_fold_surface};
 use super::shared::MAX_QUERY_WINDOW;
 use crate::index::{
-    InMemoryIndexStore, IndexStore, SurfaceIndexCacheLoad, SurfaceIndexDocumentInput,
-    SurfaceIndexError, SurfaceIndexHit, SurfaceIndexKwicRow, SurfaceIndexManifest,
-    SurfaceIndexQuery, load_surface_index_cache, materialize_surface_index_kwic_row,
-    search_surface_index, write_surface_index_cache,
+    InMemoryIndexStore, IndexStore, SurfaceIndexBuilder, SurfaceIndexCacheLoad,
+    SurfaceIndexDocumentInput, SurfaceIndexError, SurfaceIndexHit, SurfaceIndexKwicRow,
+    SurfaceIndexManifest, SurfaceIndexQuery, SurfaceIndexResourceLimits, load_surface_index_cache,
+    materialize_surface_index_kwic_row, search_surface_index, write_surface_index_cache,
 };
 use crate::tokenization::{TokenizationConfig, TokenizationManifest, tokenize};
 use serde::{Deserialize, Serialize};
@@ -224,14 +224,10 @@ impl ConcordanceSearchContext {
     pub(super) fn index_store_for(
         &mut self,
         documents: &[ConcordanceDocument],
-        selected_document_ids: &HashSet<usize>,
+        _selected_document_ids: &HashSet<usize>,
         tokenization_config: &TokenizationConfig,
     ) -> Result<(&InMemoryIndexStore, bool), ConcordanceError> {
-        let manifest = concordance_surface_index_manifest(
-            documents,
-            selected_document_ids,
-            tokenization_config,
-        )?;
+        let manifest = concordance_surface_index_manifest(documents, tokenization_config)?;
         let cache_valid = self
             .index_cache
             .as_ref()
@@ -240,24 +236,17 @@ impl ConcordanceSearchContext {
         let mut index_rebuilt = false;
         if !cache_valid {
             let mut inputs = Vec::new();
-            inputs
-                .try_reserve(selected_document_ids.len())
-                .map_err(|error| {
-                    ConcordanceError::Index(SurfaceIndexError::Allocation(format!(
-                        "index document inputs: {error}"
-                    )))
-                })?;
-            inputs.extend(
-                documents
-                    .iter()
-                    .filter(|document| selected_document_ids.contains(&document.document_index))
-                    .map(|document| SurfaceIndexDocumentInput {
-                        document_id: document.document_index,
-                        source_path: document.source_path.clone(),
-                        display_name: document.display_name.clone(),
-                        prepared_text: document.text.as_str(),
-                    }),
-            );
+            inputs.try_reserve(documents.len()).map_err(|error| {
+                ConcordanceError::Index(SurfaceIndexError::Allocation(format!(
+                    "index document inputs: {error}"
+                )))
+            })?;
+            inputs.extend(documents.iter().map(|document| SurfaceIndexDocumentInput {
+                document_id: document.document_index,
+                source_path: document.source_path.clone(),
+                display_name: document.display_name.clone(),
+                prepared_text: document.text.as_str(),
+            }));
             inputs.sort_by_key(|document| document.document_id);
             let loaded_store = self.cache_root.as_deref().and_then(|cache_root| {
                 match load_surface_index_cache(cache_root, &manifest) {
@@ -292,6 +281,112 @@ impl ConcordanceSearchContext {
                 .as_ref()
                 .expect("index cache exists after build")
                 .store,
+            index_rebuilt,
+        ))
+    }
+
+    /// Prepares the full usable-corpus index by resolving one document at a
+    /// time. A warm in-process store returns before invoking the provider.
+    pub fn index_store_for_provider<Resolve>(
+        &mut self,
+        document_slots: usize,
+        tokenization_config: &TokenizationConfig,
+        mut resolve: Resolve,
+    ) -> Result<(&InMemoryIndexStore, bool), ConcordanceError>
+    where
+        Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
+    {
+        if self.index_cache.is_some() {
+            return Ok((
+                &self.index_cache.as_ref().expect("checked above").store,
+                false,
+            ));
+        }
+
+        let mut hasher = Sha256::new();
+        hasher.update(b"corpuswright-concordance-full-corpus-content-v3\0");
+        hasher.update((document_slots as u64).to_le_bytes());
+        let mut metadata_inputs = Vec::new();
+        metadata_inputs
+            .try_reserve(document_slots)
+            .map_err(|error| {
+                ConcordanceError::Index(SurfaceIndexError::Allocation(format!(
+                    "streaming index metadata: {error}"
+                )))
+            })?;
+        for document_index in 0..document_slots {
+            hasher.update((document_index as u64).to_le_bytes());
+            if let Some(document) = resolve(document_index) {
+                if document.document_index != document_index {
+                    return Err(ConcordanceError::InvalidDocumentIdentity);
+                }
+                hasher.update([1]);
+                hasher.update((document.text.len() as u64).to_le_bytes());
+                hasher.update(document.text.as_bytes());
+                metadata_inputs.push(SurfaceIndexDocumentInput {
+                    document_id: document_index,
+                    source_path: document.source_path,
+                    display_name: document.display_name,
+                    prepared_text: "",
+                });
+            } else {
+                hasher.update([0]);
+            }
+        }
+        let manifest = SurfaceIndexManifest::new(
+            format!("{:x}", hasher.finalize()),
+            TokenizationManifest {
+                config: *tokenization_config,
+                ..TokenizationManifest::default()
+            },
+        );
+        let loaded_store = self.cache_root.as_deref().and_then(|cache_root| {
+            match load_surface_index_cache(cache_root, &manifest) {
+                SurfaceIndexCacheLoad::Ready(mut store) => store
+                    .refresh_document_metadata(&metadata_inputs)
+                    .ok()
+                    .map(|()| store),
+                SurfaceIndexCacheLoad::Missing
+                | SurfaceIndexCacheLoad::Stale
+                | SurfaceIndexCacheLoad::Invalid => None,
+            }
+        });
+
+        let mut index_rebuilt = false;
+        let store = if let Some(store) = loaded_store {
+            self.index_cache_load_count += 1;
+            store
+        } else {
+            let mut builder = SurfaceIndexBuilder::new(
+                *tokenization_config,
+                SurfaceIndexResourceLimits::default(),
+            );
+            for document_index in 0..document_slots {
+                if let Some(document) = resolve(document_index) {
+                    if document.document_index != document_index {
+                        return Err(ConcordanceError::InvalidDocumentIdentity);
+                    }
+                    builder
+                        .add_document(&SurfaceIndexDocumentInput {
+                            document_id: document.document_index,
+                            source_path: document.source_path,
+                            display_name: document.display_name,
+                            prepared_text: &document.text,
+                        })
+                        .map_err(ConcordanceError::Index)?;
+                }
+            }
+            let (store, _) = builder.finish().map_err(ConcordanceError::Index)?;
+            if let Some(cache_root) = self.cache_root.as_deref() {
+                let _ = write_surface_index_cache(cache_root, &manifest, &store);
+            }
+            self.index_build_count += 1;
+            index_rebuilt = true;
+            store
+        };
+        self.index_cache = Some(ConcordanceIndexCacheEntry { manifest, store });
+        Ok((
+            &self.index_cache.as_ref().expect("inserted above").store,
             index_rebuilt,
         ))
     }
@@ -689,11 +784,10 @@ fn concordance_distribution_page(
 
 fn concordance_surface_index_manifest(
     documents: &[ConcordanceDocument],
-    selected_document_ids: &HashSet<usize>,
     tokenization_config: &TokenizationConfig,
 ) -> Result<SurfaceIndexManifest, ConcordanceError> {
     Ok(SurfaceIndexManifest::new(
-        concordance_processed_texts_hash(documents, selected_document_ids)?,
+        concordance_processed_texts_hash(documents)?,
         TokenizationManifest {
             config: *tokenization_config,
             ..TokenizationManifest::default()
@@ -703,21 +797,16 @@ fn concordance_surface_index_manifest(
 
 fn concordance_processed_texts_hash(
     documents: &[ConcordanceDocument],
-    selected_document_ids: &HashSet<usize>,
 ) -> Result<String, ConcordanceError> {
     let mut selected_documents = Vec::new();
     selected_documents
-        .try_reserve(selected_document_ids.len())
+        .try_reserve(documents.len())
         .map_err(|error| {
             ConcordanceError::Index(SurfaceIndexError::Allocation(format!(
                 "content hash document ordering: {error}"
             )))
         })?;
-    selected_documents.extend(
-        documents
-            .iter()
-            .filter(|document| selected_document_ids.contains(&document.document_index)),
-    );
+    selected_documents.extend(documents.iter());
     selected_documents.sort_by_key(|document| document.document_index);
 
     let mut hasher = Sha256::new();
@@ -756,11 +845,69 @@ pub fn search_concordance_documents_routed(
     }
 }
 
+pub fn search_concordance_documents_routed_provider<Resolve>(
+    document_slots: usize,
+    query: &ConcordanceQuery,
+    tokenization_config: &TokenizationConfig,
+    context: &mut ConcordanceSearchContext,
+    resolve: Resolve,
+) -> Result<RoutedConcordanceResult, ConcordanceError>
+where
+    Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
+{
+    let (store, index_rebuilt) =
+        context.index_store_for_provider(document_slots, tokenization_config, resolve)?;
+    let documents = store
+        .indexed_documents()
+        .map(|document| ConcordanceDocument {
+            document_index: document.document_id,
+            source_path: document.source_path.clone(),
+            display_name: document.display_name.clone(),
+            text: String::new(),
+        })
+        .collect::<Vec<_>>();
+    let selected_document_ids = selected_concordance_document_ids(&documents, &query.selection);
+    let (result, _) = search_concordance_documents_index_from_store(
+        &documents,
+        query,
+        tokenization_config,
+        store,
+        &selected_document_ids,
+        index_rebuilt,
+    )?;
+    Ok(RoutedConcordanceResult {
+        result,
+        backend_used: ConcordanceBackendUsed::Index,
+        index_rebuilt,
+    })
+}
+
 fn search_concordance_documents_index(
     documents: &[ConcordanceDocument],
     query: &ConcordanceQuery,
     tokenization_config: &TokenizationConfig,
     context: &mut ConcordanceSearchContext,
+) -> Result<(ConcordanceResult, bool), ConcordanceError> {
+    let selected_document_ids = selected_concordance_document_ids(documents, &query.selection);
+    let (store, index_rebuilt) =
+        context.index_store_for(documents, &selected_document_ids, tokenization_config)?;
+    search_concordance_documents_index_from_store(
+        documents,
+        query,
+        tokenization_config,
+        store,
+        &selected_document_ids,
+        index_rebuilt,
+    )
+}
+
+fn search_concordance_documents_index_from_store(
+    documents: &[ConcordanceDocument],
+    query: &ConcordanceQuery,
+    tokenization_config: &TokenizationConfig,
+    store: &InMemoryIndexStore,
+    selected_document_ids: &HashSet<usize>,
+    index_rebuilt: bool,
 ) -> Result<(ConcordanceResult, bool), ConcordanceError> {
     let window_tokens = concordance_window_tokens(query.window_tokens);
     let limit = concordance_limit(query.limit);
@@ -788,9 +935,6 @@ fn search_concordance_documents_index(
             .collect::<Vec<_>>()
     });
     let resolved_context_filter = context_filter_tokens.map(|tokens| tokens.join(" "));
-    let selected_document_ids = selected_concordance_document_ids(documents, &query.selection);
-    let (store, index_rebuilt) =
-        context.index_store_for(documents, &selected_document_ids, tokenization_config)?;
     let index =
         search_surface_index(store, &index_query).map_err(concordance_error_from_surface_index)?;
 
@@ -801,6 +945,9 @@ fn search_concordance_documents_index(
         )))
     })?;
     for candidate in index.hits {
+        if !selected_document_ids.contains(&candidate.document_id) {
+            continue;
+        }
         if let Some(keys) = context_filter_keys.as_deref()
             && !index_context_filter_matches(
                 store,
