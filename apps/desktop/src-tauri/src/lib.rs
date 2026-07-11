@@ -5688,6 +5688,48 @@ mod tests {
     }
 
     #[test]
+    fn concordance_collocation_memory_refusal_never_invokes_scan_fallback() {
+        let documents = concordance_test_documents();
+        let query = desktop_collocation_query(
+            "movie",
+            false,
+            5,
+            corpuswright_core::analysis::ConcordanceCollocationDirection::Both,
+        );
+        let tokenization_config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let context = concordance_test_context();
+        let scan_calls = std::cell::Cell::new(0usize);
+        let index_error =
+            corpuswright_core::analysis::ConcordanceError::AnalysisMemoryLimitExceeded {
+                estimated_resident_index_bytes: 900,
+                projected_aggregate_bytes: 200,
+                combined_limit_bytes: 1_000,
+                safety_margin_bytes: 100,
+            };
+
+        let error = aggregate_concordance_collocations_default_index_mode_with(
+            documents.len(),
+            &query,
+            &tokenization_config,
+            &context,
+            concordance_test_context_key(7),
+            &corpuswright_core::index::SurfaceIndexCancellationToken::default(),
+            |document_index| Some(documents[document_index].clone()),
+            |_| {},
+            |_, _, _, _, _, _| {
+                scan_calls.set(scan_calls.get() + 1);
+                Err(concordance_test_index_error())
+            },
+            |_, _, _, _, _, _, _, _| Err(index_error.clone()),
+        )
+        .unwrap_err();
+
+        assert_eq!(scan_calls.get(), 0);
+        assert!(error.contains("Narrow the file scope"));
+        assert!(context.lock().unwrap().default_index_failure.is_none());
+    }
+
+    #[test]
     fn concordance_collocation_audit_difference_reports_full_aggregate_mismatch() {
         let documents = concordance_test_documents();
         let query = desktop_collocation_query(

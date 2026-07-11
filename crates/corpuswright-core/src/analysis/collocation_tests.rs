@@ -1332,6 +1332,116 @@ fn surface_collocation_index_refuses_candidate_growth_before_budget() {
 }
 
 #[test]
+fn concordance_analysis_memory_admission_is_combined_and_underflow_safe() {
+    let limits = ConcordanceAnalysisMemoryLimits {
+        max_combined_bytes: 1_000,
+        safety_margin_bytes: 100,
+    };
+    let admitted = ConcordanceAnalysisMemoryEstimate::admit(800, 75, limits).unwrap();
+    assert_eq!(admitted.remaining_collocation_bytes, 100);
+    assert_eq!(admitted.combined_projected_bytes, 975);
+
+    let near_limit = ConcordanceAnalysisMemoryEstimate::admit(901, 0, limits).unwrap_err();
+    assert!(matches!(
+        near_limit,
+        ConcordanceError::AnalysisMemoryLimitExceeded {
+            estimated_resident_index_bytes: 901,
+            projected_aggregate_bytes: 0,
+            combined_limit_bytes: 1_000,
+            safety_margin_bytes: 100,
+        }
+    ));
+
+    let aggregate_too_large =
+        ConcordanceAnalysisMemoryEstimate::admit(800, 101, limits).unwrap_err();
+    assert!(matches!(
+        aggregate_too_large,
+        ConcordanceError::AnalysisMemoryLimitExceeded {
+            projected_aggregate_bytes: 101,
+            ..
+        }
+    ));
+
+    let arithmetic_underflow = ConcordanceAnalysisMemoryEstimate::admit(
+        u64::MAX,
+        u64::MAX,
+        ConcordanceAnalysisMemoryLimits {
+            max_combined_bytes: 1,
+            safety_margin_bytes: u64::MAX,
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(
+        arithmetic_underflow,
+        ConcordanceError::AnalysisMemoryLimitExceeded { .. }
+    ));
+}
+
+#[test]
+fn surface_collocation_combined_budget_admits_small_and_refuses_growth() {
+    let text = "alpha target beta alpha";
+    let tokenization_config = TokenizationConfig::default();
+    let inputs = [SurfaceIndexDocumentInput {
+        document_id: 0,
+        source_path: "doc.txt".to_string(),
+        display_name: "doc.txt".to_string(),
+        prepared_text: text,
+    }];
+    let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
+    let index_bytes = store.estimated_resident_bytes();
+    let surface_limits = crate::index::SurfaceIndexResourceLimits::default();
+    let safety_margin_bytes = 1_024;
+    let admitted_limit = index_bytes
+        .saturating_add(safety_margin_bytes)
+        .saturating_add(1_000_000);
+    let (_, stats) = aggregate_concordance_collocations_index_with_memory_limits(
+        &store,
+        &collocation_query("target"),
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+        surface_limits,
+        ConcordanceAnalysisMemoryLimits {
+            max_combined_bytes: admitted_limit,
+            safety_margin_bytes,
+        },
+    )
+    .unwrap();
+    assert_eq!(stats.estimated_resident_index_bytes, index_bytes);
+    assert_eq!(stats.combined_limit_bytes, admitted_limit);
+    assert_eq!(stats.safety_margin_bytes, safety_margin_bytes);
+    assert!(stats.combined_projected_bytes <= admitted_limit);
+
+    let refusal = aggregate_concordance_collocations_index_with_memory_limits(
+        &store,
+        &collocation_query("target"),
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+        surface_limits,
+        ConcordanceAnalysisMemoryLimits {
+            max_combined_bytes: index_bytes
+                .saturating_add(safety_margin_bytes)
+                .saturating_add(1),
+            safety_margin_bytes,
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(
+        &refusal,
+        ConcordanceError::AnalysisMemoryLimitExceeded {
+            estimated_resident_index_bytes,
+            projected_aggregate_bytes,
+            safety_margin_bytes: 1_024,
+            ..
+        } if *estimated_resident_index_bytes == index_bytes && *projected_aggregate_bytes > 1
+    ));
+    assert!(refusal.prevents_unbounded_scan_fallback());
+    let message = refusal.to_string();
+    assert!(message.contains("Narrow the file scope"));
+    assert!(message.contains("less frequent node"));
+    assert!(!message.contains("add more RAM"));
+}
+
+#[test]
 fn surface_collocation_cancellation_interrupts_frequency_finalisation() {
     let text = "alpha target alpha alpha";
     let tokenization_config = TokenizationConfig::default();
