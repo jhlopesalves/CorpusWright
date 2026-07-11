@@ -2717,6 +2717,15 @@ where
             Ok(ConcordanceSearchOutcome::from_routed(routed))
         }
         Err(index_error) => {
+            if index_error.prevents_unbounded_scan_fallback() {
+                log_concordance_index_error(
+                    ConcordanceBackendMode::DefaultIndex,
+                    query,
+                    index_elapsed,
+                    &index_error,
+                );
+                return Err(index_error.to_string());
+            }
             let failure_state = record_concordance_default_index_error(context_state, &key);
             let scan_started_at = Instant::now();
             let scan = search_scan(documents, query, tokenization_config);
@@ -3145,6 +3154,15 @@ where
             ))
         }
         Err(index_error) => {
+            if index_error.prevents_unbounded_scan_fallback() {
+                log_concordance_collocation_index_error(
+                    ConcordanceBackendMode::DefaultIndex,
+                    query,
+                    index_elapsed,
+                    &index_error,
+                );
+                return Err(index_error.to_string());
+            }
             let failure_state = record_concordance_default_index_error(context_state, &key);
             let scan_started_at = Instant::now();
             let scan = search_scan(documents, query, tokenization_config);

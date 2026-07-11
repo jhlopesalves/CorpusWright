@@ -345,6 +345,15 @@ impl std::error::Error for ConcordanceError {
     }
 }
 
+impl ConcordanceError {
+    /// The inherited scan implementation still materialises all hits. Until it
+    /// is replaced by the shared bounded collector, resource and cancellation
+    /// failures must fail closed instead of entering that fallback.
+    pub fn prevents_unbounded_scan_fallback(&self) -> bool {
+        matches!(self, Self::Index(error) if error.is_resource_or_cancellation())
+    }
+}
+
 pub(super) fn compute_dispersion_from_token_counts(
     document_counts: &[(usize, u64)],
     frequency: u64,

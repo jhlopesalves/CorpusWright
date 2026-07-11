@@ -8,6 +8,7 @@ use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 pub const INDEX_SCHEMA_VERSION: u32 = 3;
 pub const SURFACE_INDEX_CACHE_FILE_VERSION: u32 = 1;
@@ -15,6 +16,129 @@ pub const SURFACE_INDEX_CACHE_FILE_VERSION: u32 = 1;
 const DEFAULT_WINDOW_TOKENS: usize = 5;
 const MAX_WINDOW_TOKENS: usize = 20;
 const PARALLEL_INDEX_DOCUMENT_BATCH_SIZE: usize = 256;
+
+const DEFAULT_MAX_PROJECTED_RESIDENT_INDEX_BYTES: u64 = 1_073_741_824;
+const DEFAULT_MAX_STAGED_PREPARED_TEXT_BYTES: u64 = 67_108_864;
+const DEFAULT_MAX_STAGED_TOKEN_RECORDS: u64 = 1_000_000;
+const DEFAULT_MAX_RETAINED_QUERY_SORT_RECORDS: u64 = 100_000;
+
+/// Aggregate resource budget enforced by surface-index build and query paths.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SurfaceIndexResourceLimits {
+    pub max_projected_resident_index_bytes: u64,
+    pub max_staged_prepared_text_bytes: u64,
+    pub max_staged_token_records: u64,
+    pub max_retained_query_sort_records: u64,
+}
+
+impl Default for SurfaceIndexResourceLimits {
+    fn default() -> Self {
+        Self::from_environment()
+    }
+}
+
+impl SurfaceIndexResourceLimits {
+    /// Conservative defaults can be overridden for diagnostics. Invalid values
+    /// are ignored so deployment cannot accidentally disable a limit.
+    pub fn from_environment() -> Self {
+        Self {
+            max_projected_resident_index_bytes: resource_limit_from_environment(
+                "CORPUSWRIGHT_SURFACE_INDEX_MAX_RESIDENT_BYTES",
+                DEFAULT_MAX_PROJECTED_RESIDENT_INDEX_BYTES,
+            ),
+            max_staged_prepared_text_bytes: resource_limit_from_environment(
+                "CORPUSWRIGHT_SURFACE_INDEX_MAX_STAGED_TEXT_BYTES",
+                DEFAULT_MAX_STAGED_PREPARED_TEXT_BYTES,
+            ),
+            max_staged_token_records: resource_limit_from_environment(
+                "CORPUSWRIGHT_SURFACE_INDEX_MAX_STAGED_TOKEN_RECORDS",
+                DEFAULT_MAX_STAGED_TOKEN_RECORDS,
+            ),
+            max_retained_query_sort_records: resource_limit_from_environment(
+                "CORPUSWRIGHT_SURFACE_INDEX_MAX_SORT_RECORDS",
+                DEFAULT_MAX_RETAINED_QUERY_SORT_RECORDS,
+            ),
+        }
+    }
+}
+
+fn resource_limit_from_environment(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
+/// Conservative resident-memory projection used before corpus-proportional
+/// allocation. `fixed_array_bytes` excludes strings and lookup-table slack.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SurfaceIndexResourceEstimate {
+    pub token_count: u64,
+    pub document_count: u64,
+    pub fixed_array_bytes: u64,
+    pub symbol_utf8_bytes: u64,
+    pub lookup_overhead_bytes: u64,
+    pub projected_resident_bytes: u64,
+}
+
+impl SurfaceIndexResourceEstimate {
+    /// Structural lower bound of the representation inherited by this branch:
+    /// one token record plus two `(usize, usize)` postings per indexed token.
+    /// Vec headers, allocation slack, symbols, documents and lookup maps are
+    /// intentionally excluded, so this is evidence of a floor, not a forecast.
+    pub fn legacy_structural_lower_bound(token_count: u64) -> Option<u64> {
+        let bytes_per_token = u64::try_from(std::mem::size_of::<SurfaceIndexTokenRecord>())
+            .ok()?
+            .checked_add(
+                u64::try_from(std::mem::size_of::<SurfacePosting>())
+                    .ok()?
+                    .checked_mul(2)?,
+            )?;
+        token_count.checked_mul(bytes_per_token)
+    }
+
+    fn legacy_upper_bound_from_prepared_bytes(
+        prepared_text_bytes: u64,
+        document_count: u64,
+    ) -> Option<Self> {
+        // Every indexed token contains at least one byte. This deliberately
+        // conservative preflight keeps the known-unsafe store from allocating
+        // before the compact builder replaces it.
+        let fixed_array_bytes = Self::legacy_structural_lower_bound(prepared_text_bytes)?;
+        let document_bytes = document_count.checked_mul(
+            u64::try_from(
+                std::mem::size_of::<SurfaceIndexDocument>()
+                    + std::mem::size_of::<SurfaceIndexDocumentRecords>(),
+            )
+            .ok()?,
+        )?;
+        let projected_resident_bytes = fixed_array_bytes.checked_add(document_bytes)?;
+        Some(Self {
+            token_count: prepared_text_bytes,
+            document_count,
+            fixed_array_bytes,
+            symbol_utf8_bytes: 0,
+            lookup_overhead_bytes: 0,
+            projected_resident_bytes,
+        })
+    }
+}
+
+/// Measurements recorded by bounded builders. Later commits populate the
+/// phase timings and exact compact-store estimate.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SurfaceIndexBuildStats {
+    pub total_documents: u64,
+    pub total_tokens: u64,
+    pub distinct_surfaces: u64,
+    pub distinct_normalised_keys: u64,
+    pub maximum_staged_prepared_text_bytes: u64,
+    pub maximum_staged_token_records: u64,
+    pub final_estimated_resident_bytes: u64,
+    pub tokenization_elapsed: Duration,
+    pub postings_elapsed: Duration,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SurfaceIndexDocumentInput<'text> {
@@ -150,6 +274,24 @@ pub enum SurfaceIndexError {
         token_ordinal_in_document: usize,
         node_token_length: usize,
     },
+    ProjectedResidentIndexExceedsLimit {
+        projected_bytes: u64,
+        limit_bytes: u64,
+    },
+    StagedBuildStateExceedsLimit {
+        prepared_text_bytes: u64,
+        token_records: u64,
+        prepared_text_limit: u64,
+        token_record_limit: u64,
+    },
+    TokenPopulationExceedsU32Capacity {
+        token_count: u64,
+    },
+    RetainedSortDepthExceedsQueryBudget {
+        requested_records: u64,
+        limit_records: u64,
+    },
+    Cancelled,
     Allocation(String),
 }
 
@@ -183,6 +325,34 @@ impl std::fmt::Display for SurfaceIndexError {
                 formatter,
                 "surface index store is missing token span document={document_id} ordinal={token_ordinal_in_document} length={node_token_length}"
             ),
+            Self::ProjectedResidentIndexExceedsLimit {
+                projected_bytes,
+                limit_bytes,
+            } => write!(
+                formatter,
+                "projected resident surface index size {projected_bytes} bytes exceeds configured limit {limit_bytes} bytes"
+            ),
+            Self::StagedBuildStateExceedsLimit {
+                prepared_text_bytes,
+                token_records,
+                prepared_text_limit,
+                token_record_limit,
+            } => write!(
+                formatter,
+                "staged surface index build state exceeds its budget: prepared_text_bytes={prepared_text_bytes}/{prepared_text_limit}, token_records={token_records}/{token_record_limit}"
+            ),
+            Self::TokenPopulationExceedsU32Capacity { token_count } => write!(
+                formatter,
+                "surface index token population {token_count} exceeds the u32 position format capacity"
+            ),
+            Self::RetainedSortDepthExceedsQueryBudget {
+                requested_records,
+                limit_records,
+            } => write!(
+                formatter,
+                "concordance sort requires {requested_records} retained records, exceeding configured limit {limit_records}"
+            ),
+            Self::Cancelled => formatter.write_str("surface index operation was cancelled"),
             Self::Allocation(detail) => {
                 write!(formatter, "surface index allocation failed: {detail}")
             }
@@ -191,6 +361,19 @@ impl std::fmt::Display for SurfaceIndexError {
 }
 
 impl std::error::Error for SurfaceIndexError {}
+
+impl SurfaceIndexError {
+    pub fn is_resource_or_cancellation(&self) -> bool {
+        matches!(
+            self,
+            Self::ProjectedResidentIndexExceedsLimit { .. }
+                | Self::StagedBuildStateExceedsLimit { .. }
+                | Self::TokenPopulationExceedsU32Capacity { .. }
+                | Self::RetainedSortDepthExceedsQueryBudget { .. }
+                | Self::Cancelled
+        )
+    }
+}
 
 pub trait IndexStore {
     fn postings(&self, normalised_surface: &str) -> Option<&[SurfacePosting]>;
@@ -290,6 +473,39 @@ impl InMemoryIndexStore {
         documents: &[SurfaceIndexDocumentInput<'_>],
         tokenization_config: &TokenizationConfig,
     ) -> Result<Self, SurfaceIndexError> {
+        Self::build_with_limits(
+            documents,
+            tokenization_config,
+            SurfaceIndexResourceLimits::default(),
+        )
+    }
+
+    pub fn build_with_limits(
+        documents: &[SurfaceIndexDocumentInput<'_>],
+        tokenization_config: &TokenizationConfig,
+        limits: SurfaceIndexResourceLimits,
+    ) -> Result<Self, SurfaceIndexError> {
+        let prepared_text_bytes = documents
+            .iter()
+            .try_fold(0u64, |total, document| {
+                total.checked_add(document.prepared_text.len() as u64)
+            })
+            .ok_or_else(|| {
+                SurfaceIndexError::Allocation("prepared text byte count overflow".to_string())
+            })?;
+        let estimate = SurfaceIndexResourceEstimate::legacy_upper_bound_from_prepared_bytes(
+            prepared_text_bytes,
+            documents.len() as u64,
+        )
+        .ok_or_else(|| {
+            SurfaceIndexError::Allocation("legacy resident estimate overflow".to_string())
+        })?;
+        if estimate.projected_resident_bytes > limits.max_projected_resident_index_bytes {
+            return Err(SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
+                projected_bytes: estimate.projected_resident_bytes,
+                limit_bytes: limits.max_projected_resident_index_bytes,
+            });
+        }
         let mut sorted_documents = Vec::new();
         try_reserve(
             &mut sorted_documents,
@@ -2039,6 +2255,41 @@ mod tests {
         assert!(matches!(
             load_surface_index_cache(temp_dir.path(), &manifest),
             SurfaceIndexCacheLoad::Invalid
+        ));
+    }
+
+    #[test]
+    fn legacy_representation_lower_bound_exposes_large_corpus_risk_without_allocation() {
+        let bytes_per_token = std::mem::size_of::<SurfaceIndexTokenRecord>()
+            + 2 * std::mem::size_of::<SurfacePosting>();
+        let forty_million =
+            SurfaceIndexResourceEstimate::legacy_structural_lower_bound(40_000_000).unwrap();
+        let hundred_million =
+            SurfaceIndexResourceEstimate::legacy_structural_lower_bound(100_000_000).unwrap();
+
+        assert_eq!(forty_million, 40_000_000 * bytes_per_token as u64);
+        assert_eq!(hundred_million, 100_000_000 * bytes_per_token as u64);
+        assert!(forty_million >= 3_000_000_000);
+        assert!(hundred_million >= 8_000_000_000);
+    }
+
+    #[test]
+    fn legacy_build_fails_before_allocating_above_resident_budget() {
+        let text = "a ".repeat(1_000);
+        let inputs = [SurfaceIndexDocumentInput {
+            document_id: 0,
+            source_path: "large.txt".to_string(),
+            display_name: "large.txt".to_string(),
+            prepared_text: &text,
+        }];
+        let limits = SurfaceIndexResourceLimits {
+            max_projected_resident_index_bytes: 1,
+            ..SurfaceIndexResourceLimits::default()
+        };
+
+        assert!(matches!(
+            InMemoryIndexStore::build_with_limits(&inputs, &TokenizationConfig::default(), limits,),
+            Err(SurfaceIndexError::ProjectedResidentIndexExceedsLimit { .. })
         ));
     }
 
