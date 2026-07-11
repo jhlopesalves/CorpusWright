@@ -168,7 +168,7 @@ export function createConcordanceWorkbenchState(
     distribution: {
       ...cardState(collapsedCards.has("distribution")),
       ordering: "hitsDescending",
-      pageSize: 25,
+      pageSize: 10,
       offset: 0,
     },
   };
