@@ -712,6 +712,15 @@ fn main() {
         }],
         &[],
     );
+    export_type::<corpuswright_core::analysis::ConcordancePhase>(&out_dir, &[], &[]);
+    export_type::<corpuswright_core::analysis::ConcordanceProgress>(
+        &out_dir,
+        &[TypeImport {
+            name: "ConcordancePhase",
+            file: "ConcordancePhase",
+        }],
+        &[],
+    );
     export_type::<ConcordanceSortKey>(&out_dir, &[], &[]);
     export_type::<ConcordanceContextFilterDirection>(&out_dir, &[], &[]);
     export_type::<ConcordanceQuery>(
