@@ -1561,7 +1561,7 @@ fn search_concordance_documents_index_from_store(
     ))
 }
 
-fn visit_index_query_hits(
+pub(super) fn visit_index_query_hits(
     store: &impl IndexStore,
     query: &SurfaceIndexQuery,
     mut visitor: impl FnMut(SurfaceIndexHit) -> Result<(), ConcordanceError>,

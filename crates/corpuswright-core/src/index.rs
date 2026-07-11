@@ -321,6 +321,16 @@ pub trait IndexStore {
         record: &SurfaceIndexTokenRecord,
         case_sensitive: bool,
     ) -> Option<&'store str>;
+    fn concordance_symbol_id_for_record(
+        &self,
+        record: &SurfaceIndexTokenRecord,
+        case_sensitive: bool,
+    ) -> Option<u32>;
+    fn concordance_symbol_id(&self, key: &str, case_sensitive: bool) -> Option<u32>;
+    fn concordance_symbols<'store>(
+        &'store self,
+        case_sensitive: bool,
+    ) -> Box<dyn Iterator<Item = &'store str> + 'store>;
 
     fn document_frequency(&self, normalised_surface: &str) -> usize {
         let Some(postings) = self.postings(normalised_surface) else {
@@ -668,6 +678,10 @@ impl InMemoryIndexStore {
         )
     }
 
+    fn surface_symbol_id(&self, symbol: &str) -> Option<u32> {
+        lookup_symbol_id(&self.surface_symbols, &self.surface_ids_by_hash, symbol)
+    }
+
     pub(crate) fn rebuild_symbol_lookup(&mut self) -> Result<(), SurfaceIndexError> {
         rebuild_symbol_lookup(
             &self.surface_symbols,
@@ -955,6 +969,37 @@ impl IndexStore for InMemoryIndexStore {
             self.normalised_symbols
                 .get(normalised_id as usize)
                 .map(String::as_str)
+        }
+    }
+
+    fn concordance_symbol_id_for_record(
+        &self,
+        record: &SurfaceIndexTokenRecord,
+        case_sensitive: bool,
+    ) -> Option<u32> {
+        if case_sensitive {
+            self.surface_symbols.get(*record as usize).map(|_| *record)
+        } else {
+            self.surface_to_normalised.get(*record as usize).copied()
+        }
+    }
+
+    fn concordance_symbol_id(&self, key: &str, case_sensitive: bool) -> Option<u32> {
+        if case_sensitive {
+            self.surface_symbol_id(key)
+        } else {
+            self.normalised_symbol_id(key)
+        }
+    }
+
+    fn concordance_symbols<'store>(
+        &'store self,
+        case_sensitive: bool,
+    ) -> Box<dyn Iterator<Item = &'store str> + 'store> {
+        if case_sensitive {
+            Box::new(self.surface_symbols.iter().map(String::as_str))
+        } else {
+            Box::new(self.normalised_symbols.iter().map(String::as_str))
         }
     }
 
