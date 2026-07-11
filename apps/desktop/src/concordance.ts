@@ -156,6 +156,66 @@ export function concordanceSortLabel(sortKey: ConcordanceSortKey): string {
   return CONCORDANCE_SORT_OPTIONS.find((option) => option.value === sortKey)?.label ?? "File/position";
 }
 
+function formatConcordanceCount(value: number): string {
+  return value.toLocaleString();
+}
+
+export function concordanceLinesCardStatsText(options: {
+  windowTokens: number;
+  sortKey: ConcordanceSortKey;
+  shown: number;
+  totalHits: number;
+  contextFilter: string | null;
+}): string {
+  const sortLabel = concordanceSortLabel(options.sortKey);
+  const parts = [
+    `window ${options.windowTokens}L–${options.windowTokens}R`,
+    `${sortLabel[0]?.toLowerCase() ?? ""}${sortLabel.slice(1)}`,
+  ];
+  if (options.contextFilter !== null) parts.push(`context “${options.contextFilter}”`);
+  parts.push(`showing ${formatConcordanceCount(options.shown)} of ${formatConcordanceCount(options.totalHits)}`);
+  return parts.join(" · ");
+}
+
+export function concordanceCollocatesCardStatsText(options: {
+  span: number;
+  direction: ConcordanceCollocationDirection;
+  measure: ConcordanceCollocationMeasure;
+  minimumFrequency: number;
+  shown: number;
+  loadedRows: number;
+  totalCandidates: number;
+}): string {
+  const spanText = options.direction === "left"
+    ? `${options.span}L`
+    : options.direction === "right"
+      ? `${options.span}R`
+      : `${options.span}L–${options.span}R`;
+  const parts = [
+    `span ${spanText}`,
+    concordanceCollocationMeasureLabel(options.measure),
+    `min freq ${formatConcordanceCount(options.minimumFrequency)}`,
+  ];
+  if (options.totalCandidates > options.loadedRows) {
+    parts.push(
+      `showing ${formatConcordanceCount(options.shown)} of ${formatConcordanceCount(options.loadedRows)} available rows`,
+      `${formatConcordanceCount(options.totalCandidates)} qualifying collocates`,
+    );
+  } else {
+    parts.push(`showing ${formatConcordanceCount(options.shown)} of ${formatConcordanceCount(options.totalCandidates)}`);
+  }
+  return parts.join(" · ");
+}
+
+export function concordanceDistributionCardStatsText(options: {
+  documentsWithHits: number;
+  selectedDocumentsTotal: number;
+  shown: number;
+  totalDocuments: number;
+}): string {
+  return `${formatConcordanceCount(options.documentsWithHits)} of ${formatConcordanceCount(options.selectedDocumentsTotal)} documents with hits · showing ${formatConcordanceCount(options.shown)} of ${formatConcordanceCount(options.totalDocuments)}`;
+}
+
 export type ConcordanceSortLevel = 1 | 2 | 3 | null;
 
 export interface ConcordanceContextSortLevels {
