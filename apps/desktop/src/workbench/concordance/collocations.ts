@@ -41,10 +41,7 @@ import { state } from "../../state";
 import { currentFrequencyDocumentScope } from "../frequency";
 import { activeProjectLanguageCode, formatFixedNumber, formatNumber } from "../shell";
 import {
-  activeConcordanceViewId,
-  currentConcordanceSearchFailure,
-  currentConcordanceSearchResult,
-  refreshConcordance,
+  concordanceCardIsExpanded,
   renderContextTokens,
   syncConcordanceControls,
 } from "./shared";
@@ -217,7 +214,7 @@ export function syncConcordanceCollocationStopwordsToggle(): void {
 export function markConcordanceCollocationsForAggregationChange(): void {
   resetCollocateEvidenceForQueryChange();
   const aggregationKey = currentConcordanceCollocationAggregationKey();
-  const shouldShowStaleCallout = activeConcordanceViewId() === "collocates" && concordanceCollocationEverComputed;
+  const shouldShowStaleCallout = concordanceCardIsExpanded("collocates") && concordanceCollocationEverComputed;
   if (
     aggregationKey !== null
     && concordanceCollocationFreshAggregationKey === aggregationKey
@@ -272,7 +269,7 @@ function refreshConcordanceCollocationsForPresentationChange(): void {
 }
 
 export function maybeAutoComputeConcordanceCollocations(): void {
-  if (activeConcordanceViewId() !== "collocates") {
+  if (!concordanceCardIsExpanded("collocates")) {
     return;
   }
   const aggregationKey = currentConcordanceCollocationAggregationKey();
@@ -820,6 +817,10 @@ function createConcordanceCollocationRow(
 }
 
 export function renderConcordanceCollocations(): void {
+  if (!concordanceCardIsExpanded("collocates")) {
+    dom.concordanceCollocationsTableBody.replaceChildren();
+    return;
+  }
   syncConcordanceControls();
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   const measure = concordanceCollocationMeasure;
@@ -962,6 +963,9 @@ async function refreshCollocateEvidence(
 }
 
 export async function refreshConcordanceCollocations(): Promise<void> {
+  if (!concordanceCardIsExpanded("collocates")) {
+    return;
+  }
   const query = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   concordanceCollocationMeasure = currentConcordanceCollocationMeasure();
   const aggregationKey = currentConcordanceCollocationAggregationKey();
@@ -1011,6 +1015,7 @@ export async function refreshConcordanceCollocations(): Promise<void> {
     );
     if (
       generation !== concordanceCollocationGeneration
+      || !concordanceCardIsExpanded("collocates")
       || requestKey !== currentConcordanceCollocationRequestKey()
       || aggregationKey !== currentConcordanceCollocationAggregationKey()
     ) {
@@ -1035,33 +1040,6 @@ export async function refreshConcordanceCollocations(): Promise<void> {
       concordanceCollocationInFlightRequestKey = null;
       renderConcordanceCollocations();
     }
-  }
-}
-
-export async function runConcordanceSearchForActiveView(): Promise<void> {
-  const viewAtSearch = activeConcordanceViewId();
-  const queryAtSearch = normaliseConcordanceQuery(dom.concordanceQueryInput.value);
-
-  clearCollocateEvidence();
-  markConcordanceCollocationsForAggregationChange();
-  if (viewAtSearch === "collocates" && queryAtSearch.length > 0) {
-    concordanceCollocationPending = true;
-    concordanceCollocationState = "loading";
-    concordanceCollocationFailure = null;
-    concordanceCollocationResult = null;
-    renderConcordanceCollocations();
-  }
-  await refreshConcordance();
-
-  if (
-    viewAtSearch === "collocates"
-    && activeConcordanceViewId() === "collocates"
-    && queryAtSearch.length > 0
-    && normaliseConcordanceQuery(dom.concordanceQueryInput.value) === queryAtSearch
-    && currentConcordanceSearchResult() !== null
-    && currentConcordanceSearchFailure() === null
-  ) {
-    await refreshConcordanceCollocations();
   }
 }
 
@@ -1112,4 +1090,28 @@ export function resetConcordanceCollocationCorpusState(): void {
   concordanceCollocationSortKey = DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY;
   concordanceCollocationSortDirection = DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION;
   clearCollocateEvidence();
+}
+
+export function makeConcordanceCollocationsDormant(): void {
+  concordanceCollocationGeneration += 1;
+  concordanceCollocationPending = false;
+  concordanceCollocationInFlightRequestKey = null;
+  clearCollocateEvidence();
+}
+
+export function concordanceCollocationsArePending(): boolean {
+  return concordanceCollocationPending;
+}
+
+export function concordanceCollocationStatsText(): string {
+  const span = currentConcordanceCollocationSpan();
+  const direction = currentConcordanceCollocationDirection();
+  const spanText = direction === "left"
+    ? `${span}L`
+    : direction === "right"
+      ? `${span}R`
+      : `${span}L–${span}R`;
+  const shown = concordanceCollocationResult?.rows.length ?? 0;
+  const total = concordanceCollocationResult?.totalCandidates ?? 0;
+  return `span ${spanText} · ${concordanceCollocationMeasureLabel(concordanceCollocationMeasure)} · min freq ${formatNumber(currentConcordanceCollocationMinFrequency())} · showing ${formatNumber(shown)} of ${formatNumber(total)}`;
 }

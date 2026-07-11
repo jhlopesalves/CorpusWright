@@ -99,17 +99,17 @@ import {
   syncConcordanceCollocationStopwordsToggle,
 } from "./concordance/collocations";
 import {
-  collapseConcordanceExpansionFromControlChange,
   handleConcordanceExpansionEscape,
   handleConcordancePageSizeChange,
   handleConcordanceSortChange,
+  handleConcordanceWindowChange,
   showNextConcordancePage,
   showPreviousConcordancePage,
 } from "./concordance/lines";
 import {
   handleConcordanceCaseChange,
+  handleConcordanceCardAction,
   handleConcordanceQueryInput,
-  handleConcordanceViewTabClick,
   initialiseConcordanceState,
   renderConcordance,
   runConcordanceSearch,
@@ -2009,7 +2009,7 @@ export function initWorkbenchSwitcher(): void {
     void handleBuildAnalysisCorpus();
   });
   dom.analyseToolsList.addEventListener("click", handleAnalysisToolClick);
-  dom.concordanceViewTabs.addEventListener("click", handleConcordanceViewTabClick);
+  dom.concordanceSection.addEventListener("click", handleConcordanceCardAction);
   dom.concordanceSearchButton.addEventListener("click", runConcordanceSearch);
   dom.concordanceCancelButton.addEventListener("click", () => {
     void cancelConcordance();
@@ -2021,7 +2021,7 @@ export function initWorkbenchSwitcher(): void {
       runConcordanceSearch();
     }
   });
-  dom.concordanceWindowInput.addEventListener("change", collapseConcordanceExpansionFromControlChange);
+  dom.concordanceWindowInput.addEventListener("change", handleConcordanceWindowChange);
   dom.concordanceCaseSensitiveInput.addEventListener("change", handleConcordanceCaseChange);
   dom.concordanceSortSelect.addEventListener("change", handleConcordanceSortChange);
   dom.concordancePageSizeInput.addEventListener("change", handleConcordancePageSizeChange);

@@ -4186,41 +4186,101 @@ main {
   border-color: var(--accent-color);
 }
 
-.concordance-view-tabs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 2px;
-}
-
-.concordance-view-tab {
-  min-height: 32px;
-  padding: 5px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--panel-bg);
-  color: var(--text-muted);
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.concordance-view-tab.is-active {
-  border-color: var(--accent-color);
-  color: var(--text-color);
-  background: var(--bg-color);
-}
-
-.concordance-views,
-.concordance-view-panel {
+.concordance-workbench,
+.concordance-card {
   min-width: 0;
 }
 
-.concordance-view-panel {
+.concordance-workbench {
   display: grid;
-  gap: 10px;
+  gap: 16px;
+}
+
+.concordance-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--panel-bg);
+  box-shadow: var(--cw-interaction-shadow);
+}
+
+.concordance-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+}
+
+.concordance-card-heading {
+  min-width: min(100%, 320px);
+}
+
+.concordance-card-heading h3 {
+  margin: 0;
+  color: var(--text-color);
+  font-family: var(--cw-font-ui);
+  font-size: 1.04rem;
+}
+
+.concordance-card-heading p,
+.concordance-distribution-controls p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.concordance-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+}
+
+.concordance-card-stats,
+.concordance-card-collapse {
+  min-height: 30px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.concordance-card-stats {
+  font-family: var(--cw-font-mono);
+  text-align: right;
+}
+
+.concordance-card-collapse {
+  color: var(--text-color);
+  font-weight: 650;
+}
+
+.concordance-card-stats:hover,
+.concordance-card-collapse:hover {
+  color: var(--accent-color);
+}
+
+.concordance-card-stats:focus-visible,
+.concordance-card-collapse:focus-visible {
+  outline: 2px solid var(--cw-interaction-focus-ring);
+  outline-offset: 2px;
+}
+
+.concordance-card-controls {
+  padding: 10px 0 2px;
+  border-top: 1px solid var(--border-color);
+}
+
+.concordance-card-body {
+  min-width: 0;
 }
 
 #concordance-query-input {
