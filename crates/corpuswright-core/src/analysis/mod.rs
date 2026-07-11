@@ -39,6 +39,7 @@ pub use collocation::{
     ConcordanceCollocationSortKey, RoutedConcordanceCollocationAggregate,
     aggregate_concordance_collocations_documents,
     aggregate_concordance_collocations_documents_routed,
+    aggregate_concordance_collocations_routed_provider,
     concordance_collocation_aggregation_signature, query_concordance_collocations_documents,
     query_concordance_collocations_from_aggregate,
 };
@@ -54,6 +55,7 @@ pub use concordance::{
     ConcordanceFallbackReason, ConcordanceQuery, ConcordanceResult, ConcordanceRow,
     ConcordanceSearchContext, ConcordanceSortKey, RoutedConcordanceResult,
     expand_concordance_context, search_concordance_documents, search_concordance_documents_routed,
+    search_concordance_documents_routed_provider,
 };
 
 pub use distribution::{
