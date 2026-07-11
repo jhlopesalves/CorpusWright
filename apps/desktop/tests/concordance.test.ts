@@ -22,6 +22,7 @@ import {
   clampConcordancePageSize,
   clampConcordanceWindow,
   concordanceCollocatesCardStatsText,
+  concordanceCollocateEvidenceDomId,
   concordanceCollocationDirectionLabel,
   concordanceCollocationExplanation,
   concordanceCollocationMeasureLabel,
@@ -190,6 +191,16 @@ assert(
 assert(
   CONCORDANCE_COLUMNS.join("|") === "File|Left context|Node|Right context",
   "KWIC table should expose the standard columns",
+);
+const difficultCollocateSurfaces = ["can't", "can-t", "cant", "A", "a", "é", "é", "’", "'", "東京"];
+const difficultCollocateIds = difficultCollocateSurfaces.map(concordanceCollocateEvidenceDomId);
+assert(
+  new Set(difficultCollocateIds).size === difficultCollocateSurfaces.length,
+  "Evidence IDs should distinguish punctuation, case, Unicode, and visually similar surfaces",
+);
+assert(
+  concordanceCollocateEvidenceDomId("can't") === concordanceCollocateEvidenceDomId("can't"),
+  "Evidence IDs should be deterministic for the same returned surface",
 );
 assert(
   CONCORDANCE_NO_QUERY_MESSAGE === "Enter a word or phrase to see concordance lines.",

@@ -66,9 +66,22 @@ assert(showMoreBody.includes("nextConcordanceCollocateDisplayCount"));
 assert(showMoreBody.includes("renderConcordanceCollocations()"));
 assert(!showMoreBody.includes("queryConcordanceCollocations"), "Show more must not rebuild the aggregate");
 
-assert(collocations.includes('evidenceButton.textContent = expanded ? "Hide evidence" : "Inspect evidence";'));
-assert(collocations.includes('evidenceButton.setAttribute("aria-expanded", expanded ? "true" : "false");'));
-assert(collocations.includes('evidenceButton.addEventListener("click", () => handleConcordanceCollocateClick(row));'));
+const collocateTableHead = html.slice(
+  html.indexOf('id="concordance-collocations-table-head"'),
+  html.indexOf('id="concordance-collocations-table-body"'),
+);
+assert.equal(collocateTableHead.match(/<th(?:\s|>)/g)?.length, 5);
+assert(!collocateTableHead.includes("Evidence"));
+assert(html.includes("Select any collocate to inspect its co-occurrence lines."));
+assert(collocations.includes('item.setAttribute("aria-expanded", expanded ? "true" : "false");'));
+assert(collocations.includes('item.setAttribute("aria-controls", concordanceCollocateEvidenceDomId(row.surface));'));
+assert(collocations.includes('item.addEventListener("click", () => handleConcordanceCollocateClick(row));'));
+assert(collocations.includes('if (event.key !== "Enter" && event.key !== " ")'));
+assert(collocations.includes("item.append(surface, o11, frequency, score, position);"));
+assert(collocations.includes("cell.colSpan = 5;"));
+assert(collocations.includes("text.textContent = row.surface;"));
+assert(!collocations.includes('appendConcordanceCollocationHeader(row, "Evidence")'));
+assert(!collocations.includes("evidenceButton"));
 
 assert.deepEqual(concordanceContextSortLevels("left2", 5, 5).left, [null, null, 3, 1, 2]);
 assert.deepEqual(concordanceContextSortLevels("right2", 5, 5).right, [2, 1, 3, null, null]);
