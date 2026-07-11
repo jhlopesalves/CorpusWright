@@ -9,7 +9,7 @@ import { dom } from "../dom";
 
 const FIGURE_COLLAPSE_STORAGE_KEY = "corpuswright.overview.figureCollapse";
 const SVG_NS = "http://www.w3.org/2000/svg";
-const FIGURE_SVG_TOP_INSET = 52;
+const FIGURE_SVG_TOP_INSET = 72;
 const FIGURE_SVG_BOTTOM_INSET = 62;
 const FIGURE_TITLE_FONT_SIZE = 17;
 const FIGURE_SUBTITLE_FONT_SIZE = 12.5;
@@ -52,12 +52,6 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
   const header = document.createElement("div");
   header.className = "cw-overview-figure-header";
 
-  const sparkline = document.createElement("span");
-  sparkline.className = "cw-overview-figure-sparkline";
-  sparkline.dataset.figureSparkline = "true";
-  sparkline.setAttribute("aria-hidden", "true");
-  renderSparklineGlyph(sparkline, initialSvg);
-
   const titleBlock = document.createElement("div");
   titleBlock.className = "cw-overview-figure-title-block";
   titleBlock.setAttribute("aria-label", `${options.title}. ${options.subtitle}`);
@@ -66,7 +60,10 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
   const subtitle = document.createElement("p");
   subtitle.className = "cw-overview-figure-subtitle";
   subtitle.textContent = options.subtitle;
-  titleBlock.append(title, subtitle);
+  const stats = document.createElement("p");
+  stats.className = "cw-overview-figure-stats";
+  appendCaptionStats(stats, options.captionStats);
+  titleBlock.append(title, subtitle, stats);
 
   const actions = document.createElement("div");
   actions.className = "cw-overview-figure-actions";
@@ -74,10 +71,6 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
     options.controls.classList.add("cw-overview-figure-controls");
     actions.appendChild(options.controls);
   }
-
-  const badgeSlot = document.createElement("span");
-  badgeSlot.className = "cw-overview-figure-badge-slot";
-  badgeSlot.setAttribute("aria-hidden", "true");
 
   const exportButton = document.createElement("button");
   exportButton.type = "button";
@@ -95,8 +88,8 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
   const collapseLabel = document.createElement("span");
   collapseLabel.textContent = "Collapse";
   collapseButton.appendChild(collapseLabel);
-  actions.append(badgeSlot, exportButton, collapseButton);
-  header.append(sparkline, titleBlock, actions);
+  actions.append(exportButton, collapseButton);
+  header.append(titleBlock, actions);
 
   const body = document.createElement("div");
   body.className = "cw-overview-figure-body";
@@ -105,18 +98,14 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
 
   const caption = document.createElement("figcaption");
   caption.className = "cw-overview-figure-caption";
-  const stats = document.createElement("p");
-  stats.className = "cw-overview-figure-caption-stats";
-  appendCaptionStats(stats, options.captionStats);
   const detail = options.captionDetail ? document.createElement("p") : null;
   if (detail) {
-    detail.className = "cw-overview-figure-caption-reading";
+    detail.className = "cw-overview-figure-caption-detail";
     detail.textContent = options.captionDetail ?? "";
   }
   const reading = document.createElement("p");
   reading.className = "cw-overview-figure-caption-reading";
   reading.textContent = options.captionReading;
-  caption.append(stats);
   if (detail) caption.append(detail);
   caption.append(reading);
 
@@ -151,10 +140,7 @@ export function replaceFigureSvg(
     figureMetadata.set(figure, options);
     refreshFigureText(figure, options);
   }
-  if (options) decorateFigureSvg(svg, options);
   replaceFigureSvgElement(mount, svg);
-  const sparkline = figure.querySelector<HTMLElement>("[data-figure-sparkline='true']");
-  if (sparkline) renderSparklineGlyph(sparkline, svg);
 }
 
 function refreshFigureText(figure: HTMLElement, options: OverviewFigureOptions): void {
@@ -163,7 +149,7 @@ function refreshFigureText(figure: HTMLElement, options: OverviewFigureOptions):
   if (titleBlock) titleBlock.setAttribute("aria-label", `${options.title}. ${options.subtitle}`);
   const subtitle = figure.querySelector<HTMLElement>(".cw-overview-figure-subtitle");
   if (subtitle) subtitle.textContent = options.subtitle;
-  const stats = figure.querySelector<HTMLElement>(".cw-overview-figure-caption-stats");
+  const stats = figure.querySelector<HTMLElement>(".cw-overview-figure-stats");
   if (stats) {
     stats.replaceChildren();
     appendCaptionStats(stats, options.captionStats);
@@ -172,7 +158,7 @@ function refreshFigureText(figure: HTMLElement, options: OverviewFigureOptions):
   if (reading) reading.textContent = options.captionReading;
 }
 
-export function createSegmentedControl<TValue extends string>(
+export function createOverviewSegmentedControl<TValue extends string>(
   label: string,
   options: Array<SegmentedControlOption<TValue>>,
   initialValue: TValue,
@@ -202,13 +188,26 @@ export function createSegmentedControl<TValue extends string>(
 
 export function overviewFigureSvgString(figure: HTMLElement): string | null {
   const svg = figure.querySelector<SVGSVGElement>(".cw-plot-svg");
-  return svg ? serializeSvgWithResolvedTokens(svg) : null;
+  const options = figureMetadata.get(figure);
+  if (!svg || !options) return null;
+  const exportedSvg = svg.cloneNode(true) as SVGSVGElement;
+  decorateFigureSvg(exportedSvg, options);
+  const exportMount = document.createElement("div");
+  exportMount.style.position = "absolute";
+  exportMount.style.inset = "0 auto auto -100000px";
+  exportMount.style.width = `${svg.viewBox.baseVal.width || 720}px`;
+  exportMount.style.visibility = "hidden";
+  exportMount.style.pointerEvents = "none";
+  exportMount.appendChild(exportedSvg);
+  figure.appendChild(exportMount);
+  try {
+    return serializeSvgWithResolvedTokens(exportedSvg);
+  } finally {
+    exportMount.remove();
+  }
 }
 
 function replaceFigureSvgElement(mount: HTMLElement, svg: SVGSVGElement): void {
-  const figure = mount.closest<HTMLElement>(".cw-overview-figure");
-  const options = figure ? figureMetadata.get(figure) : undefined;
-  if (options && !svg.querySelector(".cw-plot-figure-identity")) decorateFigureSvg(svg, options);
   mount.replaceChildren(svg);
   attachPlotHover(svg);
 }
@@ -231,23 +230,35 @@ function decorateFigureSvg(svg: SVGSVGElement, options: OverviewFigureOptions): 
   const viewBox = svg.viewBox.baseVal;
   const width = viewBox.width || 720;
   const height = viewBox.height || 360;
-  svg.setAttribute("viewBox", `0 ${-FIGURE_SVG_TOP_INSET} ${width} ${height + FIGURE_SVG_TOP_INSET + FIGURE_SVG_BOTTOM_INSET}`);
+  const detailInset = options.captionDetail ? 20 : 0;
+  svg.setAttribute("viewBox", `0 ${-FIGURE_SVG_TOP_INSET} ${width} ${height + FIGURE_SVG_TOP_INSET + FIGURE_SVG_BOTTOM_INSET + detailInset}`);
   svg.setAttribute("aria-label", `${options.title}. ${options.subtitle}. ${options.captionStats}. ${options.captionReading}`);
 
   const identity = document.createElementNS(SVG_NS, "g");
   identity.setAttribute("class", "cw-plot-figure-identity");
   identity.setAttribute("aria-hidden", "true");
 
-  const title = createSvgText(0, -30, "cw-plot-figure-title", options.title);
+  const title = createSvgText(0, -50, "cw-plot-figure-title", options.title);
   title.setAttribute("font-size", String(FIGURE_TITLE_FONT_SIZE));
   title.setAttribute("font-weight", "650");
-  const subtitle = createSvgText(0, -11, "cw-plot-figure-subtitle", options.subtitle);
+  const subtitle = createSvgText(0, -30, "cw-plot-figure-subtitle", options.subtitle);
   subtitle.setAttribute("font-size", String(FIGURE_SUBTITLE_FONT_SIZE));
-  const stats = createSvgText(0, height + 24, "cw-plot-figure-stats", options.captionStats);
+  const stats = createSvgText(0, -11, "cw-plot-figure-stats", options.captionStats);
   stats.setAttribute("font-size", String(FIGURE_STATS_FONT_SIZE));
-  const reading = createSvgText(0, height + 45, "cw-plot-figure-reading", options.captionReading);
+  const detail = options.captionDetail
+    ? createSvgText(0, height + 24, "cw-plot-figure-detail", options.captionDetail)
+    : null;
+  if (detail) detail.setAttribute("font-size", String(FIGURE_READING_FONT_SIZE));
+  const reading = createSvgText(
+    0,
+    height + (detail ? 45 : 24),
+    "cw-plot-figure-reading",
+    options.captionReading,
+  );
   reading.setAttribute("font-size", String(FIGURE_READING_FONT_SIZE));
-  identity.append(title, subtitle, stats, reading);
+  identity.append(title, subtitle, stats);
+  if (detail) identity.append(detail);
+  identity.append(reading);
   svg.appendChild(identity);
 }
 
@@ -283,62 +294,6 @@ function createCaptionStatSpan(text: string, className: string): HTMLElement {
   return span;
 }
 
-function renderSparklineGlyph(container: HTMLElement, sourceSvg: SVGSVGElement): void {
-  const points = Array.from(sourceSvg.querySelectorAll<SVGCircleElement>(".cw-plot-point"))
-    .map((point) => ({
-      x: Number(point.dataset.plotX ?? point.getAttribute("cx")),
-      y: Number(point.dataset.plotY ?? point.getAttribute("cy")),
-    }))
-    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
-  const sampled = sampleSparklinePoints(points);
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", "0 0 28 14");
-  svg.setAttribute("width", "28");
-  svg.setAttribute("height", "14");
-  svg.setAttribute("focusable", "false");
-  svg.classList.add("cw-overview-figure-sparkline-svg");
-
-  const polyline = document.createElementNS(SVG_NS, "polyline");
-  polyline.setAttribute("points", sampled.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" "));
-  polyline.setAttribute("class", "cw-overview-figure-sparkline-line");
-  svg.appendChild(polyline);
-
-  sampled.forEach((point, index) => {
-    const dot = document.createElementNS(SVG_NS, "circle");
-    dot.setAttribute("cx", point.x.toFixed(2));
-    dot.setAttribute("cy", point.y.toFixed(2));
-    dot.setAttribute("r", "1.7");
-    dot.setAttribute("class", `cw-overview-figure-sparkline-dot cw-overview-figure-sparkline-dot-${index}`);
-    svg.appendChild(dot);
-  });
-  container.replaceChildren(svg);
-}
-
-function sampleSparklinePoints(points: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
-  if (points.length === 0) {
-    return [
-      { x: 2, y: 10 },
-      { x: 14, y: 6 },
-      { x: 26, y: 4 },
-    ];
-  }
-  const raw = [
-    points[0]!,
-    points[Math.floor((points.length - 1) / 2)]!,
-    points[points.length - 1]!,
-  ];
-  const minX = Math.min(...raw.map((point) => point.x));
-  const maxX = Math.max(...raw.map((point) => point.x));
-  const minY = Math.min(...raw.map((point) => point.y));
-  const maxY = Math.max(...raw.map((point) => point.y));
-  const spanX = maxX - minX || 1;
-  const spanY = maxY - minY || 1;
-  return raw.map((point) => ({
-    x: 2 + ((point.x - minX) / spanX) * 24,
-    y: 2 + ((point.y - minY) / spanY) * 10,
-  }));
-}
-
 function readCollapsedFigures(): Set<string> {
   try {
     const raw = localStorage.getItem(FIGURE_COLLAPSE_STORAGE_KEY);
@@ -369,9 +324,11 @@ async function saveFigureSvg(figure: HTMLElement, figureId: string): Promise<voi
   });
   if (path === null) return;
   try {
+    const content = overviewFigureSvgString(figure);
+    if (content === null) return;
     await invoke("save_svg_file_command", {
       path,
-      content: serializeSvgWithResolvedTokens(svg),
+      content,
     });
     dom.statusBar.textContent = `Saved SVG: ${path}`;
   } catch (error) {

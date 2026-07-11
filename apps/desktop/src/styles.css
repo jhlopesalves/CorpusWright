@@ -2610,7 +2610,7 @@ main {
 .cw-overview-figure {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   margin-top: 4px;
   padding: 12px;
   border: 1px solid var(--border-color);
@@ -2620,9 +2620,9 @@ main {
 
 .cw-overview-figure-header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px 16px;
 }
 
 .cw-overview-figure.is-collapsed {
@@ -2634,49 +2634,6 @@ main {
   align-items: center;
 }
 
-.cw-overview-figure-sparkline {
-  display: inline-grid;
-  width: 28px;
-  height: 18px;
-  place-items: center;
-  margin-top: 2px;
-  color: var(--cw-plot-point);
-}
-
-.cw-overview-figure.is-collapsed .cw-overview-figure-sparkline {
-  margin-top: 0;
-}
-
-.cw-overview-figure-sparkline-svg {
-  display: block;
-  overflow: visible;
-}
-
-.cw-overview-figure-sparkline-line {
-  fill: none;
-  stroke: var(--cw-plot-point);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.5;
-}
-
-.cw-overview-figure-sparkline-dot {
-  stroke: var(--panel-bg);
-  stroke-width: 0.8;
-}
-
-.cw-overview-figure-sparkline-dot-0 {
-  fill: var(--cw-plot-ramp-0);
-}
-
-.cw-overview-figure-sparkline-dot-1 {
-  fill: var(--cw-plot-ramp-2);
-}
-
-.cw-overview-figure-sparkline-dot-2 {
-  fill: var(--cw-plot-ramp-4);
-}
-
 .cw-overview-figure-title-block {
   min-width: 0;
 }
@@ -2684,20 +2641,16 @@ main {
 .cw-overview-figure-title-block h4 {
   margin: 0;
   color: var(--text-color);
-  font-size: 17px;
-  font-weight: 600;
+  font-size: 1.08rem;
+  font-weight: 700;
   line-height: 1.25;
 }
 
 .cw-overview-figure-title-block p {
   margin: 3px 0 0;
   color: var(--text-muted);
-  font-size: 12.5px;
-  line-height: 1.35;
-}
-
-.cw-overview-figure:not(.is-collapsed) .cw-overview-figure-title-block {
-  display: none;
+  font-size: 0.84rem;
+  line-height: 1.4;
 }
 
 .cw-overview-figure.is-collapsed .cw-overview-figure-title-block h4 {
@@ -2711,29 +2664,30 @@ main {
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
-}
-
-.cw-overview-figure-badge-slot {
-  min-width: 28px;
-  min-height: 20px;
-  border: 1px solid transparent;
-  border-radius: 999px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .cw-overview-figure-action {
-  min-height: 24px;
-  padding: 2px 3px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font: 500 12px/1.2 var(--cw-font-ui);
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background: var(--cw-surface-subtle);
+  color: var(--text-color);
+  font: 600 0.75rem/1.2 var(--cw-font-ui);
+  cursor: pointer;
 }
 
 .cw-overview-figure-action:hover {
-  color: var(--text-color);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  border-color: var(--cw-interaction-border-hover);
+  background: var(--cw-interaction-bg-hover);
+}
+
+.cw-overview-figure-action[aria-pressed="true"] {
+  border-color: var(--accent-color);
+  background: var(--selected-color);
+  color: var(--cw-text-selected, var(--text-color));
 }
 
 .cw-overview-figure-action:focus-visible {
@@ -2749,9 +2703,9 @@ main {
 .cw-overview-figure.is-collapsed .cw-overview-figure-body,
 .cw-overview-figure.is-collapsed .cw-overview-figure-caption,
 .cw-overview-figure.is-collapsed .cw-overview-figure-subtitle,
+.cw-overview-figure.is-collapsed .cw-overview-figure-stats,
 .cw-overview-figure.is-collapsed .cw-overview-figure-export,
-.cw-overview-figure.is-collapsed .cw-overview-figure-controls,
-.cw-overview-figure.is-collapsed .cw-overview-figure-badge-slot {
+.cw-overview-figure.is-collapsed .cw-overview-figure-controls {
   display: none;
 }
 
@@ -2764,9 +2718,10 @@ main {
   margin: 0;
 }
 
-.cw-overview-figure-caption-stats {
+.cw-overview-figure-stats {
+  margin: 5px 0 0;
   font-family: var(--cw-font-mono);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   line-height: 1.4;
 }
 
@@ -2778,7 +2733,8 @@ main {
   color: var(--text-color);
 }
 
-.cw-overview-figure-caption-reading {
+.cw-overview-figure-caption-reading,
+.cw-overview-figure-caption-detail {
   color: var(--text-muted);
   font-size: 0.78rem;
   line-height: 1.45;
@@ -2801,6 +2757,12 @@ main {
   background: transparent;
   color: var(--text-muted);
   font: 600 0.73rem/1 var(--cw-font-ui);
+  cursor: pointer;
+}
+
+.cw-overview-segment:hover {
+  background: var(--cw-interaction-bg-hover);
+  color: var(--text-color);
 }
 
 .cw-overview-segment:last-child {
@@ -3185,6 +3147,7 @@ main {
 }
 
 .cw-plot-figure-subtitle,
+.cw-plot-figure-detail,
 .cw-plot-figure-reading {
   fill: var(--text-muted);
   font-family: var(--cw-font-ui);
