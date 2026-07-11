@@ -1,7 +1,7 @@
 use super::*;
 use crate::analysis::test_support::*;
 use crate::decode::{DecodeStrategy, SourceEncoding, decode_source_bytes};
-use crate::index::{InMemoryIndexStore, IndexStore, SurfaceIndexDocumentInput};
+use crate::index::{InMemoryIndexStore, IndexStore, SurfaceIndexDocumentInput, SurfaceIndexError};
 use crate::tokenization::TokenizationConfig;
 
 #[test]
@@ -565,6 +565,72 @@ fn provider_cache_load_streams_identity_once_and_content_changes_invalidate() {
     assert!(changed_result.index_rebuilt);
     assert_eq!(changed.index_build_count(), 1);
     assert_eq!(changed_result.result.total_hits, 2);
+}
+
+#[test]
+fn million_hit_query_retains_and_materialises_only_requested_page() {
+    let documents = vec![concordance_document(
+        0,
+        "common.txt",
+        &"common ".repeat(1_000_000),
+    )];
+    let mut query = parity_concordance_query("common", false);
+    query.sort_key = ConcordanceSortKey::Node;
+    query.window_tokens = 1;
+    query.limit = 100;
+    let config = TokenizationConfig::default();
+
+    let mut index_context = ConcordanceSearchContext::default();
+    let indexed = search_concordance_documents_routed(
+        &documents,
+        &query,
+        &config,
+        &mut index_context,
+        ConcordanceBackend::Index,
+    )
+    .unwrap();
+    let mut scan_context = ConcordanceSearchContext::default();
+    let scanned = search_concordance_documents_routed(
+        &documents,
+        &query,
+        &config,
+        &mut scan_context,
+        ConcordanceBackend::Scan,
+    )
+    .unwrap();
+
+    for routed in [&indexed, &scanned] {
+        assert_eq!(routed.result.total_hits, 1_000_000);
+        assert_eq!(routed.result.rows.len(), 100);
+        assert_eq!(routed.execution_stats.valid_hits, 1_000_000);
+        assert!(routed.execution_stats.candidates_visited >= 1_000_000);
+        assert!(routed.execution_stats.compact_sort_records_peak <= 100);
+        assert_eq!(routed.execution_stats.rows_materialised, 100);
+    }
+    assert_eq!(indexed.result, scanned.result);
+}
+
+#[test]
+fn retained_sort_depth_above_budget_is_a_typed_error() {
+    let documents = vec![concordance_document(0, "a.txt", "alpha beta alpha")];
+    let mut query = parity_concordance_query("alpha", false);
+    query.sort_key = ConcordanceSortKey::Left1;
+    query.offset = 100_000;
+    query.limit = 500;
+    let mut context = ConcordanceSearchContext::default();
+
+    assert!(matches!(
+        search_concordance_documents_routed(
+            &documents,
+            &query,
+            &TokenizationConfig::default(),
+            &mut context,
+            ConcordanceBackend::Scan,
+        ),
+        Err(ConcordanceError::Index(
+            SurfaceIndexError::RetainedSortDepthExceedsQueryBudget { .. }
+        ))
+    ));
 }
 
 #[test]
