@@ -1006,8 +1006,8 @@ fn index_record_sequence_matches(
                 .concordance_key_for_record(record, case_sensitive)
                 .ok_or({
                     ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
-                        document_id: record.document_id,
-                        token_ordinal_in_document: record.token_ordinal_in_document,
+                        document_id: 0,
+                        token_ordinal_in_document: 0,
                         node_token_length: 1,
                     })
                 })?;
@@ -1108,8 +1108,8 @@ fn index_context_sort_key(
         .concordance_key_for_record(record, case_sensitive)
         .ok_or({
             ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
-                document_id: record.document_id,
-                token_ordinal_in_document: record.token_ordinal_in_document,
+                document_id: 0,
+                token_ordinal_in_document: 0,
                 node_token_length: 1,
             })
         })?;
