@@ -1,7 +1,10 @@
 use super::*;
+use crate::analysis::concordance::analysis_word_tokens;
 use crate::analysis::test_support::*;
+use crate::analysis::{ConcordanceBackend, aggregate_concordance_collocations_documents_routed};
 use crate::index::{
-    InMemoryIndexStore, SurfaceIndexDocumentInput, SurfaceIndexQuery, search_surface_index,
+    InMemoryIndexStore, SurfaceIndexCancellationToken, SurfaceIndexDocumentInput,
+    SurfaceIndexQuery, search_surface_index,
 };
 use crate::tokenization::TokenizationConfig;
 use std::collections::HashMap;
@@ -304,6 +307,7 @@ fn surface_collocation_index_aggregate_matches_scan_matrix() {
                 &fixture.documents,
                 &query,
                 &tokenization_config,
+                SurfaceIndexCancellationToken::default(),
             )
             .unwrap();
             let mut context = ConcordanceSearchContext::default();
@@ -313,12 +317,17 @@ fn surface_collocation_index_aggregate_matches_scan_matrix() {
                 &tokenization_config,
                 &mut context,
                 ConcordanceBackend::Index,
+                &SurfaceIndexCancellationToken::default(),
             )
             .unwrap();
 
+            let scan_result = query_concordance_collocations_from_aggregate(&scan, &query);
+            let index_result =
+                query_concordance_collocations_from_aggregate(&index.aggregate, &query);
+
             assert_eq!(index.backend_used, ConcordanceBackendUsed::Index);
             assert_eq!(
-                index.aggregate, scan,
+                index_result, scan_result,
                 "{} case_sensitive={case_sensitive}",
                 fixture.name
             );
@@ -334,6 +343,7 @@ fn surface_collocation_index_aggregate_matches_scan_matrix() {
             &tokenization_config,
             &mut context,
             ConcordanceBackend::Index,
+            &SurfaceIndexCancellationToken::default(),
         )
         .unwrap();
         let from_index =
@@ -372,11 +382,20 @@ fn surface_collocation_index_phrase_hits_match_overlapping_scan_nodes() {
         [(0, 0), (0, 1), (0, 2), (0, 3)]
     );
 
-    let scan =
-        aggregate_concordance_collocations_documents(&documents, &query, &tokenization_config)
-            .unwrap();
-    let index =
-        aggregate_concordance_collocations_index(&store, &query, &tokenization_config).unwrap();
+    let scan = aggregate_concordance_collocations_documents(
+        &documents,
+        &query,
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+    )
+    .unwrap();
+    let (index, _) = aggregate_concordance_collocations_index(
+        &store,
+        &query,
+        &tokenization_config,
+        crate::index::SurfaceIndexCancellationToken::default(),
+    )
+    .unwrap();
 
     assert_eq!(scan.f_node, 4);
     assert_eq!(index.f_node, 4);
@@ -394,12 +413,13 @@ fn surface_collocation_and_concordance_share_warm_index_context_in_both_orders()
     let collocation = collocation_query("good movie");
 
     let mut concordance_first_context = ConcordanceSearchContext::default();
-    let concordance_first = crate::analysis::search_concordance_documents_routed(
-        &documents,
+    let concordance_first = crate::analysis::search_concordance_documents_routed_provider(
+        documents.len(),
         &concordance,
         &tokenization_config,
         &mut concordance_first_context,
-        ConcordanceBackend::Index,
+        |document_index| Some(documents[document_index].clone()),
+        |_| {},
     )
     .unwrap();
     let collocation_second = aggregate_concordance_collocations_documents_routed(
@@ -408,6 +428,7 @@ fn surface_collocation_and_concordance_share_warm_index_context_in_both_orders()
         &tokenization_config,
         &mut concordance_first_context,
         ConcordanceBackend::Index,
+        &SurfaceIndexCancellationToken::default(),
     )
     .unwrap();
     assert_eq!(
@@ -427,14 +448,16 @@ fn surface_collocation_and_concordance_share_warm_index_context_in_both_orders()
         &tokenization_config,
         &mut collocation_first_context,
         ConcordanceBackend::Index,
+        &SurfaceIndexCancellationToken::default(),
     )
     .unwrap();
-    let concordance_second = crate::analysis::search_concordance_documents_routed(
-        &documents,
+    let concordance_second = crate::analysis::search_concordance_documents_routed_provider(
+        documents.len(),
         &concordance,
         &tokenization_config,
         &mut collocation_first_context,
-        ConcordanceBackend::Index,
+        |document_index| Some(documents[document_index].clone()),
+        |_| {},
     )
     .unwrap();
     assert_eq!(
@@ -456,9 +479,13 @@ fn surface_collocation_index_error_falls_back_to_scan_aggregate() {
     ];
     let query = collocation_query("target");
     let tokenization_config = TokenizationConfig::default();
-    let scan =
-        aggregate_concordance_collocations_documents(&documents, &query, &tokenization_config)
-            .unwrap();
+    let scan = aggregate_concordance_collocations_documents(
+        &documents,
+        &query,
+        &tokenization_config,
+        SurfaceIndexCancellationToken::default(),
+    )
+    .unwrap();
     let mut context = ConcordanceSearchContext::default();
 
     let routed = aggregate_concordance_collocations_documents_routed(
@@ -467,6 +494,7 @@ fn surface_collocation_index_error_falls_back_to_scan_aggregate() {
         &tokenization_config,
         &mut context,
         ConcordanceBackend::Index,
+        &SurfaceIndexCancellationToken::default(),
     )
     .unwrap();
 
@@ -696,6 +724,7 @@ fn surface_collocation_performance_evidence_on_docs_fixture() {
         &tokenization_config,
         &mut warm_context,
         ConcordanceBackend::Index,
+        &SurfaceIndexCancellationToken::default(),
     )
     .unwrap();
     assert!(warm_seed.index_rebuilt);
@@ -738,6 +767,7 @@ fn surface_collocation_performance_evidence_on_docs_fixture() {
         &tokenization_config,
         &mut warm_context,
         ConcordanceBackend::Index,
+        &SurfaceIndexCancellationToken::default(),
     )
     .unwrap();
     let new_query_warm_index_ms = new_query_warm_index_start.elapsed().as_secs_f64() * 1000.0;
@@ -1007,4 +1037,128 @@ fn surface_collocation_stopwords_filter_after_aggregation() {
     assert!(shown.rows.iter().any(|row| row.surface == "the"));
     assert!(hidden.rows.iter().all(|row| row.surface != "the"));
     assert!(hidden.rows.iter().any(|row| row.surface == "apple"));
+}
+
+#[test]
+fn surface_collocation_high_node_frequency_without_materializing_all_occurrences() {
+    let mut text = String::new();
+    for _ in 0..10_000 {
+        text.push_str("target filler ");
+    }
+    let query = collocation_query("target");
+    let tokenization_config = TokenizationConfig::default();
+
+    let inputs = [SurfaceIndexDocumentInput {
+        document_id: 0,
+        source_path: "doc.txt".to_string(),
+        display_name: "doc.txt".to_string(),
+        prepared_text: &text,
+    }];
+    let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
+    let (_, stats) = aggregate_concordance_collocations_index(
+        &store,
+        &query,
+        &tokenization_config,
+        crate::index::SurfaceIndexCancellationToken::default(),
+    )
+    .unwrap();
+
+    assert_eq!(stats.valid_node_occurrences, 10_000);
+    assert!(stats.peak_aggregate_entries < 10);
+}
+
+#[test]
+fn surface_collocation_final_strings_materialised_only_for_returned_rows() {
+    let documents = [concordance_document(
+        0,
+        "a.txt",
+        "one target two target three target four target five target six",
+    )];
+    let mut query = collocation_query("target");
+    query.limit = 2;
+    let tokenization_config = TokenizationConfig::default();
+
+    let inputs = [SurfaceIndexDocumentInput {
+        document_id: 0,
+        source_path: "a.txt".to_string(),
+        display_name: "a.txt".to_string(),
+        prepared_text: documents[0].text.as_str(),
+    }];
+    let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
+    let (aggregate, _) = aggregate_concordance_collocations_index(
+        &store,
+        &query,
+        &tokenization_config,
+        crate::index::SurfaceIndexCancellationToken::default(),
+    )
+    .unwrap();
+    let result = super::query_concordance_collocations_from_aggregate(&aggregate, &query);
+
+    assert_eq!(result.rows.len(), 2);
+}
+
+#[test]
+fn surface_collocation_vocabulary_sized_aggregate_resource_limit_failure() {
+    let limits = crate::index::SurfaceIndexResourceLimits {
+        max_projected_resident_index_bytes: 1,
+        ..Default::default()
+    };
+    let mut builder = super::NumericCollocationBuilder::new(
+        limits,
+        crate::index::SurfaceIndexCancellationToken::default(),
+    );
+    let err = builder.intern("any").unwrap_err();
+    assert!(matches!(
+        err,
+        ConcordanceError::Index(
+            crate::index::SurfaceIndexError::ProjectedResidentIndexExceedsLimit { .. }
+        )
+    ));
+}
+
+#[test]
+fn surface_collocation_cancellation_interrupts_indexed_aggregation() {
+    let documents = [concordance_document(0, "a.txt", "target collocate")];
+    let query = collocation_query("target");
+    let tokenization_config = TokenizationConfig::default();
+
+    let inputs = [SurfaceIndexDocumentInput {
+        document_id: 0,
+        source_path: "a.txt".to_string(),
+        display_name: "a.txt".to_string(),
+        prepared_text: documents[0].text.as_str(),
+    }];
+    let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
+
+    let token = crate::index::SurfaceIndexCancellationToken::default();
+    token.cancel();
+
+    let err = aggregate_concordance_collocations_index(&store, &query, &tokenization_config, token)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        ConcordanceError::Index(crate::index::SurfaceIndexError::Cancelled)
+    ));
+}
+
+#[test]
+fn surface_collocation_cancellation_interrupts_streaming_fallback() {
+    let documents = vec![concordance_document(0, "a.txt", "target collocate")];
+    let query = collocation_query("target");
+    let tokenization_config = TokenizationConfig::default();
+
+    let token = crate::index::SurfaceIndexCancellationToken::default();
+    token.cancel();
+
+    let err = aggregate_concordance_collocations_documents(
+        &documents,
+        &query,
+        &tokenization_config,
+        token,
+    )
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        ConcordanceError::Index(crate::index::SurfaceIndexError::Cancelled)
+    ));
 }
