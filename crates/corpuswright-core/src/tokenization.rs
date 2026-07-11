@@ -128,13 +128,13 @@ fn is_numeric_separator(text: &str, byte_index: usize, ch: char) -> bool {
     previous.is_some_and(char::is_numeric) && next.is_some_and(char::is_numeric)
 }
 
-fn split_tailored_boundaries(
+fn visit_tailored_boundaries<E>(
     text: &str,
     start: usize,
     end: usize,
     config: &TokenizationConfig,
-    output: &mut Vec<Boundary>,
-) {
+    visitor: &mut impl FnMut(Boundary) -> Result<(), E>,
+) -> Result<(), E> {
     let slice = &text[start..end];
     let mut piece_start = start;
     for (relative, ch) in slice.char_indices() {
@@ -144,24 +144,25 @@ fn split_tailored_boundaries(
         if split_numeric || split_apostrophe {
             let separator_start = start + relative;
             if piece_start < separator_start {
-                output.push(Boundary {
+                visitor(Boundary {
                     start: piece_start,
                     end: separator_start,
-                });
+                })?;
             }
-            output.push(Boundary {
+            visitor(Boundary {
                 start: separator_start,
                 end: separator_start + ch.len_utf8(),
-            });
+            })?;
             piece_start = separator_start + ch.len_utf8();
         }
     }
     if piece_start < end {
-        output.push(Boundary {
+        visitor(Boundary {
             start: piece_start,
             end,
-        });
+        })?;
     }
+    Ok(())
 }
 
 fn boundary_is_word_component(text: &str, boundary: Boundary) -> bool {
@@ -185,62 +186,132 @@ fn token_kind(surface: &str) -> TokenKind {
     }
 }
 
+fn emit_token_boundary<'text, E>(
+    text: &'text str,
+    boundary: Boundary,
+    document_id: u32,
+    config: &TokenizationConfig,
+    visitor: &mut impl FnMut(Token<'text>) -> Result<(), E>,
+) -> Result<(), E> {
+    let surface = &text[boundary.start..boundary.end];
+    let kind = token_kind(surface);
+    if kind == TokenKind::Punctuation && !config.include_punctuation {
+        return Ok(());
+    }
+    visitor(Token {
+        surface,
+        byte_start: boundary.start,
+        byte_end: boundary.end,
+        document_id,
+        kind,
+    })
+}
+
+/// Visits original-text tokens in canonical order without constructing a
+/// document-sized token or boundary vector.
+///
+/// The only cross-boundary look-ahead retained is the current word component
+/// plus a possible ASCII hyphen, which is sufficient for arbitrarily long
+/// tailored hyphen chains.
+pub fn visit_tokens<'text, E>(
+    text: &'text str,
+    document_id: u32,
+    config: &TokenizationConfig,
+    mut visitor: impl FnMut(Token<'text>) -> Result<(), E>,
+) -> Result<(), E> {
+    let mut current = None::<Boundary>;
+    let mut pending_hyphen = None::<Boundary>;
+
+    let mut accept_boundary = |next: Boundary| -> Result<(), E> {
+        let Some(mut active) = current else {
+            current = Some(next);
+            return Ok(());
+        };
+
+        if let Some(hyphen) = pending_hyphen.take() {
+            if hyphen.end == next.start && boundary_is_word_component(text, next) {
+                active.end = next.end;
+                current = Some(active);
+                return Ok(());
+            }
+            emit_token_boundary(text, active, document_id, config, &mut visitor)?;
+            emit_token_boundary(text, hyphen, document_id, config, &mut visitor)?;
+            current = Some(next);
+            return Ok(());
+        }
+
+        if config.retain_ascii_hyphen_compounds
+            && boundary_is_word_component(text, active)
+            && active.end == next.start
+            && &text[next.start..next.end] == "-"
+        {
+            current = Some(active);
+            pending_hyphen = Some(next);
+            return Ok(());
+        }
+
+        emit_token_boundary(text, active, document_id, config, &mut visitor)?;
+        current = Some(next);
+        Ok(())
+    };
+
+    for (start, segment) in text.split_word_bound_indices() {
+        if segment.chars().all(char::is_whitespace) {
+            continue;
+        }
+        let end = start + segment.len();
+        visit_tailored_boundaries(text, start, end, config, &mut accept_boundary)?;
+    }
+    drop(accept_boundary);
+
+    if let Some(active) = current {
+        emit_token_boundary(text, active, document_id, config, &mut visitor)?;
+    }
+    if let Some(hyphen) = pending_hyphen {
+        emit_token_boundary(text, hyphen, document_id, config, &mut visitor)?;
+    }
+    Ok(())
+}
+
 /// Tokenises original text with UAX #29 boundaries and documented compatibility tailorings.
 pub fn tokenize<'text>(
     text: &'text str,
     document_id: u32,
     config: &TokenizationConfig,
 ) -> Vec<Token<'text>> {
-    let mut boundaries = Vec::new();
-    for (start, segment) in text.split_word_bound_indices() {
-        if segment.chars().all(char::is_whitespace) {
-            continue;
-        }
-        let end = start + segment.len();
-        split_tailored_boundaries(text, start, end, config, &mut boundaries);
-    }
-
-    let mut joined = Vec::with_capacity(boundaries.len());
-    let mut index = 0;
-    while index < boundaries.len() {
-        let mut boundary = boundaries[index];
-        if config.retain_ascii_hyphen_compounds && boundary_is_word_component(text, boundary) {
-            while index + 2 < boundaries.len()
-                && boundary.end == boundaries[index + 1].start
-                && &text[boundaries[index + 1].start..boundaries[index + 1].end] == "-"
-                && boundaries[index + 1].end == boundaries[index + 2].start
-                && boundary_is_word_component(text, boundaries[index + 2])
-            {
-                boundary.end = boundaries[index + 2].end;
-                index += 2;
-            }
-        }
-        joined.push(boundary);
-        index += 1;
-    }
-
-    joined
-        .into_iter()
-        .filter_map(|boundary| {
-            let surface = &text[boundary.start..boundary.end];
-            let kind = token_kind(surface);
-            if kind == TokenKind::Punctuation && !config.include_punctuation {
-                return None;
-            }
-            Some(Token {
-                surface,
-                byte_start: boundary.start,
-                byte_end: boundary.end,
-                document_id,
-                kind,
-            })
-        })
-        .collect()
+    let mut tokens = Vec::new();
+    visit_tokens(text, document_id, config, |token| {
+        tokens.push(token);
+        Ok::<(), std::convert::Infallible>(())
+    })
+    .expect("infallible token collector");
+    tokens
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn collect_visited<'text>(
+        text: &'text str,
+        document_id: u32,
+        config: &TokenizationConfig,
+    ) -> Vec<Token<'text>> {
+        let mut visited = Vec::new();
+        visit_tokens(text, document_id, config, |token| {
+            visited.push(token);
+            Ok::<(), std::convert::Infallible>(())
+        })
+        .unwrap();
+        visited
+    }
+
+    fn assert_visitor_parity(text: &str, config: TokenizationConfig) {
+        assert_eq!(
+            tokenize(text, 37, &config),
+            collect_visited(text, 37, &config)
+        );
+    }
 
     fn surfaces(text: &str) -> Vec<&str> {
         tokenize(text, 7, &TokenizationConfig::default())
@@ -308,6 +379,62 @@ mod tests {
             .map(|token| token.surface)
             .collect::<Vec<_>>();
         assert_eq!(surfaces, ["well", "-", "being", "don", "'", "t"]);
+    }
+
+    #[test]
+    fn streaming_visitor_matches_collector_across_tailorings_and_unicode() {
+        let fixtures = [
+            "",
+            "plain words and 123 numbers",
+            "CAFE\u{301} café e\u{301}lan",
+            "don't don’t rock'n'roll l’esprit",
+            "3.14 1,000 १२,३४५",
+            "well-being state-of-the-art a-b-c-d-e",
+            "alpha—beta; (gamma)! … punctuation",
+            "\u{2003}\n\t",
+        ];
+        let default = TokenizationConfig::default();
+        let configs = [
+            default,
+            TokenizationConfig {
+                retain_ascii_hyphen_compounds: false,
+                ..default
+            },
+            TokenizationConfig {
+                retain_apostrophe_contractions: false,
+                ..default
+            },
+            TokenizationConfig {
+                split_numeric_separators: false,
+                ..default
+            },
+            TokenizationConfig {
+                include_punctuation: false,
+                ..default
+            },
+            TokenizationConfig {
+                fold_aggregation_keys: false,
+                ..default
+            },
+        ];
+
+        for config in configs {
+            for fixture in fixtures {
+                assert_visitor_parity(fixture, config);
+            }
+        }
+    }
+
+    #[test]
+    fn streaming_visitor_handles_long_hyphen_chains_and_large_document() {
+        let long_chain = std::iter::repeat_n("part", 20_000)
+            .collect::<Vec<_>>()
+            .join("-");
+        assert_visitor_parity(&long_chain, TokenizationConfig::default());
+        assert_eq!(surfaces(&long_chain), [long_chain.as_str()]);
+
+        let large_document = "alpha 3.14 state-of-the-art don’t café\n".repeat(100_000);
+        assert_visitor_parity(&large_document, TokenizationConfig::default());
     }
 
     #[test]
