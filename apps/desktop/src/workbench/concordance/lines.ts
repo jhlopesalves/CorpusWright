@@ -289,7 +289,7 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
   file.textContent = row.displayName || row.sourcePath;
   const close = document.createElement("button");
   close.type = "button";
-  close.className = "secondary-btn concordance-expansion-close";
+  close.className = "quiet-btn concordance-expansion-close";
   close.textContent = "Close";
   close.addEventListener("click", () => {
     collapseConcordanceExpansion();
