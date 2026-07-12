@@ -82,12 +82,14 @@ assert(collocations.includes("cell.colSpan = 5;"));
 assert(collocations.includes("text.textContent = row.surface;"));
 assert(!collocations.includes('appendConcordanceCollocationHeader(row, "Evidence")'));
 assert(!collocations.includes("evidenceButton"));
-for (const width of ["17%", "11%", "13%", "24%", "35%"]) {
+for (const width of ["20%", "9%", "11%", "27%", "33%"]) {
   assert(styles.includes(`width: ${width};`), `five-column Collocates layout should include ${width}`);
 }
-assert(styles.includes("padding: 4px 7px;"));
+assert(styles.includes("padding: 5px 8px;"));
 assert(styles.includes(".concordance-collocation-row:nth-child(even) td"));
 assert(!styles.includes("min-width: 1040px"));
+assert(!styles.includes("text-decoration-style: double;"));
+assert(!styles.includes("text-decoration-style: dotted;"));
 
 assert.deepEqual(concordanceContextSortLevels("left2", 5, 5).left, [null, null, 3, 1, 2]);
 assert.deepEqual(concordanceContextSortLevels("right2", 5, 5).right, [2, 1, 3, null, null]);
