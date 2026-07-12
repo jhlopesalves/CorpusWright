@@ -326,25 +326,21 @@ assertDeepEqual(concordanceCollocationStrengthBar(5, "logDice", [1, 5, 10]), {
   signed: false,
   direction: "nonNegative",
   magnitudePercent: 50,
-  ramp: 3,
 });
 assertDeepEqual(concordanceCollocationStrengthBar(4, "mi", [-8, 0, 4]), {
   signed: true,
   direction: "positive",
   magnitudePercent: 50,
-  ramp: 3,
 });
 assertDeepEqual(concordanceCollocationStrengthBar(-8, "mi", [-8, 0, 4]), {
   signed: true,
   direction: "negative",
   magnitudePercent: 100,
-  ramp: 5,
 });
 assertDeepEqual(concordanceCollocationStrengthBar(0, "tScore", [-2, 0, 1]), {
   signed: true,
   direction: "zero",
   magnitudePercent: 0,
-  ramp: 1,
 });
 assert(
   concordanceCollocationStrengthBar(4, "mi", [-8, 0, 4])?.magnitudePercent

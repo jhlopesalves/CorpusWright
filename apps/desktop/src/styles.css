@@ -5040,12 +5040,14 @@ main {
 .concordance-collocations-table-wrap {
   max-width: none;
   overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .concordance-collocations-inspection-hint {
   margin: 0;
-  padding: 6px 9px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 4px 0 6px;
   color: var(--text-muted);
   font-size: 0.76rem;
 }
@@ -5058,10 +5060,26 @@ main {
   font-size: 0.85rem;
 }
 
+.concordance-near-query-column {
+  width: 6rem;
+}
+
+.concordance-corpus-frequency-column {
+  width: 7rem;
+}
+
+.concordance-association-column {
+  width: 11rem;
+}
+
+.concordance-position-column {
+  width: 12.5rem;
+}
+
 .concordance-collocations-table > thead > tr > th,
 .concordance-collocations-table > tbody > tr.concordance-collocation-row > td {
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 5px 7px;
+  border: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
@@ -5069,38 +5087,14 @@ main {
 }
 
 .concordance-collocations-table > thead > tr > th {
-  background: var(--panel-bg);
+  background: transparent;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
   color: var(--text-muted);
   font-size: 0.76rem;
-  font-weight: 650;
+  font-weight: 550;
   line-height: 1.25;
   text-align: left;
   white-space: normal;
-}
-
-.concordance-collocations-table > thead > tr > th:nth-child(1),
-.concordance-collocations-table > tbody > tr.concordance-collocation-row > td:nth-child(1) {
-  width: 20%;
-}
-
-.concordance-collocations-table > thead > tr > th:nth-child(2),
-.concordance-collocations-table > tbody > tr.concordance-collocation-row > td:nth-child(2) {
-  width: 9%;
-}
-
-.concordance-collocations-table > thead > tr > th:nth-child(3),
-.concordance-collocations-table > tbody > tr.concordance-collocation-row > td:nth-child(3) {
-  width: 11%;
-}
-
-.concordance-collocations-table > thead > tr > th:nth-child(4),
-.concordance-collocations-table > tbody > tr.concordance-collocation-row > td:nth-child(4) {
-  width: 27%;
-}
-
-.concordance-collocations-table > thead > tr > th:nth-child(5),
-.concordance-collocations-table > tbody > tr.concordance-collocation-row > td:nth-child(5) {
-  width: 33%;
 }
 
 .concordance-collocations-table > thead > tr > th:nth-child(n + 2),
@@ -5176,7 +5170,7 @@ main {
   min-width: 0;
   overflow: hidden;
   color: var(--text-color);
-  font-weight: 650;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -5198,9 +5192,9 @@ main {
 
 .concordance-collocate-evidence {
   display: grid;
-  gap: 9px;
-  margin: 5px 10px 12px 22px;
-  padding: 10px 12px 11px;
+  gap: 7px;
+  margin: 3px 7px 9px 12px;
+  padding: 8px 10px 9px;
   border-left: 2px solid var(--cw-collocate-border);
   background: var(--cw-surface-subtle);
 }
@@ -5260,9 +5254,8 @@ main {
   min-width: 0;
   max-width: 22ch;
   overflow: hidden;
-  padding: 2px 6px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
+  padding: 0;
+  border: 0;
   color: var(--text-color);
   font-family: var(--cw-font-mono);
   font-weight: 650;
@@ -5271,9 +5264,8 @@ main {
 }
 
 .concordance-collocate-evidence-relation-collocate {
-  border-color: var(--cw-collocate-border);
   color: var(--cw-collocate-text);
-  background: var(--cw-collocate-bg);
+  background: transparent;
 }
 
 .concordance-collocate-evidence-relation-connector {
@@ -5471,7 +5463,7 @@ main {
   position: relative;
   display: inline-block;
   width: min(96px, calc(100% - 66px));
-  height: 7px;
+  height: 6px;
   margin-left: 8px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--border-color) 62%, transparent);
@@ -5484,6 +5476,7 @@ main {
   bottom: 0;
   width: var(--bar-width, 0%);
   border-radius: inherit;
+  background: var(--accent-color);
   opacity: 0.72;
 }
 
@@ -5511,16 +5504,6 @@ main {
   content: "";
 }
 
-.concordance-collocation-score-fill.is-ramp-1 { background: color-mix(in srgb, var(--accent-color) 42%, var(--border-color)); }
-.concordance-collocation-score-fill.is-ramp-2 { background: color-mix(in srgb, var(--accent-color) 55%, var(--border-color)); }
-.concordance-collocation-score-fill.is-ramp-3 { background: color-mix(in srgb, var(--accent-color) 68%, var(--border-color)); }
-.concordance-collocation-score-fill.is-ramp-4 { background: color-mix(in srgb, var(--accent-color) 82%, var(--border-color)); }
-.concordance-collocation-score-fill.is-ramp-5 { background: var(--accent-color); }
-
-.concordance-collocation-score-track.is-negative .concordance-collocation-score-fill {
-  background: var(--cw-warning-text);
-}
-
 .concordance-position-heading,
 .concordance-position-legend {
   display: block;
@@ -5536,7 +5519,7 @@ main {
 
 .concordance-position-glyph {
   display: grid;
-  grid-template-columns: repeat(5, minmax(3px, 1fr)) auto repeat(5, minmax(3px, 1fr));
+  grid-template-columns: repeat(5, minmax(3px, 1fr)) 1px repeat(5, minmax(3px, 1fr));
   align-items: end;
   gap: 2px;
   width: 100%;
@@ -5550,13 +5533,8 @@ main {
   height: var(--position-height, 12%);
   min-height: 2px;
   border-radius: 2px 2px 0 0;
-  background: color-mix(in srgb, var(--text-muted) 58%, transparent);
-  opacity: calc(0.28 + var(--position-intensity, 0) * 0.34);
-}
-
-.concordance-position-bin.is-dominant {
   background: var(--accent-color);
-  opacity: 0.82;
+  opacity: calc(0.2 + var(--position-intensity, 0) * 0.62);
 }
 
 .concordance-position-bin.is-inactive {
@@ -5567,13 +5545,8 @@ main {
 
 .concordance-position-node {
   align-self: stretch;
-  padding: 0 3px;
-  border-left: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
-  border-right: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
-  color: var(--text-muted);
-  font-family: var(--cw-font-mono);
-  font-size: 0.52rem;
-  line-height: 26px;
+  width: 1px;
+  background: color-mix(in srgb, var(--text-muted) 62%, transparent);
 }
 
 .concordance-collocation-reading {
@@ -9208,14 +9181,9 @@ mark.search-match.current-match {
   }
 
   .concordance-position-glyph {
-    grid-template-columns: repeat(5, minmax(2px, 1fr)) auto repeat(5, minmax(2px, 1fr));
+    grid-template-columns: repeat(5, minmax(2px, 1fr)) 1px repeat(5, minmax(2px, 1fr));
     gap: 1px;
     height: 24px;
-  }
-
-  .concordance-position-node {
-    padding-inline: 1px;
-    line-height: 24px;
   }
 
   .concordance-collocate-evidence {
