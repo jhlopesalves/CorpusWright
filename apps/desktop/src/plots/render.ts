@@ -70,10 +70,11 @@ export function renderVocabularyGrowthSvg(plotId: string, geometry: VocabularyGr
 export function renderLexicalSpectrumSvg(plotId: string, geometry: LexicalSpectrumGeometry): SVGSVGElement {
   const svg = createBaseSvg(plotId, geometry.box);
   renderDefinitions(svg, plotId);
+  if (geometry.compositionStrip) renderCompositionStrip(svg, geometry.compositionStrip);
   renderLexicalSpectrumBands(svg, geometry);
   renderAxes(svg, geometry.box, geometry.xScale, geometry.yScale, geometry.xTicks, geometry.yTicks, {
     x: "frequency",
-    y: "types",
+    y: geometry.yAxisLabel,
     valueAxis: "y",
   });
   renderPoints(svg, geometry.points, "cw-plot-point");
@@ -85,8 +86,9 @@ export function renderLexicalSpectrumSvg(plotId: string, geometry: LexicalSpectr
 export function renderCoverageSvg(plotId: string, geometry: CoverageGeometry): SVGSVGElement {
   const svg = createBaseSvg(plotId, geometry.box);
   renderDefinitions(svg, plotId);
+  if (geometry.compositionStrip) renderCompositionStrip(svg, geometry.compositionStrip);
   renderAxes(svg, geometry.box, geometry.xScale, geometry.yScale, geometry.xTicks, geometry.yTicks, {
-    x: "types by rank",
+    x: geometry.xScale.kind === "log" ? "Top k types (log scale)" : "Share of vocabulary",
     y: "token coverage",
     valueAxis: "y",
   });
@@ -96,18 +98,25 @@ export function renderCoverageSvg(plotId: string, geometry: CoverageGeometry): S
   if (geometry.halfCrossing) {
     renderLine(svg, {
       x1: geometry.box.margin.left,
-      y1: geometry.halfCrossing.y,
-      x2: geometry.halfCrossing.x,
-      y2: geometry.halfCrossing.y,
-      className: "cw-plot-reference-line",
+      y1: geometry.halfCrossing.targetY,
+      x2: geometry.box.width - geometry.box.margin.right,
+      y2: geometry.halfCrossing.targetY,
+      className: "cw-plot-coverage-target",
     });
-    renderLine(svg, {
-      x1: geometry.halfCrossing.x,
-      y1: geometry.halfCrossing.y,
-      x2: geometry.halfCrossing.x,
-      y2: geometry.box.height - geometry.box.margin.bottom,
-      className: "cw-plot-reference-line",
-    });
+    renderPoints(svg, [{
+      x: geometry.halfCrossing.x,
+      y: geometry.halfCrossing.y,
+      rawX: geometry.halfCrossing.k,
+      rawY: geometry.halfCrossing.share,
+      datum: { k: geometry.halfCrossing.k, share: geometry.halfCrossing.share },
+      rampIndex: 2,
+      className: "cw-plot-coverage-crossing",
+      tooltipTitle: `${Math.round(geometry.halfCrossing.targetShare * 100)}% target crossing`,
+      tooltipRows: [
+        `first reached by top ${geometry.halfCrossing.k.toLocaleString("en-US")} types`,
+        `${(geometry.halfCrossing.share * 100).toFixed(1)}% actual cumulative share`,
+      ],
+    }], "cw-plot-point is-panel-stroked");
   }
   renderLabels(svg, geometry.labels);
   renderInteractionLayer(svg, geometry.box);
