@@ -2324,7 +2324,7 @@ main {
 .welcome-content h1 {
   margin: 0 0 12px;
   font-size: 1.8rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .welcome-content p {
@@ -2797,7 +2797,6 @@ main {
 }
 
 .analysis-panel {
-  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -2881,7 +2880,7 @@ main {
   border-radius: 4px;
   background: var(--panel-bg);
   color: var(--text-color);
-  font: 650 0.78rem/1.2 var(--cw-font-ui);
+  font: 600 0.78rem/1.2 var(--cw-font-ui);
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
@@ -3489,7 +3488,7 @@ main {
   margin: 0;
   color: var(--text-color);
   font-size: 1rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -3545,7 +3544,7 @@ main {
 
 .analysis-reading-finding-heading strong {
   color: var(--text-color);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .analysis-reading-status {
@@ -3609,7 +3608,7 @@ main {
   margin: 0;
   color: var(--text-color);
   font-size: 0.82rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .analysis-metric-table {
@@ -3826,7 +3825,7 @@ main {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.76rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.25;
   text-transform: uppercase;
 }
@@ -3847,7 +3846,7 @@ main {
 .analysis-glossary-symbol-row dt {
   color: var(--text-color);
   font-family: var(--cw-font-math);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .analysis-glossary-symbol-row dd {
@@ -3877,7 +3876,7 @@ main {
   cursor: pointer;
   color: var(--text-muted);
   font-size: 0.76rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -3930,7 +3929,7 @@ main {
 .analysis-composition h4 {
   margin: 0;
   font-size: 0.82rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .analysis-composition-bar {
@@ -4010,7 +4009,7 @@ main {
   gap: 6px;
   color: var(--text-color);
   font-size: 0.78rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -4107,7 +4106,7 @@ main {
 .analysis-build-details > summary {
   color: var(--text-color);
   font-size: 0.9rem;
-  font-weight: 650;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -5055,7 +5054,7 @@ main {
 
 .concordance-kwic-pair {
   color: var(--cw-kwic-pair);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .concordance-kwic-panel .analysis-pagination {
@@ -5536,7 +5535,7 @@ main {
   border-top: 1px solid var(--border-color);
   color: var(--text-muted);
   font-size: 0.72rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .concordance-collocate-evidence-line {
@@ -6090,7 +6089,7 @@ main {
   margin: 0 0 8px;
   color: var(--text-color);
   font-size: 0.86rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .frequency-distribution-row {
