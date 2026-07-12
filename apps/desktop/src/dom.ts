@@ -42,7 +42,6 @@ export const dom = {
   concordanceLinesFilter: getElement<HTMLDivElement>("concordance-lines-filter"),
   concordanceLinesFilterSummary: getElement<HTMLSpanElement>("concordance-lines-filter-summary"),
   concordanceLinesFilterClear: getElement<HTMLButtonElement>("concordance-lines-filter-clear"),
-  concordanceSortLegend: getElement<HTMLDivElement>("concordance-sort-legend"),
   concordanceCollocationsPanel: getElement<HTMLElement>("concordance-collocations-panel"),
   concordanceCollocatesStats: getElement<HTMLParagraphElement>("concordance-collocates-stats"),
   concordanceCollocatesControls: getElement<HTMLDivElement>("concordance-collocates-controls"),
