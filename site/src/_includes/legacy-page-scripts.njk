@@ -1,0 +1,119 @@
+<script>
+  (function () {
+    var root = document.documentElement;
+    var toggle = document.getElementById('theme-toggle');
+    if (!toggle) return;
+    function syncToggle() {
+      var dark = root.getAttribute('data-theme') === 'dark';
+      toggle.setAttribute('aria-pressed', String(dark));
+      toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+    }
+    syncToggle();
+    toggle.addEventListener('click', function () {
+      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+      syncToggle();
+    });
+  })();
+</script>
+{% if meta.screenshotTabs %}
+<script>
+  (function () {
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('.shot-tab'));
+    var panels = Array.prototype.slice.call(document.querySelectorAll('.shot-panel'));
+    function show(index) {
+      tabs.forEach(function (tab, current) {
+        tab.setAttribute('aria-selected', current === index ? 'true' : 'false');
+        tab.tabIndex = current === index ? 0 : -1;
+      });
+      panels.forEach(function (panel, current) {
+        if (current === index) panel.removeAttribute('hidden');
+        else panel.setAttribute('hidden', '');
+      });
+    }
+    tabs.forEach(function (tab, index) {
+      tab.addEventListener('click', function () { show(index); });
+    });
+    var tablist = document.querySelector('.shot-tabs');
+    tablist.addEventListener('keydown', function (event) {
+      var current = tabs.indexOf(document.activeElement);
+      if (current < 0) return;
+      var next = null;
+      if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
+      else if (event.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = tabs.length - 1;
+      if (next !== null) {
+        event.preventDefault();
+        tabs[next].focus();
+        show(next);
+      }
+    });
+    show(0);
+  })();
+</script>
+{% endif %}
+{% if meta.conceptsRuntime %}
+<script>
+  (function () {
+    var toc = document.querySelector('[data-docs-toc]');
+    if (!toc || !('IntersectionObserver' in window)) return;
+    var links = Array.prototype.slice.call(toc.querySelectorAll('a[href^="#"]'));
+    var entries = links.map(function (link) {
+      var id;
+      try { id = decodeURIComponent(link.hash.slice(1)); } catch (error) { return null; }
+      var heading = document.getElementById(id);
+      return heading ? { link: link, heading: heading } : null;
+    }).filter(Boolean);
+    function setActive(activeLink) {
+      entries.forEach(function (entry) {
+        var active = entry.link === activeLink;
+        entry.link.classList.toggle('is-active', active);
+        if (active) entry.link.setAttribute('aria-current', 'true');
+        else entry.link.removeAttribute('aria-current');
+      });
+    }
+    var observer = new IntersectionObserver(function (observed) {
+      var visible = observed.filter(function (entry) { return entry.isIntersecting; })
+        .sort(function (left, right) { return left.boundingClientRect.top - right.boundingClientRect.top; });
+      if (!visible.length) return;
+      var active = entries.find(function (entry) { return entry.heading === visible[0].target; });
+      if (active) setActive(active.link);
+    }, { rootMargin: '-82px 0px -70% 0px', threshold: [0, 1] });
+    entries.forEach(function (entry) {
+      observer.observe(entry.heading);
+      entry.link.addEventListener('click', function () { setActive(entry.link); });
+    });
+    if (entries.length) setActive(entries[0].link);
+  })();
+</script>
+<style>
+  pre.mermaid,
+  pre.mermaid svg,
+  pre.mermaid svg text {
+    font-family: "IBM Plex Sans", sans-serif !important;
+  }
+</style>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    themeVariables: {
+      primaryColor: "#f6f6f6",
+      primaryTextColor: "#333333",
+      primaryBorderColor: "#4d4d4d",
+      secondaryColor: "#f6f6f6",
+      secondaryTextColor: "#333333",
+      secondaryBorderColor: "#4d4d4d",
+      tertiaryColor: "#ffffff",
+      tertiaryTextColor: "#333333",
+      tertiaryBorderColor: "#4d4d4d",
+      lineColor: "#4d4d4d",
+      edgeLabelBackground: "#ffffff",
+      fontFamily: "IBM Plex Sans, sans-serif"
+    }
+  });
+</script>
+{% endif %}

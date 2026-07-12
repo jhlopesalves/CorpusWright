@@ -1,0 +1,123 @@
+---
+layout: layouts/base.njk
+pageKey: home
+permalink: index.html
+---
+<main id="top">
+    <section class="hero">
+      <div class="shell">
+        <div class="hero-split">
+          <img class="hero-logo" src="assets/icon.png" alt="CorpusWright logo">
+          <div>
+            <h1>A local-first corpus tool, built in Rust.</h1>
+            <p class="lede">CorpusWright is a local-first desktop workbench for preparing, inspecting, and exploring text corpora, with frequency lists, KWIC concordances, collocates, document-spread diagnostics, and reproducible records of every processing step.</p>
+            <div class="hero-downloads">
+              <div class="dl-list">
+                <p class="dl-heading">Downloads</p>
+                <ul>
+                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download latest alpha</a></li>
+                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases/latest">View the latest release</a></li>
+                </ul>
+              </div>
+              <p class="muted dl-note">Experimental alpha. Windows, macOS, and Linux builds are listed on the release page where available; unsigned Windows and macOS builds may prompt a warning before running.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section tight">
+      <div class="shell">
+        <div class="intro-split">
+          <div class="principle-list">
+            <div class="principle">
+              <h3>Reproducible</h3>
+              <p>Every export ships a manifest: cleaning configuration, tokeniser settings, and SHA-256 checksums of
+                every source and processed file.</p>
+            </div>
+            <div class="principle">
+              <h3>Statistical profile</h3>
+              <p>A full statistical profile of your corpus: frequency, diversity, dispersion, concentration and
+                distributional shape, with every measure defined and clearly explained.</p>
+            </div>
+            <div class="principle">
+              <h3>Transparent</h3>
+              <p>Every statistic comes with its formula, an interpretation and its limitations.</p>
+            </div>
+            <div class="principle">
+              <h3>Built in Rust</h3>
+              <p>A native Rust core keeps analysis local and deterministic, with reproducible outputs and explicit manifests.</p>
+            </div>
+          </div>
+          <div>
+            <div class="shot-tabs" role="tablist" aria-label="Interface screenshots">
+              <button class="shot-tab" role="tab" id="tab-0" aria-controls="panel-0"
+                aria-selected="true">Prepare</button>
+              <button class="shot-tab" role="tab" id="tab-1" aria-controls="panel-1" aria-selected="false">Cleaning
+                settings</button>
+              <button class="shot-tab" role="tab" id="tab-2" aria-controls="panel-2" aria-selected="false">Repeated
+                artefacts</button>
+            </div>
+            <div class="shot-panel" role="tabpanel" id="panel-0" aria-labelledby="tab-0">
+              <figure class="screenshot">
+                <div class="theme-img-dark"><img src="assets/screenshots/prepare-dark.png" alt="Prepare, dark"></div>
+                <div class="theme-img-light"><img src="assets/screenshots/prepare-light.png" alt="Prepare, light"></div>
+                <figcaption>Prepare workbench with source selection, corpus summary, and original/processed text
+                  preview.</figcaption>
+              </figure>
+            </div>
+            <div class="shot-panel" role="tabpanel" id="panel-1" aria-labelledby="tab-1" hidden>
+              <figure class="screenshot">
+                <div class="theme-img-dark"><img src="assets/screenshots/prepare-cleaning-settings-dark.png"
+                    alt="Cleaning settings, dark"></div>
+                <div class="theme-img-light"><img src="assets/screenshots/prepare-cleaning-settings-light.png"
+                    alt="Cleaning settings, light"></div>
+                <figcaption>Cleaning settings used to configure repeatable preprocessing behaviour.</figcaption>
+              </figure>
+            </div>
+            <div class="shot-panel" role="tabpanel" id="panel-2" aria-labelledby="tab-2" hidden>
+              <figure class="screenshot">
+                <div class="theme-img-dark"><img src="assets/screenshots/prepare-repeated-artefacts-dark.png"
+                    alt="Repeated artefacts, dark"></div>
+                <div class="theme-img-light"><img src="assets/screenshots/prepare-repeated-artefacts-light.png"
+                    alt="Repeated artefacts, light"></div>
+                <figcaption>Repeated-artefact finder for reviewing recurring extraction noise before adding removal
+                  rules.</figcaption>
+              </figure>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section compact">
+      <div class="shell">
+        <div class="card-grid-2">
+          <a class="card" href="quick-start.html">
+            <h3>Get started</h3>
+            <p>Install CorpusWright, create a project, and clean a corpus from start to finish in a guided walkthrough that assumes no prior corpus experience.</p><span class="card-link">To the tutorials &#x2192;</span>
+          </a>
+          <a class="card" href="concepts/overview.html">
+            <h3>Concepts</h3>
+            <p>How CorpusWright prepares a corpus and how to read what it reports: deterministic, reviewable cleaning, then dispersion, lexical diversity, vocabulary growth, and how to interpret them.</p><span class="card-link">Concepts &#x2192;</span>
+          </a>
+          <a class="card" href="roadmap.html">
+            <h3>Roadmap</h3>
+            <p>What works today and what is coming: the Explore workbench with KWIC and concordance, collocations, and
+              pattern search.</p><span class="card-link">See the roadmap &#x2192;</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section compact" id="citation">
+      <div class="shell">
+        <div class="section-lead">
+          <h2>Citation</h2>
+        </div>
+        <p>If you use CorpusWright in your research or teaching, please cite it. The repository contains the machine-readable <code>CITATION.cff</code> metadata below; the <a href="citation.html">full citation guidance</a> also provides APA and BibTeX examples.</p>
+      <pre class="code" id="home-citation-cff"><code class="mono">{{ citation.source | htmlText | safe }}</code></pre>
+
+</div>
+    </section>
+  </main>

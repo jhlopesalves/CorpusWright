@@ -27,6 +27,7 @@ export async function build(arguments_ = process.argv.slice(2)) {
     "--config=eleventy.config.mjs",
     `--output=${output}`
   ]);
+  await run(process.execPath, ["scripts/build-assets.mjs", "--output", output]);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -1,0 +1,85 @@
+---
+layout: layouts/article.njk
+pageKey: roadmap
+permalink: roadmap.html
+---
+<main id="top">
+
+<section class="section">
+  <div class="shell">
+    <div class="section-lead">
+      <p class="eyebrow">Roadmap</p>
+      <h1>Current alpha and planned work</h1>
+      <p class="lede">The current public alpha covers preprocessing, frequency views, KWIC concordances, collocates, document-spread diagnostics, and safer text decoding. A surface positional index now exists as internal infrastructure; the next step is to route the analysis paths through it behind parity checks.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="shell grid">
+    <article class="card">
+      <h3>Alpha.8 now</h3>
+      <ul class="checklist">
+        <li>Local project folders</li>
+        <li>Text extraction from supported formats</li>
+        <li>Cleaning settings and processed previews</li>
+        <li>Repeated artefact finder</li>
+        <li>Structured custom removals</li>
+        <li>Corpus Overview / Frequency List</li>
+        <li>Surface and phrase KWIC search</li>
+        <li>KWIC sorting and source preview</li>
+        <li>Document spread diagnostics</li>
+        <li>Collocates alpha with raw counts, corpus frequency, and logDice</li>
+        <li>Strict UTF-8 decoding with Windows-1252 recovery</li>
+      </ul>
+    </article>
+    <article class="card">
+      <h3>Internal groundwork</h3>
+      <ul class="checklist">
+        <li>Landed: surface positional index, case-sensitive parity, and an index-backed Concordance route</li>
+        <li>In progress: a developer-only scan, index, and audit dogfood mode that is not present in public builds</li>
+      </ul>
+    </article>
+    <article class="card">
+      <h3>Next / near-term</h3>
+      <ul class="checklist">
+        <li>Dogfood the current alpha on the IMDB and Portuguese corpora</li>
+        <li>Exercise the index-backed Concordance route against the scan engine under parity checks</li>
+        <li>Decide the default Concordance backend once parity holds on real corpora</li>
+        <li>Write the frontend Analyse workspace state-model brief</li>
+        <li>Shape the future single-workspace Concordance interaction model</li>
+      </ul>
+    </article>
+    <article class="card">
+      <h3>Future</h3>
+      <ul class="checklist">
+        <li>N-grams</li>
+        <li>CQL-lite</li>
+        <li>Lemma/POS KWIC</li>
+        <li>Annotation-aware Concordance</li>
+        <li>Richer Collocates</li>
+        <li>Export and copy workflows</li>
+      </ul>
+    </article>
+  </div>
+</section>
+
+<section class="section">
+  <div class="shell">
+    <div class="section-lead">
+      <h2>Known alpha limits</h2>
+      <p>These are the boundaries of the current public alpha.</p>
+    </div>
+    <div class="principles">
+      <p><span class="term">Concordance and Collocates:</span> functional alpha features, not the final workflow design.</p>
+      <p><span class="term">Indexing:</span> current public alpha builds still run the scan and cached analysis paths; the surface positional index is internal groundwork and is not yet the default in released builds.</p>
+      <p><span class="term">Queries:</span> there is no CQL, no N-grams, no lemma/POS KWIC, and no annotation-aware Concordance yet.</p>
+      <p><span class="term">Hosting:</span> CorpusWright is local-first. It does not provide remote corpus hosting.</p>
+      <p><span class="term">Packaging:</span> Windows builds may still show unsigned-app warnings.</p>
+    </div>
+  </div>
+</section>
+
+
+
+</main>

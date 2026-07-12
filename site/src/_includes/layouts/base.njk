@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="{{ site.language }}">
+{% set meta = pageMetadata[pageKey] %}
+<head>
+  {% include "metadata.njk" %}
+</head>
+<body>
+  {% include "header.njk" %}
+  {{ content | safe }}
+  {% include "footer.njk" %}
+  {% include "legacy-page-scripts.njk" %}
+</body>
+</html>
