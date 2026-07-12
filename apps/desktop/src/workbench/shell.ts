@@ -7,6 +7,11 @@ import {
   type CorpusOverviewFinding,
   type CorpusOverviewFindingSeverity,
   cancelConcordance,
+  queryOverviewDistribution,
+  queryOverviewDistributionEvidence,
+  type OverviewDistributionEvidencePage,
+  type OverviewDistributionMetric,
+  type OverviewDistributionResult,
 } from "../analysis";
 import { BOOLEAN_CLEANING_CONFIG_KEYS } from "../config";
 import { dom } from "../dom";
@@ -20,30 +25,31 @@ import {
 import { isOverviewStopword } from "../overview-stopwords";
 import {
   createOverviewFigure,
+  createOverviewRangeControl,
+  createOverviewSelectControl,
   createOverviewSegmentedControl,
   replaceFigureSvg,
 } from "../plots/figure";
 import {
   applyFigurePalette,
+  OverviewFigureController,
   readFigurePalette,
   writeFigurePalette,
   type FigurePaletteMode,
+  type FigureControlState,
 } from "../plots/figure-workbench";
 import {
   buildCoverageGeometry,
   buildDispersionGeometry,
   buildDispersionPlaneGeometry,
   buildDispersionRosterGeometry,
-  buildLengthHistogramGeometry,
+  buildDistributionDiagnosticGeometry,
   buildLexicalSpectrumGeometry,
-  buildMattrDistributionGeometry,
   buildRankFrequencyGeometry,
   buildVocabularyGrowthGeometry,
   formatDispersionPlaneStats,
   formatDispersionProfileStats,
   formatDispersionRosterStats,
-  formatLengthHistogramStats,
-  formatMattrDistributionStats,
   formatUniversalTypeCaption,
 } from "../plots/model";
 import {
@@ -51,9 +57,9 @@ import {
   renderDispersionPlaneSvg,
   renderDispersionRosterSvg,
   renderDispersionSvg,
-  renderLengthHistogramSvg,
+  renderDistributionDiagnosticSvg,
+  renderFigureStatusSvg,
   renderLexicalSpectrumSvg,
-  renderMattrDistributionSvg,
   renderRankFrequencySvg,
   renderVocabularyGrowthSvg,
 } from "../plots/render";
@@ -1093,31 +1099,396 @@ function renderDocumentLengthDistribution(corpus: AnalysisCorpus): HTMLElement {
 }
 
 function renderLengthHistogramFigure(corpus: AnalysisCorpus): HTMLElement | null {
-  const balance = corpus.balance;
-  if (balance.lengthHistogram.length === 0) return null;
-  return createOverviewFigure({
-    id: "overview-length-histogram",
-    title: "Document-length distribution",
-    subtitle: "Power-of-two token bins by document count.",
-    captionStats: formatLengthHistogramStats(
-      corpus.totals.documents,
-      balance.medianTokens,
-      balance.minimumTokens,
-      balance.maximumTokens,
-    ),
-    captionReading: "Aggregate frequencies inherit the shape of this histogram: a long right tail means a few documents speak with a disproportionate voice.",
-    explanation: createFigureExplanation("distributionDiagnostics"),
-    renderSvg: () => renderLengthHistogramSvg(
-      "overview-length-histogram",
-      buildLengthHistogramGeometry({
-        bins: balance.lengthHistogram,
-        documents: corpus.totals.documents,
-        medianTokens: balance.medianTokens,
-        minimumTokens: balance.minimumTokens,
-        maximumTokens: balance.maximumTokens,
-      }),
-    ),
+  if (corpus.totals.documents === 0) return null;
+  return renderDistributionDiagnosticFigure(corpus, "documentLength");
+}
+
+interface DistributionFigureControls extends FigureControlState {
+  view: "histogram" | "ecdf" | "qq";
+  histogramRule: "auto" | "sturges" | "scott" | "freedmanDiaconis" | "manual";
+  manualBins: number;
+  xScale: "linear" | "log";
+  yMode: "count" | "share";
+  qqReference: "normal" | "lognormal";
+  labelsMode: "extremes" | "pinned" | "off";
+}
+
+function renderDistributionDiagnosticFigure(
+  corpus: AnalysisCorpus,
+  metric: OverviewDistributionMetric,
+): HTMLElement {
+  const isLength = metric === "documentLength";
+  const id = isLength ? "overview-length-histogram" : "overview-mattr-distribution";
+  const initial: DistributionFigureControls = {
+    view: "histogram",
+    histogramRule: "auto",
+    manualBins: 24,
+    xScale: isLength ? "log" : "linear",
+    yMode: "share",
+    qqReference: isLength ? "lognormal" : "normal",
+    labelsMode: "extremes",
+  };
+  const controller = new OverviewFigureController<DistributionFigureControls>({
+    initialControls: initial,
+    exportMetadata: (controls) => [distributionActiveState(controls, result)],
   });
+  const evidenceController = new OverviewFigureController({
+    initialControls: { offset: 0 },
+  });
+  let result: OverviewDistributionResult | null = null;
+  let figure: HTMLElement | null = null;
+  let manualTimer: number | null = null;
+  let selectedInterval: { key: string; lower: number; upper: number; upperInclusive: boolean } | null = null;
+
+  const controls = document.createElement("div");
+  controls.className = "cw-overview-distribution-controls";
+  const viewControl = createOverviewSegmentedControl(
+    "View",
+    [
+      { value: "histogram", label: "Histogram" },
+      { value: "ecdf", label: "ECDF" },
+      { value: "qq", label: "Q–Q" },
+    ],
+    initial.view,
+    (view) => {
+      controller.updateControls({ view });
+      syncControls();
+      refreshFigure();
+    },
+  );
+  const binsControl = createOverviewSelectControl(
+    "Bins",
+    [
+      { value: "auto", label: "Auto" },
+      { value: "sturges", label: "Sturges" },
+      { value: "scott", label: "Scott" },
+      { value: "freedmanDiaconis", label: "Freedman–Diaconis" },
+      { value: "manual", label: "Manual" },
+    ],
+    initial.histogramRule,
+    (histogramRule) => {
+      controller.updateControls({ histogramRule });
+      syncControls();
+      void requestDistribution();
+    },
+  );
+  const manualControl = createOverviewRangeControl("Manual bins", {
+    minimum: 8,
+    maximum: 100,
+    step: 1,
+    initialValue: initial.manualBins,
+    onInput: (manualBins) => {
+      controller.updateControls({ manualBins });
+      if (manualTimer !== null) window.clearTimeout(manualTimer);
+      manualTimer = window.setTimeout(() => void requestDistribution(), 180);
+    },
+    onChange: (manualBins) => {
+      controller.updateControls({ manualBins });
+      if (manualTimer !== null) window.clearTimeout(manualTimer);
+      void requestDistribution();
+    },
+  });
+  const scaleControl = createOverviewSegmentedControl(
+    "X scale",
+    [{ value: "log", label: "Log" }, { value: "linear", label: "Linear" }],
+    initial.xScale,
+    (xScale) => {
+      controller.updateControls({ xScale });
+      void requestDistribution();
+    },
+  );
+  const yControl = createOverviewSegmentedControl(
+    "Y",
+    [{ value: "share", label: "Share" }, { value: "count", label: "Documents" }],
+    initial.yMode,
+    (yMode) => {
+      controller.updateControls({ yMode });
+      refreshFigure();
+    },
+  );
+  const referenceControl = createOverviewSegmentedControl(
+    "Q–Q reference",
+    [{ value: "lognormal", label: "Lognormal" }, { value: "normal", label: "Normal" }],
+    initial.qqReference,
+    (qqReference) => {
+      controller.updateControls({ qqReference });
+      void requestDistribution();
+    },
+  );
+  const labelsControl = createOverviewSelectControl(
+    "Labels",
+    [
+      { value: "extremes", label: "Extreme witnesses" },
+      { value: "pinned", label: "Pinned only" },
+      { value: "off", label: "Off" },
+    ],
+    initial.labelsMode,
+    (labelsMode) => {
+      controller.updateControls({ labelsMode });
+      refreshFigure();
+    },
+  );
+  controls.append(viewControl, binsControl, manualControl, scaleControl, yControl);
+  if (isLength) controls.appendChild(referenceControl);
+  else controls.appendChild(labelsControl);
+
+  const evidence = createDistributionEvidenceSection();
+
+  function syncControls(): void {
+    const state = controller.controls;
+    binsControl.hidden = state.view !== "histogram";
+    manualControl.hidden = state.view !== "histogram" || state.histogramRule !== "manual";
+    scaleControl.hidden = !isLength || state.view === "qq";
+    yControl.hidden = state.view !== "histogram";
+    referenceControl.hidden = !isLength || state.view !== "qq";
+    labelsControl.hidden = isLength || state.view !== "histogram";
+  }
+
+  function renderSvg(): SVGSVGElement {
+    if (!result) {
+      const message = controller.error
+        ? `Distribution unavailable: ${controller.error}`
+        : "Loading exact distribution diagnostics…";
+      return renderFigureStatusSvg(id, message);
+    }
+    return renderDistributionDiagnosticSvg(id, buildDistributionDiagnosticGeometry({
+      result,
+      metric,
+      view: controller.controls.view,
+      yMode: controller.controls.yMode,
+      qqReference: controller.controls.qqReference,
+      labelsMode: controller.controls.labelsMode,
+      mattrWindow: corpus.lexicalSpectrum.mattrWindow,
+      pinnedKeys: controller.pins,
+    }));
+  }
+
+  function refreshFigure(): void {
+    if (!figure) return;
+    replaceFigureSvg(figure, renderSvg(), {
+      captionStats: distributionCaptionStats(metric, controller.controls, result, corpus),
+      captionReading: distributionReading(metric, controller.controls.view),
+    });
+  }
+
+  async function requestDistribution(): Promise<void> {
+    result = null;
+    refreshFigure();
+    const state = controller.controls;
+    const applied = await controller.loadLatest(
+      () => queryOverviewDistribution({
+        metric,
+        histogramRule: state.histogramRule,
+        manualBinCount: state.manualBins,
+        xScale: state.xScale,
+        qqReference: state.qqReference,
+        maximumReturnedPointCount: 800,
+      }, effectiveCleaningConfig()),
+      (next) => { result = next; },
+    );
+    if (applied) refreshFigure();
+  }
+
+  async function loadEvidence(offset: number): Promise<void> {
+    if (!selectedInterval) return;
+    evidence.hidden = false;
+    evidence.dataset.loading = "true";
+    renderEvidenceMessage(evidence, "Loading matching documents…");
+    const interval = selectedInterval;
+    const applied = await evidenceController.loadLatest(
+      () => queryOverviewDistributionEvidence({
+        metric,
+        lowerBound: interval.lower,
+        upperBound: interval.upper,
+        lowerInclusive: true,
+        upperInclusive: interval.upperInclusive,
+        descending: false,
+        offset,
+        limit: 25,
+      }, effectiveCleaningConfig()),
+      (page) => renderDistributionEvidencePage(evidence, page, metric, loadEvidence),
+    );
+    if (applied) delete evidence.dataset.loading;
+  }
+
+  function handlePin(key: string, pinned: boolean): void {
+    if (!result) return;
+    if (!pinned && selectedInterval?.key === key) {
+      selectedInterval = null;
+      evidence.hidden = true;
+      evidenceController.invalidatePendingLoad();
+      return;
+    }
+    if (!pinned) return;
+    if (key.startsWith("distribution-witness:")) {
+      const documentId = Number(key.split(":")[1]);
+      const witness = [...result.lowWitnesses, ...result.highWitnesses]
+        .find((candidate) => candidate.documentId === documentId);
+      if (!witness) return;
+      selectedInterval = {
+        key,
+        lower: witness.metricValue,
+        upper: witness.metricValue,
+        upperInclusive: true,
+      };
+      void loadEvidence(0);
+      return;
+    }
+    if (!key.startsWith("distribution-bin:")) return;
+    const index = Number(key.split(":")[1]);
+    const bin = result.histogramBins[index];
+    if (!bin) return;
+    selectedInterval = {
+      key,
+      lower: bin.lowerBound,
+      upper: bin.upperBound,
+      upperInclusive: index + 1 === result.histogramBins.length,
+    };
+    void loadEvidence(0);
+  }
+
+  syncControls();
+  figure = createOverviewFigure({
+    id,
+    title: isLength ? "Document-length distribution" : "MATTR distribution",
+    subtitle: isLength
+      ? "How unevenly is the corpus divided among documents?"
+      : "How much does lexical diversity vary between documents?",
+    controls,
+    controller,
+    onPinChange: handlePin,
+    onClearPins: () => {
+      selectedInterval = null;
+      evidence.hidden = true;
+      evidenceController.invalidatePendingLoad();
+    },
+    captionStats: distributionCaptionStats(metric, controller.controls, result, corpus),
+    captionReading: distributionReading(metric, controller.controls.view),
+    explanation: createFigureExplanation(
+      ...(isLength ? ["distributionDiagnostics" as const] : ["mattr" as const, "distributionDiagnostics" as const]),
+    ),
+    renderSvg,
+  });
+  figure.appendChild(evidence);
+  void requestDistribution();
+  return figure;
+}
+
+function distributionActiveState(
+  controls: DistributionFigureControls,
+  result: OverviewDistributionResult | null,
+): string {
+  if (controls.view === "qq") {
+    return `Q–Q diagnostic · ${controls.qqReference} reference`;
+  }
+  if (controls.view === "ecdf") {
+    return `ECDF · ${controls.xScale} scale${result?.ecdfCompressed ? " · deterministically compressed" : ""}`;
+  }
+  const rule = result?.effectiveRule ?? controls.histogramRule;
+  const bins = result?.effectiveBinCount ?? controls.manualBins;
+  return `Histogram · ${histogramRuleLabel(rule)} · ${formatNumber(bins)} bins · ${controls.xScale} scale · ${controls.yMode === "share" ? "share of documents" : "documents"}`;
+}
+
+function distributionCaptionStats(
+  metric: OverviewDistributionMetric,
+  controls: DistributionFigureControls,
+  result: OverviewDistributionResult | null,
+  corpus: AnalysisCorpus,
+): string {
+  const population = result?.population ?? (metric === "mattr"
+    ? corpus.lexicalSpectrum.mattrDocsUsed
+    : corpus.totals.documents);
+  const identity = metric === "mattr"
+    ? `Document MATTR · window ${formatNumber(corpus.lexicalSpectrum.mattrWindow)} · ${formatNumber(population)} eligible documents`
+    : `${formatNumber(population)} documents`;
+  return `${identity} · ${distributionActiveState(controls, result)}`;
+}
+
+function distributionReading(
+  metric: OverviewDistributionMetric,
+  view: DistributionFigureControls["view"],
+): string {
+  if (metric === "documentLength" && view === "qq") {
+    return "A near-straight lognormal Q–Q pattern means log document lengths resemble a normal reference. It does not mean raw lengths are normal or that the corpus is balanced.";
+  }
+  if (metric === "mattr" && view === "qq") {
+    return "The normal reference is a diagnostic comparison, not an assumption that bounded MATTR values ought to follow a normal distribution.";
+  }
+  if (view === "ecdf") {
+    return "Read any point as the share of eligible documents at or below that value. Deterministic compression preserves exact cumulative counts at retained checkpoints.";
+  }
+  return metric === "documentLength"
+    ? "True numeric bin widths show the complete document population; the selected bin rule and x scale affect appearance, so read the median and IQR alongside the bars."
+    : "MATTR compares lexical variety within equal 100-token windows. Higher is not automatically better, and documents shorter than the window remain visible in the eligibility strip.";
+}
+
+function histogramRuleLabel(rule: DistributionFigureControls["histogramRule"]): string {
+  switch (rule) {
+    case "auto": return "Auto";
+    case "sturges": return "Sturges";
+    case "scott": return "Scott";
+    case "freedmanDiaconis": return "Freedman–Diaconis";
+    case "manual": return "Manual";
+  }
+}
+
+function createDistributionEvidenceSection(): HTMLElement {
+  const section = document.createElement("section");
+  section.className = "cw-overview-distribution-evidence";
+  section.hidden = true;
+  section.setAttribute("aria-live", "polite");
+  return section;
+}
+
+function renderEvidenceMessage(section: HTMLElement, message: string): void {
+  const heading = document.createElement("h5");
+  heading.textContent = "Documents in the selected interval";
+  const status = document.createElement("p");
+  status.textContent = message;
+  section.replaceChildren(heading, status);
+}
+
+function renderDistributionEvidencePage(
+  section: HTMLElement,
+  page: OverviewDistributionEvidencePage,
+  metric: OverviewDistributionMetric,
+  loadPage: (offset: number) => Promise<void>,
+): void {
+  const heading = document.createElement("h5");
+  heading.textContent = `${formatNumber(page.totalMatchingDocuments)} matching documents`;
+  const list = document.createElement("ul");
+  list.className = "cw-overview-evidence-list";
+  for (const item of page.items) {
+    const row = document.createElement("li");
+    row.className = "cw-overview-evidence-row";
+    const name = document.createElement("strong");
+    name.textContent = item.documentName;
+    name.title = item.relativePath;
+    const tokens = document.createElement("span");
+    tokens.textContent = `${formatNumber(Number(item.tokenCount))} tokens`;
+    const value = document.createElement("span");
+    value.textContent = metric === "mattr"
+      ? `MATTR ${formatFixedNumber(item.metricValue, 3)}`
+      : `${formatNumber(item.metricValue)} tokens`;
+    row.append(name, tokens, value);
+    list.appendChild(row);
+  }
+  const pagination = document.createElement("div");
+  pagination.className = "cw-overview-evidence-pagination";
+  const previous = document.createElement("button");
+  previous.type = "button";
+  previous.className = "cw-overview-figure-action";
+  previous.textContent = "Previous";
+  previous.disabled = page.offset === 0;
+  previous.addEventListener("click", () => void loadPage(Math.max(0, page.offset - page.limit)));
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "cw-overview-figure-action";
+  next.textContent = "Next";
+  next.disabled = page.offset + page.items.length >= page.totalMatchingDocuments;
+  next.addEventListener("click", () => void loadPage(page.offset + page.limit));
+  pagination.append(previous, next);
+  section.replaceChildren(heading, list, pagination);
 }
 
 function renderDocumentBalance(corpus: AnalysisCorpus): HTMLElement {
@@ -1298,30 +1669,8 @@ function renderLexicalSpectrumFigure(corpus: AnalysisCorpus): HTMLElement {
   });
 }
 
-function renderMattrDistributionFigure(corpus: AnalysisCorpus): HTMLElement | null {
-  const spectrum = corpus.lexicalSpectrum;
-  const distribution = spectrum.mattrDistribution;
-  if (distribution === null) return null;
-  return createOverviewFigure({
-    id: "overview-mattr-distribution",
-    title: "MATTR distribution",
-    subtitle: "Per-document lexical diversity across eligible documents.",
-    captionStats: formatMattrDistributionStats(
-      distribution.usedDocuments,
-      spectrum.mattrMedian,
-      distribution.excludedDocuments,
-      spectrum.mattrWindow,
-    ),
-    captionReading: distribution.reading,
-    explanation: createFigureExplanation("mattr", "distributionDiagnostics"),
-    renderSvg: () => renderMattrDistributionSvg(
-      "overview-mattr-distribution",
-      buildMattrDistributionGeometry({
-        distribution,
-        median: spectrum.mattrMedian,
-      }),
-    ),
-  });
+function renderMattrDistributionFigure(corpus: AnalysisCorpus): HTMLElement {
+  return renderDistributionDiagnosticFigure(corpus, "mattr");
 }
 
 function renderCoverageFigure(corpus: AnalysisCorpus): HTMLElement {
@@ -1588,7 +1937,7 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
   lexicalDiversity.append(lexicalDiversityTitle, createMetricTable(diversityRows));
   panel.appendChild(lexicalDiversity);
   const mattrDistributionFigure = renderMattrDistributionFigure(corpus);
-  if (mattrDistributionFigure) panel.appendChild(mattrDistributionFigure);
+  panel.appendChild(mattrDistributionFigure);
   appendPanelReading(panel, spectrum.reading);
   return panel;
 }

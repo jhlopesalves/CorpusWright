@@ -264,6 +264,58 @@
   justify-self: start;
 }
 
+.cw-overview-distribution-evidence {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--cw-surface-subtle);
+}
+
+.cw-overview-distribution-evidence[hidden] {
+  display: none;
+}
+
+.cw-overview-distribution-evidence h5,
+.cw-overview-distribution-evidence p {
+  margin: 0;
+}
+
+.cw-overview-evidence-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cw-overview-evidence-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: baseline;
+  color: var(--text-muted);
+  font-size: var(--cw-type-caption-size);
+}
+
+.cw-overview-evidence-row strong {
+  overflow: hidden;
+  color: var(--text-color);
+  font-weight: var(--cw-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cw-overview-evidence-row span {
+  font-variant-numeric: tabular-nums;
+}
+
+.cw-overview-evidence-pagination {
+  display: flex;
+  gap: 6px;
+}
+
 @media (max-width: 980px) {
   .cw-overview-figure-header {
     grid-template-columns: 1fr;
