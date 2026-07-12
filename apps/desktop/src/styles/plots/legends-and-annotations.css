@@ -1,3 +1,5 @@
+/* Generic plot legends, labels, callouts, brackets, and annotation halos. */
+
 .cw-plot-line-halo {
   opacity: 0.08;
   pointer-events: none;

@@ -1,3 +1,5 @@
+/* Generic plot axes, grids, ticks, reference lines, and threshold guides. */
+
 .cw-plot-grid line {
   stroke: var(--cw-plot-grid);
   stroke-width: 1;
@@ -41,13 +43,6 @@
   stroke-dasharray: 5 4;
   stroke-opacity: 0.7;
   stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.cw-plot-mattr-witness-tick {
-  stroke: var(--cw-plot-point);
-  stroke-linecap: round;
-  stroke-width: 1.4;
   vector-effect: non-scaling-stroke;
 }
 
