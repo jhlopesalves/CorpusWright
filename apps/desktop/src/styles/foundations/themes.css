@@ -120,6 +120,22 @@
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --cw-brand-blue: #0058a6;
   --focus-ring: #93c5fd;
+
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #0058a6;
+
+  --cw-primary-text: var(--bg-color);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
 }
 
 [data-theme="corpus-light"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -240,6 +256,25 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #1d4ed8;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-brand-blue: #0058a6;
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #0058a6;
+
+  --cw-primary-text: var(--cw-text-inverse);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
 }
 
 [data-theme="workbench-light"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -360,6 +395,25 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #007acc;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-brand-blue: #0058a6;
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #ffffff;
+
+  --cw-primary-text: var(--cw-text-inverse);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
 }
 
 [data-theme="workbench-dark"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -480,11 +534,26 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #3794ff;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-brand-blue: #0058a6;
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #252526;
+
+  --cw-primary-text: var(--cw-text-inverse);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
 }
-
-
-
-
 
 [data-theme="retro-light"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
@@ -532,18 +601,18 @@
   --cw-danger-bg-hover: #802149;
   --cw-danger-bg-subtle: rgba(179, 38, 30, 0.09);
   --cw-danger-border: rgba(179, 38, 30, 0.34);
-  --cw-danger-text: #982856;
+  --cw-danger-text: var(--text-color);
   --cw-warning-bg: rgba(138, 90, 0, 0.08);
   --cw-warning-bg-strong: rgba(138, 90, 0, 0.1);
   --cw-warning-border: rgba(138, 90, 0, 0.35);
   --cw-warning-border-subtle: rgba(138, 90, 0, 0.26);
   --cw-warning-border-strong: rgba(138, 90, 0, 0.55);
-  --cw-warning-text: #7f5400;
+  --cw-warning-text: var(--text-color);
   --cw-warning-indicator: #a36800;
   --cw-info-bg: rgba(0, 95, 184, 0.08);
   --cw-info-border: rgba(0, 95, 184, 0.35);
   --cw-info-border-strong: rgba(0, 95, 184, 0.55);
-  --cw-info-text: #2c6e9f;
+  --cw-info-text: var(--text-color);
   --cw-collocate-bg: rgba(138, 67, 120, 0.08);
   --cw-collocate-border: rgba(138, 67, 120, 0.3);
   --cw-collocate-text: #7a315f;
@@ -551,18 +620,18 @@
   --cw-success-bg-strong: rgba(29, 111, 66, 0.1);
   --cw-success-border: rgba(29, 111, 66, 0.3);
   --cw-success-border-strong: #1f765d;
-  --cw-success-text: #1f765d;
+  --cw-success-text: var(--text-color);
   --cw-neutral-bg: rgba(90, 90, 90, 0.1);
   --cw-neutral-border: rgba(90, 90, 90, 0.28);
   --cw-neutral-text: #5f5f5f;
   --cw-category-mixed-bg: rgba(105, 51, 155, 0.08);
   --cw-category-mixed-bg-strong: rgba(105, 51, 155, 0.12);
   --cw-category-mixed-border: rgba(105, 51, 155, 0.32);
-  --cw-category-mixed-text: #843fa4;
+  --cw-category-mixed-text: var(--text-color);
   --cw-category-numeric-bg: rgba(138, 90, 0, 0.08);
   --cw-category-numeric-bg-soft: rgba(138, 90, 0, 0.06);
   --cw-category-numeric-border: rgba(138, 90, 0, 0.32);
-  --cw-category-numeric-text: #7f5400;
+  --cw-category-numeric-text: var(--text-color);
   --cw-search-match-bg: rgba(255, 213, 79, 0.55);
   --cw-search-current-bg: #a36800;
   --cw-search-current-text: #ffffff;
@@ -607,6 +676,22 @@
   --cw-retro-highlight: #ffffff;
   --cw-retro-shadow: #808080;
   --cw-retro-deep-shadow: #404040;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-brand-blue: #0058a6;
+  --cw-retro-input-bg: #ffffff;
+  --cw-retro-input-text: #000000;
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #000080;
+
+  --cw-primary-text: var(--cw-text-inverse);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
 }
 
 [data-theme="retro-dark"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -731,12 +816,23 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #00ffcc;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-brand-blue: #0058a6;
+  --cw-retro-input-bg: #05080c;
+  --cw-retro-input-text: #d7e7ff;
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #000080;
+
+  --cw-primary-text: var(--bg-color);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
 }
-
-
-
-
-
 
 [data-theme="graphite-light"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
@@ -856,6 +952,25 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #5f7685;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-brand-blue: #0058a6;
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #f0f0f4;
+
+  --cw-primary-text: var(--cw-text-inverse);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
 }
 
 [data-theme="graphite-dark"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -976,8 +1091,26 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #aebdca;
-}
 
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-brand-blue: #0058a6;
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #202224;
+
+  --cw-primary-text: var(--bg-color);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
+}
 
 [data-theme="solar-light"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
@@ -1097,6 +1230,25 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #2684a8;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-brand-blue: #0058a6;
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #fdf6e3;
+
+  --cw-primary-text: var(--cw-text-inverse);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--cw-primary-hover);
 }
 
 [data-theme="solar-dark"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -1217,9 +1369,26 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #8bdbe4;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-brand-blue: #0058a6;
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #002b36;
+
+  --cw-primary-text: var(--bg-color);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
 }
-
-
 
 [data-theme="sepia-light"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
@@ -1339,6 +1508,25 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #9b6b3d;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-brand-blue: #0058a6;
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #f4ecd8;
+
+  --cw-primary-text: var(--cw-text-inverse);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
 }
 
 [data-theme="moss-light"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -1459,6 +1647,25 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #4e8f5a;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-brand-blue: #0058a6;
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #f2f4f3;
+
+  --cw-primary-text: var(--cw-text-inverse);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
 }
 
 [data-theme="moss-dark"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -1579,6 +1786,25 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #a4d58f;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-brand-blue: #0058a6;
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #1a201c;
+
+  --cw-primary-text: var(--bg-color);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
 }
 
 [data-theme="high-contrast-dark"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -1700,6 +1926,24 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #ffff00;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: #111111;
+  --cw-theme-selection-hover-bg: #222222;
+  --cw-theme-selection-text: #ffffff;
+  --cw-theme-selection-outline: #00e5ff;
+  --cw-native-titlebar-color: #000000;
+
+  --cw-primary-text: var(--cw-text-inverse);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
 }
 
 [data-theme="sepia-dark"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -1820,6 +2064,25 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #f0c28f;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-brand-blue: #0058a6;
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #2b241c;
+
+  --cw-primary-text: var(--bg-color);
+  --cw-danger-button-text: var(--cw-text-inverse);
+
+  --cw-primary-bg: var(--accent-color);
 }
 
 [data-theme="high-contrast-light"] {--cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -1869,18 +2132,18 @@
   --cw-danger-bg-hover: #ffb4ab;
   --cw-danger-bg-subtle: rgba(255, 138, 128, 0.18);
   --cw-danger-border: rgba(255, 138, 128, 0.85);
-  --cw-danger-text: #ffb4ab;
+  --cw-danger-text: var(--text-color);
   --cw-warning-bg: rgba(255, 209, 102, 0.18);
   --cw-warning-bg-strong: rgba(255, 209, 102, 0.22);
   --cw-warning-border: rgba(255, 209, 102, 0.85);
   --cw-warning-border-subtle: rgba(255, 209, 102, 0.7);
   --cw-warning-border-strong: rgba(255, 209, 102, 1);
-  --cw-warning-text: #ffd166;
+  --cw-warning-text: var(--text-color);
   --cw-warning-indicator: #ffd166;
   --cw-info-bg: rgba(117, 221, 255, 0.18);
   --cw-info-border: rgba(117, 221, 255, 0.85);
   --cw-info-border-strong: rgba(117, 221, 255, 1);
-  --cw-info-text: #75ddff;
+  --cw-info-text: var(--text-color);
   --cw-collocate-bg: rgba(150, 0, 100, 0.16);
   --cw-collocate-border: rgba(150, 0, 100, 0.85);
   --cw-collocate-text: #7a0050;
@@ -1888,18 +2151,18 @@
   --cw-success-bg-strong: rgba(125, 255, 155, 0.2);
   --cw-success-border: rgba(125, 255, 155, 0.8);
   --cw-success-border-strong: #7dff9b;
-  --cw-success-text: #7dff9b;
+  --cw-success-text: var(--text-color);
   --cw-neutral-bg: rgba(215, 215, 215, 0.18);
   --cw-neutral-border: rgba(215, 215, 215, 0.75);
   --cw-neutral-text: #e8e8e8;
   --cw-category-mixed-bg: rgba(221, 173, 255, 0.18);
   --cw-category-mixed-bg-strong: rgba(221, 173, 255, 0.22);
   --cw-category-mixed-border: rgba(221, 173, 255, 0.82);
-  --cw-category-mixed-text: #ddadff;
+  --cw-category-mixed-text: var(--text-color);
   --cw-category-numeric-bg: rgba(255, 209, 102, 0.18);
   --cw-category-numeric-bg-soft: rgba(255, 209, 102, 0.16);
   --cw-category-numeric-border: rgba(255, 209, 102, 0.82);
-  --cw-category-numeric-text: #ffd166;
+  --cw-category-numeric-text: var(--text-color);
   --cw-search-match-bg: rgba(255, 255, 0, 0.65);
   --cw-search-current-bg: #ffd166;
   --cw-search-current-text: #000000;
@@ -1941,4 +2204,22 @@
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #0000ff;
+
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
+  --cw-retro-highlight: var(--cw-surface-elevated);
+  --cw-retro-shadow: var(--border-color);
+  --cw-retro-deep-shadow: var(--text-muted);
+  --cw-retro-input-bg: var(--cw-surface-input);
+  --cw-retro-input-text: var(--text-color);
+  --cw-theme-selection-bg: var(--selected-color);
+  --cw-theme-selection-hover-bg: var(--cw-interaction-bg-selected-hover);
+  --cw-theme-selection-text: var(--cw-text-selected);
+  --cw-theme-selection-outline: var(--focus-ring);
+  --cw-native-titlebar-color: #ffffff;
+
+  --cw-primary-text: var(--cw-text-inverse);
+  --cw-danger-button-text: var(--text-color);
+
+  --cw-primary-bg: var(--accent-color);
 }

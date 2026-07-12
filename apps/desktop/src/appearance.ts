@@ -217,29 +217,6 @@ function saveAppearancePreference(preference: AppearancePreference): void {
   localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify(preference));
 }
 
-function getTitleBarColor(familyId: string, variant: ThemeVariant): string {
-  switch (familyId) {
-    case "corpus":
-      return "#0058a6";
-    case "workbench":
-      return variant === "dark" ? "#252526" : "#ffffff";
-    case "graphite":
-      return variant === "dark" ? "#202224" : "#f0f0f4";
-    case "retro":
-      return "#000080"; // Win98 active window title bar (navy)
-    case "solar":
-      return variant === "dark" ? "#002b36" : "#fdf6e3";
-    case "sepia":
-      return variant === "dark" ? "#2b241c" : "#f4ecd8";
-    case "moss":
-      return variant === "dark" ? "#1a201c" : "#f2f4f3";
-    case "high-contrast":
-      return variant === "dark" ? "#000000" : "#ffffff";
-    default:
-      return "#0058a6";
-  }
-}
-
 export function applyAppearancePreference(preference: AppearancePreference): void {
   const next = normaliseAppearance(preference);
   const root = document.documentElement;
@@ -251,7 +228,7 @@ export function applyAppearancePreference(preference: AppearancePreference): voi
 
   // Dynamically set native titlebar color on Windows
   if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
-    const titleBarColor = getTitleBarColor(next.themeFamilyId, next.themeVariant);
+    const titleBarColor = getComputedStyle(root).getPropertyValue("--cw-native-titlebar-color").trim();
     invoke("set_window_titlebar_color", { color: titleBarColor }).catch((e) => {
       console.error("Failed to set titlebar color:", e);
     });
