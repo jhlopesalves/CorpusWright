@@ -1,0 +1,111 @@
+.cw-result-table-wrap {
+  border: 1px solid var(--cw-result-table-border);
+  border-radius: 4px;
+  background: var(--cw-result-table-surface);
+}
+
+.cw-result-table {
+  color: var(--cw-result-table-body-text);
+  font-family: var(--cw-font-ui);
+  font-synthesis: none;
+}
+
+.cw-result-table th {
+  background: var(--cw-result-table-header-surface);
+  color: var(--cw-result-table-header-text);
+  font-family: var(--cw-font-ui);
+  font-weight: 500;
+}
+
+.cw-result-table td {
+  background: var(--cw-result-table-row-surface);
+  color: var(--cw-result-table-body-text);
+  font-family: var(--cw-font-ui);
+  font-weight: 400;
+}
+
+.cw-result-table tbody tr:nth-child(even) > td {
+  background: var(--cw-result-table-row-alt-surface);
+}
+
+.cw-result-table tbody tr:hover > td,
+.cw-result-table tbody tr:focus-visible > td {
+  background: var(--cw-result-table-hover-surface);
+}
+
+.cw-result-table td.cw-result-table-lexical,
+.cw-result-table-lexical {
+  font-weight: 600;
+}
+
+.cw-result-table td.cw-result-table-numeric,
+.cw-result-table-numeric {
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.cw-result-table td.cw-result-table-file,
+.cw-result-table-file {
+  color: var(--cw-result-table-muted-text);
+  font-family: var(--cw-font-ui);
+  font-weight: 400;
+}
+
+.cw-result-table td.cw-result-table-kwic,
+.cw-result-table-kwic {
+  font-family: var(--cw-font-mono);
+  font-weight: 400;
+}
+
+.cw-result-table-note,
+.cw-result-table-pagination,
+.cw-result-table-pagination-status {
+  color: var(--cw-result-table-muted-text);
+  font-family: var(--cw-font-ui);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.cw-result-table-pagination {
+  font-variant-numeric: tabular-nums;
+}
+
+.concordance-kwic-panel .analysis-pagination {
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.concordance-kwic-panel .analysis-pagination button {
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 0.76rem;
+}
+
+.analysis-pagination {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-pagination .secondary-btn {
+  min-height: 28px;
+  padding: 3px 9px;
+}
+
+.concordance-search-actions button:focus-visible,
+.concordance-collocation-sort:focus-visible,
+.concordance-card .analysis-pagination button:focus-visible,
+.concordance-card-controls input:focus-visible,
+.concordance-card-controls select:focus-visible {
+  outline: 2px solid var(--cw-interaction-focus-ring);
+  outline-offset: 2px;
+}

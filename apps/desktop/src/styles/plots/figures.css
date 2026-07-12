@@ -1,0 +1,166 @@
+.analysis-panel h3,
+.document-length-distribution h4 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.cw-overview-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--panel-bg);
+}
+
+.cw-overview-figure-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: flex-start;
+  gap: 10px 16px;
+}
+
+.cw-overview-figure.is-collapsed {
+  gap: 0;
+  padding-block: 10px;
+}
+
+.cw-overview-figure.is-collapsed .cw-overview-figure-header {
+  align-items: center;
+}
+
+.cw-overview-figure-title-block {
+  min-width: 0;
+}
+
+.cw-overview-figure-title-block h4 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 1.08rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.cw-overview-figure-title-block p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.cw-overview-figure.is-collapsed .cw-overview-figure-title-block h4 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cw-overview-figure-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.cw-overview-figure-action {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--panel-bg);
+  color: var(--text-color);
+  font: 600 0.78rem/1.2 var(--cw-font-ui);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.cw-overview-figure-action:hover {
+  border-color: var(--cw-interaction-border-hover);
+  background: var(--cw-interaction-bg-hover);
+  box-shadow: var(--cw-interaction-shadow);
+}
+
+.cw-overview-figure-action[aria-pressed="true"] {
+  border-color: var(--accent-color);
+  background: var(--selected-color);
+  color: var(--cw-text-selected, var(--text-color));
+}
+
+.cw-overview-figure-action:focus-visible {
+  outline: none;
+  box-shadow: var(--cw-interaction-focus-ring);
+}
+
+.cw-overview-figure-body {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.cw-overview-figure.is-collapsed .cw-overview-figure-body,
+.cw-overview-figure.is-collapsed .cw-overview-figure-caption,
+.cw-overview-figure.is-collapsed .cw-overview-figure-subtitle,
+.cw-overview-figure.is-collapsed .cw-overview-figure-stats,
+.cw-overview-figure.is-collapsed .cw-overview-figure-export,
+.cw-overview-figure.is-collapsed .cw-overview-figure-controls {
+  display: none;
+}
+
+.cw-overview-figure-caption {
+  display: grid;
+  gap: 3px;
+}
+
+.cw-overview-figure-caption p {
+  margin: 0;
+}
+
+.cw-overview-figure-stats {
+  margin: 5px 0 0;
+  font-family: var(--cw-font-mono);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.cw-overview-figure-caption-metric {
+  color: var(--text-muted);
+}
+
+.cw-overview-figure-caption-value {
+  color: var(--text-color);
+}
+
+.cw-overview-figure-caption-reading,
+.cw-overview-figure-caption-detail {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.cw-plot-svg {
+  display: block;
+  width: 100%;
+  min-width: 560px;
+  height: auto;
+  color: var(--text-color);
+  font-family: var(--cw-font-ui);
+}
+
+.cw-plot-figure-title {
+  fill: var(--text-color);
+  font-family: var(--cw-font-ui);
+}
+
+.cw-plot-figure-subtitle,
+.cw-plot-figure-detail,
+.cw-plot-figure-reading {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-ui);
+}
+
+.cw-plot-figure-stats {
+  fill: var(--text-color);
+  font-family: var(--cw-font-mono);
+}

@@ -1,0 +1,112 @@
+/* Retro theme custom square border language and bevel styling */
+[data-theme="retro-light"] .primary-btn,
+[data-theme="retro-light"] .secondary-btn,
+[data-theme="retro-light"] .danger-btn,
+[data-theme="retro-light"] select,
+[data-theme="retro-light"] input,
+[data-theme="retro-light"] textarea,
+[data-theme="retro-light"] .modal-content,
+[data-theme="retro-light"] .stage-tab,
+[data-theme="retro-light"] .menu-item,
+[data-theme="retro-light"] .dropdown-content,
+[data-theme="retro-dark"] .primary-btn,
+[data-theme="retro-dark"] .secondary-btn,
+[data-theme="retro-dark"] .danger-btn,
+[data-theme="retro-dark"] select,
+[data-theme="retro-dark"] input,
+[data-theme="retro-dark"] textarea,
+[data-theme="retro-dark"] .modal-content,
+[data-theme="retro-dark"] .stage-tab,
+[data-theme="retro-dark"] .menu-item,
+[data-theme="retro-dark"] .dropdown-content {
+  border-radius: 0 !important;
+}
+
+[data-theme="retro-light"] .primary-btn,
+[data-theme="retro-light"] .secondary-btn,
+[data-theme="retro-light"] .danger-btn,
+[data-theme="retro-dark"] .primary-btn,
+[data-theme="retro-dark"] .secondary-btn,
+[data-theme="retro-dark"] .danger-btn {
+  border: 1px solid transparent !important;
+  box-shadow: inset 1px 1px 0 var(--cw-retro-highlight),
+              inset -1px -1px 0 var(--cw-retro-shadow),
+              1px 1px 0 var(--cw-retro-deep-shadow) !important;
+  text-shadow: none !important;
+}
+
+[data-theme="retro-light"] .primary-btn:active,
+[data-theme="retro-light"] .secondary-btn:active,
+[data-theme="retro-light"] .danger-btn:active,
+[data-theme="retro-dark"] .primary-btn:active,
+[data-theme="retro-dark"] .secondary-btn:active,
+[data-theme="retro-dark"] .danger-btn:active {
+  box-shadow: inset 1px 1px 0 var(--cw-retro-deep-shadow),
+              inset -1px -1px 0 var(--cw-retro-highlight),
+              -1px -1px 0 var(--cw-retro-shadow) !important;
+}
+
+[data-theme="retro-light"] input[type="text"],
+[data-theme="retro-light"] select,
+[data-theme="retro-light"] input[type="number"] {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  box-shadow: inset 1px 1px 0 var(--cw-retro-deep-shadow),
+              inset -1px -1px 0 var(--cw-retro-highlight),
+              inset 2px 2px 0 var(--cw-retro-shadow) !important;
+  border: none !important;
+}
+
+[data-theme="retro-dark"] input[type="text"],
+[data-theme="retro-dark"] select,
+[data-theme="retro-dark"] input[type="number"] {
+  background-color: #05080c !important;
+  color: #d7e7ff !important;
+  box-shadow: inset 1px 1px 0 var(--cw-retro-deep-shadow),
+              inset -1px -1px 0 var(--cw-retro-highlight),
+              inset 2px 2px 0 var(--cw-retro-shadow) !important;
+  border: none !important;
+}
+
+[data-theme="retro-light"] .app-bar,
+[data-theme="retro-dark"] .app-bar {
+  box-shadow: inset 1px 1px 0 var(--cw-retro-highlight),
+              inset -1px -1px 0 var(--cw-retro-shadow) !important;
+}
+
+/* High Contrast Dark legibility overrides to avoid giant yellow background blocks */
+[data-theme="high-contrast-dark"] #file-list li.selected {
+  background-color: #111111 !important;
+  color: #ffffff !important;
+  outline: 1.5px solid #00e5ff !important;
+  outline-offset: -1.5px;
+}
+[data-theme="high-contrast-dark"] #file-list li.selected:hover {
+  background-color: #222222 !important;
+}
+
+[data-theme="high-contrast-dark"] .stage-tab.active {
+  background-color: #111111 !important;
+  color: #ffffff !important;
+  border: 1.5px solid #00e5ff !important;
+  box-shadow: none !important;
+}
+[data-theme="high-contrast-dark"] .stage-tab.active:not(:disabled):hover {
+  background-color: #222222 !important;
+}
+
+[data-theme="high-contrast-dark"] .analyse-tool-item[aria-current="page"] {
+  background-color: #111111 !important;
+  color: #ffffff !important;
+  border: 1.5px solid #00e5ff !important;
+}
+[data-theme="high-contrast-dark"] .analyse-tool-item[aria-current="page"]:hover {
+  background-color: #222222 !important;
+}
+
+[data-theme="high-contrast-dark"] .repeated-artifact-table-container tbody tr.is-focused {
+  background-color: #111111 !important;
+  color: #ffffff !important;
+  outline: 1.5px solid #00e5ff !important;
+  outline-offset: -1.5px;
+}

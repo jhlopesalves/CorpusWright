@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadStyleGraph } from "./style-graph.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDir, "..");
@@ -151,7 +152,7 @@ function reportThemeCoverage(themeBlocks) {
   return violations;
 }
 
-const stylesSource = await readFile(stylesPath, "utf8");
+const { css: stylesSource } = await loadStyleGraph(stylesPath);
 const themeBlocks = parseThemeBlocks(stylesSource);
 const tokenRanges = themeBlocks.map(block => ({ start: block.start, end: block.end }));
 const files = [

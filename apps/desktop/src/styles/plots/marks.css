@@ -1,0 +1,185 @@
+.cw-plot-line,
+.cw-plot-fit-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cw-plot-line {
+  stroke: var(--cw-plot-point);
+  stroke-width: 2;
+}
+
+.cw-plot-fit-line {
+  stroke: var(--cw-plot-fit);
+  stroke-width: 2;
+}
+
+.cw-plot-heaps-fit {
+  stroke-dasharray: 6 4;
+}
+
+.cw-plot-area {
+  stroke: none;
+  fill-opacity: 0.06;
+}
+
+.cw-plot-area-stop {
+  stop-color: var(--cw-plot-point);
+}
+
+.cw-plot-point {
+  fill: var(--cw-plot-point);
+  fill-opacity: var(--cw-plot-fill-opacity, 0.82);
+  stroke: var(--panel-bg);
+  stroke-width: 1;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.cw-plot-point.is-panel-stroked {
+  stroke: var(--panel-bg);
+  stroke-width: 1.3;
+}
+
+.cw-plot-point.is-excluded {
+  fill: none;
+  stroke: var(--cw-plot-excluded);
+  stroke-width: 1.5;
+}
+
+.cw-plot-ramp-0 {
+  fill: var(--cw-plot-ramp-0);
+  stroke-color: var(--cw-plot-ramp-0);
+}
+
+.cw-plot-ramp-1 {
+  fill: var(--cw-plot-ramp-1);
+  stroke-color: var(--cw-plot-ramp-1);
+}
+
+.cw-plot-ramp-2 {
+  fill: var(--cw-plot-ramp-2);
+  stroke-color: var(--cw-plot-ramp-2);
+}
+
+.cw-plot-ramp-3 {
+  fill: var(--cw-plot-ramp-3);
+  stroke-color: var(--cw-plot-ramp-3);
+}
+
+.cw-plot-ramp-4 {
+  fill: var(--cw-plot-ramp-4);
+  stroke-color: var(--cw-plot-ramp-4);
+}
+
+.cw-plot-ramp-5 {
+  fill: var(--cw-plot-ramp-5);
+  stroke-color: var(--cw-plot-ramp-5);
+}
+
+.cw-plot-point.is-excluded {
+  fill: none;
+  stroke: var(--cw-plot-excluded);
+}
+
+.cw-plot-lollipop-stem {
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-opacity: 0.34;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-lollipop-stem.cw-plot-ramp-0 {
+  color: var(--cw-plot-ramp-0);
+}
+
+.cw-plot-lollipop-stem.cw-plot-ramp-1 {
+  color: var(--cw-plot-ramp-1);
+}
+
+.cw-plot-lollipop-stem.cw-plot-ramp-2 {
+  color: var(--cw-plot-ramp-2);
+}
+
+.cw-plot-lollipop-stem.cw-plot-ramp-3 {
+  color: var(--cw-plot-ramp-3);
+}
+
+.cw-plot-lollipop-stem.cw-plot-ramp-4 {
+  color: var(--cw-plot-ramp-4);
+}
+
+.cw-plot-lollipop-stem.cw-plot-ramp-5 {
+  color: var(--cw-plot-ramp-5);
+}
+
+.cw-plot-density-cell {
+  stroke: none;
+  shape-rendering: crispEdges;
+}
+
+.cw-plot-spectrum-band {
+  fill: var(--cw-surface-subtle);
+  pointer-events: none;
+}
+
+.cw-plot-spectrum-band.is-alternate {
+  fill: var(--cw-surface-subtle-strong);
+}
+
+.cw-plot-bar {
+  fill: var(--cw-plot-point);
+  fill-opacity: 0.72;
+  stroke: none;
+  transform-box: fill-box;
+  transform-origin: bottom center;
+}
+
+.cw-plot-composition-segment {
+  stroke: var(--panel-bg);
+  stroke-width: 1;
+}
+
+.cw-plot-cumulative-marker {
+  fill: var(--cw-plot-point);
+  stroke: var(--panel-bg);
+  stroke-width: 1.2;
+}
+
+.cw-plot-plane-witness {
+  fill: var(--cw-plot-point);
+  stroke: var(--panel-bg);
+  stroke-width: 1.4;
+  fill-opacity: 0.86;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.cw-plot-roster-guide {
+  stroke: var(--text-muted);
+  stroke-opacity: 0.24;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-roster-dot {
+  fill: var(--cw-plot-point);
+  stroke: var(--panel-bg);
+  stroke-width: 1.4;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.cw-plot-roster-dot.cw-plot-ramp-5 {
+  fill: var(--cw-plot-ramp-5);
+}
+
+.cw-plot-point,
+.cw-plot-plane-witness,
+.cw-plot-roster-dot {
+  opacity: 0;
+  transform: scale(0.82);
+  animation: cw-plot-point-in 360ms ease-out forwards;
+  animation-delay: var(--cw-plot-stagger, 0ms);
+}
