@@ -180,7 +180,7 @@ function sectionResult(
   const state = createConcordanceWorkbenchState(shared());
   const lines = beginConcordanceCardRequest(state, "lines")!;
   const distribution = beginConcordanceCardRequest(state, "distribution")!;
-  const page = { totalDocuments: 2, offset: 0, limit: 10, items: [], maxCount: 0 };
+  const page = { totalDocuments: 2, offset: 0, limit: 10, items: [], maxRatePer10k: 0 };
   const accepted = acceptConcordanceSectionResponse(
     state,
     new Map([

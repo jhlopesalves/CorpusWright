@@ -58,7 +58,11 @@ fn assert_compare_agrees_with_concordance(
             .collect::<HashMap<_, _>>();
         for row in &compare.documents {
             assert_eq!(
-                row.cells[expression_index].count, concordance_counts[&row.document_id],
+                row.cells[expression_index].count,
+                concordance_counts
+                    .get(&row.document_id)
+                    .copied()
+                    .unwrap_or_default(),
                 "{expression} document {}",
                 row.document_id
             );

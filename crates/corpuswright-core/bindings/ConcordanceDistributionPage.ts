@@ -4,4 +4,4 @@ import type { ConcordanceDistributionItem } from "./ConcordanceDistributionItem"
 /**
  * Bounded per-document distribution for the current concordance query.
  */
-export type ConcordanceDistributionPage = { totalDocuments: number, offset: number, limit: number, items: Array<ConcordanceDistributionItem>, maxCount: number, };
+export type ConcordanceDistributionPage = { totalDocuments: number, offset: number, limit: number, items: Array<ConcordanceDistributionItem>, maxRatePer10k: number, };
