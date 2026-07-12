@@ -97,6 +97,7 @@ import {
   handleConcordanceCollocationPresentationControlChange,
   handleConcordanceCollocationSortClick,
   handleConcordanceCollocationsShowMore,
+  handleConcordancePositionProfileModeClick,
   syncConcordanceCollocationStopwordsToggle,
 } from "./concordance/collocations";
 import {
@@ -2026,6 +2027,7 @@ export function initWorkbenchSwitcher(): void {
   dom.concordanceCollocationMinO11Input.addEventListener("change", handleConcordanceCollocationPresentationControlChange);
   dom.concordanceCollocationMinFreqInput.addEventListener("change", handleConcordanceCollocationPresentationControlChange);
   dom.concordanceCollocationsTableHead.addEventListener("click", handleConcordanceCollocationSortClick);
+  dom.concordanceCollocationsTableHead.addEventListener("click", handleConcordancePositionProfileModeClick);
   dom.concordanceCollocationsMoreButton.addEventListener("click", handleConcordanceCollocationsShowMore);
   document.addEventListener("keydown", handleConcordanceExpansionEscape);
   syncConcordanceCollocationStopwordsToggle();

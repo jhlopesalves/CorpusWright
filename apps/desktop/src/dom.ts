@@ -68,6 +68,7 @@ export const dom = {
   concordanceCollocationsStatus: getElement<HTMLDivElement>("concordance-collocations-status"),
   concordanceCollocationsTableHead: getElement<HTMLTableSectionElement>("concordance-collocations-table-head"),
   concordanceCollocationsTableBody: getElement<HTMLTableSectionElement>("concordance-collocations-table-body"),
+  concordanceCollocationReading: getElement<HTMLParagraphElement>("concordance-collocation-reading"),
   concordanceCollocationsMore: getElement<HTMLDivElement>("concordance-collocations-more"),
   concordanceCollocationsMoreStatus: getElement<HTMLSpanElement>("concordance-collocations-more-status"),
   concordanceCollocationsMoreButton: getElement<HTMLButtonElement>("concordance-collocations-more-button"),
