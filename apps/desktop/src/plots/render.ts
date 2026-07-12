@@ -8,6 +8,7 @@ import type {
   CoverageGeometry,
   CompositionStripGeometry,
   DispersionGeometry,
+  DistributionDiagnosticGeometry,
   DispersionPlaneGeometry,
   DispersionRosterGeometry,
   LengthHistogramGeometry,
@@ -247,6 +248,56 @@ export function renderMattrDistributionSvg(plotId: string, geometry: MattrDistri
   renderMattrWitnessTicks(svg, geometry);
   renderLabels(svg, geometry.labels);
   renderInteractionLayer(svg, geometry.box);
+  return svg;
+}
+
+export function renderDistributionDiagnosticSvg(
+  plotId: string,
+  geometry: DistributionDiagnosticGeometry,
+): SVGSVGElement {
+  const svg = createBaseSvg(plotId, geometry.box);
+  renderDefinitions(svg, plotId);
+  if (geometry.compositionStrip) renderCompositionStrip(svg, geometry.compositionStrip);
+  if (geometry.iqrBand) renderRect(svg, geometry.iqrBand);
+  renderAxes(
+    svg,
+    geometry.box,
+    geometry.xScale,
+    geometry.yScale,
+    geometry.xTicks,
+    geometry.yTicks,
+    { x: geometry.xAxisLabel, y: geometry.yAxisLabel, valueAxis: "y" },
+  );
+  renderBars(svg, geometry.bars, "cw-plot-bar");
+  if (geometry.linePath) renderPath(svg, geometry.linePath, plotId);
+  if (geometry.referencePath) renderPath(svg, geometry.referencePath, plotId);
+  if (geometry.medianLine) renderLine(svg, geometry.medianLine);
+  renderPoints(svg, geometry.points, "cw-plot-point");
+  renderPoints(svg, geometry.witnesses, "cw-plot-point cw-plot-distribution-witness");
+  renderSvgLegend(svg, geometry.box, geometry.legend);
+  renderLabels(svg, geometry.labels);
+  renderInteractionLayer(svg, geometry.box);
+  return svg;
+}
+
+export function renderFigureStatusSvg(plotId: string, message: string): SVGSVGElement {
+  const box: PlotBox = {
+    width: 720,
+    height: 260,
+    margin: { top: 30, right: 40, bottom: 40, left: 40 },
+    innerWidth: 640,
+    innerHeight: 190,
+  };
+  const svg = createBaseSvg(plotId, box);
+  const text = createSvgElement("text");
+  setAttrs(text, {
+    x: box.width / 2,
+    y: box.height / 2,
+    class: "cw-plot-status-message",
+    "text-anchor": "middle",
+  });
+  text.textContent = message;
+  svg.appendChild(text);
   return svg;
 }
 
@@ -1009,6 +1060,21 @@ function renderLine(svg: SVGSVGElement, line: PlotLineGeometry): void {
     x2: line.x2,
     y2: line.y2,
     class: line.className,
+  });
+  svg.appendChild(element);
+}
+
+function renderRect(
+  svg: SVGSVGElement,
+  rect: { x: number; y: number; width: number; height: number; className: string },
+): void {
+  const element = createSvgElement("rect");
+  setAttrs(element, {
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+    class: rect.className,
   });
   svg.appendChild(element);
 }

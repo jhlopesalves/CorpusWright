@@ -14,8 +14,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { dom } from "../dom";
 import {
   figurePaletteLabel,
-  type FigureControlState,
-  type OverviewFigureController,
+  type OverviewFigureControllerContract,
 } from "./figure-workbench";
 
 const FIGURE_COLLAPSE_STORAGE_KEY = "corpuswright.overview.figureCollapse";
@@ -36,7 +35,9 @@ export interface OverviewFigureOptions {
   captionReading: string;
   controls?: HTMLElement;
   explanation?: HTMLElement;
-  controller?: OverviewFigureController<FigureControlState>;
+  controller?: OverviewFigureControllerContract;
+  onPinChange?: (key: string, pinned: boolean) => void;
+  onClearPins?: () => void;
   exportMetadata?: () => string[];
   renderSvg: () => SVGSVGElement;
 }
@@ -116,6 +117,7 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
     options.controller?.clearPins();
     replaceFigureSvgElement(body, options.renderSvg());
     syncClearPinsAction(clearPinsButton, options.controller);
+    options.onClearPins?.();
   });
 
   const caption = document.createElement("figcaption");
@@ -152,9 +154,10 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
     if (!(event instanceof CustomEvent) || typeof event.detail?.key !== "string") return;
     const controller = options.controller;
     if (!controller) return;
-    controller.togglePin(event.detail.key);
+    const pinned = controller.togglePin(event.detail.key);
     replaceFigureSvgElement(body, options.renderSvg());
     syncClearPinsAction(clearPinsButton, controller);
+    options.onPinChange?.(event.detail.key, pinned);
   });
 
   figure.append(header, body, caption);
@@ -375,7 +378,7 @@ function setFigureCollapsed(
 
 function syncClearPinsAction(
   button: HTMLButtonElement,
-  controller: OverviewFigureController<FigureControlState> | undefined,
+  controller: OverviewFigureControllerContract | undefined,
 ): void {
   button.hidden = !controller || controller.pins.size === 0;
 }

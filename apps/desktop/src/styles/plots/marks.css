@@ -102,11 +102,34 @@
 }
 
 .cw-plot-bar {
-  fill: var(--cw-plot-point);
+  fill: var(--cw-plot-observed);
   fill-opacity: 0.72;
   stroke: none;
   transform-box: fill-box;
   transform-origin: bottom center;
+}
+
+.cw-plot-iqr-band {
+  fill: var(--cw-plot-observed);
+  fill-opacity: 0.07;
+  stroke: none;
+}
+
+.cw-plot-median-line,
+.cw-plot-qq-reference {
+  fill: none;
+  stroke: var(--cw-plot-reference);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-median-line {
+  stroke-dasharray: 5 4;
+  stroke-opacity: 0.88;
+}
+
+.cw-plot-distribution-witness {
+  fill: var(--cw-plot-selected);
 }
 
 .cw-plot-composition-segment {
@@ -120,6 +143,9 @@
 .cw-plot-composition-strip .cw-plot-ramp-3 { fill: var(--cw-plot-composition-3); }
 .cw-plot-composition-strip .cw-plot-ramp-4 { fill: var(--cw-plot-composition-4); }
 .cw-plot-composition-strip .cw-plot-ramp-5 { fill: var(--cw-plot-composition-5); }
+.cw-plot-composition-strip .cw-plot-composition-segment.is-excluded {
+  fill: var(--cw-plot-excluded);
+}
 
 .cw-plot-point.is-pinned,
 .cw-plot-bar.is-pinned,

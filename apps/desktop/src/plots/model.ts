@@ -160,6 +160,14 @@ export interface PlotLineGeometry {
   className: string;
 }
 
+export interface PlotRectGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  className: string;
+}
+
 export interface PlotBarGeometry<TDatum = unknown> {
   x: number;
   y: number;
@@ -448,6 +456,73 @@ export interface MattrDistributionGeometry {
   labels: PlotLabelGeometry[];
   witnessTicks: MattrWitnessTickGeometry[];
   domain: [number, number];
+}
+
+export type DistributionDiagnosticView = "histogram" | "ecdf" | "qq";
+export type DistributionYMode = "count" | "share";
+
+export interface DistributionResultPayload {
+  xScale: "linear" | "log";
+  population: number;
+  excludedCount: number;
+  minimum: number | null;
+  firstQuartile: number | null;
+  median: number | null;
+  thirdQuartile: number | null;
+  maximum: number | null;
+  histogramBins: Array<{
+    lowerBound: number;
+    upperBound: number;
+    count: number;
+    share: number;
+    cumulativeShare: number;
+  }>;
+  ecdfPoints: Array<{
+    value: number;
+    cumulativeCount: number;
+    cumulativeShare: number;
+  }>;
+  qqPoints: Array<{
+    expectedQuantile: number;
+    observedValue: number;
+    observationRank: number;
+    plottingPosition: number;
+  }>;
+  qqLineIntercept: number | null;
+  qqLineSlope: number | null;
+  lowWitnesses: Array<{
+    documentId: number;
+    documentName: string;
+    tokenCount: number | bigint;
+    metricValue: number;
+  }>;
+  highWitnesses: Array<{
+    documentId: number;
+    documentName: string;
+    tokenCount: number | bigint;
+    metricValue: number;
+  }>;
+}
+
+export interface DistributionDiagnosticGeometry {
+  box: PlotBox;
+  view: DistributionDiagnosticView;
+  xScale: PlotScale;
+  yScale: PlotScale;
+  xTicks: PlotTick[];
+  yTicks: PlotTick[];
+  xAxisLabel: string;
+  yAxisLabel: string;
+  bars: Array<PlotBarGeometry>;
+  linePath: PlotPathGeometry | null;
+  points: Array<PlotPointGeometry>;
+  witnesses: Array<PlotPointGeometry>;
+  referencePath: PlotPathGeometry | null;
+  medianLine: PlotLineGeometry | null;
+  iqrBand: PlotRectGeometry | null;
+  labels: PlotLabelGeometry[];
+  legend: PlotLegendItem[];
+  compositionStrip: CompositionStripGeometry | null;
 }
 
 export const DEFAULT_PLOT_WIDTH = 720;
@@ -1582,6 +1657,291 @@ export function formatDispersionRosterStats(
     ? `top ${formatInteger(shownCount)} types by frequency`
     : `shown ${formatInteger(shownCount)} of ${formatInteger(shippedCount)} frequent types`;
   return `${countText} · ${formatInteger(aboveThresholdCount)} above DP ${formatDpThreshold(highDispersionThreshold)}`;
+}
+
+export function buildDistributionDiagnosticGeometry(options: {
+  result: DistributionResultPayload;
+  metric: "documentLength" | "mattr";
+  view: DistributionDiagnosticView;
+  yMode: DistributionYMode;
+  qqReference: "normal" | "lognormal";
+  labelsMode?: "extremes" | "pinned" | "off";
+  mattrWindow?: number;
+  pinnedKeys?: ReadonlySet<string>;
+}): DistributionDiagnosticGeometry {
+  const hasComposition = options.metric === "mattr";
+  const box = createPlotBox(DEFAULT_PLOT_WIDTH, 390, {
+    top: hasComposition ? 82 : 34,
+    right: 42,
+    bottom: 62,
+    left: 78,
+  });
+  const result = options.result;
+  const rawDomain = extent([
+    result.minimum ?? 0,
+    result.maximum ?? 1,
+    ...result.histogramBins.flatMap((bin) => [bin.lowerBound, bin.upperBound]),
+  ]);
+  const xKind: PlotScaleKind = options.view === "qq" ? "linear" : result.xScale;
+  const qqXDomain = extent(result.qqPoints.map((point) => point.expectedQuantile));
+  const qqYDomain = extent(result.qqPoints.map((point) => point.observedValue));
+  const xScale = createScale(
+    xKind,
+    options.view === "qq" ? qqXDomain : rawDomain,
+    [box.margin.left, box.width - box.margin.right],
+  );
+  const histogramMaximum = Math.max(1, ...result.histogramBins.map((bin) =>
+    options.yMode === "count" ? bin.count : bin.share
+  ));
+  const yScale = createScale(
+    "linear",
+    options.view === "qq" ? qqYDomain : [0, options.view === "histogram" ? histogramMaximum : 1],
+    [box.height - box.margin.bottom, box.margin.top],
+  );
+  const bars = options.view === "histogram"
+    ? result.histogramBins.map((bin, index) => {
+        const lower = result.xScale === "log" ? Math.max(1, bin.lowerBound) : bin.lowerBound;
+        const upper = result.xScale === "log" ? Math.max(lower, bin.upperBound) : bin.upperBound;
+        const x1 = scaleValue(xScale, lower);
+        const x2 = scaleValue(xScale, upper);
+        const value = options.yMode === "count" ? bin.count : bin.share;
+        const y = scaleValue(yScale, value);
+        const key = `distribution-bin:${index}:${bin.lowerBound}:${bin.upperBound}`;
+        return {
+          x: x1 + 1,
+          y,
+          width: Math.max(1, x2 - x1 - 2),
+          height: box.height - box.margin.bottom - y,
+          datum: bin,
+          key,
+          pinned: options.pinnedKeys?.has(key) ?? false,
+          tooltipTitle: `${formatDistributionValue(bin.lowerBound, options.metric)}–${formatDistributionValue(bin.upperBound, options.metric)}`,
+          tooltipRows: [
+            `${formatInteger(bin.count)} documents`,
+            formatPercent(bin.share),
+            `${formatPercent(bin.cumulativeShare)} cumulative`,
+          ],
+        };
+      })
+    : [];
+  const ecdfPoints = options.view === "ecdf"
+    ? result.ecdfPoints.map((point) => ({
+        x: scaleValue(xScale, result.xScale === "log" ? Math.max(1, point.value) : point.value),
+        y: scaleValue(yScale, point.cumulativeShare),
+        rawX: point.value,
+        rawY: point.cumulativeShare,
+        datum: point,
+        rampIndex: 2,
+        tooltipTitle: formatDistributionValue(point.value, options.metric),
+        tooltipRows: [
+          `${formatInteger(point.cumulativeCount)} documents`,
+          `${formatPercent(point.cumulativeShare)} cumulative`,
+          `${formatPercent(point.cumulativeShare)} percentile`,
+        ],
+        className: "cw-plot-ecdf-target",
+        fillOpacity: 0,
+      }))
+    : [];
+  const qqPoints = options.view === "qq"
+    ? result.qqPoints.map((point) => {
+        const key = `distribution-qq:${point.observationRank}`;
+        return {
+          x: scaleValue(xScale, point.expectedQuantile),
+          y: scaleValue(yScale, point.observedValue),
+          rawX: point.expectedQuantile,
+          rawY: point.observedValue,
+          datum: point,
+          rampIndex: 2,
+          key,
+          pinned: options.pinnedKeys?.has(key) ?? false,
+          tooltipTitle: `quantile ${formatFixed(point.expectedQuantile, 2)}`,
+          tooltipRows: [
+            `observed ${formatDistributionValue(point.observedValue, options.metric, options.qqReference)}`,
+            `plotting position ${formatFixed(point.plottingPosition, 4)}`,
+          ],
+        };
+      })
+    : [];
+  const points = options.view === "qq" ? qqPoints : ecdfPoints;
+  const linePath = options.view === "ecdf" && ecdfPoints.length > 0
+    ? { d: pointsToStepPath(ecdfPoints), className: "cw-plot-line cw-plot-ecdf-line" }
+    : null;
+  const referencePath = options.view === "qq"
+    && result.qqLineIntercept !== null
+    && result.qqLineSlope !== null
+    ? {
+        d: pointsToPath(xScale.domain.map((x) => ({
+          x: scaleValue(xScale, x),
+          y: scaleValue(yScale, result.qqLineIntercept! + result.qqLineSlope! * x),
+        }))),
+        className: "cw-plot-fit-line cw-plot-qq-reference",
+      }
+    : null;
+  const medianLine = options.view !== "qq" && result.median !== null
+    ? {
+        x1: scaleValue(xScale, result.xScale === "log" ? Math.max(1, result.median) : result.median),
+        y1: box.margin.top,
+        x2: scaleValue(xScale, result.xScale === "log" ? Math.max(1, result.median) : result.median),
+        y2: box.height - box.margin.bottom,
+        className: "cw-plot-median-line",
+      }
+    : null;
+  const iqrBand = options.view === "histogram"
+    && result.firstQuartile !== null
+    && result.thirdQuartile !== null
+    ? {
+        x: scaleValue(xScale, result.xScale === "log" ? Math.max(1, result.firstQuartile) : result.firstQuartile),
+        y: box.margin.top,
+        width: Math.max(0, scaleValue(xScale, result.xScale === "log" ? Math.max(1, result.thirdQuartile) : result.thirdQuartile)
+          - scaleValue(xScale, result.xScale === "log" ? Math.max(1, result.firstQuartile) : result.firstQuartile)),
+        height: box.innerHeight,
+        className: "cw-plot-iqr-band",
+      }
+    : null;
+  const witnessRows = [...result.lowWitnesses, ...result.highWitnesses]
+    .filter((witness, index, rows) => rows.findIndex((row) => row.documentId === witness.documentId) === index);
+  const witnesses = options.metric === "mattr" && options.view === "histogram"
+    ? witnessRows.map((witness, index) => {
+        const key = `distribution-witness:${witness.documentId}`;
+        return {
+          x: scaleValue(xScale, witness.metricValue),
+          y: box.height - box.margin.bottom - 5,
+          rawX: witness.metricValue,
+          rawY: 0,
+          datum: witness,
+          rampIndex: 3,
+          shape: index < result.lowWitnesses.length ? "triangle" as const : "diamond" as const,
+          key,
+          pinned: options.pinnedKeys?.has(key) ?? false,
+          tooltipTitle: witness.documentName,
+          tooltipRows: [
+            `MATTR ${formatFixed(witness.metricValue, 3)}`,
+            `${formatInteger(Number(witness.tokenCount))} tokens`,
+          ],
+        };
+      })
+    : [];
+  const labels: PlotLabelGeometry[] = [];
+  if (medianLine && result.median !== null) {
+    labels.push({
+      x: medianLine.x1 + 6,
+      y: box.margin.top + 14,
+      text: `median ${formatDistributionValue(result.median, options.metric)}`,
+      anchor: "start",
+      className: "cw-plot-label-callout",
+    });
+  }
+  for (const bar of bars.filter((candidate) => candidate.pinned)) {
+    labels.push({
+      x: bar.x + bar.width / 2,
+      y: Math.max(box.margin.top + 16, bar.y - 8),
+      text: `${formatDistributionValue(bar.datum.lowerBound, options.metric)}–${formatDistributionValue(bar.datum.upperBound, options.metric)}`,
+      anchor: "middle",
+      className: "cw-plot-label-callout",
+      pinned: true,
+    });
+  }
+  for (const point of qqPoints.filter((candidate) => candidate.pinned)) {
+    labels.push({
+      x: point.x + 8,
+      y: point.y - 8,
+      text: `observed ${formatDistributionValue(point.datum.observedValue, options.metric, options.qqReference)}`,
+      anchor: "start",
+      className: "cw-plot-label-callout",
+      pinned: true,
+    });
+  }
+  const witnessLabelCandidates = witnesses.filter((point, index) =>
+    point.pinned
+      || options.labelsMode === "extremes" && (index === 0 || index + 1 === witnesses.length)
+  );
+  labels.push(...placeLabels(
+    witnessLabelCandidates.map((witness) => ({
+      x: witness.x,
+      y: witness.y,
+      text: witness.datum.documentName,
+      className: "cw-plot-label-mono",
+      pinned: witness.pinned,
+      priority: witness.pinned ? 100 : 10,
+      candidates: [
+        { dx: 0, dy: -14, anchor: "middle" },
+        { dx: 9, dy: -18, anchor: "start" },
+        { dx: -9, dy: -18, anchor: "end" },
+      ],
+    })),
+    pointLabelObstacles(witnesses, 7),
+    plotLabelBounds(box),
+    6,
+  ));
+  const compositionStrip = hasComposition
+    ? buildCompositionStripGeometry({
+        total: result.population + result.excludedCount,
+        x: box.margin.left,
+        y: 18,
+        width: box.innerWidth,
+        height: 22,
+        segments: [
+          { key: "mattr-eligible", label: `Used · window ${options.mattrWindow ?? 100}`, count: result.population, rampIndex: 2 },
+          { key: "mattr-excluded", label: "Excluded · shorter than window", count: result.excludedCount, rampIndex: 5, className: "is-excluded" },
+        ],
+        pinnedKeys: options.pinnedKeys,
+      })
+    : null;
+  const xTicks = options.view === "qq"
+    ? linearTicks(xScale, 6)
+    : xScale.kind === "log" ? logTicks(xScale) : linearTicks(xScale, 6);
+  const yTicks = linearTicks(yScale, 6).map((tick) => ({
+    ...tick,
+    label: options.view !== "qq" && options.yMode === "share" ? formatPercent(tick.value) : tick.label,
+  }));
+  return {
+    box,
+    view: options.view,
+    xScale,
+    yScale,
+    xTicks,
+    yTicks,
+    xAxisLabel: options.view === "qq"
+      ? "Expected normal quantile"
+      : options.metric === "documentLength" ? "Tokens per document" : "Document MATTR",
+    yAxisLabel: options.view === "qq"
+      ? options.qqReference === "lognormal" ? "Observed log10 document length" : `Observed ${options.metric === "mattr" ? "MATTR" : "document length"}`
+      : options.view === "ecdf" ? "Cumulative share of documents"
+        : options.yMode === "count" ? "Documents" : "Share of documents",
+    bars,
+    linePath,
+    points,
+    witnesses,
+    referencePath,
+    medianLine,
+    iqrBand,
+    labels,
+    legend: options.view === "qq"
+      ? [
+          { label: "Observed documents", kind: "point", shape: "circle" },
+          { label: "Robust Q1/Q3 reference", kind: "line", className: "cw-plot-fit-line" },
+        ]
+      : [],
+    compositionStrip,
+  };
+}
+
+function pointsToStepPath(points: Array<{ x: number; y: number }>): string {
+  return points.map((point, index) => {
+    if (index === 0) return `M${roundSvg(point.x)} ${roundSvg(point.y)}`;
+    const previous = points[index - 1]!;
+    return `L${roundSvg(point.x)} ${roundSvg(previous.y)} L${roundSvg(point.x)} ${roundSvg(point.y)}`;
+  }).join(" ");
+}
+
+function formatDistributionValue(
+  value: number,
+  metric: "documentLength" | "mattr",
+  qqReference?: "normal" | "lognormal",
+): string {
+  if (metric === "mattr") return formatFixed(value, 3);
+  if (qqReference === "lognormal") return `${formatFixed(value, 3)} log10 tokens`;
+  return `${formatInteger(value)} tokens`;
 }
 
 export function buildLengthHistogramGeometry(options: {

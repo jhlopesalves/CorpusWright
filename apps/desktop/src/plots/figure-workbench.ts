@@ -21,6 +21,13 @@ export interface FigureControllerSnapshot<TState extends FigureControlState> {
   error: string | null;
 }
 
+export interface OverviewFigureControllerContract {
+  readonly pins: ReadonlySet<string>;
+  togglePin(key: string): boolean;
+  clearPins(): void;
+  exportMetadata(): string[];
+}
+
 export interface FigureControllerOptions<TState extends FigureControlState> {
   initialControls: TState;
   exportMetadata?: (controls: Readonly<TState>) => string[];
