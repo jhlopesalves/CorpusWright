@@ -495,7 +495,7 @@
                         <p>Where and how does the node occur in context?</p>
                       </div>
                       <div class="concordance-card-actions">
-                        <p id="concordance-lines-stats" class="concordance-card-stats">window 10L–10R · file/position · showing 0 of 0</p>
+                        <p id="concordance-lines-stats" class="concordance-card-stats cw-result-table-note">window 10L–10R · file/position · showing 0 of 0</p>
                       </div>
                     </header>
                     <div id="concordance-lines-controls" class="concordance-card-controls concordance-lines-controls">
@@ -542,7 +542,7 @@
                       </label>
                       <label for="concordance-page-size-input">
                         <span>Rows</span>
-                        <input id="concordance-page-size-input" type="number" min="25" max="500" step="25" value="100" />
+                        <input id="concordance-page-size-input" type="number" min="1" max="500" step="1" value="24" />
                       </label>
                     </div>
                     <div id="concordance-lines-body" class="concordance-card-body">
@@ -550,8 +550,8 @@
                         <span id="concordance-lines-filter-summary"></span>
                         <button id="concordance-lines-filter-clear" class="secondary-btn concordance-filter-clear" type="button">Clear</button>
                       </div>
-                      <div class="concordance-table-wrap">
-                        <table class="concordance-table">
+                      <div class="concordance-table-wrap cw-result-table-wrap">
+                        <table class="concordance-table cw-result-table">
                         <colgroup>
                           <col class="concordance-file-column" />
                           <col class="concordance-left-column" />
@@ -573,9 +573,9 @@
                         </tbody>
                         </table>
                       </div>
-                      <div class="analysis-pagination" aria-label="Concordance result pages">
+                      <div class="analysis-pagination cw-result-table-pagination" aria-label="Concordance result pages">
                         <button id="concordance-page-previous" class="secondary-btn" type="button">Previous</button>
-                        <span id="concordance-page-status"></span>
+                        <span id="concordance-page-status" class="cw-result-table-pagination-status"></span>
                         <button id="concordance-page-next" class="secondary-btn" type="button">Next</button>
                       </div>
                     </div>
@@ -587,7 +587,7 @@
                         <p>Which words systematically occur near the node, and where relative to it?</p>
                       </div>
                       <div class="concordance-card-actions">
-                        <p id="concordance-collocates-stats" class="concordance-card-stats">span 5L–5R · logDice · min freq 5 · showing 0 of 0</p>
+                        <p id="concordance-collocates-stats" class="concordance-card-stats cw-result-table-note">span 5L–5R · logDice · min freq 5 · showing 0 of 0</p>
                       </div>
                     </header>
                     <div id="concordance-collocates-controls" class="concordance-card-controls concordance-collocation-controls">
@@ -635,9 +635,9 @@
                     <div id="concordance-collocates-body" class="concordance-card-body">
                       <p id="concordance-collocations-summary" class="frequency-summary">Enter a word or phrase to build a collocate profile.</p>
                       <div id="concordance-collocations-status" class="frequency-query-notice hidden" role="status"></div>
-                      <div class="concordance-collocations-table-wrap">
-                        <p class="concordance-collocations-inspection-hint">Select any collocate to inspect its co-occurrence lines.</p>
-                        <table class="concordance-collocations-table">
+                      <div class="concordance-collocations-table-wrap cw-result-table-wrap">
+                        <p class="concordance-collocations-inspection-hint cw-result-table-note">Select any collocate to inspect its co-occurrence lines.</p>
+                        <table class="concordance-collocations-table cw-result-table">
                         <colgroup>
                           <col class="concordance-collocate-column" />
                           <col class="concordance-near-query-column" />
@@ -661,9 +661,9 @@
                         </tbody>
                         </table>
                       </div>
-                      <p class="concordance-collocation-reading">Association bars are scaled across the currently loaded set and do not represent statistical significance. Position profiles are normalised within each collocate row. Frequency floors change the qualifying population; Show more changes presentation only.</p>
-                      <div id="concordance-collocations-more" class="concordance-collocations-more hidden">
-                        <span id="concordance-collocations-more-status"></span>
+                      <p class="concordance-collocation-reading cw-result-table-note">Association bars are scaled across the currently loaded set and do not represent statistical significance. Position profiles are normalised within each collocate row. Frequency floors change the qualifying population; Show more changes presentation only.</p>
+                      <div id="concordance-collocations-more" class="concordance-collocations-more cw-result-table-pagination hidden">
+                        <span id="concordance-collocations-more-status" class="cw-result-table-pagination-status"></span>
                         <button id="concordance-collocations-more-button" class="secondary-btn" type="button">Show 25 more</button>
                       </div>
                     </div>
@@ -675,11 +675,11 @@
                         <p>How are the node occurrences spread across documents?</p>
                       </div>
                       <div class="concordance-card-actions">
-                        <p id="concordance-distribution-stats" class="concordance-card-stats">0 of 0 documents with hits · showing 0 of 0</p>
+                        <p id="concordance-distribution-stats" class="concordance-card-stats cw-result-table-note">0 of 0 documents with hits · showing 0 of 0</p>
                       </div>
                     </header>
                     <div id="concordance-distribution-controls" class="concordance-card-controls concordance-distribution-controls">
-                      <p>Ranked by occurrence count · 10 documents per page</p>
+                      <p class="cw-result-table-note">Ranked by occurrence count · 10 documents per page</p>
                     </div>
                     <div id="concordance-distribution-body" class="concordance-card-body">
                       <div id="concordance-distribution" class="concordance-distribution"></div>

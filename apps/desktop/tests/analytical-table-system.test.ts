@@ -7,6 +7,27 @@ const frequency = readFileSync(
   new URL("../src/workbench/frequency.ts", import.meta.url),
   "utf8",
 );
+const concordance = readFileSync(new URL("../src/concordance.ts", import.meta.url), "utf8");
+const lines = readFileSync(
+  new URL("../src/workbench/concordance/lines.ts", import.meta.url),
+  "utf8",
+);
+const collocations = readFileSync(
+  new URL("../src/workbench/concordance/collocations.ts", import.meta.url),
+  "utf8",
+);
+const distribution = readFileSync(
+  new URL("../src/workbench/concordance/distribution.ts", import.meta.url),
+  "utf8",
+);
+const concordanceState = readFileSync(
+  new URL("../src/workbench/concordance/state.ts", import.meta.url),
+  "utf8",
+);
+const concordanceShared = readFileSync(
+  new URL("../src/workbench/concordance/shared.ts", import.meta.url),
+  "utf8",
+);
 
 const resultTableTokens = [
   "--cw-result-table-surface",
@@ -111,3 +132,68 @@ const dpTrackRule = ruleBody(".frequency-distribution-track");
 assert.match(dpTrackRule, /height:\s*6px/);
 assert.match(dpTrackRule, /background:\s*var\(--cw-result-table-track\)/);
 assert(!styles.includes('.frequency-dp-fill[data-level='));
+
+for (const witness of [
+  'class="concordance-table-wrap cw-result-table-wrap"',
+  'class="concordance-table cw-result-table"',
+  'class="concordance-collocations-table-wrap cw-result-table-wrap"',
+  'class="concordance-collocations-table cw-result-table"',
+]) {
+  assert(html.includes(witness), `${witness} must consume the shared table system`);
+}
+assert(distribution.includes('tableWrap.className = "concordance-distribution-table-wrap cw-result-table-wrap"'));
+assert(distribution.includes('table.className = "concordance-distribution-table cw-result-table"'));
+
+const headerRule = ruleBody(".cw-result-table th");
+assert.match(headerRule, /font-family:\s*var\(--cw-font-ui\)/);
+assert.match(headerRule, /font-weight:\s*500/);
+assert.match(headerRule, /background:\s*var\(--cw-result-table-header-surface\)/);
+
+const lexicalRoleUses = [frequency, lines, collocations, distribution]
+  .flatMap((source) => source.match(/cw-result-table-lexical/g) ?? []);
+assert.equal(lexicalRoleUses.length, 2, "Only Frequency token and Collocate should use the lexical role");
+assert(collocations.includes("concordance-collocate-text cw-result-table-lexical"));
+
+for (const numericWitness of [
+  "numeric cw-result-table-numeric",
+  "numeric cw-result-table-numeric concordance-collocation-score",
+]) {
+  assert(collocations.includes(numericWitness), `Collocates must use regular numeric role: ${numericWitness}`);
+}
+for (const numericWitness of [
+  "numeric cw-result-table-numeric concordance-distribution-occurrences",
+  "numeric cw-result-table-numeric concordance-distribution-rate",
+  'share.className = "numeric cw-result-table-numeric"',
+]) {
+  assert(distribution.includes(numericWitness), `Distribution must use regular numeric role: ${numericWitness}`);
+}
+
+assert(lines.includes("concordance-left cw-result-table-kwic"));
+assert(lines.includes("concordance-node-cell cw-result-table-kwic"));
+assert(lines.includes("concordance-right cw-result-table-kwic"));
+const kwicRule = ruleBody(".cw-result-table-kwic");
+assert.match(kwicRule, /font-family:\s*var\(--cw-font-mono\)/);
+assert.match(kwicRule, /font-weight:\s*400/);
+assert.doesNotMatch(
+  styles.slice(styles.indexOf(".concordance-collocation-controls"), styles.indexOf(".frequency-table-wrap")),
+  /font-family:\s*var\(--cw-font-mono\)/,
+  "Collocates and Distribution must remain in the UI sans stack",
+);
+
+assert(concordance.includes("export const CONCORDANCE_DEFAULT_PAGE_SIZE = 24;"));
+assert.match(
+  html,
+  /id="concordance-page-size-input" type="number" min="1" max="500" step="1" value="24"/,
+);
+assert(concordanceState.includes("pageSize: CONCORDANCE_DEFAULT_PAGE_SIZE"));
+assert(lines.includes("dom.concordancePageSizeInput.value = pageSize.toString()"));
+assert(concordanceShared.includes("limit: workbenchState.lines.pageSize"));
+
+for (const paginationWitness of [
+  'id="frequency-page-status" class="cw-result-table-pagination-status"',
+  'id="concordance-page-status" class="cw-result-table-pagination-status"',
+  'id="concordance-collocations-more-status" class="cw-result-table-pagination-status"',
+]) {
+  assert(html.includes(paginationWitness), `${paginationWitness} must use shared status typography`);
+}
+assert(distribution.includes('status.className = "cw-result-table-pagination-status"'));

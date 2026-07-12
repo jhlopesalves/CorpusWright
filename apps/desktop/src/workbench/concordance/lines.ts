@@ -213,7 +213,7 @@ function appendConcordanceKwicCells(
     row.rightContext.length,
   );
   const file = document.createElement("td");
-  file.className = "concordance-file";
+  file.className = "concordance-file cw-result-table-file";
   file.title = row.displayName || row.sourcePath;
   file.textContent = concordanceMiddleEllipsis(row.displayName || row.sourcePath, 16);
 
@@ -245,18 +245,18 @@ function appendConcordanceKwicCells(
   };
 
   const left = document.createElement("td");
-  left.className = "concordance-left";
+  left.className = "concordance-left cw-result-table-kwic";
   appendContext(left, row.leftContext, sortLevels.left);
 
   const nodeCell = document.createElement("td");
-  nodeCell.className = "concordance-node-cell";
+  nodeCell.className = "concordance-node-cell cw-result-table-kwic";
   const node = document.createElement("mark");
   node.className = "concordance-node";
   node.textContent = row.node;
   nodeCell.appendChild(node);
 
   const right = document.createElement("td");
-  right.className = "concordance-right";
+  right.className = "concordance-right cw-result-table-kwic";
   appendContext(right, row.rightContext, sortLevels.right);
 
   item.append(file, left, nodeCell, right);
@@ -302,7 +302,7 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
   const header = document.createElement("div");
   header.className = "concordance-expansion-header";
   const file = document.createElement("span");
-  file.className = "concordance-expansion-file";
+  file.className = "concordance-expansion-file cw-result-table-file";
   file.textContent = row.displayName || row.sourcePath;
   const close = document.createElement("button");
   close.type = "button";
@@ -317,7 +317,7 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
 
   if (expansion.status === "ready") {
     const context = document.createElement("p");
-    context.className = "concordance-expansion-context";
+    context.className = "concordance-expansion-context cw-result-table-kwic";
     const left = document.createElement("span");
     left.className = "concordance-expansion-left";
     if (concordanceExpansionResult !== null) {
