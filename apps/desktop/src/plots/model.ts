@@ -779,7 +779,7 @@ export function buildRankFrequencyGeometry(options: {
     };
   });
   const fitPoints = fitPointsForRank(options, xScale, yScale);
-  const fitPath = fitPoints.length > 0 ? { d: pointsToPath(fitPoints), className: "cw-plot-fit-line cw-plot-line-glow" } : null;
+  const fitPath = fitPoints.length > 0 ? { d: pointsToPath(fitPoints), className: "cw-plot-fit-line" } : null;
   const headPoints = points.filter((point) => point.datum.token && point.datum.rank <= 3);
   const headLabels = placeLabels(
     headPoints.map((point) => ({
@@ -858,7 +858,7 @@ export function buildVocabularyGrowthGeometry(options: {
     tooltipTitle: `${formatInteger(point.types)} types`,
     tooltipRows: [`${formatInteger(point.tokens)} tokens`, `${formatInteger(point.types)} types`],
   }));
-  const linePath = points.length > 0 ? { d: pointsToPath(points), className: "cw-plot-line cw-plot-line-glow" } : null;
+  const linePath = points.length > 0 ? { d: pointsToPath(points), className: "cw-plot-line" } : null;
   const fitPath = fittedValues.length > 0
     ? {
         d: pointsToPath(fittedValues.map((point) => ({
@@ -868,9 +868,7 @@ export function buildVocabularyGrowthGeometry(options: {
         className: "cw-plot-fit-line cw-plot-heaps-fit",
       }
     : null;
-  const areaPath = points.length > 0
-    ? { d: pointsToAreaPath(points, box.height - box.margin.bottom), className: "cw-plot-area" }
-    : null;
+  const areaPath = null;
   const last = points[points.length - 1];
   const labels = last
     ? placeLabels(
@@ -991,10 +989,8 @@ export function buildCoverageGeometry(options: {
     tooltipTitle: `top ${formatInteger(point.k)}`,
     tooltipRows: [`${formatPercent(point.share)} of tokens`],
   }));
-  const linePath = points.length > 0 ? { d: pointsToPath(points), className: "cw-plot-line cw-plot-line-glow" } : null;
-  const areaPath = points.length > 0
-    ? { d: pointsToAreaPath(points, box.height - box.margin.bottom), className: "cw-plot-area" }
-    : null;
+  const linePath = points.length > 0 ? { d: pointsToPath(points), className: "cw-plot-line" } : null;
+  const areaPath = null;
   const milestones: Array<PlotPointGeometry<CoverageDatum>> = options.milestones
     .map<PlotPointGeometry<CoverageDatum> | null>((milestone) => {
       const share = milestone.share ?? findMilestoneShare(visible, milestone.k);

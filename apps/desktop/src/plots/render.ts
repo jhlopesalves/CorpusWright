@@ -575,14 +575,14 @@ function renderPoints(svg: SVGSVGElement, points: Array<PlotPointGeometry>, base
     setAttrs(circle, {
       cx: point.x,
       cy: point.y,
-      r: baseClass.includes("is-lollipop") ? 5 : 4.2,
+      r: baseClass.includes("is-lollipop") ? 4.6 : 3.8,
       class: className,
       tabindex: "0",
       "data-plot-x": point.x,
       "data-plot-y": point.y,
       "data-tooltip-title": point.tooltipTitle ?? "",
       "data-tooltip-rows": (point.tooltipRows ?? []).join("\n"),
-      style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms; --cw-plot-fill-opacity: ${point.fillOpacity ?? 1};`,
+      style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms; --cw-plot-fill-opacity: ${point.fillOpacity ?? 0.82};`,
     });
     group.appendChild(circle);
   });
