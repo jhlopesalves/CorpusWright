@@ -26,12 +26,12 @@
 .cw-plot-tick-label {
   fill: var(--text-muted);
   font-family: var(--cw-font-mono);
-  font-size: 11.5px;
+  font-size: var(--cw-type-plot-tick-size);
 }
 
 .cw-plot-axis-title {
   fill: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--cw-type-plot-label-size);
   font-weight: var(--cw-weight-semibold);
   letter-spacing: 0.08em;
   text-transform: uppercase;

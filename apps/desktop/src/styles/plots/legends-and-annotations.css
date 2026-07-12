@@ -9,7 +9,7 @@
 .cw-plot-spectrum-band-label {
   fill: var(--text-muted);
   font-family: var(--cw-font-mono);
-  font-size: 10px;
+  font-size: var(--cw-type-plot-micro-size);
   font-weight: var(--cw-weight-bold);
   letter-spacing: 0;
   pointer-events: none;
@@ -18,7 +18,7 @@
 .cw-plot-composition-label {
   fill: var(--panel-bg);
   font-family: var(--cw-font-mono);
-  font-size: 9px;
+  font-size: var(--cw-type-plot-micro-size);
   font-weight: var(--cw-weight-bold);
   pointer-events: none;
 }
@@ -32,7 +32,7 @@
 
 .cw-plot-quadrant-pill-label {
   fill: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--cw-type-plot-micro-size);
   font-weight: var(--cw-weight-bold);
 }
 
@@ -45,7 +45,7 @@
 
 .cw-plot-label {
   fill: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--cw-type-plot-tooltip-size);
   pointer-events: none;
 }
 
@@ -56,7 +56,7 @@
 
 .cw-plot-label-mono {
   fill: var(--text-color);
-  font-size: 11.5px;
+  font-size: var(--cw-type-plot-tick-size);
   paint-order: stroke;
   stroke: var(--panel-bg);
   stroke-width: 3px;
@@ -71,7 +71,7 @@
 .cw-plot-label-callout {
   fill: var(--text-color);
   font-family: var(--cw-font-mono);
-  font-size: 11.5px;
+  font-size: var(--cw-type-plot-tick-size);
   paint-order: stroke;
   stroke: var(--panel-bg);
   stroke-width: 3px;
@@ -87,7 +87,7 @@
 .cw-plot-bracket text {
   fill: var(--accent-color);
   font-family: var(--cw-font-mono);
-  font-size: 10px;
+  font-size: var(--cw-type-plot-micro-size);
   font-weight: var(--cw-weight-bold);
 }
 
@@ -115,5 +115,5 @@
 .cw-plot-legend-label {
   fill: var(--text-muted);
   font-family: var(--cw-font-mono);
-  font-size: 11.5px;
+  font-size: var(--cw-type-plot-tick-size);
 }

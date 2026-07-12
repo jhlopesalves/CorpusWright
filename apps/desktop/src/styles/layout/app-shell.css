@@ -8,6 +8,6 @@
 }
 
 .app-title {
-  font-size: 1rem;
+  font-size: var(--cw-type-section-heading-size);
   font-weight: var(--cw-weight-bold);
 }
