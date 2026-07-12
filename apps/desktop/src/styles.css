@@ -4511,6 +4511,9 @@ main {
 .concordance-table-wrap {
   max-height: none;
   overflow: clip;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .concordance-table {
@@ -4542,8 +4545,8 @@ main {
 
 .concordance-table th {
   height: 22px;
-  background: var(--cw-surface-subtle);
-  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 52%, transparent);
+  background: transparent;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
   color: var(--text-muted);
   font-size: 0.72rem;
   font-weight: 500;
@@ -4650,12 +4653,11 @@ main {
 }
 
 .concordance-row td {
-  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 38%, transparent);
   transition: background-color 120ms ease, box-shadow 120ms ease;
 }
 
 .concordance-row:nth-of-type(even) td {
-  background: color-mix(in srgb, var(--cw-surface-subtle) 62%, transparent);
+  background: var(--cw-surface-subtle);
 }
 
 .concordance-row:hover td,
