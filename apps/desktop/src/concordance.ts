@@ -175,9 +175,13 @@ export function concordanceLinesCardStatsText(options: {
   contextFilter: string | null;
 }): string {
   const sortLabel = concordanceSortLabel(options.sortKey);
+  const sortSequence = concordanceSortSequence(options.sortKey);
+  const sortText = sortSequence.length === 3
+    ? sortSequence.map(concordanceSortLabel).join(" / ")
+    : `${sortLabel[0]?.toLowerCase() ?? ""}${sortLabel.slice(1)}`;
   const parts = [
     `window ${options.windowTokens}L–${options.windowTokens}R`,
-    `${sortLabel[0]?.toLowerCase() ?? ""}${sortLabel.slice(1)}`,
+    sortText,
   ];
   if (options.contextFilter !== null) parts.push(`context “${options.contextFilter}”`);
   parts.push(`showing ${formatConcordanceCount(options.shown)} of ${formatConcordanceCount(options.totalHits)}`);
@@ -224,10 +228,30 @@ export function concordanceDistributionCardStatsText(options: {
 }
 
 export type ConcordanceSortLevel = 1 | 2 | 3 | null;
+export type ConcordanceContextSortKey = Exclude<ConcordanceSortKey, "filePosition" | "node">;
 
 export interface ConcordanceContextSortLevels {
   left: ConcordanceSortLevel[];
   right: ConcordanceSortLevel[];
+}
+
+export function concordanceSortSequence(sortKey: ConcordanceSortKey): ConcordanceContextSortKey[] {
+  const match = /^(left|right)([123])$/.exec(sortKey);
+  if (!match) return [];
+  const side = match[1]!;
+  const primary = Number.parseInt(match[2]!, 10);
+  const distances = primary === 1 ? [1, 2, 3] : primary === 2 ? [2, 1, 3] : [3, 2, 1];
+  return distances.map((distance) => `${side}${distance}` as ConcordanceContextSortKey);
+}
+
+export function concordanceSortKeyForLevel(
+  current: ConcordanceSortKey,
+  selected: ConcordanceContextSortKey,
+  level: 2 | 3,
+): ConcordanceSortKey {
+  const candidates = (["left1", "left2", "left3", "right1", "right2", "right3"] as const)
+    .filter((key) => concordanceSortSequence(key)[level - 1] === selected);
+  return candidates.find((key) => key.startsWith(selected.slice(0, -1))) ?? candidates[0] ?? current;
 }
 
 export function concordanceContextSortLevels(

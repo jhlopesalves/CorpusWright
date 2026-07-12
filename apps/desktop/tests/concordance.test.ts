@@ -42,7 +42,9 @@ import {
   concordancePositionGlyphAccessibleText,
   concordanceRowExpansionKey,
   concordanceRowText,
+  concordanceSortKeyForLevel,
   concordanceSortLabel,
+  concordanceSortSequence,
   concordanceSummaryMetricsText,
   concordanceSummaryText,
   formatConcordanceProgress,
@@ -107,6 +109,20 @@ assert(
 assert(CONCORDANCE_EXPANSION_WINDOW === 40, "Expansion should request the default wide KWIC window");
 assert(concordanceSortLabel("left1") === "1L", "Left sort labels should use KWIC shorthand");
 assert(concordanceSortLabel("right3") === "3R", "Right sort labels should use KWIC shorthand");
+assertDeepEqual(
+  concordanceSortSequence("right1"),
+  ["right1", "right2", "right3"],
+  "The three visible controls should expose the backend's primary, secondary, and tertiary sequence",
+);
+assertDeepEqual(concordanceSortSequence("filePosition"), []);
+assert(
+  concordanceSortKeyForLevel("right1", "right1", 2) === "right2",
+  "Choosing 1R as Sort 2 should select the supported sequence with 1R second",
+);
+assert(
+  concordanceSortKeyForLevel("right1", "right1", 3) === "right3",
+  "Choosing 1R as Sort 3 should select the supported sequence with 1R third",
+);
 assertDeepEqual(
   concordanceContextSortLevels("left1", 5, 5).left,
   [null, null, 3, 2, 1],
@@ -260,8 +276,8 @@ assert(
     shown: 25,
     totalHits: 60,
     contextFilter: "pair",
-  }) === "window 9L–9R · 2R · context “pair” · showing 25 of 60",
-  "Filtered Lines stats should expose the local context filter without changing shared query copy",
+  }) === "window 9L–9R · 2R / 1R / 3R · context “pair” · showing 25 of 60",
+  "Filtered Lines stats should expose the full sort sequence and local context filter",
 );
 assert(
   concordanceCollocatesCardStatsText({

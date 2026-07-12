@@ -132,7 +132,7 @@ assert(
     && concordanceSharedControls.includes('id="concordance-files-button"')
     && concordanceSharedControls.includes('id="concordance-search-button"')
     && !concordanceSharedControls.includes('id="concordance-window-input"')
-    && !concordanceSharedControls.includes('id="concordance-sort-select"')
+    && !concordanceSharedControls.includes('id="concordance-sort-1-select"')
     && !concordanceSharedControls.includes('id="concordance-page-size-input"'),
   "Concordance shared controls should contain only query, case, file scope, and search controls",
 );
@@ -161,7 +161,9 @@ assert(
     && !concordanceLinesPanel.includes('data-concordance-card-action=')
     && concordanceLinesPanel.includes('class="concordance-card-controls concordance-lines-controls"')
     && concordanceLinesPanel.includes('id="concordance-window-input"')
-    && concordanceLinesPanel.includes('id="concordance-sort-select"')
+    && concordanceLinesPanel.includes('id="concordance-sort-1-select"')
+    && concordanceLinesPanel.includes('id="concordance-sort-2-select"')
+    && concordanceLinesPanel.includes('id="concordance-sort-3-select"')
     && concordanceLinesPanel.includes('id="concordance-page-size-input"')
     && !concordanceLinesPanel.includes('id="concordance-distribution-panel"'),
   "Concordance Lines should have card chrome and local controls without nesting Distribution",
@@ -843,13 +845,14 @@ assert(
 );
 assert(
   styles.includes(".concordance-table tr {\n  display: grid;")
-    && styles.includes("grid-template-columns: 84px minmax(0, 1fr) 88px minmax(0, 1fr);")
-    && styles.includes("padding: 2px 5px;")
-    && styles.includes("line-height: 1.22;")
+    && styles.includes("grid-template-columns: 68px minmax(0, 1fr) minmax(5.25rem, max-content) minmax(0, 1fr);")
+    && styles.includes("padding: 3px 4px;")
+    && styles.includes("line-height: 1.34;")
     && styles.includes(".concordance-left {\n  color: var(--text-color);\n  direction: rtl;")
     && styles.includes(".concordance-context-run {\n  display: inline;\n  direction: ltr;")
-    && styles.includes(".concordance-row:nth-of-type(even) td"),
-  "Classic KWIC should use compact rows, a quiet file column, flexible outer-clipped contexts, a fixed node axis, and zebra treatment",
+    && styles.includes(".concordance-row:nth-of-type(even) td")
+    && styles.includes(".concordance-table-head {\n  position: absolute;"),
+  "KWIC should use compact rows, a quiet file column, outer-clipped contexts, a stable node axis, subtle zebra treatment, and visually hidden table chrome",
 );
 
 const concordanceRightCssMatch = styles.match(/\.concordance-right \{\n  color: var\(--text-color\);([\s\S]*?)\n\}/);
@@ -903,13 +906,14 @@ const concordanceCollocationsTableWrapCss = concordanceCollocationsTableWrapCssM
 const concordanceDistributionTableWrapCss = concordanceDistributionTableWrapCssMatch[0];
 const frequencyTableWrapCss = frequencyTableWrapCssMatch[1];
 assert(
-  concordanceTableWrapCss.includes("max-height: min(64vh, 740px);")
+  concordanceTableWrapCss.includes("max-height: none;")
     && concordanceTableWrapCss.includes("overflow-x: clip;")
-    && concordanceTableWrapCss.includes("overflow-y: auto;")
+    && concordanceTableWrapCss.includes("overflow-y: visible;")
+    && concordanceTableWrapCss.includes("border: 0;")
     && styles.includes("@media (max-width: 760px)")
-    && styles.includes(".concordance-table-wrap {\n    overflow-x: auto;")
-    && styles.includes(".concordance-table {\n    min-width: 760px;"),
-  "Concordance lines should keep vertical scrolling inside the table wrap and reserve horizontal overflow for narrow viewports",
+    && styles.includes(".concordance-table-wrap {\n    overflow: visible;")
+    && !styles.includes(".concordance-table {\n    min-width: 760px;"),
+  "Concordance lines should use natural page scrolling without a boxed inner scroll trap",
 );
 assert(
   concordanceCollocationsTableWrapCss.includes("max-width: none;")
@@ -1016,7 +1020,7 @@ assert(
     && styles.includes(".concordance-collocations-table > thead > tr > th,\n  .concordance-collocations-table > tbody > tr.concordance-collocation-row > td {\n    padding-inline: 5px;")
     && styles.includes("grid-template-columns: repeat(5, minmax(2px, 1fr)) auto repeat(5, minmax(2px, 1fr));")
     && styles.includes("@media (max-width: 640px) {\n  .concordance-controls")
-    && styles.includes(".concordance-table {\n    min-width: 640px;")
+    && styles.includes("grid-template-columns: 54px minmax(0, 1fr) max-content minmax(0, 1fr);")
     && styles.includes(".concordance-collocations-table-wrap {\n    overflow-x: auto;")
     && styles.includes(".concordance-collocations-table {\n    min-width: 620px;")
     && !styles.includes("min-width: 1040px")
@@ -1025,7 +1029,8 @@ assert(
     && styles.includes("outline: 2px solid var(--cw-interaction-focus-ring);")
     && !styles.includes("text-decoration-style: double;")
     && !styles.includes("text-decoration-style: dotted;")
-    && styles.includes("background: color-mix(in srgb, var(--cw-kwic-sort-1) 13%, transparent);")
+    && styles.includes(".concordance-context-token.is-sort-level-1,\n.concordance-sort-legend .is-level-1 {\n  color: var(--cw-kwic-sort-1);")
+    && !styles.includes("background: color-mix(in srgb, var(--cw-kwic-sort-1) 13%, transparent);")
     && styles.includes(".concordance-kwic-pair {\n  color: var(--cw-kwic-pair);")
     && workbench.includes("return signed && value > 0 ? `+${formatted}` : formatted;"),
   "Concordance should fit at ordinary widths and reserve horizontal scrolling for the narrow fallback while retaining visible non-colour cues",

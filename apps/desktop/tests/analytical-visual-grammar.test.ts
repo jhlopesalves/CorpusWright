@@ -42,7 +42,7 @@ assert.match(
   html,
   /id="concordance-collocates-controls" class="concordance-card-controls concordance-collocation-controls">/,
 );
-for (const label of ["Window", "Sort", "Rows", "Span", "Direction", "Measure", "Min co-occurrence", "Min corpus frequency", "Stopwords"]) {
+for (const label of ["Window", "Sort 1", "Sort 2", "Sort 3", "Rows", "Span", "Direction", "Measure", "Min co-occurrence", "Min corpus frequency", "Stopwords"]) {
   assert(html.includes(`<span>${label}</span>`), `${label} must remain visible`);
 }
 assert.match(html, /<p id="concordance-lines-stats" class="concordance-card-stats">/);
