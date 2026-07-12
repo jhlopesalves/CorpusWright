@@ -331,9 +331,12 @@ const renderConcordanceDistributionMatch = workbench.match(
 assert(renderConcordanceDistributionMatch, "Concordance Distribution renderer should exist");
 const renderConcordanceDistributionBody = renderConcordanceDistributionMatch[1];
 assert(
-  renderConcordanceDistributionBody.includes('for (const label of ["File", "Occurrences", "Tokens", "Hits per 10k", "Share of hits"])')
+  renderConcordanceDistributionBody.includes('const headerLabels = [')
+    && renderConcordanceDistributionBody.includes('{ label: "Occurrences", note: "bar = relative to top file" }')
     && !renderConcordanceDistributionBody.includes('"Bar"')
     && renderConcordanceDistributionBody.includes("cell.colSpan = 5;")
+    && renderConcordanceDistributionBody.includes('heading.className = "concordance-distribution-heading";')
+    && renderConcordanceDistributionBody.includes('sublabel.className = "concordance-distribution-heading-note";')
     && renderConcordanceDistributionBody.includes('countValue.className = "concordance-distribution-count";')
     && renderConcordanceDistributionBody.includes('countTrack.className = "concordance-distribution-bar-track";')
     && renderConcordanceDistributionBody.includes('countBar.className = "concordance-distribution-bar";')
@@ -359,7 +362,7 @@ assert(
     && styles.includes(".concordance-distribution-metric-label")
     && styles.includes("grid-template-columns: repeat(auto-fit, minmax(8rem, max-content));")
     && styles.includes(".concordance-distribution-bar {\n  display: block;")
-    && styles.includes("background: var(--cw-plot-ramp-3);")
+    && styles.includes("background: var(--accent-color);")
     && styles.includes(".concordance-distribution-reading")
     && renderConcordanceDistributionBody.includes("Concentration in a few documents may suggest topic, genre, or source dependence; broad reach may suggest more corpus-general use.")
     && !renderConcordanceDistributionBody.includes("significance")
@@ -801,13 +804,17 @@ assert(
     && collocateEvidenceCellCss.includes("text-overflow: clip")
     && collocateEvidenceCellCss.includes("white-space: normal")
     && styles.includes(".concordance-collocate-evidence {\n  display: grid;")
-    && styles.includes("border-left: 1px solid var(--cw-collocate-border);")
+    && styles.includes("border-left: 2px solid var(--cw-collocate-border);")
+    && styles.includes(".concordance-collocate-evidence-relation")
+    && workbench.includes('relation.className = "concordance-collocate-evidence-relation";')
+    && workbench.includes('nodeTerm.className = "concordance-collocate-evidence-relation-node";')
+    && workbench.includes('collocateTerm.className = "concordance-collocate-evidence-relation-collocate";')
     && styles.includes(".concordance-collocate-evidence-list")
     && styles.includes(".concordance-collocate-evidence-line")
     && styles.includes(".concordance-collocate-evidence-snippet")
     && styles.includes(".concordance-collocate-evidence-expansion-row")
     && styles.includes(".concordance-collocate-evidence-expansion {\n  display: grid;")
-    && styles.includes("border-left: 1px solid var(--border-color);")
+    && styles.includes("border-left: 2px solid var(--border-color);")
     && styles.includes(".concordance-collocate-evidence-expansion-context")
     && collocateEvidenceListGridCss.includes("grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr);")
     && styles.includes(".concordance-collocate-evidence-more")
@@ -836,13 +843,13 @@ assert(
 );
 assert(
   styles.includes(".concordance-table tr {\n  display: grid;")
-    && styles.includes("grid-template-columns: 96px minmax(0, 1fr) 104px minmax(0, 1fr);")
-    && styles.includes("padding: 2px 4px;")
-    && styles.includes("line-height: 1.25;")
+    && styles.includes("grid-template-columns: 84px minmax(0, 1fr) 88px minmax(0, 1fr);")
+    && styles.includes("padding: 2px 5px;")
+    && styles.includes("line-height: 1.22;")
     && styles.includes(".concordance-left {\n  color: var(--text-color);\n  direction: rtl;")
     && styles.includes(".concordance-context-run {\n  display: inline;\n  direction: ltr;")
     && styles.includes(".concordance-row:nth-of-type(even) td"),
-  "Classic KWIC should use compact rows, a 96px file column, flexible outer-clipped contexts, a fixed node axis, and zebra treatment",
+  "Classic KWIC should use compact rows, a quiet file column, flexible outer-clipped contexts, a fixed node axis, and zebra treatment",
 );
 
 const concordanceRightCssMatch = styles.match(/\.concordance-right \{\n  color: var\(--text-color\);([\s\S]*?)\n\}/);
@@ -860,11 +867,11 @@ const concordanceCollocationScoreColumnCssMatch = styles.match(
 assert(concordanceCollocationScoreColumnCssMatch, "Concordance collocation measure-score column CSS should exist");
 const concordanceCollocationScoreColumnCss = concordanceCollocationScoreColumnCssMatch[1];
 assert(
-  concordanceCollocationScoreColumnCss.includes("width: 24%;")
+  concordanceCollocationScoreColumnCss.includes("width: 27%;")
     && styles.includes(".concordance-collocations-table-wrap {\n  max-width: none;")
     && styles.includes(".concordance-collocations-table {\n  width: 100%;\n  min-width: 0;")
     && styles.includes(".concordance-collocations-table > thead > tr > th:nth-child(5)")
-    && styles.includes("width: 35%;")
+    && styles.includes("width: 33%;")
     && !styles.includes(".concordance-collocations-table > thead > tr > th:nth-child(6)"),
   "Concordance collocation score and position columns should remain legible in the five-column table",
 );
@@ -896,7 +903,7 @@ const concordanceCollocationsTableWrapCss = concordanceCollocationsTableWrapCssM
 const concordanceDistributionTableWrapCss = concordanceDistributionTableWrapCssMatch[0];
 const frequencyTableWrapCss = frequencyTableWrapCssMatch[1];
 assert(
-  concordanceTableWrapCss.includes("max-height: min(62vh, 720px);")
+  concordanceTableWrapCss.includes("max-height: min(64vh, 740px);")
     && concordanceTableWrapCss.includes("overflow-x: clip;")
     && concordanceTableWrapCss.includes("overflow-y: auto;")
     && styles.includes("@media (max-width: 760px)")
@@ -988,7 +995,8 @@ assert(
     && styles.includes(".concordance-collocation-score-fill")
     && styles.includes(".concordance-collocation-score-track.is-positive .concordance-collocation-score-fill")
     && styles.includes(".concordance-collocation-score-track.is-negative .concordance-collocation-score-fill")
-    && styles.includes(".concordance-collocation-score-fill.is-ramp-5 { background: var(--cw-plot-ramp-5); }")
+    && styles.includes(".concordance-collocation-score-fill.is-ramp-5 { background: var(--accent-color); }")
+    && styles.includes("background: var(--cw-warning-text);")
     && styles.includes(".concordance-position-glyph")
     && styles.includes("grid-template-columns: repeat(5, minmax(3px, 1fr)) auto repeat(5, minmax(3px, 1fr));")
     && styles.includes(".concordance-position-bin.is-dominant {\n  background: var(--accent-color);")
@@ -1015,8 +1023,9 @@ assert(
     && !styles.includes("min-width: 880px")
     && styles.includes(".concordance-search-actions button:focus-visible")
     && styles.includes("outline: 2px solid var(--cw-interaction-focus-ring);")
-    && styles.includes("text-decoration-style: double;")
-    && styles.includes("text-decoration-style: dotted;")
+    && !styles.includes("text-decoration-style: double;")
+    && !styles.includes("text-decoration-style: dotted;")
+    && styles.includes("background: color-mix(in srgb, var(--cw-kwic-sort-1) 13%, transparent);")
     && styles.includes(".concordance-kwic-pair {\n  color: var(--cw-kwic-pair);")
     && workbench.includes("return signed && value > 0 ? `+${formatted}` : formatted;"),
   "Concordance should fit at ordinary widths and reserve horizontal scrolling for the narrow fallback while retaining visible non-colour cues",
