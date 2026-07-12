@@ -193,11 +193,8 @@ export function overviewFigureSvgString(figure: HTMLElement): string | null {
   const exportedSvg = svg.cloneNode(true) as SVGSVGElement;
   decorateFigureSvg(exportedSvg, options);
   const exportMount = document.createElement("div");
-  exportMount.style.position = "absolute";
-  exportMount.style.inset = "0 auto auto -100000px";
-  exportMount.style.width = `${svg.viewBox.baseVal.width || 720}px`;
-  exportMount.style.visibility = "hidden";
-  exportMount.style.pointerEvents = "none";
+  exportMount.className = "cw-plot-export-mount";
+  exportMount.style.setProperty("--cw-plot-export-width", `${svg.viewBox.baseVal.width || 720}px`);
   exportMount.appendChild(exportedSvg);
   figure.appendChild(exportMount);
   try {

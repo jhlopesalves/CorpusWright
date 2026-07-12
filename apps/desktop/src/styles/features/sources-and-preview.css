@@ -10,6 +10,17 @@
   overflow-y: auto;
 }
 
+.source-import-bulk-helpers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.source-import-bulk-label {
+  width: 100%;
+}
+
 .source-import-summary {
   margin: 0 0 12px;
   font-size: 0.95rem;
@@ -528,6 +539,14 @@
   -moz-tab-size: 4;
   overflow-wrap: break-word;
   word-break: normal;
+}
+
+.file-card-body--pending {
+  min-height: 100px;
+}
+
+.chunk-sentinel {
+  height: 10px;
 }
 
 .source-preview-notice {
