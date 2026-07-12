@@ -1,3 +1,5 @@
+/* Plot hover, focus, tooltip, crosshair, animation, and reduced-motion rules. */
+
 .cw-plot-crosshair-x,
 .cw-plot-crosshair-y {
   display: none;
