@@ -1,0 +1,22 @@
+/* ---- hero split ---- */
+.hero-split { display: grid; grid-template-columns: auto 1fr; gap: 36px; align-items: center; max-width: 940px; margin: 0 auto; }
+.hero-logo { width: 132px; height: 132px; flex: none; }
+.hero-split h1 { margin: 0 0 12px; font-size: clamp(1.5rem, 2.4vw, 1.95rem); line-height: 1.18; white-space: nowrap; }
+.hero-split .lede { margin: 0; }
+
+/* ---- hero downloads ---- */
+.hero-downloads { display: flex; gap: 36px; margin-top: 24px; flex-wrap: wrap; align-items: flex-start; }
+.dl-heading { font-weight: 600; font-size: 0.82rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint); margin: 0 0 8px; }
+.dl-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.dl-list a { color: var(--brand); text-decoration: none; font-size: 0.96rem; }
+.dl-list a:hover { text-decoration: underline; }
+.dl-ver { color: var(--faint); font-size: 0.82rem; }
+.dl-note { margin: 0; max-width: 320px; font-size: 0.8rem; line-height: 1.45; }
+
+/* ---- intro split ---- */
+.intro-split { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 40px; align-items: start; }
+.intro-split .principle-list { display: flex; flex-direction: column; gap: 22px; margin-top: 9px; }
+.principle h3 { margin: 0 0 4px; font-size: 1.02rem; }
+.principle p { margin: 0; color: var(--muted); font-size: 0.95rem; line-height: 1.5; }
+/* ---- tight section ---- */
+.section.tight { padding-top: 18px; }

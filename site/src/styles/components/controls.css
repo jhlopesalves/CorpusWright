@@ -1,0 +1,60 @@
+/* ---- theme toggle / icon buttons ---- */
+.theme-btn,
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  padding: 6px;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  transition: border-color .14s ease, color .14s ease;
+  flex: none;
+}
+.theme-btn:hover,
+.icon-btn:hover { border-color: var(--brand); color: var(--text); }
+.theme-btn svg,
+.icon-btn svg { width: 17px; height: 17px; flex: none; }
+.theme-btn .sun-icon { display: block; }
+.theme-btn .moon-icon { display: none; }
+
+@media (prefers-color-scheme: light) {
+  .theme-btn .sun-icon { display: none; }
+  .theme-btn .moon-icon { display: block; }
+}
+html[data-theme="dark"] .theme-btn .sun-icon { display: block; }
+html[data-theme="dark"] .theme-btn .moon-icon { display: none; }
+html[data-theme="light"] .theme-btn .sun-icon { display: none; }
+html[data-theme="light"] .theme-btn .moon-icon { display: block; }
+
+/* ---- buttons ---- */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.96rem;
+  padding: 9px 15px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--panel-2);
+  color: var(--text);
+  transition: border-color .14s ease, background .14s ease;
+}
+.btn:hover { text-decoration: none; }
+.btn.primary { background: var(--brand); color: var(--on-brand); border-color: transparent; }
+.btn.primary:hover { background: var(--brand-hover); }
+.btn.ghost { background: transparent; }
+.btn.ghost:hover { border-color: var(--brand); }

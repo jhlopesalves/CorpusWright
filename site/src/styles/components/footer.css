@@ -1,0 +1,15 @@
+/* ---- footer ---- */
+.site-footer {
+  padding: 28px 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.foot a { color: var(--muted); }
+.foot a:hover { color: var(--text); }

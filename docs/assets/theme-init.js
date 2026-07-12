@@ -1,0 +1,1 @@
+(()=>{var e=(()=>{try{return window.localStorage.getItem("theme")}catch{return null}})(),t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.dataset.theme=e==="dark"||e==="light"?e:t;})();

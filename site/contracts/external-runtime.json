@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "policy": "Executable runtime must be local and dependency-locked.",
+  "localRuntime": [
+    "/assets/theme-init.js",
+    "/assets/site.js",
+    "/assets/mermaid.js",
+    "/assets/mathjax-config.js",
+    "/assets/vendor/mathjax/tex-chtml.js"
+  ],
+  "remoteExecutableOrigins": []
+}
