@@ -1,0 +1,175 @@
+{
+  "/404.html": {
+    "title": "Page not found · CorpusWright",
+    "description": "CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.",
+    "canonical": "",
+    "openGraph": {
+      "og:type": "website",
+      "og:site_name": "CorpusWright",
+      "og:title": "Page not found · CorpusWright",
+      "og:description": "CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.",
+      "og:url": "https://jhlopesalves.github.io/CorpusWright/404.html",
+      "og:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    },
+    "twitter": {
+      "twitter:card": "summary",
+      "twitter:title": "Page not found · CorpusWright",
+      "twitter:description": "CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.",
+      "twitter:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    }
+  },
+  "/about.html": {
+    "title": "About · CorpusWright",
+    "description": "About CorpusWright: where the project stands, and who maintains it.",
+    "canonical": "",
+    "openGraph": {
+      "og:type": "website",
+      "og:site_name": "CorpusWright",
+      "og:title": "About · CorpusWright",
+      "og:description": "About CorpusWright: where the project stands, and who maintains it.",
+      "og:url": "https://jhlopesalves.github.io/CorpusWright/about.html",
+      "og:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    },
+    "twitter": {
+      "twitter:card": "summary",
+      "twitter:title": "About · CorpusWright",
+      "twitter:description": "About CorpusWright: where the project stands, and who maintains it.",
+      "twitter:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    }
+  },
+  "/citation.html": {
+    "title": "Citation · CorpusWright",
+    "description": "Citation guidelines for the CorpusWright corpus linguistics software.",
+    "canonical": "",
+    "openGraph": {
+      "og:type": "website",
+      "og:site_name": "CorpusWright",
+      "og:title": "Citation · CorpusWright",
+      "og:description": "Citation guidelines for the CorpusWright corpus linguistics software.",
+      "og:url": "https://jhlopesalves.github.io/CorpusWright/citation.html",
+      "og:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    },
+    "twitter": {
+      "twitter:card": "summary",
+      "twitter:title": "Citation · CorpusWright",
+      "twitter:description": "Citation guidelines for the CorpusWright corpus linguistics software.",
+      "twitter:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    }
+  },
+  "/concepts/overview.html": {
+    "title": "Concepts - Overview - CorpusWright",
+    "description": "Concepts overview: how to read the statistics CorpusWright reports, from dispersion and lexical diversity to Zipf, Heaps, and entropy.",
+    "canonical": "",
+    "openGraph": {
+      "og:type": "website",
+      "og:site_name": "CorpusWright",
+      "og:title": "Concepts - Overview - CorpusWright",
+      "og:description": "Concepts overview: how to read the statistics CorpusWright reports.",
+      "og:url": "https://jhlopesalves.github.io/CorpusWright/concepts/overview.html",
+      "og:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    },
+    "twitter": {
+      "twitter:card": "summary",
+      "twitter:title": "Concepts - Overview - CorpusWright",
+      "twitter:description": "Concepts overview: how to read the statistics CorpusWright reports.",
+      "twitter:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    }
+  },
+  "/index.html": {
+    "title": "CorpusWright - local-first corpus workbench",
+    "description": "CorpusWright is a local-first workbench for preparing, describing, and exploring a corpus.",
+    "canonical": "",
+    "openGraph": {
+      "og:type": "website",
+      "og:site_name": "CorpusWright",
+      "og:title": "CorpusWright - local-first corpus workbench",
+      "og:description": "CorpusWright is a local-first workbench for preparing, describing, and exploring a corpus.",
+      "og:url": "https://jhlopesalves.github.io/CorpusWright/",
+      "og:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    },
+    "twitter": {
+      "twitter:card": "summary",
+      "twitter:title": "CorpusWright - local-first corpus workbench",
+      "twitter:description": "CorpusWright is a local-first workbench for preparing, describing, and exploring a corpus.",
+      "twitter:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    }
+  },
+  "/learn.html": {
+    "title": "Moved to Concepts - Overview - CorpusWright",
+    "description": "",
+    "canonical": "concepts/overview.html",
+    "openGraph": {},
+    "twitter": {}
+  },
+  "/method-and-measures.html": {
+    "title": "Moved: Concepts - Overview",
+    "description": "",
+    "canonical": "concepts/overview.html",
+    "openGraph": {},
+    "twitter": {}
+  },
+  "/method.html": {
+    "title": "Moved to Concepts - Overview - CorpusWright",
+    "description": "",
+    "canonical": "concepts/overview.html",
+    "openGraph": {},
+    "twitter": {}
+  },
+  "/quick-start.html": {
+    "title": "Quick start · CorpusWright",
+    "description": "CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.",
+    "canonical": "",
+    "openGraph": {
+      "og:type": "website",
+      "og:site_name": "CorpusWright",
+      "og:title": "Quick start · CorpusWright",
+      "og:description": "CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.",
+      "og:url": "https://jhlopesalves.github.io/CorpusWright/quick-start.html",
+      "og:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    },
+    "twitter": {
+      "twitter:card": "summary",
+      "twitter:title": "Quick start · CorpusWright",
+      "twitter:description": "CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.",
+      "twitter:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    }
+  },
+  "/roadmap.html": {
+    "title": "Roadmap · CorpusWright",
+    "description": "CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.",
+    "canonical": "",
+    "openGraph": {
+      "og:type": "website",
+      "og:site_name": "CorpusWright",
+      "og:title": "Roadmap · CorpusWright",
+      "og:description": "CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.",
+      "og:url": "https://jhlopesalves.github.io/CorpusWright/roadmap.html",
+      "og:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    },
+    "twitter": {
+      "twitter:card": "summary",
+      "twitter:title": "Roadmap · CorpusWright",
+      "twitter:description": "CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.",
+      "twitter:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    }
+  },
+  "/technical-docs.html": {
+    "title": "Technical docs · CorpusWright",
+    "description": "CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.",
+    "canonical": "",
+    "openGraph": {
+      "og:type": "website",
+      "og:site_name": "CorpusWright",
+      "og:title": "Technical docs · CorpusWright",
+      "og:description": "CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.",
+      "og:url": "https://jhlopesalves.github.io/CorpusWright/technical-docs.html",
+      "og:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    },
+    "twitter": {
+      "twitter:card": "summary",
+      "twitter:title": "Technical docs · CorpusWright",
+      "twitter:description": "CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.",
+      "twitter:image": "https://jhlopesalves.github.io/CorpusWright/assets/icon.png"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+<header class="site-header">
+  <div class="shell nav">
+    <a class="brand" href="{{ meta.assetPrefix }}index.html"><img class="mark" src="{{ meta.assetPrefix }}assets/icon-32.png" alt="" width="28" height="28"> CorpusWright</a>
+    <nav class="nav-links" aria-label="Primary">
+{% for item in navigation %}
+      <a href="{{ meta.assetPrefix }}{{ item.path }}"{% if meta.navigation == item.key %} aria-current="page"{% endif %}>{{ item.label }}</a>
+{% endfor %}
+      <a class="nav-cta" href="{{ site.repositoryUrl }}/releases/latest">Download</a>
+      <a class="icon-btn" href="{{ site.repositoryUrl }}" aria-label="GitHub repository">
+        {% include "github-icon.njk" %}
+      </a>
+      {% include "theme-toggle.njk" %}
+    </nav>
+  </div>
+</header>

@@ -1,0 +1,33 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="{{ meta.description }}">
+<title>{{ meta.title }}</title>
+<link rel="canonical" href="{{ meta.canonicalUrl }}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{ site.name }}">
+<meta property="og:title" content="{{ meta.title }}">
+<meta property="og:description" content="{{ meta.openGraphDescription }}">
+<meta property="og:url" content="{{ meta.canonicalUrl }}">
+<meta property="og:image" content="{{ site.socialImageUrl }}">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{{ meta.title }}">
+<meta name="twitter:description" content="{{ meta.openGraphDescription }}">
+<meta name="twitter:image" content="{{ site.socialImageUrl }}">
+<link rel="stylesheet" href="{{ meta.assetPrefix }}assets/site.css">
+<link rel="icon" href="{{ meta.assetPrefix }}assets/icon.png">
+<script>
+  (function () {
+    var stored = localStorage.getItem('theme');
+    var system = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', stored || system);
+  })();
+</script>
+{% if meta.conceptsRuntime %}
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+    options: { enableMenu: false }
+  };
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+{% endif %}
