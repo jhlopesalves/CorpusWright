@@ -10,13 +10,16 @@ use corpuswright_core::analysis::{
     ConcordanceExpansionQuery, ConcordanceExpansionResult, ConcordanceFallbackReason,
     ConcordanceQuery, ConcordanceResult, ConcordanceRow, ConcordanceSearchContext, CorpusOverview,
     CorpusOverviewContext, FrequencyGroupMode, FrequencyPage, FrequencyQuery,
-    RoutedConcordanceCollocationAggregate, RoutedConcordanceResult, TermDistributionPage,
-    TermDistributionQuery, aggregate_concordance_collocations_routed_provider,
+    OverviewDistributionEvidencePage, OverviewDistributionEvidenceQuery, OverviewDistributionQuery,
+    OverviewDistributionResult, RoutedConcordanceCollocationAggregate, RoutedConcordanceResult,
+    TermDistributionPage, TermDistributionQuery,
+    aggregate_concordance_collocations_routed_provider,
     aggregate_concordance_collocations_scan_provider, annotation_cache_availability_for_corpus,
     build_analysis_corpus, cleaning_config_signature, compare_expressions,
     concordance_collocation_aggregation_signature, expand_concordance_context,
     query_analysis_documents, query_annotated_frequency, query_annotated_term_distribution,
-    query_concordance_collocations_from_aggregate, query_frequency_list, query_term_distribution,
+    query_concordance_collocations_from_aggregate, query_frequency_list,
+    query_overview_distribution, query_overview_distribution_evidence, query_term_distribution,
     resolve_analysis_input, search_concordance_documents, search_concordance_documents_routed,
     search_concordance_documents_routed_provider,
     search_concordance_documents_routed_scan_provider,
@@ -4332,6 +4335,32 @@ async fn query_analysis_documents_command(
     .map_err(|error| format!("Analysis document query task failed: {error}"))
 }
 
+#[tauri::command]
+async fn query_overview_distribution_command(
+    query: OverviewDistributionQuery,
+    cleaning_config: CleaningConfig,
+    analysis: tauri::State<'_, AnalysisState>,
+) -> Result<OverviewDistributionResult, String> {
+    let corpus = analysis.corpus(&cleaning_config)?;
+    tauri::async_runtime::spawn_blocking(move || query_overview_distribution(&corpus, &query))
+        .await
+        .map_err(|error| format!("Overview distribution query task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn query_overview_distribution_evidence_command(
+    query: OverviewDistributionEvidenceQuery,
+    cleaning_config: CleaningConfig,
+    analysis: tauri::State<'_, AnalysisState>,
+) -> Result<OverviewDistributionEvidencePage, String> {
+    let corpus = analysis.corpus(&cleaning_config)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        query_overview_distribution_evidence(&corpus, &query)
+    })
+    .await
+    .map_err(|error| format!("Overview distribution evidence task failed: {error}"))?
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn query_term_distribution_command(
@@ -5146,6 +5175,8 @@ pub fn run() {
             query_frequency_list_command,
             query_annotated_frequency_command,
             query_analysis_documents_command,
+            query_overview_distribution_command,
+            query_overview_distribution_evidence_command,
             query_term_distribution_command,
             query_annotated_term_distribution_command,
             extract_pdf_page_range_command,

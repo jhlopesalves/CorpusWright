@@ -17,10 +17,14 @@ use corpuswright_core::analysis::{
     ConcordanceCollocationResult, ConcordanceCollocationSortKey, ConcordanceContextFilterDirection,
     ConcordanceDistributionItem, ConcordanceDistributionPage, ConcordanceExpansionQuery,
     ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult, ConcordanceRow,
-    ConcordanceSortKey, FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice,
-    FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey, FrequencyTermItem,
-    FrequencyTokenClass, LexFrequencyRow, PosFrequencyRow, SortDirection, TermDistributionItem,
-    TermDistributionPage,
+    ConcordanceSortKey, CoverageTargetCrossing, FrequencyGroupMode, FrequencyMatchMode,
+    FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey,
+    FrequencyTermItem, FrequencyTokenClass, LexFrequencyRow, OverviewDistributionBin,
+    OverviewDistributionEvidencePage, OverviewDistributionEvidenceQuery,
+    OverviewDistributionEvidenceRow, OverviewDistributionMetric, OverviewDistributionQuery,
+    OverviewDistributionResult, OverviewDistributionScale, OverviewDistributionWitness,
+    OverviewEcdfPoint, OverviewHistogramRule, OverviewQqPoint, OverviewQqReference,
+    PosFrequencyRow, SortDirection, TermDistributionItem, TermDistributionPage,
 };
 use corpuswright_core::clean::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
@@ -570,6 +574,92 @@ fn main() {
         &[],
     );
     export_type::<AnalysisDocumentSelection>(&out_dir, &[], &[]);
+    export_type::<OverviewDistributionMetric>(&out_dir, &[], &[]);
+    export_type::<OverviewHistogramRule>(&out_dir, &[], &[]);
+    export_type::<OverviewDistributionScale>(&out_dir, &[], &[]);
+    export_type::<OverviewQqReference>(&out_dir, &[], &[]);
+    export_type::<OverviewDistributionQuery>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "OverviewDistributionMetric",
+                file: "OverviewDistributionMetric",
+            },
+            TypeImport {
+                name: "OverviewHistogramRule",
+                file: "OverviewHistogramRule",
+            },
+            TypeImport {
+                name: "OverviewDistributionScale",
+                file: "OverviewDistributionScale",
+            },
+            TypeImport {
+                name: "OverviewQqReference",
+                file: "OverviewQqReference",
+            },
+        ],
+        &[],
+    );
+    export_type::<OverviewDistributionBin>(&out_dir, &[], &[]);
+    export_type::<OverviewEcdfPoint>(&out_dir, &[], &[]);
+    export_type::<OverviewQqPoint>(&out_dir, &[], &[]);
+    export_type::<OverviewDistributionWitness>(&out_dir, &[], &[]);
+    export_type::<OverviewDistributionResult>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "OverviewDistributionMetric",
+                file: "OverviewDistributionMetric",
+            },
+            TypeImport {
+                name: "OverviewDistributionScale",
+                file: "OverviewDistributionScale",
+            },
+            TypeImport {
+                name: "OverviewHistogramRule",
+                file: "OverviewHistogramRule",
+            },
+            TypeImport {
+                name: "OverviewDistributionBin",
+                file: "OverviewDistributionBin",
+            },
+            TypeImport {
+                name: "OverviewEcdfPoint",
+                file: "OverviewEcdfPoint",
+            },
+            TypeImport {
+                name: "OverviewQqReference",
+                file: "OverviewQqReference",
+            },
+            TypeImport {
+                name: "OverviewQqPoint",
+                file: "OverviewQqPoint",
+            },
+            TypeImport {
+                name: "OverviewDistributionWitness",
+                file: "OverviewDistributionWitness",
+            },
+        ],
+        &[],
+    );
+    export_type::<OverviewDistributionEvidenceQuery>(
+        &out_dir,
+        &[TypeImport {
+            name: "OverviewDistributionMetric",
+            file: "OverviewDistributionMetric",
+        }],
+        &[],
+    );
+    export_type::<OverviewDistributionEvidenceRow>(&out_dir, &[], &[]);
+    export_type::<OverviewDistributionEvidencePage>(
+        &out_dir,
+        &[TypeImport {
+            name: "OverviewDistributionEvidenceRow",
+            file: "OverviewDistributionEvidenceRow",
+        }],
+        &[],
+    );
+    export_type::<CoverageTargetCrossing>(&out_dir, &[], &[]);
     export_type::<FrequencyMatchMode>(&out_dir, &[], &[]);
     export_type::<FrequencyTokenClass>(&out_dir, &[], &[]);
     export_type::<FrequencySortKey>(&out_dir, &[], &[]);
