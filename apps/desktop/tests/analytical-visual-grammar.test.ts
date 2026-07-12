@@ -154,7 +154,9 @@ assert(!figures.includes("renderSparklineGlyph"), "expanded figure headers must 
 assert(figures.includes('button.setAttribute("aria-pressed", String(option.value === initialValue));'));
 assert(styles.includes('.cw-overview-segment[aria-pressed="true"]'));
 assert(styles.includes('.cw-overview-figure-action[aria-pressed="true"]'));
-assert(shell.includes('const controls = createOverviewSegmentedControl(\n    "Stopword mode"'));
+assert(shell.includes('createOverviewSegmentedControl(\n      "Stopwords"'));
+assert(shell.includes('createOverviewSelectControl(\n      "Sort"'));
+assert(shell.includes('createOverviewSegmentedControl(\n      "Rows"'));
 
 assert(figures.includes("const exportedSvg = svg.cloneNode(true) as SVGSVGElement;"));
 assert(figures.includes("decorateFigureSvg(exportedSvg, exportOptions(figure, options));"));

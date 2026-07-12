@@ -299,10 +299,20 @@ export interface CoverageGeometry {
 export interface DispersionBucketDatum {
   key: string;
   label: string;
+  lowerBound?: number;
+  upperBound?: number | null;
   count: number;
   share: number | null;
-  highlighted?: boolean;
-  detail?: string;
+  sampleTypes?: string[];
+}
+
+export interface DispersionCalloutGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  title: string;
+  detail: string;
 }
 
 export interface DispersionGeometry {
@@ -314,6 +324,8 @@ export interface DispersionGeometry {
   dividers: PlotLineGeometry[];
   compositionSegments: DispersionCompositionSegmentGeometry[];
   labels: PlotLabelGeometry[];
+  cumulativeCallout: DispersionCalloutGeometry | null;
+  xAxisLabel: string;
 }
 
 export interface DispersionCompositionSegmentGeometry {
@@ -397,6 +409,8 @@ export interface DispersionRosterRowGeometry {
   guide: PlotLineGeometry;
   point: PlotPointGeometry<DispersionRosterEntryDatum>;
   tokenLabel: PlotLabelGeometry;
+  frequencyLabel: PlotLabelGeometry;
+  documentsLabel: PlotLabelGeometry;
   aboveThreshold: boolean;
 }
 
@@ -408,6 +422,8 @@ export interface DispersionRosterGeometry {
   thresholdLine: PlotLineGeometry;
   thresholdLabel: PlotLabelGeometry;
   aboveThresholdCount: number;
+  headers: PlotLabelGeometry[];
+  legend: PlotLegendItem[];
 }
 
 export interface LengthHistogramBinDatum {
@@ -1519,48 +1535,57 @@ export function buildCoverageGeometry(options: {
 
 export function buildDispersionGeometry(options: {
   buckets: DispersionBucketDatum[];
+  totalTypes?: number;
+  totalDocuments?: number;
+  xMode?: "count" | "share";
+  reachLabels?: "documents" | "percentage";
+  labelsMode?: "counts" | "countsShares" | "off";
+  cumulativeCallout?: { count: number; examples: string[] } | null;
   box?: PlotBox;
 }): DispersionGeometry {
   const rowCount = Math.max(1, options.buckets.length);
   const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, Math.max(360, 162 + rowCount * 19), {
-    top: 30,
+    top: options.cumulativeCallout ? 112 : 72,
     right: 36,
     bottom: 48,
     left: 156,
   });
   const buckets = options.buckets;
-  const positiveCounts = buckets.filter((bucket) => bucket.count > 0).map((bucket) => bucket.count);
-  const xScale = createScale("log", extent(positiveCounts), [
+  const totalTypes = options.totalTypes ?? buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+  const value = (bucket: DispersionBucketDatum) => options.xMode === "share"
+    ? (bucket.share ?? (totalTypes > 0 ? bucket.count / totalTypes : 0))
+    : bucket.count;
+  const positiveValues = buckets.filter((bucket) => value(bucket) > 0).map(value);
+  const xScale = createScale(options.xMode === "share" ? "linear" : "log", options.xMode === "share" ? [0, 1] : extent(positiveValues), [
     box.margin.left,
     box.width - box.margin.right,
   ]);
-  const hasDistinctFinalRow = buckets.some((bucket) => bucket.highlighted);
-  const rowGap = hasDistinctFinalRow ? 0.8 : 0;
-  const lastVirtualRow = Math.max(1, buckets.length - 1 + rowGap);
   const compositionBarHeight = 12;
-  const compositionBarY = box.margin.top;
-  const rowTop = compositionBarY + compositionBarHeight + 28;
+  const compositionBarY = 18;
+  const rowTop = box.margin.top;
   const rowHeight = Math.max(1, box.height - box.margin.bottom - rowTop);
-  let virtualRow = 0;
   const points = buckets.map((bucket, index) => {
-    if (bucket.highlighted && index > 0) virtualRow += rowGap;
     const y = buckets.length > 1
-      ? rowTop + (virtualRow / lastVirtualRow) * rowHeight
+      ? rowTop + (index / Math.max(1, buckets.length - 1)) * rowHeight
       : rowTop + rowHeight / 2;
-    virtualRow += 1;
-    const plotCount = Math.max(1, bucket.count);
+    const plotValue = value(bucket);
+    const share = bucket.share ?? (totalTypes > 0 ? bucket.count / totalTypes : 0);
+    const documentBounds = dispersionReachBounds(bucket, options.totalDocuments);
     return {
-      x: bucket.count > 0 ? scaleValue(xScale, bucket.count) : scaleValue(xScale, xScale.domain[0]),
+      x: plotValue > 0 ? scaleValue(xScale, plotValue) : scaleValue(xScale, xScale.domain[0]),
       y,
-      rawX: bucket.count,
+      rawX: plotValue,
       rawY: index,
       datum: bucket,
-      rampIndex: buckets.length <= 1 ? 2 : rampIndex(plotCount, xScale.domain, true),
+      rampIndex: buckets.length <= 1 ? 2 : Math.round((index / Math.max(1, buckets.length - 1)) * 5),
       excluded: bucket.count === 0,
       tooltipTitle: bucket.label,
       tooltipRows: [
+        `documents ${documentBounds.documents}`,
+        `corpus reach ${documentBounds.percentage}`,
         `${formatInteger(bucket.count)} types`,
-        bucket.share === null ? "" : `${formatPercent(bucket.share)} of vocabulary`,
+        `${formatPercent(share)} of vocabulary`,
+        bucket.sampleTypes?.length ? `examples ${bucket.sampleTypes.join(", ")}` : "",
       ].filter(Boolean),
     };
   });
@@ -1571,17 +1596,7 @@ export function buildDispersionGeometry(options: {
     y2: point.y,
     className: `cw-plot-lollipop-stem cw-plot-ramp-${point.rampIndex}`,
   }));
-  const distinctPoint = points.find((point) => point.datum.highlighted);
-  const previousPoint = distinctPoint ? points[points.indexOf(distinctPoint) - 1] : undefined;
-  const dividers = distinctPoint && previousPoint
-    ? [{
-        x1: box.margin.left,
-        y1: (distinctPoint.y + previousPoint.y) / 2,
-        x2: box.width - box.margin.right,
-        y2: (distinctPoint.y + previousPoint.y) / 2,
-        className: "cw-plot-reference-line",
-      }]
-    : [];
+  const dividers: PlotLineGeometry[] = [];
   const dotAndStemObstacles = [
     ...pointLabelObstacles(points, 8),
     ...lineLabelObstacles(stems, 5),
@@ -1590,8 +1605,10 @@ export function buildDispersionGeometry(options: {
     points.map((point) => ({
       x: box.margin.left - 10,
       y: point.y + 4,
-      text: point.datum.label,
-      className: point.datum.highlighted ? "cw-plot-label-strong" : "cw-plot-label-muted",
+      text: options.reachLabels === "percentage"
+        ? dispersionReachBounds(point.datum, options.totalDocuments).percentage
+        : dispersionReachBounds(point.datum, options.totalDocuments).documents,
+      className: "cw-plot-label-muted",
       candidates: [
         { dx: 0, dy: 0, anchor: "end" },
         { dx: -4, dy: 0, anchor: "end" },
@@ -1607,11 +1624,13 @@ export function buildDispersionGeometry(options: {
       bottom: box.height - box.margin.bottom + 8,
     },
   );
-  const countLabels = placeLabels(
+  const valueLabels = options.labelsMode === "off" ? [] : placeLabels(
     points.map((point) => ({
       x: Math.min(point.x + 10, box.width - box.margin.right - 10),
       y: point.y + 4,
-      text: point.datum.detail ?? formatInteger(point.datum.count),
+      text: options.labelsMode === "countsShares"
+        ? `${formatInteger(point.datum.count)} · ${formatPercent(point.datum.share ?? (totalTypes > 0 ? point.datum.count / totalTypes : 0))}`
+        : formatInteger(point.datum.count),
       className: "cw-plot-label-mono",
       candidates: [
         { dx: 0, dy: 0, anchor: "start" },
@@ -1628,13 +1647,12 @@ export function buildDispersionGeometry(options: {
     ],
     plotLabelBounds(box),
   );
-  const exclusivePoints = points.filter((point) => !point.datum.highlighted);
-  const countedTypes = exclusivePoints.reduce((total, point) => total + point.datum.count, 0);
+  const countedTypes = points.reduce((total, point) => total + point.datum.count, 0);
   let compositionX = box.margin.left;
-  const compositionSegments = exclusivePoints.map((point, index) => {
+  const compositionSegments = points.map((point, index) => {
     const remainingWidth = box.width - box.margin.right - compositionX;
     const share = point.datum.share ?? (countedTypes > 0 ? point.datum.count / countedTypes : 0);
-    const width = index === exclusivePoints.length - 1
+    const width = index === points.length - 1
       ? remainingWidth
       : Math.max(0, box.innerWidth * share);
     const segment = {
@@ -1654,16 +1672,47 @@ export function buildDispersionGeometry(options: {
     compositionX += width;
     return segment;
   });
+  const calloutExamples = options.cumulativeCallout?.examples.slice(0, 3) ?? [];
+  const cumulativeCallout = options.cumulativeCallout ? {
+    x: box.margin.left,
+    y: 48,
+    width: box.innerWidth,
+    height: 42,
+    title: `${formatInteger(options.cumulativeCallout.count)} types occur in at least 90% of documents`,
+    detail: `Cumulative threshold, not an exclusive band${calloutExamples.length ? ` · examples: ${calloutExamples.join(", ")}` : ""}`,
+  } : null;
   return {
     box,
     xScale,
-    xTicks: logTicks(xScale),
+    xTicks: xScale.kind === "log"
+      ? logTicks(xScale)
+      : linearTicks(xScale, 6).map((tick) => ({ ...tick, label: formatPercent(tick.value) })),
     points,
     stems,
     dividers,
     compositionSegments,
-    labels: [...rowLabels, ...countLabels],
+    labels: [...rowLabels, ...valueLabels],
+    cumulativeCallout,
+    xAxisLabel: options.xMode === "share" ? "Share of vocabulary" : "Type count (log scale)",
   };
+}
+
+export function dispersionReachBounds(
+  bucket: DispersionBucketDatum,
+  totalDocuments = 0,
+): { documents: string; percentage: string } {
+  const lower = bucket.lowerBound ?? 0;
+  const upper = bucket.upperBound ?? null;
+  const documents = lower > 0
+    ? (upper === null ? `${formatInteger(lower)}+ documents` : lower === upper ? `${formatInteger(lower)} ${lower === 1 ? "document" : "documents"}` : `${formatInteger(lower)}–${formatInteger(upper)} documents`)
+    : bucket.label;
+  if (totalDocuments <= 0 || lower <= 0) return { documents, percentage: "percentage unavailable" };
+  const lowShare = lower / totalDocuments;
+  const highShare = upper === null ? 1 : Math.min(1, upper / totalDocuments);
+  const percentage = upper !== null && lower === upper
+    ? `${formatPercent(lowShare, 0)} of documents`
+    : `${formatPercent(lowShare, 0)}–${formatPercent(highShare, 0)} of documents`;
+  return { documents, percentage };
 }
 
 export function buildDispersionPlaneGeometry(options: {
@@ -1795,14 +1844,17 @@ export function formatDispersionPlaneStats(
 export function buildDispersionRosterGeometry(options: {
   entries: DispersionRosterEntryDatum[];
   highDispersionThreshold: number;
+  totalTokens?: number;
+  totalDocuments?: number;
+  pinnedKeys?: ReadonlySet<string>;
   box?: PlotBox;
 }): DispersionRosterGeometry {
   const rowCount = Math.max(1, options.entries.length);
-  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 92 + (rowCount * DISPERSION_ROSTER_ROW_PITCH), {
-    top: 34,
-    right: 48,
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 142 + (rowCount * DISPERSION_ROSTER_ROW_PITCH), {
+    top: 84,
+    right: 224,
     bottom: 58,
-    left: 156,
+    left: 188,
   });
   const xScale = createScale("linear", [0, 1], [
     box.margin.left,
@@ -1819,7 +1871,7 @@ export function buildDispersionRosterGeometry(options: {
   const thresholdLabel = {
     x: thresholdX,
     y: box.margin.top - 10,
-    text: `DP ${formatDpThreshold(options.highDispersionThreshold)}`,
+    text: `DP ${formatFixed(options.highDispersionThreshold, 2)} descriptive threshold`,
     anchor: "middle" as const,
     className: "cw-plot-label-mono cw-plot-label-muted",
     fontSize: 10.5,
@@ -1828,6 +1880,7 @@ export function buildDispersionRosterGeometry(options: {
   const rows = options.entries.map((entry, index) => {
     const y = box.margin.top + (DISPERSION_ROSTER_ROW_PITCH / 2) + (index * DISPERSION_ROSTER_ROW_PITCH);
     const aboveThreshold = entry.dp >= options.highDispersionThreshold;
+    const key = `roster:${entry.token}`;
     if (aboveThreshold) aboveThresholdCount += 1;
     const point = {
       x: scaleValue(xScale, clamp(entry.dp, 0, 1)),
@@ -1836,30 +1889,52 @@ export function buildDispersionRosterGeometry(options: {
       rawY: index,
       datum: entry,
       rampIndex: aboveThreshold ? 5 : 2,
+      className: aboveThreshold ? "is-dp-attention" : "is-dp-observed",
+      key,
+      pinned: options.pinnedKeys?.has(key) ?? false,
       tooltipTitle: entry.token,
       tooltipRows: [
         `frequency ${formatInteger(entry.frequency)}`,
+        options.totalTokens ? `rate ${formatFixed((entry.frequency / options.totalTokens) * 1_000_000, 2)} per million` : "",
         `document frequency ${formatInteger(entry.documentFrequency)}`,
+        options.totalDocuments ? `document reach ${formatPercent(entry.documentFrequency / options.totalDocuments)}` : "",
         `DP ${formatFixed(entry.dp, 3)}`,
-      ],
+      ].filter(Boolean),
     };
     return {
       entry,
       y,
       guide: {
-        x1: box.margin.left,
+        x1: 14,
         y1: y,
-        x2: box.width - box.margin.right,
+        x2: box.width - 14,
         y2: y,
         className: "cw-plot-roster-guide",
       },
       point,
       tokenLabel: {
-        x: box.margin.left - 10,
+        x: 18,
         y: y + 4,
         text: entry.token,
+        anchor: "start" as const,
+        className: "cw-plot-roster-token",
+        fontSize: 10.5,
+        pinned: options.pinnedKeys?.has(key) ?? false,
+      },
+      frequencyLabel: {
+        x: box.width - 112,
+        y: y + 4,
+        text: formatInteger(entry.frequency),
         anchor: "end" as const,
-        className: "cw-plot-label-mono cw-plot-label-muted",
+        className: "cw-plot-roster-number",
+        fontSize: 10.5,
+      },
+      documentsLabel: {
+        x: box.width - 18,
+        y: y + 4,
+        text: formatInteger(entry.documentFrequency),
+        anchor: "end" as const,
+        className: "cw-plot-roster-number",
         fontSize: 10.5,
       },
       aboveThreshold,
@@ -1878,7 +1953,39 @@ export function buildDispersionRosterGeometry(options: {
     thresholdLine,
     thresholdLabel,
     aboveThresholdCount,
+    headers: [
+      { x: 18, y: 20, text: "TOKEN", anchor: "start", className: "cw-plot-roster-header" },
+      { x: box.margin.left, y: 20, text: "DP PLOTTING LANE", anchor: "start", className: "cw-plot-roster-header" },
+      { x: box.width - 112, y: 20, text: "FREQUENCY", anchor: "end", className: "cw-plot-roster-header" },
+      { x: box.width - 18, y: 20, text: "DOCUMENTS", anchor: "end", className: "cw-plot-roster-header" },
+    ],
+    legend: [
+      { label: "Below descriptive DP threshold", kind: "point", className: "is-dp-observed" },
+      { label: "At or above descriptive DP threshold", kind: "point", className: "is-dp-attention" },
+    ],
   };
+}
+
+export type DispersionRosterSort = "frequency" | "dp" | "documentFrequency";
+
+export function selectDispersionRosterEntries(options: {
+  entries: DispersionRosterEntryDatum[];
+  sort: DispersionRosterSort;
+  rows: number;
+}): DispersionRosterEntryDatum[] {
+  const numericValue = (entry: DispersionRosterEntryDatum): number => {
+    if (options.sort === "dp") return entry.dp;
+    if (options.sort === "documentFrequency") return entry.documentFrequency;
+    return entry.frequency;
+  };
+  return [...options.entries]
+    .sort((left, right) => numericValue(right) - numericValue(left) || compareTokens(left.token, right.token))
+    .slice(0, Math.max(0, options.rows));
+}
+
+function compareTokens(left: string, right: string): number {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
 }
 
 export function formatDispersionRosterStats(
@@ -1890,7 +1997,7 @@ export function formatDispersionRosterStats(
   const countText = shownCount === shippedCount
     ? `top ${formatInteger(shownCount)} types by frequency`
     : `shown ${formatInteger(shownCount)} of ${formatInteger(shippedCount)} frequent types`;
-  return `${countText} · ${formatInteger(aboveThresholdCount)} above DP ${formatDpThreshold(highDispersionThreshold)}`;
+  return `${countText} · ${formatInteger(aboveThresholdCount)} at/above DP ${formatDpThreshold(highDispersionThreshold)}`;
 }
 
 export function buildDistributionDiagnosticGeometry(options: {
@@ -2778,15 +2885,6 @@ function middleEllipsis(value: string, maxLength: number): string {
 
 function roundSvg(value: number): string {
   return Number(value.toFixed(2)).toString();
-}
-
-function rampIndex(value: number, domain: [number, number], log: boolean): number {
-  const [min, max] = domain;
-  const start = log ? Math.log10(Math.max(min, LOG_MINIMUM)) : min;
-  const end = log ? Math.log10(Math.max(max, LOG_MINIMUM)) : max;
-  const current = log ? Math.log10(Math.max(value, LOG_MINIMUM)) : value;
-  if (start === end) return 2;
-  return Math.max(0, Math.min(4, Math.floor(((current - start) / (end - start)) * 5)));
 }
 
 function lexicalSpectrumRampIndex(frequency: number): number {
