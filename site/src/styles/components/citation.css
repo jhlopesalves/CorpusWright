@@ -11,5 +11,5 @@
 }
 .bibtex summary:hover { color: var(--accent); }
 
-.citation-content { max-width: var(--prose); }
+.citation-content { max-width: var(--prose); min-width: 0; }
 .citation-section-heading { margin-top: 36px; font-size: 1.08rem; }

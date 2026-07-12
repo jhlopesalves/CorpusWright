@@ -78,6 +78,8 @@ target/
 
 # Node/Web dependencies
 node_modules/
+site/test-results/
+site/playwright-report/
 
 # Logs and temporary files
 logs/
