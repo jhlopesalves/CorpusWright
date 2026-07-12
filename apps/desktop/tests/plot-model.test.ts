@@ -217,22 +217,17 @@ const dispersionProfile = buildDispersionGeometry({
     { key: "df-1", label: "1", count: 50, share: 0.5 },
     { key: "df-2", label: "2", count: 0, share: 0 },
     { key: "df-3-4", label: "3–4", count: 10, share: 0.1 },
-    {
-      key: "df-90pct",
-      label: "≥90% of documents",
-      count: 3,
-      share: 0.03,
-      highlighted: true,
-      detail: "3",
-    },
   ],
+  totalTypes: 60,
+  totalDocuments: 100,
+  cumulativeCallout: { count: 3, examples: ["the", "of"] },
   box: createPlotBox(500, 280, { top: 30, right: 36, bottom: 48, left: 156 }),
 });
 assert(dispersionProfile.xScale.kind === "log", "Dispersion profile should use a log count axis");
 assert(dispersionProfile.xScale.domain[0] > 0, "Dispersion log domain should stay positive");
-assert(dispersionProfile.points.length === 4, "Dispersion profile should keep one point per emitted bucket plus the overlay row");
+assert(dispersionProfile.points.length === 3, "Dispersion profile should keep one point per exclusive reach bucket");
 assert(
-  dispersionProfile.points.filter((point) => !point.datum.highlighted).length === 3,
+  dispersionProfile.points.length === 3,
   "Dispersion profile should keep all emitted reach bands without coarsening",
 );
 assert(
@@ -240,8 +235,9 @@ assert(
   "Zero-count reach bands should remain truthful rows anchored at the log-axis floor",
 );
 assert(
-  dispersionProfile.points.at(-1)?.datum.highlighted === true && dispersionProfile.dividers.length === 1,
-  "The ≥90% overlay row should be distinct and divided from the ladder",
+  dispersionProfile.cumulativeCallout?.title.startsWith("3 types occur in at least 90%")
+    && dispersionProfile.dividers.length === 0,
+  "The ≥90% result should remain a separate cumulative callout",
 );
 assert(
   dispersionProfile.compositionSegments.length === 3
@@ -250,14 +246,9 @@ assert(
   "Dispersion profile should add a labelled stacked composition strip for exclusive bands",
 );
 assert(
-  dispersionProfile.stems.at(-1) !== undefined
-    && dispersionProfile.points.at(-1)?.datum.highlighted === true,
-  "Dispersion profile should preserve the distinct cumulative annotation datum for square rendering",
-);
-assert(
-  dispersionProfile.labels.some((label) => label.text === "3")
-    && !dispersionProfile.labels.some((label) => label.text.includes("the · of")),
-  "Universal type tokens must not be emitted as axis-adjacent labels",
+  !dispersionProfile.points.some((point) => point.datum.key === "df-90pct")
+    && dispersionProfile.cumulativeCallout?.detail.includes("examples: the, of"),
+  "Universal examples should belong to the separate callout, never a lollipop row",
 );
 assert(
   formatDispersionProfileStats(587_151, 13, 101)
@@ -363,12 +354,12 @@ assertClose(
 );
 assert(
   formatDispersionRosterStats(3, 3, dispersionRoster.aboveThresholdCount, 0.5)
-    === "top 3 types by frequency · 2 above DP 0.5",
+    === "top 3 types by frequency · 2 at/above DP 0.5",
   "Dispersion roster stats caption should report the threshold count",
 );
 assert(
   formatDispersionRosterStats(2, 3, 1, 0.5)
-    === "shown 2 of 3 frequent types · 1 above DP 0.5",
+    === "shown 2 of 3 frequent types · 1 at/above DP 0.5",
   "Filtered dispersion roster stats should state the shown count against the shipped count",
 );
 

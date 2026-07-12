@@ -127,15 +127,15 @@ export function renderDispersionSvg(plotId: string, geometry: DispersionGeometry
   const svg = createBaseSvg(plotId, geometry.box);
   renderDefinitions(svg, plotId);
   renderAxes(svg, geometry.box, geometry.xScale, null, geometry.xTicks, [], {
-    x: "types",
+    x: geometry.xAxisLabel,
     y: "",
     valueAxis: "x",
   });
   for (const divider of geometry.dividers) renderLine(svg, divider);
   renderDispersionCompositionBar(svg, geometry);
-  for (const stem of geometry.stems.filter((_stem, index) => !geometry.points[index]?.datum.highlighted)) renderLine(svg, stem);
-  renderPoints(svg, geometry.points.filter((point) => !point.datum.highlighted), "cw-plot-point is-panel-stroked is-lollipop");
-  renderDispersionCumulativeAnnotations(svg, geometry);
+  for (const stem of geometry.stems) renderLine(svg, stem);
+  renderPoints(svg, geometry.points, "cw-plot-point is-panel-stroked is-lollipop");
+  renderDispersionCumulativeCallout(svg, geometry);
   renderLabels(svg, geometry.labels);
   renderInteractionLayer(svg, geometry.box);
   return svg;
@@ -143,7 +143,7 @@ export function renderDispersionSvg(plotId: string, geometry: DispersionGeometry
 
 function renderDispersionCompositionBar(svg: SVGSVGElement, geometry: DispersionGeometry): void {
   const group = createSvgElement("g");
-  group.setAttribute("class", "cw-plot-dispersion-composition");
+  group.setAttribute("class", "cw-plot-composition-strip cw-plot-dispersion-composition");
   for (const segment of geometry.compositionSegments) {
     const rect = createSvgElement("rect");
     setAttrs(rect, {
@@ -174,25 +174,20 @@ function renderDispersionCompositionBar(svg: SVGSVGElement, geometry: Dispersion
   svg.appendChild(group);
 }
 
-function renderDispersionCumulativeAnnotations(svg: SVGSVGElement, geometry: DispersionGeometry): void {
+function renderDispersionCumulativeCallout(svg: SVGSVGElement, geometry: DispersionGeometry): void {
+  if (!geometry.cumulativeCallout) return;
   const group = createSvgElement("g");
   group.setAttribute("class", "cw-plot-dispersion-cumulative");
-  for (const point of geometry.points.filter((candidate) => candidate.datum.highlighted)) {
-    const marker = createSvgElement("rect");
-    setAttrs(marker, {
-      x: point.x - 4,
-      y: point.y - 4,
-      width: 8,
-      height: 8,
-      class: `cw-plot-cumulative-marker cw-plot-ramp-${point.rampIndex} cw-plot-hover-target`,
-      tabindex: "0",
-      "data-plot-x": point.x,
-      "data-plot-y": point.y,
-      "data-tooltip-title": point.tooltipTitle ?? "",
-      "data-tooltip-rows": (point.tooltipRows ?? []).join("\n"),
-    });
-    group.appendChild(marker);
-  }
+  const callout = geometry.cumulativeCallout;
+  const background = createSvgElement("rect");
+  setAttrs(background, { x: callout.x, y: callout.y, width: callout.width, height: callout.height, rx: 5, class: "cw-plot-cumulative-callout" });
+  const title = createSvgElement("text");
+  setAttrs(title, { x: callout.x + 12, y: callout.y + 17, class: "cw-plot-cumulative-callout-title" });
+  title.textContent = callout.title;
+  const detail = createSvgElement("text");
+  setAttrs(detail, { x: callout.x + 12, y: callout.y + 33, class: "cw-plot-cumulative-callout-detail" });
+  detail.textContent = callout.detail;
+  group.append(background, title, detail);
   svg.appendChild(group);
 }
 
@@ -222,12 +217,45 @@ export function renderDispersionRosterSvg(plotId: string, geometry: DispersionRo
     y: "",
     valueAxis: "x",
   });
+  renderRosterRowBackgrounds(svg, geometry);
   for (const row of geometry.rows) renderLine(svg, row.guide);
   renderLine(svg, geometry.thresholdLine);
-  renderLabels(svg, [...geometry.rows.map((row) => row.tokenLabel), geometry.thresholdLabel]);
+  renderLabels(svg, [
+    ...geometry.headers,
+    ...geometry.rows.flatMap((row) => [row.tokenLabel, row.frequencyLabel, row.documentsLabel]),
+    geometry.thresholdLabel,
+  ]);
   renderRosterDots(svg, geometry);
+  renderRosterLegend(svg, geometry);
   renderInteractionLayer(svg, geometry.box);
   return svg;
+}
+
+function renderRosterLegend(svg: SVGSVGElement, geometry: DispersionRosterGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-roster-legend");
+  geometry.legend.forEach((item, index) => {
+    const x = geometry.box.margin.left + index * 248;
+    const y = 43;
+    const swatch = renderLegendSwatch(item, x, y);
+    const label = createSvgElement("text");
+    setAttrs(label, { x: x + 12, y: y + 4, class: "cw-plot-legend-label" });
+    label.textContent = item.label;
+    group.append(swatch, label);
+  });
+  svg.appendChild(group);
+}
+
+function renderRosterRowBackgrounds(svg: SVGSVGElement, geometry: DispersionRosterGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-roster-backgrounds");
+  geometry.rows.forEach((row, index) => {
+    if (index % 2 === 0) return;
+    const rect = createSvgElement("rect");
+    setAttrs(rect, { x: 12, y: row.y - 10, width: geometry.box.width - 24, height: 20, class: "cw-plot-roster-zebra" });
+    group.appendChild(rect);
+  });
+  svg.appendChild(group);
 }
 
 export function renderLengthHistogramSvg(plotId: string, geometry: LengthHistogramGeometry): SVGSVGElement {
@@ -913,10 +941,15 @@ function renderRosterDots(svg: SVGSVGElement, geometry: DispersionRosterGeometry
       r: 4.5,
       class: [
         "cw-plot-roster-dot",
-        row.aboveThreshold ? "cw-plot-ramp-5" : "",
+        point.className ?? "",
+        point.pinned ? "is-pinned" : "",
         "cw-plot-hover-target",
       ].filter(Boolean).join(" "),
       tabindex: "0",
+      role: "button",
+      "aria-label": point.tooltipTitle ?? "",
+      "aria-pressed": String(Boolean(point.pinned)),
+      "data-pin-key": point.key,
       "data-plot-x": point.x,
       "data-plot-y": point.y,
       "data-tooltip-title": point.tooltipTitle ?? "",

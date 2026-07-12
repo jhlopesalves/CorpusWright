@@ -160,6 +160,56 @@
   stroke-dasharray: 4 3;
 }
 
+.cw-plot-legend-swatch.is-dp-attention {
+  fill: var(--cw-plot-attention);
+  stroke: var(--cw-plot-attention);
+}
+
+.cw-plot-legend-swatch.is-dp-observed {
+  fill: var(--cw-plot-point);
+}
+
+.cw-plot-cumulative-callout {
+  fill: var(--cw-plot-reference);
+  fill-opacity: 0.1;
+  stroke: var(--cw-plot-reference);
+  stroke-width: 1.2;
+}
+
+.cw-plot-cumulative-callout-title {
+  fill: var(--text-color);
+  font-family: var(--cw-font-sans);
+  font-size: var(--cw-type-plot-label-size);
+  font-weight: var(--cw-weight-bold);
+}
+
+.cw-plot-cumulative-callout-detail {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-sans);
+  font-size: var(--cw-type-plot-micro-size);
+}
+
+.cw-plot-roster-token {
+  fill: var(--text-color);
+  font-family: var(--cw-font-sans);
+  font-weight: var(--cw-weight-semibold);
+}
+
+.cw-plot-roster-number {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-sans);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--cw-weight-regular);
+}
+
+.cw-plot-roster-header {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-sans);
+  font-size: var(--cw-type-plot-micro-size);
+  font-weight: var(--cw-weight-bold);
+  letter-spacing: 0.055em;
+}
+
 .cw-plot-legend-label {
   fill: var(--text-muted);
   font-family: var(--cw-font-ui);

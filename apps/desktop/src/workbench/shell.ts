@@ -52,6 +52,7 @@ import {
   formatDispersionProfileStats,
   formatDispersionRosterStats,
   formatUniversalTypeCaption,
+  selectDispersionRosterEntries,
 } from "../plots/model";
 import {
   renderCoverageSvg,
@@ -1839,39 +1840,92 @@ function renderCoverageFigure(corpus: AnalysisCorpus): HTMLElement {
 
 function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
   const dispersion = corpus.dispersion;
-  return createOverviewFigure({
+  interface ProfileControls extends FigureControlState {
+    xMode: "count" | "share";
+    reachLabels: "documents" | "percentage";
+    labels: "counts" | "countsShares" | "off";
+  }
+  const controller = new OverviewFigureController<ProfileControls>({
+    initialControls: { xMode: "count", reachLabels: "documents", labels: "countsShares" },
+    exportMetadata: (controls) => [
+      `${controls.xMode === "count" ? "type count" : "share of vocabulary"} · reach labels ${controls.reachLabels} · labels ${controls.labels}`,
+    ],
+  });
+  let figure: HTMLElement | null = null;
+  const buckets = dispersion.profileBuckets.map((bucket) => ({
+    key: `df-profile-${bucket.lowerBound}-${bucket.upperBound ?? "plus"}`,
+    label: bucket.label,
+    lowerBound: bucket.lowerBound,
+    upperBound: bucket.upperBound,
+    count: bucket.count,
+    share: bucket.share,
+    sampleTypes: bucket.sampleTypes,
+  }));
+  const renderSvg = () => renderDispersionSvg(
+    "overview-dispersion-profile",
+    buildDispersionGeometry({
+      buckets,
+      totalTypes: corpus.totals.types,
+      totalDocuments: corpus.totals.documents,
+      xMode: controller.controls.xMode,
+      reachLabels: controller.controls.reachLabels,
+      labelsMode: controller.controls.labels,
+      cumulativeCallout: {
+        count: dispersion.dfAtLeast90pctCount,
+        examples: dispersion.universalTypes.map((type) => type.token),
+      },
+    }),
+  );
+  const controls = document.createElement("div");
+  controls.append(
+    createOverviewSegmentedControl(
+      "X",
+      [{ value: "count", label: "Type count" }, { value: "share", label: "Share of vocabulary" }],
+      "count",
+      (xMode) => {
+        controller.updateControls({ xMode });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+    createOverviewSegmentedControl(
+      "Reach labels",
+      [{ value: "documents", label: "Documents" }, { value: "percentage", label: "Percentage of documents" }],
+      "documents",
+      (reachLabels) => {
+        controller.updateControls({ reachLabels });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+    createOverviewSelectControl(
+      "Labels",
+      [
+        { value: "counts", label: "Counts" },
+        { value: "countsShares", label: "Counts and shares" },
+        { value: "off", label: "Off" },
+      ],
+      "countsShares",
+      (labels) => {
+        controller.updateControls({ labels });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+  );
+  figure = createOverviewFigure({
     id: "overview-dispersion-profile",
     title: "Dispersion profile",
-    subtitle: "Document-frequency reach bands as log-scale lollipops.",
+    subtitle: "How widely across documents does the vocabulary reach?",
+    controls,
+    controller,
     captionStats: formatDispersionProfileStats(corpus.totals.types, dispersion.profileBuckets.length, dispersion.dfAtLeast90pctCount),
     captionDetail: formatUniversalTypeCaption(
       dispersion.universalTypes.map((type) => type.token),
       dispersion.dfAtLeast90pctCount,
     ),
-    captionReading: dispersion.reading,
+    captionReading: "Document frequency counts documents containing a type. Profile bands are mutually exclusive; the ≥90% callout is cumulative. Reach is not raw frequency, while Gries's DP also accounts for unequal document sizes.",
     explanation: createFigureExplanation("documentFrequencySpectrum", "griesDp"),
-    renderSvg: () => renderDispersionSvg(
-      "overview-dispersion-profile",
-      buildDispersionGeometry({
-        buckets: [
-          ...dispersion.profileBuckets.map((bucket) => ({
-            key: `df-profile-${bucket.lowerBound}-${bucket.upperBound ?? "plus"}`,
-            label: bucket.label,
-            count: bucket.count,
-            share: bucket.share,
-          })),
-          {
-            key: "df-90pct",
-            label: "≥90% of documents",
-            count: dispersion.dfAtLeast90pctCount,
-            share: dispersion.dfAtLeast90pctShare,
-            highlighted: true,
-            detail: `${formatNumber(dispersion.dfAtLeast90pctCount)} types · cumulative, not a band`,
-          },
-        ],
-      }),
-    ),
+    renderSvg,
   });
+  return figure;
 }
 
 function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null {
@@ -1925,14 +1979,29 @@ function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | nul
   const entries = corpus.dispersion.roster;
   if (entries.length === 0) return null;
   const highDispersionThreshold = corpus.dispersion.plane?.highDispersionThreshold ?? HIGH_DISPERSION_THRESHOLD;
-  let stopwordsHidden = false;
+  interface RosterControls extends FigureControlState {
+    stopwords: "show" | "hide";
+    sort: "frequency" | "dp" | "documentFrequency";
+    rows: "20" | "50" | "100";
+  }
+  const sortLabel = (sort: RosterControls["sort"]) => sort === "dp"
+    ? "DP"
+    : sort === "documentFrequency" ? "document frequency" : "frequency";
+  const controller = new OverviewFigureController<RosterControls>({
+    initialControls: { stopwords: "show", sort: "frequency", rows: "20" },
+    exportMetadata: (controls) => [
+      `Top ${controls.rows} frequent types · sorted by ${sortLabel(controls.sort)} · stopwords ${controls.stopwords === "hide" ? "hidden" : "shown"}`,
+    ],
+  });
   let figure: HTMLElement | null = null;
-  const shownEntries = () => stopwordsHidden
-    ? entries.filter((entry) => !isOverviewStopword(entry.token, activeProjectLanguageCode()))
-    : entries;
-  const subtitle = () => stopwordsHidden
-    ? "Top-frequency types ranked against DP; stopwords are hidden."
-    : "Top-frequency types ranked against DP.";
+  const shownEntries = () => selectDispersionRosterEntries({
+    entries: controller.controls.stopwords === "hide"
+      ? entries.filter((entry) => !isOverviewStopword(entry.token, activeProjectLanguageCode()))
+      : entries,
+    sort: controller.controls.sort,
+    rows: Number(controller.controls.rows),
+  });
+  const subtitle = () => `Which frequent types are corpus-wide, and which are locally concentrated?${controller.controls.stopwords === "hide" ? " Stopwords hidden." : ""}`;
   const captionStats = () => {
     const shown = shownEntries();
     const aboveThresholdCount = shown.filter((entry) => entry.dp >= highDispersionThreshold).length;
@@ -1943,6 +2012,9 @@ function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | nul
     buildDispersionRosterGeometry({
       entries: shownEntries(),
       highDispersionThreshold,
+      totalTokens: corpus.totals.tokens,
+      totalDocuments: corpus.totals.documents,
+      pinnedKeys: controller.pins,
     }),
   );
   const refresh = () => {
@@ -1951,25 +2023,48 @@ function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | nul
       captionStats: captionStats(),
     });
   };
-  const controls = createOverviewSegmentedControl(
-    "Stopword mode",
-    [
-      { value: "all", label: "All frequent types" },
-      { value: "hidden", label: "Hide stopwords" },
-    ],
-    "all",
-    (value) => {
-      stopwordsHidden = value === "hidden";
-      refresh();
-    },
+  const controls = document.createElement("div");
+  controls.append(
+    createOverviewSegmentedControl(
+      "Stopwords",
+      [{ value: "show", label: "Show" }, { value: "hide", label: "Hide" }],
+      "show",
+      (stopwords) => {
+        controller.updateControls({ stopwords });
+        refresh();
+      },
+    ),
+    createOverviewSelectControl(
+      "Sort",
+      [
+        { value: "frequency", label: "Frequency" },
+        { value: "dp", label: "DP" },
+        { value: "documentFrequency", label: "Document frequency" },
+      ],
+      "frequency",
+      (sort) => {
+        controller.updateControls({ sort });
+        refresh();
+      },
+    ),
+    createOverviewSegmentedControl(
+      "Rows",
+      [{ value: "20", label: "20" }, { value: "50", label: "50" }, { value: "100", label: "100" }],
+      "20",
+      (rows) => {
+        controller.updateControls({ rows });
+        refresh();
+      },
+    ),
   );
   figure = createOverviewFigure({
     id: "overview-dispersion-roster",
     title: "Dispersion roster",
     subtitle: subtitle(),
     controls,
+    controller,
     captionStats: captionStats(),
-    captionReading: "Frequent is not the same as general: rows to the right of the line are loud in few places.",
+    captionReading: "The roster contains frequent types only. Frequency does not imply wide distribution: a frequent type may be intense in a few documents. DP 0.5 is a descriptive orientation threshold, not an inferential test; hiding stopwords changes presentation, not analysis.",
     explanation: createFigureExplanation("griesDp"),
     renderSvg,
   });

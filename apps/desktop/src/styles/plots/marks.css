@@ -201,6 +201,11 @@
   vector-effect: non-scaling-stroke;
 }
 
+.cw-plot-roster-zebra {
+  fill: var(--cw-plot-grid);
+  fill-opacity: 0.12;
+}
+
 .cw-plot-roster-dot {
   fill: var(--cw-plot-point);
   stroke: var(--panel-bg);
@@ -209,8 +214,13 @@
   transform-origin: center;
 }
 
-.cw-plot-roster-dot.cw-plot-ramp-5 {
-  fill: var(--cw-plot-ramp-5);
+.cw-plot-roster-dot.is-dp-attention {
+  fill: var(--cw-plot-attention);
+  stroke: var(--cw-plot-attention);
+}
+
+.cw-plot-roster-dot.is-dp-observed {
+  fill: var(--cw-plot-point);
 }
 
 .cw-plot-point,
