@@ -30,7 +30,7 @@
 .cw-plot-axis-title {
   fill: var(--text-muted);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }

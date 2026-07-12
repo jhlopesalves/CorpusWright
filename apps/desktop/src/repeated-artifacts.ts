@@ -1714,7 +1714,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
       cand.examples.forEach((ex, idx) => {
         const card = document.createElement("div");
-        card.className = "artifact-example-card";
+        card.className = "artifact-example-card cw-panel cw-panel--compact";
 
         const cardHeader = document.createElement("div");
         cardHeader.className = "artifact-example-header";

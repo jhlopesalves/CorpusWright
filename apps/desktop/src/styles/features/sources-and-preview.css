@@ -13,7 +13,7 @@
 .source-import-summary {
   margin: 0 0 12px;
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   color: var(--text-color);
 }
 
@@ -265,7 +265,7 @@
 
 .pdf-intake-profile-title {
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   color: var(--text-color);
 }
 
@@ -292,7 +292,7 @@
 .pdf-intake-audit-panel h3 {
   margin: 0 0 6px;
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   color: var(--text-color);
 }
 
@@ -330,7 +330,7 @@
 .pdf-intake-audit-card-title {
   margin-bottom: 8px;
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   color: var(--text-color);
   overflow-wrap: anywhere;
 }
@@ -395,7 +395,7 @@
 .pdf-intake-materialization-row strong {
   min-width: 0;
   color: var(--text-color);
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   overflow-wrap: anywhere;
 }
 
@@ -491,7 +491,7 @@
 }
 
 .file-card-title {
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   font-size: 0.9rem;
   color: var(--text-color);
   white-space: nowrap;
@@ -519,7 +519,7 @@
   padding: 12px;
   font-family: var(--cw-font-mono);
   font-size: 13px;
-  font-weight: 400;
+  font-weight: var(--cw-weight-regular);
   line-height: 1.55;
   letter-spacing: 0;
   color: var(--text-color);
@@ -600,7 +600,7 @@
 
 .full-ocr-title {
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   color: var(--text-color);
 }
 
@@ -641,7 +641,7 @@
 
 .full-ocr-page-title {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   color: var(--text-color);
 }
 
@@ -656,7 +656,7 @@
   padding: 10px;
   font-family: var(--cw-font-mono);
   font-size: 0.82rem;
-  font-weight: 400;
+  font-weight: var(--cw-weight-regular);
   line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: break-word;
