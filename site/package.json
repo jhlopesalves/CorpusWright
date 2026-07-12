@@ -12,7 +12,7 @@
     "test": "node --test tests/*.test.mjs",
     "check": "npm run test && npm run check:generated && npm run check:content && npm run check:metadata && npm run check:links && npm run check:html && npm run check:styles && npm run check:runtime",
     "check:generated": "node scripts/check-generated-output.mjs",
-    "check:content": "node scripts/check-content-freeze.mjs",
+    "check:content": "node scripts/check-content-freeze.mjs && node scripts/check-frozen-public.mjs",
     "check:metadata": "node scripts/check-site-metadata.mjs && node scripts/check-release-rendering.mjs",
     "check:links": "node scripts/check-routes.mjs",
     "check:html": "node scripts/check-html.mjs",

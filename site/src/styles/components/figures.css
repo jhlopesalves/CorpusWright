@@ -46,3 +46,8 @@ pre.mermaid svg,
 pre.mermaid svg text {
   font-family: "IBM Plex Sans", sans-serif;
 }
+
+.docs-content figure > img {
+  max-width: 100%;
+  height: auto;
+}
