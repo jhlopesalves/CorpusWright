@@ -503,9 +503,9 @@
                         <span>Window</span>
                         <input id="concordance-window-input" type="number" min="1" max="20" step="1" value="10" />
                       </label>
-                      <label for="concordance-sort-select">
-                        <span>Sort</span>
-                        <select id="concordance-sort-select">
+                      <label for="concordance-sort-1-select">
+                        <span>Sort 1</span>
+                        <select id="concordance-sort-1-select" aria-describedby="concordance-sort-help">
                           <option value="filePosition" selected>File/position</option>
                           <option value="node">Node</option>
                           <option value="left1">1L</option>
@@ -513,6 +513,26 @@
                           <option value="left3">3L</option>
                           <option value="right1">1R</option>
                           <option value="right2">2R</option>
+                          <option value="right3">3R</option>
+                        </select>
+                      </label>
+                      <label for="concordance-sort-2-select">
+                        <span>Sort 2</span>
+                        <select id="concordance-sort-2-select" aria-describedby="concordance-sort-help" disabled>
+                          <option value="" selected>—</option>
+                          <option value="left1">1L</option>
+                          <option value="left2">2L</option>
+                          <option value="right1">1R</option>
+                          <option value="right2">2R</option>
+                        </select>
+                      </label>
+                      <label for="concordance-sort-3-select">
+                        <span>Sort 3</span>
+                        <select id="concordance-sort-3-select" aria-describedby="concordance-sort-help" disabled>
+                          <option value="" selected>—</option>
+                          <option value="left1">1L</option>
+                          <option value="left3">3L</option>
+                          <option value="right1">1R</option>
                           <option value="right3">3R</option>
                         </select>
                       </label>
@@ -527,13 +547,14 @@
                         <button id="concordance-lines-filter-clear" class="secondary-btn concordance-filter-clear" type="button">Clear</button>
                       </div>
                       <div id="concordance-sort-legend" class="concordance-sort-legend hidden" aria-label="Context sort priority">
-                        <span class="is-level-1"><strong>1</strong> Primary sort</span>
-                        <span class="is-level-2"><strong>2</strong> Secondary sort</span>
-                        <span class="is-level-3"><strong>3</strong> Tertiary sort</span>
+                        <span id="concordance-sort-help" class="concordance-sort-help">Sort keys</span>
+                        <span class="is-level-1"><i aria-hidden="true"></i>1</span>
+                        <span class="is-level-2"><i aria-hidden="true"></i>2</span>
+                        <span class="is-level-3"><i aria-hidden="true"></i>3</span>
                       </div>
                       <div class="concordance-table-wrap">
                         <table class="concordance-table">
-                        <thead>
+                        <thead class="concordance-table-head">
                           <tr>
                             <th>File</th>
                             <th>Left context</th>

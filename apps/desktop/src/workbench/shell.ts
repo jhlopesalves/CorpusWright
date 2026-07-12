@@ -2012,7 +2012,9 @@ export function initWorkbenchSwitcher(): void {
   });
   dom.concordanceWindowInput.addEventListener("change", handleConcordanceWindowChange);
   dom.concordanceCaseSensitiveInput.addEventListener("change", handleConcordanceCaseChange);
-  dom.concordanceSortSelect.addEventListener("change", handleConcordanceSortChange);
+  dom.concordanceSort1Select.addEventListener("change", () => handleConcordanceSortChange(1));
+  dom.concordanceSort2Select.addEventListener("change", () => handleConcordanceSortChange(2));
+  dom.concordanceSort3Select.addEventListener("change", () => handleConcordanceSortChange(3));
   dom.concordancePageSizeInput.addEventListener("change", handleConcordancePageSizeChange);
   dom.concordanceFilesButton.addEventListener("click", openFrequencyFilesModal);
   dom.concordancePagePreviousButton.addEventListener("click", showPreviousConcordancePage);
