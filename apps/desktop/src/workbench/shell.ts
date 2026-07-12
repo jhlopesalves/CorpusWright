@@ -431,7 +431,7 @@ function renderAnalysisToolPanels(): void {
 
 function createOverviewPanel(titleText: string): HTMLElement {
   const panel = document.createElement("section");
-  panel.className = "analysis-panel";
+  panel.className = "analysis-panel cw-panel cw-panel--analysis";
 
   const title = document.createElement("h3");
   title.textContent = titleText;
@@ -1799,7 +1799,7 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
 
 function renderBuildDetails(corpus: AnalysisCorpus): HTMLElement {
   const details = document.createElement("details");
-  details.className = "analysis-panel analysis-build-details";
+  details.className = "analysis-panel analysis-build-details cw-panel cw-panel--analysis";
 
   const summary = document.createElement("summary");
   summary.textContent = "Build details";

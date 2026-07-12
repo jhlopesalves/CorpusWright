@@ -8,7 +8,7 @@
   fill: var(--text-muted);
   font-family: var(--cw-font-mono);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
   letter-spacing: 0;
   pointer-events: none;
 }
@@ -17,7 +17,7 @@
   fill: var(--panel-bg);
   font-family: var(--cw-font-mono);
   font-size: 9px;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
   pointer-events: none;
 }
 
@@ -31,7 +31,7 @@
 .cw-plot-quadrant-pill-label {
   fill: var(--text-muted);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
 }
 
 .cw-plot-halo {
@@ -63,7 +63,7 @@
 
 .cw-plot-label-strong {
   fill: var(--text-color);
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
 }
 
 .cw-plot-label-callout {
@@ -86,7 +86,7 @@
   fill: var(--accent-color);
   font-family: var(--cw-font-mono);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
 }
 
 .cw-plot-legend-bg {

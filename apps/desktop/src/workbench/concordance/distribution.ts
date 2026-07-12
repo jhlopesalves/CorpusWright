@@ -61,7 +61,7 @@ export function renderConcordanceDistribution(
   tableWrap.className = "concordance-distribution-table-wrap cw-result-table-wrap";
 
   const table = document.createElement("table");
-  table.className = "concordance-distribution-table cw-result-table";
+  table.className = "concordance-distribution-table cw-result-table cw-result-table--compact";
   const columns = document.createElement("colgroup");
   for (const className of [
     "concordance-distribution-file-column",

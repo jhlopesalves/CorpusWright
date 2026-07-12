@@ -89,11 +89,11 @@ assert.match(tableRule, /font-synthesis:\s*none/);
 
 const numericRule = ruleBody(".cw-result-table-numeric");
 assert.match(numericRule, /font-variant-numeric:\s*tabular-nums/);
-assert.match(numericRule, /font-weight:\s*400/);
+assert.match(numericRule, /font-weight:\s*var\(--cw-weight-regular\)/);
 
 const noteRule = ruleBody(".cw-result-table-pagination-status");
 assert.match(noteRule, /color:\s*var\(--cw-result-table-muted-text\)/);
-assert.match(noteRule, /font-weight:\s*400/);
+assert.match(noteRule, /font-weight:\s*var\(--cw-weight-regular\)/);
 assert.match(noteRule, /font-family:\s*var\(--cw-font-ui\)/);
 
 const statefulAncestorRule = /([^{}]*(?:analysis|analyse)[^{}]*(?:ready|building|build-complete|result-state)[^{}]*)\{([^{}]*)\}/gi;
@@ -110,6 +110,7 @@ assert.match(
   /class="frequency-table-wrap cw-result-table-wrap">\s*<table class="frequency-table cw-result-table">/,
   "Frequency List must consume the shared table shell",
 );
+assert.match(styles, /--cw-weight-regular:\s*400/);
 assert.match(
   html,
   /id="frequency-page-status" class="cw-result-table-pagination-status"/,
@@ -122,32 +123,31 @@ assert(frequency.includes("DP ${formatFixedNumber(dispersion, 2)} on a scale fro
 assert(!frequency.includes("fill.dataset.level"), "DP magnitude must not imply undocumented categories");
 
 const frequencyTokenRule = ruleBody(".frequency-token-cell");
-assert.match(frequencyTokenRule, /font-family:\s*var\(--cw-font-ui\)/);
-assert.match(frequencyTokenRule, /font-weight:\s*600/);
+assert.equal(frequencyTokenRule, "", "Frequency lexical cells must inherit the shared lexical treatment");
+assert.match(ruleBody(".cw-result-table-lexical"), /font-weight:\s*var\(--cw-weight-semibold\)/);
 
 const frequencyNumericRule = ruleBody(".frequency-table td.numeric");
-assert.match(frequencyNumericRule, /font-variant-numeric:\s*tabular-nums/);
-assert.match(frequencyNumericRule, /font-weight:\s*400/);
+assert.doesNotMatch(frequencyNumericRule, /font-(?:family|weight|variant)/);
 
 const dpTrackRule = ruleBody(".frequency-distribution-track");
 assert.match(dpTrackRule, /height:\s*6px/);
 assert.match(dpTrackRule, /background:\s*var\(--cw-result-table-track\)/);
 assert(!styles.includes('.frequency-dp-fill[data-level='));
 
-for (const witness of [
-  'class="concordance-table-wrap cw-result-table-wrap"',
-  'class="concordance-table cw-result-table"',
-  'class="concordance-collocations-table-wrap cw-result-table-wrap"',
-  'class="concordance-collocations-table cw-result-table"',
+for (const [featureClass, sharedClass] of [
+  ["concordance-table-wrap", "cw-result-table-wrap"],
+  ["concordance-table", "cw-result-table"],
+  ["concordance-collocations-table-wrap", "cw-result-table-wrap"],
+  ["concordance-collocations-table", "cw-result-table"],
 ]) {
-  assert(html.includes(witness), `${witness} must consume the shared table system`);
+  assert.match(html, new RegExp(`class="[^"]*\\b${featureClass}\\b[^"]*\\b${sharedClass}\\b[^"]*"`));
 }
 assert(distribution.includes('tableWrap.className = "concordance-distribution-table-wrap cw-result-table-wrap"'));
-assert(distribution.includes('table.className = "concordance-distribution-table cw-result-table"'));
+assert(distribution.includes('table.className = "concordance-distribution-table cw-result-table cw-result-table--compact"'));
 
 const headerRule = ruleBody(".cw-result-table th");
 assert.match(headerRule, /font-family:\s*var\(--cw-font-ui\)/);
-assert.match(headerRule, /font-weight:\s*500/);
+assert.match(headerRule, /font-weight:\s*var\(--cw-weight-medium\)/);
 assert.match(headerRule, /background:\s*var\(--cw-result-table-header-surface\)/);
 
 const lexicalRoleUses = [frequency, lines, collocations, distribution]
@@ -174,7 +174,7 @@ assert(lines.includes("concordance-node-cell cw-result-table-kwic"));
 assert(lines.includes("concordance-right cw-result-table-kwic"));
 const kwicRule = ruleBody(".cw-result-table-kwic");
 assert.match(kwicRule, /font-family:\s*var\(--cw-font-mono\)/);
-assert.match(kwicRule, /font-weight:\s*400/);
+assert.match(kwicRule, /font-weight:\s*var\(--cw-weight-regular\)/);
 assert.doesNotMatch(
   styles.slice(styles.indexOf(".concordance-collocation-controls"), styles.indexOf(".frequency-table-wrap")),
   /font-family:\s*var\(--cw-font-mono\)/,
