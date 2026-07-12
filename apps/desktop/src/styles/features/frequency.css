@@ -1,7 +1,7 @@
 .analysis-empty-state,
 .frequency-empty {
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: var(--cw-type-body-compact-size);
   line-height: 1.5;
 }
 
@@ -25,7 +25,7 @@
 .frequency-summary {
   margin: 4px 0 0;
   color: var(--text-muted);
-  font-size: 0.84rem;
+  font-size: var(--cw-type-ui-size);
   line-height: 1.4;
 }
 
@@ -44,7 +44,7 @@
   background: var(--panel-bg);
   color: var(--text-muted);
   font: inherit;
-  font-size: 0.84rem;
+  font-size: var(--cw-type-ui-size);
   font-weight: var(--cw-weight-semibold);
   cursor: pointer;
 }
@@ -63,7 +63,7 @@
 .frequency-result-count,
 .frequency-limit-note {
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: var(--cw-type-help-size);
 }
 
 .frequency-controls {
@@ -91,7 +91,7 @@
   flex-direction: column;
   gap: 4px;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--cw-type-compact-size);
   font-weight: var(--cw-weight-semibold);
 }
 
@@ -104,7 +104,7 @@
   width: 100%;
   height: 34px;
   padding: 5px 8px;
-  font-size: 0.88rem;
+  font-size: var(--cw-type-body-compact-size);
 }
 
 #frequency-search-input {
@@ -136,7 +136,7 @@
   min-width: 0;
   height: 34px;
   padding: 5px 10px;
-  font-size: 0.86rem;
+  font-size: var(--cw-type-ui-size);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -149,7 +149,7 @@
 .frequency-explanation {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--cw-type-help-size);
   line-height: 1.4;
 }
 
@@ -353,7 +353,7 @@
 .frequency-distribution-panel h3 {
   margin: 0 0 8px;
   color: var(--text-color);
-  font-size: 0.86rem;
+  font-size: var(--cw-type-ui-size);
   font-weight: var(--cw-weight-semibold);
 }
 
@@ -375,7 +375,7 @@
 
 .frequency-distribution-header {
   color: var(--cw-result-table-header-text);
-  font-size: 0.76rem;
+  font-size: var(--cw-type-compact-size);
   font-weight: var(--cw-weight-medium);
 }
 
@@ -417,7 +417,7 @@
   flex-direction: column;
   gap: 5px;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: var(--cw-type-help-size);
   font-weight: var(--cw-weight-semibold);
 }
 
@@ -429,7 +429,7 @@
   background: var(--bg-color);
   color: var(--text-color);
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: var(--cw-type-body-compact-size);
 }
 
 .frequency-files-search input:focus {
@@ -487,7 +487,7 @@
 
 .frequency-file-tokens {
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--cw-type-compact-size);
   font-variant-numeric: tabular-nums;
 }
 
@@ -495,13 +495,13 @@
   margin: 0;
   padding: 14px;
   color: var(--text-muted);
-  font-size: 0.86rem;
+  font-size: var(--cw-type-ui-size);
 }
 
 .frequency-files-status {
   margin-right: auto;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: var(--cw-type-help-size);
 }
 
 .frequency-files-status.is-error {

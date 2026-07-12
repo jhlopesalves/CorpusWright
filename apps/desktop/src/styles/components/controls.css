@@ -21,7 +21,7 @@
   width: 300px;
   border-radius: 2px;
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: var(--cw-type-control-size);
 }
 
 .toolbar input:focus {
@@ -37,7 +37,7 @@
   cursor: pointer;
   border-radius: 2px;
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: var(--cw-type-control-size);
 }
 
 .toolbar button:hover,
@@ -59,7 +59,7 @@
   border-radius: 4px;
   box-sizing: border-box;
   font-family: inherit;
-  font-size: 0.85rem;
+  font-size: var(--cw-type-control-size);
   line-height: 1.2;
   cursor: pointer;
   text-align: center;
@@ -185,7 +185,7 @@
   border-radius: 4px;
   background: var(--panel-bg);
   color: var(--text-color);
-  font-size: 0.86rem;
+  font-size: var(--cw-type-control-size);
   font-weight: var(--cw-weight-medium);
   box-sizing: border-box;
   cursor: pointer;
@@ -268,7 +268,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.85rem;
+  font-size: var(--cw-type-control-size);
   color: var(--text-color);
   margin-bottom: 2px;
 }
@@ -292,18 +292,18 @@
 }
 
 .source-empty-actions button {
-  font-size: 0.8rem;
+  font-size: var(--cw-type-control-size);
   padding: 5px 10px;
 }
 
 .summary-label {
-  font-size: 0.75rem;
+  font-size: var(--cw-type-compact-size);
   color: var(--text-muted);
 }
 
 .prepare-cockpit-actions button {
   padding: 5px 10px;
-  font-size: 0.8rem;
+  font-size: var(--cw-type-control-size);
 }
 
 .prepare-cockpit-actions button:disabled {
@@ -324,7 +324,7 @@
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  font-size: 0.95rem;
+  font-size: var(--cw-type-control-size);
 }
 
 .selectable-text {
@@ -336,7 +336,7 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  font-size: 0.86rem;
+  font-size: var(--cw-type-control-size);
 }
 
 .project-create-form input,
@@ -348,7 +348,7 @@
   background: var(--bg-color);
   color: var(--text-color);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: var(--cw-type-control-size);
   padding: 7px 9px;
 }
 

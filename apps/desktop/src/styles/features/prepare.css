@@ -5,7 +5,7 @@
 }
 
 .source-action-trigger {
-  font-size: 0.82rem;
+  font-size: var(--cw-type-help-size);
   padding: 4px 10px;
   white-space: nowrap;
 }
@@ -41,7 +41,7 @@
   gap: 8px;
   padding: 4px 8px;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: var(--cw-type-body-compact-size);
   user-select: none;
   white-space: nowrap;
   overflow: hidden;
@@ -96,7 +96,7 @@
   border-bottom: 1px solid var(--border-color);
   color: var(--text-muted);
   cursor: default;
-  font-size: 0.74rem;
+  font-size: var(--cw-type-compact-size);
   font-weight: var(--cw-weight-bold);
   letter-spacing: 0;
   text-transform: uppercase;
@@ -135,7 +135,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.86rem;
+  font-size: var(--cw-type-ui-size);
   line-height: 1.2;
 }
 
@@ -158,7 +158,7 @@
   border: 1px solid var(--border-color);
   border-radius: 999px;
   color: var(--text-muted);
-  font-size: 0.66rem;
+  font-size: var(--cw-type-micro-size);
   line-height: 1.1;
   background: var(--cw-surface-subtle);
   white-space: nowrap;
@@ -209,14 +209,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.83rem;
+  font-size: var(--cw-type-ui-size);
 }
 
 .project-create-source-kind {
   display: block;
   margin-top: 2px;
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: var(--cw-type-compact-size);
 }
 
 .sidebar-splitter {
