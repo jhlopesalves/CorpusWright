@@ -738,7 +738,7 @@ assert(
   html.includes('id="concordance-lines-filter" class="concordance-filter-chip hidden" role="status"')
     && html.includes('id="concordance-lines-filter-clear"')
     && html.includes('id="concordance-lines-panel" class="concordance-card concordance-kwic-panel" aria-labelledby="concordance-lines-title" tabindex="-1"')
-    && collocateEvidenceDrawerBody.includes('openInLines.textContent = "Open in concordance lines";')
+    && collocateEvidenceDrawerBody.includes('openInLines.textContent = "Open in Concordance Lines";')
     && collocateEvidenceDrawerBody.includes("openCollocateInConcordanceLines(row.surface, direction);")
     && openInLinesBody.includes("applyConcordanceLinesContextFilter(workbenchState, surface, direction);")
     && openInLinesBody.includes("dom.concordanceLinesPanel.focus({ preventScroll: true });")
@@ -868,17 +868,13 @@ assert(
     && concordanceRightCss.includes("overflow: hidden"),
   "Concordance right context should clip inside its own cell instead of forcing table scroll",
 );
-const concordanceCollocationScoreColumnCssMatch = styles.match(
-  /\.concordance-collocations-table > thead > tr > th:nth-child\(4\),\n\.concordance-collocations-table > tbody > tr\.concordance-collocation-row > td:nth-child\(4\) \{([\s\S]*?)\n\}/,
-);
-assert(concordanceCollocationScoreColumnCssMatch, "Concordance collocation measure-score column CSS should exist");
-const concordanceCollocationScoreColumnCss = concordanceCollocationScoreColumnCssMatch[1];
 assert(
-  concordanceCollocationScoreColumnCss.includes("width: 27%;")
+  styles.includes(".concordance-association-column {\n  width: 11rem;")
+    && styles.includes(".concordance-position-column {\n  width: 12.5rem;")
+    && styles.includes(".concordance-near-query-column {\n  width: 6rem;")
+    && styles.includes(".concordance-corpus-frequency-column {\n  width: 7rem;")
     && styles.includes(".concordance-collocations-table-wrap {\n  max-width: none;")
     && styles.includes(".concordance-collocations-table {\n  width: 100%;\n  min-width: 0;")
-    && styles.includes(".concordance-collocations-table > thead > tr > th:nth-child(5)")
-    && styles.includes("width: 33%;")
     && !styles.includes(".concordance-collocations-table > thead > tr > th:nth-child(6)"),
   "Concordance collocation score and position columns should remain legible in the five-column table",
 );
@@ -946,7 +942,7 @@ const collocateTextCssMatch = styles.match(/^\.concordance-collocate-text \{([\s
 assert(collocateTextCssMatch, "Collocate text CSS should exist");
 const collocateTextCss = collocateTextCssMatch[1];
 assert(
-  collocateTextCss.includes("font-weight: 650")
+  collocateTextCss.includes("font-weight: 600")
     && !styles.includes(".concordance-collocate-button")
     && !styles.includes(".concordance-collocate-action")
     && !collocateTextCss.includes("text-decoration"),
@@ -1003,14 +999,14 @@ assert(
     && styles.includes(".concordance-collocation-score-fill")
     && styles.includes(".concordance-collocation-score-track.is-positive .concordance-collocation-score-fill")
     && styles.includes(".concordance-collocation-score-track.is-negative .concordance-collocation-score-fill")
-    && styles.includes(".concordance-collocation-score-fill.is-ramp-5 { background: var(--accent-color); }")
-    && styles.includes("background: var(--cw-warning-text);")
+    && styles.includes("background: var(--accent-color);")
+    && !styles.includes(".concordance-collocation-score-fill.is-ramp-")
     && styles.includes(".concordance-position-glyph")
-    && styles.includes("grid-template-columns: repeat(5, minmax(3px, 1fr)) auto repeat(5, minmax(3px, 1fr));")
-    && styles.includes(".concordance-position-bin.is-dominant {\n  background: var(--accent-color);")
-    && styles.includes("background: color-mix(in srgb, var(--text-muted) 58%, transparent);")
-    && workbench.includes('element.classList.toggle("is-dominant", bin.active && bin.count > 0 && bin.intensity === 1);')
-    && html.includes("Bar length and colour are relative within the currently loaded collocate set; they do not represent statistical significance.")
+    && styles.includes("grid-template-columns: repeat(5, minmax(3px, 1fr)) 1px repeat(5, minmax(3px, 1fr));")
+    && styles.includes(".concordance-position-node {\n  align-self: stretch;")
+    && !workbench.includes('node.textContent = "NODE"')
+    && !workbench.includes('classList.toggle("is-dominant"')
+    && html.includes("Association bars are scaled across the currently loaded set and do not represent statistical significance. Position profiles are normalised within each collocate row.")
     && !styles.includes("--concordance-score-bar")
     && styles.includes(".concordance-collocation-row:hover td")
     && styles.includes(".concordance-document-spread-header")
@@ -1022,7 +1018,7 @@ assert(
     && styles.includes("@media (max-width: 760px) {\n  .concordance-section,")
     && styles.includes(".concordance-controls {\n    display: grid;\n    grid-template-columns: repeat(2, minmax(0, 1fr));")
     && styles.includes(".concordance-collocations-table > thead > tr > th,\n  .concordance-collocations-table > tbody > tr.concordance-collocation-row > td {\n    padding-inline: 5px;")
-    && styles.includes("grid-template-columns: repeat(5, minmax(2px, 1fr)) auto repeat(5, minmax(2px, 1fr));")
+    && styles.includes("grid-template-columns: repeat(5, minmax(2px, 1fr)) 1px repeat(5, minmax(2px, 1fr));")
     && styles.includes("@media (max-width: 640px) {\n  .concordance-controls")
     && styles.includes(".concordance-collocations-table-wrap {\n    overflow-x: auto;")
     && styles.includes(".concordance-collocations-table {\n    min-width: 620px;")
