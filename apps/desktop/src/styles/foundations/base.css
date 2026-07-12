@@ -28,6 +28,19 @@ body {
   flex-direction: column;
 }
 
+body.is-resizing-sidebar {
+  cursor: col-resize;
+}
+
+body.is-exporting {
+  cursor: wait;
+}
+
+body.is-exporting #menu-save-corpus {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
 #app {
   display: flex;
   flex-direction: column;

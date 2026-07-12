@@ -462,14 +462,10 @@ function syncImportOcrQualityState(items: PendingPdfHandling[]): void {
 function renderBulkHelpers(items: PendingPdfHandling[]): HTMLElement {
   const container = document.createElement("div");
   container.className = "source-import-bulk-helpers";
-  container.style.marginTop = "12px";
-  container.style.display = "flex";
-  container.style.gap = "8px";
-  container.style.flexWrap = "wrap";
 
   const label = document.createElement("strong");
+  label.className = "source-import-bulk-label";
   label.textContent = "Bulk helpers:";
-  label.style.width = "100%";
   container.appendChild(label);
 
   const profiles: { name: string; value: ProjectSourcePdfProfile }[] = [

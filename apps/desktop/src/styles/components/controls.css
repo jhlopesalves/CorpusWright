@@ -66,14 +66,14 @@
 }
 
 .primary-btn {
-  background: var(--cw-primary-bg) !important;
-  color: var(--cw-primary-text) !important;
-  border: 1px solid transparent !important;
+  background: var(--cw-primary-bg);
+  color: var(--cw-primary-text);
+  border: 1px solid transparent;
 }
 
 .primary-btn:hover,
 .primary-btn:focus {
-  background: var(--cw-primary-hover) !important;
+  background: var(--cw-primary-hover);
   outline: none;
 }
 

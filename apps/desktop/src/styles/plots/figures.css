@@ -150,6 +150,14 @@
   font-family: var(--cw-font-ui);
 }
 
+.cw-plot-export-mount {
+  position: absolute;
+  inset: 0 auto auto -100000px;
+  width: var(--cw-plot-export-width);
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .cw-plot-figure-title {
   fill: var(--text-color);
   font-family: var(--cw-font-ui);

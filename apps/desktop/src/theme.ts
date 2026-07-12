@@ -55,7 +55,7 @@ export function initAppChrome(): void {
     splitter.addEventListener("mousedown", (e) => {
       isResizing = true;
       splitter.classList.add("active");
-      document.body.style.cursor = "col-resize";
+      document.body.classList.add("is-resizing-sidebar");
       e.preventDefault();
     });
 
@@ -69,14 +69,14 @@ export function initAppChrome(): void {
       if (newWidth < 240) newWidth = 240;
       if (newWidth > maxW) newWidth = maxW;
 
-      leftPanel.style.width = `${newWidth}px`;
+      leftPanel.style.setProperty("--cw-sidebar-width", `${newWidth}px`);
     });
 
     document.addEventListener("mouseup", () => {
       if (isResizing) {
         isResizing = false;
         splitter.classList.remove("active");
-        document.body.style.cursor = "default";
+        document.body.classList.remove("is-resizing-sidebar");
       }
     });
   }

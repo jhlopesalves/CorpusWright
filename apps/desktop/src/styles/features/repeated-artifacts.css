@@ -44,6 +44,234 @@
   cursor: not-allowed;
 }
 
+.repeated-artifact-description {
+  margin-bottom: 12px;
+}
+
+.artifact-config-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.artifact-config-group--roomy {
+  gap: 8px;
+}
+
+.artifact-config-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.artifact-config-help {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.artifact-config-help--spaced {
+  margin-top: 2px;
+}
+
+.artifact-config-warning {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--cw-warning-border-strong);
+  border-radius: 4px;
+  background: var(--cw-warning-bg);
+  color: var(--cw-warning-text);
+  font-size: 0.8rem;
+}
+
+.artifact-config-thresholds {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.artifact-config-number {
+  width: 60px;
+  padding: 2px 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  background: var(--bg-color);
+  color: var(--text-color);
+}
+
+.artifact-config-number--wide {
+  width: 70px;
+}
+
+.artifact-col-select {
+  width: 45px;
+}
+
+.artifact-col-candidate {
+  width: auto;
+}
+
+.artifact-col-occurrences,
+.artifact-col-files {
+  width: 65px;
+}
+
+.artifact-col-position {
+  width: 95px;
+}
+
+.artifact-col-risk {
+  width: 120px;
+}
+
+.artifact-table-message {
+  padding: 20px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.artifact-table-message--error {
+  color: var(--cw-danger-text);
+}
+
+.artifact-status-spinner {
+  width: 24px;
+  height: 24px;
+  margin: 0 auto 10px;
+}
+
+.artifact-details-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.artifact-details-empty {
+  margin-top: 40px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.artifact-candidate-select {
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.artifact-candidate-number {
+  text-align: right;
+}
+
+.artifact-candidate-position {
+  font-size: 0.8rem;
+}
+
+.artifact-detail-meta,
+.artifact-position-summary {
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+  font-size: 0.85rem;
+}
+
+.artifact-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.artifact-numeric-caution {
+  padding: 6px 8px;
+  border-left: 3px solid var(--cw-category-numeric-border);
+  border-radius: 4px;
+  background: var(--cw-category-numeric-bg);
+  color: var(--cw-category-numeric-text);
+  font-size: 0.8rem;
+}
+
+.artifact-variants-action {
+  padding: 8px;
+  border-left: 3px solid var(--cw-success-border-strong);
+  border-radius: 4px;
+  background: var(--cw-success-bg-strong);
+  font-size: 0.85rem;
+}
+
+.artifact-variants-label {
+  margin-bottom: 6px;
+}
+
+.artifact-variants-toggle {
+  padding: 3px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.artifact-variants-list {
+  max-height: 200px;
+  margin-top: 6px;
+  overflow-y: auto;
+  font-family: var(--cw-font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.artifact-variant-line {
+  padding: 2px 4px;
+  border-bottom: 1px solid var(--border-color);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.artifact-position-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.artifact-position-summary-values {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.artifact-risk-advisory {
+  padding: 6px 8px;
+  border-left: 2px solid var(--border-color);
+  background: var(--cw-advisory-bg);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.artifact-examples-title {
+  margin-top: 8px;
+  font-size: 0.9rem;
+}
+
+.artifact-examples-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.artifact-example-document {
+  overflow: hidden;
+  font-weight: var(--cw-weight-semibold);
+  text-overflow: ellipsis;
+}
+
 .artifact-scan-diagnostics {
   font-size: 0.78rem;
   color: var(--text-muted);

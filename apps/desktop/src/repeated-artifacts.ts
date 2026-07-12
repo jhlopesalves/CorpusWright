@@ -667,9 +667,9 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         previewText += ` Active removals include: ${examples.join(", ")}${count > 3 ? ", ..." : ""}.`;
       }
       dom.artifactProcessedWarning.textContent = previewText;
-      dom.artifactProcessedWarning.style.display = "block";
+      dom.artifactProcessedWarning.classList.remove("hidden");
     } else {
-      dom.artifactProcessedWarning.style.display = "none";
+      dom.artifactProcessedWarning.classList.add("hidden");
     }
   }
 
@@ -677,20 +677,20 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     const timeStr = elapsed !== undefined ? ` (${elapsed.toFixed(1)}s)` : "";
     dom.tblArtifactCandidates.innerHTML = `
       <tr>
-        <td colspan="6" style="padding: 20px; text-align: center;">
-          <div class="spinner" style="margin: 0 auto 10px auto; width: 24px; height: 24px;"></div>
+        <td colspan="6" class="artifact-table-message">
+          <div class="spinner artifact-status-spinner"></div>
           ${stage}${timeStr}
         </td>
       </tr>
     `;
-    dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px;">${stage}...</div>`;
+    dom.artifactDetailsContent.innerHTML = `<div class="artifact-details-empty">${stage}...</div>`;
   }
 
   function resetScanControls(): void {
-    dom.btnRunArtifactScan.style.display = "inline-block";
+    dom.btnRunArtifactScan.classList.remove("hidden");
     dom.btnRunArtifactScan.disabled = false;
     dom.btnRunArtifactScan.textContent = "Run Scan";
-    dom.btnCancelScan.style.display = "none";
+    dom.btnCancelScan.classList.add("hidden");
     if (scanTimerInterval) { clearInterval(scanTimerInterval); scanTimerInterval = null; }
     syncRepeatedArtifactModalScope();
   }
@@ -698,7 +698,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
   function syncRepeatedArtifactModalScope(): RepeatedArtifactScanScope {
     const scope = syncRepeatedArtifactSettingsSection();
     dom.lblArtifactScanScope.textContent = scope.modalText;
-    if (dom.btnRunArtifactScan.style.display !== "none") {
+    if (!dom.btnRunArtifactScan.classList.contains("hidden")) {
       dom.btnRunArtifactScan.disabled = !scope.canScan;
     }
     return scope;
@@ -757,7 +757,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     if (currentAbortController) { currentAbortController.abort(); currentAbortController = null; }
     invoke("cancel_repeated_artifacts_command").catch(() => {});
     resetScanControls();
-    dom.lblScanTime.style.display = "none";
+    dom.lblScanTime.classList.add("hidden");
     focusedCandidateId = null;
     currentSortColumn = null;
     currentSortDirection = "desc";
@@ -991,7 +991,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       focusedCandidateId = null;
       resetCandidateTableScroll();
       renderCandidates(state.lastScanCandidates, lastDiagnostics);
-      dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Select a candidate to inspect examples.</div>`;
+      dom.artifactDetailsContent.innerHTML = '<div class="artifact-details-empty">Select a candidate to inspect examples.</div>';
     });
   });
 
@@ -1003,7 +1003,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       focusedCandidateId = null;
       resetCandidateTableScroll();
       renderCandidates(state.lastScanCandidates, lastDiagnostics);
-      dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Select a candidate to inspect examples.</div>`;
+      dom.artifactDetailsContent.innerHTML = '<div class="artifact-details-empty">Select a candidate to inspect examples.</div>';
     });
   });
 
@@ -1065,11 +1065,11 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       memory_ceiling_bytes: REPEATED_ARTIFACT_MEMORY_CEILING_BYTES,
     };
 
-    dom.btnRunArtifactScan.style.display = "none";
-    dom.btnCancelScan.style.display = "inline-block";
+    dom.btnRunArtifactScan.classList.add("hidden");
+    dom.btnCancelScan.classList.remove("hidden");
     dom.btnCancelScan.disabled = false;
     dom.btnCancelScan.textContent = "Cancel";
-    dom.lblScanTime.style.display = "inline";
+    dom.lblScanTime.classList.remove("hidden");
     dom.lblScanTime.textContent = "0.0s";
 
     const myGen = ++scanGeneration;
@@ -1131,7 +1131,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
       renderDiagnostics(report.diagnostics);
 
-      dom.artifactDetailsContent.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 0.9rem;">Select a candidate to inspect examples.</div>`;
+      dom.artifactDetailsContent.innerHTML = '<div class="artifact-details-empty">Select a candidate to inspect examples.</div>';
 
       renderCandidates(report.candidates, report.diagnostics);
     } catch (err) {
@@ -1145,7 +1145,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         dom.lblScanTime.textContent = "Cancelled";
         dom.tblArtifactCandidates.innerHTML = `
           <tr>
-            <td colspan="6" style="padding: 20px; text-align: center; color: var(--text-muted);">Scan was cancelled.</td>
+            <td colspan="6" class="artifact-table-message">Scan was cancelled.</td>
           </tr>
         `;
       } else {
@@ -1155,7 +1155,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         const errorRow = document.createElement("tr");
         const errorCell = document.createElement("td");
         errorCell.colSpan = 6;
-        errorCell.style.cssText = "padding: 20px; text-align: center; color: var(--cw-danger-text);";
+        errorCell.className = "artifact-table-message artifact-table-message--error";
         errorCell.textContent = `Error during scan: ${errStr}`;
         errorRow.appendChild(errorCell);
         dom.tblArtifactCandidates.appendChild(errorRow);
@@ -1225,7 +1225,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
       dom.tblArtifactCandidates.innerHTML = `
         <tr>
-          <td colspan="6" style="padding: 20px; text-align: center; color: var(--text-muted);">${msg}</td>
+          <td colspan="6" class="artifact-table-message">${msg}</td>
         </tr>
       `;
       return;
@@ -1264,8 +1264,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     }
 
     const tdCheck = document.createElement("td");
-    tdCheck.style.padding = "6px 8px";
-    tdCheck.style.textAlign = "center";
+    tdCheck.className = "artifact-candidate-select";
     const decision = projectDecisions.decisions[cand.candidate_id]?.decision;
     if (decision !== "dismissed") {
       const chk = document.createElement("input");
@@ -1349,16 +1348,16 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     tdText.appendChild(patternWrapper);
 
     const tdOcc = document.createElement("td");
+    tdOcc.className = "artifact-candidate-number";
     tdOcc.textContent = cand.occurrence_count.toString();
-    tdOcc.style.textAlign = "right";
 
     const tdFiles = document.createElement("td");
+    tdFiles.className = "artifact-candidate-number";
     tdFiles.textContent = cand.file_count.toString();
-    tdFiles.style.textAlign = "right";
 
     const tdPos = document.createElement("td");
+    tdPos.className = "artifact-candidate-position";
     tdPos.textContent = formatPosition(cand.position_summary);
-    tdPos.style.fontSize = "0.8rem";
 
     const tdRisk = document.createElement("td");
     const spanBadge = document.createElement("span");
@@ -1476,14 +1475,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     const normalizedKey = (cand.normalized_key || "").trim();
 
     const metaDiv = document.createElement("div");
-    metaDiv.style.display = "flex";
-    metaDiv.style.flexWrap = "wrap";
-    metaDiv.style.gap = "12px";
-    metaDiv.style.fontSize = "0.85rem";
-    metaDiv.style.padding = "8px";
-    metaDiv.style.background = "var(--bg-color)";
-    metaDiv.style.borderRadius = "4px";
-    metaDiv.style.border = "1px solid var(--border-color)";
+    metaDiv.className = "artifact-detail-meta";
 
     const metaParts = [
       `<span><strong>Kind:</strong> ${formatKind(cand.kind)}</span>`,
@@ -1518,12 +1510,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
     if (cand.content_class === "numeric_dominant") {
       const numericCaution = document.createElement("div");
-      numericCaution.style.fontSize = "0.8rem";
-      numericCaution.style.color = "var(--cw-category-numeric-text)";
-      numericCaution.style.background = "var(--cw-category-numeric-bg)";
-      numericCaution.style.padding = "6px 8px";
-      numericCaution.style.borderRadius = "4px";
-      numericCaution.style.borderLeft = "3px solid var(--cw-category-numeric-border)";
+      numericCaution.className = "artifact-numeric-caution";
       numericCaution.textContent = "Numeric-dominant candidate — review carefully. These may group unrelated tables, formulas, axis ticks, or statistical output.";
       dom.artifactDetailsContent.appendChild(numericCaution);
     }
@@ -1578,11 +1565,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
       if (cand.raw_variants && cand.raw_variants.length > 0) {
         const variantsActionDiv = document.createElement("div");
-        variantsActionDiv.style.fontSize = "0.85rem";
-        variantsActionDiv.style.padding = "8px";
-        variantsActionDiv.style.background = "var(--cw-success-bg-strong)";
-        variantsActionDiv.style.borderRadius = "4px";
-        variantsActionDiv.style.borderLeft = "3px solid var(--cw-success-border-strong)";
+        variantsActionDiv.className = "artifact-variants-action";
 
         let variantsLabel = normalizedKey
           ? `Tracked raw variants are shown for review. Marking this candidate adds one normalised whole-line rule for "${normalizedKey}"`
@@ -1592,41 +1575,32 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         }
         variantsLabel += ".";
         const variantsLabelP = document.createElement("div");
+        variantsLabelP.className = "artifact-variants-label";
         variantsLabelP.textContent = variantsLabel;
-        variantsLabelP.style.marginBottom = "6px";
         variantsActionDiv.appendChild(variantsLabelP);
 
         const toggleBtn = document.createElement("button");
+        toggleBtn.className = "artifact-variants-toggle";
         toggleBtn.textContent = "Show raw variants";
-        toggleBtn.style.cssText = "font-size: 0.8rem; padding: 3px 10px; border-radius: 3px; cursor: pointer; background: var(--bg-secondary); color: var(--text-color); border: 1px solid var(--border-color);";
         variantsActionDiv.appendChild(toggleBtn);
 
         const variantsList = document.createElement("div");
-        variantsList.style.display = "none";
-        variantsList.style.marginTop = "6px";
-        variantsList.style.maxHeight = "200px";
-        variantsList.style.overflowY = "auto";
-        variantsList.style.fontFamily = "monospace";
-        variantsList.style.fontSize = "0.8rem";
-        variantsList.style.lineHeight = "1.5";
+        variantsList.className = "artifact-variants-list hidden";
 
         for (const variant of cand.raw_variants) {
           const varLine = document.createElement("div");
-          varLine.style.padding = "2px 4px";
-          varLine.style.borderBottom = "1px solid var(--border-color)";
-          varLine.style.whiteSpace = "pre-wrap";
-          varLine.style.wordBreak = "break-all";
+          varLine.className = "artifact-variant-line";
           varLine.textContent = variant;
           variantsList.appendChild(varLine);
         }
         variantsActionDiv.appendChild(variantsList);
 
         toggleBtn.addEventListener("click", () => {
-          if (variantsList.style.display === "none") {
-            variantsList.style.display = "block";
+          if (variantsList.classList.contains("hidden")) {
+            variantsList.classList.remove("hidden");
             toggleBtn.textContent = "Hide raw variants";
           } else {
-            variantsList.style.display = "none";
+            variantsList.classList.add("hidden");
             toggleBtn.textContent = "Show raw variants";
           }
         });
@@ -1644,14 +1618,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
     if (cand.position_summary) {
       const posSummaryDiv = document.createElement("div");
-      posSummaryDiv.style.fontSize = "0.85rem";
-      posSummaryDiv.style.display = "flex";
-      posSummaryDiv.style.flexDirection = "column";
-      posSummaryDiv.style.gap = "4px";
-      posSummaryDiv.style.background = "var(--bg-color)";
-      posSummaryDiv.style.padding = "8px";
-      posSummaryDiv.style.borderRadius = "4px";
-      posSummaryDiv.style.border = "1px solid var(--border-color)";
+      posSummaryDiv.className = "artifact-position-summary";
 
       const total = cand.position_summary.top_count + cand.position_summary.middle_count + cand.position_summary.bottom_count;
       const topPct = total > 0 ? Math.round((cand.position_summary.top_count / total) * 100) : 0;
@@ -1660,7 +1627,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
       posSummaryDiv.innerHTML = `
         <strong>Estimated Layout Positions (Approximate):</strong>
-        <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+        <div class="artifact-position-summary-values">
           <span>Top: ${cand.position_summary.top_count} (${topPct}%)</span>
           <span>Body: ${cand.position_summary.middle_count} (${midPct}%)</span>
           <span>Bottom: ${cand.position_summary.bottom_count} (${botPct}%)</span>
@@ -1670,12 +1637,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     }
 
     const riskAdvisoryDiv = document.createElement("div");
-    riskAdvisoryDiv.style.fontSize = "0.8rem";
-    riskAdvisoryDiv.style.color = "var(--text-muted)";
-    riskAdvisoryDiv.style.lineHeight = "1.4";
-    riskAdvisoryDiv.style.padding = "6px 8px";
-    riskAdvisoryDiv.style.background = "var(--cw-advisory-bg)";
-    riskAdvisoryDiv.style.borderLeft = "2px solid var(--border-color)";
+    riskAdvisoryDiv.className = "artifact-risk-advisory";
 
     let advisoryText = "";
     switch (cand.risk_label) {
@@ -1699,8 +1661,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
     if (cand.examples && cand.examples.length > 0) {
       const examplesTitle = document.createElement("strong");
-      examplesTitle.style.fontSize = "0.9rem";
-      examplesTitle.style.marginTop = "8px";
+      examplesTitle.className = "artifact-examples-title";
       if (cand.occurrence_count > cand.examples.length) {
         examplesTitle.textContent = `Sample Occurrences (showing ${cand.examples.length} of ${cand.occurrence_count})`;
       } else {
@@ -1708,9 +1669,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       }
 
       const examplesListDiv = document.createElement("div");
-      examplesListDiv.style.display = "flex";
-      examplesListDiv.style.flexDirection = "column";
-      examplesListDiv.style.gap = "8px";
+      examplesListDiv.className = "artifact-examples-list";
 
       cand.examples.forEach((ex, idx) => {
         const card = document.createElement("div");
@@ -1720,10 +1679,8 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         cardHeader.className = "artifact-example-header";
 
         const docSpan = document.createElement("span");
+        docSpan.className = "artifact-example-document";
         docSpan.textContent = `Instance ${idx + 1}: ${ex.file_name}`;
-        docSpan.style.fontWeight = "600";
-        docSpan.style.overflow = "hidden";
-        docSpan.style.textOverflow = "ellipsis";
         docSpan.title = ex.file_path;
 
         const posSpan = document.createElement("span");

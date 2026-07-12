@@ -337,7 +337,7 @@
 }
 
 .frequency-table .frequency-detail-row td {
-  padding: 0 12px 12px 34px !important;
+  padding: 0 12px 12px 34px;
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
@@ -401,7 +401,7 @@
 }
 
 .frequency-empty {
-  padding: 18px 10px !important;
+  padding: 18px 10px;
   text-align: center;
 }
 
