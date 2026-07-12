@@ -4250,14 +4250,6 @@ main {
   box-shadow: var(--cw-interaction-shadow);
 }
 
-.concordance-kwic-panel {
-  gap: 6px;
-  padding: 12px 8px 8px;
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-}
-
 .concordance-card-header {
   display: flex;
   align-items: flex-start;
@@ -4518,11 +4510,7 @@ main {
 
 .concordance-table-wrap {
   max-height: none;
-  overflow-x: clip;
-  overflow-y: visible;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+  overflow: clip;
 }
 
 .concordance-table {
@@ -4554,7 +4542,7 @@ main {
 
 .concordance-table th {
   height: 22px;
-  background: transparent;
+  background: var(--cw-surface-subtle);
   border-bottom: 1px solid color-mix(in srgb, var(--border-color) 52%, transparent);
   color: var(--text-muted);
   font-size: 0.72rem;
@@ -4570,6 +4558,10 @@ main {
 
 .concordance-table th:nth-child(2) {
   text-align: right;
+}
+
+.concordance-table th:nth-child(3) {
+  text-align: center;
 }
 
 .concordance-file {
@@ -4658,6 +4650,7 @@ main {
 }
 
 .concordance-row td {
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 38%, transparent);
   transition: background-color 120ms ease, box-shadow 120ms ease;
 }
 
@@ -4807,7 +4800,7 @@ main {
 .concordance-kwic-panel .analysis-pagination {
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 8px;
   color: var(--text-muted);
   font-size: 0.76rem;
 }
