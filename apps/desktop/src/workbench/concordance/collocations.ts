@@ -705,11 +705,11 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
   title.className = "concordance-collocate-evidence-title";
   const query = selection?.query ?? normaliseConcordanceQuery(dom.concordanceQueryInput.value);
   const direction = selection?.direction ?? "both";
+  const span = selection?.span ?? currentConcordanceCollocationSpan();
+  const spanText = collocateEvidenceSpanText(span, direction);
   title.textContent = `Co-occurrence lines for "${row.surface}" with "${query}"`;
   const meta = document.createElement("span");
   meta.className = "concordance-collocate-evidence-meta";
-  const span = selection?.span ?? currentConcordanceCollocationSpan();
-  const spanText = collocateEvidenceSpanText(span, direction);
   if (collocateEvidenceResult !== null && collocateEvidenceResult.totalHits > 0) {
     const hitCount = collocateEvidenceResult.totalHits;
     const lineText = `${formatNumber(hitCount)} line${hitCount === 1 ? "" : "s"}`;
@@ -719,11 +719,26 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
   }
   copy.append(title, meta);
 
+  const relation = document.createElement("div");
+  relation.className = "concordance-collocate-evidence-relation";
+  relation.setAttribute("aria-label", `Node ${query}, collocate ${row.surface}, ${spanText}`);
+  const nodeTerm = document.createElement("span");
+  nodeTerm.className = "concordance-collocate-evidence-relation-node";
+  nodeTerm.textContent = query;
+  const connector = document.createElement("span");
+  connector.className = "concordance-collocate-evidence-relation-connector";
+  connector.textContent = spanText;
+  const collocateTerm = document.createElement("span");
+  collocateTerm.className = "concordance-collocate-evidence-relation-collocate";
+  collocateTerm.textContent = row.surface;
+  relation.append(nodeTerm, connector, collocateTerm);
+  copy.appendChild(relation);
+
   const actions = document.createElement("div");
   actions.className = "concordance-collocate-evidence-actions";
   const openInLines = document.createElement("button");
   openInLines.type = "button";
-  openInLines.className = "concordance-collocate-open-lines";
+  openInLines.className = "secondary-btn concordance-collocate-open-lines";
   openInLines.textContent = "Open in concordance lines";
   openInLines.addEventListener("click", () => {
     openCollocateInConcordanceLines(row.surface, direction);
@@ -731,7 +746,7 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
 
   const close = document.createElement("button");
   close.type = "button";
-  close.className = "secondary-btn concordance-collocate-evidence-close";
+  close.className = "quiet-btn concordance-collocate-evidence-close";
   close.textContent = "Close";
   close.addEventListener("click", () => {
     clearCollocateEvidence();
