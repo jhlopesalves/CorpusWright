@@ -137,6 +137,6 @@
 .concordance-card .analysis-pagination button:focus-visible,
 .concordance-card-controls input:focus-visible,
 .concordance-card-controls select:focus-visible {
-  outline: 2px solid var(--cw-interaction-focus-ring);
+  outline: var(--cw-interaction-focus-outline);
   outline-offset: 2px;
 }

@@ -448,7 +448,7 @@
 }
 
 .concordance-lines-panel:focus-visible {
-  outline: 2px solid var(--cw-interaction-focus-ring);
+  outline: var(--cw-interaction-focus-outline);
   outline-offset: 3px;
 }
 
@@ -793,7 +793,7 @@
 }
 
 .concordance-collocate-open-lines:focus-visible {
-  outline: 2px solid var(--cw-interaction-focus-ring);
+  outline: var(--cw-interaction-focus-outline);
   outline-offset: 2px;
 }
 
@@ -992,6 +992,14 @@
 @keyframes concordance-collocation-progress {
   from { transform: translateX(-110%); }
   to { transform: translateX(370%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .concordance-collocation-progress-indicator {
+    width: 100%;
+    animation: none;
+    transform: none;
+  }
 }
 
 .concordance-collocation-progress-cancel {
