@@ -1,0 +1,43 @@
+html {
+  font-size: var(--cw-font-size-base);
+}
+
+body {
+  margin: 0;
+  font-family: var(--cw-font-ui);
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  tab-size: 4;
+  -moz-tab-size: 4;
+  font-family: var(--cw-font-mono);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0;
+  color: var(--text-color);
+  padding: 10px;
+}
+
+.hidden {
+  display: none !important;
+}

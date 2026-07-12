@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadStyleGraph } from "./style-graph.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDir, "..");
@@ -179,7 +180,7 @@ function contrastRatio(first, second) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-const source = await readFile(stylesPath, "utf8");
+const { css: source } = await loadStyleGraph(stylesPath);
 const themeBlocks = findThemeBlocks(source);
 const failures = [];
 

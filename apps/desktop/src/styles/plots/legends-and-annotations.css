@@ -1,0 +1,117 @@
+.cw-plot-line-halo {
+  opacity: 0.08;
+  pointer-events: none;
+  stroke-width: 3;
+}
+
+.cw-plot-spectrum-band-label {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  pointer-events: none;
+}
+
+.cw-plot-composition-label {
+  fill: var(--panel-bg);
+  font-family: var(--cw-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.cw-plot-quadrant-pill-bg {
+  fill: var(--panel-bg);
+  opacity: 0.86;
+  stroke: var(--border-color);
+  stroke-width: 0.8;
+}
+
+.cw-plot-quadrant-pill-label {
+  fill: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.cw-plot-halo {
+  fill: none;
+  stroke: var(--accent-color);
+  stroke-width: 1.6;
+  stroke-opacity: 0.85;
+}
+
+.cw-plot-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.cw-plot-label-muted,
+.cw-plot-label-mono {
+  font-family: var(--cw-font-mono);
+}
+
+.cw-plot-label-mono {
+  fill: var(--text-color);
+  font-size: 11.5px;
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.cw-plot-label-strong {
+  fill: var(--text-color);
+  font-weight: 700;
+}
+
+.cw-plot-label-callout {
+  fill: var(--text-color);
+  font-family: var(--cw-font-mono);
+  font-size: 11.5px;
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.cw-plot-bracket line {
+  stroke: var(--accent-color);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-bracket text {
+  fill: var(--accent-color);
+  font-family: var(--cw-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.cw-plot-legend-bg {
+  fill: var(--panel-bg);
+  opacity: 0.9;
+  stroke: var(--border-color);
+  stroke-width: 1;
+}
+
+.cw-plot-legend-swatch {
+  stroke: var(--cw-plot-point);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.cw-plot-legend-swatch.cw-plot-fit-line {
+  stroke: var(--cw-plot-fit);
+}
+
+.cw-plot-legend-swatch.is-dashed {
+  stroke-dasharray: 4 3;
+}
+
+.cw-plot-legend-label {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-mono);
+  font-size: 11.5px;
+}

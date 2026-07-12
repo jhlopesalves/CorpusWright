@@ -1,0 +1,88 @@
+.cw-plot-crosshair-x,
+.cw-plot-crosshair-y {
+  display: none;
+  stroke: var(--text-muted);
+  stroke-dasharray: 4 4;
+  stroke-opacity: 0.65;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-svg.is-hovering .cw-plot-crosshair-x,
+.cw-plot-svg.is-hovering .cw-plot-crosshair-y {
+  display: inline;
+}
+
+.cw-plot-tooltip {
+  display: none;
+  pointer-events: none;
+}
+
+.cw-plot-tooltip[aria-hidden="false"] {
+  display: block;
+}
+
+.cw-plot-tooltip-box {
+  fill: var(--cw-surface-elevated);
+  stroke: var(--border-color);
+  stroke-width: 1;
+  filter: drop-shadow(0 6px 14px var(--cw-shadow-tooltip));
+}
+
+.cw-plot-tooltip-text {
+  fill: var(--text-color);
+  font-family: var(--cw-font-mono);
+  font-size: 11px;
+}
+
+.cw-plot-tooltip-row {
+  fill: var(--text-muted);
+}
+
+.cw-plot-hover-target:hover,
+.cw-plot-hover-target:focus {
+  outline: none;
+  transform: scale(1.15);
+}
+
+.cw-plot-density-cell.cw-plot-hover-target:hover,
+.cw-plot-density-cell.cw-plot-hover-target:focus,
+.cw-plot-bar.cw-plot-hover-target:hover,
+.cw-plot-bar.cw-plot-hover-target:focus,
+.cw-plot-composition-segment.cw-plot-hover-target:hover,
+.cw-plot-composition-segment.cw-plot-hover-target:focus {
+  transform: none;
+}
+
+.cw-plot-animated-path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: cw-plot-path-draw 700ms ease-out forwards;
+}
+
+@keyframes cw-plot-path-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes cw-plot-point-in {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-plot-animated-path,
+  .cw-plot-point,
+  .cw-plot-plane-witness,
+  .cw-plot-roster-dot {
+    animation: none;
+    opacity: 1;
+    stroke-dashoffset: 0;
+    transform: none;
+    transition: none;
+  }
+
+}
