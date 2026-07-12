@@ -1027,7 +1027,7 @@ assert(
     && !styles.includes("min-width: 1040px")
     && !styles.includes("min-width: 880px")
     && styles.includes(".concordance-search-actions button:focus-visible")
-    && styles.includes("outline: 2px solid var(--cw-interaction-focus-ring);")
+    && styles.includes("outline: var(--cw-interaction-focus-outline);")
     && !styles.includes("text-decoration-style: double;")
     && !styles.includes("text-decoration-style: dotted;")
     && styles.includes(".concordance-context-token.is-sort-level-1 {\n  color: var(--cw-kwic-sort-1);")
