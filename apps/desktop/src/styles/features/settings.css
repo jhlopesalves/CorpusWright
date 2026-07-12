@@ -55,7 +55,7 @@
     var(--bg-color);
   color: var(--text-color);
   font: inherit;
-  font-size: var(--cw-type-ui-size);
+  font-size: var(--cw-type-control-size);
 }
 
 .settings-select:disabled {
@@ -68,7 +68,7 @@
   min-height: 30px;
   padding: 5px 9px;
   font: inherit;
-  font-size: var(--cw-type-ui-size);
+  font-size: var(--cw-type-control-size);
 }
 
 .settings-input:disabled {
@@ -263,7 +263,7 @@
   padding: 8px 12px;
   border-radius: 6px;
   font-family: var(--cw-font-ui);
-  font-size: var(--cw-type-body-size);
+  font-size: var(--cw-type-control-size);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
