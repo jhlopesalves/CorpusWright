@@ -223,6 +223,9 @@ h2 {
 h3 {
   font-size: 1.08rem;
 }
+.heading-3 {
+  font-size: 1.08rem;
+}
 p {
   margin: 0 0 16px;
 }
@@ -749,7 +752,8 @@ html[data-theme=light] .theme-btn .moon-icon {
   border-radius: var(--r-md);
   padding: 20px;
 }
-.card h3 {
+.card h3,
+.card .heading-3 {
   margin-bottom: 8px;
 }
 .card p {
@@ -931,6 +935,10 @@ pre.mermaid svg,
 pre.mermaid svg text {
   font-family: "IBM Plex Sans", sans-serif;
 }
+.docs-content figure > img {
+  max-width: 100%;
+  height: auto;
+}
 
 /* src/styles/components/screenshots.css */
 .screenshot {
@@ -1037,6 +1045,7 @@ html[data-theme=light] .theme-img-light {
 }
 .citation-section-heading {
   margin-top: 36px;
+  font-size: 1.08rem;
 }
 
 /* src/styles/components/footer.css */
@@ -1135,7 +1144,8 @@ html[data-theme=light] .theme-img-light {
   gap: 22px;
   margin-top: 9px;
 }
-.principle h3 {
+.principle h3,
+.principle .heading-3 {
   margin: 0 0 4px;
   font-size: 1.02rem;
 }
