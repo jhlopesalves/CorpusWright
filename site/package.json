@@ -1,0 +1,24 @@
+{
+  "name": "corpuswright-documentation-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "serve": "npx @11ty/eleventy --config=eleventy.config.mjs --serve",
+    "test": "node --test tests/*.test.mjs",
+    "check": "npm run test && npm run check:generated && npm run check:content && npm run check:links && npm run check:html && npm run check:styles",
+    "check:generated": "node scripts/check-generated-output.mjs",
+    "check:content": "node scripts/check-content-freeze.mjs",
+    "check:links": "node scripts/check-routes.mjs",
+    "check:html": "node scripts/check-html.mjs",
+    "check:styles": "node scripts/check-site-styles.mjs"
+  },
+  "dependencies": {
+    "@11ty/eleventy": "3.1.6",
+    "esbuild": "0.28.1"
+  }
+}

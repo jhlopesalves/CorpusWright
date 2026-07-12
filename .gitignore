@@ -25,7 +25,6 @@ pyvenv.cfg
 # Python packaging/build output
 build/
 dist/
-site/
 develop-eggs/
 downloads/
 .eggs/
