@@ -2,11 +2,14 @@
   border: 1px solid var(--cw-result-table-border);
   border-radius: 4px;
   background: var(--cw-result-table-surface);
+  overflow: hidden;
 }
 
 .cw-result-table {
+  border-collapse: collapse;
   color: var(--cw-result-table-body-text);
   font-family: var(--cw-font-ui);
+  font-size: var(--cw-type-table-body-size);
   font-synthesis: none;
 }
 
@@ -14,14 +17,20 @@
   background: var(--cw-result-table-header-surface);
   color: var(--cw-result-table-header-text);
   font-family: var(--cw-font-ui);
-  font-weight: 500;
+  font-size: var(--cw-type-table-header-size);
+  font-weight: var(--cw-weight-medium);
 }
 
 .cw-result-table td {
   background: var(--cw-result-table-row-surface);
   color: var(--cw-result-table-body-text);
   font-family: var(--cw-font-ui);
-  font-weight: 400;
+  font-weight: var(--cw-weight-regular);
+}
+
+.cw-result-table th,
+.cw-result-table td {
+  border-bottom: 1px solid var(--cw-result-table-separator);
 }
 
 .cw-result-table tbody tr:nth-child(even) > td {
@@ -33,28 +42,50 @@
   background: var(--cw-result-table-hover-surface);
 }
 
+.cw-result-table tbody tr[aria-expanded="true"] > td,
+.cw-result-table tbody tr[aria-selected="true"] > td,
+.cw-result-table tbody tr.is-active > td {
+  background: var(--cw-result-table-active-surface);
+}
+
+.cw-result-table__detail-row > td {
+  background: var(--cw-result-table-active-surface);
+}
+
+.cw-result-table--compact th {
+  font-size: var(--cw-type-compact-size);
+}
+
+.cw-result-table--kwic th {
+  font-size: 0.72rem;
+}
+
+.cw-result-table--kwic td {
+  font-size: 0.82rem;
+}
+
 .cw-result-table td.cw-result-table-lexical,
 .cw-result-table-lexical {
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
 }
 
 .cw-result-table td.cw-result-table-numeric,
 .cw-result-table-numeric {
   font-variant-numeric: tabular-nums;
-  font-weight: 400;
+  font-weight: var(--cw-weight-regular);
 }
 
 .cw-result-table td.cw-result-table-file,
 .cw-result-table-file {
   color: var(--cw-result-table-muted-text);
   font-family: var(--cw-font-ui);
-  font-weight: 400;
+  font-weight: var(--cw-weight-regular);
 }
 
 .cw-result-table td.cw-result-table-kwic,
 .cw-result-table-kwic {
   font-family: var(--cw-font-mono);
-  font-weight: 400;
+  font-weight: var(--cw-weight-regular);
 }
 
 .cw-result-table-note,
@@ -62,8 +93,8 @@
 .cw-result-table-pagination-status {
   color: var(--cw-result-table-muted-text);
   font-family: var(--cw-font-ui);
-  font-size: 0.78rem;
-  font-weight: 400;
+  font-size: var(--cw-type-compact-size);
+  font-weight: var(--cw-weight-regular);
 }
 
 .cw-result-table-pagination {
@@ -92,7 +123,7 @@
   margin-top: 8px;
   color: var(--text-muted);
   font-size: 0.8rem;
-  font-weight: 400;
+  font-weight: var(--cw-weight-regular);
   font-variant-numeric: tabular-nums;
 }
 

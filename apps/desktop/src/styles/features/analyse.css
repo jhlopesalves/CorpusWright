@@ -26,7 +26,7 @@
   margin: 0 0 6px;
   color: var(--text-muted);
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -34,7 +34,7 @@
 .analyse-header h1 {
   margin: 0;
   font-size: 1.55rem;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
 }
 
 .analyse-status-line {
@@ -51,7 +51,7 @@
 .analyse-status-text {
   color: var(--text-color);
   font-size: 0.88rem;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
 }
 
 .analyse-status-text[data-status="stale"],
@@ -125,7 +125,7 @@
 .analyse-section h2 {
   margin: 0 0 14px;
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
 }
 
 .analyse-workspace-shell {
@@ -147,7 +147,7 @@
   margin: 0 0 10px;
   color: var(--text-muted);
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -172,7 +172,7 @@
   margin: 0;
   color: var(--text-color);
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
 }
 
 .analyse-project-details {
@@ -185,7 +185,7 @@
   cursor: pointer;
   color: var(--text-muted);
   font-size: 0.85rem;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
 }
 
 .analyse-project-details summary:focus-visible {
@@ -248,7 +248,7 @@
   border-color: var(--accent-color);
   color: var(--cw-text-selected, var(--text-color));
   background: var(--selected-color);
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
   box-shadow: inset 3px 0 0 var(--accent-color);
 }
 
@@ -277,13 +277,7 @@
 }
 
 .analysis-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--panel-bg);
+  min-width: 0;
 }
 
 .cw-overview-segment {
@@ -293,7 +287,7 @@
   border-radius: 0;
   background: transparent;
   color: var(--text-muted);
-  font: 600 0.73rem/1 var(--cw-font-ui);
+  font: var(--cw-weight-semibold) 0.73rem/1 var(--cw-font-ui);
   cursor: pointer;
 }
 
@@ -337,7 +331,7 @@
   margin: 0;
   color: var(--text-color);
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   line-height: 1.35;
 }
 
@@ -393,12 +387,12 @@
 
 .analysis-reading-finding-heading strong {
   color: var(--text-color);
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
 }
 
 .analysis-reading-status {
   color: var(--text-muted);
-  font-weight: 500;
+  font-weight: var(--cw-weight-medium);
 }
 
 .analysis-reading-finding-text {
@@ -457,7 +451,7 @@
   margin: 0;
   color: var(--text-color);
   font-size: 0.82rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
 }
 
 .analysis-metric-table {
@@ -483,7 +477,7 @@
 .analysis-metric-table th {
   padding-right: 14px;
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   text-align: left;
 }
 
@@ -575,7 +569,7 @@
 }
 
 .analysis-glossary-label-suffix {
-  font-weight: 500;
+  font-weight: var(--cw-weight-medium);
 }
 
 .analysis-dispersion-sample-toggle {
@@ -588,7 +582,7 @@
   display: block;
   margin-top: 3px;
   font-size: 0.76rem;
-  font-weight: 400;
+  font-weight: var(--cw-weight-regular);
   line-height: 1.3;
   opacity: 0.78;
 }
@@ -674,7 +668,7 @@
   margin: 0;
   color: var(--text-muted);
   font-size: 0.76rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   line-height: 1.25;
   text-transform: uppercase;
 }
@@ -695,7 +689,7 @@
 .analysis-glossary-symbol-row dt {
   color: var(--text-color);
   font-family: var(--cw-font-math);
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
 }
 
 .analysis-glossary-symbol-row dd {
@@ -725,7 +719,7 @@
   cursor: pointer;
   color: var(--text-muted);
   font-size: 0.76rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   line-height: 1.25;
 }
 
@@ -778,7 +772,7 @@
 .analysis-composition h4 {
   margin: 0;
   font-size: 0.82rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
 }
 
 .analysis-composition-bar {
@@ -853,7 +847,7 @@
   gap: 6px;
   color: var(--text-color);
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   line-height: 1.25;
 }
 
@@ -897,7 +891,7 @@
 .document-length-header {
   color: var(--text-muted);
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
 }
 
 .document-length-header .document-length-track {
@@ -950,7 +944,7 @@
 .analysis-build-details > summary {
   color: var(--text-color);
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
   cursor: pointer;
 }
 
@@ -995,7 +989,7 @@
   margin: 0;
   color: var(--text-color);
   font-size: 0.86rem;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
 }
 
 .annotation-layer-help {
@@ -1021,7 +1015,7 @@
 
 .annotation-layer-progress-label {
   color: var(--text-color);
-  font-weight: 600;
+  font-weight: var(--cw-weight-semibold);
 }
 
 .annotation-layer-progress-bar {

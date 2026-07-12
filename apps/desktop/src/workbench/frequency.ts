@@ -1002,7 +1002,7 @@ function renderAnnotatedFrequencyList(corpus: AnalysisCorpus): void {
       dom.frequencyTableBody.appendChild(row);
       if (isExpanded) {
         const detailRow = document.createElement("tr");
-        detailRow.className = "frequency-detail-row";
+        detailRow.className = "frequency-detail-row cw-result-table__detail-row";
         const detailCell = document.createElement("td");
         detailCell.id = detailId;
         detailCell.colSpan = frequencyTableColumnCount();
@@ -1047,7 +1047,7 @@ function renderAnnotatedFrequencyList(corpus: AnalysisCorpus): void {
     dom.frequencyTableBody.appendChild(row);
     if (isExpanded) {
       const detailRow = document.createElement("tr");
-      detailRow.className = "frequency-detail-row";
+      detailRow.className = "frequency-detail-row cw-result-table__detail-row";
       const detailCell = document.createElement("td");
       detailCell.id = detailId;
       detailCell.colSpan = frequencyTableColumnCount();
@@ -1175,7 +1175,7 @@ export function renderFrequencyList(): void {
 
     if (isExpanded) {
       const detailRow = document.createElement("tr");
-      detailRow.className = "frequency-detail-row";
+      detailRow.className = "frequency-detail-row cw-result-table__detail-row";
       const detailCell = document.createElement("td");
       detailCell.id = detailId;
       detailCell.colSpan = frequencyTableColumnCount();

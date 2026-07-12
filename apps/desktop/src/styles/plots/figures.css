@@ -39,7 +39,7 @@
   margin: 0;
   color: var(--text-color);
   font-size: 1.08rem;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
   line-height: 1.25;
 }
 
@@ -72,7 +72,7 @@
   border-radius: 4px;
   background: var(--panel-bg);
   color: var(--text-color);
-  font: 600 0.78rem/1.2 var(--cw-font-ui);
+  font: var(--cw-weight-semibold) 0.78rem/1.2 var(--cw-font-ui);
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }

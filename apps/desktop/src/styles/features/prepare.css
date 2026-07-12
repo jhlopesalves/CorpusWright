@@ -109,7 +109,7 @@
   color: var(--text-muted);
   cursor: default !important;
   font-size: 0.74rem !important;
-  font-weight: 700;
+  font-weight: var(--cw-weight-bold);
   letter-spacing: 0;
   text-transform: uppercase;
 }
