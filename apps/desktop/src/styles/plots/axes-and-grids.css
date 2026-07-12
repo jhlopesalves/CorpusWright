@@ -62,3 +62,16 @@
   stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
 }
+
+.cw-plot-coverage-target {
+  stroke: var(--cw-plot-reference);
+  stroke-dasharray: 5 4;
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-point.cw-plot-coverage-crossing {
+  fill: var(--cw-plot-reference);
+  stroke: var(--cw-plot-panel);
+  stroke-width: 1.8;
+}

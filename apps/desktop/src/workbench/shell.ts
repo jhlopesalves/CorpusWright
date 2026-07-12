@@ -47,6 +47,7 @@ import {
   buildLexicalSpectrumGeometry,
   buildRankFrequencyGeometry,
   buildVocabularyGrowthGeometry,
+  deriveCoverageBandShares,
   formatDispersionPlaneStats,
   formatDispersionProfileStats,
   formatDispersionRosterStats,
@@ -148,15 +149,6 @@ interface OverviewMetricRow {
   description?: string;
   sampleTypes?: string[];
   sampleTypeCount?: number;
-}
-
-interface CompositionSegment {
-  label: string;
-  count: number;
-  share: number | null;
-  className: string;
-  glossaryId?: OverviewGlossaryId;
-  labelSuffix?: string;
 }
 
 const ANALYSIS_TOOLS: Array<{
@@ -773,95 +765,6 @@ function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTable
 
   table.appendChild(body);
   return table;
-}
-
-function createCompositionBar(
-  title: string,
-  total: number,
-  segments: CompositionSegment[],
-  glossaryId?: OverviewGlossaryId,
-): HTMLElement {
-  const composition = document.createElement("div");
-  composition.className = "analysis-composition";
-
-  const titleEl = document.createElement("h4");
-  if (glossaryId) {
-    const disclosure = createGlossaryDisclosure(glossaryId, undefined, title);
-    titleEl.appendChild(disclosure.button);
-    composition.append(titleEl, disclosure.panel);
-  } else {
-    titleEl.textContent = title;
-    composition.appendChild(titleEl);
-  }
-
-  if (total <= 0) {
-    const empty = document.createElement("p");
-    empty.className = "analysis-empty-state";
-    empty.textContent = "No token types available.";
-    composition.appendChild(empty);
-    return composition;
-  }
-
-  const bar = document.createElement("div");
-  bar.className = "analysis-composition-bar";
-  bar.setAttribute("role", "img");
-  bar.setAttribute(
-    "aria-label",
-    segments.map((segment) =>
-      `${segment.label}: ${formatCountWithShare(segment.count, segment.share)}`
-    ).join("; "),
-  );
-
-  for (const segment of segments) {
-    if (segment.count <= 0) {
-      continue;
-    }
-    const fill = document.createElement("span");
-    fill.className = `analysis-composition-segment ${segment.className}`;
-    fill.style.setProperty("--segment-width", `${(segment.share ?? 0) * 100}%`);
-    bar.appendChild(fill);
-  }
-
-  const legend = document.createElement("dl");
-  legend.className = "analysis-composition-legend";
-  for (const segment of segments) {
-    const item = document.createElement("div");
-    item.className = `analysis-composition-legend-item ${segment.className}`;
-
-    const label = document.createElement("dt");
-    let glossaryDetail: HTMLDivElement | null = null;
-    let glossaryDescription: HTMLElement | null = null;
-    if (segment.glossaryId) {
-      glossaryDescription = document.createElement("dd");
-      glossaryDescription.className = "analysis-composition-glossary";
-      glossaryDescription.hidden = true;
-      const disclosure = createGlossaryDisclosure(segment.glossaryId, (expanded) => {
-        if (glossaryDescription) glossaryDescription.hidden = !expanded;
-      }, segment.label);
-      glossaryDetail = disclosure.panel;
-      label.appendChild(disclosure.button);
-      if (segment.labelSuffix) {
-        const suffix = document.createElement("span");
-        suffix.textContent = ` ${segment.labelSuffix}`;
-        label.appendChild(suffix);
-      }
-    } else {
-      label.textContent = segment.label;
-    }
-
-    const value = document.createElement("dd");
-    value.textContent = formatCountWithShare(segment.count, segment.share);
-
-    item.append(label, value);
-    if (glossaryDetail && glossaryDescription) {
-      glossaryDescription.appendChild(glossaryDetail);
-      item.appendChild(glossaryDescription);
-    }
-    legend.appendChild(item);
-  }
-
-  composition.append(bar, legend);
-  return composition;
 }
 
 function findingLabel(finding: CorpusOverviewFinding): string {
@@ -1750,25 +1653,82 @@ function renderVocabularyGrowthFigure(corpus: AnalysisCorpus): HTMLElement {
 
 function renderLexicalSpectrumFigure(corpus: AnalysisCorpus): HTMLElement {
   const spectrum = corpus.lexicalSpectrum;
+  interface SpectrumControls extends FigureControlState {
+    yMode: "count" | "share";
+    bands: "show" | "hide";
+    labels: "authored" | "pinned" | "off";
+  }
+  const controller = new OverviewFigureController<SpectrumControls>({
+    initialControls: { yMode: "count", bands: "show", labels: "authored" },
+    exportMetadata: (controls) => [
+      `${controls.yMode === "count" ? "type count" : "share of vocabulary"} · class bands ${controls.bands} · labels ${controls.labels}`,
+    ],
+  });
+  let figure: HTMLElement | null = null;
   const truncation = spectrum.frequencySpectrumTruncated
     ? `showing ${formatNumber(spectrum.frequencySpectrum.length)} of ${formatNumber(spectrum.frequencySpectrumTotal)} observed frequencies`
     : `${formatNumber(spectrum.frequencySpectrumTotal)} observed frequencies`;
-  return createOverviewFigure({
+  const renderSvg = () => renderLexicalSpectrumSvg(
+    "overview-lexical-spectrum",
+    buildLexicalSpectrumGeometry({
+      points: spectrum.frequencySpectrum,
+      hapaxCount: spectrum.hapaxCount,
+      disLegomenaCount: spectrum.disLegomenaCount,
+      band3To9Count: spectrum.band3To9Count,
+      band10plusCount: spectrum.band10plusCount,
+      totalTypes: spectrum.types,
+      yMode: controller.controls.yMode,
+      bandsVisible: controller.controls.bands === "show",
+      labelsMode: controller.controls.labels,
+      pinnedKeys: controller.pins,
+    }),
+  );
+  const controls = document.createElement("div");
+  controls.append(
+    createOverviewSegmentedControl(
+      "Y",
+      [{ value: "count", label: "Type count" }, { value: "share", label: "Share of vocabulary" }],
+      "count",
+      (yMode) => {
+        controller.updateControls({ yMode });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+    createOverviewSegmentedControl(
+      "Class bands",
+      [{ value: "show", label: "Show" }, { value: "hide", label: "Hide" }],
+      "show",
+      (bands) => {
+        controller.updateControls({ bands });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+    createOverviewSelectControl(
+      "Labels",
+      [
+        { value: "authored", label: "Hapax and dis" },
+        { value: "pinned", label: "Pinned only" },
+        { value: "off", label: "Off" },
+      ],
+      "authored",
+      (labels) => {
+        controller.updateControls({ labels });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+  );
+  figure = createOverviewFigure({
     id: "overview-lexical-spectrum",
     title: "Lexical spectrum",
-    subtitle: "Exact frequency classes on log-log axes.",
+    subtitle: "How many types occur once, twice, or at each higher frequency?",
+    controls,
+    controller,
     captionStats: `hapax ${formatNumber(spectrum.hapaxCount)} · dis ${formatNumber(spectrum.disLegomenaCount)} · ${truncation}`,
     captionReading: "Each point is V(f) for one exact integer frequency; bars are avoided because log-scale bar lengths would imply intervals that were not observed.",
     explanation: createFigureExplanation("exactLexicalSpectrum"),
-    renderSvg: () => renderLexicalSpectrumSvg(
-      "overview-lexical-spectrum",
-      buildLexicalSpectrumGeometry({
-        points: spectrum.frequencySpectrum,
-        hapaxCount: spectrum.hapaxCount,
-        disLegomenaCount: spectrum.disLegomenaCount,
-      }),
-    ),
+    renderSvg,
   });
+  return figure;
 }
 
 function renderMattrDistributionFigure(corpus: AnalysisCorpus): HTMLElement {
@@ -1777,33 +1737,104 @@ function renderMattrDistributionFigure(corpus: AnalysisCorpus): HTMLElement {
 
 function renderCoverageFigure(corpus: AnalysisCorpus): HTMLElement {
   const concentration = corpus.frequencyConcentration;
-  const half = concentration.cumulativeCoverage.find((point) => point.share >= 0.5) ?? null;
-  const halfPhrase = half === null
-    ? "half-corpus coverage is unavailable"
-    : `half the corpus is written with just ${formatNumber(half.k)} of its ${formatNumber(corpus.totals.types)} types`;
+  interface CoverageControls extends FigureControlState {
+    xMode: "topK" | "vocabularyShare";
+    target: "0.5" | "0.8" | "0.9" | "0.95";
+    labels: "milestones" | "target" | "off";
+  }
+  const controller = new OverviewFigureController<CoverageControls>({
+    initialControls: { xMode: "topK", target: "0.5", labels: "milestones" },
+    exportMetadata: (controls) => [
+      `${controls.xMode === "topK" ? "top k types" : "share of vocabulary"} · target ${formatPercent(Number(controls.target), 0)} · labels ${controls.labels}`,
+    ],
+  });
+  let figure: HTMLElement | null = null;
+  const targetCrossing = () => concentration.exactTargetCrossings.find(
+    (crossing) => Math.abs(crossing.targetShare - Number(controller.controls.target)) < 1e-9,
+  ) ?? null;
   const tenTypes = concentration.top10Coverage === null
     ? "Ten-type coverage is unavailable"
     : `Ten types carry ${formatPercent(concentration.top10Coverage)} of every token`;
-  return createOverviewFigure({
-    id: "overview-cumulative-coverage",
-    title: "Cumulative coverage",
-    subtitle: "Token mass carried by the top-ranked vocabulary.",
-    captionStats: `top 10 ${formatOptionalPercent(concentration.top10Coverage)} · top 100 ${formatOptionalPercent(concentration.top100Coverage)} · top 1,000 ${formatOptionalPercent(concentration.top1000Coverage)} · top 10,000 ${formatOptionalPercent(concentration.top10000Coverage)}`,
-    captionReading: `${tenTypes}; ${halfPhrase}.`,
-    explanation: createFigureExplanation("topNCoverage"),
-    renderSvg: () => renderCoverageSvg(
-      "overview-cumulative-coverage",
-      buildCoverageGeometry({
-        points: concentration.cumulativeCoverage,
-        milestones: [
+  const renderSvg = () => renderCoverageSvg(
+    "overview-cumulative-coverage",
+    buildCoverageGeometry({
+      points: concentration.cumulativeCoverage,
+      milestones: [
+        { k: 10, share: concentration.top10Coverage },
+        { k: 100, share: concentration.top100Coverage },
+        { k: 1_000, share: concentration.top1000Coverage },
+        { k: 10_000, share: concentration.top10000Coverage },
+      ],
+      totalTypes: corpus.totals.types,
+      xMode: controller.controls.xMode,
+      targetShare: Number(controller.controls.target),
+      targetCrossing: targetCrossing()
+        ? { k: targetCrossing()!.firstRank, share: targetCrossing()!.actualCumulativeShare }
+        : null,
+      labelsMode: controller.controls.labels,
+      bandShares: deriveCoverageBandShares({
+        totalTypes: corpus.totals.types,
+        cumulative: [
           { k: 10, share: concentration.top10Coverage },
           { k: 100, share: concentration.top100Coverage },
           { k: 1_000, share: concentration.top1000Coverage },
           { k: 10_000, share: concentration.top10000Coverage },
         ],
       }),
+      pinnedKeys: controller.pins,
+    }),
+  );
+  const controls = document.createElement("div");
+  controls.append(
+    createOverviewSegmentedControl(
+      "X",
+      [{ value: "topK", label: "Top k types" }, { value: "vocabularyShare", label: "Share of vocabulary" }],
+      "topK",
+      (xMode) => {
+        controller.updateControls({ xMode });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
     ),
+    createOverviewSegmentedControl(
+      "Target",
+      [
+        { value: "0.5", label: "50%" },
+        { value: "0.8", label: "80%" },
+        { value: "0.9", label: "90%" },
+        { value: "0.95", label: "95%" },
+      ],
+      "0.5",
+      (target) => {
+        controller.updateControls({ target });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+    createOverviewSelectControl(
+      "Labels",
+      [
+        { value: "milestones", label: "Milestones and target" },
+        { value: "target", label: "Target only" },
+        { value: "off", label: "Off" },
+      ],
+      "milestones",
+      (labels) => {
+        controller.updateControls({ labels });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+  );
+  figure = createOverviewFigure({
+    id: "overview-cumulative-coverage",
+    title: "Cumulative coverage",
+    subtitle: "How much token mass is carried by the most frequent vocabulary?",
+    controls,
+    controller,
+    captionStats: `top 10 ${formatOptionalPercent(concentration.top10Coverage)} · top 100 ${formatOptionalPercent(concentration.top100Coverage)} · top 1,000 ${formatOptionalPercent(concentration.top1000Coverage)} · top 10,000 ${formatOptionalPercent(concentration.top10000Coverage)}`,
+    captionReading: `${tenTypes}. The curve is cumulative: a steep head indicates concentration of token mass, not semantic completeness; function words often dominate the head.`,
+    explanation: createFigureExplanation("topNCoverage"),
+    renderSvg,
   });
+  return figure;
 }
 
 function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
@@ -1950,26 +1981,6 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
   const spectrum = corpus.lexicalSpectrum;
   panel.appendChild(createMetricTable([
     { label: "Types", value: formatNumber(spectrum.types), glossaryId: "type" },
-  ]));
-  panel.appendChild(createCompositionBar("Frequency-class spectrum", spectrum.types, [
-    {
-      label: "Hapax",
-      labelSuffix: "(1)",
-      count: spectrum.hapaxCount,
-      share: spectrum.hapaxShare,
-      className: "is-hapax",
-      glossaryId: "hapax",
-    },
-    {
-      label: "Dis legomena",
-      labelSuffix: "(2)",
-      count: spectrum.disLegomenaCount,
-      share: spectrum.disLegomenaShare,
-      className: "is-dis",
-      glossaryId: "disLegomena",
-    },
-    { label: "3–9 occurrences", count: spectrum.band3To9Count, share: spectrum.band3To9Share, className: "is-mid-frequency" },
-    { label: "10+ occurrences", count: spectrum.band10plusCount, share: spectrum.band10plusShare, className: "is-frequent" },
   ]));
   const band3To9Note = document.createElement("p");
   band3To9Note.className = "analysis-panel-note";

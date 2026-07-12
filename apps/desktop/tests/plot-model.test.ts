@@ -208,8 +208,8 @@ assert(
   "Coverage milestone labels should try the below-right empty region first",
 );
 assert(
-  geometry.labels.some((label) => label.text.startsWith("half the corpus") && label.y < geometry.halfCrossing!.y),
-  "Half-corpus label should sit above the 50% reference",
+  geometry.labels.some((label) => label.text.startsWith("50% target") && label.y < geometry.halfCrossing!.targetY),
+  "Target label should sit above the exact 50% reference",
 );
 
 const dispersionProfile = buildDispersionGeometry({

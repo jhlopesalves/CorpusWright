@@ -117,6 +117,7 @@ export interface CompositionStripDatum {
   count: number;
   rampIndex: number;
   className?: string;
+  tooltipRows?: string[];
 }
 
 export interface CompositionStripSegmentGeometry {
@@ -250,6 +251,8 @@ export interface LexicalSpectrumGeometry {
   points: Array<PlotPointGeometry<FrequencySpectrumDatum>>;
   bands: LexicalSpectrumBandGeometry[];
   labels: PlotLabelGeometry[];
+  compositionStrip: CompositionStripGeometry | null;
+  yAxisLabel: string;
 }
 
 export interface CoverageDatum {
@@ -262,11 +265,20 @@ export interface CoverageMilestone {
   share: number | null;
 }
 
+export interface CoverageBandShare {
+  key: string;
+  label: string;
+  share: number;
+  rampIndex: number;
+}
+
 export interface CoverageCrossing {
   k: number;
   share: number;
   x: number;
   y: number;
+  targetY: number;
+  targetShare: number;
 }
 
 export interface CoverageGeometry {
@@ -281,6 +293,7 @@ export interface CoverageGeometry {
   milestones: Array<PlotPointGeometry<CoverageDatum>>;
   labels: PlotLabelGeometry[];
   halfCrossing: CoverageCrossing | null;
+  compositionStrip: CompositionStripGeometry | null;
 }
 
 export interface DispersionBucketDatum {
@@ -754,7 +767,7 @@ export function buildCompositionStripGeometry(options: {
     throw new RangeError("Composition strip counts must be non-negative");
   }
   const suppliedTotal = options.segments.reduce((sum, segment) => sum + segment.count, 0);
-  if (suppliedTotal !== options.total) {
+  if (Math.abs(suppliedTotal - options.total) > 1e-9) {
     throw new RangeError(`Composition strip segments total ${suppliedTotal}, expected ${options.total}`);
   }
   const height = options.height ?? 24;
@@ -775,7 +788,7 @@ export function buildCompositionStripGeometry(options: {
       label: width >= 34 ? `${Math.round(share * 100)}%` : null,
       labelBelow,
       tooltipTitle: datum.label,
-      tooltipRows: [
+      tooltipRows: datum.tooltipRows ?? [
         `${formatInteger(datum.count)} of ${formatInteger(options.total)}`,
         formatPercent(share),
       ],
@@ -1221,39 +1234,93 @@ export function buildLexicalSpectrumGeometry(options: {
   points: FrequencySpectrumDatum[];
   hapaxCount: number;
   disLegomenaCount: number;
+  band3To9Count?: number;
+  band10plusCount?: number;
+  totalTypes?: number;
+  yMode?: "count" | "share";
+  bandsVisible?: boolean;
+  labelsMode?: "authored" | "pinned" | "off";
+  pinnedKeys?: ReadonlySet<string>;
   box?: PlotBox;
 }): LexicalSpectrumGeometry {
-  const box = options.box ?? createPlotBox();
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 390, {
+    top: options.totalTypes === undefined ? 32 : 82,
+    right: 40,
+    bottom: 60,
+    left: 78,
+  });
   const visible = options.points.filter((point) => point.frequency > 0 && point.typeCount > 0);
   const xScale = createScale("log", extent(visible.map((point) => point.frequency)), [
     box.margin.left,
     box.width - box.margin.right,
   ]);
-  const yScale = createScale("log", extent(visible.map((point) => point.typeCount)), [
+  const yValue = (point: FrequencySpectrumDatum) => options.yMode === "share" && options.totalTypes
+    ? point.typeCount / options.totalTypes
+    : point.typeCount;
+  const yScale = createScale("log", extent(visible.map(yValue)), [
     box.height - box.margin.bottom,
     box.margin.top,
   ]);
-  const points = visible.map((point) => ({
+  const points = visible.map((point) => {
+    const key = `spectrum:${point.frequency}`;
+    return {
     x: scaleValue(xScale, point.frequency),
-    y: scaleValue(yScale, point.typeCount),
+    y: scaleValue(yScale, yValue(point)),
     rawX: point.frequency,
-    rawY: point.typeCount,
+    rawY: yValue(point),
     datum: point,
     rampIndex: lexicalSpectrumRampIndex(point.frequency),
     className: point.typeCount === 1 ? "is-frequency-singleton" : "",
     fillOpacity: point.typeCount === 1 ? 0.42 : 0.6,
+    key,
+    pinned: options.pinnedKeys?.has(key) ?? false,
     tooltipTitle: `${formatInteger(point.typeCount)} types`,
-    tooltipRows: [`frequency ${formatInteger(point.frequency)}`, `${formatInteger(point.typeCount)} types`],
-  }));
-  const labelRequests = [
+    tooltipRows: [
+      `exact frequency ${formatInteger(point.frequency)}`,
+      `${formatInteger(point.typeCount)} types`,
+      options.totalTypes ? `${formatPercent(point.typeCount / options.totalTypes)} of vocabulary` : "",
+      `class ${lexicalSpectrumClassLabel(point.frequency)}`,
+    ].filter(Boolean),
+  };
+  });
+  const authored = options.labelsMode === "off" || options.labelsMode === "pinned" ? [] : [
     labelRequestForExactFrequency(points, 1, `hapax ${formatInteger(options.hapaxCount)}`),
     labelRequestForExactFrequency(points, 2, `dis ${formatInteger(options.disLegomenaCount)}`),
   ].filter((label): label is LabelPlacementRequest => label !== null);
+  const pinned = points.filter((point) => point.pinned).map((point) => ({
+    x: point.x,
+    y: point.y,
+    text: `f=${formatInteger(point.datum.frequency)} · ${formatInteger(point.datum.typeCount)} types`,
+    className: "cw-plot-label-callout",
+    pinned: true,
+    priority: 100,
+    candidates: [
+      { dx: 8, dy: -8, anchor: "start" as const },
+      { dx: -8, dy: -8, anchor: "end" as const },
+      { dx: 8, dy: 16, anchor: "start" as const },
+    ],
+  }));
+  const labelRequests = [...pinned, ...authored];
   const labels = placeLabels(
     labelRequests,
     pointLabelObstacles(points, 7),
     plotLabelBounds(box),
+    7,
   );
+  const compositionStrip = options.totalTypes === undefined ? null : buildCompositionStripGeometry({
+    total: options.totalTypes,
+    x: box.margin.left,
+    y: 18,
+    width: box.innerWidth,
+    height: 22,
+    segments: [
+      { key: "lexical-hapax", label: "Hapax (1)", count: options.hapaxCount, rampIndex: 0 },
+      { key: "lexical-dis", label: "Dis legomena (2)", count: options.disLegomenaCount, rampIndex: 1 },
+      { key: "lexical-3-9", label: "3–9 occurrences", count: options.band3To9Count ?? 0, rampIndex: 2 },
+      { key: "lexical-10plus", label: "10+ occurrences", count: options.band10plusCount ?? 0, rampIndex: 4 },
+    ],
+    pinnedKeys: options.pinnedKeys,
+  });
   return {
     box,
     xScale,
@@ -1261,67 +1328,129 @@ export function buildLexicalSpectrumGeometry(options: {
     xTicks: logTicks(xScale),
     yTicks: logTicks(yScale),
     points,
-    bands: buildLexicalSpectrumBands(xScale),
+    bands: options.bandsVisible === false ? [] : buildLexicalSpectrumBands(xScale),
     labels,
+    compositionStrip,
+    yAxisLabel: options.yMode === "share" ? "Share of vocabulary (log scale)" : "Type count (log scale)",
   };
+}
+
+function lexicalSpectrumClassLabel(frequency: number): string {
+  if (frequency === 1) return "hapax";
+  if (frequency === 2) return "dis legomena";
+  if (frequency < 10) return "3–9 occurrences";
+  return "10+ occurrences";
+}
+
+export function deriveCoverageBandShares(options: {
+  totalTypes: number;
+  cumulative: CoverageMilestone[];
+}): CoverageBandShare[] {
+  const suppliedAt = (rank: number): number => {
+    if (options.totalTypes === 0) return 0;
+    if (options.totalTypes <= rank) return 1;
+    return options.cumulative.find((point) => point.k === rank)?.share ?? 0;
+  };
+  const at10 = suppliedAt(10);
+  const at100 = Math.max(at10, suppliedAt(100));
+  const at1000 = Math.max(at100, suppliedAt(1_000));
+  const at10000 = Math.max(at1000, suppliedAt(10_000));
+  const values = [at10, at100 - at10, at1000 - at100, at10000 - at1000, 1 - at10000]
+    .map((share) => Math.max(0, Math.min(1, share)));
+  const correction = (options.totalTypes === 0 ? 0 : 1) - values.reduce((sum, share) => sum + share, 0);
+  values[values.length - 1] = Math.max(0, values[values.length - 1]! + correction);
+  return [
+    { key: "coverage-top10", label: "Top 10", share: values[0]!, rampIndex: 5 },
+    { key: "coverage-11-100", label: "Ranks 11–100", share: values[1]!, rampIndex: 4 },
+    { key: "coverage-101-1000", label: "Ranks 101–1,000", share: values[2]!, rampIndex: 3 },
+    { key: "coverage-1001-10000", label: "Ranks 1,001–10,000", share: values[3]!, rampIndex: 2 },
+    { key: "coverage-tail", label: "Remaining vocabulary", share: values[4]!, rampIndex: 0 },
+  ];
 }
 
 export function buildCoverageGeometry(options: {
   points: CoverageDatum[];
   milestones: CoverageMilestone[];
+  totalTypes?: number;
+  xMode?: "topK" | "vocabularyShare";
+  targetShare?: number;
+  targetCrossing?: { k: number; share: number } | null;
+  labelsMode?: "milestones" | "target" | "off";
+  bandShares?: CoverageBandShare[];
+  pinnedKeys?: ReadonlySet<string>;
   box?: PlotBox;
 }): CoverageGeometry {
-  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, DEFAULT_PLOT_HEIGHT, {
-    top: 28,
-    right: 34,
-    bottom: 54,
-    left: 76,
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 390, {
+    top: options.bandShares ? 82 : 32,
+    right: 40,
+    bottom: 60,
+    left: 78,
   });
   const visible = options.points.filter((point) => point.k > 0 && point.share >= 0);
-  const xScale = createScale("log", extent(visible.map((point) => point.k)), [
+  const xValue = (k: number) => options.xMode === "vocabularyShare" && options.totalTypes
+    ? k / options.totalTypes
+    : k;
+  const xScale = createScale(options.xMode === "vocabularyShare" ? "linear" : "log", extent(visible.map((point) => xValue(point.k))), [
     box.margin.left,
     box.width - box.margin.right,
   ]);
   const yScale = createScale("linear", [0, 1], [box.height - box.margin.bottom, box.margin.top]);
-  const points = visible.map((point) => ({
-    x: scaleValue(xScale, point.k),
+  const points = visible.map((point, index) => ({
+    x: scaleValue(xScale, xValue(point.k)),
     y: scaleValue(yScale, point.share),
     rawX: point.k,
     rawY: point.share,
     datum: point,
-    rampIndex: rampIndex(point.k, xScale.domain, true),
+    rampIndex: 2,
+    key: `coverage:${point.k}`,
+    pinned: options.pinnedKeys?.has(`coverage:${point.k}`) ?? false,
     tooltipTitle: `top ${formatInteger(point.k)}`,
-    tooltipRows: [`${formatPercent(point.share)} of tokens`],
+    tooltipRows: [
+      `${formatPercent(point.share)} of tokens`,
+      options.totalTypes ? `${formatPercent(point.k / options.totalTypes)} of vocabulary` : "",
+      index === 0
+        ? `${formatPercent(point.share)} gained at this checkpoint`
+        : `${formatPercent(Math.max(0, point.share - visible[index - 1]!.share))} gained since previous checkpoint`,
+    ].filter(Boolean),
   }));
   const linePath = points.length > 0 ? { d: pointsToPath(points), className: "cw-plot-line" } : null;
-  const areaPath = null;
+  const areaPath = points.length > 0
+    ? { d: pointsToAreaPath(points, scaleValue(yScale, 0)), className: "cw-plot-area" }
+    : null;
   const milestones: Array<PlotPointGeometry<CoverageDatum>> = options.milestones
     .map<PlotPointGeometry<CoverageDatum> | null>((milestone) => {
       const share = milestone.share ?? findMilestoneShare(visible, milestone.k);
       if (share === null) return null;
       const datum = { k: milestone.k, share };
       return {
-        x: scaleValue(xScale, datum.k),
+        x: scaleValue(xScale, xValue(datum.k)),
         y: scaleValue(yScale, datum.share),
         rawX: datum.k,
         rawY: datum.share,
         datum,
-        rampIndex: rampIndex(datum.k, xScale.domain, true),
+        rampIndex: 2,
+        key: `coverage:${datum.k}`,
+        pinned: options.pinnedKeys?.has(`coverage:${datum.k}`) ?? false,
         tooltipTitle: `top ${formatInteger(datum.k)}`,
         tooltipRows: [`${formatPercent(datum.share)} of tokens`],
       };
     })
     .filter((point): point is PlotPointGeometry<CoverageDatum> => point !== null);
-  const crossingDatum = findFirstCoverageCrossing(visible, 0.5);
+  const targetShare = options.targetShare ?? 0.5;
+  const crossingDatum = options.targetCrossing !== undefined
+    ? options.targetCrossing
+    : findFirstCoverageCrossing(visible, targetShare);
   const halfCrossing = crossingDatum
     ? {
         k: crossingDatum.k,
         share: crossingDatum.share,
-        x: scaleValue(xScale, crossingDatum.k),
+        x: scaleValue(xScale, xValue(crossingDatum.k)),
         y: scaleValue(yScale, crossingDatum.share),
+        targetY: scaleValue(yScale, targetShare),
+        targetShare,
       }
     : null;
-  const labelRequests: LabelPlacementRequest[] = milestones.map((point) => ({
+  const labelRequests: LabelPlacementRequest[] = options.labelsMode === "off" || options.labelsMode === "target" ? [] : milestones.map((point) => ({
     x: point.x,
     y: point.y,
     text: `top ${formatInteger(point.datum.k)} - ${formatPercent(point.datum.share)}`,
@@ -1337,8 +1466,8 @@ export function buildCoverageGeometry(options: {
   if (halfCrossing) {
     labelRequests.push({
       x: box.margin.left + 10,
-      y: halfCrossing.y - 10,
-      text: `half the corpus = ${formatInteger(halfCrossing.k)} types`,
+      y: halfCrossing.targetY - 10,
+      text: `${formatPercent(targetShare, 0)} target = ${formatInteger(halfCrossing.k)} types (${formatPercent(halfCrossing.share)})`,
       className: "cw-plot-label-callout",
       candidates: [
         { dx: 0, dy: 0, anchor: "start" },
@@ -1354,12 +1483,29 @@ export function buildCoverageGeometry(options: {
       ...pointLabelObstacles(milestones, 7),
     ],
     plotLabelBounds(box),
+    7,
   );
+  const bandTotal = options.bandShares?.reduce((sum, band) => sum + band.share, 0) ?? 0;
+  const compositionStrip = options.bandShares && bandTotal > 0 ? buildCompositionStripGeometry({
+    total: bandTotal,
+    x: box.margin.left,
+    y: 18,
+    width: box.innerWidth,
+    height: 22,
+    segments: options.bandShares.map((band) => ({
+      key: band.key,
+      label: band.label,
+      count: band.share,
+      rampIndex: band.rampIndex,
+      tooltipRows: [`${formatPercent(band.share)} of token mass`],
+    })),
+    pinnedKeys: options.pinnedKeys,
+  }) : null;
   return {
     box,
     xScale,
     yScale,
-    xTicks: logTicks(xScale),
+    xTicks: xScale.kind === "log" ? logTicks(xScale) : linearTicks(xScale, 6).map((tick) => ({ ...tick, label: formatPercent(tick.value) })),
     yTicks: linearTicks(yScale, 6).map((tick) => ({ ...tick, label: `${Math.round(tick.value * 100)}%` })),
     points,
     linePath,
@@ -1367,6 +1513,7 @@ export function buildCoverageGeometry(options: {
     milestones,
     labels,
     halfCrossing,
+    compositionStrip,
   };
 }
 
