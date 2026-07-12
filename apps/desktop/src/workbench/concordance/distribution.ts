@@ -51,17 +51,17 @@ export function renderConcordanceDistribution(
     panel.appendChild(summary);
 
     const reading = document.createElement("p");
-    reading.className = "concordance-distribution-reading";
+    reading.className = "concordance-distribution-reading cw-result-table-note";
     reading.textContent =
       "Concentration in a few documents may suggest topic, genre, or source dependence; broad reach may suggest more corpus-general use.";
     panel.appendChild(reading);
   }
 
   const tableWrap = document.createElement("div");
-  tableWrap.className = "concordance-distribution-table-wrap";
+  tableWrap.className = "concordance-distribution-table-wrap cw-result-table-wrap";
 
   const table = document.createElement("table");
-  table.className = "concordance-distribution-table";
+  table.className = "concordance-distribution-table cw-result-table";
   const columns = document.createElement("colgroup");
   for (const className of [
     "concordance-distribution-file-column",
@@ -124,20 +124,20 @@ export function renderConcordanceDistribution(
       row.className = "concordance-distribution-row";
 
       const file = document.createElement("td");
-      file.className = "concordance-distribution-file";
+      file.className = "concordance-distribution-file cw-result-table-file";
       file.title = item.displayName || item.sourcePath;
       file.textContent = item.displayName || item.sourcePath;
 
       const count = document.createElement("td");
-      count.className = "numeric concordance-distribution-occurrences";
+      count.className = "numeric cw-result-table-numeric concordance-distribution-occurrences";
       count.textContent = formatNumber(item.count);
 
       const tokens = document.createElement("td");
-      tokens.className = "numeric";
+      tokens.className = "numeric cw-result-table-numeric";
       tokens.textContent = formatNumber(item.tokenCount);
 
       const rate = document.createElement("td");
-      rate.className = "numeric concordance-distribution-rate";
+      rate.className = "numeric cw-result-table-numeric concordance-distribution-rate";
       const rateValue = document.createElement("span");
       rateValue.className = "concordance-distribution-rate-value";
       rateValue.textContent = formatFixedNumber(item.ratePer10k, 2);
@@ -157,7 +157,7 @@ export function renderConcordanceDistribution(
       rate.append(rateValue, rateTrack);
 
       const share = document.createElement("td");
-      share.className = "numeric";
+      share.className = "numeric cw-result-table-numeric";
       const shareOfHits = result.totalHits > 0 ? item.count / result.totalHits * 100 : 0;
       share.textContent = `${formatFixedNumber(shareOfHits, 1)}%`;
 
@@ -172,7 +172,7 @@ export function renderConcordanceDistribution(
 
   if (result && result.totalHits > 0 && distribution) {
     const pagination = document.createElement("div");
-    pagination.className = "analysis-pagination";
+    pagination.className = "analysis-pagination cw-result-table-pagination";
     const previous = document.createElement("button");
     previous.type = "button";
     previous.className = "secondary-btn";
@@ -183,6 +183,7 @@ export function renderConcordanceDistribution(
       void refreshConcordanceDistribution();
     });
     const status = document.createElement("span");
+    status.className = "cw-result-table-pagination-status";
     const first = distribution.totalDocuments === 0 ? 0 : distribution.offset + 1;
     const last = Math.min(
       distribution.totalDocuments,

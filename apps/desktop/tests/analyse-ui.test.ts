@@ -104,7 +104,7 @@ assert(
   "Frequency renderer should not render Top-doc share by default",
 );
 
-const concordanceHeadMatch = html.match(/<table class="concordance-table">([\s\S]*?)<\/table>/);
+const concordanceHeadMatch = html.match(/<table class="concordance-table cw-result-table">([\s\S]*?)<\/table>/);
 assert(concordanceHeadMatch, "Concordance table should exist");
 const concordanceTable = concordanceHeadMatch[1];
 for (const label of ["File", "Left context", "Node", "Right context"]) {
@@ -157,7 +157,7 @@ const concordanceCollocationsPanel = html.slice(concordanceCollocationsStart, co
 assert(
   concordanceLinesPanel.includes('id="concordance-lines-title">Concordance Lines</h3>')
     && concordanceLinesPanel.includes("Where and how does the node occur in context?")
-    && concordanceLinesPanel.includes('<p id="concordance-lines-stats" class="concordance-card-stats">')
+    && concordanceLinesPanel.includes('<p id="concordance-lines-stats" class="concordance-card-stats cw-result-table-note">')
     && !concordanceLinesPanel.includes('data-concordance-card-action=')
     && concordanceLinesPanel.includes('class="concordance-card-controls concordance-lines-controls"')
     && concordanceLinesPanel.includes('id="concordance-window-input"')
@@ -171,7 +171,7 @@ assert(
 assert(
   concordanceCollocationsPanel.includes('id="concordance-collocates-title">Collocates</h3>')
     && concordanceCollocationsPanel.includes("Which words systematically occur near the node")
-    && concordanceCollocationsPanel.includes('<p id="concordance-collocates-stats" class="concordance-card-stats">')
+    && concordanceCollocationsPanel.includes('<p id="concordance-collocates-stats" class="concordance-card-stats cw-result-table-note">')
     && concordanceCollocationsPanel.includes('class="concordance-card-controls concordance-collocation-controls"')
     && concordanceCollocationsPanel.includes('id="concordance-collocation-span"')
     && concordanceCollocationsPanel.includes('id="concordance-collocation-direction"')
@@ -318,7 +318,7 @@ assert(
   "Permanent Concordance cards should retain stale-response protection without collapse state",
 );
 assert(
-  workbench.includes('table.className = "concordance-distribution-table"')
+  workbench.includes('table.className = "concordance-distribution-table cw-result-table"')
     && workbench.includes('panel.className = "concordance-document-spread-panel"')
     && workbench.includes('panelHeader.className = "concordance-document-spread-header"')
     && workbench.includes('summary.className = "concordance-distribution-summary"')
@@ -785,9 +785,9 @@ assert(
   "Collocate evidence drawer should use cumulative count-based show-more controls instead of Previous/Next paging",
 );
 assert(
-  styles.includes(".concordance-collocation-row.is-active td {\n  background: var(--cw-collocate-bg);")
+  styles.includes(".concordance-collocation-row.is-active td {\n  background: var(--cw-result-table-active-surface);")
     && styles.includes(".concordance-collocation-row.is-active .concordance-collocate-text {\n  color: var(--cw-collocate-text);"),
-  "Active collocate rows should use the quiet collocate colour role",
+  "Active collocate rows should use the shared active surface while preserving selected evidence colour",
 );
 const collocateEvidenceCellCssMatch = styles.match(
   /\.concordance-collocate-evidence-row > \.concordance-collocate-evidence-cell \{([\s\S]*?)\n\}/,
@@ -908,11 +908,9 @@ const frequencyTableWrapCss = frequencyTableWrapCssMatch[1];
 assert(
   concordanceTableWrapCss.includes("max-height: none;")
     && concordanceTableWrapCss.includes("overflow: clip;")
-    && concordanceTableWrapCss.includes("border: 0;")
-    && concordanceTableWrapCss.includes("background: transparent;")
-    && styles.includes(".concordance-table-wrap,\n.concordance-collocations-table-wrap,\n.concordance-distribution-table-wrap {\n  border: 1px solid var(--border-color);\n  border-radius: 4px;\n  background: var(--bg-color);")
+    && styles.includes(".concordance-table-wrap,\n.concordance-collocations-table-wrap,\n.concordance-distribution-table-wrap {\n  border: 1px solid var(--cw-result-table-border);\n  border-radius: 4px;\n  background: var(--cw-result-table-surface);")
     && !styles.includes(".concordance-table {\n    min-width: 760px;"),
-  "Concordance lines wrapper should override to transparent, matching the Collocates/Distribution result-table surface",
+  "Concordance lines wrapper should use the shared table shell without nested scrolling",
 );
 assert(
   concordanceCollocationsTableWrapCss.includes("max-width: none;")
@@ -925,16 +923,15 @@ assert(
 assert(
   concordanceDistributionTableWrapCss.includes("max-width: none;")
     && concordanceDistributionTableWrapCss.includes("max-height: none;")
-    && concordanceDistributionTableWrapCss.includes("overflow: visible;")
-    && concordanceDistributionTableWrapCss.includes("border: 0;"),
+    && concordanceDistributionTableWrapCss.includes("overflow: visible;"),
   "Concordance distribution should use natural page flow without internal table scrolling",
 );
 assert(
   frequencyTableWrapCss.includes("max-height: min(58vh, 680px);")
     && frequencyTableWrapCss.includes("overflow: auto;")
-    && frequencyTableWrapCss.includes("border: 1px solid var(--border-color);")
+    && frequencyTableWrapCss.includes("border: 1px solid var(--cw-result-table-border);")
     && frequencyTableWrapCss.includes("border-radius: 4px;")
-    && frequencyTableWrapCss.includes("background: var(--bg-color);"),
+    && frequencyTableWrapCss.includes("background: var(--cw-result-table-surface);"),
   "Frequency List table wrap should keep the existing internal scroll discipline",
 );
 const collocateTextCssMatch = styles.match(/^\.concordance-collocate-text \{([\s\S]*?)\n\}/m);

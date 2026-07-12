@@ -612,7 +612,7 @@ function createCollocateEvidenceLine(row: ConcordanceRow): HTMLDivElement {
   });
 
   const file = document.createElement("span");
-  file.className = "concordance-collocate-evidence-file";
+  file.className = "concordance-collocate-evidence-file cw-result-table-file";
   file.setAttribute("role", "cell");
   file.title = row.displayName || row.sourcePath;
   file.textContent = row.displayName || row.sourcePath;
@@ -830,20 +830,20 @@ function createConcordanceCollocationRow(
 
   const surface = document.createElement("td");
   const text = document.createElement("span");
-  text.className = "concordance-collocate-text";
+  text.className = "concordance-collocate-text cw-result-table-lexical";
   text.textContent = row.surface;
   surface.appendChild(text);
 
   const o11 = document.createElement("td");
-  o11.className = "numeric";
+  o11.className = "numeric cw-result-table-numeric";
   o11.textContent = formatNumber(row.o11);
 
   const frequency = document.createElement("td");
-  frequency.className = "numeric";
+  frequency.className = "numeric cw-result-table-numeric";
   frequency.textContent = formatNumber(row.collocateFrequency);
 
   const score = document.createElement("td");
-  score.className = "numeric concordance-collocation-score";
+  score.className = "numeric cw-result-table-numeric concordance-collocation-score";
   const scoreValue = concordanceCollocationScore(row, measure);
   const bar = concordanceCollocationStrengthBar(scoreValue, measure, loadedScores);
   const value = document.createElement("span");

@@ -1,5 +1,6 @@
 import {
   CONCORDANCE_COLUMNS,
+  CONCORDANCE_DEFAULT_PAGE_SIZE,
   CONCORDANCE_DEFAULT_WINDOW,
   CONCORDANCE_COLLOCATION_DEFAULT_FLOOR,
   CONCORDANCE_COLLOCATION_DEFAULT_SPAN,
@@ -67,8 +68,8 @@ assert(clampConcordanceWindow(24) === 20, "Windows should be capped at the hard 
 assert(clampConcordanceWindow(3.8) === 3, "Windows should use whole tokens");
 assert(clampConcordanceWindow(5) === 5, "An explicit five-token window should remain unchanged");
 assert(clampConcordanceWindow(15) === 15, "An explicit fifteen-token window should remain unchanged");
-assert(clampConcordancePageSize(0) === 100, "Invalid page sizes should fall back to the default");
-assert(clampConcordancePageSize(12) === 25, "Page sizes should respect the minimum");
+assert(clampConcordancePageSize(0) === 24, "Invalid page sizes should fall back to the default");
+assert(clampConcordancePageSize(12) === 12, "Explicit page sizes should be preserved");
 assert(clampConcordancePageSize(900) === 500, "Page sizes should respect the maximum");
 assert(clampConcordanceCollocationSpan(Number.NaN) === 5, "Invalid collocation spans should fall back");
 assert(clampConcordanceCollocationSpan(24) === 20, "Collocation spans should be capped");
@@ -76,6 +77,7 @@ assert(clampConcordanceCollocationFloor(-1) === 5, "Invalid collocation floors s
 assert(clampConcordanceCollocationFloor(3.8) === 3, "Collocation floors should use whole counts");
 assertDeepEqual(DEFAULT_CONCORDANCE_SORT_KEYS, ["right1", "right2", "right3"], "Default sort should be 1R / 2R / 3R");
 assert(CONCORDANCE_DEFAULT_WINDOW === 10, "Default KWIC context should be ten tokens per side");
+assert(CONCORDANCE_DEFAULT_PAGE_SIZE === 24, "Default KWIC page size should be 24 rows");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_MEASURE === "logDice", "Default collocation measure should be logDice");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY === "association", "Default collocation sort should be association");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION === "desc", "Default collocation sort should descend");
