@@ -240,7 +240,6 @@ function renderSearchHit(): void {
 
   const body = document.createElement("div");
   body.className = "file-card-body";
-  body.style.minHeight = "auto";
 
   const before = document.createTextNode(hit.context_before);
   const mark = document.createElement("mark");

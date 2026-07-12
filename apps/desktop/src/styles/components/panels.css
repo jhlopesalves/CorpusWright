@@ -53,7 +53,7 @@
 }
 
 .left-panel {
-  width: 340px;
+  width: var(--cw-sidebar-width, 340px);
   background-color: var(--panel-bg);
   border-right: 1px solid var(--border-color);
   display: flex;

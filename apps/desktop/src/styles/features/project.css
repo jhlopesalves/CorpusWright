@@ -29,8 +29,8 @@
   margin-top: 28px;
 }
 
-.welcome-actions button,
-.project-empty-actions button {
+.welcome-actions button:not(.primary-btn):not(.danger-btn),
+.project-empty-actions button:not(.primary-btn):not(.danger-btn) {
   padding: 8px 14px;
   background: var(--panel-bg);
   border: 1px solid var(--border-color);
@@ -41,10 +41,10 @@
   cursor: pointer;
 }
 
-.welcome-actions button:hover,
-.welcome-actions button:focus,
-.project-empty-actions button:hover,
-.project-empty-actions button:focus {
+.welcome-actions button:not(.primary-btn):not(.danger-btn):hover,
+.welcome-actions button:not(.primary-btn):not(.danger-btn):focus,
+.project-empty-actions button:not(.primary-btn):not(.danger-btn):hover,
+.project-empty-actions button:not(.primary-btn):not(.danger-btn):focus {
   background: var(--cw-interaction-bg-hover);
   border-color: var(--cw-interaction-border-hover);
   box-shadow: var(--cw-interaction-shadow);
