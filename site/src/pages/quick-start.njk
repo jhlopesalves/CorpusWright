@@ -1,0 +1,67 @@
+---
+layout: layouts/article.njk
+pageKey: quickStart
+permalink: quick-start.html
+---
+<main id="top">
+
+<section class="section">
+  <div class="shell">
+    <div class="section-lead">
+      <p class="eyebrow">Quick start</p>
+      <h1>Installing and running CorpusWright</h1>
+      <p class="lede">Use the GitHub release page for packaged alpha builds, or build locally from the repository when you want a development checkout.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="shell grid">
+    <article class="card">
+      <h3>Use a release build</h3>
+      <p>Download the latest alpha from the release page. Windows installers may still show unsigned-app warnings.</p>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download latest alpha</a>
+        <a class="btn ghost" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">View latest release</a>
+      </div>
+    </article>
+    <article class="card">
+      <h3>Build locally</h3>
+      <p>CorpusWright is a Rust + Tauri desktop application. Development usually requires Rust, Node.js, and the package manager used by the frontend.</p>
+      <pre class="code"><code>git clone https://github.com/jhlopesalves/CorpusWright.git
+cd CorpusWright
+cd apps/desktop
+npm ci
+npm run tauri dev</code></pre>
+    </article>
+  </div>
+</section>
+
+<section class="section">
+  <div class="shell">
+    <div class="section-lead">
+      <h2>Basic workflow</h2>
+    </div>
+    <div class="principles">
+      <p><span class="term">1.</span> Create or open a CorpusWright project.</p>
+      <p><span class="term">2.</span> Load supported source files into the preprocessing workspace.</p>
+      <p><span class="term">3.</span> Review extracted text and warnings.</p>
+      <p><span class="term">4.</span> Configure cleaning rules deliberately.</p>
+      <p><span class="term">5.</span> Preview processed text before exporting.</p>
+      <p><span class="term">6.</span> Inspect frequency lists, KWIC lines, collocates, and document spread diagnostics.</p>
+      <p><span class="term">7.</span> Export processed text with project metadata and warnings.</p>
+      <p class="muted">CorpusWright is alpha software. Keep your original source files, and treat exported corpora as material you can regenerate from those sources rather than as irreplaceable output.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section callout">
+  <div class="shell">
+    <div class="section-lead">
+      <h2>Supported source formats</h2>
+      <p>The existing repository documentation describes support for TXT, HTML/HTM, DOCX, and PDF extraction, with important format-specific limitations. See the technical documentation before using CorpusWright on research-critical material.</p>
+    </div>
+  </div>
+</section>
+
+</main>
