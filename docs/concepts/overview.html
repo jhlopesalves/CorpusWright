@@ -19,21 +19,10 @@
 <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
 <link rel="stylesheet" href="../assets/site.css">
 <link rel="icon" href="../assets/icon.png">
-<script>
-  (function () {
-    var stored = localStorage.getItem('theme');
-    var system = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', stored || system);
-  })();
-</script>
+<script src="../assets/theme-init.js"></script>
 
-<script>
-  window.MathJax = {
-    tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
-    options: { enableMenu: false }
-  };
-</script>
-<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+<script src="../assets/mathjax-config.js"></script>
+<script defer src="../assets/vendor/mathjax/tex-chtml.js"></script>
 
 
 </head>
@@ -185,26 +174,6 @@ flowchart TD
             <h2 id="tokens-and-types-why-the-definition-comes-first">Tokens and types - why the definition comes first</h2>
 
 <figure class="cw-chipfig">
-  <style>
-    .cw-chipfig { margin: 0; font-family: inherit; color: #222; }
-    .cw-chipfig .cw-row {
-      display: flex; flex-wrap: wrap; align-items: center;
-      gap: 0.4rem; margin: 0.5rem 0;
-    }
-    .cw-chipfig .cw-label {
-      min-width: 5rem; font-size: 0.75rem; letter-spacing: 0.03em;
-      text-transform: uppercase; color: #666;
-    }
-    .cw-chipfig .cw-chip {
-      border: 1px solid #bbb; border-radius: 6px; background: #f6f6f6;
-      padding: 0.15rem 0.5rem; font-size: 0.95rem;
-    }
-    .cw-chipfig .cw-chip.is-repeat { border-color: #555; background: #e6e6e6; }
-    .cw-chipfig .cw-arrow { color: #888; padding: 0 0.2rem; }
-    .cw-chipfig .cw-count { font-size: 0.75rem; color: #888; }
-    .cw-chipfig figcaption { margin-top: 0.6rem; font-size: 0.85rem; color: #555; }
-  </style>
-
   <div class="cw-row">
     <span class="cw-label">Tokens</span>
     <span class="cw-chip">In</span>
@@ -826,89 +795,7 @@ flowchart TD
   </div>
 </footer>
 
-  <script>
-  (function () {
-    var root = document.documentElement;
-    var toggle = document.getElementById('theme-toggle');
-    if (!toggle) return;
-    function syncToggle() {
-      var dark = root.getAttribute('data-theme') === 'dark';
-      toggle.setAttribute('aria-pressed', String(dark));
-      toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-    }
-    syncToggle();
-    toggle.addEventListener('click', function () {
-      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      root.setAttribute('data-theme', next);
-      localStorage.setItem('theme', next);
-      syncToggle();
-    });
-  })();
-</script>
-
-
-<script>
-  (function () {
-    var toc = document.querySelector('[data-docs-toc]');
-    if (!toc || !('IntersectionObserver' in window)) return;
-    var links = Array.prototype.slice.call(toc.querySelectorAll('a[href^="#"]'));
-    var entries = links.map(function (link) {
-      var id;
-      try { id = decodeURIComponent(link.hash.slice(1)); } catch (error) { return null; }
-      var heading = document.getElementById(id);
-      return heading ? { link: link, heading: heading } : null;
-    }).filter(Boolean);
-    function setActive(activeLink) {
-      entries.forEach(function (entry) {
-        var active = entry.link === activeLink;
-        entry.link.classList.toggle('is-active', active);
-        if (active) entry.link.setAttribute('aria-current', 'true');
-        else entry.link.removeAttribute('aria-current');
-      });
-    }
-    var observer = new IntersectionObserver(function (observed) {
-      var visible = observed.filter(function (entry) { return entry.isIntersecting; })
-        .sort(function (left, right) { return left.boundingClientRect.top - right.boundingClientRect.top; });
-      if (!visible.length) return;
-      var active = entries.find(function (entry) { return entry.heading === visible[0].target; });
-      if (active) setActive(active.link);
-    }, { rootMargin: '-82px 0px -70% 0px', threshold: [0, 1] });
-    entries.forEach(function (entry) {
-      observer.observe(entry.heading);
-      entry.link.addEventListener('click', function () { setActive(entry.link); });
-    });
-    if (entries.length) setActive(entries[0].link);
-  })();
-</script>
-<style>
-  pre.mermaid,
-  pre.mermaid svg,
-  pre.mermaid svg text {
-    font-family: "IBM Plex Sans", sans-serif !important;
-  }
-</style>
-<script type="module">
-  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
-  mermaid.initialize({
-    startOnLoad: true,
-    theme: "base",
-    themeVariables: {
-      primaryColor: "#f6f6f6",
-      primaryTextColor: "#333333",
-      primaryBorderColor: "#4d4d4d",
-      secondaryColor: "#f6f6f6",
-      secondaryTextColor: "#333333",
-      secondaryBorderColor: "#4d4d4d",
-      tertiaryColor: "#ffffff",
-      tertiaryTextColor: "#333333",
-      tertiaryBorderColor: "#4d4d4d",
-      lineColor: "#4d4d4d",
-      edgeLabelBackground: "#ffffff",
-      fontFamily: "IBM Plex Sans, sans-serif"
-    }
-  });
-</script>
-
-
+  <script defer src="../assets/site.js"></script>
+  <script defer src="../assets/mermaid.js"></script>
 </body>
 </html>

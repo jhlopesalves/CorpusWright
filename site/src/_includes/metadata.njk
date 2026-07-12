@@ -15,19 +15,8 @@
 <meta name="twitter:image" content="{{ site.socialImageUrl }}">
 <link rel="stylesheet" href="{{ meta.assetPrefix }}assets/site.css">
 <link rel="icon" href="{{ meta.assetPrefix }}assets/icon.png">
-<script>
-  (function () {
-    var stored = localStorage.getItem('theme');
-    var system = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', stored || system);
-  })();
-</script>
+<script src="{{ meta.assetPrefix }}assets/theme-init.js"></script>
 {% if meta.conceptsRuntime %}
-<script>
-  window.MathJax = {
-    tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
-    options: { enableMenu: false }
-  };
-</script>
-<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+<script src="{{ meta.assetPrefix }}assets/mathjax-config.js"></script>
+<script defer src="{{ meta.assetPrefix }}assets/vendor/mathjax/tex-chtml.js"></script>
 {% endif %}

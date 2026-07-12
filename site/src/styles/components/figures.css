@@ -1,0 +1,48 @@
+.docs-content figure:has(> img[src*="figures/"]),
+.docs-content figure.cw-chipfig,
+.docs-content figure:has(> svg),
+.docs-content figure:has(> pre.mermaid) {
+  background: var(--figure-surface);
+  border: 1px solid var(--figure-border);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+.docs-content figure:has(> img[src*="figures/"]) figcaption,
+.docs-content figure.cw-chipfig figcaption,
+.docs-content figure:has(> svg) figcaption,
+.docs-content figure:has(> pre.mermaid) figcaption {
+  color: var(--figure-text);
+}
+
+.cw-chipfig { margin: 0; font-family: inherit; color: var(--chip-text); }
+.cw-chipfig .cw-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+}
+.cw-chipfig .cw-label {
+  min-width: 5rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--chip-muted);
+}
+.cw-chipfig .cw-chip {
+  border: 1px solid var(--chip-border);
+  border-radius: 6px;
+  background: var(--chip-surface);
+  padding: 0.15rem 0.5rem;
+  font-size: 0.95rem;
+}
+.cw-chipfig .cw-chip.is-repeat { border-color: var(--chip-repeat-border); background: var(--chip-repeat-surface); }
+.cw-chipfig .cw-arrow { color: var(--chip-faint); padding: 0 0.2rem; }
+.cw-chipfig .cw-count { font-size: 0.75rem; color: var(--chip-faint); }
+.cw-chipfig figcaption { margin-top: 0.6rem; font-size: 0.85rem; color: var(--chip-repeat-border); }
+
+pre.mermaid,
+pre.mermaid svg,
+pre.mermaid svg text {
+  font-family: "IBM Plex Sans", sans-serif;
+}

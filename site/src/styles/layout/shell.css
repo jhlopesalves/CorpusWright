@@ -1,0 +1,35 @@
+.shell { max-width: var(--shell); margin: 0 auto; padding: 0 24px; }
+.narrow { max-width: var(--prose); }
+/* ---- hero and sections ---- */
+.hero {
+  padding: 58px 0 50px;
+  border-bottom: 1px solid var(--line);
+}
+
+.section {
+  padding: 58px 0;
+  border-bottom: 1px solid var(--line);
+}
+.section.compact { padding: 46px 0; }
+.section-lead {
+  max-width: var(--prose);
+  margin-bottom: 24px;
+}
+.section-lead p { color: var(--muted); margin-bottom: 0; }
+.section-lead h1 { font-size: clamp(1.5rem, 2.4vw, 1.95rem); line-height: 1.18; }
+.text-link { margin-top: 18px; margin-bottom: 0; }
+
+/* ---- layout utilities retained for other pages ---- */
+.cols { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 40px; align-items: start; }
+.checklist { list-style: none; padding: 0; margin: 0; }
+.checklist li { position: relative; padding-left: 20px; margin: 10px 0; color: var(--text); }
+.checklist li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  width: 8px;
+  height: 2px;
+  background: var(--brand);
+}
+.roadmap-link { margin-top: 18px; }

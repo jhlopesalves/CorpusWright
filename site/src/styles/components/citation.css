@@ -1,0 +1,15 @@
+/* ---- citation ---- */
+.citation-text { margin-bottom: 18px; }
+.bibtex {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.bibtex summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 600;
+}
+.bibtex summary:hover { color: var(--accent); }
+
+.citation-content { max-width: var(--prose); }
+.citation-section-heading { margin-top: 36px; }

@@ -19,13 +19,7 @@
 <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
 <link rel="stylesheet" href="assets/site.css">
 <link rel="icon" href="assets/icon.png">
-<script>
-  (function () {
-    var stored = localStorage.getItem('theme');
-    var system = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', stored || system);
-  })();
-</script>
+<script src="assets/theme-init.js"></script>
 
 
 </head>
@@ -134,27 +128,7 @@
   </div>
 </footer>
 
-  <script>
-  (function () {
-    var root = document.documentElement;
-    var toggle = document.getElementById('theme-toggle');
-    if (!toggle) return;
-    function syncToggle() {
-      var dark = root.getAttribute('data-theme') === 'dark';
-      toggle.setAttribute('aria-pressed', String(dark));
-      toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-    }
-    syncToggle();
-    toggle.addEventListener('click', function () {
-      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      root.setAttribute('data-theme', next);
-      localStorage.setItem('theme', next);
-      syncToggle();
-    });
-  })();
-</script>
-
-
+  <script defer src="assets/site.js"></script>
 
 </body>
 </html>

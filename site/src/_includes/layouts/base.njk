@@ -8,6 +8,7 @@
   {% include "header.njk" %}
   {{ content | safe }}
   {% include "footer.njk" %}
-  {% include "legacy-page-scripts.njk" %}
+  <script defer src="{{ meta.assetPrefix }}assets/site.js"></script>
+{% if meta.conceptsRuntime %}  <script defer src="{{ meta.assetPrefix }}assets/mermaid.js"></script>{% endif %}
 </body>
 </html>
