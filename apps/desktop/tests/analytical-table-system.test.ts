@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const frequency = readFileSync(
+  new URL("../src/workbench/frequency.ts", import.meta.url),
+  "utf8",
+);
 
 const resultTableTokens = [
   "--cw-result-table-surface",
@@ -77,3 +82,32 @@ for (const match of styles.matchAll(statefulAncestorRule)) {
     `Analysis state selector must not change inherited typography: ${match[1]!.trim()}`,
   );
 }
+
+assert.match(
+  html,
+  /class="frequency-table-wrap cw-result-table-wrap">\s*<table class="frequency-table cw-result-table">/,
+  "Frequency List must consume the shared table shell",
+);
+assert.match(
+  html,
+  /id="frequency-page-status" class="cw-result-table-pagination-status"/,
+  "Frequency pagination status must use shared muted typography",
+);
+assert(frequency.includes("frequency-token-cell frequency-col-term cw-result-table-lexical"));
+assert(frequency.includes("numeric cw-result-table-numeric"));
+assert(frequency.includes('track.setAttribute("aria-label", accessibilityLabel)'));
+assert(frequency.includes("DP ${formatFixedNumber(dispersion, 2)} on a scale from 0 to 1"));
+assert(!frequency.includes("fill.dataset.level"), "DP magnitude must not imply undocumented categories");
+
+const frequencyTokenRule = ruleBody(".frequency-token-cell");
+assert.match(frequencyTokenRule, /font-family:\s*var\(--cw-font-ui\)/);
+assert.match(frequencyTokenRule, /font-weight:\s*600/);
+
+const frequencyNumericRule = ruleBody(".frequency-table td.numeric");
+assert.match(frequencyNumericRule, /font-variant-numeric:\s*tabular-nums/);
+assert.match(frequencyNumericRule, /font-weight:\s*400/);
+
+const dpTrackRule = ruleBody(".frequency-distribution-track");
+assert.match(dpTrackRule, /height:\s*6px/);
+assert.match(dpTrackRule, /background:\s*var\(--cw-result-table-track\)/);
+assert(!styles.includes('.frequency-dp-fill[data-level='));

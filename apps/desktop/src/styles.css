@@ -5772,9 +5772,9 @@ main {
 .frequency-table-wrap {
   max-height: min(58vh, 680px);
   overflow: auto;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--cw-result-table-border);
   border-radius: 4px;
-  background: var(--bg-color);
+  background: var(--cw-result-table-surface);
 }
 
 .frequency-table {
@@ -5793,22 +5793,22 @@ main {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--panel-bg);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--cw-result-table-header-surface);
+  border-bottom: 1px solid var(--cw-result-table-separator);
 }
 
 .frequency-table th,
 .frequency-table td {
   padding: 7px 10px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--cw-result-table-separator);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .frequency-table th {
-  color: var(--text-muted);
-  font-weight: 650;
+  color: var(--cw-result-table-header-text);
+  font-weight: 500;
   text-align: left;
 }
 
@@ -5845,14 +5845,24 @@ main {
 .frequency-table td.numeric {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  font-weight: 400;
 }
 
 .frequency-term-row {
   cursor: pointer;
 }
 
-.frequency-term-row:hover {
-  background: var(--cw-interaction-bg-hover);
+.frequency-term-row:nth-child(even) td {
+  background: var(--cw-result-table-row-alt-surface);
+}
+
+.frequency-term-row:hover td,
+.frequency-term-row:focus-visible td {
+  background: var(--cw-result-table-hover-surface);
+}
+
+.frequency-term-row[aria-expanded="true"] td {
+  background: var(--cw-result-table-active-surface);
 }
 
 .frequency-term-row:focus-visible {
@@ -5861,7 +5871,8 @@ main {
 }
 
 .frequency-token-cell {
-  font-family: var(--cw-font-mono);
+  font-family: var(--cw-font-ui);
+  font-weight: 600;
 }
 
 .frequency-token-content {
@@ -5935,35 +5946,19 @@ main {
   white-space: nowrap;
 }
 
-.frequency-dispersion-label-cell {
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.frequency-dispersion-label-cell[data-level="low"] {
-  color: var(--cw-viz-frequency-repeated);
-}
-
-.frequency-dispersion-label-cell[data-level="medium"] {
-  color: var(--cw-viz-frequency-mid);
-}
-
-.frequency-dispersion-label-cell[data-level="high"] {
-  color: var(--cw-viz-frequency-frequent);
-}
-
 .frequency-dp-value {
   display: inline-block;
   min-width: 42px;
+  font-weight: 400;
 }
 
 .frequency-dp-track,
 .frequency-distribution-track {
   display: inline-block;
-  height: 8px;
+  height: 6px;
   border-radius: 999px;
   overflow: hidden;
-  background: var(--border-color);
+  background: var(--cw-result-table-track);
 }
 
 .frequency-dp-track {
@@ -5977,23 +5972,12 @@ main {
   display: block;
   height: 100%;
   width: var(--bar-width, 0%);
-  background: var(--accent-color);
+  background: var(--cw-result-table-bar);
 }
 
-.frequency-dp-fill[data-level="low"] {
-  background: var(--cw-viz-severity-no-issue);
-}
-
-.frequency-dp-fill[data-level="medium"] {
-  background: var(--cw-viz-severity-worth-a-look);
-}
-
-.frequency-dp-fill[data-level="high"] {
-  background: var(--cw-viz-severity-needs-fixing);
-}
-
-.frequency-detail-row td {
+.frequency-table .frequency-detail-row td {
   padding: 0 12px 12px 34px !important;
+  background: var(--cw-result-table-active-surface);
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
@@ -6002,7 +5986,7 @@ main {
 .frequency-distribution-panel {
   max-width: 940px;
   padding: 10px 12px 8px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--cw-result-table-separator);
   border-left: 2px solid var(--accent-color);
 }
 
@@ -6030,9 +6014,9 @@ main {
 }
 
 .frequency-distribution-header {
-  color: var(--text-muted);
+  color: var(--cw-result-table-header-text);
   font-size: 0.76rem;
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .frequency-distribution-file {
@@ -6069,6 +6053,7 @@ main {
   margin-top: 8px;
   color: var(--text-muted);
   font-size: 0.8rem;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
 

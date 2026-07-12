@@ -416,7 +416,7 @@ function annotatedDistributionKey(selector: AnnotatedTermSelector): string {
 
 function createExpandableTokenCell(label: string, title = label): HTMLTableCellElement {
   const token = document.createElement("td");
-  token.className = "frequency-token-cell frequency-col-term";
+  token.className = "frequency-token-cell frequency-col-term cw-result-table-lexical";
   token.title = title;
   const tokenContent = document.createElement("span");
   tokenContent.className = "frequency-token-content";
@@ -437,7 +437,7 @@ function createTextCell(text: string, className: string): HTMLTableCellElement {
 }
 
 function createNumericCell(text: string, className: string): HTMLTableCellElement {
-  return createTextCell(text, `numeric ${className}`);
+  return createTextCell(text, `numeric cw-result-table-numeric ${className}`);
 }
 
 function createRateCell(value: number): HTMLTableCellElement {
@@ -560,19 +560,9 @@ function frequencySummaryText(page: FrequencyPage, tokenClassFilter: FrequencyTo
   return parts.join(" · ");
 }
 
-function dispersionLevel(dispersion: number): "low" | "medium" | "high" {
-  if (dispersion < 0.34) {
-    return "low";
-  }
-  if (dispersion < 0.67) {
-    return "medium";
-  }
-  return "high";
-}
-
 function createDispersionValueCell(dispersion: number): HTMLTableCellElement {
   const cell = document.createElement("td");
-  cell.className = "numeric frequency-dp-cell frequency-col-dispersion";
+  cell.className = "numeric cw-result-table-numeric frequency-dp-cell frequency-col-dispersion";
 
   const value = document.createElement("span");
   value.className = "frequency-dp-value";
@@ -580,9 +570,12 @@ function createDispersionValueCell(dispersion: number): HTMLTableCellElement {
 
   const track = document.createElement("span");
   track.className = "frequency-dp-track";
+  const accessibilityLabel = `DP ${formatFixedNumber(dispersion, 2)} on a scale from 0 to 1`;
+  track.title = accessibilityLabel;
+  track.setAttribute("role", "img");
+  track.setAttribute("aria-label", accessibilityLabel);
   const fill = document.createElement("span");
   fill.className = "frequency-dp-fill";
-  fill.dataset.level = dispersionLevel(dispersion);
   fill.style.setProperty("--bar-width", `${Math.max(0, Math.min(100, dispersion * 100))}%`);
   track.appendChild(fill);
 
@@ -732,16 +725,16 @@ function createFrequencyDistributionPanel(
     line.className = "frequency-distribution-row";
 
     const label = document.createElement("span");
-    label.className = "frequency-distribution-file frequency-distribution-file-col";
+    label.className = "frequency-distribution-file frequency-distribution-file-col cw-result-table-file";
     label.title = documentName(item);
     label.textContent = documentName(item);
 
     const count = document.createElement("span");
-    count.className = "numeric frequency-distribution-count";
+    count.className = "numeric cw-result-table-numeric frequency-distribution-count";
     count.textContent = formatNumber(item.count);
 
     const documentTokens = document.createElement("span");
-    documentTokens.className = "numeric frequency-distribution-tokens";
+    documentTokens.className = "numeric cw-result-table-numeric frequency-distribution-tokens";
     documentTokens.textContent = formatNumber(item.tokenCount);
 
     const track = document.createElement("span");
@@ -768,7 +761,7 @@ function createFrequencyDistributionPanel(
     });
     if (rateValue !== null) {
       const rate = document.createElement("span");
-      rate.className = "numeric frequency-distribution-rate";
+      rate.className = "numeric cw-result-table-numeric frequency-distribution-rate";
       rate.textContent = formatFixedNumber(rateValue, 2);
       line.appendChild(rate);
     }
@@ -777,7 +770,7 @@ function createFrequencyDistributionPanel(
   }
 
   const pagination = document.createElement("div");
-  pagination.className = "analysis-pagination";
+  pagination.className = "analysis-pagination cw-result-table-pagination";
   const previous = document.createElement("button");
   previous.type = "button";
   previous.className = "secondary-btn";
@@ -787,6 +780,7 @@ function createFrequencyDistributionPanel(
     loadPage(Math.max(0, page.offset - page.limit));
   });
   const status = document.createElement("span");
+  status.className = "cw-result-table-pagination-status";
   const first = page.totalDocuments === 0 ? 0 : page.offset + 1;
   const last = Math.min(page.totalDocuments, page.offset + page.items.length);
   status.textContent = `${formatNumber(first)}-${formatNumber(last)} of ${formatNumber(page.totalDocuments)}`;
