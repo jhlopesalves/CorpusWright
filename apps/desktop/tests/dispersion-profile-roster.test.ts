@@ -23,8 +23,11 @@ const countProfile = buildDispersionGeometry({
   labelsMode: "countsShares",
   cumulativeCallout: { count: 4, examples: ["the", "and"] },
 });
-assert.equal(countProfile.compositionSegments.reduce((sum, segment) => sum + segment.datum.count, 0), 100);
-assert.deepEqual(countProfile.compositionSegments.map((segment) => segment.datum.key), buckets.map((bucket) => bucket.key));
+assert.equal(countProfile.compositionStrip?.segments.reduce((sum, segment) => sum + segment.datum.count, 0), 100);
+assert.deepEqual(
+  countProfile.compositionStrip?.segments.map((segment) => segment.datum.rampIndex),
+  [...new Set(countProfile.points.map((point) => point.rampIndex))],
+);
 assert(!countProfile.points.some((point) => point.datum.key.includes("90")));
 assert.equal(countProfile.cumulativeCallout?.title, "4 types occur in at least 90% of documents");
 assert.match(countProfile.cumulativeCallout?.detail ?? "", /Cumulative threshold, not an exclusive band/);
@@ -113,7 +116,7 @@ const styles = readFileSync(new URL("../src/styles/plots/legends-and-annotations
 assert.match(shell, /initialControls: \{ stopwords: "show", sort: "frequency", rows: "20" \}/);
 assert.match(shell, /Which frequent types are corpus-wide, and which are locally concentrated\?/);
 assert.match(shell, /Stopwords hidden/);
-assert.doesNotMatch(shell, /significance|significant/i);
+assert.doesNotMatch(shell, /DP 0\.5 is (?:a )?significance/i);
 assert.match(render, /data-pin-key": point\.key/);
 assert.match(render, /frequencyLabel, row\.documentsLabel/);
 assert.match(styles, /cw-plot-roster-number[\s\S]*font-variant-numeric: tabular-nums[\s\S]*font-weight: var\(--cw-weight-regular\)/);

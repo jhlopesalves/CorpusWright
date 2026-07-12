@@ -1931,35 +1931,98 @@ function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
 function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null {
   const plane = corpus.dispersion.plane;
   if (plane === null) return null;
-  let labelsVisible = true;
+  interface PlaneControls extends FigureControlState {
+    frequency: "raw" | "perMillion";
+    density: "log" | "linear";
+    examples: "labelled" | "points" | "off";
+    marginals: "show" | "hide";
+    thresholds: "show" | "hide";
+  }
+  const controller = new OverviewFigureController<PlaneControls>({
+    initialControls: {
+      frequency: "raw",
+      density: "log",
+      examples: "labelled",
+      marginals: "show",
+      thresholds: "show",
+    },
+    exportMetadata: (controls) => [
+      `frequency ${controls.frequency === "raw" ? "raw" : "per million"} · density ${controls.density} · examples ${controls.examples} · marginals ${controls.marginals} · thresholds ${controls.thresholds}`,
+    ],
+  });
   let figure: HTMLElement | null = null;
-  const labelsControl = document.createElement("button");
-  labelsControl.type = "button";
-  labelsControl.className = "cw-overview-figure-action";
-  const updateLabelsControl = () => {
-    labelsControl.textContent = labelsVisible ? "Labels: key examples" : "Labels: off";
-    labelsControl.setAttribute("aria-pressed", String(labelsVisible));
-    labelsControl.setAttribute("aria-label", labelsVisible ? "Turn off key example labels" : "Show key example labels");
-  };
-  updateLabelsControl();
   const renderSvg = () => renderDispersionPlaneSvg(
     "overview-dispersion-plane",
     buildDispersionPlaneGeometry({
       plane,
       totalTypes: corpus.totals.types,
-      showWitnessLabels: labelsVisible,
+      totalTokens: corpus.totals.tokens,
+      frequencyMode: controller.controls.frequency,
+      densityMode: controller.controls.density,
+      examplesMode: controller.controls.examples,
+      marginalsVisible: controller.controls.marginals === "show",
+      thresholdsVisible: controller.controls.thresholds === "show",
+      pinnedKeys: controller.pins,
     }),
   );
-  labelsControl.addEventListener("click", () => {
-    labelsVisible = !labelsVisible;
-    updateLabelsControl();
-    if (figure) replaceFigureSvg(figure, renderSvg());
-  });
+  const controls = document.createElement("div");
+  controls.append(
+    createOverviewSegmentedControl(
+      "Frequency",
+      [{ value: "raw", label: "Raw" }, { value: "perMillion", label: "Per million" }],
+      "raw",
+      (frequency) => {
+        controller.updateControls({ frequency });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+    createOverviewSegmentedControl(
+      "Density",
+      [{ value: "log", label: "Log" }, { value: "linear", label: "Linear" }],
+      "log",
+      (density) => {
+        controller.updateControls({ density });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+    createOverviewSelectControl(
+      "Examples",
+      [
+        { value: "labelled", label: "Labelled" },
+        { value: "points", label: "Points only" },
+        { value: "off", label: "Off" },
+      ],
+      "labelled",
+      (examples) => {
+        controller.updateControls({ examples });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+    createOverviewSegmentedControl(
+      "Marginals",
+      [{ value: "show", label: "Show" }, { value: "hide", label: "Hide" }],
+      "show",
+      (marginals) => {
+        controller.updateControls({ marginals });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+    createOverviewSegmentedControl(
+      "Thresholds",
+      [{ value: "show", label: "Show" }, { value: "hide", label: "Hide" }],
+      "show",
+      (thresholds) => {
+        controller.updateControls({ thresholds });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+  );
   figure = createOverviewFigure({
     id: "overview-dispersion-plane",
     title: "Dispersion plane",
-    subtitle: "Frequency against Gries DP.",
-    controls: labelsControl,
+    subtitle: "Which types are frequent, and which are evenly distributed across documents?",
+    controls,
+    controller,
     captionStats: formatDispersionPlaneStats(
       corpus.totals.types,
       plane.xBins,
@@ -1968,7 +2031,7 @@ function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null
       plane.loudButLocalMinFrequency,
       plane.highDispersionThreshold,
     ),
-    captionReading: plane.reading,
+    captionReading: "Density colour represents the number of types in each frequency–DP region. Witnesses are deliberately selected examples, not a random sample. Lower DP indicates more even distribution; higher DP indicates concentration. Log density changes visual contrast, not counts; thresholds are descriptive orientation conventions and no significance test is performed.",
     explanation: createFigureExplanation("dispersionPlaneDensity", "griesDp"),
     renderSvg,
   });

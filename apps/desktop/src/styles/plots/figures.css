@@ -67,6 +67,14 @@
   flex-wrap: wrap;
 }
 
+.cw-overview-figure-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .cw-overview-figure-action {
   min-height: 32px;
   padding: 5px 10px;
@@ -322,6 +330,10 @@
   }
 
   .cw-overview-figure-actions {
+    justify-content: flex-start;
+  }
+
+  .cw-overview-figure-controls {
     justify-content: flex-start;
   }
 

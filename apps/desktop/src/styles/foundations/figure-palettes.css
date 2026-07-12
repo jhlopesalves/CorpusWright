@@ -17,10 +17,10 @@
   --cw-plot-composition-3: var(--cw-plot-ramp-3);
   --cw-plot-composition-4: var(--cw-plot-ramp-4);
   --cw-plot-composition-5: var(--cw-plot-ramp-5);
-  --cw-plot-witness-core: var(--cw-plot-ramp-1);
-  --cw-plot-witness-loud-local: var(--cw-plot-ramp-5);
-  --cw-plot-witness-quiet-even: var(--cw-plot-ramp-3);
-  --cw-plot-witness-rare-local: var(--cw-plot-ramp-4);
+  --cw-plot-witness-core: var(--accent-color);
+  --cw-plot-witness-loud-local: var(--cw-warning-text);
+  --cw-plot-witness-quiet-even: var(--cw-category-mixed-text);
+  --cw-plot-witness-rare-local: var(--cw-danger-text);
 }
 
 [data-figure-palette="colorBlind"] {

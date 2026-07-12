@@ -194,6 +194,32 @@
   transform-origin: center;
 }
 
+.cw-plot-plane-witness.is-witness-core {
+  fill: var(--cw-plot-witness-core);
+}
+
+.cw-plot-plane-witness.is-witness-loud-local {
+  fill: var(--cw-plot-witness-loud-local);
+}
+
+.cw-plot-plane-witness.is-witness-quiet-even {
+  fill: var(--cw-plot-witness-quiet-even);
+}
+
+.cw-plot-plane-witness.is-witness-rare-local {
+  fill: var(--cw-plot-witness-rare-local);
+}
+
+.cw-plot-plane-marginal {
+  fill: var(--cw-plot-grid);
+  fill-opacity: 0.42;
+}
+
+[data-figure-palette="monochrome"] .cw-plot-plane-witness {
+  fill: var(--text-color);
+  stroke: var(--panel-bg);
+}
+
 .cw-plot-roster-guide {
   stroke: var(--text-muted);
   stroke-opacity: 0.24;
