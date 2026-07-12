@@ -51,38 +51,33 @@
 }
 
 .cw-plot-ramp-0 {
+  color: var(--cw-plot-ramp-0);
   fill: var(--cw-plot-ramp-0);
-  stroke-color: var(--cw-plot-ramp-0);
 }
 
 .cw-plot-ramp-1 {
+  color: var(--cw-plot-ramp-1);
   fill: var(--cw-plot-ramp-1);
-  stroke-color: var(--cw-plot-ramp-1);
 }
 
 .cw-plot-ramp-2 {
+  color: var(--cw-plot-ramp-2);
   fill: var(--cw-plot-ramp-2);
-  stroke-color: var(--cw-plot-ramp-2);
 }
 
 .cw-plot-ramp-3 {
+  color: var(--cw-plot-ramp-3);
   fill: var(--cw-plot-ramp-3);
-  stroke-color: var(--cw-plot-ramp-3);
 }
 
 .cw-plot-ramp-4 {
+  color: var(--cw-plot-ramp-4);
   fill: var(--cw-plot-ramp-4);
-  stroke-color: var(--cw-plot-ramp-4);
 }
 
 .cw-plot-ramp-5 {
+  color: var(--cw-plot-ramp-5);
   fill: var(--cw-plot-ramp-5);
-  stroke-color: var(--cw-plot-ramp-5);
-}
-
-.cw-plot-point.is-excluded {
-  fill: none;
-  stroke: var(--cw-plot-excluded);
 }
 
 .cw-plot-lollipop-stem {
@@ -90,30 +85,6 @@
   stroke-width: 1.6;
   stroke-opacity: 0.34;
   vector-effect: non-scaling-stroke;
-}
-
-.cw-plot-lollipop-stem.cw-plot-ramp-0 {
-  color: var(--cw-plot-ramp-0);
-}
-
-.cw-plot-lollipop-stem.cw-plot-ramp-1 {
-  color: var(--cw-plot-ramp-1);
-}
-
-.cw-plot-lollipop-stem.cw-plot-ramp-2 {
-  color: var(--cw-plot-ramp-2);
-}
-
-.cw-plot-lollipop-stem.cw-plot-ramp-3 {
-  color: var(--cw-plot-ramp-3);
-}
-
-.cw-plot-lollipop-stem.cw-plot-ramp-4 {
-  color: var(--cw-plot-ramp-4);
-}
-
-.cw-plot-lollipop-stem.cw-plot-ramp-5 {
-  color: var(--cw-plot-ramp-5);
 }
 
 .cw-plot-density-cell {

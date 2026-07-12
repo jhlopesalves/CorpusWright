@@ -1041,6 +1041,14 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .annotation-layer-progress-bar.is-indeterminate .annotation-layer-progress-fill {
+    width: 100%;
+    animation: none;
+    transform: none;
+  }
+}
+
 .annotation-layer-action {
   flex: 0 0 auto;
 }
