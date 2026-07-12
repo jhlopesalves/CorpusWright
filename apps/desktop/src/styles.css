@@ -4817,7 +4817,7 @@ main {
 
 .concordance-document-spread-panel {
   display: grid;
-  gap: 10px;
+  gap: 9px;
 }
 
 .concordance-document-spread-header {
@@ -4838,9 +4838,14 @@ main {
 .concordance-distribution-metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8rem, max-content));
-  gap: 10px 16px;
+  gap: 8px 14px;
   align-items: start;
-  margin: 8px 0 12px;
+  margin: 4px 0 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-left: 2px solid var(--accent-color);
+  border-radius: 4px;
+  background: var(--cw-surface-subtle);
 }
 
 .concordance-distribution-metric {
@@ -4864,7 +4869,7 @@ main {
 
 .concordance-distribution-reading {
   max-width: 74ch;
-  margin: 0 0 4px;
+  margin: 0 0 2px;
   color: var(--text-muted);
   font-size: 0.78rem;
   line-height: 1.45;
@@ -4886,7 +4891,7 @@ main {
 
 .concordance-distribution-table th,
 .concordance-distribution-table td {
-  padding: 8px 10px;
+  padding: 7px 9px;
   border-bottom: 1px solid var(--border-color);
   vertical-align: middle;
 }
@@ -4900,6 +4905,28 @@ main {
   font-size: 0.76rem;
   font-weight: 700;
   text-align: left;
+}
+
+.concordance-distribution-row:nth-child(even) td {
+  background: var(--cw-surface-subtle);
+}
+
+.concordance-distribution-row:hover td {
+  background: var(--cw-interaction-bg-hover);
+}
+
+.concordance-distribution-heading {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.concordance-distribution-heading-note {
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 500;
+  line-height: 1.2;
 }
 
 .concordance-distribution-table th:nth-child(1),
@@ -4953,10 +4980,10 @@ main {
 
 .concordance-distribution-bar-track {
   display: block;
-  height: 8px;
+  height: 7px;
   overflow: hidden;
   border-radius: 999px;
-  background: var(--border-color);
+  background: color-mix(in srgb, var(--border-color) 70%, transparent);
 }
 
 .concordance-distribution-bar {
@@ -4964,7 +4991,8 @@ main {
   width: var(--distribution-bar-width, 0%);
   height: 100%;
   border-radius: inherit;
-  background: var(--cw-plot-ramp-3);
+  background: var(--accent-color);
+  opacity: 0.72;
 }
 
 .concordance-collocation-controls {
