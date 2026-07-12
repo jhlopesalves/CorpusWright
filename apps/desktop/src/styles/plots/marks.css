@@ -1,3 +1,5 @@
+/* Reusable plot marks and semantic ramps; figures retain analytical meaning. */
+
 .cw-plot-line,
 .cw-plot-fit-line {
   fill: none;
@@ -145,6 +147,13 @@
   fill: var(--cw-plot-point);
   stroke: var(--panel-bg);
   stroke-width: 1.2;
+}
+
+.cw-plot-mattr-witness-tick {
+  stroke: var(--cw-plot-point);
+  stroke-linecap: round;
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
 }
 
 .cw-plot-plane-witness {
