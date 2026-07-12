@@ -96,9 +96,28 @@ export function renderConcordanceDistribution(
 
   const head = document.createElement("thead");
   const header = document.createElement("tr");
-  for (const label of ["File", "Occurrences", "Tokens", "Hits per 10k", "Share of hits"]) {
+  const headerLabels = [
+    { label: "File" },
+    { label: "Occurrences", note: "bar = relative to top file" },
+    { label: "Tokens" },
+    { label: "Hits per 10k" },
+    { label: "Share of hits" },
+  ];
+  for (const { label, note } of headerLabels) {
     const cell = document.createElement("th");
-    cell.textContent = label;
+    const heading = document.createElement("span");
+    heading.className = "concordance-distribution-heading";
+    const primary = document.createElement("span");
+    primary.className = "concordance-distribution-heading-primary";
+    primary.textContent = label;
+    heading.appendChild(primary);
+    if (note) {
+      const sublabel = document.createElement("span");
+      sublabel.className = "concordance-distribution-heading-note";
+      sublabel.textContent = note;
+      heading.appendChild(sublabel);
+    }
+    cell.appendChild(heading);
     header.appendChild(cell);
   }
   head.appendChild(header);
@@ -120,6 +139,7 @@ export function renderConcordanceDistribution(
   } else {
     for (const item of distribution.items) {
       const row = document.createElement("tr");
+      row.className = "concordance-distribution-row";
 
       const file = document.createElement("td");
       file.className = "concordance-distribution-file";
@@ -134,6 +154,7 @@ export function renderConcordanceDistribution(
       const countTrack = document.createElement("span");
       countTrack.className = "concordance-distribution-bar-track";
       countTrack.setAttribute("aria-hidden", "true");
+      countTrack.title = "Bar length relative to the highest occurrence count in this result";
       const countBar = document.createElement("span");
       countBar.className = "concordance-distribution-bar";
       countBar.style.setProperty(
