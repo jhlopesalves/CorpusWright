@@ -2011,6 +2011,7 @@ body {
 
 .primary-btn,
 .secondary-btn,
+.quiet-btn,
 .danger-btn {
   display: inline-flex;
   align-items: center;
@@ -2062,6 +2063,25 @@ body {
   cursor: not-allowed;
 }
 
+.quiet-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+}
+
+.quiet-btn:hover,
+.quiet-btn:focus {
+  background: var(--cw-interaction-bg-hover);
+  border-color: var(--border-color);
+  color: var(--text-color);
+  outline: none;
+}
+
+.quiet-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .danger-btn {
   background: var(--cw-danger-bg);
   color: var(--cw-text-inverse);
@@ -2081,6 +2101,7 @@ body {
 
 .primary-btn:focus-visible,
 .secondary-btn:focus-visible,
+.quiet-btn:focus-visible,
 .danger-btn:focus-visible {
   outline: 2px solid var(--accent-color);
   outline-offset: 2px;
@@ -2612,9 +2633,9 @@ main {
   flex-direction: column;
   gap: 8px;
   margin-top: 4px;
-  padding: 12px;
+  padding: 12px 14px;
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 6px;
   background: var(--panel-bg);
 }
 
@@ -2669,19 +2690,21 @@ main {
 }
 
 .cw-overview-figure-action {
-  min-height: 30px;
-  padding: 4px 9px;
+  min-height: 32px;
+  padding: 5px 10px;
   border: 1px solid var(--border-color);
-  border-radius: 5px;
-  background: var(--cw-surface-subtle);
+  border-radius: 4px;
+  background: var(--panel-bg);
   color: var(--text-color);
-  font: 600 0.75rem/1.2 var(--cw-font-ui);
+  font: 650 0.78rem/1.2 var(--cw-font-ui);
   cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
 
 .cw-overview-figure-action:hover {
   border-color: var(--cw-interaction-border-hover);
   background: var(--cw-interaction-bg-hover);
+  box-shadow: var(--cw-interaction-shadow);
 }
 
 .cw-overview-figure-action[aria-pressed="true"] {
@@ -2745,8 +2768,8 @@ main {
   overflow: hidden;
   min-height: 28px;
   border: 1px solid var(--border-color);
-  border-radius: 7px;
-  background: var(--cw-surface-subtle);
+  border-radius: 4px;
+  background: var(--panel-bg);
 }
 
 .cw-overview-segment {
@@ -2795,11 +2818,11 @@ main {
 }
 
 .cw-plot-grid-value {
-  stroke-opacity: 0.5;
+  stroke-opacity: 0.42;
 }
 
 .cw-plot-grid-context {
-  stroke-opacity: 0.22;
+  stroke-opacity: 0.16;
 }
 
 .cw-plot-axis-baseline,
@@ -2834,12 +2857,12 @@ main {
 
 .cw-plot-line {
   stroke: var(--cw-plot-point);
-  stroke-width: 2.2;
+  stroke-width: 2;
 }
 
 .cw-plot-fit-line {
   stroke: var(--cw-plot-fit);
-  stroke-width: 2.4;
+  stroke-width: 2;
 }
 
 .cw-plot-heaps-fit {
@@ -2847,13 +2870,14 @@ main {
 }
 
 .cw-plot-line-halo {
-  opacity: var(--cw-plot-glow-opacity);
+  opacity: 0.08;
   pointer-events: none;
-  stroke-width: 4;
+  stroke-width: 3;
 }
 
 .cw-plot-area {
   stroke: none;
+  fill-opacity: 0.06;
 }
 
 .cw-plot-area-stop {
@@ -2862,15 +2886,16 @@ main {
 
 .cw-plot-point {
   fill: var(--cw-plot-point);
-  fill-opacity: var(--cw-plot-fill-opacity, 1);
-  stroke: transparent;
-  stroke-width: 1.4;
+  fill-opacity: var(--cw-plot-fill-opacity, 0.82);
+  stroke: var(--panel-bg);
+  stroke-width: 1;
   transform-box: fill-box;
   transform-origin: center;
 }
 
 .cw-plot-point.is-panel-stroked {
   stroke: var(--panel-bg);
+  stroke-width: 1.3;
 }
 
 .cw-plot-point.is-excluded {
@@ -2916,8 +2941,8 @@ main {
 
 .cw-plot-lollipop-stem {
   stroke: currentColor;
-  stroke-width: 2;
-  stroke-opacity: 0.45;
+  stroke-width: 1.6;
+  stroke-opacity: 0.34;
   vector-effect: non-scaling-stroke;
 }
 
@@ -2951,12 +2976,12 @@ main {
 }
 
 .cw-plot-spectrum-band {
-  fill: var(--cw-plot-band-fill-a);
+  fill: var(--cw-surface-subtle);
   pointer-events: none;
 }
 
 .cw-plot-spectrum-band.is-alternate {
-  fill: var(--cw-plot-band-fill-b);
+  fill: var(--cw-surface-subtle-strong);
 }
 
 .cw-plot-spectrum-band-label {
@@ -2964,13 +2989,13 @@ main {
   font-family: var(--cw-font-mono);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   pointer-events: none;
 }
 
 .cw-plot-bar {
   fill: var(--cw-plot-point);
-  fill-opacity: 0.85;
+  fill-opacity: 0.72;
   stroke: none;
   transform-box: fill-box;
   transform-origin: bottom center;
@@ -3006,8 +3031,9 @@ main {
 
 .cw-plot-quadrant-pill-bg {
   fill: var(--panel-bg);
-  opacity: 0.78;
-  stroke: none;
+  opacity: 0.86;
+  stroke: var(--border-color);
+  stroke-width: 0.8;
 }
 
 .cw-plot-quadrant-pill-label {
@@ -3019,7 +3045,8 @@ main {
 .cw-plot-plane-witness {
   fill: var(--cw-plot-point);
   stroke: var(--panel-bg);
-  stroke-width: 1.6;
+  stroke-width: 1.4;
+  fill-opacity: 0.86;
   transform-box: fill-box;
   transform-origin: center;
 }
@@ -3202,7 +3229,7 @@ main {
 .cw-plot-hover-target:hover,
 .cw-plot-hover-target:focus {
   outline: none;
-  transform: scale(1.25);
+  transform: scale(1.15);
 }
 
 .cw-plot-density-cell.cw-plot-hover-target:hover,
@@ -4210,13 +4237,13 @@ main {
 
 .concordance-workbench {
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
 .concordance-card {
   display: grid;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 14px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
   background: var(--panel-bg);
@@ -4273,7 +4300,7 @@ main {
 }
 
 .concordance-card-controls {
-  padding: 10px 0 2px;
+  padding: 8px 0 1px;
   border-top: 1px solid var(--border-color);
 }
 
@@ -4460,7 +4487,7 @@ main {
 }
 
 .concordance-table-wrap {
-  max-height: min(62vh, 720px);
+  max-height: min(64vh, 740px);
   overflow-x: clip;
   overflow-y: auto;
 }
