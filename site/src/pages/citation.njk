@@ -19,11 +19,11 @@ permalink: citation.html
   <div class="shell">
     <div class="principles">
       <div class="citation-content">
-        <h3>Preferred citation format (APA)</h3>
+        <h2 class="heading-3">Preferred citation format (APA)</h2>
         <p class="muted">Cite the software directly, naming the specific version you used. For example:</p>
         <p><strong>Lopes, J. H. ({{ release.year }}). <em>CorpusWright</em> (Version {{ release.version }}) [Computer software]. <a href="https://github.com/jhlopesalves/CorpusWright">https://github.com/jhlopesalves/CorpusWright</a></strong></p>
 
-        <h3 class="citation-section-heading">BibTeX template</h3>
+        <h2 class="citation-section-heading">BibTeX template</h2>
         <p class="muted">For LaTeX, Pandoc, or reference managers, you can adapt the template below:</p>
         <pre class="code" id="citation-bibtex"><code class="mono">@software{lopes_corpuswright_{{ release.year }},
   author  = {Lopes, Jhonatan Henrique},
@@ -34,14 +34,14 @@ permalink: citation.html
   note    = {ORCID: 0009-0008-4914-0262}
 }</code></pre>
 
-        <h3 class="citation-section-heading">Machine-readable CITATION.cff</h3>
+        <h2 class="citation-section-heading">Machine-readable CITATION.cff</h2>
         <p class="muted">Copy this block when you need the citation metadata directly, or let GitHub read it from the repository.</p>
         <pre class="code" id="citation-cff"><code class="mono">{{ citation.source | htmlText | safe }}</code></pre>
 
-        <h3 class="citation-section-heading">Automatic extraction from GitHub</h3>
+        <h2 class="citation-section-heading">Automatic extraction from GitHub</h2>
         <p>The repository carries a machine-readable <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a> metadata file. On the right-hand sidebar of the <a href="https://github.com/jhlopesalves/CorpusWright">CorpusWright GitHub page</a>, you can click the <strong>“Cite this repository”</strong> button to copy the APA citation or export the BibTeX block directly. This widget will always match the latest release's metadata.</p>
 
-        <h3 class="citation-section-heading">Version-specific DOI (via Zenodo)</h3>
+        <h2 class="citation-section-heading">Version-specific DOI (via Zenodo)</h2>
         <p>When permanent DOIs (e.g. Zenodo) are minted for official releases, citing the version-specific DOI is preferred to referencing the repository URL. This guarantees that your research references the exact software build, ensuring the reproducibility of your preprocessing pipeline.</p>
       </div>
     </div>

@@ -1,0 +1,64 @@
+{
+  "/404.html": [
+    "theme-toggle",
+    "top"
+  ],
+  "/about.html": [
+    "theme-toggle",
+    "top",
+    "stance",
+    "maintainer"
+  ],
+  "/citation.html": [
+    "theme-toggle",
+    "top",
+    "citation-bibtex",
+    "citation-cff"
+  ],
+  "/concepts/overview.html": [
+    "theme-toggle",
+    "top",
+    "docs-toc-title",
+    "how-to-read-this-section",
+    "how-the-workbench-treats-your-text",
+    "tokens-and-types-why-the-definition-comes-first",
+    "frequency-raw-and-normalised",
+    "dispersion-how-evenly-a-word-is-spread",
+    "lexical-diversity-past-the-type-token-ratio",
+    "vocabulary-structure-hapax-legomena-and-dislegomena",
+    "the-frequency-distribution-zipfs-law",
+    "vocabulary-growth-heaps-law",
+    "entropy-shannon-and-normalised",
+    "corpus-design-representativeness-balance-dispersion",
+    "reading-the-overview",
+    "how-the-numbers-are-produced",
+    "further-reading"
+  ],
+  "/index.html": [
+    "theme-toggle",
+    "top",
+    "tab-0",
+    "tab-1",
+    "tab-2",
+    "panel-0",
+    "panel-1",
+    "panel-2",
+    "citation",
+    "home-citation-cff"
+  ],
+  "/learn.html": [],
+  "/method-and-measures.html": [],
+  "/method.html": [],
+  "/quick-start.html": [
+    "theme-toggle",
+    "top"
+  ],
+  "/roadmap.html": [
+    "theme-toggle",
+    "top"
+  ],
+  "/technical-docs.html": [
+    "theme-toggle",
+    "top"
+  ]
+}
