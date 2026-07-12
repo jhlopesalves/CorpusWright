@@ -37,7 +37,7 @@
   color: var(--text-color);
   border-radius: 4px;
   font-family: inherit;
-  font-size: var(--cw-type-body-compact-size);
+  font-size: var(--cw-type-control-size);
   cursor: pointer;
 }
 

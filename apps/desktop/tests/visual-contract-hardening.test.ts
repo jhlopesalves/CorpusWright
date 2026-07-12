@@ -36,7 +36,7 @@ for (const match of focusRingConsumers) {
 }
 
 const focusOutlineConsumers = [...allCss.matchAll(/([\w-]+)\s*:\s*[^;{}]*var\(--cw-interaction-focus-outline\)[^;{}]*;/g)];
-assert.equal(focusOutlineConsumers.length, 3, "all three invalid outline consumers must use the dedicated contract");
+assert(focusOutlineConsumers.length >= 3, "the three repaired outline consumers must retain the dedicated contract");
 for (const match of focusOutlineConsumers) {
   assert.equal(match[1], "outline", "focus-outline is an outline-only contract");
 }

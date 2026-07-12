@@ -30,7 +30,7 @@
 .concordance-controls select {
   height: 34px;
   padding: 5px 8px;
-  font-size: var(--cw-type-body-compact-size);
+  font-size: var(--cw-type-control-size);
 }
 
 .concordance-lines-controls {
@@ -55,7 +55,7 @@
   width: 100%;
   height: 30px;
   padding: 4px 7px;
-  font-size: var(--cw-type-ui-size);
+  font-size: var(--cw-type-control-size);
 }
 
 .concordance-workbench,
@@ -618,13 +618,13 @@
   background: var(--bg-color);
   color: var(--text-color);
   font-family: inherit;
-  font-size: var(--cw-type-ui-size);
+  font-size: var(--cw-type-control-size);
   box-sizing: border-box;
 }
 
 .concordance-collocation-controls input:not([type="checkbox"]):focus,
 .concordance-collocation-controls select:focus {
-  outline: 1px solid var(--accent-color);
+  outline: var(--cw-interaction-focus-outline);
   border-color: var(--accent-color);
 }
 
