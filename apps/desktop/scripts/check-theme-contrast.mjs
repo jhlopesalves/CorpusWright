@@ -55,6 +55,51 @@ export const contrastChecks = [
   })),
 ];
 
+const paletteRoleTokens = {
+  theme: [
+    "--cw-plot-point", "--cw-plot-fit", "--cw-plot-ramp-4", "--cw-plot-ramp-5",
+    "--cw-plot-ramp-1", "--cw-plot-ramp-5", "--cw-plot-ramp-3", "--cw-plot-ramp-4",
+    "--cw-plot-ramp-0", "--cw-plot-ramp-5", "--cw-plot-ramp-0", "--cw-plot-ramp-5",
+  ],
+  colorBlind: [
+    "--accent-color", "--cw-warning-text", "--cw-category-mixed-text", "--cw-danger-text",
+    "--accent-color", "--cw-warning-text", "--cw-category-mixed-text", "--cw-danger-text",
+    "--cw-plot-ramp-0", "--cw-plot-ramp-5", "--cw-plot-ramp-0", "--cw-plot-ramp-5",
+  ],
+  monochrome: [
+    "--text-color", "--text-muted", "--text-color", "--text-color",
+    "--text-color", "--text-color", "--text-color", "--text-color",
+    "--text-muted", "--text-color", "--text-muted", "--text-color",
+  ],
+};
+
+const paletteRoleLabels = [
+  "observed", "reference", "selected", "attention",
+  "witness core", "witness loud-local", "witness quiet-even", "witness rare-local",
+  "density low", "density high", "composition low", "composition high",
+];
+
+export function validatePaletteContrast(themes) {
+  const failures = [];
+  for (const theme of themes) {
+    const background = opaqueTokenColour("--panel-bg", theme.declarations);
+    for (const [mode, tokens] of Object.entries(paletteRoleTokens)) {
+      tokens.forEach((token, index) => {
+        try {
+          const foreground = opaqueTokenColour(token, theme.declarations, "--panel-bg");
+          const ratio = contrastRatio(foreground, background);
+          if (ratio < 3) {
+            failures.push(`${theme.id} × ${mode}: ${paletteRoleLabels[index]} is ${ratio.toFixed(2)}:1, expected at least 3:1`);
+          }
+        } catch (error) {
+          failures.push(`${theme.id} × ${mode}: ${paletteRoleLabels[index]} could not parse ${token}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+    }
+  }
+  return failures;
+}
+
 export function validateThemeContrast(themes, checks = contrastChecks) {
   const failures = [];
   for (const theme of themes) {
@@ -90,6 +135,7 @@ const failures = [];
 if (themes.length !== 16) failures.push(`expected exactly 16 complete themes, found ${themes.length}`);
 if (contrastChecks.length !== 42) failures.push(`expected exactly 42 contrast checks, found ${contrastChecks.length}`);
 failures.push(...validateThemeContrast(themes));
+failures.push(...validatePaletteContrast(themes));
 
 if (failures.length) {
   console.error("Theme contrast check failed:");
@@ -97,4 +143,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Theme contrast check passed for exactly ${themes.length} complete themes (${contrastChecks.length} checks each).`);
+console.log(`Theme contrast check passed for exactly ${themes.length} complete themes (${contrastChecks.length} base checks and ${Object.keys(paletteRoleTokens).length * paletteRoleLabels.length} theme × palette role checks each).`);

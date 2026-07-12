@@ -157,7 +157,7 @@ assert(styles.includes('.cw-overview-figure-action[aria-pressed="true"]'));
 assert(shell.includes('const controls = createOverviewSegmentedControl(\n    "Stopword mode"'));
 
 assert(figures.includes("const exportedSvg = svg.cloneNode(true) as SVGSVGElement;"));
-assert(figures.includes("decorateFigureSvg(exportedSvg, options);"));
+assert(figures.includes("decorateFigureSvg(exportedSvg, exportOptions(figure, options));"));
 const replaceStart = figures.indexOf("export function replaceFigureSvg(");
 const replaceEnd = figures.indexOf("function refreshFigureText", replaceStart);
 assert(!figures.slice(replaceStart, replaceEnd).includes("decorateFigureSvg"), "live SVG must remain geometry-only");

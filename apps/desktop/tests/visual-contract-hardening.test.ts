@@ -85,4 +85,5 @@ const renderSource = readFileSync(new URL("../src/plots/render.ts", import.meta.
 assert.match(modelSource, /className: `cw-plot-lollipop-stem cw-plot-ramp-\$\{point\.rampIndex\}`/);
 assert.match(modelSource, /function densityRampFill\(t: number\): string/);
 assert.match(renderSource, /`cw-plot-ramp-\$\{point\.rampIndex\}`/);
-assert.match(renderSource, /r: baseClass\.includes\("is-lollipop"\) \? 4\.6 : 3\.8/);
+assert.match(renderSource, /baseClass\.includes\("is-lollipop"\) \? 0\.8 : 0/);
+assert.match(renderSource, /r: 4\.3 \+ sizeAdjustment/);

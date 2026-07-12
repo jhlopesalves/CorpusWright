@@ -8,12 +8,12 @@
 }
 
 .cw-plot-line {
-  stroke: var(--cw-plot-point);
-  stroke-width: 2;
+  stroke: var(--cw-plot-observed);
+  stroke-width: 2.3;
 }
 
 .cw-plot-fit-line {
-  stroke: var(--cw-plot-fit);
+  stroke: var(--cw-plot-reference);
   stroke-width: 2;
 }
 
@@ -27,11 +27,11 @@
 }
 
 .cw-plot-area-stop {
-  stop-color: var(--cw-plot-point);
+  stop-color: var(--cw-plot-observed);
 }
 
 .cw-plot-point {
-  fill: var(--cw-plot-point);
+  fill: var(--cw-plot-observed);
   fill-opacity: var(--cw-plot-fill-opacity, 0.82);
   stroke: var(--panel-bg);
   stroke-width: 1;
@@ -113,6 +113,38 @@
   stroke: var(--panel-bg);
   stroke-width: 1;
 }
+
+.cw-plot-composition-strip .cw-plot-ramp-0 { fill: var(--cw-plot-composition-0); }
+.cw-plot-composition-strip .cw-plot-ramp-1 { fill: var(--cw-plot-composition-1); }
+.cw-plot-composition-strip .cw-plot-ramp-2 { fill: var(--cw-plot-composition-2); }
+.cw-plot-composition-strip .cw-plot-ramp-3 { fill: var(--cw-plot-composition-3); }
+.cw-plot-composition-strip .cw-plot-ramp-4 { fill: var(--cw-plot-composition-4); }
+.cw-plot-composition-strip .cw-plot-ramp-5 { fill: var(--cw-plot-composition-5); }
+
+.cw-plot-point.is-pinned,
+.cw-plot-bar.is-pinned,
+.cw-plot-plane-witness.is-pinned,
+.cw-plot-roster-dot.is-pinned,
+.cw-plot-composition-segment.is-pinned {
+  stroke: var(--cw-plot-selected);
+  stroke-width: 2.6;
+}
+
+[data-figure-palette="monochrome"] .cw-plot-fit-line {
+  stroke-dasharray: 7 4;
+}
+
+[data-figure-palette="monochrome"] .cw-plot-composition-strip .cw-plot-composition-segment {
+  fill: var(--text-color);
+  stroke: var(--panel-bg);
+}
+
+[data-figure-palette="monochrome"] .cw-plot-composition-strip .cw-plot-ramp-0 { fill-opacity: 0.2; }
+[data-figure-palette="monochrome"] .cw-plot-composition-strip .cw-plot-ramp-1 { fill-opacity: 0.34; }
+[data-figure-palette="monochrome"] .cw-plot-composition-strip .cw-plot-ramp-2 { fill-opacity: 0.48; }
+[data-figure-palette="monochrome"] .cw-plot-composition-strip .cw-plot-ramp-3 { fill-opacity: 0.62; }
+[data-figure-palette="monochrome"] .cw-plot-composition-strip .cw-plot-ramp-4 { fill-opacity: 0.78; }
+[data-figure-palette="monochrome"] .cw-plot-composition-strip .cw-plot-ramp-5 { fill-opacity: 0.94; }
 
 .cw-plot-cumulative-marker {
   fill: var(--cw-plot-point);

@@ -6,6 +6,7 @@ import {
 import { hasUnresolvedCssVariables } from "./svg-export";
 import type {
   CoverageGeometry,
+  CompositionStripGeometry,
   DispersionGeometry,
   DispersionPlaneGeometry,
   DispersionRosterGeometry,
@@ -20,6 +21,7 @@ import type {
   PlotLineGeometry,
   PlotPathGeometry,
   PlotPointGeometry,
+  PlotPointShape,
   PlotScale,
   PlotTick,
   RankFrequencyGeometry,
@@ -249,6 +251,11 @@ export function renderMattrDistributionSvg(plotId: string, geometry: MattrDistri
 }
 
 export function attachPlotHover(svg: SVGSVGElement): void {
+  svg.addEventListener("click", (event) => dispatchPinToggle(svg, event.target));
+  svg.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    if (dispatchPinToggle(svg, event.target)) event.preventDefault();
+  });
   const crosshairX = svg.querySelector<SVGLineElement>(".cw-plot-crosshair-x");
   const crosshairY = svg.querySelector<SVGLineElement>(".cw-plot-crosshair-y");
   const tooltip = svg.querySelector<SVGGElement>(".cw-plot-tooltip");
@@ -266,6 +273,17 @@ export function attachPlotHover(svg: SVGSVGElement): void {
   });
   svg.addEventListener("pointerover", (event) => updateHover(svg, event.target, crosshairX, crosshairY, tooltip, tooltipText, tooltipBox));
   svg.addEventListener("focusin", (event) => updateHover(svg, event.target, crosshairX, crosshairY, tooltip, tooltipText, tooltipBox));
+}
+
+function dispatchPinToggle(svg: SVGSVGElement, target: EventTarget | null): boolean {
+  const marker = target instanceof Element ? target.closest<SVGElement>("[data-pin-key]") : null;
+  const key = marker?.dataset.pinKey;
+  if (!marker || !key || !svg.contains(marker)) return false;
+  svg.dispatchEvent(new CustomEvent("cw-plot-pin-toggle", {
+    bubbles: true,
+    detail: { key },
+  }));
+  return true;
 }
 
 export function serializeSvgWithResolvedTokens(svg: SVGSVGElement): string {
@@ -295,6 +313,7 @@ export function serializeSvgWithResolvedTokens(svg: SVGSVGElement): string {
       "font-size",
       "font-style",
       "font-variant",
+      "font-variant-numeric",
       "font-weight",
       "letter-spacing",
       "paint-order",
@@ -508,14 +527,7 @@ export function renderSvgLegend(svg: SVGSVGElement, box: PlotBox, items: PlotLeg
   group.appendChild(background);
   for (const [index, item] of items.entries()) {
     const rowY = y + padding + rowHeight * index + rowHeight / 2;
-    const swatch = createSvgElement("line");
-    setAttrs(swatch, {
-      x1: x + padding,
-      y1: rowY,
-      x2: x + padding + 15,
-      y2: rowY,
-      class: `cw-plot-legend-swatch ${item.className ?? ""} ${item.dashed ? "is-dashed" : ""}`.trim(),
-    });
+    const swatch = renderLegendSwatch(item, x + padding + 7.5, rowY);
     const text = createSvgElement("text");
     setAttrs(text, {
       x: x + padding + 21,
@@ -526,6 +538,51 @@ export function renderSvgLegend(svg: SVGSVGElement, box: PlotBox, items: PlotLeg
     group.append(swatch, text);
   }
   svg.appendChild(group);
+}
+
+function renderLegendSwatch(item: PlotLegendItem, x: number, y: number): SVGElement {
+  const kind = item.kind ?? "line";
+  const className = `cw-plot-legend-swatch ${item.className ?? ""} ${item.dashed ? "is-dashed" : ""} ${item.hollow ? "is-hollow" : ""}`.trim();
+  if (kind === "point") {
+    return createPointShapeElement(item.shape ?? "circle", x, y, 0, className, false);
+  }
+  if (kind === "density" || kind === "composition") {
+    if (kind === "density") {
+      const group = createSvgElement("g");
+      group.setAttribute("class", `${className} is-density`);
+      for (let index = 0; index < 5; index += 1) {
+        const step = createSvgElement("rect");
+        setAttrs(step, {
+          x: x - 7.5 + index * 3,
+          y: y - 4,
+          width: 3,
+          height: 8,
+          class: `cw-plot-density-legend-step cw-plot-ramp-${index}`,
+        });
+        group.appendChild(step);
+      }
+      return group;
+    }
+    const rect = createSvgElement("rect");
+    setAttrs(rect, {
+      x: x - 7.5,
+      y: y - 4,
+      width: 15,
+      height: 8,
+      rx: kind === "composition" ? 1 : 0,
+      class: `${className} is-${kind}`,
+    });
+    return rect;
+  }
+  const line = createSvgElement("line");
+  setAttrs(line, {
+    x1: x - 7.5,
+    y1: y,
+    x2: x + 7.5,
+    y2: y,
+    class: `${className} ${kind === "threshold" ? "is-threshold" : ""}`.trim(),
+  });
+  return line;
 }
 
 function renderAxisTitles(svg: SVGSVGElement, box: PlotBox, xLabel: string, yLabel: string): void {
@@ -579,27 +636,116 @@ function renderPoints(svg: SVGSVGElement, points: Array<PlotPointGeometry>, base
   const group = createSvgElement("g");
   group.setAttribute("class", "cw-plot-points");
   points.forEach((point, index) => {
-    const circle = createSvgElement("circle");
     const className = [
       baseClass,
       `cw-plot-ramp-${point.rampIndex}`,
       point.excluded ? "is-excluded" : "",
       point.className ?? "",
+      point.pinned ? "is-pinned" : "",
       "cw-plot-hover-target",
     ].filter(Boolean).join(" ");
-    setAttrs(circle, {
-      cx: point.x,
-      cy: point.y,
-      r: baseClass.includes("is-lollipop") ? 4.6 : 3.8,
+    const mark = createPointShapeElement(
+      point.shape ?? "circle",
+      point.x,
+      point.y,
+      baseClass.includes("is-lollipop") ? 0.8 : 0,
+      className,
+      true,
+    );
+    setAttrs(mark, {
       class: className,
       tabindex: "0",
+      role: point.key ? "button" : undefined,
+      "aria-label": point.ariaLabel ?? point.tooltipTitle ?? undefined,
+      "aria-pressed": point.key ? String(Boolean(point.pinned)) : undefined,
       "data-plot-x": point.x,
       "data-plot-y": point.y,
       "data-tooltip-title": point.tooltipTitle ?? "",
       "data-tooltip-rows": (point.tooltipRows ?? []).join("\n"),
+      "data-pin-key": point.key,
+      "data-point-shape": point.shape ?? "circle",
       style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms; --cw-plot-fill-opacity: ${point.fillOpacity ?? 0.82};`,
     });
-    group.appendChild(circle);
+    group.appendChild(mark);
+  });
+  svg.appendChild(group);
+}
+
+function createPointShapeElement(
+  shape: PlotPointShape,
+  x: number,
+  y: number,
+  sizeAdjustment: number,
+  className: string,
+  interactive: boolean,
+): SVGElement {
+  if (shape === "circle") {
+    const circle = createSvgElement("circle");
+    setAttrs(circle, { cx: x, cy: y, r: 4.3 + sizeAdjustment, class: className });
+    return circle;
+  }
+  const path = createSvgElement("path");
+  const squareHalf = 3.8 + sizeAdjustment * 0.7;
+  const diamondHalf = 5.4 + sizeAdjustment;
+  const triangleHalf = 5.8 + sizeAdjustment;
+  const triangleTop = y - 5.8 - sizeAdjustment;
+  const triangleBottom = y + 4.2 + sizeAdjustment * 0.7;
+  const d = shape === "square"
+    ? `M${x - squareHalf} ${y - squareHalf}H${x + squareHalf}V${y + squareHalf}H${x - squareHalf}Z`
+    : shape === "diamond"
+      ? `M${x} ${y - diamondHalf}L${x + diamondHalf} ${y}L${x} ${y + diamondHalf}L${x - diamondHalf} ${y}Z`
+      : `M${x} ${triangleTop}L${x + triangleHalf} ${triangleBottom}L${x - triangleHalf} ${triangleBottom}Z`;
+  setAttrs(path, { d, class: className, "data-shape-interactive": interactive ? "true" : undefined });
+  return path;
+}
+
+export function renderCompositionStrip(svg: SVGSVGElement, geometry: CompositionStripGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-composition-strip");
+  geometry.segments.forEach((segment, index) => {
+    const rect = createSvgElement("rect");
+    setAttrs(rect, {
+      x: segment.x,
+      y: segment.y,
+      width: Math.max(0, segment.width),
+      height: segment.height,
+      class: [
+        "cw-plot-composition-segment",
+        `cw-plot-ramp-${segment.datum.rampIndex}`,
+        segment.datum.className ?? "",
+        segment.pinned ? "is-pinned" : "",
+        "cw-plot-hover-target",
+      ].filter(Boolean).join(" "),
+      tabindex: "0",
+      role: "button",
+      "aria-label": `${segment.datum.label}, ${segment.tooltipRows.join(", ")}`,
+      "aria-pressed": String(segment.pinned),
+      "data-composition-index": index,
+      "data-pin-key": segment.datum.key,
+      "data-plot-x": segment.x + segment.width / 2,
+      "data-plot-y": segment.y + segment.height / 2,
+      "data-tooltip-title": segment.tooltipTitle,
+      "data-tooltip-rows": segment.tooltipRows.join("\n"),
+    });
+    group.appendChild(rect);
+    if (segment.label) {
+      const label = createSvgElement("text");
+      const labelY = segment.labelBelow
+        ? segment.y + segment.height + 14 + index % 2 * 13
+        : segment.y + segment.height / 2 + 4;
+      setAttrs(label, {
+        x: segment.x + segment.width / 2,
+        y: labelY,
+        class: segment.labelBelow
+          ? "cw-plot-composition-label is-below"
+          : "cw-plot-composition-label",
+        "text-anchor": "middle",
+      });
+      label.textContent = segment.labelBelow
+        ? `${segment.datum.label} · ${segment.label}`
+        : segment.label;
+      group.appendChild(label);
+    }
   });
   svg.appendChild(group);
 }
@@ -732,8 +878,17 @@ function renderBars(svg: SVGSVGElement, bars: Array<PlotBarGeometry>, baseClass:
       width: bar.width,
       height: bar.height,
       rx: 2,
-      class: `${baseClass} cw-plot-hover-target`,
+      class: [
+        baseClass,
+        bar.className ?? "",
+        bar.pinned ? "is-pinned" : "",
+        "cw-plot-hover-target",
+      ].filter(Boolean).join(" "),
       tabindex: "0",
+      role: bar.key ? "button" : undefined,
+      "aria-label": bar.ariaLabel ?? bar.tooltipTitle ?? undefined,
+      "aria-pressed": bar.key ? String(Boolean(bar.pinned)) : undefined,
+      "data-pin-key": bar.key,
       "data-plot-x": bar.x + bar.width / 2,
       "data-plot-y": bar.y,
       "data-tooltip-title": bar.tooltipTitle ?? "",
@@ -769,11 +924,12 @@ function renderMattrWitnessTicks(svg: SVGSVGElement, geometry: MattrDistribution
 
 function renderLabels(svg: SVGSVGElement, labels: PlotLabelGeometry[]): void {
   for (const label of labels) {
+    if (label.leader) renderLine(svg, label.leader);
     const text = createSvgElement("text");
     setAttrs(text, {
       x: label.x,
       y: label.y,
-      class: `cw-plot-label ${label.className ?? ""}`.trim(),
+      class: `cw-plot-label ${label.className ?? ""} ${label.pinned ? "is-pinned" : ""}`.trim(),
       "text-anchor": label.anchor,
     });
     const lines = labelTextLines(label);
@@ -905,8 +1061,12 @@ function createSvgElement<K extends keyof SVGElementTagNameMap>(tag: K): SVGElem
   return document.createElementNS(SVG_NS, tag);
 }
 
-function setAttrs(element: Element, attrs: Record<string, string | number>): void {
+function setAttrs(
+  element: Element,
+  attrs: Record<string, string | number | boolean | null | undefined>,
+): void {
   for (const [key, value] of Object.entries(attrs)) {
+    if (value === undefined || value === null) continue;
     element.setAttribute(key, String(value));
   }
 }
