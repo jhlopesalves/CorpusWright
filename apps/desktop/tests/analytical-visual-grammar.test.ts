@@ -56,9 +56,35 @@ const kwicHeader = html.slice(
 assert.equal(kwicHeader.match(/<th(?:\s|>)/g)?.length, 4);
 assert(!styles.includes(".concordance-table-head {\n  position: sticky;"));
 assert(
-  styles.includes(".concordance-table-wrap {\n  max-height: none;\n  overflow: clip;")
+  styles.includes(".concordance-table-wrap {\n  max-height: none;\n  overflow: clip;\n  border: 0;\n  border-radius: 0;\n  background: transparent;")
     && styles.includes(".concordance-table-wrap,\n.concordance-collocations-table-wrap,\n.concordance-distribution-table-wrap {\n  border: 1px solid var(--border-color);\n  border-radius: 4px;\n  background: var(--bg-color);"),
-  "KWIC should retain a visible, rounded inner table surface without vertical scrolling",
+  "KWIC wrapper should override to transparent, matching the Collocates/Distribution result-table surface",
+);
+assert(
+  styles.includes(".concordance-collocations-table-wrap {\n  max-width: none;\n  overflow: visible;\n  border: 0;\n  border-radius: 0;\n  background: transparent;"),
+  "Collocates wrapper should also override to transparent",
+);
+assert(
+  styles.includes(".concordance-table th {\n  height: 22px;\n  background: transparent;")
+    && styles.includes(".concordance-collocations-table > thead > tr > th {\n  background: transparent;"),
+  "KWIC and Collocates headers must share a transparent background",
+);
+assert(
+  styles.includes(".concordance-table th {\n  height: 22px;\n  background: transparent;\n  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);")
+    && styles.includes(".concordance-collocations-table > thead > tr > th {\n  background: transparent;\n  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);"),
+  "KWIC and Collocates header separators must use the same border-color opacity",
+);
+assert(
+  styles.includes(".concordance-row:nth-of-type(even) td {\n  background: var(--cw-surface-subtle);")
+    && styles.includes(".concordance-collocation-row:nth-child(even) td {\n  background: var(--cw-surface-subtle);"),
+  "KWIC and Collocates zebra rows must use the same surface token",
+);
+assert(
+  styles.includes(".concordance-context-token.is-sort-level-1")
+    && styles.includes(".concordance-context-token.is-sort-level-2")
+    && styles.includes(".concordance-context-token.is-sort-level-3")
+    && styles.includes(".concordance-node {"),
+  "KWIC semantic node and sort-level classes must remain unchanged",
 );
 assert.match(
   html,

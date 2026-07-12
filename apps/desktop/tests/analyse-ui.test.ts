@@ -908,11 +908,11 @@ const frequencyTableWrapCss = frequencyTableWrapCssMatch[1];
 assert(
   concordanceTableWrapCss.includes("max-height: none;")
     && concordanceTableWrapCss.includes("overflow: clip;")
-    && !concordanceTableWrapCss.includes("border: 0;")
-    && !concordanceTableWrapCss.includes("background: transparent;")
+    && concordanceTableWrapCss.includes("border: 0;")
+    && concordanceTableWrapCss.includes("background: transparent;")
     && styles.includes(".concordance-table-wrap,\n.concordance-collocations-table-wrap,\n.concordance-distribution-table-wrap {\n  border: 1px solid var(--border-color);\n  border-radius: 4px;\n  background: var(--bg-color);")
     && !styles.includes(".concordance-table {\n    min-width: 760px;"),
-  "Concordance lines should keep a bordered, rounded table surface without an internal scroll trap",
+  "Concordance lines wrapper should override to transparent, matching the Collocates/Distribution result-table surface",
 );
 assert(
   concordanceCollocationsTableWrapCss.includes("max-width: none;")
