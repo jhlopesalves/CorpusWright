@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { loadStyleGraph } from "../scripts/style-graph.mjs";
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const shell = readFileSync(new URL("../src/workbench/shell.ts", import.meta.url), "utf8");
-const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const styles = (await loadStyleGraph(new URL("../src/styles.css", import.meta.url))).css;
 
 function ruleBody(selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

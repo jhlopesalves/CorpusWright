@@ -1,0 +1,61 @@
+.cw-plot-grid line {
+  stroke: var(--cw-plot-grid);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-grid-value {
+  stroke-opacity: 0.42;
+}
+
+.cw-plot-grid-context {
+  stroke-opacity: 0.16;
+}
+
+.cw-plot-axis-baseline,
+.cw-plot-minor-tick,
+.cw-plot-axis-tick {
+  stroke: var(--text-muted);
+  stroke-opacity: 0.55;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-tick-label {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-mono);
+  font-size: 11.5px;
+}
+
+.cw-plot-axis-title {
+  fill: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cw-plot-threshold-line {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-dasharray: 5 4;
+  stroke-opacity: 0.7;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-mattr-witness-tick {
+  stroke: var(--cw-plot-point);
+  stroke-linecap: round;
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-reference-line {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-dasharray: 4 4;
+  stroke-opacity: 0.7;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}

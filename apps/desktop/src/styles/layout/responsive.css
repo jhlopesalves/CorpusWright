@@ -1,0 +1,224 @@
+@media (max-width: 760px) {
+  .frequency-query-control {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .analyse-header {
+    grid-template-columns: 1fr;
+  }
+
+  .analyse-content {
+    width: min(100% - 28px, 1180px);
+    padding-top: 24px;
+  }
+
+  .analyse-workspace-shell {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .analyse-tool-rail {
+    position: static;
+    padding-right: 0;
+    padding-bottom: 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .analyse-project-summary {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .stage-navigator {
+    padding: 8px 12px;
+  }
+
+  .stage-navigator-inner {
+    overflow-x: auto;
+  }
+
+  .stage-tab {
+    min-width: 132px;
+  }
+
+  .document-length-header,
+  .document-length-row {
+    grid-template-columns: minmax(90px, 1fr) minmax(72px, 1fr) minmax(72px, max-content);
+  }
+
+  .document-length-share {
+    display: none;
+  }
+
+  .concordance-table-wrap {
+    overflow: visible;
+  }
+}
+
+@media (max-width: 640px) {
+  .project-create-source-row {
+    grid-template-columns: 1fr;
+  }
+
+  .project-create-section-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .project-create-source-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .source-import-section-header,
+  .source-import-group-select,
+  .source-import-ocr-quality-row,
+  .pdf-intake-stored-handling,
+  .source-import-list-row {
+    grid-template-columns: 1fr;
+  }
+
+  .source-import-section-header {
+    display: grid;
+  }
+}
+
+@media (max-width: 980px) {
+  .concordance-controls > label:first-child {
+    flex: 1 1 280px;
+  }
+
+  .concordance-card-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .concordance-card-actions {
+    justify-content: flex-start;
+  }
+
+  .concordance-card-stats {
+    text-align: left;
+  }
+
+  .concordance-position-column {
+    width: 14.5rem;
+  }
+
+  .concordance-position-glyph {
+    gap: 1px;
+  }
+}
+
+@media (max-width: 760px) {
+  .concordance-section,
+  .concordance-header,
+  .concordance-workbench,
+  .concordance-card {
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .concordance-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+    gap: 10px 12px;
+  }
+
+  .concordance-controls > label:first-child,
+  .concordance-controls .concordance-search-actions {
+    grid-column: 1 / -1;
+  }
+
+  #concordance-query-input,
+  .concordance-controls .frequency-file-scope-control,
+  .concordance-controls .frequency-file-scope-control button {
+    width: 100%;
+  }
+
+  .concordance-card {
+    padding: 12px;
+  }
+
+  .concordance-card-actions,
+  .concordance-card-controls,
+  .concordance-lines-controls,
+  .concordance-collocation-controls {
+    max-width: 100%;
+  }
+
+  .concordance-lines-controls {
+    grid-template-columns: repeat(5, minmax(64px, 1fr));
+  }
+
+  .concordance-collocations-table > thead > tr > th,
+  .concordance-collocations-table > tbody > tr.concordance-collocation-row > td {
+    padding-inline: 5px;
+  }
+
+  .concordance-position-glyph {
+    gap: 1px;
+    height: 40px;
+  }
+
+  .concordance-position-column {
+    width: 14rem;
+  }
+
+  .concordance-position-axis-full {
+    display: none;
+  }
+
+  .concordance-position-axis-compact {
+    display: inline;
+  }
+
+  .concordance-collocate-evidence {
+    margin-left: 8px;
+  }
+
+  .concordance-collocate-evidence-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .concordance-collocate-evidence-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .concordance-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .concordance-controls > label:first-child,
+  .concordance-controls .concordance-search-actions {
+    grid-column: 1;
+  }
+
+  .concordance-collocations-table-wrap {
+    overflow-x: auto;
+  }
+
+  .concordance-collocations-table {
+    min-width: 760px;
+  }
+
+  .concordance-collocate-evidence-list-head,
+  .concordance-collocate-evidence-line {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .concordance-collocate-evidence-file {
+    white-space: normal;
+  }
+}
+

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { loadStyleGraph } from "../scripts/style-graph.mjs";
 import {
   concordanceCollocatePositionProfile,
   concordancePositionProfileAccessibleText,
@@ -13,7 +14,7 @@ const source = readFileSync(
   new URL("../src/workbench/concordance/collocations.ts", import.meta.url),
   "utf8",
 );
-const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const styles = (await loadStyleGraph(new URL("../src/styles.css", import.meta.url))).css;
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
 const diffuse = { positionCounts: { left: [1, 1], right: [1, 1] } };
