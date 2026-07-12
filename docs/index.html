@@ -19,13 +19,7 @@
 <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
 <link rel="stylesheet" href="assets/site.css">
 <link rel="icon" href="assets/icon.png">
-<script>
-  (function () {
-    var stored = localStorage.getItem('theme');
-    var system = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', stored || system);
-  })();
-</script>
+<script src="assets/theme-init.js"></script>
 
 
 </head>
@@ -216,63 +210,7 @@ keywords:
   </div>
 </footer>
 
-  <script>
-  (function () {
-    var root = document.documentElement;
-    var toggle = document.getElementById('theme-toggle');
-    if (!toggle) return;
-    function syncToggle() {
-      var dark = root.getAttribute('data-theme') === 'dark';
-      toggle.setAttribute('aria-pressed', String(dark));
-      toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-    }
-    syncToggle();
-    toggle.addEventListener('click', function () {
-      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      root.setAttribute('data-theme', next);
-      localStorage.setItem('theme', next);
-      syncToggle();
-    });
-  })();
-</script>
-
-<script>
-  (function () {
-    var tabs = Array.prototype.slice.call(document.querySelectorAll('.shot-tab'));
-    var panels = Array.prototype.slice.call(document.querySelectorAll('.shot-panel'));
-    function show(index) {
-      tabs.forEach(function (tab, current) {
-        tab.setAttribute('aria-selected', current === index ? 'true' : 'false');
-        tab.tabIndex = current === index ? 0 : -1;
-      });
-      panels.forEach(function (panel, current) {
-        if (current === index) panel.removeAttribute('hidden');
-        else panel.setAttribute('hidden', '');
-      });
-    }
-    tabs.forEach(function (tab, index) {
-      tab.addEventListener('click', function () { show(index); });
-    });
-    var tablist = document.querySelector('.shot-tabs');
-    tablist.addEventListener('keydown', function (event) {
-      var current = tabs.indexOf(document.activeElement);
-      if (current < 0) return;
-      var next = null;
-      if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
-      else if (event.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
-      else if (event.key === 'Home') next = 0;
-      else if (event.key === 'End') next = tabs.length - 1;
-      if (next !== null) {
-        event.preventDefault();
-        tabs[next].focus();
-        show(next);
-      }
-    });
-    show(0);
-  })();
-</script>
-
-
+  <script defer src="assets/site.js"></script>
 
 </body>
 </html>

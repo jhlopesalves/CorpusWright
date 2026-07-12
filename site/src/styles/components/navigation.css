@@ -1,0 +1,54 @@
+/* ---- header ---- */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.brand:hover { text-decoration: none; }
+.brand .mark {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  flex: none;
+  object-fit: contain;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.nav-links a { color: var(--muted); font-size: 0.94rem; }
+.nav-links a:hover,
+.nav-links a[aria-current="page"] { color: var(--text); text-decoration: none; }
+
+.nav-links .nav-cta {
+  border: 1px solid var(--line-strong);
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-weight: 600;
+}
+.nav-links .nav-cta:hover { border-color: var(--brand); text-decoration: none; }
