@@ -6,7 +6,7 @@
 
 /* ---- hero downloads ---- */
 .hero-downloads { display: flex; gap: 36px; margin-top: 24px; flex-wrap: wrap; align-items: flex-start; }
-.dl-heading { font-weight: 600; font-size: 0.82rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint); margin: 0 0 8px; }
+.dl-heading { font-weight: 600; font-size: 0.82rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
 .dl-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
 .dl-list a { color: var(--brand); text-decoration: none; font-size: 0.96rem; }
 .dl-list a:hover { text-decoration: underline; }

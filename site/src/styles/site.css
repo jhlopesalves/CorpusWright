@@ -3,7 +3,6 @@
 @import "./foundations/base.css";
 @import "./layout/shell.css";
 @import "./layout/documentation.css";
-@import "./layout/responsive.css";
 @import "./components/navigation.css";
 @import "./components/controls.css";
 @import "./components/cards.css";
@@ -13,3 +12,4 @@
 @import "./components/citation.css";
 @import "./components/footer.css";
 @import "./pages/home.css";
+@import "./layout/responsive.css";

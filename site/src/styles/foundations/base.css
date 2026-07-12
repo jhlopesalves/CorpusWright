@@ -20,6 +20,7 @@ body {
 
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+main p a { text-decoration: underline; text-underline-offset: 3px; }
 
 :focus-visible {
   outline: 2px solid var(--accent);

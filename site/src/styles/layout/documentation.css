@@ -97,6 +97,13 @@
   margin: 0;
   padding-bottom: 0.1rem;
 }
+.learn-prose p mjx-container {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  vertical-align: middle;
+}
 .learn-prose .formula {
   display: inline-block;
   max-width: 100%;

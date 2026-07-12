@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://jhlopesalves.github.io/CorpusWright/sitemap.xml

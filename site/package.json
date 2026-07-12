@@ -9,12 +9,15 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "serve": "npx @11ty/eleventy --config=eleventy.config.mjs --serve",
-    "test": "node --test tests/*.test.mjs",
+    "serve:test": "node scripts/serve.mjs",
+    "test": "npm run test:unit && npm run test:browser",
+    "test:unit": "node --test tests/*.test.mjs",
+    "test:browser": "playwright test",
     "check": "npm run test && npm run check:generated && npm run check:content && npm run check:metadata && npm run check:links && npm run check:html && npm run check:styles && npm run check:runtime",
     "check:generated": "node scripts/check-generated-output.mjs",
     "check:content": "node scripts/check-content-freeze.mjs && node scripts/check-frozen-public.mjs",
     "check:metadata": "node scripts/check-site-metadata.mjs && node scripts/check-release-rendering.mjs",
-    "check:links": "node scripts/check-routes.mjs",
+    "check:links": "node scripts/check-links.mjs",
     "check:html": "node scripts/check-html.mjs",
     "check:styles": "node scripts/check-site-styles.mjs",
     "check:runtime": "node scripts/check-external-runtime.mjs"
@@ -24,5 +27,10 @@
     "esbuild": "0.28.1",
     "mathjax-full": "3.2.2",
     "mermaid": "11.16.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "axe-core": "4.12.1",
+    "html-validate": "9.7.1"
   }
 }
