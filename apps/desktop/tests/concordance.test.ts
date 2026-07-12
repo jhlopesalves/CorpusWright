@@ -33,14 +33,14 @@ import {
   concordanceContextTokenSegments,
   concordanceDistributionCardStatsText,
   concordanceDistributionMagnitudePercent,
-  concordanceCollocatePositionGlyph,
+  concordanceCollocatePositionProfile,
   concordanceContextSortLevels,
   concordanceExpansionViewModel,
   concordanceIsSparse,
   concordanceLinesCardStatsText,
   concordanceRangePercent,
   concordanceMiddleEllipsis,
-  concordancePositionGlyphAccessibleText,
+  concordancePositionProfileDomain,
   concordanceRowExpansionKey,
   concordanceRowText,
   concordanceSortLabel,
@@ -354,35 +354,20 @@ assert(nextConcordanceCollocateDisplayCount(35, 100) === 60);
 assert(nextConcordanceCollocateDisplayCount(60, 100) === 85);
 assert(nextConcordanceCollocateDisplayCount(85, 90) === 90);
 
-const positionBins = concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 5, "both");
-assertDeepEqual(positionBins.map((bin) => bin.label), ["L5", "L4", "L3", "L2", "L1", "R1", "R2", "R3", "R4", "R5"]);
-assert(positionBins[9]!.intensity === 1 && positionBins[0]!.intensity === 0.5);
-assertDeepEqual(
-  concordanceCollocatePositionGlyph([5, 0, 0, 0, 0], [5, 0, 0, 0, 0], 5, "both")
-    .filter((bin) => bin.active && bin.count > 0 && bin.intensity === 1)
-    .map((bin) => bin.label),
-  ["L1", "R1"],
-  "Tied strongest non-zero position bins should share the dominant treatment",
+const positionRows = [
+  { positionCounts: { left: [5, 0], right: [5, 0] } },
+  { positionCounts: { left: [2, 8], right: [0, 0] } },
+];
+const positionDomain = concordancePositionProfileDomain(positionRows, 2, "both", "shape");
+const positionProfile = concordanceCollocatePositionProfile(
+  positionRows[0]!.positionCounts,
+  2,
+  "both",
+  "shape",
+  positionDomain,
 );
-assertDeepEqual(
-  concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 2, "left").map((bin) => bin.active),
-  [false, false, false, true, true, false, false, false, false, false],
-);
-assertDeepEqual(
-  concordanceCollocatePositionGlyph([1, 2, 3, 4, 5], [6, 7, 8, 9, 10], 2, "right").map((bin) => bin.active),
-  [false, false, false, false, false, true, true, false, false, false],
-  "Right-only profiles should activate R1 and R2 for a two-token span",
-);
-assert(
-  concordanceCollocatePositionGlyph([0, 0, 0, 0, 0], [0, 0, 0, 0, 0], 5, "both")
-    .every((bin) => bin.intensity === 0),
-  "All-zero positional profiles should remain finite",
-);
-assert(
-  concordancePositionGlyphAccessibleText("alpha", positionBins).includes("L5 5")
-    && concordancePositionGlyphAccessibleText("alpha", positionBins).includes("R5 10"),
-  "Exact positional counts should remain available without hover",
-);
+assertDeepEqual(positionProfile.bins.map((bin) => bin.label), ["2L", "1L", "1R", "2R"]);
+assert(positionProfile.bins[1]!.share === 0.5 && positionProfile.bins[1]!.ratio < 1);
 
 const row = {
   documentIndex: 2,

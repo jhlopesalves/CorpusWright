@@ -332,51 +332,221 @@ export function nextConcordanceCollocateDisplayCount(
   return Math.min(loadedRows, Math.max(CONCORDANCE_COLLOCATION_INITIAL_ROWS, current) + CONCORDANCE_COLLOCATION_SHOW_MORE_STEP);
 }
 
-export interface ConcordancePositionGlyphBin {
-  label: `L${1 | 2 | 3 | 4 | 5}` | `R${1 | 2 | 3 | 4 | 5}`;
+export type ConcordancePositionProfileMode = "shape" | "count";
+
+export interface ConcordancePositionProfileBin {
+  label: `${number}L` | `${number}R`;
+  offset: number;
   count: number;
-  active: boolean;
-  intensity: number;
+  share: number;
+  value: number;
+  ratio: number;
 }
 
-export function concordanceCollocatePositionGlyph(
+export interface ConcordancePositionProfileSummary {
+  leftTotal: number;
+  rightTotal: number;
+  positionalTotal: number;
+  leftShare: number;
+  rightShare: number;
+  dominantOffset: ConcordancePositionProfileBin["label"] | null;
+  dominantCount: number;
+  dominantShare: number;
+}
+
+export interface ConcordancePositionProfile {
+  bins: ConcordancePositionProfileBin[];
+  summary: ConcordancePositionProfileSummary;
+}
+
+interface ConcordancePositionCounts {
+  left: number[];
+  right: number[];
+}
+
+function safePositionCount(values: number[], distance: number): number {
+  const value = values[distance - 1] ?? 0;
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+export function concordanceCollocatePositionBins(
   left: number[],
   right: number[],
   span: number,
   direction: ConcordanceCollocationDirection,
-): ConcordancePositionGlyphBin[] {
-  const countAt = (values: number[], distance: number) => values[distance - 1] ?? 0;
+): Array<Omit<ConcordancePositionProfileBin, "share" | "value" | "ratio">> {
+  const boundedSpan = clampConcordanceCollocationSpan(span);
   const leftActive = direction === "left" || direction === "both";
   const rightActive = direction === "right" || direction === "both";
-  const bins: ConcordancePositionGlyphBin[] = [];
-  for (const distance of [5, 4, 3, 2, 1] as const) {
-    bins.push({
-      label: `L${distance}`,
-      count: countAt(left, distance),
-      active: leftActive && distance <= span,
-      intensity: 0,
-    });
+  const bins: Array<Omit<ConcordancePositionProfileBin, "share" | "value" | "ratio">> = [];
+  if (leftActive) {
+    for (let distance = boundedSpan; distance >= 1; distance -= 1) {
+      bins.push({
+        label: `${distance}L`,
+        offset: -distance,
+        count: safePositionCount(left, distance),
+      });
+    }
   }
-  for (const distance of [1, 2, 3, 4, 5] as const) {
-    bins.push({
-      label: `R${distance}`,
-      count: countAt(right, distance),
-      active: rightActive && distance <= span,
-      intensity: 0,
-    });
+  if (rightActive) {
+    for (let distance = 1; distance <= boundedSpan; distance += 1) {
+      bins.push({
+        label: `${distance}R`,
+        offset: distance,
+        count: safePositionCount(right, distance),
+      });
+    }
   }
-  const maximum = Math.max(0, ...bins.filter((bin) => bin.active).map((bin) => bin.count));
-  return bins.map((bin) => ({
-    ...bin,
-    intensity: !bin.active || maximum === 0 ? 0 : bin.count / maximum,
-  }));
+  return bins;
 }
 
-export function concordancePositionGlyphAccessibleText(
-  surface: string,
-  bins: ConcordancePositionGlyphBin[],
+function concordancePositionProfileValue(
+  count: number,
+  positionalTotal: number,
+  mode: ConcordancePositionProfileMode,
+): number {
+  if (mode === "count") return count;
+  return positionalTotal === 0 ? 0 : count / positionalTotal;
+}
+
+export function concordancePositionProfileDomain(
+  rows: Array<{ positionCounts: ConcordancePositionCounts }>,
+  span: number,
+  direction: ConcordanceCollocationDirection,
+  mode: ConcordancePositionProfileMode,
+): number {
+  let domain = 0;
+  for (const row of rows) {
+    const bins = concordanceCollocatePositionBins(
+      row.positionCounts.left,
+      row.positionCounts.right,
+      span,
+      direction,
+    );
+    const positionalTotal = bins.reduce((total, bin) => total + bin.count, 0);
+    for (const bin of bins) {
+      domain = Math.max(domain, concordancePositionProfileValue(bin.count, positionalTotal, mode));
+    }
+  }
+  return domain;
+}
+
+export function concordanceCollocatePositionProfile(
+  positionCounts: ConcordancePositionCounts,
+  span: number,
+  direction: ConcordanceCollocationDirection,
+  mode: ConcordancePositionProfileMode,
+  domain: number,
+): ConcordancePositionProfile {
+  const rawBins = concordanceCollocatePositionBins(
+    positionCounts.left,
+    positionCounts.right,
+    span,
+    direction,
+  );
+  const leftTotal = rawBins
+    .filter((bin) => bin.offset < 0)
+    .reduce((total, bin) => total + bin.count, 0);
+  const rightTotal = rawBins
+    .filter((bin) => bin.offset > 0)
+    .reduce((total, bin) => total + bin.count, 0);
+  const positionalTotal = leftTotal + rightTotal;
+  const validDomain = Number.isFinite(domain) ? Math.max(0, domain) : 0;
+  const bins = rawBins.map((bin): ConcordancePositionProfileBin => {
+    const share = positionalTotal === 0 ? 0 : bin.count / positionalTotal;
+    const value = concordancePositionProfileValue(bin.count, positionalTotal, mode);
+    return {
+      ...bin,
+      share,
+      value,
+      ratio: validDomain === 0 ? 0 : Math.min(1, Math.max(0, value / validDomain)),
+    };
+  });
+  const dominant = bins.reduce<ConcordancePositionProfileBin | null>(
+    (current, bin) => bin.count > (current?.count ?? 0) ? bin : current,
+    null,
+  );
+  return {
+    bins,
+    summary: {
+      leftTotal,
+      rightTotal,
+      positionalTotal,
+      leftShare: positionalTotal === 0 ? 0 : leftTotal / positionalTotal,
+      rightShare: positionalTotal === 0 ? 0 : rightTotal / positionalTotal,
+      dominantOffset: dominant?.label ?? null,
+      dominantCount: dominant?.count ?? 0,
+      dominantShare: dominant?.share ?? 0,
+    },
+  };
+}
+
+function formatPositionProfilePercent(value: number): string {
+  return `${(value * 100).toLocaleString(undefined, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}%`;
+}
+
+export function concordancePositionProfileSummaryText(
+  summary: ConcordancePositionProfileSummary,
+  direction: ConcordanceCollocationDirection,
 ): string {
-  return `${surface}: ${bins.map((bin) => `${bin.label} ${bin.count}`).join(", ")}`;
+  if (direction === "left") {
+    return `L ${summary.leftTotal.toLocaleString()} occurrences`;
+  }
+  if (direction === "right") {
+    return `R ${summary.rightTotal.toLocaleString()} occurrences`;
+  }
+  return `L ${formatPositionProfilePercent(summary.leftShare)} · R ${formatPositionProfilePercent(summary.rightShare)}`;
+}
+
+export function concordancePositionProfileAxisLabels(
+  span: number,
+  direction: ConcordanceCollocationDirection,
+): { full: string; compact: string } {
+  const boundedSpan = clampConcordanceCollocationSpan(span);
+  const left = Array.from({ length: boundedSpan }, (_, index) => `${boundedSpan - index}L`);
+  const right = Array.from({ length: boundedSpan }, (_, index) => `${index + 1}R`);
+  const compactLeft = boundedSpan === 1 ? "1L" : `${boundedSpan}L…1L`;
+  const compactRight = boundedSpan === 1 ? "1R" : `1R…${boundedSpan}R`;
+  if (direction === "left") {
+    return { full: `${left.join(" ")} | node`, compact: `${compactLeft} | node` };
+  }
+  if (direction === "right") {
+    return { full: `node | ${right.join(" ")}`, compact: `node | ${compactRight}` };
+  }
+  return {
+    full: `${left.join(" ")} | node | ${right.join(" ")}`,
+    compact: `${compactLeft} | node | ${compactRight}`,
+  };
+}
+
+export function concordancePositionProfileTooltip(
+  bin: ConcordancePositionProfileBin,
+  mode: ConcordancePositionProfileMode,
+  domain: number,
+): string {
+  const domainText = mode === "shape"
+    ? `${formatPositionProfilePercent(domain)} maximum positional share across loaded rows`
+    : `${domain.toLocaleString()} maximum offset count across loaded rows`;
+  return `${bin.label}: ${bin.count.toLocaleString()} occurrences · ${formatPositionProfilePercent(bin.share)} of this collocate's positional occurrences · ${mode === "shape" ? "Shape" : "Count"} mode · shared scale: ${domainText}`;
+}
+
+export function concordancePositionProfileAccessibleText(
+  surface: string,
+  profile: ConcordancePositionProfile,
+  mode: ConcordancePositionProfileMode,
+  domain: number,
+): string {
+  const summary = profile.summary;
+  const dominant = summary.dominantOffset === null
+    ? "no dominant offset"
+    : `dominant offset ${summary.dominantOffset}, ${summary.dominantCount.toLocaleString()} occurrences, ${formatPositionProfilePercent(summary.dominantShare)}`;
+  const domainText = mode === "shape"
+    ? `${formatPositionProfilePercent(domain)} maximum positional share across all loaded rows`
+    : `${domain.toLocaleString()} maximum offset count across all loaded rows`;
+  return `${surface} position profile in ${mode === "shape" ? "Shape" : "Count"} mode. Left ${summary.leftTotal.toLocaleString()} occurrences, ${formatPositionProfilePercent(summary.leftShare)}; right ${summary.rightTotal.toLocaleString()} occurrences, ${formatPositionProfilePercent(summary.rightShare)}; ${dominant}. Shared scale: ${domainText}. Offsets: ${profile.bins.map((bin) => `${bin.label} ${bin.count.toLocaleString()}`).join(", ")}.`;
 }
 
 export function concordanceCollocationDirectionLabel(

@@ -130,7 +130,7 @@ assert(collocations.includes("cell.colSpan = 5;"));
 assert(collocations.includes("text.textContent = row.surface;"));
 assert(!collocations.includes('appendConcordanceCollocationHeader(row, "Evidence")'));
 assert(!collocations.includes("evidenceButton"));
-for (const width of ["6rem", "7rem", "11rem", "12.5rem"]) {
+for (const width of ["6rem", "7rem", "11rem", "15rem"]) {
   assert(styles.includes(`width: ${width};`), `five-column Collocates layout should include ${width}`);
 }
 assert(styles.includes("padding: 5px 7px;"));

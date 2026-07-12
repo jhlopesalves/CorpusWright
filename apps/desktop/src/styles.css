@@ -232,6 +232,8 @@
   --cw-result-table-muted-text: var(--text-muted);
   --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
   --cw-result-table-bar: var(--accent-color);
+  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar-active: #256eb5;
   --bg-color: #0f172a;
   --panel-bg: #111827;
   --modal-bg: #111827;
@@ -5293,7 +5295,7 @@ main {
 }
 
 .concordance-position-column {
-  width: 12.5rem;
+  width: 15rem;
 }
 
 .concordance-collocations-table > thead > tr > th,
@@ -5727,49 +5729,123 @@ main {
   content: "";
 }
 
-.concordance-position-heading,
-.concordance-position-legend {
-  display: block;
+.concordance-position-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }
 
 .concordance-position-legend {
+  display: block;
   margin-top: 2px;
   color: var(--text-muted);
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 500;
+  line-height: 1.2;
   white-space: normal;
+}
+
+.concordance-position-axis-compact {
+  display: none;
+}
+
+.concordance-position-legend.is-condensed .concordance-position-axis-full {
+  display: none;
+}
+
+.concordance-position-legend.is-condensed .concordance-position-axis-compact {
+  display: inline;
+}
+
+.concordance-position-mode-control {
+  display: inline-flex;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--bg-color);
+}
+
+.concordance-position-mode {
+  min-height: 20px;
+  padding: 1px 5px;
+  border: 0;
+  border-left: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  font: 500 0.62rem/1.2 var(--cw-font-ui);
+  cursor: pointer;
+}
+
+.concordance-position-mode:first-child {
+  border-left: 0;
+}
+
+.concordance-position-mode[aria-pressed="true"] {
+  background: var(--selected-color);
+  color: var(--text-color);
+}
+
+.concordance-position-mode:focus-visible {
+  position: relative;
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+}
+
+.concordance-position-profile {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 
 .concordance-position-glyph {
   display: grid;
-  grid-template-columns: repeat(5, minmax(3px, 1fr)) 1px repeat(5, minmax(3px, 1fr));
   align-items: end;
   gap: 2px;
   width: 100%;
   min-width: 0;
-  height: 26px;
+  height: 42px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 78%, transparent);
+  box-sizing: border-box;
 }
 
 .concordance-position-bin {
   display: block;
   align-self: end;
-  height: var(--position-height, 12%);
-  min-height: 2px;
-  border-radius: 2px 2px 0 0;
-  background: var(--accent-color);
-  opacity: calc(0.2 + var(--position-intensity, 0) * 0.62);
+  height: calc(var(--position-ratio, 0) * 100%);
+  min-height: 0;
+  border-radius: 1px 1px 0 0;
+  background: var(--cw-position-profile-bar);
+  opacity: 0.88;
 }
 
-.concordance-position-bin.is-inactive {
-  height: 2px;
-  background: var(--border-color);
-  opacity: 0.38;
+.concordance-position-bin.is-zero {
+  height: 0;
 }
 
 .concordance-position-node {
   align-self: stretch;
   width: 1px;
-  background: color-mix(in srgb, var(--text-muted) 62%, transparent);
+  background: color-mix(in srgb, var(--text-muted) 78%, transparent);
+}
+
+.concordance-position-summary {
+  display: block;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.concordance-collocation-row:hover .concordance-position-bin,
+.concordance-collocation-row:focus-visible .concordance-position-bin,
+.concordance-collocation-row.is-active .concordance-position-bin {
+  background: var(--cw-position-profile-bar-active);
+  opacity: 1;
 }
 
 .concordance-collocation-reading {
@@ -9364,6 +9440,14 @@ mark.search-match.current-match {
   .concordance-card-stats {
     text-align: left;
   }
+
+  .concordance-position-column {
+    width: 14.5rem;
+  }
+
+  .concordance-position-glyph {
+    gap: 1px;
+  }
 }
 
 @media (max-width: 760px) {
@@ -9415,9 +9499,20 @@ mark.search-match.current-match {
   }
 
   .concordance-position-glyph {
-    grid-template-columns: repeat(5, minmax(2px, 1fr)) 1px repeat(5, minmax(2px, 1fr));
     gap: 1px;
-    height: 24px;
+    height: 40px;
+  }
+
+  .concordance-position-column {
+    width: 14rem;
+  }
+
+  .concordance-position-axis-full {
+    display: none;
+  }
+
+  .concordance-position-axis-compact {
+    display: inline;
   }
 
   .concordance-collocate-evidence {
@@ -9449,7 +9544,7 @@ mark.search-match.current-match {
   }
 
   .concordance-collocations-table {
-    min-width: 620px;
+    min-width: 760px;
   }
 
   .concordance-collocate-evidence-list-head,
