@@ -219,6 +219,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #0f172a;
   --panel-bg: #111827;
   --modal-bg: #111827;
@@ -327,6 +340,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #f6f8fb;
   --panel-bg: #ffffff;
   --modal-bg: #ffffff;
@@ -434,6 +460,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #f3f4f6;
   --panel-bg: #ffffff;
   --modal-bg: #ffffff;
@@ -541,6 +580,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #1e1e1e;
   --panel-bg: #252526;
   --modal-bg: #252526;
@@ -652,6 +704,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #c0c0c0;
   --panel-bg: #d4d0c8;
   --modal-bg: #d4d0c8;
@@ -762,6 +827,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #070b12;
   --panel-bg: #0b1020;
   --modal-bg: #101624;
@@ -878,6 +956,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #eeeeec;
   --panel-bg: #f8f8f6;
   --modal-bg: #fbfbf9;
@@ -985,6 +1076,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #171819;
   --panel-bg: #202224;
   --modal-bg: #232527;
@@ -1093,6 +1197,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #fbf1d0;
   --panel-bg: #fff8df;
   --modal-bg: #fff8df;
@@ -1200,6 +1317,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #082b33;
   --panel-bg: #0d3640;
   --modal-bg: #0d3640;
@@ -1309,6 +1439,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #f4ecd8;
   --panel-bg: #fff8e7;
   --modal-bg: #fff8e7;
@@ -1416,6 +1559,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #f1f5e9;
   --panel-bg: #fffef5;
   --modal-bg: #fffef5;
@@ -1523,6 +1679,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #111a14;
   --panel-bg: #1b261d;
   --modal-bg: #1b261d;
@@ -1630,6 +1799,19 @@
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #000000;
   --panel-bg: #000000;
   --modal-bg: #000000;
@@ -4498,6 +4680,62 @@ main {
 
 .frequency-query-notice {
   color: var(--cw-warning-text);
+}
+
+.cw-result-table {
+  color: var(--cw-result-table-body-text);
+  font-family: var(--cw-font-ui);
+  font-synthesis: none;
+}
+
+.cw-result-table th {
+  background: var(--cw-result-table-header-surface);
+  color: var(--cw-result-table-header-text);
+  font-family: var(--cw-font-ui);
+  font-weight: 500;
+}
+
+.cw-result-table td {
+  background: var(--cw-result-table-row-surface);
+  color: var(--cw-result-table-body-text);
+  font-family: var(--cw-font-ui);
+  font-weight: 400;
+}
+
+.cw-result-table tbody tr:nth-child(even) > td {
+  background: var(--cw-result-table-row-alt-surface);
+}
+
+.cw-result-table tbody tr:hover > td,
+.cw-result-table tbody tr:focus-visible > td {
+  background: var(--cw-result-table-hover-surface);
+}
+
+.cw-result-table-lexical {
+  font-weight: 600;
+}
+
+.cw-result-table-numeric {
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.cw-result-table-file {
+  color: var(--cw-result-table-muted-text);
+  font-weight: 400;
+}
+
+.cw-result-table-note,
+.cw-result-table-pagination,
+.cw-result-table-pagination-status {
+  color: var(--cw-result-table-muted-text);
+  font-family: var(--cw-font-ui);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.cw-result-table-pagination {
+  font-variant-numeric: tabular-nums;
 }
 
 .concordance-table-wrap,
@@ -8745,6 +8983,19 @@ mark.search-match.current-match {
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #2a2018;
   --panel-bg: #37291e;
   --modal-bg: #37291e;
@@ -8852,6 +9103,19 @@ mark.search-match.current-match {
   --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
+  --cw-result-table-surface: var(--panel-bg);
+  --cw-result-table-header-surface: var(--cw-surface-subtle);
+  --cw-result-table-row-surface: transparent;
+  --cw-result-table-row-alt-surface: var(--cw-surface-subtle);
+  --cw-result-table-border: var(--border-color);
+  --cw-result-table-separator: color-mix(in srgb, var(--border-color) 58%, transparent);
+  --cw-result-table-hover-surface: var(--cw-interaction-bg-hover);
+  --cw-result-table-active-surface: var(--selected-color);
+  --cw-result-table-header-text: var(--text-muted);
+  --cw-result-table-body-text: var(--text-color);
+  --cw-result-table-muted-text: var(--text-muted);
+  --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
+  --cw-result-table-bar: var(--accent-color);
   --bg-color: #ffffff;
   --panel-bg: #ffffff;
   --modal-bg: #ffffff;
