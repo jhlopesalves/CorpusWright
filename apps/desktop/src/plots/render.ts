@@ -132,46 +132,13 @@ export function renderDispersionSvg(plotId: string, geometry: DispersionGeometry
     valueAxis: "x",
   });
   for (const divider of geometry.dividers) renderLine(svg, divider);
-  renderDispersionCompositionBar(svg, geometry);
+  if (geometry.compositionStrip) renderCompositionStrip(svg, geometry.compositionStrip);
   for (const stem of geometry.stems) renderLine(svg, stem);
   renderPoints(svg, geometry.points, "cw-plot-point is-panel-stroked is-lollipop");
   renderDispersionCumulativeCallout(svg, geometry);
   renderLabels(svg, geometry.labels);
   renderInteractionLayer(svg, geometry.box);
   return svg;
-}
-
-function renderDispersionCompositionBar(svg: SVGSVGElement, geometry: DispersionGeometry): void {
-  const group = createSvgElement("g");
-  group.setAttribute("class", "cw-plot-composition-strip cw-plot-dispersion-composition");
-  for (const segment of geometry.compositionSegments) {
-    const rect = createSvgElement("rect");
-    setAttrs(rect, {
-      x: segment.x,
-      y: segment.y,
-      width: segment.width,
-      height: segment.height,
-      class: `cw-plot-composition-segment cw-plot-ramp-${segment.rampIndex} cw-plot-hover-target`,
-      tabindex: "0",
-      "data-plot-x": segment.x + segment.width / 2,
-      "data-plot-y": segment.y + segment.height / 2,
-      "data-tooltip-title": segment.tooltipTitle,
-      "data-tooltip-rows": segment.tooltipRows.join("\n"),
-    });
-    group.appendChild(rect);
-    if (segment.label) {
-      const label = createSvgElement("text");
-      setAttrs(label, {
-        x: segment.x + segment.width / 2,
-        y: segment.y + segment.height - 3,
-        class: "cw-plot-composition-label",
-        "text-anchor": "middle",
-      });
-      label.textContent = segment.label;
-      group.appendChild(label);
-    }
-  }
-  svg.appendChild(group);
 }
 
 function renderDispersionCumulativeCallout(svg: SVGSVGElement, geometry: DispersionGeometry): void {
@@ -195,16 +162,19 @@ export function renderDispersionPlaneSvg(plotId: string, geometry: DispersionPla
   const svg = createBaseSvg(plotId, geometry.box);
   renderDefinitions(svg, plotId);
   renderAxes(svg, geometry.box, geometry.xScale, geometry.yScale, geometry.xTicks, geometry.yTicks, {
-    x: "TOKEN FREQUENCY",
-    y: "DISPERSION (DP) · 0 EVEN — 1 CONCENTRATED",
+    x: geometry.xAxisLabel,
+    y: "Gries's DP",
     valueAxis: "y",
   });
+  renderPlaneMarginals(svg, geometry);
   renderDensityCells(svg, geometry);
-  renderLine(svg, geometry.thresholdLine);
+  for (const line of geometry.thresholdLines) renderLine(svg, line);
   renderQuadrantPills(svg, geometry);
-  renderLabels(svg, [geometry.thresholdLabel]);
+  renderLabels(svg, geometry.thresholdLabels);
   renderPlaneWitnesses(svg, geometry);
   renderLabels(svg, geometry.labels);
+  renderPlaneDensityLegend(svg, geometry);
+  renderPlaneWitnessLegend(svg, geometry);
   renderInteractionLayer(svg, geometry.box);
   return svg;
 }
@@ -831,8 +801,8 @@ export function renderCompositionStrip(svg: SVGSVGElement, geometry: Composition
         "text-anchor": "middle",
       });
       label.textContent = segment.labelBelow
-        ? `${segment.datum.label} · ${segment.label}`
-        : segment.label;
+        ? `${segment.datum.label} · ${segment.staticDetail}`
+        : segment.staticDetail;
       group.appendChild(label);
     }
   });
@@ -875,8 +845,8 @@ function renderDensityCells(svg: SVGSVGElement, geometry: DispersionPlaneGeometr
       width: cell.width,
       height: cell.height,
       rx: 1.5,
-      class: "cw-plot-density-cell cw-plot-hover-target",
-      tabindex: "0",
+      class: `cw-plot-density-cell ${cell.count > 0 ? "cw-plot-hover-target" : "is-zero"}`,
+      tabindex: cell.count > 0 ? "0" : undefined,
       "data-plot-x": cell.x + cell.width / 2,
       "data-plot-y": cell.y + cell.height / 2,
       "data-tooltip-title": cell.tooltipTitle,
@@ -885,6 +855,62 @@ function renderDensityCells(svg: SVGSVGElement, geometry: DispersionPlaneGeometr
     });
     group.appendChild(rect);
   }
+  svg.appendChild(group);
+}
+
+function renderPlaneMarginals(svg: SVGSVGElement, geometry: DispersionPlaneGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-plane-marginals");
+  for (const marginal of [...geometry.frequencyMarginal, ...geometry.dpMarginal]) {
+    const rect = createSvgElement("rect");
+    setAttrs(rect, {
+      x: marginal.x,
+      y: marginal.y,
+      width: marginal.width,
+      height: marginal.height,
+      class: "cw-plot-plane-marginal",
+    });
+    group.appendChild(rect);
+  }
+  svg.appendChild(group);
+}
+
+function renderPlaneDensityLegend(svg: SVGSVGElement, geometry: DispersionPlaneGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-density-legend");
+  const x = geometry.box.margin.left;
+  const y = geometry.box.height - 68;
+  for (let index = 0; index < 5; index += 1) {
+    const rect = createSvgElement("rect");
+    setAttrs(rect, { x: x + index * 18, y, width: 18, height: 10, class: `cw-plot-density-legend-step cw-plot-ramp-${index}` });
+    group.appendChild(rect);
+  }
+  const label = createSvgElement("text");
+  setAttrs(label, { x, y: y - 7, class: "cw-plot-legend-label" });
+  label.textContent = `Cell count · ${geometry.densityLegend.mode === "log" ? "Log" : "Linear"} scale · low ${geometry.densityLegend.minimum} · high ${geometry.densityLegend.maximum}`;
+  const note = createSvgElement("text");
+  setAttrs(note, { x, y: y + 25, class: "cw-plot-legend-note" });
+  note.textContent = "Contrast changes; underlying counts do not.";
+  group.append(label, note);
+  svg.appendChild(group);
+}
+
+function renderPlaneWitnessLegend(svg: SVGSVGElement, geometry: DispersionPlaneGeometry): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-witness-legend");
+  const startX = geometry.box.margin.left + 310;
+  const startY = geometry.box.height - 75;
+  geometry.witnessLegend.forEach((item, index) => {
+    const column = index % 2;
+    const row = Math.floor(index / 2);
+    const x = startX + column * 136;
+    const y = startY + row * 22;
+    const swatch = renderLegendSwatch(item, x, y);
+    const label = createSvgElement("text");
+    setAttrs(label, { x: x + 12, y: y + 4, class: "cw-plot-legend-label" });
+    label.textContent = item.label;
+    group.append(swatch, label);
+  });
   svg.appendChild(group);
 }
 
@@ -911,20 +937,28 @@ function renderPlaneWitnesses(svg: SVGSVGElement, geometry: DispersionPlaneGeome
   const group = createSvgElement("g");
   group.setAttribute("class", "cw-plot-plane-witnesses");
   geometry.witnesses.forEach((witness, index) => {
-    const circle = createSvgElement("circle");
-    setAttrs(circle, {
-      cx: witness.x,
-      cy: witness.y,
-      r: 5,
-      class: "cw-plot-plane-witness cw-plot-hover-target",
+    const mark = createPointShapeElement(
+      witness.shape ?? "circle",
+      witness.x,
+      witness.y,
+      0.7,
+      ["cw-plot-plane-witness", witness.className ?? "", witness.pinned ? "is-pinned" : "", "cw-plot-hover-target"].filter(Boolean).join(" "),
+      true,
+    );
+    setAttrs(mark, {
       tabindex: "0",
+      role: "button",
+      "aria-label": witness.tooltipTitle ?? "",
+      "aria-pressed": String(Boolean(witness.pinned)),
+      "data-pin-key": witness.key,
       "data-plot-x": witness.x,
       "data-plot-y": witness.y,
       "data-tooltip-title": witness.tooltipTitle ?? "",
       "data-tooltip-rows": (witness.tooltipRows ?? []).join("\n"),
+      "data-point-shape": witness.shape ?? "circle",
       style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms;`,
     });
-    group.appendChild(circle);
+    group.appendChild(mark);
   });
   svg.appendChild(group);
 }
@@ -1023,7 +1057,12 @@ function renderLabels(svg: SVGSVGElement, labels: PlotLabelGeometry[]): void {
     setAttrs(text, {
       x: label.x,
       y: label.y,
-      class: `cw-plot-label ${label.className ?? ""} ${label.pinned ? "is-pinned" : ""}`.trim(),
+      class: [
+        "cw-plot-label",
+        label.className ?? "",
+        label.pinned ? "is-pinned" : "",
+        label.priority !== undefined && label.priority <= 20 && !label.pinned ? "is-narrow-optional" : "",
+      ].filter(Boolean).join(" "),
       "text-anchor": label.anchor,
     });
     const lines = labelTextLines(label);

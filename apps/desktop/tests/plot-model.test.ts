@@ -240,9 +240,9 @@ assert(
   "The ≥90% result should remain a separate cumulative callout",
 );
 assert(
-  dispersionProfile.compositionSegments.length === 3
-    && dispersionProfile.compositionSegments.reduce((total, segment) => total + segment.width, 0) > 0
-    && dispersionProfile.compositionSegments.some((segment) => segment.label !== null),
+  dispersionProfile.compositionStrip?.segments.length === 3
+    && dispersionProfile.compositionStrip.segments.reduce((total, segment) => total + segment.width, 0) > 0
+    && dispersionProfile.compositionStrip.segments.some((segment) => segment.label !== null),
   "Dispersion profile should add a labelled stacked composition strip for exclusive bands",
 );
 assert(
@@ -285,12 +285,17 @@ const dispersionPlane = buildDispersionPlaneGeometry({
   totalTypes: 100,
   box: createPlotBox(720, 420, { top: 34, right: 48, bottom: 62, left: 112 }),
 });
-assert(dispersionPlane.cells.length === 3, "Dispersion plane should draw exactly one rect for each nonzero cell");
+assert(
+  dispersionPlane.cells.length === 48 * 32
+    && dispersionPlane.cells.filter((cell) => cell.count > 0).length === 3
+    && dispersionPlane.cells.filter((cell) => cell.count === 0).every((cell) => cell.opacity === 0),
+  "Dispersion plane should retain the fixed grid while leaving zero cells transparent",
+);
 const densityCell = dispersionPlane.cells.find((cell) => cell.count === 4);
 assert(densityCell !== undefined, "Dispersion plane fixture should include the count-4 density cell");
 const expectedDensityT = Math.log1p(4) / Math.log1p(9);
 assertClose(densityCell.t, expectedDensityT, "Dispersion plane density t should use the log-scaled cell count");
-assertClose(densityCell.opacity, 0.12 + (0.80 * expectedDensityT), "Dispersion plane opacity should follow the specified formula");
+assertClose(densityCell.opacity, 0.1 + (0.82 * expectedDensityT), "Dispersion plane opacity should follow the specified formula");
 const decadeTickLabels = dispersionPlane.xTicks.filter((tick) => tick.major).map((tick) => tick.label);
 assert(
   ["1", "10", "100", "1k", "10k", "100k"].every((label) => decadeTickLabels.includes(label))
@@ -307,14 +312,14 @@ assert(
   "Dispersion plane witness placement should carry point and box obstacles",
 );
 assert(
-  dispersionPlane.labels.length <= 6
-    && !dispersionPlane.labels.some((label) => label.text === "folio"),
-  "Dispersion plane should permanently label only key non-rare witness examples",
+  dispersionPlane.labels.length <= 7
+    && dispersionPlane.labels.filter((label) => label.text === "folio").length <= 1,
+  "Dispersion plane should enforce the category-specific automatic label budget",
 );
 const dispersionPlaneWithoutLabels = buildDispersionPlaneGeometry({
   plane: dispersionPlanePayload,
   totalTypes: 100,
-  showWitnessLabels: false,
+  examplesMode: "points",
   box: createPlotBox(720, 420, { top: 34, right: 48, bottom: 62, left: 112 }),
 });
 assert(

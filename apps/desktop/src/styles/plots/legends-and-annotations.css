@@ -169,6 +169,26 @@
   fill: var(--cw-plot-point);
 }
 
+.cw-plot-legend-swatch.is-witness-core {
+  fill: var(--cw-plot-witness-core);
+  stroke: var(--cw-plot-witness-core);
+}
+
+.cw-plot-legend-swatch.is-witness-loud-local {
+  fill: var(--cw-plot-witness-loud-local);
+  stroke: var(--cw-plot-witness-loud-local);
+}
+
+.cw-plot-legend-swatch.is-witness-quiet-even {
+  fill: var(--cw-plot-witness-quiet-even);
+  stroke: var(--cw-plot-witness-quiet-even);
+}
+
+.cw-plot-legend-swatch.is-witness-rare-local {
+  fill: var(--cw-plot-witness-rare-local);
+  stroke: var(--cw-plot-witness-rare-local);
+}
+
 .cw-plot-cumulative-callout {
   fill: var(--cw-plot-reference);
   fill-opacity: 0.1;
@@ -210,8 +230,20 @@
   letter-spacing: 0.055em;
 }
 
+@media (max-width: 700px) {
+  .cw-plot-label.is-narrow-optional:not(.is-pinned) {
+    display: none;
+  }
+}
+
 .cw-plot-legend-label {
   fill: var(--text-muted);
   font-family: var(--cw-font-ui);
   font-size: var(--cw-type-plot-tick-size);
+}
+
+.cw-plot-legend-note {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-ui);
+  font-size: var(--cw-type-plot-micro-size);
 }
