@@ -7,7 +7,10 @@ import type {
   ConcordanceSortKey,
   SortDirection,
 } from "../../analysis";
-import { CONCORDANCE_DEFAULT_WINDOW } from "../../concordance.ts";
+import {
+  CONCORDANCE_DEFAULT_PAGE_SIZE,
+  CONCORDANCE_DEFAULT_WINDOW,
+} from "../../concordance.ts";
 
 export type ConcordanceCardId = "lines" | "collocates" | "distribution";
 export type ConcordanceDistributionOrdering = "hitsDescending";
@@ -104,7 +107,7 @@ export function createConcordanceWorkbenchState(
       ...cardState(),
       window: CONCORDANCE_DEFAULT_WINDOW,
       sort: ["right1", "right2", "right3"],
-      pageSize: 100,
+      pageSize: CONCORDANCE_DEFAULT_PAGE_SIZE,
       offset: 0,
       contextFilter: null,
       contextFilterDirection: "both",

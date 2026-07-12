@@ -4470,9 +4470,11 @@ main {
 .concordance-card-stats {
   margin: 0;
   padding: 4px 0;
-  color: var(--text-muted);
-  font-family: var(--cw-font-mono);
+  color: var(--cw-result-table-muted-text);
+  font-family: var(--cw-font-ui);
   font-size: 0.78rem;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
@@ -4682,6 +4684,12 @@ main {
   color: var(--cw-warning-text);
 }
 
+.cw-result-table-wrap {
+  border: 1px solid var(--cw-result-table-border);
+  border-radius: 4px;
+  background: var(--cw-result-table-surface);
+}
+
 .cw-result-table {
   color: var(--cw-result-table-body-text);
   font-family: var(--cw-font-ui);
@@ -4711,17 +4719,27 @@ main {
   background: var(--cw-result-table-hover-surface);
 }
 
+.cw-result-table td.cw-result-table-lexical,
 .cw-result-table-lexical {
   font-weight: 600;
 }
 
+.cw-result-table td.cw-result-table-numeric,
 .cw-result-table-numeric {
   font-variant-numeric: tabular-nums;
   font-weight: 400;
 }
 
+.cw-result-table td.cw-result-table-file,
 .cw-result-table-file {
   color: var(--cw-result-table-muted-text);
+  font-family: var(--cw-font-ui);
+  font-weight: 400;
+}
+
+.cw-result-table td.cw-result-table-kwic,
+.cw-result-table-kwic {
+  font-family: var(--cw-font-mono);
   font-weight: 400;
 }
 
@@ -4741,17 +4759,14 @@ main {
 .concordance-table-wrap,
 .concordance-collocations-table-wrap,
 .concordance-distribution-table-wrap {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--cw-result-table-border);
   border-radius: 4px;
-  background: var(--bg-color);
+  background: var(--cw-result-table-surface);
 }
 
 .concordance-table-wrap {
   max-height: none;
   overflow: clip;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
 }
 
 .concordance-table {
@@ -4778,14 +4793,16 @@ main {
 .concordance-table td {
   padding: 2px 5px;
   border: 0;
+  border-bottom: 1px solid var(--cw-result-table-separator);
   vertical-align: middle;
 }
 
 .concordance-table th {
   height: 22px;
-  background: transparent;
-  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
-  color: var(--text-muted);
+  background: var(--cw-result-table-header-surface);
+  border-bottom: 1px solid var(--cw-result-table-separator);
+  color: var(--cw-result-table-header-text);
+  font-family: var(--cw-font-ui);
   font-size: 0.72rem;
   font-weight: 500;
   line-height: 1.25;
@@ -4812,7 +4829,8 @@ main {
 }
 
 .concordance-file {
-  color: var(--text-muted);
+  color: var(--cw-result-table-muted-text);
+  font-family: var(--cw-font-ui);
   font-size: 0.68rem;
   font-weight: 400;
   opacity: 0.82;
@@ -4862,17 +4880,17 @@ main {
 
 .concordance-context-token.is-sort-level-1 {
   color: var(--cw-kwic-sort-1);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .concordance-context-token.is-sort-level-2 {
   color: var(--cw-kwic-sort-2);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .concordance-context-token.is-sort-level-3 {
   color: var(--cw-kwic-sort-3);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .concordance-node {
@@ -4881,7 +4899,7 @@ main {
   border: 0;
   background: transparent;
   color: var(--accent-color);
-  font-weight: 625;
+  font-weight: 600;
   white-space: nowrap;
   vertical-align: middle;
 }
@@ -4895,17 +4913,17 @@ main {
 }
 
 .concordance-row:nth-of-type(even) td {
-  background: var(--cw-surface-subtle);
+  background: var(--cw-result-table-row-alt-surface);
 }
 
 .concordance-row:hover td,
 .concordance-row:focus-visible td {
-  background: var(--cw-interaction-bg-hover);
+  background: var(--cw-result-table-hover-surface);
 }
 
 .concordance-row.is-expanded td {
-  background: var(--cw-interaction-bg-hover);
-  box-shadow: inset 0 -1px 0 var(--border-color);
+  background: var(--cw-result-table-active-surface);
+  box-shadow: inset 0 -1px 0 var(--cw-result-table-separator);
 }
 
 .concordance-row:focus-visible {
@@ -4917,8 +4935,8 @@ main {
   width: auto;
   min-width: 0;
   padding: 0;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-color);
+  border-bottom: 1px solid var(--cw-result-table-separator);
+  background: var(--cw-result-table-active-surface);
 }
 
 .concordance-preview-row .concordance-expansion-panel {
@@ -4933,7 +4951,7 @@ main {
   margin: 0;
   padding: 8px 10px 9px 12px;
   border-left: 2px solid var(--border-color);
-  background: var(--cw-surface-subtle);
+  background: var(--cw-result-table-active-surface);
   box-sizing: border-box;
 }
 
@@ -4948,7 +4966,7 @@ main {
   overflow: hidden;
   color: var(--text-muted);
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -5099,9 +5117,6 @@ main {
   max-width: none;
   max-height: none;
   overflow: visible;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
 }
 
 .concordance-distribution-table {
@@ -5115,24 +5130,26 @@ main {
 .concordance-distribution-table td {
   padding: 5px 7px;
   border: 0;
+  border-bottom: 1px solid var(--cw-result-table-separator);
   vertical-align: middle;
 }
 
 .concordance-distribution-table th {
-  background: transparent;
-  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
-  color: var(--text-muted);
+  background: var(--cw-result-table-header-surface);
+  border-bottom: 1px solid var(--cw-result-table-separator);
+  color: var(--cw-result-table-header-text);
+  font-family: var(--cw-font-ui);
   font-size: 0.76rem;
-  font-weight: 550;
+  font-weight: 500;
   text-align: left;
 }
 
 .concordance-distribution-row:nth-child(even) td {
-  background: var(--cw-surface-subtle);
+  background: var(--cw-result-table-row-alt-surface);
 }
 
 .concordance-distribution-row:hover td {
-  background: var(--cw-interaction-bg-hover);
+  background: var(--cw-result-table-hover-surface);
 }
 
 .concordance-distribution-heading {
@@ -5169,10 +5186,12 @@ main {
 .concordance-distribution-table td:nth-child(n + 2) {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  font-weight: 400;
 }
 
 .concordance-distribution-file {
   overflow: hidden;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -5193,7 +5212,7 @@ main {
   height: 6px;
   overflow: hidden;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--border-color) 70%, transparent);
+  background: var(--cw-result-table-track);
 }
 
 .concordance-distribution-rate-bar {
@@ -5201,7 +5220,7 @@ main {
   width: var(--distribution-rate-width, 0%);
   height: 100%;
   border-radius: inherit;
-  background: var(--accent-color);
+  background: var(--cw-result-table-bar);
   opacity: 0.72;
 }
 
@@ -5243,9 +5262,6 @@ main {
 .concordance-collocations-table-wrap {
   max-width: none;
   overflow: visible;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
 }
 
 .concordance-collocations-inspection-hint {
@@ -5283,6 +5299,7 @@ main {
 .concordance-collocations-table > tbody > tr.concordance-collocation-row > td {
   padding: 5px 7px;
   border: 0;
+  border-bottom: 1px solid var(--cw-result-table-separator);
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
@@ -5290,11 +5307,12 @@ main {
 }
 
 .concordance-collocations-table > thead > tr > th {
-  background: transparent;
-  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
-  color: var(--text-muted);
+  background: var(--cw-result-table-header-surface);
+  border-bottom: 1px solid var(--cw-result-table-separator);
+  color: var(--cw-result-table-header-text);
+  font-family: var(--cw-font-ui);
   font-size: 0.76rem;
-  font-weight: 550;
+  font-weight: 500;
   line-height: 1.25;
   text-align: left;
   white-space: normal;
@@ -5304,6 +5322,7 @@ main {
 .concordance-collocations-table > tbody > tr.concordance-collocation-row > td:nth-child(n + 2) {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  font-weight: 400;
 }
 
 .concordance-collocations-table > thead > tr > th:nth-child(n + 5),
@@ -5334,12 +5353,12 @@ main {
 }
 
 .concordance-collocation-row:nth-child(even) td {
-  background: var(--cw-surface-subtle);
+  background: var(--cw-result-table-row-alt-surface);
 }
 
 .concordance-collocation-row:hover td,
 .concordance-collocation-row:focus-visible td {
-  background: var(--cw-interaction-bg-hover);
+  background: var(--cw-result-table-hover-surface);
 }
 
 .concordance-collocation-row:hover td:first-child::before,
@@ -5354,12 +5373,12 @@ main {
 }
 
 .concordance-collocation-row.is-active td {
-  background: var(--cw-collocate-bg);
+  background: var(--cw-result-table-active-surface);
 }
 
 .concordance-collocation-row.is-active:hover td,
 .concordance-collocation-row.is-active:focus-visible td {
-  background: color-mix(in srgb, var(--cw-collocate-bg) 72%, var(--cw-interaction-bg-hover));
+  background: color-mix(in srgb, var(--cw-result-table-active-surface) 72%, var(--cw-result-table-hover-surface));
 }
 
 .concordance-collocation-row:focus-visible {
@@ -5384,8 +5403,8 @@ main {
 
 .concordance-collocate-evidence-row > .concordance-collocate-evidence-cell {
   padding: 0;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-color);
+  border-bottom: 1px solid var(--cw-result-table-separator);
+  background: var(--cw-result-table-active-surface);
   text-align: left;
   font-variant-numeric: normal;
   overflow: visible;
@@ -5460,8 +5479,8 @@ main {
   padding: 0;
   border: 0;
   color: var(--text-color);
-  font-family: var(--cw-font-mono);
-  font-weight: 650;
+  font-family: var(--cw-font-ui);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -5474,7 +5493,7 @@ main {
 .concordance-collocate-evidence-relation-connector {
   flex: 0 0 auto;
   color: var(--text-muted);
-  font-family: var(--cw-font-mono);
+  font-family: var(--cw-font-ui);
   font-size: 0.72rem;
 }
 
@@ -5558,7 +5577,7 @@ main {
   max-width: 900px;
   margin: 0;
   color: var(--text-muted);
-  font-family: var(--cw-font-mono);
+  font-family: var(--cw-font-ui);
   font-size: 0.82rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -5582,7 +5601,7 @@ main {
 .concordance-collocate-evidence-snippet {
   min-width: 0;
   color: var(--text-muted);
-  font-family: var(--cw-font-mono);
+  font-family: var(--cw-font-ui);
   font-size: 0.82rem;
   line-height: 1.45;
   white-space: normal;
@@ -5669,7 +5688,7 @@ main {
   height: 6px;
   margin-left: 8px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--border-color) 62%, transparent);
+  background: var(--cw-result-table-track);
   vertical-align: middle;
 }
 
@@ -5679,7 +5698,7 @@ main {
   bottom: 0;
   width: var(--bar-width, 0%);
   border-radius: inherit;
-  background: var(--accent-color);
+  background: var(--cw-result-table-bar);
   opacity: 0.72;
 }
 

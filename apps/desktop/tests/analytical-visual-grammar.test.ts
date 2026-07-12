@@ -56,27 +56,27 @@ const kwicHeader = html.slice(
 assert.equal(kwicHeader.match(/<th(?:\s|>)/g)?.length, 4);
 assert(!styles.includes(".concordance-table-head {\n  position: sticky;"));
 assert(
-  styles.includes(".concordance-table-wrap {\n  max-height: none;\n  overflow: clip;\n  border: 0;\n  border-radius: 0;\n  background: transparent;")
-    && styles.includes(".concordance-table-wrap,\n.concordance-collocations-table-wrap,\n.concordance-distribution-table-wrap {\n  border: 1px solid var(--border-color);\n  border-radius: 4px;\n  background: var(--bg-color);"),
-  "KWIC wrapper should override to transparent, matching the Collocates/Distribution result-table surface",
+  html.includes('class="concordance-table-wrap cw-result-table-wrap"')
+    && html.includes('class="concordance-collocations-table-wrap cw-result-table-wrap"'),
+  "KWIC and Collocates wrappers should consume the shared result-table shell",
 );
 assert(
-  styles.includes(".concordance-collocations-table-wrap {\n  max-width: none;\n  overflow: visible;\n  border: 0;\n  border-radius: 0;\n  background: transparent;"),
-  "Collocates wrapper should also override to transparent",
+  styles.includes(".concordance-table-wrap,\n.concordance-collocations-table-wrap,\n.concordance-distribution-table-wrap {\n  border: 1px solid var(--cw-result-table-border);\n  border-radius: 4px;\n  background: var(--cw-result-table-surface);"),
+  "Concordance table wrappers should use the shared border and surface tokens",
 );
 assert(
-  styles.includes(".concordance-table th {\n  height: 22px;\n  background: transparent;")
-    && styles.includes(".concordance-collocations-table > thead > tr > th {\n  background: transparent;"),
-  "KWIC and Collocates headers must share a transparent background",
+  styles.includes(".concordance-table th {\n  height: 22px;\n  background: var(--cw-result-table-header-surface);")
+    && styles.includes(".concordance-collocations-table > thead > tr > th {\n  background: var(--cw-result-table-header-surface);"),
+  "KWIC and Collocates headers must share the result-table header surface",
 );
 assert(
-  styles.includes(".concordance-table th {\n  height: 22px;\n  background: transparent;\n  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);")
-    && styles.includes(".concordance-collocations-table > thead > tr > th {\n  background: transparent;\n  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);"),
-  "KWIC and Collocates header separators must use the same border-color opacity",
+  styles.includes(".concordance-table th {\n  height: 22px;\n  background: var(--cw-result-table-header-surface);\n  border-bottom: 1px solid var(--cw-result-table-separator);")
+    && styles.includes(".concordance-collocations-table > thead > tr > th {\n  background: var(--cw-result-table-header-surface);\n  border-bottom: 1px solid var(--cw-result-table-separator);"),
+  "KWIC and Collocates header separators must share the semantic separator",
 );
 assert(
-  styles.includes(".concordance-row:nth-of-type(even) td {\n  background: var(--cw-surface-subtle);")
-    && styles.includes(".concordance-collocation-row:nth-child(even) td {\n  background: var(--cw-surface-subtle);"),
+  styles.includes(".concordance-row:nth-of-type(even) td {\n  background: var(--cw-result-table-row-alt-surface);")
+    && styles.includes(".concordance-collocation-row:nth-child(even) td {\n  background: var(--cw-result-table-row-alt-surface);"),
   "KWIC and Collocates zebra rows must use the same surface token",
 );
 assert(
@@ -93,8 +93,8 @@ assert.match(
 for (const label of ["Window", "Sort 1", "Sort 2", "Sort 3", "Rows", "Span", "Direction", "Measure", "Min co-occurrence", "Min corpus frequency", "Stopwords"]) {
   assert(new RegExp(`<span[^>]*>[^<]*(?:<i[^>]*></i>)?${label}</span>`).test(html), `${label} must remain visible`);
 }
-assert.match(html, /<p id="concordance-lines-stats" class="concordance-card-stats">/);
-assert.match(html, /<p id="concordance-collocates-stats" class="concordance-card-stats">/);
+assert.match(html, /<p id="concordance-lines-stats" class="concordance-card-stats cw-result-table-note">/);
+assert.match(html, /<p id="concordance-collocates-stats" class="concordance-card-stats cw-result-table-note">/);
 assert(!html.includes('data-concordance-card-action="controls"'), "stats must not trigger hidden controls");
 
 const executeStart = state.indexOf("export async function executeConcordanceSharedRequest(");
