@@ -1,0 +1,58 @@
+/* Overview figure palette roles. Theme mode inherits the complete active theme;
+   alternate modes remap meaning without introducing per-figure colour ownership. */
+:where([data-figure-palette="theme"], [data-figure-palette="colorBlind"], [data-figure-palette="monochrome"]) {
+  --cw-plot-observed: var(--cw-plot-point);
+  --cw-plot-reference: var(--cw-plot-fit);
+  --cw-plot-selected: var(--cw-plot-ramp-4);
+  --cw-plot-attention: var(--cw-plot-ramp-5);
+  --cw-plot-density-0: var(--cw-plot-ramp-0);
+  --cw-plot-density-1: var(--cw-plot-ramp-1);
+  --cw-plot-density-2: var(--cw-plot-ramp-2);
+  --cw-plot-density-3: var(--cw-plot-ramp-3);
+  --cw-plot-density-4: var(--cw-plot-ramp-4);
+  --cw-plot-density-5: var(--cw-plot-ramp-5);
+  --cw-plot-composition-0: var(--cw-plot-ramp-0);
+  --cw-plot-composition-1: var(--cw-plot-ramp-1);
+  --cw-plot-composition-2: var(--cw-plot-ramp-2);
+  --cw-plot-composition-3: var(--cw-plot-ramp-3);
+  --cw-plot-composition-4: var(--cw-plot-ramp-4);
+  --cw-plot-composition-5: var(--cw-plot-ramp-5);
+  --cw-plot-witness-core: var(--cw-plot-ramp-1);
+  --cw-plot-witness-loud-local: var(--cw-plot-ramp-5);
+  --cw-plot-witness-quiet-even: var(--cw-plot-ramp-3);
+  --cw-plot-witness-rare-local: var(--cw-plot-ramp-4);
+}
+
+[data-figure-palette="colorBlind"] {
+  --cw-plot-observed: var(--accent-color);
+  --cw-plot-reference: var(--cw-warning-text);
+  --cw-plot-selected: var(--cw-category-mixed-text);
+  --cw-plot-attention: var(--cw-danger-text);
+  --cw-plot-witness-core: var(--accent-color);
+  --cw-plot-witness-loud-local: var(--cw-warning-text);
+  --cw-plot-witness-quiet-even: var(--cw-category-mixed-text);
+  --cw-plot-witness-rare-local: var(--cw-danger-text);
+}
+
+[data-figure-palette="monochrome"] {
+  --cw-plot-observed: var(--text-color);
+  --cw-plot-reference: var(--text-muted);
+  --cw-plot-selected: var(--text-color);
+  --cw-plot-attention: var(--text-color);
+  --cw-plot-density-0: var(--text-muted);
+  --cw-plot-density-1: var(--text-muted);
+  --cw-plot-density-2: var(--text-color);
+  --cw-plot-density-3: var(--text-color);
+  --cw-plot-density-4: var(--text-color);
+  --cw-plot-density-5: var(--text-color);
+  --cw-plot-composition-0: var(--text-muted);
+  --cw-plot-composition-1: var(--text-muted);
+  --cw-plot-composition-2: var(--text-color);
+  --cw-plot-composition-3: var(--text-color);
+  --cw-plot-composition-4: var(--text-color);
+  --cw-plot-composition-5: var(--text-color);
+  --cw-plot-witness-core: var(--text-color);
+  --cw-plot-witness-loud-local: var(--text-color);
+  --cw-plot-witness-quiet-even: var(--text-color);
+  --cw-plot-witness-rare-local: var(--text-color);
+}

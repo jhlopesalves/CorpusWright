@@ -32,6 +32,7 @@ const expectedModules = [
   "features/repeated-artifacts.css",
   "features/settings.css",
   "foundations/theme-overrides.css",
+  "foundations/figure-palettes.css",
   "layout/responsive.css",
 ];
 

@@ -78,7 +78,7 @@ assert.match(figureSource, /\.cw-plot-crosshair-x, \.cw-plot-crosshair-y, \.cw-p
 assert.match(figureSource, /transient\.remove\(\)/);
 assert.match(figureSource, /target\.removeAttribute\("tabindex"\)/);
 assert.match(figureSource, /\^\(\?:--cw-plot-stagger\|animation\|animation-delay\|transition\)/);
-assert.match(figureSource, /decorateFigureSvg\(exportedSvg, options\);[\s\S]*serializeSvgWithResolvedTokens\(exportedSvg\)/);
+assert.match(figureSource, /decorateFigureSvg\(exportedSvg, exportOptions\(figure, options\)\);[\s\S]*serializeSvgWithResolvedTokens\(exportedSvg\)/);
 assert.match(figureSource, /document\.createElementNS\(SVG_NS, "title"\)/);
 assert.match(figureSource, /document\.createElementNS\(SVG_NS, "desc"\)/);
 assert.match(figureSource, /aria-labelledby/);
@@ -97,6 +97,7 @@ for (const property of [
   "font-family",
   "font-size",
   "font-weight",
+  "font-variant-numeric",
   "stroke-linecap",
   "stroke-linejoin",
   "stop-color",

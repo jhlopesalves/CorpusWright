@@ -12,6 +12,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 
 import { dom } from "../dom";
+import {
+  figurePaletteLabel,
+  type FigureControlState,
+  type OverviewFigureController,
+} from "./figure-workbench";
 
 const FIGURE_COLLAPSE_STORAGE_KEY = "corpuswright.overview.figureCollapse";
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -30,6 +35,9 @@ export interface OverviewFigureOptions {
   captionDetail?: string;
   captionReading: string;
   controls?: HTMLElement;
+  explanation?: HTMLElement;
+  controller?: OverviewFigureController<FigureControlState>;
+  exportMetadata?: () => string[];
   renderSvg: () => SVGSVGElement;
 }
 
@@ -92,13 +100,23 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
   const collapseLabel = document.createElement("span");
   collapseLabel.textContent = "Collapse";
   collapseButton.appendChild(collapseLabel);
-  actions.append(exportButton, collapseButton);
+  const clearPinsButton = document.createElement("button");
+  clearPinsButton.type = "button";
+  clearPinsButton.className = "cw-overview-figure-action cw-overview-figure-clear-pins";
+  clearPinsButton.textContent = "Clear pins";
+  clearPinsButton.hidden = !(options.controller?.pins.size);
+  actions.append(clearPinsButton, exportButton, collapseButton);
   header.append(titleBlock, actions);
 
   const body = document.createElement("div");
   body.className = "cw-overview-figure-body";
   body.dataset.figureSvgMount = "true";
   replaceFigureSvgElement(body, initialSvg);
+  clearPinsButton.addEventListener("click", () => {
+    options.controller?.clearPins();
+    replaceFigureSvgElement(body, options.renderSvg());
+    syncClearPinsAction(clearPinsButton, options.controller);
+  });
 
   const caption = document.createElement("figcaption");
   caption.className = "cw-overview-figure-caption";
@@ -112,6 +130,9 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
   reading.textContent = options.captionReading;
   if (detail) caption.append(detail);
   caption.append(reading);
+
+  const explanation = options.explanation;
+  if (explanation) explanation.classList.add("cw-overview-figure-explanation");
 
   const collapsed = readCollapsedFigures().has(options.id);
   setFigureCollapsed(figure, collapseButton, collapseLabel, options.title, collapsed);
@@ -127,7 +148,17 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
 
   exportButton.addEventListener("click", () => void saveFigureSvg(figure, options.id));
 
+  figure.addEventListener("cw-plot-pin-toggle", (event) => {
+    if (!(event instanceof CustomEvent) || typeof event.detail?.key !== "string") return;
+    const controller = options.controller;
+    if (!controller) return;
+    controller.togglePin(event.detail.key);
+    replaceFigureSvgElement(body, options.renderSvg());
+    syncClearPinsAction(clearPinsButton, controller);
+  });
+
   figure.append(header, body, caption);
+  if (explanation) figure.appendChild(explanation);
   return figure;
 }
 
@@ -145,6 +176,8 @@ export function replaceFigureSvg(
     refreshFigureText(figure, options);
   }
   replaceFigureSvgElement(mount, svg);
+  const clearPins = figure.querySelector<HTMLButtonElement>(".cw-overview-figure-clear-pins");
+  if (clearPins) syncClearPinsAction(clearPins, options?.controller);
 }
 
 function refreshFigureText(figure: HTMLElement, options: OverviewFigureOptions): void {
@@ -172,6 +205,7 @@ export function createOverviewSegmentedControl<TValue extends string>(
   group.className = "cw-overview-segmented-control";
   group.setAttribute("role", "group");
   group.setAttribute("aria-label", label);
+  group.appendChild(createControlLabel(label));
   for (const option of options) {
     const button = document.createElement("button");
     button.type = "button";
@@ -190,6 +224,103 @@ export function createOverviewSegmentedControl<TValue extends string>(
   return group;
 }
 
+export function createOverviewSelectControl<TValue extends string>(
+  label: string,
+  options: Array<SegmentedControlOption<TValue>>,
+  initialValue: TValue,
+  onChange: (value: TValue) => void,
+): HTMLElement {
+  const field = createControlField(label);
+  const select = document.createElement("select");
+  select.className = "cw-overview-control-select";
+  select.setAttribute("aria-label", label);
+  for (const option of options) {
+    const element = document.createElement("option");
+    element.value = option.value;
+    element.textContent = option.label;
+    element.selected = option.value === initialValue;
+    select.appendChild(element);
+  }
+  select.addEventListener("change", () => onChange(select.value as TValue));
+  field.appendChild(select);
+  return field;
+}
+
+export function createOverviewRangeControl(
+  label: string,
+  options: {
+    minimum: number;
+    maximum: number;
+    step: number;
+    initialValue: number;
+    onInput?: (value: number) => void;
+    onChange: (value: number) => void;
+  },
+): HTMLElement {
+  const field = createControlField(label);
+  field.classList.add("cw-overview-range-control");
+  const range = document.createElement("input");
+  range.type = "range";
+  range.min = String(options.minimum);
+  range.max = String(options.maximum);
+  range.step = String(options.step);
+  range.value = String(options.initialValue);
+  range.setAttribute("aria-label", `${label} slider`);
+  const number = document.createElement("input");
+  number.type = "number";
+  number.min = range.min;
+  number.max = range.max;
+  number.step = range.step;
+  number.value = range.value;
+  number.className = "cw-overview-control-number";
+  number.setAttribute("aria-label", `${label} value`);
+  const clamp = (value: number) => Math.min(options.maximum, Math.max(options.minimum, value));
+  range.addEventListener("input", () => {
+    number.value = range.value;
+    options.onInput?.(Number(range.value));
+  });
+  range.addEventListener("change", () => options.onChange(Number(range.value)));
+  number.addEventListener("change", () => {
+    const value = clamp(Number(number.value));
+    number.value = String(value);
+    range.value = String(value);
+    options.onChange(value);
+  });
+  field.append(range, number);
+  return field;
+}
+
+export function createOverviewToggleControl(
+  label: string,
+  initialValue: boolean,
+  onChange: (value: boolean) => void,
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "cw-overview-figure-action cw-overview-toggle-control";
+  let value = initialValue;
+  const refresh = () => {
+    button.textContent = `${label}: ${value ? "Show" : "Hide"}`;
+    button.setAttribute("aria-pressed", String(value));
+  };
+  refresh();
+  button.addEventListener("click", () => {
+    value = !value;
+    refresh();
+    onChange(value);
+  });
+  return button;
+}
+
+export function createOverviewResetAction(label: string, onReset: () => void): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "cw-overview-figure-action cw-overview-reset-action";
+  button.textContent = label;
+  button.addEventListener("click", onReset);
+  return button;
+}
+
 export function overviewFigureSvgString(figure: HTMLElement): string | null {
   const svg = figure.querySelector<SVGSVGElement>(".cw-plot-svg");
   const options = figureMetadata.get(figure);
@@ -202,11 +333,25 @@ export function overviewFigureSvgString(figure: HTMLElement): string | null {
   exportMount.appendChild(exportedSvg);
   figure.appendChild(exportMount);
   try {
-    decorateFigureSvg(exportedSvg, options);
+    decorateFigureSvg(exportedSvg, exportOptions(figure, options));
     return serializeSvgWithResolvedTokens(exportedSvg);
   } finally {
     exportMount.remove();
   }
+}
+
+function exportOptions(figure: HTMLElement, options: OverviewFigureOptions): OverviewFigureOptions {
+  const metadata = [
+    ...(options.controller?.exportMetadata() ?? []),
+    ...(options.exportMetadata?.() ?? []),
+  ];
+  const palette = figure.closest<HTMLElement>("[data-figure-palette]")?.dataset.figurePalette;
+  if (palette && palette !== "theme") {
+    metadata.push(`palette ${figurePaletteLabel(palette as "colorBlind" | "monochrome")}`);
+  }
+  return metadata.length === 0
+    ? options
+    : { ...options, captionStats: `${options.captionStats} · ${metadata.join(" · ")}` };
 }
 
 function replaceFigureSvgElement(mount: HTMLElement, svg: SVGSVGElement): void {
@@ -226,6 +371,27 @@ function setFigureCollapsed(
   button.title = collapsed ? "Expand figure" : "Collapse figure";
   button.setAttribute("aria-label", collapsed ? `Expand ${title}` : `Collapse ${title}`);
   label.textContent = collapsed ? "Expand" : "Collapse";
+}
+
+function syncClearPinsAction(
+  button: HTMLButtonElement,
+  controller: OverviewFigureController<FigureControlState> | undefined,
+): void {
+  button.hidden = !controller || controller.pins.size === 0;
+}
+
+function createControlLabel(label: string): HTMLSpanElement {
+  const element = document.createElement("span");
+  element.className = "cw-overview-control-label";
+  element.textContent = label;
+  return element;
+}
+
+function createControlField(label: string): HTMLElement {
+  const field = document.createElement("label");
+  field.className = "cw-overview-control-field";
+  field.appendChild(createControlLabel(label));
+  return field;
 }
 
 function decorateFigureSvg(svg: SVGSVGElement, options: OverviewFigureOptions): void {

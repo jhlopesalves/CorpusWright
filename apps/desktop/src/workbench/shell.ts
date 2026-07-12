@@ -24,6 +24,12 @@ import {
   replaceFigureSvg,
 } from "../plots/figure";
 import {
+  applyFigurePalette,
+  readFigurePalette,
+  writeFigurePalette,
+  type FigurePaletteMode,
+} from "../plots/figure-workbench";
+import {
   buildCoverageGeometry,
   buildDispersionGeometry,
   buildDispersionPlaneGeometry,
@@ -592,6 +598,41 @@ function createGlossaryDisclosure(
   return { button, panel };
 }
 
+function createFigureExplanation(...glossaryIds: OverviewGlossaryId[]): HTMLElement {
+  const explanation = document.createElement("div");
+  explanation.className = "cw-overview-figure-teaching";
+  for (const glossaryId of glossaryIds) {
+    const entry = overviewGlossary[glossaryId];
+    const disclosure = createGlossaryDisclosure(
+      glossaryId,
+      undefined,
+      `Explain ${entry.label}`,
+    );
+    explanation.append(disclosure.button, disclosure.panel);
+  }
+  return explanation;
+}
+
+function createFigurePaletteToolbar(root: HTMLElement): HTMLElement {
+  const initial = readFigurePalette();
+  applyFigurePalette(root, initial);
+  const toolbar = createOverviewSegmentedControl<FigurePaletteMode>(
+    "Figure palette",
+    [
+      { value: "theme", label: "Theme" },
+      { value: "colorBlind", label: "Colour-blind safe" },
+      { value: "monochrome", label: "Monochrome / print" },
+    ],
+    initial,
+    (mode) => {
+      applyFigurePalette(root, mode);
+      writeFigurePalette(mode);
+    },
+  );
+  toolbar.classList.add("cw-overview-palette-toolbar");
+  return toolbar;
+}
+
 function createSampleTypesDisclosure(
   sampleTypes: string[],
   sampleTypeCount: number,
@@ -1065,6 +1106,7 @@ function renderLengthHistogramFigure(corpus: AnalysisCorpus): HTMLElement | null
       balance.maximumTokens,
     ),
     captionReading: "Aggregate frequencies inherit the shape of this histogram: a long right tail means a few documents speak with a disproportionate voice.",
+    explanation: createFigureExplanation("distributionDiagnostics"),
     renderSvg: () => renderLengthHistogramSvg(
       "overview-length-histogram",
       buildLengthHistogramGeometry({
@@ -1204,6 +1246,7 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
     controls,
     captionStats: figureStats(),
     captionReading: `${rarity}; hollow points are excluded from the fit.`,
+    explanation: createFigureExplanation("zipfFit"),
     renderSvg,
   });
   return figure;
@@ -1220,6 +1263,7 @@ function renderVocabularyGrowthFigure(corpus: AnalysisCorpus): HTMLElement {
     subtitle: "Heaps-law shape from stable source-order checkpoints.",
     captionStats: `k ${formatOptionalFixed(growth.heapsK, 3)} · beta ${formatOptionalFixed(growth.heapsBeta, 3)} · R-squared ${formatOptionalFixed(growth.rSquared, 3)}`,
     captionReading: `Each doubling of tokens yields ~${betaYield} more types; stable source order, not a ceiling.`,
+    explanation: createFigureExplanation("heapsFit"),
     renderSvg: () => renderVocabularyGrowthSvg(
       "overview-vocabulary-growth",
       buildVocabularyGrowthGeometry({
@@ -1242,6 +1286,7 @@ function renderLexicalSpectrumFigure(corpus: AnalysisCorpus): HTMLElement {
     subtitle: "Exact frequency classes on log-log axes.",
     captionStats: `hapax ${formatNumber(spectrum.hapaxCount)} · dis ${formatNumber(spectrum.disLegomenaCount)} · ${truncation}`,
     captionReading: "Each point is V(f) for one exact integer frequency; bars are avoided because log-scale bar lengths would imply intervals that were not observed.",
+    explanation: createFigureExplanation("exactLexicalSpectrum"),
     renderSvg: () => renderLexicalSpectrumSvg(
       "overview-lexical-spectrum",
       buildLexicalSpectrumGeometry({
@@ -1268,6 +1313,7 @@ function renderMattrDistributionFigure(corpus: AnalysisCorpus): HTMLElement | nu
       spectrum.mattrWindow,
     ),
     captionReading: distribution.reading,
+    explanation: createFigureExplanation("mattr", "distributionDiagnostics"),
     renderSvg: () => renderMattrDistributionSvg(
       "overview-mattr-distribution",
       buildMattrDistributionGeometry({
@@ -1293,6 +1339,7 @@ function renderCoverageFigure(corpus: AnalysisCorpus): HTMLElement {
     subtitle: "Token mass carried by the top-ranked vocabulary.",
     captionStats: `top 10 ${formatOptionalPercent(concentration.top10Coverage)} · top 100 ${formatOptionalPercent(concentration.top100Coverage)} · top 1,000 ${formatOptionalPercent(concentration.top1000Coverage)} · top 10,000 ${formatOptionalPercent(concentration.top10000Coverage)}`,
     captionReading: `${tenTypes}; ${halfPhrase}.`,
+    explanation: createFigureExplanation("topNCoverage"),
     renderSvg: () => renderCoverageSvg(
       "overview-cumulative-coverage",
       buildCoverageGeometry({
@@ -1320,6 +1367,7 @@ function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
       dispersion.dfAtLeast90pctCount,
     ),
     captionReading: dispersion.reading,
+    explanation: createFigureExplanation("documentFrequencySpectrum", "griesDp"),
     renderSvg: () => renderDispersionSvg(
       "overview-dispersion-profile",
       buildDispersionGeometry({
@@ -1385,6 +1433,7 @@ function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null
       plane.highDispersionThreshold,
     ),
     captionReading: plane.reading,
+    explanation: createFigureExplanation("dispersionPlaneDensity", "griesDp"),
     renderSvg,
   });
   return figure;
@@ -1439,6 +1488,7 @@ function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | nul
     controls,
     captionStats: captionStats(),
     captionReading: "Frequent is not the same as general: rows to the right of the line are loud in few places.",
+    explanation: createFigureExplanation("griesDp"),
     renderSvg,
   });
   return figure;
@@ -1857,7 +1907,10 @@ function renderCorpusOverview(): void {
     return;
   }
 
+  const paletteToolbar = createFigurePaletteToolbar(dom.analyseOverview);
+
   dom.analyseOverview.append(
+    paletteToolbar,
     renderCorpusReading(corpus),
     renderAnalysisPopulation(corpus),
     renderDocumentBalance(corpus),

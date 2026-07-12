@@ -23,6 +23,12 @@
   pointer-events: none;
 }
 
+.cw-plot-composition-label.is-below {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-ui);
+  font-weight: var(--cw-weight-regular);
+}
+
 .cw-plot-quadrant-pill-bg {
   fill: var(--panel-bg);
   opacity: 0.86;
@@ -47,6 +53,22 @@
   fill: var(--text-muted);
   font-size: var(--cw-type-plot-tooltip-size);
   pointer-events: none;
+}
+
+.cw-plot-label.is-pinned {
+  fill: var(--text-color);
+  font-weight: var(--cw-weight-semibold);
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.cw-plot-label-leader {
+  stroke: var(--text-muted);
+  stroke-opacity: 0.62;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
 }
 
 .cw-plot-label-muted,
@@ -105,15 +127,35 @@
 }
 
 .cw-plot-legend-swatch.cw-plot-fit-line {
-  stroke: var(--cw-plot-fit);
+  stroke: var(--cw-plot-reference);
 }
 
 .cw-plot-legend-swatch.is-dashed {
   stroke-dasharray: 4 3;
 }
 
+.cw-plot-legend-swatch.is-hollow {
+  fill: var(--panel-bg);
+}
+
+.cw-plot-density-legend-step.cw-plot-ramp-0 { fill: var(--cw-plot-density-0); }
+.cw-plot-density-legend-step.cw-plot-ramp-1 { fill: var(--cw-plot-density-1); }
+.cw-plot-density-legend-step.cw-plot-ramp-2 { fill: var(--cw-plot-density-2); }
+.cw-plot-density-legend-step.cw-plot-ramp-3 { fill: var(--cw-plot-density-3); }
+.cw-plot-density-legend-step.cw-plot-ramp-4 { fill: var(--cw-plot-density-5); }
+
+.cw-plot-legend-swatch.is-composition {
+  fill: var(--cw-plot-composition-3);
+  stroke: var(--panel-bg);
+}
+
+.cw-plot-legend-swatch.is-threshold {
+  stroke: var(--cw-plot-attention);
+  stroke-dasharray: 4 3;
+}
+
 .cw-plot-legend-label {
   fill: var(--text-muted);
-  font-family: var(--cw-font-mono);
+  font-family: var(--cw-font-ui);
   font-size: var(--cw-type-plot-tick-size);
 }

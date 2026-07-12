@@ -25,16 +25,17 @@
 
 .cw-plot-tick-label {
   fill: var(--text-muted);
-  font-family: var(--cw-font-mono);
+  font-family: var(--cw-font-ui);
   font-size: var(--cw-type-plot-tick-size);
+  font-variant-numeric: tabular-nums;
 }
 
 .cw-plot-axis-title {
   fill: var(--text-muted);
+  font-family: var(--cw-font-ui);
   font-size: var(--cw-type-plot-label-size);
   font-weight: var(--cw-weight-semibold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .cw-plot-threshold-line {

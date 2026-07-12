@@ -1,5 +1,7 @@
 export type PlotScaleKind = "linear" | "log";
 export type PlotAnchor = "start" | "middle" | "end";
+export type PlotPointShape = "circle" | "square" | "diamond" | "triangle";
+export type PlotLegendKind = "line" | "point" | "density" | "composition" | "threshold";
 
 export interface PlotMargin {
   top: number;
@@ -38,6 +40,9 @@ export interface PlotLegendItem {
   label: string;
   className?: string;
   dashed?: boolean;
+  kind?: PlotLegendKind;
+  shape?: PlotPointShape;
+  hollow?: boolean;
 }
 
 export interface PlotPointGeometry<TDatum = unknown> {
@@ -53,6 +58,10 @@ export interface PlotPointGeometry<TDatum = unknown> {
   label?: string;
   tooltipTitle?: string;
   tooltipRows?: string[];
+  shape?: PlotPointShape;
+  key?: string;
+  pinned?: boolean;
+  ariaLabel?: string;
 }
 
 export interface PlotLabelGeometry {
@@ -63,6 +72,10 @@ export interface PlotLabelGeometry {
   className?: string;
   lines?: string[];
   fontSize?: number;
+  key?: string;
+  pinned?: boolean;
+  priority?: number;
+  leader?: PlotLineGeometry;
 }
 
 export interface LabelBox {
@@ -93,6 +106,41 @@ export interface LabelPlacementRequest {
   className?: string;
   lines?: string[];
   fontSize?: number;
+  key?: string;
+  pinned?: boolean;
+  priority?: number;
+}
+
+export interface CompositionStripDatum {
+  key: string;
+  label: string;
+  count: number;
+  rampIndex: number;
+  className?: string;
+}
+
+export interface CompositionStripSegmentGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  datum: CompositionStripDatum;
+  share: number;
+  label: string | null;
+  labelBelow: boolean;
+  tooltipTitle: string;
+  tooltipRows: string[];
+  pinned: boolean;
+}
+
+export interface CompositionStripGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  total: number;
+  compact: boolean;
+  segments: CompositionStripSegmentGeometry[];
 }
 
 export type LabelObstacle =
@@ -120,6 +168,10 @@ export interface PlotBarGeometry<TDatum = unknown> {
   datum: TDatum;
   tooltipTitle?: string;
   tooltipRows?: string[];
+  key?: string;
+  pinned?: boolean;
+  className?: string;
+  ariaLabel?: string;
 }
 
 export interface PlotBracketGeometry {
@@ -401,10 +453,10 @@ export interface MattrDistributionGeometry {
 export const DEFAULT_PLOT_WIDTH = 720;
 export const DEFAULT_PLOT_HEIGHT = 360;
 export const DEFAULT_PLOT_MARGIN: PlotMargin = {
-  top: 28,
-  right: 34,
-  bottom: 54,
-  left: 72,
+  top: 32,
+  right: 40,
+  bottom: 60,
+  left: 76,
 };
 
 const LOG_MINIMUM = 1e-9;
@@ -553,10 +605,17 @@ export function placeLabels(
   labels: LabelPlacementRequest[],
   obstacles: LabelObstacle[],
   bounds: LabelBounds,
+  maximumLabels = Number.POSITIVE_INFINITY,
 ): PlotLabelGeometry[] {
   const placed: PlotLabelGeometry[] = [];
   const activeObstacles = [...obstacles];
-  for (const label of labels) {
+  const rankedLabels = labels
+    .map((label, index) => ({ label, index }))
+    .sort((left, right) => Number(Boolean(right.label.pinned)) - Number(Boolean(left.label.pinned))
+      || (right.label.priority ?? 0) - (left.label.priority ?? 0)
+      || left.index - right.index)
+    .slice(0, Math.max(0, maximumLabels));
+  for (const { label } of rankedLabels) {
     let chosen: PlotLabelGeometry | null = null;
     let fallback: { label: PlotLabelGeometry; score: number } | null = null;
     for (const candidate of label.candidates) {
@@ -580,10 +639,93 @@ export function placeLabels(
       dy: 0,
       anchor: "start",
     });
-    placed.push(placedLabel);
-    activeObstacles.push({ kind: "box", box: estimateLabelBox(placedLabel) });
+    const displacement = Math.hypot(placedLabel.x - label.x, placedLabel.y - label.y);
+    const withPolicy: PlotLabelGeometry = {
+      ...placedLabel,
+      key: label.key,
+      pinned: label.pinned,
+      priority: label.priority,
+      leader: displacement >= 24
+        ? {
+            x1: label.x,
+            y1: label.y,
+            x2: placedLabel.x,
+            y2: placedLabel.y,
+            className: "cw-plot-label-leader",
+          }
+        : undefined,
+    };
+    placed.push(withPolicy);
+    activeObstacles.push({ kind: "box", box: estimateLabelBox(withPolicy) });
   }
   return placed;
+}
+
+export function buildCompositionStripGeometry(options: {
+  segments: CompositionStripDatum[];
+  total: number;
+  x: number;
+  y: number;
+  width: number;
+  height?: number;
+  compact?: boolean;
+  pinnedKeys?: ReadonlySet<string>;
+}): CompositionStripGeometry {
+  if (options.segments.length < 2 || options.segments.length > 6) {
+    throw new RangeError("Composition strips require between two and six segments");
+  }
+  if (options.total < 0 || options.segments.some((segment) => segment.count < 0)) {
+    throw new RangeError("Composition strip counts must be non-negative");
+  }
+  const suppliedTotal = options.segments.reduce((sum, segment) => sum + segment.count, 0);
+  if (suppliedTotal !== options.total) {
+    throw new RangeError(`Composition strip segments total ${suppliedTotal}, expected ${options.total}`);
+  }
+  const height = options.height ?? 24;
+  let cursor = options.x;
+  const segments = options.segments.map((datum, index) => {
+    const share = options.total === 0 ? 0 : datum.count / options.total;
+    const width = index + 1 === options.segments.length
+      ? options.x + options.width - cursor
+      : options.width * share;
+    const labelBelow = Boolean(options.compact) || width < 92;
+    const segment: CompositionStripSegmentGeometry = {
+      x: cursor,
+      y: options.y,
+      width,
+      height,
+      datum,
+      share,
+      label: width >= 34 ? `${Math.round(share * 100)}%` : null,
+      labelBelow,
+      tooltipTitle: datum.label,
+      tooltipRows: [
+        `${formatInteger(datum.count)} of ${formatInteger(options.total)}`,
+        formatPercent(share),
+      ],
+      pinned: options.pinnedKeys?.has(datum.key) ?? false,
+    };
+    cursor += width;
+    return segment;
+  });
+  return {
+    x: options.x,
+    y: options.y,
+    width: options.width,
+    height,
+    total: options.total,
+    compact: Boolean(options.compact),
+    segments,
+  };
+}
+
+export function pointShapeArea(shape: PlotPointShape): number {
+  switch (shape) {
+    case "circle": return Math.PI * 4.3 ** 2;
+    case "square": return 7.6 ** 2;
+    case "diamond": return 10.8 * 10.8 / 2;
+    case "triangle": return 11.6 * 10 / 2;
+  }
 }
 
 export function placeAxisTickLabels(

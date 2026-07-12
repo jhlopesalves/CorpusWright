@@ -83,7 +83,7 @@ const contrastOutput = execFileSync("node", ["scripts/check-theme-contrast.mjs"]
   cwd: desktopRoot,
   encoding: "utf8",
 });
-assert.match(contrastOutput, /exactly 16 complete themes \(42 checks each\)/);
+assert.match(contrastOutput, /exactly 16 complete themes \(42 base checks and 36 theme × palette role checks each\)/);
 const visualOutput = execFileSync("node", ["scripts/check-visual-contracts.mjs"], {
   cwd: desktopRoot,
   encoding: "utf8",

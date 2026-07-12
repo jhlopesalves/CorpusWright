@@ -47,6 +47,11 @@
   transform: scale(1.15);
 }
 
+.cw-plot-hover-target[aria-pressed="true"]:focus-visible {
+  outline: none;
+  filter: drop-shadow(0 0 3px var(--cw-plot-selected));
+}
+
 .cw-plot-density-cell.cw-plot-hover-target:hover,
 .cw-plot-density-cell.cw-plot-hover-target:focus,
 .cw-plot-bar.cw-plot-hover-target:hover,
