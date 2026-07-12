@@ -3,9 +3,9 @@
   .cols,
   .principle-list,
   .doc-grid,
-  .card-grid-2 { grid-template-columns: 1fr; }
+  .card-grid-2 { grid-template-columns: minmax(0, 1fr); }
   .nav { flex-wrap: wrap; row-gap: 10px; }
-  .nav-links { gap: 14px; flex-wrap: wrap; row-gap: 10px; }
+  .nav-links { width: 100%; gap: 14px; flex-wrap: wrap; row-gap: 10px; }
   .nav-links a { font-size: 0.9rem; }
   .hero-split { grid-template-columns: 1fr; justify-items: center; text-align: center; }
   .hero-split h1 { white-space: normal; font-size: 1.7rem; }

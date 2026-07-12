@@ -98,3 +98,28 @@ jobs:
       - name: Build frontend
         working-directory: apps/desktop
         run: npm run build
+
+  documentation-site:
+    name: Documentation site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Install site dependencies
+        working-directory: site
+        run: npm ci
+      - name: Install Chromium
+        working-directory: site
+        run: npx playwright install --with-deps chromium
+      - name: Build documentation site
+        run: npm --prefix site run build
+      - name: Test documentation site
+        run: npm --prefix site run test
+      - name: Run documentation quality gate
+        run: npm --prefix site run check
+      - name: Verify committed generated output
+        run: npm --prefix site run check:generated
