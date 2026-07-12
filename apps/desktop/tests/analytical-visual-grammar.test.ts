@@ -43,7 +43,7 @@ assert.match(
   /id="concordance-collocates-controls" class="concordance-card-controls concordance-collocation-controls">/,
 );
 for (const label of ["Window", "Sort 1", "Sort 2", "Sort 3", "Rows", "Span", "Direction", "Measure", "Min co-occurrence", "Min corpus frequency", "Stopwords"]) {
-  assert(html.includes(`<span>${label}</span>`), `${label} must remain visible`);
+  assert(new RegExp(`<span[^>]*>[^<]*(?:<i[^>]*></i>)?${label}</span>`).test(html), `${label} must remain visible`);
 }
 assert.match(html, /<p id="concordance-lines-stats" class="concordance-card-stats">/);
 assert.match(html, /<p id="concordance-collocates-stats" class="concordance-card-stats">/);
@@ -91,9 +91,9 @@ assert(!styles.includes("min-width: 1040px"));
 assert(!styles.includes("text-decoration-style: double;"));
 assert(!styles.includes("text-decoration-style: dotted;"));
 
-assert.deepEqual(concordanceContextSortLevels("left2", 5, 5).left, [null, null, 3, 1, 2]);
-assert.deepEqual(concordanceContextSortLevels("right2", 5, 5).right, [2, 1, 3, null, null]);
-assert.deepEqual(concordanceContextSortLevels("filePosition", 3, 3), {
+assert.deepEqual(concordanceContextSortLevels(["left2", "left1", "left3"], 5, 5).left, [null, null, 3, 1, 2]);
+assert.deepEqual(concordanceContextSortLevels(["right2", "right1", "right3"], 5, 5).right, [2, 1, 3, null, null]);
+assert.deepEqual(concordanceContextSortLevels(["filePosition"], 3, 3), {
   left: [null, null, null],
   right: [null, null, null],
 });

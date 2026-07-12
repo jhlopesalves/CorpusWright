@@ -16,7 +16,7 @@ import {
   CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,
   CONCORDANCE_SORT_OPTIONS,
-  DEFAULT_CONCORDANCE_SORT_KEY,
+  DEFAULT_CONCORDANCE_SORT_KEYS,
   clampConcordanceCollocationFloor,
   clampConcordanceCollocationSpan,
   clampConcordancePageSize,
@@ -42,7 +42,6 @@ import {
   concordancePositionGlyphAccessibleText,
   concordanceRowExpansionKey,
   concordanceRowText,
-  concordanceSortKeyForLevel,
   concordanceSortLabel,
   concordanceSortSequence,
   concordanceSummaryMetricsText,
@@ -75,7 +74,7 @@ assert(clampConcordanceCollocationSpan(Number.NaN) === 5, "Invalid collocation s
 assert(clampConcordanceCollocationSpan(24) === 20, "Collocation spans should be capped");
 assert(clampConcordanceCollocationFloor(-1) === 5, "Invalid collocation floors should fall back");
 assert(clampConcordanceCollocationFloor(3.8) === 3, "Collocation floors should use whole counts");
-assert(DEFAULT_CONCORDANCE_SORT_KEY === "filePosition", "Default sort should be file/position");
+assertDeepEqual(DEFAULT_CONCORDANCE_SORT_KEYS, ["right1", "right2", "right3"], "Default sort should be 1R / 2R / 3R");
 assert(CONCORDANCE_DEFAULT_WINDOW === 10, "Default KWIC context should be ten tokens per side");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_MEASURE === "logDice", "Default collocation measure should be logDice");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY === "association", "Default collocation sort should be association");
@@ -110,31 +109,20 @@ assert(CONCORDANCE_EXPANSION_WINDOW === 40, "Expansion should request the defaul
 assert(concordanceSortLabel("left1") === "1L", "Left sort labels should use KWIC shorthand");
 assert(concordanceSortLabel("right3") === "3R", "Right sort labels should use KWIC shorthand");
 assertDeepEqual(
-  concordanceSortSequence("right1"),
-  ["right1", "right2", "right3"],
-  "The three visible controls should expose the backend's primary, secondary, and tertiary sequence",
+  concordanceSortSequence("right3", "right2", "right1"),
+  ["right3", "right2", "right1"],
+  "The three visible controls should compile into their exact explicit order",
 );
-assertDeepEqual(concordanceSortSequence("filePosition"), []);
-assert(
-  concordanceSortKeyForLevel("right1", "right1", 2) === "right2",
-  "Choosing 1R as Sort 2 should select the supported sequence with 1R second",
-);
-assert(
-  concordanceSortKeyForLevel("right1", "right1", 3) === "right3",
-  "Choosing 1R as Sort 3 should select the supported sequence with 1R third",
-);
+assertDeepEqual(concordanceSortSequence("filePosition", "right1", "right2"), ["filePosition"]);
+assertDeepEqual(concordanceSortSequence("node", "left1", "left2"), ["node"]);
+assertDeepEqual(concordanceSortSequence("right1", "right1", "right2"), ["right1", "right2"]);
 assertDeepEqual(
-  concordanceContextSortLevels("left1", 5, 5).left,
-  [null, null, 3, 2, 1],
-  "left1 should colour L1, L2, L3 from the end of left context",
+  concordanceContextSortLevels(["left1", "left3", "right2"], 5, 5),
+  { left: [null, null, 2, null, 1], right: [null, 3, null, null, null] },
+  "Only exact selected positions should receive their explicit priority colour",
 );
-assertDeepEqual(concordanceContextSortLevels("left2", 5, 5).left, [null, null, 3, 1, 2]);
-assertDeepEqual(concordanceContextSortLevels("left3", 5, 5).left, [null, null, 1, 2, 3]);
-assertDeepEqual(concordanceContextSortLevels("right1", 5, 5).right, [1, 2, 3, null, null]);
-assertDeepEqual(concordanceContextSortLevels("right2", 5, 5).right, [2, 1, 3, null, null]);
-assertDeepEqual(concordanceContextSortLevels("right3", 5, 5).right, [3, 2, 1, null, null]);
 for (const sort of ["filePosition", "node"] as const) {
-  assertDeepEqual(concordanceContextSortLevels(sort, 3, 3), {
+  assertDeepEqual(concordanceContextSortLevels([sort], 3, 3), {
     left: [null, null, null],
     right: [null, null, null],
   });
@@ -260,7 +248,7 @@ assert(concordanceDistributionMagnitudePercent(80, 40) === 100, "Distribution ba
 assert(concordanceDistributionMagnitudePercent(4, 0) === 0, "Distribution bars should guard an empty maximum");
 const linesStats = concordanceLinesCardStatsText({
   windowTokens: 5,
-  sortKey: "filePosition",
+  sortKeys: ["filePosition"],
   shown: 100,
   totalHits: 8412,
   contextFilter: null,
@@ -272,11 +260,11 @@ assert(
 assert(
   concordanceLinesCardStatsText({
     windowTokens: 9,
-    sortKey: "right2",
+    sortKeys: ["right3", "right2", "right1"],
     shown: 25,
     totalHits: 60,
     contextFilter: "pair",
-  }) === "window 9L–9R · 2R / 1R / 3R · context “pair” · showing 25 of 60",
+  }) === "window 9L–9R · 3R / 2R / 1R · context “pair” · showing 25 of 60",
   "Filtered Lines stats should expose the full sort sequence and local context filter",
 );
 assert(

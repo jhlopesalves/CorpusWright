@@ -14,13 +14,12 @@ import {
   concordanceMiddleEllipsis,
   concordanceRowExpansionKey,
   concordanceRowText,
-  concordanceSortKeyForLevel,
   concordanceSortSequence,
   CONCORDANCE_COLUMNS,
   CONCORDANCE_EXPANSION_WINDOW,
   CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,
-  DEFAULT_CONCORDANCE_SORT_KEY,
+  DEFAULT_CONCORDANCE_SORT_KEYS,
   toggleConcordanceExpansionKey,
   type ConcordanceExpansionStateSnapshot,
   type ConcordanceContextSortKey,
@@ -36,7 +35,7 @@ import {
 } from "./shared";
 
 let concordanceOffset = 0;
-let concordanceSortKey: ConcordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;
+let concordanceSortKeys: ConcordanceSortKey[] = [...DEFAULT_CONCORDANCE_SORT_KEYS];
 let concordanceExpansionKey: string | null = null;
 let concordanceExpansionPending = false;
 let concordanceExpansionFailure: string | null = null;
@@ -54,33 +53,28 @@ function currentConcordancePageSize(): number {
 }
 
 function syncConcordanceSortControls(): void {
-  const sequence = concordanceSortSequence(concordanceSortKey);
-  dom.concordanceSort1Select.value = concordanceSortKey;
-  dom.concordanceSort2Select.value = sequence[1] ?? "";
-  dom.concordanceSort3Select.value = sequence[2] ?? "";
-  const contextual = sequence.length === 3;
+  dom.concordanceSort1Select.value = concordanceSortKeys[0] ?? DEFAULT_CONCORDANCE_SORT_KEYS[0]!;
+  dom.concordanceSort2Select.value = concordanceSortKeys[1] ?? "";
+  dom.concordanceSort3Select.value = concordanceSortKeys[2] ?? "";
+  const contextual = concordanceSortKeys[0] !== "filePosition" && concordanceSortKeys[0] !== "node";
   dom.concordanceSort2Select.disabled = !contextual;
   dom.concordanceSort3Select.disabled = !contextual;
 }
 
-function sortKeyForVisibleLevel(level: 1 | 2 | 3): ConcordanceSortKey {
-  if (level === 1) return dom.concordanceSort1Select.value as ConcordanceSortKey;
-  const selected = (
-    level === 2 ? dom.concordanceSort2Select.value : dom.concordanceSort3Select.value
-  ) as ConcordanceContextSortKey;
-  return concordanceSortKeyForLevel(concordanceSortKey, selected, level);
-}
-
-function currentConcordanceSortKey(): ConcordanceSortKey {
-  return dom.concordanceSort1Select.value as ConcordanceSortKey;
+function currentConcordanceSortKeys(): ConcordanceSortKey[] {
+  return concordanceSortSequence(
+    dom.concordanceSort1Select.value as ConcordanceSortKey,
+    dom.concordanceSort2Select.value as ConcordanceContextSortKey | "",
+    dom.concordanceSort3Select.value as ConcordanceContextSortKey | "",
+  );
 }
 
 export function currentConcordanceLineOffset(): number {
   return concordanceOffset;
 }
 
-export function currentConcordanceLineSortKey(): ConcordanceSortKey {
-  return concordanceSortKey;
+export function currentConcordanceLineSortKeys(): ConcordanceSortKey[] {
+  return [...concordanceSortKeys];
 }
 
 export function currentConcordanceLineWindow(): number {
@@ -99,14 +93,15 @@ export function setConcordanceLineOffset(offset: number): void {
   concordanceOffset = offset;
 }
 
-export function syncConcordanceLineSortKeyFromControl(): ConcordanceSortKey {
-  concordanceSortKey = currentConcordanceSortKey();
-  return concordanceSortKey;
+export function syncConcordanceLineSortKeysFromControl(): ConcordanceSortKey[] {
+  concordanceSortKeys = currentConcordanceSortKeys();
+  syncConcordanceSortControls();
+  return [...concordanceSortKeys];
 }
 
 export function resetConcordanceLinesCorpusState(): void {
   concordanceOffset = 0;
-  concordanceSortKey = DEFAULT_CONCORDANCE_SORT_KEY;
+  concordanceSortKeys = [...DEFAULT_CONCORDANCE_SORT_KEYS];
   concordanceExpansionKey = null;
   concordanceExpansionPending = false;
   concordanceExpansionFailure = null;
@@ -213,7 +208,7 @@ function appendConcordanceKwicCells(
   caseSensitive: boolean,
 ): void {
   const sortLevels = concordanceContextSortLevels(
-    concordanceSortKey,
+    concordanceSortKeys,
     row.leftContext.length,
     row.rightContext.length,
   );
@@ -369,10 +364,6 @@ export function renderConcordanceLines(
   result: ConcordanceResult | null,
   emptyMessage = CONCORDANCE_NO_QUERY_MESSAGE,
 ): void {
-  dom.concordanceSortLegend.classList.toggle(
-    "hidden",
-    concordanceSortKey === "filePosition" || concordanceSortKey === "node",
-  );
   if (!result) {
     renderConcordanceTableState(emptyMessage);
     dom.concordancePagePreviousButton.disabled = true;
@@ -429,7 +420,8 @@ export function showNextConcordancePage(): void {
 }
 
 export function handleConcordanceSortChange(level: 1 | 2 | 3): void {
-  concordanceSortKey = sortKeyForVisibleLevel(level);
+  void level;
+  concordanceSortKeys = currentConcordanceSortKeys();
   syncConcordanceSortControls();
   collapseConcordanceExpansion();
   resetConcordanceLineOffset();

@@ -1030,7 +1030,7 @@ async function refreshCollocateEvidence(
         contextFilter: selection.surface,
         contextFilterDirection: selection.direction,
         caseSensitive: selection.caseSensitive,
-        sortKey: "filePosition",
+        sortKeys: ["filePosition"],
         windowTokens: selection.span,
         offset: 0,
         limit: collocateEvidenceLimit,

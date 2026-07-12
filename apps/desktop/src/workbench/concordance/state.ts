@@ -30,7 +30,7 @@ export interface ConcordanceCardState<TData = unknown> {
 
 export interface ConcordanceLinesLocalState {
   window: number;
-  sort: ConcordanceSortKey;
+  sort: ConcordanceSortKey[];
   pageSize: number;
   offset: number;
   contextFilter: string | null;
@@ -103,7 +103,7 @@ export function createConcordanceWorkbenchState(
     lines: {
       ...cardState(),
       window: CONCORDANCE_DEFAULT_WINDOW,
-      sort: "filePosition",
+      sort: ["right1", "right2", "right3"],
       pageSize: 100,
       offset: 0,
       contextFilter: null,

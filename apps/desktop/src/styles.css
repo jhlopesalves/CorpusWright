@@ -4329,6 +4329,31 @@ main {
   width: 108px;
 }
 
+.concordance-sort-control-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.concordance-sort-control-label i {
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.concordance-sort-control-label.is-level-1 {
+  color: var(--cw-kwic-sort-1);
+}
+
+.concordance-sort-control-label.is-level-2 {
+  color: var(--cw-kwic-sort-2);
+}
+
+.concordance-sort-control-label.is-level-3 {
+  color: var(--cw-kwic-sort-3);
+}
+
 #concordance-collocation-span,
 #concordance-collocation-min-o11,
 #concordance-collocation-min-freq {
@@ -4504,48 +4529,36 @@ main {
   width: 100%;
   min-width: 0;
   border-collapse: collapse;
-  table-layout: auto;
+  table-layout: fixed;
 }
 
-.concordance-table tbody {
-  display: block;
-  min-width: 0;
+.concordance-file-column {
+  width: 7.5rem;
 }
 
-.concordance-table-head {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+.concordance-left-column,
+.concordance-right-column {
+  width: auto;
 }
 
-.concordance-table tr {
-  display: grid;
-  grid-template-columns: 68px minmax(0, 1fr) minmax(5.25rem, max-content) minmax(0, 1fr);
-  width: 100%;
-  min-width: 0;
+.concordance-node-column {
+  width: clamp(7rem, 11vw, 12rem);
 }
 
 .concordance-table th,
 .concordance-table td {
-  padding: 3px 4px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
+  padding: 2px 5px;
+  border: 0;
   vertical-align: middle;
 }
 
 .concordance-table th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--panel-bg);
+  height: 22px;
+  background: transparent;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 52%, transparent);
   color: var(--text-muted);
-  font-size: 0.76rem;
-  font-weight: 700;
+  font-size: 0.72rem;
+  font-weight: 500;
   line-height: 1.25;
   text-align: left;
 }
@@ -4614,49 +4627,19 @@ main {
   color: inherit;
 }
 
-.concordance-context-token.is-sort-level-1,
-.concordance-sort-legend .is-level-1 {
+.concordance-context-token.is-sort-level-1 {
   color: var(--cw-kwic-sort-1);
   font-weight: 650;
 }
 
-.concordance-context-token.is-sort-level-2,
-.concordance-sort-legend .is-level-2 {
+.concordance-context-token.is-sort-level-2 {
   color: var(--cw-kwic-sort-2);
   font-weight: 650;
 }
 
-.concordance-context-token.is-sort-level-3,
-.concordance-sort-legend .is-level-3 {
+.concordance-context-token.is-sort-level-3 {
   color: var(--cw-kwic-sort-3);
   font-weight: 650;
-}
-
-.concordance-sort-legend {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 5px 10px;
-  margin: 0 2px 3px;
-  color: var(--text-muted);
-  font-size: 0.74rem;
-}
-
-.concordance-sort-legend span {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-}
-
-.concordance-sort-legend i {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.concordance-sort-legend .concordance-sort-help {
-  color: var(--text-muted);
 }
 
 .concordance-node {
@@ -4665,7 +4648,7 @@ main {
   border: 0;
   background: transparent;
   color: var(--accent-color);
-  font-weight: 700;
+  font-weight: 625;
   white-space: nowrap;
   vertical-align: middle;
 }
@@ -4695,16 +4678,6 @@ main {
 .concordance-row:focus-visible {
   outline: 2px solid var(--accent-color);
   outline-offset: -2px;
-}
-
-.concordance-table .concordance-preview-row,
-.concordance-table .concordance-empty-row {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.concordance-table .concordance-preview-cell,
-.concordance-table .concordance-empty {
-  grid-column: 1 / -1;
 }
 
 .concordance-table .concordance-preview-cell {
@@ -9267,10 +9240,6 @@ mark.search-match.current-match {
   .concordance-controls > label:first-child,
   .concordance-controls .concordance-search-actions {
     grid-column: 1;
-  }
-
-  .concordance-table tr {
-    grid-template-columns: 54px minmax(0, 1fr) max-content minmax(0, 1fr);
   }
 
   .concordance-collocations-table-wrap {
