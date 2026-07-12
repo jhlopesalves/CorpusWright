@@ -907,13 +907,12 @@ const concordanceDistributionTableWrapCss = concordanceDistributionTableWrapCssM
 const frequencyTableWrapCss = frequencyTableWrapCssMatch[1];
 assert(
   concordanceTableWrapCss.includes("max-height: none;")
-    && concordanceTableWrapCss.includes("overflow-x: clip;")
-    && concordanceTableWrapCss.includes("overflow-y: visible;")
-    && concordanceTableWrapCss.includes("border: 0;")
-    && styles.includes("@media (max-width: 760px)")
-    && styles.includes(".concordance-table-wrap {\n    overflow: visible;")
+    && concordanceTableWrapCss.includes("overflow: clip;")
+    && !concordanceTableWrapCss.includes("border: 0;")
+    && !concordanceTableWrapCss.includes("background: transparent;")
+    && styles.includes(".concordance-table-wrap,\n.concordance-collocations-table-wrap,\n.concordance-distribution-table-wrap {\n  border: 1px solid var(--border-color);\n  border-radius: 4px;\n  background: var(--bg-color);")
     && !styles.includes(".concordance-table {\n    min-width: 760px;"),
-  "Concordance lines should use natural page scrolling without a boxed inner scroll trap",
+  "Concordance lines should keep a bordered, rounded table surface without an internal scroll trap",
 );
 assert(
   concordanceCollocationsTableWrapCss.includes("max-width: none;")

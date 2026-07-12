@@ -40,6 +40,28 @@ assert.match(
 );
 assert.match(
   html,
+  /id="concordance-lines-panel" class="concordance-card concordance-kwic-panel"/,
+);
+const kwicPanelCss = styles.match(/\.concordance-kwic-panel \{([\s\S]*?)\n\}/)?.[1] ?? "";
+assert(
+  !kwicPanelCss.includes("border-color: transparent")
+    && !kwicPanelCss.includes("background: transparent")
+    && !kwicPanelCss.includes("box-shadow: none"),
+  "Concordance Lines should inherit the shared result-card surface without a transparent exception",
+);
+const kwicHeader = html.slice(
+  html.indexOf('<thead class="concordance-table-head">'),
+  html.indexOf('id="concordance-table-body"'),
+);
+assert.equal(kwicHeader.match(/<th(?:\s|>)/g)?.length, 4);
+assert(!styles.includes(".concordance-table-head {\n  position: sticky;"));
+assert(
+  styles.includes(".concordance-table-wrap {\n  max-height: none;\n  overflow: clip;")
+    && styles.includes(".concordance-table-wrap,\n.concordance-collocations-table-wrap,\n.concordance-distribution-table-wrap {\n  border: 1px solid var(--border-color);\n  border-radius: 4px;\n  background: var(--bg-color);"),
+  "KWIC should retain a visible, rounded inner table surface without vertical scrolling",
+);
+assert.match(
+  html,
   /id="concordance-collocates-controls" class="concordance-card-controls concordance-collocation-controls">/,
 );
 for (const label of ["Window", "Sort 1", "Sort 2", "Sort 3", "Rows", "Span", "Direction", "Measure", "Min co-occurrence", "Min corpus frequency", "Stopwords"]) {
