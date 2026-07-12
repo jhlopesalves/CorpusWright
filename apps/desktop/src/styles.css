@@ -4194,12 +4194,11 @@ main {
 }
 
 .concordance-lines-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 12px;
+  display: grid;
+  grid-template-columns: 84px repeat(3, 108px) 84px;
+  gap: 8px;
   align-items: flex-end;
-  padding-top: 6px;
-  padding-bottom: 0;
+  padding: 7px 0 2px;
 }
 
 .concordance-lines-controls label {
@@ -4213,8 +4212,9 @@ main {
 
 .concordance-lines-controls input:not([type="checkbox"]),
 .concordance-lines-controls select {
-  height: 32px;
-  padding: 5px 8px;
+  width: 100%;
+  height: 30px;
+  padding: 4px 7px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
   background: var(--bg-color);
@@ -4251,8 +4251,11 @@ main {
 }
 
 .concordance-kwic-panel {
-  gap: 8px;
-  padding-inline: 10px;
+  gap: 6px;
+  padding: 12px 8px 8px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 .concordance-card-header {
@@ -4320,8 +4323,10 @@ main {
   width: 90px;
 }
 
-#concordance-sort-select {
-  width: 140px;
+#concordance-sort-1-select,
+#concordance-sort-2-select,
+#concordance-sort-3-select {
+  width: 108px;
 }
 
 #concordance-collocation-span,
@@ -4487,9 +4492,12 @@ main {
 }
 
 .concordance-table-wrap {
-  max-height: min(64vh, 740px);
+  max-height: none;
   overflow-x: clip;
-  overflow-y: auto;
+  overflow-y: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .concordance-table {
@@ -4499,23 +4507,34 @@ main {
   table-layout: auto;
 }
 
-.concordance-table thead,
 .concordance-table tbody {
   display: block;
   min-width: 0;
 }
 
+.concordance-table-head {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .concordance-table tr {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) 88px minmax(0, 1fr);
+  grid-template-columns: 68px minmax(0, 1fr) minmax(5.25rem, max-content) minmax(0, 1fr);
   width: 100%;
   min-width: 0;
 }
 
 .concordance-table th,
 .concordance-table td {
-  padding: 2px 5px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 3px 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
   vertical-align: middle;
 }
 
@@ -4548,15 +4567,18 @@ main {
 
 .concordance-file {
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
+  font-weight: 400;
+  opacity: 0.82;
 }
 
 .concordance-left,
 .concordance-node-cell,
 .concordance-right {
   font-family: var(--cw-font-mono);
-  font-size: 0.84rem;
-  line-height: 1.22;
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.34;
 }
 
 .concordance-left {
@@ -4590,39 +4612,32 @@ main {
 
 .concordance-context-token {
   color: inherit;
-  border-radius: 2px;
 }
 
 .concordance-context-token.is-sort-level-1,
 .concordance-sort-legend .is-level-1 {
-  padding-inline: 1px;
-  background: color-mix(in srgb, var(--cw-kwic-sort-1) 13%, transparent);
   color: var(--cw-kwic-sort-1);
-  font-weight: 700;
+  font-weight: 650;
 }
 
 .concordance-context-token.is-sort-level-2,
 .concordance-sort-legend .is-level-2 {
-  padding-inline: 1px;
-  background: color-mix(in srgb, var(--cw-kwic-sort-2) 10%, transparent);
   color: var(--cw-kwic-sort-2);
   font-weight: 650;
 }
 
 .concordance-context-token.is-sort-level-3,
 .concordance-sort-legend .is-level-3 {
-  padding-inline: 1px;
-  background: color-mix(in srgb, var(--cw-kwic-sort-3) 9%, transparent);
   color: var(--cw-kwic-sort-3);
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .concordance-sort-legend {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px 16px;
-  margin-bottom: 8px;
+  gap: 5px 10px;
+  margin: 0 2px 3px;
   color: var(--text-muted);
   font-size: 0.74rem;
 }
@@ -4633,8 +4648,15 @@ main {
   gap: 4px;
 }
 
-.concordance-sort-legend strong {
-  font-family: var(--cw-font-mono);
+.concordance-sort-legend i {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.concordance-sort-legend .concordance-sort-help {
+  color: var(--text-muted);
 }
 
 .concordance-node {
@@ -4643,7 +4665,7 @@ main {
   border: 0;
   background: transparent;
   color: var(--accent-color);
-  font-weight: 750;
+  font-weight: 700;
   white-space: nowrap;
   vertical-align: middle;
 }
@@ -4657,7 +4679,7 @@ main {
 }
 
 .concordance-row:nth-of-type(even) td {
-  background: var(--cw-surface-subtle);
+  background: color-mix(in srgb, var(--cw-surface-subtle) 62%, transparent);
 }
 
 .concordance-row:hover td,
@@ -4806,9 +4828,21 @@ main {
 
 .concordance-kwic-pair {
   color: var(--cw-kwic-pair);
-  font-weight: 700;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--cw-kwic-pair) 10%, transparent);
+  font-weight: 650;
+}
+
+.concordance-kwic-panel .analysis-pagination {
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.concordance-kwic-panel .analysis-pagination button {
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 0.76rem;
 }
 
 .concordance-distribution-panel {
@@ -6047,11 +6081,7 @@ main {
   }
 
   .concordance-table-wrap {
-    overflow-x: auto;
-  }
-
-  .concordance-table {
-    min-width: 760px;
+    overflow: visible;
   }
 }
 
@@ -9195,6 +9225,10 @@ mark.search-match.current-match {
     max-width: 100%;
   }
 
+  .concordance-lines-controls {
+    grid-template-columns: repeat(5, minmax(64px, 1fr));
+  }
+
   .concordance-collocations-table > thead > tr > th,
   .concordance-collocations-table > tbody > tr.concordance-collocation-row > td {
     padding-inline: 5px;
@@ -9235,12 +9269,8 @@ mark.search-match.current-match {
     grid-column: 1;
   }
 
-  .concordance-table {
-    min-width: 640px;
-  }
-
   .concordance-table tr {
-    grid-template-columns: minmax(6.5rem, 8rem) minmax(0, 1fr) max-content minmax(0, 1fr);
+    grid-template-columns: 54px minmax(0, 1fr) max-content minmax(0, 1fr);
   }
 
   .concordance-collocations-table-wrap {

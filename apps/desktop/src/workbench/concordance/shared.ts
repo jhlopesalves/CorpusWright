@@ -86,7 +86,6 @@ function syncConcordanceCaseToggle(): void {
 export function syncConcordanceControls(): void {
   syncConcordanceCaseToggle();
   syncConcordanceCollocationStopwordsToggle();
-  dom.concordanceSortSelect.value = currentConcordanceLineSortKey();
 }
 
 export function currentConcordanceSearchResult(): ConcordanceResult | null {
