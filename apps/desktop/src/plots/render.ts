@@ -3,6 +3,7 @@ import {
   labelTextLines,
   placeAxisTickLabels,
 } from "./model";
+import { hasUnresolvedCssVariables } from "./svg-export";
 import type {
   CoverageGeometry,
   DispersionGeometry,
@@ -292,14 +293,28 @@ export function serializeSvgWithResolvedTokens(svg: SVGSVGElement): string {
       "color",
       "font-family",
       "font-size",
+      "font-style",
+      "font-variant",
       "font-weight",
+      "letter-spacing",
+      "paint-order",
+      "shape-rendering",
+      "text-anchor",
+      "vector-effect",
     ]) {
       const value = style.getPropertyValue(property);
       if (value) cloned.style.setProperty(property, value);
     }
+    for (const property of Array.from(cloned.style)) {
+      if (property.startsWith("--")) cloned.style.removeProperty(property);
+    }
   }
   clone.setAttribute("xmlns", SVG_NS);
-  return new XMLSerializer().serializeToString(clone);
+  const serialized = new XMLSerializer().serializeToString(clone);
+  if (hasUnresolvedCssVariables(serialized)) {
+    throw new Error("Standalone SVG export contains unresolved CSS variables");
+  }
+  return serialized;
 }
 
 function createBaseSvg(plotId: string, box: PlotBox): SVGSVGElement {

@@ -75,6 +75,23 @@
   }
 }
 
+.cw-plot-svg.cw-plot-export-static,
+.cw-plot-svg.cw-plot-export-static * {
+  animation: none;
+  transition: none;
+}
+
+.cw-plot-svg.cw-plot-export-static :is(
+  .cw-plot-animated-path,
+  .cw-plot-point,
+  .cw-plot-plane-witness,
+  .cw-plot-roster-dot
+) {
+  opacity: 1;
+  stroke-dashoffset: 0;
+  transform: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cw-plot-animated-path,
   .cw-plot-point,
