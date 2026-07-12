@@ -430,7 +430,7 @@
 .analysis-action-button {
   min-height: 30px;
   padding: 5px 10px;
-  font-size: var(--cw-type-help-size);
+  font-size: var(--cw-type-control-size);
 }
 
 .analysis-metric-group {

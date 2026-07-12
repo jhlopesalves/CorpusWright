@@ -114,7 +114,7 @@
   --cw-plot-ramp-2: #57a4ff;
   --cw-plot-ramp-3: #576dff;
   --cw-plot-ramp-4: #9076ff;
-  --cw-plot-ramp-5: #9076ff;
+  --cw-plot-ramp-5: #c084fc;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -252,7 +252,7 @@
   --cw-plot-ramp-2: #0058aa;
   --cw-plot-ramp-3: #0021aa;
   --cw-plot-ramp-4: #0c0090;
-  --cw-plot-ramp-5: #0c0090;
+  --cw-plot-ramp-5: #4c007d;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -307,10 +307,10 @@
   --cw-surface-input: rgba(20, 40, 60, 0.035);
   --cw-toggle-thumb: #ffffff;
   --text-color: #1f2937;
-  --text-muted: #64748b;
+  --text-muted: #5d6b80;
   --cw-text-inverse: #ffffff;
   --cw-text-selected: #1f2937;
-  --accent-color: #1677c2;
+  --accent-color: #1267aa;
   --cw-primary-hover: #0f5e9c;
   --danger-color: #cf222e;
   --border-color: #c7d0dc;
@@ -387,12 +387,12 @@
   --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
   --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.30;
-  --cw-plot-ramp-0: #10af8f;
-  --cw-plot-ramp-1: #12b1c6;
+  --cw-plot-ramp-0: #0c9278;
+  --cw-plot-ramp-1: #0b8698;
   --cw-plot-ramp-2: #1278c6;
   --cw-plot-ramp-3: #123ec6;
   --cw-plot-ramp-4: #1b10af;
-  --cw-plot-ramp-5: #1b10af;
+  --cw-plot-ramp-5: #4d087f;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -450,7 +450,7 @@
   --text-muted: #9da3aa;
   --cw-text-inverse: #ffffff;
   --cw-text-selected: #ffffff;
-  --accent-color: #007acc;
+  --accent-color: #4aa3ff;
   --cw-primary-hover: #1688d9;
   --danger-color: #ff7b72;
   --border-color: #3c3c3c;
@@ -531,8 +531,8 @@
   --cw-plot-ramp-1: #1cf7ff;
   --cw-plot-ramp-2: #1cabff;
   --cw-plot-ramp-3: #1c5fff;
-  --cw-plot-ramp-4: #443cff;
-  --cw-plot-ramp-5: #443cff;
+  --cw-plot-ramp-4: #776cff;
+  --cw-plot-ramp-5: #b067ff;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -553,7 +553,7 @@
   --cw-theme-selection-outline: var(--focus-ring);
   --cw-native-titlebar-color: #252526;
 
-  --cw-primary-text: var(--cw-text-inverse);
+  --cw-primary-text: var(--bg-color);
   --cw-danger-button-text: var(--cw-text-inverse);
 
   --cw-primary-bg: var(--accent-color);
@@ -590,7 +590,7 @@
   --text-muted: #404040;
   --cw-text-inverse: #ffffff;
   --cw-text-selected: #ffffff;
-  --accent-color: #0058a6;
+  --accent-color: #004b8f;
   --cw-primary-hover: #004a8f;
   --danger-color: #b8326a;
   --border-color: #808080;
@@ -667,12 +667,12 @@
   --cw-plot-band-fill-a: color-mix(in srgb, var(--cw-plot-ramp-1) 13%, transparent);
   --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.30;
-  --cw-plot-ramp-0: #009078;
-  --cw-plot-ramp-1: #008faa;
+  --cw-plot-ramp-0: #00745f;
+  --cw-plot-ramp-1: #006f82;
   --cw-plot-ramp-2: #0058aa;
   --cw-plot-ramp-3: #0021aa;
   --cw-plot-ramp-4: #0c0090;
-  --cw-plot-ramp-5: #0c0090;
+  --cw-plot-ramp-5: #4c007d;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -682,7 +682,7 @@
   --cw-retro-shadow: #808080;
   --cw-retro-deep-shadow: #404040;
 
-  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar: #205f95;
   --cw-position-profile-bar-active: #256eb5;
   --cw-brand-blue: #0058a6;
   --cw-retro-input-bg: #ffffff;
@@ -816,7 +816,7 @@
   --cw-plot-ramp-2: #3fa3ff;
   --cw-plot-ramp-3: #3f63ff;
   --cw-plot-ramp-4: #7760ff;
-  --cw-plot-ramp-5: #7760ff;
+  --cw-plot-ramp-5: #b86cff;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -868,7 +868,7 @@
   --cw-surface-input: rgba(35, 42, 42, 0.035);
   --cw-toggle-thumb: #ffffff;
   --text-color: #252525;
-  --text-muted: #686868;
+  --text-muted: #626262;
   --cw-text-inverse: #ffffff;
   --cw-text-selected: #252525;
   --accent-color: #4f6675;
@@ -953,7 +953,7 @@
   --cw-plot-ramp-2: #4e6676;
   --cw-plot-ramp-3: #4e5a76;
   --cw-plot-ramp-4: #454467;
-  --cw-plot-ramp-5: #454467;
+  --cw-plot-ramp-5: #67445f;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -1093,7 +1093,7 @@
   --cw-plot-ramp-2: #859aa8;
   --cw-plot-ramp-3: #858fa8;
   --cw-plot-ramp-4: #9897b5;
-  --cw-plot-ramp-5: #9897b5;
+  --cw-plot-ramp-5: #b58fa8;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -1148,10 +1148,10 @@
   --cw-surface-input: rgba(73, 58, 32, 0.035);
   --cw-toggle-thumb: #ffffff;
   --text-color: #4b5560;
-  --text-muted: #6f7c80;
+  --text-muted: #5c686c;
   --cw-text-inverse: #ffffff;
   --cw-text-selected: #4b5560;
-  --accent-color: #2684a8;
+  --accent-color: #176c8b;
   --cw-primary-hover: #1f6f8d;
   --danger-color: #9e2b1f;
   --border-color: #d8c99d;
@@ -1229,11 +1229,11 @@
   --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #1e966b;
-  --cw-plot-ramp-1: #23aba6;
+  --cw-plot-ramp-1: #187f7b;
   --cw-plot-ramp-2: #2385ab;
   --cw-plot-ramp-3: #235aab;
   --cw-plot-ramp-4: #1e2996;
-  --cw-plot-ramp-5: #1e2996;
+  --cw-plot-ramp-5: #5d238f;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -1373,14 +1373,14 @@
   --cw-plot-ramp-2: #5cc0cc;
   --cw-plot-ramp-3: #5c9ccc;
   --cw-plot-ramp-4: #738cd3;
-  --cw-plot-ramp-5: #738cd3;
+  --cw-plot-ramp-5: #a67bd3;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
   --cw-kwic-pair: var(--cw-plot-ramp-2);
   --focus-ring: #8bdbe4;
 
-  --cw-position-profile-bar: #3b82c4;
+  --cw-position-profile-bar: #4b91c4;
   --cw-position-profile-bar-active: #256eb5;
   --cw-brand-blue: #0058a6;
   --cw-retro-highlight: var(--cw-surface-elevated);
@@ -1428,7 +1428,7 @@
   --cw-surface-input: rgba(71, 51, 27, 0.035);
   --cw-toggle-thumb: #ffffff;
   --text-color: #3b2f22;
-  --text-muted: #75634d;
+  --text-muted: #6f5c46;
   --cw-text-inverse: #ffffff;
   --cw-text-selected: #3b2f22;
   --accent-color: #8b5e34;
@@ -1513,7 +1513,7 @@
   --cw-plot-ramp-2: #8d5e32;
   --cw-plot-ramp-3: #8d7b32;
   --cw-plot-ramp-4: #717a2b;
-  --cw-plot-ramp-5: #717a2b;
+  --cw-plot-ramp-5: #3f7136;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -1568,10 +1568,10 @@
   --cw-surface-input: rgba(35, 58, 43, 0.035);
   --cw-toggle-thumb: #ffffff;
   --text-color: #243426;
-  --text-muted: #5f705e;
+  --text-muted: #596a58;
   --cw-text-inverse: #ffffff;
   --cw-text-selected: #243426;
-  --accent-color: #3f7f4f;
+  --accent-color: #367344;
   --cw-primary-hover: #32683f;
   --danger-color: #9e2b1f;
   --border-color: #c6d4bd;
@@ -1653,7 +1653,7 @@
   --cw-plot-ramp-2: #3d814e;
   --cw-plot-ramp-3: #3d8163;
   --cw-plot-ramp-4: #356f69;
-  --cw-plot-ramp-5: #356f69;
+  --cw-plot-ramp-5: #355a78;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -1793,7 +1793,7 @@
   --cw-plot-ramp-2: #83bb6d;
   --cw-plot-ramp-3: #6dbb6f;
   --cw-plot-ramp-4: #82c599;
-  --cw-plot-ramp-5: #82c599;
+  --cw-plot-ramp-5: #82b7c5;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -1836,7 +1836,7 @@
   --cw-result-table-body-text: var(--text-color);
   --cw-result-table-muted-text: var(--text-muted);
   --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
-  --cw-result-table-bar: var(--accent-color);
+  --cw-result-table-bar: #000000;
   --bg-color: #000000;
   --panel-bg: #000000;
   --modal-bg: #000000;
@@ -1930,11 +1930,11 @@
   --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.45;
   --cw-plot-ramp-0: #00e5ff;
-  --cw-plot-ramp-1: #00e5ff;
-  --cw-plot-ramp-2: #00e5ff;
-  --cw-plot-ramp-3: #00e5ff;
-  --cw-plot-ramp-4: #00e5ff;
-  --cw-plot-ramp-5: #00e5ff;
+  --cw-plot-ramp-1: #00ff9d;
+  --cw-plot-ramp-2: #b7ff00;
+  --cw-plot-ramp-3: #fff200;
+  --cw-plot-ramp-4: #ff9d00;
+  --cw-plot-ramp-5: #ff4fc3;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -2073,7 +2073,7 @@
   --cw-plot-ramp-2: #d79a60;
   --cw-plot-ramp-3: #d7c060;
   --cw-plot-ramp-4: #d1de78;
-  --cw-plot-ramp-5: #d1de78;
+  --cw-plot-ramp-5: #9fd878;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);
@@ -2116,7 +2116,7 @@
   --cw-result-table-body-text: var(--text-color);
   --cw-result-table-muted-text: var(--text-muted);
   --cw-result-table-track: color-mix(in srgb, var(--border-color) 68%, transparent);
-  --cw-result-table-bar: var(--accent-color);
+  --cw-result-table-bar: #ffffff;
   --bg-color: #ffffff;
   --panel-bg: #ffffff;
   --modal-bg: #ffffff;
@@ -2210,11 +2210,11 @@
   --cw-plot-band-fill-b: color-mix(in srgb, var(--cw-plot-ramp-3) 13%, transparent);
   --cw-plot-glow-opacity: 0.30;
   --cw-plot-ramp-0: #000000;
-  --cw-plot-ramp-1: #000000;
-  --cw-plot-ramp-2: #000000;
-  --cw-plot-ramp-3: #000000;
-  --cw-plot-ramp-4: #000000;
-  --cw-plot-ramp-5: #000000;
+  --cw-plot-ramp-1: #003b5c;
+  --cw-plot-ramp-2: #004d40;
+  --cw-plot-ramp-3: #4a3b00;
+  --cw-plot-ramp-4: #5a1a4f;
+  --cw-plot-ramp-5: #3b1b6f;
   --cw-kwic-sort-1: var(--cw-collocate-text);
   --cw-kwic-sort-2: var(--cw-success-text);
   --cw-kwic-sort-3: var(--cw-category-numeric-text);

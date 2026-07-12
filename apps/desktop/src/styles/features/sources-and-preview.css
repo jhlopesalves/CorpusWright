@@ -127,7 +127,7 @@
   display: grid;
   gap: 5px;
   color: var(--text-muted);
-  font-size: var(--cw-type-help-size);
+  font-size: var(--cw-type-control-size);
 }
 
 .source-import-group-select {
@@ -453,7 +453,7 @@
   outline: none;
   flex: 1;
   font-family: inherit;
-  font-size: var(--cw-type-body-compact-size);
+  font-size: var(--cw-type-control-size);
   min-width: 50px;
 }
 
