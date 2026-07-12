@@ -844,15 +844,19 @@ assert(
   "Concordance nodes should form an accent-colour spine without a badge or nested scrollbar",
 );
 assert(
-  styles.includes(".concordance-table tr {\n  display: grid;")
-    && styles.includes("grid-template-columns: 68px minmax(0, 1fr) minmax(5.25rem, max-content) minmax(0, 1fr);")
-    && styles.includes("padding: 3px 4px;")
+  styles.includes(".concordance-table {\n  width: 100%;")
+    && styles.includes("table-layout: fixed;")
+    && styles.includes(".concordance-file-column {\n  width: 7.5rem;")
+    && styles.includes(".concordance-node-column {\n  width: clamp(7rem, 11vw, 12rem);")
+    && styles.includes("padding: 2px 5px;")
     && styles.includes("line-height: 1.34;")
     && styles.includes(".concordance-left {\n  color: var(--text-color);\n  direction: rtl;")
     && styles.includes(".concordance-context-run {\n  display: inline;\n  direction: ltr;")
     && styles.includes(".concordance-row:nth-of-type(even) td")
-    && styles.includes(".concordance-table-head {\n  position: absolute;"),
-  "KWIC should use compact rows, a quiet file column, outer-clipped contexts, a stable node axis, subtle zebra treatment, and visually hidden table chrome",
+    && styles.includes("height: 22px;")
+    && !styles.includes(".concordance-table-head {\n  position: absolute;")
+    && !html.includes("concordance-sort-legend"),
+  "KWIC should retain a compact semantic table, quiet file lane, outer-clipped contexts, stable node axis, visible restrained header, and no separate sort legend",
 );
 
 const concordanceRightCssMatch = styles.match(/\.concordance-right \{\n  color: var\(--text-color\);([\s\S]*?)\n\}/);
@@ -1020,7 +1024,6 @@ assert(
     && styles.includes(".concordance-collocations-table > thead > tr > th,\n  .concordance-collocations-table > tbody > tr.concordance-collocation-row > td {\n    padding-inline: 5px;")
     && styles.includes("grid-template-columns: repeat(5, minmax(2px, 1fr)) auto repeat(5, minmax(2px, 1fr));")
     && styles.includes("@media (max-width: 640px) {\n  .concordance-controls")
-    && styles.includes("grid-template-columns: 54px minmax(0, 1fr) max-content minmax(0, 1fr);")
     && styles.includes(".concordance-collocations-table-wrap {\n    overflow-x: auto;")
     && styles.includes(".concordance-collocations-table {\n    min-width: 620px;")
     && !styles.includes("min-width: 1040px")
@@ -1029,7 +1032,7 @@ assert(
     && styles.includes("outline: 2px solid var(--cw-interaction-focus-ring);")
     && !styles.includes("text-decoration-style: double;")
     && !styles.includes("text-decoration-style: dotted;")
-    && styles.includes(".concordance-context-token.is-sort-level-1,\n.concordance-sort-legend .is-level-1 {\n  color: var(--cw-kwic-sort-1);")
+    && styles.includes(".concordance-context-token.is-sort-level-1 {\n  color: var(--cw-kwic-sort-1);")
     && !styles.includes("background: color-mix(in srgb, var(--cw-kwic-sort-1) 13%, transparent);")
     && styles.includes(".concordance-kwic-pair {\n  color: var(--cw-kwic-pair);")
     && workbench.includes("return signed && value > 0 ? `+${formatted}` : formatted;"),

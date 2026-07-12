@@ -154,7 +154,7 @@ pub(super) fn concordance_query(query: &str) -> ConcordanceQuery {
         context_filter: None,
         context_filter_direction: ConcordanceContextFilterDirection::Both,
         case_sensitive: false,
-        sort_key: ConcordanceSortKey::FilePosition,
+        sort_keys: vec![ConcordanceSortKey::FilePosition],
         window_tokens: 5,
         offset: 0,
         limit: 100,

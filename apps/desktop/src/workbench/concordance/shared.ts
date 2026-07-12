@@ -38,13 +38,13 @@ import {
   collapseConcordanceExpansionFromControlChange,
   currentConcordanceLineOffset,
   currentConcordanceLinePageSize,
-  currentConcordanceLineSortKey,
+  currentConcordanceLineSortKeys,
   currentConcordanceLineWindow,
   renderConcordanceLines,
   resetConcordanceLineOffset,
   resetConcordanceLinesCorpusState,
   setConcordanceLineOffset,
-  syncConcordanceLineSortKeyFromControl,
+  syncConcordanceLineSortKeysFromControl,
 } from "./lines";
 import {
   acceptConcordanceSectionResponse,
@@ -155,7 +155,7 @@ function linesStatsText(): string {
   const shown = result?.rows?.length ?? 0;
   return concordanceLinesCardStatsText({
     windowTokens: currentConcordanceLineWindow(),
-    sortKey: currentConcordanceLineSortKey(),
+    sortKeys: currentConcordanceLineSortKeys(),
     shown,
     totalHits: result?.totalHits ?? 0,
     contextFilter: workbenchState.lines.contextFilter,
@@ -189,7 +189,7 @@ function syncLiveRequestState(query: string): void {
     cleaningConfigKey: JSON.stringify(effectiveCleaningConfig()),
   });
   workbenchState.lines.window = currentConcordanceLineWindow();
-  workbenchState.lines.sort = syncConcordanceLineSortKeyFromControl();
+  workbenchState.lines.sort = syncConcordanceLineSortKeysFromControl();
   workbenchState.lines.pageSize = currentConcordanceLinePageSize();
   workbenchState.lines.offset = currentConcordanceLineOffset();
   workbenchState.distribution.pageSize = CONCORDANCE_DISTRIBUTION_PAGE_SIZE;
@@ -320,7 +320,7 @@ async function refreshConcordanceCards(
         contextFilter: includeDistribution ? null : workbenchState.lines.contextFilter,
         contextFilterDirection: workbenchState.lines.contextFilterDirection,
         caseSensitive: dom.concordanceCaseSensitiveInput.checked,
-        sortKey: workbenchState.lines.sort,
+        sortKeys: workbenchState.lines.sort,
         windowTokens: workbenchState.lines.window,
         offset: workbenchState.lines.offset,
         limit: workbenchState.lines.pageSize,

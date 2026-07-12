@@ -35,7 +35,7 @@ function sectionResult(
     query: "target",
     contextFilter: null,
     caseSensitive: false,
-    sortKey: "filePosition",
+    sortKeys: ["filePosition"],
     windowTokens: 5,
     totalHits: 0,
     documentsWithHits: 0,

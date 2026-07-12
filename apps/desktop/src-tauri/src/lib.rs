@@ -5305,7 +5305,7 @@ mod tests {
             context_filter_direction:
                 corpuswright_core::analysis::ConcordanceContextFilterDirection::Both,
             case_sensitive: false,
-            sort_key: corpuswright_core::analysis::ConcordanceSortKey::FilePosition,
+            sort_keys: vec![corpuswright_core::analysis::ConcordanceSortKey::FilePosition],
             window_tokens: 5,
             offset: 0,
             limit: 100,

@@ -15,7 +15,7 @@ export const CONCORDANCE_EXPANSION_WINDOW = 40;
 export const CONCORDANCE_MIN_PAGE_SIZE = 25;
 export const CONCORDANCE_DEFAULT_PAGE_SIZE = 100;
 export const CONCORDANCE_MAX_PAGE_SIZE = 500;
-export const DEFAULT_CONCORDANCE_SORT_KEY: ConcordanceSortKey = "filePosition";
+export const DEFAULT_CONCORDANCE_SORT_KEYS: ConcordanceSortKey[] = ["right1", "right2", "right3"];
 export const CONCORDANCE_NO_QUERY_MESSAGE = "Enter a word or phrase to see concordance lines.";
 export const CONCORDANCE_NO_HITS_MESSAGE =
   "No concordance lines found for this query in the selected files.";
@@ -169,16 +169,15 @@ function formatConcordanceCount(value: number): string {
 
 export function concordanceLinesCardStatsText(options: {
   windowTokens: number;
-  sortKey: ConcordanceSortKey;
+  sortKeys: ConcordanceSortKey[];
   shown: number;
   totalHits: number;
   contextFilter: string | null;
 }): string {
-  const sortLabel = concordanceSortLabel(options.sortKey);
-  const sortSequence = concordanceSortSequence(options.sortKey);
-  const sortText = sortSequence.length === 3
-    ? sortSequence.map(concordanceSortLabel).join(" / ")
-    : `${sortLabel[0]?.toLowerCase() ?? ""}${sortLabel.slice(1)}`;
+  const sortLabels = options.sortKeys.map(concordanceSortLabel);
+  const sortText = sortLabels.length === 1
+    ? `${sortLabels[0]![0]!.toLowerCase()}${sortLabels[0]!.slice(1)}`
+    : sortLabels.join(" / ");
   const parts = [
     `window ${options.windowTokens}L–${options.windowTokens}R`,
     sortText,
@@ -235,48 +234,36 @@ export interface ConcordanceContextSortLevels {
   right: ConcordanceSortLevel[];
 }
 
-export function concordanceSortSequence(sortKey: ConcordanceSortKey): ConcordanceContextSortKey[] {
-  const match = /^(left|right)([123])$/.exec(sortKey);
-  if (!match) return [];
-  const side = match[1]!;
-  const primary = Number.parseInt(match[2]!, 10);
-  const distances = primary === 1 ? [1, 2, 3] : primary === 2 ? [2, 1, 3] : [3, 2, 1];
-  return distances.map((distance) => `${side}${distance}` as ConcordanceContextSortKey);
-}
-
-export function concordanceSortKeyForLevel(
-  current: ConcordanceSortKey,
-  selected: ConcordanceContextSortKey,
-  level: 2 | 3,
-): ConcordanceSortKey {
-  const candidates = (["left1", "left2", "left3", "right1", "right2", "right3"] as const)
-    .filter((key) => concordanceSortSequence(key)[level - 1] === selected);
-  return candidates.find((key) => key.startsWith(selected.slice(0, -1))) ?? candidates[0] ?? current;
+export function concordanceSortSequence(
+  primary: ConcordanceSortKey,
+  secondary: ConcordanceContextSortKey | "" = "",
+  tertiary: ConcordanceContextSortKey | "" = "",
+): ConcordanceSortKey[] {
+  if (primary === "filePosition" || primary === "node") return [primary];
+  const ordered: ConcordanceSortKey[] = [];
+  for (const key of [primary, secondary, tertiary]) {
+    if (key !== "" && !ordered.includes(key)) ordered.push(key);
+  }
+  return ordered;
 }
 
 export function concordanceContextSortLevels(
-  sortKey: ConcordanceSortKey,
+  sortKeys: ConcordanceSortKey[],
   leftLength: number,
   rightLength: number,
 ): ConcordanceContextSortLevels {
   const left = Array<ConcordanceSortLevel>(leftLength).fill(null);
   const right = Array<ConcordanceSortLevel>(rightLength).fill(null);
-  const levelOrder = (primary: number): [number, number, number] => {
-    if (primary === 0) return [1, 2, 3];
-    if (primary === 1) return [2, 1, 3];
-    return [3, 2, 1];
-  };
-  const match = /^(left|right)([123])$/.exec(sortKey);
-  if (!match) return { left, right };
-  const side = match[1];
-  const primary = Number.parseInt(match[2]!, 10) - 1;
-  const levels = levelOrder(primary);
-  for (let distance = 0; distance < 3; distance += 1) {
-    if (side === "left") {
-      const index = leftLength - distance - 1;
-      if (index >= 0) left[index] = levels[distance]! as 1 | 2 | 3;
+  for (const [index, sortKey] of sortKeys.entries()) {
+    const match = /^(left|right)([123])$/.exec(sortKey);
+    if (!match || index > 2) continue;
+    const distance = Number.parseInt(match[2]!, 10) - 1;
+    const level = (index + 1) as 1 | 2 | 3;
+    if (match[1] === "left") {
+      const tokenIndex = leftLength - distance - 1;
+      if (tokenIndex >= 0) left[tokenIndex] = level;
     } else if (distance < rightLength) {
-      right[distance] = levels[distance]! as 1 | 2 | 3;
+      right[distance] = level;
     }
   }
   return { left, right };

@@ -2116,7 +2116,7 @@ mod tests {
             context_filter: None,
             context_filter_direction: ConcordanceContextFilterDirection::Both,
             case_sensitive,
-            sort_key: ConcordanceSortKey::FilePosition,
+            sort_keys: vec![ConcordanceSortKey::FilePosition],
             window_tokens: 5,
             offset: 0,
             limit: 500,
