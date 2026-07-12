@@ -4507,14 +4507,14 @@ main {
 
 .concordance-table tr {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr) 104px minmax(0, 1fr);
+  grid-template-columns: 84px minmax(0, 1fr) 88px minmax(0, 1fr);
   width: 100%;
   min-width: 0;
 }
 
 .concordance-table th,
 .concordance-table td {
-  padding: 2px 4px;
+  padding: 2px 5px;
   border-bottom: 1px solid var(--border-color);
   vertical-align: middle;
 }
@@ -4548,15 +4548,15 @@ main {
 
 .concordance-file {
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: 0.72rem;
 }
 
 .concordance-left,
 .concordance-node-cell,
 .concordance-right {
   font-family: var(--cw-font-mono);
-  font-size: 0.86rem;
-  line-height: 1.25;
+  font-size: 0.84rem;
+  line-height: 1.22;
 }
 
 .concordance-left {
@@ -4590,32 +4590,31 @@ main {
 
 .concordance-context-token {
   color: inherit;
-  text-decoration-skip-ink: auto;
-  text-underline-offset: 0.2em;
+  border-radius: 2px;
 }
 
 .concordance-context-token.is-sort-level-1,
 .concordance-sort-legend .is-level-1 {
+  padding-inline: 1px;
+  background: color-mix(in srgb, var(--cw-kwic-sort-1) 13%, transparent);
   color: var(--cw-kwic-sort-1);
   font-weight: 700;
-  text-decoration-line: underline;
-  text-decoration-thickness: 0.15em;
 }
 
 .concordance-context-token.is-sort-level-2,
 .concordance-sort-legend .is-level-2 {
+  padding-inline: 1px;
+  background: color-mix(in srgb, var(--cw-kwic-sort-2) 10%, transparent);
   color: var(--cw-kwic-sort-2);
   font-weight: 650;
-  text-decoration-line: underline;
-  text-decoration-style: double;
 }
 
 .concordance-context-token.is-sort-level-3,
 .concordance-sort-legend .is-level-3 {
+  padding-inline: 1px;
+  background: color-mix(in srgb, var(--cw-kwic-sort-3) 9%, transparent);
   color: var(--cw-kwic-sort-3);
   font-weight: 600;
-  text-decoration-line: underline;
-  text-decoration-style: dotted;
 }
 
 .concordance-sort-legend {
@@ -4651,6 +4650,10 @@ main {
 
 .concordance-row {
   cursor: pointer;
+}
+
+.concordance-row td {
+  transition: background-color 120ms ease, box-shadow 120ms ease;
 }
 
 .concordance-row:nth-of-type(even) td {
@@ -4692,7 +4695,7 @@ main {
 
 .concordance-preview-row .concordance-expansion-panel {
   width: auto;
-  margin: 6px 10px 12px 28px;
+  margin: 5px 10px 10px 22px;
 }
 
 .concordance-expansion-panel {
@@ -4700,9 +4703,9 @@ main {
   gap: 8px;
   width: 100%;
   margin: 0;
-  padding: 8px 0 8px 12px;
-  border-left: 1px solid var(--border-color);
-  background: transparent;
+  padding: 8px 10px 9px 12px;
+  border-left: 2px solid var(--border-color);
+  background: var(--cw-surface-subtle);
   box-sizing: border-box;
 }
 
@@ -4726,9 +4729,6 @@ main {
   flex: 0 0 auto;
   min-height: 28px;
   padding: 3px 8px;
-  border-color: transparent;
-  background: transparent;
-  color: var(--text-muted);
   font-size: 0.78rem;
 }
 
@@ -4807,9 +4807,8 @@ main {
 .concordance-kwic-pair {
   color: var(--cw-kwic-pair);
   font-weight: 700;
-  text-decoration: underline;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cw-kwic-pair) 10%, transparent);
 }
 
 .concordance-distribution-panel {
