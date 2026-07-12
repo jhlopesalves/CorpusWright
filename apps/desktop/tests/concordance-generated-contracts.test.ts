@@ -17,6 +17,10 @@ const generatedPositionCounts = readFileSync(
   new URL("../src/generated/ConcordanceCollocatePositionCounts.ts", import.meta.url),
   "utf8",
 );
+const generatedDistributionPage = readFileSync(
+  new URL("../src/generated/ConcordanceDistributionPage.ts", import.meta.url),
+  "utf8",
+);
 
 assert.match(generatedQuery, /includeRows: boolean/);
 assert.match(generatedQuery, /includeDistribution: boolean/);
@@ -24,6 +28,8 @@ assert.match(generatedResult, /rows: Array<ConcordanceRow> \| null/);
 assert.match(generatedResult, /distribution: ConcordanceDistributionPage \| null/);
 assert.match(generatedCollocateRow, /positionCounts: ConcordanceCollocatePositionCounts/);
 assert.match(generatedPositionCounts, /left: Array<number>, right: Array<number>/);
+assert.match(generatedDistributionPage, /maxRatePer10k: number/);
+assert.doesNotMatch(generatedDistributionPage, /maxCount/);
 
 const transportNames = [
   "ConcordanceQuery",

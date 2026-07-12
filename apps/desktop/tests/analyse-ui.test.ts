@@ -321,11 +321,11 @@ assert(
   workbench.includes('table.className = "concordance-distribution-table"')
     && workbench.includes('panel.className = "concordance-document-spread-panel"')
     && workbench.includes('panelHeader.className = "concordance-document-spread-header"')
-    && workbench.includes('metrics.className = "concordance-distribution-metrics"')
+    && workbench.includes('summary.className = "concordance-distribution-summary"')
     && workbench.includes('title.textContent = "Distribution"')
     && !workbench.includes('title.textContent = `Distribution — ${concordanceSummaryMetricsText(result)}`')
     && !workbench.includes('const panel = document.createElement("details");\n  panel.className = "concordance-document-spread-panel";'),
-  "Concordance Distribution should render directly with a compact title and metric strip rather than as a collapsed details widget",
+  "Concordance Distribution should render directly with a compact title and editorial summary rather than as a collapsed details widget",
 );
 const renderConcordanceDistributionMatch = workbench.match(
   /function renderConcordanceDistribution\(\n  result: ConcordanceResult \| null,\n  emptyMessage = CONCORDANCE_NO_QUERY_MESSAGE,\n\): void \{([\s\S]*?)\n\}/,
@@ -334,42 +334,42 @@ assert(renderConcordanceDistributionMatch, "Concordance Distribution renderer sh
 const renderConcordanceDistributionBody = renderConcordanceDistributionMatch[1];
 assert(
   renderConcordanceDistributionBody.includes('const headerLabels = [')
-    && renderConcordanceDistributionBody.includes('{ label: "Occurrences", note: "bar = relative to top file" }')
+    && renderConcordanceDistributionBody.includes('{ label: "Hits" }')
+    && renderConcordanceDistributionBody.includes('{ label: "Document tokens" }')
+    && renderConcordanceDistributionBody.includes('{ label: "Hits per 10k", note: "bar = rate across hit-bearing documents" }')
     && !renderConcordanceDistributionBody.includes('"Bar"')
     && renderConcordanceDistributionBody.includes("cell.colSpan = 5;")
     && renderConcordanceDistributionBody.includes('heading.className = "concordance-distribution-heading";')
     && renderConcordanceDistributionBody.includes('sublabel.className = "concordance-distribution-heading-note";')
-    && renderConcordanceDistributionBody.includes('countValue.className = "concordance-distribution-count";')
-    && renderConcordanceDistributionBody.includes('countTrack.className = "concordance-distribution-bar-track";')
-    && renderConcordanceDistributionBody.includes('countBar.className = "concordance-distribution-bar";')
-    && renderConcordanceDistributionBody.includes("concordanceDistributionMagnitudePercent(item.count, distribution.maxCount)"),
-  "Concordance Distribution should expose a five-column ledger with exact occurrence counts and payload-scaled bars",
+    && renderConcordanceDistributionBody.includes("count.textContent = formatNumber(item.count);")
+    && !renderConcordanceDistributionBody.includes("count.append(")
+    && renderConcordanceDistributionBody.includes('rateTrack.className = "concordance-distribution-rate-track";')
+    && renderConcordanceDistributionBody.includes('rateBar.className = "concordance-distribution-rate-bar";')
+    && renderConcordanceDistributionBody.includes("concordanceDistributionMagnitudePercent(item.ratePer10k, distribution.maxRatePer10k)"),
+  "Concordance Distribution should expose a five-column ledger with exact raw hits and a result-wide rate graphic",
 );
 assert(
-  renderConcordanceDistributionBody.includes('metrics.className = "concordance-distribution-metrics"')
-    && renderConcordanceDistributionBody.includes('hitMetric.className = "concordance-distribution-metric"')
-    && renderConcordanceDistributionBody.includes('hitLabel.className = "concordance-distribution-metric-label"')
+  renderConcordanceDistributionBody.includes('summary.className = "concordance-distribution-summary"')
+    && !renderConcordanceDistributionBody.includes('concordance-distribution-metric')
     && renderConcordanceDistributionBody.includes("formatNumber(result.totalHits)")
     && renderConcordanceDistributionBody.includes("result.documentsWithHits")
     && renderConcordanceDistributionBody.includes("result.selectedDocumentsTotal")
     && renderConcordanceDistributionBody.includes("concordanceRangePercent(result)")
     && renderConcordanceDistributionBody.includes("result.topDocumentShare * 100")
     && renderConcordanceDistributionBody.includes("result.dp")
-    && renderConcordanceDistributionBody.includes("result.dispersionLabel"),
-  "Concordance Distribution should render a metric strip from existing distribution result fields",
+    && renderConcordanceDistributionBody.includes("result.topDocumentShare * 100"),
+  "Concordance Distribution should render one editorial sentence from the distribution result fields",
 );
 assert(
-  styles.includes(".concordance-distribution-metrics")
-    && styles.includes(".concordance-distribution-metric")
-    && styles.includes(".concordance-distribution-metric-label")
-    && styles.includes("grid-template-columns: repeat(auto-fit, minmax(8rem, max-content));")
-    && styles.includes(".concordance-distribution-bar {\n  display: block;")
+  styles.includes(".concordance-distribution-summary")
+    && !styles.includes(".concordance-distribution-metrics")
+    && styles.includes(".concordance-distribution-rate-bar {\n  display: block;")
     && styles.includes("background: var(--accent-color);")
     && styles.includes(".concordance-distribution-reading")
     && renderConcordanceDistributionBody.includes("Concentration in a few documents may suggest topic, genre, or source dependence; broad reach may suggest more corpus-general use.")
     && !renderConcordanceDistributionBody.includes("significance")
     && !renderConcordanceDistributionBody.includes("representative"),
-  "Concordance Distribution should retain its metrics and use a restrained shared-ramp ledger with cautious interpretive copy",
+  "Concordance Distribution should use editorial summary copy and a restrained rate ledger with cautious interpretation",
 );
 assert(
   renderConcordanceDistributionBody.includes("item.ratePer10k")
@@ -379,10 +379,10 @@ assert(
   "Concordance Distribution should render Hits per 10k and Share of hits from existing result data",
 );
 assert(
-  !renderConcordanceDistributionBody.includes('track.className = "frequency-distribution-track"')
-    && !renderConcordanceDistributionBody.includes('fill.className = "frequency-distribution-fill"')
-    && !renderConcordanceDistributionBody.includes("--bar-width"),
-  "Concordance Distribution should not create bar tracks or fills",
+  renderConcordanceDistributionBody.includes('rateTrack.className = "concordance-distribution-rate-track"')
+    && renderConcordanceDistributionBody.includes('rateBar.className = "concordance-distribution-rate-bar"')
+    && !renderConcordanceDistributionBody.includes("--distribution-bar-width"),
+  "Concordance Distribution should place its only micrographic in Hits per 10k",
 );
 assert(
   workbench.includes("addEventListener(\"click\", () => {\n    void toggleConcordanceExpansion(row);")
@@ -894,7 +894,7 @@ assert(
 const concordanceTableWrapCssMatch = styles.match(/\.concordance-table-wrap \{([\s\S]*?)\n\}/);
 const concordanceCollocationsTableWrapCssMatch = styles.match(/\.concordance-collocations-table-wrap \{([\s\S]*?)\n\}/);
 const concordanceDistributionTableWrapCssMatch = styles.match(
-  /\.concordance-distribution-table-wrap \{\n  max-width: 1000px;([\s\S]*?)\n\}/,
+  /\.concordance-distribution-table-wrap \{\n  max-width: none;([\s\S]*?)\n\}/,
 );
 const frequencyTableWrapCssMatch = styles.match(/\.frequency-table-wrap \{([\s\S]*?)\n\}/);
 assert(concordanceTableWrapCssMatch, "Concordance table wrap CSS should exist");
@@ -924,11 +924,11 @@ assert(
   "Concordance collocations should use the card width and normal page flow without ordinary nested scrolling",
 );
 assert(
-  concordanceDistributionTableWrapCss.includes("max-width: 1000px;")
-    && concordanceDistributionTableWrapCss.includes("max-height: min(58vh, 680px);")
-    && concordanceDistributionTableWrapCss.includes("overflow-x: auto;")
-    && concordanceDistributionTableWrapCss.includes("overflow-y: auto;"),
-  "Concordance distribution table wrap should cap width and height while retaining horizontal overflow",
+  concordanceDistributionTableWrapCss.includes("max-width: none;")
+    && concordanceDistributionTableWrapCss.includes("max-height: none;")
+    && concordanceDistributionTableWrapCss.includes("overflow: visible;")
+    && concordanceDistributionTableWrapCss.includes("border: 0;"),
+  "Concordance distribution should use natural page flow without internal table scrolling",
 );
 assert(
   frequencyTableWrapCss.includes("max-height: min(58vh, 680px);")
