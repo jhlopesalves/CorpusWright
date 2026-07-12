@@ -55,3 +55,10 @@
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
+
+.cw-plot-residual-zero {
+  stroke: var(--text-muted);
+  stroke-opacity: 0.72;
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}

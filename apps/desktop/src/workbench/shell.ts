@@ -1568,12 +1568,20 @@ function renderExtractionQuality(corpus: AnalysisCorpus): HTMLElement {
 
 function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
   const rank = corpus.rankFrequency;
-  let yMode: "rate" | "raw" = "rate";
+  interface RankControls extends FigureControlState {
+    view: "curve" | "residuals";
+    frequency: "rate" | "raw";
+    fit: "show" | "hide";
+    labels: "examples" | "pinned" | "off";
+  }
+  const controller = new OverviewFigureController<RankControls>({
+    initialControls: { view: "curve", frequency: "rate", fit: "show", labels: "examples" },
+    exportMetadata: (controls) => [
+      `${controls.view === "curve" ? "Curve" : "Residuals"} · ${controls.frequency === "rate" ? "per million" : "raw count"} · fit ${controls.fit} · labels ${controls.labels}`,
+    ],
+  });
   let figure: HTMLElement | null = null;
-  const figureSubtitle = () => yMode === "rate"
-    ? "Zipf fit on log rank and log frequency. Per-million relabels a constant scale."
-    : "Zipf fit on log rank and log frequency.";
-  const figureStats = () => `alpha ${formatOptionalFixed(rank.zipfExponent, 3)} · R-squared ${formatOptionalFixed(rank.rSquared, 3)} · fitted ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)} · ${yMode === "rate" ? "per-million scale" : "raw-count scale"}`;
+  const figureStats = () => `Zipf fit f(r) = C r^-alpha · alpha ${formatOptionalFixed(rank.zipfExponent, 3)} · C ${formatOptionalFixed(rank.zipfCoefficient, 2)} · R-squared ${formatOptionalFixed(rank.rSquared, 3)} · fitted ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)}`;
   const renderSvg = () => renderRankFrequencySvg(
     "overview-rank-frequency",
     buildRankFrequencyGeometry({
@@ -1583,40 +1591,79 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
         frequency: point.frequency,
         ratePerMillion: point.ratePerMillion,
       })),
-      yMode,
+      yMode: controller.controls.frequency,
       totalTokens: corpus.totals.tokens,
       zipfExponent: rank.zipfExponent,
       zipfCoefficient: rank.zipfCoefficient,
       fittedRankStart: rank.fittedRankStart,
       fittedRankEnd: rank.fittedRankEnd,
+      view: controller.controls.view,
+      fitVisible: controller.controls.fit === "show",
+      labelsMode: controller.controls.labels,
+      pinnedKeys: controller.pins,
     }),
-    yMode === "rate" ? "rate per million" : "raw count",
+    controller.controls.view === "residuals"
+      ? "Log observed − log fitted frequency"
+      : controller.controls.frequency === "rate" ? "Frequency per million (log scale)" : "Raw frequency (log scale)",
   );
-  const controls = createOverviewSegmentedControl(
-    "Rank-frequency y axis",
-    [
-      { value: "rate", label: "per M" },
-      { value: "raw", label: "raw" },
-    ],
-    yMode,
-    (value) => {
-      yMode = value;
-      if (figure) replaceFigureSvg(figure, renderSvg(), {
-        subtitle: figureSubtitle(),
-        captionStats: figureStats(),
-      });
+  const controls = document.createElement("div");
+  const viewControl = createOverviewSegmentedControl(
+    "View",
+    rank.zipfExponent === null || rank.zipfCoefficient === null
+      ? [{ value: "curve", label: "Curve" }]
+      : [{ value: "curve", label: "Curve" }, { value: "residuals", label: "Residuals" }],
+    "curve",
+    (view) => {
+      controller.updateControls({ view });
+      if (figure) replaceFigureSvg(figure, renderSvg());
     },
   );
+  const frequencyControl = createOverviewSegmentedControl(
+    "Frequency",
+    [
+      { value: "rate", label: "Per million" },
+      { value: "raw", label: "Raw count" },
+    ],
+    "rate",
+    (frequency) => {
+      controller.updateControls({ frequency });
+      if (figure) replaceFigureSvg(figure, renderSvg());
+    },
+  );
+  const fitControl = createOverviewSegmentedControl(
+    "Fit",
+    [{ value: "show", label: "Show" }, { value: "hide", label: "Hide" }],
+    "show",
+    (fit) => {
+      controller.updateControls({ fit });
+      if (figure) replaceFigureSvg(figure, renderSvg());
+    },
+  );
+  const labelsControl = createOverviewSelectControl(
+    "Labels",
+    [
+      { value: "examples", label: "Key examples" },
+      { value: "pinned", label: "Pinned only" },
+      { value: "off", label: "Off" },
+    ],
+    "examples",
+    (labels) => {
+      controller.updateControls({ labels });
+      if (figure) replaceFigureSvg(figure, renderSvg());
+    },
+  );
+  controls.append(viewControl, frequencyControl, fitControl, labelsControl);
   const rarity = rank.zipfExponent === null
     ? "the fitted rarity ratio is unavailable"
     : `ten times deeper in the rank list = ~${formatFixedNumber(10 ** rank.zipfExponent, 1)}x rarer`;
   figure = createOverviewFigure({
     id: "overview-rank-frequency",
     title: "Rank-frequency",
-    subtitle: figureSubtitle(),
+    subtitle: "How quickly does frequency fall as vocabulary rank increases?",
     controls,
+    controller,
     captionStats: figureStats(),
-    captionReading: `${rarity}; hollow points are excluded from the fit.`,
+    captionReading: `Both axes are logarithmic in Curve view. The top three ranks and frequency-one tail are excluded; R-squared is not proof of a universal law. Per-million scaling changes units, not curve shape or alpha; ${rarity}.`,
     explanation: createFigureExplanation("zipfFit"),
     renderSvg,
   });
@@ -1625,25 +1672,80 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
 
 function renderVocabularyGrowthFigure(corpus: AnalysisCorpus): HTMLElement {
   const growth = corpus.vocabularyGrowth;
+  interface GrowthControls extends FigureControlState {
+    view: "growth" | "heaps";
+    fit: "show" | "hide";
+    labels: "endpoint" | "checkpoints" | "pinned" | "off";
+  }
+  const controller = new OverviewFigureController<GrowthControls>({
+    initialControls: { view: "growth", fit: "show", labels: "endpoint" },
+    exportMetadata: (controls) => [
+      `${controls.view === "growth" ? "Growth · linear axes" : "Heaps fit · log–log axes"} · fit ${controls.fit} · labels ${controls.labels}`,
+    ],
+  });
+  let figure: HTMLElement | null = null;
   const betaYield = growth.heapsBeta === null
     ? "unavailable"
     : `${formatFixedNumber(((2 ** growth.heapsBeta) - 1) * 100, 1)}%`;
-  return createOverviewFigure({
+  const renderSvg = () => renderVocabularyGrowthSvg(
+    "overview-vocabulary-growth",
+    buildVocabularyGrowthGeometry({
+      points: growth.points,
+      heapsK: growth.heapsK,
+      heapsBeta: growth.heapsBeta,
+      view: controller.controls.view,
+      fitVisible: controller.controls.fit === "show",
+      labelsMode: controller.controls.labels,
+      pinnedKeys: controller.pins,
+    }),
+  );
+  const controls = document.createElement("div");
+  controls.append(
+    createOverviewSegmentedControl(
+      "View",
+      [{ value: "growth", label: "Growth" }, { value: "heaps", label: "Heaps fit" }],
+      "growth",
+      (view) => {
+        controller.updateControls({ view });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+    createOverviewSegmentedControl(
+      "Fit",
+      [{ value: "show", label: "Show" }, { value: "hide", label: "Hide" }],
+      "show",
+      (fit) => {
+        controller.updateControls({ fit });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+    createOverviewSelectControl(
+      "Labels",
+      [
+        { value: "endpoint", label: "Endpoint" },
+        { value: "checkpoints", label: "Key checkpoints" },
+        { value: "pinned", label: "Pinned only" },
+        { value: "off", label: "Off" },
+      ],
+      "endpoint",
+      (labels) => {
+        controller.updateControls({ labels });
+        if (figure) replaceFigureSvg(figure, renderSvg());
+      },
+    ),
+  );
+  figure = createOverviewFigure({
     id: "overview-vocabulary-growth",
     title: "Vocabulary growth",
-    subtitle: "Heaps-law shape from stable source-order checkpoints.",
+    subtitle: "How quickly does the corpus encounter new types as tokens accumulate?",
+    controls,
+    controller,
     captionStats: `k ${formatOptionalFixed(growth.heapsK, 3)} · beta ${formatOptionalFixed(growth.heapsBeta, 3)} · R-squared ${formatOptionalFixed(growth.rSquared, 3)}`,
-    captionReading: `Each doubling of tokens yields ~${betaYield} more types; stable source order, not a ceiling.`,
+    captionReading: `V(N) = K N^beta: each doubling of tokens yields ~${betaYield} more types. Checkpoints follow stable source order; the fit describes this snapshot, not a universal vocabulary ceiling.`,
     explanation: createFigureExplanation("heapsFit"),
-    renderSvg: () => renderVocabularyGrowthSvg(
-      "overview-vocabulary-growth",
-      buildVocabularyGrowthGeometry({
-        points: growth.points,
-        heapsK: growth.heapsK,
-        heapsBeta: growth.heapsBeta,
-      }),
-    ),
+    renderSvg,
   });
+  return figure;
 }
 
 function renderLexicalSpectrumFigure(corpus: AnalysisCorpus): HTMLElement {

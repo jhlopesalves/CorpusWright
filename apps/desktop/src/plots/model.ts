@@ -204,6 +204,7 @@ export interface RankFrequencyGeometry {
   yTicks: PlotTick[];
   points: Array<PlotPointGeometry<RankFrequencyDatum>>;
   fitPath: PlotPathGeometry | null;
+  zeroLine: PlotLineGeometry | null;
   legend: PlotLegendItem[];
   labels: PlotLabelGeometry[];
   bracket: PlotBracketGeometry | null;
@@ -965,39 +966,65 @@ export function buildRankFrequencyGeometry(options: {
   zipfCoefficient: number | null;
   fittedRankStart: number | null;
   fittedRankEnd: number | null;
+  view?: "curve" | "residuals";
+  fitVisible?: boolean;
+  labelsMode?: "examples" | "pinned" | "off";
+  pinnedKeys?: ReadonlySet<string>;
   box?: PlotBox;
 }): RankFrequencyGeometry {
   const box = options.box ?? createPlotBox();
   const visible = options.points.filter((point) => point.rank > 0 && point.frequency > 0);
   const xDomain = extent(visible.map((point) => point.rank));
-  const yDomain = extent(visible.map((point) => point.frequency));
+  const view = options.view ?? "curve";
+  const fitVisible = options.fitVisible ?? true;
   const xScale = createScale("log", xDomain, [box.margin.left, box.width - box.margin.right]);
-  const yScale = createScale("log", yDomain, [box.height - box.margin.bottom, box.margin.top]);
+  const residualValues = visible.map((point) => rankResidual(point, options.zipfExponent, options.zipfCoefficient));
+  const yDomain = view === "residuals"
+    ? extent([0, ...residualValues.filter((value): value is number => value !== null)])
+    : extent(visible.map((point) => point.frequency));
+  const yScale = createScale(view === "residuals" ? "linear" : "log", yDomain, [box.height - box.margin.bottom, box.margin.top]);
   const fittedStart = options.fittedRankStart;
   const fittedEnd = options.fittedRankEnd;
-  const points = visible.map((point) => {
-    const rawY = point.frequency;
+  const points = visible.flatMap((point) => {
+    const residual = rankResidual(point, options.zipfExponent, options.zipfCoefficient);
+    if (view === "residuals" && residual === null) return [];
+    const rawY = view === "residuals" ? residual! : point.frequency;
     const excluded = fittedStart === null || fittedEnd === null || point.rank < fittedStart || point.rank > fittedEnd
       || point.frequency <= 1;
-    return {
+    const key = `rank:${point.rank}:${point.token ?? ""}`;
+    const fitted = fittedRankFrequency(point.rank, options.zipfExponent, options.zipfCoefficient);
+    return [{
       x: scaleValue(xScale, point.rank),
       y: scaleValue(yScale, rawY),
       rawX: point.rank,
       rawY,
       datum: point,
-      rampIndex: rampIndex(point.rank, xScale.domain, true),
+      rampIndex: 2,
       excluded,
+      key,
+      pinned: options.pinnedKeys?.has(key) ?? false,
       tooltipTitle: point.token ?? `rank ${formatInteger(point.rank)}`,
       tooltipRows: [
         `rank ${formatInteger(point.rank)}`,
         `${formatInteger(point.frequency)} tokens`,
         `${formatFixed(point.ratePerMillion, 2)} per million`,
+        fitted === null ? "fit unavailable" : `fitted ${formatFixed(fitted, 2)}`,
+        residual === null ? "residual unavailable" : `log residual ${formatFixed(residual, 3)}`,
+        excluded ? "excluded from fit" : "included in fit",
       ],
-    };
+    }];
   });
   const fitPoints = fitPointsForRank(options, xScale, yScale);
-  const fitPath = fitPoints.length > 0 ? { d: pointsToPath(fitPoints), className: "cw-plot-fit-line" } : null;
-  const headPoints = points.filter((point) => point.datum.token && point.datum.rank <= 3);
+  const fitPath = view === "curve" && fitVisible && fitPoints.length > 0
+    ? { d: pointsToPath(fitPoints), className: "cw-plot-fit-line" }
+    : null;
+  const automaticPoints = options.labelsMode === "off" || options.labelsMode === "pinned"
+    ? []
+    : [
+        ...points.filter((point) => point.datum.token && point.datum.rank <= 3),
+        ...points.filter((point) => point.datum.token).slice(-1),
+      ];
+  const headPoints = points.filter((point) => point.pinned || automaticPoints.includes(point));
   const headLabels = placeLabels(
     headPoints.map((point) => ({
       x: point.x,
@@ -1011,19 +1038,23 @@ export function buildRankFrequencyGeometry(options: {
         { dx: -10, dy: -8, anchor: "end" },
         { dx: -12, dy: 6, anchor: "end" },
       ],
+      key: point.key,
+      pinned: point.pinned,
+      priority: point.pinned ? 100 : 10 - point.datum.rank,
     })),
     [
       ...pointLabelObstacles(headPoints, 7),
       ...polylineLabelObstacles(fitPoints, 4),
     ],
     plotLabelBounds(box),
+    8,
   );
-  const bracket = fittedStart !== null && fittedEnd !== null && fittedEnd >= fittedStart
+  const bracket = view === "curve" && fitVisible && fittedStart !== null && fittedEnd !== null && fittedEnd >= fittedStart
     ? {
         x1: scaleValue(xScale, fittedStart),
         x2: scaleValue(xScale, fittedEnd),
         y: box.height - box.margin.bottom + 22,
-        label: "FITTED RANGE",
+        label: "Fitted range",
       }
     : null;
   return {
@@ -1031,52 +1062,99 @@ export function buildRankFrequencyGeometry(options: {
     xScale,
     yScale,
     xTicks: logTicks(xScale),
-    yTicks: rankFrequencyTicks(yScale, options.yMode, options.totalTokens),
+    yTicks: view === "residuals" ? linearTicks(yScale, 7) : rankFrequencyTicks(yScale, options.yMode, options.totalTokens),
     points,
     fitPath,
-    legend: fittedStart !== null && fittedEnd !== null && fitPath
-      ? [
-          {
-            label: `fit: ranks ${formatInteger(fittedStart)}–${formatInteger(fittedEnd)}`,
-            className: "cw-plot-fit-line",
-          },
-          { label: "excluded: top 3 and f=1 tail", className: "cw-plot-excluded" },
-        ]
-      : [],
+    zeroLine: view === "residuals" ? {
+      x1: box.margin.left,
+      y1: scaleValue(yScale, 0),
+      x2: box.width - box.margin.right,
+      y2: scaleValue(yScale, 0),
+      className: "cw-plot-residual-zero",
+    } : null,
+    legend: [
+      { label: "Observed", kind: "point", shape: "circle" },
+      ...(fitPath ? [{ label: "Fitted", kind: "line" as const, className: "cw-plot-fit-line" }] : []),
+      { label: "Excluded from fit", kind: "point", shape: "circle", hollow: true, className: "cw-plot-excluded" },
+    ],
     labels: headLabels,
     bracket,
   };
+}
+
+export function rankResidual(
+  point: RankFrequencyDatum,
+  exponent: number | null,
+  coefficient: number | null,
+): number | null {
+  const fitted = fittedRankFrequency(point.rank, exponent, coefficient);
+  return fitted === null || point.frequency <= 0
+    ? null
+    : Math.log(point.frequency) - Math.log(fitted);
+}
+
+function fittedRankFrequency(
+  rank: number,
+  exponent: number | null,
+  coefficient: number | null,
+): number | null {
+  return exponent === null || coefficient === null || rank <= 0
+    ? null
+    : coefficient * rank ** (-exponent);
 }
 
 export function buildVocabularyGrowthGeometry(options: {
   points: VocabularyGrowthDatum[];
   heapsK: number | null;
   heapsBeta: number | null;
+  view?: "growth" | "heaps";
+  fitVisible?: boolean;
+  labelsMode?: "endpoint" | "checkpoints" | "pinned" | "off";
+  pinnedKeys?: ReadonlySet<string>;
   box?: PlotBox;
 }): VocabularyGrowthGeometry {
   const box = options.box ?? createPlotBox();
+  const view = options.view ?? "growth";
+  const fitVisible = options.fitVisible ?? true;
   const visible = options.points.filter((point) => point.tokens > 0 && point.types > 0);
   const fittedValues = vocabularyGrowthFitValues(visible, options.heapsK, options.heapsBeta);
-  const xScale = createScale("log", extent(visible.map((point) => point.tokens)), [
+  const xValues = visible.map((point) => point.tokens);
+  const yValues = [...visible.map((point) => point.types), ...fittedValues.map((point) => point.types)];
+  const xScale = createScale(view === "heaps" ? "log" : "linear", extent(view === "heaps" ? xValues : [0, ...xValues]), [
     box.margin.left,
     box.width - box.margin.right,
   ]);
-  const yScale = createScale("log", extent([...visible.map((point) => point.types), ...fittedValues.map((point) => point.types)]), [
+  const yScale = createScale(view === "heaps" ? "log" : "linear", extent(view === "heaps" ? yValues : [0, ...yValues]), [
     box.height - box.margin.bottom,
     box.margin.top,
   ]);
-  const points = visible.map((point) => ({
+  const points = visible.map((point) => {
+    const key = `growth:${point.tokens}`;
+    const fitted = options.heapsK !== null && options.heapsBeta !== null
+      ? options.heapsK * point.tokens ** options.heapsBeta
+      : null;
+    const difference = fitted === null ? null : point.types - fitted;
+    return {
     x: scaleValue(xScale, point.tokens),
     y: scaleValue(yScale, point.types),
     rawX: point.tokens,
     rawY: point.types,
     datum: point,
-    rampIndex: rampIndex(point.tokens, xScale.domain, true),
+    rampIndex: 2,
+    key,
+    pinned: options.pinnedKeys?.has(key) ?? false,
     tooltipTitle: `${formatInteger(point.types)} types`,
-    tooltipRows: [`${formatInteger(point.tokens)} tokens`, `${formatInteger(point.types)} types`],
-  }));
+    tooltipRows: [
+      `${formatInteger(point.tokens)} tokens`,
+      `${formatInteger(point.types)} observed types`,
+      fitted === null ? "fit unavailable" : `${formatFixed(fitted, 1)} fitted types`,
+      difference === null ? "difference unavailable" : `${formatFixed(difference, 1)} absolute difference`,
+      difference === null || fitted === null || fitted === 0 ? "relative difference unavailable" : `${formatFixed(difference / fitted * 100, 1)}% relative difference`,
+    ],
+  };
+  });
   const linePath = points.length > 0 ? { d: pointsToPath(points), className: "cw-plot-line" } : null;
-  const fitPath = fittedValues.length > 0
+  const fitPath = fitVisible && fittedValues.length > 0
     ? {
         d: pointsToPath(fittedValues.map((point) => ({
           x: scaleValue(xScale, point.tokens),
@@ -1085,16 +1163,24 @@ export function buildVocabularyGrowthGeometry(options: {
         className: "cw-plot-fit-line cw-plot-heaps-fit",
       }
     : null;
-  const areaPath = null;
+  const areaPath = view === "growth" && points.length > 0
+    ? { d: pointsToAreaPath(points, scaleValue(yScale, 0)), className: "cw-plot-area" }
+    : null;
   const last = points[points.length - 1];
-  const labels = last
+  const labelPoints = points.filter((point, index) => point.pinned
+    || options.labelsMode === "checkpoints" && (index === 0 || index + 1 === points.length || index % Math.max(1, Math.floor(points.length / 3)) === 0)
+    || (options.labelsMode ?? "endpoint") === "endpoint" && index + 1 === points.length);
+  const labels = last && options.labelsMode !== "off"
     ? placeLabels(
-        [{
-          x: last.x,
-          y: last.y,
-          text: `${formatInteger(last.datum.types)} types at ${formatMillions(last.datum.tokens)} tokens`,
-          lines: [`${formatInteger(last.datum.types)} types`, `at ${formatMillions(last.datum.tokens)} tokens`],
+        labelPoints.map((point) => ({
+          x: point.x,
+          y: point.y,
+          text: `${formatInteger(point.datum.types)} types at ${formatMillions(point.datum.tokens)} tokens`,
+          lines: [`${formatInteger(point.datum.types)} types`, `at ${formatMillions(point.datum.tokens)} tokens`],
           className: "cw-plot-label-callout",
+          key: point.key,
+          pinned: point.pinned,
+          priority: point.pinned ? 100 : point === last ? 20 : 5,
           candidates: [
             { dx: -4, dy: 38, anchor: "end" },
             { dx: -14, dy: 50, anchor: "end" },
@@ -1102,27 +1188,28 @@ export function buildVocabularyGrowthGeometry(options: {
             { dx: -10, dy: 18, anchor: "end" },
             { dx: 12, dy: 38, anchor: "start" },
           ],
-        }],
+        })),
         [
           ...polylineLabelObstacles(points, 5),
           ...pointLabelObstacles(points, 7),
         ],
         plotLabelBounds(box),
+        7,
       )
     : [];
   return {
     box,
     xScale,
     yScale,
-    xTicks: logTicks(xScale),
-    yTicks: logTicks(yScale),
+    xTicks: view === "heaps" ? logTicks(xScale) : linearTicks(xScale, 6),
+    yTicks: view === "heaps" ? logTicks(yScale) : linearTicks(yScale, 6),
     points,
     linePath,
     fitPath,
     areaPath,
     legend: fitPath
       ? [
-          { label: "observed", className: "cw-plot-line" },
+          { label: "Observed", className: "cw-plot-line" },
           { label: "Heaps fit", className: "cw-plot-fit-line", dashed: true },
         ]
       : [],
