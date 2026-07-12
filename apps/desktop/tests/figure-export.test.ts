@@ -65,7 +65,7 @@ for (const className of [
 ]) {
   assert.match(figureStyles, new RegExp(`\\.${className}`), `${className} must be CSS-owned`);
 }
-assert.match(figureStyles, /\.cw-plot-figure-title\s*\{[^}]*font-size:\s*17px[^}]*font-weight:\s*var\(--cw-weight-semibold\)/s);
+assert.match(figureStyles, /\.cw-plot-figure-title\s*\{[^}]*font-size:\s*var\(--cw-type-plot-title-size\)[^}]*font-weight:\s*var\(--cw-weight-semibold\)/s);
 assert.match(interactionStyles, /\.cw-plot-svg\.cw-plot-export-static[\s\S]*animation:\s*none/);
 assert.match(interactionStyles, /\.cw-plot-svg\.cw-plot-export-static[\s\S]*transition:\s*none/);
 assert.match(interactionStyles, /\.cw-plot-svg\.cw-plot-export-static[\s\S]*opacity:\s*1/);

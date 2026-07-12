@@ -85,7 +85,8 @@ function ruleBody(selector: string): string {
 
 const tableRule = ruleBody(".cw-result-table");
 assert.match(tableRule, /font-family:\s*var\(--cw-font-ui\)/);
-assert.match(tableRule, /font-synthesis:\s*none/);
+assert.match(ruleBody("html"), /font-synthesis:\s*none/);
+assert.doesNotMatch(tableRule, /font-synthesis:/, "result tables inherit the application-wide synthesis policy");
 
 const numericRule = ruleBody(".cw-result-table-numeric");
 assert.match(numericRule, /font-variant-numeric:\s*tabular-nums/);
