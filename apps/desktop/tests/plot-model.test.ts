@@ -130,8 +130,8 @@ assert(
 );
 assert(
   rankFrequencyRaw.points.filter((point) => point.excluded).length === 4
-    && rankFrequencyRaw.legend[0]?.label === "fit: ranks 4–4"
-    && rankFrequencyRaw.legend[1]?.label === "excluded: top 3 and f=1 tail",
+    && rankFrequencyRaw.legend.map((item) => item.label).join(",") === "Observed,Fitted,Excluded from fit"
+    && rankFrequencyRaw.bracket?.label === "Fitted range",
   "Rank-frequency should explicitly disclose the fitted range and hollow exclusions",
 );
 assertClose(findMilestoneShare(coverage, 5) ?? 0, 0.38, "Milestone lookup should return exact shares");
@@ -458,6 +458,6 @@ const vocabulary = buildVocabularyGrowthGeometry({
 assert(vocabulary.labels[0]?.lines?.length === 2, "Vocabulary endpoint label should render as two measured lines");
 assert(vocabulary.labels[0]?.anchor === "end", "Vocabulary endpoint label should be end anchored near the endpoint");
 assert(
-  vocabulary.fitPath !== null && vocabulary.legend.map((item) => item.label).join(",") === "observed,Heaps fit",
+  vocabulary.fitPath !== null && vocabulary.legend.map((item) => item.label).join(",") === "Observed,Heaps fit",
   "Vocabulary growth should show a distinct Heaps fitted series and legend",
 );

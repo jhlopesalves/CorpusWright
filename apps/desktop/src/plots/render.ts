@@ -35,11 +35,12 @@ export function renderRankFrequencySvg(plotId: string, geometry: RankFrequencyGe
   const svg = createBaseSvg(plotId, geometry.box);
   renderDefinitions(svg, plotId);
   renderAxes(svg, geometry.box, geometry.xScale, geometry.yScale, geometry.xTicks, geometry.yTicks, {
-    x: "rank",
+    x: "Rank (log scale)",
     y: yAxisLabel,
     valueAxis: "y",
   });
   if (geometry.fitPath) renderPath(svg, geometry.fitPath, plotId);
+  if (geometry.zeroLine) renderLine(svg, geometry.zeroLine);
   renderPoints(svg, geometry.points, "cw-plot-point");
   renderSvgLegend(svg, geometry.box, geometry.legend);
   renderLabels(svg, geometry.labels);
@@ -52,8 +53,8 @@ export function renderVocabularyGrowthSvg(plotId: string, geometry: VocabularyGr
   const svg = createBaseSvg(plotId, geometry.box);
   renderDefinitions(svg, plotId);
   renderAxes(svg, geometry.box, geometry.xScale, geometry.yScale, geometry.xTicks, geometry.yTicks, {
-    x: "tokens",
-    y: "types",
+    x: geometry.xScale.kind === "log" ? "Cumulative tokens (log scale)" : "Cumulative tokens",
+    y: geometry.yScale.kind === "log" ? "Cumulative types (log scale)" : "Cumulative types",
     valueAxis: "y",
   });
   if (geometry.areaPath) renderPath(svg, geometry.areaPath, plotId);
