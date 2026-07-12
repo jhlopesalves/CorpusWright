@@ -4842,36 +4842,16 @@ main {
   min-width: 0;
 }
 
-.concordance-distribution-metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(8rem, max-content));
-  gap: 8px 14px;
-  align-items: start;
-  margin: 4px 0 2px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-left: 2px solid var(--accent-color);
-  border-radius: 4px;
-  background: var(--cw-surface-subtle);
-}
-
-.concordance-distribution-metric {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.concordance-distribution-metric-label {
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.concordance-distribution-metric strong {
+.concordance-distribution-summary {
+  max-width: 78ch;
+  margin: 2px 0 0;
   color: var(--text-color);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.concordance-distribution-summary strong {
+  font-weight: 600;
 }
 
 .concordance-distribution-reading {
@@ -4883,34 +4863,34 @@ main {
 }
 
 .concordance-distribution-table-wrap {
-  max-width: 1000px;
-  max-height: min(58vh, 680px);
-  overflow-x: auto;
-  overflow-y: auto;
+  max-width: none;
+  max-height: none;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .concordance-distribution-table {
   width: 100%;
-  min-width: 760px;
+  min-width: 0;
   border-collapse: collapse;
   table-layout: fixed;
 }
 
 .concordance-distribution-table th,
 .concordance-distribution-table td {
-  padding: 7px 9px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 5px 7px;
+  border: 0;
   vertical-align: middle;
 }
 
 .concordance-distribution-table th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--panel-bg);
+  background: transparent;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
   color: var(--text-muted);
   font-size: 0.76rem;
-  font-weight: 700;
+  font-weight: 550;
   text-align: left;
 }
 
@@ -4936,29 +4916,20 @@ main {
   line-height: 1.2;
 }
 
-.concordance-distribution-table th:nth-child(1),
-.concordance-distribution-table td:nth-child(1) {
-  width: auto;
+.concordance-distribution-hits-column {
+  width: 5.5rem;
 }
 
-.concordance-distribution-table th:nth-child(2),
-.concordance-distribution-table td:nth-child(2) {
-  width: 220px;
+.concordance-distribution-tokens-column {
+  width: 8.5rem;
 }
 
-.concordance-distribution-table th:nth-child(3),
-.concordance-distribution-table td:nth-child(3) {
-  width: 110px;
+.concordance-distribution-rate-column {
+  width: 13rem;
 }
 
-.concordance-distribution-table th:nth-child(4),
-.concordance-distribution-table td:nth-child(4) {
-  width: 120px;
-}
-
-.concordance-distribution-table th:nth-child(5),
-.concordance-distribution-table td:nth-child(5) {
-  width: 110px;
+.concordance-distribution-share-column {
+  width: 7.5rem;
 }
 
 .concordance-distribution-table th:nth-child(n + 2),
@@ -4974,28 +4945,27 @@ main {
 }
 
 .concordance-distribution-occurrences {
-  display: grid;
-  grid-template-columns: minmax(3ch, auto) minmax(64px, 1fr);
-  align-items: center;
-  gap: 10px;
-}
-
-.concordance-distribution-count {
   color: var(--text-color);
-  font-weight: 650;
 }
 
-.concordance-distribution-bar-track {
+.concordance-distribution-rate {
+  display: grid;
+  grid-template-columns: minmax(4.5ch, auto) minmax(3rem, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.concordance-distribution-rate-track {
   display: block;
-  height: 7px;
+  height: 6px;
   overflow: hidden;
   border-radius: 999px;
   background: color-mix(in srgb, var(--border-color) 70%, transparent);
 }
 
-.concordance-distribution-bar {
+.concordance-distribution-rate-bar {
   display: block;
-  width: var(--distribution-bar-width, 0%);
+  width: var(--distribution-rate-width, 0%);
   height: 100%;
   border-radius: inherit;
   background: var(--accent-color);
@@ -9216,10 +9186,6 @@ mark.search-match.current-match {
 
   .concordance-collocations-table {
     min-width: 620px;
-  }
-
-  .concordance-distribution-table {
-    min-width: 700px;
   }
 
   .concordance-collocate-evidence-list-head,

@@ -174,8 +174,7 @@ pub struct ConcordanceDistributionPage {
     pub offset: usize,
     pub limit: usize,
     pub items: Vec<ConcordanceDistributionItem>,
-    #[ts(type = "number")]
-    pub max_count: u64,
+    pub max_rate_per_10k: f64,
 }
 
 /// Bounded surface-token concordance response.
@@ -1126,6 +1125,7 @@ fn concordance_distribution_page(
 ) -> ConcordanceDistributionPage {
     let mut items = document_stats
         .into_iter()
+        .filter(|stats| stats.hit_count > 0)
         .map(|stats| ConcordanceDistributionItem {
             document_id: stats.document_id,
             source_path: stats.source_path,
@@ -1145,15 +1145,16 @@ fn concordance_distribution_page(
         })
         .collect::<Vec<_>>();
     items.sort_by(|left, right| {
-        let left_has_hits = left.count > 0;
-        let right_has_hits = right.count > 0;
-        right_has_hits
-            .cmp(&left_has_hits)
-            .then_with(|| right.count.cmp(&left.count))
+        right
+            .count
+            .cmp(&left.count)
             .then_with(|| left.display_name.cmp(&right.display_name))
             .then_with(|| left.document_id.cmp(&right.document_id))
     });
-    let max_count = items.iter().map(|item| item.count).max().unwrap_or(0);
+    let max_rate_per_10k = items
+        .iter()
+        .map(|item| item.rate_per_10k)
+        .fold(0.0_f64, f64::max);
     let total_documents = items.len();
     let offset = offset.min(total_documents);
     ConcordanceDistributionPage {
@@ -1161,7 +1162,7 @@ fn concordance_distribution_page(
         offset,
         limit,
         items: items.into_iter().skip(offset).take(limit).collect(),
-        max_count,
+        max_rate_per_10k,
     }
 }
 

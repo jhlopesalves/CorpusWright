@@ -1101,19 +1101,31 @@ fn kwic_distribution_counts_and_paginates_after_sorting() {
         concordance_document(2, "b.txt", "beta beta"),
     ];
     let mut query = concordance_query("alpha");
-    query.distribution_offset = 1;
+    query.distribution_offset = 0;
     query.distribution_limit = 1;
 
-    let result = concordance_for(&documents, query).unwrap();
+    let first_result = concordance_for(&documents, query.clone()).unwrap();
+    query.distribution_offset = 1;
+    let second_result = concordance_for(&documents, query).unwrap();
 
-    let distribution = included_distribution(&result);
-    assert_eq!(distribution.total_documents, 3);
-    assert_eq!(distribution.offset, 1);
-    assert_eq!(distribution.items.len(), 1);
-    assert_eq!(distribution.items[0].display_name, "c.txt");
-    assert_eq!(distribution.items[0].count, 1);
-    assert_eq!(distribution.items[0].token_count, 2);
-    assert_eq!(distribution.max_count, 2);
+    let first = included_distribution(&first_result);
+    let second = included_distribution(&second_result);
+    assert_eq!(first_result.selected_documents_total, 3);
+    assert_eq!(first_result.documents_with_hits, 2);
+    assert_eq!(first.total_documents, 2);
+    assert_eq!(first.offset, 0);
+    assert_eq!(first.items.len(), 1);
+    assert_eq!(first.items[0].display_name, "a.txt");
+    assert_eq!(second.total_documents, 2);
+    assert_eq!(second.offset, 1);
+    assert_eq!(second.items.len(), 1);
+    assert_eq!(second.items[0].display_name, "c.txt");
+    assert_eq!(second.items[0].count, 1);
+    assert_eq!(second.items[0].token_count, 2);
+    assert_close(first.max_rate_per_10k, 2.0 / 3.0 * 10_000.0);
+    assert_close(second.max_rate_per_10k, first.max_rate_per_10k);
+    assert!(first.items.iter().all(|item| item.count > 0));
+    assert!(second.items.iter().all(|item| item.count > 0));
 }
 
 #[test]
