@@ -42,6 +42,36 @@ fn assert_dispersion_buckets_partition(overview: &CorpusOverview) {
     assert_dispersion_sample_lengths(overview);
 }
 
+#[test]
+fn exact_coverage_targets_use_first_full_rank_crossing() {
+    let crossings = exact_coverage_target_crossings(&[40, 20, 20, 10, 5, 5], 100);
+    assert_eq!(
+        crossings,
+        vec![
+            CoverageTargetCrossing {
+                target_share: 0.50,
+                first_rank: 2,
+                actual_cumulative_share: 0.60,
+            },
+            CoverageTargetCrossing {
+                target_share: 0.80,
+                first_rank: 3,
+                actual_cumulative_share: 0.80,
+            },
+            CoverageTargetCrossing {
+                target_share: 0.90,
+                first_rank: 4,
+                actual_cumulative_share: 0.90,
+            },
+            CoverageTargetCrossing {
+                target_share: 0.95,
+                first_rank: 5,
+                actual_cumulative_share: 0.95,
+            },
+        ]
+    );
+}
+
 fn sample_strings(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| (*value).to_string()).collect()
 }
