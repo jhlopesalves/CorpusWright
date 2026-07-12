@@ -289,7 +289,6 @@ export interface ConcordanceStrengthBarModel {
   signed: boolean;
   direction: ConcordanceStrengthDirection;
   magnitudePercent: number;
-  ramp: 1 | 2 | 3 | 4 | 5;
 }
 
 export function concordanceCollocationMeasureIsSigned(
@@ -316,7 +315,6 @@ export function concordanceCollocationStrengthBar(
   const magnitudePercent = maximum === 0
     ? 0
     : Math.min(100, Math.abs(value) / maximum * 100);
-  const ramp = Math.min(5, Math.max(1, Math.ceil(magnitudePercent / 20))) as 1 | 2 | 3 | 4 | 5;
   const direction: ConcordanceStrengthDirection = signed
     ? value < 0
       ? "negative"
@@ -324,7 +322,7 @@ export function concordanceCollocationStrengthBar(
         ? "positive"
         : "zero"
     : "nonNegative";
-  return { signed, direction, magnitudePercent, ramp };
+  return { signed, direction, magnitudePercent };
 }
 
 export function nextConcordanceCollocateDisplayCount(

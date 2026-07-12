@@ -452,7 +452,7 @@ function renderConcordanceCollocationTableHead(measure: ConcordanceCollocationMe
   positionLabel.textContent = "Position";
   const positionLegend = document.createElement("span");
   positionLegend.className = "concordance-position-legend";
-  positionLegend.textContent = "left of node · NODE · right of node";
+  positionLegend.textContent = "left offsets | node | right offsets";
   position.append(positionLabel, positionLegend);
   row.appendChild(position);
   dom.concordanceCollocationsTableHead.replaceChildren(row);
@@ -739,7 +739,7 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
   const openInLines = document.createElement("button");
   openInLines.type = "button";
   openInLines.className = "secondary-btn concordance-collocate-open-lines";
-  openInLines.textContent = "Open in concordance lines";
+  openInLines.textContent = "Open in Concordance Lines";
   openInLines.addEventListener("click", () => {
     openCollocateInConcordanceLines(row.surface, direction);
   });
@@ -843,21 +843,24 @@ function createConcordanceCollocationRow(
   frequency.textContent = formatNumber(row.collocateFrequency);
 
   const score = document.createElement("td");
-  score.className = "numeric";
+  score.className = "numeric concordance-collocation-score";
   const scoreValue = concordanceCollocationScore(row, measure);
   const bar = concordanceCollocationStrengthBar(scoreValue, measure, loadedScores);
   const value = document.createElement("span");
   value.className = "concordance-collocation-score-value";
   value.textContent = formatConcordanceCollocationScore(scoreValue, bar?.signed ?? false);
+  const scoreText = `${concordanceCollocationMeasureLabel(measure)}: ${value.textContent}`;
+  score.title = scoreText;
+  score.setAttribute("aria-label", scoreText);
   score.appendChild(value);
   if (bar !== null) {
     const track = document.createElement("span");
     track.className = `concordance-collocation-score-track is-${bar.direction}`;
     track.setAttribute("aria-hidden", "true");
     const fill = document.createElement("span");
-    fill.className = `concordance-collocation-score-fill is-ramp-${bar.ramp}`;
+    fill.className = "concordance-collocation-score-fill";
     fill.style.setProperty("--bar-width", `${bar.signed ? bar.magnitudePercent / 2 : bar.magnitudePercent}%`);
-    track.title = `${concordanceCollocationMeasureLabel(measure)}: ${formatConcordanceCollocationScore(scoreValue, bar.signed)}`;
+    track.title = scoreText;
     track.appendChild(fill);
     score.appendChild(track);
   }
@@ -877,14 +880,12 @@ function createConcordanceCollocationRow(
     if (index === 5) {
       const node = document.createElement("span");
       node.className = "concordance-position-node";
-      node.textContent = "NODE";
       node.setAttribute("aria-hidden", "true");
       glyph.appendChild(node);
     }
     const element = document.createElement("span");
     element.className = "concordance-position-bin";
     element.classList.toggle("is-inactive", !bin.active);
-    element.classList.toggle("is-dominant", bin.active && bin.count > 0 && bin.intensity === 1);
     element.style.setProperty("--position-height", `${Math.max(12, bin.intensity * 100)}%`);
     element.style.setProperty("--position-intensity", bin.intensity.toString());
     element.title = `${row.surface} · ${bin.label} · ${formatNumber(bin.count)}`;
