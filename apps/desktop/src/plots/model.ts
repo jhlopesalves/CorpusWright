@@ -1592,7 +1592,7 @@ export function buildDispersionGeometry(options: {
     top: plotTop,
     right: 36,
     bottom: 48,
-    left: 130,
+    left: 156,
   });
   const buckets = options.buckets;
   const totalTypes = options.totalTypes ?? buckets.reduce((sum, bucket) => sum + bucket.count, 0);
@@ -1662,29 +1662,16 @@ export function buildDispersionGeometry(options: {
     ...pointLabelObstacles(points, 8),
     ...lineLabelObstacles(stems, 5),
   ];
-  const rowLabels = placeLabels(
-    points.map((point) => ({
-      x: box.margin.left - 10,
-      y: point.y + 4,
-      text: options.reachLabels === "percentage"
-        ? dispersionReachBounds(point.datum, options.totalDocuments).percentage
-        : dispersionReachBounds(point.datum, options.totalDocuments).documents,
-      className: "cw-plot-label-muted",
-      candidates: [
-        { dx: 0, dy: 0, anchor: "end" },
-        { dx: -4, dy: 0, anchor: "end" },
-        { dx: 0, dy: -8, anchor: "end" },
-        { dx: 0, dy: 10, anchor: "end" },
-      ],
-    })),
-    dotAndStemObstacles,
-    {
-      left: 10,
-      top: box.margin.top - 8,
-      right: box.margin.left - 8,
-      bottom: box.height - box.margin.bottom + 8,
-    },
-  );
+  const rowLabelX = box.margin.left - 12;
+  const rowLabels: PlotLabelGeometry[] = points.map((point) => ({
+    x: rowLabelX,
+    y: point.y + 4,
+    text: options.reachLabels === "percentage"
+      ? dispersionReachBounds(point.datum, options.totalDocuments).percentage
+      : dispersionReachBounds(point.datum, options.totalDocuments).documents,
+    anchor: "end",
+    className: "cw-plot-label-muted cw-plot-axis-row-label",
+  }));
   const valueLabels = options.labelsMode === "off" ? [] : placeLabels(
     points.map((point) => ({
       x: Math.min(point.x + 10, box.width - box.margin.right - 10),

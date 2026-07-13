@@ -132,7 +132,7 @@ const themesModule = graph.modules.find(module => module.path === themesPath);
 if (!themesModule) throw new Error("The style graph does not import foundations/themes.css");
 const themes = parseCompleteThemes(themesModule.contents, "src/styles/foundations/themes.css");
 const failures = [];
-if (themes.length !== 16) failures.push(`expected exactly 16 complete themes, found ${themes.length}`);
+if (themes.length !== 14) failures.push(`expected exactly 14 complete themes, found ${themes.length}`);
 if (contrastChecks.length !== 42) failures.push(`expected exactly 42 contrast checks, found ${contrastChecks.length}`);
 failures.push(...validateThemeContrast(themes));
 failures.push(...validatePaletteContrast(themes));

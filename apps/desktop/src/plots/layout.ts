@@ -243,9 +243,15 @@ function resolveMountedAnnotationCollisions(
   extent: { right: number; bottom: number },
 ): void {
   const view = svg.viewBox.baseVal;
-  const labels = Array.from(svg.querySelectorAll<SVGTextElement>(
-    ".cw-plot-label, .cw-plot-threshold-label",
-  )).filter((label) => !label.closest(".cw-plot-composition-entry"));
+  const labels = Array.from(
+    svg.querySelectorAll<SVGTextElement>(
+      ".cw-plot-label, .cw-plot-threshold-label",
+    ),
+  ).filter(
+    (label) =>
+      !label.closest(".cw-plot-composition-entry")
+      && !label.classList.contains("cw-plot-axis-row-label"),
+  );
   labels.sort((left, right) => Number(right.classList.contains("is-pinned")) - Number(left.classList.contains("is-pinned")));
   const obstacles = Array.from(svg.querySelectorAll<SVGGraphicsElement>(
     ".cw-plot-legend, .cw-plot-density-legend, .cw-plot-dispersion-cumulative, .cw-plot-axis-title, .cw-plot-label.is-pinned",
