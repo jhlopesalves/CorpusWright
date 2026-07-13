@@ -101,8 +101,18 @@ const mattr = buildDistributionDiagnosticGeometry({
 assert.equal(mattr.compositionStrip?.total, 12);
 assert.deepEqual(mattr.compositionStrip?.segments.map((segment) => segment.datum.count), [10, 2]);
 assert.equal(mattr.witnesses.length, 2);
-assert(mattr.labels.some((label) => label.text === "low.txt"));
-assert(mattr.labels.some((label) => label.text === "high.txt"));
+assert(!mattr.labels.some((label) => label.text === "low.txt" || label.text === "high.txt"));
+const pinnedMattr = buildDistributionDiagnosticGeometry({
+  result,
+  metric: "mattr",
+  view: "histogram",
+  yMode: "share",
+  qqReference: "normal",
+  labelsMode: "extremes",
+  mattrWindow: 100,
+  pinnedKeys: new Set(["distribution-witness:1"]),
+});
+assert(pinnedMattr.labels.some((label) => label.text === "low.txt" && label.pinned));
 
 const logResult = { ...result, xScale: "log" as const };
 const logHistogram = buildDistributionDiagnosticGeometry({

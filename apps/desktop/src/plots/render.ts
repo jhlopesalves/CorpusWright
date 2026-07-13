@@ -17,7 +17,7 @@ import type {
   MattrDistributionGeometry,
   PlotBarGeometry,
   PlotBox,
-  PlotBracketGeometry,
+  PlotFittedRangeGeometry,
   PlotLabelGeometry,
   PlotLegendItem,
   PlotLineGeometry,
@@ -35,6 +35,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 export function renderRankFrequencySvg(plotId: string, geometry: RankFrequencyGeometry, yAxisLabel: string): SVGSVGElement {
   const svg = createBaseSvg(plotId, geometry.box);
   renderDefinitions(svg, plotId);
+  if (geometry.fittedRange) renderFittedRange(svg, geometry.fittedRange);
   renderAxes(svg, geometry.box, geometry.xScale, geometry.yScale, geometry.xTicks, geometry.yTicks, {
     x: "Rank (log scale)",
     y: yAxisLabel,
@@ -45,7 +46,6 @@ export function renderRankFrequencySvg(plotId: string, geometry: RankFrequencyGe
   renderPoints(svg, geometry.points, "cw-plot-point");
   renderSvgLegend(svg, geometry.box, geometry.legend);
   renderLabels(svg, geometry.labels);
-  if (geometry.bracket) renderBracket(svg, geometry.bracket);
   renderInteractionLayer(svg, geometry.box);
   return svg;
 }
@@ -945,15 +945,7 @@ function renderLexicalSpectrumBands(svg: SVGSVGElement, geometry: LexicalSpectru
       height: geometry.box.innerHeight,
       class: `cw-plot-spectrum-band ${band.alternate ? "is-alternate" : ""}`.trim(),
     });
-    const label = createSvgElement("text");
-    setAttrs(label, {
-      x: band.x + (band.width / 2),
-      y: geometry.box.margin.top - 18,
-      class: "cw-plot-spectrum-band-label",
-      "text-anchor": "middle",
-    });
-    label.textContent = band.label;
-    group.append(rect, label);
+    group.appendChild(rect);
   }
   svg.appendChild(group);
 }
@@ -1211,25 +1203,37 @@ function renderLabels(svg: SVGSVGElement, labels: PlotLabelGeometry[]): void {
   }
 }
 
-function renderBracket(svg: SVGSVGElement, bracket: PlotBracketGeometry): void {
+function renderFittedRange(svg: SVGSVGElement, range: PlotFittedRangeGeometry): void {
   const group = createSvgElement("g");
-  group.setAttribute("class", "cw-plot-bracket");
-  for (const line of [
-    { x1: bracket.x1, y1: bracket.y, x2: bracket.x2, y2: bracket.y },
-    { x1: bracket.x1, y1: bracket.y - 5, x2: bracket.x1, y2: bracket.y + 5 },
-    { x1: bracket.x2, y1: bracket.y - 5, x2: bracket.x2, y2: bracket.y + 5 },
-  ]) {
+  group.setAttribute("class", "cw-plot-fitted-range");
+  const band = createSvgElement("rect");
+  setAttrs(band, {
+    x: range.x1,
+    y: range.y,
+    width: Math.max(0, range.x2 - range.x1),
+    height: range.height,
+    class: "cw-plot-fitted-range-band",
+  });
+  group.appendChild(band);
+  for (const x of [range.x1, range.x2]) {
     const element = createSvgElement("line");
-    setAttrs(element, line);
+    setAttrs(element, {
+      x1: x,
+      y1: range.y,
+      x2: x,
+      y2: range.y + range.height,
+      class: "cw-plot-fitted-range-boundary",
+    });
     group.appendChild(element);
   }
   const label = createSvgElement("text");
   setAttrs(label, {
-    x: bracket.x2,
-    y: bracket.y + 16,
-    "text-anchor": "end",
+    x: range.labelX,
+    y: range.labelY,
+    class: "cw-plot-fitted-range-label",
+    "text-anchor": "start",
   });
-  label.textContent = bracket.label;
+  label.textContent = range.label;
   group.appendChild(label);
   svg.appendChild(group);
 }

@@ -9,12 +9,13 @@
 
 .cw-plot-line {
   stroke: var(--cw-plot-observed, var(--cw-plot-point));
-  stroke-width: 2.3;
+  stroke-width: 2.4;
 }
 
 .cw-plot-fit-line {
   stroke: var(--cw-plot-reference, var(--cw-plot-fit));
-  stroke-width: 2;
+  stroke-width: 2.1;
+  stroke-dasharray: 6 4;
 }
 
 .cw-plot-heaps-fit {
@@ -23,7 +24,7 @@
 
 .cw-plot-area {
   stroke: none;
-  fill-opacity: 0.06;
+  fill-opacity: 0.08;
 }
 
 .cw-plot-area-stop {

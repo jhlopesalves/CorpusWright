@@ -185,10 +185,13 @@ export interface PlotBarGeometry<TDatum = unknown> {
   ariaLabel?: string;
 }
 
-export interface PlotBracketGeometry {
+export interface PlotFittedRangeGeometry {
   x1: number;
   x2: number;
   y: number;
+  height: number;
+  labelX: number;
+  labelY: number;
   label: string;
 }
 
@@ -210,7 +213,7 @@ export interface RankFrequencyGeometry {
   zeroLine: PlotLineGeometry | null;
   legend: PlotLegendItem[];
   labels: PlotLabelGeometry[];
-  bracket: PlotBracketGeometry | null;
+  fittedRange: PlotFittedRangeGeometry | null;
 }
 
 export interface VocabularyGrowthDatum {
@@ -1027,25 +1030,33 @@ export function buildRankFrequencyGeometry(options: {
 }): RankFrequencyGeometry {
   const box = options.box ?? createPlotBox();
   const visible = options.points.filter((point) => point.rank > 0 && point.frequency > 0);
-  const xDomain = extent(visible.map((point) => point.rank));
   const view = options.view ?? "curve";
   const fitVisible = options.fitVisible ?? true;
-  const xScale = createScale("log", xDomain, [box.margin.left, box.width - box.margin.right]);
-  const residualValues = visible.map((point) => rankResidual(point, options.zipfExponent, options.zipfCoefficient));
-  const yDomain = view === "residuals"
-    ? extent([0, ...residualValues.filter((value): value is number => value !== null)])
-    : extent(visible.map((point) => rankCurveValue(point, options.yMode)));
-  const yScale = createScale(view === "residuals" ? "linear" : "log", yDomain, [box.height - box.margin.bottom, box.margin.top]);
   const fittedStart = options.fittedRankStart;
   const fittedEnd = options.fittedRankEnd;
-  const points = visible.flatMap((point) => {
+  const fittedPopulation = visible.flatMap((point) => {
+    const fitted = fittedRankFrequency(point.rank, options.zipfExponent, options.zipfCoefficient);
+    const residual = rankResidual(point, options.zipfExponent, options.zipfCoefficient);
+    return rankPointBelongsToFit(point, fittedStart, fittedEnd, fitted, residual)
+      ? [{ point, residual: residual! }]
+      : [];
+  });
+  const plottedSource = view === "residuals" ? fittedPopulation.map((entry) => entry.point) : visible;
+  const xDomain = extent(plottedSource.map((point) => point.rank));
+  const xScale = createScale("log", xDomain, [box.margin.left, box.width - box.margin.right]);
+  const residualMagnitude = Math.max(0, ...fittedPopulation.map((entry) => Math.abs(entry.residual)));
+  const residualExtent = residualMagnitude < 1e-9 ? 0.05 : residualMagnitude * 1.08;
+  const yDomain = view === "residuals"
+    ? [-residualExtent, residualExtent] as [number, number]
+    : extent(visible.map((point) => rankCurveValue(point, options.yMode)));
+  const yScale = createScale(view === "residuals" ? "linear" : "log", yDomain, [box.height - box.margin.bottom, box.margin.top]);
+  const points = plottedSource.flatMap((point) => {
     const residual = rankResidual(point, options.zipfExponent, options.zipfCoefficient);
     if (view === "residuals" && residual === null) return [];
     const rawY = view === "residuals" ? residual! : rankCurveValue(point, options.yMode);
-    const excluded = fittedStart === null || fittedEnd === null || point.rank < fittedStart || point.rank > fittedEnd
-      || point.frequency <= 1;
     const key = `rank:${point.rank}:${point.token ?? ""}`;
     const fitted = fittedRankFrequency(point.rank, options.zipfExponent, options.zipfCoefficient);
+    const excluded = !rankPointBelongsToFit(point, fittedStart, fittedEnd, fitted, residual);
     return [{
       x: scaleValue(xScale, point.rank),
       y: scaleValue(yScale, rawY),
@@ -1074,10 +1085,10 @@ export function buildRankFrequencyGeometry(options: {
     : null;
   const automaticPoints = options.labelsMode === "off" || options.labelsMode === "pinned"
     ? []
-    : [
+    : view === "curve" ? [
         ...points.filter((point) => point.datum.token && point.datum.rank <= 3),
         ...points.filter((point) => point.datum.token).slice(-1),
-      ];
+      ] : [];
   const headPoints = points.filter((point) => point.pinned || automaticPoints.includes(point));
   const headLabels = placeLabels(
     headPoints.map((point) => ({
@@ -1103,12 +1114,15 @@ export function buildRankFrequencyGeometry(options: {
     plotLabelBounds(box),
     8,
   );
-  const bracket = view === "curve" && fitVisible && fittedStart !== null && fittedEnd !== null && fittedEnd >= fittedStart
+  const fittedRange = view === "curve" && fitVisible && fittedStart !== null && fittedEnd !== null && fittedEnd >= fittedStart
     ? {
-        x1: scaleValue(xScale, fittedStart),
-        x2: scaleValue(xScale, fittedEnd),
-        y: box.height - box.margin.bottom + 22,
-        label: "Fitted range",
+        x1: scaleValue(xScale, Math.max(fittedStart, xScale.domain[0])),
+        x2: scaleValue(xScale, Math.min(fittedEnd, xScale.domain[1])),
+        y: box.margin.top,
+        height: box.innerHeight,
+        labelX: scaleValue(xScale, Math.max(fittedStart, xScale.domain[0])) + 6,
+        labelY: box.margin.top + 13,
+        label: "Fitted ranks",
       }
     : null;
   return {
@@ -1128,13 +1142,13 @@ export function buildRankFrequencyGeometry(options: {
       y2: scaleValue(yScale, 0),
       className: "cw-plot-residual-zero",
     } : null,
-    legend: [
-      { label: "Observed", kind: "point", shape: "circle" },
-      ...(fitPath ? [{ label: "Fitted", kind: "line" as const, className: "cw-plot-fit-line" }] : []),
-      { label: "Excluded from fit", kind: "point", shape: "circle", hollow: true, className: "cw-plot-excluded" },
-    ],
+    legend: view === "residuals" ? [] : [
+        { label: "Observed", kind: "point", shape: "circle" },
+        ...(fitPath ? [{ label: "Fitted", kind: "line" as const, className: "cw-plot-fit-line" }] : []),
+        { label: "Excluded from fit", kind: "point", shape: "circle", hollow: true, className: "cw-plot-excluded" },
+      ],
     labels: headLabels,
-    bracket,
+    fittedRange,
   };
 }
 
@@ -1144,9 +1158,28 @@ export function rankResidual(
   coefficient: number | null,
 ): number | null {
   const fitted = fittedRankFrequency(point.rank, exponent, coefficient);
-  return fitted === null || point.frequency <= 0
-    ? null
-    : Math.log(point.frequency) - Math.log(fitted);
+  if (fitted === null || !Number.isFinite(fitted) || fitted <= 0 || point.frequency <= 0) return null;
+  const residual = Math.log(point.frequency) - Math.log(fitted);
+  return Number.isFinite(residual) ? residual : null;
+}
+
+function rankPointBelongsToFit(
+  point: RankFrequencyDatum,
+  fittedStart: number | null,
+  fittedEnd: number | null,
+  fitted: number | null,
+  residual: number | null,
+): boolean {
+  return fittedStart !== null
+    && fittedEnd !== null
+    && point.rank >= fittedStart
+    && point.rank <= fittedEnd
+    && point.frequency > 1
+    && fitted !== null
+    && Number.isFinite(fitted)
+    && fitted > 0
+    && residual !== null
+    && Number.isFinite(residual);
 }
 
 function fittedRankFrequency(
@@ -1328,8 +1361,8 @@ export function buildLexicalSpectrumGeometry(options: {
   };
   });
   const authored = options.labelsMode === "off" || options.labelsMode === "pinned" ? [] : [
-    labelRequestForExactFrequency(points, 1, `hapax ${formatInteger(options.hapaxCount)}`),
-    labelRequestForExactFrequency(points, 2, `dis ${formatInteger(options.disLegomenaCount)}`),
+    labelRequestForExactFrequency(points, 1, `hapax · f = 1\n${formatInteger(options.hapaxCount)} types`),
+    labelRequestForExactFrequency(points, 2, `dis legomena · f = 2\n${formatInteger(options.disLegomenaCount)} types`),
   ].filter((label): label is LabelPlacementRequest => label !== null);
   const pinned = points.filter((point) => point.pinned).map((point) => ({
     x: point.x,
@@ -2328,10 +2361,7 @@ export function buildDistributionDiagnosticGeometry(options: {
       pinned: true,
     });
   }
-  const witnessLabelCandidates = witnesses.filter((point, index) =>
-    point.pinned
-      || options.labelsMode === "extremes" && (index === 0 || index + 1 === witnesses.length)
-  );
+  const witnessLabelCandidates = witnesses.filter((point) => point.pinned);
   labels.push(...placeLabels(
     witnessLabelCandidates.map((witness) => ({
       x: witness.x,
@@ -2578,21 +2608,6 @@ export function buildMattrDistributionGeometry(options: {
       `${formatInteger(witness.tokens)} tokens`,
     ],
   }));
-  const extremeWitnesses = [distribution.lowWitnesses[0], distribution.highWitnesses[0]]
-    .filter((witness): witness is MattrWitnessDatum => witness !== undefined)
-    .filter((witness, index, values) => values.findIndex((candidate) => candidate.name === witness.name) === index);
-  const witnessLabels = placeLabels(extremeWitnesses.map((witness) => ({
-    x: scaleValue(xScale, clamp(witness.mattr, domain[0], domain[1])),
-    y: box.height - box.margin.bottom - 8,
-    text: middleEllipsis(witness.name, 24),
-    className: "cw-plot-label-mono cw-plot-label-muted",
-    candidates: [
-      { dx: 0, dy: 0, anchor: "middle" as const },
-      { dx: 0, dy: -16, anchor: "middle" as const },
-      { dx: -8, dy: -8, anchor: "end" as const },
-      { dx: 8, dy: -8, anchor: "start" as const },
-    ],
-  })), bars.map((bar) => ({ kind: "box" as const, box: { x: bar.x, y: bar.y, width: bar.width, height: bar.height } })), plotLabelBounds(box));
   const medianLabel = medianLine === null || median === null
     ? []
     : placeLabels(
@@ -2619,7 +2634,7 @@ export function buildMattrDistributionGeometry(options: {
     yTicks: linearTicks(yScale, 5),
     bars,
     medianLine,
-    labels: [...medianLabel, ...witnessLabels],
+    labels: medianLabel,
     witnessTicks,
     domain,
   };

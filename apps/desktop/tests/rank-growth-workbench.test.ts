@@ -31,6 +31,9 @@ const curve = buildRankFrequencyGeometry({
 assert.equal(new Set(curve.points.filter((point) => !point.excluded).map((point) => point.rampIndex)).size, 1);
 assert(curve.points.filter((point) => point.excluded).every((point) => point.excluded));
 assert(curve.fitPath);
+assert(curve.fittedRange);
+assert(curve.fittedRange.y >= curve.box.margin.top);
+assert(curve.fittedRange.y + curve.fittedRange.height <= curve.box.height - curve.box.margin.bottom);
 assert.equal(curve.points[0]?.rawY, 100_000, "authored curve geometry uses frequency per million");
 assert(curve.legend.some((item) => item.label === "Excluded from fit" && item.hollow));
 
@@ -67,6 +70,11 @@ const residuals = buildRankFrequencyGeometry({
 assert.equal(residuals.yScale.kind, "linear");
 assert(residuals.zeroLine);
 assert.equal(residuals.fitPath, null);
+assert.deepEqual(residuals.points.map((point) => point.datum.rank), [4, 5]);
+assert(residuals.points.every((point) => !point.excluded));
+assert.equal(residuals.legend.length, 0);
+assert.equal(residuals.yScale.domain[0], -residuals.yScale.domain[1]);
+assert.equal(residuals.zeroLine?.y1, residuals.box.margin.top + residuals.box.innerHeight / 2);
 assert.equal(residuals.labels.length, 1, "residual labels are laid out without sampling an off-domain fitted curve");
 assert(residuals.labels.some((label) => label.text === "analysis" && label.pinned));
 assert(residuals.points[0]?.tooltipRows?.some((row) => row.includes("log residual")));

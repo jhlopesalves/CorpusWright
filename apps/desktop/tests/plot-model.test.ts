@@ -131,7 +131,9 @@ assert(
 assert(
   rankFrequencyRaw.points.filter((point) => point.excluded).length === 4
     && rankFrequencyRaw.legend.map((item) => item.label).join(",") === "Observed,Fitted,Excluded from fit"
-    && rankFrequencyRaw.bracket?.label === "Fitted range",
+    && rankFrequencyRaw.fittedRange?.label === "Fitted ranks"
+    && rankFrequencyRaw.fittedRange.y >= rankFrequencyRaw.box.margin.top
+    && rankFrequencyRaw.fittedRange.y + rankFrequencyRaw.fittedRange.height <= rankFrequencyRaw.box.height - rankFrequencyRaw.box.margin.bottom,
   "Rank-frequency should explicitly disclose the fitted range and hollow exclusions",
 );
 assertClose(findMilestoneShare(coverage, 5) ?? 0, 0.38, "Milestone lookup should return exact shares");
@@ -426,9 +428,8 @@ assertClose(mattrDistribution.domain[0], 0.225, "MATTR occupied domain should pa
 assertClose(mattrDistribution.domain[1], 0.4, "MATTR occupied domain should pad one bin above the last nonzero bin");
 assert(mattrDistribution.bars.length === 7, "MATTR distribution should emit one bar per visible bin in the occupied window");
 assert(
-  mattrDistribution.labels.filter((label) => label.text.includes("document") || label.text.includes("compact")).length <= 2
-    && mattrDistribution.labels.some((label) => label.text.length === 24 && label.text.includes("…")),
-  "MATTR should label only the extreme witnesses, middle-ellipsized to 24 characters",
+  mattrDistribution.labels.every((label) => !label.text.includes("document") && !label.text.includes("compact")),
+  "MATTR should retain witness ticks without automatic filenames",
 );
 assert(
   mattrDistribution.witnessTicks.length === 2
