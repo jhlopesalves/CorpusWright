@@ -74,7 +74,7 @@ assert.doesNotMatch(interactionStyles, /cw-plot-animated-path|cw-plot-path-draw|
 
 assert.match(figureSource, /prepareStaticExportClone\(exportedSvg\)/);
 assert.match(figureSource, /classList\.remove\("is-hovering"\)/);
-assert.match(figureSource, /\.cw-plot-crosshair-x, \.cw-plot-crosshair-y, \.cw-plot-tooltip/);
+assert.match(figureSource, /\.cw-plot-crosshair-x, \.cw-plot-crosshair-y, \.cw-plot-tooltip, \.cw-plot-ecdf-hit-targets/);
 assert.match(figureSource, /transient\.remove\(\)/);
 assert.match(figureSource, /target\.removeAttribute\("tabindex"\)/);
 assert.match(figureSource, /\^\(\?:--cw-plot-stagger\|animation\|animation-delay\|transition\)/);

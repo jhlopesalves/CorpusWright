@@ -12,11 +12,15 @@ const exportBlock = capture.match(/const recoveryExportCases = \[([\s\S]*?)\n\];
 const auditBlock = capture.match(/const recoveryAuditCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
 const cleanupScreenshotBlock = capture.match(/const cleanupScreenshotCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
 const cleanupExportBlock = capture.match(/const cleanupExportCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
+const legibilityScreenshotBlock = capture.match(/const legibilityScreenshotCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
+const legibilityExportBlock = capture.match(/const legibilityExportCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
 assert.equal(screenshotBlock.match(/\brecoveryShot\(/g)?.length, 12);
 assert.equal(exportBlock.match(/\brecoveryExportCase\(/g)?.length, 3);
 assert.equal(auditBlock.match(/\brecoveryAuditCase\(/g)?.length, 4);
 assert.equal(cleanupScreenshotBlock.match(/\bcleanupShot\(/g)?.length, 8);
 assert.equal(cleanupExportBlock.match(/\bcleanupExportCase\(/g)?.length, 2);
+assert.equal(legibilityScreenshotBlock.match(/\blegibilityShot\(/g)?.length, 4);
+assert.equal(legibilityExportBlock.match(/\blegibilityExportCase\(/g)?.length, 1);
 
 for (const filename of [
   "document-histogram.png",
@@ -60,6 +64,10 @@ for (const filename of [
 for (const filename of ["document-ecdf-final", "dispersion-plane"]) {
   assert.match(cleanupExportBlock, new RegExp(`"${filename}"`));
 }
+for (const filename of ["document-ecdf-final", "mattr-ecdf-final", "document-qq-legend", "vocabulary-growth-legend"]) {
+  assert.match(legibilityScreenshotBlock, new RegExp(`"${filename}"`));
+}
+assert.match(legibilityExportBlock, /"document-ecdf"/);
 
 assert.equal(
   packageJson.scripts?.["check:overview-rendering-recovery"],
@@ -69,8 +77,13 @@ assert.equal(
   packageJson.scripts?.["check:overview-distribution-dispersion-cleanup"],
   "node scripts/capture-overview-curation.mjs --distribution-dispersion-cleanup",
 );
+assert.equal(
+  packageJson.scripts?.["check:overview-legibility-and-dispersion-plane"],
+  "node scripts/capture-overview-curation.mjs --overview-legibility-and-dispersion-plane",
+);
 assert.match(capture, /\/tmp\/corpuswright-overview-rendering-recovery/);
 assert.match(capture, /\/tmp\/corpuswright-overview-distribution-dispersion-cleanup/);
+assert.match(capture, /\/tmp\/corpuswright-overview-legibility-and-dispersion-plane/);
 assert.match(capture, /viewport: "1440x900"/);
 assert.match(capture, /document\.getAnimations\(\)/);
 assert.match(capture, /animation\.finish\(\)/);
@@ -92,6 +105,8 @@ for (const browserAssertion of [
   "automatic dispersion label overlaps threshold text",
   "external profile band is not visibly named",
   "ECDF final cumulative endpoint is not visible",
+  "ECDF target uses ordinary point renderer",
+  "legend leaves inner plot rectangle",
   "Dispersion roster heading remains in Overview",
   "duplicated Overview structure remains",
 ]) {

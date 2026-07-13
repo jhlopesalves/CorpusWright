@@ -460,7 +460,9 @@ function prepareStaticExportClone(svg: SVGSVGElement): void {
   svg.classList.add("cw-plot-export-static");
   svg.removeAttribute("tabindex");
   delete svg.dataset.plotNavigationReady;
-  for (const transient of svg.querySelectorAll(".cw-plot-crosshair-x, .cw-plot-crosshair-y, .cw-plot-tooltip")) {
+  for (const transient of svg.querySelectorAll(
+    ".cw-plot-crosshair-x, .cw-plot-crosshair-y, .cw-plot-tooltip, .cw-plot-ecdf-hit-targets",
+  )) {
     transient.remove();
   }
   for (const target of svg.querySelectorAll<SVGElement>(".cw-plot-hover-target")) {
