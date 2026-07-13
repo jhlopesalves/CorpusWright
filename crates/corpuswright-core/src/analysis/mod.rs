@@ -9,6 +9,7 @@ mod distribution;
 mod frequency;
 mod input;
 mod overview;
+mod overview_distribution;
 mod shared;
 
 pub(crate) use build::compare_document_records;
@@ -80,8 +81,16 @@ pub use overview::{
     CorpusOverviewFinding, CorpusOverviewFindingKind, CorpusOverviewFindingSeverity,
     CorpusOverviewFrequencyConcentration, CorpusOverviewLexicalSpectrum, CorpusOverviewPopulation,
     CorpusOverviewRankFrequency, CorpusOverviewReading, CorpusOverviewTotals,
-    CorpusOverviewVocabularyGrowth, CumulativeCoveragePoint, FrequencySpectrumPoint,
-    RankFrequencyPoint, UniversalType, VocabularyGrowthPoint,
+    CorpusOverviewVocabularyGrowth, CoverageTargetCrossing, CumulativeCoveragePoint,
+    FrequencySpectrumPoint, RankFrequencyPoint, UniversalType, VocabularyGrowthPoint,
+};
+
+pub use overview_distribution::{
+    OverviewDistributionBin, OverviewDistributionEvidencePage, OverviewDistributionEvidenceQuery,
+    OverviewDistributionEvidenceRow, OverviewDistributionMetric, OverviewDistributionQuery,
+    OverviewDistributionResult, OverviewDistributionScale, OverviewDistributionWitness,
+    OverviewEcdfPoint, OverviewHistogramRule, OverviewQqPoint, OverviewQqReference,
+    query_overview_distribution, query_overview_distribution_evidence,
 };
 
 #[cfg(test)]

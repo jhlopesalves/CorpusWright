@@ -25,23 +25,24 @@
 
 .cw-plot-tick-label {
   fill: var(--text-muted);
-  font-family: var(--cw-font-mono);
+  font-family: var(--cw-font-ui);
   font-size: var(--cw-type-plot-tick-size);
+  font-variant-numeric: tabular-nums;
 }
 
 .cw-plot-axis-title {
   fill: var(--text-muted);
+  font-family: var(--cw-font-ui);
   font-size: var(--cw-type-plot-label-size);
   font-weight: var(--cw-weight-semibold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .cw-plot-threshold-line {
   fill: none;
   stroke: var(--text-muted);
   stroke-dasharray: 5 4;
-  stroke-opacity: 0.7;
+  stroke-opacity: 0.48;
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
@@ -53,4 +54,24 @@
   stroke-opacity: 0.7;
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-residual-zero {
+  stroke: var(--text-muted);
+  stroke-opacity: 0.72;
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-coverage-target {
+  stroke: var(--cw-plot-reference, var(--cw-plot-fit));
+  stroke-dasharray: 5 4;
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.cw-plot-point.cw-plot-coverage-crossing {
+  fill: var(--cw-plot-reference, var(--cw-plot-fit));
+  stroke: var(--cw-plot-panel);
+  stroke-width: 1.8;
 }

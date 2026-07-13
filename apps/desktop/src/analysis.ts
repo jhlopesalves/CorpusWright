@@ -12,6 +12,7 @@ import type { AnnotationCacheBuildProgress as GeneratedAnnotationCacheBuildProgr
 import type { AnnotationCacheState as GeneratedAnnotationCacheState } from "./generated/AnnotationCacheState.js";
 import type { AnalysisDocumentSelection as GeneratedAnalysisDocumentSelection } from "./generated/AnalysisDocumentSelection.js";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
+import type { CoverageTargetCrossing as GeneratedCoverageTargetCrossing } from "./generated/CoverageTargetCrossing.js";
 import type { CompareExpressionsQuery as GeneratedCompareExpressionsQuery } from "./generated/CompareExpressionsQuery.js";
 import type { CompareExpressionsResult as GeneratedCompareExpressionsResult } from "./generated/CompareExpressionsResult.js";
 import type { ConcordanceContextFilterDirection as GeneratedConcordanceContextFilterDirection } from "./generated/ConcordanceContextFilterDirection.js";
@@ -38,6 +39,11 @@ import type { FrequencySortKey as GeneratedFrequencySortKey } from "./generated/
 import type { FrequencyTermItem as GeneratedFrequencyTermItem } from "./generated/FrequencyTermItem.js";
 import type { FrequencyTokenClass as GeneratedFrequencyTokenClass } from "./generated/FrequencyTokenClass.js";
 import type { SortDirection as GeneratedSortDirection } from "./generated/SortDirection.js";
+import type { OverviewDistributionEvidencePage as GeneratedOverviewDistributionEvidencePage } from "./generated/OverviewDistributionEvidencePage.js";
+import type { OverviewDistributionEvidenceQuery as GeneratedOverviewDistributionEvidenceQuery } from "./generated/OverviewDistributionEvidenceQuery.js";
+import type { OverviewDistributionMetric as GeneratedOverviewDistributionMetric } from "./generated/OverviewDistributionMetric.js";
+import type { OverviewDistributionQuery as GeneratedOverviewDistributionQuery } from "./generated/OverviewDistributionQuery.js";
+import type { OverviewDistributionResult as GeneratedOverviewDistributionResult } from "./generated/OverviewDistributionResult.js";
 import type { TermDistributionItem as GeneratedTermDistributionItem } from "./generated/TermDistributionItem.js";
 import type { TermDistributionPage as GeneratedTermDistributionPage } from "./generated/TermDistributionPage.js";
 
@@ -69,6 +75,12 @@ export type AnnotationCacheBuildProgress = GeneratedAnnotationCacheBuildProgress
 export type AnnotationCacheState = GeneratedAnnotationCacheState;
 export type TermDistributionItem = GeneratedTermDistributionItem;
 export type TermDistributionPage = GeneratedTermDistributionPage;
+export type CoverageTargetCrossing = GeneratedCoverageTargetCrossing;
+export type OverviewDistributionMetric = GeneratedOverviewDistributionMetric;
+export type OverviewDistributionQuery = GeneratedOverviewDistributionQuery;
+export type OverviewDistributionResult = GeneratedOverviewDistributionResult;
+export type OverviewDistributionEvidenceQuery = GeneratedOverviewDistributionEvidenceQuery;
+export type OverviewDistributionEvidencePage = GeneratedOverviewDistributionEvidencePage;
 
 export interface AnalysisDocumentSummary {
   id: number;
@@ -186,6 +198,7 @@ export interface CorpusOverviewFrequencyConcentration {
   top1000Coverage: number | null;
   top10000Coverage: number | null;
   cumulativeCoverage: CumulativeCoveragePoint[];
+  exactTargetCrossings: CoverageTargetCrossing[];
   shannonEntropyBits: number | null;
   evennessJ: number | null;
   effectiveVocabularyEntropy: number | null;
@@ -467,6 +480,26 @@ export function getAnalysisBuildStatus(cleaningConfig: CleaningConfig): Promise<
 
 export function computeCorpusOverview(cleaningConfig: CleaningConfig): Promise<CorpusOverview> {
   return invoke<CorpusOverview>("compute_corpus_overview_command", { cleaningConfig });
+}
+
+export function queryOverviewDistribution(
+  query: OverviewDistributionQuery,
+  cleaningConfig: CleaningConfig,
+): Promise<OverviewDistributionResult> {
+  return invoke<OverviewDistributionResult>("query_overview_distribution_command", {
+    query,
+    cleaningConfig,
+  });
+}
+
+export function queryOverviewDistributionEvidence(
+  query: OverviewDistributionEvidenceQuery,
+  cleaningConfig: CleaningConfig,
+): Promise<OverviewDistributionEvidencePage> {
+  return invoke<OverviewDistributionEvidencePage>(
+    "query_overview_distribution_evidence_command",
+    { query, cleaningConfig },
+  );
 }
 
 export function queryFrequencyList(

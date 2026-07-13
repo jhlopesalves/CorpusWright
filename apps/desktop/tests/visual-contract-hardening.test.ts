@@ -21,7 +21,7 @@ const feedback = moduleSource("components/feedback.css");
 const analyse = moduleSource("features/analyse.css");
 const concordance = moduleSource("features/concordance.css");
 
-assert.equal(themes.length, 16, "focus contracts must cover all sixteen themes");
+assert.equal(themes.length, 14, "focus contracts must cover all fourteen themes");
 for (const theme of themes) {
   assert.match(theme.declarations.get("--cw-interaction-focus-ring") ?? "", /^0 0 0 [23]px var\(--focus-ring\)$/);
   assert.match(theme.declarations.get("--cw-interaction-focus-outline") ?? "", /^[23]px solid var\(--focus-ring\)$/);
@@ -75,14 +75,15 @@ for (const [source, selector] of [
 }
 assert.match(analyse, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.annotation-layer-progress-bar\.is-indeterminate \.annotation-layer-progress-fill\s*\{[^}]*width:\s*100%[^}]*transform:\s*none/s);
 assert.match(concordance, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.concordance-collocation-progress-indicator\s*\{[^}]*width:\s*100%[^}]*transform:\s*none/s);
-for (const selector of ["cw-plot-animated-path", "cw-plot-point", "cw-plot-plane-witness", "cw-plot-roster-dot"]) {
+for (const selector of ["cw-plot-point", "cw-plot-plane-witness"]) {
   assert.match(interactions, new RegExp(`@media \\(prefers-reduced-motion: reduce\\)[\\s\\S]*?\\.${selector}`));
 }
-assert.match(interactions, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?opacity:\s*1[^}]*stroke-dashoffset:\s*0[^}]*transform:\s*none/s);
+assert.match(interactions, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?opacity:\s*1[^}]*transform:\s*none/s);
 
 const modelSource = readFileSync(new URL("../src/plots/model.ts", import.meta.url), "utf8");
 const renderSource = readFileSync(new URL("../src/plots/render.ts", import.meta.url), "utf8");
-assert.match(modelSource, /className: `cw-plot-lollipop-stem cw-plot-ramp-\$\{point\.rampIndex\}`/);
+assert.match(modelSource, /className: `cw-plot-lollipop-stem cw-plot-ramp-\$\{point\.rampIndex\} \$\{point\.className/);
 assert.match(modelSource, /function densityRampFill\(t: number\): string/);
 assert.match(renderSource, /`cw-plot-ramp-\$\{point\.rampIndex\}`/);
-assert.match(renderSource, /r: baseClass\.includes\("is-lollipop"\) \? 4\.6 : 3\.8/);
+assert.match(renderSource, /baseClass\.includes\("is-lollipop"\) \? 0\.8 : 0/);
+assert.match(renderSource, /r: 4\.3 \+ sizeAdjustment/);

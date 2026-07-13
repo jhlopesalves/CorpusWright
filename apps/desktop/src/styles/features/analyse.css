@@ -529,9 +529,9 @@
   align-items: baseline;
   padding: 0;
   border: 0;
-  border-bottom: 1px dotted currentColor;
+  border-bottom: 0;
   border-radius: 0;
-  color: inherit;
+  color: var(--text-muted);
   background: transparent;
   font: inherit;
   text-align: left;
@@ -540,12 +540,11 @@
 }
 
 .analysis-glossary-term:hover {
-  color: var(--accent-color);
+  color: var(--text-color);
 }
 
 .analysis-glossary-term:focus-visible {
-  outline: 2px solid var(--accent-color);
-  outline-offset: 3px;
+  outline: none;
   box-shadow: var(--cw-interaction-focus-ring);
 }
 
@@ -588,7 +587,7 @@
 }
 
 .analysis-glossary-row > td {
-  padding: 0 0 8px;
+  padding: 0 0 10px;
   overflow: visible;
 }
 
@@ -599,18 +598,60 @@
 .analysis-glossary-detail {
   display: grid;
   gap: 8px;
-  padding: 10px 12px;
-  border-left: 2px solid var(--accent-color);
-  background: var(--cw-interaction-bg-hover);
+  padding: 2px 0 10px;
+  border-left: 0;
+  background: transparent;
   color: var(--text-muted);
   font-size: var(--cw-type-ui-size);
   line-height: 1.45;
   overflow: visible;
 }
 
-.analysis-glossary-row .analysis-glossary-detail {
-  width: min(960px, 100cqw);
-  max-width: min(960px, 100cqw);
+.analysis-method-disclosure {
+  display: grid;
+  gap: 0;
+  width: auto;
+  margin: 0 -24px;
+  max-width: none;
+  border-top: 1px solid var(--border-color);
+}
+
+.analysis-method-disclosure > .analysis-glossary-term {
+  width: 100%;
+  justify-content: space-between;
+  padding: 8px 24px;
+  font-size: var(--cw-type-ui-size);
+  font-weight: var(--cw-weight-semibold);
+  line-height: 1.35;
+}
+
+.analysis-method-disclosure-detail {
+  gap: 12px;
+  padding: 0 24px 10px;
+}
+
+.analysis-glossary-group-entry {
+  display: grid;
+  gap: 8px;
+}
+
+.analysis-glossary-group-entry p,
+.analysis-glossary-group-entry ul {
+  max-width: 65ch;
+  margin: 0;
+}
+
+.analysis-glossary-group-entry + .analysis-glossary-group-entry {
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.analysis-glossary-entry-title {
+  margin: 0;
+  color: var(--text-color);
+  font-size: var(--cw-type-ui-size);
+  font-weight: var(--cw-weight-semibold);
+  line-height: 1.35;
 }
 
 .analysis-dispersion-sample-detail {
@@ -731,10 +772,6 @@
   font-family: var(--cw-font-math);
   font-size: var(--cw-type-help-size);
   line-height: 1.35;
-}
-
-.analysis-glossary-row .analysis-glossary-formula {
-  font-size: var(--cw-type-body-size);
 }
 
 .analysis-glossary-formula .katex-display {

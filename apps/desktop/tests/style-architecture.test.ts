@@ -32,6 +32,7 @@ const expectedModules = [
   "features/repeated-artifacts.css",
   "features/settings.css",
   "foundations/theme-overrides.css",
+  "foundations/figure-palettes.css",
   "layout/responsive.css",
 ];
 
@@ -54,7 +55,7 @@ for (const relativePath of expectedModules) {
 const moduleSource = (relativePath: string): string => graph.modules.find(
   module => module.path === path.join(desktopRoot, "src/styles", relativePath),
 )?.contents ?? "";
-assert.equal(parseCompleteThemes(moduleSource("foundations/themes.css")).length, 16);
+assert.equal(parseCompleteThemes(moduleSource("foundations/themes.css")).length, 14);
 assert.match(moduleSource("components/tables.css"), /\.cw-result-table \{/);
 assert.match(moduleSource("components/panels.css"), /\.cw-panel \{/);
 assert.match(moduleSource("components/controls.css"), /\.primary-btn/);

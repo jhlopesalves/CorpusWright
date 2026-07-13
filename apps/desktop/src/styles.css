@@ -28,4 +28,5 @@
 @import "./styles/features/repeated-artifacts.css";
 @import "./styles/features/settings.css";
 @import "./styles/foundations/theme-overrides.css";
+@import "./styles/foundations/figure-palettes.css";
 @import "./styles/layout/responsive.css";
