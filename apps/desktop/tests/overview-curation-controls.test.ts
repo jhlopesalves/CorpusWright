@@ -38,4 +38,5 @@ assert.match(shell, /Show 30 more/);
 assert.match(styles, /grid-template-columns: minmax\(min\(540px, 100%\), 1fr\) auto/);
 assert.match(styles, /cw-overview-figure-control-row/);
 assert.match(styles, /cw-overview-figure-controls[\s\S]*flex-wrap: wrap/);
+assert.match(styles, /\.cw-overview-control-field\[hidden\][\s\S]*\.cw-overview-figure-options\[hidden\][\s\S]*display: none/);
 assert.doesNotMatch(styles, /cw-overview-palette-toolbar/);

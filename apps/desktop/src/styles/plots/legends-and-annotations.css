@@ -169,7 +169,7 @@
 }
 
 .cw-plot-legend-swatch.cw-plot-fit-line {
-  stroke: var(--cw-plot-reference);
+  stroke: var(--cw-plot-reference, var(--cw-plot-fit));
 }
 
 .cw-plot-legend-swatch.is-dashed {
@@ -180,25 +180,25 @@
   fill: var(--panel-bg);
 }
 
-.cw-plot-density-legend-step.cw-plot-ramp-0 { fill: var(--cw-plot-density-0); }
-.cw-plot-density-legend-step.cw-plot-ramp-1 { fill: var(--cw-plot-density-1); }
-.cw-plot-density-legend-step.cw-plot-ramp-2 { fill: var(--cw-plot-density-2); }
-.cw-plot-density-legend-step.cw-plot-ramp-3 { fill: var(--cw-plot-density-3); }
-.cw-plot-density-legend-step.cw-plot-ramp-4 { fill: var(--cw-plot-density-5); }
+.cw-plot-density-legend-step.cw-plot-ramp-0 { fill: var(--cw-plot-density-0, var(--cw-plot-ramp-0)); }
+.cw-plot-density-legend-step.cw-plot-ramp-1 { fill: var(--cw-plot-density-1, var(--cw-plot-ramp-1)); }
+.cw-plot-density-legend-step.cw-plot-ramp-2 { fill: var(--cw-plot-density-2, var(--cw-plot-ramp-2)); }
+.cw-plot-density-legend-step.cw-plot-ramp-3 { fill: var(--cw-plot-density-3, var(--cw-plot-ramp-3)); }
+.cw-plot-density-legend-step.cw-plot-ramp-4 { fill: var(--cw-plot-density-5, var(--cw-plot-ramp-5)); }
 
 .cw-plot-legend-swatch.is-composition {
-  fill: var(--cw-plot-composition-3);
+  fill: var(--cw-plot-composition-3, var(--cw-plot-ramp-3));
   stroke: var(--panel-bg);
 }
 
 .cw-plot-legend-swatch.is-threshold {
-  stroke: var(--cw-plot-attention);
+  stroke: var(--cw-plot-attention, var(--cw-plot-ramp-5));
   stroke-dasharray: 4 3;
 }
 
 .cw-plot-legend-swatch.is-dp-attention {
-  fill: var(--cw-plot-attention);
-  stroke: var(--cw-plot-attention);
+  fill: var(--cw-plot-attention, var(--cw-plot-ramp-5));
+  stroke: var(--cw-plot-attention, var(--cw-plot-ramp-5));
 }
 
 .cw-plot-legend-swatch.is-dp-observed {
@@ -206,29 +206,29 @@
 }
 
 .cw-plot-legend-swatch.is-witness-core {
-  fill: var(--cw-plot-witness-core);
-  stroke: var(--cw-plot-witness-core);
+  fill: var(--cw-plot-witness-core, var(--accent-color));
+  stroke: var(--cw-plot-witness-core, var(--accent-color));
 }
 
 .cw-plot-legend-swatch.is-witness-loud-local {
-  fill: var(--cw-plot-witness-loud-local);
-  stroke: var(--cw-plot-witness-loud-local);
+  fill: var(--cw-plot-witness-loud-local, var(--cw-warning-text));
+  stroke: var(--cw-plot-witness-loud-local, var(--cw-warning-text));
 }
 
 .cw-plot-legend-swatch.is-witness-quiet-even {
-  fill: var(--cw-plot-witness-quiet-even);
-  stroke: var(--cw-plot-witness-quiet-even);
+  fill: var(--cw-plot-witness-quiet-even, var(--cw-category-mixed-text));
+  stroke: var(--cw-plot-witness-quiet-even, var(--cw-category-mixed-text));
 }
 
 .cw-plot-legend-swatch.is-witness-rare-local {
-  fill: var(--cw-plot-witness-rare-local);
-  stroke: var(--cw-plot-witness-rare-local);
+  fill: var(--cw-plot-witness-rare-local, var(--cw-danger-text));
+  stroke: var(--cw-plot-witness-rare-local, var(--cw-danger-text));
 }
 
 .cw-plot-cumulative-callout {
-  fill: var(--cw-plot-reference);
+  fill: var(--cw-plot-reference, var(--cw-plot-fit));
   fill-opacity: 0.1;
-  stroke: var(--cw-plot-reference);
+  stroke: var(--cw-plot-reference, var(--cw-plot-fit));
   stroke-width: 1.2;
 }
 

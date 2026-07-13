@@ -8,12 +8,12 @@
 }
 
 .cw-plot-line {
-  stroke: var(--cw-plot-observed);
+  stroke: var(--cw-plot-observed, var(--cw-plot-point));
   stroke-width: 2.3;
 }
 
 .cw-plot-fit-line {
-  stroke: var(--cw-plot-reference);
+  stroke: var(--cw-plot-reference, var(--cw-plot-fit));
   stroke-width: 2;
 }
 
@@ -27,11 +27,11 @@
 }
 
 .cw-plot-area-stop {
-  stop-color: var(--cw-plot-observed);
+  stop-color: var(--cw-plot-observed, var(--cw-plot-point));
 }
 
 .cw-plot-point {
-  fill: var(--cw-plot-observed);
+  fill: var(--cw-plot-observed, var(--cw-plot-point));
   fill-opacity: var(--cw-plot-fill-opacity, 0.82);
   stroke: var(--panel-bg);
   stroke-width: 1;
@@ -102,7 +102,7 @@
 }
 
 .cw-plot-bar {
-  fill: var(--cw-plot-observed);
+  fill: var(--cw-plot-observed, var(--cw-plot-point));
   fill-opacity: 0.72;
   stroke: none;
   transform-box: fill-box;
@@ -110,7 +110,7 @@
 }
 
 .cw-plot-iqr-band {
-  fill: var(--cw-plot-observed);
+  fill: var(--cw-plot-observed, var(--cw-plot-point));
   fill-opacity: 0.07;
   stroke: none;
 }
@@ -118,7 +118,7 @@
 .cw-plot-median-line,
 .cw-plot-qq-reference {
   fill: none;
-  stroke: var(--cw-plot-reference);
+  stroke: var(--cw-plot-reference, var(--cw-plot-fit));
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }
@@ -129,7 +129,7 @@
 }
 
 .cw-plot-distribution-witness {
-  fill: var(--cw-plot-selected);
+  fill: var(--cw-plot-selected, var(--cw-plot-ramp-4));
 }
 
 .cw-plot-composition-segment {
@@ -137,12 +137,12 @@
   stroke-width: 1;
 }
 
-.cw-plot-composition-strip .cw-plot-ramp-0 { fill: var(--cw-plot-composition-0); }
-.cw-plot-composition-strip .cw-plot-ramp-1 { fill: var(--cw-plot-composition-1); }
-.cw-plot-composition-strip .cw-plot-ramp-2 { fill: var(--cw-plot-composition-2); }
-.cw-plot-composition-strip .cw-plot-ramp-3 { fill: var(--cw-plot-composition-3); }
-.cw-plot-composition-strip .cw-plot-ramp-4 { fill: var(--cw-plot-composition-4); }
-.cw-plot-composition-strip .cw-plot-ramp-5 { fill: var(--cw-plot-composition-5); }
+.cw-plot-composition-strip .cw-plot-ramp-0 { fill: var(--cw-plot-composition-0, var(--cw-plot-ramp-0)); }
+.cw-plot-composition-strip .cw-plot-ramp-1 { fill: var(--cw-plot-composition-1, var(--cw-plot-ramp-1)); }
+.cw-plot-composition-strip .cw-plot-ramp-2 { fill: var(--cw-plot-composition-2, var(--cw-plot-ramp-2)); }
+.cw-plot-composition-strip .cw-plot-ramp-3 { fill: var(--cw-plot-composition-3, var(--cw-plot-ramp-3)); }
+.cw-plot-composition-strip .cw-plot-ramp-4 { fill: var(--cw-plot-composition-4, var(--cw-plot-ramp-4)); }
+.cw-plot-composition-strip .cw-plot-ramp-5 { fill: var(--cw-plot-composition-5, var(--cw-plot-ramp-5)); }
 .cw-plot-composition-strip .cw-plot-composition-segment.is-excluded {
   fill: var(--cw-plot-excluded);
 }
@@ -152,7 +152,7 @@
 .cw-plot-plane-witness.is-pinned,
 .cw-plot-roster-dot.is-pinned,
 .cw-plot-composition-segment.is-pinned {
-  stroke: var(--cw-plot-selected);
+  stroke: var(--cw-plot-selected, var(--cw-plot-ramp-4));
   stroke-width: 2.6;
 }
 
@@ -195,19 +195,19 @@
 }
 
 .cw-plot-plane-witness.is-witness-core {
-  fill: var(--cw-plot-witness-core);
+  fill: var(--cw-plot-witness-core, var(--accent-color));
 }
 
 .cw-plot-plane-witness.is-witness-loud-local {
-  fill: var(--cw-plot-witness-loud-local);
+  fill: var(--cw-plot-witness-loud-local, var(--cw-warning-text));
 }
 
 .cw-plot-plane-witness.is-witness-quiet-even {
-  fill: var(--cw-plot-witness-quiet-even);
+  fill: var(--cw-plot-witness-quiet-even, var(--cw-category-mixed-text));
 }
 
 .cw-plot-plane-witness.is-witness-rare-local {
-  fill: var(--cw-plot-witness-rare-local);
+  fill: var(--cw-plot-witness-rare-local, var(--cw-danger-text));
 }
 
 .cw-plot-plane-marginal {
@@ -241,8 +241,8 @@
 }
 
 .cw-plot-roster-dot.is-dp-attention {
-  fill: var(--cw-plot-attention);
-  stroke: var(--cw-plot-attention);
+  fill: var(--cw-plot-attention, var(--cw-plot-ramp-5));
+  stroke: var(--cw-plot-attention, var(--cw-plot-ramp-5));
 }
 
 .cw-plot-roster-dot.is-dp-observed {

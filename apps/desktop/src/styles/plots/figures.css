@@ -235,6 +235,13 @@
   font-size: var(--cw-type-control-size);
 }
 
+.cw-overview-control-field[hidden],
+.cw-overview-figure-options[hidden],
+.cw-overview-figure-action[hidden],
+.cw-overview-result-controls[hidden] {
+  display: none;
+}
+
 .cw-overview-segmented-field,
 .cw-overview-toggle-field {
   flex-wrap: nowrap;
