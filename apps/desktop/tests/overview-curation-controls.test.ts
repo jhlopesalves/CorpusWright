@@ -32,8 +32,7 @@ assert.match(shell, /createOverviewSegmentedControl\(\s*"Coverage target"/);
 assert.match(shell, /createOverviewSegmentedControl\(\s*"View"/);
 assert.doesNotMatch(shell, /createOverviewFigureOptions|Figure options/);
 assert.match(shell, /manualControl\.hidden = state\.view !== "histogram" \|\| state\.histogramRule !== "manual"/);
-assert.match(shell, /initialControls: \{ stopwords: "show", sort: "frequency", rows: 20 \}/);
-assert.match(shell, /Show 30 more/);
+assert.doesNotMatch(shell, /Dispersion roster|stopwords: "show", sort: "frequency"|Show 30 more/);
 
 assert.match(styles, /grid-template-columns: minmax\(min\(540px, 100%\), 1fr\) auto/);
 assert.match(styles, /cw-overview-figure-control-row/);

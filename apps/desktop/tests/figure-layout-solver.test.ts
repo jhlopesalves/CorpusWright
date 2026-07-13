@@ -8,7 +8,6 @@ import {
 import {
   buildCompositionStripGeometry,
   buildDispersionGeometry,
-  buildDispersionRosterGeometry,
 } from "../src/plots/model.ts";
 
 const bounds = { x: 0, y: 0, width: 200, height: 120 };
@@ -62,16 +61,6 @@ assert(profile.cumulativeCallout);
 assert(profile.cumulativeCallout.y > profile.compositionStrip.y + profile.compositionStrip.height);
 assert(profile.box.margin.top > profile.cumulativeCallout.y + profile.cumulativeCallout.height);
 assert(profile.box.height < 700, "content-derived profile height must not become giant whitespace");
-
-const roster20 = buildDispersionRosterGeometry({
-  entries: Array.from({ length: 20 }, (_, index) => ({ token: `token-${index}`, frequency: 100 - index, documentFrequency: 20 - index, dp: index / 20 })),
-  highDispersionThreshold: 0.5,
-});
-const roster100 = buildDispersionRosterGeometry({
-  entries: Array.from({ length: 100 }, (_, index) => ({ token: `token-${index}`, frequency: 200 - index, documentFrequency: 100 - index, dp: index / 100 })),
-  highDispersionThreshold: 0.5,
-});
-assert.equal(roster100.box.height - roster20.box.height, 80 * 22);
 
 const layoutSource = readFileSync(new URL("../src/plots/layout.ts", import.meta.url), "utf8");
 assert.match(layoutSource, /getComputedTextLength\(\)/);

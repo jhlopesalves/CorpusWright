@@ -51,7 +51,6 @@ for (const selector of [
   ".cw-plot-density-cell",
   ".cw-plot-composition-segment",
   ".cw-plot-spectrum-band",
-  ".cw-plot-roster-dot",
   ".cw-plot-plane-witness",
   ".cw-plot-mattr-witness-tick",
 ]) {

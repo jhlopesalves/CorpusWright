@@ -96,19 +96,25 @@ for (const [variant, themeId] of [["light", "corpus-light"], ["dark", "corpus-da
   for (let index = 1; index < density.length; index += 1) {
     assert(deltaE76(density[index - 1]!, density[index]!) >= MINIMUM_RAMP_DELTA_E_76);
   }
-  const witnesses = ["core", "loud-local", "quiet-even", "rare-local"]
-    .map((role) => colourForToken(`--cw-plot-witness-${role}`, declarations));
-  assert.equal(new Set(witnesses.map((colour) => `${colour.r},${colour.g},${colour.b}`)).size, 4);
+  const profile = Array.from({ length: 10 }, (_, index) => colourForToken(`--cw-plot-profile-${index}`, declarations));
+  assert.equal(new Set(profile.map((colour) => `${colour.r},${colour.g},${colour.b}`)).size, 10);
+  for (let index = 1; index < profile.length; index += 1) {
+    assert(deltaE76(profile[index - 1]!, profile[index]!) >= MINIMUM_RAMP_DELTA_E_76);
+  }
+  assert(profile.every((colour) => contrastRatio(colour, panel) >= 3), `${variant} profile bands must remain readable against internal panel-coloured text`);
+  const witness = colourForToken("--cw-plot-witness", declarations);
+  assert(contrastRatio(witness, panel) >= 4.5, `${variant} witness ink must contrast with the plane surface`);
 }
 for (let index = 0; index < 6; index += 1) {
   assert.equal(scientificRoles.get(`--cw-plot-density-${index}`), `var(--cw-plot-ramp-${index})`, "density roles must preserve the ordered theme ramp");
 }
+assert.equal(Array.from({ length: 10 }, (_, index) => scientificRoles.has(`--cw-plot-profile-${index}`)).filter(Boolean).length, 10);
 
 const contrastOutput = execFileSync("node", ["scripts/check-theme-contrast.mjs"], {
   cwd: desktopRoot,
   encoding: "utf8",
 });
-assert.match(contrastOutput, /exactly 16 complete themes \(42 base checks and 36 theme × palette role checks each\)/);
+assert.match(contrastOutput, /exactly 16 complete themes \(42 base checks and 27 theme × palette role checks each\)/);
 const visualOutput = execFileSync("node", ["scripts/check-visual-contracts.mjs"], {
   cwd: desktopRoot,
   encoding: "utf8",

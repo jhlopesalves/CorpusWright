@@ -74,8 +74,6 @@
 .cw-plot-point.is-lollipop.cw-plot-hover-target:not(.is-pinned):focus,
 .cw-plot-plane-witness.cw-plot-hover-target:not(.is-pinned):hover,
 .cw-plot-plane-witness.cw-plot-hover-target:not(.is-pinned):focus,
-.cw-plot-roster-dot.cw-plot-hover-target:not(.is-pinned):hover,
-.cw-plot-roster-dot.cw-plot-hover-target:not(.is-pinned):focus,
 .cw-plot-mattr-witness-tick.cw-plot-hover-target:hover,
 .cw-plot-mattr-witness-tick.cw-plot-hover-target:focus {
   stroke: var(--cw-plot-selected, var(--cw-plot-ramp-4));
@@ -97,8 +95,7 @@
 
 .cw-plot-svg.cw-plot-export-static :is(
   .cw-plot-point,
-  .cw-plot-plane-witness,
-  .cw-plot-roster-dot
+  .cw-plot-plane-witness
 ) {
   opacity: 1;
   transform: none;
@@ -110,8 +107,7 @@
   }
 
   .cw-plot-point,
-  .cw-plot-plane-witness,
-  .cw-plot-roster-dot {
+  .cw-plot-plane-witness {
     animation: none;
     opacity: 1;
     transform: none;

@@ -58,24 +58,24 @@ export const contrastChecks = [
 const paletteRoleTokens = {
   theme: [
     "--cw-plot-point", "--cw-plot-fit", "--cw-plot-ramp-4", "--cw-plot-ramp-5",
-    "--cw-plot-ramp-1", "--cw-plot-ramp-5", "--cw-plot-ramp-3", "--cw-plot-ramp-4",
+    "--cw-plot-point",
     "--cw-plot-ramp-0", "--cw-plot-ramp-5", "--cw-plot-ramp-0", "--cw-plot-ramp-5",
   ],
   colorBlind: [
     "--accent-color", "--cw-warning-text", "--cw-category-mixed-text", "--cw-danger-text",
-    "--accent-color", "--cw-warning-text", "--cw-category-mixed-text", "--cw-danger-text",
+    "--accent-color",
     "--cw-plot-ramp-0", "--cw-plot-ramp-5", "--cw-plot-ramp-0", "--cw-plot-ramp-5",
   ],
   monochrome: [
     "--text-color", "--text-muted", "--text-color", "--text-color",
-    "--text-color", "--text-color", "--text-color", "--text-color",
+    "--text-color",
     "--text-muted", "--text-color", "--text-muted", "--text-color",
   ],
 };
 
 const paletteRoleLabels = [
   "observed", "reference", "selected", "attention",
-  "witness core", "witness loud-local", "witness quiet-even", "witness rare-local",
+  "witness",
   "density low", "density high", "composition low", "composition high",
 ];
 

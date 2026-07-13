@@ -75,7 +75,7 @@ for (const [source, selector] of [
 }
 assert.match(analyse, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.annotation-layer-progress-bar\.is-indeterminate \.annotation-layer-progress-fill\s*\{[^}]*width:\s*100%[^}]*transform:\s*none/s);
 assert.match(concordance, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.concordance-collocation-progress-indicator\s*\{[^}]*width:\s*100%[^}]*transform:\s*none/s);
-for (const selector of ["cw-plot-point", "cw-plot-plane-witness", "cw-plot-roster-dot"]) {
+for (const selector of ["cw-plot-point", "cw-plot-plane-witness"]) {
   assert.match(interactions, new RegExp(`@media \\(prefers-reduced-motion: reduce\\)[\\s\\S]*?\\.${selector}`));
 }
 assert.match(interactions, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?opacity:\s*1[^}]*transform:\s*none/s);
@@ -83,7 +83,7 @@ assert.doesNotMatch(interactions, /cw-plot-animated-path|stroke-dashoffset|cw-pl
 
 const modelSource = readFileSync(new URL("../src/plots/model.ts", import.meta.url), "utf8");
 const renderSource = readFileSync(new URL("../src/plots/render.ts", import.meta.url), "utf8");
-assert.match(modelSource, /className: `cw-plot-lollipop-stem cw-plot-ramp-\$\{point\.rampIndex\}`/);
+assert.match(modelSource, /className: `cw-plot-lollipop-stem cw-plot-ramp-\$\{point\.rampIndex\} \$\{point\.className/);
 assert.match(modelSource, /function densityRampFill\(t: number\): string/);
 assert.match(renderSource, /`cw-plot-ramp-\$\{point\.rampIndex\}`/);
 assert.match(renderSource, /baseClass\.includes\("is-lollipop"\) \? 0\.8 : 0/);

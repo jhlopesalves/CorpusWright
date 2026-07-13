@@ -10,7 +10,6 @@ export type OverviewFigureId =
   | "overview-lexical-spectrum"
   | "overview-cumulative-coverage"
   | "overview-dispersion-profile"
-  | "overview-dispersion-roster"
   | "overview-dispersion-plane";
 
 export interface FigureCapabilities {
@@ -185,19 +184,6 @@ export const FIGURE_INTERACTION_POLICIES: Readonly<Record<OverviewFigureId, Figu
     normalize: (state) => ({ target: member(state.target, ["0.5", "0.8", "0.9", "0.95"], "0.5") }),
   }),
   "overview-dispersion-profile": fixedPolicy("overview-dispersion-profile", ["dispersion-reach-"]),
-  "overview-dispersion-roster": policy({
-    id: "overview-dispersion-roster",
-    authoredDefault: { sort: "frequency", stopwords: "show", rows: 20 },
-    supportedViews: [],
-    primaryControls: ["sort", "stopwords", "rows"],
-    fixedState: { xMode: "dp" },
-    compatiblePinPrefixes: ["roster:"],
-    normalize: (state) => ({
-      sort: member(state.sort, ["frequency", "dp", "documentFrequency"], "frequency"),
-      stopwords: member(state.stopwords, ["show", "hide"], "show"),
-      rows: clampInteger(state.rows, 20, 100, 20),
-    }),
-  }),
   "overview-dispersion-plane": fixedPolicy("overview-dispersion-plane", ["plane:"]),
 };
 

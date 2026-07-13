@@ -11,10 +11,10 @@ const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.me
 
 const screenshotBlock = capture.match(/const screenshotCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
 const exportBlock = capture.match(/const exportCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
-assert.equal(screenshotBlock.match(/\bshot\(/g)?.length, 36);
-assert.equal(exportBlock.match(/\bexportCase\(/g)?.length, 14);
+assert.equal(screenshotBlock.match(/\bshot\(/g)?.length, 32);
+assert.equal(exportBlock.match(/\bexportCase\(/g)?.length, 13);
 
-for (const figure of ["document", "mattr", "rank", "growth", "lexical", "coverage", "profile", "roster", "plane"]) {
+for (const figure of ["document", "mattr", "rank", "growth", "lexical", "coverage", "profile", "plane"]) {
   assert.match(exportBlock, new RegExp(`exportCase\\([^\\n]+, "${figure}"`), `missing default ${figure} export`);
   assert.match(fixture, new RegExp(`name === "${figure}"|name === "document" \\|\\| name === "mattr"`), `missing ${figure} fixture`);
 }
@@ -25,7 +25,6 @@ for (const requiredCase of [
   "rank-residuals",
   "vocabulary-heaps-fit",
   "coverage-90",
-  "dispersion-roster-expanded",
   "lexical-spectrum-dark",
   "dispersion-plane-high-contrast",
   "pinned-plane-witness",
@@ -44,7 +43,6 @@ assert.match(fixture, /overviewFigureSvgString\(built\.figure, palette\)/);
 assert.match(fixture, /action outside figure bounds/);
 assert.match(fixture, /clipped text/);
 assert.match(fixture, /composition label overlap/);
-assert.match(fixture, /roster header overlaps legend/);
 assert.match(fixture, /legend overlaps pinned evidence/);
 assert.match(fixture, /focused tooltip outside viewport/);
 assert.match(fixture, /mass mark Tab stops/);

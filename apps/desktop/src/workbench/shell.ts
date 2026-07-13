@@ -22,13 +22,10 @@ import {
   type OverviewGlossaryEntry,
   type OverviewGlossaryId,
 } from "../overview-glossary";
-import { isOverviewStopword } from "../overview-stopwords";
 import {
   createOverviewFigure,
   createOverviewRangeControl,
-  createOverviewSelectControl,
   createOverviewSegmentedControl,
-  createOverviewToggleControl,
   replaceFigureSvg,
 } from "../plots/figure";
 import {
@@ -40,7 +37,6 @@ import {
   buildCoverageGeometry,
   buildDispersionGeometry,
   buildDispersionPlaneGeometry,
-  buildDispersionRosterGeometry,
   buildDistributionDiagnosticGeometry,
   buildLexicalSpectrumGeometry,
   buildRankFrequencyGeometry,
@@ -48,14 +44,11 @@ import {
   deriveCoverageBandShares,
   formatDispersionPlaneStats,
   formatDispersionProfileStats,
-  formatDispersionRosterStats,
   formatUniversalTypeCaption,
-  selectDispersionRosterEntries,
 } from "../plots/model";
 import {
   renderCoverageSvg,
   renderDispersionPlaneSvg,
-  renderDispersionRosterSvg,
   renderDispersionSvg,
   renderDistributionDiagnosticSvg,
   renderFigureStatusSvg,
@@ -134,7 +127,6 @@ const FUTURE_ANALYSIS_TOOLS = [
   "Exports",
 ];
 const BALANCE_ATTENTION_SHARE = 0.15;
-const HIGH_DISPERSION_THRESHOLD = 0.5;
 
 type AnalysisToolId = "overview" | "frequency" | "concordance";
 
@@ -1747,128 +1739,6 @@ function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null
   return figure;
 }
 
-function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | null {
-  const entries = corpus.dispersion.roster;
-  if (entries.length === 0) return null;
-  const highDispersionThreshold = corpus.dispersion.plane?.highDispersionThreshold ?? HIGH_DISPERSION_THRESHOLD;
-  interface RosterControls extends FigureControlState {
-    stopwords: "show" | "hide";
-    sort: "frequency" | "dp" | "documentFrequency";
-    rows: number;
-  }
-  const sortLabel = (sort: RosterControls["sort"]) => sort === "dp"
-    ? "DP"
-    : sort === "documentFrequency" ? "document frequency" : "frequency";
-  const controller = new OverviewFigureController<RosterControls>({
-    initialControls: { stopwords: "show", sort: "frequency", rows: 20 },
-    policy: FIGURE_INTERACTION_POLICIES["overview-dispersion-roster"],
-    exportMetadata: (controls) => {
-      const available = controls.stopwords === "hide"
-        ? entries.filter((entry) => !isOverviewStopword(entry.token, activeProjectLanguageCode())).length
-        : entries.length;
-      return [`Top ${Math.min(controls.rows, available)} frequent types · sorted by ${sortLabel(controls.sort)} · stopwords ${controls.stopwords === "hide" ? "hidden" : "shown"}`];
-    },
-  });
-  let figure: HTMLElement | null = null;
-  const shownEntries = () => selectDispersionRosterEntries({
-    entries: controller.controls.stopwords === "hide"
-      ? entries.filter((entry) => !isOverviewStopword(entry.token, activeProjectLanguageCode()))
-      : entries,
-    sort: controller.controls.sort,
-    rows: controller.controls.rows,
-  });
-  const subtitle = () => `Which frequent types are corpus-wide, and which are locally concentrated?${controller.controls.stopwords === "hide" ? " Stopwords hidden." : ""}`;
-  const captionStats = () => {
-    const shown = shownEntries();
-    const aboveThresholdCount = shown.filter((entry) => entry.dp >= highDispersionThreshold).length;
-    return formatDispersionRosterStats(shown.length, entries.length, aboveThresholdCount, highDispersionThreshold);
-  };
-  const renderSvg = () => renderDispersionRosterSvg(
-    "overview-dispersion-roster",
-    buildDispersionRosterGeometry({
-      entries: shownEntries(),
-      highDispersionThreshold,
-      totalTokens: corpus.totals.tokens,
-      totalDocuments: corpus.totals.documents,
-      pinnedKeys: controller.pins,
-    }),
-  );
-  const refresh = () => {
-    if (figure) replaceFigureSvg(figure, renderSvg(), {
-      subtitle: subtitle(),
-      captionStats: captionStats(),
-    });
-    syncProgressiveControls();
-  };
-  const controls = document.createElement("div");
-  const sortControl = createOverviewSelectControl(
-      "Sort",
-      [
-        { value: "frequency", label: "Frequency" },
-        { value: "dp", label: "DP" },
-        { value: "documentFrequency", label: "Document frequency" },
-      ],
-      "frequency",
-      (sort) => {
-        controller.updateControls({ sort });
-        refresh();
-      },
-    );
-  const stopwordControl = createOverviewToggleControl("Stopwords", true, (shown) => {
-    controller.updateControls({ stopwords: shown ? "show" : "hide" });
-    if (controller.controls.rows > 20) controller.updateControls({ rows: 20 });
-    refresh();
-  });
-  const resultControls = document.createElement("div");
-  resultControls.className = "cw-overview-result-controls";
-  const showMore = document.createElement("button");
-  showMore.type = "button";
-  showMore.textContent = "Show 30 more";
-  showMore.addEventListener("click", () => {
-    controller.updateControls({ rows: Math.min(100, controller.controls.rows + 30) });
-    refresh();
-  });
-  const showAll = document.createElement("button");
-  showAll.type = "button";
-  showAll.textContent = "Show all up to 100";
-  showAll.addEventListener("click", () => {
-    controller.updateControls({ rows: 100 });
-    refresh();
-  });
-  const showFewer = document.createElement("button");
-  showFewer.type = "button";
-  showFewer.textContent = "Show fewer";
-  showFewer.addEventListener("click", () => {
-    controller.updateControls({ rows: 20 });
-    refresh();
-  });
-  resultControls.append(showMore, showAll, showFewer);
-  const availableEntryCount = () => Math.min(100, controller.controls.stopwords === "hide"
-    ? entries.filter((entry) => !isOverviewStopword(entry.token, activeProjectLanguageCode())).length
-    : entries.length);
-  function syncProgressiveControls(): void {
-    const available = availableEntryCount();
-    showMore.hidden = controller.controls.rows >= available;
-    showAll.hidden = controller.controls.rows >= available || available <= controller.controls.rows + 30;
-    showFewer.hidden = controller.controls.rows <= 20;
-  }
-  controls.append(sortControl, stopwordControl, resultControls);
-  syncProgressiveControls();
-  figure = createOverviewFigure({
-    id: "overview-dispersion-roster",
-    title: "Dispersion roster",
-    subtitle: subtitle(),
-    controls,
-    controller,
-    layoutFamily: "roster",
-    captionStats: captionStats(),
-    captionReading: "The roster contains frequent types only. Frequency does not imply wide distribution: a frequent type may be intense in a few documents. DP 0.5 is a descriptive orientation threshold, not an inferential test; hiding stopwords changes presentation, not analysis.",
-    explanation: createFigureExplanation("griesDp"),
-    renderSvg,
-  });
-  return figure;
-}
-
 function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Lexical spectrum");
   const spectrum = corpus.lexicalSpectrum;
@@ -2195,8 +2065,6 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
   panel.appendChild(renderDispersionFigure(corpus));
   const planeFigure = renderDispersionPlaneFigure(corpus);
   if (planeFigure) panel.appendChild(planeFigure);
-  const rosterFigure = renderDispersionRosterFigure(corpus);
-  if (rosterFigure) panel.appendChild(rosterFigure);
 
   appendPanelReading(panel, dispersion.reading);
   return panel;

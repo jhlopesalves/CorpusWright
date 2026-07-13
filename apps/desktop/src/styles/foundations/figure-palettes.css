@@ -20,10 +20,20 @@
   --cw-plot-composition-4: var(--cw-plot-ramp-4);
   --cw-plot-composition-5: var(--cw-plot-ramp-5);
   --cw-plot-composition-foreground-low: var(--text-color);
-  --cw-plot-witness-core: var(--cw-plot-ramp-0);
-  --cw-plot-witness-loud-local: var(--cw-warning-text);
-  --cw-plot-witness-quiet-even: var(--cw-category-mixed-text);
-  --cw-plot-witness-rare-local: var(--cw-danger-text);
+  --cw-plot-profile-0: var(--cw-plot-ramp-0);
+  --cw-plot-profile-1: color-mix(in srgb, var(--cw-plot-ramp-0) 45%, var(--cw-plot-ramp-1) 55%);
+  --cw-plot-profile-2: var(--cw-plot-ramp-1);
+  --cw-plot-profile-3: color-mix(in srgb, var(--cw-plot-ramp-1) 45%, var(--cw-plot-ramp-2) 55%);
+  --cw-plot-profile-4: var(--cw-plot-ramp-2);
+  --cw-plot-profile-5: color-mix(in srgb, var(--cw-plot-ramp-2) 45%, var(--cw-plot-ramp-3) 55%);
+  --cw-plot-profile-6: var(--cw-plot-ramp-3);
+  --cw-plot-profile-7: var(--cw-plot-ramp-4);
+  --cw-plot-profile-8: color-mix(in srgb, var(--cw-plot-ramp-4) 45%, var(--cw-plot-ramp-5) 55%);
+  --cw-plot-profile-9: var(--cw-plot-ramp-5);
+  --cw-plot-profile-label: var(--panel-bg);
+  --cw-plot-callout-surface: color-mix(in srgb, var(--cw-plot-observed) 12%, var(--panel-bg));
+  --cw-plot-callout-border: color-mix(in srgb, var(--cw-plot-observed) 42%, var(--panel-bg));
+  --cw-plot-witness: var(--cw-plot-observed);
 }
 
 [data-figure-palette="colorBlind"] {
@@ -31,10 +41,7 @@
   --cw-plot-reference: var(--cw-warning-text);
   --cw-plot-selected: var(--cw-category-mixed-text);
   --cw-plot-attention: var(--cw-danger-text);
-  --cw-plot-witness-core: var(--accent-color);
-  --cw-plot-witness-loud-local: var(--cw-warning-text);
-  --cw-plot-witness-quiet-even: var(--cw-category-mixed-text);
-  --cw-plot-witness-rare-local: var(--cw-danger-text);
+  --cw-plot-witness: var(--accent-color);
 }
 
 [data-figure-palette="monochrome"] {
@@ -54,8 +61,15 @@
   --cw-plot-composition-3: var(--text-color);
   --cw-plot-composition-4: var(--text-color);
   --cw-plot-composition-5: var(--text-color);
-  --cw-plot-witness-core: var(--text-color);
-  --cw-plot-witness-loud-local: var(--text-color);
-  --cw-plot-witness-quiet-even: var(--text-color);
-  --cw-plot-witness-rare-local: var(--text-color);
+  --cw-plot-profile-0: color-mix(in srgb, var(--text-muted) 88%, var(--panel-bg));
+  --cw-plot-profile-1: color-mix(in srgb, var(--text-muted) 76%, var(--panel-bg));
+  --cw-plot-profile-2: color-mix(in srgb, var(--text-muted) 64%, var(--panel-bg));
+  --cw-plot-profile-3: color-mix(in srgb, var(--text-muted) 52%, var(--panel-bg));
+  --cw-plot-profile-4: color-mix(in srgb, var(--text-color) 48%, var(--panel-bg));
+  --cw-plot-profile-5: color-mix(in srgb, var(--text-color) 58%, var(--panel-bg));
+  --cw-plot-profile-6: color-mix(in srgb, var(--text-color) 68%, var(--panel-bg));
+  --cw-plot-profile-7: color-mix(in srgb, var(--text-color) 78%, var(--panel-bg));
+  --cw-plot-profile-8: color-mix(in srgb, var(--text-color) 88%, var(--panel-bg));
+  --cw-plot-profile-9: var(--text-color);
+  --cw-plot-witness: var(--text-color);
 }
