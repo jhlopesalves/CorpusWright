@@ -4,9 +4,12 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 
 const recoveryMode = process.argv.includes("--rendering-recovery");
-const outputDirectory = recoveryMode
-  ? "/tmp/corpuswright-overview-rendering-recovery"
-  : "/tmp/corpuswright-overview-curation";
+const cleanupMode = process.argv.includes("--distribution-dispersion-cleanup");
+const outputDirectory = cleanupMode
+  ? "/tmp/corpuswright-overview-distribution-dispersion-cleanup"
+  : recoveryMode
+    ? "/tmp/corpuswright-overview-rendering-recovery"
+    : "/tmp/corpuswright-overview-curation";
 const baseUrl = "http://127.0.0.1:4179/tests/visual/overview-suite-fixture.html";
 const chromeBinary = process.env.CHROME_BIN ?? "google-chrome";
 rmSync(outputDirectory, { recursive: true, force: true });
@@ -91,8 +94,24 @@ const recoveryAuditCases = [
   recoveryAuditCase("mattr-histogram-to-qq", "mattr", "qq"),
 ];
 
-const activeScreenshotCases = recoveryMode ? recoveryScreenshotCases : screenshotCases;
-const activeExportCases = recoveryMode ? recoveryExportCases : exportCases;
+const cleanupScreenshotCases = [
+  cleanupShot("document-histogram-controls", "document", { view: "histogram" }),
+  cleanupShot("document-ecdf-final", "document", { view: "ecdf" }),
+  cleanupShot("document-qq-final", "document", { view: "qq" }),
+  cleanupShot("mattr-ecdf-final", "mattr", { view: "ecdf" }),
+  cleanupShot("mattr-qq-final", "mattr", { view: "qq" }),
+  cleanupShot("dispersion-profile", "profile"),
+  cleanupShot("dispersion-plane", "plane", { pinned: true }),
+  cleanupShot("overview-without-roster", "overview"),
+];
+
+const cleanupExportCases = [
+  cleanupExportCase("document-ecdf-final", "document", { view: "ecdf" }),
+  cleanupExportCase("dispersion-plane", "plane", { pinned: true }),
+];
+
+const activeScreenshotCases = cleanupMode ? cleanupScreenshotCases : recoveryMode ? recoveryScreenshotCases : screenshotCases;
+const activeExportCases = cleanupMode ? cleanupExportCases : recoveryMode ? recoveryExportCases : exportCases;
 const activeAuditCases = recoveryMode ? recoveryAuditCases : [];
 
 class Cdp {
@@ -203,8 +222,10 @@ try {
 
   const report = {
     generatedAt: new Date().toISOString(),
+    mode: cleanupMode ? "distribution-dispersion-cleanup" : recoveryMode ? "rendering-recovery" : "overview-curation",
     fixture: baseUrl,
     viewport: "1440x900",
+    timing: cleanupMode ? { ecdfAndQqMinimumDelayMs: 1_000, animationsFinishedBeforeCapture: true } : undefined,
     auditCount: activeAuditCases.length,
     screenshotCount: activeScreenshotCases.length,
     standaloneSvgCount: activeExportCases.length,
@@ -239,6 +260,15 @@ function recoveryShot(slug, figure, options = {}) {
 
 function recoveryExportCase(slug, figure, options = {}) {
   return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: options.theme ?? "corpus-light", url: fixtureUrl(figure, { ...options, export: true }) };
+}
+
+function cleanupShot(slug, figure, options = {}) {
+  const postRenderDelayMs = options.view === "ecdf" || options.view === "qq" ? 1_000 : 0;
+  return { kind: "screenshot", filename: `${slug}.png`, figure, width: 1440, height: 900, theme: "corpus-light", postRenderDelayMs, url: fixtureUrl(figure, { ...options, theme: "corpus-light" }) };
+}
+
+function cleanupExportCase(slug, figure, options = {}) {
+  return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: "corpus-light", url: fixtureUrl(figure, { ...options, theme: "corpus-light", export: true }) };
 }
 
 function recoveryAuditCase(name, figure, switchTo) {
@@ -312,9 +342,10 @@ async function setViewport(cdp, sessionId, width, height) {
 
 async function navigateAndWait(cdp, sessionId, url, exporting) {
   await cdp.send("Page.navigate", { url }, sessionId);
+  const fixtureMetrics = "(() => { try { return JSON.parse(document.body?.dataset.fixtureMetrics ?? '{}'); } catch { return {}; } })()";
   const expression = exporting
-    ? "({ href: location.href, status: document.body?.dataset.fixtureStatus, ready: document.body?.dataset.exportReady, consoleErrors: Number(document.body?.dataset.consoleErrors ?? 0), accessibilitySerious: Number(document.body?.dataset.accessibilitySerious ?? 0), message: document.querySelector('#suite-status')?.textContent ?? '' })"
-    : "({ href: location.href, status: document.body?.dataset.fixtureStatus, ready: 'true', consoleErrors: Number(document.body?.dataset.consoleErrors ?? 0), accessibilitySerious: Number(document.body?.dataset.accessibilitySerious ?? 0), message: document.querySelector('#suite-status')?.textContent ?? '' })";
+    ? `({ href: location.href, status: document.body?.dataset.fixtureStatus, ready: document.body?.dataset.exportReady, consoleErrors: Number(document.body?.dataset.consoleErrors ?? 0), accessibilitySerious: Number(document.body?.dataset.accessibilitySerious ?? 0), metrics: ${fixtureMetrics}, message: document.querySelector('#suite-status')?.textContent ?? '' })`
+    : `({ href: location.href, status: document.body?.dataset.fixtureStatus, ready: 'true', consoleErrors: Number(document.body?.dataset.consoleErrors ?? 0), accessibilitySerious: Number(document.body?.dataset.accessibilitySerious ?? 0), metrics: ${fixtureMetrics}, message: document.querySelector('#suite-status')?.textContent ?? '' })`;
   for (let attempt = 0; attempt < 120; attempt += 1) {
     const evaluated = await cdp.send("Runtime.evaluate", { expression, returnByValue: true }, sessionId);
     const result = evaluated.result.value;

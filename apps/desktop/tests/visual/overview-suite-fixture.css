@@ -12,6 +12,38 @@ body {
   margin: 0 auto;
 }
 
+#suite-root.is-overview-suite {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.overview-suite-heading {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 24px;
+  font-weight: var(--cw-weight-semibold);
+}
+
+#suite-root.is-overview-suite > .cw-overview-figure {
+  min-width: 0;
+  height: 400px;
+  margin: 0;
+  overflow: hidden;
+}
+
+#suite-root.is-overview-suite .cw-overview-figure-control-row {
+  display: none;
+}
+
+#suite-root.is-overview-suite .cw-overview-figure-body {
+  padding: 8px;
+}
+
+#suite-root.is-overview-suite .cw-overview-figure-caption {
+  display: none;
+}
+
 #suite-status {
   position: fixed;
   z-index: 20;
