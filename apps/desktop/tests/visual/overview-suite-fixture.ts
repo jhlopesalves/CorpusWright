@@ -6,6 +6,7 @@ import {
   createOverviewSegmentedControl,
   createOverviewToggleControl,
   overviewFigureSvgString,
+  replaceFigureSvg,
 } from "../../src/plots/figure";
 import {
   FIGURE_INTERACTION_POLICIES,
@@ -40,6 +41,8 @@ import {
 const params = new URLSearchParams(location.search);
 const figureName = params.get("figure") ?? "document";
 const view = params.get("view") ?? defaultView(figureName);
+const switchTo = params.get("switchTo");
+let auditedView = view;
 const theme = params.get("theme") ?? "corpus-light";
 const target = params.get("target") ?? "0.5";
 const rows = Number(params.get("rows") ?? "20");
@@ -58,6 +61,12 @@ const status = document.querySelector<HTMLOutputElement>("#suite-status")!;
 const built = buildFixtureFigure(figureName, view);
 root.appendChild(built.figure);
 
+if (switchTo) {
+  const switchButton = built.figure.querySelector<HTMLButtonElement>(`.cw-overview-segmented-control[aria-label="View"] .cw-overview-segment[data-value="${switchTo}"]`);
+  if (!switchButton) throw new Error(`Missing requested view switch: ${switchTo}`);
+  switchButton.click();
+}
+
 if (customBins) {
   const disclosure = built.figure.querySelector<HTMLDetailsElement>(".cw-overview-figure-options");
   if (disclosure) disclosure.open = true;
@@ -65,6 +74,10 @@ if (customBins) {
 
 await document.fonts.ready;
 await animationFrame();
+await animationFrame();
+for (const animation of document.getAnimations()) {
+  try { animation.finish(); } catch { /* A non-finite fixture animation is not part of plot readiness. */ }
+}
 await animationFrame();
 
 if (params.get("focusDensity") === "true") {
@@ -115,6 +128,8 @@ function buildDistributionFigure(name: "document" | "mattr", selectedView: strin
     xScale: isLength ? "log" : "linear",
   };
   const controller = fixtureController(id, state);
+  let activeView = selectedView as "histogram" | "ecdf" | "qq";
+  let figure!: HTMLElement;
   const result = distributionPayload(isLength);
   if (pinned) controller.togglePin(selectedView === "qq"
     ? "distribution-qq:10"
@@ -124,7 +139,13 @@ function buildDistributionFigure(name: "document" | "mattr", selectedView: strin
     { value: "histogram", label: "Histogram" },
     { value: "ecdf", label: "ECDF" },
     { value: "qq", label: "Q–Q" },
-  ], selectedView, () => undefined);
+  ], activeView, (nextView) => {
+    activeView = nextView;
+    auditedView = nextView;
+    controller.updateControls({ view: nextView });
+    syncDistributionControls();
+    replaceFigureSvg(figure, renderSvg());
+  });
   const binning = createOverviewSegmentedControl("Binning", [
     { value: "auto", label: "Automatic" },
     { value: "manual", label: "Custom" },
@@ -136,31 +157,34 @@ function buildDistributionFigure(name: "document" | "mattr", selectedView: strin
     initialValue: 36,
     onChange: () => undefined,
   });
-  binning.hidden = selectedView !== "histogram";
-  binCount.hidden = selectedView !== "histogram" || !customBins;
   const horizontalScale = createOverviewSegmentedControl("Horizontal scale", [
     { value: "log", label: "Logarithmic" },
     { value: "linear", label: "Linear" },
   ], "log", () => undefined);
-  horizontalScale.hidden = !isLength || selectedView === "qq";
   const options = createOverviewFigureOptions(binning, binCount, ...(isLength ? [horizontalScale] : []));
-  options.hidden = selectedView === "qq" || !isLength && selectedView !== "histogram";
   controls.append(viewControl, options);
   const renderSvg = () => renderDistributionDiagnosticSvg(id, buildDistributionDiagnosticGeometry({
     result,
     metric: isLength ? "documentLength" : "mattr",
-    view: selectedView as "histogram" | "ecdf" | "qq",
+    view: activeView,
     yMode: "share",
     qqReference: isLength ? "lognormal" : "normal",
     labelsMode: "extremes",
     mattrWindow: 100,
     pinnedKeys: controller.pins,
   }));
-  const stateText = selectedView === "histogram"
+  const stateText = () => activeView === "histogram"
     ? `Histogram · ${customBins ? "custom 36 bins" : "automatic bins"} · ${isLength ? "logarithmic token scale" : "share of eligible documents"}`
-    : selectedView === "ecdf" ? `ECDF · ${isLength ? "logarithmic token scale" : "linear MATTR scale"}`
+    : activeView === "ecdf" ? `ECDF · ${isLength ? "logarithmic token scale" : "linear MATTR scale"}`
       : `Q–Q · ${isLength ? "lognormal" : "normal"} reference`;
-  const figure = createOverviewFigure({
+  const syncDistributionControls = (): void => {
+    binning.hidden = activeView !== "histogram";
+    binCount.hidden = activeView !== "histogram" || !customBins;
+    horizontalScale.hidden = !isLength || activeView === "qq";
+    options.hidden = activeView === "qq" || !isLength && activeView !== "histogram";
+  };
+  syncDistributionControls();
+  figure = createOverviewFigure({
     id,
     title: isLength ? "Document-length distribution" : "MATTR distribution",
     subtitle: isLength ? "How unevenly is the corpus divided among documents?" : "How much does lexical diversity vary between documents?",
@@ -170,7 +194,7 @@ function buildDistributionFigure(name: "document" | "mattr", selectedView: strin
       : "MATTR compares lexical variety within equal windows; excluded short documents remain visible in the eligibility strip.",
     controls,
     controller,
-    exportMetadata: () => [stateText],
+    exportMetadata: () => [stateText()],
     renderSvg,
   });
   return { figure, controller };
@@ -554,6 +578,18 @@ function auditFigure(figure: HTMLElement): string[] {
       failures.push(`hidden control occupies layout: ${hidden.className}`);
     }
   }
+  if (switchTo && (figureName === "document" || figureName === "mattr")) {
+    const irrelevantLabels = ["Binning", "Bins", ...(switchTo === "qq" && figureName === "document" ? ["Horizontal scale"] : [])];
+    for (const expectedLabel of irrelevantLabels) {
+      const label = Array.from(figure.querySelectorAll<HTMLElement>(".cw-overview-control-label"))
+        .find((candidate) => candidate.textContent === expectedLabel);
+      const field = label?.closest<HTMLElement>(".cw-overview-control-field");
+      const box = field?.getBoundingClientRect();
+      if (!field || field.hidden !== true || getComputedStyle(field).display !== "none" || box?.width !== 0 || box.height !== 0) {
+        failures.push(`switched ${expectedLabel} control remains visible`);
+      }
+    }
+  }
   auditComputedPaint(svg, failures);
   auditRecoveryGeometry(svg, failures);
   auditInteractionCapability(svg, failures);
@@ -617,17 +653,22 @@ function auditFigure(figure: HTMLElement): string[] {
 
 function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
   const rejectBrowserBlack = theme === "corpus-light" || theme === "corpus-dark";
-  const assertPaint = (selector: string, property: "fill" | "stroke", label: string, nonBlack = false): void => {
+  const assertPaint = (selector: string, property: "fill" | "stroke", label: string, nonBlack = false, requireArea = false): SVGGraphicsElement | null => {
     const element = svg.querySelector<SVGGraphicsElement>(selector);
     if (!element) {
       failures.push(`missing painted geometry: ${label}`);
-      return;
+      return null;
     }
     const style = getComputedStyle(element);
     const paint = style[property];
     const opacity = Number(property === "fill" ? style.fillOpacity : style.strokeOpacity);
-    if (!isVisiblePaint(paint) || !(opacity > 0)) failures.push(`invisible computed ${property}: ${label}`);
+    if (!isVisiblePaint(paint) || !(opacity > 0) || !(Number(style.opacity) > 0)) failures.push(`invisible computed ${property}: ${label}`);
     if (nonBlack && isPureBlack(paint)) failures.push(`browser-black computed ${property}: ${label}`);
+    if (requireArea) {
+      const box = element.getBBox();
+      if (!(box.width > 0) || !(box.height > 0)) failures.push(`zero-area painted geometry: ${label}`);
+    }
+    return element;
   };
   const assertDistinctFills = (selector: string, minimum: number, label: string): void => {
     const fills = new Set(Array.from(svg.querySelectorAll<SVGGraphicsElement>(selector))
@@ -637,21 +678,28 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
   };
 
   if (figureName === "document" || figureName === "mattr") {
-    if (view === "histogram") assertPaint(".cw-plot-bar", "fill", `${figureName} histogram bar`, rejectBrowserBlack);
-    if (view === "ecdf") assertPaint(".cw-plot-ecdf-line", "stroke", `${figureName} ECDF`);
-    if (view === "qq") {
+    if (auditedView === "histogram") assertPaint(".cw-plot-bar", "fill", `${figureName} histogram bar`, rejectBrowserBlack);
+    if (auditedView === "ecdf") assertPaint(".cw-plot-ecdf-line", "stroke", `${figureName} ECDF`, false, true);
+    if (auditedView === "qq") {
       assertPaint(".cw-plot-point", "fill", `${figureName} Q–Q point`, rejectBrowserBlack);
       assertPaint(".cw-plot-qq-reference", "stroke", `${figureName} Q–Q reference`);
     }
     if (figureName === "mattr") assertDistinctFills(".cw-plot-composition-segment", 2, "MATTR eligibility strip");
   }
   if (figureName === "rank") {
-    assertPaint(".cw-plot-point:not(.is-excluded)", "fill", "rank observations", rejectBrowserBlack);
-    if (view === "curve") assertPaint(".cw-plot-fit-line", "stroke", "rank fitted line");
+    const observed = assertPaint(".cw-plot-point:not(.is-excluded)", "fill", "rank observations", rejectBrowserBlack);
+    if (auditedView === "curve") {
+      const fitted = assertPaint(".cw-plot-fit-line", "stroke", "rank fitted line");
+      if (observed && fitted && getComputedStyle(observed).fill === getComputedStyle(fitted).stroke) failures.push("rank observed and fitted paint are identical");
+    }
   }
   if (figureName === "growth") {
-    assertPaint(".cw-plot-line", "stroke", "vocabulary growth observed line");
-    assertPaint(".cw-plot-fit-line", "stroke", "vocabulary growth fit");
+    const observed = assertPaint(".cw-plot-line:not(.cw-plot-legend-swatch)", "stroke", "vocabulary growth observed line");
+    const fitted = assertPaint(".cw-plot-fit-line:not(.cw-plot-legend-swatch)", "stroke", "vocabulary growth fit");
+    const observedLegend = svg.querySelector<SVGGraphicsElement>(".cw-plot-legend-swatch.cw-plot-line");
+    const fittedLegend = svg.querySelector<SVGGraphicsElement>(".cw-plot-legend-swatch.cw-plot-fit-line");
+    if (!observed || !observedLegend || getComputedStyle(observed).stroke !== getComputedStyle(observedLegend).stroke) failures.push("growth observed legend paint does not match series");
+    if (!fitted || !fittedLegend || getComputedStyle(fitted).stroke !== getComputedStyle(fittedLegend).stroke) failures.push("growth fitted legend paint does not match series");
   }
   if (figureName === "lexical") {
     assertPaint(".cw-plot-point", "fill", "lexical exact-frequency point", rejectBrowserBlack);
@@ -659,16 +707,29 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
   }
   if (figureName === "coverage") {
     assertPaint(".cw-plot-line", "stroke", "coverage cumulative line");
+    assertPaint(".cw-plot-area", "fill", "coverage cumulative area", false, true);
     assertPaint(".cw-plot-coverage-crossing", "fill", "coverage target point");
     assertDistinctFills(".cw-plot-composition-segment", 3, "coverage composition strip");
+    const gradientStops = Array.from(svg.querySelectorAll<SVGStopElement>(".cw-plot-area-stop"));
+    if (gradientStops.length !== 3 || gradientStops.some((stop) => !isVisiblePaint(getComputedStyle(stop).stopColor))) {
+      failures.push("coverage area gradient has unresolved stops");
+    }
   }
   if (figureName === "profile") {
     assertDistinctFills(".cw-plot-composition-segment", 3, "dispersion profile composition strip");
     assertPaint(".cw-plot-point", "fill", "dispersion profile endpoint", rejectBrowserBlack);
+    assertDistinctFills(".cw-plot-point", 4, "dispersion profile ordered endpoints");
   }
   if (figureName === "plane") {
     assertDistinctFills(".cw-plot-density-cell:not(.is-zero)", 4, "dispersion plane density");
     if (rejectBrowserBlack) assertDistinctFills(".cw-plot-plane-witness", 4, "dispersion plane witnesses");
+    const legendSteps = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-density-legend-step"));
+    const legendFills = legendSteps.map((step) => getComputedStyle(step).fill);
+    if (legendSteps.length !== 6 || new Set(legendFills).size !== 6) failures.push("density legend does not expose the six-step scale");
+    const cellFills = new Set(Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-density-cell:not(.is-zero)"))
+      .map((cell) => getComputedStyle(cell).fill));
+    if (!legendFills.at(-1) || !cellFills.has(legendFills.at(-1)!)) failures.push("density legend high step does not match the cell scale");
+    if (!svg.querySelector(".cw-plot-density-legend .cw-plot-legend-label")?.textContent?.includes("Log scale")) failures.push("density legend omits Log scale");
   }
   if (figureName === "coverage") {
     const disclosure = document.querySelector<HTMLElement>(".cw-overview-figure-teaching .analysis-glossary-term");
@@ -681,15 +742,24 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
 function auditRecoveryGeometry(svg: SVGSVGElement, failures: string[]): void {
   const plotTop = Number(svg.querySelector<SVGLineElement>(".cw-plot-crosshair-x")?.getAttribute("y1"));
   const plotBottom = Number(svg.querySelector<SVGLineElement>(".cw-plot-crosshair-x")?.getAttribute("y2"));
-  if (figureName === "rank" && view === "residuals") {
+  if (figureName === "rank" && auditedView === "residuals") {
     if (svg.querySelector(".cw-plot-point.is-excluded")) failures.push("excluded point rendered in rank residuals");
+    for (const point of svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-point")) {
+      const rank = Number(point.dataset.pinKey?.split(":")[1]);
+      const rows = point.dataset.tooltipRows ?? "";
+      const tokens = Number(rows.match(/(?:^|\n)([\d,]+) tokens(?:\n|$)/)?.[1].replaceAll(",", ""));
+      if (!(rank >= 4 && rank <= 70) || !(tokens > 1) || !rows.includes("included in fit")) {
+        failures.push("residual point outside fitted population");
+        break;
+      }
+    }
     if (Array.from(svg.querySelectorAll(".cw-plot-legend-label")).some((label) => label.textContent?.includes("Excluded"))) {
       failures.push("residual legend describes excluded geometry");
     }
     const zeroY = Number(svg.querySelector<SVGLineElement>(".cw-plot-residual-zero")?.getAttribute("y1"));
     if (!Number.isFinite(zeroY) || Math.abs(zeroY - ((plotTop + plotBottom) / 2)) > 0.5) failures.push("residual zero is not centred");
   }
-  if (figureName === "rank" && view === "curve") {
+  if (figureName === "rank" && auditedView === "curve") {
     const band = svg.querySelector<SVGRectElement>(".cw-plot-fitted-range-band");
     const y = Number(band?.getAttribute("y"));
     const height = Number(band?.getAttribute("height"));
@@ -698,7 +768,7 @@ function auditRecoveryGeometry(svg: SVGSVGElement, failures: string[]): void {
       failures.push("fitted range leaves rank plot bounds");
     }
   }
-  if (figureName === "mattr" && view === "histogram") {
+  if (figureName === "mattr" && auditedView === "histogram") {
     const automaticNames = Array.from(svg.querySelectorAll<SVGTextElement>(".cw-plot-label"))
       .map((label) => label.textContent ?? "")
       .filter((text) => text.includes("document") || text.includes("short-document") || text.includes("long-document"));
@@ -712,6 +782,26 @@ function auditRecoveryGeometry(svg: SVGSVGElement, failures: string[]): void {
     const hapaxEntry = Array.from(svg.querySelectorAll<SVGTextElement>(".cw-plot-composition-label.is-category"))
       .some((label) => label.textContent === "Hapax (1)");
     if (!hapaxEntry) failures.push("Hapax composition entry missing");
+    for (const category of ["Dis legomena (2)", "3–9 occurrences", "10+ occurrences"]) {
+      if (!Array.from(svg.querySelectorAll<SVGTextElement>(".cw-plot-composition-label")).some((label) => label.textContent?.startsWith(category))) {
+        failures.push(`lexical composition category missing: ${category}`);
+      }
+    }
+    const svgBounds = svg.getBoundingClientRect();
+    for (const label of Array.from(svg.querySelectorAll<SVGTextElement>(".cw-plot-label"))
+      .filter((candidate) => /hapax · f = 1|dis legomena · f = 2/.test(candidate.textContent ?? ""))) {
+      const bounds = label.getBoundingClientRect();
+      if (bounds.left < svgBounds.left || bounds.top < svgBounds.top || bounds.right > svgBounds.right || bounds.bottom > svgBounds.bottom) {
+        failures.push("lexical authored annotation outside SVG bounds");
+      }
+    }
+  }
+  if (figureName === "plane") {
+    const legend = svg.querySelector<SVGGElement>(".cw-plot-density-legend");
+    const witnessLabels = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-label-mono[class*='is-witness-']"));
+    if (legend && witnessLabels.some((label) => rectanglesOverlap(legend.getBoundingClientRect(), label.getBoundingClientRect(), 2))) {
+      failures.push("dispersion witness label overlaps density legend");
+    }
   }
 }
 
@@ -720,7 +810,7 @@ function auditInteractionCapability(svg: SVGSVGElement, failures: string[]): voi
     || figureName === "growth"
     || figureName === "coverage"
     || figureName === "plane"
-    || (figureName === "document" || figureName === "mattr") && view !== "histogram";
+    || (figureName === "document" || figureName === "mattr") && auditedView !== "histogram";
   const crosshairLines = svg.querySelectorAll(".cw-plot-crosshair-x, .cw-plot-crosshair-y");
   if (svg.dataset.crosshairEnabled !== String(crosshairExpected)) failures.push("incorrect crosshair capability metadata");
   if (crosshairExpected && crosshairLines.length !== 2) failures.push("approved figure lacks crosshair geometry");

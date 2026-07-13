@@ -3,9 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 
-const outputDirectory = "/tmp/corpuswright-overview-curation";
+const recoveryMode = process.argv.includes("--rendering-recovery");
+const outputDirectory = recoveryMode
+  ? "/tmp/corpuswright-overview-rendering-recovery"
+  : "/tmp/corpuswright-overview-curation";
 const baseUrl = "http://127.0.0.1:4179/tests/visual/overview-suite-fixture.html";
 const chromeBinary = process.env.CHROME_BIN ?? "google-chrome";
+rmSync(outputDirectory, { recursive: true, force: true });
 mkdirSync(outputDirectory, { recursive: true });
 
 const screenshotCases = [
@@ -64,6 +68,38 @@ const exportCases = [
   exportCase("42-coverage-90", "coverage", { target: "0.9" }),
 ];
 
+const recoveryScreenshotCases = [
+  recoveryShot("document-histogram", "document", { view: "histogram" }),
+  recoveryShot("document-ecdf", "document", { view: "ecdf" }),
+  recoveryShot("mattr-histogram", "mattr", { view: "histogram" }),
+  recoveryShot("lexical-spectrum", "lexical"),
+  recoveryShot("cumulative-coverage", "coverage"),
+  recoveryShot("rank-curve", "rank", { view: "curve" }),
+  recoveryShot("rank-residuals", "rank", { view: "residuals" }),
+  recoveryShot("vocabulary-growth", "growth", { view: "heaps" }),
+  recoveryShot("dispersion-profile", "profile"),
+  recoveryShot("dispersion-plane", "plane"),
+  recoveryShot("dispersion-profile-dark", "profile", { theme: "corpus-dark" }),
+  recoveryShot("dispersion-plane-dark", "plane", { theme: "corpus-dark" }),
+];
+
+const recoveryExportCases = [
+  recoveryExportCase("rank-curve", "rank", { view: "curve" }),
+  recoveryExportCase("cumulative-coverage", "coverage"),
+  recoveryExportCase("dispersion-plane", "plane"),
+];
+
+const recoveryAuditCases = [
+  recoveryAuditCase("document-histogram-to-ecdf", "document", "ecdf"),
+  recoveryAuditCase("document-histogram-to-qq", "document", "qq"),
+  recoveryAuditCase("mattr-histogram-to-ecdf", "mattr", "ecdf"),
+  recoveryAuditCase("mattr-histogram-to-qq", "mattr", "qq"),
+];
+
+const activeScreenshotCases = recoveryMode ? recoveryScreenshotCases : screenshotCases;
+const activeExportCases = recoveryMode ? recoveryExportCases : exportCases;
+const activeAuditCases = recoveryMode ? recoveryAuditCases : [];
+
 class Cdp {
   constructor(url) {
     this.url = url;
@@ -120,7 +156,20 @@ try {
   await cdp.open();
 
   const manifest = [];
-  for (const item of screenshotCases) {
+  for (const item of activeAuditCases) {
+    const page = await createCasePage(cdp);
+    try {
+      await setViewport(cdp, page.sessionId, 1440, 900);
+      const result = await navigateAndWait(cdp, page.sessionId, item.url, false);
+      await settlePaint(cdp, page.sessionId);
+      manifest.push({ ...item, ...result, browser: chromeBinary });
+      process.stdout.write(`audited ${item.name}\n`);
+    } finally {
+      await cdp.send("Target.closeTarget", { targetId: page.targetId });
+    }
+  }
+
+  for (const item of activeScreenshotCases) {
     const page = await createCasePage(cdp);
     try {
       await setViewport(cdp, page.sessionId, item.width, item.height);
@@ -136,7 +185,7 @@ try {
     }
   }
 
-  for (const item of exportCases) {
+  for (const item of activeExportCases) {
     const page = await createCasePage(cdp);
     try {
       await setViewport(cdp, page.sessionId, 1440, 900);
@@ -160,8 +209,10 @@ try {
   const report = {
     generatedAt: new Date().toISOString(),
     fixture: baseUrl,
-    screenshotCount: screenshotCases.length,
-    standaloneSvgCount: exportCases.length,
+    viewport: "1440x900",
+    auditCount: activeAuditCases.length,
+    screenshotCount: activeScreenshotCases.length,
+    standaloneSvgCount: activeExportCases.length,
     consoleErrors: manifest.reduce((sum, item) => sum + item.consoleErrors, 0),
     accessibilitySerious: manifest.reduce((sum, item) => sum + item.accessibilitySerious, 0),
     cases: manifest,
@@ -185,6 +236,18 @@ function shot(index, slug, figure, options = {}, width = 1440, height = 900) {
 
 function exportCase(slug, figure, options = {}) {
   return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: options.theme ?? "corpus-light", url: fixtureUrl(figure, { ...options, export: true }) };
+}
+
+function recoveryShot(slug, figure, options = {}) {
+  return { kind: "screenshot", filename: `${slug}.png`, figure, width: 1440, height: 900, theme: options.theme ?? "corpus-light", url: fixtureUrl(figure, options) };
+}
+
+function recoveryExportCase(slug, figure, options = {}) {
+  return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: options.theme ?? "corpus-light", url: fixtureUrl(figure, { ...options, export: true }) };
+}
+
+function recoveryAuditCase(name, figure, switchTo) {
+  return { kind: "audit", name, figure, width: 1440, height: 900, theme: "corpus-light", url: fixtureUrl(figure, { view: "histogram", switchTo }) };
 }
 
 function fixtureUrl(figure, options) {
@@ -274,7 +337,7 @@ async function navigateAndWait(cdp, sessionId, url, exporting) {
 
 async function settlePaint(cdp, sessionId) {
   await cdp.send("Runtime.evaluate", {
-    expression: "new Promise(resolve => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(resolve)), 100))",
+    expression: "(async () => { for (const animation of document.getAnimations()) { try { animation.finish(); } catch {} } await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); })()",
     awaitPromise: true,
   }, sessionId);
 }
