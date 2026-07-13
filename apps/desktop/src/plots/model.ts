@@ -1592,7 +1592,7 @@ export function buildDispersionGeometry(options: {
     top: plotTop,
     right: 36,
     bottom: 48,
-    left: 156,
+    left: 130,
   });
   const buckets = options.buckets;
   const totalTypes = options.totalTypes ?? buckets.reduce((sum, bucket) => sum + bucket.count, 0);

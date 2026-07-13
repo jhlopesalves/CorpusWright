@@ -334,7 +334,7 @@
   padding: 8px 0;
   border-bottom: 0;
   color: var(--text-muted);
-  font-size: var(--cw-type-caption-size);
+  font-size: var(--cw-type-ui-size);
   font-weight: var(--cw-weight-semibold);
   line-height: 1.35;
 }
@@ -349,7 +349,6 @@
 }
 
 .cw-overview-figure-teaching .analysis-glossary-detail {
-  max-width: 82ch;
   padding: 2px 0 10px;
   border-left: 0;
   background: transparent;

@@ -598,7 +598,6 @@
 .analysis-glossary-detail {
   display: grid;
   gap: 8px;
-  max-width: 82ch;
   padding: 2px 0 10px;
   border-left: 0;
   background: transparent;
@@ -606,11 +605,6 @@
   font-size: var(--cw-type-ui-size);
   line-height: 1.45;
   overflow: visible;
-}
-
-.analysis-glossary-row .analysis-glossary-detail {
-  width: min(82ch, 100%);
-  max-width: min(82ch, 100%);
 }
 
 .analysis-method-disclosure {
@@ -625,14 +619,13 @@
   width: 100%;
   justify-content: space-between;
   padding: 8px 0;
-  font-size: var(--cw-type-caption-size);
+  font-size: var(--cw-type-ui-size);
   font-weight: var(--cw-weight-semibold);
   line-height: 1.35;
 }
 
 .analysis-method-disclosure-detail {
   gap: 12px;
-  max-width: 82ch;
 }
 
 .analysis-glossary-group-entry {
