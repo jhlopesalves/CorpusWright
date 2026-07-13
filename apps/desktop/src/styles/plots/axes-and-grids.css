@@ -42,7 +42,7 @@
   fill: none;
   stroke: var(--text-muted);
   stroke-dasharray: 5 4;
-  stroke-opacity: 0.7;
+  stroke-opacity: 0.48;
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }

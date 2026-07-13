@@ -202,12 +202,11 @@ export function renderDispersionPlaneSvg(plotId: string, geometry: DispersionPla
   renderPlaneMarginals(svg, geometry);
   renderDensityCells(svg, geometry);
   for (const line of geometry.thresholdLines) renderLine(svg, line);
-  renderQuadrantPills(svg, geometry);
+  renderLabels(svg, geometry.quadrantLabels);
   renderLabels(svg, geometry.thresholdLabels);
   renderPlaneWitnesses(svg, geometry);
   renderLabels(svg, geometry.labels);
   renderPlaneDensityLegend(svg, geometry);
-  renderPlaneWitnessLegend(svg, geometry);
   renderInteractionLayer(svg, geometry.box, true);
   return svg;
 }
@@ -950,7 +949,7 @@ function renderDensityCells(svg: SVGSVGElement, geometry: DispersionPlaneGeometr
       y: cell.y,
       width: cell.width,
       height: cell.height,
-      rx: 1.5,
+      rx: 0,
       class: `cw-plot-density-cell ${cell.count > 0 ? "cw-plot-hover-target" : "is-zero"}`,
       tabindex: cell.count > 0 ? "-1" : undefined,
       role: cell.count > 0 ? "gridcell" : undefined,
@@ -970,16 +969,22 @@ function renderDensityCells(svg: SVGSVGElement, geometry: DispersionPlaneGeometr
 function renderPlaneMarginals(svg: SVGSVGElement, geometry: DispersionPlaneGeometry): void {
   const group = createSvgElement("g");
   group.setAttribute("class", "cw-plot-plane-marginals");
-  for (const marginal of [...geometry.frequencyMarginal, ...geometry.dpMarginal]) {
-    const rect = createSvgElement("rect");
-    setAttrs(rect, {
-      x: marginal.x,
-      y: marginal.y,
-      width: marginal.width,
-      height: marginal.height,
-      class: "cw-plot-plane-marginal",
-    });
-    group.appendChild(rect);
+  for (const [marginals, axis] of [
+    [geometry.frequencyMarginal, "frequency"],
+    [geometry.dpMarginal, "dp"],
+  ] as const) {
+    for (const marginal of marginals) {
+      const rect = createSvgElement("rect");
+      setAttrs(rect, {
+        x: marginal.x,
+        y: marginal.y,
+        width: marginal.width,
+        height: marginal.height,
+        rx: 0,
+        class: `cw-plot-plane-marginal is-${axis}`,
+      });
+      group.appendChild(rect);
+    }
   }
   svg.appendChild(group);
 }
@@ -987,84 +992,63 @@ function renderPlaneMarginals(svg: SVGSVGElement, geometry: DispersionPlaneGeome
 function renderPlaneDensityLegend(svg: SVGSVGElement, geometry: DispersionPlaneGeometry): void {
   const group = createSvgElement("g");
   group.setAttribute("class", "cw-plot-density-legend");
+  group.dataset.layoutFixed = "true";
   const x = geometry.box.margin.left;
-  const y = geometry.box.height - 68;
+  const y = 24;
+  const stepWidth = 22;
   for (let index = 0; index < 6; index += 1) {
     const rect = createSvgElement("rect");
-    setAttrs(rect, { x: x + index * 18, y, width: 18, height: 10, class: `cw-plot-density-legend-step cw-plot-ramp-${index}` });
+    setAttrs(rect, { x: x + index * stepWidth, y, width: stepWidth, height: 10, rx: 0, class: `cw-plot-density-legend-step cw-plot-ramp-${index}` });
     group.appendChild(rect);
   }
   const label = createSvgElement("text");
-  setAttrs(label, { x, y: y - 7, class: "cw-plot-legend-label" });
-  label.textContent = `Cell count · ${geometry.densityLegend.mode === "log" ? "Log" : "Linear"} scale · low ${geometry.densityLegend.minimum} · high ${geometry.densityLegend.maximum}`;
-  const note = createSvgElement("text");
-  setAttrs(note, { x, y: y + 25, class: "cw-plot-legend-note" });
-  note.textContent = "Contrast changes; underlying counts do not.";
-  group.append(label, note);
+  setAttrs(label, { x, y: y - 8, class: "cw-plot-legend-label" });
+  label.textContent = `Types per cell · ${geometry.densityLegend.mode === "log" ? "logarithmic" : "linear"} colour scale`;
+  const minimum = createSvgElement("text");
+  setAttrs(minimum, { x, y: y + 23, class: "cw-plot-density-legend-bound", "text-anchor": "start" });
+  minimum.textContent = String(geometry.densityLegend.minimum);
+  const maximum = createSvgElement("text");
+  setAttrs(maximum, { x: x + stepWidth * 6, y: y + 23, class: "cw-plot-density-legend-bound", "text-anchor": "end" });
+  maximum.textContent = String(geometry.densityLegend.maximum);
+  group.append(label, minimum, maximum);
   svg.appendChild(group);
-}
-
-function renderPlaneWitnessLegend(svg: SVGSVGElement, geometry: DispersionPlaneGeometry): void {
-  const group = createSvgElement("g");
-  group.setAttribute("class", "cw-plot-witness-legend");
-  const startX = geometry.box.margin.left + 310;
-  const startY = geometry.box.height - 75;
-  geometry.witnessLegend.forEach((item, index) => {
-    const column = index % 2;
-    const row = Math.floor(index / 2);
-    const x = startX + column * 136;
-    const y = startY + row * 22;
-    const swatch = renderLegendSwatch(item, x, y);
-    const label = createSvgElement("text");
-    setAttrs(label, { x: x + 12, y: y + 4, class: "cw-plot-legend-label" });
-    label.textContent = item.label;
-    group.append(swatch, label);
-  });
-  svg.appendChild(group);
-}
-
-function renderQuadrantPills(svg: SVGSVGElement, geometry: DispersionPlaneGeometry): void {
-  const group = createSvgElement("g");
-  group.setAttribute("class", "cw-plot-quadrant-pills");
-  for (const pill of geometry.quadrantPills) {
-    const rect = createSvgElement("rect");
-    setAttrs(rect, {
-      x: pill.box.x,
-      y: pill.box.y,
-      width: pill.box.width,
-      height: pill.box.height,
-      rx: 10,
-      class: "cw-plot-quadrant-pill-bg",
-    });
-    group.appendChild(rect);
-  }
-  svg.appendChild(group);
-  renderLabels(svg, geometry.quadrantPills.map((pill) => pill.label));
 }
 
 function renderPlaneWitnesses(svg: SVGSVGElement, geometry: DispersionPlaneGeometry): void {
   const group = createSvgElement("g");
   group.setAttribute("class", "cw-plot-plane-witnesses");
   geometry.witnesses.forEach((witness, index) => {
+    if (witness.pinned) {
+      const ring = createSvgElement("circle");
+      setAttrs(ring, {
+        cx: witness.x,
+        cy: witness.y,
+        r: 8,
+        class: "cw-plot-plane-witness-pin-ring",
+        "aria-hidden": "true",
+      });
+      group.appendChild(ring);
+    }
     const mark = createPointShapeElement(
-      witness.shape ?? "circle",
+      "circle",
       witness.x,
       witness.y,
       0.7,
-      ["cw-plot-plane-witness", witness.className ?? "", witness.pinned ? "is-pinned" : "", "cw-plot-hover-target"].filter(Boolean).join(" "),
+      ["cw-plot-plane-witness", witness.pinned ? "is-pinned" : "", "cw-plot-hover-target"].filter(Boolean).join(" "),
       true,
     );
     setAttrs(mark, {
       tabindex: "-1",
       role: "button",
-      "aria-label": witness.tooltipTitle ?? "",
+      "aria-label": witness.ariaLabel ?? witness.tooltipTitle ?? "",
       "aria-pressed": String(Boolean(witness.pinned)),
       "data-pin-key": witness.key,
       "data-plot-x": witness.x,
       "data-plot-y": witness.y,
       "data-tooltip-title": witness.tooltipTitle ?? "",
       "data-tooltip-rows": (witness.tooltipRows ?? []).join("\n"),
-      "data-point-shape": witness.shape ?? "circle",
+      "data-point-shape": "circle",
+      "data-witness-kind": witness.datum.kind,
       style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms;`,
     });
     group.appendChild(mark);

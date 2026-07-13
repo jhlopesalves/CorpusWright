@@ -295,7 +295,7 @@ const densityCell = dispersionPlane.cells.find((cell) => cell.count === 4);
 assert(densityCell !== undefined, "Dispersion plane fixture should include the count-4 density cell");
 const expectedDensityT = Math.log1p(4) / Math.log1p(9);
 assertClose(densityCell.t, expectedDensityT, "Dispersion plane density t should use the log-scaled cell count");
-assertClose(densityCell.opacity, 0.82 + (0.18 * expectedDensityT), "Dispersion plane opacity should remain visually stable across positive cells");
+assertClose(densityCell.opacity, 1, "Dispersion plane should encode density through colour while keeping positive cells fully opaque");
 const decadeTickLabels = dispersionPlane.xTicks.filter((tick) => tick.major).map((tick) => tick.label);
 assert(
   ["1", "10", "100", "1k", "10k", "100k"].every((label) => decadeTickLabels.includes(label))

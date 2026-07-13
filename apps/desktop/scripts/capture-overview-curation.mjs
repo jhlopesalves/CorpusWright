@@ -119,12 +119,13 @@ const legibilityScreenshotCases = [
   legibilityShot("document-qq-legend", "document", { view: "qq" }),
   legibilityShot("vocabulary-growth-legend", "growth", { view: "growth" }),
   legibilityShot("document-balance-disclosure", "document", { view: "histogram", methodDisclosure: "documentBalance" }),
-  legibilityShot("frequency-concentration-disclosure", "document", { view: "histogram", methodDisclosure: "frequencyConcentration" }),
   legibilityShot("dispersion-profile-tooltip", "profile", { hoverProfileBand: true }),
+  legibilityShot("dispersion-plane", "plane", { pinned: true }),
 ];
 
 const legibilityExportCases = [
   legibilityExportCase("document-ecdf", "document", { view: "ecdf" }),
+  legibilityExportCase("dispersion-plane", "plane", { pinned: true }),
 ];
 
 const activeScreenshotCases = legibilityMode ? legibilityScreenshotCases : cleanupMode ? cleanupScreenshotCases : recoveryMode ? recoveryScreenshotCases : screenshotCases;
@@ -400,6 +401,31 @@ function assertStandaloneSvg(source, filename) {
   if (/var\(--/.test(source)) throw new Error(`${filename} contains unresolved CSS variables`);
   for (const required of ["<title", "<desc", "cw-plot-figure-title", "cw-plot-figure-reading"]) {
     if (!source.includes(required)) throw new Error(`${filename} is missing ${required}`);
+  }
+  if (filename === "dispersion-plane.svg") {
+    for (const required of [
+      "cw-plot-density-cells",
+      "cw-plot-plane-marginal is-frequency",
+      "cw-plot-plane-marginal is-dp",
+      "cw-plot-density-legend",
+      "Types per cell · logarithmic colour scale",
+      "cw-plot-threshold-line",
+      "cw-plot-quadrant-label",
+      "cw-plot-plane-witness",
+      "cw-plot-plane-witness-pin-ring",
+      "cw-plot-plane-witness-label is-pinned",
+      "Raw frequency 1,000",
+      "DP 0.50",
+    ]) {
+      if (!source.includes(required)) throw new Error(`${filename} is missing simplified plane geometry: ${required}`);
+    }
+    const densityCells = Array.from(source.matchAll(/<rect\b[^>]*class="[^"]*\bcw-plot-density-cell\b[^"]*"[^>]*>/g), (match) => match[0]);
+    if (densityCells.length === 0 || densityCells.some((cell) => !/\brx="0(?:\.0+)?"/.test(cell))) throw new Error(`${filename} does not contain only square density cells`);
+    if (/cw-plot-quadrant-pill|cw-plot-witness-legend|cw-plot-tooltip|cw-plot-crosshair-[xy]|cw-plot-hover-target/.test(source)) {
+      throw new Error(`${filename} retains transient or removed plane decoration`);
+    }
+    if ((source.match(/cw-plot-density-legend"/g) ?? []).length !== 1) throw new Error(`${filename} does not contain exactly one density legend`);
+    if ((source.match(/cw-plot-quadrant-label/g) ?? []).length !== 4) throw new Error(`${filename} does not contain four quiet quadrant labels`);
   }
 }
 
