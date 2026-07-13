@@ -362,13 +362,35 @@
 
 .cw-overview-figure-teaching {
   display: grid;
-  gap: 6px;
-  padding-top: 2px;
+  gap: 0;
   border-top: 1px solid var(--border-color);
 }
 
 .cw-overview-figure-teaching .analysis-glossary-term {
-  justify-self: start;
+  width: 100%;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 0;
+  color: var(--text-muted);
+  font-size: var(--cw-type-caption-size);
+  font-weight: var(--cw-weight-semibold);
+  line-height: 1.35;
+}
+
+.cw-overview-figure-teaching .analysis-glossary-term:hover {
+  color: var(--text-color);
+}
+
+.cw-overview-figure-teaching .analysis-glossary-term:focus-visible {
+  outline: none;
+  box-shadow: var(--cw-interaction-focus-ring);
+}
+
+.cw-overview-figure-teaching .analysis-glossary-detail {
+  max-width: 82ch;
+  padding: 2px 0 10px;
+  border-left: 0;
+  background: transparent;
 }
 
 .cw-overview-distribution-evidence {

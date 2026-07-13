@@ -327,6 +327,7 @@ function buildCoverageFigure(): BuiltFigure {
     captionStats: "top 10 31.0% · top 100 55.0% · top 1,000 76.0% · top 10,000 91.0%",
     captionReading: "The display path includes the exact selected first crossing while stored checkpoints remain unchanged.",
     controls,
+    explanation: buildFixtureExplanation(),
     controller,
     exportMetadata: () => [`Cumulative token coverage · ${Math.round(Number(target) * 100)}% target`],
     renderSvg,
@@ -470,6 +471,27 @@ function fixtureController(id: OverviewFigureId, state: FigureControlState): Ove
   return new OverviewFigureController({ initialControls: state, policy: FIGURE_INTERACTION_POLICIES[id] });
 }
 
+function buildFixtureExplanation(): HTMLElement {
+  const explanation = document.createElement("div");
+  explanation.className = "cw-overview-figure-teaching";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "analysis-glossary-term";
+  button.setAttribute("aria-expanded", "false");
+  const label = document.createElement("span");
+  label.textContent = "Explain Top-N coverage";
+  const caret = document.createElement("span");
+  caret.className = "analysis-glossary-caret";
+  caret.textContent = "›";
+  button.append(label, caret);
+  const detail = document.createElement("div");
+  detail.className = "analysis-glossary-detail";
+  detail.hidden = true;
+  detail.textContent = "Fixture explanation detail.";
+  explanation.append(button, detail);
+  return explanation;
+}
+
 function distributionPayload(length: boolean): DistributionResultPayload {
   const counts = length ? [3, 4, 6, 9, 12, 15, 14, 11, 9, 7, 5, 3, 2] : [2, 4, 7, 11, 16, 19, 17, 11, 6, 3];
   const total = counts.reduce((sum, count) => sum + count, 0);
@@ -534,6 +556,7 @@ function auditFigure(figure: HTMLElement): string[] {
   }
   auditComputedPaint(svg, failures);
   auditRecoveryGeometry(svg, failures);
+  auditInteractionCapability(svg, failures);
   for (const button of figure.querySelectorAll<HTMLButtonElement>("button")) {
     if (!(button.textContent?.trim() || button.getAttribute("aria-label"))) failures.push("unnamed button");
     const box = button.getBoundingClientRect();
@@ -647,6 +670,12 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
     assertDistinctFills(".cw-plot-density-cell:not(.is-zero)", 4, "dispersion plane density");
     if (rejectBrowserBlack) assertDistinctFills(".cw-plot-plane-witness", 4, "dispersion plane witnesses");
   }
+  if (figureName === "coverage") {
+    const disclosure = document.querySelector<HTMLElement>(".cw-overview-figure-teaching .analysis-glossary-term");
+    const detail = document.querySelector<HTMLElement>(".cw-overview-figure-teaching .analysis-glossary-detail");
+    if (!disclosure || getComputedStyle(disclosure).borderBottomStyle !== "none") failures.push("figure disclosure retains link styling");
+    if (!detail || getComputedStyle(detail).backgroundColor !== "rgba(0, 0, 0, 0)") failures.push("figure disclosure detail is not footer-owned");
+  }
 }
 
 function auditRecoveryGeometry(svg: SVGSVGElement, failures: string[]): void {
@@ -684,6 +713,18 @@ function auditRecoveryGeometry(svg: SVGSVGElement, failures: string[]): void {
       .some((label) => label.textContent === "Hapax (1)");
     if (!hapaxEntry) failures.push("Hapax composition entry missing");
   }
+}
+
+function auditInteractionCapability(svg: SVGSVGElement, failures: string[]): void {
+  const crosshairExpected = figureName === "rank"
+    || figureName === "growth"
+    || figureName === "coverage"
+    || figureName === "plane"
+    || (figureName === "document" || figureName === "mattr") && view !== "histogram";
+  const crosshairLines = svg.querySelectorAll(".cw-plot-crosshair-x, .cw-plot-crosshair-y");
+  if (svg.dataset.crosshairEnabled !== String(crosshairExpected)) failures.push("incorrect crosshair capability metadata");
+  if (crosshairExpected && crosshairLines.length !== 2) failures.push("approved figure lacks crosshair geometry");
+  if (!crosshairExpected && crosshairLines.length !== 0) failures.push("unapproved figure has crosshair geometry");
 }
 
 function isVisiblePaint(value: string): boolean {

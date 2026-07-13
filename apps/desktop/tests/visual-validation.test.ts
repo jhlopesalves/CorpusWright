@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { parseCompleteThemes } from "../scripts/css-contracts.mjs";
+import { findTopLevelCssBlocks, parseCompleteThemes, parseDeclarations } from "../scripts/css-contracts.mjs";
 import {
   colourForToken,
   contrastRatio,
@@ -18,6 +18,7 @@ const desktopRoot = path.resolve("apps/desktop");
 const graph = await loadStyleGraph(new URL("../src/styles.css", import.meta.url));
 const themesPath = path.join(desktopRoot, "src/styles/foundations/themes.css");
 const themeSource = graph.modules.find(module => module.path === themesPath)?.contents ?? "";
+const figurePaletteSource = graph.modules.find(module => module.path.endsWith("figure-palettes.css"))?.contents ?? "";
 const typescriptSources = ["figure.ts", "render.ts", "svg-export.ts"].map(file => ({
   path: path.join(desktopRoot, "src/plots", file),
   contents: readFileSync(path.join(desktopRoot, "src/plots", file), "utf8"),
@@ -77,6 +78,30 @@ for (const theme of themes) {
       );
     }
   }
+}
+
+const paletteBlocks = findTopLevelCssBlocks(figurePaletteSource);
+const scientificRoles = parseDeclarations(paletteBlocks.find((block) => block.selector.includes(".cw-overview-figure"))?.body ?? "");
+for (const [variant, themeId] of [["light", "corpus-light"], ["dark", "corpus-dark"]] as const) {
+  const theme = themes.find((candidate) => candidate.id === themeId)!;
+  const declarations = new Map([...theme.declarations, ...scientificRoles]);
+  const panel = colourForToken("--panel-bg", declarations);
+  const observed = colourForToken("--cw-plot-observed", declarations);
+  const reference = colourForToken("--cw-plot-reference", declarations);
+  assert(contrastRatio(observed, panel) >= 4.5, `${variant} observed series must contrast with the plot surface`);
+  assert(contrastRatio(reference, panel) >= 4.5, `${variant} fitted series must contrast with the plot surface`);
+  assert(deltaE76(observed, reference) >= 24, `${variant} observed and fitted series must remain distinct`);
+  const density = Array.from({ length: 6 }, (_, index) => colourForToken(`--cw-plot-density-${index}`, declarations));
+  assert.equal(new Set(density.map((colour) => `${colour.r},${colour.g},${colour.b}`)).size, 6);
+  for (let index = 1; index < density.length; index += 1) {
+    assert(deltaE76(density[index - 1]!, density[index]!) >= MINIMUM_RAMP_DELTA_E_76);
+  }
+  const witnesses = ["core", "loud-local", "quiet-even", "rare-local"]
+    .map((role) => colourForToken(`--cw-plot-witness-${role}`, declarations));
+  assert.equal(new Set(witnesses.map((colour) => `${colour.r},${colour.g},${colour.b}`)).size, 4);
+}
+for (let index = 0; index < 6; index += 1) {
+  assert.equal(scientificRoles.get(`--cw-plot-density-${index}`), `var(--cw-plot-ramp-${index})`, "density roles must preserve the ordered theme ramp");
 }
 
 const contrastOutput = execFileSync("node", ["scripts/check-theme-contrast.mjs"], {
