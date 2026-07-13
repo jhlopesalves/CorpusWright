@@ -13,7 +13,7 @@
 }
 
 .cw-plot-fit-line {
-  stroke: var(--cw-plot-reference, var(--cw-plot-fit));
+  stroke: var(--cw-plot-model-fit, var(--cw-plot-fit));
   stroke-width: 2.1;
   stroke-dasharray: 6 4;
 }
@@ -68,7 +68,8 @@
   animation: none;
 }
 
-.cw-plot-point.is-excluded {
+.cw-plot-point.is-excluded,
+.cw-plot-point.cw-plot-shown-not-fitted {
   fill: none;
   stroke: var(--cw-plot-excluded);
   stroke-width: 1.5;
@@ -104,6 +105,12 @@
   fill: var(--cw-plot-ramp-5);
 }
 
+.cw-plot-coverage-band-top10 { color: var(--cw-plot-rank-band-top10); fill: var(--cw-plot-rank-band-top10); }
+.cw-plot-coverage-band-11-100 { color: var(--cw-plot-rank-band-11-100); fill: var(--cw-plot-rank-band-11-100); }
+.cw-plot-coverage-band-101-1000 { color: var(--cw-plot-rank-band-101-1000); fill: var(--cw-plot-rank-band-101-1000); }
+.cw-plot-coverage-band-1001-10000 { color: var(--cw-plot-rank-band-1001-10000); fill: var(--cw-plot-rank-band-1001-10000); }
+.cw-plot-coverage-band-tail { color: var(--cw-plot-rank-band-tail); fill: var(--cw-plot-rank-band-tail); }
+
 .cw-plot-lollipop-stem {
   stroke: currentColor;
   stroke-width: 1.6;
@@ -123,6 +130,16 @@
   --cw-plot-density-3: color-mix(in srgb, var(--cw-info-text) 72%, var(--panel-bg));
   --cw-plot-density-4: color-mix(in srgb, var(--cw-info-text) 65%, var(--cw-category-mixed-text) 35%);
   --cw-plot-density-5: color-mix(in srgb, var(--cw-category-mixed-text) 75%, var(--text-color));
+}
+
+[data-theme="high-contrast-light"] .cw-plot-svg[data-plot-id="overview-dispersion-plane"],
+[data-theme="high-contrast-dark"] .cw-plot-svg[data-plot-id="overview-dispersion-plane"] {
+  --cw-plot-density-0: color-mix(in srgb, var(--text-color) 8%, var(--panel-bg));
+  --cw-plot-density-1: color-mix(in srgb, var(--text-color) 24%, var(--panel-bg));
+  --cw-plot-density-2: color-mix(in srgb, var(--text-color) 42%, var(--panel-bg));
+  --cw-plot-density-3: color-mix(in srgb, var(--text-color) 62%, var(--panel-bg));
+  --cw-plot-density-4: color-mix(in srgb, var(--text-color) 82%, var(--panel-bg));
+  --cw-plot-density-5: var(--text-color);
 }
 
 [data-figure-palette="monochrome"] .cw-plot-svg[data-plot-id="overview-dispersion-plane"] {
@@ -158,9 +175,10 @@
 }
 
 .cw-plot-median-line,
+.cw-plot-statistical-reference-line,
 .cw-plot-qq-reference {
   fill: none;
-  stroke: var(--cw-plot-reference, var(--cw-plot-fit));
+  stroke: var(--cw-plot-statistical-reference, var(--text-muted));
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }
@@ -185,6 +203,11 @@
 .cw-plot-composition-strip .cw-plot-ramp-3 { fill: var(--cw-plot-composition-3, var(--cw-plot-ramp-3)); }
 .cw-plot-composition-strip .cw-plot-ramp-4 { fill: var(--cw-plot-composition-4, var(--cw-plot-ramp-4)); }
 .cw-plot-composition-strip .cw-plot-ramp-5 { fill: var(--cw-plot-composition-5, var(--cw-plot-ramp-5)); }
+.cw-plot-composition-strip .cw-plot-composition-segment.cw-plot-coverage-band-top10 { fill: var(--cw-plot-rank-band-top10); }
+.cw-plot-composition-strip .cw-plot-composition-segment.cw-plot-coverage-band-11-100 { fill: var(--cw-plot-rank-band-11-100); }
+.cw-plot-composition-strip .cw-plot-composition-segment.cw-plot-coverage-band-101-1000 { fill: var(--cw-plot-rank-band-101-1000); }
+.cw-plot-composition-strip .cw-plot-composition-segment.cw-plot-coverage-band-1001-10000 { fill: var(--cw-plot-rank-band-1001-10000); }
+.cw-plot-composition-strip .cw-plot-composition-segment.cw-plot-coverage-band-tail { fill: var(--cw-plot-rank-band-tail); }
 .cw-plot-profile-band-0 { color: var(--cw-plot-profile-0); fill: var(--cw-plot-profile-0); }
 .cw-plot-profile-band-1 { color: var(--cw-plot-profile-1); fill: var(--cw-plot-profile-1); }
 .cw-plot-profile-band-2 { color: var(--cw-plot-profile-2); fill: var(--cw-plot-profile-2); }
@@ -236,6 +259,15 @@
   fill: var(--cw-plot-point);
   stroke: var(--panel-bg);
   stroke-width: 1.2;
+}
+
+.cw-plot-svg[data-plot-id="overview-cumulative-coverage"] .cw-plot-line {
+  stroke: var(--cw-plot-coverage-trajectory);
+  stroke-width: 2.1;
+}
+
+.cw-plot-svg[data-plot-id="overview-cumulative-coverage"] .cw-plot-area-stop {
+  stop-color: var(--cw-plot-coverage-trajectory);
 }
 
 .cw-plot-mattr-witness-tick {

@@ -28,14 +28,21 @@ const curve = buildRankFrequencyGeometry({
   fitVisible: true,
   labelsMode: "examples",
 });
-assert.equal(new Set(curve.points.filter((point) => !point.excluded).map((point) => point.rampIndex)).size, 1);
-assert(curve.points.filter((point) => point.excluded).every((point) => point.excluded));
+assert.equal(new Set(curve.points.filter((point) => point.fitMembership.kind === "included-in-fit").map((point) => point.rampIndex)).size, 1);
+assert(curve.points.filter((point) => point.fitMembership.kind === "shown-not-fitted").every((point) => point.excluded));
 assert(curve.fitPath);
 assert(curve.fittedRange);
 assert(curve.fittedRange.y >= curve.box.margin.top);
 assert(curve.fittedRange.y + curve.fittedRange.height <= curve.box.height - curve.box.margin.bottom);
 assert.equal(curve.points[0]?.rawY, 100_000, "authored curve geometry uses frequency per million");
-assert(curve.legend.some((item) => item.label === "Excluded from fit" && item.hollow));
+assert.deepEqual(curve.legend.map((item) => item.label), ["Included in fit", "Zipf fit", "Shown, not fitted"]);
+assert(curve.legend.some((item) => item.label === "Shown, not fitted" && item.hollow));
+assert.equal(curve.fittedRange?.label, "Model fitted over ranks 4–5");
+assert.equal(curve.points[0]?.fitMembership.kind, "shown-not-fitted");
+assert.equal(curve.points[0]?.fitMembership.kind === "shown-not-fitted" ? curve.points[0].fitMembership.reasonCode : null, "top-three");
+assert.equal(curve.points.at(-1)?.fitMembership.kind === "shown-not-fitted" ? curve.points.at(-1)!.fitMembership.reasonCode : null, "frequency-one-tail");
+assert(curve.labels.some((label) => label.text === "Top three ranks not fitted"));
+assert(curve.labels.some((label) => label.text === "Frequency-one tail not fitted"));
 
 const hiddenFit = buildRankFrequencyGeometry({
   points: rankPoints,
@@ -50,7 +57,7 @@ const hiddenFit = buildRankFrequencyGeometry({
   labelsMode: "off",
 });
 assert.equal(hiddenFit.fitPath, null);
-assert(!hiddenFit.legend.some((item) => item.label === "Fitted"));
+assert(!hiddenFit.legend.some((item) => item.label === "Zipf fit"));
 assert.equal(hiddenFit.labels.length, 0);
 
 assert.equal(rankResidual(rankPoints[3]!, 1, 1_200), 0);
@@ -72,6 +79,7 @@ assert(residuals.zeroLine);
 assert.equal(residuals.fitPath, null);
 assert.deepEqual(residuals.points.map((point) => point.datum.rank), [4, 5]);
 assert(residuals.points.every((point) => !point.excluded));
+assert(residuals.points.every((point) => point.fitMembership.kind === "included-in-fit"));
 assert.equal(residuals.legend.length, 0);
 assert.equal(residuals.yScale.domain[0], -residuals.yScale.domain[1]);
 assert.equal(residuals.zeroLine?.y1, residuals.box.margin.top + residuals.box.innerHeight / 2);

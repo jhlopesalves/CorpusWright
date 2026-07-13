@@ -19,6 +19,7 @@ import {
   formatUniversalTypeCaption,
   linearTicks,
   logTicks,
+  padPositiveLogDomain,
   placeLabels,
   scaleValue,
 } from "../src/plots/model.ts";
@@ -82,8 +83,8 @@ assert(
   "Lexical spectrum points should take their colour from the frequency class",
 );
 assert(
-  lexicalSpectrum.points.at(-1)?.fillOpacity === 0.42
-    && lexicalSpectrum.points[0]?.fillOpacity === 0.6,
+  lexicalSpectrum.points.at(-1)?.fillOpacity === 0.78
+    && lexicalSpectrum.points[0]?.fillOpacity === 0.9,
   "Frequency-singleton tail points should have lower opacity than the main sequence",
 );
 assert(
@@ -127,13 +128,22 @@ assert(
   "Rank-frequency hover should always expose both raw frequency and rate per million",
 );
 assert(
-  rankFrequencyRaw.points.filter((point) => point.excluded).length === 4
-    && rankFrequencyRaw.legend.map((item) => item.label).join(",") === "Observed,Fitted,Excluded from fit"
-    && rankFrequencyRaw.fittedRange?.label === "Fitted ranks"
+  rankFrequencyRaw.points.filter((point) => point.fitMembership.kind === "shown-not-fitted").length === 4
+    && rankFrequencyRaw.legend.map((item) => item.label).join(",") === "Included in fit,Zipf fit,Shown, not fitted"
+    && rankFrequencyRaw.fittedRange?.label === "Model fitted over ranks 4–4"
     && rankFrequencyRaw.fittedRange.y >= rankFrequencyRaw.box.margin.top
     && rankFrequencyRaw.fittedRange.y + rankFrequencyRaw.fittedRange.height <= rankFrequencyRaw.box.height - rankFrequencyRaw.box.margin.bottom,
   "Rank-frequency should explicitly disclose the fitted range and hollow exclusions",
 );
+
+for (const domain of [[1, 1], [12, 12], [1, 1_000_000], [1_000, 1_000]] as Array<[number, number]>) {
+  const padded = padPositiveLogDomain(domain);
+  const scale = createScale("log", padded, [0, 100]);
+  assert(padded[0] > 0 && padded[1] > padded[0], `Padded log domain must remain positive: ${domain}`);
+  assert(logTicks(scale).every((tick) => Number.isFinite(tick.value) && Number.isFinite(tick.position)), `Padded log ticks must remain finite: ${domain}`);
+}
+const unitCountTicks = logTicks(createScale("log", padPositiveLogDomain([1, 1]), [0, 100]));
+assert(!unitCountTicks.some((tick) => tick.major && tick.value < 1 && tick.label), "Count log padding must not label a sub-unit decade");
 assertClose(findMilestoneShare(coverage, 5) ?? 0, 0.38, "Milestone lookup should return exact shares");
 assert(findMilestoneShare(coverage, 1000) === null, "Missing milestones should stay null");
 assert(findFirstCoverageCrossing(coverage, 0.5)?.k === 10, "50% crossing should use first real checkpoint");

@@ -87,10 +87,17 @@ for (const [variant, themeId] of [["light", "corpus-light"], ["dark", "corpus-da
   const declarations = new Map([...theme.declarations, ...scientificRoles]);
   const panel = colourForToken("--panel-bg", declarations);
   const observed = colourForToken("--cw-plot-observed", declarations);
-  const reference = colourForToken("--cw-plot-reference", declarations);
+  const modelFit = colourForToken("--cw-plot-model-fit", declarations);
+  const statisticalReference = colourForToken("--cw-plot-statistical-reference", declarations);
+  const target = colourForToken("--cw-plot-target", declarations);
+  const coverageTrajectory = colourForToken("--cw-plot-coverage-trajectory", declarations);
   assert(contrastRatio(observed, panel) >= 4.5, `${variant} observed series must contrast with the plot surface`);
-  assert(contrastRatio(reference, panel) >= 4.5, `${variant} fitted series must contrast with the plot surface`);
-  assert(deltaE76(observed, reference) >= 24, `${variant} observed and fitted series must remain distinct`);
+  assert(contrastRatio(modelFit, panel) >= 4.5, `${variant} model fit must contrast with the plot surface`);
+  assert(contrastRatio(statisticalReference, panel) >= 4.5, `${variant} statistical reference must contrast with the plot surface`);
+  assert(contrastRatio(target, panel) >= 4.5, `${variant} selected target must contrast with the plot surface`);
+  assert(contrastRatio(coverageTrajectory, panel) >= 4.5, `${variant} coverage trajectory must contrast with the plot surface`);
+  assert(deltaE76(observed, modelFit) >= 24, `${variant} observed and model-fit series must remain distinct`);
+  assert(deltaE76(modelFit, statisticalReference) >= 12, `${variant} model fit and statistical reference must remain distinct`);
   const density = Array.from({ length: 6 }, (_, index) => colourForToken(`--cw-plot-density-${index}`, declarations));
   assert.equal(new Set(density.map((colour) => `${colour.r},${colour.g},${colour.b}`)).size, 6);
   for (let index = 1; index < density.length; index += 1) {
@@ -104,6 +111,9 @@ for (const [variant, themeId] of [["light", "corpus-light"], ["dark", "corpus-da
   assert(profile.every((colour) => contrastRatio(colour, panel) >= 3), `${variant} profile bands must remain readable against internal panel-coloured text`);
   const witness = colourForToken("--cw-plot-witness", declarations);
   assert(contrastRatio(witness, panel) >= 4.5, `${variant} witness ink must contrast with the plane surface`);
+  const rankBands = ["top10", "11-100", "101-1000", "1001-10000", "tail"]
+    .map((role) => colourForToken(`--cw-plot-rank-band-${role}`, declarations));
+  assert.equal(new Set(rankBands.map((colour) => `${colour.r},${colour.g},${colour.b}`)).size, 5, `${variant} rank bands must be discrete`);
 }
 for (let index = 0; index < 6; index += 1) {
   assert.equal(scientificRoles.get(`--cw-plot-density-${index}`), `var(--cw-plot-ramp-${index})`, "density roles must preserve the ordered theme ramp");
@@ -124,7 +134,7 @@ const contrastOutput = execFileSync("node", ["scripts/check-theme-contrast.mjs"]
   cwd: desktopRoot,
   encoding: "utf8",
 });
-assert.match(contrastOutput, /exactly 14 complete themes \(42 base checks and 27 theme × palette role checks each\)/);
+assert.match(contrastOutput, /exactly 14 complete themes \(45 base checks and 36 theme × palette role checks each\)/);
 const visualOutput = execFileSync("node", ["scripts/check-visual-contracts.mjs"], {
   cwd: desktopRoot,
   encoding: "utf8",

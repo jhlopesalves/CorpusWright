@@ -751,7 +751,19 @@ function auditFigure(figure: HTMLElement): string[] {
   if (figure.querySelector(".cw-overview-figure-options") || figure.textContent?.includes("Figure options")) {
     failures.push("Figure options disclosure remains");
   }
-  for (const role of ["observed", "reference", "selected", "attention", "density-0", "density-5", "composition-0", "composition-5"]) {
+  for (const role of [
+    "observed",
+    "model-fit",
+    "statistical-reference",
+    "target",
+    "coverage-trajectory",
+    "selected",
+    "attention",
+    "density-0",
+    "density-5",
+    "composition-0",
+    "composition-5",
+  ]) {
     if (!getComputedStyle(figure).getPropertyValue(`--cw-plot-${role}`).trim()) failures.push(`missing live semantic role: ${role}`);
   }
   for (const hidden of figure.querySelectorAll<HTMLElement>("[hidden]")) {
@@ -897,7 +909,8 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
     if (auditedView === "ecdf") assertPaint(".cw-plot-ecdf-line", "stroke", `${figureName} ECDF`, false, true);
     if (auditedView === "qq") {
       assertPaint(".cw-plot-point", "fill", `${figureName} Q–Q point`, rejectBrowserBlack);
-      assertPaint(".cw-plot-qq-reference", "stroke", `${figureName} Q–Q reference`);
+      const reference = assertPaint(".cw-plot-qq-reference", "stroke", `${figureName} Q–Q reference`);
+      if (reference && isWarmPaint(getComputedStyle(reference).stroke)) failures.push("Q–Q reference uses model-fit or warning paint");
       const ordinaryPoints = Array.from(svg.querySelectorAll<SVGCircleElement>(".cw-plot-qq-point:not(.is-pinned)"));
       const visiblyFilled = ordinaryPoints.filter((point) => {
         const style = getComputedStyle(point);
@@ -918,6 +931,9 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
     if (auditedView === "curve") {
       const fitted = assertPaint(".cw-plot-fit-line", "stroke", "rank fitted line");
       if (observed && fitted && getComputedStyle(observed).fill === getComputedStyle(fitted).stroke) failures.push("rank observed and fitted paint are identical");
+      if (fitted && !isWarmPaint(getComputedStyle(fitted).stroke)) failures.push("rank model fit is not in the muted warm direction");
+      const legendLabels = Array.from(svg.querySelectorAll(".cw-plot-legend-label")).map((label) => label.textContent);
+      if (legendLabels.join("|") !== "Included in fit|Zipf fit|Shown, not fitted") failures.push("rank fit-membership legend uses obsolete semantics");
     }
   }
   if (figureName === "growth") {
@@ -927,17 +943,27 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
     const fittedLegend = svg.querySelector<SVGGraphicsElement>(".cw-plot-legend-swatch.cw-plot-fit-line");
     if (!observed || !observedLegend || getComputedStyle(observed).stroke !== getComputedStyle(observedLegend).stroke) failures.push("growth observed legend paint does not match series");
     if (!fitted || !fittedLegend || getComputedStyle(fitted).stroke !== getComputedStyle(fittedLegend).stroke) failures.push("growth fitted legend paint does not match series");
+    if (fitted && !isWarmPaint(getComputedStyle(fitted).stroke)) failures.push("Heaps model fit is not in the muted warm direction");
     auditOrdinaryLegendBounds(svg, svg.querySelector<SVGGElement>(".cw-plot-legend"), failures, "Vocabulary-growth");
   }
   if (figureName === "lexical") {
     assertPaint(".cw-plot-point", "fill", "lexical exact-frequency point", rejectBrowserBlack);
     assertDistinctFills(".cw-plot-composition-segment", 3, "lexical composition strip");
+    const ordinary = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-point:not(.is-frequency-singleton)"));
+    const singletons = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-point.is-frequency-singleton"));
+    if (ordinary.some((point) => Math.abs(Number(getComputedStyle(point).fillOpacity) - 0.9) > 0.01)) failures.push("ordinary lexical point opacity changed");
+    if (singletons.some((point) => Math.abs(Number(getComputedStyle(point).fillOpacity) - 0.78) > 0.01)) failures.push("singleton lexical point opacity changed");
+    if (new Set(ordinary.map((point) => getComputedStyle(point).fill)).size < 4) failures.push("lexical semantic class colours collapsed");
   }
   if (figureName === "coverage") {
-    assertPaint(".cw-plot-line", "stroke", "coverage cumulative line");
+    const trajectory = assertPaint(".cw-plot-line", "stroke", "coverage cumulative line");
     assertPaint(".cw-plot-area", "fill", "coverage cumulative area", false, true);
-    assertPaint(".cw-plot-coverage-crossing", "fill", "coverage target point");
+    const target = assertPaint(".cw-plot-coverage-crossing", "fill", "coverage target point");
     assertDistinctFills(".cw-plot-composition-segment", 3, "coverage composition strip");
+    const milestones = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-points > .cw-plot-point:not(.cw-plot-coverage-crossing)"));
+    if (milestones.length !== 5 || new Set(milestones.map((point) => getComputedStyle(point).fill)).size !== 5) failures.push("coverage does not expose five discrete semantic milestones");
+    if (milestones.some((point) => Math.abs(Number(point.getAttribute("r")) - 5.8) > 0.01 || Number(getComputedStyle(point).fillOpacity) !== 1)) failures.push("coverage milestone size or opacity changed");
+    if (trajectory && target && getComputedStyle(trajectory).stroke === getComputedStyle(target).fill) failures.push("coverage trajectory and selected target share paint");
     const gradientStops = Array.from(svg.querySelectorAll<SVGStopElement>(".cw-plot-area-stop"));
     if (gradientStops.length !== 3 || gradientStops.some((stop) => !isVisiblePaint(getComputedStyle(stop).stopColor))) {
       failures.push("coverage area gradient has unresolved stops");
@@ -964,6 +990,11 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
     }
     const calloutTitle = svg.querySelector<SVGTextElement>(".cw-plot-cumulative-callout-title");
     if (!calloutTitle || !calloutTitle.textContent?.trim()) failures.push("dispersion cumulative annotation is missing");
+    const endpoints = Array.from(svg.querySelectorAll<SVGTextElement>(".cw-plot-profile-endpoint-label"));
+    const endpointPoints = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-point.is-lollipop"));
+    if (endpoints.length !== 10) failures.push("dispersion profile does not retain ten endpoint values");
+    if (endpoints.some((label, index) => Number(label.getAttribute("y")) >= Number(endpointPoints[index]?.getAttribute("cy")))) failures.push("dispersion profile value is not above its stem endpoint");
+    if (endpoints.some((label) => label.hasAttribute("transform")) || svg.querySelector(".cw-plot-label-leader.is-layout-generated")) failures.push("dispersion profile endpoint labels were moved by the free-annotation solver");
   }
   if (figureName === "plane") {
     assertDistinctFills(".cw-plot-density-cell:not(.is-zero)", 5, "dispersion plane density");

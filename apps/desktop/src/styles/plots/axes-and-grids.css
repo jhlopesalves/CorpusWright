@@ -57,21 +57,21 @@
 }
 
 .cw-plot-residual-zero {
-  stroke: var(--text-muted);
+  stroke: var(--cw-plot-statistical-reference, var(--text-muted));
   stroke-opacity: 0.72;
   stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
 }
 
 .cw-plot-coverage-target {
-  stroke: var(--cw-plot-reference, var(--cw-plot-fit));
+  stroke: var(--cw-plot-target);
   stroke-dasharray: 5 4;
   stroke-width: 1.6;
   vector-effect: non-scaling-stroke;
 }
 
 .cw-plot-point.cw-plot-coverage-crossing {
-  fill: var(--cw-plot-reference, var(--cw-plot-fit));
-  stroke: var(--cw-plot-panel);
+  fill: var(--cw-plot-target);
+  stroke: var(--panel-bg);
   stroke-width: 1.8;
 }
