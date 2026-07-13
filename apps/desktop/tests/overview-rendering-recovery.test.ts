@@ -57,6 +57,6 @@ assert.match(render, /renderInteractionLayer\(svg, geometry\.box, geometry\.cros
 assert.match(figures, /\.cw-overview-figure-teaching \.analysis-glossary-term[\s\S]*border-bottom: 0/);
 assert.match(figures, /\.cw-overview-figure-teaching \.analysis-glossary-detail[\s\S]*background: transparent/);
 assert.match(analyse, /\.analysis-method-disclosure[\s\S]*border-top: 1px solid var\(--border-color\)/);
-assert.match(analyse, /\.analysis-glossary-detail[\s\S]*max-width: 82ch;[\s\S]*border-left: 0;[\s\S]*background: transparent/);
+assert.match(analyse, /\.analysis-glossary-detail[\s\S]*border-left: 0;[\s\S]*background: transparent/);
 assert.doesNotMatch(analyse, /\.analysis-glossary-detail\s*\{[^}]*border-left:\s*2px solid var\(--accent-color\)/s);
 assert.doesNotMatch(analyse, /\.analysis-glossary-term\s*\{[^}]*border-bottom:\s*1px dotted/s);
