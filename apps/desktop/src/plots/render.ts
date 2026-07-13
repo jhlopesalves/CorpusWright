@@ -177,17 +177,13 @@ function renderDispersionCumulativeCallout(svg: SVGSVGElement, geometry: Dispers
   const group = createSvgElement("g");
   group.setAttribute("class", "cw-plot-dispersion-cumulative");
   const callout = geometry.cumulativeCallout;
-  const background = createSvgElement("rect");
-  setAttrs(background, { x: callout.x, y: callout.y, width: callout.width, height: callout.height, rx: 5, class: "cw-plot-cumulative-callout" });
-  const accent = createSvgElement("rect");
-  setAttrs(accent, { x: callout.x, y: callout.y + 4, width: 3, height: callout.height - 8, rx: 1.5, class: "cw-plot-cumulative-callout-accent" });
   const title = createSvgElement("text");
-  setAttrs(title, { x: callout.x + 12, y: callout.y + 17, class: "cw-plot-cumulative-callout-title" });
+  setAttrs(title, { x: callout.x, y: callout.y + 17, class: "cw-plot-cumulative-callout-title" });
   title.textContent = callout.title;
   const detail = createSvgElement("text");
-  setAttrs(detail, { x: callout.x + 12, y: callout.y + 33, class: "cw-plot-cumulative-callout-detail" });
+  setAttrs(detail, { x: callout.x, y: callout.y + 33, class: "cw-plot-cumulative-callout-detail" });
   detail.textContent = callout.detail;
-  group.append(background, accent, title, detail);
+  group.append(title, detail);
   svg.appendChild(group);
 }
 

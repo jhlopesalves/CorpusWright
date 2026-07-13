@@ -203,6 +203,10 @@
   stroke-dasharray: 4 3;
 }
 
+.cw-plot-legend-swatch:not(.is-hollow) {
+  fill: var(--cw-plot-observed, var(--cw-plot-point));
+}
+
 .cw-plot-legend-swatch.is-hollow {
   fill: var(--panel-bg);
 }
@@ -237,17 +241,6 @@
 
 .cw-plot-legend-swatch.is-dp-observed {
   fill: var(--cw-plot-point);
-}
-
-.cw-plot-cumulative-callout {
-  fill: var(--cw-plot-callout-surface, var(--cw-surface-subtle));
-  stroke: var(--cw-plot-callout-border, var(--border-color));
-  stroke-width: 1;
-}
-
-.cw-plot-cumulative-callout-accent {
-  fill: var(--cw-plot-observed, var(--cw-plot-point));
-  stroke: none;
 }
 
 .cw-plot-cumulative-callout-title {

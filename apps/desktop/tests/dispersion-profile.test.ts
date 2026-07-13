@@ -92,8 +92,8 @@ for (let index = 0; index < 10; index += 1) {
   assert.match(palette, new RegExp(`--cw-plot-profile-${index}:`));
   assert.match(marks, new RegExp(`\\.cw-plot-profile-band-${index}`));
 }
-assert.match(annotations, /cw-plot-callout-surface/);
-assert.match(annotations, /cw-plot-cumulative-callout-accent/);
+assert.match(annotations, /cw-plot-cumulative-callout-title/);
+assert.match(annotations, /cw-plot-cumulative-callout-detail/);
 assert.match(annotations, /composition-entry\.is-wide\[class\*="cw-plot-profile-band-"\]/);
 assert.match(annotations, /composition-entry\.is-medium\[class\*="cw-plot-profile-band-"\][^\n]+is-category/);
 assert.doesNotMatch(annotations, /composition-entry\[class\*="cw-plot-profile-band-"\] \.cw-plot-composition-label/);
