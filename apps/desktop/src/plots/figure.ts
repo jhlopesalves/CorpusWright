@@ -14,6 +14,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { dom } from "../dom";
 import {
   figurePaletteLabel,
+  type FigurePaletteMode,
   type OverviewFigureControllerContract,
 } from "./figure-workbench";
 
@@ -39,6 +40,7 @@ export interface OverviewFigureOptions {
   onPinChange?: (key: string, pinned: boolean) => void;
   onClearPins?: () => void;
   exportMetadata?: () => string[];
+  layoutFamily?: "standard" | "profile" | "plane" | "roster";
   renderSvg: () => SVGSVGElement;
 }
 
@@ -54,9 +56,10 @@ export interface OverviewFigureTextUpdate {
 }
 
 export function createOverviewFigure(options: OverviewFigureOptions): HTMLElement {
-  const figure = document.createElement("section");
+  const figure = document.createElement("figure");
   figure.className = "cw-overview-figure";
   figure.dataset.figureId = options.id;
+  figure.dataset.layoutFamily = options.layoutFamily ?? "standard";
   figure.setAttribute("role", "region");
   figure.setAttribute("aria-label", `${options.title}. ${options.subtitle}`);
   figureMetadata.set(figure, options);
@@ -80,10 +83,6 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
 
   const actions = document.createElement("div");
   actions.className = "cw-overview-figure-actions";
-  if (options.controls) {
-    options.controls.classList.add("cw-overview-figure-controls");
-    actions.appendChild(options.controls);
-  }
 
   const exportButton = document.createElement("button");
   exportButton.type = "button";
@@ -148,7 +147,8 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
     setFigureCollapsed(figure, collapseButton, collapseLabel, options.title, next);
   });
 
-  exportButton.addEventListener("click", () => void saveFigureSvg(figure, options.id));
+  const exportDialog = createExportDialog(figure, options.id);
+  exportButton.addEventListener("click", () => exportDialog.showModal());
 
   figure.addEventListener("cw-plot-pin-toggle", (event) => {
     if (!(event instanceof CustomEvent) || typeof event.detail?.key !== "string") return;
@@ -160,8 +160,17 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
     options.onPinChange?.(event.detail.key, pinned);
   });
 
-  figure.append(header, body, caption);
+  figure.appendChild(header);
+  if (options.controls) {
+    options.controls.classList.add("cw-overview-figure-controls");
+    const controlRow = document.createElement("div");
+    controlRow.className = "cw-overview-figure-control-row";
+    controlRow.appendChild(options.controls);
+    figure.appendChild(controlRow);
+  }
+  figure.append(body, caption);
   if (explanation) figure.appendChild(explanation);
+  figure.appendChild(exportDialog);
   return figure;
 }
 
@@ -204,11 +213,13 @@ export function createOverviewSegmentedControl<TValue extends string>(
   initialValue: TValue,
   onChange: (value: TValue) => void,
 ): HTMLElement {
+  const field = document.createElement("div");
+  field.className = "cw-overview-control-field cw-overview-segmented-field";
+  field.appendChild(createControlLabel(label));
   const group = document.createElement("div");
   group.className = "cw-overview-segmented-control";
   group.setAttribute("role", "group");
   group.setAttribute("aria-label", label);
-  group.appendChild(createControlLabel(label));
   for (const option of options) {
     const button = document.createElement("button");
     button.type = "button";
@@ -224,7 +235,8 @@ export function createOverviewSegmentedControl<TValue extends string>(
     });
     group.appendChild(button);
   }
-  return group;
+  field.appendChild(group);
+  return field;
 }
 
 export function createOverviewSelectControl<TValue extends string>(
@@ -297,13 +309,17 @@ export function createOverviewToggleControl(
   label: string,
   initialValue: boolean,
   onChange: (value: boolean) => void,
-): HTMLButtonElement {
+): HTMLElement {
+  const field = document.createElement("div");
+  field.className = "cw-overview-control-field cw-overview-toggle-field";
+  field.appendChild(createControlLabel(label));
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "cw-overview-figure-action cw-overview-toggle-control";
+  button.className = "cw-overview-toggle-control";
   let value = initialValue;
   const refresh = () => {
-    button.textContent = `${label}: ${value ? "Show" : "Hide"}`;
+    button.textContent = value ? "Shown" : "Hidden";
+    button.setAttribute("aria-label", `${label}: ${value ? "shown" : "hidden"}`);
     button.setAttribute("aria-pressed", String(value));
   };
   refresh();
@@ -312,7 +328,20 @@ export function createOverviewToggleControl(
     refresh();
     onChange(value);
   });
-  return button;
+  field.appendChild(button);
+  return field;
+}
+
+export function createOverviewFigureOptions(...controls: HTMLElement[]): HTMLDetailsElement {
+  const disclosure = document.createElement("details");
+  disclosure.className = "cw-overview-figure-options";
+  const summary = document.createElement("summary");
+  summary.textContent = "Figure options";
+  const content = document.createElement("div");
+  content.className = "cw-overview-figure-options-content";
+  content.append(...controls);
+  disclosure.append(summary, content);
+  return disclosure;
 }
 
 export function createOverviewResetAction(label: string, onReset: () => void): HTMLButtonElement {
@@ -324,7 +353,10 @@ export function createOverviewResetAction(label: string, onReset: () => void): H
   return button;
 }
 
-export function overviewFigureSvgString(figure: HTMLElement): string | null {
+export function overviewFigureSvgString(
+  figure: HTMLElement,
+  paletteMode: FigurePaletteMode = "theme",
+): string | null {
   const svg = figure.querySelector<SVGSVGElement>(".cw-plot-svg");
   const options = figureMetadata.get(figure);
   if (!svg || !options) return null;
@@ -332,25 +364,28 @@ export function overviewFigureSvgString(figure: HTMLElement): string | null {
   prepareStaticExportClone(exportedSvg);
   const exportMount = document.createElement("div");
   exportMount.className = "cw-plot-export-mount";
+  exportMount.dataset.figurePalette = paletteMode;
   exportMount.style.setProperty("--cw-plot-export-width", `${svg.viewBox.baseVal.width || 720}px`);
   exportMount.appendChild(exportedSvg);
   figure.appendChild(exportMount);
   try {
-    decorateFigureSvg(exportedSvg, exportOptions(figure, options));
+    decorateFigureSvg(exportedSvg, exportOptions(options, paletteMode));
     return serializeSvgWithResolvedTokens(exportedSvg);
   } finally {
     exportMount.remove();
   }
 }
 
-function exportOptions(figure: HTMLElement, options: OverviewFigureOptions): OverviewFigureOptions {
+function exportOptions(
+  options: OverviewFigureOptions,
+  paletteMode: FigurePaletteMode,
+): OverviewFigureOptions {
   const metadata = [
     ...(options.controller?.exportMetadata() ?? []),
     ...(options.exportMetadata?.() ?? []),
   ];
-  const palette = figure.closest<HTMLElement>("[data-figure-palette]")?.dataset.figurePalette;
-  if (palette && palette !== "theme") {
-    metadata.push(`palette ${figurePaletteLabel(palette as "colorBlind" | "monochrome")}`);
+  if (paletteMode !== "theme") {
+    metadata.push(`palette ${figurePaletteLabel(paletteMode)}`);
   }
   return metadata.length === 0
     ? options
@@ -633,7 +668,60 @@ function writeCollapsedFigures(values: Set<string>): void {
   }
 }
 
-async function saveFigureSvg(figure: HTMLElement, figureId: string): Promise<void> {
+function createExportDialog(figure: HTMLElement, figureId: string): HTMLDialogElement {
+  const dialog = document.createElement("dialog");
+  dialog.className = "cw-overview-export-dialog";
+  dialog.setAttribute("aria-labelledby", `${figureId}-export-heading`);
+  const form = document.createElement("form");
+  form.method = "dialog";
+  const heading = document.createElement("h5");
+  heading.id = `${figureId}-export-heading`;
+  heading.textContent = "Export SVG colours";
+  const choices = document.createElement("fieldset");
+  const legend = document.createElement("legend");
+  legend.textContent = "Colour mode";
+  choices.appendChild(legend);
+  const modes: Array<{ value: FigurePaletteMode; label: string }> = [
+    { value: "theme", label: "Current theme colours" },
+    { value: "colorBlind", label: "Colour-blind-safe colours" },
+    { value: "monochrome", label: "Monochrome / print" },
+  ];
+  for (const [index, mode] of modes.entries()) {
+    const choice = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = `${figureId}-export-palette`;
+    input.value = mode.value;
+    input.checked = index === 0;
+    choice.append(input, document.createTextNode(mode.label));
+    choices.appendChild(choice);
+  }
+  const actions = document.createElement("div");
+  actions.className = "cw-overview-export-dialog-actions";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => dialog.close());
+  const download = document.createElement("button");
+  download.type = "button";
+  download.textContent = "Download SVG";
+  download.addEventListener("click", () => {
+    const selected = form.querySelector<HTMLInputElement>("input[type='radio']:checked");
+    const paletteMode = (selected?.value ?? "theme") as FigurePaletteMode;
+    dialog.close();
+    void saveFigureSvg(figure, figureId, paletteMode);
+  });
+  actions.append(cancel, download);
+  form.append(heading, choices, actions);
+  dialog.appendChild(form);
+  return dialog;
+}
+
+async function saveFigureSvg(
+  figure: HTMLElement,
+  figureId: string,
+  paletteMode: FigurePaletteMode,
+): Promise<void> {
   const svg = figure.querySelector<SVGSVGElement>(".cw-plot-svg");
   if (!svg) return;
   const path = await save({
@@ -642,7 +730,7 @@ async function saveFigureSvg(figure: HTMLElement, figureId: string): Promise<voi
   });
   if (path === null) return;
   try {
-    const content = overviewFigureSvgString(figure);
+    const content = overviewFigureSvgString(figure, paletteMode);
     if (content === null) return;
     await invoke("save_svg_file_command", {
       path,

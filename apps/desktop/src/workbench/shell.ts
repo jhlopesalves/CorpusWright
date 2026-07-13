@@ -25,17 +25,15 @@ import {
 import { isOverviewStopword } from "../overview-stopwords";
 import {
   createOverviewFigure,
+  createOverviewFigureOptions,
   createOverviewRangeControl,
   createOverviewSelectControl,
   createOverviewSegmentedControl,
+  createOverviewToggleControl,
   replaceFigureSvg,
 } from "../plots/figure";
 import {
-  applyFigurePalette,
   OverviewFigureController,
-  readFigurePalette,
-  writeFigurePalette,
-  type FigurePaletteMode,
   type FigureControlState,
 } from "../plots/figure-workbench";
 import {
@@ -612,26 +610,6 @@ function createFigureExplanation(...glossaryIds: OverviewGlossaryId[]): HTMLElem
   return explanation;
 }
 
-function createFigurePaletteToolbar(root: HTMLElement): HTMLElement {
-  const initial = readFigurePalette();
-  applyFigurePalette(root, initial);
-  const toolbar = createOverviewSegmentedControl<FigurePaletteMode>(
-    "Figure palette",
-    [
-      { value: "theme", label: "Theme" },
-      { value: "colorBlind", label: "Colour-blind safe" },
-      { value: "monochrome", label: "Monochrome / print" },
-    ],
-    initial,
-    (mode) => {
-      applyFigurePalette(root, mode);
-      writeFigurePalette(mode);
-    },
-  );
-  toolbar.classList.add("cw-overview-palette-toolbar");
-  return toolbar;
-}
-
 function createSampleTypesDisclosure(
   sampleTypes: string[],
   sampleTypeCount: number,
@@ -1009,12 +987,9 @@ function renderLengthHistogramFigure(corpus: AnalysisCorpus): HTMLElement | null
 
 interface DistributionFigureControls extends FigureControlState {
   view: "histogram" | "ecdf" | "qq";
-  histogramRule: "auto" | "sturges" | "scott" | "freedmanDiaconis" | "manual";
+  histogramRule: "auto" | "manual";
   manualBins: number;
   xScale: "linear" | "log";
-  yMode: "count" | "share";
-  qqReference: "normal" | "lognormal";
-  labelsMode: "extremes" | "pinned" | "off";
 }
 
 function renderDistributionDiagnosticFigure(
@@ -1028,13 +1003,10 @@ function renderDistributionDiagnosticFigure(
     histogramRule: "auto",
     manualBins: 24,
     xScale: isLength ? "log" : "linear",
-    yMode: "share",
-    qqReference: isLength ? "lognormal" : "normal",
-    labelsMode: "extremes",
   };
   const controller = new OverviewFigureController<DistributionFigureControls>({
     initialControls: initial,
-    exportMetadata: (controls) => [distributionActiveState(controls, result)],
+    exportMetadata: (controls) => [distributionActiveState(metric, controls, result)],
   });
   const evidenceController = new OverviewFigureController({
     initialControls: { offset: 0 },
@@ -1060,14 +1032,11 @@ function renderDistributionDiagnosticFigure(
       refreshFigure();
     },
   );
-  const binsControl = createOverviewSelectControl(
-    "Bins",
+  const binsControl = createOverviewSegmentedControl(
+    "Binning",
     [
-      { value: "auto", label: "Auto" },
-      { value: "sturges", label: "Sturges" },
-      { value: "scott", label: "Scott" },
-      { value: "freedmanDiaconis", label: "Freedman–Diaconis" },
-      { value: "manual", label: "Manual" },
+      { value: "auto", label: "Automatic" },
+      { value: "manual", label: "Custom" },
     ],
     initial.histogramRule,
     (histogramRule) => {
@@ -1076,7 +1045,7 @@ function renderDistributionDiagnosticFigure(
       void requestDistribution();
     },
   );
-  const manualControl = createOverviewRangeControl("Manual bins", {
+  const manualControl = createOverviewRangeControl("Bins", {
     minimum: 8,
     maximum: 100,
     step: 1,
@@ -1093,48 +1062,20 @@ function renderDistributionDiagnosticFigure(
     },
   });
   const scaleControl = createOverviewSegmentedControl(
-    "X scale",
-    [{ value: "log", label: "Log" }, { value: "linear", label: "Linear" }],
+    "Horizontal scale",
+    [{ value: "log", label: "Logarithmic" }, { value: "linear", label: "Linear" }],
     initial.xScale,
     (xScale) => {
       controller.updateControls({ xScale });
       void requestDistribution();
     },
   );
-  const yControl = createOverviewSegmentedControl(
-    "Y",
-    [{ value: "share", label: "Share" }, { value: "count", label: "Documents" }],
-    initial.yMode,
-    (yMode) => {
-      controller.updateControls({ yMode });
-      refreshFigure();
-    },
+  const optionsDisclosure = createOverviewFigureOptions(
+    binsControl,
+    manualControl,
+    ...(isLength ? [scaleControl] : []),
   );
-  const referenceControl = createOverviewSegmentedControl(
-    "Q–Q reference",
-    [{ value: "lognormal", label: "Lognormal" }, { value: "normal", label: "Normal" }],
-    initial.qqReference,
-    (qqReference) => {
-      controller.updateControls({ qqReference });
-      void requestDistribution();
-    },
-  );
-  const labelsControl = createOverviewSelectControl(
-    "Labels",
-    [
-      { value: "extremes", label: "Extreme witnesses" },
-      { value: "pinned", label: "Pinned only" },
-      { value: "off", label: "Off" },
-    ],
-    initial.labelsMode,
-    (labelsMode) => {
-      controller.updateControls({ labelsMode });
-      refreshFigure();
-    },
-  );
-  controls.append(viewControl, binsControl, manualControl, scaleControl, yControl);
-  if (isLength) controls.appendChild(referenceControl);
-  else controls.appendChild(labelsControl);
+  controls.append(viewControl, optionsDisclosure);
 
   const evidence = createDistributionEvidenceSection();
 
@@ -1143,9 +1084,7 @@ function renderDistributionDiagnosticFigure(
     binsControl.hidden = state.view !== "histogram";
     manualControl.hidden = state.view !== "histogram" || state.histogramRule !== "manual";
     scaleControl.hidden = !isLength || state.view === "qq";
-    yControl.hidden = state.view !== "histogram";
-    referenceControl.hidden = !isLength || state.view !== "qq";
-    labelsControl.hidden = isLength || state.view !== "histogram";
+    optionsDisclosure.hidden = isLength ? state.view === "qq" : state.view !== "histogram";
   }
 
   function renderSvg(): SVGSVGElement {
@@ -1159,9 +1098,9 @@ function renderDistributionDiagnosticFigure(
       result,
       metric,
       view: controller.controls.view,
-      yMode: controller.controls.yMode,
-      qqReference: controller.controls.qqReference,
-      labelsMode: controller.controls.labelsMode,
+      yMode: "share",
+      qqReference: isLength ? "lognormal" : "normal",
+      labelsMode: "extremes",
       mattrWindow: corpus.lexicalSpectrum.mattrWindow,
       pinnedKeys: controller.pins,
     }));
@@ -1170,7 +1109,7 @@ function renderDistributionDiagnosticFigure(
   function refreshFigure(): void {
     if (!figure) return;
     replaceFigureSvg(figure, renderSvg(), {
-      captionStats: distributionCaptionStats(metric, controller.controls, result, corpus),
+      captionStats: distributionCaptionStats(metric, result, corpus),
       captionReading: distributionReading(metric, controller.controls.view),
     });
   }
@@ -1184,8 +1123,8 @@ function renderDistributionDiagnosticFigure(
         metric,
         histogramRule: state.histogramRule,
         manualBinCount: state.manualBins,
-        xScale: state.xScale,
-        qqReference: state.qqReference,
+        xScale: isLength ? state.xScale : "linear",
+        qqReference: isLength ? "lognormal" : "normal",
         maximumReturnedPointCount: 800,
       }, effectiveCleaningConfig()),
       (next) => { result = next; },
@@ -1266,7 +1205,7 @@ function renderDistributionDiagnosticFigure(
       evidence.hidden = true;
       evidenceController.invalidatePendingLoad();
     },
-    captionStats: distributionCaptionStats(metric, controller.controls, result, corpus),
+    captionStats: distributionCaptionStats(metric, result, corpus),
     captionReading: distributionReading(metric, controller.controls.view),
     explanation: createFigureExplanation(
       ...(isLength ? ["distributionDiagnostics" as const] : ["mattr" as const, "distributionDiagnostics" as const]),
@@ -1279,23 +1218,25 @@ function renderDistributionDiagnosticFigure(
 }
 
 function distributionActiveState(
+  metric: OverviewDistributionMetric,
   controls: DistributionFigureControls,
   result: OverviewDistributionResult | null,
 ): string {
   if (controls.view === "qq") {
-    return `Q–Q diagnostic · ${controls.qqReference} reference`;
+    return `Q–Q diagnostic · ${metric === "documentLength" ? "lognormal" : "normal"} reference`;
   }
   if (controls.view === "ecdf") {
-    return `ECDF · ${controls.xScale} scale${result?.ecdfCompressed ? " · deterministically compressed" : ""}`;
+    const scale = metric === "documentLength" ? controls.xScale : "linear";
+    return `ECDF · ${scale} scale${result?.ecdfCompressed ? " · deterministically compressed" : ""}`;
   }
   const rule = result?.effectiveRule ?? controls.histogramRule;
   const bins = result?.effectiveBinCount ?? controls.manualBins;
-  return `Histogram · ${histogramRuleLabel(rule)} · ${formatNumber(bins)} bins · ${controls.xScale} scale · ${controls.yMode === "share" ? "share of documents" : "documents"}`;
+  const scale = metric === "documentLength" ? controls.xScale : "linear";
+  return `Histogram · ${histogramRuleLabel(rule)} · ${formatNumber(bins)} bins · ${scale} scale · share of documents`;
 }
 
 function distributionCaptionStats(
   metric: OverviewDistributionMetric,
-  controls: DistributionFigureControls,
   result: OverviewDistributionResult | null,
   corpus: AnalysisCorpus,
 ): string {
@@ -1305,7 +1246,7 @@ function distributionCaptionStats(
   const identity = metric === "mattr"
     ? `Document MATTR · window ${formatNumber(corpus.lexicalSpectrum.mattrWindow)} · ${formatNumber(population)} eligible documents`
     : `${formatNumber(population)} documents`;
-  return `${identity} · ${distributionActiveState(controls, result)}`;
+  return identity;
 }
 
 function distributionReading(
@@ -1326,13 +1267,14 @@ function distributionReading(
     : "MATTR compares lexical variety within equal 100-token windows. Higher is not automatically better, and documents shorter than the window remain visible in the eligibility strip.";
 }
 
-function histogramRuleLabel(rule: DistributionFigureControls["histogramRule"]): string {
+function histogramRuleLabel(rule: string): string {
   switch (rule) {
-    case "auto": return "Auto";
+    case "auto": return "automatic bins";
+    case "manual": return "custom bins";
     case "sturges": return "Sturges";
     case "scott": return "Scott";
     case "freedmanDiaconis": return "Freedman–Diaconis";
-    case "manual": return "Manual";
+    default: return rule;
   }
 }
 
@@ -1474,14 +1416,13 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
   const rank = corpus.rankFrequency;
   interface RankControls extends FigureControlState {
     view: "curve" | "residuals";
-    frequency: "rate" | "raw";
-    fit: "show" | "hide";
-    labels: "examples" | "pinned" | "off";
   }
   const controller = new OverviewFigureController<RankControls>({
-    initialControls: { view: "curve", frequency: "rate", fit: "show", labels: "examples" },
+    initialControls: { view: "curve" },
     exportMetadata: (controls) => [
-      `${controls.view === "curve" ? "Curve" : "Residuals"} · ${controls.frequency === "rate" ? "per million" : "raw count"} · fit ${controls.fit} · labels ${controls.labels}`,
+      controls.view === "curve"
+        ? `Curve · frequency per million · Zipf fit over ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)}`
+        : `Residuals · log observed minus log fitted · Zipf fit over ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)}`,
     ],
   });
   let figure: HTMLElement | null = null;
@@ -1495,20 +1436,19 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
         frequency: point.frequency,
         ratePerMillion: point.ratePerMillion,
       })),
-      yMode: controller.controls.frequency,
+      yMode: "rate",
       totalTokens: corpus.totals.tokens,
       zipfExponent: rank.zipfExponent,
       zipfCoefficient: rank.zipfCoefficient,
       fittedRankStart: rank.fittedRankStart,
       fittedRankEnd: rank.fittedRankEnd,
       view: controller.controls.view,
-      fitVisible: controller.controls.fit === "show",
-      labelsMode: controller.controls.labels,
-      pinnedKeys: controller.pins,
+      fitVisible: true,
+      labelsMode: "examples",
     }),
     controller.controls.view === "residuals"
       ? "Log observed − log fitted frequency"
-      : controller.controls.frequency === "rate" ? "Frequency per million (log scale)" : "Raw frequency (log scale)",
+      : "Frequency per million (log scale)",
   );
   const controls = document.createElement("div");
   const viewControl = createOverviewSegmentedControl(
@@ -1522,41 +1462,7 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
       if (figure) replaceFigureSvg(figure, renderSvg());
     },
   );
-  const frequencyControl = createOverviewSegmentedControl(
-    "Frequency",
-    [
-      { value: "rate", label: "Per million" },
-      { value: "raw", label: "Raw count" },
-    ],
-    "rate",
-    (frequency) => {
-      controller.updateControls({ frequency });
-      if (figure) replaceFigureSvg(figure, renderSvg());
-    },
-  );
-  const fitControl = createOverviewSegmentedControl(
-    "Fit",
-    [{ value: "show", label: "Show" }, { value: "hide", label: "Hide" }],
-    "show",
-    (fit) => {
-      controller.updateControls({ fit });
-      if (figure) replaceFigureSvg(figure, renderSvg());
-    },
-  );
-  const labelsControl = createOverviewSelectControl(
-    "Labels",
-    [
-      { value: "examples", label: "Key examples" },
-      { value: "pinned", label: "Pinned only" },
-      { value: "off", label: "Off" },
-    ],
-    "examples",
-    (labels) => {
-      controller.updateControls({ labels });
-      if (figure) replaceFigureSvg(figure, renderSvg());
-    },
-  );
-  controls.append(viewControl, frequencyControl, fitControl, labelsControl);
+  controls.append(viewControl);
   const rarity = rank.zipfExponent === null
     ? "the fitted rarity ratio is unavailable"
     : `ten times deeper in the rank list = ~${formatFixedNumber(10 ** rank.zipfExponent, 1)}x rarer`;
@@ -1578,13 +1484,11 @@ function renderVocabularyGrowthFigure(corpus: AnalysisCorpus): HTMLElement {
   const growth = corpus.vocabularyGrowth;
   interface GrowthControls extends FigureControlState {
     view: "growth" | "heaps";
-    fit: "show" | "hide";
-    labels: "endpoint" | "checkpoints" | "pinned" | "off";
   }
   const controller = new OverviewFigureController<GrowthControls>({
-    initialControls: { view: "growth", fit: "show", labels: "endpoint" },
+    initialControls: { view: "growth" },
     exportMetadata: (controls) => [
-      `${controls.view === "growth" ? "Growth · linear axes" : "Heaps fit · log–log axes"} · fit ${controls.fit} · labels ${controls.labels}`,
+      controls.view === "growth" ? "Growth · observed and Heaps fit" : "Heaps fit · observed and fitted model",
     ],
   });
   let figure: HTMLElement | null = null;
@@ -1598,8 +1502,8 @@ function renderVocabularyGrowthFigure(corpus: AnalysisCorpus): HTMLElement {
       heapsK: growth.heapsK,
       heapsBeta: growth.heapsBeta,
       view: controller.controls.view,
-      fitVisible: controller.controls.fit === "show",
-      labelsMode: controller.controls.labels,
+      fitVisible: true,
+      labelsMode: "endpoint",
       pinnedKeys: controller.pins,
     }),
   );
@@ -1611,29 +1515,6 @@ function renderVocabularyGrowthFigure(corpus: AnalysisCorpus): HTMLElement {
       "growth",
       (view) => {
         controller.updateControls({ view });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
-    createOverviewSegmentedControl(
-      "Fit",
-      [{ value: "show", label: "Show" }, { value: "hide", label: "Hide" }],
-      "show",
-      (fit) => {
-        controller.updateControls({ fit });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
-    createOverviewSelectControl(
-      "Labels",
-      [
-        { value: "endpoint", label: "Endpoint" },
-        { value: "checkpoints", label: "Key checkpoints" },
-        { value: "pinned", label: "Pinned only" },
-        { value: "off", label: "Off" },
-      ],
-      "endpoint",
-      (labels) => {
-        controller.updateControls({ labels });
         if (figure) replaceFigureSvg(figure, renderSvg());
       },
     ),
@@ -1654,16 +1535,9 @@ function renderVocabularyGrowthFigure(corpus: AnalysisCorpus): HTMLElement {
 
 function renderLexicalSpectrumFigure(corpus: AnalysisCorpus): HTMLElement {
   const spectrum = corpus.lexicalSpectrum;
-  interface SpectrumControls extends FigureControlState {
-    yMode: "count" | "share";
-    bands: "show" | "hide";
-    labels: "authored" | "pinned" | "off";
-  }
-  const controller = new OverviewFigureController<SpectrumControls>({
-    initialControls: { yMode: "count", bands: "show", labels: "authored" },
-    exportMetadata: (controls) => [
-      `${controls.yMode === "count" ? "type count" : "share of vocabulary"} · class bands ${controls.bands} · labels ${controls.labels}`,
-    ],
+  const controller = new OverviewFigureController({
+    initialControls: {},
+    exportMetadata: () => ["Exact frequency spectrum · logarithmic axes"],
   });
   let figure: HTMLElement | null = null;
   const truncation = spectrum.frequencySpectrumTruncated
@@ -1678,51 +1552,16 @@ function renderLexicalSpectrumFigure(corpus: AnalysisCorpus): HTMLElement {
       band3To9Count: spectrum.band3To9Count,
       band10plusCount: spectrum.band10plusCount,
       totalTypes: spectrum.types,
-      yMode: controller.controls.yMode,
-      bandsVisible: controller.controls.bands === "show",
-      labelsMode: controller.controls.labels,
+      yMode: "count",
+      bandsVisible: true,
+      labelsMode: "authored",
       pinnedKeys: controller.pins,
     }),
-  );
-  const controls = document.createElement("div");
-  controls.append(
-    createOverviewSegmentedControl(
-      "Y",
-      [{ value: "count", label: "Type count" }, { value: "share", label: "Share of vocabulary" }],
-      "count",
-      (yMode) => {
-        controller.updateControls({ yMode });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
-    createOverviewSegmentedControl(
-      "Class bands",
-      [{ value: "show", label: "Show" }, { value: "hide", label: "Hide" }],
-      "show",
-      (bands) => {
-        controller.updateControls({ bands });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
-    createOverviewSelectControl(
-      "Labels",
-      [
-        { value: "authored", label: "Hapax and dis" },
-        { value: "pinned", label: "Pinned only" },
-        { value: "off", label: "Off" },
-      ],
-      "authored",
-      (labels) => {
-        controller.updateControls({ labels });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
   );
   figure = createOverviewFigure({
     id: "overview-lexical-spectrum",
     title: "Lexical spectrum",
     subtitle: "How many types occur once, twice, or at each higher frequency?",
-    controls,
     controller,
     captionStats: `hapax ${formatNumber(spectrum.hapaxCount)} · dis ${formatNumber(spectrum.disLegomenaCount)} · ${truncation}`,
     captionReading: "Each point is V(f) for one exact integer frequency; bars are avoided because log-scale bar lengths would imply intervals that were not observed.",
@@ -1739,14 +1578,12 @@ function renderMattrDistributionFigure(corpus: AnalysisCorpus): HTMLElement {
 function renderCoverageFigure(corpus: AnalysisCorpus): HTMLElement {
   const concentration = corpus.frequencyConcentration;
   interface CoverageControls extends FigureControlState {
-    xMode: "topK" | "vocabularyShare";
     target: "0.5" | "0.8" | "0.9" | "0.95";
-    labels: "milestones" | "target" | "off";
   }
   const controller = new OverviewFigureController<CoverageControls>({
-    initialControls: { xMode: "topK", target: "0.5", labels: "milestones" },
+    initialControls: { target: "0.5" },
     exportMetadata: (controls) => [
-      `${controls.xMode === "topK" ? "top k types" : "share of vocabulary"} · target ${formatPercent(Number(controls.target), 0)} · labels ${controls.labels}`,
+      `Cumulative token coverage · ${formatPercent(Number(controls.target), 0)} target`,
     ],
   });
   let figure: HTMLElement | null = null;
@@ -1767,12 +1604,12 @@ function renderCoverageFigure(corpus: AnalysisCorpus): HTMLElement {
         { k: 10_000, share: concentration.top10000Coverage },
       ],
       totalTypes: corpus.totals.types,
-      xMode: controller.controls.xMode,
+      xMode: "topK",
       targetShare: Number(controller.controls.target),
       targetCrossing: targetCrossing()
         ? { k: targetCrossing()!.firstRank, share: targetCrossing()!.actualCumulativeShare }
         : null,
-      labelsMode: controller.controls.labels,
+      labelsMode: "milestones",
       bandShares: deriveCoverageBandShares({
         totalTypes: corpus.totals.types,
         cumulative: [
@@ -1788,16 +1625,7 @@ function renderCoverageFigure(corpus: AnalysisCorpus): HTMLElement {
   const controls = document.createElement("div");
   controls.append(
     createOverviewSegmentedControl(
-      "X",
-      [{ value: "topK", label: "Top k types" }, { value: "vocabularyShare", label: "Share of vocabulary" }],
-      "topK",
-      (xMode) => {
-        controller.updateControls({ xMode });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
-    createOverviewSegmentedControl(
-      "Target",
+      "Coverage target",
       [
         { value: "0.5", label: "50%" },
         { value: "0.8", label: "80%" },
@@ -1807,19 +1635,6 @@ function renderCoverageFigure(corpus: AnalysisCorpus): HTMLElement {
       "0.5",
       (target) => {
         controller.updateControls({ target });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
-    createOverviewSelectControl(
-      "Labels",
-      [
-        { value: "milestones", label: "Milestones and target" },
-        { value: "target", label: "Target only" },
-        { value: "off", label: "Off" },
-      ],
-      "milestones",
-      (labels) => {
-        controller.updateControls({ labels });
         if (figure) replaceFigureSvg(figure, renderSvg());
       },
     ),
@@ -1840,16 +1655,9 @@ function renderCoverageFigure(corpus: AnalysisCorpus): HTMLElement {
 
 function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
   const dispersion = corpus.dispersion;
-  interface ProfileControls extends FigureControlState {
-    xMode: "count" | "share";
-    reachLabels: "documents" | "percentage";
-    labels: "counts" | "countsShares" | "off";
-  }
-  const controller = new OverviewFigureController<ProfileControls>({
-    initialControls: { xMode: "count", reachLabels: "documents", labels: "countsShares" },
-    exportMetadata: (controls) => [
-      `${controls.xMode === "count" ? "type count" : "share of vocabulary"} · reach labels ${controls.reachLabels} · labels ${controls.labels}`,
-    ],
+  const controller = new OverviewFigureController({
+    initialControls: {},
+    exportMetadata: () => ["Exclusive document-reach bands · type-count scale"],
   });
   let figure: HTMLElement | null = null;
   const buckets = dispersion.profileBuckets.map((bucket) => ({
@@ -1867,55 +1675,21 @@ function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
       buckets,
       totalTypes: corpus.totals.types,
       totalDocuments: corpus.totals.documents,
-      xMode: controller.controls.xMode,
-      reachLabels: controller.controls.reachLabels,
-      labelsMode: controller.controls.labels,
+      xMode: "count",
+      reachLabels: "documents",
+      labelsMode: "countsShares",
       cumulativeCallout: {
         count: dispersion.dfAtLeast90pctCount,
         examples: dispersion.universalTypes.map((type) => type.token),
       },
     }),
   );
-  const controls = document.createElement("div");
-  controls.append(
-    createOverviewSegmentedControl(
-      "X",
-      [{ value: "count", label: "Type count" }, { value: "share", label: "Share of vocabulary" }],
-      "count",
-      (xMode) => {
-        controller.updateControls({ xMode });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
-    createOverviewSegmentedControl(
-      "Reach labels",
-      [{ value: "documents", label: "Documents" }, { value: "percentage", label: "Percentage of documents" }],
-      "documents",
-      (reachLabels) => {
-        controller.updateControls({ reachLabels });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
-    createOverviewSelectControl(
-      "Labels",
-      [
-        { value: "counts", label: "Counts" },
-        { value: "countsShares", label: "Counts and shares" },
-        { value: "off", label: "Off" },
-      ],
-      "countsShares",
-      (labels) => {
-        controller.updateControls({ labels });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
-  );
   figure = createOverviewFigure({
     id: "overview-dispersion-profile",
     title: "Dispersion profile",
     subtitle: "How widely across documents does the vocabulary reach?",
-    controls,
     controller,
+    layoutFamily: "profile",
     captionStats: formatDispersionProfileStats(corpus.totals.types, dispersion.profileBuckets.length, dispersion.dfAtLeast90pctCount),
     captionDetail: formatUniversalTypeCaption(
       dispersion.universalTypes.map((type) => type.token),
@@ -1931,24 +1705,9 @@ function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
 function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null {
   const plane = corpus.dispersion.plane;
   if (plane === null) return null;
-  interface PlaneControls extends FigureControlState {
-    frequency: "raw" | "perMillion";
-    density: "log" | "linear";
-    examples: "labelled" | "points" | "off";
-    marginals: "show" | "hide";
-    thresholds: "show" | "hide";
-  }
-  const controller = new OverviewFigureController<PlaneControls>({
-    initialControls: {
-      frequency: "raw",
-      density: "log",
-      examples: "labelled",
-      marginals: "show",
-      thresholds: "show",
-    },
-    exportMetadata: (controls) => [
-      `frequency ${controls.frequency === "raw" ? "raw" : "per million"} · density ${controls.density} · examples ${controls.examples} · marginals ${controls.marginals} · thresholds ${controls.thresholds}`,
-    ],
+  const controller = new OverviewFigureController({
+    initialControls: {},
+    exportMetadata: () => ["Raw frequency against Gries's DP · logarithmic density"],
   });
   let figure: HTMLElement | null = null;
   const renderSvg = () => renderDispersionPlaneSvg(
@@ -1957,72 +1716,20 @@ function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null
       plane,
       totalTypes: corpus.totals.types,
       totalTokens: corpus.totals.tokens,
-      frequencyMode: controller.controls.frequency,
-      densityMode: controller.controls.density,
-      examplesMode: controller.controls.examples,
-      marginalsVisible: controller.controls.marginals === "show",
-      thresholdsVisible: controller.controls.thresholds === "show",
+      frequencyMode: "raw",
+      densityMode: "log",
+      examplesMode: "labelled",
+      marginalsVisible: true,
+      thresholdsVisible: true,
       pinnedKeys: controller.pins,
     }),
-  );
-  const controls = document.createElement("div");
-  controls.append(
-    createOverviewSegmentedControl(
-      "Frequency",
-      [{ value: "raw", label: "Raw" }, { value: "perMillion", label: "Per million" }],
-      "raw",
-      (frequency) => {
-        controller.updateControls({ frequency });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
-    createOverviewSegmentedControl(
-      "Density",
-      [{ value: "log", label: "Log" }, { value: "linear", label: "Linear" }],
-      "log",
-      (density) => {
-        controller.updateControls({ density });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
-    createOverviewSelectControl(
-      "Examples",
-      [
-        { value: "labelled", label: "Labelled" },
-        { value: "points", label: "Points only" },
-        { value: "off", label: "Off" },
-      ],
-      "labelled",
-      (examples) => {
-        controller.updateControls({ examples });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
-    createOverviewSegmentedControl(
-      "Marginals",
-      [{ value: "show", label: "Show" }, { value: "hide", label: "Hide" }],
-      "show",
-      (marginals) => {
-        controller.updateControls({ marginals });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
-    createOverviewSegmentedControl(
-      "Thresholds",
-      [{ value: "show", label: "Show" }, { value: "hide", label: "Hide" }],
-      "show",
-      (thresholds) => {
-        controller.updateControls({ thresholds });
-        if (figure) replaceFigureSvg(figure, renderSvg());
-      },
-    ),
   );
   figure = createOverviewFigure({
     id: "overview-dispersion-plane",
     title: "Dispersion plane",
     subtitle: "Which types are frequent, and which are evenly distributed across documents?",
-    controls,
     controller,
+    layoutFamily: "plane",
     captionStats: formatDispersionPlaneStats(
       corpus.totals.types,
       plane.xBins,
@@ -2045,13 +1752,13 @@ function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | nul
   interface RosterControls extends FigureControlState {
     stopwords: "show" | "hide";
     sort: "frequency" | "dp" | "documentFrequency";
-    rows: "20" | "50" | "100";
+    rows: number;
   }
   const sortLabel = (sort: RosterControls["sort"]) => sort === "dp"
     ? "DP"
     : sort === "documentFrequency" ? "document frequency" : "frequency";
   const controller = new OverviewFigureController<RosterControls>({
-    initialControls: { stopwords: "show", sort: "frequency", rows: "20" },
+    initialControls: { stopwords: "show", sort: "frequency", rows: 20 },
     exportMetadata: (controls) => [
       `Top ${controls.rows} frequent types · sorted by ${sortLabel(controls.sort)} · stopwords ${controls.stopwords === "hide" ? "hidden" : "shown"}`,
     ],
@@ -2062,7 +1769,7 @@ function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | nul
       ? entries.filter((entry) => !isOverviewStopword(entry.token, activeProjectLanguageCode()))
       : entries,
     sort: controller.controls.sort,
-    rows: Number(controller.controls.rows),
+    rows: controller.controls.rows,
   });
   const subtitle = () => `Which frequent types are corpus-wide, and which are locally concentrated?${controller.controls.stopwords === "hide" ? " Stopwords hidden." : ""}`;
   const captionStats = () => {
@@ -2085,19 +1792,10 @@ function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | nul
       subtitle: subtitle(),
       captionStats: captionStats(),
     });
+    syncProgressiveControls();
   };
   const controls = document.createElement("div");
-  controls.append(
-    createOverviewSegmentedControl(
-      "Stopwords",
-      [{ value: "show", label: "Show" }, { value: "hide", label: "Hide" }],
-      "show",
-      (stopwords) => {
-        controller.updateControls({ stopwords });
-        refresh();
-      },
-    ),
-    createOverviewSelectControl(
+  const sortControl = createOverviewSelectControl(
       "Sort",
       [
         { value: "frequency", label: "Frequency" },
@@ -2109,23 +1807,54 @@ function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | nul
         controller.updateControls({ sort });
         refresh();
       },
-    ),
-    createOverviewSegmentedControl(
-      "Rows",
-      [{ value: "20", label: "20" }, { value: "50", label: "50" }, { value: "100", label: "100" }],
-      "20",
-      (rows) => {
-        controller.updateControls({ rows });
-        refresh();
-      },
-    ),
-  );
+    );
+  const stopwordControl = createOverviewToggleControl("Stopwords", true, (shown) => {
+    controller.updateControls({ stopwords: shown ? "show" : "hide" });
+    if (controller.controls.rows > 20) controller.updateControls({ rows: 20 });
+    refresh();
+  });
+  const resultControls = document.createElement("div");
+  resultControls.className = "cw-overview-result-controls";
+  const showMore = document.createElement("button");
+  showMore.type = "button";
+  showMore.textContent = "Show 30 more";
+  showMore.addEventListener("click", () => {
+    controller.updateControls({ rows: Math.min(100, controller.controls.rows + 30) });
+    refresh();
+  });
+  const showAll = document.createElement("button");
+  showAll.type = "button";
+  showAll.textContent = "Show all up to 100";
+  showAll.addEventListener("click", () => {
+    controller.updateControls({ rows: 100 });
+    refresh();
+  });
+  const showFewer = document.createElement("button");
+  showFewer.type = "button";
+  showFewer.textContent = "Show fewer";
+  showFewer.addEventListener("click", () => {
+    controller.updateControls({ rows: 20 });
+    refresh();
+  });
+  resultControls.append(showMore, showAll, showFewer);
+  const availableEntryCount = () => Math.min(100, controller.controls.stopwords === "hide"
+    ? entries.filter((entry) => !isOverviewStopword(entry.token, activeProjectLanguageCode())).length
+    : entries.length);
+  function syncProgressiveControls(): void {
+    const available = availableEntryCount();
+    showMore.hidden = controller.controls.rows >= available;
+    showAll.hidden = controller.controls.rows >= available || available <= controller.controls.rows + 30;
+    showFewer.hidden = controller.controls.rows <= 20;
+  }
+  controls.append(sortControl, stopwordControl, resultControls);
+  syncProgressiveControls();
   figure = createOverviewFigure({
     id: "overview-dispersion-roster",
     title: "Dispersion roster",
     subtitle: subtitle(),
     controls,
     controller,
+    layoutFamily: "roster",
     captionStats: captionStats(),
     captionReading: "The roster contains frequent types only. Frequency does not imply wide distribution: a frequent type may be intense in a few documents. DP 0.5 is a descriptive orientation threshold, not an inferential test; hiding stopwords changes presentation, not analysis.",
     explanation: createFigureExplanation("griesDp"),
@@ -2527,10 +2256,7 @@ function renderCorpusOverview(): void {
     return;
   }
 
-  const paletteToolbar = createFigurePaletteToolbar(dom.analyseOverview);
-
   dom.analyseOverview.append(
-    paletteToolbar,
     renderCorpusReading(corpus),
     renderAnalysisPopulation(corpus),
     renderDocumentBalance(corpus),
