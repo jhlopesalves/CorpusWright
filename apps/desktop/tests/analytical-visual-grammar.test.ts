@@ -148,18 +148,20 @@ assert.deepEqual(concordanceContextSortLevels(["filePosition"], 3, 3), {
 
 assert(!styles.includes(".cw-overview-figure:not(.is-collapsed) .cw-overview-figure-title-block"));
 assert(figures.includes("titleBlock.append(title, subtitle, stats);"));
-assert(figures.indexOf("header.append(titleBlock, actions)") < figures.indexOf("figure.append(header, body, caption)"));
+assert(figures.indexOf("header.append(titleBlock, actions)") < figures.indexOf("figure.appendChild(header)"));
+assert.match(figures, /document\.createElement\("figure"\)/);
+assert.match(figures, /controlRow\.appendChild\(options\.controls\)/);
 assert(!figures.includes("renderSparklineGlyph"), "expanded figure headers must not include decorative sparklines");
 
 assert(figures.includes('button.setAttribute("aria-pressed", String(option.value === initialValue));'));
 assert(styles.includes('.cw-overview-segment[aria-pressed="true"]'));
 assert(styles.includes('.cw-overview-figure-action[aria-pressed="true"]'));
-assert(shell.includes('createOverviewSegmentedControl(\n      "Stopwords"'));
+assert(shell.includes('createOverviewToggleControl("Stopwords"'));
 assert(shell.includes('createOverviewSelectControl(\n      "Sort"'));
-assert(shell.includes('createOverviewSegmentedControl(\n      "Rows"'));
+assert(shell.includes('showMore.textContent = "Show 30 more"'));
 
 assert(figures.includes("const exportedSvg = svg.cloneNode(true) as SVGSVGElement;"));
-assert(figures.includes("decorateFigureSvg(exportedSvg, exportOptions(figure, options));"));
+assert(figures.includes("decorateFigureSvg(exportedSvg, exportOptions(options, paletteMode));"));
 const replaceStart = figures.indexOf("export function replaceFigureSvg(");
 const replaceEnd = figures.indexOf("function refreshFigureText", replaceStart);
 assert(!figures.slice(replaceStart, replaceEnd).includes("decorateFigureSvg"), "live SVG must remain geometry-only");

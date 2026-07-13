@@ -106,7 +106,8 @@ const renderSource = readFileSync(new URL("../src/plots/render.ts", import.meta.
 const modelSource = readFileSync(new URL("../src/plots/model.ts", import.meta.url), "utf8");
 const paletteSource = readFileSync(new URL("../src/styles/foundations/figure-palettes.css", import.meta.url), "utf8");
 
-assert.equal((shellSource.match(/createFigurePaletteToolbar\(dom\.analyseOverview\)/g) ?? []).length, 1);
+assert.equal((shellSource.match(/createFigurePaletteToolbar\(dom\.analyseOverview\)/g) ?? []).length, 0);
+assert.doesNotMatch(shellSource, /Figure palette/);
 assert.doesNotMatch(shellSource, /type=["']color["']|createElement\(["']input["']\)[\s\S]{0,120}\.type\s*=\s*["']color["']/);
 for (const mode of ["theme", "colorBlind", "monochrome"]) {
   assert.match(paletteSource, new RegExp(`data-figure-palette=["']${mode}["']`));
@@ -115,5 +116,5 @@ for (const shape of ["circle", "square", "diamond", "triangle"]) {
   assert.match(`${renderSource}\n${modelSource}`, new RegExp(`(?:shape === ["']${shape}["']|case ["']${shape}["'])`));
 }
 assert.match(renderSource, /data-pin-key/);
-assert.match(figureSource, /palette.*captionStats|captionStats.*palette/s);
+assert.match(figureSource, /paletteMode !== "theme"[\s\S]*metadata\.push/);
 assert.match(figureSource, /cw-overview-figure-explanation/);

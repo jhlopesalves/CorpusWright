@@ -78,7 +78,10 @@ assert.match(figureSource, /\.cw-plot-crosshair-x, \.cw-plot-crosshair-y, \.cw-p
 assert.match(figureSource, /transient\.remove\(\)/);
 assert.match(figureSource, /target\.removeAttribute\("tabindex"\)/);
 assert.match(figureSource, /\^\(\?:--cw-plot-stagger\|animation\|animation-delay\|transition\)/);
-assert.match(figureSource, /decorateFigureSvg\(exportedSvg, exportOptions\(figure, options\)\);[\s\S]*serializeSvgWithResolvedTokens\(exportedSvg\)/);
+assert.match(figureSource, /decorateFigureSvg\(exportedSvg, exportOptions\(options, paletteMode\)\);[\s\S]*serializeSvgWithResolvedTokens\(exportedSvg\)/);
+assert.match(figureSource, /Current theme colours/);
+assert.match(figureSource, /Colour-blind-safe colours/);
+assert.match(figureSource, /Monochrome \/ print/);
 assert.match(figureSource, /document\.createElementNS\(SVG_NS, "title"\)/);
 assert.match(figureSource, /document\.createElementNS\(SVG_NS, "desc"\)/);
 assert.match(figureSource, /aria-labelledby/);
