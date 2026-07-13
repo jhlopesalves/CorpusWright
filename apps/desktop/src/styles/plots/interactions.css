@@ -39,6 +39,11 @@
   font-size: var(--cw-type-plot-tooltip-size);
 }
 
+.cw-plot-tooltip-title {
+  fill: var(--text-color);
+  font-weight: var(--cw-weight-semibold);
+}
+
 .cw-plot-tooltip-row {
   fill: var(--text-muted);
 }

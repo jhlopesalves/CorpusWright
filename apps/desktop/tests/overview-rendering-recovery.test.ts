@@ -8,6 +8,7 @@ const figure = readFileSync(new URL("../src/plots/figure.ts", import.meta.url), 
 const render = readFileSync(new URL("../src/plots/render.ts", import.meta.url), "utf8");
 const interactions = readFileSync(new URL("../src/styles/plots/interactions.css", import.meta.url), "utf8");
 const figures = readFileSync(new URL("../src/styles/plots/figures.css", import.meta.url), "utf8");
+const analyse = readFileSync(new URL("../src/styles/features/analyse.css", import.meta.url), "utf8");
 
 const livePalette = palette.match(/\.cw-overview-figure\s*,[^\{]*\{([\s\S]*?)\n\}/)?.[1] ?? "";
 for (const role of [
@@ -55,3 +56,7 @@ assert.equal(render.match(/renderInteractionLayer\(svg, geometry\.box, false\)/g
 assert.match(render, /renderInteractionLayer\(svg, geometry\.box, geometry\.crosshairEnabled\)/);
 assert.match(figures, /\.cw-overview-figure-teaching \.analysis-glossary-term[\s\S]*border-bottom: 0/);
 assert.match(figures, /\.cw-overview-figure-teaching \.analysis-glossary-detail[\s\S]*background: transparent/);
+assert.match(analyse, /\.analysis-method-disclosure[\s\S]*border-top: 1px solid var\(--border-color\)/);
+assert.match(analyse, /\.analysis-glossary-detail[\s\S]*max-width: 82ch;[\s\S]*border-left: 0;[\s\S]*background: transparent/);
+assert.doesNotMatch(analyse, /\.analysis-glossary-detail\s*\{[^}]*border-left:\s*2px solid var\(--accent-color\)/s);
+assert.doesNotMatch(analyse, /\.analysis-glossary-term\s*\{[^}]*border-bottom:\s*1px dotted/s);

@@ -544,6 +544,19 @@ function createGlossaryDisclosure(
   panel.className = "analysis-glossary-detail";
   panel.hidden = true;
 
+  appendGlossaryEntryContent(panel, entry);
+
+  button.addEventListener("click", () => {
+    const expanded = button.getAttribute("aria-expanded") !== "true";
+    button.setAttribute("aria-expanded", String(expanded));
+    panel.hidden = !expanded;
+    onToggle?.(expanded);
+  });
+
+  return { button, panel };
+}
+
+function appendGlossaryEntryContent(panel: HTMLElement, entry: OverviewGlossaryEntry): void {
   const explanation = document.createElement("p");
   explanation.textContent = entry.explanation;
   panel.appendChild(explanation);
@@ -576,15 +589,41 @@ function createGlossaryDisclosure(
   if (entry.example) {
     panel.appendChild(createGlossaryExample(entry.example));
   }
+}
+
+function createGroupedMethodDisclosure(
+  labelText: string,
+  glossaryIds: OverviewGlossaryId[],
+): HTMLElement {
+  const wrapper = document.createElement("div");
+  wrapper.className = "analysis-method-disclosure";
+  const panelId = `overview-glossary-group-${++overviewGlossaryControlId}`;
+  const button = createOverviewDisclosureButton(labelText, panelId);
+  const panel = document.createElement("div");
+  panel.id = panelId;
+  panel.className = "analysis-glossary-detail analysis-method-disclosure-detail";
+  panel.hidden = true;
+
+  for (const glossaryId of glossaryIds) {
+    const entry = overviewGlossary[glossaryId];
+    const section = document.createElement("section");
+    section.className = "analysis-glossary-group-entry";
+    const heading = document.createElement("h4");
+    heading.className = "analysis-glossary-entry-title";
+    heading.textContent = entry.label;
+    section.appendChild(heading);
+    appendGlossaryEntryContent(section, entry);
+    panel.appendChild(section);
+  }
 
   button.addEventListener("click", () => {
     const expanded = button.getAttribute("aria-expanded") !== "true";
     button.setAttribute("aria-expanded", String(expanded));
     panel.hidden = !expanded;
-    onToggle?.(expanded);
   });
 
-  return { button, panel };
+  wrapper.append(button, panel);
+  return wrapper;
 }
 
 function createFigureExplanation(...glossaryIds: OverviewGlossaryId[]): HTMLElement {
@@ -1342,25 +1381,29 @@ function renderDocumentBalance(corpus: AnalysisCorpus): HTMLElement {
     rows.push({
       label: "Gini coefficient",
       value: formatFixedNumber(balance.gini, 3),
-      glossaryId: "giniCoefficient",
     });
   }
   if (balance.coefficientOfVariation !== null) {
     rows.push({
       label: "Coefficient of variation",
       value: formatFixedNumber(balance.coefficientOfVariation, 3),
-      glossaryId: "coefficientOfVariation",
     });
   }
   if (balance.effectiveDocuments !== null) {
     rows.push({
       label: "Effective documents",
       value: `${formatFixedNumber(balance.effectiveDocuments, 1)} of ${formatNumber(corpus.totals.documents)}`,
-      glossaryId: "effectiveDocuments",
     });
   }
   if (rows.length > 0) {
     panel.appendChild(createMetricTable(rows));
+  }
+  if ([balance.gini, balance.coefficientOfVariation, balance.effectiveDocuments].some((value) => value !== null)) {
+    panel.appendChild(createGroupedMethodDisclosure("Document balance", [
+      "giniCoefficient",
+      "coefficientOfVariation",
+      "effectiveDocuments",
+    ]));
   }
   if (balance.largestShare !== null && balance.largestShare >= BALANCE_ATTENTION_SHARE) {
     const imbalanceWarning = document.createElement("p");
@@ -1822,7 +1865,6 @@ function renderFrequencyConcentration(corpus: AnalysisCorpus): HTMLElement {
     rows.push({
       label: "Normalised entropy / evenness",
       value: formatFixedNumber(concentration.evennessJ, 3),
-      glossaryId: "normalisedEntropy",
     });
   }
   if (concentration.shannonEntropyBits !== null) {
@@ -1830,18 +1872,21 @@ function renderFrequencyConcentration(corpus: AnalysisCorpus): HTMLElement {
       label: "Shannon entropy",
       labelSuffix: "(bits)",
       value: formatFixedNumber(concentration.shannonEntropyBits, 3),
-      glossaryId: "shannonEntropy",
     });
   }
   if (concentration.effectiveVocabularyEntropy !== null) {
     rows.push({
       label: "Effective vocabulary (perplexity)",
       value: `≈ ${formatNumber(concentration.effectiveVocabularyEntropy)} types`,
-      glossaryId: "effectiveVocabulary",
     });
   }
   if (rows.length > 0) {
     panel.appendChild(createMetricTable(rows));
+    panel.appendChild(createGroupedMethodDisclosure("Frequency concentration", [
+      "shannonEntropy",
+      "normalisedEntropy",
+      "effectiveVocabulary",
+    ]));
   }
   panel.appendChild(renderCoverageFigure(corpus));
   appendPanelReading(panel, concentration.reading);

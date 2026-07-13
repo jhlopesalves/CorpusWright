@@ -1,3 +1,9 @@
+import katex from "katex";
+import {
+  overviewGlossary,
+  type OverviewGlossaryEntry,
+  type OverviewGlossaryId,
+} from "../../src/overview-glossary";
 import {
   createOverviewFigure,
   createOverviewRangeControl,
@@ -43,6 +49,8 @@ const target = params.get("target") ?? "0.5";
 const customBins = params.get("customBins") === "true";
 const pinned = params.get("pinned") === "true";
 const exportMode = params.get("export") === "true";
+const methodDisclosure = params.get("methodDisclosure");
+const hoverProfileBand = params.get("hoverProfileBand") === "true";
 const palette = (params.get("palette") ?? "theme") as FigurePaletteMode;
 document.documentElement.dataset.theme = theme;
 
@@ -97,6 +105,15 @@ if (params.get("focusDensity") === "true" && !overviewMode) {
 }
 if (params.get("exportDialog") === "true" && !overviewMode) {
   built.figure.querySelector<HTMLButtonElement>(".cw-overview-figure-export")?.click();
+}
+if (hoverProfileBand && figureName === "profile") {
+  const band = built.figure.querySelector<SVGElement>(".cw-plot-composition-segment.cw-plot-profile-band-1.cw-plot-hover-target");
+  band?.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+  await animationFrame();
+}
+if (methodDisclosure) {
+  built.figure.querySelector<HTMLElement>(".analysis-method-fixture")?.scrollIntoView({ block: "start" });
+  await animationFrame();
 }
 
 const overviewShellSource = overviewMode ? await fetch("/src/workbench/shell.ts").then((response) => response.text()) : "";
@@ -216,6 +233,9 @@ function buildDistributionFigure(name: "document" | "mattr", selectedView: strin
     horizontalScale.hidden = !isLength || activeView === "qq";
   };
   syncDistributionControls();
+  const explanation = methodDisclosure
+    ? buildGroupedMethodFixture(methodDisclosure)
+    : undefined;
   figure = createOverviewFigure({
     id,
     title: isLength ? "Document-length distribution" : "MATTR distribution",
@@ -225,6 +245,7 @@ function buildDistributionFigure(name: "document" | "mattr", selectedView: strin
       ? "The histogram keeps zero-token documents explicit and shows positive lengths on the selected scale."
       : "MATTR compares lexical variety within equal windows; excluded short documents remain visible in the eligibility strip.",
     controls,
+    explanation,
     controller,
     exportMetadata: () => [stateText()],
     renderSvg,
@@ -395,17 +416,19 @@ function buildProfileFigure(): BuiltFigure {
   const id: OverviewFigureId = "overview-dispersion-profile";
   const controller = fixtureController(id, {});
   if (pinned) controller.togglePin("dispersion-reach-band-8");
-  const counts = [165_000, 80_000, 12_000, 8_500, 6_500, 5_000, 4_000, 3_000, 1_500, 0];
+  const counts = [165_000, 179_227, 12_000, 8_500, 6_500, 5_000, 4_000, 3_000, 1_500, 0];
   const total = counts.reduce((sum, count) => sum + count, 0);
   const renderSvg = () => renderDispersionSvg(id, buildDispersionGeometry({
     buckets: counts.map((count, index) => ({
       key: `band-${index}`,
-      label: index === 0 ? "1 document" : index === 9 ? "All documents" : `${index + 1}–${index + 2} documents`,
+      label: index === 0 ? "1 document" : index === 9 ? "All documents" : `${index + 1} documents`,
       lowerBound: index + 1,
       upperBound: index + 1,
       count,
       share: count / total,
-      sampleTypes: [`example-${index}`],
+      sampleTypes: index === 1
+        ? ["the", "and", "of", "in", "to", "a", "long-example-type-that-must-not-appear"]
+        : [`example-${index}`],
     })),
     totalTypes: total,
     totalDocuments: 100,
@@ -497,6 +520,96 @@ function buildFixtureExplanation(): HTMLElement {
   detail.textContent = "Fixture explanation detail.";
   explanation.append(button, detail);
   return explanation;
+}
+
+function buildGroupedMethodFixture(kind: string): HTMLElement {
+  const documentBalance = kind === "documentBalance";
+  const label = documentBalance ? "Document balance" : "Frequency concentration";
+  const glossaryIds: OverviewGlossaryId[] = documentBalance
+    ? ["giniCoefficient", "coefficientOfVariation", "effectiveDocuments"]
+    : ["shannonEntropy", "normalisedEntropy", "effectiveVocabulary"];
+  const values = documentBalance
+    ? ["0.418", "0.731", "42.6 of 100"]
+    : ["11.240", "0.823", "≈ 2,410 types"];
+  const fixture = document.createElement("div");
+  fixture.className = "analysis-method-fixture";
+  const table = document.createElement("table");
+  table.className = "analysis-metric-table has-no-share-column";
+  const body = document.createElement("tbody");
+  glossaryIds.forEach((glossaryId, index) => {
+    const row = document.createElement("tr");
+    const heading = document.createElement("th");
+    heading.scope = "row";
+    heading.textContent = overviewGlossary[glossaryId].label;
+    const value = document.createElement("td");
+    value.className = "numeric analysis-metric-value";
+    value.textContent = values[index]!;
+    row.append(heading, value);
+    body.appendChild(row);
+  });
+  table.appendChild(body);
+
+  const disclosure = document.createElement("div");
+  disclosure.className = "analysis-method-disclosure";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "analysis-glossary-term";
+  button.setAttribute("aria-expanded", "true");
+  button.setAttribute("aria-controls", `fixture-${kind}`);
+  const buttonLabel = document.createElement("span");
+  buttonLabel.textContent = label;
+  const caret = document.createElement("span");
+  caret.className = "analysis-glossary-caret";
+  caret.textContent = "›";
+  button.append(buttonLabel, caret);
+  const panel = document.createElement("div");
+  panel.id = `fixture-${kind}`;
+  panel.className = "analysis-glossary-detail analysis-method-disclosure-detail";
+  for (const glossaryId of glossaryIds) {
+    const entry = overviewGlossary[glossaryId];
+    const section = document.createElement("section");
+    section.className = "analysis-glossary-group-entry";
+    const heading = document.createElement("h4");
+    heading.className = "analysis-glossary-entry-title";
+    heading.textContent = entry.label;
+    section.appendChild(heading);
+    appendFixtureGlossaryEntry(section, entry);
+    panel.appendChild(section);
+  }
+  disclosure.append(button, panel);
+  fixture.append(table, disclosure);
+  return fixture;
+}
+
+function appendFixtureGlossaryEntry(panel: HTMLElement, entry: OverviewGlossaryEntry): void {
+  for (const text of [entry.explanation, entry.detail].filter((value): value is string => Boolean(value))) {
+    const paragraph = document.createElement("p");
+    paragraph.textContent = text;
+    panel.appendChild(paragraph);
+  }
+  const formula = document.createElement("div");
+  formula.className = "analysis-glossary-formula";
+  katex.render(entry.latex, formula, { displayMode: true, output: "htmlAndMathml", throwOnError: false });
+  panel.appendChild(formula);
+  if (entry.symbols?.length) appendFixtureGlossarySection(panel, "Where", entry.symbols.map((symbol) => `${symbol.sym}: ${symbol.def}`));
+  if (entry.interpretation) appendFixtureGlossarySection(panel, "How to read it", [entry.interpretation]);
+  if (entry.limitations?.length) appendFixtureGlossarySection(panel, "Limitations", entry.limitations);
+}
+
+function appendFixtureGlossarySection(panel: HTMLElement, label: string, rows: string[]): void {
+  const section = document.createElement("section");
+  section.className = "analysis-glossary-section";
+  const heading = document.createElement("h4");
+  heading.textContent = label;
+  const list = document.createElement("ul");
+  list.className = "analysis-glossary-limitations";
+  for (const row of rows) {
+    const item = document.createElement("li");
+    item.textContent = row;
+    list.appendChild(item);
+  }
+  section.append(heading, list);
+  panel.appendChild(section);
 }
 
 function distributionPayload(length: boolean): DistributionResultPayload {
@@ -591,6 +704,27 @@ function collectFixtureMetrics(entries: BuiltFigure[]): Record<string, unknown> 
       medianPositiveOpacity: opacities[Math.floor(opacities.length / 2)] ?? 0,
     };
   }
+  const tooltipBox = svg.querySelector<SVGRectElement>(".cw-plot-tooltip[aria-hidden='false'] .cw-plot-tooltip-box");
+  if (tooltipBox) {
+    metrics.tooltip = {
+      width: Number(tooltipBox.getAttribute("width")),
+      height: Number(tooltipBox.getAttribute("height")),
+      visualLineCount: svg.querySelectorAll(".cw-plot-tooltip-text tspan").length,
+      text: Array.from(svg.querySelectorAll(".cw-plot-tooltip-text tspan")).map((line) => line.textContent).join(" "),
+    };
+  }
+  const method = entries[0]?.figure.querySelector<HTMLElement>(".analysis-method-disclosure");
+  if (method) {
+    const detail = method.querySelector<HTMLElement>(".analysis-method-disclosure-detail");
+    const style = detail ? getComputedStyle(detail) : null;
+    metrics.methodDisclosure = {
+      label: method.querySelector(":scope > .analysis-glossary-term span")?.textContent ?? "",
+      entryCount: method.querySelectorAll(".analysis-glossary-group-entry").length,
+      metricValueCount: entries[0]?.figure.querySelectorAll(".analysis-method-fixture .analysis-metric-value").length ?? 0,
+      borderLeft: style?.borderLeftStyle ?? "missing",
+      background: style?.backgroundColor ?? "missing",
+    };
+  }
   return metrics;
 }
 
@@ -680,8 +814,47 @@ function auditFigure(figure: HTMLElement): string[] {
     if (box.left < 0 || box.top < 0 || box.right > window.innerWidth || box.bottom > window.innerHeight) {
       failures.push("focused tooltip outside viewport");
     }
+    const tooltipBox = visibleTooltip.querySelector<SVGRectElement>(".cw-plot-tooltip-box");
+    const tooltipWidth = Number(tooltipBox?.getAttribute("width"));
+    const tooltipHeight = Number(tooltipBox?.getAttribute("height"));
+    if (!(tooltipWidth > 0) || tooltipWidth > 300) failures.push("tooltip exceeds 300px maximum width");
+    if (!(tooltipHeight > 0) || tooltipHeight > 180) failures.push("tooltip creates a giant rectangle");
+    for (const line of visibleTooltip.querySelectorAll<SVGTSpanElement>("tspan")) {
+      if (line.getComputedTextLength() > tooltipWidth - 16 + 1) {
+        failures.push("tooltip text line is clipped");
+        break;
+      }
+    }
   }
+  if (hoverProfileBand && figureName === "profile") {
+    const tooltipText = Array.from(svg.querySelectorAll<SVGTSpanElement>(".cw-plot-tooltip-text tspan"))
+      .map((line) => line.textContent ?? "").join(" ");
+    if (!tooltipText.includes("Examples: the, and, of +179,224 more")) failures.push("profile tooltip example budget or remainder is incorrect");
+    if (tooltipText.includes(" in ") || tooltipText.includes("long-example-type")) failures.push("profile tooltip exposes more than three examples");
+    if (svg.querySelector(".cw-plot-crosshair-x, .cw-plot-crosshair-y")) failures.push("profile hover creates a crosshair");
+  }
+  if (methodDisclosure) auditMethodDisclosure(figure, failures);
   return failures;
+}
+
+function auditMethodDisclosure(figure: HTMLElement, failures: string[]): void {
+  const fixture = figure.querySelector<HTMLElement>(".analysis-method-fixture");
+  const disclosure = fixture?.querySelector<HTMLElement>(".analysis-method-disclosure");
+  const detail = disclosure?.querySelector<HTMLElement>(".analysis-method-disclosure-detail");
+  const buttons = disclosure?.querySelectorAll(":scope > .analysis-glossary-term") ?? [];
+  if (!fixture || !disclosure || !detail || buttons.length !== 1) {
+    failures.push("grouped method disclosure does not appear exactly once");
+    return;
+  }
+  if (fixture.querySelectorAll(".analysis-metric-value").length !== 3) failures.push("grouped method metric values are missing");
+  if (detail.querySelectorAll(".analysis-glossary-group-entry").length !== 3) failures.push("grouped method entries are missing");
+  if (detail.querySelectorAll(".analysis-glossary-formula").length !== 3) failures.push("grouped method formulas are missing");
+  if (detail.querySelectorAll(".analysis-glossary-limitations").length < 3) failures.push("grouped method limitations are missing");
+  const detailStyle = getComputedStyle(detail);
+  if (detailStyle.borderLeftStyle !== "none" || detailStyle.backgroundColor !== "rgba(0, 0, 0, 0)") {
+    failures.push("grouped method disclosure retains the bright metric panel treatment");
+  }
+  if (getComputedStyle(disclosure).borderTopStyle === "none") failures.push("grouped method disclosure lacks its subtle divider");
 }
 
 function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
