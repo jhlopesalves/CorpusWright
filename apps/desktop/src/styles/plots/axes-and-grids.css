@@ -47,15 +47,6 @@
   vector-effect: non-scaling-stroke;
 }
 
-.cw-plot-reference-line {
-  fill: none;
-  stroke: var(--text-muted);
-  stroke-dasharray: 4 4;
-  stroke-opacity: 0.7;
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
 .cw-plot-residual-zero {
   stroke: var(--cw-plot-statistical-reference, var(--text-muted));
   stroke-opacity: 0.72;

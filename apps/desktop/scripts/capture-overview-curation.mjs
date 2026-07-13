@@ -34,11 +34,14 @@ const screenshotCases = [
   shot(13, "coverage-50", "coverage", { target: "0.5" }),
   shot(14, "coverage-90", "coverage", { target: "0.9" }),
   shot(15, "dispersion-profile", "profile"),
+  shot(16, "document-qq-dark", "document", { view: "qq", theme: "corpus-dark" }),
+  shot(17, "rank-curve-dark", "rank", { view: "curve", theme: "corpus-dark" }),
   shot(18, "dispersion-plane", "plane"),
   shot(19, "mattr-1024", "mattr", {}, 1024, 768),
   shot(20, "lexical-spectrum-1024", "lexical", {}, 1024, 768),
   shot(21, "dispersion-profile-1024", "profile", {}, 1024, 768),
   shot(22, "dispersion-plane-1024", "plane", {}, 1024, 768),
+  shot(23, "rank-residuals-dark", "rank", { view: "residuals", theme: "corpus-dark" }),
   shot(24, "lexical-spectrum-dark", "lexical", { theme: "corpus-dark" }),
   shot(25, "dispersion-profile-dark", "profile", { theme: "corpus-dark" }),
   shot(26, "dispersion-plane-dark", "plane", { theme: "corpus-dark" }),
@@ -51,6 +54,9 @@ const screenshotCases = [
   shot(34, "custom-document-bins", "document", { customBins: true }),
   shot(35, "keyboard-focused-density-cell", "plane", { focusDensity: true }),
   shot(36, "export-colour-dialog", "lexical", { exportDialog: true }),
+  shot(43, "vocabulary-growth-dark", "growth", { view: "growth", theme: "corpus-dark" }),
+  shot(44, "vocabulary-heaps-fit-dark", "growth", { view: "heaps", theme: "corpus-dark" }),
+  shot(45, "coverage-90-dark", "coverage", { target: "0.9", theme: "corpus-dark" }),
 ];
 
 const exportCases = [
@@ -207,7 +213,10 @@ try {
       await setViewport(cdp, page.sessionId, item.width, item.height);
       const result = await navigateAndWait(cdp, page.sessionId, item.url, false);
       if (item.postRenderDelayMs) await delay(item.postRenderDelayMs);
+      await cdp.send("Page.bringToFront", {}, page.sessionId);
       await settlePaint(cdp, page.sessionId);
+      if (!item.url.includes("methodDisclosure=")) await resetPageScroll(cdp, page.sessionId);
+      await delay(75);
       const capture = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true }, page.sessionId);
       const path = join(outputDirectory, item.filename);
       writeFileSync(path, Buffer.from(capture.data, "base64"));
@@ -392,6 +401,13 @@ async function navigateAndWait(cdp, sessionId, url, exporting) {
 async function settlePaint(cdp, sessionId) {
   await cdp.send("Runtime.evaluate", {
     expression: "(async () => { for (const animation of document.getAnimations()) { try { animation.finish(); } catch {} } await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); })()",
+    awaitPromise: true,
+  }, sessionId);
+}
+
+async function resetPageScroll(cdp, sessionId) {
+  await cdp.send("Runtime.evaluate", {
+    expression: "new Promise(resolve => { window.scrollTo(0, 0); requestAnimationFrame(() => requestAnimationFrame(resolve)); })",
     awaitPromise: true,
   }, sessionId);
 }

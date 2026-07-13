@@ -1504,7 +1504,7 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
     controls,
     controller,
     captionStats: figureStats(),
-    captionReading: `Both axes are logarithmic in Curve view. The top three ranks and frequency-one tail are excluded; R-squared is not proof of a universal law. Per-million scaling changes units, not curve shape or alpha; ${rarity}.`,
+    captionReading: `Both axes are logarithmic in Curve view. The top three ranks and frequency-one tail remain visible but are not used to estimate the fit; R-squared is not proof of a universal law. Per-million scaling changes units, not curve shape or alpha; ${rarity}.`,
     explanation: createFigureExplanation("zipfFit"),
     renderSvg,
   });
