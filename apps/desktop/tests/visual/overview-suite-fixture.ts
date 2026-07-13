@@ -116,7 +116,9 @@ function buildDistributionFigure(name: "document" | "mattr", selectedView: strin
   };
   const controller = fixtureController(id, state);
   const result = distributionPayload(isLength);
-  if (pinned) controller.togglePin(selectedView === "qq" ? "distribution-qq:10" : "distribution-bin:4");
+  if (pinned) controller.togglePin(selectedView === "qq"
+    ? "distribution-qq:10"
+    : name === "mattr" ? "distribution-witness:1" : "distribution-bin:4");
   const controls = document.createElement("div");
   const viewControl = createOverviewSegmentedControl("View", [
     { value: "histogram", label: "Histogram" },
@@ -531,6 +533,7 @@ function auditFigure(figure: HTMLElement): string[] {
     }
   }
   auditComputedPaint(svg, failures);
+  auditRecoveryGeometry(svg, failures);
   for (const button of figure.querySelectorAll<HTMLButtonElement>("button")) {
     if (!(button.textContent?.trim() || button.getAttribute("aria-label"))) failures.push("unnamed button");
     const box = button.getBoundingClientRect();
@@ -548,11 +551,7 @@ function auditFigure(figure: HTMLElement): string[] {
       break;
     }
   }
-  assertNoPairOverlap(
-    Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-spectrum-band-label")),
-    "class heading overlap",
-    failures,
-  );
+  if (svg.querySelector(".cw-plot-spectrum-band-label")) failures.push("detached lexical class-heading rail");
   const compositionLabels = Array.from(svg.querySelectorAll<SVGTextElement>(".cw-plot-composition-label"))
     .filter((text) => getComputedStyle(text).display !== "none");
   for (let left = 0; left < compositionLabels.length; left += 1) {
@@ -650,6 +649,43 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
   }
 }
 
+function auditRecoveryGeometry(svg: SVGSVGElement, failures: string[]): void {
+  const plotTop = Number(svg.querySelector<SVGLineElement>(".cw-plot-crosshair-x")?.getAttribute("y1"));
+  const plotBottom = Number(svg.querySelector<SVGLineElement>(".cw-plot-crosshair-x")?.getAttribute("y2"));
+  if (figureName === "rank" && view === "residuals") {
+    if (svg.querySelector(".cw-plot-point.is-excluded")) failures.push("excluded point rendered in rank residuals");
+    if (Array.from(svg.querySelectorAll(".cw-plot-legend-label")).some((label) => label.textContent?.includes("Excluded"))) {
+      failures.push("residual legend describes excluded geometry");
+    }
+    const zeroY = Number(svg.querySelector<SVGLineElement>(".cw-plot-residual-zero")?.getAttribute("y1"));
+    if (!Number.isFinite(zeroY) || Math.abs(zeroY - ((plotTop + plotBottom) / 2)) > 0.5) failures.push("residual zero is not centred");
+  }
+  if (figureName === "rank" && view === "curve") {
+    const band = svg.querySelector<SVGRectElement>(".cw-plot-fitted-range-band");
+    const y = Number(band?.getAttribute("y"));
+    const height = Number(band?.getAttribute("height"));
+    const labelY = Number(svg.querySelector<SVGTextElement>(".cw-plot-fitted-range-label")?.getAttribute("y"));
+    if (!band || y < plotTop || y + height > plotBottom || labelY < plotTop || labelY > plotBottom) {
+      failures.push("fitted range leaves rank plot bounds");
+    }
+  }
+  if (figureName === "mattr" && view === "histogram") {
+    const automaticNames = Array.from(svg.querySelectorAll<SVGTextElement>(".cw-plot-label"))
+      .map((label) => label.textContent ?? "")
+      .filter((text) => text.includes("document") || text.includes("short-document") || text.includes("long-document"));
+    if (!pinned && automaticNames.length > 0) failures.push("automatic MATTR filename label");
+    if (pinned && !automaticNames.some((text) => text.includes("short-document"))) failures.push("pinned MATTR filename missing");
+  }
+  if (figureName === "lexical") {
+    const texts = Array.from(svg.querySelectorAll<SVGTextElement>(".cw-plot-label")).map((label) => label.textContent ?? "");
+    if (!texts.some((text) => text.includes("hapax · f = 1"))) failures.push("hapax point annotation missing");
+    if (!texts.some((text) => text.includes("dis legomena · f = 2"))) failures.push("dis point annotation missing");
+    const hapaxEntry = Array.from(svg.querySelectorAll<SVGTextElement>(".cw-plot-composition-label.is-category"))
+      .some((label) => label.textContent === "Hapax (1)");
+    if (!hapaxEntry) failures.push("Hapax composition entry missing");
+  }
+}
+
 function isVisiblePaint(value: string): boolean {
   if (!value || value === "none" || value === "transparent") return false;
   const alpha = value.match(/^rgba?\([^/]+(?:\/\s*([\d.]+))?\)$/)?.[1];
@@ -658,14 +694,6 @@ function isVisiblePaint(value: string): boolean {
 
 function isPureBlack(value: string): boolean {
   return /^(?:rgb\(0,\s*0,\s*0\)|rgba\(0,\s*0,\s*0,\s*1\)|#000(?:000)?)$/i.test(value.trim());
-}
-
-function assertNoPairOverlap(elements: SVGGraphicsElement[], message: string, failures: string[]): void {
-  for (let left = 0; left < elements.length; left += 1) {
-    for (let right = left + 1; right < elements.length; right += 1) {
-      if (rectanglesOverlap(elements[left]!.getBoundingClientRect(), elements[right]!.getBoundingClientRect(), 1)) failures.push(message);
-    }
-  }
 }
 
 function rectanglesOverlap(left: DOMRect, right: DOMRect, gap = 0): boolean {

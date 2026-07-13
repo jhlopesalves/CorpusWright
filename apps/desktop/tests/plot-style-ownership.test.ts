@@ -66,7 +66,7 @@ for (const selector of [
   ".cw-plot-label-muted",
   ".cw-plot-label-strong",
   ".cw-plot-label-callout",
-  ".cw-plot-bracket",
+  ".cw-plot-fitted-range",
   ".cw-plot-halo",
 ]) {
   assert(annotations.includes(selector), `${selector} must be owned by legends-and-annotations.css`);

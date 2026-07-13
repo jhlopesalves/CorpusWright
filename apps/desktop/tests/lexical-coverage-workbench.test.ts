@@ -39,6 +39,8 @@ assert.deepEqual(spectrum.points.map((point) => point.rawX), spectrumPoints.map(
 assert.equal(spectrum.linePath, undefined, "the exact spectrum contract must not introduce a line");
 assert(spectrum.points.every((point) => point.tooltipRows?.some((row) => row.includes("exact frequency"))));
 assert(spectrum.compositionStrip?.segments.every((segment) => segment.tooltipRows.length >= 2));
+assert(spectrum.labels.some((label) => label.text.startsWith("hapax · f = 1\n")));
+assert(spectrum.labels.some((label) => label.text.startsWith("dis legomena · f = 2\n")));
 
 const spectrumShare = buildLexicalSpectrumGeometry({
   points: spectrumPoints,
@@ -53,6 +55,17 @@ const spectrumShare = buildLexicalSpectrumGeometry({
 assert.deepEqual(spectrumShare.points.map((point) => point.rawY), spectrumPoints.map((point) => point.typeCount / 100));
 assert.equal(spectrumShare.bands.length, 0);
 assert.deepEqual(spectrumShare.points.map((point) => point.rawX), spectrum.points.map((point) => point.rawX));
+
+const tinyHapax = buildLexicalSpectrumGeometry({
+  points: [{ frequency: 1, typeCount: 1 }, { frequency: 2, typeCount: 1 }, { frequency: 10, typeCount: 1_000_000 }],
+  hapaxCount: 1,
+  disLegomenaCount: 1,
+  band3To9Count: 0,
+  band10plusCount: 1_000_000,
+  totalTypes: 1_000_002,
+});
+assert.equal(tinyHapax.compositionStrip?.segments[0]?.datum.label, "Hapax (1)");
+assert(tinyHapax.compositionStrip?.segments[0]?.width && tinyHapax.compositionStrip.segments[0].width > 0);
 
 const bands = deriveCoverageBandShares({
   totalTypes: 20_000,
@@ -141,5 +154,6 @@ assert.match(shell, /How many types occur once, twice, or at each higher frequen
 assert.match(shell, /How much token mass is carried by the most frequent vocabulary\?/);
 assert.match(shell, /exactTargetCrossings\.find/);
 assert.match(render, /renderCompositionStrip\(svg, geometry\.compositionStrip\)/);
+assert.doesNotMatch(render, /class: "cw-plot-spectrum-band-label"/);
 assert.match(render, /geometry\.halfCrossing\.targetY/);
 assert.match(marks, /data-figure-palette="monochrome"[^}]*cw-plot-composition-strip/);

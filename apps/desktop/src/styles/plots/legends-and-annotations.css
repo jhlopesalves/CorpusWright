@@ -1,18 +1,9 @@
-/* Generic plot legends, labels, callouts, brackets, and annotation halos. */
+/* Generic plot legends, labels, callouts, fitted ranges, and annotation halos. */
 
 .cw-plot-line-halo {
   opacity: 0.08;
   pointer-events: none;
   stroke-width: 3;
-}
-
-.cw-plot-spectrum-band-label {
-  fill: var(--text-muted);
-  font-family: var(--cw-font-mono);
-  font-size: var(--cw-type-plot-micro-size);
-  font-weight: var(--cw-weight-bold);
-  letter-spacing: 0;
-  pointer-events: none;
 }
 
 .cw-plot-composition-label {
@@ -142,17 +133,29 @@
   stroke-linejoin: round;
 }
 
-.cw-plot-bracket line {
-  stroke: var(--accent-color);
-  stroke-width: 1.2;
+.cw-plot-fitted-range-band {
+  fill: var(--cw-plot-reference, var(--cw-plot-fit));
+  fill-opacity: 0.06;
+  pointer-events: none;
+}
+
+.cw-plot-fitted-range-boundary {
+  stroke: var(--cw-plot-reference, var(--cw-plot-fit));
+  stroke-dasharray: 3 4;
+  stroke-opacity: 0.48;
+  stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
 
-.cw-plot-bracket text {
-  fill: var(--accent-color);
+.cw-plot-fitted-range-label {
+  fill: var(--cw-plot-reference, var(--cw-plot-fit));
   font-family: var(--cw-font-mono);
   font-size: var(--cw-type-plot-micro-size);
   font-weight: var(--cw-weight-bold);
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 .cw-plot-legend-bg {
