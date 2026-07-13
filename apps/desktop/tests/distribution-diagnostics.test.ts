@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   buildDistributionDiagnosticGeometry,
+  pleasantShareCeiling,
   type DistributionResultPayload,
 } from "../src/plots/model.ts";
 
@@ -57,7 +58,9 @@ assert.equal(histogramCount.bars.length, result.histogramBins.length);
 assert.equal(histogramShare.bars.length, result.histogramBins.length);
 assert.equal(histogramCount.bars[0]?.datum, result.histogramBins[0]);
 assert.equal(histogramCount.yScale.domain[1], 4);
-assert.equal(histogramShare.yScale.domain[1], 1);
+assert.equal(histogramShare.yScale.domain[1], 0.5);
+assert.equal(pleasantShareCeiling(0.08), 0.1);
+assert.equal(pleasantShareCeiling(0.96), 1);
 assert(histogramCount.iqrBand && histogramCount.iqrBand.width > 0);
 assert(histogramCount.medianLine);
 assert(histogramCount.labels.some((label) => label.text.includes("median")));
@@ -111,6 +114,32 @@ const logHistogram = buildDistributionDiagnosticGeometry({
 });
 assert.equal(logHistogram.xScale.kind, "log");
 assert(logHistogram.bars.every((bar) => bar.width > 0), "returned numeric log boundaries must drive bar widths");
+
+const zeroLogHistogram = buildDistributionDiagnosticGeometry({
+  result: {
+    ...logResult,
+    minimum: 0,
+    ecdfPoints: [
+      { value: 0, cumulativeCount: 2, cumulativeShare: 0.2 },
+      ...result.ecdfPoints,
+    ],
+  },
+  metric: "documentLength",
+  view: "histogram",
+  yMode: "share",
+  qqReference: "lognormal",
+});
+assert(zeroLogHistogram.xScale.domain[0] >= 1);
+assert.equal(zeroLogHistogram.zeroTokenSummary?.count, 2);
+
+const invalidLogMattr = buildDistributionDiagnosticGeometry({
+  result: logResult,
+  metric: "mattr",
+  view: "histogram",
+  yMode: "share",
+  qqReference: "normal",
+});
+assert.equal(invalidLogMattr.xScale.kind, "linear", "MATTR geometry normalises stale logarithmic state");
 
 const shell = readFileSync(new URL("../src/workbench/shell.ts", import.meta.url), "utf8");
 const render = readFileSync(new URL("../src/plots/render.ts", import.meta.url), "utf8");

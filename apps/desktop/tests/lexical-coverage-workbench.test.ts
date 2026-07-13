@@ -101,6 +101,7 @@ assert.equal(coverage.halfCrossing?.targetY, scaleValue(coverage.yScale, 0.5));
 assert(coverage.labels.some((label) => label.text.includes("50% target = 7 types")));
 assert(coverage.points[1]?.tooltipRows?.some((row) => row.includes("gained since previous checkpoint")));
 assert.match(coverage.linePath?.d ?? "", /^M[^CQ]+(?:L[^CQ]+)+$/);
+assert((coverage.linePath?.d ?? "").includes(`${coverage.halfCrossing!.x.toFixed(2)} ${coverage.halfCrossing!.y.toFixed(2)}`), "display path must pass through the exact target crossing");
 assert.equal(coverage.compositionStrip?.segments.length, 5);
 
 const coverageShareX = buildCoverageGeometry({
