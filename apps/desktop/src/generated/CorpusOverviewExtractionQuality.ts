@@ -1,0 +1,1 @@
+export type CorpusOverviewExtractionQuality = { wordLikeCount: number, wordLikeShare: number | null, numericOnlyCount: number, numericOnlyShare: number | null, singleCharacterCount: number | null, singleCharacterShare: number | null, reading: string, };

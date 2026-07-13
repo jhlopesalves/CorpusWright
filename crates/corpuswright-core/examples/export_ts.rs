@@ -7,24 +7,33 @@ use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
 use corpuswright_core::analysis::{
-    AnalysisDocumentSelection, AnnotatedFrequencyMode, AnnotatedFrequencyQuery,
-    AnnotatedFrequencyResult, AnnotatedTermDistributionQuery, AnnotatedTermSelector,
-    AnnotationCacheAvailability, AnnotationCacheBuildError, AnnotationCacheBuildPhase,
-    AnnotationCacheBuildProgress, AnnotationCacheBuildReport, AnnotationCacheState,
-    CompareDocumentCell, CompareDocumentRow, CompareExpressionSummary, CompareExpressionsQuery,
-    CompareExpressionsResult, ConcordanceCollocatePositionCounts, ConcordanceCollocateRow,
-    ConcordanceCollocationDirection, ConcordanceCollocationMeasure, ConcordanceCollocationQuery,
-    ConcordanceCollocationResult, ConcordanceCollocationSortKey, ConcordanceContextFilterDirection,
-    ConcordanceDistributionItem, ConcordanceDistributionPage, ConcordanceExpansionQuery,
-    ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult, ConcordanceRow,
-    ConcordanceSortKey, CoverageTargetCrossing, FrequencyGroupMode, FrequencyMatchMode,
-    FrequencyNotice, FrequencyNoticeKind, FrequencyPage, FrequencyQuery, FrequencySortKey,
-    FrequencyTermItem, FrequencyTokenClass, LexFrequencyRow, OverviewDistributionBin,
-    OverviewDistributionEvidencePage, OverviewDistributionEvidenceQuery,
+    AnalysisDocumentSelection, AnalysisInputSource, AnnotatedFrequencyMode,
+    AnnotatedFrequencyQuery, AnnotatedFrequencyResult, AnnotatedTermDistributionQuery,
+    AnnotatedTermSelector, AnnotationCacheAvailability, AnnotationCacheBuildError,
+    AnnotationCacheBuildPhase, AnnotationCacheBuildProgress, AnnotationCacheBuildReport,
+    AnnotationCacheState, CompareDocumentCell, CompareDocumentRow, CompareExpressionSummary,
+    CompareExpressionsQuery, CompareExpressionsResult, ConcordanceCollocatePositionCounts,
+    ConcordanceCollocateRow, ConcordanceCollocationDirection, ConcordanceCollocationMeasure,
+    ConcordanceCollocationQuery, ConcordanceCollocationResult, ConcordanceCollocationSortKey,
+    ConcordanceContextFilterDirection, ConcordanceDistributionItem, ConcordanceDistributionPage,
+    ConcordanceExpansionQuery, ConcordanceExpansionResult, ConcordanceQuery, ConcordanceResult,
+    ConcordanceRow, ConcordanceSortKey, CorpusOverview, CorpusOverviewBalance, CorpusOverviewBuild,
+    CorpusOverviewDispersion, CorpusOverviewDispersionPlane, CorpusOverviewDocument,
+    CorpusOverviewExtractionQuality, CorpusOverviewFinding, CorpusOverviewFindingKind,
+    CorpusOverviewFindingSeverity, CorpusOverviewFrequencyConcentration,
+    CorpusOverviewLexicalSpectrum, CorpusOverviewMattrDistribution, CorpusOverviewPopulation,
+    CorpusOverviewRankFrequency, CorpusOverviewReading, CorpusOverviewTotals,
+    CorpusOverviewVocabularyGrowth, CoverageTargetCrossing, CumulativeCoveragePoint,
+    DispersionProfileBucket, DispersionRosterEntry, DispersionWitness, DispersionWitnessKind,
+    FrequencyGroupMode, FrequencyMatchMode, FrequencyNotice, FrequencyNoticeKind, FrequencyPage,
+    FrequencyQuery, FrequencySortKey, FrequencySpectrumPoint, FrequencyTermItem,
+    FrequencyTokenClass, LengthHistogramBin, LexFrequencyRow, MattrWitness,
+    OverviewDistributionBin, OverviewDistributionEvidencePage, OverviewDistributionEvidenceQuery,
     OverviewDistributionEvidenceRow, OverviewDistributionMetric, OverviewDistributionQuery,
     OverviewDistributionResult, OverviewDistributionScale, OverviewDistributionWitness,
     OverviewEcdfPoint, OverviewHistogramRule, OverviewQqPoint, OverviewQqReference,
-    PosFrequencyRow, SortDirection, TermDistributionItem, TermDistributionPage,
+    PosFrequencyRow, RankFrequencyPoint, SortDirection, TermDistributionItem, TermDistributionPage,
+    UniversalType, VocabularyGrowthPoint,
 };
 use corpuswright_core::clean::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
@@ -659,7 +668,272 @@ fn main() {
         }],
         &[],
     );
+    export_type::<AnalysisInputSource>(&out_dir, &[], &[]);
+    export_type::<CorpusOverviewTotals>(&out_dir, &[], &[]);
+    export_type::<CorpusOverviewPopulation>(&out_dir, &[], &[]);
+    export_type::<CorpusOverviewDocument>(&out_dir, &[], &[]);
+    export_type::<LengthHistogramBin>(&out_dir, &[], &[]);
+    export_type::<CorpusOverviewBalance>(
+        &out_dir,
+        &[TypeImport {
+            name: "LengthHistogramBin",
+            file: "LengthHistogramBin",
+        }],
+        &[],
+    );
+    export_type::<CorpusOverviewExtractionQuality>(&out_dir, &[], &[]);
+    export_type::<FrequencySpectrumPoint>(&out_dir, &[], &[]);
+    export_type::<MattrWitness>(&out_dir, &[], &[]);
+    export_type::<CorpusOverviewMattrDistribution>(
+        &out_dir,
+        &[TypeImport {
+            name: "MattrWitness",
+            file: "MattrWitness",
+        }],
+        &[],
+    );
+    export_type::<CorpusOverviewLexicalSpectrum>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "FrequencySpectrumPoint",
+                file: "FrequencySpectrumPoint",
+            },
+            TypeImport {
+                name: "CorpusOverviewMattrDistribution",
+                file: "CorpusOverviewMattrDistribution",
+            },
+        ],
+        &[],
+    );
+    export_type::<CumulativeCoveragePoint>(&out_dir, &[], &[]);
     export_type::<CoverageTargetCrossing>(&out_dir, &[], &[]);
+    export_type::<CorpusOverviewFrequencyConcentration>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "CumulativeCoveragePoint",
+                file: "CumulativeCoveragePoint",
+            },
+            TypeImport {
+                name: "CoverageTargetCrossing",
+                file: "CoverageTargetCrossing",
+            },
+        ],
+        &[],
+    );
+    export_type::<RankFrequencyPoint>(&out_dir, &[], &[]);
+    export_type::<CorpusOverviewRankFrequency>(
+        &out_dir,
+        &[TypeImport {
+            name: "RankFrequencyPoint",
+            file: "RankFrequencyPoint",
+        }],
+        &[],
+    );
+    export_type::<VocabularyGrowthPoint>(&out_dir, &[], &[]);
+    export_type::<CorpusOverviewVocabularyGrowth>(
+        &out_dir,
+        &[TypeImport {
+            name: "VocabularyGrowthPoint",
+            file: "VocabularyGrowthPoint",
+        }],
+        &[],
+    );
+    export_type::<DispersionProfileBucket>(&out_dir, &[], &[]);
+    export_type::<DispersionWitnessKind>(&out_dir, &[], &[]);
+    export_type::<DispersionWitness>(
+        &out_dir,
+        &[TypeImport {
+            name: "DispersionWitnessKind",
+            file: "DispersionWitnessKind",
+        }],
+        &[],
+    );
+    export_type::<CorpusOverviewDispersionPlane>(
+        &out_dir,
+        &[TypeImport {
+            name: "DispersionWitness",
+            file: "DispersionWitness",
+        }],
+        &[],
+    );
+    export_type::<DispersionRosterEntry>(&out_dir, &[], &[]);
+    export_type::<UniversalType>(&out_dir, &[], &[]);
+    export_type::<CorpusOverviewDispersion>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "DispersionProfileBucket",
+                file: "DispersionProfileBucket",
+            },
+            TypeImport {
+                name: "CorpusOverviewDispersionPlane",
+                file: "CorpusOverviewDispersionPlane",
+            },
+            TypeImport {
+                name: "DispersionRosterEntry",
+                file: "DispersionRosterEntry",
+            },
+            TypeImport {
+                name: "UniversalType",
+                file: "UniversalType",
+            },
+        ],
+        &[],
+    );
+    export_type::<CorpusOverviewFindingKind>(&out_dir, &[], &[]);
+    export_type::<CorpusOverviewFindingSeverity>(&out_dir, &[], &[]);
+    export_type::<CorpusOverviewFinding>(
+        &out_dir,
+        &[
+            TypeImport {
+                name: "CorpusOverviewFindingKind",
+                file: "CorpusOverviewFindingKind",
+            },
+            TypeImport {
+                name: "CorpusOverviewFindingSeverity",
+                file: "CorpusOverviewFindingSeverity",
+            },
+        ],
+        &[],
+    );
+    export_type::<CorpusOverviewReading>(
+        &out_dir,
+        &[TypeImport {
+            name: "CorpusOverviewFinding",
+            file: "CorpusOverviewFinding",
+        }],
+        &[],
+    );
+    export_type::<CorpusOverviewBuild>(&out_dir, &[], &[]);
+    let overview_imports = [
+        TypeImport {
+            name: "AnalysisInputSource",
+            file: "AnalysisInputSource",
+        },
+        TypeImport {
+            name: "CorpusOverviewTotals",
+            file: "CorpusOverviewTotals",
+        },
+        TypeImport {
+            name: "CorpusOverviewPopulation",
+            file: "CorpusOverviewPopulation",
+        },
+        TypeImport {
+            name: "CorpusOverviewDocument",
+            file: "CorpusOverviewDocument",
+        },
+        TypeImport {
+            name: "CorpusOverviewBalance",
+            file: "CorpusOverviewBalance",
+        },
+        TypeImport {
+            name: "LengthHistogramBin",
+            file: "LengthHistogramBin",
+        },
+        TypeImport {
+            name: "CorpusOverviewExtractionQuality",
+            file: "CorpusOverviewExtractionQuality",
+        },
+        TypeImport {
+            name: "CorpusOverviewLexicalSpectrum",
+            file: "CorpusOverviewLexicalSpectrum",
+        },
+        TypeImport {
+            name: "MattrWitness",
+            file: "MattrWitness",
+        },
+        TypeImport {
+            name: "CorpusOverviewMattrDistribution",
+            file: "CorpusOverviewMattrDistribution",
+        },
+        TypeImport {
+            name: "CorpusOverviewFrequencyConcentration",
+            file: "CorpusOverviewFrequencyConcentration",
+        },
+        TypeImport {
+            name: "CumulativeCoveragePoint",
+            file: "CumulativeCoveragePoint",
+        },
+        TypeImport {
+            name: "CoverageTargetCrossing",
+            file: "CoverageTargetCrossing",
+        },
+        TypeImport {
+            name: "FrequencySpectrumPoint",
+            file: "FrequencySpectrumPoint",
+        },
+        TypeImport {
+            name: "RankFrequencyPoint",
+            file: "RankFrequencyPoint",
+        },
+        TypeImport {
+            name: "CorpusOverviewRankFrequency",
+            file: "CorpusOverviewRankFrequency",
+        },
+        TypeImport {
+            name: "VocabularyGrowthPoint",
+            file: "VocabularyGrowthPoint",
+        },
+        TypeImport {
+            name: "CorpusOverviewVocabularyGrowth",
+            file: "CorpusOverviewVocabularyGrowth",
+        },
+        TypeImport {
+            name: "CorpusOverviewDispersion",
+            file: "CorpusOverviewDispersion",
+        },
+        TypeImport {
+            name: "DispersionProfileBucket",
+            file: "DispersionProfileBucket",
+        },
+        TypeImport {
+            name: "DispersionWitnessKind",
+            file: "DispersionWitnessKind",
+        },
+        TypeImport {
+            name: "DispersionWitness",
+            file: "DispersionWitness",
+        },
+        TypeImport {
+            name: "CorpusOverviewDispersionPlane",
+            file: "CorpusOverviewDispersionPlane",
+        },
+        TypeImport {
+            name: "DispersionRosterEntry",
+            file: "DispersionRosterEntry",
+        },
+        TypeImport {
+            name: "UniversalType",
+            file: "UniversalType",
+        },
+        TypeImport {
+            name: "CorpusOverviewFindingKind",
+            file: "CorpusOverviewFindingKind",
+        },
+        TypeImport {
+            name: "CorpusOverviewFindingSeverity",
+            file: "CorpusOverviewFindingSeverity",
+        },
+        TypeImport {
+            name: "CorpusOverviewFinding",
+            file: "CorpusOverviewFinding",
+        },
+        TypeImport {
+            name: "CorpusOverviewReading",
+            file: "CorpusOverviewReading",
+        },
+        TypeImport {
+            name: "CorpusOverviewBuild",
+            file: "CorpusOverviewBuild",
+        },
+    ];
+    let overview_re_exports = overview_imports
+        .iter()
+        .map(|overview_import| overview_import.name)
+        .collect::<Vec<_>>();
+    export_type::<CorpusOverview>(&out_dir, &overview_imports, &overview_re_exports);
     export_type::<FrequencyMatchMode>(&out_dir, &[], &[]);
     export_type::<FrequencyTokenClass>(&out_dir, &[], &[]);
     export_type::<FrequencySortKey>(&out_dir, &[], &[]);

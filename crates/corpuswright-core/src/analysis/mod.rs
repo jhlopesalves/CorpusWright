@@ -77,12 +77,15 @@ pub use frequency::{
 
 pub use overview::{
     CorpusOverview, CorpusOverviewBalance, CorpusOverviewBuild, CorpusOverviewContext,
-    CorpusOverviewDispersion, CorpusOverviewDocument, CorpusOverviewExtractionQuality,
-    CorpusOverviewFinding, CorpusOverviewFindingKind, CorpusOverviewFindingSeverity,
-    CorpusOverviewFrequencyConcentration, CorpusOverviewLexicalSpectrum, CorpusOverviewPopulation,
+    CorpusOverviewDispersion, CorpusOverviewDispersionPlane, CorpusOverviewDocument,
+    CorpusOverviewExtractionQuality, CorpusOverviewFinding, CorpusOverviewFindingKind,
+    CorpusOverviewFindingSeverity, CorpusOverviewFrequencyConcentration,
+    CorpusOverviewLexicalSpectrum, CorpusOverviewMattrDistribution, CorpusOverviewPopulation,
     CorpusOverviewRankFrequency, CorpusOverviewReading, CorpusOverviewTotals,
     CorpusOverviewVocabularyGrowth, CoverageTargetCrossing, CumulativeCoveragePoint,
-    FrequencySpectrumPoint, RankFrequencyPoint, UniversalType, VocabularyGrowthPoint,
+    DispersionProfileBucket, DispersionRosterEntry, DispersionWitness, DispersionWitnessKind,
+    FrequencySpectrumPoint, LengthHistogramBin, MattrWitness, RankFrequencyPoint, UniversalType,
+    VocabularyGrowthPoint,
 };
 
 pub use overview_distribution::{

@@ -1,0 +1,1 @@
+export type CorpusOverviewBuild = { tokenisation: string | null, caseHandling: string | null, lemmatisation: string | null, numberPunctuationHandling: string | null, inputSource: string, configVersion: string | null, snapshotDate: string | null, metadataAttached: boolean, };

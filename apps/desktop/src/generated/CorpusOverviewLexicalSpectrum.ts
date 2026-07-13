@@ -1,0 +1,4 @@
+import type { FrequencySpectrumPoint } from "./FrequencySpectrumPoint.js";
+import type { CorpusOverviewMattrDistribution } from "./CorpusOverviewMattrDistribution.js";
+
+export type CorpusOverviewLexicalSpectrum = { types: number, hapaxCount: number, disLegomenaCount: number, band3To9Count: number, band10plusCount: number, hapaxShare: number | null, disLegomenaShare: number | null, band3To9Share: number | null, band10plusShare: number | null, frequencySpectrum: Array<FrequencySpectrumPoint>, frequencySpectrumTruncated: boolean, frequencySpectrumTotal: number, mattrWindow: number, mattrMedian: number | null, mattrMin: number | null, mattrMax: number | null, mattrDocsExcluded: number, mattrDocsUsed: number, mattrDistribution: CorpusOverviewMattrDistribution | null, mtldThreshold: number, mtldMinDocumentTokens: number, mtldMedian: number | null, mtldMin: number | null, mtldMax: number | null, mtldDocsExcluded: number, mtldDocsUsed: number, reading: string, };

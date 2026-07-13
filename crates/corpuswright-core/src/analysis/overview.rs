@@ -39,16 +39,17 @@ mod overview_thresholds {
 }
 
 /// Corpus totals computed during the Rust build.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewTotals {
+    #[ts(type = "number")]
     pub tokens: u64,
     pub types: usize,
     pub documents: usize,
 }
 
 /// Project and analysis population counts available for this snapshot.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewPopulation {
     pub sources_in_project: Option<usize>,
@@ -62,17 +63,18 @@ pub struct CorpusOverviewPopulation {
 }
 
 /// One bounded document-length row in the overview.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewDocument {
     pub name: String,
+    #[ts(type = "number")]
     pub tokens: u64,
     pub share: Option<f64>,
     pub relative_length: Option<f64>,
 }
 
 /// Document-level balance and concentration metrics.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewBalance {
     pub largest_share: Option<f64>,
@@ -81,7 +83,9 @@ pub struct CorpusOverviewBalance {
     pub coefficient_of_variation: Option<f64>,
     pub effective_documents: Option<f64>,
     pub median_tokens: Option<f64>,
+    #[ts(type = "number | null")]
     pub minimum_tokens: Option<u64>,
+    #[ts(type = "number | null")]
     pub maximum_tokens: Option<u64>,
     pub length_histogram: Vec<LengthHistogramBin>,
     pub remaining_documents: usize,
@@ -89,16 +93,18 @@ pub struct CorpusOverviewBalance {
 }
 
 /// One power-of-two document-length histogram bin.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct LengthHistogramBin {
+    #[ts(type = "number")]
     pub lower_tokens: u64,
+    #[ts(type = "number | null")]
     pub upper_tokens: Option<u64>,
     pub count: usize,
 }
 
 /// Type-form diagnostics computed from the indexed vocabulary.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewExtractionQuality {
     pub word_like_count: usize,
@@ -111,7 +117,7 @@ pub struct CorpusOverviewExtractionQuality {
 }
 
 /// Frequency-class partition of the indexed vocabulary.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewLexicalSpectrum {
     pub types: usize,
@@ -144,16 +150,17 @@ pub struct CorpusOverviewLexicalSpectrum {
 }
 
 /// One bounded document witness from the MATTR distribution.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct MattrWitness {
     pub name: String,
     pub mattr: f64,
+    #[ts(type = "number")]
     pub tokens: u64,
 }
 
 /// Fixed-bin distribution of per-document MATTR values.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewMattrDistribution {
     pub bin_width: f64,
@@ -166,7 +173,7 @@ pub struct CorpusOverviewMattrDistribution {
 }
 
 /// Token-mass coverage at vocabulary thresholds supported by this corpus.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewFrequencyConcentration {
     pub top_10_coverage: Option<f64>,
@@ -191,7 +198,7 @@ pub struct CoverageTargetCrossing {
 }
 
 /// Cumulative token share covered by the top k ranked types.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CumulativeCoveragePoint {
     pub k: usize,
@@ -199,46 +206,52 @@ pub struct CumulativeCoveragePoint {
 }
 
 /// Number of types observed at one exact corpus frequency.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct FrequencySpectrumPoint {
+    #[ts(type = "number")]
     pub frequency: u64,
     pub type_count: usize,
 }
 
 /// One bounded point from the corpus rank-frequency distribution.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct RankFrequencyPoint {
+    #[ts(type = "number")]
     pub rank: u64,
     pub token: Option<String>,
+    #[ts(type = "number")]
     pub frequency: u64,
     pub rate_per_million: f64,
 }
 
 /// Zipf fit and bounded rank-frequency series.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewRankFrequency {
     pub zipf_exponent: Option<f64>,
     pub zipf_coefficient: Option<f64>,
     pub r_squared: Option<f64>,
+    #[ts(type = "number | null")]
     pub fitted_rank_start: Option<u64>,
+    #[ts(type = "number | null")]
     pub fitted_rank_end: Option<u64>,
     pub points: Vec<RankFrequencyPoint>,
     pub reading: String,
 }
 
 /// One deterministic, bounded vocabulary-growth checkpoint.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct VocabularyGrowthPoint {
+    #[ts(type = "number")]
     pub tokens: u64,
     pub types: usize,
 }
 
 /// Heaps-law fit and bounded vocabulary-growth series.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewVocabularyGrowth {
     pub heaps_k: Option<f64>,
@@ -249,7 +262,7 @@ pub struct CorpusOverviewVocabularyGrowth {
 }
 
 /// Vocabulary dispersion and document-frequency summaries.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewDispersion {
     pub frequent_types: usize,
@@ -291,7 +304,7 @@ pub struct CorpusOverviewDispersion {
 }
 
 /// One document-frequency reach band in the fine-grained dispersion profile.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct DispersionProfileBucket {
     pub label: String,
@@ -303,7 +316,7 @@ pub struct DispersionProfileBucket {
 }
 
 /// Semantic category for a labelled witness in the dispersion plane.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum DispersionWitnessKind {
     Core,
@@ -313,10 +326,11 @@ pub enum DispersionWitnessKind {
 }
 
 /// One capped witness point for the dispersion plane.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct DispersionWitness {
     pub token: String,
+    #[ts(type = "number")]
     pub frequency: u64,
     pub document_frequency: usize,
     pub dp: f64,
@@ -324,7 +338,7 @@ pub struct DispersionWitness {
 }
 
 /// Fixed density grid over frequency and DP.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewDispersionPlane {
     pub x_bins: usize,
@@ -334,23 +348,25 @@ pub struct CorpusOverviewDispersionPlane {
     pub max_cell_count: u32,
     pub witnesses: Vec<DispersionWitness>,
     pub loud_but_local_count: usize,
+    #[ts(type = "number")]
     pub loud_but_local_min_frequency: u64,
     pub high_dispersion_threshold: f64,
     pub reading: String,
 }
 
 /// One high-frequency type shown in the DP roster.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct DispersionRosterEntry {
     pub token: String,
+    #[ts(type = "number")]
     pub frequency: u64,
     pub document_frequency: usize,
     pub dp: f64,
 }
 
 /// One type present in at least 90% of documents, capped for overview display.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct UniversalType {
     pub token: String,
@@ -358,7 +374,7 @@ pub struct UniversalType {
 }
 
 /// Overview finding category.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum CorpusOverviewFindingKind {
     Balance,
@@ -368,7 +384,7 @@ pub enum CorpusOverviewFindingKind {
 }
 
 /// Descriptive attention level assigned by the overview thresholds.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum CorpusOverviewFindingSeverity {
     NoIssue,
@@ -387,7 +403,7 @@ impl CorpusOverviewFindingSeverity {
 }
 
 /// One computed finding shown in the corpus reading.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewFinding {
     pub key: CorpusOverviewFindingKind,
@@ -397,7 +413,7 @@ pub struct CorpusOverviewFinding {
 }
 
 /// Headline interpretation derived from the computed overview.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewReading {
     pub verdict: String,
@@ -405,7 +421,7 @@ pub struct CorpusOverviewReading {
 }
 
 /// Analysis build details that are known for this snapshot.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewBuild {
     pub tokenisation: Option<String>,
@@ -429,11 +445,12 @@ pub struct CorpusOverviewContext {
 }
 
 /// Render-ready first-stage corpus EDA summary.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverview {
     pub document_count: usize,
     pub source_count: usize,
+    #[ts(type = "number")]
     pub total_tokens: u64,
     pub total_types: usize,
     pub annotation_available: bool,
