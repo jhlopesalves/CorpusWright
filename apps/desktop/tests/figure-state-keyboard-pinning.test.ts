@@ -27,12 +27,6 @@ assert.deepEqual(normalizeFigureState("overview-rank-frequency", {
   frequency: "raw",
   fit: "hide",
 }), { view: "residuals" });
-assert.deepEqual(normalizeFigureState("overview-dispersion-roster", {
-  sort: "bad",
-  stopwords: "bad",
-  rows: 500,
-}), { sort: "frequency", stopwords: "show", rows: 100 });
-
 const distribution = new OverviewFigureController({
   initialControls: { view: "histogram", histogramRule: "auto", manualBins: 24, xScale: "log" },
   policy: FIGURE_INTERACTION_POLICIES["overview-length-histogram"],

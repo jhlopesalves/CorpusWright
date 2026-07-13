@@ -95,10 +95,10 @@ const semanticPlotRoles = [
   "--cw-plot-density-5",
   "--cw-plot-composition-0",
   "--cw-plot-composition-5",
-  "--cw-plot-witness-core",
-  "--cw-plot-witness-loud-local",
-  "--cw-plot-witness-quiet-even",
-  "--cw-plot-witness-rare-local",
+  ...Array.from({ length: 10 }, (_, index) => `--cw-plot-profile-${index}`),
+  "--cw-plot-witness",
+  "--cw-plot-callout-surface",
+  "--cw-plot-callout-border",
 ];
 for (const role of semanticPlotRoles) {
   if (!figurePalettesModule.contents.includes(`${role}:`)) {

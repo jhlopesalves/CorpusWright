@@ -14,7 +14,8 @@ for (const role of [
   "observed", "reference", "selected", "attention",
   ...Array.from({ length: 6 }, (_, index) => `density-${index}`),
   ...Array.from({ length: 6 }, (_, index) => `composition-${index}`),
-  "witness-core", "witness-loud-local", "witness-quiet-even", "witness-rare-local",
+  ...Array.from({ length: 10 }, (_, index) => `profile-${index}`),
+  "witness",
 ]) {
   assert.match(livePalette, new RegExp(`--cw-plot-${role}:`), `live figure palette must define ${role}`);
 }
@@ -22,7 +23,7 @@ assert.doesNotMatch(livePalette, /data-figure-palette/);
 for (const mode of ["theme", "colorBlind", "monochrome"]) {
   assert.match(palette, new RegExp(`data-figure-palette=["']${mode}["']`));
 }
-assert.match(livePalette, /--cw-plot-witness-core:\s*var\(--cw-plot-ramp-0\)/);
+assert.match(livePalette, /--cw-plot-witness:\s*var\(--cw-plot-observed\)/);
 assert.match(figure, /exportMount\.dataset\.figurePalette = paletteMode/);
 assert.doesNotMatch(figure, /figure\.dataset\.figurePalette = paletteMode/);
 
@@ -50,7 +51,7 @@ assert.doesNotMatch(lollipopRule, /transform:\s*scale\(/, "lollipop hover must n
 assert.match(interactions, /cw-plot-tooltip[\s\S]*transition: opacity 120ms ease/);
 assert.match(interactions, /prefers-reduced-motion: reduce[\s\S]*\.cw-plot-tooltip[\s\S]*transition: none/);
 assert.equal(render.match(/renderInteractionLayer\(svg, geometry\.box, true\)/g)?.length, 4);
-assert.equal(render.match(/renderInteractionLayer\(svg, geometry\.box, false\)/g)?.length, 5);
+assert.equal(render.match(/renderInteractionLayer\(svg, geometry\.box, false\)/g)?.length, 4);
 assert.match(render, /renderInteractionLayer\(svg, geometry\.box, geometry\.crosshairEnabled\)/);
 assert.match(figures, /\.cw-overview-figure-teaching \.analysis-glossary-term[\s\S]*border-bottom: 0/);
 assert.match(figures, /\.cw-overview-figure-teaching \.analysis-glossary-detail[\s\S]*background: transparent/);

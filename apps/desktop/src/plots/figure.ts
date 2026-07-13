@@ -40,7 +40,7 @@ export interface OverviewFigureOptions {
   onPinChange?: (key: string, pinned: boolean) => void;
   onClearPins?: () => void;
   exportMetadata?: () => string[];
-  layoutFamily?: "standard" | "profile" | "plane" | "roster";
+  layoutFamily?: "standard" | "profile" | "plane";
   renderSvg: () => SVGSVGElement;
 }
 
@@ -239,28 +239,6 @@ export function createOverviewSegmentedControl<TValue extends string>(
   return field;
 }
 
-export function createOverviewSelectControl<TValue extends string>(
-  label: string,
-  options: Array<SegmentedControlOption<TValue>>,
-  initialValue: TValue,
-  onChange: (value: TValue) => void,
-): HTMLElement {
-  const field = createControlField(label);
-  const select = document.createElement("select");
-  select.className = "cw-overview-control-select";
-  select.setAttribute("aria-label", label);
-  for (const option of options) {
-    const element = document.createElement("option");
-    element.value = option.value;
-    element.textContent = option.label;
-    element.selected = option.value === initialValue;
-    select.appendChild(element);
-  }
-  select.addEventListener("change", () => onChange(select.value as TValue));
-  field.appendChild(select);
-  return field;
-}
-
 export function createOverviewRangeControl(
   label: string,
   options: {
@@ -302,33 +280,6 @@ export function createOverviewRangeControl(
     options.onChange(value);
   });
   field.append(range, number);
-  return field;
-}
-
-export function createOverviewToggleControl(
-  label: string,
-  initialValue: boolean,
-  onChange: (value: boolean) => void,
-): HTMLElement {
-  const field = document.createElement("div");
-  field.className = "cw-overview-control-field cw-overview-toggle-field";
-  field.appendChild(createControlLabel(label));
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "cw-overview-toggle-control";
-  let value = initialValue;
-  const refresh = () => {
-    button.textContent = value ? "Shown" : "Hidden";
-    button.setAttribute("aria-label", `${label}: ${value ? "shown" : "hidden"}`);
-    button.setAttribute("aria-pressed", String(value));
-  };
-  refresh();
-  button.addEventListener("click", () => {
-    value = !value;
-    refresh();
-    onChange(value);
-  });
-  field.appendChild(button);
   return field;
 }
 

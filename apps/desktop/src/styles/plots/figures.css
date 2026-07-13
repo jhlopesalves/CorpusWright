@@ -236,18 +236,14 @@
 }
 
 .cw-overview-control-field[hidden],
-.cw-overview-figure-action[hidden],
-.cw-overview-result-controls[hidden] {
+.cw-overview-figure-action[hidden] {
   display: none;
 }
 
-.cw-overview-segmented-field,
-.cw-overview-toggle-field {
+.cw-overview-segmented-field {
   flex-wrap: nowrap;
 }
 
-.cw-overview-toggle-control,
-.cw-overview-result-controls button,
 .cw-overview-export-dialog button {
   min-height: 32px;
   padding: 5px 10px;
@@ -257,17 +253,6 @@
   color: var(--text-color);
   font: var(--cw-weight-semibold) var(--cw-type-control-size)/1.2 var(--cw-font-ui);
   cursor: pointer;
-}
-
-.cw-overview-toggle-control[aria-pressed="true"] {
-  border-color: var(--accent-color);
-  background: var(--selected-color);
-}
-
-.cw-overview-result-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
 
 .cw-overview-export-dialog {
@@ -311,7 +296,6 @@
   gap: 6px;
 }
 
-.cw-overview-control-select,
 .cw-overview-control-number {
   min-height: 32px;
   border: 1px solid var(--border-color);
@@ -321,7 +305,6 @@
   font: inherit;
 }
 
-.cw-overview-control-select:focus-visible,
 .cw-overview-control-number:focus-visible,
 .cw-overview-range-control input[type="range"]:focus-visible {
   outline: var(--cw-interaction-focus-outline);

@@ -49,6 +49,8 @@ assert.deepEqual(logRaw.dpMarginal.map((marginal) => marginal.count), marginalCo
 assert.equal(logRaw.cells.length, counts.length);
 assert.deepEqual(logRaw.cells.map((cell) => cell.count), counts);
 assert(logRaw.cells.filter((cell) => cell.count === 0).every((cell) => cell.opacity === 0));
+assert(logRaw.cells.filter((cell) => cell.count > 0).every((cell) => cell.opacity >= 0.82));
+assert(new Set(logRaw.cells.filter((cell) => cell.count > 0).map((cell) => cell.fill)).size >= 5);
 assert.equal(logRaw.densityLegend.mode, "log");
 assert.equal(logRaw.densityLegend.minimum, 1);
 assert.equal(logRaw.densityLegend.maximum, 5);
@@ -93,11 +95,12 @@ assert.deepEqual(logRaw.witnessLegend.map((item) => [item.label, item.shape]), [
   ["Quiet and even", "square"],
   ["Rare and local", "triangle"],
 ]);
-assert.equal(logRaw.labels.filter((label) => label.text.startsWith("core-")).length, 3);
-assert.equal(logRaw.labels.filter((label) => label.text.startsWith("loud-")).length, 2);
+assert.equal(logRaw.labels.filter((label) => label.text.startsWith("core-")).length, 1);
+assert.equal(logRaw.labels.filter((label) => label.text.startsWith("loud-")).length, 1);
 assert.equal(logRaw.labels.filter((label) => label.text.startsWith("quiet-")).length, 1);
 assert.equal(logRaw.labels.filter((label) => label.text.startsWith("rare-")).length, 1);
-assert(logRaw.labels.length <= 7);
+assert(logRaw.labels.length <= 4);
+assert(logRaw.witnesses.every((witness) => witness.rampIndex === 2));
 
 const pinned = buildDispersionPlaneGeometry({
   plane,
@@ -144,6 +147,8 @@ assert.match(render, /cw-plot-density-legend/);
 assert.match(render, /cw-plot-witness-legend/);
 assert.match(render, /renderPlaneMarginals\(svg, geometry\)/);
 assert.match(render, /data-point-shape/);
+assert.match(marks, /cw-plot-plane-witness[\s\S]*--cw-plot-witness[\s\S]*fill-opacity: 1/);
+assert.doesNotMatch(marks, /cw-plot-witness-(?:core|loud-local|quiet-even|rare-local)/);
 assert.match(marks, /data-figure-palette="monochrome"[^}]*cw-plot-plane-witness/);
 assert.match(figures, /cw-overview-figure-controls[\s\S]*flex-wrap: wrap/);
 assert.match(figures, /cw-overview-figure-body[\s\S]*overflow-x: auto/);
@@ -162,13 +167,12 @@ for (const question of [
   "How much token mass is carried by the most frequent vocabulary?",
   "How widely across documents does the vocabulary reach?",
   "Which types are frequent, and which are evenly distributed across documents?",
-  "Which frequent types are corpus-wide, and which are locally concentrated?",
 ]) {
   assert(shell.includes(question), `missing question subtitle: ${question}`);
 }
-assert.equal(shell.match(/captionReading:/g)?.length, 9);
-assert((shell.match(/explanation: createFigureExplanation/g)?.length ?? 0) >= 8);
+assert.equal(shell.match(/captionReading:/g)?.length, 8);
+assert((shell.match(/explanation: createFigureExplanation/g)?.length ?? 0) >= 7);
 assert.match(shell, /isLength \? \["distributionDiagnostics" as const\] : \["mattr" as const, "distributionDiagnostics" as const\]/);
-assert((shell.match(/exportMetadata:/g)?.length ?? 0) >= 8);
+assert((shell.match(/exportMetadata:/g)?.length ?? 0) >= 7);
 assert.doesNotMatch(shell, /representative sample/i);
 assert.doesNotMatch(shell, /DP[^\n]{0,80}(?:statistically significant|significance threshold)/i);

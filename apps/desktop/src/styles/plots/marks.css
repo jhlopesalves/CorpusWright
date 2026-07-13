@@ -158,6 +158,26 @@
 .cw-plot-composition-strip .cw-plot-ramp-3 { fill: var(--cw-plot-composition-3, var(--cw-plot-ramp-3)); }
 .cw-plot-composition-strip .cw-plot-ramp-4 { fill: var(--cw-plot-composition-4, var(--cw-plot-ramp-4)); }
 .cw-plot-composition-strip .cw-plot-ramp-5 { fill: var(--cw-plot-composition-5, var(--cw-plot-ramp-5)); }
+.cw-plot-profile-band-0 { color: var(--cw-plot-profile-0); fill: var(--cw-plot-profile-0); }
+.cw-plot-profile-band-1 { color: var(--cw-plot-profile-1); fill: var(--cw-plot-profile-1); }
+.cw-plot-profile-band-2 { color: var(--cw-plot-profile-2); fill: var(--cw-plot-profile-2); }
+.cw-plot-profile-band-3 { color: var(--cw-plot-profile-3); fill: var(--cw-plot-profile-3); }
+.cw-plot-profile-band-4 { color: var(--cw-plot-profile-4); fill: var(--cw-plot-profile-4); }
+.cw-plot-profile-band-5 { color: var(--cw-plot-profile-5); fill: var(--cw-plot-profile-5); }
+.cw-plot-profile-band-6 { color: var(--cw-plot-profile-6); fill: var(--cw-plot-profile-6); }
+.cw-plot-profile-band-7 { color: var(--cw-plot-profile-7); fill: var(--cw-plot-profile-7); }
+.cw-plot-profile-band-8 { color: var(--cw-plot-profile-8); fill: var(--cw-plot-profile-8); }
+.cw-plot-profile-band-9 { color: var(--cw-plot-profile-9); fill: var(--cw-plot-profile-9); }
+.cw-plot-composition-strip .cw-plot-profile-band-0 { fill: var(--cw-plot-profile-0); }
+.cw-plot-composition-strip .cw-plot-profile-band-1 { fill: var(--cw-plot-profile-1); }
+.cw-plot-composition-strip .cw-plot-profile-band-2 { fill: var(--cw-plot-profile-2); }
+.cw-plot-composition-strip .cw-plot-profile-band-3 { fill: var(--cw-plot-profile-3); }
+.cw-plot-composition-strip .cw-plot-profile-band-4 { fill: var(--cw-plot-profile-4); }
+.cw-plot-composition-strip .cw-plot-profile-band-5 { fill: var(--cw-plot-profile-5); }
+.cw-plot-composition-strip .cw-plot-profile-band-6 { fill: var(--cw-plot-profile-6); }
+.cw-plot-composition-strip .cw-plot-profile-band-7 { fill: var(--cw-plot-profile-7); }
+.cw-plot-composition-strip .cw-plot-profile-band-8 { fill: var(--cw-plot-profile-8); }
+.cw-plot-composition-strip .cw-plot-profile-band-9 { fill: var(--cw-plot-profile-9); }
 .cw-plot-composition-strip .cw-plot-composition-segment.is-excluded {
   fill: var(--cw-plot-excluded);
 }
@@ -165,7 +185,6 @@
 .cw-plot-point.is-pinned,
 .cw-plot-bar.is-pinned,
 .cw-plot-plane-witness.is-pinned,
-.cw-plot-roster-dot.is-pinned,
 .cw-plot-composition-segment.is-pinned {
   stroke: var(--cw-plot-selected, var(--cw-plot-ramp-4));
   stroke-width: 2.6;
@@ -201,33 +220,17 @@
 }
 
 .cw-plot-plane-witness {
-  fill: var(--cw-plot-point);
+  fill: var(--cw-plot-witness, var(--cw-plot-observed, var(--cw-plot-point)));
   stroke: var(--panel-bg);
   stroke-width: 1.4;
-  fill-opacity: 0.86;
+  fill-opacity: 1;
   transform-box: fill-box;
   transform-origin: center;
 }
 
-.cw-plot-plane-witness.is-witness-core {
-  fill: var(--cw-plot-witness-core, var(--accent-color));
-}
-
-.cw-plot-plane-witness.is-witness-loud-local {
-  fill: var(--cw-plot-witness-loud-local, var(--cw-warning-text));
-}
-
-.cw-plot-plane-witness.is-witness-quiet-even {
-  fill: var(--cw-plot-witness-quiet-even, var(--cw-category-mixed-text));
-}
-
-.cw-plot-plane-witness.is-witness-rare-local {
-  fill: var(--cw-plot-witness-rare-local, var(--cw-danger-text));
-}
-
 .cw-plot-plane-marginal {
-  fill: var(--cw-plot-grid);
-  fill-opacity: 0.42;
+  fill: var(--cw-plot-observed, var(--cw-plot-point));
+  fill-opacity: 0.56;
 }
 
 [data-figure-palette="monochrome"] .cw-plot-plane-witness {
@@ -235,38 +238,8 @@
   stroke: var(--panel-bg);
 }
 
-.cw-plot-roster-guide {
-  stroke: var(--text-muted);
-  stroke-opacity: 0.24;
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.cw-plot-roster-zebra {
-  fill: var(--cw-plot-grid);
-  fill-opacity: 0.12;
-}
-
-.cw-plot-roster-dot {
-  fill: var(--cw-plot-point);
-  stroke: var(--panel-bg);
-  stroke-width: 1.4;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.cw-plot-roster-dot.is-dp-attention {
-  fill: var(--cw-plot-attention, var(--cw-plot-ramp-5));
-  stroke: var(--cw-plot-attention, var(--cw-plot-ramp-5));
-}
-
-.cw-plot-roster-dot.is-dp-observed {
-  fill: var(--cw-plot-point);
-}
-
 .cw-plot-point,
-.cw-plot-plane-witness,
-.cw-plot-roster-dot {
+.cw-plot-plane-witness {
   opacity: 0;
   transform: scale(0.82);
   animation: cw-plot-point-in 360ms ease-out forwards;

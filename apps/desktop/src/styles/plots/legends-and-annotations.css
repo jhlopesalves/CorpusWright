@@ -54,6 +54,11 @@
   fill: var(--cw-plot-composition-foreground-low, var(--text-color));
 }
 
+.cw-plot-composition-entry.is-wide[class*="cw-plot-profile-band-"] .cw-plot-composition-label,
+.cw-plot-composition-entry.is-medium[class*="cw-plot-profile-band-"] .cw-plot-composition-label.is-category {
+  fill: var(--cw-plot-profile-label, var(--panel-bg));
+}
+
 .cw-plot-label.is-external-rail {
   paint-order: stroke;
   stroke: var(--panel-bg);
@@ -213,31 +218,20 @@
   fill: var(--cw-plot-point);
 }
 
-.cw-plot-legend-swatch.is-witness-core {
-  fill: var(--cw-plot-witness-core, var(--accent-color));
-  stroke: var(--cw-plot-witness-core, var(--accent-color));
-}
-
-.cw-plot-legend-swatch.is-witness-loud-local {
-  fill: var(--cw-plot-witness-loud-local, var(--cw-warning-text));
-  stroke: var(--cw-plot-witness-loud-local, var(--cw-warning-text));
-}
-
-.cw-plot-legend-swatch.is-witness-quiet-even {
-  fill: var(--cw-plot-witness-quiet-even, var(--cw-category-mixed-text));
-  stroke: var(--cw-plot-witness-quiet-even, var(--cw-category-mixed-text));
-}
-
-.cw-plot-legend-swatch.is-witness-rare-local {
-  fill: var(--cw-plot-witness-rare-local, var(--cw-danger-text));
-  stroke: var(--cw-plot-witness-rare-local, var(--cw-danger-text));
+.cw-plot-legend-swatch:is(.is-witness-core, .is-witness-loud-local, .is-witness-quiet-even, .is-witness-rare-local) {
+  fill: var(--cw-plot-witness, var(--cw-plot-observed, var(--cw-plot-point)));
+  stroke: var(--panel-bg);
 }
 
 .cw-plot-cumulative-callout {
-  fill: var(--cw-plot-reference, var(--cw-plot-fit));
-  fill-opacity: 0.1;
-  stroke: var(--cw-plot-reference, var(--cw-plot-fit));
-  stroke-width: 1.2;
+  fill: var(--cw-plot-callout-surface, var(--cw-surface-subtle));
+  stroke: var(--cw-plot-callout-border, var(--border-color));
+  stroke-width: 1;
+}
+
+.cw-plot-cumulative-callout-accent {
+  fill: var(--cw-plot-observed, var(--cw-plot-point));
+  stroke: none;
 }
 
 .cw-plot-cumulative-callout-title {
@@ -269,27 +263,6 @@
 .cw-plot-zero-token-summary-count {
   fill: var(--text-color);
   font-weight: var(--cw-weight-semibold);
-}
-
-.cw-plot-roster-token {
-  fill: var(--text-color);
-  font-family: var(--cw-font-sans);
-  font-weight: var(--cw-weight-semibold);
-}
-
-.cw-plot-roster-number {
-  fill: var(--text-muted);
-  font-family: var(--cw-font-sans);
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--cw-weight-regular);
-}
-
-.cw-plot-roster-header {
-  fill: var(--text-muted);
-  font-family: var(--cw-font-sans);
-  font-size: var(--cw-type-plot-micro-size);
-  font-weight: var(--cw-weight-bold);
-  letter-spacing: 0.055em;
 }
 
 @media (max-width: 700px) {

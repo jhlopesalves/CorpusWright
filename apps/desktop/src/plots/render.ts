@@ -11,7 +11,6 @@ import type {
   DispersionGeometry,
   DistributionDiagnosticGeometry,
   DispersionPlaneGeometry,
-  DispersionRosterGeometry,
   LengthHistogramGeometry,
   LexicalSpectrumGeometry,
   MattrDistributionGeometry,
@@ -173,13 +172,15 @@ function renderDispersionCumulativeCallout(svg: SVGSVGElement, geometry: Dispers
   const callout = geometry.cumulativeCallout;
   const background = createSvgElement("rect");
   setAttrs(background, { x: callout.x, y: callout.y, width: callout.width, height: callout.height, rx: 5, class: "cw-plot-cumulative-callout" });
+  const accent = createSvgElement("rect");
+  setAttrs(accent, { x: callout.x, y: callout.y + 4, width: 3, height: callout.height - 8, rx: 1.5, class: "cw-plot-cumulative-callout-accent" });
   const title = createSvgElement("text");
   setAttrs(title, { x: callout.x + 12, y: callout.y + 17, class: "cw-plot-cumulative-callout-title" });
   title.textContent = callout.title;
   const detail = createSvgElement("text");
   setAttrs(detail, { x: callout.x + 12, y: callout.y + 33, class: "cw-plot-cumulative-callout-detail" });
   detail.textContent = callout.detail;
-  group.append(background, title, detail);
+  group.append(background, accent, title, detail);
   svg.appendChild(group);
 }
 
@@ -202,55 +203,6 @@ export function renderDispersionPlaneSvg(plotId: string, geometry: DispersionPla
   renderPlaneWitnessLegend(svg, geometry);
   renderInteractionLayer(svg, geometry.box, true);
   return svg;
-}
-
-export function renderDispersionRosterSvg(plotId: string, geometry: DispersionRosterGeometry): SVGSVGElement {
-  const svg = createBaseSvg(plotId, geometry.box);
-  renderDefinitions(svg, plotId);
-  renderAxes(svg, geometry.box, geometry.xScale, null, geometry.xTicks, [], {
-    x: "DP",
-    y: "",
-    valueAxis: "x",
-  });
-  renderRosterRowBackgrounds(svg, geometry);
-  for (const row of geometry.rows) renderLine(svg, row.guide);
-  renderLine(svg, geometry.thresholdLine);
-  renderLabels(svg, [
-    ...geometry.headers,
-    ...geometry.rows.flatMap((row) => [row.tokenLabel, row.frequencyLabel, row.documentsLabel]),
-    geometry.thresholdLabel,
-  ]);
-  renderRosterDots(svg, geometry);
-  renderRosterLegend(svg, geometry);
-  renderInteractionLayer(svg, geometry.box, false);
-  return svg;
-}
-
-function renderRosterLegend(svg: SVGSVGElement, geometry: DispersionRosterGeometry): void {
-  const group = createSvgElement("g");
-  group.setAttribute("class", "cw-plot-roster-legend");
-  geometry.legend.forEach((item, index) => {
-    const x = geometry.box.margin.left + index * 248;
-    const y = 43;
-    const swatch = renderLegendSwatch(item, x, y);
-    const label = createSvgElement("text");
-    setAttrs(label, { x: x + 12, y: y + 4, class: "cw-plot-legend-label" });
-    label.textContent = item.label;
-    group.append(swatch, label);
-  });
-  svg.appendChild(group);
-}
-
-function renderRosterRowBackgrounds(svg: SVGSVGElement, geometry: DispersionRosterGeometry): void {
-  const group = createSvgElement("g");
-  group.setAttribute("class", "cw-plot-roster-backgrounds");
-  geometry.rows.forEach((row, index) => {
-    if (index % 2 === 0) return;
-    const rect = createSvgElement("rect");
-    setAttrs(rect, { x: 12, y: row.y - 10, width: geometry.box.width - 24, height: 20, class: "cw-plot-roster-zebra" });
-    group.appendChild(rect);
-  });
-  svg.appendChild(group);
 }
 
 export function renderLengthHistogramSvg(plotId: string, geometry: LengthHistogramGeometry): SVGSVGElement {
@@ -913,7 +865,7 @@ export function renderCompositionStrip(svg: SVGSVGElement, geometry: Composition
     });
     group.appendChild(rect);
     const entry = createSvgElement("g");
-    entry.setAttribute("class", `cw-plot-composition-entry cw-plot-ramp-${segment.datum.rampIndex}${segment.pinned ? " is-pinned" : ""}`);
+    entry.setAttribute("class", `cw-plot-composition-entry cw-plot-ramp-${segment.datum.rampIndex} ${segment.datum.className ?? ""}${segment.pinned ? " is-pinned" : ""}`.trim());
     entry.dataset.segmentIndex = String(index);
     entry.dataset.segmentX = String(segment.x);
     entry.dataset.segmentY = String(segment.y);
@@ -922,7 +874,7 @@ export function renderCompositionStrip(svg: SVGSVGElement, geometry: Composition
     const marker = createSvgElement("circle");
     setAttrs(marker, {
       r: 3.5,
-      class: `cw-plot-composition-entry-marker cw-plot-ramp-${segment.datum.rampIndex}`,
+      class: `cw-plot-composition-entry-marker cw-plot-ramp-${segment.datum.rampIndex} ${segment.datum.className ?? ""}`.trim(),
     });
     const category = createSvgElement("text");
     setAttrs(category, { class: "cw-plot-composition-label is-category", "text-anchor": "middle" });
@@ -1082,38 +1034,6 @@ function renderPlaneWitnesses(svg: SVGSVGElement, geometry: DispersionPlaneGeome
       style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms;`,
     });
     group.appendChild(mark);
-  });
-  svg.appendChild(group);
-}
-
-function renderRosterDots(svg: SVGSVGElement, geometry: DispersionRosterGeometry): void {
-  const group = createSvgElement("g");
-  group.setAttribute("class", "cw-plot-roster-dots");
-  geometry.rows.forEach((row, index) => {
-    const point = row.point;
-    const circle = createSvgElement("circle");
-    setAttrs(circle, {
-      cx: point.x,
-      cy: point.y,
-      r: 4.5,
-      class: [
-        "cw-plot-roster-dot",
-        point.className ?? "",
-        point.pinned ? "is-pinned" : "",
-        "cw-plot-hover-target",
-      ].filter(Boolean).join(" "),
-      tabindex: "-1",
-      role: "button",
-      "aria-label": point.tooltipTitle ?? "",
-      "aria-pressed": String(Boolean(point.pinned)),
-      "data-pin-key": point.key,
-      "data-plot-x": point.x,
-      "data-plot-y": point.y,
-      "data-tooltip-title": point.tooltipTitle ?? "",
-      "data-tooltip-rows": (point.tooltipRows ?? []).join("\n"),
-      style: `--cw-plot-stagger: ${Math.min(index, 30) * 12}ms;`,
-    });
-    group.appendChild(circle);
   });
   svg.appendChild(group);
 }

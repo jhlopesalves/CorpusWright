@@ -63,6 +63,7 @@ for (const browserAssertion of [
   "residual point outside fitted population",
   "lexical authored annotation outside SVG bounds",
   "dispersion witness label overlaps density legend",
+  "automatic dispersion label overlaps threshold text",
 ]) {
   assert(fixture.includes(browserAssertion), `missing browser assertion: ${browserAssertion}`);
 }

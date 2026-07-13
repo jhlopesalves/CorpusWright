@@ -2,7 +2,6 @@ import {
   buildCoverageGeometry,
   buildDispersionGeometry,
   buildDispersionPlaneGeometry,
-  buildDispersionRosterGeometry,
   buildLengthHistogramGeometry,
   buildLexicalSpectrumGeometry,
   buildMattrDistributionGeometry,
@@ -15,7 +14,6 @@ import {
   findMilestoneShare,
   formatDispersionPlaneStats,
   formatDispersionProfileStats,
-  formatDispersionRosterStats,
   formatLengthHistogramStats,
   formatMattrDistributionStats,
   formatUniversalTypeCaption,
@@ -297,7 +295,7 @@ const densityCell = dispersionPlane.cells.find((cell) => cell.count === 4);
 assert(densityCell !== undefined, "Dispersion plane fixture should include the count-4 density cell");
 const expectedDensityT = Math.log1p(4) / Math.log1p(9);
 assertClose(densityCell.t, expectedDensityT, "Dispersion plane density t should use the log-scaled cell count");
-assertClose(densityCell.opacity, 0.1 + (0.82 * expectedDensityT), "Dispersion plane opacity should follow the specified formula");
+assertClose(densityCell.opacity, 0.82 + (0.18 * expectedDensityT), "Dispersion plane opacity should remain visually stable across positive cells");
 const decadeTickLabels = dispersionPlane.xTicks.filter((tick) => tick.major).map((tick) => tick.label);
 assert(
   ["1", "10", "100", "1k", "10k", "100k"].every((label) => decadeTickLabels.includes(label))
@@ -314,7 +312,7 @@ assert(
   "Dispersion plane witness placement should carry point and box obstacles",
 );
 assert(
-  dispersionPlane.labels.length <= 7
+  dispersionPlane.labels.length <= 4
     && dispersionPlane.labels.filter((label) => label.text === "folio").length <= 1,
   "Dispersion plane should enforce the category-specific automatic label budget",
 );
@@ -332,42 +330,6 @@ assert(
   formatDispersionPlaneStats(100, 48, 32, 2, 1_000, 0.5)
     === "100 types · grid 48×32 · 2 loud-but-local (f ≥ 1k, DP ≥ 0.5)",
   "Dispersion plane stats caption should use the exact computed template",
-);
-
-const dispersionRoster = buildDispersionRosterGeometry({
-  entries: [
-    { token: "the", frequency: 1_000, documentFrequency: 10, dp: 0.12 },
-    { token: "chapter", frequency: 900, documentFrequency: 2, dp: 0.64 },
-    { token: "boilerplate", frequency: 800, documentFrequency: 1, dp: 0.5 },
-  ],
-  highDispersionThreshold: 0.5,
-  box: createPlotBox(520, 150, { top: 34, right: 48, bottom: 58, left: 156 }),
-});
-assert(
-  dispersionRoster.rows.map((row) => row.entry.token).join(",") === "the,chapter,boilerplate",
-  "Dispersion roster should preserve descending-frequency payload order",
-);
-assert(
-  dispersionRoster.rows[0]?.point.rampIndex === 2
-    && dispersionRoster.rows[1]?.point.rampIndex === 5
-    && dispersionRoster.rows[2]?.point.rampIndex === 5,
-  "Dispersion roster should use the hottest ramp stop only at or above the DP threshold",
-);
-assert(dispersionRoster.aboveThresholdCount === 2, "Dispersion roster should count rows at or above DP 0.5");
-assertClose(
-  dispersionRoster.rows[1]!.y - dispersionRoster.rows[0]!.y,
-  22,
-  "Dispersion roster should retain a readable row pitch at the shared label scale",
-);
-assert(
-  formatDispersionRosterStats(3, 3, dispersionRoster.aboveThresholdCount, 0.5)
-    === "top 3 types by frequency · 2 at/above DP 0.5",
-  "Dispersion roster stats caption should report the threshold count",
-);
-assert(
-  formatDispersionRosterStats(2, 3, 1, 0.5)
-    === "shown 2 of 3 frequent types · 1 at/above DP 0.5",
-  "Filtered dispersion roster stats should state the shown count against the shipped count",
 );
 
 const lengthHistogram = buildLengthHistogramGeometry({

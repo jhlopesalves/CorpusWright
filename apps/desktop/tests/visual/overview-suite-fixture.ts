@@ -1,9 +1,7 @@
 import {
   createOverviewFigure,
   createOverviewRangeControl,
-  createOverviewSelectControl,
   createOverviewSegmentedControl,
-  createOverviewToggleControl,
   overviewFigureSvgString,
   replaceFigureSvg,
 } from "../../src/plots/figure";
@@ -18,7 +16,6 @@ import {
   buildCoverageGeometry,
   buildDispersionGeometry,
   buildDispersionPlaneGeometry,
-  buildDispersionRosterGeometry,
   buildDistributionDiagnosticGeometry,
   buildLexicalSpectrumGeometry,
   buildRankFrequencyGeometry,
@@ -29,7 +26,6 @@ import {
 import {
   renderCoverageSvg,
   renderDispersionPlaneSvg,
-  renderDispersionRosterSvg,
   renderDispersionSvg,
   renderDistributionDiagnosticSvg,
   renderLexicalSpectrumSvg,
@@ -44,7 +40,6 @@ const switchTo = params.get("switchTo");
 let auditedView = view;
 const theme = params.get("theme") ?? "corpus-light";
 const target = params.get("target") ?? "0.5";
-const rows = Number(params.get("rows") ?? "20");
 const customBins = params.get("customBins") === "true";
 const pinned = params.get("pinned") === "true";
 const exportMode = params.get("export") === "true";
@@ -118,7 +113,6 @@ function buildFixtureFigure(name: string, selectedView: string): BuiltFigure {
   if (name === "lexical") return buildLexicalFigure();
   if (name === "coverage") return buildCoverageFigure();
   if (name === "profile") return buildProfileFigure();
-  if (name === "roster") return buildRosterFigure();
   if (name === "plane") return buildPlaneFigure();
   throw new Error(`Unknown fixture figure: ${name}`);
 }
@@ -366,7 +360,7 @@ function buildProfileFigure(): BuiltFigure {
   const id: OverviewFigureId = "overview-dispersion-profile";
   const controller = fixtureController(id, {});
   if (pinned) controller.togglePin("dispersion-reach-band-8");
-  const counts = [211_271, 14_610, 12_420, 10_210, 8_500, 7_200, 6_100, 5_000, 3_800, 0];
+  const counts = [165_000, 80_000, 12_000, 8_500, 6_500, 5_000, 4_000, 3_000, 1_500, 0];
   const total = counts.reduce((sum, count) => sum + count, 0);
   const renderSvg = () => renderDispersionSvg(id, buildDispersionGeometry({
     buckets: counts.map((count, index) => ({
@@ -395,55 +389,6 @@ function buildProfileFigure(): BuiltFigure {
     controller,
     layoutFamily: "profile",
     exportMetadata: () => ["Exclusive document-reach bands · type-count scale"],
-    renderSvg,
-  });
-  return { figure, controller };
-}
-
-function buildRosterFigure(): BuiltFigure {
-  const id: OverviewFigureId = "overview-dispersion-roster";
-  const controller = fixtureController(id, { sort: "frequency", stopwords: "show", rows });
-  if (pinned) controller.togglePin("roster:token-7");
-  const entries = Array.from({ length: 100 }, (_, index) => ({
-    token: index === 7 ? "a-very-long-pinned-token-label" : `token-${index + 1}`,
-    frequency: 80_000 - index * 701,
-    documentFrequency: 100 - index % 94,
-    dp: ((index * 37) % 100) / 100,
-  }));
-  const controls = document.createElement("div");
-  controls.append(
-    createOverviewSelectControl("Sort", [
-      { value: "frequency", label: "Frequency" }, { value: "dp", label: "DP" },
-      { value: "documentFrequency", label: "Document frequency" },
-    ], "frequency", () => undefined),
-    createOverviewToggleControl("Stopwords", true, () => undefined),
-  );
-  const progressive = document.createElement("div");
-  progressive.className = "cw-overview-result-controls";
-  for (const label of rows > 20 ? ["Show fewer"] : ["Show 30 more", "Show all up to 100"]) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = label;
-    progressive.appendChild(button);
-  }
-  controls.appendChild(progressive);
-  const renderSvg = () => renderDispersionRosterSvg(id, buildDispersionRosterGeometry({
-    entries: entries.slice(0, Math.min(100, rows)),
-    highDispersionThreshold: 0.5,
-    totalTokens: 2_000_000,
-    totalDocuments: 100,
-    pinnedKeys: controller.pins,
-  }));
-  const figure = createOverviewFigure({
-    id,
-    title: "Dispersion roster",
-    subtitle: "Which frequent types are corpus-wide, and which are locally concentrated?",
-    captionStats: `${Math.min(rows, 100)} of 100 frequent types · DP threshold 0.50`,
-    captionReading: "Frequency does not imply wide distribution; the threshold is descriptive rather than inferential.",
-    controls,
-    controller,
-    layoutFamily: "roster",
-    exportMetadata: () => [`Top ${Math.min(rows, 100)} frequent types · sorted by frequency · stopwords shown`],
     renderSvg,
   });
   return { figure, controller };
@@ -634,13 +579,6 @@ function auditFigure(figure: HTMLElement): string[] {
       if (rectanglesOverlap(callout.getBoundingClientRect(), text.getBoundingClientRect(), 2)) failures.push("callout overlaps composition rail");
     }
   }
-  const rosterHeaders = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-roster-header"));
-  const rosterLegendLabels = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-roster-legend .cw-plot-legend-label"));
-  for (const header of rosterHeaders) {
-    for (const legend of rosterLegendLabels) {
-      if (rectanglesOverlap(header.getBoundingClientRect(), legend.getBoundingClientRect(), 1)) failures.push("roster header overlaps legend");
-    }
-  }
   const legends = Array.from(svg.querySelectorAll<SVGGElement>(".cw-plot-legend, .cw-plot-density-legend, .cw-plot-witness-legend"));
   const priorityMarks = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-hover-target.is-pinned"));
   for (const legend of legends) {
@@ -738,13 +676,27 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
     }
   }
   if (figureName === "profile") {
-    assertDistinctFills(".cw-plot-composition-segment", 3, "dispersion profile composition strip");
+    assertDistinctFills(".cw-plot-composition-segment", 8, "dispersion profile ten-band composition strip");
     assertPaint(".cw-plot-point", "fill", "dispersion profile endpoint", rejectBrowserBlack);
-    assertDistinctFills(".cw-plot-point", 4, "dispersion profile ordered endpoints");
+    assertDistinctFills(".cw-plot-point:not(.is-excluded)", 8, "dispersion profile ordered endpoints");
+    const internalEntries = Array.from(svg.querySelectorAll<SVGGElement>(".cw-plot-composition-entry.is-wide"))
+      .filter((entry) => Array.from(entry.querySelectorAll<SVGTextElement>(".cw-plot-composition-label"))
+        .every((label) => getComputedStyle(label).display !== "none" && Boolean(label.textContent?.trim())));
+    if (internalEntries.length < 2) failures.push("two widest profile segments do not retain category and value internally");
+    const callout = svg.querySelector<SVGRectElement>(".cw-plot-cumulative-callout");
+    if (!callout || isWarmPaint(getComputedStyle(callout).fill) || isWarmPaint(getComputedStyle(callout).stroke)) failures.push("dispersion callout retains warning paint");
   }
   if (figureName === "plane") {
-    assertDistinctFills(".cw-plot-density-cell:not(.is-zero)", 4, "dispersion plane density");
-    if (rejectBrowserBlack) assertDistinctFills(".cw-plot-plane-witness", 4, "dispersion plane witnesses");
+    assertDistinctFills(".cw-plot-density-cell:not(.is-zero)", 5, "dispersion plane density");
+    const positiveCells = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-density-cell:not(.is-zero)"));
+    const positiveOpacities = positiveCells.map((cell) => Number(getComputedStyle(cell).opacity)).sort((left, right) => left - right);
+    if ((positiveOpacities[Math.floor(positiveOpacities.length / 2)] ?? 0) < 0.8) failures.push("dispersion density median opacity is below 0.8");
+    const witnessFills = new Set(Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-plane-witness")).map((witness) => getComputedStyle(witness).fill));
+    if (witnessFills.size !== 1) failures.push("dispersion witness classes do not share one base colour");
+    const witnessShapes = new Set(Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-plane-witness")).map((witness) => witness.dataset.pointShape));
+    if (witnessShapes.size !== 4) failures.push("dispersion witness classes do not retain four shapes");
+    const pinnedWitness = svg.querySelector<SVGGraphicsElement>(".cw-plot-plane-witness.is-pinned");
+    if (pinnedWitness && Number(getComputedStyle(pinnedWitness).strokeWidth.replace("px", "")) < 2.5) failures.push("pinned witness lacks a distinct outer selection treatment");
     const legendSteps = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-density-legend-step"));
     const legendFills = legendSteps.map((step) => getComputedStyle(step).fill);
     if (legendSteps.length !== 6 || new Set(legendFills).size !== 6) failures.push("density legend does not expose the six-step scale");
@@ -856,6 +808,11 @@ function auditRecoveryGeometry(svg: SVGSVGElement, failures: string[]): void {
     if (legend && witnessLabels.some((label) => rectanglesOverlap(legend.getBoundingClientRect(), label.getBoundingClientRect(), 2))) {
       failures.push("dispersion witness label overlaps density legend");
     }
+    const automaticWitnessLabels = witnessLabels.filter((label) => !label.classList.contains("is-pinned"));
+    const thresholdLabels = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-label-mono.cw-plot-label-muted"));
+    if (automaticWitnessLabels.some((label) => thresholdLabels.some((threshold) => rectanglesOverlap(label.getBoundingClientRect(), threshold.getBoundingClientRect(), 2)))) {
+      failures.push("automatic dispersion label overlaps threshold text");
+    }
   }
 }
 
@@ -879,6 +836,11 @@ function isVisiblePaint(value: string): boolean {
 
 function isPureBlack(value: string): boolean {
   return /^(?:rgb\(0,\s*0,\s*0\)|rgba\(0,\s*0,\s*0,\s*1\)|#000(?:000)?)$/i.test(value.trim());
+}
+
+function isWarmPaint(value: string): boolean {
+  const channels = value.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+  return Boolean(channels && channels[0]! > channels[1]! * 1.08 && channels[0]! > channels[2]! * 1.08);
 }
 
 function rectanglesOverlap(left: DOMRect, right: DOMRect, gap = 0): boolean {

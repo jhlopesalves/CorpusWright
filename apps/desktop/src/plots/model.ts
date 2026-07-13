@@ -411,36 +411,6 @@ export interface DispersionPlaneGeometry {
   xAxisLabel: string;
 }
 
-export interface DispersionRosterEntryDatum {
-  token: string;
-  frequency: number;
-  documentFrequency: number;
-  dp: number;
-}
-
-export interface DispersionRosterRowGeometry {
-  entry: DispersionRosterEntryDatum;
-  y: number;
-  guide: PlotLineGeometry;
-  point: PlotPointGeometry<DispersionRosterEntryDatum>;
-  tokenLabel: PlotLabelGeometry;
-  frequencyLabel: PlotLabelGeometry;
-  documentsLabel: PlotLabelGeometry;
-  aboveThreshold: boolean;
-}
-
-export interface DispersionRosterGeometry {
-  box: PlotBox;
-  xScale: PlotScale;
-  xTicks: PlotTick[];
-  rows: DispersionRosterRowGeometry[];
-  thresholdLine: PlotLineGeometry;
-  thresholdLabel: PlotLabelGeometry;
-  aboveThresholdCount: number;
-  headers: PlotLabelGeometry[];
-  legend: PlotLegendItem[];
-}
-
 export interface LengthHistogramBinDatum {
   lowerTokens: number;
   upperTokens: number | null;
@@ -588,20 +558,18 @@ export const ANNOTATION_LABEL_FONT_SIZE = 11.5;
 export const MONO_SMALL_LABEL_FONT_SIZE = ANNOTATION_LABEL_FONT_SIZE;
 const LABEL_WIDTH_FACTOR = 0.62;
 const LABEL_LINE_HEIGHT_FACTOR = 1.3;
-const DENSITY_CELL_LABEL_OBSTACLE_OPACITY = 0.52;
+const DENSITY_CELL_LABEL_OBSTACLE_T = 0.52;
 const QUADRANT_PILL_HEIGHT = 20;
 const QUADRANT_PILL_PADDING_X = 10;
-const DISPERSION_ROSTER_ROW_PITCH = 22;
 const WITNESS_KIND_CONTRACT: Record<DispersionWitnessKind, {
   label: string;
   shape: PlotPointShape;
   className: string;
-  rampIndex: number;
 }> = {
-  core: { label: "Core vocabulary", shape: "circle", className: "is-witness-core", rampIndex: 1 },
-  loudButLocal: { label: "Loud but local", shape: "diamond", className: "is-witness-loud-local", rampIndex: 5 },
-  quietAndEven: { label: "Quiet and even", shape: "square", className: "is-witness-quiet-even", rampIndex: 3 },
-  rareAndLocal: { label: "Rare and local", shape: "triangle", className: "is-witness-rare-local", rampIndex: 4 },
+  core: { label: "Core vocabulary", shape: "circle", className: "is-witness-core" },
+  loudButLocal: { label: "Loud but local", shape: "diamond", className: "is-witness-loud-local" },
+  quietAndEven: { label: "Quiet and even", shape: "square", className: "is-witness-quiet-even" },
+  rareAndLocal: { label: "Rare and local", shape: "triangle", className: "is-witness-rare-local" },
 };
 
 export function createPlotBox(
@@ -1655,7 +1623,8 @@ export function buildDispersionGeometry(options: {
     const plotValue = value(bucket);
     const share = bucket.share ?? (totalTypes > 0 ? bucket.count / totalTypes : 0);
     const documentBounds = dispersionReachBounds(bucket, options.totalDocuments);
-    const rampIndex = buckets.length <= 1 ? 2 : Math.round((index / Math.max(1, buckets.length - 1)) * 5);
+    const profileIndex = buckets.length <= 1 ? 5 : Math.round((index / Math.max(1, buckets.length - 1)) * 9);
+    const rampIndex = Math.round((profileIndex / 9) * 5);
     const key = `dispersion-reach-${bucket.key}`;
     return {
       x: plotValue > 0 ? scaleValue(xScale, plotValue) : scaleValue(xScale, xScale.domain[0]),
@@ -1664,6 +1633,7 @@ export function buildDispersionGeometry(options: {
       rawY: index,
       datum: bucket,
       rampIndex,
+      className: `cw-plot-profile-band-${profileIndex}`,
       excluded: bucket.count === 0,
       key,
       pinned: options.pinnedKeys?.has(key) ?? false,
@@ -1682,7 +1652,7 @@ export function buildDispersionGeometry(options: {
     y1: point.y,
     x2: point.x,
     y2: point.y,
-    className: `cw-plot-lollipop-stem cw-plot-ramp-${point.rampIndex}`,
+    className: `cw-plot-lollipop-stem cw-plot-ramp-${point.rampIndex} ${point.className ?? ""}`.trim(),
   }));
   const dividers: PlotLineGeometry[] = [];
   const dotAndStemObstacles = [
@@ -1750,9 +1720,10 @@ export function buildDispersionGeometry(options: {
           const bucket = point.datum;
           return {
             key: point.key!,
-            label: bucket.label,
+            label: dispersionReachBounds(bucket, options.totalDocuments).documents,
             count: bucket.count,
             rampIndex: point.rampIndex,
+            className: point.className,
             tooltipRows: [
               `documents ${dispersionReachBounds(bucket, options.totalDocuments).documents}`,
               `corpus reach ${dispersionReachBounds(bucket, options.totalDocuments).percentage}`,
@@ -1894,7 +1865,7 @@ export function buildDispersionPlaneGeometry(options: {
       rawX,
       rawY,
       datum: witness,
-      rampIndex: witnessKindRampIndex(witness.kind),
+      rampIndex: 2,
       shape: witnessKindShape(witness.kind),
       className: witnessKindClassName(witness.kind),
       key,
@@ -1910,7 +1881,7 @@ export function buildDispersionPlaneGeometry(options: {
     };
   });
   const denseCellObstacles = cells
-    .filter((cell) => cell.opacity >= DENSITY_CELL_LABEL_OBSTACLE_OPACITY)
+    .filter((cell) => cell.t >= DENSITY_CELL_LABEL_OBSTACLE_T)
     .map((cell) => ({ kind: "box" as const, box: { x: cell.x, y: cell.y, width: cell.width, height: cell.height } }));
   const witnessDotObstacles = pointLabelObstacles(witnesses, 9);
   const thresholdObstacles: LabelObstacle[] = [
@@ -2004,165 +1975,6 @@ export function formatDispersionPlaneStats(
   highDispersionThreshold: number,
 ): string {
   return `${formatInteger(totalTypes)} types · grid ${formatInteger(xBins)}×${formatInteger(yBins)} · ${formatInteger(loudButLocalCount)} loud-but-local (f ≥ ${formatCompactFrequency(loudButLocalMinFrequency)}, DP ≥ ${formatFixed(highDispersionThreshold, 1)})`;
-}
-
-export function buildDispersionRosterGeometry(options: {
-  entries: DispersionRosterEntryDatum[];
-  highDispersionThreshold: number;
-  totalTokens?: number;
-  totalDocuments?: number;
-  pinnedKeys?: ReadonlySet<string>;
-  box?: PlotBox;
-}): DispersionRosterGeometry {
-  const rowCount = Math.max(1, options.entries.length);
-  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 142 + (rowCount * DISPERSION_ROSTER_ROW_PITCH), {
-    top: 84,
-    right: 224,
-    bottom: 58,
-    left: 188,
-  });
-  const xScale = createScale("linear", [0, 1], [
-    box.margin.left,
-    box.width - box.margin.right,
-  ]);
-  const thresholdX = scaleValue(xScale, options.highDispersionThreshold);
-  const thresholdLine = {
-    x1: thresholdX,
-    y1: box.margin.top,
-    x2: thresholdX,
-    y2: box.height - box.margin.bottom,
-    className: "cw-plot-threshold-line",
-  };
-  const thresholdLabel = {
-    x: thresholdX,
-    y: box.margin.top - 10,
-    text: `DP ${formatFixed(options.highDispersionThreshold, 2)} descriptive threshold`,
-    anchor: "middle" as const,
-    className: "cw-plot-label-mono cw-plot-label-muted",
-    fontSize: 10.5,
-  };
-  let aboveThresholdCount = 0;
-  const rows = options.entries.map((entry, index) => {
-    const y = box.margin.top + (DISPERSION_ROSTER_ROW_PITCH / 2) + (index * DISPERSION_ROSTER_ROW_PITCH);
-    const aboveThreshold = entry.dp >= options.highDispersionThreshold;
-    const key = `roster:${entry.token}`;
-    if (aboveThreshold) aboveThresholdCount += 1;
-    const point = {
-      x: scaleValue(xScale, clamp(entry.dp, 0, 1)),
-      y,
-      rawX: entry.dp,
-      rawY: index,
-      datum: entry,
-      rampIndex: aboveThreshold ? 5 : 2,
-      className: aboveThreshold ? "is-dp-attention" : "is-dp-observed",
-      key,
-      pinned: options.pinnedKeys?.has(key) ?? false,
-      tooltipTitle: entry.token,
-      tooltipRows: [
-        `frequency ${formatInteger(entry.frequency)}`,
-        options.totalTokens ? `rate ${formatFixed((entry.frequency / options.totalTokens) * 1_000_000, 2)} per million` : "",
-        `document frequency ${formatInteger(entry.documentFrequency)}`,
-        options.totalDocuments ? `document reach ${formatPercent(entry.documentFrequency / options.totalDocuments)}` : "",
-        `DP ${formatFixed(entry.dp, 3)}`,
-      ].filter(Boolean),
-    };
-    return {
-      entry,
-      y,
-      guide: {
-        x1: 14,
-        y1: y,
-        x2: box.width - 14,
-        y2: y,
-        className: "cw-plot-roster-guide",
-      },
-      point,
-      tokenLabel: {
-        x: 18,
-        y: y + 4,
-        text: middleEllipsis(entry.token, 26),
-        anchor: "start" as const,
-        className: "cw-plot-roster-token",
-        fontSize: 10.5,
-        pinned: options.pinnedKeys?.has(key) ?? false,
-      },
-      frequencyLabel: {
-        x: box.width - 112,
-        y: y + 4,
-        text: formatInteger(entry.frequency),
-        anchor: "end" as const,
-        className: "cw-plot-roster-number",
-        fontSize: 10.5,
-      },
-      documentsLabel: {
-        x: box.width - 18,
-        y: y + 4,
-        text: formatInteger(entry.documentFrequency),
-        anchor: "end" as const,
-        className: "cw-plot-roster-number",
-        fontSize: 10.5,
-      },
-      aboveThreshold,
-    };
-  });
-  return {
-    box,
-    xScale,
-    xTicks: [0, 0.25, 0.5, 0.75, 1].map((value) => ({
-      value,
-      position: scaleValue(xScale, value),
-      label: formatDpTick(value),
-      major: true,
-    })),
-    rows,
-    thresholdLine,
-    thresholdLabel,
-    aboveThresholdCount,
-    headers: [
-      { x: 18, y: 20, text: "TOKEN", anchor: "start", className: "cw-plot-roster-header" },
-      { x: box.margin.left, y: 20, text: "DP PLOTTING LANE", anchor: "start", className: "cw-plot-roster-header" },
-      { x: box.width - 112, y: 20, text: "FREQUENCY", anchor: "end", className: "cw-plot-roster-header" },
-      { x: box.width - 18, y: 20, text: "DOCUMENTS", anchor: "end", className: "cw-plot-roster-header" },
-    ],
-    legend: [
-      { label: "Below descriptive DP threshold", kind: "point", className: "is-dp-observed" },
-      { label: "At or above descriptive DP threshold", kind: "point", className: "is-dp-attention" },
-    ],
-  };
-}
-
-export type DispersionRosterSort = "frequency" | "dp" | "documentFrequency";
-
-export function selectDispersionRosterEntries(options: {
-  entries: DispersionRosterEntryDatum[];
-  sort: DispersionRosterSort;
-  rows: number;
-}): DispersionRosterEntryDatum[] {
-  const numericValue = (entry: DispersionRosterEntryDatum): number => {
-    if (options.sort === "dp") return entry.dp;
-    if (options.sort === "documentFrequency") return entry.documentFrequency;
-    return entry.frequency;
-  };
-  return [...options.entries]
-    .sort((left, right) => numericValue(right) - numericValue(left) || compareTokens(left.token, right.token))
-    .slice(0, Math.max(0, options.rows));
-}
-
-function compareTokens(left: string, right: string): number {
-  if (left === right) return 0;
-  return left < right ? -1 : 1;
-}
-
-export function formatDispersionRosterStats(
-  shownCount: number,
-  shippedCount: number,
-  aboveThresholdCount: number,
-  highDispersionThreshold: number,
-): string {
-  const countText = shownCount === shippedCount
-    ? `top ${formatInteger(shownCount)} types by frequency`
-    : `shown ${formatInteger(shownCount)} of ${formatInteger(shippedCount)} frequent types`;
-  return `${countText} · ${formatInteger(aboveThresholdCount)} at/above DP ${formatDpThreshold(highDispersionThreshold)}`;
 }
 
 export function buildDistributionDiagnosticGeometry(options: {
@@ -2778,7 +2590,7 @@ function buildDispersionPlaneCells(
     const t = densityMode === "linear"
       ? count / maxCellCount
       : Math.log1p(count) / Math.log1p(maxCellCount);
-    const opacity = count === 0 ? 0 : 0.1 + (0.82 * t);
+    const opacity = count === 0 ? 0 : 0.82 + (0.18 * t);
     const rawLower = 10 ** freqLowerLog;
     const rawUpper = 10 ** freqUpperLog;
     const frequencyRange = `${formatFrequencyRangeBoundary(rawLower)}–${formatFrequencyRangeBoundary(rawUpper)}`;
@@ -2877,11 +2689,9 @@ function buildDispersionPlaneWitnessLabelRequests(
 function permanentDispersionPlaneWitnesses(
   witnesses: Array<PlotPointGeometry<DispersionWitnessDatum>>,
 ): Array<PlotPointGeometry<DispersionWitnessDatum>> {
-  const core = witnesses.filter((witness) => witness.datum.kind === "core").slice(0, 3);
-  const loudButLocal = witnesses.filter((witness) => witness.datum.kind === "loudButLocal").slice(0, 2);
-  const quietAndEven = witnesses.filter((witness) => witness.datum.kind === "quietAndEven").slice(0, 1);
-  const rareAndLocal = witnesses.filter((witness) => witness.datum.kind === "rareAndLocal").slice(0, 1);
-  return [...core, ...loudButLocal, ...quietAndEven, ...rareAndLocal].slice(0, 7);
+  return (Object.keys(WITNESS_KIND_CONTRACT) as DispersionWitnessKind[])
+    .flatMap((kind) => witnesses.find((witness) => witness.datum.kind === kind) ?? [])
+    .slice(0, 4);
 }
 
 function witnessKindShape(kind: DispersionWitnessKind): PlotPointShape {
@@ -2890,10 +2700,6 @@ function witnessKindShape(kind: DispersionWitnessKind): PlotPointShape {
 
 function witnessKindClassName(kind: DispersionWitnessKind): string {
   return WITNESS_KIND_CONTRACT[kind].className;
-}
-
-function witnessKindRampIndex(kind: DispersionWitnessKind): number {
-  return WITNESS_KIND_CONTRACT[kind].rampIndex;
 }
 
 function witnessKindLabel(kind: DispersionWitnessKind): string {
@@ -3011,10 +2817,10 @@ function dispersionPlaneDecadeTicks(
 
 function densityRampFill(t: number): string {
   const clamped = clamp(t, 0, 1);
-  if (clamped <= 0) return "var(--cw-plot-density-1, var(--cw-plot-ramp-1))";
+  if (clamped <= 0) return "var(--cw-plot-density-0, var(--cw-plot-ramp-0))";
   if (clamped >= 1) return "var(--cw-plot-density-5, var(--cw-plot-ramp-5))";
-  const scaled = clamped * 4;
-  const lower = Math.floor(scaled) + 1;
+  const scaled = clamped * 5;
+  const lower = Math.floor(scaled);
   const upper = Math.min(5, lower + 1);
   const upperWeight = (scaled - Math.floor(scaled)) * 100;
   const lowerWeight = 100 - upperWeight;
@@ -3025,16 +2831,6 @@ function formatCompactFrequency(value: number): string {
   if (value >= 1_000_000 && value % 1_000_000 === 0) return `${formatInteger(value / 1_000_000)}M`;
   if (value >= 1_000 && value % 1_000 === 0) return `${formatInteger(value / 1_000)}k`;
   return formatInteger(value);
-}
-
-function formatDpThreshold(value: number): string {
-  return formatFixed(value, value === 0 || value === 1 ? 0 : 1);
-}
-
-function formatDpTick(value: number): string {
-  if (value === 0 || value === 1) return formatFixed(value, 0);
-  if (value === 0.5) return formatFixed(value, 1);
-  return formatFixed(value, 2);
 }
 
 function formatFrequencyRangeBoundary(value: number): string {
@@ -3137,14 +2933,6 @@ function mattrTicks(domain: [number, number], scale: PlotScale): PlotTick[] {
     });
   }
   return ticks;
-}
-
-function middleEllipsis(value: string, maxLength: number): string {
-  if (value.length <= maxLength) return value;
-  const keep = Math.max(1, maxLength - 1);
-  const head = Math.ceil(keep / 2);
-  const tail = Math.floor(keep / 2);
-  return `${value.slice(0, head)}…${value.slice(value.length - tail)}`;
 }
 
 function roundSvg(value: number): string {
