@@ -2,6 +2,12 @@ import {
   attachPlotHover,
   serializeSvgWithResolvedTokens,
 } from "./render";
+import {
+  expandViewBoxForContent,
+  wrapSvgText,
+  type SvgBounds,
+  type SvgViewBox,
+} from "./figure-text";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 
@@ -9,12 +15,10 @@ import { dom } from "../dom";
 
 const FIGURE_COLLAPSE_STORAGE_KEY = "corpuswright.overview.figureCollapse";
 const SVG_NS = "http://www.w3.org/2000/svg";
-const FIGURE_SVG_TOP_INSET = 72;
-const FIGURE_SVG_BOTTOM_INSET = 62;
-const FIGURE_TITLE_FONT_SIZE = 17;
-const FIGURE_SUBTITLE_FONT_SIZE = 12.5;
-const FIGURE_STATS_FONT_SIZE = 12;
-const FIGURE_READING_FONT_SIZE = 11.5;
+const FIGURE_IDENTITY_HORIZONTAL_PADDING = 12;
+const FIGURE_IDENTITY_PLOT_GAP = 14;
+const FIGURE_IDENTITY_BLOCK_GAP = 6;
+const FIGURE_IDENTITY_BOUNDS_PADDING = 8;
 
 const figureMetadata = new WeakMap<HTMLElement, OverviewFigureOptions>();
 
@@ -191,13 +195,14 @@ export function overviewFigureSvgString(figure: HTMLElement): string | null {
   const options = figureMetadata.get(figure);
   if (!svg || !options) return null;
   const exportedSvg = svg.cloneNode(true) as SVGSVGElement;
-  decorateFigureSvg(exportedSvg, options);
+  prepareStaticExportClone(exportedSvg);
   const exportMount = document.createElement("div");
   exportMount.className = "cw-plot-export-mount";
   exportMount.style.setProperty("--cw-plot-export-width", `${svg.viewBox.baseVal.width || 720}px`);
   exportMount.appendChild(exportedSvg);
   figure.appendChild(exportMount);
   try {
+    decorateFigureSvg(exportedSvg, options);
     return serializeSvgWithResolvedTokens(exportedSvg);
   } finally {
     exportMount.remove();
@@ -225,47 +230,194 @@ function setFigureCollapsed(
 
 function decorateFigureSvg(svg: SVGSVGElement, options: OverviewFigureOptions): void {
   const viewBox = svg.viewBox.baseVal;
-  const width = viewBox.width || 720;
-  const height = viewBox.height || 360;
-  const detailInset = options.captionDetail ? 20 : 0;
-  svg.setAttribute("viewBox", `0 ${-FIGURE_SVG_TOP_INSET} ${width} ${height + FIGURE_SVG_TOP_INSET + FIGURE_SVG_BOTTOM_INSET + detailInset}`);
-  svg.setAttribute("aria-label", `${options.title}. ${options.subtitle}. ${options.captionStats}. ${options.captionReading}`);
+  const plot: SvgViewBox = {
+    x: viewBox.x,
+    y: viewBox.y,
+    width: viewBox.width || 720,
+    height: viewBox.height || 360,
+  };
+  const accessibleId = options.id.replace(/[^a-z0-9_-]+/gi, "-");
+  const titleId = `${accessibleId}-export-title`;
+  const descriptionId = `${accessibleId}-export-description`;
+  const accessibleTitle = document.createElementNS(SVG_NS, "title");
+  accessibleTitle.id = titleId;
+  accessibleTitle.textContent = options.title;
+  const accessibleDescription = document.createElementNS(SVG_NS, "desc");
+  accessibleDescription.id = descriptionId;
+  accessibleDescription.textContent = [
+    options.title,
+    options.subtitle,
+    options.captionStats,
+    options.captionDetail,
+    options.captionReading,
+  ].filter(Boolean).join(". ");
+  svg.prepend(accessibleTitle, accessibleDescription);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-labelledby", `${titleId} ${descriptionId}`);
+  svg.removeAttribute("aria-label");
 
   const identity = document.createElementNS(SVG_NS, "g");
   identity.setAttribute("class", "cw-plot-figure-identity");
   identity.setAttribute("aria-hidden", "true");
-
-  const title = createSvgText(0, -50, "cw-plot-figure-title", options.title);
-  title.setAttribute("font-size", String(FIGURE_TITLE_FONT_SIZE));
-  title.setAttribute("font-weight", "650");
-  const subtitle = createSvgText(0, -30, "cw-plot-figure-subtitle", options.subtitle);
-  subtitle.setAttribute("font-size", String(FIGURE_SUBTITLE_FONT_SIZE));
-  const stats = createSvgText(0, -11, "cw-plot-figure-stats", options.captionStats);
-  stats.setAttribute("font-size", String(FIGURE_STATS_FONT_SIZE));
+  const title = createSvgText("cw-plot-figure-title");
+  const subtitle = createSvgText("cw-plot-figure-subtitle");
+  const stats = createSvgText("cw-plot-figure-stats");
   const detail = options.captionDetail
-    ? createSvgText(0, height + 24, "cw-plot-figure-detail", options.captionDetail)
+    ? createSvgText("cw-plot-figure-detail")
     : null;
-  if (detail) detail.setAttribute("font-size", String(FIGURE_READING_FONT_SIZE));
-  const reading = createSvgText(
-    0,
-    height + (detail ? 45 : 24),
-    "cw-plot-figure-reading",
-    options.captionReading,
-  );
-  reading.setAttribute("font-size", String(FIGURE_READING_FONT_SIZE));
+  const reading = createSvgText("cw-plot-figure-reading");
   identity.append(title, subtitle, stats);
   if (detail) identity.append(detail);
   identity.append(reading);
   svg.appendChild(identity);
+
+  const textX = plot.x + FIGURE_IDENTITY_HORIZONTAL_PADDING;
+  const maxTextWidth = plot.width - (FIGURE_IDENTITY_HORIZONTAL_PADDING * 2);
+  const titleLayout = prepareTextLayout(title, options.title, maxTextWidth);
+  const subtitleLayout = prepareTextLayout(subtitle, options.subtitle, maxTextWidth);
+  const statsLayout = prepareTextLayout(stats, options.captionStats, maxTextWidth);
+  const detailLayout = detail && options.captionDetail
+    ? prepareTextLayout(detail, options.captionDetail, maxTextWidth)
+    : null;
+  const readingLayout = prepareTextLayout(reading, options.captionReading, maxTextWidth);
+
+  const topLayouts = [titleLayout, subtitleLayout, statsLayout];
+  const topHeight = totalTextHeight(topLayouts);
+  let topY = plot.y - FIGURE_IDENTITY_PLOT_GAP - topHeight;
+  const fallbackBounds: SvgBounds[] = [];
+  for (const layout of topLayouts) {
+    fallbackBounds.push(positionTextLayout(layout, textX, topY + layout.fontSize));
+    topY += textLayoutHeight(layout) + FIGURE_IDENTITY_BLOCK_GAP;
+  }
+
+  const bottomLayouts = [detailLayout, readingLayout].filter(
+    (layout): layout is PreparedTextLayout => layout !== null,
+  );
+  let bottomY = plot.y + plot.height + FIGURE_IDENTITY_PLOT_GAP;
+  for (const layout of bottomLayouts) {
+    fallbackBounds.push(positionTextLayout(layout, textX, bottomY + layout.fontSize));
+    bottomY += textLayoutHeight(layout) + FIGURE_IDENTITY_BLOCK_GAP;
+  }
+
+  const measuredBounds = [title, subtitle, stats, ...(detail ? [detail] : []), reading]
+    .map((element, index) => svgTextBounds(element) ?? fallbackBounds[index]!);
+  const expanded = expandViewBoxForContent(plot, measuredBounds, FIGURE_IDENTITY_BOUNDS_PADDING);
+  svg.setAttribute("viewBox", `${expanded.x} ${expanded.y} ${expanded.width} ${expanded.height}`);
+  const background = document.createElementNS(SVG_NS, "rect");
+  background.setAttribute("class", "cw-plot-export-background");
+  background.setAttribute("x", String(expanded.x));
+  background.setAttribute("y", String(expanded.y));
+  background.setAttribute("width", String(expanded.width));
+  background.setAttribute("height", String(expanded.height));
+  svg.insertBefore(background, accessibleDescription.nextSibling);
 }
 
-function createSvgText(x: number, y: number, className: string, text: string): SVGTextElement {
+function prepareStaticExportClone(svg: SVGSVGElement): void {
+  svg.classList.remove("is-hovering");
+  svg.classList.add("cw-plot-export-static");
+  for (const transient of svg.querySelectorAll(".cw-plot-crosshair-x, .cw-plot-crosshair-y, .cw-plot-tooltip")) {
+    transient.remove();
+  }
+  for (const target of svg.querySelectorAll<SVGElement>(".cw-plot-hover-target")) {
+    target.classList.remove("cw-plot-hover-target");
+    target.removeAttribute("tabindex");
+    target.removeAttribute("data-plot-x");
+    target.removeAttribute("data-plot-y");
+    target.removeAttribute("data-tooltip-title");
+    target.removeAttribute("data-tooltip-rows");
+  }
+  for (const element of [svg, ...Array.from(svg.querySelectorAll<SVGElement>("*"))]) {
+    const inlineStyle = element.getAttribute("style");
+    if (inlineStyle === null) continue;
+    const staticStyle = inlineStyle.split(";")
+      .map(declaration => declaration.trim())
+      .filter(Boolean)
+      .filter(declaration => !/^(?:--cw-plot-stagger|animation|animation-delay|transition)\s*:/.test(declaration))
+      .join("; ");
+    if (staticStyle) element.setAttribute("style", `${staticStyle};`);
+    else element.removeAttribute("style");
+  }
+}
+
+interface PreparedTextLayout {
+  element: SVGTextElement;
+  lines: string[];
+  widths: number[];
+  fontSize: number;
+  lineHeight: number;
+}
+
+function createSvgText(className: string): SVGTextElement {
   const element = document.createElementNS(SVG_NS, "text");
-  element.setAttribute("x", String(x));
-  element.setAttribute("y", String(y));
   element.setAttribute("class", className);
-  element.textContent = text;
   return element;
+}
+
+function prepareTextLayout(
+  element: SVGTextElement,
+  value: string,
+  maxWidth: number,
+): PreparedTextLayout {
+  const style = window.getComputedStyle(element);
+  const fontSize = cssPixelValue(style.fontSize, 12);
+  const lineHeight = cssPixelValue(style.lineHeight, fontSize * 1.35);
+  const measure = (candidate: string): number => {
+    element.textContent = candidate;
+    return element.getComputedTextLength();
+  };
+  const lines = wrapSvgText(value, maxWidth, measure);
+  const widths = lines.map(measure);
+  element.replaceChildren();
+  return { element, lines, widths, fontSize, lineHeight };
+}
+
+function positionTextLayout(
+  layout: PreparedTextLayout,
+  x: number,
+  firstBaseline: number,
+): SvgBounds {
+  layout.element.setAttribute("x", String(x));
+  layout.element.setAttribute("y", String(firstBaseline));
+  layout.lines.forEach((line, index) => {
+    const tspan = document.createElementNS(SVG_NS, "tspan");
+    tspan.setAttribute("x", String(x));
+    tspan.setAttribute("y", String(firstBaseline + (index * layout.lineHeight)));
+    tspan.textContent = line;
+    layout.element.appendChild(tspan);
+  });
+  return {
+    x,
+    y: firstBaseline - layout.fontSize,
+    width: Math.max(0, ...layout.widths),
+    height: textLayoutHeight(layout),
+  };
+}
+
+function totalTextHeight(layouts: PreparedTextLayout[]): number {
+  return layouts.reduce((total, layout) => total + textLayoutHeight(layout), 0)
+    + (Math.max(0, layouts.length - 1) * FIGURE_IDENTITY_BLOCK_GAP);
+}
+
+function textLayoutHeight(layout: PreparedTextLayout): number {
+  if (layout.lines.length === 0) return 0;
+  return layout.fontSize + ((layout.lines.length - 1) * layout.lineHeight);
+}
+
+function svgTextBounds(element: SVGTextElement): SvgBounds | null {
+  try {
+    const bounds = element.getBBox();
+    if ([bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite)) {
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    }
+  } catch {
+    // The logical line layout remains a deterministic fallback when SVG bounds are unavailable.
+  }
+  return null;
+}
+
+function cssPixelValue(value: string, fallback: number): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function appendCaptionStats(container: HTMLElement, value: string): void {

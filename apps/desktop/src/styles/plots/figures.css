@@ -3,7 +3,7 @@
 .analysis-panel h3,
 .document-length-distribution h4 {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: var(--cw-type-section-heading-size);
 }
 
 .cw-overview-figure {
@@ -40,7 +40,7 @@
 .cw-overview-figure-title-block h4 {
   margin: 0;
   color: var(--text-color);
-  font-size: 1.08rem;
+  font-size: var(--cw-type-plot-title-size);
   font-weight: var(--cw-weight-bold);
   line-height: 1.25;
 }
@@ -48,7 +48,7 @@
 .cw-overview-figure-title-block p {
   margin: 3px 0 0;
   color: var(--text-muted);
-  font-size: 0.84rem;
+  font-size: var(--cw-type-plot-subtitle-size);
   line-height: 1.4;
 }
 
@@ -74,7 +74,7 @@
   border-radius: 4px;
   background: var(--panel-bg);
   color: var(--text-color);
-  font: var(--cw-weight-semibold) 0.78rem/1.2 var(--cw-font-ui);
+  font: var(--cw-weight-semibold) var(--cw-type-control-size)/1.2 var(--cw-font-ui);
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
@@ -122,7 +122,7 @@
 .cw-overview-figure-stats {
   margin: 5px 0 0;
   font-family: var(--cw-font-mono);
-  font-size: 0.78rem;
+  font-size: var(--cw-type-caption-size);
   line-height: 1.4;
 }
 
@@ -137,7 +137,7 @@
 .cw-overview-figure-caption-reading,
 .cw-overview-figure-caption-detail {
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--cw-type-caption-size);
   line-height: 1.45;
 }
 
@@ -158,9 +158,16 @@
   pointer-events: none;
 }
 
+.cw-plot-export-background {
+  fill: var(--panel-bg);
+}
+
 .cw-plot-figure-title {
   fill: var(--text-color);
   font-family: var(--cw-font-ui);
+  font-size: var(--cw-type-plot-title-size);
+  font-weight: var(--cw-weight-semibold);
+  line-height: 1.25;
 }
 
 .cw-plot-figure-subtitle,
@@ -168,9 +175,23 @@
 .cw-plot-figure-reading {
   fill: var(--text-muted);
   font-family: var(--cw-font-ui);
+  font-weight: var(--cw-weight-regular);
+  line-height: 1.35;
+}
+
+.cw-plot-figure-subtitle {
+  font-size: var(--cw-type-plot-subtitle-size);
+}
+
+.cw-plot-figure-detail,
+.cw-plot-figure-reading {
+  font-size: var(--cw-type-plot-tick-size);
 }
 
 .cw-plot-figure-stats {
   fill: var(--text-color);
   font-family: var(--cw-font-mono);
+  font-size: var(--cw-type-plot-label-size);
+  font-weight: var(--cw-weight-regular);
+  line-height: 1.35;
 }

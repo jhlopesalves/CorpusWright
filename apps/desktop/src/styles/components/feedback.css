@@ -10,7 +10,7 @@
   padding: 0;
   border: 0;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: var(--cw-type-micro-size);
   line-height: 1.2;
   background: transparent;
 }
@@ -34,7 +34,7 @@
 }
 
 .status-line {
-  font-size: 0.85rem;
+  font-size: var(--cw-type-ui-size);
   color: var(--text-muted);
   margin-bottom: 5px;
 }
@@ -65,7 +65,7 @@
 
 .source-empty-state strong {
   color: var(--text-color);
-  font-size: 0.9rem;
+  font-size: var(--cw-type-body-compact-size);
 }
 
 .source-empty-state span {
@@ -83,7 +83,7 @@
 .prepare-cockpit-status {
   flex-wrap: wrap;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--cw-type-compact-size);
   line-height: 1.3;
 }
 
@@ -108,7 +108,7 @@
   align-items: center;
   justify-content: center;
   color: var(--cw-text-inverse);
-  font-size: 1.1rem;
+  font-size: var(--cw-type-subsection-heading-size);
   font-weight: var(--cw-weight-medium);
 }
 
@@ -126,15 +126,22 @@
   to { transform: rotate(360deg); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    transform: none;
+  }
+}
+
 #status-bar {
   padding: 5px 20px;
   background-color: var(--accent-color);
   color: var(--cw-text-inverse);
-  font-size: 0.85rem;
+  font-size: var(--cw-type-ui-size);
 }
 
 .project-create-source-summary,
 .project-create-status {
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: var(--cw-type-help-size);
 }

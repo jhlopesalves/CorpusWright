@@ -10,7 +10,6 @@
   color: var(--cw-result-table-body-text);
   font-family: var(--cw-font-ui);
   font-size: var(--cw-type-table-body-size);
-  font-synthesis: none;
 }
 
 .cw-result-table th {
@@ -57,11 +56,11 @@
 }
 
 .cw-result-table--kwic th {
-  font-size: 0.72rem;
+  font-size: var(--cw-type-micro-size);
 }
 
 .cw-result-table--kwic td {
-  font-size: 0.82rem;
+  font-size: var(--cw-type-help-size);
 }
 
 .cw-result-table td.cw-result-table-lexical,
@@ -106,13 +105,13 @@
   gap: 8px;
   margin-top: 8px;
   color: var(--text-muted);
-  font-size: 0.76rem;
+  font-size: var(--cw-type-compact-size);
 }
 
 .concordance-kwic-panel .analysis-pagination button {
   min-height: 28px;
   padding: 3px 8px;
-  font-size: 0.76rem;
+  font-size: var(--cw-type-compact-size);
 }
 
 .analysis-pagination {
@@ -122,7 +121,7 @@
   justify-content: flex-end;
   margin-top: 8px;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--cw-type-help-size);
   font-weight: var(--cw-weight-regular);
   font-variant-numeric: tabular-nums;
 }
@@ -137,6 +136,6 @@
 .concordance-card .analysis-pagination button:focus-visible,
 .concordance-card-controls input:focus-visible,
 .concordance-card-controls select:focus-visible {
-  outline: 2px solid var(--cw-interaction-focus-ring);
+  outline: var(--cw-interaction-focus-outline);
   outline-offset: 2px;
 }

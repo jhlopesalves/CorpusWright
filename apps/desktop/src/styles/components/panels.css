@@ -65,7 +65,7 @@
 
 .left-panel h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--cw-type-section-heading-size);
 }
 
 .source-panel-header {
@@ -84,7 +84,7 @@
 
 .summary-header {
   font-weight: var(--cw-weight-bold);
-  font-size: 0.95rem;
+  font-size: var(--cw-type-section-heading-size);
   color: var(--text-color);
 }
 
@@ -104,13 +104,13 @@
 }
 
 .summary-value {
-  font-size: 1.1rem;
+  font-size: var(--cw-type-subsection-heading-size);
   font-weight: var(--cw-weight-semibold);
   color: var(--text-color);
 }
 
 .summary-diagnostics {
-  font-size: 0.75rem;
+  font-size: var(--cw-type-caption-size);
   color: var(--text-muted);
   border-top: 1px solid var(--border-color);
   padding-top: 8px;
