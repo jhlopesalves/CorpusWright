@@ -236,7 +236,6 @@
 }
 
 .cw-overview-control-field[hidden],
-.cw-overview-figure-options[hidden],
 .cw-overview-figure-action[hidden],
 .cw-overview-result-controls[hidden] {
   display: none;
@@ -263,26 +262,6 @@
 .cw-overview-toggle-control[aria-pressed="true"] {
   border-color: var(--accent-color);
   background: var(--selected-color);
-}
-
-.cw-overview-figure-options {
-  align-self: center;
-}
-
-.cw-overview-figure-options > summary {
-  color: var(--text-muted);
-  font-size: var(--cw-type-control-size);
-  cursor: pointer;
-}
-
-.cw-overview-figure-options-content {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 16px;
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-left: 2px solid var(--border-color);
-  background: var(--cw-surface-subtle);
 }
 
 .cw-overview-result-controls {

@@ -82,18 +82,6 @@
   stroke-width: 2;
 }
 
-.cw-plot-animated-path {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: cw-plot-path-draw 700ms ease-out forwards;
-}
-
-@keyframes cw-plot-path-draw {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
 @keyframes cw-plot-point-in {
   to {
     opacity: 1;
@@ -108,13 +96,11 @@
 }
 
 .cw-plot-svg.cw-plot-export-static :is(
-  .cw-plot-animated-path,
   .cw-plot-point,
   .cw-plot-plane-witness,
   .cw-plot-roster-dot
 ) {
   opacity: 1;
-  stroke-dashoffset: 0;
   transform: none;
 }
 
@@ -123,13 +109,11 @@
     transition: none;
   }
 
-  .cw-plot-animated-path,
   .cw-plot-point,
   .cw-plot-plane-witness,
   .cw-plot-roster-dot {
     animation: none;
     opacity: 1;
-    stroke-dashoffset: 0;
     transform: none;
     transition: none;
   }

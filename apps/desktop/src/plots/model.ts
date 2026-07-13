@@ -48,6 +48,7 @@ export interface PlotLegendItem {
 export interface PlotPointGeometry<TDatum = unknown> {
   x: number;
   y: number;
+  radius?: number;
   rawX: number;
   rawY: number;
   datum: TDatum;
@@ -2263,8 +2264,11 @@ export function buildDistributionDiagnosticGeometry(options: {
           rawY: point.observedValue,
           datum: point,
           rampIndex: 2,
+          radius: options.pinnedKeys?.has(key) ? 4.3 : 2.6,
           key,
           pinned: options.pinnedKeys?.has(key) ?? false,
+          className: "cw-plot-qq-point",
+          fillOpacity: options.pinnedKeys?.has(key) ? 1 : 0.84,
           tooltipTitle: `quantile ${formatFixed(point.expectedQuantile, 2)}`,
           tooltipRows: [
             `observed ${formatDistributionValue(point.observedValue, options.metric, options.qqReference)}`,

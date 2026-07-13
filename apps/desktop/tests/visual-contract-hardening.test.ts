@@ -75,10 +75,11 @@ for (const [source, selector] of [
 }
 assert.match(analyse, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.annotation-layer-progress-bar\.is-indeterminate \.annotation-layer-progress-fill\s*\{[^}]*width:\s*100%[^}]*transform:\s*none/s);
 assert.match(concordance, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.concordance-collocation-progress-indicator\s*\{[^}]*width:\s*100%[^}]*transform:\s*none/s);
-for (const selector of ["cw-plot-animated-path", "cw-plot-point", "cw-plot-plane-witness", "cw-plot-roster-dot"]) {
+for (const selector of ["cw-plot-point", "cw-plot-plane-witness", "cw-plot-roster-dot"]) {
   assert.match(interactions, new RegExp(`@media \\(prefers-reduced-motion: reduce\\)[\\s\\S]*?\\.${selector}`));
 }
-assert.match(interactions, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?opacity:\s*1[^}]*stroke-dashoffset:\s*0[^}]*transform:\s*none/s);
+assert.match(interactions, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?opacity:\s*1[^}]*transform:\s*none/s);
+assert.doesNotMatch(interactions, /cw-plot-animated-path|stroke-dashoffset|cw-plot-path-draw/);
 
 const modelSource = readFileSync(new URL("../src/plots/model.ts", import.meta.url), "utf8");
 const renderSource = readFileSync(new URL("../src/plots/render.ts", import.meta.url), "utf8");

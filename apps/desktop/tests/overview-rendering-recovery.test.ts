@@ -35,6 +35,8 @@ assert.match(fixture, /browser-black computed/);
 assert.match(fixture, /insufficient computed fill variation/);
 assert.match(fixture, /hidden control occupies layout/);
 assert.match(fixture, /cw-plot-ecdf-line/);
+assert.doesNotMatch(render, /cw-plot-animated-path|pathLength:\s*"1"/);
+assert.doesNotMatch(interactions, /cw-plot-path-draw|stroke-dashoffset:\s*1/);
 assert.match(fixture, /cw-plot-density-cell:not\(\.is-zero\)/);
 
 assert.doesNotMatch(interactions, /scale\(1\.15\)/);

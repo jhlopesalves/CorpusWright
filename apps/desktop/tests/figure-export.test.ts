@@ -69,8 +69,8 @@ assert.match(figureStyles, /\.cw-plot-figure-title\s*\{[^}]*font-size:\s*var\(--
 assert.match(interactionStyles, /\.cw-plot-svg\.cw-plot-export-static[\s\S]*animation:\s*none/);
 assert.match(interactionStyles, /\.cw-plot-svg\.cw-plot-export-static[\s\S]*transition:\s*none/);
 assert.match(interactionStyles, /\.cw-plot-svg\.cw-plot-export-static[\s\S]*opacity:\s*1/);
-assert.match(interactionStyles, /\.cw-plot-svg\.cw-plot-export-static[\s\S]*stroke-dashoffset:\s*0/);
 assert.match(interactionStyles, /\.cw-plot-svg\.cw-plot-export-static[\s\S]*transform:\s*none/);
+assert.doesNotMatch(interactionStyles, /cw-plot-animated-path|cw-plot-path-draw|stroke-dashoffset/);
 
 assert.match(figureSource, /prepareStaticExportClone\(exportedSvg\)/);
 assert.match(figureSource, /classList\.remove\("is-hovering"\)/);

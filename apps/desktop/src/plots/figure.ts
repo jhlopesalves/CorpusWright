@@ -332,18 +332,6 @@ export function createOverviewToggleControl(
   return field;
 }
 
-export function createOverviewFigureOptions(...controls: HTMLElement[]): HTMLDetailsElement {
-  const disclosure = document.createElement("details");
-  disclosure.className = "cw-overview-figure-options";
-  const summary = document.createElement("summary");
-  summary.textContent = "Figure options";
-  const content = document.createElement("div");
-  content.className = "cw-overview-figure-options-content";
-  content.append(...controls);
-  disclosure.append(summary, content);
-  return disclosure;
-}
-
 export function createOverviewResetAction(label: string, onReset: () => void): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
