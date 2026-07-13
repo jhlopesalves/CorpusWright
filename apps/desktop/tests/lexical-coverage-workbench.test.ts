@@ -32,8 +32,12 @@ assert.deepEqual(
   [0, 1, 2, 4],
 );
 assert.deepEqual(
-  [...new Set(spectrum.points.map((point) => point.rampIndex))],
-  [0, 1, 2, 4],
+  spectrum.points.map((point) => point.rampIndex),
+  [0, 1, 2, 2, 4, 4],
+);
+assert.deepEqual(
+  spectrum.points.map((point) => point.fillOpacity),
+  [0.9, 0.9, 0.9, 0.9, 0.9, 0.9],
 );
 assert.deepEqual(spectrum.points.map((point) => point.rawX), spectrumPoints.map((point) => point.frequency));
 assert.equal(spectrum.linePath, undefined, "the exact spectrum contract must not introduce a line");
@@ -66,6 +70,7 @@ const tinyHapax = buildLexicalSpectrumGeometry({
 });
 assert.equal(tinyHapax.compositionStrip?.segments[0]?.datum.label, "Hapax (1)");
 assert(tinyHapax.compositionStrip?.segments[0]?.width && tinyHapax.compositionStrip.segments[0].width > 0);
+assert.deepEqual(tinyHapax.points.map((p) => p.fillOpacity), [0.78, 0.78, 0.9]);
 
 const bands = deriveCoverageBandShares({
   totalTypes: 20_000,

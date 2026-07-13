@@ -112,6 +112,13 @@ assert.equal(Array.from({ length: 10 }, (_, index) => scientificRoles.has(`--cw-
 assert.equal(scientificRoles.get("--cw-plot-composition-foreground-low"), "var(--panel-bg)", "low-ramp composition foreground must resolve to the panel background");
 const annotationsSource = readFileSync(new URL("../src/styles/plots/legends-and-annotations.css", import.meta.url), "utf8");
 assert.match(annotationsSource, /fill:\s*var\(--cw-plot-composition-foreground-low,\s*var\(--panel-bg\)\)/, "low-ramp composition fallback uses panel-bg");
+assert.match(annotationsSource, /\.cw-plot-composition-entry\.is-wide:is\(\s*\.cw-plot-ramp-0,\s*\.cw-plot-ramp-1\s*\)\s*\.cw-plot-composition-label/);
+assert.match(annotationsSource, /\.cw-plot-composition-entry\.is-medium:is\(\s*\.cw-plot-ramp-0,\s*\.cw-plot-ramp-1\s*\)\s*\.cw-plot-composition-label\.is-category/);
+assert.doesNotMatch(annotationsSource, /\.cw-plot-composition-entry:is\(\.cw-plot-ramp-0,\s*\.cw-plot-ramp-1\)\s*\.cw-plot-composition-label\s*\{/);
+assert.match(annotationsSource, /\.cw-plot-composition-entry\.is-medium \.is-detail,\s*\.cw-plot-composition-entry\.is-narrow \.is-category,\s*\.cw-plot-composition-entry\.is-zero \.is-category\s*\{\s*fill:\s*var\(--text-muted\);/);
+
+const marksSource = readFileSync(new URL("../src/styles/plots/marks.css", import.meta.url), "utf8");
+assert.match(marksSource, /\.cw-plot-svg\[data-plot-id="overview-lexical-spectrum"\]\s*\.cw-plot-point:not\(\.is-pinned\)\s*\{\s*stroke-width:\s*0\.55;\s*\}/);
 
 const contrastOutput = execFileSync("node", ["scripts/check-theme-contrast.mjs"], {
   cwd: desktopRoot,
