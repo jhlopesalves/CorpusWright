@@ -736,3 +736,259 @@ pub(crate) fn apply_cleaning_to_page_range(
         page.char_count = page.text.chars().count();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pdf_record(
+        name: &str,
+        profile: Option<ProjectSourcePdfProfile>,
+        route: Option<ProjectSourceExtractionRoute>,
+    ) -> DocumentRecord {
+        DocumentRecord {
+            source_path: PathBuf::from(name),
+            relative_path: PathBuf::from(name),
+            document_type: DocumentType::Pdf,
+            size_bytes: 0,
+            extraction_route: route,
+            pdf_profile: profile,
+            ocr_quality: Some(PdfOcrQuality::Balanced),
+        }
+    }
+
+    fn profile_plan(
+        records: &[DocumentRecord],
+        selected: &[&str],
+        profile_override: Option<ProjectSourcePdfProfile>,
+    ) -> Vec<ProjectSourcePdfProfile> {
+        let selected_paths = selected.iter().map(PathBuf::from).collect::<Vec<_>>();
+        project_pdf_preparation_plan(records, &selected_paths, profile_override)
+            .unwrap()
+            .into_iter()
+            .map(|item| item.profile)
+            .collect()
+    }
+
+    #[test]
+    fn mixed_source_profiles_produce_mixed_preparation_items() {
+        let records = vec![
+            pdf_record("a.pdf", Some(ProjectSourcePdfProfile::Standard), None),
+            pdf_record("b.pdf", Some(ProjectSourcePdfProfile::OcrRescue), None),
+            pdf_record("c.pdf", Some(ProjectSourcePdfProfile::ForceOcr), None),
+        ];
+
+        assert_eq!(
+            profile_plan(&records, &["a.pdf", "b.pdf", "c.pdf"], None),
+            vec![
+                ProjectSourcePdfProfile::Standard,
+                ProjectSourcePdfProfile::ForceOcr,
+                ProjectSourcePdfProfile::ForceOcr,
+            ]
+        );
+    }
+
+    #[test]
+    fn force_ocr_source_does_not_override_standard_sources() {
+        let records = vec![
+            pdf_record(
+                "standard.pdf",
+                Some(ProjectSourcePdfProfile::Standard),
+                None,
+            ),
+            pdf_record("force.pdf", Some(ProjectSourcePdfProfile::ForceOcr), None),
+        ];
+
+        assert_eq!(
+            profile_plan(&records, &["standard.pdf", "force.pdf"], None),
+            vec![
+                ProjectSourcePdfProfile::Standard,
+                ProjectSourcePdfProfile::ForceOcr,
+            ]
+        );
+    }
+
+    #[test]
+    fn legacy_ocr_rescue_source_maps_to_full_ocr_without_overriding_standard_sources() {
+        let records = vec![
+            pdf_record(
+                "standard.pdf",
+                Some(ProjectSourcePdfProfile::Standard),
+                None,
+            ),
+            pdf_record("ocr.pdf", Some(ProjectSourcePdfProfile::OcrRescue), None),
+        ];
+
+        assert_eq!(
+            profile_plan(&records, &["standard.pdf", "ocr.pdf"], None),
+            vec![
+                ProjectSourcePdfProfile::Standard,
+                ProjectSourcePdfProfile::ForceOcr,
+            ]
+        );
+    }
+
+    #[test]
+    fn selected_source_count_is_respected() {
+        let records = vec![
+            pdf_record("a.pdf", Some(ProjectSourcePdfProfile::Standard), None),
+            pdf_record("b.pdf", Some(ProjectSourcePdfProfile::OcrRescue), None),
+            pdf_record("c.pdf", Some(ProjectSourcePdfProfile::ForceOcr), None),
+        ];
+
+        let selected_paths = vec![PathBuf::from("a.pdf"), PathBuf::from("c.pdf")];
+        let plan = project_pdf_preparation_plan(&records, &selected_paths, None).unwrap();
+
+        assert_eq!(plan.len(), 2);
+        assert_eq!(
+            plan.iter()
+                .map(|item| item.path.clone())
+                .collect::<Vec<_>>(),
+            vec![PathBuf::from("a.pdf"), PathBuf::from("c.pdf")]
+        );
+    }
+
+    #[test]
+    fn batch_override_applies_only_when_explicit() {
+        let records = vec![
+            pdf_record("a.pdf", Some(ProjectSourcePdfProfile::Standard), None),
+            pdf_record("b.pdf", Some(ProjectSourcePdfProfile::OcrRescue), None),
+            pdf_record("c.pdf", Some(ProjectSourcePdfProfile::Standard), None),
+        ];
+
+        assert_eq!(
+            profile_plan(
+                &records,
+                &["a.pdf", "b.pdf"],
+                Some(ProjectSourcePdfProfile::ForceOcr)
+            ),
+            vec![
+                ProjectSourcePdfProfile::ForceOcr,
+                ProjectSourcePdfProfile::ForceOcr,
+            ]
+        );
+        assert_eq!(
+            profile_plan(&records, &["c.pdf"], None),
+            vec![ProjectSourcePdfProfile::Standard]
+        );
+    }
+
+    #[test]
+    fn mixed_batch_summary_does_not_report_one_global_profile() {
+        let records = vec![
+            pdf_record("a.pdf", Some(ProjectSourcePdfProfile::Standard), None),
+            pdf_record("b.pdf", Some(ProjectSourcePdfProfile::ForceOcr), None),
+        ];
+        let selected_paths = vec![PathBuf::from("a.pdf"), PathBuf::from("b.pdf")];
+        let plan = project_pdf_preparation_plan(&records, &selected_paths, None).unwrap();
+
+        assert_eq!(
+            project_pdf_preparation_batch_label(&plan),
+            "mixed stored handling"
+        );
+    }
+
+    #[test]
+    fn mixed_preparation_uses_each_sources_extraction_mode() {
+        let records = vec![
+            pdf_record("a.pdf", Some(ProjectSourcePdfProfile::Standard), None),
+            pdf_record("b.pdf", Some(ProjectSourcePdfProfile::OcrRescue), None),
+            pdf_record("c.pdf", Some(ProjectSourcePdfProfile::ForceOcr), None),
+        ];
+        let selected_paths = vec![
+            PathBuf::from("a.pdf"),
+            PathBuf::from("b.pdf"),
+            PathBuf::from("c.pdf"),
+        ];
+        let plan = project_pdf_preparation_plan(&records, &selected_paths, None).unwrap();
+        let config = CleaningConfig {
+            pdf_text_source: PdfTextSource::ForceOcr,
+            ..CleaningConfig::default()
+        };
+        let text_sources = records
+            .iter()
+            .zip(plan.iter())
+            .map(|(record, item)| {
+                let prepared = record_with_preparation_profile(record, item);
+                PdfExtractionOptions::raw_from_record_and_cleaning_config(&prepared, &config)
+                    .text_source
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            text_sources,
+            vec![
+                PdfTextSource::EmbeddedText,
+                PdfTextSource::ForceOcr,
+                PdfTextSource::ForceOcr,
+            ]
+        );
+    }
+
+    #[test]
+    fn preparation_profile_blocks_global_config_fallback() {
+        let records = vec![pdf_record(
+            "undecided.pdf",
+            None,
+            Some(ProjectSourceExtractionRoute::Undecided),
+        )];
+        let selected_paths = vec![PathBuf::from("undecided.pdf")];
+        let plan = project_pdf_preparation_plan(&records, &selected_paths, None).unwrap();
+        let prepared = record_with_preparation_profile(&records[0], &plan[0]);
+        let config = CleaningConfig {
+            pdf_text_source: PdfTextSource::ForceOcr,
+            ..CleaningConfig::default()
+        };
+        let options = PdfExtractionOptions::raw_from_record_and_cleaning_config(&prepared, &config);
+
+        assert_eq!(
+            prepared.pdf_profile,
+            Some(ProjectSourcePdfProfile::Standard)
+        );
+        assert_eq!(
+            prepared.extraction_route,
+            Some(ProjectSourceExtractionRoute::EmbeddedText)
+        );
+        assert_eq!(options.text_source, PdfTextSource::EmbeddedText);
+    }
+
+    #[test]
+    fn project_pdf_extraction_failure_reason_distinguishes_cancellation() {
+        let cancel = AtomicBool::new(false);
+
+        assert_eq!(
+            project_pdf_extraction_failure_reason("PDF materialisation failed", &cancel),
+            "text_extraction_failed"
+        );
+        assert_eq!(
+            project_pdf_extraction_failure_reason("PDF intake cancelled", &cancel),
+            "extraction_cancelled"
+        );
+
+        cancel.store(true, Ordering::Relaxed);
+        assert_eq!(
+            project_pdf_extraction_failure_reason("OCR batch stopped", &cancel),
+            "extraction_cancelled"
+        );
+    }
+
+    #[test]
+    fn extraction_warning_messages_map_to_stable_reason_codes() {
+        let warnings = vec![
+            "OCR render size was clamped on page 2.".to_string(),
+            "Layout-aware extraction adjusted line order.".to_string(),
+            "OCR text extracted for review.".to_string(),
+            "Repeated extraction artefacts were reported.".to_string(),
+        ];
+
+        assert_eq!(
+            extraction_reason_codes_for_warnings(&warnings),
+            vec![
+                "render_size_clamped",
+                "layout_warning",
+                "ocr_generated",
+                "many_repeated_artifacts",
+            ]
+        );
+    }
+}

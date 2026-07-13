@@ -201,3 +201,55 @@ pub(crate) struct CorpusLoadResult {
     pub(crate) report: ScanReport,
     pub(crate) corpus_version: u64,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pdf_record(
+        name: &str,
+        profile: Option<ProjectSourcePdfProfile>,
+        route: Option<ProjectSourceExtractionRoute>,
+    ) -> DocumentRecord {
+        DocumentRecord {
+            source_path: PathBuf::from(name),
+            relative_path: PathBuf::from(name),
+            document_type: DocumentType::Pdf,
+            size_bytes: 0,
+            extraction_route: route,
+            pdf_profile: profile,
+            ocr_quality: Some(PdfOcrQuality::Balanced),
+        }
+    }
+
+    #[test]
+    fn corpus_state_resolves_records_by_path_without_frontend_indices() {
+        let first = pdf_record("first.pdf", Some(ProjectSourcePdfProfile::Standard), None);
+        let second = pdf_record("second.pdf", Some(ProjectSourcePdfProfile::ForceOcr), None);
+        let corpus = CorpusState {
+            inner: RwLock::new(CorpusStateInner::empty()),
+        };
+        corpus
+            .inner
+            .write()
+            .unwrap()
+            .load(None, vec![first.clone(), second.clone()]);
+        let corpus_version = corpus.inner.read().unwrap().version;
+
+        assert_eq!(
+            corpus
+                .record_for_path(Path::new("second.pdf"), corpus_version)
+                .unwrap(),
+            Some(second.clone())
+        );
+        assert_eq!(
+            corpus
+                .records_for_paths(
+                    vec![PathBuf::from("second.pdf"), PathBuf::from("first.pdf")],
+                    corpus_version,
+                )
+                .unwrap(),
+            vec![second, first]
+        );
+    }
+}
