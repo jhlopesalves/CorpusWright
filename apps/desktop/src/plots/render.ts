@@ -4,6 +4,7 @@ import {
   placeAxisTickLabels,
 } from "./model";
 import { hasUnresolvedCssVariables } from "./svg-export";
+import { applyMountedFigureLayout } from "./layout";
 import type {
   CoverageGeometry,
   CompositionStripGeometry,
@@ -310,6 +311,9 @@ export function renderFigureStatusSvg(plotId: string, message: string): SVGSVGEl
 }
 
 export function attachPlotHover(svg: SVGSVGElement): void {
+  const applyLayout = () => applyMountedFigureLayout(svg);
+  if (document.fonts) void document.fonts.ready.then(applyLayout);
+  else queueMicrotask(applyLayout);
   attachOwnedPlotNavigation(svg);
   svg.addEventListener("click", (event) => dispatchPinToggle(svg, event.target));
   svg.addEventListener("keydown", (event) => {
@@ -880,24 +884,26 @@ export function renderCompositionStrip(svg: SVGSVGElement, geometry: Composition
       "data-tooltip-rows": segment.tooltipRows.join("\n"),
     });
     group.appendChild(rect);
-    if (segment.label) {
-      const label = createSvgElement("text");
-      const labelY = segment.labelBelow
-        ? segment.y + segment.height + 14 + index % 2 * 13
-        : segment.y + segment.height / 2 + 4;
-      setAttrs(label, {
-        x: segment.x + segment.width / 2,
-        y: labelY,
-        class: segment.labelBelow
-          ? "cw-plot-composition-label is-below"
-          : "cw-plot-composition-label",
-        "text-anchor": "middle",
-      });
-      label.textContent = segment.labelBelow
-        ? `${segment.datum.label} · ${segment.staticDetail}`
-        : segment.staticDetail;
-      group.appendChild(label);
-    }
+    const entry = createSvgElement("g");
+    entry.setAttribute("class", `cw-plot-composition-entry${segment.pinned ? " is-pinned" : ""}`);
+    entry.dataset.segmentIndex = String(index);
+    entry.dataset.segmentX = String(segment.x);
+    entry.dataset.segmentY = String(segment.y);
+    entry.dataset.segmentWidth = String(segment.width);
+    entry.dataset.segmentHeight = String(segment.height);
+    const marker = createSvgElement("circle");
+    setAttrs(marker, {
+      r: 3.5,
+      class: `cw-plot-composition-entry-marker cw-plot-ramp-${segment.datum.rampIndex}`,
+    });
+    const category = createSvgElement("text");
+    setAttrs(category, { class: "cw-plot-composition-label is-category", "text-anchor": "middle" });
+    category.textContent = segment.datum.label;
+    const detail = createSvgElement("text");
+    setAttrs(detail, { class: "cw-plot-composition-label is-detail", "text-anchor": "middle" });
+    detail.textContent = segment.staticDetail;
+    entry.append(marker, category, detail);
+    group.appendChild(entry);
   });
   svg.appendChild(group);
 }
@@ -917,7 +923,7 @@ function renderLexicalSpectrumBands(svg: SVGSVGElement, geometry: LexicalSpectru
     const label = createSvgElement("text");
     setAttrs(label, {
       x: band.x + (band.width / 2),
-      y: geometry.box.margin.top + 14,
+      y: geometry.box.margin.top - 18,
       class: "cw-plot-spectrum-band-label",
       "text-anchor": "middle",
     });

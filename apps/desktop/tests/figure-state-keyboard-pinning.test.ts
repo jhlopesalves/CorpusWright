@@ -55,7 +55,7 @@ assert(rank.pins.has("rank:4:corpus"), "rank datum pins survive compatible view 
 rank.clearPins();
 assert.equal(rank.pins.size, 0);
 
-const profilePins = new Set(["dispersion-reach-0"]);
+const profilePins = new Set(["dispersion-reach-one"]);
 const profile = buildDispersionGeometry({
   buckets: [
     { key: "one", label: "1", lowerBound: 1, upperBound: 1, count: 80, share: 0.8 },
@@ -65,8 +65,8 @@ const profile = buildDispersionGeometry({
   totalDocuments: 10,
   pinnedKeys: profilePins,
 });
-assert(profile.points.some((point) => point.key === "dispersion-reach-0" && point.pinned));
-assert(profile.compositionStrip?.segments.some((segment) => segment.datum.key === "dispersion-reach-0" && segment.pinned));
+assert(profile.points.some((point) => point.key === "dispersion-reach-one" && point.pinned));
+assert(profile.compositionStrip?.segments.some((segment) => segment.datum.key === "dispersion-reach-one" && segment.pinned));
 
 const labels = buildLexicalSpectrumGeometry({
   points: [

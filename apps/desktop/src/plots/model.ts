@@ -798,8 +798,8 @@ export function buildCompositionStripGeometry(options: {
   compact?: boolean;
   pinnedKeys?: ReadonlySet<string>;
 }): CompositionStripGeometry {
-  if (options.segments.length < 2 || options.segments.length > 6) {
-    throw new RangeError("Composition strips require between two and six segments");
+  if (options.segments.length < 2 || options.segments.length > 12) {
+    throw new RangeError("Composition strips require between two and twelve segments");
   }
   if (options.total < 0 || options.segments.some((segment) => segment.count < 0)) {
     throw new RangeError("Composition strip counts must be non-negative");
@@ -1282,8 +1282,8 @@ export function buildLexicalSpectrumGeometry(options: {
   pinnedKeys?: ReadonlySet<string>;
   box?: PlotBox;
 }): LexicalSpectrumGeometry {
-  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 390, {
-    top: options.totalTypes === undefined ? 32 : 82,
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, options.totalTypes === undefined ? 360 : 450, {
+    top: options.totalTypes === undefined ? 32 : 138,
     right: 40,
     bottom: 60,
     left: 78,
@@ -1419,8 +1419,8 @@ export function buildCoverageGeometry(options: {
   pinnedKeys?: ReadonlySet<string>;
   box?: PlotBox;
 }): CoverageGeometry {
-  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 390, {
-    top: options.bandShares ? 82 : 32,
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, options.bandShares ? 420 : 360, {
+    top: options.bandShares ? 112 : 32,
     right: 40,
     bottom: 60,
     left: 78,
@@ -1569,8 +1569,11 @@ export function buildDispersionGeometry(options: {
   box?: PlotBox;
 }): DispersionGeometry {
   const rowCount = Math.max(1, options.buckets.length);
-  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, Math.max(360, 162 + rowCount * 19), {
-    top: options.cumulativeCallout ? 112 : 72,
+  const stripRailRows = Math.ceil(options.buckets.length / 2);
+  const calloutY = 54 + (stripRailRows * 16);
+  const plotTop = calloutY + (options.cumulativeCallout ? 58 : 20);
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, plotTop + Math.max(140, rowCount * 26) + 58, {
+    top: plotTop,
     right: 36,
     bottom: 48,
     left: 156,
@@ -1595,7 +1598,7 @@ export function buildDispersionGeometry(options: {
     const share = bucket.share ?? (totalTypes > 0 ? bucket.count / totalTypes : 0);
     const documentBounds = dispersionReachBounds(bucket, options.totalDocuments);
     const rampIndex = buckets.length <= 1 ? 2 : Math.round((index / Math.max(1, buckets.length - 1)) * 5);
-    const key = `dispersion-reach-${rampIndex}`;
+    const key = `dispersion-reach-${bucket.key}`;
     return {
       x: plotValue > 0 ? scaleValue(xScale, plotValue) : scaleValue(xScale, xScale.domain[0]),
       y,
@@ -1678,34 +1681,25 @@ export function buildDispersionGeometry(options: {
     plotLabelBounds(box),
   );
   const countedTypes = points.reduce((total, point) => total + point.datum.count, 0);
-  const groupedPoints: Array<[number, typeof points]> = [];
-  for (const point of points) {
-    const group = groupedPoints.find(([groupRampIndex]) => groupRampIndex === point.rampIndex);
-    if (group) group[1].push(point);
-    else groupedPoints.push([point.rampIndex, [point]]);
-  }
-  const compositionStrip = groupedPoints.length >= 2 && countedTypes > 0
+  const compositionStrip = points.length >= 2 && countedTypes > 0
     ? buildCompositionStripGeometry({
         total: countedTypes,
         x: box.margin.left,
         y: 18,
         width: box.innerWidth,
         height: 22,
-        segments: groupedPoints.map(([groupRampIndex, grouped]) => {
-          const first = grouped[0]!.datum;
-          const last = grouped[grouped.length - 1]!.datum;
-          const count = grouped.reduce((sum, point) => sum + point.datum.count, 0);
-          const label = first === last ? first.label : `${first.label} to ${last.label} documents`;
+        segments: points.map((point) => {
+          const bucket = point.datum;
           return {
-            key: `dispersion-reach-${groupRampIndex}`,
-            label,
-            count,
-            rampIndex: groupRampIndex,
+            key: point.key!,
+            label: bucket.label,
+            count: bucket.count,
+            rampIndex: point.rampIndex,
             tooltipRows: [
-              `documents ${dispersionReachBounds(first, options.totalDocuments).documents} to ${dispersionReachBounds(last, options.totalDocuments).documents}`,
-              `corpus reach ${dispersionReachBounds(first, options.totalDocuments).percentage} to ${dispersionReachBounds(last, options.totalDocuments).percentage}`,
-              `${formatInteger(count)} types`,
-              `${formatPercent(count / countedTypes)} of vocabulary`,
+              `documents ${dispersionReachBounds(bucket, options.totalDocuments).documents}`,
+              `corpus reach ${dispersionReachBounds(bucket, options.totalDocuments).percentage}`,
+              `${formatInteger(bucket.count)} types`,
+              `${formatPercent(bucket.count / countedTypes)} of vocabulary`,
             ],
           };
         }),
@@ -1715,7 +1709,7 @@ export function buildDispersionGeometry(options: {
   const calloutExamples = options.cumulativeCallout?.examples.slice(0, 3) ?? [];
   const cumulativeCallout = options.cumulativeCallout ? {
     x: box.margin.left,
-    y: 48,
+    y: calloutY,
     width: box.innerWidth,
     height: 42,
     title: `${formatInteger(options.cumulativeCallout.count)} types occur in at least 90% of documents`,
@@ -2124,8 +2118,8 @@ export function buildDistributionDiagnosticGeometry(options: {
   pinnedKeys?: ReadonlySet<string>;
 }): DistributionDiagnosticGeometry {
   const hasComposition = options.metric === "mattr";
-  const box = createPlotBox(DEFAULT_PLOT_WIDTH, 390, {
-    top: hasComposition ? 82 : 34,
+  const box = createPlotBox(DEFAULT_PLOT_WIDTH, hasComposition ? 420 : 360, {
+    top: hasComposition ? 112 : 34,
     right: 42,
     bottom: 62,
     left: 78,

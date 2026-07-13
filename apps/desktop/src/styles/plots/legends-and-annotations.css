@@ -29,6 +29,42 @@
   font-weight: var(--cw-weight-regular);
 }
 
+.cw-plot-composition-entry-marker {
+  display: none;
+  stroke: var(--panel-bg);
+  stroke-width: 1;
+}
+
+.cw-plot-composition-entry.is-medium .cw-plot-composition-entry-marker,
+.cw-plot-composition-entry.is-narrow .cw-plot-composition-entry-marker,
+.cw-plot-composition-entry.is-zero .cw-plot-composition-entry-marker {
+  display: inline;
+}
+
+.cw-plot-composition-entry.is-medium .is-detail,
+.cw-plot-composition-entry.is-narrow .is-category,
+.cw-plot-composition-entry.is-zero .is-category {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-ui);
+  font-weight: var(--cw-weight-regular);
+}
+
+.cw-plot-composition-entry.is-narrow .is-detail,
+.cw-plot-composition-entry.is-zero .is-detail {
+  display: none;
+}
+
+.cw-plot-composition-entry.is-pinned :is(.is-category, .is-detail) {
+  fill: var(--text-color);
+  font-weight: var(--cw-weight-semibold);
+}
+
+.cw-plot-label.is-external-rail {
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-width: 3px;
+}
+
 .cw-plot-quadrant-pill-bg {
   fill: var(--panel-bg);
   opacity: 0.86;
