@@ -386,11 +386,6 @@ export interface DispersionDensityLegendGeometry {
   maximum: number;
 }
 
-export interface DispersionPlanePillGeometry {
-  label: PlotLabelGeometry;
-  box: LabelBox;
-}
-
 export interface DispersionPlaneGeometry {
   box: PlotBox;
   xScale: PlotScale;
@@ -402,12 +397,11 @@ export interface DispersionPlaneGeometry {
   dpMarginal: DispersionPlaneMarginalGeometry[];
   thresholdLines: PlotLineGeometry[];
   thresholdLabels: PlotLabelGeometry[];
-  quadrantPills: DispersionPlanePillGeometry[];
+  quadrantLabels: PlotLabelGeometry[];
   witnesses: Array<PlotPointGeometry<DispersionWitnessDatum>>;
   labels: PlotLabelGeometry[];
   witnessObstacles: LabelObstacle[];
   densityLegend: DispersionDensityLegendGeometry;
-  witnessLegend: PlotLegendItem[];
   xAxisLabel: string;
 }
 
@@ -559,17 +553,13 @@ export const MONO_SMALL_LABEL_FONT_SIZE = ANNOTATION_LABEL_FONT_SIZE;
 const LABEL_WIDTH_FACTOR = 0.62;
 const LABEL_LINE_HEIGHT_FACTOR = 1.3;
 const DENSITY_CELL_LABEL_OBSTACLE_T = 0.52;
-const QUADRANT_PILL_HEIGHT = 20;
-const QUADRANT_PILL_PADDING_X = 10;
 const WITNESS_KIND_CONTRACT: Record<DispersionWitnessKind, {
   label: string;
-  shape: PlotPointShape;
-  className: string;
 }> = {
-  core: { label: "Core vocabulary", shape: "circle", className: "is-witness-core" },
-  loudButLocal: { label: "Loud but local", shape: "diamond", className: "is-witness-loud-local" },
-  quietAndEven: { label: "Quiet and even", shape: "square", className: "is-witness-quiet-even" },
-  rareAndLocal: { label: "Rare and local", shape: "triangle", className: "is-witness-rare-local" },
+  core: { label: "Core vocabulary" },
+  loudButLocal: { label: "Loud but local" },
+  quietAndEven: { label: "Quiet and even" },
+  rareAndLocal: { label: "Rare and local" },
 };
 
 export function createPlotBox(
@@ -1800,10 +1790,10 @@ export function buildDispersionPlaneGeometry(options: {
   box?: PlotBox;
 }): DispersionPlaneGeometry {
   const plane = options.plane;
-  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 500, {
-    top: 82,
+  const box = options.box ?? createPlotBox(DEFAULT_PLOT_WIDTH, 430, {
+    top: 94,
     right: 108,
-    bottom: 112,
+    bottom: 70,
     left: 164,
   });
   const freqLog10Max = Math.max(0, plane.freqLog10Max);
@@ -1875,10 +1865,11 @@ export function buildDispersionPlaneGeometry(options: {
       rawY,
       datum: witness,
       rampIndex: 2,
-      shape: witnessKindShape(witness.kind),
-      className: witnessKindClassName(witness.kind),
+      shape: "circle" as const,
+      className: "cw-plot-plane-witness-mark",
       key,
       pinned: options.pinnedKeys?.has(key) ?? false,
+      ariaLabel: `${witness.token}, ${witnessKindLabel(witness.kind)}`,
       tooltipTitle: witness.token,
       tooltipRows: [
         `frequency ${formatInteger(witness.frequency)}`,
@@ -1899,7 +1890,11 @@ export function buildDispersionPlaneGeometry(options: {
   ];
   const pinnedWitnesses = witnesses.filter((witness) => witness.pinned);
   const automaticWitnesses = examplesMode === "labelled"
-    ? permanentDispersionPlaneWitnesses(witnesses).filter((witness) => !witness.pinned)
+    ? automaticDispersionPlaneWitnesses(
+        witnesses.filter((witness) => !witness.pinned),
+        frequencyThresholdX,
+        thresholdY,
+      )
     : [];
   const witnessLabelRequests = buildDispersionPlaneWitnessLabelRequests([
     ...pinnedWitnesses,
@@ -1914,7 +1909,7 @@ export function buildDispersionPlaneGeometry(options: {
     ],
     plotLabelBounds(box),
   );
-  const quadrantPills = buildDispersionPlaneQuadrantPills(
+  const quadrantLabels = buildDispersionPlaneQuadrantLabels(
     box,
     [
       ...witnessDotObstacles,
@@ -1922,12 +1917,12 @@ export function buildDispersionPlaneGeometry(options: {
       ...thresholdObstacles,
     ],
   );
-  const pillObstacles = quadrantPills.map((pill) => ({ kind: "box" as const, box: pill.box }));
+  const quadrantObstacles = quadrantLabels.map((label) => ({ kind: "box" as const, box: estimateLabelBox(label) }));
   const witnessObstacles = [
     ...denseCellObstacles,
     ...witnessDotObstacles,
     ...thresholdObstacles,
-    ...pillObstacles,
+    ...quadrantObstacles,
   ];
   const labels = placeLabels(
     witnessLabelRequests,
@@ -1946,7 +1941,8 @@ export function buildDispersionPlaneGeometry(options: {
     yTicks: [0, 0.25, 0.5, 0.75, 1].map((value) => ({
       value,
       position: scaleValue(yScale, value),
-      label: value === 0 ? "0 · more even" : value === 1 ? "1 · more concentrated" : formatFixed(value, 2),
+      label: value === 0 || value === 1 ? String(value) : formatFixed(value, 2),
+      accessibleLabel: value === 0 ? "0, more even" : value === 1 ? "1, more concentrated" : undefined,
       major: true,
     })),
     cells,
@@ -1954,7 +1950,7 @@ export function buildDispersionPlaneGeometry(options: {
     dpMarginal: marginals.dp,
     thresholdLines,
     thresholdLabels,
-    quadrantPills,
+    quadrantLabels,
     witnesses,
     labels,
     witnessObstacles,
@@ -1963,12 +1959,6 @@ export function buildDispersionPlaneGeometry(options: {
       minimum: plane.counts.some((count) => count > 0) ? Math.min(...plane.counts.filter((count) => count > 0)) : 0,
       maximum: plane.maxCellCount,
     },
-    witnessLegend: (Object.keys(WITNESS_KIND_CONTRACT) as DispersionWitnessKind[]).map((kind) => ({
-      label: witnessKindLabel(kind),
-      kind: "point",
-      shape: witnessKindShape(kind),
-      className: witnessKindClassName(kind),
-    })),
     xAxisLabel: frequencyMode === "perMillion"
       ? "Frequency per million (log scale)"
       : "Raw frequency (log scale)",
@@ -2598,7 +2588,7 @@ function buildDispersionPlaneCells(
     const t = densityMode === "linear"
       ? count / maxCellCount
       : Math.log1p(count) / Math.log1p(maxCellCount);
-    const opacity = count === 0 ? 0 : 0.82 + (0.18 * t);
+    const opacity = count === 0 ? 0 : 1;
     const rawLower = 10 ** freqLowerLog;
     const rawUpper = 10 ** freqUpperLog;
     const frequencyRange = `${formatFrequencyRangeBoundary(rawLower)}–${formatFrequencyRangeBoundary(rawUpper)}`;
@@ -2679,7 +2669,7 @@ function buildDispersionPlaneWitnessLabelRequests(
     x: witness.x,
     y: witness.y,
     text: witness.datum.token,
-    className: `cw-plot-label-mono ${witness.className ?? ""}`.trim(),
+    className: "cw-plot-label-mono cw-plot-plane-witness-label",
     key: witness.key,
     pinned: witness.pinned,
     priority: witness.pinned ? 100 : witness.datum.kind === "core" ? 40 : witness.datum.kind === "loudButLocal" ? 30 : 20,
@@ -2694,38 +2684,43 @@ function buildDispersionPlaneWitnessLabelRequests(
   }));
 }
 
-function permanentDispersionPlaneWitnesses(
+function automaticDispersionPlaneWitnesses(
   witnesses: Array<PlotPointGeometry<DispersionWitnessDatum>>,
+  frequencyThresholdX: number,
+  thresholdY: number,
 ): Array<PlotPointGeometry<DispersionWitnessDatum>> {
-  return (Object.keys(WITNESS_KIND_CONTRACT) as DispersionWitnessKind[])
-    .flatMap((kind) => witnesses.find((witness) => witness.datum.kind === kind) ?? [])
-    .slice(0, 4);
-}
-
-function witnessKindShape(kind: DispersionWitnessKind): PlotPointShape {
-  return WITNESS_KIND_CONTRACT[kind].shape;
-}
-
-function witnessKindClassName(kind: DispersionWitnessKind): string {
-  return WITNESS_KIND_CONTRACT[kind].className;
+  const quadrants = new Map<string, PlotPointGeometry<DispersionWitnessDatum>>();
+  for (const witness of witnesses) {
+    const quadrant = `${witness.x >= frequencyThresholdX ? "frequent" : "rare"}-${witness.y <= thresholdY ? "concentrated" : "even"}`;
+    const current = quadrants.get(quadrant);
+    const distance = Math.hypot(witness.x - frequencyThresholdX, witness.y - thresholdY);
+    const currentDistance = current ? Math.hypot(current.x - frequencyThresholdX, current.y - thresholdY) : -1;
+    if (!current || distance > currentDistance) quadrants.set(quadrant, witness);
+  }
+  return [
+    "rare-concentrated",
+    "frequent-concentrated",
+    "rare-even",
+    "frequent-even",
+  ].flatMap((quadrant) => quadrants.get(quadrant) ?? []);
 }
 
 function witnessKindLabel(kind: DispersionWitnessKind): string {
   return WITNESS_KIND_CONTRACT[kind].label;
 }
 
-function buildDispersionPlaneQuadrantPills(
+function buildDispersionPlaneQuadrantLabels(
   box: PlotBox,
   obstacles: LabelObstacle[],
-): DispersionPlanePillGeometry[] {
+): PlotLabelGeometry[] {
   const bounds = plotLabelBounds(box);
-  const pillLabels = placeLabels(
+  const labels = placeLabels(
     [
       {
         x: box.margin.left + 12,
         y: box.margin.top + 19,
-        text: "Rare and concentrated",
-        className: "cw-plot-quadrant-pill-label",
+        text: "Rare · concentrated",
+        className: "cw-plot-quadrant-label",
         fontSize: 10,
         candidates: [
           { dx: 0, dy: 0, anchor: "start" },
@@ -2736,8 +2731,8 @@ function buildDispersionPlaneQuadrantPills(
       {
         x: box.width - box.margin.right - 12,
         y: box.margin.top + 19,
-        text: "Frequent and concentrated",
-        className: "cw-plot-quadrant-pill-label",
+        text: "Frequent · concentrated",
+        className: "cw-plot-quadrant-label",
         fontSize: 10,
         candidates: [
           { dx: 0, dy: 0, anchor: "end" },
@@ -2748,8 +2743,8 @@ function buildDispersionPlaneQuadrantPills(
       {
         x: box.margin.left + 12,
         y: box.height - box.margin.bottom - 12,
-        text: "Rare and even",
-        className: "cw-plot-quadrant-pill-label",
+        text: "Rare · even",
+        className: "cw-plot-quadrant-label",
         fontSize: 10,
         candidates: [
           { dx: 0, dy: 0, anchor: "start" },
@@ -2760,8 +2755,8 @@ function buildDispersionPlaneQuadrantPills(
       {
         x: box.width - box.margin.right - 12,
         y: box.height - box.margin.bottom - 30,
-        text: "Frequent and even",
-        className: "cw-plot-quadrant-pill-label",
+        text: "Frequent · even",
+        className: "cw-plot-quadrant-label",
         fontSize: 10,
         candidates: [
           { dx: 0, dy: 0, anchor: "end" },
@@ -2774,16 +2769,7 @@ function buildDispersionPlaneQuadrantPills(
     obstacles,
     bounds,
   );
-  return pillLabels.map((label) => {
-    const labelBox = estimateLabelBox(label);
-    const box = {
-      x: labelBox.x - QUADRANT_PILL_PADDING_X,
-      y: label.y - (QUADRANT_PILL_HEIGHT / 2) - 3,
-      width: labelBox.width + (QUADRANT_PILL_PADDING_X * 2),
-      height: QUADRANT_PILL_HEIGHT,
-    };
-    return { label, box };
-  });
+  return labels;
 }
 
 function dispersionPlaneDecadeTicks(

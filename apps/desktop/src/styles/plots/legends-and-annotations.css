@@ -65,17 +65,32 @@
   stroke-width: 3px;
 }
 
-.cw-plot-quadrant-pill-bg {
-  fill: var(--panel-bg);
-  opacity: 0.86;
-  stroke: var(--border-color);
-  stroke-width: 0.8;
-}
-
-.cw-plot-quadrant-pill-label {
+.cw-plot-quadrant-label {
   fill: var(--text-muted);
   font-size: var(--cw-type-plot-micro-size);
-  font-weight: var(--cw-weight-bold);
+  font-weight: var(--cw-weight-medium);
+  opacity: 0.82;
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-linejoin: round;
+  stroke-width: 1.5px;
+}
+
+.cw-plot-svg[data-plot-id="overview-dispersion-plane"] .cw-plot-label-muted {
+  fill: var(--text-muted);
+  font-size: var(--cw-type-plot-micro-size);
+  opacity: 0.9;
+  stroke-width: 1.6px;
+}
+
+.cw-plot-plane-witness-label {
+  font-size: var(--cw-type-plot-micro-size);
+  stroke-width: 1.8px;
+}
+
+.cw-plot-plane-witness-label.is-pinned {
+  font-weight: var(--cw-weight-semibold);
+  stroke-width: 2.2px;
 }
 
 .cw-plot-halo {
@@ -199,6 +214,12 @@
 .cw-plot-density-legend-step.cw-plot-ramp-4 { fill: var(--cw-plot-density-4, var(--cw-plot-ramp-4)); }
 .cw-plot-density-legend-step.cw-plot-ramp-5 { fill: var(--cw-plot-density-5, var(--cw-plot-ramp-5)); }
 
+.cw-plot-density-legend-bound {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-mono);
+  font-size: var(--cw-type-plot-micro-size);
+}
+
 .cw-plot-legend-swatch.is-composition {
   fill: var(--cw-plot-composition-3, var(--cw-plot-ramp-3));
   stroke: var(--panel-bg);
@@ -216,11 +237,6 @@
 
 .cw-plot-legend-swatch.is-dp-observed {
   fill: var(--cw-plot-point);
-}
-
-.cw-plot-legend-swatch:is(.is-witness-core, .is-witness-loud-local, .is-witness-quiet-even, .is-witness-rare-local) {
-  fill: var(--cw-plot-witness, var(--cw-plot-observed, var(--cw-plot-point)));
-  stroke: var(--panel-bg);
 }
 
 .cw-plot-cumulative-callout {

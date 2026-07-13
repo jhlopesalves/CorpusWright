@@ -161,8 +161,8 @@ function placeOccupancyAwareLegends(
   extent: { right: number; bottom: number },
 ): void {
   const legends = Array.from(svg.querySelectorAll<SVGGElement>(
-    ".cw-plot-legend, .cw-plot-density-legend, .cw-plot-witness-legend",
-  ));
+    ".cw-plot-legend, .cw-plot-density-legend",
+  )).filter((legend) => legend.dataset.layoutFixed !== "true");
   if (legends.length === 0) return;
   const view = svg.viewBox.baseVal;
   const innerPlot = readInnerPlotBounds(svg, view);
@@ -222,7 +222,7 @@ function readInnerPlotBounds(svg: SVGSVGElement, fallback: MeasuredLayoutBox): M
 function samplePlotPathObstacles(svg: SVGSVGElement): MeasuredLayoutBox[] {
   const obstacles: MeasuredLayoutBox[] = [];
   for (const path of svg.querySelectorAll<SVGGeometryElement>(".cw-plot-line, .cw-plot-fit-line")) {
-    if (path.closest(".cw-plot-legend, .cw-plot-density-legend, .cw-plot-witness-legend")) continue;
+    if (path.closest(".cw-plot-legend, .cw-plot-density-legend")) continue;
     try {
       const length = path.getTotalLength();
       const sampleCount = Math.max(2, Math.ceil(length / 14));
@@ -248,7 +248,7 @@ function resolveMountedAnnotationCollisions(
   )).filter((label) => !label.closest(".cw-plot-composition-entry"));
   labels.sort((left, right) => Number(right.classList.contains("is-pinned")) - Number(left.classList.contains("is-pinned")));
   const obstacles = Array.from(svg.querySelectorAll<SVGGraphicsElement>(
-    ".cw-plot-legend, .cw-plot-density-legend, .cw-plot-witness-legend, .cw-plot-dispersion-cumulative, .cw-plot-axis-title, .cw-plot-label.is-pinned",
+    ".cw-plot-legend, .cw-plot-density-legend, .cw-plot-dispersion-cumulative, .cw-plot-axis-title, .cw-plot-label.is-pinned",
   )).map(measuredElementBox).filter((box): box is MeasuredLayoutBox => box !== null);
   const placed: MeasuredLayoutBox[] = [];
   let railY = 18;

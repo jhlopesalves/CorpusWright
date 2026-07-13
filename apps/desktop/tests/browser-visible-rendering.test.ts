@@ -20,7 +20,7 @@ assert.equal(auditBlock.match(/\brecoveryAuditCase\(/g)?.length, 4);
 assert.equal(cleanupScreenshotBlock.match(/\bcleanupShot\(/g)?.length, 8);
 assert.equal(cleanupExportBlock.match(/\bcleanupExportCase\(/g)?.length, 2);
 assert.equal(legibilityScreenshotBlock.match(/\blegibilityShot\(/g)?.length, 7);
-assert.equal(legibilityExportBlock.match(/\blegibilityExportCase\(/g)?.length, 1);
+assert.equal(legibilityExportBlock.match(/\blegibilityExportCase\(/g)?.length, 2);
 
 for (const filename of [
   "document-histogram.png",
@@ -70,12 +70,13 @@ for (const filename of [
   "document-qq-legend",
   "vocabulary-growth-legend",
   "document-balance-disclosure",
-  "frequency-concentration-disclosure",
   "dispersion-profile-tooltip",
+  "dispersion-plane",
 ]) {
   assert.match(legibilityScreenshotBlock, new RegExp(`"${filename}"`));
 }
 assert.match(legibilityExportBlock, /"document-ecdf"/);
+assert.match(legibilityExportBlock, /"dispersion-plane"/);
 
 assert.equal(
   packageJson.scripts?.["check:overview-rendering-recovery"],
@@ -106,11 +107,19 @@ for (const browserAssertion of [
   "dispersion profile ordered endpoints",
   "density legend does not expose the six-step scale",
   "density legend high step does not match the cell scale",
+  "density legend colour strength is not monotonic",
+  "adjacent dispersion density cells contain an intentional gap",
+  "witness-category legend remains",
+  "four quiet dispersion quadrant labels are not retained",
+  "dispersion threshold lines are too visually prominent",
+  "dispersion density grid keyboard contract changed",
   "switched ${expectedLabel} control remains visible",
   "residual point outside fitted population",
   "lexical authored annotation outside SVG bounds",
   "dispersion witness label overlaps density legend",
   "automatic dispersion label overlaps threshold text",
+  "dispersion witness label overlaps a marginal histogram",
+  "automatic dispersion witness labels overlap each other",
   "external profile band is not visibly named",
   "ECDF final cumulative endpoint is not visible",
   "ECDF target uses ordinary point renderer",

@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import {
   buildDispersionPlaneGeometry,
   dispersionPlaneMarginalCounts,
+  estimateLabelBox,
 } from "../src/plots/model.ts";
+import { layoutBoxesOverlap } from "../src/plots/layout.ts";
 import { OverviewFigureController } from "../src/plots/figure-workbench.ts";
 
 const counts = [
@@ -49,11 +51,21 @@ assert.deepEqual(logRaw.dpMarginal.map((marginal) => marginal.count), marginalCo
 assert.equal(logRaw.cells.length, counts.length);
 assert.deepEqual(logRaw.cells.map((cell) => cell.count), counts);
 assert(logRaw.cells.filter((cell) => cell.count === 0).every((cell) => cell.opacity === 0));
-assert(logRaw.cells.filter((cell) => cell.count > 0).every((cell) => cell.opacity >= 0.82));
+assert(logRaw.cells.filter((cell) => cell.count > 0).every((cell) => cell.opacity === 1));
 assert(new Set(logRaw.cells.filter((cell) => cell.count > 0).map((cell) => cell.fill)).size >= 5);
+assert.notEqual(logRaw.cells.find((cell) => cell.count === 1)?.fill, logRaw.cells.find((cell) => cell.count === 5)?.fill);
+assert.match(logRaw.cells.find((cell) => cell.count === 5)?.fill ?? "", /--cw-plot-density-5/);
+for (let row = 0; row < plane.yBins; row += 1) {
+  const rowCells = logRaw.cells.filter((cell) => cell.row === row).sort((left, right) => left.column - right.column);
+  for (let index = 1; index < rowCells.length; index += 1) {
+    assert(Math.abs(rowCells[index - 1]!.x + rowCells[index - 1]!.width - rowCells[index]!.x) < 1e-9);
+  }
+}
 assert.equal(logRaw.densityLegend.mode, "log");
 assert.equal(logRaw.densityLegend.minimum, 1);
 assert.equal(logRaw.densityLegend.maximum, 5);
+assert.deepEqual(logRaw.yTicks.map((tick) => tick.label), ["0", "0.25", "0.50", "0.75", "1"]);
+assert.deepEqual(logRaw.yTicks.filter((tick) => tick.accessibleLabel).map((tick) => tick.accessibleLabel), ["0, more even", "1, more concentrated"]);
 
 const linearRaw = buildDispersionPlaneGeometry({
   plane,
@@ -82,25 +94,40 @@ assert.equal(perMillion.witnesses[0]!.rawX - logRaw.witnesses[0]!.rawX, 1);
 assert.equal(perMillion.xAxisLabel, "Frequency per million (log scale)");
 assert(perMillion.cells.find((cell) => cell.count > 0)?.tooltipRows.some((row) => row.startsWith("per million")));
 
-const shapeByKind = new Map(logRaw.witnesses.map((witness) => [witness.datum.kind, witness.shape]));
-assert.deepEqual(Object.fromEntries(shapeByKind), {
-  core: "circle",
-  loudButLocal: "diamond",
-  quietAndEven: "square",
-  rareAndLocal: "triangle",
-});
-assert.deepEqual(logRaw.witnessLegend.map((item) => [item.label, item.shape]), [
-  ["Core vocabulary", "circle"],
-  ["Loud but local", "diamond"],
-  ["Quiet and even", "square"],
-  ["Rare and local", "triangle"],
-]);
+assert(logRaw.witnesses.every((witness) => witness.shape === "circle"));
+assert.deepEqual(logRaw.witnesses.map((witness) => witness.datum), witnesses);
+assert(logRaw.witnesses.every((witness) => witness.className === "cw-plot-plane-witness-mark"));
+assert(logRaw.witnesses.every((witness) => witness.ariaLabel?.includes(witness.datum.token)));
+assert(logRaw.witnesses.every((witness) => witness.tooltipRows?.some((row) => row.startsWith("category "))));
 assert.equal(logRaw.labels.filter((label) => label.text.startsWith("core-")).length, 1);
 assert.equal(logRaw.labels.filter((label) => label.text.startsWith("loud-")).length, 1);
 assert.equal(logRaw.labels.filter((label) => label.text.startsWith("quiet-")).length, 1);
 assert.equal(logRaw.labels.filter((label) => label.text.startsWith("rare-")).length, 1);
 assert(logRaw.labels.length <= 4);
 assert(logRaw.witnesses.every((witness) => witness.rampIndex === 2));
+assert.deepEqual(logRaw.quadrantLabels.map((label) => label.text).sort(), [
+  "Frequent · concentrated",
+  "Frequent · even",
+  "Rare · concentrated",
+  "Rare · even",
+]);
+for (const label of logRaw.labels.filter((candidate) => !candidate.pinned)) {
+  for (const threshold of logRaw.thresholdLabels) {
+    assert(!layoutBoxesOverlap(estimateLabelBox(label), estimateLabelBox(threshold), 1));
+  }
+}
+logRaw.frequencyMarginal.forEach((marginal, column) => {
+  const cell = logRaw.cells.find((candidate) => candidate.column === column);
+  assert(cell);
+  assert(Math.abs(marginal.x - cell.x) < 1e-9);
+  assert(Math.abs(marginal.width - cell.width) < 1e-9);
+});
+logRaw.dpMarginal.forEach((marginal, row) => {
+  const cell = logRaw.cells.find((candidate) => candidate.row === row);
+  assert(cell);
+  assert(Math.abs(marginal.y - cell.y) < 1e-9);
+  assert(Math.abs(marginal.height - cell.height) < 1e-9);
+});
 
 const pinned = buildDispersionPlaneGeometry({
   plane,
@@ -111,6 +138,8 @@ const pinned = buildDispersionPlaneGeometry({
 assert.equal(pinned.labels[0]?.text, "core-3");
 assert.equal(pinned.labels[0]?.pinned, true);
 assert.equal(pinned.witnesses.find((witness) => witness.datum.token === "core-3")?.pinned, true);
+assert(pinned.labels.filter((label) => !label.pinned).length <= 4);
+assert.equal(pinned.labels.filter((label) => label.pinned).length, 1);
 
 const hiddenLayers = buildDispersionPlaneGeometry({
   plane,
@@ -144,15 +173,19 @@ const figures = readFileSync(new URL("../src/styles/plots/figures.css", import.m
 const legends = readFileSync(new URL("../src/styles/plots/legends-and-annotations.css", import.meta.url), "utf8");
 
 assert.match(render, /cw-plot-density-legend/);
-assert.match(render, /cw-plot-witness-legend/);
+assert.doesNotMatch(render, /cw-plot-witness-legend|renderPlaneWitnessLegend/);
 assert.match(render, /renderPlaneMarginals\(svg, geometry\)/);
-assert.match(render, /data-point-shape/);
+assert.match(render, /rx: 0,[\s\S]*cw-plot-density-cell/);
+assert.match(render, /"data-point-shape": "circle"/);
+assert.match(render, /cw-plot-plane-witness-pin-ring/);
 assert.match(marks, /cw-plot-plane-witness[\s\S]*--cw-plot-witness[\s\S]*fill-opacity: 1/);
 assert.doesNotMatch(marks, /cw-plot-witness-(?:core|loud-local|quiet-even|rare-local)/);
 assert.match(marks, /data-figure-palette="monochrome"[^}]*cw-plot-plane-witness/);
 assert.match(figures, /cw-overview-figure-controls[\s\S]*flex-wrap: wrap/);
 assert.match(figures, /cw-overview-figure-body[\s\S]*overflow-x: auto/);
 assert.match(legends, /max-width: 700px[\s\S]*is-narrow-optional:not\(\.is-pinned\)/);
+assert.match(legends, /cw-plot-quadrant-label/);
+assert.doesNotMatch(legends, /cw-plot-quadrant-pill/);
 assert.match(figure, /cw-plot-crosshair-x, \.cw-plot-crosshair-y, \.cw-plot-tooltip/);
 assert.match(figure, /target\.removeAttribute\("data-tooltip-title"\)/);
 assert.doesNotMatch(render, /renderDispersionCompositionBar/);

@@ -107,6 +107,24 @@
   shape-rendering: crispEdges;
 }
 
+.cw-plot-svg[data-plot-id="overview-dispersion-plane"] {
+  --cw-plot-density-0: color-mix(in srgb, var(--cw-info-text) 7%, var(--panel-bg));
+  --cw-plot-density-1: color-mix(in srgb, var(--cw-info-text) 20%, var(--panel-bg));
+  --cw-plot-density-2: color-mix(in srgb, var(--cw-info-text) 42%, var(--panel-bg));
+  --cw-plot-density-3: color-mix(in srgb, var(--cw-info-text) 72%, var(--panel-bg));
+  --cw-plot-density-4: color-mix(in srgb, var(--cw-info-text) 65%, var(--cw-category-mixed-text) 35%);
+  --cw-plot-density-5: color-mix(in srgb, var(--cw-category-mixed-text) 75%, var(--text-color));
+}
+
+[data-figure-palette="monochrome"] .cw-plot-svg[data-plot-id="overview-dispersion-plane"] {
+  --cw-plot-density-0: color-mix(in srgb, var(--text-muted) 8%, var(--panel-bg));
+  --cw-plot-density-1: color-mix(in srgb, var(--text-muted) 24%, var(--panel-bg));
+  --cw-plot-density-2: color-mix(in srgb, var(--text-color) 42%, var(--panel-bg));
+  --cw-plot-density-3: color-mix(in srgb, var(--text-color) 62%, var(--panel-bg));
+  --cw-plot-density-4: color-mix(in srgb, var(--text-color) 82%, var(--panel-bg));
+  --cw-plot-density-5: var(--text-color);
+}
+
 .cw-plot-spectrum-band {
   fill: var(--cw-surface-subtle);
   pointer-events: none;
@@ -184,7 +202,6 @@
 
 .cw-plot-point.is-pinned,
 .cw-plot-bar.is-pinned,
-.cw-plot-plane-witness.is-pinned,
 .cw-plot-composition-segment.is-pinned {
   stroke: var(--cw-plot-selected, var(--cw-plot-ramp-4));
   stroke-width: 2.6;
@@ -230,7 +247,16 @@
 
 .cw-plot-plane-marginal {
   fill: var(--cw-plot-observed, var(--cw-plot-point));
-  fill-opacity: 0.56;
+  fill-opacity: 0.52;
+  stroke: none;
+  shape-rendering: crispEdges;
+}
+
+.cw-plot-plane-witness-pin-ring {
+  fill: none;
+  stroke: var(--cw-plot-selected, var(--cw-category-mixed-text));
+  stroke-width: 2.4;
+  vector-effect: non-scaling-stroke;
 }
 
 [data-figure-palette="monochrome"] .cw-plot-plane-witness {

@@ -461,7 +461,16 @@ function buildPlaneFigure(): BuiltFigure {
       xBins: 12,
       yBins: 8,
       freqLog10Max: 6,
-      counts: Array.from({ length: 96 }, (_, index) => index % 7 === 0 ? 0 : (index * 17) % 113),
+      counts: [
+        1, 1, 2, 2, 4, 8, 18, 42, 78, 112, 64, 24,
+        0, 1, 1, 2, 5, 11, 30, 68, 96, 84, 38, 12,
+        0, 0, 1, 1, 3, 8, 20, 48, 62, 44, 20, 7,
+        0, 0, 0, 1, 2, 5, 10, 18, 24, 16, 8, 3,
+        0, 0, 0, 0, 1, 2, 4, 8, 12, 7, 3, 1,
+        0, 0, 0, 0, 0, 1, 2, 4, 5, 3, 1, 0,
+        0, 0, 0, 0, 0, 0, 1, 2, 3, 1, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0,
+      ],
       maxCellCount: 112,
       witnesses: [
         { token: "internationalisation", frequency: 420_000, documentFrequency: 98, dp: 0.08, kind: "core" },
@@ -801,7 +810,7 @@ function auditFigure(figure: HTMLElement): string[] {
       if (rectanglesOverlap(callout.getBoundingClientRect(), text.getBoundingClientRect(), 2)) failures.push("callout overlaps composition rail");
     }
   }
-  const legends = Array.from(svg.querySelectorAll<SVGGElement>(".cw-plot-legend, .cw-plot-density-legend, .cw-plot-witness-legend"));
+  const legends = Array.from(svg.querySelectorAll<SVGGElement>(".cw-plot-legend, .cw-plot-density-legend"));
   const priorityMarks = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-hover-target.is-pinned"));
   for (const legend of legends) {
     for (const mark of priorityMarks) {
@@ -958,22 +967,81 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
   }
   if (figureName === "plane") {
     assertDistinctFills(".cw-plot-density-cell:not(.is-zero)", 5, "dispersion plane density");
-    const positiveCells = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-density-cell:not(.is-zero)"));
-    const positiveOpacities = positiveCells.map((cell) => Number(getComputedStyle(cell).opacity)).sort((left, right) => left - right);
-    if ((positiveOpacities[Math.floor(positiveOpacities.length / 2)] ?? 0) < 0.8) failures.push("dispersion density median opacity is below 0.8");
-    const witnessFills = new Set(Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-plane-witness")).map((witness) => getComputedStyle(witness).fill));
+    const cells = Array.from(svg.querySelectorAll<SVGRectElement>(".cw-plot-density-cell"));
+    const positiveCells = cells.filter((cell) => !cell.classList.contains("is-zero"));
+    const zeroCells = cells.filter((cell) => cell.classList.contains("is-zero"));
+    if (cells.some((cell) => Number(cell.getAttribute("rx")) !== 0)) failures.push("dispersion density cell retains rounded corners");
+    if (zeroCells.some((cell) => Number(getComputedStyle(cell).opacity) !== 0)) failures.push("zero-count dispersion cell is not transparent");
+    if (positiveCells.some((cell) => Number(getComputedStyle(cell).opacity) !== 1)) failures.push("positive dispersion cells use opacity as the density encoding");
+    for (let row = 0; row < 8; row += 1) {
+      const rowCells = cells.filter((cell) => Number(cell.dataset.gridRow) === row)
+        .sort((left, right) => Number(left.dataset.gridColumn) - Number(right.dataset.gridColumn));
+      for (let index = 1; index < rowCells.length; index += 1) {
+        const left = rowCells[index - 1]!;
+        const right = rowCells[index]!;
+        if (Math.abs(Number(left.getAttribute("x")) + Number(left.getAttribute("width")) - Number(right.getAttribute("x"))) > 0.01) {
+          failures.push("adjacent dispersion density cells contain an intentional gap");
+          break;
+        }
+      }
+    }
+    const panelColour = getComputedStyle(svg.closest<HTMLElement>(".cw-overview-figure")!).backgroundColor;
+    const cellsByCount = positiveCells.map((cell) => ({
+      cell,
+      count: Number(cell.dataset.tooltipTitle?.match(/^([\d,]+) types$/)?.[1]?.replaceAll(",", "")),
+    })).filter((entry) => Number.isFinite(entry.count)).sort((left, right) => left.count - right.count);
+    const weakestDistance = colourDistance(getComputedStyle(cellsByCount[0]!.cell).fill, panelColour);
+    const strongestDistance = colourDistance(getComputedStyle(cellsByCount.at(-1)!.cell).fill, panelColour);
+    if (!(weakestDistance < strongestDistance)) failures.push("low-count dispersion cells do not recede behind the dense core");
+    const witnesses = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-plane-witness"));
+    const witnessFills = new Set(witnesses.map((witness) => getComputedStyle(witness).fill));
     if (witnessFills.size !== 1) failures.push("dispersion witness classes do not share one base colour");
-    const witnessShapes = new Set(Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-plane-witness")).map((witness) => witness.dataset.pointShape));
-    if (witnessShapes.size !== 4) failures.push("dispersion witness classes do not retain four shapes");
+    if (witnesses.some((witness) => witness.dataset.pointShape !== "circle" || witness.tagName.toLowerCase() !== "circle")) failures.push("dispersion witnesses do not share one circle shape");
+    if (witnesses.some((witness) => !witness.dataset.tooltipRows?.includes("category ") || !witness.getAttribute("aria-label")?.includes(", ") || !witness.dataset.witnessKind)) failures.push("dispersion witness omits its category from tooltip, accessibility label or internal data");
+    if (svg.querySelector(".cw-plot-witness-legend")) failures.push("witness-category legend remains");
     const pinnedWitness = svg.querySelector<SVGGraphicsElement>(".cw-plot-plane-witness.is-pinned");
-    if (pinnedWitness && Number(getComputedStyle(pinnedWitness).strokeWidth.replace("px", "")) < 2.5) failures.push("pinned witness lacks a distinct outer selection treatment");
-    const legendSteps = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-density-legend-step"));
+    if (pinnedWitness && !svg.querySelector(".cw-plot-plane-witness-pin-ring")) failures.push("pinned witness lacks a distinct outer selection ring");
+    const densityLegends = svg.querySelectorAll<SVGGElement>(".cw-plot-density-legend");
+    if (densityLegends.length !== 1) failures.push("dispersion plane does not retain exactly one density legend");
+    const legendSteps = Array.from(svg.querySelectorAll<SVGRectElement>(".cw-plot-density-legend-step"));
     const legendFills = legendSteps.map((step) => getComputedStyle(step).fill);
     if (legendSteps.length !== 6 || new Set(legendFills).size !== 6) failures.push("density legend does not expose the six-step scale");
-    const cellFills = new Set(Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-density-cell:not(.is-zero)"))
-      .map((cell) => getComputedStyle(cell).fill));
+    for (let index = 1; index < legendSteps.length; index += 1) {
+      const left = legendSteps[index - 1]!;
+      const right = legendSteps[index]!;
+      if (Number(left.getAttribute("x")) + Number(left.getAttribute("width")) !== Number(right.getAttribute("x"))) {
+        failures.push("density legend steps are not contiguous");
+        break;
+      }
+    }
+    const legendDistances = legendFills.map((fill) => colourDistance(fill, panelColour));
+    if (legendDistances.some((distance, index) => index > 0 && distance <= legendDistances[index - 1]!)) failures.push("density legend colour strength is not monotonic");
+    const cellFills = new Set(positiveCells.map((cell) => getComputedStyle(cell).fill));
     if (!legendFills.at(-1) || !cellFills.has(legendFills.at(-1)!)) failures.push("density legend high step does not match the cell scale");
-    if (!svg.querySelector(".cw-plot-density-legend .cw-plot-legend-label")?.textContent?.includes("Log scale")) failures.push("density legend omits Log scale");
+    if (svg.querySelector(".cw-plot-density-legend .cw-plot-legend-label")?.textContent !== "Types per cell · logarithmic colour scale") failures.push("density legend label is not the approved logarithmic colour-scale text");
+    const legendBounds = Array.from(svg.querySelectorAll<SVGTextElement>(".cw-plot-density-legend-bound")).map((label) => label.textContent);
+    if (legendBounds.join("|") !== `${cellsByCount[0]!.count}|${cellsByCount.at(-1)!.count}`) failures.push("density legend omits the minimum or maximum cell count");
+    const quadrantLabels = Array.from(svg.querySelectorAll<SVGTextElement>(".cw-plot-quadrant-label")).map((label) => label.textContent).sort();
+    if (quadrantLabels.join("|") !== ["Frequent · concentrated", "Frequent · even", "Rare · concentrated", "Rare · even"].sort().join("|")) failures.push("four quiet dispersion quadrant labels are not retained");
+    if (svg.querySelector(".cw-plot-quadrant-pill-bg, .cw-plot-quadrant-pills")) failures.push("dispersion quadrant pill background remains");
+    const automaticLabels = svg.querySelectorAll(".cw-plot-plane-witness-label:not(.is-pinned)");
+    if (automaticLabels.length > 4) failures.push("dispersion plane renders more than four automatic witness labels");
+    if (pinned && !svg.querySelector(".cw-plot-plane-witness-label.is-pinned")) failures.push("pinned dispersion witness label is not retained");
+    const frequencyMarginals = Array.from(svg.querySelectorAll<SVGRectElement>(".cw-plot-plane-marginal.is-frequency"));
+    const dpMarginals = Array.from(svg.querySelectorAll<SVGRectElement>(".cw-plot-plane-marginal.is-dp"));
+    if (frequencyMarginals.length !== 12 || frequencyMarginals.some((marginal, column) => {
+      const cell = cells.find((candidate) => Number(candidate.dataset.gridRow) === 0 && Number(candidate.dataset.gridColumn) === column);
+      return !cell || Math.abs(Number(marginal.getAttribute("x")) - Number(cell.getAttribute("x"))) > 0.01
+        || Math.abs(Number(marginal.getAttribute("width")) - Number(cell.getAttribute("width"))) > 0.01;
+    })) failures.push("frequency marginals are not aligned with density columns");
+    if (dpMarginals.length !== 8 || dpMarginals.some((marginal, row) => {
+      const cell = cells.find((candidate) => Number(candidate.dataset.gridRow) === row && Number(candidate.dataset.gridColumn) === 0);
+      return !cell || Math.abs(Number(marginal.getAttribute("y")) - Number(cell.getAttribute("y"))) > 0.01
+        || Math.abs(Number(marginal.getAttribute("height")) - Number(cell.getAttribute("height"))) > 0.01;
+    })) failures.push("DP marginals are not aligned with density rows");
+    const thresholdLines = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-threshold-line"));
+    if (thresholdLines.some((line) => Number(getComputedStyle(line).strokeOpacity) > 0.55)) failures.push("dispersion threshold lines are too visually prominent");
+    if (svg.querySelector(".cw-plot-density-cells")?.getAttribute("role") !== "grid" || positiveCells.some((cell) => cell.getAttribute("role") !== "gridcell" || cell.getAttribute("tabindex") !== "-1")) failures.push("dispersion density grid keyboard contract changed");
   }
   if (figureName === "coverage") {
     const disclosure = document.querySelector<HTMLElement>(".cw-overview-figure-teaching .analysis-glossary-term");
@@ -1130,7 +1198,7 @@ function auditRecoveryGeometry(svg: SVGSVGElement, failures: string[]): void {
   }
   if (figureName === "plane") {
     const legend = svg.querySelector<SVGGElement>(".cw-plot-density-legend");
-    const witnessLabels = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-label-mono[class*='is-witness-']"));
+    const witnessLabels = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-plane-witness-label"));
     if (legend && witnessLabels.some((label) => rectanglesOverlap(legend.getBoundingClientRect(), label.getBoundingClientRect(), 2))) {
       failures.push("dispersion witness label overlaps density legend");
     }
@@ -1139,7 +1207,37 @@ function auditRecoveryGeometry(svg: SVGSVGElement, failures: string[]): void {
     if (automaticWitnessLabels.some((label) => thresholdLabels.some((threshold) => rectanglesOverlap(label.getBoundingClientRect(), threshold.getBoundingClientRect(), 2)))) {
       failures.push("automatic dispersion label overlaps threshold text");
     }
+    const marginals = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-plane-marginal"));
+    if (witnessLabels.some((label) => marginals.some((marginal) => rectanglesOverlap(label.getBoundingClientRect(), marginal.getBoundingClientRect(), 2)))) {
+      failures.push("dispersion witness label overlaps a marginal histogram");
+    }
+    if (automaticWitnessLabels.some((label, index) => automaticWitnessLabels.slice(index + 1).some((other) => rectanglesOverlap(label.getBoundingClientRect(), other.getBoundingClientRect(), 2)))) {
+      failures.push("automatic dispersion witness labels overlap each other");
+    }
+    const quadrantLabels = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-quadrant-label"));
+    const witnesses = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-plane-witness"));
+    if (quadrantLabels.some((label) => witnesses.some((witness) => rectanglesOverlap(label.getBoundingClientRect(), witness.getBoundingClientRect(), 2)))) {
+      failures.push("dispersion quadrant label overlaps a witness");
+    }
   }
+}
+
+function colourDistance(left: string, right: string): number {
+  const leftChannels = colourChannels(left);
+  const rightChannels = colourChannels(right);
+  if (!leftChannels || !rightChannels) return Number.NaN;
+  return Math.hypot(
+    leftChannels[0] - rightChannels[0],
+    leftChannels[1] - rightChannels[1],
+    leftChannels[2] - rightChannels[2],
+  );
+}
+
+function colourChannels(value: string): [number, number, number] | null {
+  const rgb = value.match(/^rgba?\(\s*([\d.]+)[, ]+\s*([\d.]+)[, ]+\s*([\d.]+)/);
+  if (rgb) return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+  const srgb = value.match(/^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/);
+  return srgb ? [Number(srgb[1]) * 255, Number(srgb[2]) * 255, Number(srgb[3]) * 255] : null;
 }
 
 function auditInteractionCapability(svg: SVGSVGElement, failures: string[]): void {
