@@ -1,0 +1,38 @@
+body {
+  margin: 0;
+  padding: 24px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-family: var(--cw-font-ui);
+}
+
+#fixture-root {
+  display: grid;
+  gap: 24px;
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+.layout-fixture-card {
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--panel-bg);
+}
+
+.layout-fixture-card h1 {
+  margin: 0 0 8px;
+  font-size: var(--cw-type-plot-title-size);
+}
+
+#fixture-result {
+  position: fixed;
+  right: 8px;
+  bottom: 8px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  background: var(--panel-bg);
+  color: var(--text-color);
+}
