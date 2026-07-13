@@ -616,7 +616,8 @@
 .analysis-method-disclosure {
   display: grid;
   gap: 0;
-  max-width: 82ch;
+  width: 100%;
+  max-width: none;
   border-top: 1px solid var(--border-color);
 }
 
@@ -631,6 +632,7 @@
 
 .analysis-method-disclosure-detail {
   gap: 12px;
+  max-width: 82ch;
 }
 
 .analysis-glossary-group-entry {

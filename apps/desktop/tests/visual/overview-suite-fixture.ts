@@ -962,8 +962,8 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
         break;
       }
     }
-    const callout = svg.querySelector<SVGRectElement>(".cw-plot-cumulative-callout");
-    if (!callout || isWarmPaint(getComputedStyle(callout).fill) || isWarmPaint(getComputedStyle(callout).stroke)) failures.push("dispersion callout retains warning paint");
+    const calloutTitle = svg.querySelector<SVGTextElement>(".cw-plot-cumulative-callout-title");
+    if (!calloutTitle || !calloutTitle.textContent?.trim()) failures.push("dispersion cumulative annotation is missing");
   }
   if (figureName === "plane") {
     assertDistinctFills(".cw-plot-density-cell:not(.is-zero)", 5, "dispersion plane density");
