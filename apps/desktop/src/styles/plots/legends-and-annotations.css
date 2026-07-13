@@ -51,7 +51,7 @@
 }
 
 .cw-plot-composition-entry:is(.cw-plot-ramp-0, .cw-plot-ramp-1) .cw-plot-composition-label {
-  fill: var(--cw-plot-composition-foreground-low, var(--text-color));
+  fill: var(--cw-plot-composition-foreground-low, var(--panel-bg));
 }
 
 .cw-plot-composition-entry.is-wide[class*="cw-plot-profile-band-"] .cw-plot-composition-label,

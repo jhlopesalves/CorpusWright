@@ -21,7 +21,7 @@ const feedback = moduleSource("components/feedback.css");
 const analyse = moduleSource("features/analyse.css");
 const concordance = moduleSource("features/concordance.css");
 
-assert.equal(themes.length, 16, "focus contracts must cover all sixteen themes");
+assert.equal(themes.length, 14, "focus contracts must cover all fourteen themes");
 for (const theme of themes) {
   assert.match(theme.declarations.get("--cw-interaction-focus-ring") ?? "", /^0 0 0 [23]px var\(--focus-ring\)$/);
   assert.match(theme.declarations.get("--cw-interaction-focus-outline") ?? "", /^[23]px solid var\(--focus-ring\)$/);

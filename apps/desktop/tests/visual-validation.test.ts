@@ -38,7 +38,7 @@ const invalidCss = `
 .fixture-spinner { animation: fixture-spin 1s linear infinite; }
 .fixture-point { opacity: 0; animation: fixture-in 1s forwards; }
 `;
-const invalidThemeSource = themeSource.replace("--cw-plot-ramp-5: #c084fc", "--cw-plot-ramp-5: #9076ff");
+const invalidThemeSource = themeSource.replace("--cw-plot-ramp-5: #b067ff", "--cw-plot-ramp-5: #776cff");
 const invalid = validateVisualContracts({
   modules: [...graph.modules, { path: path.join(desktopRoot, "src/styles/features/invalid-fixture.css"), contents: invalidCss }],
   desktopRoot,
@@ -64,7 +64,7 @@ for (const expected of [
 }
 
 const themes = parseCompleteThemes(themeSource);
-assert.equal(themes.length, 16);
+assert.equal(themes.length, 14);
 for (const theme of themes) {
   const panel = colourForToken("--panel-bg", theme.declarations);
   const ramps = Array.from({ length: 6 }, (_, index) => colourForToken(`--cw-plot-ramp-${index}`, theme.declarations));
@@ -109,12 +109,15 @@ for (let index = 0; index < 6; index += 1) {
   assert.equal(scientificRoles.get(`--cw-plot-density-${index}`), `var(--cw-plot-ramp-${index})`, "density roles must preserve the ordered theme ramp");
 }
 assert.equal(Array.from({ length: 10 }, (_, index) => scientificRoles.has(`--cw-plot-profile-${index}`)).filter(Boolean).length, 10);
+assert.equal(scientificRoles.get("--cw-plot-composition-foreground-low"), "var(--panel-bg)", "low-ramp composition foreground must resolve to the panel background");
+const annotationsSource = readFileSync(new URL("../src/styles/plots/legends-and-annotations.css", import.meta.url), "utf8");
+assert.match(annotationsSource, /fill:\s*var\(--cw-plot-composition-foreground-low,\s*var\(--panel-bg\)\)/, "low-ramp composition fallback uses panel-bg");
 
 const contrastOutput = execFileSync("node", ["scripts/check-theme-contrast.mjs"], {
   cwd: desktopRoot,
   encoding: "utf8",
 });
-assert.match(contrastOutput, /exactly 16 complete themes \(42 base checks and 27 theme × palette role checks each\)/);
+assert.match(contrastOutput, /exactly 14 complete themes \(42 base checks and 27 theme × palette role checks each\)/);
 const visualOutput = execFileSync("node", ["scripts/check-visual-contracts.mjs"], {
   cwd: desktopRoot,
   encoding: "utf8",

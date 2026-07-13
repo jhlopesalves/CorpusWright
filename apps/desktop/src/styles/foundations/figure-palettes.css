@@ -19,7 +19,7 @@
   --cw-plot-composition-3: var(--cw-plot-ramp-3);
   --cw-plot-composition-4: var(--cw-plot-ramp-4);
   --cw-plot-composition-5: var(--cw-plot-ramp-5);
-  --cw-plot-composition-foreground-low: var(--text-color);
+  --cw-plot-composition-foreground-low: var(--panel-bg);
   --cw-plot-profile-0: var(--cw-plot-ramp-0);
   --cw-plot-profile-1: color-mix(in srgb, var(--cw-plot-ramp-0) 45%, var(--cw-plot-ramp-1) 55%);
   --cw-plot-profile-2: var(--cw-plot-ramp-1);

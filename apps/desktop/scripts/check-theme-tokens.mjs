@@ -57,7 +57,7 @@ const expectedThemeIds = appearanceThemeIds(appearanceSource);
 const actualThemeIds = themes.map(theme => theme.id);
 const violations = [];
 
-if (themes.length !== 16) violations.push(`expected exactly 16 complete themes, found ${themes.length}`);
+if (themes.length !== 14) violations.push(`expected exactly 14 complete themes, found ${themes.length}`);
 if (new Set(actualThemeIds).size !== actualThemeIds.length) violations.push("complete theme ids must be unique");
 const missingThemes = expectedThemeIds.filter(id => !actualThemeIds.includes(id));
 const extraThemes = actualThemeIds.filter(id => !expectedThemeIds.includes(id));

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   buildDispersionGeometry,
   dispersionReachBounds,
+  estimateLabelBox,
   scaleValue,
 } from "../src/plots/model.ts";
 
@@ -53,6 +54,26 @@ assert.deepEqual(countProfile.points[1]?.tooltipRows, [
 assert.equal(countProfile.points[1]?.tooltipRows?.find((row) => row.startsWith("Examples:"))?.split(",").length, 3);
 assert(!countProfile.points[1]?.tooltipRows?.join(" ").includes("sample-1-d"));
 assert.deepEqual(countProfile.compositionStrip?.segments[1]?.tooltipRows, countProfile.points[1]?.tooltipRows);
+
+const rowLabels = countProfile.labels.filter((label) => label.className?.includes("cw-plot-axis-row-label"));
+assert.equal(countProfile.box.margin.left, 156);
+assert.equal(countProfile.compositionStrip?.segments[0]?.x, 32);
+assert.equal(
+  countProfile.compositionStrip?.width,
+  countProfile.box.width - 32 - countProfile.box.margin.right,
+);
+assert.equal(rowLabels.length, 10);
+for (const [index, label] of rowLabels.entries()) {
+  assert.equal(label.anchor, "end");
+  assert.equal(label.x, countProfile.box.margin.left - 12);
+  assert.equal(label.y, countProfile.points[index]!.y + 4);
+  assert.equal(label.leader, undefined);
+  const estimated = estimateLabelBox(label);
+  assert(estimated.x >= 0, "longest representative label remains inside the SVG viewBox");
+}
+assert.equal(new Set(rowLabels.map((label) => label.x)).size, 1);
+const layoutSource = readFileSync(new URL("../src/plots/layout.ts", import.meta.url), "utf8");
+assert.match(layoutSource, /!label\.classList\.contains\("cw-plot-axis-row-label"\)/);
 
 const shareProfile = buildDispersionGeometry({
   buckets: buckets.slice(0, 3),
