@@ -44,7 +44,10 @@ const invalid = validateVisualContracts({
   desktopRoot,
   themeSource: invalidThemeSource,
   typescriptSources: [...typescriptSources, { path: "fixture.ts", contents: "const FIGURE_TITLE_FONT_SIZE = 17; const weight = 650;" }],
-  exportFixtures: [{ path: "fixture.svg", contents: '<svg style="fill:var(--cw-plot-point)"></svg>' }],
+  exportFixtures: [{
+    path: "fixture.svg",
+    contents: '<svg style="fill:var(--cw-plot-point);stroke:color-mix(in srgb, red, blue);color:color(srgb 1 0 0)"></svg>',
+  }],
 });
 for (const expected of [
   "invalid stroke-color",
@@ -58,6 +61,8 @@ for (const expected of [
   "export identity typography constant",
   "intermediate weight 650",
   "unresolved CSS variable",
+  "unresolved color-mix paint",
+  "non-portable color(srgb) paint",
   "exact duplicate plot-ramp steps",
 ]) {
   assert(invalid.some(violation => violation.includes(expected)), `fixture must trigger ${expected}`);

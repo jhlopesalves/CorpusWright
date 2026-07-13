@@ -3,7 +3,11 @@ import {
   labelTextLines,
   placeAxisTickLabels,
 } from "./model";
-import { hasUnresolvedCssVariables } from "./svg-export";
+import {
+  hasNonPortableSvgPaint,
+  hasUnresolvedCssVariables,
+  normalizeComputedSvgPaint,
+} from "./svg-export";
 import { applyMountedFigureLayout } from "./layout";
 import {
   PLOT_TOOLTIP_MAX_WIDTH,
@@ -415,6 +419,7 @@ function dispatchPinToggle(svg: SVGSVGElement, target: EventTarget | null): bool
 }
 
 export function serializeSvgWithResolvedTokens(svg: SVGSVGElement): string {
+  const paintProperties = new Set(["fill", "stroke", "stop-color", "color"]);
   const clone = svg.cloneNode(true) as SVGSVGElement;
   const originalElements = [svg, ...Array.from(svg.querySelectorAll<SVGElement>("*"))];
   const cloneElements = [clone, ...Array.from(clone.querySelectorAll<SVGElement>("*"))];
@@ -437,6 +442,7 @@ export function serializeSvgWithResolvedTokens(svg: SVGSVGElement): string {
       "stroke-opacity",
       "stroke-width",
       "color",
+      "display",
       "font-family",
       "font-size",
       "font-style",
@@ -450,7 +456,8 @@ export function serializeSvgWithResolvedTokens(svg: SVGSVGElement): string {
       "vector-effect",
     ]) {
       const value = style.getPropertyValue(property);
-      if (value) cloned.style.setProperty(property, value);
+      if (property === "display" && value !== "none") continue;
+      if (value) cloned.style.setProperty(property, paintProperties.has(property) ? normalizeComputedSvgPaint(value) : value);
     }
     for (const property of Array.from(cloned.style)) {
       if (property.startsWith("--")) cloned.style.removeProperty(property);
@@ -460,6 +467,9 @@ export function serializeSvgWithResolvedTokens(svg: SVGSVGElement): string {
   const serialized = new XMLSerializer().serializeToString(clone);
   if (hasUnresolvedCssVariables(serialized)) {
     throw new Error("Standalone SVG export contains unresolved CSS variables");
+  }
+  if (hasNonPortableSvgPaint(serialized)) {
+    throw new Error("Standalone SVG export contains non-portable paint");
   }
   return serialized;
 }

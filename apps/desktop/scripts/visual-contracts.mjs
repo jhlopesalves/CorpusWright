@@ -81,6 +81,12 @@ export function validateVisualContracts({
     if (/var\(\s*--[\w-]+/.test(fixture.contents)) {
       violations.push(`${fixture.path}: unresolved CSS variable in export regression fixture`);
     }
+    if (/color-mix\s*\(/i.test(fixture.contents)) {
+      violations.push(`${fixture.path}: unresolved color-mix paint in export regression fixture`);
+    }
+    if (/color\(\s*srgb\b/i.test(fixture.contents)) {
+      violations.push(`${fixture.path}: non-portable color(srgb) paint in export regression fixture`);
+    }
   }
 
   const staticStart = allCss.indexOf(".cw-plot-svg.cw-plot-export-static");
@@ -97,6 +103,8 @@ export function validateVisualContracts({
     [".cw-plot-tooltip", "tooltip removal"],
     ["--cw-plot-stagger", "animation-delay sanitisation"],
     ["hasUnresolvedCssVariables", "unresolved-variable rejection"],
+    ["normalizeComputedSvgPaint", "portable paint normalisation"],
+    ["hasNonPortableSvgPaint", "non-portable paint rejection"],
   ]) {
     if (typescriptSources.length > 0 && !exportSource.includes(witness)) {
       violations.push(`export sources: missing ${label}`);
