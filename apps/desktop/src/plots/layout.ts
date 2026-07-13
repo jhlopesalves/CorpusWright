@@ -221,7 +221,9 @@ function readInnerPlotBounds(svg: SVGSVGElement, fallback: MeasuredLayoutBox): M
 
 function samplePlotPathObstacles(svg: SVGSVGElement): MeasuredLayoutBox[] {
   const obstacles: MeasuredLayoutBox[] = [];
-  for (const path of svg.querySelectorAll<SVGGeometryElement>(".cw-plot-line, .cw-plot-fit-line")) {
+  for (const path of svg.querySelectorAll<SVGGeometryElement>(
+    ".cw-plot-line, .cw-plot-fit-line, .cw-plot-statistical-reference-line",
+  )) {
     if (path.closest(".cw-plot-legend, .cw-plot-density-legend")) continue;
     try {
       const length = path.getTotalLength();
@@ -250,7 +252,9 @@ function resolveMountedAnnotationCollisions(
   ).filter(
     (label) =>
       !label.closest(".cw-plot-composition-entry")
-      && !label.classList.contains("cw-plot-axis-row-label"),
+      && !label.classList.contains("cw-plot-axis-row-label")
+      && !label.classList.contains("cw-plot-profile-endpoint-label")
+      && !label.classList.contains("cw-plot-quadrant-label"),
   );
   labels.sort((left, right) => Number(right.classList.contains("is-pinned")) - Number(left.classList.contains("is-pinned")));
   const obstacles = Array.from(svg.querySelectorAll<SVGGraphicsElement>(

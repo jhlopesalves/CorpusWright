@@ -203,13 +203,36 @@ export interface RankFrequencyDatum {
   token?: string;
 }
 
+export type RankFitReasonCode =
+  | "top-three"
+  | "frequency-one-tail"
+  | "outside-fitted-interval"
+  | "fit-unavailable-or-invalid";
+
+export type RankFitMembership =
+  | {
+      kind: "included-in-fit";
+      fitted: number;
+      residual: number;
+    }
+  | {
+      kind: "shown-not-fitted";
+      reasonCode: RankFitReasonCode;
+      reason: string;
+      fitted: number | null;
+    };
+
+export interface RankFrequencyPointGeometry extends PlotPointGeometry<RankFrequencyDatum> {
+  fitMembership: RankFitMembership;
+}
+
 export interface RankFrequencyGeometry {
   box: PlotBox;
   xScale: PlotScale;
   yScale: PlotScale;
   xTicks: PlotTick[];
   yTicks: PlotTick[];
-  points: Array<PlotPointGeometry<RankFrequencyDatum>>;
+  points: RankFrequencyPointGeometry[];
   fitPath: PlotPathGeometry | null;
   zeroLine: PlotLineGeometry | null;
   legend: PlotLegendItem[];
@@ -276,6 +299,7 @@ export interface CoverageBandShare {
   label: string;
   share: number;
   rampIndex: number;
+  className: string;
 }
 
 export interface CoverageCrossing {
@@ -579,6 +603,32 @@ export function createPlotBox(
 export function createScale(kind: PlotScaleKind, domain: [number, number], range: [number, number]): PlotScale {
   const normalised = kind === "log" ? normaliseLogDomain(domain) : normaliseLinearDomain(domain);
   return { kind, domain: normalised, range };
+}
+
+export function padPositiveLogDomain(domain: [number, number], paddingFraction = 0.025): [number, number] {
+  let [min, max] = domain;
+  if (!Number.isFinite(min) || min <= 0) min = 1;
+  if (!Number.isFinite(max) || max <= 0) max = min;
+  if (min > max) [min, max] = [max, min];
+  const logSpan = Math.log10(max) - Math.log10(min);
+  const paddingDecades = logSpan > 0
+    ? clamp(logSpan * paddingFraction, 0.015, 0.06)
+    : 0.04;
+  const factor = 10 ** paddingDecades;
+  let paddedMin = Math.max(LOG_MINIMUM, min / factor);
+  let paddedMax = max * factor;
+  const lowerLabelledDecade = 10 ** Math.floor(Math.log10(min));
+  const upperLabelledDecade = 10 ** Math.ceil(Math.log10(max));
+  if (min > lowerLabelledDecade && paddedMin <= lowerLabelledDecade) {
+    paddedMin = lowerLabelledDecade * (1 + 1e-9);
+  }
+  if (max < upperLabelledDecade && paddedMax >= upperLabelledDecade) {
+    paddedMax = upperLabelledDecade * (1 - 1e-9);
+  }
+  if (![paddedMin, paddedMax].every(Number.isFinite) || paddedMin <= 0 || paddedMax <= paddedMin) {
+    return [Math.max(LOG_MINIMUM, min / 1.1), max * 1.1];
+  }
+  return [paddedMin, paddedMax];
 }
 
 export function scaleValue(scale: PlotScale, value: number): number {
@@ -994,37 +1044,47 @@ export function buildRankFrequencyGeometry(options: {
   const fitVisible = options.fitVisible ?? true;
   const fittedStart = options.fittedRankStart;
   const fittedEnd = options.fittedRankEnd;
-  const fittedPopulation = visible.flatMap((point) => {
-    const fitted = fittedRankFrequency(point.rank, options.zipfExponent, options.zipfCoefficient);
-    const residual = rankResidual(point, options.zipfExponent, options.zipfCoefficient);
-    return rankPointBelongsToFit(point, fittedStart, fittedEnd, fitted, residual)
-      ? [{ point, residual: residual! }]
-      : [];
-  });
-  const plottedSource = view === "residuals" ? fittedPopulation.map((entry) => entry.point) : visible;
+  const analysed = visible.map((point) => ({
+    point,
+    membership: classifyRankFitMembership(
+      point,
+      fittedStart,
+      fittedEnd,
+      options.zipfExponent,
+      options.zipfCoefficient,
+    ),
+  }));
+  const fittedPopulation = analysed.filter((entry): entry is {
+    point: RankFrequencyDatum;
+    membership: Extract<RankFitMembership, { kind: "included-in-fit" }>;
+  } => entry.membership.kind === "included-in-fit");
+  const plottedEntries = view === "residuals" ? fittedPopulation : analysed;
+  const plottedSource = plottedEntries.map((entry) => entry.point);
   const xDomain = extent(plottedSource.map((point) => point.rank));
   const xScale = createScale("log", xDomain, [box.margin.left, box.width - box.margin.right]);
-  const residualMagnitude = Math.max(0, ...fittedPopulation.map((entry) => Math.abs(entry.residual)));
+  const residualMagnitude = Math.max(0, ...fittedPopulation.map((entry) => Math.abs(entry.membership.residual)));
   const residualExtent = residualMagnitude < 1e-9 ? 0.05 : residualMagnitude * 1.08;
   const yDomain = view === "residuals"
     ? [-residualExtent, residualExtent] as [number, number]
     : extent(visible.map((point) => rankCurveValue(point, options.yMode)));
   const yScale = createScale(view === "residuals" ? "linear" : "log", yDomain, [box.height - box.margin.bottom, box.margin.top]);
-  const points = plottedSource.flatMap((point) => {
-    const residual = rankResidual(point, options.zipfExponent, options.zipfCoefficient);
-    if (view === "residuals" && residual === null) return [];
-    const rawY = view === "residuals" ? residual! : rankCurveValue(point, options.yMode);
+  const points: RankFrequencyPointGeometry[] = plottedEntries.map(({ point, membership }) => {
+    const rawY = view === "residuals"
+      ? membership.kind === "included-in-fit" ? membership.residual : 0
+      : rankCurveValue(point, options.yMode);
     const key = `rank:${point.rank}:${point.token ?? ""}`;
-    const fitted = fittedRankFrequency(point.rank, options.zipfExponent, options.zipfCoefficient);
-    const excluded = !rankPointBelongsToFit(point, fittedStart, fittedEnd, fitted, residual);
-    return [{
+    const shownNotFitted = membership.kind === "shown-not-fitted";
+    const fitted = membership.fitted;
+    return {
       x: scaleValue(xScale, point.rank),
       y: scaleValue(yScale, rawY),
       rawX: point.rank,
       rawY,
       datum: point,
       rampIndex: 2,
-      excluded,
+      excluded: shownNotFitted,
+      className: shownNotFitted ? "cw-plot-shown-not-fitted" : "cw-plot-included-in-fit",
+      fitMembership: membership,
       key,
       pinned: options.pinnedKeys?.has(key) ?? false,
       tooltipTitle: point.token ?? `rank ${formatInteger(point.rank)}`,
@@ -1032,14 +1092,21 @@ export function buildRankFrequencyGeometry(options: {
         `rank ${formatInteger(point.rank)}`,
         `${formatInteger(point.frequency)} tokens`,
         `${formatFixed(point.ratePerMillion, 2)} per million`,
-        fitted === null ? "fit unavailable" : `fitted raw ${formatFixed(fitted, 2)}`,
-        fitted === null || options.totalTokens <= 0 ? "fitted rate unavailable" : `fitted ${formatFixed(fitted / options.totalTokens * 1_000_000, 2)} per million`,
-        residual === null ? "residual unavailable" : `log residual ${formatFixed(residual, 3)}`,
-        excluded ? "excluded from fit" : "included in fit",
-      ],
-    }];
+        membership.kind === "included-in-fit" ? "fit membership: included in fit" : "fit membership: shown, not fitted",
+        membership.kind === "shown-not-fitted" ? `reason: ${membership.reason}` : "",
+        fitted === null ? "" : `fitted raw ${formatFixed(fitted, 2)}`,
+        fitted === null || options.totalTokens <= 0 ? "" : `fitted ${formatFixed(fitted / options.totalTokens * 1_000_000, 2)} per million`,
+        membership.kind === "included-in-fit" ? `log residual ${formatFixed(membership.residual, 3)}` : "",
+      ].filter(Boolean),
+    };
   });
-  const fitPoints = view === "curve" ? fitPointsForRank(options, xScale, yScale) : [];
+  const actualFittedStart = fittedPopulation[0]?.point.rank ?? null;
+  const actualFittedEnd = fittedPopulation[fittedPopulation.length - 1]?.point.rank ?? null;
+  const fitPoints = view === "curve" ? fitPointsForRank({
+    ...options,
+    fittedRankStart: actualFittedStart,
+    fittedRankEnd: actualFittedEnd,
+  }, xScale, yScale) : [];
   const fitPath = view === "curve" && fitVisible && fitPoints.length > 0
     ? { d: pointsToPath(fitPoints), className: "cw-plot-fit-line" }
     : null;
@@ -1074,17 +1141,39 @@ export function buildRankFrequencyGeometry(options: {
     plotLabelBounds(box),
     8,
   );
-  const fittedRange = view === "curve" && fitVisible && fittedStart !== null && fittedEnd !== null && fittedEnd >= fittedStart
+  const fittedRange = view === "curve" && fitVisible && actualFittedStart !== null && actualFittedEnd !== null
     ? {
-        x1: scaleValue(xScale, Math.max(fittedStart, xScale.domain[0])),
-        x2: scaleValue(xScale, Math.min(fittedEnd, xScale.domain[1])),
+        x1: scaleValue(xScale, Math.max(actualFittedStart, xScale.domain[0])),
+        x2: scaleValue(xScale, Math.min(actualFittedEnd, xScale.domain[1])),
         y: box.margin.top,
         height: box.innerHeight,
-        labelX: scaleValue(xScale, Math.max(fittedStart, xScale.domain[0])) + 6,
+        labelX: scaleValue(xScale, Math.max(actualFittedStart, xScale.domain[0])) + 6,
         labelY: box.margin.top + 13,
-        label: "Fitted ranks",
+        label: `Model fitted over ranks ${formatInteger(actualFittedStart)}–${formatInteger(actualFittedEnd)}`,
       }
     : null;
+  const fitAnnotations: PlotLabelGeometry[] = view === "curve" && fitVisible && options.labelsMode !== "off"
+    ? [
+        ...(analysed.some((entry) => entry.membership.kind === "shown-not-fitted" && entry.membership.reasonCode === "top-three")
+          ? [{
+              x: box.margin.left + 10,
+              y: box.margin.top + 18,
+              text: "Top three ranks not fitted",
+              anchor: "start" as const,
+              className: "cw-plot-label-muted cw-plot-fit-membership-annotation",
+            }]
+          : []),
+        ...(analysed.some((entry) => entry.membership.kind === "shown-not-fitted" && entry.membership.reasonCode === "frequency-one-tail")
+          ? [{
+              x: box.width - box.margin.right - 10,
+              y: box.height - box.margin.bottom - 10,
+              text: "Frequency-one tail not fitted",
+              anchor: "end" as const,
+              className: "cw-plot-label-muted cw-plot-fit-membership-annotation",
+            }]
+          : []),
+      ]
+    : [];
   return {
     box,
     xScale,
@@ -1103,11 +1192,11 @@ export function buildRankFrequencyGeometry(options: {
       className: "cw-plot-residual-zero",
     } : null,
     legend: view === "residuals" ? [] : [
-        { label: "Observed", kind: "point", shape: "circle" },
-        ...(fitPath ? [{ label: "Fitted", kind: "line" as const, className: "cw-plot-fit-line" }] : []),
-        { label: "Excluded from fit", kind: "point", shape: "circle", hollow: true, className: "cw-plot-excluded" },
+        { label: "Included in fit", kind: "point", shape: "circle" },
+        ...(fitPath ? [{ label: "Zipf fit", kind: "line" as const, className: "cw-plot-fit-line" }] : []),
+        { label: "Shown, not fitted", kind: "point", shape: "circle", hollow: true, className: "cw-plot-shown-not-fitted" },
       ],
-    labels: headLabels,
+    labels: [...headLabels, ...fitAnnotations],
     fittedRange,
   };
 }
@@ -1123,23 +1212,39 @@ export function rankResidual(
   return Number.isFinite(residual) ? residual : null;
 }
 
-function rankPointBelongsToFit(
+export function classifyRankFitMembership(
   point: RankFrequencyDatum,
   fittedStart: number | null,
   fittedEnd: number | null,
+  exponent: number | null,
+  coefficient: number | null,
+): RankFitMembership {
+  const fitted = fittedRankFrequency(point.rank, exponent, coefficient);
+  const residual = rankResidual(point, exponent, coefficient);
+  if (point.rank <= 3) {
+    return shownNotFitted("top-three", "top three ranks are shown but not used to estimate the classic Zipf fit", fitted);
+  }
+  if (point.frequency === 1) {
+    return shownNotFitted("frequency-one-tail", "frequency-one tail observations are shown but not fitted", fitted);
+  }
+  if (fittedStart === null || fittedEnd === null) {
+    return shownNotFitted("fit-unavailable-or-invalid", "fit is unavailable or invalid", fitted);
+  }
+  if (point.rank < fittedStart || point.rank > fittedEnd) {
+    return shownNotFitted("outside-fitted-interval", `rank is outside the supplied fitted interval ${formatInteger(fittedStart)}–${formatInteger(fittedEnd)}`, fitted);
+  }
+  if (fitted === null || !Number.isFinite(fitted) || fitted <= 0 || residual === null || !Number.isFinite(residual)) {
+    return shownNotFitted("fit-unavailable-or-invalid", "fit is unavailable or invalid", fitted);
+  }
+  return { kind: "included-in-fit", fitted, residual };
+}
+
+function shownNotFitted(
+  reasonCode: RankFitReasonCode,
+  reason: string,
   fitted: number | null,
-  residual: number | null,
-): boolean {
-  return fittedStart !== null
-    && fittedEnd !== null
-    && point.rank >= fittedStart
-    && point.rank <= fittedEnd
-    && point.frequency > 1
-    && fitted !== null
-    && Number.isFinite(fitted)
-    && fitted > 0
-    && residual !== null
-    && Number.isFinite(residual);
+): Extract<RankFitMembership, { kind: "shown-not-fitted" }> {
+  return { kind: "shown-not-fitted", reasonCode, reason, fitted };
 }
 
 function fittedRankFrequency(
@@ -1397,11 +1502,11 @@ export function deriveCoverageBandShares(options: {
   const correction = (options.totalTypes === 0 ? 0 : 1) - values.reduce((sum, share) => sum + share, 0);
   values[values.length - 1] = Math.max(0, values[values.length - 1]! + correction);
   return [
-    { key: "coverage-top10", label: "Top 10", share: values[0]!, rampIndex: 5 },
-    { key: "coverage-11-100", label: "Ranks 11–100", share: values[1]!, rampIndex: 4 },
-    { key: "coverage-101-1000", label: "Ranks 101–1,000", share: values[2]!, rampIndex: 3 },
-    { key: "coverage-1001-10000", label: "Ranks 1,001–10,000", share: values[3]!, rampIndex: 2 },
-    { key: "coverage-tail", label: "Remaining vocabulary", share: values[4]!, rampIndex: 0 },
+    { key: "coverage-top10", label: "Top 10", share: values[0]!, rampIndex: 5, className: "cw-plot-coverage-band-top10" },
+    { key: "coverage-11-100", label: "Ranks 11–100", share: values[1]!, rampIndex: 4, className: "cw-plot-coverage-band-11-100" },
+    { key: "coverage-101-1000", label: "Ranks 101–1,000", share: values[2]!, rampIndex: 3, className: "cw-plot-coverage-band-101-1000" },
+    { key: "coverage-1001-10000", label: "Ranks 1,001–10,000", share: values[3]!, rampIndex: 2, className: "cw-plot-coverage-band-1001-10000" },
+    { key: "coverage-tail", label: "Remaining vocabulary", share: values[4]!, rampIndex: 0, className: "cw-plot-coverage-band-tail" },
   ];
 }
 
@@ -1463,22 +1568,29 @@ export function buildCoverageGeometry(options: {
   const areaPath = displayPoints.length > 0
     ? { d: pointsToAreaPath(displayPoints, scaleValue(yScale, 0)), className: "cw-plot-area" }
     : null;
-  const milestones: Array<PlotPointGeometry<CoverageDatum>> = options.milestones
+  const terminalMilestone = options.totalTypes === undefined
+    ? null
+    : visible.find((point) => point.k === options.totalTypes && point.k > 10_000) ?? null;
+  const milestoneSource = terminalMilestone && !options.milestones.some((point) => point.k === terminalMilestone.k)
+    ? [...options.milestones, terminalMilestone]
+    : options.milestones;
+  const labelledMilestoneRanks = new Set(options.milestones.map((milestone) => milestone.k));
+  const milestones: Array<PlotPointGeometry<CoverageDatum>> = milestoneSource
     .map<PlotPointGeometry<CoverageDatum> | null>((milestone) => {
       const share = milestone.share ?? findMilestoneShare(visible, milestone.k);
       if (share === null) return null;
       const datum = { k: milestone.k, share };
+      const band = coverageBandForRank(datum.k);
       return {
         x: scaleValue(xScale, xValue(datum.k)),
         y: scaleValue(yScale, datum.share),
         rawX: datum.k,
         rawY: datum.share,
         datum,
-        rampIndex: datum.k <= 10 ? 5
-          : datum.k <= 100 ? 4
-          : datum.k <= 1000 ? 3
-          : datum.k <= 10000 ? 2
-          : 0,
+        rampIndex: band.rampIndex,
+        className: band.className,
+        radius: 5.8,
+        fillOpacity: 1,
         key: `coverage:${datum.k}`,
         pinned: options.pinnedKeys?.has(`coverage:${datum.k}`) ?? false,
         tooltipTitle: `top ${formatInteger(datum.k)}`,
@@ -1496,11 +1608,13 @@ export function buildCoverageGeometry(options: {
         targetShare,
       }
     : null;
-  const labelRequests: LabelPlacementRequest[] = options.labelsMode === "off" || options.labelsMode === "target" ? [] : milestones.map((point) => ({
+  const labelRequests: LabelPlacementRequest[] = options.labelsMode === "off" || options.labelsMode === "target" ? [] : milestones
+    .filter((point) => labelledMilestoneRanks.has(point.datum.k))
+    .map((point) => ({
     x: point.x,
     y: point.y,
     text: `top ${formatInteger(point.datum.k)} - ${formatPercent(point.datum.share)}`,
-    className: `cw-plot-label-muted cw-plot-ramp-${point.rampIndex}`,
+    className: `cw-plot-label-muted cw-plot-ramp-${point.rampIndex} ${point.className ?? ""}`.trim(),
     candidates: [
       { dx: 10, dy: 18, anchor: "start" },
       { dx: 12, dy: -10, anchor: "start" },
@@ -1545,6 +1659,7 @@ export function buildCoverageGeometry(options: {
       rampIndex: band.rampIndex,
       tooltipRows: [`${formatPercent(band.share)} of token mass`],
       staticDetail: `${formatPercent(band.share)} token share`,
+      className: band.className,
     })),
     pinnedKeys: options.pinnedKeys,
   }) : null;
@@ -1604,12 +1719,14 @@ export function buildDispersionGeometry(options: {
     ? (bucket.share ?? (totalTypes > 0 ? bucket.count / totalTypes : 0))
     : bucket.count;
   const positiveValues = buckets.filter((bucket) => value(bucket) > 0).map(value);
-  const xScale = createScale(options.xMode === "share" ? "linear" : "log", options.xMode === "share" ? [0, 1] : extent(positiveValues), [
+  const countDomain = positiveValues.length > 0 ? extent(positiveValues) : [1, 1] as [number, number];
+  const xScale = createScale(options.xMode === "share" ? "linear" : "log", options.xMode === "share" ? [0, 1] : padPositiveLogDomain(countDomain), [
     box.margin.left,
     box.width - box.margin.right,
   ]);
-  const rowTop = box.margin.top;
-  const rowHeight = Math.max(1, box.height - box.margin.bottom - rowTop);
+  const rowInset = 8;
+  const rowTop = box.margin.top + rowInset;
+  const rowHeight = Math.max(1, box.height - box.margin.bottom - rowTop - rowInset);
   const points = buckets.map((bucket, index) => {
     const step = buckets.length > 0 ? rowHeight / buckets.length : rowHeight;
     const y = rowTop + (index + 0.5) * step;
@@ -1662,10 +1779,6 @@ export function buildDispersionGeometry(options: {
     className: `cw-plot-lollipop-stem cw-plot-ramp-${point.rampIndex} ${point.className ?? ""}`.trim(),
   }));
   const dividers: PlotLineGeometry[] = [];
-  const dotAndStemObstacles = [
-    ...pointLabelObstacles(points, 8),
-    ...lineLabelObstacles(stems, 5),
-  ];
   const rowLabelX = box.margin.left - 12;
   const rowLabels: PlotLabelGeometry[] = points.map((point) => ({
     x: rowLabelX,
@@ -1676,31 +1789,11 @@ export function buildDispersionGeometry(options: {
     anchor: "end",
     className: "cw-plot-label-muted cw-plot-axis-row-label",
   }));
-  const valueLabels = options.labelsMode === "off" ? [] : placeLabels(
-    points.map((point) => ({
-      x: Math.min(point.x + 10, box.width - box.margin.right - 10),
-      y: point.y + 4,
-      text: options.labelsMode === "countsShares"
-        ? `${formatInteger(point.datum.count)} · ${formatPercent(point.datum.share ?? (totalTypes > 0 ? point.datum.count / totalTypes : 0))}`
-        : formatInteger(point.datum.count),
-      className: "cw-plot-label-mono",
-      key: point.key,
-      pinned: point.pinned,
-      priority: point.pinned ? 100 : 30,
-      candidates: [
-        { dx: 0, dy: 0, anchor: "start" },
-        { dx: 10, dy: -8, anchor: "start" },
-        { dx: 10, dy: 10, anchor: "start" },
-        { dx: -10, dy: -8, anchor: "end" },
-        { dx: -10, dy: 10, anchor: "end" },
-      ],
-    })),
-    [
-      ...dotAndStemObstacles,
-      ...lineLabelObstacles(dividers, 4),
-      ...rowLabels.map((label) => ({ kind: "box" as const, box: estimateLabelBox(label) })),
-    ],
-    plotLabelBounds(box),
+  const valueLabels = options.labelsMode === "off" ? [] : placeDispersionProfileEndpointLabels(
+    points,
+    box,
+    totalTypes,
+    options.labelsMode ?? "countsShares",
   );
   const countedTypes = points.reduce((total, point) => total + point.datum.count, 0);
   const compositionStrip = points.length >= 2 && countedTypes > 0
@@ -1747,6 +1840,41 @@ export function buildDispersionGeometry(options: {
     cumulativeCallout,
     xAxisLabel: options.xMode === "share" ? "Share of vocabulary" : "Type count (log scale)",
   };
+}
+
+function placeDispersionProfileEndpointLabels(
+  points: Array<PlotPointGeometry<DispersionBucketDatum>>,
+  box: PlotBox,
+  totalTypes: number,
+  labelsMode: "counts" | "countsShares",
+): PlotLabelGeometry[] {
+  const bounds = plotLabelBounds(box);
+  return points.map((point) => {
+    const text = labelsMode === "countsShares"
+      ? `${formatInteger(point.datum.count)} · ${formatPercent(point.datum.share ?? (totalTypes > 0 ? point.datum.count / totalTypes : 0))}`
+      : formatInteger(point.datum.count);
+    const shared = {
+      y: point.y - 7,
+      text,
+      className: "cw-plot-label-mono cw-plot-profile-endpoint-label",
+      key: point.key,
+      pinned: point.pinned,
+      priority: point.pinned ? 100 : 30,
+    };
+    const preferred: PlotLabelGeometry = {
+      ...shared,
+      x: point.x - 10,
+      anchor: "end",
+    };
+    const preferredBox = estimateLabelBox(preferred);
+    if (!boxLeavesBounds(preferredBox, bounds)) return preferred;
+    const rightSide: PlotLabelGeometry = {
+      ...shared,
+      x: point.x + 10,
+      anchor: "start",
+    };
+    return clampLabelToBounds(rightSide, bounds);
+  });
 }
 
 export function dispersionReachBounds(
@@ -2089,7 +2217,7 @@ export function buildDistributionDiagnosticGeometry(options: {
           x: scaleValue(xScale, x),
           y: scaleValue(yScale, result.qqLineIntercept! + result.qqLineSlope! * x),
         }))),
-        className: "cw-plot-fit-line cw-plot-qq-reference",
+        className: "cw-plot-statistical-reference-line cw-plot-qq-reference",
       }
     : null;
   const medianLine = options.view !== "qq" && result.median !== null
@@ -2242,7 +2370,7 @@ export function buildDistributionDiagnosticGeometry(options: {
     legend: options.view === "qq"
       ? [
           { label: "Observed documents", kind: "point", shape: "circle" },
-          { label: "Robust Q1/Q3 reference", kind: "line", className: "cw-plot-fit-line" },
+          { label: "Robust Q1/Q3 reference", kind: "line", className: "cw-plot-statistical-reference-line" },
         ]
       : [],
     compositionStrip,
@@ -2728,6 +2856,8 @@ function buildDispersionPlaneQuadrantLabels(
           { dx: 0, dy: 0, anchor: "end" },
           { dx: 0, dy: 24, anchor: "end" },
           { dx: -18, dy: 0, anchor: "end" },
+          { dx: 0, dy: 48, anchor: "end" },
+          { dx: -18, dy: 48, anchor: "end" },
         ],
       },
       {
@@ -2759,7 +2889,7 @@ function buildDispersionPlaneQuadrantLabels(
     obstacles,
     bounds,
   );
-  return labels;
+  return labels.map((label) => ({ ...label, leader: undefined }));
 }
 
 function dispersionPlaneDecadeTicks(
@@ -2930,6 +3060,14 @@ function lexicalSpectrumRampIndex(frequency: number): number {
   return 4;
 }
 
+function coverageBandForRank(rank: number): Pick<CoverageBandShare, "rampIndex" | "className"> {
+  if (rank <= 10) return { rampIndex: 5, className: "cw-plot-coverage-band-top10" };
+  if (rank <= 100) return { rampIndex: 4, className: "cw-plot-coverage-band-11-100" };
+  if (rank <= 1_000) return { rampIndex: 3, className: "cw-plot-coverage-band-101-1000" };
+  if (rank <= 10_000) return { rampIndex: 2, className: "cw-plot-coverage-band-1001-10000" };
+  return { rampIndex: 0, className: "cw-plot-coverage-band-tail" };
+}
+
 function vocabularyGrowthFitValues(
   observed: VocabularyGrowthDatum[],
   heapsK: number | null,
@@ -3034,7 +3172,7 @@ function labelRequestForExactFrequency(
     x: point.x,
     y: point.y,
     text,
-    className: `cw-plot-label-mono cw-plot-label-muted cw-plot-ramp-${point.rampIndex}`,
+    className: "cw-plot-label-mono cw-plot-label-muted cw-plot-spectrum-annotation",
     candidates: [
       { dx: 10, dy: 4, anchor: "start" },
       { dx: 10, dy: -10, anchor: "start" },

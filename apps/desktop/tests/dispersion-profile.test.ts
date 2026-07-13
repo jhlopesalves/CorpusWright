@@ -56,6 +56,7 @@ assert(!countProfile.points[1]?.tooltipRows?.join(" ").includes("sample-1-d"));
 assert.deepEqual(countProfile.compositionStrip?.segments[1]?.tooltipRows, countProfile.points[1]?.tooltipRows);
 
 const rowLabels = countProfile.labels.filter((label) => label.className?.includes("cw-plot-axis-row-label"));
+const endpointLabels = countProfile.labels.filter((label) => label.className?.includes("cw-plot-profile-endpoint-label"));
 assert.equal(countProfile.box.margin.left, 156);
 assert.equal(countProfile.compositionStrip?.segments[0]?.x, 32);
 assert.equal(
@@ -72,8 +73,21 @@ for (const [index, label] of rowLabels.entries()) {
   assert(estimated.x >= 0, "longest representative label remains inside the SVG viewBox");
 }
 assert.equal(new Set(rowLabels.map((label) => label.x)).size, 1);
+assert.equal(endpointLabels.length, 10);
+for (const [index, label] of endpointLabels.entries()) {
+  const point = countProfile.points[index]!;
+  assert.equal(label.y, point.y - 7, "profile values stay immediately above their own stem");
+  assert.equal(label.leader, undefined, "profile values never acquire leaders");
+  const estimated = estimateLabelBox(label);
+  assert(estimated.x >= countProfile.box.margin.left - 1e-9);
+  assert(estimated.x + estimated.width <= countProfile.box.width - countProfile.box.margin.right + 1e-9);
+  if (label.anchor === "end") assert.equal(label.x, point.x - 10, "left placement is preferred when it fits");
+  else assert.equal(label.anchor, "start", "right placement is used only as the boundary fallback");
+}
+assert(countProfile.xScale.domain[0] < Math.min(...countProfile.points.filter((point) => point.rawX > 0).map((point) => point.rawX)), "positive log minimum has breathing room");
 const layoutSource = readFileSync(new URL("../src/plots/layout.ts", import.meta.url), "utf8");
 assert.match(layoutSource, /!label\.classList\.contains\("cw-plot-axis-row-label"\)/);
+assert.match(layoutSource, /!label\.classList\.contains\("cw-plot-profile-endpoint-label"\)/);
 
 const shareProfile = buildDispersionGeometry({
   buckets: buckets.slice(0, 3),

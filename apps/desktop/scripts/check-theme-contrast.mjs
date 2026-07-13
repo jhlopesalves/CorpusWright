@@ -46,7 +46,10 @@ export const contrastChecks = [
   { label: "position-profile bar on base row", fg: "--cw-position-profile-bar", bg: "--cw-result-table-row-surface", bgBase: "--cw-result-table-surface", min: 3 },
   { label: "position-profile bar on alternate row", fg: "--cw-position-profile-bar", bg: "--cw-result-table-row-alt-surface", bgBase: "--cw-result-table-surface", min: 3 },
   { label: "plot point on panel", fg: "--cw-plot-point", bg: "--panel-bg", min: 3 },
-  { label: "fitted line on panel", fg: "--cw-plot-fit", bg: "--panel-bg", min: 3 },
+  { label: "model-fit line on panel", fg: "--cw-theme-plot-model-fit", bg: "--panel-bg", min: 3 },
+  { label: "statistical reference on panel", fg: "--cw-theme-plot-statistical-reference", bg: "--panel-bg", min: 3 },
+  { label: "selected target on panel", fg: "--cw-theme-plot-target", bg: "--panel-bg", min: 3 },
+  { label: "coverage trajectory on panel", fg: "--cw-theme-plot-coverage-trajectory", bg: "--panel-bg", min: 3 },
   ...Array.from({ length: 6 }, (_, level) => ({
     label: `plot ramp ${level} on panel`,
     fg: `--cw-plot-ramp-${level}`,
@@ -57,26 +60,33 @@ export const contrastChecks = [
 
 const paletteRoleTokens = {
   theme: [
-    "--cw-plot-point", "--cw-plot-fit", "--cw-plot-ramp-4", "--cw-plot-ramp-5",
+    "--cw-plot-point", "--cw-theme-plot-model-fit", "--cw-theme-plot-statistical-reference", "--cw-theme-plot-target",
+    "--cw-plot-ramp-4", "--cw-plot-ramp-5",
     "--cw-plot-point",
     "--cw-plot-ramp-0", "--cw-plot-ramp-5", "--cw-plot-ramp-0", "--cw-plot-ramp-5",
+    "--cw-theme-plot-coverage-trajectory",
   ],
   colorBlind: [
-    "--accent-color", "--cw-warning-text", "--cw-category-mixed-text", "--cw-danger-text",
+    "--accent-color", "--cw-theme-plot-model-fit", "--cw-theme-plot-statistical-reference", "--cw-theme-plot-target",
+    "--cw-category-mixed-text", "--cw-danger-text",
     "--accent-color",
     "--cw-plot-ramp-0", "--cw-plot-ramp-5", "--cw-plot-ramp-0", "--cw-plot-ramp-5",
+    "--cw-theme-plot-coverage-trajectory",
   ],
   monochrome: [
-    "--text-color", "--text-muted", "--text-color", "--text-color",
+    "--text-color", "--text-color", "--text-muted", "--text-color",
+    "--text-color", "--text-color",
     "--text-color",
     "--text-muted", "--text-color", "--text-muted", "--text-color",
+    "--text-color",
   ],
 };
 
 const paletteRoleLabels = [
-  "observed", "reference", "selected", "attention",
+  "observed", "model fit", "statistical reference", "selected target", "selected", "attention",
   "witness",
   "density low", "density high", "composition low", "composition high",
+  "coverage trajectory",
 ];
 
 export function validatePaletteContrast(themes) {
@@ -133,7 +143,7 @@ if (!themesModule) throw new Error("The style graph does not import foundations/
 const themes = parseCompleteThemes(themesModule.contents, "src/styles/foundations/themes.css");
 const failures = [];
 if (themes.length !== 14) failures.push(`expected exactly 14 complete themes, found ${themes.length}`);
-if (contrastChecks.length !== 42) failures.push(`expected exactly 42 contrast checks, found ${contrastChecks.length}`);
+if (contrastChecks.length !== 45) failures.push(`expected exactly 45 contrast checks, found ${contrastChecks.length}`);
 failures.push(...validateThemeContrast(themes));
 failures.push(...validatePaletteContrast(themes));
 

@@ -75,7 +75,17 @@ for (const theme of themes) {
 
 const requiredGroups = {
   "result-table": ["--cw-result-table-surface", "--cw-result-table-header-surface", "--cw-result-table-row-alt-surface", "--cw-result-table-border"],
-  plot: ["--cw-plot-point", "--cw-plot-fit", "--cw-plot-grid", "--cw-plot-ramp-0", "--cw-plot-ramp-5"],
+  plot: [
+    "--cw-plot-point",
+    "--cw-plot-fit",
+    "--cw-theme-plot-model-fit",
+    "--cw-theme-plot-statistical-reference",
+    "--cw-theme-plot-target",
+    "--cw-theme-plot-coverage-trajectory",
+    "--cw-plot-grid",
+    "--cw-plot-ramp-0",
+    "--cw-plot-ramp-5",
+  ],
   "position-profile": ["--cw-position-profile-bar", "--cw-position-profile-bar-active"],
   native: ["--cw-native-titlebar-color"],
 };
@@ -88,13 +98,21 @@ for (const theme of themes) {
 
 const semanticPlotRoles = [
   "--cw-plot-observed",
-  "--cw-plot-reference",
+  "--cw-plot-model-fit",
+  "--cw-plot-statistical-reference",
+  "--cw-plot-target",
+  "--cw-plot-coverage-trajectory",
   "--cw-plot-selected",
   "--cw-plot-attention",
   "--cw-plot-density-0",
   "--cw-plot-density-5",
   "--cw-plot-composition-0",
   "--cw-plot-composition-5",
+  "--cw-plot-rank-band-top10",
+  "--cw-plot-rank-band-11-100",
+  "--cw-plot-rank-band-101-1000",
+  "--cw-plot-rank-band-1001-10000",
+  "--cw-plot-rank-band-tail",
   ...Array.from({ length: 10 }, (_, index) => `--cw-plot-profile-${index}`),
   "--cw-plot-witness",
   "--cw-plot-callout-surface",
