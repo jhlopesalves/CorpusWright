@@ -519,16 +519,21 @@ function decorateFigureSvg(svg: SVGSVGElement, options: OverviewFigureOptions): 
 function prepareStaticExportClone(svg: SVGSVGElement): void {
   svg.classList.remove("is-hovering");
   svg.classList.add("cw-plot-export-static");
+  svg.removeAttribute("tabindex");
+  delete svg.dataset.plotNavigationReady;
   for (const transient of svg.querySelectorAll(".cw-plot-crosshair-x, .cw-plot-crosshair-y, .cw-plot-tooltip")) {
     transient.remove();
   }
   for (const target of svg.querySelectorAll<SVGElement>(".cw-plot-hover-target")) {
     target.classList.remove("cw-plot-hover-target");
     target.removeAttribute("tabindex");
+    target.removeAttribute("role");
+    target.removeAttribute("aria-pressed");
     target.removeAttribute("data-plot-x");
     target.removeAttribute("data-plot-y");
     target.removeAttribute("data-tooltip-title");
     target.removeAttribute("data-tooltip-rows");
+    target.removeAttribute("data-pin-key");
   }
   for (const element of [svg, ...Array.from(svg.querySelectorAll<SVGElement>("*"))]) {
     const inlineStyle = element.getAttribute("style");

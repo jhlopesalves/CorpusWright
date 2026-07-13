@@ -33,6 +33,7 @@ import {
   replaceFigureSvg,
 } from "../plots/figure";
 import {
+  FIGURE_INTERACTION_POLICIES,
   OverviewFigureController,
   type FigureControlState,
 } from "../plots/figure-workbench";
@@ -1006,6 +1007,7 @@ function renderDistributionDiagnosticFigure(
   };
   const controller = new OverviewFigureController<DistributionFigureControls>({
     initialControls: initial,
+    policy: FIGURE_INTERACTION_POLICIES[id],
     exportMetadata: (controls) => [distributionActiveState(metric, controls, result)],
   });
   const evidenceController = new OverviewFigureController({
@@ -1419,6 +1421,7 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
   }
   const controller = new OverviewFigureController<RankControls>({
     initialControls: { view: "curve" },
+    policy: FIGURE_INTERACTION_POLICIES["overview-rank-frequency"],
     exportMetadata: (controls) => [
       controls.view === "curve"
         ? `Curve · frequency per million · Zipf fit over ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)}`
@@ -1487,6 +1490,7 @@ function renderVocabularyGrowthFigure(corpus: AnalysisCorpus): HTMLElement {
   }
   const controller = new OverviewFigureController<GrowthControls>({
     initialControls: { view: "growth" },
+    policy: FIGURE_INTERACTION_POLICIES["overview-vocabulary-growth"],
     exportMetadata: (controls) => [
       controls.view === "growth" ? "Growth · observed and Heaps fit" : "Heaps fit · observed and fitted model",
     ],
@@ -1537,6 +1541,7 @@ function renderLexicalSpectrumFigure(corpus: AnalysisCorpus): HTMLElement {
   const spectrum = corpus.lexicalSpectrum;
   const controller = new OverviewFigureController({
     initialControls: {},
+    policy: FIGURE_INTERACTION_POLICIES["overview-lexical-spectrum"],
     exportMetadata: () => ["Exact frequency spectrum · logarithmic axes"],
   });
   let figure: HTMLElement | null = null;
@@ -1582,6 +1587,7 @@ function renderCoverageFigure(corpus: AnalysisCorpus): HTMLElement {
   }
   const controller = new OverviewFigureController<CoverageControls>({
     initialControls: { target: "0.5" },
+    policy: FIGURE_INTERACTION_POLICIES["overview-cumulative-coverage"],
     exportMetadata: (controls) => [
       `Cumulative token coverage · ${formatPercent(Number(controls.target), 0)} target`,
     ],
@@ -1657,6 +1663,7 @@ function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
   const dispersion = corpus.dispersion;
   const controller = new OverviewFigureController({
     initialControls: {},
+    policy: FIGURE_INTERACTION_POLICIES["overview-dispersion-profile"],
     exportMetadata: () => ["Exclusive document-reach bands · type-count scale"],
   });
   let figure: HTMLElement | null = null;
@@ -1682,6 +1689,7 @@ function renderDispersionFigure(corpus: AnalysisCorpus): HTMLElement {
         count: dispersion.dfAtLeast90pctCount,
         examples: dispersion.universalTypes.map((type) => type.token),
       },
+      pinnedKeys: controller.pins,
     }),
   );
   figure = createOverviewFigure({
@@ -1707,6 +1715,7 @@ function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null
   if (plane === null) return null;
   const controller = new OverviewFigureController({
     initialControls: {},
+    policy: FIGURE_INTERACTION_POLICIES["overview-dispersion-plane"],
     exportMetadata: () => ["Raw frequency against Gries's DP · logarithmic density"],
   });
   let figure: HTMLElement | null = null;
@@ -1759,6 +1768,7 @@ function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | nul
     : sort === "documentFrequency" ? "document frequency" : "frequency";
   const controller = new OverviewFigureController<RosterControls>({
     initialControls: { stopwords: "show", sort: "frequency", rows: 20 },
+    policy: FIGURE_INTERACTION_POLICIES["overview-dispersion-roster"],
     exportMetadata: (controls) => [
       `Top ${controls.rows} frequent types · sorted by ${sortLabel(controls.sort)} · stopwords ${controls.stopwords === "hide" ? "hidden" : "shown"}`,
     ],

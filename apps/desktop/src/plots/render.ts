@@ -310,6 +310,7 @@ export function renderFigureStatusSvg(plotId: string, message: string): SVGSVGEl
 }
 
 export function attachPlotHover(svg: SVGSVGElement): void {
+  attachOwnedPlotNavigation(svg);
   svg.addEventListener("click", (event) => dispatchPinToggle(svg, event.target));
   svg.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
@@ -332,6 +333,90 @@ export function attachPlotHover(svg: SVGSVGElement): void {
   });
   svg.addEventListener("pointerover", (event) => updateHover(svg, event.target, crosshairX, crosshairY, tooltip, tooltipText, tooltipBox));
   svg.addEventListener("focusin", (event) => updateHover(svg, event.target, crosshairX, crosshairY, tooltip, tooltipText, tooltipBox));
+}
+
+function attachOwnedPlotNavigation(svg: SVGSVGElement): void {
+  if (svg.dataset.plotNavigationReady === "true") return;
+  svg.dataset.plotNavigationReady = "true";
+  svg.addEventListener("keydown", (event) => {
+    const targets = navigablePlotTargets(svg);
+    if (event.key === "Escape") {
+      svg.focus();
+      svg.classList.remove("is-hovering");
+      event.preventDefault();
+      return;
+    }
+    const navigationKeys = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"]);
+    if (!navigationKeys.has(event.key) || targets.length === 0) return;
+    const current = event.target instanceof SVGElement ? event.target.closest<SVGElement>(".cw-plot-hover-target") : null;
+    const density = current?.classList.contains("cw-plot-density-cell") || (!current && targets[0]?.classList.contains("cw-plot-density-cell"));
+    const next = density
+      ? spatialGridTarget(targets, current, event.key, event.ctrlKey)
+      : linearPlotTarget(targets, current, event.key);
+    if (!next) return;
+    next.focus();
+    event.preventDefault();
+  });
+}
+
+function navigablePlotTargets(svg: SVGSVGElement): SVGElement[] {
+  return Array.from(svg.querySelectorAll<SVGElement>(".cw-plot-hover-target[data-plot-x][data-plot-y]"))
+    .filter((target) => {
+      if (target.getAttribute("width") === "0" || target.getAttribute("height") === "0") return false;
+      if (target.classList.contains("is-zero")) return false;
+      const style = window.getComputedStyle(target);
+      return style.display !== "none" && style.visibility !== "hidden";
+    });
+}
+
+function linearPlotTarget(
+  targets: SVGElement[],
+  current: SVGElement | null,
+  key: string,
+): SVGElement | null {
+  const index = current ? targets.indexOf(current) : -1;
+  if (key === "Home") return targets[0] ?? null;
+  if (key === "End") return targets[targets.length - 1] ?? null;
+  const direction = key === "ArrowLeft" || key === "ArrowUp" || key === "PageUp" ? -1 : 1;
+  const increment = key === "PageUp" || key === "PageDown" ? 10 : 1;
+  const nextIndex = index < 0
+    ? direction < 0 ? targets.length - 1 : 0
+    : Math.min(targets.length - 1, Math.max(0, index + direction * increment));
+  return targets[nextIndex] ?? null;
+}
+
+function spatialGridTarget(
+  targets: SVGElement[],
+  current: SVGElement | null,
+  key: string,
+  control: boolean,
+): SVGElement | null {
+  const cells = targets.filter((target) => target.classList.contains("cw-plot-density-cell"));
+  if (cells.length === 0) return null;
+  if (!current) return key === "End" || key === "ArrowLeft" || key === "ArrowUp" ? cells[cells.length - 1] ?? null : cells[0] ?? null;
+  const row = Number(current.dataset.gridRow);
+  const column = Number(current.dataset.gridColumn);
+  if (control && key === "Home") return cells[0] ?? null;
+  if (control && key === "End") return cells[cells.length - 1] ?? null;
+  if (key === "Home" || key === "End") {
+    const rowCells = cells.filter((cell) => Number(cell.dataset.gridRow) === row);
+    return key === "Home" ? rowCells[0] ?? current : rowCells[rowCells.length - 1] ?? current;
+  }
+  const rowDelta = key === "ArrowUp" ? -1 : key === "ArrowDown" ? 1 : 0;
+  const columnDelta = key === "ArrowLeft" ? -1 : key === "ArrowRight" ? 1 : 0;
+  const exact = cells.find((cell) =>
+    Number(cell.dataset.gridRow) === row + rowDelta
+    && Number(cell.dataset.gridColumn) === column + columnDelta
+  );
+  if (exact) return exact;
+  const sameAxis = cells
+    .filter((cell) => rowDelta
+      ? Number(cell.dataset.gridColumn) === column
+      : Number(cell.dataset.gridRow) === row)
+    .sort((left, right) => rowDelta
+      ? Number(left.dataset.gridRow) - Number(right.dataset.gridRow)
+      : Number(left.dataset.gridColumn) - Number(right.dataset.gridColumn));
+  return linearPlotTarget(sameAxis, current, rowDelta < 0 || columnDelta < 0 ? "ArrowLeft" : "ArrowRight") ?? current;
 }
 
 function dispatchPinToggle(svg: SVGSVGElement, target: EventTarget | null): boolean {
@@ -397,12 +482,19 @@ export function serializeSvgWithResolvedTokens(svg: SVGSVGElement): string {
 
 function createBaseSvg(plotId: string, box: PlotBox): SVGSVGElement {
   const svg = createSvgElement("svg");
+  const instructionId = `${plotId}-interaction-instructions`;
   setAttrs(svg, {
     class: "cw-plot-svg",
-    role: "img",
+    role: "group",
+    tabindex: "0",
+    "aria-describedby": instructionId,
     viewBox: `0 0 ${box.width} ${box.height}`,
     "data-plot-id": plotId,
   });
+  const instructions = createSvgElement("desc");
+  instructions.id = instructionId;
+  instructions.textContent = "Interactive plot. Use arrow keys to explore marks, Home and End for boundaries, Enter or Space to pin evidence, and Escape to return to the plot.";
+  svg.appendChild(instructions);
   return svg;
 }
 
@@ -713,7 +805,7 @@ function renderPoints(svg: SVGSVGElement, points: Array<PlotPointGeometry>, base
     );
     setAttrs(mark, {
       class: className,
-      tabindex: "0",
+      tabindex: "-1",
       role: point.key ? "button" : undefined,
       "aria-label": point.ariaLabel ?? point.tooltipTitle ?? undefined,
       "aria-pressed": point.key ? String(Boolean(point.pinned)) : undefined,
@@ -763,6 +855,7 @@ export function renderCompositionStrip(svg: SVGSVGElement, geometry: Composition
   group.setAttribute("class", "cw-plot-composition-strip");
   geometry.segments.forEach((segment, index) => {
     const rect = createSvgElement("rect");
+    const interactive = segment.width > 0;
     setAttrs(rect, {
       x: segment.x,
       y: segment.y,
@@ -773,14 +866,14 @@ export function renderCompositionStrip(svg: SVGSVGElement, geometry: Composition
         `cw-plot-ramp-${segment.datum.rampIndex}`,
         segment.datum.className ?? "",
         segment.pinned ? "is-pinned" : "",
-        "cw-plot-hover-target",
+        interactive ? "cw-plot-hover-target" : "is-zero",
       ].filter(Boolean).join(" "),
-      tabindex: "0",
-      role: "button",
+      tabindex: interactive ? "-1" : undefined,
+      role: interactive ? "button" : undefined,
       "aria-label": `${segment.datum.label}, ${segment.tooltipRows.join(", ")}`,
-      "aria-pressed": String(segment.pinned),
+      "aria-pressed": interactive ? String(segment.pinned) : undefined,
       "data-composition-index": index,
-      "data-pin-key": segment.datum.key,
+      "data-pin-key": interactive ? segment.datum.key : undefined,
       "data-plot-x": segment.x + segment.width / 2,
       "data-plot-y": segment.y + segment.height / 2,
       "data-tooltip-title": segment.tooltipTitle,
@@ -837,6 +930,7 @@ function renderLexicalSpectrumBands(svg: SVGSVGElement, geometry: LexicalSpectru
 function renderDensityCells(svg: SVGSVGElement, geometry: DispersionPlaneGeometry): void {
   const group = createSvgElement("g");
   group.setAttribute("class", "cw-plot-density-cells");
+  group.setAttribute("role", "grid");
   for (const cell of geometry.cells) {
     const rect = createSvgElement("rect");
     setAttrs(rect, {
@@ -846,7 +940,10 @@ function renderDensityCells(svg: SVGSVGElement, geometry: DispersionPlaneGeometr
       height: cell.height,
       rx: 1.5,
       class: `cw-plot-density-cell ${cell.count > 0 ? "cw-plot-hover-target" : "is-zero"}`,
-      tabindex: cell.count > 0 ? "0" : undefined,
+      tabindex: cell.count > 0 ? "-1" : undefined,
+      role: cell.count > 0 ? "gridcell" : undefined,
+      "data-grid-column": cell.column,
+      "data-grid-row": cell.row,
       "data-plot-x": cell.x + cell.width / 2,
       "data-plot-y": cell.y + cell.height / 2,
       "data-tooltip-title": cell.tooltipTitle,
@@ -946,7 +1043,7 @@ function renderPlaneWitnesses(svg: SVGSVGElement, geometry: DispersionPlaneGeome
       true,
     );
     setAttrs(mark, {
-      tabindex: "0",
+      tabindex: "-1",
       role: "button",
       "aria-label": witness.tooltipTitle ?? "",
       "aria-pressed": String(Boolean(witness.pinned)),
@@ -979,7 +1076,7 @@ function renderRosterDots(svg: SVGSVGElement, geometry: DispersionRosterGeometry
         point.pinned ? "is-pinned" : "",
         "cw-plot-hover-target",
       ].filter(Boolean).join(" "),
-      tabindex: "0",
+      tabindex: "-1",
       role: "button",
       "aria-label": point.tooltipTitle ?? "",
       "aria-pressed": String(Boolean(point.pinned)),
@@ -1012,7 +1109,7 @@ function renderBars(svg: SVGSVGElement, bars: Array<PlotBarGeometry>, baseClass:
         bar.pinned ? "is-pinned" : "",
         "cw-plot-hover-target",
       ].filter(Boolean).join(" "),
-      tabindex: "0",
+      tabindex: "-1",
       role: bar.key ? "button" : undefined,
       "aria-label": bar.ariaLabel ?? bar.tooltipTitle ?? undefined,
       "aria-pressed": bar.key ? String(Boolean(bar.pinned)) : undefined,
@@ -1039,7 +1136,7 @@ function renderMattrWitnessTicks(svg: SVGSVGElement, geometry: MattrDistribution
       x2: witness.x,
       y2: witness.y2,
       class: "cw-plot-mattr-witness-tick cw-plot-hover-target",
-      tabindex: "0",
+      tabindex: "-1",
       "data-plot-x": witness.x,
       "data-plot-y": witness.y2,
       "data-tooltip-title": witness.tooltipTitle,
