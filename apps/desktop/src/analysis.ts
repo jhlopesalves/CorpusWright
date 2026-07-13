@@ -12,6 +12,38 @@ import type { AnnotationCacheBuildProgress as GeneratedAnnotationCacheBuildProgr
 import type { AnnotationCacheState as GeneratedAnnotationCacheState } from "./generated/AnnotationCacheState.js";
 import type { AnalysisDocumentSelection as GeneratedAnalysisDocumentSelection } from "./generated/AnalysisDocumentSelection.js";
 import type { CleaningConfig } from "./generated/CleaningConfig.js";
+import type {
+  AnalysisInputSource as GeneratedAnalysisInputSource,
+  CorpusOverview as GeneratedCorpusOverview,
+  CorpusOverviewBalance as GeneratedCorpusOverviewBalance,
+  CorpusOverviewBuild as GeneratedCorpusOverviewBuild,
+  CorpusOverviewDispersion as GeneratedCorpusOverviewDispersion,
+  CorpusOverviewDispersionPlane as GeneratedCorpusOverviewDispersionPlane,
+  CorpusOverviewDocument as GeneratedCorpusOverviewDocument,
+  CorpusOverviewExtractionQuality as GeneratedCorpusOverviewExtractionQuality,
+  CorpusOverviewFinding as GeneratedCorpusOverviewFinding,
+  CorpusOverviewFindingKind as GeneratedCorpusOverviewFindingKind,
+  CorpusOverviewFindingSeverity as GeneratedCorpusOverviewFindingSeverity,
+  CorpusOverviewFrequencyConcentration as GeneratedCorpusOverviewFrequencyConcentration,
+  CorpusOverviewLexicalSpectrum as GeneratedCorpusOverviewLexicalSpectrum,
+  CorpusOverviewMattrDistribution as GeneratedCorpusOverviewMattrDistribution,
+  CorpusOverviewPopulation as GeneratedCorpusOverviewPopulation,
+  CorpusOverviewRankFrequency as GeneratedCorpusOverviewRankFrequency,
+  CorpusOverviewReading as GeneratedCorpusOverviewReading,
+  CorpusOverviewTotals as GeneratedCorpusOverviewTotals,
+  CorpusOverviewVocabularyGrowth as GeneratedCorpusOverviewVocabularyGrowth,
+  CumulativeCoveragePoint as GeneratedCumulativeCoveragePoint,
+  DispersionProfileBucket as GeneratedDispersionProfileBucket,
+  DispersionRosterEntry as GeneratedDispersionRosterEntry,
+  DispersionWitness as GeneratedDispersionWitness,
+  DispersionWitnessKind as GeneratedDispersionWitnessKind,
+  FrequencySpectrumPoint as GeneratedFrequencySpectrumPoint,
+  LengthHistogramBin as GeneratedLengthHistogramBin,
+  MattrWitness as GeneratedMattrWitness,
+  RankFrequencyPoint as GeneratedRankFrequencyPoint,
+  UniversalType as GeneratedUniversalType,
+  VocabularyGrowthPoint as GeneratedVocabularyGrowthPoint,
+} from "./generated/CorpusOverview.js";
 import type { CoverageTargetCrossing as GeneratedCoverageTargetCrossing } from "./generated/CoverageTargetCrossing.js";
 import type { CompareExpressionsQuery as GeneratedCompareExpressionsQuery } from "./generated/CompareExpressionsQuery.js";
 import type { CompareExpressionsResult as GeneratedCompareExpressionsResult } from "./generated/CompareExpressionsResult.js";
@@ -47,10 +79,7 @@ import type { OverviewDistributionResult as GeneratedOverviewDistributionResult 
 import type { TermDistributionItem as GeneratedTermDistributionItem } from "./generated/TermDistributionItem.js";
 import type { TermDistributionPage as GeneratedTermDistributionPage } from "./generated/TermDistributionPage.js";
 
-export type AnalysisInputSource =
-  | "processed"
-  | "processedWithSourceTextFallback"
-  | "sourceTextFallback";
+export type AnalysisInputSource = GeneratedAnalysisInputSource;
 export type AnalysisBuildPhase =
   | "loadingSources"
   | "readingFiles"
@@ -89,294 +118,35 @@ export interface AnalysisDocumentSummary {
   tokenCount: number;
 }
 
-export type CorpusOverviewFindingKind = "balance" | "extractionQuality" | "lexicalSpectrum" | "dispersion";
-export type CorpusOverviewFindingSeverity = "noIssue" | "worthALook" | "needsFixing";
-
-export interface CorpusOverviewTotals {
-  tokens: number;
-  types: number;
-  documents: number;
-}
-
-export interface CorpusOverviewPopulation {
-  sourcesInProject: number | null;
-  includedInAnalysis: number;
-  processedUsed: number;
-  usingSourceTextFallback: number;
-  emptyOrFailed: number;
-  sourcesWithWarnings: number | null;
-  inputSource: string;
-  reading: string;
-}
-
-export interface CorpusOverviewDocument {
-  name: string;
-  tokens: number;
-  share: number | null;
-  relativeLength: number | null;
-}
-
-export interface CorpusOverviewBalance {
-  largestShare: number | null;
-  top3Share: number | null;
-  gini: number | null;
-  coefficientOfVariation: number | null;
-  effectiveDocuments: number | null;
-  medianTokens: number | null;
-  minimumTokens: number | null;
-  maximumTokens: number | null;
-  lengthHistogram: LengthHistogramBin[];
-  remainingDocuments: number;
-  reading: string;
-}
-
-export interface LengthHistogramBin {
-  lowerTokens: number;
-  upperTokens: number | null;
-  count: number;
-}
-
-export interface CorpusOverviewExtractionQuality {
-  wordLikeCount: number;
-  wordLikeShare: number | null;
-  numericOnlyCount: number;
-  numericOnlyShare: number | null;
-  singleCharacterCount: number | null;
-  singleCharacterShare: number | null;
-  reading: string;
-}
-
-export interface CorpusOverviewLexicalSpectrum {
-  types: number;
-  hapaxCount: number;
-  disLegomenaCount: number;
-  band3To9Count: number;
-  band10plusCount: number;
-  hapaxShare: number | null;
-  disLegomenaShare: number | null;
-  band3To9Share: number | null;
-  band10plusShare: number | null;
-  frequencySpectrum: FrequencySpectrumPoint[];
-  frequencySpectrumTruncated: boolean;
-  frequencySpectrumTotal: number;
-  mattrWindow: number;
-  mattrMedian: number | null;
-  mattrMin: number | null;
-  mattrMax: number | null;
-  mattrDocsExcluded: number;
-  mattrDocsUsed: number;
-  mattrDistribution: CorpusOverviewMattrDistribution | null;
-  mtldThreshold: number;
-  mtldMinDocumentTokens: number;
-  mtldMedian: number | null;
-  mtldMin: number | null;
-  mtldMax: number | null;
-  mtldDocsExcluded: number;
-  mtldDocsUsed: number;
-  reading: string;
-}
-
-export interface MattrWitness {
-  name: string;
-  mattr: number;
-  tokens: number;
-}
-
-export interface CorpusOverviewMattrDistribution {
-  binWidth: number;
-  counts: number[];
-  usedDocuments: number;
-  excludedDocuments: number;
-  lowWitnesses: MattrWitness[];
-  highWitnesses: MattrWitness[];
-  reading: string;
-}
-
-export interface CorpusOverviewFrequencyConcentration {
-  top10Coverage: number | null;
-  top100Coverage: number | null;
-  top1000Coverage: number | null;
-  top10000Coverage: number | null;
-  cumulativeCoverage: CumulativeCoveragePoint[];
-  exactTargetCrossings: CoverageTargetCrossing[];
-  shannonEntropyBits: number | null;
-  evennessJ: number | null;
-  effectiveVocabularyEntropy: number | null;
-  reading: string;
-}
-
-export interface CumulativeCoveragePoint {
-  k: number;
-  share: number;
-}
-
-export interface FrequencySpectrumPoint {
-  frequency: number;
-  typeCount: number;
-}
-
-export interface RankFrequencyPoint {
-  rank: number;
-  token: string | null;
-  frequency: number;
-  ratePerMillion: number;
-}
-
-export interface CorpusOverviewRankFrequency {
-  zipfExponent: number | null;
-  zipfCoefficient: number | null;
-  rSquared: number | null;
-  fittedRankStart: number | null;
-  fittedRankEnd: number | null;
-  points: RankFrequencyPoint[];
-  reading: string;
-}
-
-export interface VocabularyGrowthPoint {
-  tokens: number;
-  types: number;
-}
-
-export interface CorpusOverviewVocabularyGrowth {
-  heapsK: number | null;
-  heapsBeta: number | null;
-  rSquared: number | null;
-  points: VocabularyGrowthPoint[];
-  reading: string;
-}
-
-export interface CorpusOverviewDispersion {
-  frequentTypes: number;
-  highDpFrequentTypes: number;
-  medianDp: number | null;
-  profileBuckets: DispersionProfileBucket[];
-  plane: CorpusOverviewDispersionPlane | null;
-  roster: DispersionRosterEntry[];
-  dfIn1Count: number;
-  dfIn2To9Count: number;
-  dfIn10To99Count: number;
-  dfIn100PlusCount: number;
-  dfInAllCount: number;
-  dfIn1SampleTypes: string[];
-  dfIn2To9SampleTypes: string[];
-  dfIn10To99SampleTypes: string[];
-  dfIn100PlusSampleTypes: string[];
-  dfInAllSampleTypes: string[];
-  dfIn1Share: number | null;
-  dfIn2To9Share: number | null;
-  dfIn10To99Share: number | null;
-  dfIn100PlusShare: number | null;
-  dfInAllShare: number | null;
-  dfAtLeast1pctCount: number;
-  dfAtLeast1pctSampleTypes: string[];
-  dfAtLeast1pctShare: number | null;
-  dfAtLeast10pctCount: number;
-  dfAtLeast10pctSampleTypes: string[];
-  dfAtLeast10pctShare: number | null;
-  dfAtLeast50pctCount: number;
-  dfAtLeast50pctSampleTypes: string[];
-  dfAtLeast50pctShare: number | null;
-  dfAtLeast90pctCount: number;
-  dfAtLeast90pctSampleTypes: string[];
-  dfAtLeast90pctShare: number | null;
-  universalTypes: UniversalType[];
-  medianDocumentsPerType: number | null;
-  reading: string;
-}
-
-export interface DispersionProfileBucket {
-  label: string;
-  lowerBound: number;
-  upperBound: number | null;
-  count: number;
-  share: number | null;
-  sampleTypes: string[];
-}
-
-export type DispersionWitnessKind = "core" | "loudButLocal" | "quietAndEven" | "rareAndLocal";
-
-export interface DispersionWitness {
-  token: string;
-  frequency: number;
-  documentFrequency: number;
-  dp: number;
-  kind: DispersionWitnessKind;
-}
-
-export interface CorpusOverviewDispersionPlane {
-  xBins: number;
-  yBins: number;
-  freqLog10Max: number;
-  counts: number[];
-  maxCellCount: number;
-  witnesses: DispersionWitness[];
-  loudButLocalCount: number;
-  loudButLocalMinFrequency: number;
-  highDispersionThreshold: number;
-  reading: string;
-}
-
-export interface DispersionRosterEntry {
-  token: string;
-  frequency: number;
-  documentFrequency: number;
-  dp: number;
-}
-
-export interface UniversalType {
-  token: string;
-  documentFrequency: number;
-}
-
-export interface CorpusOverviewFinding {
-  key: CorpusOverviewFindingKind;
-  severity: CorpusOverviewFindingSeverity;
-  severityLabel: string;
-  text: string;
-}
-
-export interface CorpusOverviewReading {
-  verdict: string;
-  findings: CorpusOverviewFinding[];
-}
-
-export interface CorpusOverviewBuild {
-  tokenisation: string | null;
-  caseHandling: string | null;
-  lemmatisation: string | null;
-  numberPunctuationHandling: string | null;
-  inputSource: string;
-  configVersion: string | null;
-  snapshotDate: string | null;
-  metadataAttached: boolean;
-}
-
-export interface CorpusOverview {
-  documentCount: number;
-  sourceCount: number;
-  totalTokens: number;
-  totalTypes: number;
-  annotationAvailable: boolean;
-  inputTextSource: AnalysisInputSource;
-  builtAt: string;
-  buildSignature: string;
-  processingConfigSignature: string;
-  skippedDocuments: number;
-  skippedPdfDocuments: number;
-  totals: CorpusOverviewTotals;
-  population: CorpusOverviewPopulation;
-  documents: CorpusOverviewDocument[];
-  documentsTruncated: boolean;
-  balance: CorpusOverviewBalance;
-  extractionQuality: CorpusOverviewExtractionQuality;
-  lexicalSpectrum: CorpusOverviewLexicalSpectrum;
-  frequencyConcentration: CorpusOverviewFrequencyConcentration;
-  rankFrequency: CorpusOverviewRankFrequency;
-  vocabularyGrowth: CorpusOverviewVocabularyGrowth;
-  dispersion: CorpusOverviewDispersion;
-  reading: CorpusOverviewReading;
-  build: CorpusOverviewBuild;
-}
+export type CorpusOverviewFindingKind = GeneratedCorpusOverviewFindingKind;
+export type CorpusOverviewFindingSeverity = GeneratedCorpusOverviewFindingSeverity;
+export type CorpusOverviewTotals = GeneratedCorpusOverviewTotals;
+export type CorpusOverviewPopulation = GeneratedCorpusOverviewPopulation;
+export type CorpusOverviewDocument = GeneratedCorpusOverviewDocument;
+export type CorpusOverviewBalance = GeneratedCorpusOverviewBalance;
+export type LengthHistogramBin = GeneratedLengthHistogramBin;
+export type CorpusOverviewExtractionQuality = GeneratedCorpusOverviewExtractionQuality;
+export type CorpusOverviewLexicalSpectrum = GeneratedCorpusOverviewLexicalSpectrum;
+export type MattrWitness = GeneratedMattrWitness;
+export type CorpusOverviewMattrDistribution = GeneratedCorpusOverviewMattrDistribution;
+export type CorpusOverviewFrequencyConcentration = GeneratedCorpusOverviewFrequencyConcentration;
+export type CumulativeCoveragePoint = GeneratedCumulativeCoveragePoint;
+export type FrequencySpectrumPoint = GeneratedFrequencySpectrumPoint;
+export type RankFrequencyPoint = GeneratedRankFrequencyPoint;
+export type CorpusOverviewRankFrequency = GeneratedCorpusOverviewRankFrequency;
+export type VocabularyGrowthPoint = GeneratedVocabularyGrowthPoint;
+export type CorpusOverviewVocabularyGrowth = GeneratedCorpusOverviewVocabularyGrowth;
+export type CorpusOverviewDispersion = GeneratedCorpusOverviewDispersion;
+export type DispersionProfileBucket = GeneratedDispersionProfileBucket;
+export type DispersionWitnessKind = GeneratedDispersionWitnessKind;
+export type DispersionWitness = GeneratedDispersionWitness;
+export type CorpusOverviewDispersionPlane = GeneratedCorpusOverviewDispersionPlane;
+export type DispersionRosterEntry = GeneratedDispersionRosterEntry;
+export type UniversalType = GeneratedUniversalType;
+export type CorpusOverviewFinding = GeneratedCorpusOverviewFinding;
+export type CorpusOverviewReading = GeneratedCorpusOverviewReading;
+export type CorpusOverviewBuild = GeneratedCorpusOverviewBuild;
+export type CorpusOverview = GeneratedCorpusOverview;
 
 export interface AnalysisBuildProgress {
   filesDone: number;

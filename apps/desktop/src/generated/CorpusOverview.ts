@@ -1,0 +1,34 @@
+import type { AnalysisInputSource } from "./AnalysisInputSource.js";
+import type { CorpusOverviewTotals } from "./CorpusOverviewTotals.js";
+import type { CorpusOverviewPopulation } from "./CorpusOverviewPopulation.js";
+import type { CorpusOverviewDocument } from "./CorpusOverviewDocument.js";
+import type { CorpusOverviewBalance } from "./CorpusOverviewBalance.js";
+import type { LengthHistogramBin } from "./LengthHistogramBin.js";
+import type { CorpusOverviewExtractionQuality } from "./CorpusOverviewExtractionQuality.js";
+import type { CorpusOverviewLexicalSpectrum } from "./CorpusOverviewLexicalSpectrum.js";
+import type { MattrWitness } from "./MattrWitness.js";
+import type { CorpusOverviewMattrDistribution } from "./CorpusOverviewMattrDistribution.js";
+import type { CorpusOverviewFrequencyConcentration } from "./CorpusOverviewFrequencyConcentration.js";
+import type { CumulativeCoveragePoint } from "./CumulativeCoveragePoint.js";
+import type { CoverageTargetCrossing } from "./CoverageTargetCrossing.js";
+import type { FrequencySpectrumPoint } from "./FrequencySpectrumPoint.js";
+import type { RankFrequencyPoint } from "./RankFrequencyPoint.js";
+import type { CorpusOverviewRankFrequency } from "./CorpusOverviewRankFrequency.js";
+import type { VocabularyGrowthPoint } from "./VocabularyGrowthPoint.js";
+import type { CorpusOverviewVocabularyGrowth } from "./CorpusOverviewVocabularyGrowth.js";
+import type { CorpusOverviewDispersion } from "./CorpusOverviewDispersion.js";
+import type { DispersionProfileBucket } from "./DispersionProfileBucket.js";
+import type { DispersionWitnessKind } from "./DispersionWitnessKind.js";
+import type { DispersionWitness } from "./DispersionWitness.js";
+import type { CorpusOverviewDispersionPlane } from "./CorpusOverviewDispersionPlane.js";
+import type { DispersionRosterEntry } from "./DispersionRosterEntry.js";
+import type { UniversalType } from "./UniversalType.js";
+import type { CorpusOverviewFindingKind } from "./CorpusOverviewFindingKind.js";
+import type { CorpusOverviewFindingSeverity } from "./CorpusOverviewFindingSeverity.js";
+import type { CorpusOverviewFinding } from "./CorpusOverviewFinding.js";
+import type { CorpusOverviewReading } from "./CorpusOverviewReading.js";
+import type { CorpusOverviewBuild } from "./CorpusOverviewBuild.js";
+
+export type { AnalysisInputSource, CorpusOverviewTotals, CorpusOverviewPopulation, CorpusOverviewDocument, CorpusOverviewBalance, LengthHistogramBin, CorpusOverviewExtractionQuality, CorpusOverviewLexicalSpectrum, MattrWitness, CorpusOverviewMattrDistribution, CorpusOverviewFrequencyConcentration, CumulativeCoveragePoint, CoverageTargetCrossing, FrequencySpectrumPoint, RankFrequencyPoint, CorpusOverviewRankFrequency, VocabularyGrowthPoint, CorpusOverviewVocabularyGrowth, CorpusOverviewDispersion, DispersionProfileBucket, DispersionWitnessKind, DispersionWitness, CorpusOverviewDispersionPlane, DispersionRosterEntry, UniversalType, CorpusOverviewFindingKind, CorpusOverviewFindingSeverity, CorpusOverviewFinding, CorpusOverviewReading, CorpusOverviewBuild };
+
+export type CorpusOverview = { documentCount: number, sourceCount: number, totalTokens: number, totalTypes: number, annotationAvailable: boolean, inputTextSource: AnalysisInputSource, builtAt: string, buildSignature: string, processingConfigSignature: string, skippedDocuments: number, skippedPdfDocuments: number, totals: CorpusOverviewTotals, population: CorpusOverviewPopulation, documents: Array<CorpusOverviewDocument>, documentsTruncated: boolean, balance: CorpusOverviewBalance, extractionQuality: CorpusOverviewExtractionQuality, lexicalSpectrum: CorpusOverviewLexicalSpectrum, frequencyConcentration: CorpusOverviewFrequencyConcentration, rankFrequency: CorpusOverviewRankFrequency, vocabularyGrowth: CorpusOverviewVocabularyGrowth, dispersion: CorpusOverviewDispersion, reading: CorpusOverviewReading, build: CorpusOverviewBuild, };
