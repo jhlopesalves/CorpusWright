@@ -236,3 +236,108 @@ pub(crate) fn hydrate_project_source_text_cache(
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "corpuswright-desktop-{label}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
+    fn project_pdf_record(project_root: &Path, name: &str) -> DocumentRecord {
+        let path = project_root.join(name);
+        DocumentRecord {
+            source_path: path.clone(),
+            relative_path: PathBuf::from(name),
+            document_type: DocumentType::Pdf,
+            size_bytes: 123,
+            extraction_route: Some(ProjectSourceExtractionRoute::EmbeddedText),
+            pdf_profile: Some(ProjectSourcePdfProfile::Standard),
+            ocr_quality: None,
+        }
+    }
+
+    #[test]
+    fn project_source_text_cache_hydrates_extracted_pdf_text() {
+        let root = unique_temp_dir("source-text-cache");
+        fs::create_dir_all(&root).unwrap();
+        let record = project_pdf_record(&root, "paper.pdf");
+        let options = PdfExtractionOptions::raw_from_record_and_cleaning_config(
+            &record,
+            &CleaningConfig::default(),
+        );
+        let entry = CacheEntry {
+            extracted_text: "Synthetic extracted text".to_string(),
+            warnings: Vec::new(),
+            page_count: Some(1),
+            page_texts: Some(vec!["Synthetic extracted text".to_string()]),
+        };
+
+        persist_project_source_text_cache(&root, &record, options, &entry).unwrap();
+
+        let cache = ExtractionCache::new();
+        hydrate_project_source_text_cache(&root, std::slice::from_ref(&record), &cache);
+        let hydrated = cache
+            .try_get(&record, Some(options), &CleaningConfig::default())
+            .unwrap();
+
+        assert_eq!(hydrated.extracted_text, "Synthetic extracted text");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn prepare_and_analyse_share_processed_input_and_token_stream() {
+        let root = unique_temp_dir("analysis-processed-text");
+        fs::create_dir_all(&root).unwrap();
+        let source_path = root.join("source.txt");
+        fs::write(&source_path, "keep REMOVE").unwrap();
+        let record = DocumentRecord {
+            source_path: source_path.clone(),
+            relative_path: PathBuf::from("source.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: fs::metadata(&source_path).unwrap().len(),
+            extraction_route: Some(ProjectSourceExtractionRoute::PlainText),
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+        let cleaning_config = CleaningConfig {
+            remove_patterns: vec!["REMOVE".to_string()],
+            ..CleaningConfig::default()
+        };
+
+        let cache = ExtractionCache::new();
+        let prepared = document_text_for_record(
+            &record,
+            &cleaning_config,
+            DocumentTextMode::Processed,
+            Some(&cache),
+        )
+        .unwrap()
+        .text;
+        let resolution =
+            resolve_analysis_input_for_record(&record, Some(&root), &cleaning_config, &cache);
+
+        assert_eq!(
+            resolution.provenance,
+            corpuswright_core::analysis::AnalysisInputProvenance::Processed
+        );
+        assert_eq!(prepared, "keep ");
+        assert_eq!(resolution.text.as_deref(), Some(prepared.as_str()));
+        let config = corpuswright_core::tokenization::TokenizationConfig::default();
+        let prepare_tokens = corpuswright_core::tokenization::tokenize(&prepared, 0, &config);
+        let analysis_text = resolution.text.as_deref().unwrap();
+        let analysis_tokens = corpuswright_core::tokenization::tokenize(analysis_text, 0, &config);
+        assert_eq!(prepare_tokens, analysis_tokens);
+        let _ = fs::remove_dir_all(root);
+    }
+}
