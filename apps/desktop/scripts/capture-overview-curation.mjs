@@ -398,11 +398,45 @@ async function settlePaint(cdp, sessionId) {
 
 function assertStandaloneSvg(source, filename) {
   if (!source.startsWith("<svg") || !source.includes("</svg>")) throw new Error(`${filename} is not standalone SVG`);
-  if (/var\(--/.test(source)) throw new Error(`${filename} contains unresolved CSS variables`);
+  for (const [pattern, label] of [
+    [/var\s*\(/i, "unresolved CSS variables"],
+    [/color-mix\s*\(/i, "unresolved color-mix paint"],
+    [/color\(\s*srgb\b/i, "non-portable color(srgb) paint"],
+  ]) {
+    if (pattern.test(source)) throw new Error(`${filename} contains ${label}`);
+  }
   for (const required of ["<title", "<desc", "cw-plot-figure-title", "cw-plot-figure-reading"]) {
     if (!source.includes(required)) throw new Error(`${filename} is missing ${required}`);
   }
-  if (filename === "dispersion-plane.svg") {
+  if (/cw-plot-tooltip|cw-plot-crosshair-[xy]|cw-plot-hover-target|\bis-hovering\b|\btabindex=|(?:^|;)\s*(?:--cw-plot-stagger|animation|animation-delay|transition)\s*:/.test(source)) {
+    throw new Error(`${filename} retains transient interaction or animation state`);
+  }
+  if (filename.includes("pinned") && !source.includes("is-pinned")) throw new Error(`${filename} dropped persistent pinned evidence`);
+  if (filename.includes("profile")) {
+    const points = Array.from(source.matchAll(/<circle\b[^>]*class="[^"]*\bcw-plot-point\b[^"]*\bcw-plot-profile-band-[0-9]\b[^"]*"[^>]*>/g), match => match[0]);
+    const fills = points.map(tag => inlineStyleValue(tag, "fill"));
+    if (points.length !== 10 || fills.some(fill => !isPortableDirectPaint(fill)) || new Set(fills).size !== 10) {
+      throw new Error(`${filename} does not retain ten distinctly coloured portable profile bands`);
+    }
+    if ((source.match(/\bcw-plot-profile-endpoint-label\b/g) ?? []).length !== 10) {
+      throw new Error(`${filename} does not retain all ten profile value labels`);
+    }
+    const hiddenWideMarker = source.match(/<circle\b[^>]*class="[^"]*\bcw-plot-composition-entry-marker\b[^"]*\bcw-plot-profile-band-0\b[^"]*"[^>]*>/)?.[0] ?? "";
+    if (inlineStyleValue(hiddenWideMarker, "display") !== "none") {
+      throw new Error(`${filename} exposes the hidden wide-band composition marker`);
+    }
+  }
+  if (filename.includes("rank")) {
+    for (const required of ["cw-plot-included-in-fit", "cw-plot-shown-not-fitted", "cw-plot-fit-line", "Included in fit", "Shown, not fitted"]) {
+      if (!source.includes(required)) throw new Error(`${filename} is missing Rank–frequency fit semantics: ${required}`);
+    }
+  }
+  if (filename.includes("coverage")) {
+    for (const required of ["cw-plot-coverage-target", 'class="cw-plot-line', "cw-plot-coverage-band-top10", "cw-plot-coverage-band-tail"]) {
+      if (!source.includes(required)) throw new Error(`${filename} is missing cumulative-coverage semantics: ${required}`);
+    }
+  }
+  if (filename.includes("plane")) {
     for (const required of [
       "cw-plot-density-cells",
       "cw-plot-plane-marginal is-frequency",
@@ -412,8 +446,6 @@ function assertStandaloneSvg(source, filename) {
       "cw-plot-threshold-line",
       "cw-plot-quadrant-label",
       "cw-plot-plane-witness",
-      "cw-plot-plane-witness-pin-ring",
-      "cw-plot-plane-witness-label is-pinned",
       "Raw frequency 1,000",
       "DP 0.50",
     ]) {
@@ -421,12 +453,21 @@ function assertStandaloneSvg(source, filename) {
     }
     const densityCells = Array.from(source.matchAll(/<rect\b[^>]*class="[^"]*\bcw-plot-density-cell\b[^"]*"[^>]*>/g), (match) => match[0]);
     if (densityCells.length === 0 || densityCells.some((cell) => !/\brx="0(?:\.0+)?"/.test(cell))) throw new Error(`${filename} does not contain only square density cells`);
-    if (/cw-plot-quadrant-pill|cw-plot-witness-legend|cw-plot-tooltip|cw-plot-crosshair-[xy]|cw-plot-hover-target/.test(source)) {
+    if (/cw-plot-quadrant-pill|cw-plot-witness-legend/.test(source)) {
       throw new Error(`${filename} retains transient or removed plane decoration`);
     }
     if ((source.match(/cw-plot-density-legend"/g) ?? []).length !== 1) throw new Error(`${filename} does not contain exactly one density legend`);
     if ((source.match(/cw-plot-quadrant-label/g) ?? []).length !== 4) throw new Error(`${filename} does not contain four quiet quadrant labels`);
   }
+}
+
+function inlineStyleValue(tag, property) {
+  const style = tag.match(/\bstyle="([^"]*)"/)?.[1] ?? "";
+  return style.match(new RegExp(`(?:^|;\\s*)${property}:\\s*([^;]+)`))?.[1]?.trim() ?? "";
+}
+
+function isPortableDirectPaint(value) {
+  return /^(?:rgba?\([^)]*\)|none|transparent)$/i.test(value);
 }
 
 function delay(milliseconds) {

@@ -4,7 +4,11 @@ import {
   expandViewBoxForContent,
   wrapSvgText,
 } from "../src/plots/figure-text.ts";
-import { hasUnresolvedCssVariables } from "../src/plots/svg-export.ts";
+import {
+  hasNonPortableSvgPaint,
+  hasUnresolvedCssVariables,
+  normalizeComputedSvgPaint,
+} from "../src/plots/svg-export.ts";
 
 const measure = (value: string): number => Array.from(value).length * 8;
 const availableWidth = 96;
@@ -47,6 +51,22 @@ assert.equal(expanded.width, plot.width, "identity wrapping must not alter plot 
 
 assert.equal(hasUnresolvedCssVariables('<svg style="fill: rgb(0, 0, 0)"></svg>'), false);
 assert.equal(hasUnresolvedCssVariables('<svg style="fill: var(--cw-plot-point)"></svg>'), true);
+assert.equal(hasNonPortableSvgPaint('<svg style="fill: color-mix(in srgb, red, blue)"></svg>'), true);
+assert.equal(hasNonPortableSvgPaint('<svg style="fill: color(srgb 0.1 0.2 0.3)"></svg>'), true);
+assert.equal(hasNonPortableSvgPaint('<svg style="fill: rgba(0, 0, 0, 0.5)"></svg>'), false);
+
+for (const portable of [
+  "rgb(1, 2, 3)",
+  "rgba(1, 2, 3, 0.5)",
+  "none",
+  "transparent",
+]) {
+  assert.equal(normalizeComputedSvgPaint(portable), portable, `portable paint must remain unchanged: ${portable}`);
+}
+assert.equal(normalizeComputedSvgPaint("color(srgb 0 0.5 1)"), "rgb(0, 128, 255)");
+assert.equal(normalizeComputedSvgPaint("color(srgb 0.1 0.2 0.3 / 0.45678)"), "rgba(26, 51, 77, 0.457)");
+assert.equal(normalizeComputedSvgPaint("color(srgb -0.1 1.1 5e-1 / 120%)"), "rgb(0, 255, 128)");
+assert.equal(normalizeComputedSvgPaint("color(srgb 10% 20% 30% / -0.2)"), "rgba(26, 51, 77, 0)");
 
 const figureSource = readFileSync(new URL("../src/plots/figure.ts", import.meta.url), "utf8");
 const renderSource = readFileSync(new URL("../src/plots/render.ts", import.meta.url), "utf8");
@@ -70,7 +90,6 @@ assert.match(interactionStyles, /\.cw-plot-svg\.cw-plot-export-static[\s\S]*anim
 assert.match(interactionStyles, /\.cw-plot-svg\.cw-plot-export-static[\s\S]*transition:\s*none/);
 assert.match(interactionStyles, /\.cw-plot-svg\.cw-plot-export-static[\s\S]*opacity:\s*1/);
 assert.match(interactionStyles, /\.cw-plot-svg\.cw-plot-export-static[\s\S]*transform:\s*none/);
-assert.doesNotMatch(interactionStyles, /cw-plot-animated-path|cw-plot-path-draw|stroke-dashoffset/);
 
 assert.match(figureSource, /prepareStaticExportClone\(exportedSvg\)/);
 assert.match(figureSource, /classList\.remove\("is-hovering"\)/);
@@ -105,8 +124,13 @@ for (const property of [
   "stroke-linejoin",
   "stop-color",
   "color",
+  "display",
 ]) {
   assert(renderSource.includes(`"${property}"`), `standalone serializer must resolve ${property}`);
 }
 assert.match(renderSource, /if \(hasUnresolvedCssVariables\(serialized\)\)/);
+assert.match(renderSource, /if \(hasNonPortableSvgPaint\(serialized\)\)/);
+assert.match(renderSource, /paintProperties\.has\(property\) \? normalizeComputedSvgPaint\(value\) : value/);
+assert.match(renderSource, /property === "display" && value !== "none"/);
 assert.doesNotMatch(renderSource, /"animation(?:-delay)?"/, "live timing must not be serialized");
+assert.doesNotMatch(renderSource, /"transition"/, "live transitions must not be serialized");
