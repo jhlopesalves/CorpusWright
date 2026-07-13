@@ -1,0 +1,30 @@
+body {
+  margin: 0;
+  padding: 24px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-family: var(--cw-font-ui);
+}
+
+#suite-root {
+  width: min(1320px, 100%);
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+#suite-status {
+  position: fixed;
+  z-index: 20;
+  right: 8px;
+  bottom: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--panel-bg);
+  color: var(--text-color);
+  font: var(--cw-weight-semibold) var(--cw-type-compact-size)/1.2 var(--cw-font-mono);
+}
+
+body[data-export-ready="true"] #suite-status {
+  display: none;
+}

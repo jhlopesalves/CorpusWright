@@ -28,7 +28,6 @@
   fill: var(--cw-surface-elevated);
   stroke: var(--border-color);
   stroke-width: 1;
-  filter: drop-shadow(0 6px 14px var(--cw-shadow-tooltip));
 }
 
 .cw-plot-tooltip-text {
