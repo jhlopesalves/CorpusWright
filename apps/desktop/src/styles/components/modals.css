@@ -27,12 +27,12 @@
 
 .modal-content h2 {
   margin-top: 0;
-  font-size: 1.15rem;
+  font-size: var(--cw-type-dialog-title-size);
   margin-bottom: 8px;
 }
 
 .modal-description {
-  font-size: 0.85rem;
+  font-size: var(--cw-type-help-size);
   color: var(--text-muted);
   margin-top: 0;
   margin-bottom: 20px;
@@ -47,7 +47,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 0.9rem;
+  font-size: var(--cw-type-body-compact-size);
   line-height: 1.4;
 }
 
@@ -58,7 +58,7 @@
 .about-alpha-note {
   margin: 18px 0 0;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--cw-type-help-size);
   line-height: 1.4;
 }
 
@@ -76,7 +76,7 @@
   color: var(--text-color);
   cursor: pointer;
   border-radius: 3px;
-  font-size: 0.8rem;
+  font-size: var(--cw-type-control-size);
   font-family: inherit;
 }
 
@@ -88,7 +88,7 @@
 }
 
 .modal-config-status {
-  font-size: 0.8rem;
+  font-size: var(--cw-type-status-size);
   color: var(--text-muted);
   margin-left: auto;
 }
@@ -106,7 +106,7 @@
 .project-language-upgrade-path {
   margin: 0 0 14px;
   color: var(--text-muted);
-  font-size: 0.84rem;
+  font-size: var(--cw-type-compact-size);
   word-break: break-word;
 }
 
@@ -114,7 +114,7 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  font-size: 0.86rem;
+  font-size: var(--cw-type-control-size);
 }
 
 .project-create-form {
@@ -142,7 +142,7 @@
 
 .project-create-section-header h3 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--cw-type-section-heading-size);
 }
 
 .project-create-sources-list {
@@ -166,7 +166,7 @@
   cursor: pointer;
   border-radius: 4px;
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: var(--cw-type-control-size);
 }
 
 .modal-actions button:hover,
@@ -184,7 +184,7 @@
   right: 12px;
   background: none;
   border: none;
-  font-size: 1.3rem;
+  font-size: var(--cw-type-icon-size);
   line-height: 1;
   color: var(--text-muted);
   cursor: pointer;
@@ -213,7 +213,7 @@
 }
 
 .export-form label {
-  font-size: 0.9rem;
+  font-size: var(--cw-type-control-size);
   display: block;
   margin-bottom: 8px;
 }
@@ -235,7 +235,7 @@
 }
 
 .export-scope {
-  font-size: 0.9rem;
+  font-size: var(--cw-type-body-compact-size);
   margin-bottom: 16px;
   color: var(--text-color);
 }

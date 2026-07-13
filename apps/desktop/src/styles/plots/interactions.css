@@ -34,7 +34,7 @@
 .cw-plot-tooltip-text {
   fill: var(--text-color);
   font-family: var(--cw-font-mono);
-  font-size: 11px;
+  font-size: var(--cw-type-plot-tooltip-size);
 }
 
 .cw-plot-tooltip-row {
@@ -73,6 +73,23 @@
     opacity: 1;
     transform: scale(1);
   }
+}
+
+.cw-plot-svg.cw-plot-export-static,
+.cw-plot-svg.cw-plot-export-static * {
+  animation: none;
+  transition: none;
+}
+
+.cw-plot-svg.cw-plot-export-static :is(
+  .cw-plot-animated-path,
+  .cw-plot-point,
+  .cw-plot-plane-witness,
+  .cw-plot-roster-dot
+) {
+  opacity: 1;
+  stroke-dashoffset: 0;
+  transform: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

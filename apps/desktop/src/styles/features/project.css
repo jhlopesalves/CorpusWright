@@ -11,7 +11,7 @@
 
 .welcome-content h1 {
   margin: 0 0 12px;
-  font-size: 1.8rem;
+  font-size: var(--cw-type-workspace-title-size);
   font-weight: var(--cw-weight-semibold);
 }
 
@@ -37,7 +37,7 @@
   color: var(--text-color);
   border-radius: 4px;
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: var(--cw-type-control-size);
   cursor: pointer;
 }
 
@@ -55,7 +55,7 @@
   min-height: 20px;
   margin-top: 14px;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--cw-type-ui-size);
 }
 
 .welcome-status.is-error {
@@ -70,7 +70,7 @@
 
 .recent-projects h2 {
   margin: 0 0 10px;
-  font-size: 1rem;
+  font-size: var(--cw-type-body-size);
 }
 
 .recent-projects-list {
@@ -81,7 +81,7 @@
 
 .recent-projects-empty {
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: var(--cw-type-body-compact-size);
   padding: 6px 0;
 }
 
@@ -114,13 +114,13 @@
 }
 
 .recent-project-name {
-  font-size: 0.92rem;
+  font-size: var(--cw-type-body-compact-size);
   font-weight: var(--cw-weight-semibold);
 }
 
 .recent-project-path {
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: var(--cw-type-help-size);
   overflow-wrap: anywhere;
 }
 
@@ -132,7 +132,7 @@
   border-radius: 4px;
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.8rem;
+  font-size: var(--cw-type-help-size);
 }
 
 .recent-project-remove:hover,
@@ -149,7 +149,7 @@
   gap: 2px;
   max-width: min(42vw, 520px);
   margin-right: 12px;
-  font-size: 0.8rem;
+  font-size: var(--cw-type-help-size);
   line-height: 1.2;
 }
 
@@ -183,7 +183,7 @@
 
 .project-empty-state h2 {
   margin: 0 0 8px;
-  font-size: 1.2rem;
+  font-size: var(--cw-type-subsection-heading-size);
 }
 
 .project-empty-state p {
