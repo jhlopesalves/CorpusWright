@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test": "cd ../.. && node --experimental-strip-types --test apps/desktop/tests/*.test.ts",
+    "check": "npm run build && npm run test && npm run check:theme-tokens && npm run check:theme-contrast && npm run check:style-ownership && npm run check:visual-contracts",
     "check:theme-tokens": "node scripts/check-theme-tokens.mjs",
     "check:theme-contrast": "node scripts/check-theme-contrast.mjs",
     "check:style-ownership": "node scripts/check-style-ownership.mjs",
