@@ -5,6 +5,10 @@ import {
 } from "./model";
 import { hasUnresolvedCssVariables } from "./svg-export";
 import { applyMountedFigureLayout } from "./layout";
+import {
+  PLOT_TOOLTIP_MAX_WIDTH,
+  wrapPlotTooltipRows,
+} from "./figure-text";
 import type {
   CoverageGeometry,
   CompositionStripGeometry,
@@ -30,6 +34,9 @@ import type {
 } from "./model";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+const PLOT_TOOLTIP_MIN_WIDTH = 92;
+const PLOT_TOOLTIP_HORIZONTAL_PADDING = 16;
+const PLOT_TOOLTIP_LINE_HEIGHT = 15;
 
 export function renderRankFrequencySvg(plotId: string, geometry: RankFrequencyGeometry, yAxisLabel: string): SVGSVGElement {
   const svg = createBaseSvg(plotId, geometry.box);
@@ -1270,25 +1277,51 @@ function updateHover(
   const rows = [marker.dataset.tooltipTitle ?? "", ...(marker.dataset.tooltipRows ?? "").split("\n")]
     .map((row) => row.trim())
     .filter(Boolean);
-  rows.forEach((row, index) => {
+  const maximumContentWidth = PLOT_TOOLTIP_MAX_WIDTH - PLOT_TOOLTIP_HORIZONTAL_PADDING;
+  const measure = (value: string) => measureTooltipText(tooltipText, value);
+  const visualLines = wrapPlotTooltipRows(rows, maximumContentWidth, measure);
+  visualLines.forEach((line, index) => {
     const tspan = createSvgElement("tspan");
     setAttrs(tspan, {
       x: 8,
-      y: 16 + index * 15,
-      class: index === 0 ? "cw-plot-tooltip-title" : "cw-plot-tooltip-row",
+      y: 16 + index * PLOT_TOOLTIP_LINE_HEIGHT,
+      class: line.title ? "cw-plot-tooltip-title" : "cw-plot-tooltip-row",
+      "data-tooltip-source-row": line.sourceRow,
     });
-    tspan.textContent = row;
+    tspan.textContent = line.text;
     tooltipText.appendChild(tspan);
   });
-  const width = Math.max(92, ...rows.map((row) => row.length * 7.2)) + 16;
-  const height = rows.length * 15 + 10;
+  const measuredLineWidth = Math.max(0, ...visualLines.map((line) => measure(line.text)));
+  const width = Math.min(
+    PLOT_TOOLTIP_MAX_WIDTH,
+    Math.max(PLOT_TOOLTIP_MIN_WIDTH, measuredLineWidth + PLOT_TOOLTIP_HORIZONTAL_PADDING),
+  );
+  const height = visualLines.length * PLOT_TOOLTIP_LINE_HEIGHT + 10;
   setAttrs(tooltipBox, { x: 0, y: 0, width, height, rx: 6 });
   const plotWidth = Number(svg.viewBox.baseVal.width) || 720;
   const plotHeight = Number(svg.viewBox.baseVal.height) || 360;
-  const tooltipX = x + width + 18 > plotWidth ? x - width - 12 : x + 12;
-  const tooltipY = y + height + 18 > plotHeight ? y - height - 12 : y + 12;
+  const edgeInset = 4;
+  const preferredX = x + width + 18 > plotWidth ? x - width - 12 : x + 12;
+  const preferredY = y + height + 18 > plotHeight ? y - height - 12 : y + 12;
+  const tooltipX = Math.min(plotWidth - width - edgeInset, Math.max(edgeInset, preferredX));
+  const tooltipY = Math.min(plotHeight - height - edgeInset, Math.max(edgeInset, preferredY));
   tooltip.setAttribute("transform", `translate(${tooltipX} ${tooltipY})`);
   tooltip.setAttribute("aria-hidden", "false");
+}
+
+function measureTooltipText(text: SVGTextElement, value: string): number {
+  const witness = createSvgElement("tspan");
+  witness.setAttribute("class", "cw-plot-tooltip-title");
+  witness.textContent = value;
+  text.appendChild(witness);
+  try {
+    const measured = witness.getComputedTextLength();
+    return measured > 0 ? measured : Array.from(value).length * 7.2;
+  } catch {
+    return Array.from(value).length * 7.2;
+  } finally {
+    witness.remove();
+  }
 }
 
 function createSvgElement<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {

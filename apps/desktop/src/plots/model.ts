@@ -1626,6 +1626,17 @@ export function buildDispersionGeometry(options: {
     const profileIndex = buckets.length <= 1 ? 5 : Math.round((index / Math.max(1, buckets.length - 1)) * 9);
     const rampIndex = Math.round((profileIndex / 9) * 5);
     const key = `dispersion-reach-${bucket.key}`;
+    const examples = (bucket.sampleTypes ?? []).slice(0, Math.min(3, bucket.count));
+    const remainingExamples = Math.max(0, bucket.count - examples.length);
+    const typeLabel = bucket.count === 1 ? "type" : "types";
+    const documentLabel = options.totalDocuments === 1 ? "document" : "documents";
+    const reach = bucket.lowerBound === undefined
+      ? documentBounds.documents
+      : bucket.upperBound === null
+        ? `${formatInteger(bucket.lowerBound)}+`
+        : bucket.lowerBound === bucket.upperBound
+          ? formatInteger(bucket.lowerBound)
+          : `${formatInteger(bucket.lowerBound)}–${formatInteger(bucket.upperBound ?? bucket.lowerBound)}`;
     return {
       x: plotValue > 0 ? scaleValue(xScale, plotValue) : scaleValue(xScale, xScale.domain[0]),
       y,
@@ -1639,11 +1650,14 @@ export function buildDispersionGeometry(options: {
       pinned: options.pinnedKeys?.has(key) ?? false,
       tooltipTitle: bucket.label,
       tooltipRows: [
-        `documents ${documentBounds.documents}`,
-        `corpus reach ${documentBounds.percentage}`,
-        `${formatInteger(bucket.count)} types`,
+        `${formatInteger(bucket.count)} ${typeLabel}`,
         `${formatPercent(share)} of vocabulary`,
-        bucket.sampleTypes?.length ? `examples ${bucket.sampleTypes.join(", ")}` : "",
+        options.totalDocuments && bucket.lowerBound !== undefined
+          ? `Reach: ${reach} of ${formatInteger(options.totalDocuments)} ${documentLabel}`
+          : `Reach: ${documentBounds.documents}`,
+        examples.length
+          ? `Examples: ${examples.join(", ")}${remainingExamples > 0 ? ` +${formatInteger(remainingExamples)} more` : ""}`
+          : "",
       ].filter(Boolean),
     };
   });
@@ -1724,12 +1738,7 @@ export function buildDispersionGeometry(options: {
             count: bucket.count,
             rampIndex: point.rampIndex,
             className: point.className,
-            tooltipRows: [
-              `documents ${dispersionReachBounds(bucket, options.totalDocuments).documents}`,
-              `corpus reach ${dispersionReachBounds(bucket, options.totalDocuments).percentage}`,
-              `${formatInteger(bucket.count)} types`,
-              `${formatPercent(bucket.count / countedTypes)} of vocabulary`,
-            ],
+            tooltipRows: point.tooltipRows,
           };
         }),
         pinnedKeys: options.pinnedKeys,

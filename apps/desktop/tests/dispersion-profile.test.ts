@@ -13,7 +13,9 @@ const buckets = Array.from({ length: 10 }, (_, index) => ({
   upperBound: index + 1,
   count: 100 - index * 7,
   share: (100 - index * 7) / 685,
-  sampleTypes: [`sample-${index}`],
+  sampleTypes: index === 1
+    ? ["sample-1-a", "sample-1-b", "sample-1-c", "sample-1-d", "sample-1-e", "sample-1-f"]
+    : [`sample-${index}`],
 }));
 const countProfile = buildDispersionGeometry({
   buckets,
@@ -42,7 +44,15 @@ assert.match(countProfile.cumulativeCallout?.detail ?? "", /Cumulative threshold
 assert.equal(countProfile.xScale.kind, "log");
 assert.equal(countProfile.points[0]?.x, scaleValue(countProfile.xScale, 100));
 assert(countProfile.labels.some((label) => label.text === "1 document"));
-assert(countProfile.points[1]?.tooltipRows?.some((row) => row.includes("examples sample-1")));
+assert.deepEqual(countProfile.points[1]?.tooltipRows, [
+  "93 types",
+  `${((93 / 685) * 100).toFixed(1)}% of vocabulary`,
+  "Reach: 2 of 20 documents",
+  "Examples: sample-1-a, sample-1-b, sample-1-c +90 more",
+]);
+assert.equal(countProfile.points[1]?.tooltipRows?.find((row) => row.startsWith("Examples:"))?.split(",").length, 3);
+assert(!countProfile.points[1]?.tooltipRows?.join(" ").includes("sample-1-d"));
+assert.deepEqual(countProfile.compositionStrip?.segments[1]?.tooltipRows, countProfile.points[1]?.tooltipRows);
 
 const shareProfile = buildDispersionGeometry({
   buckets: buckets.slice(0, 3),
@@ -58,6 +68,18 @@ assert.deepEqual(
   dispersionReachBounds({ ...buckets[2]!, lowerBound: 10, upperBound: null }, 20),
   { documents: "10+ documents", percentage: "50%–100% of documents" },
 );
+
+const singularProfile = buildDispersionGeometry({
+  buckets: [{ key: "single", label: "1 document", lowerBound: 1, upperBound: 1, count: 1, share: 1, sampleTypes: ["only"] }],
+  totalTypes: 1,
+  totalDocuments: 1,
+});
+assert.deepEqual(singularProfile.points[0]?.tooltipRows, [
+  "1 type",
+  "100.0% of vocabulary",
+  "Reach: 1 of 1 document",
+  "Examples: only",
+]);
 
 const palette = readFileSync(new URL("../src/styles/foundations/figure-palettes.css", import.meta.url), "utf8");
 const marks = readFileSync(new URL("../src/styles/plots/marks.css", import.meta.url), "utf8");
@@ -78,3 +100,4 @@ assert.doesNotMatch(annotations, /composition-entry\[class\*="cw-plot-profile-ba
 for (const source of [shell, model, render, workbench, marks, annotations]) {
   assert.doesNotMatch(source, /Dispersion roster|DispersionRoster|dispersion-roster|cw-plot-roster/);
 }
+assert.match(render, /renderDispersionSvg[\s\S]*renderInteractionLayer\(svg, geometry\.box, false\)/);

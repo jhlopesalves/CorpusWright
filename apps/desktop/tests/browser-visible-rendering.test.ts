@@ -19,7 +19,7 @@ assert.equal(exportBlock.match(/\brecoveryExportCase\(/g)?.length, 3);
 assert.equal(auditBlock.match(/\brecoveryAuditCase\(/g)?.length, 4);
 assert.equal(cleanupScreenshotBlock.match(/\bcleanupShot\(/g)?.length, 8);
 assert.equal(cleanupExportBlock.match(/\bcleanupExportCase\(/g)?.length, 2);
-assert.equal(legibilityScreenshotBlock.match(/\blegibilityShot\(/g)?.length, 4);
+assert.equal(legibilityScreenshotBlock.match(/\blegibilityShot\(/g)?.length, 7);
 assert.equal(legibilityExportBlock.match(/\blegibilityExportCase\(/g)?.length, 1);
 
 for (const filename of [
@@ -64,7 +64,15 @@ for (const filename of [
 for (const filename of ["document-ecdf-final", "dispersion-plane"]) {
   assert.match(cleanupExportBlock, new RegExp(`"${filename}"`));
 }
-for (const filename of ["document-ecdf-final", "mattr-ecdf-final", "document-qq-legend", "vocabulary-growth-legend"]) {
+for (const filename of [
+  "document-ecdf-final",
+  "mattr-ecdf-final",
+  "document-qq-legend",
+  "vocabulary-growth-legend",
+  "document-balance-disclosure",
+  "frequency-concentration-disclosure",
+  "dispersion-profile-tooltip",
+]) {
   assert.match(legibilityScreenshotBlock, new RegExp(`"${filename}"`));
 }
 assert.match(legibilityExportBlock, /"document-ecdf"/);
@@ -107,6 +115,9 @@ for (const browserAssertion of [
   "ECDF final cumulative endpoint is not visible",
   "ECDF target uses ordinary point renderer",
   "legend leaves inner plot rectangle",
+  "tooltip exceeds 300px maximum width",
+  "profile tooltip example budget or remainder is incorrect",
+  "grouped method disclosure retains the bright metric panel treatment",
   "Dispersion roster heading remains in Overview",
   "duplicated Overview structure remains",
 ]) {

@@ -118,6 +118,9 @@ const legibilityScreenshotCases = [
   legibilityShot("mattr-ecdf-final", "mattr", { view: "ecdf" }),
   legibilityShot("document-qq-legend", "document", { view: "qq" }),
   legibilityShot("vocabulary-growth-legend", "growth", { view: "growth" }),
+  legibilityShot("document-balance-disclosure", "document", { view: "histogram", methodDisclosure: "documentBalance" }),
+  legibilityShot("frequency-concentration-disclosure", "document", { view: "histogram", methodDisclosure: "frequencyConcentration" }),
+  legibilityShot("dispersion-profile-tooltip", "profile", { hoverProfileBand: true }),
 ];
 
 const legibilityExportCases = [

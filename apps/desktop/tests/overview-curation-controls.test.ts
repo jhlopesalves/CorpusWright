@@ -61,6 +61,12 @@ assert.doesNotMatch(concentrationPanel, /Top (?:100|1,000|10,000) types cover/);
 for (const retained of ["Normalised entropy / evenness", "Shannon entropy", "Effective vocabulary (perplexity)"]) {
   assert(concentrationPanel.includes(retained), `missing retained concentration metric: ${retained}`);
 }
+assert.doesNotMatch(concentrationPanel, /glossaryId:/);
+assert.match(concentrationPanel, /createGroupedMethodDisclosure\("Frequency concentration", \[\s*"shannonEntropy",\s*"normalisedEntropy",\s*"effectiveVocabulary",\s*\]\)/);
+const balancePanel = functionSource("renderDocumentBalance");
+assert.doesNotMatch(balancePanel, /glossaryId:/);
+assert.match(balancePanel, /createGroupedMethodDisclosure\("Document balance", \[\s*"giniCoefficient",\s*"coefficientOfVariation",\s*"effectiveDocuments",\s*\]\)/);
+assert.match(shell, /function createGroupedMethodDisclosure/);
 for (const name of ["renderRankFrequency", "renderVocabularyGrowth"]) {
   assert.doesNotMatch(functionSource(name), /glossaryId:/, `${name} repeats a figure-owned method disclosure`);
 }
