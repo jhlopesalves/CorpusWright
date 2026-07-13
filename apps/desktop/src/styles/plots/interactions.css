@@ -16,12 +16,15 @@
 }
 
 .cw-plot-tooltip {
-  display: none;
+  visibility: hidden;
+  opacity: 0;
   pointer-events: none;
+  transition: opacity 120ms ease;
 }
 
 .cw-plot-tooltip[aria-hidden="false"] {
-  display: block;
+  visibility: visible;
+  opacity: 1;
 }
 
 .cw-plot-tooltip-box {
@@ -43,7 +46,12 @@
 .cw-plot-hover-target:hover,
 .cw-plot-hover-target:focus {
   outline: none;
-  transform: scale(1.15);
+}
+
+.cw-plot-point.cw-plot-hover-target:not(.is-lollipop):not(.is-pinned):hover,
+.cw-plot-point.cw-plot-hover-target:not(.is-lollipop):not(.is-pinned):focus {
+  stroke-width: 1.8;
+  transform: scale(1.04);
 }
 
 .cw-plot-hover-target[aria-pressed="true"]:focus-visible {
@@ -53,11 +61,25 @@
 
 .cw-plot-density-cell.cw-plot-hover-target:hover,
 .cw-plot-density-cell.cw-plot-hover-target:focus,
-.cw-plot-bar.cw-plot-hover-target:hover,
-.cw-plot-bar.cw-plot-hover-target:focus,
-.cw-plot-composition-segment.cw-plot-hover-target:hover,
-.cw-plot-composition-segment.cw-plot-hover-target:focus {
+.cw-plot-bar.cw-plot-hover-target:not(.is-pinned):hover,
+.cw-plot-bar.cw-plot-hover-target:not(.is-pinned):focus,
+.cw-plot-composition-segment.cw-plot-hover-target:not(.is-pinned):hover,
+.cw-plot-composition-segment.cw-plot-hover-target:not(.is-pinned):focus {
   transform: none;
+  stroke: var(--cw-plot-selected, var(--cw-plot-ramp-4));
+  stroke-width: 1.4;
+}
+
+.cw-plot-point.is-lollipop.cw-plot-hover-target:not(.is-pinned):hover,
+.cw-plot-point.is-lollipop.cw-plot-hover-target:not(.is-pinned):focus,
+.cw-plot-plane-witness.cw-plot-hover-target:not(.is-pinned):hover,
+.cw-plot-plane-witness.cw-plot-hover-target:not(.is-pinned):focus,
+.cw-plot-roster-dot.cw-plot-hover-target:not(.is-pinned):hover,
+.cw-plot-roster-dot.cw-plot-hover-target:not(.is-pinned):focus,
+.cw-plot-mattr-witness-tick.cw-plot-hover-target:hover,
+.cw-plot-mattr-witness-tick.cw-plot-hover-target:focus {
+  stroke: var(--cw-plot-selected, var(--cw-plot-ramp-4));
+  stroke-width: 2;
 }
 
 .cw-plot-animated-path {
@@ -97,6 +119,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .cw-plot-tooltip {
+    transition: none;
+  }
+
   .cw-plot-animated-path,
   .cw-plot-point,
   .cw-plot-plane-witness,

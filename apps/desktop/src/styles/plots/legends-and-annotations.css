@@ -50,6 +50,10 @@
   font-weight: var(--cw-weight-semibold);
 }
 
+.cw-plot-composition-entry:is(.cw-plot-ramp-0, .cw-plot-ramp-1) .cw-plot-composition-label {
+  fill: var(--cw-plot-composition-foreground-low, var(--text-color));
+}
+
 .cw-plot-label.is-external-rail {
   paint-order: stroke;
   stroke: var(--panel-bg);
@@ -187,7 +191,8 @@
 .cw-plot-density-legend-step.cw-plot-ramp-1 { fill: var(--cw-plot-density-1, var(--cw-plot-ramp-1)); }
 .cw-plot-density-legend-step.cw-plot-ramp-2 { fill: var(--cw-plot-density-2, var(--cw-plot-ramp-2)); }
 .cw-plot-density-legend-step.cw-plot-ramp-3 { fill: var(--cw-plot-density-3, var(--cw-plot-ramp-3)); }
-.cw-plot-density-legend-step.cw-plot-ramp-4 { fill: var(--cw-plot-density-5, var(--cw-plot-ramp-5)); }
+.cw-plot-density-legend-step.cw-plot-ramp-4 { fill: var(--cw-plot-density-4, var(--cw-plot-ramp-4)); }
+.cw-plot-density-legend-step.cw-plot-ramp-5 { fill: var(--cw-plot-density-5, var(--cw-plot-ramp-5)); }
 
 .cw-plot-legend-swatch.is-composition {
   fill: var(--cw-plot-composition-3, var(--cw-plot-ramp-3));

@@ -55,6 +55,7 @@ const histogramShare = buildDistributionDiagnosticGeometry({
   qqReference: "normal",
 });
 assert.equal(histogramCount.bars.length, result.histogramBins.length);
+assert.equal(histogramCount.crosshairEnabled, false);
 assert.equal(histogramShare.bars.length, result.histogramBins.length);
 assert.equal(histogramCount.bars[0]?.datum, result.histogramBins[0]);
 assert.equal(histogramCount.yScale.domain[1], 4);
@@ -73,6 +74,7 @@ const ecdf = buildDistributionDiagnosticGeometry({
   qqReference: "normal",
 });
 assert.equal(ecdf.bars.length, 0);
+assert.equal(ecdf.crosshairEnabled, true);
 assert(ecdf.linePath?.d.includes(" L"), "ECDF must use a monotone step path");
 assert(ecdf.points.every((point, index, points) => index === 0 || point.y <= points[index - 1]!.y));
 
@@ -84,6 +86,7 @@ const qq = buildDistributionDiagnosticGeometry({
   qqReference: "lognormal",
 });
 assert.equal(qq.bars.length, 0);
+assert.equal(qq.crosshairEnabled, true);
 assert.equal(qq.points.length, result.qqPoints.length);
 assert(qq.referencePath);
 assert.equal(qq.yAxisLabel, "Observed log10 document length");

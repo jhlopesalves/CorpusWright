@@ -46,7 +46,7 @@ export function renderRankFrequencySvg(plotId: string, geometry: RankFrequencyGe
   renderPoints(svg, geometry.points, "cw-plot-point");
   renderSvgLegend(svg, geometry.box, geometry.legend);
   renderLabels(svg, geometry.labels);
-  renderInteractionLayer(svg, geometry.box);
+  renderInteractionLayer(svg, geometry.box, true);
   return svg;
 }
 
@@ -88,7 +88,7 @@ export function renderVocabularyGrowthSvg(plotId: string, geometry: VocabularyGr
   renderPoints(svg, geometry.points, "cw-plot-point is-panel-stroked");
   renderSvgLegend(svg, geometry.box, geometry.legend);
   renderLabels(svg, geometry.labels);
-  renderInteractionLayer(svg, geometry.box);
+  renderInteractionLayer(svg, geometry.box, true);
   return svg;
 }
 
@@ -104,7 +104,7 @@ export function renderLexicalSpectrumSvg(plotId: string, geometry: LexicalSpectr
   });
   renderPoints(svg, geometry.points, "cw-plot-point");
   renderLabels(svg, geometry.labels);
-  renderInteractionLayer(svg, geometry.box);
+  renderInteractionLayer(svg, geometry.box, false);
   return svg;
 }
 
@@ -144,7 +144,7 @@ export function renderCoverageSvg(plotId: string, geometry: CoverageGeometry): S
     }], "cw-plot-point is-panel-stroked");
   }
   renderLabels(svg, geometry.labels);
-  renderInteractionLayer(svg, geometry.box);
+  renderInteractionLayer(svg, geometry.box, true);
   return svg;
 }
 
@@ -162,7 +162,7 @@ export function renderDispersionSvg(plotId: string, geometry: DispersionGeometry
   renderPoints(svg, geometry.points, "cw-plot-point is-panel-stroked is-lollipop");
   renderDispersionCumulativeCallout(svg, geometry);
   renderLabels(svg, geometry.labels);
-  renderInteractionLayer(svg, geometry.box);
+  renderInteractionLayer(svg, geometry.box, false);
   return svg;
 }
 
@@ -200,7 +200,7 @@ export function renderDispersionPlaneSvg(plotId: string, geometry: DispersionPla
   renderLabels(svg, geometry.labels);
   renderPlaneDensityLegend(svg, geometry);
   renderPlaneWitnessLegend(svg, geometry);
-  renderInteractionLayer(svg, geometry.box);
+  renderInteractionLayer(svg, geometry.box, true);
   return svg;
 }
 
@@ -222,7 +222,7 @@ export function renderDispersionRosterSvg(plotId: string, geometry: DispersionRo
   ]);
   renderRosterDots(svg, geometry);
   renderRosterLegend(svg, geometry);
-  renderInteractionLayer(svg, geometry.box);
+  renderInteractionLayer(svg, geometry.box, false);
   return svg;
 }
 
@@ -264,7 +264,7 @@ export function renderLengthHistogramSvg(plotId: string, geometry: LengthHistogr
   renderBars(svg, geometry.bars, "cw-plot-bar");
   if (geometry.medianLine) renderLine(svg, geometry.medianLine);
   renderLabels(svg, geometry.labels);
-  renderInteractionLayer(svg, geometry.box);
+  renderInteractionLayer(svg, geometry.box, false);
   return svg;
 }
 
@@ -280,7 +280,7 @@ export function renderMattrDistributionSvg(plotId: string, geometry: MattrDistri
   if (geometry.medianLine) renderLine(svg, geometry.medianLine);
   renderMattrWitnessTicks(svg, geometry);
   renderLabels(svg, geometry.labels);
-  renderInteractionLayer(svg, geometry.box);
+  renderInteractionLayer(svg, geometry.box, false);
   return svg;
 }
 
@@ -310,7 +310,7 @@ export function renderDistributionDiagnosticSvg(
   renderSvgLegend(svg, geometry.box, geometry.legend);
   renderZeroTokenSummary(svg, geometry);
   renderLabels(svg, geometry.labels);
-  renderInteractionLayer(svg, geometry.box);
+  renderInteractionLayer(svg, geometry.box, geometry.crosshairEnabled);
   return svg;
 }
 
@@ -350,7 +350,7 @@ export function attachPlotHover(svg: SVGSVGElement): void {
   const tooltip = svg.querySelector<SVGGElement>(".cw-plot-tooltip");
   const tooltipText = svg.querySelector<SVGTextElement>(".cw-plot-tooltip-text");
   const tooltipBox = svg.querySelector<SVGRectElement>(".cw-plot-tooltip-box");
-  if (!crosshairX || !crosshairY || !tooltip || !tooltipText || !tooltipBox) return;
+  if (!tooltip || !tooltipText || !tooltipBox) return;
 
   const hide = () => {
     svg.classList.remove("is-hovering");
@@ -730,12 +730,12 @@ function renderLegendSwatch(item: PlotLegendItem, x: number, y: number): SVGElem
     if (kind === "density") {
       const group = createSvgElement("g");
       group.setAttribute("class", `${className} is-density`);
-      for (let index = 0; index < 5; index += 1) {
+      for (let index = 0; index < 6; index += 1) {
         const step = createSvgElement("rect");
         setAttrs(step, {
-          x: x - 7.5 + index * 3,
+          x: x - 7.5 + index * 2.5,
           y: y - 4,
-          width: 3,
+          width: 2.5,
           height: 8,
           class: `cw-plot-density-legend-step cw-plot-ramp-${index}`,
         });
@@ -910,7 +910,7 @@ export function renderCompositionStrip(svg: SVGSVGElement, geometry: Composition
     });
     group.appendChild(rect);
     const entry = createSvgElement("g");
-    entry.setAttribute("class", `cw-plot-composition-entry${segment.pinned ? " is-pinned" : ""}`);
+    entry.setAttribute("class", `cw-plot-composition-entry cw-plot-ramp-${segment.datum.rampIndex}${segment.pinned ? " is-pinned" : ""}`);
     entry.dataset.segmentIndex = String(index);
     entry.dataset.segmentX = String(segment.x);
     entry.dataset.segmentY = String(segment.y);
@@ -1000,7 +1000,7 @@ function renderPlaneDensityLegend(svg: SVGSVGElement, geometry: DispersionPlaneG
   group.setAttribute("class", "cw-plot-density-legend");
   const x = geometry.box.margin.left;
   const y = geometry.box.height - 68;
-  for (let index = 0; index < 5; index += 1) {
+  for (let index = 0; index < 6; index += 1) {
     const rect = createSvgElement("rect");
     setAttrs(rect, { x: x + index * 18, y, width: 18, height: 10, class: `cw-plot-density-legend-step cw-plot-ramp-${index}` });
     group.appendChild(rect);
@@ -1238,22 +1238,26 @@ function renderFittedRange(svg: SVGSVGElement, range: PlotFittedRangeGeometry): 
   svg.appendChild(group);
 }
 
-function renderInteractionLayer(svg: SVGSVGElement, box: PlotBox): void {
+function renderInteractionLayer(svg: SVGSVGElement, box: PlotBox, crosshairEnabled: boolean): void {
   const group = createSvgElement("g");
   group.setAttribute("class", "cw-plot-interaction-layer");
   group.setAttribute("aria-hidden", "true");
-  const vertical = createSvgElement("line");
-  setAttrs(vertical, {
-    class: "cw-plot-crosshair-x",
-    y1: box.margin.top,
-    y2: box.height - box.margin.bottom,
-  });
-  const horizontal = createSvgElement("line");
-  setAttrs(horizontal, {
-    class: "cw-plot-crosshair-y",
-    x1: box.margin.left,
-    x2: box.width - box.margin.right,
-  });
+  svg.dataset.crosshairEnabled = String(crosshairEnabled);
+  if (crosshairEnabled) {
+    const vertical = createSvgElement("line");
+    setAttrs(vertical, {
+      class: "cw-plot-crosshair-x",
+      y1: box.margin.top,
+      y2: box.height - box.margin.bottom,
+    });
+    const horizontal = createSvgElement("line");
+    setAttrs(horizontal, {
+      class: "cw-plot-crosshair-y",
+      x1: box.margin.left,
+      x2: box.width - box.margin.right,
+    });
+    group.append(vertical, horizontal);
+  }
   const tooltip = createSvgElement("g");
   tooltip.setAttribute("class", "cw-plot-tooltip");
   tooltip.setAttribute("aria-hidden", "true");
@@ -1262,7 +1266,7 @@ function renderInteractionLayer(svg: SVGSVGElement, box: PlotBox): void {
   const tooltipText = createSvgElement("text");
   tooltipText.setAttribute("class", "cw-plot-tooltip-text");
   tooltip.append(tooltipBox, tooltipText);
-  group.append(vertical, horizontal, tooltip);
+  group.appendChild(tooltip);
   svg.appendChild(group);
 }
 
@@ -1296,8 +1300,8 @@ function renderRect(
 function updateHover(
   svg: SVGSVGElement,
   target: EventTarget | null,
-  crosshairX: SVGLineElement,
-  crosshairY: SVGLineElement,
+  crosshairX: SVGLineElement | null,
+  crosshairY: SVGLineElement | null,
   tooltip: SVGGElement,
   tooltipText: SVGTextElement,
   tooltipBox: SVGRectElement,
@@ -1308,10 +1312,10 @@ function updateHover(
   const y = Number(marker.dataset.plotY);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
   svg.classList.add("is-hovering");
-  crosshairX.setAttribute("x1", String(x));
-  crosshairX.setAttribute("x2", String(x));
-  crosshairY.setAttribute("y1", String(y));
-  crosshairY.setAttribute("y2", String(y));
+  crosshairX?.setAttribute("x1", String(x));
+  crosshairX?.setAttribute("x2", String(x));
+  crosshairY?.setAttribute("y1", String(y));
+  crosshairY?.setAttribute("y2", String(y));
   tooltipText.replaceChildren();
   const rows = [marker.dataset.tooltipTitle ?? "", ...(marker.dataset.tooltipRows ?? "").split("\n")]
     .map((row) => row.trim())

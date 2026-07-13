@@ -1,10 +1,12 @@
-/* Live Overview figures always own a complete semantic plotting palette. Export
-   hosts may remap those roles without mutating or configuring the live figure. */
-.cw-overview-figure {
+/* Live Overview figures own a stable scientific colour language. The complete
+   theme contract supplies light/dark-safe pigments; these semantic assignments
+   remain stable across appearance themes and export palette modes. */
+.cw-overview-figure,
+[data-figure-palette="theme"] {
   --cw-plot-observed: var(--cw-plot-point);
-  --cw-plot-reference: var(--cw-plot-fit);
-  --cw-plot-selected: var(--cw-plot-ramp-4);
-  --cw-plot-attention: var(--cw-plot-ramp-5);
+  --cw-plot-reference: var(--cw-warning-text);
+  --cw-plot-selected: var(--cw-category-mixed-text);
+  --cw-plot-attention: var(--cw-danger-text);
   --cw-plot-density-0: var(--cw-plot-ramp-0);
   --cw-plot-density-1: var(--cw-plot-ramp-1);
   --cw-plot-density-2: var(--cw-plot-ramp-2);
@@ -17,30 +19,8 @@
   --cw-plot-composition-3: var(--cw-plot-ramp-3);
   --cw-plot-composition-4: var(--cw-plot-ramp-4);
   --cw-plot-composition-5: var(--cw-plot-ramp-5);
-  --cw-plot-witness-core: var(--accent-color);
-  --cw-plot-witness-loud-local: var(--cw-warning-text);
-  --cw-plot-witness-quiet-even: var(--cw-category-mixed-text);
-  --cw-plot-witness-rare-local: var(--cw-danger-text);
-}
-
-:where([data-figure-palette="theme"], [data-figure-palette="colorBlind"], [data-figure-palette="monochrome"]) {
-  --cw-plot-observed: var(--cw-plot-point);
-  --cw-plot-reference: var(--cw-plot-fit);
-  --cw-plot-selected: var(--cw-plot-ramp-4);
-  --cw-plot-attention: var(--cw-plot-ramp-5);
-  --cw-plot-density-0: var(--cw-plot-ramp-0);
-  --cw-plot-density-1: var(--cw-plot-ramp-1);
-  --cw-plot-density-2: var(--cw-plot-ramp-2);
-  --cw-plot-density-3: var(--cw-plot-ramp-3);
-  --cw-plot-density-4: var(--cw-plot-ramp-4);
-  --cw-plot-density-5: var(--cw-plot-ramp-5);
-  --cw-plot-composition-0: var(--cw-plot-ramp-0);
-  --cw-plot-composition-1: var(--cw-plot-ramp-1);
-  --cw-plot-composition-2: var(--cw-plot-ramp-2);
-  --cw-plot-composition-3: var(--cw-plot-ramp-3);
-  --cw-plot-composition-4: var(--cw-plot-ramp-4);
-  --cw-plot-composition-5: var(--cw-plot-ramp-5);
-  --cw-plot-witness-core: var(--accent-color);
+  --cw-plot-composition-foreground-low: var(--text-color);
+  --cw-plot-witness-core: var(--cw-plot-ramp-0);
   --cw-plot-witness-loud-local: var(--cw-warning-text);
   --cw-plot-witness-quiet-even: var(--cw-category-mixed-text);
   --cw-plot-witness-rare-local: var(--cw-danger-text);

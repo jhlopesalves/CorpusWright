@@ -551,6 +551,7 @@ export interface DistributionResultPayload {
 export interface DistributionDiagnosticGeometry {
   box: PlotBox;
   view: DistributionDiagnosticView;
+  crosshairEnabled: boolean;
   xScale: PlotScale;
   yScale: PlotScale;
   xTicks: PlotTick[];
@@ -2414,6 +2415,7 @@ export function buildDistributionDiagnosticGeometry(options: {
   return {
     box,
     view: options.view,
+    crosshairEnabled: options.view !== "histogram",
     xScale,
     yScale,
     xTicks,
