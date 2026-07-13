@@ -44,6 +44,30 @@ assert.equal(curve.points.at(-1)?.fitMembership.kind === "shown-not-fitted" ? cu
 assert(curve.labels.some((label) => label.text === "Top three ranks not fitted"));
 assert(curve.labels.some((label) => label.text === "Frequency-one tail not fitted"));
 
+const denseRankPoints = Array.from({ length: 80 }, (_, index) => ({
+  rank: index + 1,
+  frequency: Math.max(1, Math.round(100_000 / (index + 1) ** 1.08)),
+  ratePerMillion: Math.max(1, Math.round(100_000 / (index + 1) ** 1.08)),
+  token: `token-${index + 1}`,
+}));
+const denseCurve = buildRankFrequencyGeometry({
+  points: denseRankPoints,
+  yMode: "rate",
+  totalTokens: 1_000_000,
+  zipfExponent: 1.08,
+  zipfCoefficient: 100_000,
+  fittedRankStart: 4,
+  fittedRankEnd: 70,
+  view: "curve",
+  labelsMode: "examples",
+});
+const tailLabel = denseCurve.labels.find((label) => label.text === "token-80")!;
+const tailBox = estimateLabelBox(tailLabel);
+assert(!denseCurve.points.some((point) =>
+  point.x >= tailBox.x && point.x <= tailBox.x + tailBox.width
+  && point.y >= tailBox.y && point.y <= tailBox.y + tailBox.height
+), "dense tail label must not cover observed points");
+
 const hiddenFit = buildRankFrequencyGeometry({
   points: rankPoints,
   yMode: "raw",
@@ -159,6 +183,7 @@ assert.equal(hiddenGrowthFit.yScale.domain[1], 2_200, "hidden fit values cannot 
 const shell = readFileSync(new URL("../src/workbench/shell.ts", import.meta.url), "utf8");
 const marks = readFileSync(new URL("../src/styles/plots/marks.css", import.meta.url), "utf8");
 assert.match(shell, /How quickly does frequency fall as vocabulary rank increases\?/);
+assert.match(shell, /top three ranks and frequency-one tail remain visible but are not used to estimate the fit/);
 assert.match(shell, /How quickly does the corpus encounter new types as tokens accumulate\?/);
 assert.match(shell, /Both axes are logarithmic in Curve view/);
 assert.match(shell, /stable source order/);

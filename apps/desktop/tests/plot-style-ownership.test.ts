@@ -35,7 +35,6 @@ for (const selector of [
   ".cw-plot-grid-value",
   ".cw-plot-grid-context",
   ".cw-plot-tick-label",
-  ".cw-plot-reference-line",
   ".cw-plot-threshold-line",
 ]) {
   assert(axes.includes(selector), `${selector} must be owned by axes-and-grids.css`);

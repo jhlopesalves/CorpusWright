@@ -12,9 +12,10 @@ const analyse = readFileSync(new URL("../src/styles/features/analyse.css", impor
 
 const livePalette = palette.match(/\.cw-overview-figure\s*,[^\{]*\{([\s\S]*?)\n\}/)?.[1] ?? "";
 for (const role of [
-  "observed", "reference", "selected", "attention",
+  "observed", "model-fit", "statistical-reference", "target", "coverage-trajectory", "selected", "attention",
   ...Array.from({ length: 6 }, (_, index) => `density-${index}`),
   ...Array.from({ length: 6 }, (_, index) => `composition-${index}`),
+  "rank-band-top10", "rank-band-11-100", "rank-band-101-1000", "rank-band-1001-10000", "rank-band-tail",
   ...Array.from({ length: 10 }, (_, index) => `profile-${index}`),
   "witness",
 ]) {
@@ -37,8 +38,9 @@ assert.match(fixture, /browser-black computed/);
 assert.match(fixture, /insufficient computed fill variation/);
 assert.match(fixture, /hidden control occupies layout/);
 assert.match(fixture, /cw-plot-ecdf-line/);
-assert.doesNotMatch(render, /cw-plot-animated-path|pathLength:\s*"1"/);
-assert.doesNotMatch(interactions, /cw-plot-path-draw|stroke-dashoffset:\s*1/);
+assert.match(interactions, /\.cw-plot-svg\.cw-plot-export-static[\s\S]*animation:\s*none/);
+assert.match(figure, /prepareStaticExportClone\(exportedSvg\)/);
+assert.doesNotMatch(render, /"animation(?:-delay)?"|"transition"/, "live timing must not be serialized");
 assert.match(fixture, /cw-plot-density-cell:not\(\.is-zero\)/);
 
 assert.doesNotMatch(interactions, /scale\(1\.15\)/);

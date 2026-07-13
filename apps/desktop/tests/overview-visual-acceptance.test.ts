@@ -11,7 +11,7 @@ const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.me
 
 const screenshotBlock = capture.match(/const screenshotCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
 const exportBlock = capture.match(/const exportCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
-assert.equal(screenshotBlock.match(/\bshot\(/g)?.length, 32);
+assert.equal(screenshotBlock.match(/\bshot\(/g)?.length, 38);
 assert.equal(exportBlock.match(/\bexportCase\(/g)?.length, 13);
 
 for (const figure of ["document", "mattr", "rank", "growth", "lexical", "coverage", "profile", "plane"]) {
@@ -25,6 +25,11 @@ for (const requiredCase of [
   "rank-residuals",
   "vocabulary-heaps-fit",
   "coverage-90",
+  "document-qq-dark",
+  "rank-curve-dark",
+  "rank-residuals-dark",
+  "vocabulary-heaps-fit-dark",
+  "coverage-90-dark",
   "lexical-spectrum-dark",
   "dispersion-plane-high-contrast",
   "pinned-plane-witness",
@@ -54,8 +59,11 @@ assert.match(capture, /Page\.bringToFront/);
 assert.match(capture, /Target\.closeTarget/);
 assert.match(capture, /result\?\.href === url && result\.status === "passed"/);
 assert.match(capture, /async function settlePaint/);
+assert.match(capture, /async function resetPageScroll/);
 assert.match(capture, /consoleErrors !== 0 \|\| report\.accessibilitySerious !== 0/);
-assert.match(capture, /contains unresolved CSS variables/);
+for (const portablePaintGuard of ["unresolved CSS variables", "unresolved color-mix paint", "non-portable color(srgb) paint"]) {
+  assert(capture.includes(portablePaintGuard));
+}
 for (const requiredSvgContent of ["<title", "<desc", "cw-plot-figure-title", "cw-plot-figure-reading"]) {
   assert.match(capture, new RegExp(requiredSvgContent));
 }

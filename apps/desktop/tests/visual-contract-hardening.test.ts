@@ -43,7 +43,7 @@ for (const match of focusOutlineConsumers) {
 
 assert.doesNotMatch(allCss, /\bstroke-color\s*:/, "invalid stroke-color declarations are forbidden");
 assert.equal(
-  [...marks.matchAll(/\.cw-plot-point\.is-excluded\s*\{/g)].length,
+  [...marks.matchAll(/\.cw-plot-point\.is-excluded\b/g)].length,
   1,
   "excluded points must have one authoritative rule",
 );

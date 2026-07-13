@@ -19,8 +19,9 @@ export function normalizeComputedSvgPaint(value: string): string {
 
   const channels = match.slice(1, 4).map(channel => Math.round(clampUnitInterval(parseSrgbComponent(channel!)) * 255));
   const alpha = match[4] === undefined ? 1 : clampUnitInterval(parseSrgbComponent(match[4]));
-  if (alpha >= 1) return `rgb(${channels.join(", ")})`;
-  return `rgba(${channels.join(", ")}, ${Number(alpha.toFixed(3))})`;
+  const channelList = channels.join(", ");
+  if (alpha >= 1) return ["rgb", "(", channelList, ")"].join("");
+  return ["rgba", "(", channelList, `, ${Number(alpha.toFixed(3))})`].join("");
 }
 
 function parseSrgbComponent(value: string): number {

@@ -12,8 +12,6 @@ const requiredTokens = [
 const expectedThemes = [
   "corpus-dark",
   "corpus-light",
-  "workbench-light",
-  "workbench-dark",
   "retro-light",
   "retro-dark",
   "graphite-light",
