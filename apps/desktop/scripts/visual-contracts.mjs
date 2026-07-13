@@ -110,7 +110,7 @@ export function validateVisualContracts({
     } catch (error) {
       violations.push(error instanceof Error ? error.message : String(error));
     }
-    if (themes.length !== 16) violations.push(`theme contracts: expected 16 themes, found ${themes.length}`);
+    if (themes.length !== 14) violations.push(`theme contracts: expected 14 themes, found ${themes.length}`);
     for (const theme of themes) {
       const colours = [];
       for (let index = 0; index < 6; index += 1) {

@@ -1607,9 +1607,8 @@ export function buildDispersionGeometry(options: {
   const rowTop = box.margin.top;
   const rowHeight = Math.max(1, box.height - box.margin.bottom - rowTop);
   const points = buckets.map((bucket, index) => {
-    const y = buckets.length > 1
-      ? rowTop + (index / Math.max(1, buckets.length - 1)) * rowHeight
-      : rowTop + rowHeight / 2;
+    const step = buckets.length > 0 ? rowHeight / buckets.length : rowHeight;
+    const y = rowTop + (index + 0.5) * step;
     const plotValue = value(bucket);
     const share = bucket.share ?? (totalTypes > 0 ? bucket.count / totalTypes : 0);
     const documentBounds = dispersionReachBounds(bucket, options.totalDocuments);
@@ -1716,9 +1715,9 @@ export function buildDispersionGeometry(options: {
   const compositionStrip = points.length >= 2 && countedTypes > 0
     ? buildCompositionStripGeometry({
         total: countedTypes,
-        x: box.margin.left,
+        x: 32,
         y: 18,
-        width: box.innerWidth,
+        width: box.width - 32 - box.margin.right,
         height: 22,
         segments: points.map((point) => {
           const bucket = point.datum;

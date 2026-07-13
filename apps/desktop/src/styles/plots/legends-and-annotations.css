@@ -243,6 +243,10 @@
   fill: var(--cw-plot-point);
 }
 
+.cw-plot-legend-swatch:not(.is-hollow)[class*="cw-plot-ramp-"] {
+  fill: currentColor;
+}
+
 .cw-plot-cumulative-callout-title {
   fill: var(--text-color);
   font-family: var(--cw-font-sans);

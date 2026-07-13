@@ -759,9 +759,10 @@ function renderPath(svg: SVGSVGElement, path: PlotPathGeometry, plotId: string):
     svg.appendChild(halo);
   }
   const element = createSvgElement("path");
+  const className = path.className.includes("cw-plot-area") ? path.className : `${path.className} cw-plot-animated-path`;
   setAttrs(element, {
     d: path.d,
-    class: path.className,
+    class: className,
   });
   if (path.className.includes("cw-plot-area")) {
     element.setAttribute("fill", `url(#${plotId}-area)`);
@@ -804,7 +805,7 @@ function renderPoints(svg: SVGSVGElement, points: Array<PlotPointGeometry>, base
       "data-pin-key": point.key,
       "data-point-shape": point.shape ?? "circle",
       style: [
-        point.className?.includes("cw-plot-qq-point") ? "" : `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms`,
+        `--cw-plot-stagger: ${Math.min(index, 60) * 8}ms`,
         `--cw-plot-fill-opacity: ${point.fillOpacity ?? 0.82}`,
       ].filter(Boolean).join("; "),
     });
