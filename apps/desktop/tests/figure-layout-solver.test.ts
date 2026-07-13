@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   annotationCandidates,
+  innerLegendCandidates,
   layoutBoxesOverlap,
   scoreLayoutCandidate,
 } from "../src/plots/layout.ts";
@@ -18,6 +19,22 @@ assert(scoreLayoutCandidate({ x: 50, y: 25, width: 20, height: 10 }, [obstacle],
   > scoreLayoutCandidate({ x: 130, y: 80, width: 20, height: 10 }, [obstacle], bounds));
 assert(scoreLayoutCandidate({ x: -10, y: 0, width: 20, height: 10 }, [], bounds) >= 1_000_000);
 assert.deepEqual(annotationCandidates()[0], { dx: 0, dy: 0, displacementPenalty: 0 });
+
+const innerBounds = { x: 78, y: 64, width: 602, height: 226 };
+const legendBox = { width: 164, height: 48 };
+const legendCandidates = innerLegendCandidates(innerBounds, legendBox);
+assert.deepEqual(legendCandidates.map((candidate) => candidate.name), [
+  "upper-left",
+  "upper-right",
+  "lower-left",
+  "lower-right",
+]);
+assert(legendCandidates.every((candidate) =>
+  candidate.x >= innerBounds.x
+  && candidate.y >= innerBounds.y
+  && candidate.x + legendBox.width <= innerBounds.x + innerBounds.width
+  && candidate.y + legendBox.height <= innerBounds.y + innerBounds.height
+));
 
 const dominantSegments = [
   { key: "dominant", label: "1 document", count: 211_271, rampIndex: 0 },
@@ -68,4 +85,6 @@ assert.match(layoutSource, /getBBox\(\)/);
 assert.match(layoutSource, /external-rail/);
 assert.match(layoutSource, /cw-plot-label-leader is-layout-generated/);
 assert.match(layoutSource, /placeOccupancyAwareLegends/);
+assert.match(layoutSource, /readInnerPlotBounds/);
+assert.match(layoutSource, /samplePlotPathObstacles/);
 assert.match(layoutSource, /layoutCompositionStripLabels/);

@@ -557,6 +557,15 @@ function collectFixtureMetrics(entries: BuiltFigure[]): Record<string, unknown> 
       endpoint: { x: end.x, y: end.y },
       visible: isVisiblePaint(style.stroke) && Number(style.strokeOpacity) > 0 && Number(style.opacity) > 0,
     };
+    const targets = Array.from(svg.querySelectorAll<SVGCircleElement>(".cw-plot-ecdf-hit-target"));
+    const targetStyle = targets[0] ? getComputedStyle(targets[0]) : null;
+    metrics.ecdfTargets = {
+      count: targets.length,
+      fill: targetStyle?.fill ?? "missing",
+      stroke: targetStyle?.stroke ?? "missing",
+      opacity: Number(targetStyle?.opacity ?? -1),
+      ordinaryPointCount: svg.querySelectorAll(".cw-plot-point.cw-plot-ecdf-hit-target").length,
+    };
   }
   const qqPoints = Array.from(svg.querySelectorAll<SVGCircleElement>(".cw-plot-qq-point:not(.is-pinned)"));
   if (qqPoints.length > 0) {
@@ -717,11 +726,8 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
       if (ordinaryPoints.some((point) => getComputedStyle(point).stroke !== "none")) failures.push("ordinary Q–Q point retains panel-coloured outline");
       if (ordinaryPoints.some((point) => Number(point.getAttribute("r")) < 2.4 || Number(point.getAttribute("r")) > 2.8)) failures.push("ordinary Q–Q point radius is outside the stable diagnostic range");
       const legend = svg.querySelector<SVGGElement>(".cw-plot-legend");
-      const svgBounds = svg.getBoundingClientRect();
-      const legendBounds = legend?.getBoundingClientRect();
-      if (!legendBounds || legendBounds.left < svgBounds.left || legendBounds.top < svgBounds.top || legendBounds.right > svgBounds.right || legendBounds.bottom > svgBounds.bottom) {
-        failures.push("Q–Q legend leaves SVG bounds");
-      }
+      auditOrdinaryLegendBounds(svg, legend, failures, "Q–Q");
+      if (legend?.dataset.layoutPosition !== "upper-left") failures.push("Q–Q legend is not in the expected upper-left axes corner");
     }
     if (figureName === "mattr") assertDistinctFills(".cw-plot-composition-segment", 2, "MATTR eligibility strip");
   }
@@ -739,6 +745,7 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
     const fittedLegend = svg.querySelector<SVGGraphicsElement>(".cw-plot-legend-swatch.cw-plot-fit-line");
     if (!observed || !observedLegend || getComputedStyle(observed).stroke !== getComputedStyle(observedLegend).stroke) failures.push("growth observed legend paint does not match series");
     if (!fitted || !fittedLegend || getComputedStyle(fitted).stroke !== getComputedStyle(fittedLegend).stroke) failures.push("growth fitted legend paint does not match series");
+    auditOrdinaryLegendBounds(svg, svg.querySelector<SVGGElement>(".cw-plot-legend"), failures, "Vocabulary-growth");
   }
   if (figureName === "lexical") {
     assertPaint(".cw-plot-point", "fill", "lexical exact-frequency point", rejectBrowserBlack);
@@ -816,6 +823,22 @@ function auditEcdfState(figure: HTMLElement, failures: string[], timing: string)
   }
   if (!(box.width > 0) || !(box.height > 0)) failures.push(`zero-area ECDF path ${timing}`);
   const svg = path.ownerSVGElement;
+  const targets = Array.from(svg?.querySelectorAll<SVGCircleElement>(".cw-plot-ecdf-hit-target") ?? []);
+  if (targets.length === 0) failures.push(`missing ECDF interaction targets ${timing}`);
+  for (const target of targets) {
+    const targetStyle = getComputedStyle(target);
+    if (target.classList.contains("cw-plot-point")) failures.push(`ECDF target uses ordinary point renderer ${timing}`);
+    if (targetStyle.stroke !== "none" || Number(targetStyle.opacity) !== 0 || targetStyle.pointerEvents !== "all") {
+      failures.push(`visible ECDF interaction target ${timing}`);
+      break;
+    }
+    if (!target.dataset.plotX || !target.dataset.plotY || !target.dataset.tooltipTitle || !target.dataset.tooltipRows || target.getAttribute("tabindex") !== "-1") {
+      failures.push(`incomplete ECDF interaction target ${timing}`);
+      break;
+    }
+  }
+  const median = svg?.querySelector<SVGLineElement>(".cw-plot-median-line");
+  if (!median || getComputedStyle(median).stroke === "none") failures.push(`interrupted median line contract ${timing}`);
   const crosshairX = svg?.querySelector<SVGLineElement>(".cw-plot-crosshair-x");
   const crosshairY = svg?.querySelector<SVGLineElement>(".cw-plot-crosshair-y");
   const end = path.getPointAtLength(path.getTotalLength());
@@ -825,6 +848,36 @@ function auditEcdfState(figure: HTMLElement, failures: string[], timing: string)
   if (!Number.isFinite(end.x) || !Number.isFinite(end.y) || end.x < plotLeft || end.x > plotRight || Math.abs(end.y - plotTop) > 1) {
     failures.push(`ECDF final cumulative endpoint is not visible ${timing}`);
   }
+}
+
+function auditOrdinaryLegendBounds(
+  svg: SVGSVGElement,
+  legend: SVGGElement | null,
+  failures: string[],
+  label: string,
+): void {
+  const left = Number(svg.dataset.plotInnerLeft);
+  const top = Number(svg.dataset.plotInnerTop);
+  const right = Number(svg.dataset.plotInnerRight);
+  const bottom = Number(svg.dataset.plotInnerBottom);
+  const matrix = svg.getScreenCTM();
+  if (!legend || !matrix || ![left, top, right, bottom].every(Number.isFinite)) {
+    failures.push(`${label} legend has no measurable inner-plot bounds`);
+    return;
+  }
+  const innerStart = new DOMPoint(left, top).matrixTransform(matrix);
+  const innerEnd = new DOMPoint(right, bottom).matrixTransform(matrix);
+  const inner = {
+    left: Math.min(innerStart.x, innerEnd.x),
+    top: Math.min(innerStart.y, innerEnd.y),
+    right: Math.max(innerStart.x, innerEnd.x),
+    bottom: Math.max(innerStart.y, innerEnd.y),
+  };
+  const bounds = legend.getBoundingClientRect();
+  if (bounds.left < inner.left - 1 || bounds.top < inner.top - 1 || bounds.right > inner.right + 1 || bounds.bottom > inner.bottom + 1) {
+    failures.push(`${label} legend leaves inner plot rectangle`);
+  }
+  if (legend.dataset.layoutPosition === "external-rail") failures.push(`${label} legend was placed in an external rail`);
 }
 
 function auditDistributionControlsAndGeometry(figure: HTMLElement, svg: SVGSVGElement, failures: string[]): void {

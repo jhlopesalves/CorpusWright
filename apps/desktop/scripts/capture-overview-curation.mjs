@@ -5,7 +5,10 @@ import { spawn } from "node:child_process";
 
 const recoveryMode = process.argv.includes("--rendering-recovery");
 const cleanupMode = process.argv.includes("--distribution-dispersion-cleanup");
-const outputDirectory = cleanupMode
+const legibilityMode = process.argv.includes("--overview-legibility-and-dispersion-plane");
+const outputDirectory = legibilityMode
+  ? "/tmp/corpuswright-overview-legibility-and-dispersion-plane"
+  : cleanupMode
   ? "/tmp/corpuswright-overview-distribution-dispersion-cleanup"
   : recoveryMode
     ? "/tmp/corpuswright-overview-rendering-recovery"
@@ -110,8 +113,19 @@ const cleanupExportCases = [
   cleanupExportCase("dispersion-plane", "plane", { pinned: true }),
 ];
 
-const activeScreenshotCases = cleanupMode ? cleanupScreenshotCases : recoveryMode ? recoveryScreenshotCases : screenshotCases;
-const activeExportCases = cleanupMode ? cleanupExportCases : recoveryMode ? recoveryExportCases : exportCases;
+const legibilityScreenshotCases = [
+  legibilityShot("document-ecdf-final", "document", { view: "ecdf" }),
+  legibilityShot("mattr-ecdf-final", "mattr", { view: "ecdf" }),
+  legibilityShot("document-qq-legend", "document", { view: "qq" }),
+  legibilityShot("vocabulary-growth-legend", "growth", { view: "growth" }),
+];
+
+const legibilityExportCases = [
+  legibilityExportCase("document-ecdf", "document", { view: "ecdf" }),
+];
+
+const activeScreenshotCases = legibilityMode ? legibilityScreenshotCases : cleanupMode ? cleanupScreenshotCases : recoveryMode ? recoveryScreenshotCases : screenshotCases;
+const activeExportCases = legibilityMode ? legibilityExportCases : cleanupMode ? cleanupExportCases : recoveryMode ? recoveryExportCases : exportCases;
 const activeAuditCases = recoveryMode ? recoveryAuditCases : [];
 
 class Cdp {
@@ -188,6 +202,7 @@ try {
     try {
       await setViewport(cdp, page.sessionId, item.width, item.height);
       const result = await navigateAndWait(cdp, page.sessionId, item.url, false);
+      if (item.postRenderDelayMs) await delay(item.postRenderDelayMs);
       await settlePaint(cdp, page.sessionId);
       const capture = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true }, page.sessionId);
       const path = join(outputDirectory, item.filename);
@@ -222,10 +237,10 @@ try {
 
   const report = {
     generatedAt: new Date().toISOString(),
-    mode: cleanupMode ? "distribution-dispersion-cleanup" : recoveryMode ? "rendering-recovery" : "overview-curation",
+    mode: legibilityMode ? "overview-legibility-and-dispersion-plane" : cleanupMode ? "distribution-dispersion-cleanup" : recoveryMode ? "rendering-recovery" : "overview-curation",
     fixture: baseUrl,
     viewport: "1440x900",
-    timing: cleanupMode ? { ecdfAndQqMinimumDelayMs: 1_000, animationsFinishedBeforeCapture: true } : undefined,
+    timing: cleanupMode || legibilityMode ? { ecdfAndQqMinimumDelayMs: 1_000, animationsFinishedBeforeCapture: true } : undefined,
     auditCount: activeAuditCases.length,
     screenshotCount: activeScreenshotCases.length,
     standaloneSvgCount: activeExportCases.length,
@@ -268,6 +283,15 @@ function cleanupShot(slug, figure, options = {}) {
 }
 
 function cleanupExportCase(slug, figure, options = {}) {
+  return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: "corpus-light", url: fixtureUrl(figure, { ...options, theme: "corpus-light", export: true }) };
+}
+
+function legibilityShot(slug, figure, options = {}) {
+  const postRenderDelayMs = options.view === "ecdf" || options.view === "qq" ? 1_000 : 0;
+  return { kind: "screenshot", filename: `${slug}.png`, figure, width: 1440, height: 900, theme: "corpus-light", postRenderDelayMs, url: fixtureUrl(figure, { ...options, theme: "corpus-light" }) };
+}
+
+function legibilityExportCase(slug, figure, options = {}) {
   return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: "corpus-light", url: fixtureUrl(figure, { ...options, theme: "corpus-light", export: true }) };
 }
 

@@ -48,6 +48,16 @@
   outline: none;
 }
 
+.cw-plot-ecdf-hit-target,
+.cw-plot-ecdf-hit-target:hover,
+.cw-plot-ecdf-hit-target:focus {
+  fill: transparent;
+  stroke: none;
+  opacity: 0;
+  pointer-events: all;
+  transform: none;
+}
+
 .cw-plot-point.cw-plot-hover-target:not(.is-lollipop):not(.is-pinned):hover,
 .cw-plot-point.cw-plot-hover-target:not(.is-lollipop):not(.is-pinned):focus {
   stroke-width: 1.8;

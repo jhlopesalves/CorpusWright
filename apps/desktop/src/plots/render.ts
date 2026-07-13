@@ -256,7 +256,8 @@ export function renderDistributionDiagnosticSvg(
   renderBars(svg, geometry.bars, "cw-plot-bar");
   if (geometry.linePath) renderPath(svg, geometry.linePath, plotId);
   if (geometry.medianLine) renderLine(svg, geometry.medianLine);
-  renderPoints(svg, geometry.points, "cw-plot-point");
+  if (geometry.view === "ecdf") renderEcdfHitTargets(svg, geometry.points);
+  else renderPoints(svg, geometry.points, "cw-plot-point");
   renderPoints(svg, geometry.witnesses, "cw-plot-point cw-plot-distribution-witness");
   if (geometry.referencePath) renderPath(svg, geometry.referencePath, plotId);
   renderSvgLegend(svg, geometry.box, geometry.legend);
@@ -471,6 +472,10 @@ function createBaseSvg(plotId: string, box: PlotBox): SVGSVGElement {
     "aria-describedby": instructionId,
     viewBox: `0 0 ${box.width} ${box.height}`,
     "data-plot-id": plotId,
+    "data-plot-inner-left": box.margin.left,
+    "data-plot-inner-top": box.margin.top,
+    "data-plot-inner-right": box.width - box.margin.right,
+    "data-plot-inner-bottom": box.height - box.margin.bottom,
   });
   const instructions = createSvgElement("desc");
   instructions.id = instructionId;
@@ -802,6 +807,28 @@ function renderPoints(svg: SVGSVGElement, points: Array<PlotPointGeometry>, base
       ].filter(Boolean).join("; "),
     });
     group.appendChild(mark);
+  });
+  svg.appendChild(group);
+}
+
+function renderEcdfHitTargets(svg: SVGSVGElement, points: Array<PlotPointGeometry>): void {
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-ecdf-hit-targets");
+  points.forEach((point) => {
+    const target = createSvgElement("circle");
+    setAttrs(target, {
+      cx: point.x,
+      cy: point.y,
+      r: Math.max(6, point.radius ?? 0),
+      class: "cw-plot-ecdf-hit-target cw-plot-hover-target",
+      tabindex: "-1",
+      "aria-label": point.ariaLabel ?? point.tooltipTitle ?? undefined,
+      "data-plot-x": point.x,
+      "data-plot-y": point.y,
+      "data-tooltip-title": point.tooltipTitle ?? "",
+      "data-tooltip-rows": (point.tooltipRows ?? []).join("\n"),
+    });
+    group.appendChild(target);
   });
   svg.appendChild(group);
 }

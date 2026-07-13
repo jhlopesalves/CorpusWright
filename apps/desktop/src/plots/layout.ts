@@ -11,6 +11,12 @@ export interface AnnotationCandidate {
   displacementPenalty: number;
 }
 
+export interface LegendCandidate {
+  x: number;
+  y: number;
+  name: "upper-left" | "upper-right" | "lower-left" | "lower-right";
+}
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 const BOX_GAP = 3;
 
@@ -66,6 +72,19 @@ export function layoutBoxesOverlap(left: MeasuredLayoutBox, right: MeasuredLayou
     && left.x + left.width + gap > right.x
     && left.y < right.y + right.height + gap
     && left.y + left.height + gap > right.y;
+}
+
+export function innerLegendCandidates(
+  bounds: MeasuredLayoutBox,
+  legend: Pick<MeasuredLayoutBox, "width" | "height">,
+  inset = 8,
+): LegendCandidate[] {
+  return [
+    { x: bounds.x + inset, y: bounds.y + inset, name: "upper-left" },
+    { x: bounds.x + bounds.width - legend.width - inset, y: bounds.y + inset, name: "upper-right" },
+    { x: bounds.x + inset, y: bounds.y + bounds.height - legend.height - inset, name: "lower-left" },
+    { x: bounds.x + bounds.width - legend.width - inset, y: bounds.y + bounds.height - legend.height - inset, name: "lower-right" },
+  ];
 }
 
 function layoutCompositionStripLabels(
@@ -146,27 +165,28 @@ function placeOccupancyAwareLegends(
   ));
   if (legends.length === 0) return;
   const view = svg.viewBox.baseVal;
-  const marks = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-hover-target, .cw-plot-label.is-pinned"))
+  const innerPlot = readInnerPlotBounds(svg, view);
+  const marks = Array.from(svg.querySelectorAll<SVGGraphicsElement>(
+    ".cw-plot-hover-target, .cw-plot-label, .cw-plot-fitted-range-label",
+  ))
     .map(measuredElementBox)
     .filter((box): box is MeasuredLayoutBox => box !== null);
+  marks.push(...samplePlotPathObstacles(svg));
   const placed: MeasuredLayoutBox[] = [];
   let railX = view.x + 10;
   let railY = view.y + view.height + 12;
   for (const legend of legends) {
     const original = measuredElementBox(legend);
     if (!original) continue;
-    const candidatePositions = [
-      { x: view.x + view.width - original.width - 10, y: view.y + 10, name: "top-right" },
-      { x: view.x + 10, y: view.y + 10, name: "top-left" },
-      { x: view.x + view.width - original.width - 10, y: view.y + view.height - original.height - 10, name: "bottom-right" },
-      { x: view.x + 10, y: view.y + view.height - original.height - 10, name: "bottom-left" },
-    ];
+    const ordinary = legend.classList.contains("cw-plot-legend");
+    const placementBounds = ordinary ? innerPlot : { x: view.x, y: view.y, width: view.width, height: view.height };
+    const candidatePositions = innerLegendCandidates(placementBounds, original, ordinary ? 8 : 10);
     const scored = candidatePositions.map((candidate) => ({
       ...candidate,
       score: scoreLayoutCandidate(
         { ...original, x: candidate.x, y: candidate.y },
         [...marks, ...placed],
-        { x: view.x, y: view.y, width: view.width, height: view.height },
+        placementBounds,
       ),
     })).sort((left, right) => left.score - right.score);
     const best = scored[0]!;
@@ -186,6 +206,36 @@ function placeOccupancyAwareLegends(
       extent.bottom = Math.max(extent.bottom, targetY + original.height);
     }
   }
+}
+
+function readInnerPlotBounds(svg: SVGSVGElement, fallback: MeasuredLayoutBox): MeasuredLayoutBox {
+  const left = Number(svg.dataset.plotInnerLeft);
+  const top = Number(svg.dataset.plotInnerTop);
+  const right = Number(svg.dataset.plotInnerRight);
+  const bottom = Number(svg.dataset.plotInnerBottom);
+  if ([left, top, right, bottom].every(Number.isFinite) && right > left && bottom > top) {
+    return { x: left, y: top, width: right - left, height: bottom - top };
+  }
+  return { x: fallback.x, y: fallback.y, width: fallback.width, height: fallback.height };
+}
+
+function samplePlotPathObstacles(svg: SVGSVGElement): MeasuredLayoutBox[] {
+  const obstacles: MeasuredLayoutBox[] = [];
+  for (const path of svg.querySelectorAll<SVGGeometryElement>(".cw-plot-line, .cw-plot-fit-line")) {
+    if (path.closest(".cw-plot-legend, .cw-plot-density-legend, .cw-plot-witness-legend")) continue;
+    try {
+      const length = path.getTotalLength();
+      const sampleCount = Math.max(2, Math.ceil(length / 14));
+      for (let index = 0; index <= sampleCount; index += 1) {
+        const point = path.getPointAtLength(length * index / sampleCount);
+        obstacles.push({ x: point.x - 3, y: point.y - 3, width: 6, height: 6 });
+      }
+    } catch {
+      const box = measuredElementBox(path);
+      if (box) obstacles.push(box);
+    }
+  }
+  return obstacles;
 }
 
 function resolveMountedAnnotationCollisions(

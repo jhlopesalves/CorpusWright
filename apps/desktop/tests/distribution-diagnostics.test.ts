@@ -77,6 +77,9 @@ assert.equal(ecdf.bars.length, 0);
 assert.equal(ecdf.crosshairEnabled, true);
 assert(ecdf.linePath?.d.includes(" L"), "ECDF must use a monotone step path");
 assert(ecdf.points.every((point, index, points) => index === 0 || point.y <= points[index - 1]!.y));
+assert(ecdf.points.every((point) => point.className === "cw-plot-ecdf-hit-target"));
+assert(ecdf.points.every((point) => point.fillOpacity === undefined));
+assert(ecdf.points.every((point) => Boolean(point.tooltipTitle) && (point.tooltipRows?.length ?? 0) > 0));
 
 const qq = buildDistributionDiagnosticGeometry({
   result,
@@ -174,6 +177,8 @@ assert.equal(invalidLogMattr.xScale.kind, "linear", "MATTR geometry normalises s
 const shell = readFileSync(new URL("../src/workbench/shell.ts", import.meta.url), "utf8");
 const render = readFileSync(new URL("../src/plots/render.ts", import.meta.url), "utf8");
 const marks = readFileSync(new URL("../src/styles/plots/marks.css", import.meta.url), "utf8");
+const interactions = readFileSync(new URL("../src/styles/plots/interactions.css", import.meta.url), "utf8");
+const figure = readFileSync(new URL("../src/plots/figure.ts", import.meta.url), "utf8");
 assert.match(shell, /queryOverviewDistribution\(/);
 assert.match(shell, /queryOverviewDistributionEvidence\(/);
 assert.match(shell, /manualTimer[\s\S]*setTimeout\(\(\) => void requestDistribution\(\), 180\)/);
@@ -186,6 +191,10 @@ assert.match(shell, /upperInclusive: index \+ 1 === result\.histogramBins\.lengt
 assert.match(render, /renderCompositionStrip\(svg, geometry\.compositionStrip\)/);
 assert.doesNotMatch(render, /cw-plot-animated-path|pathLength: "1"/);
 assert.match(render, /renderPoints\(svg, geometry\.witnesses[\s\S]*if \(geometry\.referencePath\) renderPath/);
+assert.match(render, /geometry\.view === "ecdf"\) renderEcdfHitTargets\(svg, geometry\.points\)/);
+assert.match(render, /cw-plot-ecdf-hit-target cw-plot-hover-target/);
+assert.match(interactions, /\.cw-plot-ecdf-hit-target[\s\S]*fill:\s*transparent;[\s\S]*stroke:\s*none;[\s\S]*opacity:\s*0;[\s\S]*pointer-events:\s*all;/);
+assert.match(figure, /cw-plot-ecdf-hit-targets/);
 assert.match(marks, /cw-plot-composition-segment\.is-excluded[\s\S]*cw-plot-excluded/);
 assert.match(marks, /cw-plot-qq-point:not\(\.is-pinned\)[\s\S]*stroke: none;[\s\S]*animation: none/);
 assert.doesNotMatch(`${shell}\n${marks}`, /MATTR[\s\S]{0,80}(?:green|red)|(?:green|red)[\s\S]{0,80}MATTR/i);

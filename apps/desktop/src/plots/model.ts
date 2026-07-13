@@ -2062,8 +2062,7 @@ export function buildDistributionDiagnosticGeometry(options: {
           `${formatPercent(point.cumulativeShare)} cumulative`,
           `${formatPercent(point.cumulativeShare)} percentile`,
         ],
-        className: "cw-plot-ecdf-target",
-        fillOpacity: 0,
+        className: "cw-plot-ecdf-hit-target",
       }))
     : [];
   const qqPoints = options.view === "qq"
