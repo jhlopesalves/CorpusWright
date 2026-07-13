@@ -2990,14 +2990,14 @@ function dispersionPlaneDecadeTicks(
 
 function densityRampFill(t: number): string {
   const clamped = clamp(t, 0, 1);
-  if (clamped <= 0) return "var(--cw-plot-density-1)";
-  if (clamped >= 1) return "var(--cw-plot-density-5)";
+  if (clamped <= 0) return "var(--cw-plot-density-1, var(--cw-plot-ramp-1))";
+  if (clamped >= 1) return "var(--cw-plot-density-5, var(--cw-plot-ramp-5))";
   const scaled = clamped * 4;
   const lower = Math.floor(scaled) + 1;
   const upper = Math.min(5, lower + 1);
   const upperWeight = (scaled - Math.floor(scaled)) * 100;
   const lowerWeight = 100 - upperWeight;
-  return `color-mix(in srgb, var(--cw-plot-density-${lower}) ${formatFixed(lowerWeight, 2)}%, var(--cw-plot-density-${upper}) ${formatFixed(upperWeight, 2)}%)`;
+  return `color-mix(in srgb, var(--cw-plot-density-${lower}, var(--cw-plot-ramp-${lower})) ${formatFixed(lowerWeight, 2)}%, var(--cw-plot-density-${upper}, var(--cw-plot-ramp-${upper})) ${formatFixed(upperWeight, 2)}%)`;
 }
 
 function formatCompactFrequency(value: number): string {

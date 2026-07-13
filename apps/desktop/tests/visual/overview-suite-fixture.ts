@@ -134,11 +134,13 @@ function buildDistributionFigure(name: "document" | "mattr", selectedView: strin
     initialValue: 36,
     onChange: () => undefined,
   });
-  binCount.hidden = !customBins;
+  binning.hidden = selectedView !== "histogram";
+  binCount.hidden = selectedView !== "histogram" || !customBins;
   const horizontalScale = createOverviewSegmentedControl("Horizontal scale", [
     { value: "log", label: "Logarithmic" },
     { value: "linear", label: "Linear" },
   ], "log", () => undefined);
+  horizontalScale.hidden = !isLength || selectedView === "qq";
   const options = createOverviewFigureOptions(binning, binCount, ...(isLength ? [horizontalScale] : []));
   options.hidden = selectedView === "qq" || !isLength && selectedView !== "histogram";
   controls.append(viewControl, options);
@@ -518,6 +520,17 @@ function auditFigure(figure: HTMLElement): string[] {
   if (svg.getAttribute("tabindex") !== "0") failures.push("plot owner is not the Tab entry");
   if (svg.querySelectorAll(".cw-plot-hover-target[tabindex='0']").length > 0) failures.push("mass mark Tab stops");
   if (svg.querySelector(".cw-plot-composition-segment.is-zero[tabindex]")) failures.push("zero segment is focusable");
+  if (figure.hasAttribute("data-figure-palette")) failures.push("live figure depends on an export palette attribute");
+  for (const role of ["observed", "reference", "selected", "attention", "density-0", "density-5", "composition-0", "composition-5"]) {
+    if (!getComputedStyle(figure).getPropertyValue(`--cw-plot-${role}`).trim()) failures.push(`missing live semantic role: ${role}`);
+  }
+  for (const hidden of figure.querySelectorAll<HTMLElement>("[hidden]")) {
+    const box = hidden.getBoundingClientRect();
+    if (getComputedStyle(hidden).display !== "none" || box.width !== 0 || box.height !== 0) {
+      failures.push(`hidden control occupies layout: ${hidden.className}`);
+    }
+  }
+  auditComputedPaint(svg, failures);
   for (const button of figure.querySelectorAll<HTMLButtonElement>("button")) {
     if (!(button.textContent?.trim() || button.getAttribute("aria-label"))) failures.push("unnamed button");
     const box = button.getBoundingClientRect();
@@ -578,6 +591,73 @@ function auditFigure(figure: HTMLElement): string[] {
     }
   }
   return failures;
+}
+
+function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
+  const rejectBrowserBlack = theme === "corpus-light" || theme === "corpus-dark";
+  const assertPaint = (selector: string, property: "fill" | "stroke", label: string, nonBlack = false): void => {
+    const element = svg.querySelector<SVGGraphicsElement>(selector);
+    if (!element) {
+      failures.push(`missing painted geometry: ${label}`);
+      return;
+    }
+    const style = getComputedStyle(element);
+    const paint = style[property];
+    const opacity = Number(property === "fill" ? style.fillOpacity : style.strokeOpacity);
+    if (!isVisiblePaint(paint) || !(opacity > 0)) failures.push(`invisible computed ${property}: ${label}`);
+    if (nonBlack && isPureBlack(paint)) failures.push(`browser-black computed ${property}: ${label}`);
+  };
+  const assertDistinctFills = (selector: string, minimum: number, label: string): void => {
+    const fills = new Set(Array.from(svg.querySelectorAll<SVGGraphicsElement>(selector))
+      .map((element) => getComputedStyle(element).fill)
+      .filter(isVisiblePaint));
+    if (fills.size < minimum) failures.push(`insufficient computed fill variation: ${label} (${fills.size})`);
+  };
+
+  if (figureName === "document" || figureName === "mattr") {
+    if (view === "histogram") assertPaint(".cw-plot-bar", "fill", `${figureName} histogram bar`, rejectBrowserBlack);
+    if (view === "ecdf") assertPaint(".cw-plot-ecdf-line", "stroke", `${figureName} ECDF`);
+    if (view === "qq") {
+      assertPaint(".cw-plot-point", "fill", `${figureName} Q–Q point`, rejectBrowserBlack);
+      assertPaint(".cw-plot-qq-reference", "stroke", `${figureName} Q–Q reference`);
+    }
+    if (figureName === "mattr") assertDistinctFills(".cw-plot-composition-segment", 2, "MATTR eligibility strip");
+  }
+  if (figureName === "rank") {
+    assertPaint(".cw-plot-point:not(.is-excluded)", "fill", "rank observations", rejectBrowserBlack);
+    if (view === "curve") assertPaint(".cw-plot-fit-line", "stroke", "rank fitted line");
+  }
+  if (figureName === "growth") {
+    assertPaint(".cw-plot-line", "stroke", "vocabulary growth observed line");
+    assertPaint(".cw-plot-fit-line", "stroke", "vocabulary growth fit");
+  }
+  if (figureName === "lexical") {
+    assertPaint(".cw-plot-point", "fill", "lexical exact-frequency point", rejectBrowserBlack);
+    assertDistinctFills(".cw-plot-composition-segment", 3, "lexical composition strip");
+  }
+  if (figureName === "coverage") {
+    assertPaint(".cw-plot-line", "stroke", "coverage cumulative line");
+    assertPaint(".cw-plot-coverage-crossing", "fill", "coverage target point");
+    assertDistinctFills(".cw-plot-composition-segment", 3, "coverage composition strip");
+  }
+  if (figureName === "profile") {
+    assertDistinctFills(".cw-plot-composition-segment", 3, "dispersion profile composition strip");
+    assertPaint(".cw-plot-point", "fill", "dispersion profile endpoint", rejectBrowserBlack);
+  }
+  if (figureName === "plane") {
+    assertDistinctFills(".cw-plot-density-cell:not(.is-zero)", 4, "dispersion plane density");
+    if (rejectBrowserBlack) assertDistinctFills(".cw-plot-plane-witness", 4, "dispersion plane witnesses");
+  }
+}
+
+function isVisiblePaint(value: string): boolean {
+  if (!value || value === "none" || value === "transparent") return false;
+  const alpha = value.match(/^rgba?\([^/]+(?:\/\s*([\d.]+))?\)$/)?.[1];
+  return alpha === undefined || Number(alpha) > 0;
+}
+
+function isPureBlack(value: string): boolean {
+  return /^(?:rgb\(0,\s*0,\s*0\)|rgba\(0,\s*0,\s*0,\s*1\)|#000(?:000)?)$/i.test(value.trim());
 }
 
 function assertNoPairOverlap(elements: SVGGraphicsElement[], message: string, failures: string[]): void {
