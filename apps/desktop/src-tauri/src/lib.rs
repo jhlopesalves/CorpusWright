@@ -54,7 +54,7 @@ use corpuswright_core::scan::{
 };
 use corpuswright_core::search::{SearchResult, search_corpus};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -3305,18 +3305,26 @@ fn compare_concordance_collocation_aggregates(
             index.n.to_string(),
         ));
     }
-    if scan.candidate_counts != index.candidate_counts {
+    let semantic_candidates = |aggregate: &ConcordanceCollocationAggregate| {
+        aggregate
+            .candidate_counts
+            .iter()
+            .filter_map(|(symbol_id, counts)| {
+                let index = *symbol_id as usize;
+                Some((
+                    aggregate.symbols.get(index)?.clone(),
+                    (counts.clone(), *aggregate.collocate_frequencies.get(index)?),
+                ))
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
+    let scan_candidates = semantic_candidates(scan);
+    let index_candidates = semantic_candidates(index);
+    if scan_candidates != index_candidates {
         return Some(concordance_audit_difference(
-            "collocation_candidate_counts",
-            scan.candidate_counts.len().to_string(),
-            index.candidate_counts.len().to_string(),
-        ));
-    }
-    if scan.collocate_frequencies != index.collocate_frequencies {
-        return Some(concordance_audit_difference(
-            "collocation_frequencies",
-            scan.collocate_frequencies.len().to_string(),
-            index.collocate_frequencies.len().to_string(),
+            "collocation_candidates",
+            format!("{:?}", scan_candidates),
+            format!("{:?}", index_candidates),
         ));
     }
 
@@ -5715,7 +5723,17 @@ mod tests {
         assert_eq!(collocation.backend_used, ConcordanceBackendUsed::Index);
         assert_eq!(collocation.index_rebuilt, Some(false));
         assert_eq!(collocation.recovery_reason, None);
-        assert_eq!(collocation.aggregate, scan);
+        assert_eq!(
+            compare_concordance_collocation_aggregates(&scan, &collocation.aggregate),
+            None
+        );
+        assert_eq!(
+            query_concordance_collocations_from_aggregate(
+                &collocation.aggregate,
+                &collocation_query
+            ),
+            query_concordance_collocations_from_aggregate(&scan, &collocation_query)
+        );
     }
 
     #[test]
