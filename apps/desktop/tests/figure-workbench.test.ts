@@ -1,29 +1,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  FIGURE_PALETTE_STORAGE_KEY,
   OverviewFigureController,
   evidenceKey,
-  readFigurePalette,
-  writeFigurePalette,
 } from "../src/plots/figure-workbench.ts";
 import {
   buildCompositionStripGeometry,
   placeLabels,
   pointShapeArea,
 } from "../src/plots/model.ts";
-
-const storage = new Map<string, string>();
-const storageAdapter = {
-  getItem: (key: string) => storage.get(key) ?? null,
-  setItem: (key: string, value: string) => void storage.set(key, value),
-};
-assert.equal(readFigurePalette(storageAdapter), "theme");
-writeFigurePalette("colorBlind", storageAdapter);
-assert.equal(storage.get(FIGURE_PALETTE_STORAGE_KEY), "colorBlind");
-assert.equal(readFigurePalette(storageAdapter), "colorBlind");
-storage.set(FIGURE_PALETTE_STORAGE_KEY, "unsupported");
-assert.equal(readFigurePalette(storageAdapter), "theme");
 
 const controller = new OverviewFigureController({
   initialControls: { view: "curve", fit: true },

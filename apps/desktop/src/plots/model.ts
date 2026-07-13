@@ -354,6 +354,8 @@ export interface DispersionPlanePayload {
 }
 
 export interface DispersionPlaneCellGeometry {
+  column: number;
+  row: number;
   x: number;
   y: number;
   width: number;
@@ -1563,6 +1565,7 @@ export function buildDispersionGeometry(options: {
   reachLabels?: "documents" | "percentage";
   labelsMode?: "counts" | "countsShares" | "off";
   cumulativeCallout?: { count: number; examples: string[] } | null;
+  pinnedKeys?: ReadonlySet<string>;
   box?: PlotBox;
 }): DispersionGeometry {
   const rowCount = Math.max(1, options.buckets.length);
@@ -1591,14 +1594,18 @@ export function buildDispersionGeometry(options: {
     const plotValue = value(bucket);
     const share = bucket.share ?? (totalTypes > 0 ? bucket.count / totalTypes : 0);
     const documentBounds = dispersionReachBounds(bucket, options.totalDocuments);
+    const rampIndex = buckets.length <= 1 ? 2 : Math.round((index / Math.max(1, buckets.length - 1)) * 5);
+    const key = `dispersion-reach-${rampIndex}`;
     return {
       x: plotValue > 0 ? scaleValue(xScale, plotValue) : scaleValue(xScale, xScale.domain[0]),
       y,
       rawX: plotValue,
       rawY: index,
       datum: bucket,
-      rampIndex: buckets.length <= 1 ? 2 : Math.round((index / Math.max(1, buckets.length - 1)) * 5),
+      rampIndex,
       excluded: bucket.count === 0,
+      key,
+      pinned: options.pinnedKeys?.has(key) ?? false,
       tooltipTitle: bucket.label,
       tooltipRows: [
         `documents ${documentBounds.documents}`,
@@ -1652,6 +1659,9 @@ export function buildDispersionGeometry(options: {
         ? `${formatInteger(point.datum.count)} · ${formatPercent(point.datum.share ?? (totalTypes > 0 ? point.datum.count / totalTypes : 0))}`
         : formatInteger(point.datum.count),
       className: "cw-plot-label-mono",
+      key: point.key,
+      pinned: point.pinned,
+      priority: point.pinned ? 100 : 30,
       candidates: [
         { dx: 0, dy: 0, anchor: "start" },
         { dx: 10, dy: -8, anchor: "start" },
@@ -1699,6 +1709,7 @@ export function buildDispersionGeometry(options: {
             ],
           };
         }),
+        pinnedKeys: options.pinnedKeys,
       })
     : null;
   const calloutExamples = options.cumulativeCallout?.examples.slice(0, 3) ?? [];
@@ -2715,6 +2726,8 @@ function buildDispersionPlaneCells(
       ? `${formatFixed((rawLower / totalTokens) * 1_000_000, 2)}–${formatFixed((rawUpper / totalTokens) * 1_000_000, 2)}`
       : null;
     cells.push({
+      column: xi,
+      row: yi,
       x,
       y,
       width: Math.max(1, x2 - x),
