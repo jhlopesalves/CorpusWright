@@ -45,6 +45,20 @@
   stroke-width: 1.3;
 }
 
+.cw-plot-point.cw-plot-qq-point:not(.is-pinned) {
+  stroke: none;
+  opacity: 1;
+  transform: none;
+  animation: none;
+}
+
+.cw-plot-point.cw-plot-qq-point.is-pinned {
+  fill-opacity: 1;
+  opacity: 1;
+  transform: none;
+  animation: none;
+}
+
 .cw-plot-point.is-excluded {
   fill: none;
   stroke: var(--cw-plot-excluded);

@@ -79,7 +79,6 @@ for (const selector of [
   ".cw-plot-hover-target",
   ".cw-plot-crosshair-x",
   ".cw-plot-crosshair-y",
-  ".cw-plot-animated-path",
 ]) {
   assert(interactions.includes(selector), `${selector} must be owned by interactions.css`);
 }

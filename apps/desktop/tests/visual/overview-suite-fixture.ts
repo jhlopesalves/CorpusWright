@@ -1,6 +1,5 @@
 import {
   createOverviewFigure,
-  createOverviewFigureOptions,
   createOverviewRangeControl,
   createOverviewSelectControl,
   createOverviewSegmentedControl,
@@ -67,18 +66,24 @@ if (switchTo) {
   switchButton.click();
 }
 
-if (customBins) {
-  const disclosure = built.figure.querySelector<HTMLDetailsElement>(".cw-overview-figure-options");
-  if (disclosure) disclosure.open = true;
-}
-
 await document.fonts.ready;
 await animationFrame();
 await animationFrame();
+const timedFailures: string[] = [];
+if ((figureName === "document" || figureName === "mattr") && auditedView === "ecdf") {
+  auditEcdfState(built.figure, timedFailures, "initial");
+}
 for (const animation of document.getAnimations()) {
   try { animation.finish(); } catch { /* A non-finite fixture animation is not part of plot readiness. */ }
 }
 await animationFrame();
+if ((figureName === "document" || figureName === "mattr") && (auditedView === "ecdf" || auditedView === "qq")) {
+  await delay(1_000);
+  await animationFrame();
+}
+if ((figureName === "document" || figureName === "mattr") && auditedView === "ecdf") {
+  auditEcdfState(built.figure, timedFailures, "after 1,000 ms");
+}
 
 if (params.get("focusDensity") === "true") {
   built.figure.querySelector<SVGElement>(".cw-plot-density-cell[data-grid-row='6']:not(.is-zero)")?.focus();
@@ -88,7 +93,7 @@ if (params.get("exportDialog") === "true") {
 }
 
 const auditFailures = auditFigure(built.figure);
-const failures = [...errors, ...auditFailures];
+const failures = [...errors, ...timedFailures, ...auditFailures];
 document.body.dataset.consoleErrors = String(errors.length);
 document.body.dataset.accessibilitySerious = String(auditFailures.length);
 document.body.dataset.fixtureStatus = failures.length === 0 ? "passed" : "failed";
@@ -157,12 +162,11 @@ function buildDistributionFigure(name: "document" | "mattr", selectedView: strin
     initialValue: 36,
     onChange: () => undefined,
   });
-  const horizontalScale = createOverviewSegmentedControl("Horizontal scale", [
+  const horizontalScale = createOverviewSegmentedControl("Scale", [
     { value: "log", label: "Logarithmic" },
     { value: "linear", label: "Linear" },
   ], "log", () => undefined);
-  const options = createOverviewFigureOptions(binning, binCount, ...(isLength ? [horizontalScale] : []));
-  controls.append(viewControl, options);
+  controls.append(viewControl, binning, binCount, ...(isLength ? [horizontalScale] : []));
   const renderSvg = () => renderDistributionDiagnosticSvg(id, buildDistributionDiagnosticGeometry({
     result,
     metric: isLength ? "documentLength" : "mattr",
@@ -181,7 +185,6 @@ function buildDistributionFigure(name: "document" | "mattr", selectedView: strin
     binning.hidden = activeView !== "histogram";
     binCount.hidden = activeView !== "histogram" || !customBins;
     horizontalScale.hidden = !isLength || activeView === "qq";
-    options.hidden = activeView === "qq" || !isLength && activeView !== "histogram";
   };
   syncDistributionControls();
   figure = createOverviewFigure({
@@ -569,6 +572,9 @@ function auditFigure(figure: HTMLElement): string[] {
   if (svg.querySelectorAll(".cw-plot-hover-target[tabindex='0']").length > 0) failures.push("mass mark Tab stops");
   if (svg.querySelector(".cw-plot-composition-segment.is-zero[tabindex]")) failures.push("zero segment is focusable");
   if (figure.hasAttribute("data-figure-palette")) failures.push("live figure depends on an export palette attribute");
+  if (figure.querySelector(".cw-overview-figure-options") || figure.textContent?.includes("Figure options")) {
+    failures.push("Figure options disclosure remains");
+  }
   for (const role of ["observed", "reference", "selected", "attention", "density-0", "density-5", "composition-0", "composition-5"]) {
     if (!getComputedStyle(figure).getPropertyValue(`--cw-plot-${role}`).trim()) failures.push(`missing live semantic role: ${role}`);
   }
@@ -579,7 +585,7 @@ function auditFigure(figure: HTMLElement): string[] {
     }
   }
   if (switchTo && (figureName === "document" || figureName === "mattr")) {
-    const irrelevantLabels = ["Binning", "Bins", ...(switchTo === "qq" && figureName === "document" ? ["Horizontal scale"] : [])];
+    const irrelevantLabels = ["Binning", "Bins", ...(switchTo === "qq" && figureName === "document" ? ["Scale"] : [])];
     for (const expectedLabel of irrelevantLabels) {
       const label = Array.from(figure.querySelectorAll<HTMLElement>(".cw-overview-control-label"))
         .find((candidate) => candidate.textContent === expectedLabel);
@@ -590,6 +596,7 @@ function auditFigure(figure: HTMLElement): string[] {
       }
     }
   }
+  if (figureName === "document" || figureName === "mattr") auditDistributionControlsAndGeometry(figure, svg, failures);
   auditComputedPaint(svg, failures);
   auditRecoveryGeometry(svg, failures);
   auditInteractionCapability(svg, failures);
@@ -683,6 +690,21 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
     if (auditedView === "qq") {
       assertPaint(".cw-plot-point", "fill", `${figureName} Q–Q point`, rejectBrowserBlack);
       assertPaint(".cw-plot-qq-reference", "stroke", `${figureName} Q–Q reference`);
+      const ordinaryPoints = Array.from(svg.querySelectorAll<SVGCircleElement>(".cw-plot-qq-point:not(.is-pinned)"));
+      const visiblyFilled = ordinaryPoints.filter((point) => {
+        const style = getComputedStyle(point);
+        return isVisiblePaint(style.fill) && Number(style.fillOpacity) > 0 && Number(style.opacity) > 0;
+      });
+      if (ordinaryPoints.length === 0 || visiblyFilled.length / ordinaryPoints.length < 0.9) failures.push("fewer than 90% of Q–Q points have visible fill");
+      if (ordinaryPoints.some((point) => getComputedStyle(point).animationName !== "none")) failures.push("Q–Q point retains entrance animation");
+      if (ordinaryPoints.some((point) => getComputedStyle(point).stroke !== "none")) failures.push("ordinary Q–Q point retains panel-coloured outline");
+      if (ordinaryPoints.some((point) => Number(point.getAttribute("r")) < 2.4 || Number(point.getAttribute("r")) > 2.8)) failures.push("ordinary Q–Q point radius is outside the stable diagnostic range");
+      const legend = svg.querySelector<SVGGElement>(".cw-plot-legend");
+      const svgBounds = svg.getBoundingClientRect();
+      const legendBounds = legend?.getBoundingClientRect();
+      if (!legendBounds || legendBounds.left < svgBounds.left || legendBounds.top < svgBounds.top || legendBounds.right > svgBounds.right || legendBounds.bottom > svgBounds.bottom) {
+        failures.push("Q–Q legend leaves SVG bounds");
+      }
     }
     if (figureName === "mattr") assertDistinctFills(".cw-plot-composition-segment", 2, "MATTR eligibility strip");
   }
@@ -737,6 +759,38 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
     if (!disclosure || getComputedStyle(disclosure).borderBottomStyle !== "none") failures.push("figure disclosure retains link styling");
     if (!detail || getComputedStyle(detail).backgroundColor !== "rgba(0, 0, 0, 0)") failures.push("figure disclosure detail is not footer-owned");
   }
+}
+
+function auditEcdfState(figure: HTMLElement, failures: string[], timing: string): void {
+  const path = figure.querySelector<SVGPathElement>(".cw-plot-ecdf-line");
+  if (!path) {
+    failures.push(`missing ECDF path ${timing}`);
+    return;
+  }
+  const style = getComputedStyle(path);
+  const box = path.getBBox();
+  if (!isVisiblePaint(style.stroke) || !(Number(style.strokeOpacity) > 0) || !(Number(style.opacity) > 0)) {
+    failures.push(`invisible ECDF stroke ${timing}`);
+  }
+  if (!(box.width > 0) || !(box.height > 0)) failures.push(`zero-area ECDF path ${timing}`);
+}
+
+function auditDistributionControlsAndGeometry(figure: HTMLElement, svg: SVGSVGElement, failures: string[]): void {
+  const pressedView = figure.querySelector<HTMLButtonElement>(`.cw-overview-segmented-control[aria-label="View"] .cw-overview-segment[aria-pressed="true"]`)?.dataset.value;
+  if (pressedView !== auditedView) failures.push("selected View and controller state disagree");
+  const geometryMatches = auditedView === "histogram"
+    ? svg.querySelector(".cw-plot-bar") !== null && svg.querySelector(".cw-plot-ecdf-line, .cw-plot-qq-point") === null
+    : auditedView === "ecdf"
+      ? svg.querySelector(".cw-plot-ecdf-line") !== null && svg.querySelector(".cw-plot-bar, .cw-plot-qq-point") === null
+      : svg.querySelector(".cw-plot-qq-point") !== null && svg.querySelector(".cw-plot-bar, .cw-plot-ecdf-line") === null;
+  if (!geometryMatches) failures.push("selected View and rendered geometry disagree");
+
+  const visibleLabels = Array.from(figure.querySelectorAll<HTMLElement>(".cw-overview-control-field:not([hidden]) > .cw-overview-control-label"))
+    .map((label) => label.textContent ?? "");
+  const expectedLabels = auditedView === "histogram"
+    ? ["View", "Binning", ...(customBins ? ["Bins"] : []), ...(figureName === "document" ? ["Scale"] : [])]
+    : auditedView === "ecdf" && figureName === "document" ? ["View", "Scale"] : ["View"];
+  if (visibleLabels.join("|") !== expectedLabels.join("|")) failures.push(`incorrect control inventory: ${visibleLabels.join(", ")}`);
 }
 
 function auditRecoveryGeometry(svg: SVGSVGElement, failures: string[]): void {
@@ -842,4 +896,8 @@ function defaultView(name: string): string {
 
 function animationFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }

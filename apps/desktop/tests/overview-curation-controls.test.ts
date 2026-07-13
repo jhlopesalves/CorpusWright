@@ -30,7 +30,7 @@ assert.doesNotMatch(shell, /"Fit",\s*\[/);
 
 assert.match(shell, /createOverviewSegmentedControl\(\s*"Coverage target"/);
 assert.match(shell, /createOverviewSegmentedControl\(\s*"View"/);
-assert.match(shell, /createOverviewFigureOptions\([\s\S]{0,160}binsControl/);
+assert.doesNotMatch(shell, /createOverviewFigureOptions|Figure options/);
 assert.match(shell, /manualControl\.hidden = state\.view !== "histogram" \|\| state\.histogramRule !== "manual"/);
 assert.match(shell, /initialControls: \{ stopwords: "show", sort: "frequency", rows: 20 \}/);
 assert.match(shell, /Show 30 more/);
@@ -38,5 +38,6 @@ assert.match(shell, /Show 30 more/);
 assert.match(styles, /grid-template-columns: minmax\(min\(540px, 100%\), 1fr\) auto/);
 assert.match(styles, /cw-overview-figure-control-row/);
 assert.match(styles, /cw-overview-figure-controls[\s\S]*flex-wrap: wrap/);
-assert.match(styles, /\.cw-overview-control-field\[hidden\][\s\S]*\.cw-overview-figure-options\[hidden\][\s\S]*display: none/);
+assert.match(styles, /\.cw-overview-control-field\[hidden\][\s\S]*display: none/);
+assert.doesNotMatch(styles, /cw-overview-figure-options/);
 assert.doesNotMatch(styles, /cw-overview-palette-toolbar/);

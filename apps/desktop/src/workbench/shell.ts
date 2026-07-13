@@ -25,7 +25,6 @@ import {
 import { isOverviewStopword } from "../overview-stopwords";
 import {
   createOverviewFigure,
-  createOverviewFigureOptions,
   createOverviewRangeControl,
   createOverviewSelectControl,
   createOverviewSegmentedControl,
@@ -1064,7 +1063,7 @@ function renderDistributionDiagnosticFigure(
     },
   });
   const scaleControl = createOverviewSegmentedControl(
-    "Horizontal scale",
+    "Scale",
     [{ value: "log", label: "Logarithmic" }, { value: "linear", label: "Linear" }],
     initial.xScale,
     (xScale) => {
@@ -1072,12 +1071,7 @@ function renderDistributionDiagnosticFigure(
       void requestDistribution();
     },
   );
-  const optionsDisclosure = createOverviewFigureOptions(
-    binsControl,
-    manualControl,
-    ...(isLength ? [scaleControl] : []),
-  );
-  controls.append(viewControl, optionsDisclosure);
+  controls.append(viewControl, binsControl, manualControl, ...(isLength ? [scaleControl] : []));
 
   const evidence = createDistributionEvidenceSection();
 
@@ -1086,7 +1080,6 @@ function renderDistributionDiagnosticFigure(
     binsControl.hidden = state.view !== "histogram";
     manualControl.hidden = state.view !== "histogram" || state.histogramRule !== "manual";
     scaleControl.hidden = !isLength || state.view === "qq";
-    optionsDisclosure.hidden = isLength ? state.view === "qq" : state.view !== "histogram";
   }
 
   function renderSvg(): SVGSVGElement {

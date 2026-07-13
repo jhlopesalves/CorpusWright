@@ -89,8 +89,25 @@ assert.equal(qq.bars.length, 0);
 assert.equal(qq.crosshairEnabled, true);
 assert.equal(qq.points.length, result.qqPoints.length);
 assert(qq.referencePath);
+assert(qq.points.every((point) => point.className === "cw-plot-qq-point"));
+assert(qq.points.every((point) => point.radius === 2.6));
+assert(qq.points.every((point) => point.fillOpacity === 0.84));
 assert.equal(qq.yAxisLabel, "Observed log10 document length");
 assert.deepEqual(qq.legend.map((item) => item.label), ["Observed documents", "Robust Q1/Q3 reference"]);
+assert.equal(ecdf.points.at(-1)?.rawY, 1, "ECDF must reach its final cumulative value");
+assert(ecdf.linePath?.d.endsWith(`${ecdf.points.at(-1)?.x} ${ecdf.points.at(-1)?.y}`));
+
+const pinnedQq = buildDistributionDiagnosticGeometry({
+  result,
+  metric: "documentLength",
+  view: "qq",
+  yMode: "share",
+  qqReference: "lognormal",
+  pinnedKeys: new Set(["distribution-qq:1"]),
+});
+assert.equal(pinnedQq.points[0]?.radius, 4.3);
+assert.equal(pinnedQq.points[0]?.fillOpacity, 1);
+assert.equal(pinnedQq.points[0]?.pinned, true);
 
 const mattr = buildDistributionDiagnosticGeometry({
   result,
@@ -161,10 +178,14 @@ assert.match(shell, /queryOverviewDistribution\(/);
 assert.match(shell, /queryOverviewDistributionEvidence\(/);
 assert.match(shell, /manualTimer[\s\S]*setTimeout\(\(\) => void requestDistribution\(\), 180\)/);
 assert.match(shell, /binsControl\.hidden = state\.view !== "histogram"/);
-assert.match(shell, /optionsDisclosure\.hidden = isLength \? state\.view === "qq" : state\.view !== "histogram"/);
+assert.match(shell, /controls\.append\(viewControl, binsControl, manualControl, \.\.\.\(isLength \? \[scaleControl\] : \[\]\)\)/);
+assert.doesNotMatch(shell, /Figure options|optionsDisclosure|createOverviewFigureOptions/);
 assert.match(shell, /xScale: isLength \? state\.xScale : "linear"/);
 assert.doesNotMatch(shell, /Q–Q reference/);
 assert.match(shell, /upperInclusive: index \+ 1 === result\.histogramBins\.length/);
 assert.match(render, /renderCompositionStrip\(svg, geometry\.compositionStrip\)/);
+assert.doesNotMatch(render, /cw-plot-animated-path|pathLength: "1"/);
+assert.match(render, /renderPoints\(svg, geometry\.witnesses[\s\S]*if \(geometry\.referencePath\) renderPath/);
 assert.match(marks, /cw-plot-composition-segment\.is-excluded[\s\S]*cw-plot-excluded/);
+assert.match(marks, /cw-plot-qq-point:not\(\.is-pinned\)[\s\S]*stroke: none;[\s\S]*animation: none/);
 assert.doesNotMatch(`${shell}\n${marks}`, /MATTR[\s\S]{0,80}(?:green|red)|(?:green|red)[\s\S]{0,80}MATTR/i);

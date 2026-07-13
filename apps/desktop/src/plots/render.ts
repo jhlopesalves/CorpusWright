@@ -303,10 +303,10 @@ export function renderDistributionDiagnosticSvg(
   );
   renderBars(svg, geometry.bars, "cw-plot-bar");
   if (geometry.linePath) renderPath(svg, geometry.linePath, plotId);
-  if (geometry.referencePath) renderPath(svg, geometry.referencePath, plotId);
   if (geometry.medianLine) renderLine(svg, geometry.medianLine);
   renderPoints(svg, geometry.points, "cw-plot-point");
   renderPoints(svg, geometry.witnesses, "cw-plot-point cw-plot-distribution-witness");
+  if (geometry.referencePath) renderPath(svg, geometry.referencePath, plotId);
   renderSvgLegend(svg, geometry.box, geometry.legend);
   renderZeroTokenSummary(svg, geometry);
   renderLabels(svg, geometry.labels);
@@ -800,11 +800,9 @@ function renderPath(svg: SVGSVGElement, path: PlotPathGeometry, plotId: string):
     svg.appendChild(halo);
   }
   const element = createSvgElement("path");
-  const className = path.className.includes("cw-plot-area") ? path.className : `${path.className} cw-plot-animated-path`;
   setAttrs(element, {
     d: path.d,
-    class: className,
-    pathLength: "1",
+    class: path.className,
   });
   if (path.className.includes("cw-plot-area")) {
     element.setAttribute("fill", `url(#${plotId}-area)`);
@@ -828,7 +826,9 @@ function renderPoints(svg: SVGSVGElement, points: Array<PlotPointGeometry>, base
       point.shape ?? "circle",
       point.x,
       point.y,
-      baseClass.includes("is-lollipop") ? 0.8 : 0,
+      point.radius === undefined
+        ? baseClass.includes("is-lollipop") ? 0.8 : 0
+        : point.radius - 4.3,
       className,
       true,
     );
@@ -844,7 +844,10 @@ function renderPoints(svg: SVGSVGElement, points: Array<PlotPointGeometry>, base
       "data-tooltip-rows": (point.tooltipRows ?? []).join("\n"),
       "data-pin-key": point.key,
       "data-point-shape": point.shape ?? "circle",
-      style: `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms; --cw-plot-fill-opacity: ${point.fillOpacity ?? 0.82};`,
+      style: [
+        point.className?.includes("cw-plot-qq-point") ? "" : `--cw-plot-stagger: ${Math.min(index, 30) * 18}ms`,
+        `--cw-plot-fill-opacity: ${point.fillOpacity ?? 0.82}`,
+      ].filter(Boolean).join("; "),
     });
     group.appendChild(mark);
   });
