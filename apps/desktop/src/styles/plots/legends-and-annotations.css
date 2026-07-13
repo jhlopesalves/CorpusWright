@@ -142,6 +142,12 @@
   stroke-linejoin: round;
 }
 
+.cw-plot-label-muted[class*="cw-plot-ramp-"],
+.cw-plot-label-mono[class*="cw-plot-ramp-"],
+.cw-plot-label-callout[class*="cw-plot-ramp-"] {
+  fill: currentColor;
+}
+
 .cw-plot-label-strong {
   fill: var(--text-color);
   font-weight: var(--cw-weight-bold);

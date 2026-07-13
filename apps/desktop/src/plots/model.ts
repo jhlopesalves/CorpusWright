@@ -1328,7 +1328,7 @@ export function buildLexicalSpectrumGeometry(options: {
     x: point.x,
     y: point.y,
     text: `f=${formatInteger(point.datum.frequency)} · ${formatInteger(point.datum.typeCount)} types`,
-    className: "cw-plot-label-callout",
+    className: `cw-plot-label-callout cw-plot-ramp-${point.rampIndex}`,
     pinned: true,
     priority: 100,
     candidates: [
@@ -1474,7 +1474,11 @@ export function buildCoverageGeometry(options: {
         rawX: datum.k,
         rawY: datum.share,
         datum,
-        rampIndex: 2,
+        rampIndex: datum.k <= 10 ? 5
+          : datum.k <= 100 ? 4
+          : datum.k <= 1000 ? 3
+          : datum.k <= 10000 ? 2
+          : 0,
         key: `coverage:${datum.k}`,
         pinned: options.pinnedKeys?.has(`coverage:${datum.k}`) ?? false,
         tooltipTitle: `top ${formatInteger(datum.k)}`,
@@ -1496,7 +1500,7 @@ export function buildCoverageGeometry(options: {
     x: point.x,
     y: point.y,
     text: `top ${formatInteger(point.datum.k)} - ${formatPercent(point.datum.share)}`,
-    className: "cw-plot-label-muted",
+    className: `cw-plot-label-muted cw-plot-ramp-${point.rampIndex}`,
     candidates: [
       { dx: 10, dy: 18, anchor: "start" },
       { dx: 12, dy: -10, anchor: "start" },
@@ -3030,7 +3034,7 @@ function labelRequestForExactFrequency(
     x: point.x,
     y: point.y,
     text,
-    className: "cw-plot-label-mono cw-plot-label-muted",
+    className: `cw-plot-label-mono cw-plot-label-muted cw-plot-ramp-${point.rampIndex}`,
     candidates: [
       { dx: 10, dy: 4, anchor: "start" },
       { dx: 10, dy: -10, anchor: "start" },

@@ -36,6 +36,16 @@
   --cw-plot-witness: var(--cw-plot-observed);
 }
 
+/* Lexical spectrum aligns marks and strips using frequency semantics */
+.cw-plot-svg[data-plot-id="overview-lexical-spectrum"] {
+  --cw-plot-ramp-0: var(--cw-viz-frequency-hapax);
+  --cw-plot-ramp-1: var(--cw-viz-frequency-dis);
+  --cw-plot-ramp-2: var(--cw-viz-frequency-mid);
+  --cw-plot-ramp-3: var(--cw-viz-frequency-repeated);
+  --cw-plot-ramp-4: var(--cw-viz-frequency-frequent);
+  --cw-plot-ramp-5: var(--cw-viz-frequency-frequent);
+}
+
 [data-figure-palette="colorBlind"] {
   --cw-plot-observed: var(--accent-color);
   --cw-plot-reference: var(--cw-warning-text);
