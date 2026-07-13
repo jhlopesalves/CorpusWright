@@ -50,7 +50,14 @@
   font-weight: var(--cw-weight-semibold);
 }
 
-.cw-plot-composition-entry:is(.cw-plot-ramp-0, .cw-plot-ramp-1) .cw-plot-composition-label {
+.cw-plot-composition-entry.is-wide:is(
+  .cw-plot-ramp-0,
+  .cw-plot-ramp-1
+) .cw-plot-composition-label,
+.cw-plot-composition-entry.is-medium:is(
+  .cw-plot-ramp-0,
+  .cw-plot-ramp-1
+) .cw-plot-composition-label.is-category {
   fill: var(--cw-plot-composition-foreground-low, var(--panel-bg));
 }
 

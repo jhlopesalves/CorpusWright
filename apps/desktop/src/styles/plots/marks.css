@@ -44,6 +44,11 @@
   fill: currentColor;
 }
 
+.cw-plot-svg[data-plot-id="overview-lexical-spectrum"]
+  .cw-plot-point:not(.is-pinned) {
+    stroke-width: 0.55;
+}
+
 .cw-plot-point.is-panel-stroked {
   stroke: var(--panel-bg);
   stroke-width: 1.3;

@@ -1308,7 +1308,7 @@ export function buildLexicalSpectrumGeometry(options: {
     datum: point,
     rampIndex: lexicalSpectrumRampIndex(point.frequency),
     className: point.typeCount === 1 ? "is-frequency-singleton" : "",
-    fillOpacity: point.typeCount === 1 ? 0.42 : 0.6,
+    fillOpacity: point.typeCount === 1 ? 0.78 : 0.9,
     key,
     pinned: options.pinnedKeys?.has(key) ?? false,
     tooltipTitle: `${formatInteger(point.typeCount)} types`,
