@@ -13,6 +13,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDir, "..");
 const srcRoot = path.join(desktopRoot, "src");
 const themesPath = path.join(srcRoot, "styles/foundations/themes.css");
+const figurePalettesPath = path.join(srcRoot, "styles/foundations/figure-palettes.css");
 const appearancePath = path.join(srcRoot, "appearance.ts");
 const rawColourPattern = /(?<!&)#(?:[0-9a-fA-F]{3,8})\b|rgba?\([^)\n]+\)|hsla?\([^)\n]+\)/g;
 const namedColourPattern = /\b(?:color|background(?:-color)?|border(?:-[\w-]+)?|outline(?:-color)?|fill|stroke)\s*[:=]\s*["']?[^;\n"'`]*\b(?:white|black|red|green|blue|yellow|orange|purple|gray|grey)\b/gi;
@@ -47,6 +48,8 @@ function rawColourViolations(filePath, source) {
 const graph = await loadStyleGraph();
 const themesModule = graph.modules.find(module => module.path === themesPath);
 if (!themesModule) throw new Error("The style graph does not import foundations/themes.css");
+const figurePalettesModule = graph.modules.find(module => module.path === figurePalettesPath);
+if (!figurePalettesModule) throw new Error("The style graph does not import foundations/figure-palettes.css");
 
 const themes = parseCompleteThemes(themesModule.contents, relativeModulePath(desktopRoot, themesPath));
 const appearanceSource = await readFile(appearancePath, "utf8");
@@ -54,7 +57,7 @@ const expectedThemeIds = appearanceThemeIds(appearanceSource);
 const actualThemeIds = themes.map(theme => theme.id);
 const violations = [];
 
-if (themes.length !== 16) violations.push(`expected exactly 16 complete themes, found ${themes.length}`);
+if (themes.length !== 14) violations.push(`expected exactly 14 complete themes, found ${themes.length}`);
 if (new Set(actualThemeIds).size !== actualThemeIds.length) violations.push("complete theme ids must be unique");
 const missingThemes = expectedThemeIds.filter(id => !actualThemeIds.includes(id));
 const extraThemes = actualThemeIds.filter(id => !expectedThemeIds.includes(id));
@@ -80,6 +83,31 @@ for (const theme of themes) {
   for (const [group, tokens] of Object.entries(requiredGroups)) {
     const missing = tokens.filter(token => !theme.declarations.has(token));
     if (missing.length) violations.push(`${theme.id}: missing ${group} tokens ${missing.join(", ")}`);
+  }
+}
+
+const semanticPlotRoles = [
+  "--cw-plot-observed",
+  "--cw-plot-reference",
+  "--cw-plot-selected",
+  "--cw-plot-attention",
+  "--cw-plot-density-0",
+  "--cw-plot-density-5",
+  "--cw-plot-composition-0",
+  "--cw-plot-composition-5",
+  ...Array.from({ length: 10 }, (_, index) => `--cw-plot-profile-${index}`),
+  "--cw-plot-witness",
+  "--cw-plot-callout-surface",
+  "--cw-plot-callout-border",
+];
+for (const role of semanticPlotRoles) {
+  if (!figurePalettesModule.contents.includes(`${role}:`)) {
+    violations.push(`figure-palettes.css is missing semantic figure role ${role}`);
+  }
+}
+for (const mode of ["theme", "colorBlind", "monochrome"]) {
+  if (!figurePalettesModule.contents.includes(`[data-figure-palette="${mode}"]`)) {
+    violations.push(`figure-palettes.css is missing figure palette mode ${mode}`);
   }
 }
 

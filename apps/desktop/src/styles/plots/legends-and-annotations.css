@@ -1,18 +1,9 @@
-/* Generic plot legends, labels, callouts, brackets, and annotation halos. */
+/* Generic plot legends, labels, callouts, fitted ranges, and annotation halos. */
 
 .cw-plot-line-halo {
   opacity: 0.08;
   pointer-events: none;
   stroke-width: 3;
-}
-
-.cw-plot-spectrum-band-label {
-  fill: var(--text-muted);
-  font-family: var(--cw-font-mono);
-  font-size: var(--cw-type-plot-micro-size);
-  font-weight: var(--cw-weight-bold);
-  letter-spacing: 0;
-  pointer-events: none;
 }
 
 .cw-plot-composition-label {
@@ -23,17 +14,90 @@
   pointer-events: none;
 }
 
-.cw-plot-quadrant-pill-bg {
-  fill: var(--panel-bg);
-  opacity: 0.86;
-  stroke: var(--border-color);
-  stroke-width: 0.8;
+.cw-plot-composition-label.is-below {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-ui);
+  font-weight: var(--cw-weight-regular);
 }
 
-.cw-plot-quadrant-pill-label {
+.cw-plot-composition-entry-marker {
+  display: none;
+  stroke: var(--panel-bg);
+  stroke-width: 1;
+}
+
+.cw-plot-composition-entry.is-medium .cw-plot-composition-entry-marker,
+.cw-plot-composition-entry.is-narrow .cw-plot-composition-entry-marker,
+.cw-plot-composition-entry.is-zero .cw-plot-composition-entry-marker {
+  display: inline;
+}
+
+.cw-plot-composition-entry.is-medium .is-detail,
+.cw-plot-composition-entry.is-narrow .is-category,
+.cw-plot-composition-entry.is-zero .is-category {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-ui);
+  font-weight: var(--cw-weight-regular);
+}
+
+.cw-plot-composition-entry.is-narrow .is-detail,
+.cw-plot-composition-entry.is-zero .is-detail {
+  display: none;
+}
+
+.cw-plot-composition-entry.is-pinned :is(.is-category, .is-detail) {
+  fill: var(--text-color);
+  font-weight: var(--cw-weight-semibold);
+}
+
+.cw-plot-composition-entry.is-wide:is(
+  .cw-plot-ramp-0,
+  .cw-plot-ramp-1
+) .cw-plot-composition-label,
+.cw-plot-composition-entry.is-medium:is(
+  .cw-plot-ramp-0,
+  .cw-plot-ramp-1
+) .cw-plot-composition-label.is-category {
+  fill: var(--cw-plot-composition-foreground-low, var(--panel-bg));
+}
+
+.cw-plot-composition-entry.is-wide[class*="cw-plot-profile-band-"] .cw-plot-composition-label,
+.cw-plot-composition-entry.is-medium[class*="cw-plot-profile-band-"] .cw-plot-composition-label.is-category {
+  fill: var(--cw-plot-profile-label, var(--panel-bg));
+}
+
+.cw-plot-label.is-external-rail {
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-width: 3px;
+}
+
+.cw-plot-quadrant-label {
   fill: var(--text-muted);
   font-size: var(--cw-type-plot-micro-size);
-  font-weight: var(--cw-weight-bold);
+  font-weight: var(--cw-weight-medium);
+  opacity: 0.82;
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-linejoin: round;
+  stroke-width: 1.5px;
+}
+
+.cw-plot-svg[data-plot-id="overview-dispersion-plane"] .cw-plot-label-muted {
+  fill: var(--text-muted);
+  font-size: var(--cw-type-plot-micro-size);
+  opacity: 0.9;
+  stroke-width: 1.6px;
+}
+
+.cw-plot-plane-witness-label {
+  font-size: var(--cw-type-plot-micro-size);
+  stroke-width: 1.8px;
+}
+
+.cw-plot-plane-witness-label.is-pinned {
+  font-weight: var(--cw-weight-semibold);
+  stroke-width: 2.2px;
 }
 
 .cw-plot-halo {
@@ -49,6 +113,28 @@
   pointer-events: none;
 }
 
+.cw-plot-status-message {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-ui);
+  font-size: var(--cw-type-plot-subtitle-size);
+}
+
+.cw-plot-label.is-pinned {
+  fill: var(--text-color);
+  font-weight: var(--cw-weight-semibold);
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.cw-plot-label-leader {
+  stroke: var(--text-muted);
+  stroke-opacity: 0.62;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
 .cw-plot-label-muted,
 .cw-plot-label-mono {
   font-family: var(--cw-font-mono);
@@ -61,6 +147,12 @@
   stroke: var(--panel-bg);
   stroke-width: 3px;
   stroke-linejoin: round;
+}
+
+.cw-plot-label-muted[class*="cw-plot-ramp-"],
+.cw-plot-label-mono[class*="cw-plot-ramp-"],
+.cw-plot-label-callout[class*="cw-plot-ramp-"] {
+  fill: currentColor;
 }
 
 .cw-plot-label-strong {
@@ -78,17 +170,29 @@
   stroke-linejoin: round;
 }
 
-.cw-plot-bracket line {
-  stroke: var(--accent-color);
-  stroke-width: 1.2;
+.cw-plot-fitted-range-band {
+  fill: var(--cw-plot-reference, var(--cw-plot-fit));
+  fill-opacity: 0.06;
+  pointer-events: none;
+}
+
+.cw-plot-fitted-range-boundary {
+  stroke: var(--cw-plot-reference, var(--cw-plot-fit));
+  stroke-dasharray: 3 4;
+  stroke-opacity: 0.48;
+  stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
 
-.cw-plot-bracket text {
-  fill: var(--accent-color);
+.cw-plot-fitted-range-label {
+  fill: var(--cw-plot-reference, var(--cw-plot-fit));
   font-family: var(--cw-font-mono);
   font-size: var(--cw-type-plot-micro-size);
   font-weight: var(--cw-weight-bold);
+  paint-order: stroke;
+  stroke: var(--panel-bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 .cw-plot-legend-bg {
@@ -105,15 +209,102 @@
 }
 
 .cw-plot-legend-swatch.cw-plot-fit-line {
-  stroke: var(--cw-plot-fit);
+  stroke: var(--cw-plot-reference, var(--cw-plot-fit));
 }
 
 .cw-plot-legend-swatch.is-dashed {
   stroke-dasharray: 4 3;
 }
 
-.cw-plot-legend-label {
+.cw-plot-legend-swatch:not(.is-hollow) {
+  fill: var(--cw-plot-observed, var(--cw-plot-point));
+}
+
+.cw-plot-legend-swatch.is-hollow {
+  fill: var(--panel-bg);
+}
+
+.cw-plot-density-legend-step.cw-plot-ramp-0 { fill: var(--cw-plot-density-0, var(--cw-plot-ramp-0)); }
+.cw-plot-density-legend-step.cw-plot-ramp-1 { fill: var(--cw-plot-density-1, var(--cw-plot-ramp-1)); }
+.cw-plot-density-legend-step.cw-plot-ramp-2 { fill: var(--cw-plot-density-2, var(--cw-plot-ramp-2)); }
+.cw-plot-density-legend-step.cw-plot-ramp-3 { fill: var(--cw-plot-density-3, var(--cw-plot-ramp-3)); }
+.cw-plot-density-legend-step.cw-plot-ramp-4 { fill: var(--cw-plot-density-4, var(--cw-plot-ramp-4)); }
+.cw-plot-density-legend-step.cw-plot-ramp-5 { fill: var(--cw-plot-density-5, var(--cw-plot-ramp-5)); }
+
+.cw-plot-density-legend-bound {
   fill: var(--text-muted);
   font-family: var(--cw-font-mono);
+  font-size: var(--cw-type-plot-micro-size);
+}
+
+.cw-plot-legend-swatch.is-composition {
+  fill: var(--cw-plot-composition-3, var(--cw-plot-ramp-3));
+  stroke: var(--panel-bg);
+}
+
+.cw-plot-legend-swatch.is-threshold {
+  stroke: var(--cw-plot-attention, var(--cw-plot-ramp-5));
+  stroke-dasharray: 4 3;
+}
+
+.cw-plot-legend-swatch.is-dp-attention {
+  fill: var(--cw-plot-attention, var(--cw-plot-ramp-5));
+  stroke: var(--cw-plot-attention, var(--cw-plot-ramp-5));
+}
+
+.cw-plot-legend-swatch.is-dp-observed {
+  fill: var(--cw-plot-point);
+}
+
+.cw-plot-legend-swatch:not(.is-hollow)[class*="cw-plot-ramp-"] {
+  fill: currentColor;
+}
+
+.cw-plot-cumulative-callout-title {
+  fill: var(--text-color);
+  font-family: var(--cw-font-sans);
+  font-size: var(--cw-type-plot-label-size);
+  font-weight: var(--cw-weight-bold);
+}
+
+.cw-plot-cumulative-callout-detail {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-sans);
+  font-size: var(--cw-type-plot-micro-size);
+}
+
+.cw-plot-zero-token-summary-bg {
+  fill: var(--cw-surface-subtle);
+  stroke: var(--border-color);
+  stroke-width: 1;
+}
+
+.cw-plot-zero-token-summary-count,
+.cw-plot-zero-token-summary-detail {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-mono);
+  font-size: var(--cw-type-plot-micro-size);
+}
+
+.cw-plot-zero-token-summary-count {
+  fill: var(--text-color);
+  font-weight: var(--cw-weight-semibold);
+}
+
+@media (max-width: 700px) {
+  .cw-plot-label.is-narrow-optional:not(.is-pinned) {
+    display: none;
+  }
+}
+
+.cw-plot-legend-label {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-ui);
   font-size: var(--cw-type-plot-tick-size);
+}
+
+.cw-plot-legend-note {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-ui);
+  font-size: var(--cw-type-plot-micro-size);
 }

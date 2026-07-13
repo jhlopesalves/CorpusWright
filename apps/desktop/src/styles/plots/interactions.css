@@ -16,25 +16,32 @@
 }
 
 .cw-plot-tooltip {
-  display: none;
+  visibility: hidden;
+  opacity: 0;
   pointer-events: none;
+  transition: opacity 120ms ease;
 }
 
 .cw-plot-tooltip[aria-hidden="false"] {
-  display: block;
+  visibility: visible;
+  opacity: 1;
 }
 
 .cw-plot-tooltip-box {
   fill: var(--cw-surface-elevated);
   stroke: var(--border-color);
   stroke-width: 1;
-  filter: drop-shadow(0 6px 14px var(--cw-shadow-tooltip));
 }
 
 .cw-plot-tooltip-text {
   fill: var(--text-color);
   font-family: var(--cw-font-mono);
   font-size: var(--cw-type-plot-tooltip-size);
+}
+
+.cw-plot-tooltip-title {
+  fill: var(--text-color);
+  font-weight: var(--cw-weight-semibold);
 }
 
 .cw-plot-tooltip-row {
@@ -44,16 +51,48 @@
 .cw-plot-hover-target:hover,
 .cw-plot-hover-target:focus {
   outline: none;
-  transform: scale(1.15);
+}
+
+.cw-plot-ecdf-hit-target,
+.cw-plot-ecdf-hit-target:hover,
+.cw-plot-ecdf-hit-target:focus {
+  fill: transparent;
+  stroke: none;
+  opacity: 0;
+  pointer-events: all;
+  transform: none;
+}
+
+.cw-plot-point.cw-plot-hover-target:not(.is-lollipop):not(.is-pinned):hover,
+.cw-plot-point.cw-plot-hover-target:not(.is-lollipop):not(.is-pinned):focus {
+  stroke-width: 1.8;
+  transform: scale(1.04);
+}
+
+.cw-plot-hover-target[aria-pressed="true"]:focus-visible {
+  outline: none;
+  filter: drop-shadow(0 0 3px var(--cw-plot-selected, var(--cw-plot-ramp-4)));
 }
 
 .cw-plot-density-cell.cw-plot-hover-target:hover,
 .cw-plot-density-cell.cw-plot-hover-target:focus,
-.cw-plot-bar.cw-plot-hover-target:hover,
-.cw-plot-bar.cw-plot-hover-target:focus,
-.cw-plot-composition-segment.cw-plot-hover-target:hover,
-.cw-plot-composition-segment.cw-plot-hover-target:focus {
+.cw-plot-bar.cw-plot-hover-target:not(.is-pinned):hover,
+.cw-plot-bar.cw-plot-hover-target:not(.is-pinned):focus,
+.cw-plot-composition-segment.cw-plot-hover-target:not(.is-pinned):hover,
+.cw-plot-composition-segment.cw-plot-hover-target:not(.is-pinned):focus {
   transform: none;
+  stroke: var(--cw-plot-selected, var(--cw-plot-ramp-4));
+  stroke-width: 1.4;
+}
+
+.cw-plot-point.is-lollipop.cw-plot-hover-target:not(.is-pinned):hover,
+.cw-plot-point.is-lollipop.cw-plot-hover-target:not(.is-pinned):focus,
+.cw-plot-plane-witness.cw-plot-hover-target:not(.is-pinned):hover,
+.cw-plot-plane-witness.cw-plot-hover-target:not(.is-pinned):focus,
+.cw-plot-mattr-witness-tick.cw-plot-hover-target:hover,
+.cw-plot-mattr-witness-tick.cw-plot-hover-target:focus {
+  stroke: var(--cw-plot-selected, var(--cw-plot-ramp-4));
+  stroke-width: 2;
 }
 
 .cw-plot-animated-path {
@@ -84,8 +123,7 @@
 .cw-plot-svg.cw-plot-export-static :is(
   .cw-plot-animated-path,
   .cw-plot-point,
-  .cw-plot-plane-witness,
-  .cw-plot-roster-dot
+  .cw-plot-plane-witness
 ) {
   opacity: 1;
   stroke-dashoffset: 0;
@@ -93,15 +131,22 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .cw-plot-tooltip {
+    transition: none;
+  }
+
+  .cw-plot-svg.cw-plot-export-static,
+  .cw-plot-svg.cw-plot-export-static * {
+    transition: none;
+  }
+
   .cw-plot-animated-path,
   .cw-plot-point,
-  .cw-plot-plane-witness,
-  .cw-plot-roster-dot {
+  .cw-plot-plane-witness {
     animation: none;
     opacity: 1;
     stroke-dashoffset: 0;
     transform: none;
     transition: none;
   }
-
 }

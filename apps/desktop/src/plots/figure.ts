@@ -12,6 +12,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 
 import { dom } from "../dom";
+import {
+  figurePaletteLabel,
+  type FigurePaletteMode,
+  type OverviewFigureControllerContract,
+} from "./figure-workbench";
 
 const FIGURE_COLLAPSE_STORAGE_KEY = "corpuswright.overview.figureCollapse";
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -30,6 +35,12 @@ export interface OverviewFigureOptions {
   captionDetail?: string;
   captionReading: string;
   controls?: HTMLElement;
+  explanation?: HTMLElement;
+  controller?: OverviewFigureControllerContract;
+  onPinChange?: (key: string, pinned: boolean) => void;
+  onClearPins?: () => void;
+  exportMetadata?: () => string[];
+  layoutFamily?: "standard" | "profile" | "plane";
   renderSvg: () => SVGSVGElement;
 }
 
@@ -45,9 +56,10 @@ export interface OverviewFigureTextUpdate {
 }
 
 export function createOverviewFigure(options: OverviewFigureOptions): HTMLElement {
-  const figure = document.createElement("section");
+  const figure = document.createElement("figure");
   figure.className = "cw-overview-figure";
   figure.dataset.figureId = options.id;
+  figure.dataset.layoutFamily = options.layoutFamily ?? "standard";
   figure.setAttribute("role", "region");
   figure.setAttribute("aria-label", `${options.title}. ${options.subtitle}`);
   figureMetadata.set(figure, options);
@@ -71,10 +83,6 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
 
   const actions = document.createElement("div");
   actions.className = "cw-overview-figure-actions";
-  if (options.controls) {
-    options.controls.classList.add("cw-overview-figure-controls");
-    actions.appendChild(options.controls);
-  }
 
   const exportButton = document.createElement("button");
   exportButton.type = "button";
@@ -92,13 +100,24 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
   const collapseLabel = document.createElement("span");
   collapseLabel.textContent = "Collapse";
   collapseButton.appendChild(collapseLabel);
-  actions.append(exportButton, collapseButton);
+  const clearPinsButton = document.createElement("button");
+  clearPinsButton.type = "button";
+  clearPinsButton.className = "cw-overview-figure-action cw-overview-figure-clear-pins";
+  clearPinsButton.textContent = "Clear pins";
+  clearPinsButton.hidden = !(options.controller?.pins.size);
+  actions.append(clearPinsButton, exportButton, collapseButton);
   header.append(titleBlock, actions);
 
   const body = document.createElement("div");
   body.className = "cw-overview-figure-body";
   body.dataset.figureSvgMount = "true";
   replaceFigureSvgElement(body, initialSvg);
+  clearPinsButton.addEventListener("click", () => {
+    options.controller?.clearPins();
+    replaceFigureSvgElement(body, options.renderSvg());
+    syncClearPinsAction(clearPinsButton, options.controller);
+    options.onClearPins?.();
+  });
 
   const caption = document.createElement("figcaption");
   caption.className = "cw-overview-figure-caption";
@@ -113,6 +132,9 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
   if (detail) caption.append(detail);
   caption.append(reading);
 
+  const explanation = options.explanation;
+  if (explanation) explanation.classList.add("cw-overview-figure-explanation");
+
   const collapsed = readCollapsedFigures().has(options.id);
   setFigureCollapsed(figure, collapseButton, collapseLabel, options.title, collapsed);
 
@@ -125,9 +147,30 @@ export function createOverviewFigure(options: OverviewFigureOptions): HTMLElemen
     setFigureCollapsed(figure, collapseButton, collapseLabel, options.title, next);
   });
 
-  exportButton.addEventListener("click", () => void saveFigureSvg(figure, options.id));
+  const exportDialog = createExportDialog(figure, options.id);
+  exportButton.addEventListener("click", () => exportDialog.showModal());
 
-  figure.append(header, body, caption);
+  figure.addEventListener("cw-plot-pin-toggle", (event) => {
+    if (!(event instanceof CustomEvent) || typeof event.detail?.key !== "string") return;
+    const controller = options.controller;
+    if (!controller) return;
+    const pinned = controller.togglePin(event.detail.key);
+    replaceFigureSvgElement(body, options.renderSvg());
+    syncClearPinsAction(clearPinsButton, controller);
+    options.onPinChange?.(event.detail.key, pinned);
+  });
+
+  figure.appendChild(header);
+  if (options.controls) {
+    options.controls.classList.add("cw-overview-figure-controls");
+    const controlRow = document.createElement("div");
+    controlRow.className = "cw-overview-figure-control-row";
+    controlRow.appendChild(options.controls);
+    figure.appendChild(controlRow);
+  }
+  figure.append(body, caption);
+  if (explanation) figure.appendChild(explanation);
+  figure.appendChild(exportDialog);
   return figure;
 }
 
@@ -145,6 +188,8 @@ export function replaceFigureSvg(
     refreshFigureText(figure, options);
   }
   replaceFigureSvgElement(mount, svg);
+  const clearPins = figure.querySelector<HTMLButtonElement>(".cw-overview-figure-clear-pins");
+  if (clearPins) syncClearPinsAction(clearPins, options?.controller);
 }
 
 function refreshFigureText(figure: HTMLElement, options: OverviewFigureOptions): void {
@@ -168,6 +213,9 @@ export function createOverviewSegmentedControl<TValue extends string>(
   initialValue: TValue,
   onChange: (value: TValue) => void,
 ): HTMLElement {
+  const field = document.createElement("div");
+  field.className = "cw-overview-control-field cw-overview-segmented-field";
+  field.appendChild(createControlLabel(label));
   const group = document.createElement("div");
   group.className = "cw-overview-segmented-control";
   group.setAttribute("role", "group");
@@ -187,10 +235,67 @@ export function createOverviewSegmentedControl<TValue extends string>(
     });
     group.appendChild(button);
   }
-  return group;
+  field.appendChild(group);
+  return field;
 }
 
-export function overviewFigureSvgString(figure: HTMLElement): string | null {
+export function createOverviewRangeControl(
+  label: string,
+  options: {
+    minimum: number;
+    maximum: number;
+    step: number;
+    initialValue: number;
+    onInput?: (value: number) => void;
+    onChange: (value: number) => void;
+  },
+): HTMLElement {
+  const field = createControlField(label);
+  field.classList.add("cw-overview-range-control");
+  const range = document.createElement("input");
+  range.type = "range";
+  range.min = String(options.minimum);
+  range.max = String(options.maximum);
+  range.step = String(options.step);
+  range.value = String(options.initialValue);
+  range.setAttribute("aria-label", `${label} slider`);
+  const number = document.createElement("input");
+  number.type = "number";
+  number.min = range.min;
+  number.max = range.max;
+  number.step = range.step;
+  number.value = range.value;
+  number.className = "cw-overview-control-number";
+  number.setAttribute("aria-label", `${label} value`);
+  const clamp = (value: number) => Math.min(options.maximum, Math.max(options.minimum, value));
+  range.addEventListener("input", () => {
+    number.value = range.value;
+    options.onInput?.(Number(range.value));
+  });
+  range.addEventListener("change", () => options.onChange(Number(range.value)));
+  number.addEventListener("change", () => {
+    const value = clamp(Number(number.value));
+    number.value = String(value);
+    range.value = String(value);
+    options.onChange(value);
+  });
+  field.append(range, number);
+  return field;
+}
+
+export function createOverviewResetAction(label: string, onReset: () => void): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "cw-overview-figure-action cw-overview-reset-action";
+  button.textContent = label;
+  button.addEventListener("click", onReset);
+  return button;
+}
+
+export function overviewFigureSvgString(
+  figure: HTMLElement,
+  paletteMode: FigurePaletteMode = "theme",
+): string | null {
   const svg = figure.querySelector<SVGSVGElement>(".cw-plot-svg");
   const options = figureMetadata.get(figure);
   if (!svg || !options) return null;
@@ -198,15 +303,32 @@ export function overviewFigureSvgString(figure: HTMLElement): string | null {
   prepareStaticExportClone(exportedSvg);
   const exportMount = document.createElement("div");
   exportMount.className = "cw-plot-export-mount";
+  exportMount.dataset.figurePalette = paletteMode;
   exportMount.style.setProperty("--cw-plot-export-width", `${svg.viewBox.baseVal.width || 720}px`);
   exportMount.appendChild(exportedSvg);
   figure.appendChild(exportMount);
   try {
-    decorateFigureSvg(exportedSvg, options);
+    decorateFigureSvg(exportedSvg, exportOptions(options, paletteMode));
     return serializeSvgWithResolvedTokens(exportedSvg);
   } finally {
     exportMount.remove();
   }
+}
+
+function exportOptions(
+  options: OverviewFigureOptions,
+  paletteMode: FigurePaletteMode,
+): OverviewFigureOptions {
+  const metadata = [
+    ...(options.controller?.exportMetadata() ?? []),
+    ...(options.exportMetadata?.() ?? []),
+  ];
+  if (paletteMode !== "theme") {
+    metadata.push(`palette ${figurePaletteLabel(paletteMode)}`);
+  }
+  return metadata.length === 0
+    ? options
+    : { ...options, captionStats: `${options.captionStats} · ${metadata.join(" · ")}` };
 }
 
 function replaceFigureSvgElement(mount: HTMLElement, svg: SVGSVGElement): void {
@@ -226,6 +348,27 @@ function setFigureCollapsed(
   button.title = collapsed ? "Expand figure" : "Collapse figure";
   button.setAttribute("aria-label", collapsed ? `Expand ${title}` : `Collapse ${title}`);
   label.textContent = collapsed ? "Expand" : "Collapse";
+}
+
+function syncClearPinsAction(
+  button: HTMLButtonElement,
+  controller: OverviewFigureControllerContract | undefined,
+): void {
+  button.hidden = !controller || controller.pins.size === 0;
+}
+
+function createControlLabel(label: string): HTMLSpanElement {
+  const element = document.createElement("span");
+  element.className = "cw-overview-control-label";
+  element.textContent = label;
+  return element;
+}
+
+function createControlField(label: string): HTMLElement {
+  const field = document.createElement("label");
+  field.className = "cw-overview-control-field";
+  field.appendChild(createControlLabel(label));
+  return field;
 }
 
 function decorateFigureSvg(svg: SVGSVGElement, options: OverviewFigureOptions): void {
@@ -315,16 +458,23 @@ function decorateFigureSvg(svg: SVGSVGElement, options: OverviewFigureOptions): 
 function prepareStaticExportClone(svg: SVGSVGElement): void {
   svg.classList.remove("is-hovering");
   svg.classList.add("cw-plot-export-static");
-  for (const transient of svg.querySelectorAll(".cw-plot-crosshair-x, .cw-plot-crosshair-y, .cw-plot-tooltip")) {
+  svg.removeAttribute("tabindex");
+  delete svg.dataset.plotNavigationReady;
+  for (const transient of svg.querySelectorAll(
+    ".cw-plot-crosshair-x, .cw-plot-crosshair-y, .cw-plot-tooltip, .cw-plot-ecdf-hit-targets",
+  )) {
     transient.remove();
   }
   for (const target of svg.querySelectorAll<SVGElement>(".cw-plot-hover-target")) {
     target.classList.remove("cw-plot-hover-target");
     target.removeAttribute("tabindex");
+    target.removeAttribute("role");
+    target.removeAttribute("aria-pressed");
     target.removeAttribute("data-plot-x");
     target.removeAttribute("data-plot-y");
     target.removeAttribute("data-tooltip-title");
     target.removeAttribute("data-tooltip-rows");
+    target.removeAttribute("data-pin-key");
   }
   for (const element of [svg, ...Array.from(svg.querySelectorAll<SVGElement>("*"))]) {
     const inlineStyle = element.getAttribute("style");
@@ -464,7 +614,60 @@ function writeCollapsedFigures(values: Set<string>): void {
   }
 }
 
-async function saveFigureSvg(figure: HTMLElement, figureId: string): Promise<void> {
+function createExportDialog(figure: HTMLElement, figureId: string): HTMLDialogElement {
+  const dialog = document.createElement("dialog");
+  dialog.className = "cw-overview-export-dialog";
+  dialog.setAttribute("aria-labelledby", `${figureId}-export-heading`);
+  const form = document.createElement("form");
+  form.method = "dialog";
+  const heading = document.createElement("h5");
+  heading.id = `${figureId}-export-heading`;
+  heading.textContent = "Export SVG colours";
+  const choices = document.createElement("fieldset");
+  const legend = document.createElement("legend");
+  legend.textContent = "Colour mode";
+  choices.appendChild(legend);
+  const modes: Array<{ value: FigurePaletteMode; label: string }> = [
+    { value: "theme", label: "Current theme colours" },
+    { value: "colorBlind", label: "Colour-blind-safe colours" },
+    { value: "monochrome", label: "Monochrome / print" },
+  ];
+  for (const [index, mode] of modes.entries()) {
+    const choice = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = `${figureId}-export-palette`;
+    input.value = mode.value;
+    input.checked = index === 0;
+    choice.append(input, document.createTextNode(mode.label));
+    choices.appendChild(choice);
+  }
+  const actions = document.createElement("div");
+  actions.className = "cw-overview-export-dialog-actions";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => dialog.close());
+  const download = document.createElement("button");
+  download.type = "button";
+  download.textContent = "Download SVG";
+  download.addEventListener("click", () => {
+    const selected = form.querySelector<HTMLInputElement>("input[type='radio']:checked");
+    const paletteMode = (selected?.value ?? "theme") as FigurePaletteMode;
+    dialog.close();
+    void saveFigureSvg(figure, figureId, paletteMode);
+  });
+  actions.append(cancel, download);
+  form.append(heading, choices, actions);
+  dialog.appendChild(form);
+  return dialog;
+}
+
+async function saveFigureSvg(
+  figure: HTMLElement,
+  figureId: string,
+  paletteMode: FigurePaletteMode,
+): Promise<void> {
   const svg = figure.querySelector<SVGSVGElement>(".cw-plot-svg");
   if (!svg) return;
   const path = await save({
@@ -473,7 +676,7 @@ async function saveFigureSvg(figure: HTMLElement, figureId: string): Promise<voi
   });
   if (path === null) return;
   try {
-    const content = overviewFigureSvgString(figure);
+    const content = overviewFigureSvgString(figure, paletteMode);
     if (content === null) return;
     await invoke("save_svg_file_command", {
       path,

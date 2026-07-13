@@ -32,7 +32,6 @@ export interface AppearancePreference {
 
 export const THEME_FAMILIES: ThemeFamily[] = [
   { id: "corpus", name: "Corpus" },
-  { id: "workbench", name: "Workbench" },
   { id: "solar", name: "Solar" },
   { id: "graphite", name: "Graphite" },
   { id: "retro", name: "Retro" },
@@ -164,8 +163,8 @@ function migrateLegacyAppearance(raw: any): Partial<AppearancePreference> {
   const migrationMap: Record<string, { family: string, variant: ThemeVariant }> = {
     "dark": { family: "corpus", variant: "dark" },
     "light": { family: "corpus", variant: "light" },
-    "repository-light": { family: "workbench", variant: "light" },
-    "repository-dark": { family: "workbench", variant: "dark" },
+    "repository-light": { family: "corpus", variant: "light" },
+    "repository-dark": { family: "corpus", variant: "dark" },
     "solar-paper": { family: "solar", variant: "light" },
     "solar-night": { family: "solar", variant: "dark" },
     "graphite-day": { family: "graphite", variant: "light" },
@@ -180,14 +179,14 @@ function migrateLegacyAppearance(raw: any): Partial<AppearancePreference> {
     "clear-night": { family: "corpus", variant: "dark" },
     "spectrum-paper": { family: "solar", variant: "light" },
     "spectrum-ink": { family: "solar", variant: "dark" },
-    "cloud-desk": { family: "workbench", variant: "light" },
-    "cloud-night": { family: "workbench", variant: "dark" },
+    "cloud-desk": { family: "corpus", variant: "light" },
+    "cloud-night": { family: "corpus", variant: "dark" },
     "amber-paper": { family: "sepia", variant: "light" },
     "ink-amber": { family: "sepia", variant: "dark" },
     "mineral-chalk": { family: "graphite", variant: "light" },
     "mineral-slate": { family: "graphite", variant: "dark" },
-    "studio-light": { family: "workbench", variant: "light" },
-    "studio-dark": { family: "workbench", variant: "dark" }
+    "studio-light": { family: "corpus", variant: "light" },
+    "studio-dark": { family: "corpus", variant: "dark" }
   };
 
   const migrated = migrationMap[legacyId] ?? { family: "corpus", variant: "dark" };
