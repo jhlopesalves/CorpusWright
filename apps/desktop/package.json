@@ -12,6 +12,7 @@
     "check:visual-contracts": "node scripts/check-visual-contracts.mjs",
     "capture:overview-curation": "node scripts/capture-overview-curation.mjs",
     "check:overview-rendering-recovery": "node scripts/capture-overview-curation.mjs --rendering-recovery",
+    "check:overview-distribution-dispersion-cleanup": "node scripts/capture-overview-curation.mjs --distribution-dispersion-cleanup",
     "preview": "vite preview",
     "tauri": "tauri",
     "generate-types": "cd ../.. && cargo run -p corpuswright-core --example export_ts"

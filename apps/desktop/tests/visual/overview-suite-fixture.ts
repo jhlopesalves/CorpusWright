@@ -52,10 +52,22 @@ window.addEventListener("unhandledrejection", (event) => errors.push(String(even
 
 const root = document.querySelector<HTMLElement>("#suite-root")!;
 const status = document.querySelector<HTMLOutputElement>("#suite-status")!;
-const built = buildFixtureFigure(figureName, view);
-root.appendChild(built.figure);
+const overviewFigureNames = ["document", "mattr", "rank", "growth", "lexical", "coverage", "profile", "plane"] as const;
+const overviewMode = figureName === "overview";
+const builtFigures = overviewMode
+  ? overviewFigureNames.map((name) => buildFixtureFigure(name, defaultView(name)))
+  : [buildFixtureFigure(figureName, view)];
+const built = builtFigures[0]!;
+if (overviewMode) {
+  root.classList.add("is-overview-suite");
+  const heading = document.createElement("h1");
+  heading.className = "overview-suite-heading";
+  heading.textContent = "Corpus Overview · eight analytical figures";
+  root.appendChild(heading);
+}
+root.append(...builtFigures.map((entry) => entry.figure));
 
-if (switchTo) {
+if (switchTo && !overviewMode) {
   const switchButton = built.figure.querySelector<HTMLButtonElement>(`.cw-overview-segmented-control[aria-label="View"] .cw-overview-segment[data-value="${switchTo}"]`);
   if (!switchButton) throw new Error(`Missing requested view switch: ${switchTo}`);
   switchButton.click();
@@ -80,21 +92,23 @@ if ((figureName === "document" || figureName === "mattr") && auditedView === "ec
   auditEcdfState(built.figure, timedFailures, "after 1,000 ms");
 }
 
-if (params.get("focusDensity") === "true") {
+if (params.get("focusDensity") === "true" && !overviewMode) {
   built.figure.querySelector<SVGElement>(".cw-plot-density-cell[data-grid-row='6']:not(.is-zero)")?.focus();
 }
-if (params.get("exportDialog") === "true") {
+if (params.get("exportDialog") === "true" && !overviewMode) {
   built.figure.querySelector<HTMLButtonElement>(".cw-overview-figure-export")?.click();
 }
 
-const auditFailures = auditFigure(built.figure);
+const overviewShellSource = overviewMode ? await fetch("/src/workbench/shell.ts").then((response) => response.text()) : "";
+const auditFailures = overviewMode ? auditOverviewSuite(builtFigures, overviewShellSource) : auditFigure(built.figure);
 const failures = [...errors, ...timedFailures, ...auditFailures];
 document.body.dataset.consoleErrors = String(errors.length);
 document.body.dataset.accessibilitySerious = String(auditFailures.length);
 document.body.dataset.fixtureStatus = failures.length === 0 ? "passed" : "failed";
+document.body.dataset.fixtureMetrics = JSON.stringify(collectFixtureMetrics(builtFigures));
 status.textContent = failures.length === 0 ? "passed" : `failed: ${failures.join(" | ")}`;
 
-if (exportMode && failures.length === 0) {
+if (exportMode && !overviewMode && failures.length === 0) {
   const source = overviewFigureSvgString(built.figure, palette);
   if (!source) throw new Error("Unable to serialise fixture SVG");
   document.body.dataset.exportReady = "true";
@@ -104,6 +118,27 @@ if (exportMode && failures.length === 0) {
 interface BuiltFigure {
   figure: HTMLElement;
   controller: OverviewFigureController<FigureControlState>;
+}
+
+function auditOverviewSuite(entries: BuiltFigure[], shellSource: string): string[] {
+  const failures: string[] = [];
+  if (entries.length !== 8 || root.querySelectorAll(":scope > figure").length !== 8) failures.push("Overview fixture does not contain eight figures");
+  if (root.querySelectorAll(":scope > figure .cw-plot-svg").length !== 8) failures.push("Overview fixture does not contain eight real-renderer SVGs");
+  if (Array.from(root.querySelectorAll("h1, h2, h3, h4")).some((heading) => heading.textContent?.trim() === "Dispersion roster")) {
+    failures.push("Dispersion roster heading remains in Overview");
+  }
+  for (const duplicate of [
+    'label: "Types", value: formatNumber(spectrum.types)',
+    'label: "Top 100 types cover"',
+    'label: "Top 1,000 types cover"',
+    'label: "Top 10,000 types cover"',
+    'label: "Types in 1 document only"',
+    'label: "Median documents per type"',
+  ]) {
+    if (shellSource.includes(duplicate)) failures.push(`duplicated Overview structure remains: ${duplicate}`);
+  }
+  if (shellSource.includes("Dispersion roster")) failures.push("Dispersion roster source remains in Overview");
+  return failures;
 }
 
 function buildFixtureFigure(name: string, selectedView: string): BuiltFigure {
@@ -506,6 +541,50 @@ function distributionPayload(length: boolean): DistributionResultPayload {
   };
 }
 
+function collectFixtureMetrics(entries: BuiltFigure[]): Record<string, unknown> {
+  const metrics: Record<string, unknown> = { figureCount: entries.length };
+  const svg = entries[0]?.figure.querySelector<SVGSVGElement>(".cw-plot-svg");
+  if (!svg || entries.length !== 1) return metrics;
+  const ecdf = svg.querySelector<SVGPathElement>(".cw-plot-ecdf-line");
+  if (ecdf) {
+    const style = getComputedStyle(ecdf);
+    const end = ecdf.getPointAtLength(ecdf.getTotalLength());
+    metrics.ecdf = {
+      stroke: style.stroke,
+      strokeOpacity: Number(style.strokeOpacity),
+      opacity: Number(style.opacity),
+      bounds: { width: ecdf.getBBox().width, height: ecdf.getBBox().height },
+      endpoint: { x: end.x, y: end.y },
+      visible: isVisiblePaint(style.stroke) && Number(style.strokeOpacity) > 0 && Number(style.opacity) > 0,
+    };
+  }
+  const qqPoints = Array.from(svg.querySelectorAll<SVGCircleElement>(".cw-plot-qq-point:not(.is-pinned)"));
+  if (qqPoints.length > 0) {
+    const visibleCount = qqPoints.filter((point) => {
+      const style = getComputedStyle(point);
+      return isVisiblePaint(style.fill) && Number(style.fillOpacity) > 0 && Number(style.opacity) > 0;
+    }).length;
+    const reference = svg.querySelector<SVGPathElement>(".cw-plot-qq-reference");
+    metrics.qq = {
+      ordinaryPointCount: qqPoints.length,
+      visibleFillCount: visibleCount,
+      visibleFillRatio: visibleCount / qqPoints.length,
+      fill: getComputedStyle(qqPoints[0]!).fill,
+      referenceStroke: reference ? getComputedStyle(reference).stroke : "none",
+    };
+  }
+  const densityCells = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-density-cell:not(.is-zero)"));
+  if (densityCells.length > 0) {
+    const opacities = densityCells.map((cell) => Number(getComputedStyle(cell).opacity)).sort((left, right) => left - right);
+    metrics.density = {
+      positiveCellCount: densityCells.length,
+      distinctComputedFills: new Set(densityCells.map((cell) => getComputedStyle(cell).fill)).size,
+      medianPositiveOpacity: opacities[Math.floor(opacities.length / 2)] ?? 0,
+    };
+  }
+  return metrics;
+}
+
 function auditFigure(figure: HTMLElement): string[] {
   const failures: string[] = [];
   const figureBounds = figure.getBoundingClientRect();
@@ -683,6 +762,17 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
       .filter((entry) => Array.from(entry.querySelectorAll<SVGTextElement>(".cw-plot-composition-label"))
         .every((label) => getComputedStyle(label).display !== "none" && Boolean(label.textContent?.trim())));
     if (internalEntries.length < 2) failures.push("two widest profile segments do not retain category and value internally");
+    const figureSurface = getComputedStyle(svg.closest<HTMLElement>(".cw-overview-figure")!).backgroundColor;
+    for (const entry of svg.querySelectorAll<SVGGElement>(".cw-plot-composition-entry:is(.is-medium, .is-narrow, .is-zero)")) {
+      const label = entry.classList.contains("is-medium")
+        ? entry.querySelector<SVGTextElement>(".cw-plot-composition-label.is-detail")
+        : entry.querySelector<SVGTextElement>(".cw-plot-composition-label.is-category");
+      const style = label ? getComputedStyle(label) : null;
+      if (!label || !label.textContent?.trim() || style?.display === "none" || label.getBBox().width <= 0 || style.fill === figureSurface) {
+        failures.push("external profile band is not visibly named");
+        break;
+      }
+    }
     const callout = svg.querySelector<SVGRectElement>(".cw-plot-cumulative-callout");
     if (!callout || isWarmPaint(getComputedStyle(callout).fill) || isWarmPaint(getComputedStyle(callout).stroke)) failures.push("dispersion callout retains warning paint");
   }
@@ -725,6 +815,16 @@ function auditEcdfState(figure: HTMLElement, failures: string[], timing: string)
     failures.push(`invisible ECDF stroke ${timing}`);
   }
   if (!(box.width > 0) || !(box.height > 0)) failures.push(`zero-area ECDF path ${timing}`);
+  const svg = path.ownerSVGElement;
+  const crosshairX = svg?.querySelector<SVGLineElement>(".cw-plot-crosshair-x");
+  const crosshairY = svg?.querySelector<SVGLineElement>(".cw-plot-crosshair-y");
+  const end = path.getPointAtLength(path.getTotalLength());
+  const plotLeft = Number(crosshairY?.getAttribute("x1"));
+  const plotRight = Number(crosshairY?.getAttribute("x2"));
+  const plotTop = Number(crosshairX?.getAttribute("y1"));
+  if (!Number.isFinite(end.x) || !Number.isFinite(end.y) || end.x < plotLeft || end.x > plotRight || Math.abs(end.y - plotTop) > 1) {
+    failures.push(`ECDF final cumulative endpoint is not visible ${timing}`);
+  }
 }
 
 function auditDistributionControlsAndGeometry(figure: HTMLElement, svg: SVGSVGElement, failures: string[]): void {

@@ -10,9 +10,13 @@ const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.me
 const screenshotBlock = capture.match(/const recoveryScreenshotCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
 const exportBlock = capture.match(/const recoveryExportCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
 const auditBlock = capture.match(/const recoveryAuditCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
+const cleanupScreenshotBlock = capture.match(/const cleanupScreenshotCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
+const cleanupExportBlock = capture.match(/const cleanupExportCases = \[([\s\S]*?)\n\];/)?.[1] ?? "";
 assert.equal(screenshotBlock.match(/\brecoveryShot\(/g)?.length, 12);
 assert.equal(exportBlock.match(/\brecoveryExportCase\(/g)?.length, 3);
 assert.equal(auditBlock.match(/\brecoveryAuditCase\(/g)?.length, 4);
+assert.equal(cleanupScreenshotBlock.match(/\bcleanupShot\(/g)?.length, 8);
+assert.equal(cleanupExportBlock.match(/\bcleanupExportCase\(/g)?.length, 2);
 
 for (const filename of [
   "document-histogram.png",
@@ -41,15 +45,37 @@ for (const switchName of [
 ]) {
   assert.match(auditBlock, new RegExp(`"${switchName}"`));
 }
+for (const filename of [
+  "document-histogram-controls",
+  "document-ecdf-final",
+  "document-qq-final",
+  "mattr-ecdf-final",
+  "mattr-qq-final",
+  "dispersion-profile",
+  "dispersion-plane",
+  "overview-without-roster",
+]) {
+  assert.match(cleanupScreenshotBlock, new RegExp(`"${filename}"`));
+}
+for (const filename of ["document-ecdf-final", "dispersion-plane"]) {
+  assert.match(cleanupExportBlock, new RegExp(`"${filename}"`));
+}
 
 assert.equal(
   packageJson.scripts?.["check:overview-rendering-recovery"],
   "node scripts/capture-overview-curation.mjs --rendering-recovery",
 );
+assert.equal(
+  packageJson.scripts?.["check:overview-distribution-dispersion-cleanup"],
+  "node scripts/capture-overview-curation.mjs --distribution-dispersion-cleanup",
+);
 assert.match(capture, /\/tmp\/corpuswright-overview-rendering-recovery/);
+assert.match(capture, /\/tmp\/corpuswright-overview-distribution-dispersion-cleanup/);
 assert.match(capture, /viewport: "1440x900"/);
 assert.match(capture, /document\.getAnimations\(\)/);
 assert.match(capture, /animation\.finish\(\)/);
+assert.match(capture, /ecdfAndQqMinimumDelayMs: 1_000/);
+assert.match(capture, /postRenderDelayMs = options\.view === "ecdf" \|\| options\.view === "qq" \? 1_000 : 0/);
 
 for (const browserAssertion of [
   "zero-area painted geometry",
@@ -64,6 +90,10 @@ for (const browserAssertion of [
   "lexical authored annotation outside SVG bounds",
   "dispersion witness label overlaps density legend",
   "automatic dispersion label overlaps threshold text",
+  "external profile band is not visibly named",
+  "ECDF final cumulative endpoint is not visible",
+  "Dispersion roster heading remains in Overview",
+  "duplicated Overview structure remains",
 ]) {
   assert(fixture.includes(browserAssertion), `missing browser assertion: ${browserAssertion}`);
 }
@@ -71,3 +101,5 @@ assert.match(fixture, /switchButton\.click\(\)/);
 assert.match(fixture, /field\.hidden !== true/);
 assert.match(fixture, /getComputedStyle\(field\)\.display !== "none"/);
 assert.match(fixture, /element\.getBBox\(\)/);
+assert.match(fixture, /document\.body\.dataset\.fixtureMetrics = JSON\.stringify/);
+assert.match(capture, /metrics: \$\{fixtureMetrics\}/);
