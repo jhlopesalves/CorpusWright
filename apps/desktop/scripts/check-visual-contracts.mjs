@@ -33,4 +33,4 @@ if (violations.length) {
   process.exit(1);
 }
 
-console.log(`Visual contract check passed for ${graph.modules.length} CSS modules, 16 themes, and ${typescriptSources.length} export sources.`);
+console.log(`Visual contract check passed for ${graph.modules.length} CSS modules, 14 themes, and ${typescriptSources.length} export sources.`);

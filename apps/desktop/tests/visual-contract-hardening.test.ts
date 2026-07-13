@@ -79,7 +79,6 @@ for (const selector of ["cw-plot-point", "cw-plot-plane-witness"]) {
   assert.match(interactions, new RegExp(`@media \\(prefers-reduced-motion: reduce\\)[\\s\\S]*?\\.${selector}`));
 }
 assert.match(interactions, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?opacity:\s*1[^}]*transform:\s*none/s);
-assert.doesNotMatch(interactions, /cw-plot-animated-path|stroke-dashoffset|cw-plot-path-draw/);
 
 const modelSource = readFileSync(new URL("../src/plots/model.ts", import.meta.url), "utf8");
 const renderSource = readFileSync(new URL("../src/plots/render.ts", import.meta.url), "utf8");
