@@ -10,6 +10,7 @@
     "check:theme-contrast": "node scripts/check-theme-contrast.mjs",
     "check:style-ownership": "node scripts/check-style-ownership.mjs",
     "check:visual-contracts": "node scripts/check-visual-contracts.mjs",
+    "capture:overview-curation": "node scripts/capture-overview-curation.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "generate-types": "cd ../.. && cargo run -p corpuswright-core --example export_ts"

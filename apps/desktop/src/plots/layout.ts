@@ -142,7 +142,7 @@ function placeOccupancyAwareLegends(
   extent: { right: number; bottom: number },
 ): void {
   const legends = Array.from(svg.querySelectorAll<SVGGElement>(
-    ".cw-plot-legend, .cw-plot-density-legend, .cw-plot-witness-legend, .cw-plot-roster-legend",
+    ".cw-plot-legend, .cw-plot-density-legend, .cw-plot-witness-legend",
   ));
   if (legends.length === 0) return;
   const view = svg.viewBox.baseVal;
