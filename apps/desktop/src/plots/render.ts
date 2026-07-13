@@ -50,6 +50,30 @@ export function renderRankFrequencySvg(plotId: string, geometry: RankFrequencyGe
   return svg;
 }
 
+function renderZeroTokenSummary(svg: SVGSVGElement, geometry: DistributionDiagnosticGeometry): void {
+  const summary = geometry.zeroTokenSummary;
+  if (!summary) return;
+  const group = createSvgElement("g");
+  group.setAttribute("class", "cw-plot-zero-token-summary");
+  const background = createSvgElement("rect");
+  setAttrs(background, {
+    x: summary.x,
+    y: summary.y,
+    width: summary.width,
+    height: summary.height,
+    rx: 4,
+    class: "cw-plot-zero-token-summary-bg",
+  });
+  const count = createSvgElement("text");
+  setAttrs(count, { x: summary.x + 6, y: summary.y + 14, class: "cw-plot-zero-token-summary-count" });
+  count.textContent = `${summary.count.toLocaleString("en-US")} zero-token`;
+  const detail = createSvgElement("text");
+  setAttrs(detail, { x: summary.x + 6, y: summary.y + 27, class: "cw-plot-zero-token-summary-detail" });
+  detail.textContent = summary.count === 1 ? "document" : "documents";
+  group.append(background, count, detail);
+  svg.appendChild(group);
+}
+
 export function renderVocabularyGrowthSvg(plotId: string, geometry: VocabularyGrowthGeometry): SVGSVGElement {
   const svg = createBaseSvg(plotId, geometry.box);
   renderDefinitions(svg, plotId);
@@ -284,6 +308,7 @@ export function renderDistributionDiagnosticSvg(
   renderPoints(svg, geometry.points, "cw-plot-point");
   renderPoints(svg, geometry.witnesses, "cw-plot-point cw-plot-distribution-witness");
   renderSvgLegend(svg, geometry.box, geometry.legend);
+  renderZeroTokenSummary(svg, geometry);
   renderLabels(svg, geometry.labels);
   renderInteractionLayer(svg, geometry.box);
   return svg;

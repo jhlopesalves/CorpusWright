@@ -122,7 +122,7 @@ assert.equal(hiddenLayers.frequencyMarginal.length, 0);
 assert.equal(hiddenLayers.dpMarginal.length, 0);
 assert.equal(hiddenLayers.thresholdLines.length, 0);
 assert.equal(hiddenLayers.thresholdLabels.length, 0);
-assert.deepEqual(logRaw.thresholdLabels.map((label) => label.text), ["DP 0.50", "Frequency 1,000"]);
+assert.deepEqual(logRaw.thresholdLabels.map((label) => label.text), ["DP 0.50", "Raw frequency 1,000"]);
 
 const controller = new OverviewFigureController({
   initialControls: { frequency: "raw", density: "log", examples: "labelled", marginals: "show", thresholds: "show" },

@@ -1769,9 +1769,12 @@ function renderDispersionRosterFigure(corpus: AnalysisCorpus): HTMLElement | nul
   const controller = new OverviewFigureController<RosterControls>({
     initialControls: { stopwords: "show", sort: "frequency", rows: 20 },
     policy: FIGURE_INTERACTION_POLICIES["overview-dispersion-roster"],
-    exportMetadata: (controls) => [
-      `Top ${controls.rows} frequent types · sorted by ${sortLabel(controls.sort)} · stopwords ${controls.stopwords === "hide" ? "hidden" : "shown"}`,
-    ],
+    exportMetadata: (controls) => {
+      const available = controls.stopwords === "hide"
+        ? entries.filter((entry) => !isOverviewStopword(entry.token, activeProjectLanguageCode())).length
+        : entries.length;
+      return [`Top ${Math.min(controls.rows, available)} frequent types · sorted by ${sortLabel(controls.sort)} · stopwords ${controls.stopwords === "hide" ? "hidden" : "shown"}`];
+    },
   });
   let figure: HTMLElement | null = null;
   const shownEntries = () => selectDispersionRosterEntries({

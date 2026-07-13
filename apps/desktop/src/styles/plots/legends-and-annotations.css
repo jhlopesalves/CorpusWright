@@ -245,6 +245,24 @@
   font-size: var(--cw-type-plot-micro-size);
 }
 
+.cw-plot-zero-token-summary-bg {
+  fill: var(--cw-surface-subtle);
+  stroke: var(--border-color);
+  stroke-width: 1;
+}
+
+.cw-plot-zero-token-summary-count,
+.cw-plot-zero-token-summary-detail {
+  fill: var(--text-muted);
+  font-family: var(--cw-font-mono);
+  font-size: var(--cw-type-plot-micro-size);
+}
+
+.cw-plot-zero-token-summary-count {
+  fill: var(--text-color);
+  font-weight: var(--cw-weight-semibold);
+}
+
 .cw-plot-roster-token {
   fill: var(--text-color);
   font-family: var(--cw-font-sans);

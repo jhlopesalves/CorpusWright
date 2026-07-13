@@ -31,6 +31,7 @@ const curve = buildRankFrequencyGeometry({
 assert.equal(new Set(curve.points.filter((point) => !point.excluded).map((point) => point.rampIndex)).size, 1);
 assert(curve.points.filter((point) => point.excluded).every((point) => point.excluded));
 assert(curve.fitPath);
+assert.equal(curve.points[0]?.rawY, 100_000, "authored curve geometry uses frequency per million");
 assert(curve.legend.some((item) => item.label === "Excluded from fit" && item.hollow));
 
 const hiddenFit = buildRankFrequencyGeometry({
@@ -66,8 +67,21 @@ const residuals = buildRankFrequencyGeometry({
 assert.equal(residuals.yScale.kind, "linear");
 assert(residuals.zeroLine);
 assert.equal(residuals.fitPath, null);
+assert.equal(residuals.labels.length, 1, "residual labels are laid out without sampling an off-domain fitted curve");
 assert(residuals.labels.some((label) => label.text === "analysis" && label.pinned));
 assert(residuals.points[0]?.tooltipRows?.some((row) => row.includes("log residual")));
+assert(!residuals.yTicks.some((tick) => tick.label === "-0"));
+const rateResiduals = buildRankFrequencyGeometry({
+  points: rankPoints,
+  yMode: "rate",
+  totalTokens: 10_000,
+  zipfExponent: 1,
+  zipfCoefficient: 1_200,
+  fittedRankStart: 4,
+  fittedRankEnd: 5,
+  view: "residuals",
+});
+assert.deepEqual(rateResiduals.points.map((point) => point.rawY), residuals.points.map((point) => point.rawY), "residual geometry is unit invariant");
 
 const unavailable = buildRankFrequencyGeometry({
   points: rankPoints,
@@ -115,6 +129,16 @@ assert.equal(heaps.xScale.kind, "log");
 assert.equal(heaps.yScale.kind, "log");
 assert.equal(heaps.areaPath, null);
 assert(heaps.labels.some((label) => label.pinned));
+
+const hiddenGrowthFit = buildVocabularyGrowthGeometry({
+  points: growthPoints,
+  heapsK: 10_000,
+  heapsBeta: 0.9,
+  view: "growth",
+  fitVisible: false,
+});
+assert.equal(hiddenGrowthFit.fitPath, null);
+assert.equal(hiddenGrowthFit.yScale.domain[1], 2_200, "hidden fit values cannot control the visible domain");
 
 const shell = readFileSync(new URL("../src/workbench/shell.ts", import.meta.url), "utf8");
 const marks = readFileSync(new URL("../src/styles/plots/marks.css", import.meta.url), "utf8");

@@ -564,6 +564,7 @@ export interface DistributionDiagnosticGeometry {
   labels: PlotLabelGeometry[];
   legend: PlotLegendItem[];
   compositionStrip: CompositionStripGeometry | null;
+  zeroTokenSummary: { count: number; x: number; y: number; width: number; height: number } | null;
 }
 
 export const DEFAULT_PLOT_WIDTH = 720;
@@ -1033,14 +1034,14 @@ export function buildRankFrequencyGeometry(options: {
   const residualValues = visible.map((point) => rankResidual(point, options.zipfExponent, options.zipfCoefficient));
   const yDomain = view === "residuals"
     ? extent([0, ...residualValues.filter((value): value is number => value !== null)])
-    : extent(visible.map((point) => point.frequency));
+    : extent(visible.map((point) => rankCurveValue(point, options.yMode)));
   const yScale = createScale(view === "residuals" ? "linear" : "log", yDomain, [box.height - box.margin.bottom, box.margin.top]);
   const fittedStart = options.fittedRankStart;
   const fittedEnd = options.fittedRankEnd;
   const points = visible.flatMap((point) => {
     const residual = rankResidual(point, options.zipfExponent, options.zipfCoefficient);
     if (view === "residuals" && residual === null) return [];
-    const rawY = view === "residuals" ? residual! : point.frequency;
+    const rawY = view === "residuals" ? residual! : rankCurveValue(point, options.yMode);
     const excluded = fittedStart === null || fittedEnd === null || point.rank < fittedStart || point.rank > fittedEnd
       || point.frequency <= 1;
     const key = `rank:${point.rank}:${point.token ?? ""}`;
@@ -1060,13 +1061,14 @@ export function buildRankFrequencyGeometry(options: {
         `rank ${formatInteger(point.rank)}`,
         `${formatInteger(point.frequency)} tokens`,
         `${formatFixed(point.ratePerMillion, 2)} per million`,
-        fitted === null ? "fit unavailable" : `fitted ${formatFixed(fitted, 2)}`,
+        fitted === null ? "fit unavailable" : `fitted raw ${formatFixed(fitted, 2)}`,
+        fitted === null || options.totalTokens <= 0 ? "fitted rate unavailable" : `fitted ${formatFixed(fitted / options.totalTokens * 1_000_000, 2)} per million`,
         residual === null ? "residual unavailable" : `log residual ${formatFixed(residual, 3)}`,
         excluded ? "excluded from fit" : "included in fit",
       ],
     }];
   });
-  const fitPoints = fitPointsForRank(options, xScale, yScale);
+  const fitPoints = view === "curve" ? fitPointsForRank(options, xScale, yScale) : [];
   const fitPath = view === "curve" && fitVisible && fitPoints.length > 0
     ? { d: pointsToPath(fitPoints), className: "cw-plot-fit-line" }
     : null;
@@ -1114,7 +1116,9 @@ export function buildRankFrequencyGeometry(options: {
     xScale,
     yScale,
     xTicks: logTicks(xScale),
-    yTicks: view === "residuals" ? linearTicks(yScale, 7) : rankFrequencyTicks(yScale, options.yMode, options.totalTokens),
+    yTicks: view === "residuals"
+      ? linearTicks(yScale, 7).map((tick) => ({ ...tick, label: formatResidualTick(tick.value) }))
+      : logTicks(yScale),
     points,
     fitPath,
     zeroLine: view === "residuals" ? {
@@ -1170,8 +1174,9 @@ export function buildVocabularyGrowthGeometry(options: {
   const fitVisible = options.fitVisible ?? true;
   const visible = options.points.filter((point) => point.tokens > 0 && point.types > 0);
   const fittedValues = vocabularyGrowthFitValues(visible, options.heapsK, options.heapsBeta);
+  const visibleFittedValues = fitVisible ? fittedValues : [];
   const xValues = visible.map((point) => point.tokens);
-  const yValues = [...visible.map((point) => point.types), ...fittedValues.map((point) => point.types)];
+  const yValues = [...visible.map((point) => point.types), ...visibleFittedValues.map((point) => point.types)];
   const xScale = createScale(view === "heaps" ? "log" : "linear", extent(view === "heaps" ? xValues : [0, ...xValues]), [
     box.margin.left,
     box.width - box.margin.right,
@@ -1206,9 +1211,9 @@ export function buildVocabularyGrowthGeometry(options: {
   };
   });
   const linePath = points.length > 0 ? { d: pointsToPath(points), className: "cw-plot-line" } : null;
-  const fitPath = fitVisible && fittedValues.length > 0
+  const fitPath = visibleFittedValues.length > 0
     ? {
-        d: pointsToPath(fittedValues.map((point) => ({
+        d: pointsToPath(visibleFittedValues.map((point) => ({
           x: scaleValue(xScale, point.tokens),
           y: scaleValue(yScale, point.types),
         }))),
@@ -1426,10 +1431,15 @@ export function buildCoverageGeometry(options: {
     left: 78,
   });
   const visible = options.points.filter((point) => point.k > 0 && point.share >= 0);
+  const targetShare = options.targetShare ?? 0.5;
+  const crossingDatum = options.targetCrossing !== undefined
+    ? options.targetCrossing
+    : findFirstCoverageCrossing(visible, targetShare);
+  const displaySeries = insertCoverageTargetCrossing(visible, crossingDatum);
   const xValue = (k: number) => options.xMode === "vocabularyShare" && options.totalTypes
     ? k / options.totalTypes
     : k;
-  const xScale = createScale(options.xMode === "vocabularyShare" ? "linear" : "log", extent(visible.map((point) => xValue(point.k))), [
+  const xScale = createScale(options.xMode === "vocabularyShare" ? "linear" : "log", extent(displaySeries.map((point) => xValue(point.k))), [
     box.margin.left,
     box.width - box.margin.right,
   ]);
@@ -1452,9 +1462,13 @@ export function buildCoverageGeometry(options: {
         : `${formatPercent(Math.max(0, point.share - visible[index - 1]!.share))} gained since previous checkpoint`,
     ].filter(Boolean),
   }));
-  const linePath = points.length > 0 ? { d: pointsToPath(points), className: "cw-plot-line" } : null;
-  const areaPath = points.length > 0
-    ? { d: pointsToAreaPath(points, scaleValue(yScale, 0)), className: "cw-plot-area" }
+  const displayPoints = displaySeries.map((point) => ({
+    x: scaleValue(xScale, xValue(point.k)),
+    y: scaleValue(yScale, point.share),
+  }));
+  const linePath = displayPoints.length > 0 ? { d: pointsToPath(displayPoints), className: "cw-plot-line" } : null;
+  const areaPath = displayPoints.length > 0
+    ? { d: pointsToAreaPath(displayPoints, scaleValue(yScale, 0)), className: "cw-plot-area" }
     : null;
   const milestones: Array<PlotPointGeometry<CoverageDatum>> = options.milestones
     .map<PlotPointGeometry<CoverageDatum> | null>((milestone) => {
@@ -1475,10 +1489,6 @@ export function buildCoverageGeometry(options: {
       };
     })
     .filter((point): point is PlotPointGeometry<CoverageDatum> => point !== null);
-  const targetShare = options.targetShare ?? 0.5;
-  const crossingDatum = options.targetCrossing !== undefined
-    ? options.targetCrossing
-    : findFirstCoverageCrossing(visible, targetShare);
   const halfCrossing = crossingDatum
     ? {
         k: crossingDatum.k,
@@ -1518,7 +1528,7 @@ export function buildCoverageGeometry(options: {
   const labels = placeLabels(
     labelRequests,
     [
-      ...polylineLabelObstacles(points, 5),
+      ...polylineLabelObstacles(displayPoints, 5),
       ...pointLabelObstacles(milestones, 7),
     ],
     plotLabelBounds(box),
@@ -1555,6 +1565,19 @@ export function buildCoverageGeometry(options: {
     halfCrossing,
     compositionStrip,
   };
+}
+
+export function insertCoverageTargetCrossing(
+  points: CoverageDatum[],
+  crossing: { k: number; share: number } | null,
+): CoverageDatum[] {
+  const display = points.map((point) => ({ ...point }));
+  if (crossing && crossing.k > 0 && crossing.share >= 0) {
+    const existing = display.findIndex((point) => point.k === crossing.k);
+    if (existing >= 0) display[existing] = { k: crossing.k, share: crossing.share };
+    else display.push({ k: crossing.k, share: crossing.share });
+  }
+  return display.sort((left, right) => left.k - right.k);
 }
 
 export function buildDispersionGeometry(options: {
@@ -1819,7 +1842,7 @@ export function buildDispersionPlaneGeometry(options: {
     ...(freqLog10Max >= 3 ? [{
       x: frequencyThresholdX + 6,
       y: box.margin.top + 14,
-      text: "Frequency 1,000",
+      text: "Raw frequency 1,000",
       anchor: "start" as const,
       className: "cw-plot-label-mono cw-plot-label-muted",
       fontSize: 10.5,
@@ -2022,7 +2045,7 @@ export function buildDispersionRosterGeometry(options: {
       tokenLabel: {
         x: 18,
         y: y + 4,
-        text: entry.token,
+        text: middleEllipsis(entry.token, 26),
         anchor: "start" as const,
         className: "cw-plot-roster-token",
         fontSize: 10.5,
@@ -2125,12 +2148,15 @@ export function buildDistributionDiagnosticGeometry(options: {
     left: 78,
   });
   const result = options.result;
-  const rawDomain = extent([
+  const effectiveXScale = options.metric === "mattr" ? "linear" : result.xScale;
+  const rawValues = [
     result.minimum ?? 0,
     result.maximum ?? 1,
     ...result.histogramBins.flatMap((bin) => [bin.lowerBound, bin.upperBound]),
-  ]);
-  const xKind: PlotScaleKind = options.view === "qq" ? "linear" : result.xScale;
+  ];
+  const rawDomain = extent(effectiveXScale === "log" ? rawValues.filter((value) => value > 0) : rawValues);
+  if (effectiveXScale === "log") rawDomain[0] = Math.max(1, rawDomain[0]);
+  const xKind: PlotScaleKind = options.view === "qq" ? "linear" : effectiveXScale;
   const qqXDomain = extent(result.qqPoints.map((point) => point.expectedQuantile));
   const qqYDomain = extent(result.qqPoints.map((point) => point.observedValue));
   const xScale = createScale(
@@ -2138,9 +2164,12 @@ export function buildDistributionDiagnosticGeometry(options: {
     options.view === "qq" ? qqXDomain : rawDomain,
     [box.margin.left, box.width - box.margin.right],
   );
-  const histogramMaximum = Math.max(1, ...result.histogramBins.map((bin) =>
+  const observedHistogramMaximum = Math.max(0, ...result.histogramBins.map((bin) =>
     options.yMode === "count" ? bin.count : bin.share
   ));
+  const histogramMaximum = options.yMode === "share"
+    ? pleasantShareCeiling(observedHistogramMaximum)
+    : Math.max(1, observedHistogramMaximum);
   const yScale = createScale(
     "linear",
     options.view === "qq" ? qqYDomain : [0, options.view === "histogram" ? histogramMaximum : 1],
@@ -2148,8 +2177,8 @@ export function buildDistributionDiagnosticGeometry(options: {
   );
   const bars = options.view === "histogram"
     ? result.histogramBins.map((bin, index) => {
-        const lower = result.xScale === "log" ? Math.max(1, bin.lowerBound) : bin.lowerBound;
-        const upper = result.xScale === "log" ? Math.max(lower, bin.upperBound) : bin.upperBound;
+        const lower = effectiveXScale === "log" ? Math.max(1, bin.lowerBound) : bin.lowerBound;
+        const upper = effectiveXScale === "log" ? Math.max(lower, bin.upperBound) : bin.upperBound;
         const x1 = scaleValue(xScale, lower);
         const x2 = scaleValue(xScale, upper);
         const value = options.yMode === "count" ? bin.count : bin.share;
@@ -2174,7 +2203,7 @@ export function buildDistributionDiagnosticGeometry(options: {
     : [];
   const ecdfPoints = options.view === "ecdf"
     ? result.ecdfPoints.map((point) => ({
-        x: scaleValue(xScale, result.xScale === "log" ? Math.max(1, point.value) : point.value),
+        x: scaleValue(xScale, effectiveXScale === "log" ? Math.max(1, point.value) : point.value),
         y: scaleValue(yScale, point.cumulativeShare),
         rawX: point.value,
         rawY: point.cumulativeShare,
@@ -2227,9 +2256,9 @@ export function buildDistributionDiagnosticGeometry(options: {
     : null;
   const medianLine = options.view !== "qq" && result.median !== null
     ? {
-        x1: scaleValue(xScale, result.xScale === "log" ? Math.max(1, result.median) : result.median),
+        x1: scaleValue(xScale, effectiveXScale === "log" ? Math.max(1, result.median) : result.median),
         y1: box.margin.top,
-        x2: scaleValue(xScale, result.xScale === "log" ? Math.max(1, result.median) : result.median),
+        x2: scaleValue(xScale, effectiveXScale === "log" ? Math.max(1, result.median) : result.median),
         y2: box.height - box.margin.bottom,
         className: "cw-plot-median-line",
       }
@@ -2238,10 +2267,10 @@ export function buildDistributionDiagnosticGeometry(options: {
     && result.firstQuartile !== null
     && result.thirdQuartile !== null
     ? {
-        x: scaleValue(xScale, result.xScale === "log" ? Math.max(1, result.firstQuartile) : result.firstQuartile),
+        x: scaleValue(xScale, effectiveXScale === "log" ? Math.max(1, result.firstQuartile) : result.firstQuartile),
         y: box.margin.top,
-        width: Math.max(0, scaleValue(xScale, result.xScale === "log" ? Math.max(1, result.thirdQuartile) : result.thirdQuartile)
-          - scaleValue(xScale, result.xScale === "log" ? Math.max(1, result.firstQuartile) : result.firstQuartile)),
+        width: Math.max(0, scaleValue(xScale, effectiveXScale === "log" ? Math.max(1, result.thirdQuartile) : result.thirdQuartile)
+          - scaleValue(xScale, effectiveXScale === "log" ? Math.max(1, result.firstQuartile) : result.firstQuartile)),
         height: box.innerHeight,
         className: "cw-plot-iqr-band",
       }
@@ -2335,6 +2364,16 @@ export function buildDistributionDiagnosticGeometry(options: {
         pinnedKeys: options.pinnedKeys,
       })
     : null;
+  const zeroTokenCount = options.metric === "documentLength" && effectiveXScale === "log"
+    ? Math.max(0, ...result.ecdfPoints.filter((point) => point.value === 0).map((point) => point.cumulativeCount))
+    : 0;
+  const zeroTokenSummary = zeroTokenCount > 0 && options.view !== "qq" ? {
+    count: zeroTokenCount,
+    x: 8,
+    y: box.margin.top + 8,
+    width: Math.max(54, box.margin.left - 16),
+    height: 34,
+  } : null;
   const xTicks = options.view === "qq"
     ? linearTicks(xScale, 6)
     : xScale.kind === "log" ? logTicks(xScale) : linearTicks(xScale, 6);
@@ -2371,7 +2410,14 @@ export function buildDistributionDiagnosticGeometry(options: {
         ]
       : [],
     compositionStrip,
+    zeroTokenSummary,
   };
+}
+
+export function pleasantShareCeiling(observedMaximum: number): number {
+  if (!(observedMaximum > 0)) return 0.1;
+  if (observedMaximum >= 0.95) return 1;
+  return Math.min(1, niceNumber(observedMaximum * 1.05, false));
 }
 
 function pointsToStepPath(points: Array<{ x: number; y: number }>): string {
@@ -3143,6 +3189,8 @@ function fitPointsForRank(
     zipfCoefficient: number | null;
     fittedRankStart: number | null;
     fittedRankEnd: number | null;
+    yMode: "rate" | "raw";
+    totalTokens: number;
   },
   xScale: PlotScale,
   yScale: PlotScale,
@@ -3163,25 +3211,23 @@ function fitPointsForRank(
     const raw = options.zipfCoefficient === null || options.zipfExponent === null
       ? 0
       : options.zipfCoefficient * (rank ** -options.zipfExponent);
+    const value = options.yMode === "rate" && options.totalTokens > 0
+      ? raw / options.totalTokens * 1_000_000
+      : raw;
     return {
       x: scaleValue(xScale, rank),
-      y: scaleValue(yScale, raw),
+      y: scaleValue(yScale, value),
     };
   });
 }
 
-function rankFrequencyTicks(scale: PlotScale, mode: "rate" | "raw", totalTokens: number): PlotTick[] {
-  return logTicks(scale).map((tick) => ({
-    ...tick,
-    label: !tick.major || mode === "raw"
-      ? tick.label
-      : formatRatePerMillion(tick.value, totalTokens),
-  }));
+function rankCurveValue(point: RankFrequencyDatum, mode: "rate" | "raw"): number {
+  return mode === "rate" ? point.ratePerMillion : point.frequency;
 }
 
-function formatRatePerMillion(frequency: number, totalTokens: number): string {
-  if (totalTokens <= 0) return "0";
-  return formatTickNumber(frequency / totalTokens * 1_000_000);
+function formatResidualTick(value: number): string {
+  if (Math.abs(value) < 1e-12) return "0";
+  return value.toLocaleString("en-US", { maximumFractionDigits: 6, minimumFractionDigits: 4 });
 }
 
 function labelRequestForExactFrequency(
