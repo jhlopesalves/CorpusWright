@@ -14,7 +14,6 @@ pub mod project;
 pub mod sources;
 pub mod support;
 pub mod text;
-pub mod tooling;
 
 // These aliases preserve the established module paths while the domain namespaces become the
 // canonical architecture. Downstream crates can migrate deliberately without an IPC or API break.
@@ -32,7 +31,6 @@ pub use sources::pdf::{audit as pdf_audit, ocr as pdf_ocr, quality as pdf_qualit
 pub use sources::{cache, decode, docx, html, structured_document};
 pub use support::hash;
 pub use text::{language, profile as text_profile, tokenisation as tokenization};
-pub use tooling::documentation_corpus;
 
 pub use analysis::{
     AnalysisDocumentSelection, AnnotatedFrequencyMode, AnnotatedFrequencyQuery,

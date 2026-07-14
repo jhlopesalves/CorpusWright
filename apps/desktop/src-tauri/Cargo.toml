@@ -25,3 +25,6 @@ corpuswright-core = { path = "../../../crates/corpuswright-core" }
 tauri-plugin-dialog = "2.7.1"
 rayon = { workspace = true }
 jiff = "0.2"
+
+[dev-dependencies]
+corpuswright-test-support = { path = "../../../crates/corpuswright-test-support" }

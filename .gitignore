@@ -98,12 +98,17 @@ logs/
 *.sqlite
 *.sqlite3
 
-# Local/private corpus data
+# Local/private corpus data. These are repository-root data boundaries; document extensions remain
+# trackable everywhere else so legitimate software assets cannot disappear silently.
+/examples/corpora/
+/.local-data/
+/.local-corpora/
+/local-corpora/
+/manual-corpora/
+/sample-corpora-local/
+/test-corpora/
+/documentation-corpus-local/
 coragrarian/
-.local-corpora/
-local-corpora/
-manual-corpora/
-sample-corpora-local/
 crates/corpuswright-core/tests/fixtures/non-tracked/
 
 # Editors and IDEs

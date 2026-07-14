@@ -800,6 +800,7 @@ dependencies = [
  "anyhow",
  "cc",
  "chrono",
+ "corpuswright-test-support",
  "csv",
  "encoding_rs",
  "html2text",
@@ -832,6 +833,7 @@ name = "corpuswright-desktop"
 version = "0.1.0-alpha.8"
 dependencies = [
  "corpuswright-core",
+ "corpuswright-test-support",
  "jiff",
  "rayon",
  "serde",
@@ -840,6 +842,17 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
+]
+
+[[package]]
+name = "corpuswright-test-support"
+version = "0.1.0"
+dependencies = [
+ "lopdf",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "zip",
 ]
 
 [[package]]

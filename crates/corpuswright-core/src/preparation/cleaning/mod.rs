@@ -3680,17 +3680,7 @@ mod tests {
 
     #[test]
     fn tests_combined_dirty_fixture() {
-        let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests")
-            .join("fixtures")
-            .join("dirty.txt");
-
-        // Some ad-hoc test runs omit fixtures; this assertion only runs when the file exists.
-        if !fixture_path.exists() {
-            return;
-        }
-
-        let dirty_content = std::fs::read_to_string(fixture_path).unwrap();
+        let dirty_content = corpuswright_test_support::dirty_text_fixture();
 
         let config = CleaningConfig {
             lowercase: true,
@@ -3703,7 +3693,7 @@ mod tests {
             ..CleaningConfig::default()
         };
 
-        let cleaned = clean_text(&dirty_content, &config);
+        let cleaned = clean_text(dirty_content, &config);
 
         assert!(!cleaned.contains("THIS IS UPPERCASE TEXT."));
         assert!(cleaned.contains("this is uppercase text."));
@@ -3717,18 +3707,9 @@ mod tests {
 
     #[test]
     fn tests_default_config_leaves_clean_text_unchanged() {
-        let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests")
-            .join("fixtures")
-            .join("clean.txt");
-
-        if !fixture_path.exists() {
-            return;
-        }
-
-        let clean_content = std::fs::read_to_string(fixture_path).unwrap();
+        let clean_content = corpuswright_test_support::clean_text_fixture();
         let config = CleaningConfig::default();
-        let cleaned = clean_text(&clean_content, &config);
+        let cleaned = clean_text(clean_content, &config);
 
         assert_eq!(cleaned, clean_content);
     }
