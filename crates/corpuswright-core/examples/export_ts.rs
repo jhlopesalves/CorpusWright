@@ -35,46 +35,50 @@ use corpuswright_core::analysis::{
     PosFrequencyRow, RankFrequencyPoint, SortDirection, TermDistributionItem, TermDistributionPage,
     UniversalType, VocabularyGrowthPoint,
 };
-use corpuswright_core::clean::{
+use corpuswright_core::corpus::preview::{
+    CombinedPreview, FilePreview, PreviewWarning, PreviewWarningKind,
+};
+use corpuswright_core::corpus::search::{SearchHit, SearchResult};
+use corpuswright_core::corpus::{
+    CorpusSummary, DocumentRecord, DocumentType, DocumentTypeCounts, ScanReport,
+};
+use corpuswright_core::export::manifest::{ExportManifest, ManifestFileRecord};
+use corpuswright_core::export::{ExportReport, ExportWarning, ExportWarningKind};
+use corpuswright_core::preparation::cleaning::{
     CleaningConfig, CleaningCount, CleaningOperation, CleaningReport, PdfEmbeddedTextStrategy,
     PdfOcrQuality, PdfTextSource, ReasonCount, RemovalMatcher, RemovalRule, RemovalRuleSource,
     RemovalScope, RemovalSummary, RemovedTextExample, ReplacementRule, SkippedRuleNotice,
     TableExtractionStrategy,
 };
-use corpuswright_core::decode::{DecodeStrategy, SourceEncoding};
-use corpuswright_core::export::{ExportReport, ExportWarning, ExportWarningKind};
-use corpuswright_core::language::{
-    DetectedLanguage, DocumentLanguage, LanguageResolution, ProjectLanguage,
-};
-use corpuswright_core::manifest::{ExportManifest, ManifestFileRecord};
-use corpuswright_core::pdf::{PdfPageExtractionMethod, PdfPageRangePage, PdfPageRangeResult};
-use corpuswright_core::pdf_audit::{PdfAuditQuality, PdfAuditResult, PdfAuditSuggestedProfile};
-use corpuswright_core::preview::{
-    CombinedPreview, FilePreview, PreviewWarning, PreviewWarningKind,
-};
-use corpuswright_core::project::{ActiveProject, CreateCorpusProjectRequest};
-use corpuswright_core::project_sources::{
-    ProjectSource, ProjectSourceExtractionRoute, ProjectSourceImportPolicy,
-    ProjectSourceImportReview, ProjectSourceKind, ProjectSourceKindCounts, ProjectSourceManifest,
-    ProjectSourcePage, ProjectSourcePdfProfile, ProjectSourcePreviewItem,
-    ProjectSourcePreviewViewport, ProjectSourceSelectionDescriptor, ProjectSourceSelectionViewport,
-    ProjectSourceStatus, ProjectSourceStatusCounts, ProjectSourceSummary, ProjectSourceUpdate,
-};
-use corpuswright_core::repeated_artifact_promotion::{
+use corpuswright_core::preparation::repeated_artifacts::promotion::{
     RepeatedArtifactMatcherKind, RepeatedArtifactPromotion,
 };
-use corpuswright_core::repeated_artifacts::{
+use corpuswright_core::preparation::repeated_artifacts::{
     ArtifactRiskLabel, CandidateContentClass, CandidateTextProfile, CandidateTextSignalLabel,
     PositionSummary, RepeatedArtifactCandidate, RepeatedArtifactExample, RepeatedArtifactKind,
     RepeatedArtifactMemoryStage, RepeatedArtifactScanConfig, RepeatedArtifactScanDiagnostics,
     RepeatedArtifactScanError, RepeatedArtifactScanPhase, RepeatedArtifactScanProgress,
     RepeatedArtifactScanReport,
 };
-use corpuswright_core::scan::{
-    CorpusSummary, DocumentRecord, DocumentType, DocumentTypeCounts, ScanReport,
+use corpuswright_core::project::sources::{
+    ProjectSource, ProjectSourceExtractionRoute, ProjectSourceImportPolicy,
+    ProjectSourceImportReview, ProjectSourceKind, ProjectSourceKindCounts, ProjectSourceManifest,
+    ProjectSourcePage, ProjectSourcePdfProfile, ProjectSourcePreviewItem,
+    ProjectSourcePreviewViewport, ProjectSourceSelectionDescriptor, ProjectSourceSelectionViewport,
+    ProjectSourceStatus, ProjectSourceStatusCounts, ProjectSourceSummary, ProjectSourceUpdate,
 };
-use corpuswright_core::search::{SearchHit, SearchResult};
-use corpuswright_core::tokenization::{
+use corpuswright_core::project::{ActiveProject, CreateCorpusProjectRequest};
+use corpuswright_core::sources::decode::{DecodeStrategy, SourceEncoding};
+use corpuswright_core::sources::pdf::audit::{
+    PdfAuditQuality, PdfAuditResult, PdfAuditSuggestedProfile,
+};
+use corpuswright_core::sources::pdf::{
+    PdfPageExtractionMethod, PdfPageRangePage, PdfPageRangeResult,
+};
+use corpuswright_core::text::language::{
+    DetectedLanguage, DocumentLanguage, LanguageResolution, ProjectLanguage,
+};
+use corpuswright_core::text::tokenisation::{
     TokenizationConfig, TokenizationManifest, UnicodeNormalizationForm,
 };
 

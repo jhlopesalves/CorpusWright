@@ -17,6 +17,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tauri::{Emitter, Window};
@@ -206,19 +207,26 @@ pub(crate) fn pdf_intake_file_name(record: &DocumentRecord) -> String {
 pub(crate) const DEFAULT_OCR_WORKERS: usize = 3;
 pub(crate) const MAX_INTERNAL_OCR_WORKERS: usize = 5;
 
-pub(crate) fn configured_ocr_worker_count() -> usize {
-    let available = std::thread::available_parallelism()
-        .map(|count| count.get())
-        .unwrap_or(DEFAULT_OCR_WORKERS)
-        .max(1);
-    let default_workers = DEFAULT_OCR_WORKERS.min(available).max(1);
+static CONFIGURED_OCR_WORKERS: OnceLock<usize> = OnceLock::new();
 
-    std::env::var("CORPUSWRIGHT_OCR_WORKERS")
-        .ok()
-        .and_then(|value| value.trim().parse::<usize>().ok())
-        .filter(|value| *value > 0)
-        .map(|value| value.min(MAX_INTERNAL_OCR_WORKERS).min(available).max(1))
-        .unwrap_or(default_workers)
+pub(crate) fn install_ocr_worker_count(worker_count: usize) -> Result<(), usize> {
+    CONFIGURED_OCR_WORKERS.set(worker_count)
+}
+
+pub(crate) fn configured_ocr_worker_count() -> usize {
+    *CONFIGURED_OCR_WORKERS.get_or_init(|| {
+        let available = std::thread::available_parallelism()
+            .map(std::num::NonZeroUsize::get)
+            .unwrap_or(DEFAULT_OCR_WORKERS)
+            .max(1);
+        let default_workers = DEFAULT_OCR_WORKERS.min(available).max(1);
+        std::env::var("CORPUSWRIGHT_OCR_WORKERS")
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .filter(|value| *value > 0)
+            .map(|value| value.min(MAX_INTERNAL_OCR_WORKERS).min(available).max(1))
+            .unwrap_or(default_workers)
+    })
 }
 
 pub(crate) fn duration_ms(duration: Duration) -> u64 {
