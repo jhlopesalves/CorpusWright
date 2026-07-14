@@ -77,7 +77,7 @@ function main() {
     .map((workflowPath) => readFileSync(workflowPath, "utf8"))
     .join("\n");
   if (/releases\/latest\/download/i.test(workflows)) {
-    fail("A workflow uses the mutable releases/latest/download endpoint");
+    fail("A workflow uses the mutable latest-release download endpoint");
   }
   if (/bblanchon\/pdfium-binaries|pdfium-(?:linux|mac|win)-[^\s\"']+\.tgz/i.test(workflows)) {
     fail("A workflow bypasses scripts/fetch-pdfium.cjs with a direct PDFium asset reference");

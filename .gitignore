@@ -79,6 +79,9 @@ target/
 
 # Node/Web dependencies
 node_modules/
+# There is no Node package at the repository root. Nested package lockfiles are
+# intentional and remain trackable.
+/package-lock.json
 
 # Logs and temporary files
 logs/

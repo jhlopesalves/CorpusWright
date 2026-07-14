@@ -12,7 +12,7 @@ This document covers test organisation, fixture policy, and how to run the test 
 
 ### Small Public Demo Corpus
 
-- **Location:** `examples/corpora/public-domain-demo/`
+- **Location:** `examples/corpora/public-domain/`
 - **Purpose:** A safe, public-domain corpus tracked in Git that contributors and users can manually load into the CorpusWright desktop application to experiment with parameters.
 - **Policy:** This corpus should contain only synthetic random text or completely verifiable public-domain text. No copyrighted material or large files.
 
@@ -52,7 +52,7 @@ npm run build
 After building, run the desktop app and verify basic functionality:
 
 1. Open the app and click **File > Open Corpus Directory**.
-2. Select the `examples/corpora/public-domain-demo/` folder.
+2. Select the `examples/corpora/public-domain/` folder.
 3. Open the **Process > Cleaning Settings** modal and toggle the options.
-4. Check the **Processed Text** preview tab to confirm that the synthetic artefacts in the `dirty/` subfolder are properly removed.
+4. Check the **Processed Text** preview tab to confirm that the injected synthetic artefacts in the demo files are properly removed.
 5. Save the processed corpus and ensure the manifest and texts are correctly exported to a temporary output folder.
