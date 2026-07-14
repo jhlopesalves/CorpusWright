@@ -165,10 +165,14 @@ function validateTestingGuidePaths() {
   const filePath = path.join(ROOT, "docs", "contributing", "testing.md");
   const text = fs.readFileSync(filePath, "utf8");
   const intentionallyLocal = new Set([
+    "examples/corpora/",
+    ".local-data/",
     ".local-corpora/",
     "local-corpora/",
     "manual-corpora/",
     "sample-corpora-local/",
+    "test-corpora/",
+    "documentation-corpus-local/",
     "coragrarian/",
   ]);
   for (const codeSpan of text.matchAll(/`([^`\r\n]+)`/g)) {

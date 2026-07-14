@@ -16,7 +16,7 @@
     "check:style-ownership": "node scripts/check-style-ownership.mjs",
     "check:visual-contracts": "node scripts/check-visual-contracts.mjs",
     "capture:overview-curation": "node scripts/capture-overview-curation.mjs",
-    "capture:documentation-corpus": "node scripts/capture-documentation-corpus-dossier.mjs",
+    "capture:local-dossier": "node scripts/capture-local-corpus-dossier.mjs",
     "check:overview-rendering-recovery": "node scripts/capture-overview-curation.mjs --rendering-recovery",
     "check:overview-distribution-dispersion-cleanup": "node scripts/capture-overview-curation.mjs --distribution-dispersion-cleanup",
     "check:overview-legibility-and-dispersion-plane": "node scripts/capture-overview-curation.mjs --overview-legibility-and-dispersion-plane",

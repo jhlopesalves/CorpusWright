@@ -2,6 +2,7 @@
 members = [
     "crates/corpuswright-core",
     "crates/corpuswright-test-support",
+    "crates/corpuswright-xtask",
     "apps/desktop/src-tauri",
 ]
 exclude = ["legacy/pyside/rust_preview"]

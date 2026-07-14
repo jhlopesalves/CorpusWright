@@ -68,7 +68,7 @@ const response = await fetch(payloadUrl);
 if (!response.ok) throw new Error(`Unable to load dossier payload: HTTP ${response.status}`);
 const payload = await response.json() as DossierPayload;
 if (payload.schemaVersion !== 1 || payload.overview.documentCount < 1) {
-  throw new Error("Invalid documentation corpus dossier payload");
+  throw new Error("Invalid local corpus dossier payload");
 }
 
 const root = document.querySelector<HTMLElement>("#suite-root")!;
@@ -122,8 +122,8 @@ if (exportMode && errors.length === 0) {
   if (hasUnresolvedCssVariables(source) || hasNonPortableSvgPaint(source)) {
     throw new Error("Standalone SVG contains non-portable paint");
   }
-  (globalThis as typeof globalThis & { documentationCorpusExportSvg?: string })
-    .documentationCorpusExportSvg = source;
+  (globalThis as typeof globalThis & { localCorpusDossierExportSvg?: string })
+    .localCorpusDossierExportSvg = source;
   document.body.dataset.exportReady = "true";
 }
 
@@ -156,7 +156,7 @@ function buildDistributionFigure(
   return createOverviewFigure({
     id,
     title: isLength ? "Document-length distribution" : "MATTR distribution",
-    subtitle: isLength ? "How unevenly is the documentation corpus divided among books?" : "How much does lexical diversity vary between accepted books?",
+    subtitle: isLength ? "How unevenly is this local corpus divided among documents?" : "How much does lexical diversity vary between documents?",
     captionStats: isLength
       ? `${data.overview.documentCount} documents · median ${formatNumber(result.median)} tokens`
       : `${result.population} eligible documents · window ${data.overview.lexicalSpectrum.mattrWindow}`,
@@ -303,7 +303,7 @@ function buildProfileFigure(corpus: CorpusOverview): HTMLElement {
   return createOverviewFigure({
     id,
     title: "Dispersion profile",
-    subtitle: "How widely across accepted books does the vocabulary reach?",
+    subtitle: "How widely across local documents does the vocabulary reach?",
     captionStats: `${formatNumber(corpus.totals.types)} types · ${buckets.length} exclusive reach bands · ${formatNumber(dispersion.dfAtLeast90pctCount)} reach at least 90%`,
     captionReading: "Profile bands are mutually exclusive; the ≥90% callout is cumulative and reach is distinct from raw frequency.",
     controller: state,
@@ -329,7 +329,7 @@ function buildPlaneFigure(corpus: CorpusOverview): HTMLElement {
   return createOverviewFigure({
     id,
     title: "Dispersion plane",
-    subtitle: "Which types are frequent, and which are evenly distributed across books?",
+    subtitle: "Which types are frequent, and which are evenly distributed across documents?",
     captionStats: `${formatNumber(corpus.totals.types)} types · ${plane.xBins}×${plane.yBins} grid · ${plane.loudButLocalCount} loud-but-local types`,
     captionReading: "Density is the count of types in a frequency–DP region; labelled witnesses are reproducible selected examples.",
     controller: state,
