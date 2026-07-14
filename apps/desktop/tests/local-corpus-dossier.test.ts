@@ -5,15 +5,15 @@ import test from "node:test";
 
 const root = process.cwd();
 const capture = readFileSync(
-  join(root, "apps/desktop/scripts/capture-documentation-corpus-dossier.mjs"),
+  join(root, "apps/desktop/scripts/capture-local-corpus-dossier.mjs"),
   "utf8",
 );
 const fixture = readFileSync(
-  join(root, "apps/desktop/tests/visual/documentation-corpus-fixture.ts"),
+  join(root, "apps/desktop/tests/visual/local-corpus-dossier-fixture.ts"),
   "utf8",
 );
 
-test("documentation dossier captures every required witness in light and dark", () => {
+test("local dossier captures every required witness in light and dark", () => {
   const witnesses = [...capture.matchAll(/witness\("([^"]+)"/g)].map((match) => match[1]);
   assert.equal(witnesses.length, 12);
   assert.equal(new Set(witnesses).size, 12);
@@ -37,7 +37,7 @@ test("documentation dossier captures every required witness in light and dark", 
   assert.match(capture, /theme === "light" \? "corpus-light" : "corpus-dark"/);
 });
 
-test("documentation dossier uses real plotting and standalone export paths", () => {
+test("local dossier uses real plotting and standalone export paths", () => {
   for (const symbol of [
     "buildDistributionDiagnosticGeometry",
     "buildRankFrequencyGeometry",

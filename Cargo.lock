@@ -856,6 +856,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "corpuswright-xtask"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "corpuswright-core",
+ "corpuswright-test-support",
+ "serde_json",
+]
+
+[[package]]
 name = "counter"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

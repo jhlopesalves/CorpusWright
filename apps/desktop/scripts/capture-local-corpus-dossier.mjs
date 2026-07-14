@@ -1,5 +1,5 @@
 /**
- * Captures the documentation-corpus figure dossier through the real plot and export pipeline.
+ * Captures a local-corpus figure dossier through the real plot and export pipeline.
  *
  * Every witness is rendered in both corpus themes, validated as standalone SVG, and rasterised at
  * its native viewBox size. The resulting manifest records the evidence inspected by qualification.
@@ -10,10 +10,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 
-const dossierDirectory = process.env.CORPUSWRIGHT_DOCUMENTATION_DOSSIER
-  ?? "/tmp/corpuswright-documentation-corpus-dossier";
+const dossierDirectory = process.env.CORPUSWRIGHT_LOCAL_DOSSIER
+  ?? "/tmp/corpuswright-local-corpus-dossier";
 const payloadPath = join(dossierDirectory, "dossier.json");
-const baseUrl = "http://127.0.0.1:4179/tests/visual/documentation-corpus-fixture.html";
+const baseUrl = "http://127.0.0.1:4179/tests/visual/local-corpus-dossier-fixture.html";
 const payloadUrl = "http://127.0.0.1:4180/dossier.json";
 const chromeBinary = process.env.CHROME_BIN ?? "google-chrome";
 const ffmpegBinary = process.env.FFMPEG_BIN ?? "ffmpeg";
@@ -65,7 +65,7 @@ const vite = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", 
   stdio: "ignore",
   detached: true,
 });
-const chromeProfile = mkdtempSync(join(tmpdir(), "corpuswright-documentation-chrome-"));
+const chromeProfile = mkdtempSync(join(tmpdir(), "corpuswright-local-dossier-chrome-"));
 let chrome;
 try {
   await waitForServer(baseUrl);
@@ -86,7 +86,7 @@ try {
         const result = await navigateAndWait(cdp, page.sessionId, url);
         await settlePaint(cdp, page.sessionId);
         const evaluated = await cdp.send("Runtime.evaluate", {
-          expression: "globalThis.documentationCorpusExportSvg ?? ''",
+          expression: "globalThis.localCorpusDossierExportSvg ?? ''",
           returnByValue: true,
         }, page.sessionId);
         const source = evaluated.result.value;
@@ -96,8 +96,8 @@ try {
         writeFileSync(svgPath, source);
         const rasterSourceResult = await cdp.send("Runtime.evaluate", {
           expression: `(() => {
-            const source = globalThis.documentationCorpusExportSvg;
-            if (!source) throw new Error("Missing documentation corpus standalone SVG");
+            const source = globalThis.localCorpusDossierExportSvg;
+            if (!source) throw new Error("Missing local corpus standalone SVG");
             const parsed = new DOMParser().parseFromString(source, "image/svg+xml");
             const svg = parsed.documentElement;
             const background = svg.querySelector(".cw-plot-export-background");
@@ -173,7 +173,6 @@ try {
   }
   const report = {
     schemaVersion: 1,
-    generatedAt: new Date().toISOString(),
     renderer: "CorpusWright plot model, measured layout, SVG renderer, theme tokens, standalone exporter",
     pngRasterizer: "FFmpeg with librsvg at the native standalone-SVG viewBox size",
     corpusPayload: payloadPath,
@@ -185,7 +184,7 @@ try {
   writeFileSync(join(dossierDirectory, "figures/manifest.json"), `${JSON.stringify(report, null, 2)}\n`);
   writeFileSync(join(outputDirectories.logs, "figure-capture.log"), `PASS ${manifest.length} witnesses\n`);
   await cdp.send("Browser.close");
-  process.stdout.write(`documentation corpus figure dossier passed: ${manifest.length} real witnesses\n`);
+  process.stdout.write(`local corpus figure dossier passed: ${manifest.length} real witnesses\n`);
 } finally {
   try { process.kill(-vite.pid, "SIGTERM"); } catch { /* Vite already stopped. */ }
   chrome?.kill("SIGTERM");
@@ -273,7 +272,7 @@ async function waitForServer(url) {
     }
     await delay(100);
   }
-  throw new Error("Timed out waiting for documentation corpus visual fixture");
+  throw new Error("Timed out waiting for local corpus visual fixture");
 }
 
 async function launchChrome(profile) {
