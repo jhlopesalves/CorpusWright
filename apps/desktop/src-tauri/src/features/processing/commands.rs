@@ -1,4 +1,28 @@
-use crate::*;
+use crate::features::analysis::state::AnalysisState;
+use crate::features::concordance::state::ConcordanceIndexContextState;
+use crate::features::corpus::scanning_state::ScanState;
+use crate::features::corpus::state::CorpusState;
+use crate::features::pdf::service::pdf_intake_file_name;
+use crate::features::project;
+use corpuswright_core::export::{ExportError, ExportOptions, ExportReport, export_corpus};
+use corpuswright_core::preparation::cleaning::CleaningConfig;
+use corpuswright_core::preparation::repeated_artifacts::{
+    RepeatedArtifactScanConfig, RepeatedArtifactScanError, RepeatedArtifactScanReport,
+    scan_repeated_artifacts_report_with_cancel_cache_and_progress,
+};
+use corpuswright_core::project::sources::{
+    ProjectSourceProcessingResult, ProjectSourceSelectionDescriptor,
+    update_project_source_processing_results,
+};
+use corpuswright_core::sources::cache::{
+    DocumentTextMode, ExtractionCache, document_text_for_record,
+};
+use serde::Serialize;
+use std::path::PathBuf;
+use std::sync::atomic::Ordering;
+use tauri::{Emitter, Window};
+
+use super::project::{process_failure_reason, processed_text_path, records_for_project_processing};
 
 #[derive(Clone, Serialize)]
 pub(crate) struct ExportProgress {
@@ -233,7 +257,7 @@ pub(crate) fn scan_repeated_artifacts_command(
     };
     // A previous cancellation must not leak into the next scan.
     state.cancel.store(false, Ordering::Relaxed);
-    corpuswright_core::repeated_artifacts::scan_repeated_artifacts_report_with_cancel_cache_and_progress(
+    scan_repeated_artifacts_report_with_cancel_cache_and_progress(
         &records,
         &config,
         &cleaning_config,

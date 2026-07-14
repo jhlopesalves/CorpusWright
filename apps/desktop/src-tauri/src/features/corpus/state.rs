@@ -1,4 +1,8 @@
-use crate::*;
+use corpuswright_core::corpus::{DocumentRecord, ScanReport};
+use serde::Serialize;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 
 pub(crate) struct CorpusStateInner {
     pub(crate) version: u64,
@@ -205,6 +209,11 @@ pub(crate) struct CorpusLoadResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use corpuswright_core::corpus::DocumentType;
+    use corpuswright_core::preparation::cleaning::PdfOcrQuality;
+    use corpuswright_core::project::sources::{
+        ProjectSourceExtractionRoute, ProjectSourcePdfProfile,
+    };
 
     fn pdf_record(
         name: &str,

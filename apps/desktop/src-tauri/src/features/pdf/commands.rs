@@ -1,4 +1,32 @@
-use crate::*;
+use crate::features::concordance::state::{
+    ConcordanceCollocationCache, ConcordanceIndexContextState,
+};
+use crate::features::corpus::state::{CorpusLoadResult, CorpusState};
+use crate::features::project;
+use crate::features::sources::persist_project_source_text_cache;
+use corpuswright_core::corpus::{DocumentType, load_files};
+use corpuswright_core::preparation::cleaning::{CleaningConfig, PdfOcrQuality, PdfTextSource};
+use corpuswright_core::project::sources::{
+    ProjectSourceExtractionResult, ProjectSourceKind, ProjectSourcePdfProfile,
+    update_project_source_extraction_results,
+};
+use corpuswright_core::sources::cache::ExtractionCache;
+use corpuswright_core::sources::pdf::audit::{PdfAuditResult, audit_pdf_files};
+use corpuswright_core::sources::pdf::{
+    PdfExtractionOptions, PdfPageRangeResult, extract_pdf_page_range,
+};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::atomic::Ordering;
+use tauri::Window;
+
+use super::service::{
+    apply_cleaning_to_page_range, canonical_or_original, extraction_reason_codes_for_warnings,
+    materialize_pdf_record, pdf_intake_cancelled_message, pdf_page_range_cache_key,
+    project_pdf_extraction_failure_reason, project_pdf_preparation_batch_label,
+    project_pdf_preparation_plan, record_with_preparation_profile, selected_record_by_path,
+};
+use super::state::{PdfIntakeState, PdfPageRangeCache};
 
 #[tauri::command(async)]
 pub(crate) fn audit_pdf_files_command(paths: Vec<String>) -> Result<Vec<PdfAuditResult>, String> {

@@ -1,4 +1,5 @@
-use crate::*;
+use crate::platform;
+use tauri::Window;
 
 #[tauri::command]
 pub(crate) fn set_window_titlebar_color(window: Window, color: String) -> Result<(), String> {
