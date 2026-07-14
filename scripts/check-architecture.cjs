@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { execFileSync } = require("node:child_process");
+const { execFileSync, spawnSync } = require("node:child_process");
 const { readFileSync } = require("node:fs");
 const { extname } = require("node:path");
 
@@ -82,13 +82,25 @@ if (/corpuswright-test-support\s*=/.test(manifestSection(desktopManifest, "depen
   failures.push("desktop runtime must not depend on corpuswright-test-support");
 }
 
-const legacyChanges = execFileSync(
-  "git",
-  ["diff", "--name-only", "main...HEAD", "--", "legacy/pyside"],
-  { cwd: root, encoding: "utf8" },
-).trim();
-if (legacyChanges) {
-  failures.push(`legacy/pyside must remain untouched:\n${legacyChanges}`);
+const comparisonBase = ["main", "origin/main"].find((candidate) =>
+  spawnSync("git", ["rev-parse", "--verify", "--quiet", candidate], {
+    cwd: root,
+    stdio: "ignore",
+  }).status === 0,
+);
+if (!comparisonBase) {
+  failures.push(
+    "legacy/pyside policy requires a complete checkout containing main or origin/main",
+  );
+} else {
+  const legacyChanges = execFileSync(
+    "git",
+    ["diff", "--name-only", `${comparisonBase}...HEAD`, "--", "legacy/pyside"],
+    { cwd: root, encoding: "utf8" },
+  ).trim();
+  if (legacyChanges) {
+    failures.push(`legacy/pyside must remain untouched:\n${legacyChanges}`);
+  }
 }
 
 if (failures.length > 0) {
