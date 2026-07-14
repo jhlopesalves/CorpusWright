@@ -99,8 +99,8 @@ cargo check -p corpuswright-desktop --all-targets
 ```
 
 Reference documentation lives in [`docs/`](docs/), starting with
-[corpus projects](docs/corpus-projects.md) and
-[supported formats](docs/supported-formats.md).
+[corpus projects](docs/reference/corpus-projects.md) and
+[supported formats](docs/reference/supported-formats.md).
 
 ## Status
 

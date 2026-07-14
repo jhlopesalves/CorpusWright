@@ -112,10 +112,6 @@ function listLiveDocumentation() {
       if (!entry.isFile() || !/\.(?:html|md)$/i.test(entry.name)) {
         continue;
       }
-      // This is a retained historical cleanup record, not live release copy.
-      if (relativePath === "docs/release-cleanup-alpha-3.md") {
-        continue;
-      }
       files.push(relativePath);
     }
   }
