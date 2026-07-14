@@ -1,3 +1,9 @@
+//! Exports a reproducible processed corpus with provenance and content hashes.
+//!
+//! Output paths are allocated in corpus order before parallel processing. The manifest retains
+//! source and processed identities, preparation configuration, decode policy, tokenisation, and
+//! warnings required to audit the exported snapshot.
+
 pub mod manifest;
 
 use crate::corpus::{DocumentRecord, DocumentType};
@@ -122,7 +128,8 @@ pub fn export_corpus(
         message: error.to_string(),
     })?;
 
-    // Pre-compute relative output paths, tracking collisions across all records
+    // Output paths are allocated in corpus order before workers start. Collision suffixes therefore
+    // depend on stable document identity and remain reproducible across Rayon schedules.
     let mut used_paths = HashSet::new();
     let mut relative_output_paths = Vec::with_capacity(records.len());
     for record in records.iter() {
@@ -133,6 +140,8 @@ pub fn export_corpus(
     use std::sync::atomic::{AtomicUsize, Ordering};
     let processed_count = AtomicUsize::new(0);
 
+    // Documents are independent after path allocation. Each worker returns one manifest record and
+    // local warnings; indexed collection restores corpus order without synchronising extraction.
     let results: Result<Vec<(ManifestFileRecord, Vec<ExportWarning>)>, ExportError> = records
         .par_iter()
         .zip(relative_output_paths.par_iter())

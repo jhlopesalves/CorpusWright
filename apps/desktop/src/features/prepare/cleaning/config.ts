@@ -1,3 +1,8 @@
+/**
+ * Defines the frontend defaults and migration boundary for Rust-owned cleaning configuration.
+ *
+ * Every persisted or imported value is normalised here before feature controllers use it.
+ */
 import type {
   CleaningConfig,
   PdfEmbeddedTextStrategy,

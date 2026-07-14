@@ -1,3 +1,8 @@
+//! Routes Concordance and Collocates between scan and persisted-index backends.
+//!
+//! The service owns fallback policy, warm index contexts, parity audit, and timing evidence. Tauri
+//! commands provide records and progress sinks; analytical execution remains in the core crate.
+
 use corpuswright_core::analysis::{
     ConcordanceBackend, ConcordanceBackendUsed, ConcordanceCollocationAggregate,
     ConcordanceCollocationQuery, ConcordanceDocument, ConcordanceFallbackReason, ConcordanceQuery,

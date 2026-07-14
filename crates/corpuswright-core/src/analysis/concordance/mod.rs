@@ -1,3 +1,9 @@
+//! Executes bounded KWIC queries through scan and persisted-index routes.
+//!
+//! Both routes share token identity, filtering, ordering, and pagination contracts. The search
+//! context owns index reuse; callers receive the backend and fallback evidence needed to diagnose
+//! routing without exposing the index representation.
+
 pub mod index;
 
 use super::build::AnalysisDocumentSelection;
@@ -511,9 +517,10 @@ impl std::error::Error for ConcordanceError {
 }
 
 impl ConcordanceError {
-    /// The inherited scan implementation still materialises all hits. Until it
-    /// is replaced by the shared bounded collector, resource and cancellation
-    /// failures must fail closed instead of entering that fallback.
+    /// Identifies failures that terminate backend routing.
+    ///
+    /// The scan route can materialise the complete hit set. Resource and cancellation failures
+    /// therefore remain terminal so a rejected indexed request cannot start a larger allocation.
     pub fn prevents_unbounded_scan_fallback(&self) -> bool {
         matches!(self, Self::AnalysisMemoryLimitExceeded { .. })
             || matches!(self, Self::Index(error) if error.is_resource_or_cancellation())

@@ -1,3 +1,8 @@
+//! Adapts Tauri analysis requests to core builds and bounded queries.
+//!
+//! Commands own state extraction, build generations, cancellation, progress events, and response
+//! serialisation. Corpus construction and analytical definitions remain core responsibilities.
+
 use crate::features::corpus::state::CorpusState;
 use crate::features::pdf::service::duration_ms;
 use crate::features::project;
@@ -243,6 +248,8 @@ pub(crate) async fn build_analysis_corpus_command(
     let annotation_cache_root = project_root.as_deref().map(project_annotation_cache_dir);
 
     analysis.cancel.store(false, Ordering::Relaxed);
+    // Each build receives a generation before background work begins. Progress and completion may
+    // update shared state only while that generation remains current.
     let build_generation = {
         let mut inner = analysis.inner.write().unwrap();
         inner.generation += 1;

@@ -1,3 +1,9 @@
+/**
+ * Coordinates processed-corpus export and progress presentation.
+ *
+ * The backend owns file production and manifest provenance; this controller owns destination
+ * selection, the active cleaning snapshot, and user-visible completion state.
+ */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";

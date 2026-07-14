@@ -1,3 +1,9 @@
+/**
+ * Coordinates repeated-artefact scans, review decisions, and promotion into cleaning rules.
+ *
+ * Scan progress belongs to one corpus generation. Candidate decisions are project-scoped and
+ * survive presentation changes until their source identity changes.
+ */
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 

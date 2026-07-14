@@ -1,3 +1,8 @@
+//! Builds the immutable analysis corpus shared by every analytical feature.
+//!
+//! Document order follows the input corpus, and each build records the signatures that define its
+//! source text, preparation configuration, tokenisation, and optional annotation layer.
+
 use super::annotation_build::{
     AnnotatedTermCount, attach_annotation_layer, build_expected_manifest,
 };

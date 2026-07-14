@@ -1,3 +1,9 @@
+/**
+ * Composes the Analyse workspace, Overview evidence, and analytical feature cards.
+ *
+ * Backend modules own measures and bounded queries. This shell owns workbench navigation, figure
+ * curation, rendering recovery, and transitions between corpus generations.
+ */
 import katex from "katex";
 import "katex/dist/katex.min.css";
 

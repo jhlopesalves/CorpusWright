@@ -1,9 +1,8 @@
 //! Reproducible qualification helpers for the documentation books corpus.
 //!
-//! This module deliberately contains no live-network tests. Catalogue bytes and
-//! downloaded ebook bytes are supplied by the caller so parsing, scoring,
-//! cleaning, hashing, duplicate detection, and manifest identity remain fully
-//! deterministic in ordinary CI.
+//! Callers supply catalogue and ebook bytes. Parsing, scoring, cleaning, hashing, duplicate
+//! detection, and manifest identity are therefore deterministic in ordinary CI and operate solely
+//! on the supplied inputs.
 
 mod catalogue;
 mod gutenberg;

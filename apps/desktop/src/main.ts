@@ -1,3 +1,9 @@
+/**
+ * Application composition root.
+ *
+ * Initialisation order establishes shared state and DOM references before feature controllers
+ * register their callbacks. Feature modules own subsequent interaction lifecycles.
+ */
 import "./app/state";
 import "./app/dom";
 

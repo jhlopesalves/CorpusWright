@@ -1,3 +1,8 @@
+//! Owns deterministic corpus discovery and the document records used across domains.
+//!
+//! Scans return stable relative-path order. Preview, search, word count, preparation, and analysis
+//! therefore share the same document identity for a loaded corpus.
+
 pub mod preview;
 pub mod search;
 pub mod word_count;

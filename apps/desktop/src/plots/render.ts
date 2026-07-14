@@ -1,3 +1,9 @@
+/**
+ * Renders the figure grammar into SVG and attaches mark-level interaction.
+ *
+ * Rendering is derived from the supplied model. Theme resolution for portable export happens on a
+ * clone, leaving the mounted interactive figure unchanged.
+ */
 import {
   labelLineHeight,
   labelTextLines,
@@ -419,6 +425,8 @@ function dispatchPinToggle(svg: SVGSVGElement, target: EventTarget | null): bool
 }
 
 export function serializeSvgWithResolvedTokens(svg: SVGSVGElement): string {
+  // Computed styles are copied to the clone before serialisation. The resulting SVG carries explicit
+  // paint and typography values and remains stable outside the application stylesheet.
   const paintProperties = new Set(["fill", "stroke", "stop-color", "color"]);
   const clone = svg.cloneNode(true) as SVGSVGElement;
   const originalElements = [svg, ...Array.from(svg.querySelectorAll<SVGElement>("*"))];

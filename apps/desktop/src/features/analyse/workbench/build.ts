@@ -1,3 +1,9 @@
+/**
+ * Coordinates analysis-corpus and annotation-layer build lifecycles.
+ *
+ * Each asynchronous build and availability probe carries a generation. Progress, errors, and final
+ * state reach the workbench only while that generation remains current.
+ */
 import { listen } from "@tauri-apps/api/event";
 
 import {
@@ -249,6 +255,8 @@ async function refreshAnnotationCacheAvailability(probeKey: string, generation: 
       state.currentCorpusVersion,
       effectiveCleaningConfig(),
     );
+    // The probe can outlive a corpus or cleaning change. Generation ownership is checked before its
+    // cache state reaches Frequency controls.
     if (annotationCacheProbeGeneration !== generation) {
       return;
     }

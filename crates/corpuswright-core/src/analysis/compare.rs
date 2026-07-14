@@ -1,3 +1,8 @@
+//! Compares concordance expressions across the selected document population.
+//!
+//! Counts use the same token-sequence semantics as Concordance. Rates retain their denominators so
+//! differently sized documents can be compared alongside the raw evidence.
+
 use super::build::AnalysisDocumentSelection;
 use super::concordance::{
     ConcordanceDocument, analysis_word_tokens, compute_dispersion_from_token_counts,
