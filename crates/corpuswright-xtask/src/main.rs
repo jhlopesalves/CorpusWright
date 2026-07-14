@@ -552,6 +552,10 @@ fn release_preflight() -> Result<()> {
         node(&["scripts/check-release-consistency.cjs"]),
     )?;
     run_named(
+        "repository reference regression tests",
+        node(&["--test", "scripts/check-repository-references.test.cjs"]),
+    )?;
+    run_named(
         "repository references",
         node(&["scripts/check-repository-references.cjs"]),
     )?;

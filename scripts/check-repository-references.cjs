@@ -7,6 +7,20 @@ const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..");
 const DOCS_ROOT = path.join(ROOT, "docs");
 const errors = [];
+const INTENTIONALLY_LOCAL_TESTING_PATHS = new Set([
+  "examples/corpora",
+  ".local-data",
+  ".local-corpora",
+  "local-corpora",
+  "manual-corpora",
+  "sample-corpora-local",
+  "test-corpora",
+  "documentation-corpus-local",
+  "coragrarian",
+]);
+const GENERATED_LOCAL_TESTING_PATHS = new Set([
+  "apps/desktop/node_modules",
+]);
 
 function relativeToRoot(absolutePath) {
   return path.relative(ROOT, absolutePath).split(path.sep).join("/");
@@ -14,6 +28,18 @@ function relativeToRoot(absolutePath) {
 
 function lineNumber(text, index) {
   return text.slice(0, index).split(/\r?\n/).length;
+}
+
+function normaliseRepositoryPath(candidate) {
+  return candidate.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function isOptionalTestingGuidePath(candidate) {
+  const normalised = normaliseRepositoryPath(candidate);
+  return (
+    INTENTIONALLY_LOCAL_TESTING_PATHS.has(normalised) ||
+    GENERATED_LOCAL_TESTING_PATHS.has(normalised)
+  );
 }
 
 function report(sourcePath, text, index, message) {
@@ -164,28 +190,17 @@ function validateHtml(filePath) {
 function validateTestingGuidePaths() {
   const filePath = path.join(ROOT, "docs", "contributing", "testing.md");
   const text = fs.readFileSync(filePath, "utf8");
-  const intentionallyLocal = new Set([
-    "examples/corpora/",
-    ".local-data/",
-    ".local-corpora/",
-    "local-corpora/",
-    "manual-corpora/",
-    "sample-corpora-local/",
-    "test-corpora/",
-    "documentation-corpus-local/",
-    "coragrarian/",
-  ]);
   for (const codeSpan of text.matchAll(/`([^`\r\n]+)`/g)) {
     for (const rawCandidate of codeSpan[1].split(/,\s*/)) {
       const candidate = rawCandidate.trim();
       if (
         !/^[A-Za-z0-9._@-]+(?:\/[A-Za-z0-9._@-]+)*\/?$/.test(candidate) ||
         !candidate.includes("/") ||
-        intentionallyLocal.has(candidate)
+        isOptionalTestingGuidePath(candidate)
       ) {
         continue;
       }
-      const absolutePath = path.join(ROOT, candidate);
+      const absolutePath = path.join(ROOT, normaliseRepositoryPath(candidate));
       if (!fs.existsSync(absolutePath)) {
         report(
           filePath,
@@ -222,22 +237,33 @@ function validateCurrentReleaseNotes() {
   }
 }
 
-for (const filePath of liveDocumentationFiles()) {
-  if (/\.md$/i.test(filePath)) {
-    validateMarkdown(filePath);
-  } else {
-    validateHtml(filePath);
+function main() {
+  for (const filePath of liveDocumentationFiles()) {
+    if (/\.md$/i.test(filePath)) {
+      validateMarkdown(filePath);
+    } else {
+      validateHtml(filePath);
+    }
   }
-}
-validateTestingGuidePaths();
-validateCurrentReleaseNotes();
+  validateTestingGuidePaths();
+  validateCurrentReleaseNotes();
 
-if (errors.length > 0) {
-  console.error("Repository reference check failed:");
-  for (const error of errors) {
-    console.error(`  - ${error}`);
+  if (errors.length > 0) {
+    console.error("Repository reference check failed:");
+    for (const error of errors) {
+      console.error(`  - ${error}`);
+    }
+    process.exit(1);
   }
-  process.exit(1);
+
+  console.log("Repository-local documentation links, anchors, paths, and release notes are valid.");
 }
 
-console.log("Repository-local documentation links, anchors, paths, and release notes are valid.");
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  isOptionalTestingGuidePath,
+  normaliseRepositoryPath,
+};
