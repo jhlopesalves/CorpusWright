@@ -1064,9 +1064,26 @@ export function buildRankFrequencyGeometry(options: {
   const xScale = createScale("log", xDomain, [box.margin.left, box.width - box.margin.right]);
   const residualMagnitude = Math.max(0, ...fittedPopulation.map((entry) => Math.abs(entry.membership.residual)));
   const residualExtent = residualMagnitude < 1e-9 ? 0.05 : residualMagnitude * 1.08;
+  const fittedCurveValues = view === "curve"
+    && fitVisible
+    && options.zipfExponent !== null
+    && options.zipfCoefficient !== null
+    && fittedStart !== null
+    && fittedEnd !== null
+    && fittedEnd >= fittedStart
+    ? [fittedStart, fittedEnd].map((rank) => {
+        const raw = options.zipfCoefficient! * rank ** -options.zipfExponent!;
+        return options.yMode === "rate" && options.totalTokens > 0
+          ? raw / options.totalTokens * 1_000_000
+          : raw;
+      }).filter((value) => Number.isFinite(value) && value > 0)
+    : [];
   const yDomain = view === "residuals"
     ? [-residualExtent, residualExtent] as [number, number]
-    : extent(visible.map((point) => rankCurveValue(point, options.yMode)));
+    : extent([
+        ...visible.map((point) => rankCurveValue(point, options.yMode)),
+        ...fittedCurveValues,
+      ]);
   const yScale = createScale(view === "residuals" ? "linear" : "log", yDomain, [box.height - box.margin.bottom, box.margin.top]);
   const points: RankFrequencyPointGeometry[] = plottedEntries.map(({ point, membership }) => {
     const rawY = view === "residuals"
@@ -1100,12 +1117,8 @@ export function buildRankFrequencyGeometry(options: {
       ].filter(Boolean),
     };
   });
-  const actualFittedStart = fittedPopulation[0]?.point.rank ?? null;
-  const actualFittedEnd = fittedPopulation[fittedPopulation.length - 1]?.point.rank ?? null;
   const fitPoints = view === "curve" ? fitPointsForRank({
     ...options,
-    fittedRankStart: actualFittedStart,
-    fittedRankEnd: actualFittedEnd,
   }, xScale, yScale) : [];
   const fitPath = view === "curve" && fitVisible && fitPoints.length > 0
     ? { d: pointsToPath(fitPoints), className: "cw-plot-fit-line" }
@@ -1143,15 +1156,15 @@ export function buildRankFrequencyGeometry(options: {
     plotLabelBounds(box),
     8,
   );
-  const fittedRange = view === "curve" && fitVisible && actualFittedStart !== null && actualFittedEnd !== null
+  const fittedRange = view === "curve" && fitVisible && fittedPopulation.length > 0 && fittedStart !== null && fittedEnd !== null
     ? {
-        x1: scaleValue(xScale, Math.max(actualFittedStart, xScale.domain[0])),
-        x2: scaleValue(xScale, Math.min(actualFittedEnd, xScale.domain[1])),
+        x1: scaleValue(xScale, Math.max(fittedStart, xScale.domain[0])),
+        x2: scaleValue(xScale, Math.min(fittedEnd, xScale.domain[1])),
         y: box.margin.top,
         height: box.innerHeight,
-        labelX: scaleValue(xScale, Math.max(actualFittedStart, xScale.domain[0])) + 6,
+        labelX: scaleValue(xScale, Math.max(fittedStart, xScale.domain[0])) + 6,
         labelY: box.margin.top + 13,
-        label: `Model fitted over ranks ${formatInteger(actualFittedStart)}–${formatInteger(actualFittedEnd)}`,
+        label: `Model fitted over ranks ${formatInteger(fittedStart)}–${formatInteger(fittedEnd)}`,
       }
     : null;
   const fitAnnotations: PlotLabelGeometry[] = view === "curve" && fitVisible && options.labelsMode !== "off"
@@ -1159,7 +1172,7 @@ export function buildRankFrequencyGeometry(options: {
         ...(analysed.some((entry) => entry.membership.kind === "shown-not-fitted" && entry.membership.reasonCode === "top-three")
           ? [{
               x: box.margin.left + 10,
-              y: box.margin.top + 18,
+              y: box.margin.top + 38,
               text: "Top three ranks not fitted",
               anchor: "start" as const,
               className: "cw-plot-label-muted cw-plot-fit-membership-annotation",
@@ -2344,7 +2357,9 @@ export function buildDistributionDiagnosticGeometry(options: {
     : xScale.kind === "log" ? logTicks(xScale) : linearTicks(xScale, 6);
   const yTicks = linearTicks(yScale, 6).map((tick) => ({
     ...tick,
-    label: options.view !== "qq" && options.yMode === "share" ? formatPercent(tick.value) : tick.label,
+    label: options.view === "qq" && options.qqReference === "lognormal"
+      ? formatFixed(tick.value, 2)
+      : options.view !== "qq" && options.yMode === "share" ? formatPercent(tick.value) : tick.label,
   }));
   return {
     box,
