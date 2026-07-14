@@ -19,12 +19,12 @@
 //!   are evicted until within the limit.
 //! - Cache is cleared on corpus reload / clear.
 
-use crate::clean::{
+use crate::corpus::{DocumentRecord, DocumentType};
+use crate::preparation::cleaning::{
     CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource, TableExtractionStrategy,
 };
-use crate::pdf::PdfExtractionOptions;
-use crate::scan::{DocumentRecord, DocumentType};
-use crate::structured_document::StructuredDocument;
+use crate::sources::pdf::PdfExtractionOptions;
+use crate::sources::structured_document::StructuredDocument;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -186,7 +186,7 @@ pub struct DocumentText {
     pub warnings: Vec<String>,
     pub page_count: Option<usize>,
     pub page_texts: Option<Vec<String>>,
-    pub cleaning_report: Option<crate::clean::CleaningReport>,
+    pub cleaning_report: Option<crate::preparation::cleaning::CleaningReport>,
 }
 
 /// Thread-safe, size-limited cache for extracted text.
@@ -416,7 +416,7 @@ fn prepare_document_text_for_cleaning_impl(
             cleaning_config
         };
         let (pdf_cleaned, mut cleanup_warnings) =
-            crate::pdf::clean_extracted_pdf_text(&extracted_text, pdf_config);
+            crate::sources::pdf::clean_extracted_pdf_text(&extracted_text, pdf_config);
         warnings.append(&mut cleanup_warnings);
         pdf_cleaned
     } else {
@@ -424,7 +424,7 @@ fn prepare_document_text_for_cleaning_impl(
     };
 
     if cleaning_config.extract_html {
-        processed = crate::html::extract_html(&processed);
+        processed = crate::sources::html::extract_html(&processed);
     }
 
     processed
@@ -452,8 +452,8 @@ fn apply_document_processing_impl(
     extracted_text: String,
     cleaning_config: &CleaningConfig,
     warnings: &mut Vec<String>,
-    collector: Option<&mut crate::clean::CleaningReportCollector>,
-    context: Option<&crate::clean::CleaningContext<'_>>,
+    collector: Option<&mut crate::preparation::cleaning::CleaningReportCollector>,
+    context: Option<&crate::preparation::cleaning::CleaningContext<'_>>,
     has_reliable_page_metadata: bool,
 ) -> String {
     let processed = prepare_document_text_for_cleaning_impl(
@@ -463,7 +463,7 @@ fn apply_document_processing_impl(
         warnings,
         has_reliable_page_metadata,
     );
-    crate::clean::clean_text_impl(&processed, cleaning_config, context, collector)
+    crate::preparation::cleaning::clean_text_impl(&processed, cleaning_config, context, collector)
 }
 
 /// Applies original or processed text semantics to an existing raw extraction.
@@ -486,8 +486,8 @@ pub fn document_text_from_cache_entry(
     let (text, page_texts, cleaning_report) = match mode {
         DocumentTextMode::Original => (extracted_text, page_texts, None),
         DocumentTextMode::Processed => {
-            let mut collector = crate::clean::CleaningReportCollector::default();
-            let context = crate::clean::CleaningContext {
+            let mut collector = crate::preparation::cleaning::CleaningReportCollector::default();
+            let context = crate::preparation::cleaning::CleaningContext {
                 source_id: Some(record.relative_path.to_str().unwrap_or("")),
                 source_label: Some(record.relative_path.to_str().unwrap_or("")),
                 page_number: None,
@@ -507,18 +507,22 @@ pub fn document_text_from_cache_entry(
                 );
 
                 let (_pdf_text, pdf_warnings, cleaned_pages) =
-                    crate::pdf::clean_extracted_pdf_pages_and_text(raw_pages, cleaning_config);
+                    crate::sources::pdf::clean_extracted_pdf_pages_and_text(
+                        raw_pages,
+                        cleaning_config,
+                    );
 
                 let document = StructuredDocument::from_pages(cleaned_pages);
-                let cleaned = crate::clean::clean_structured_document_impl(
+                let cleaned = crate::preparation::cleaning::clean_structured_document_impl(
                     &document,
                     cleaning_config,
                     Some(&mut collector),
                     Some(&context),
                 );
 
-                let is_safe = crate::clean::requires_reliable_page_metadata(cleaning_config)
-                    || (cleaned.page_texts.is_some() && cleaned.text == original_flat_text);
+                let is_safe =
+                    crate::preparation::cleaning::requires_reliable_page_metadata(cleaning_config)
+                        || (cleaned.page_texts.is_some() && cleaned.text == original_flat_text);
 
                 if is_safe {
                     warnings.extend(pdf_warnings);
@@ -526,7 +530,8 @@ pub fn document_text_from_cache_entry(
                 } else {
                     (original_flat_text, None, None)
                 }
-            } else if crate::clean::requires_reliable_page_metadata(cleaning_config) {
+            } else if crate::preparation::cleaning::requires_reliable_page_metadata(cleaning_config)
+            {
                 let processed = prepare_document_text_for_cleaning_impl(
                     record,
                     extracted_text,
@@ -535,7 +540,7 @@ pub fn document_text_from_cache_entry(
                     false,
                 );
                 let document = StructuredDocument::from_flat_text_as_single_page(&processed);
-                let cleaned = crate::clean::clean_structured_document_impl(
+                let cleaned = crate::preparation::cleaning::clean_structured_document_impl(
                     &document,
                     cleaning_config,
                     Some(&mut collector),
@@ -631,7 +636,7 @@ fn extract_text_from_record(
         DocumentType::Pdf => {
             let opts = pdf_options
                 .ok_or_else(|| "PDF extraction options are required for PDF files.".to_string())?;
-            let extracted = crate::pdf::extract_pdf(&bytes, None, opts)
+            let extracted = crate::sources::pdf::extract_pdf(&bytes, None, opts)
                 .map_err(|e| format!("PDF extraction failed: {}", e))?;
             Ok(CacheEntry {
                 extracted_text: extracted.text,
@@ -641,7 +646,7 @@ fn extract_text_from_record(
             })
         }
         DocumentType::Docx => {
-            let extracted = crate::docx::extract_docx(&bytes, cleaning_config)
+            let extracted = crate::sources::docx::extract_docx(&bytes, cleaning_config)
                 .map_err(|e| format!("DOCX extraction failed: {}", e))?;
             Ok(CacheEntry {
                 extracted_text: extracted.text,
@@ -653,7 +658,7 @@ fn extract_text_from_record(
         _ => {
             // Plain text, HTML, or other textual files
             Ok(CacheEntry {
-                extracted_text: crate::decode::decode_source_bytes(&bytes).text,
+                extracted_text: crate::sources::decode::decode_source_bytes(&bytes).text,
                 warnings: Vec::new(),
                 page_count: None,
                 page_texts: None,
@@ -665,8 +670,8 @@ fn extract_text_from_record(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clean::CleaningConfig;
-    use crate::scan::{DocumentRecord, DocumentType};
+    use crate::corpus::{DocumentRecord, DocumentType};
+    use crate::preparation::cleaning::CleaningConfig;
     use std::path::PathBuf;
     use tempfile::tempdir;
 
@@ -1273,14 +1278,14 @@ mod tests {
         let cache = ExtractionCache::new();
 
         let cleaning_config = CleaningConfig {
-            removal_rules: vec![crate::clean::RemovalRule {
+            removal_rules: vec![crate::preparation::cleaning::RemovalRule {
                 id: "pz-rule".to_string(),
                 label: "Page Top Header".to_string(),
-                source: crate::clean::RemovalRuleSource::Manual,
-                matcher: crate::clean::RemovalMatcher::Literal {
+                source: crate::preparation::cleaning::RemovalRuleSource::Manual,
+                matcher: crate::preparation::cleaning::RemovalMatcher::Literal {
                     text: "HEADER".to_string(),
                 },
-                scope: crate::clean::RemovalScope::PageTop,
+                scope: crate::preparation::cleaning::RemovalScope::PageTop,
                 enabled: true,
             }],
             ..CleaningConfig::default()

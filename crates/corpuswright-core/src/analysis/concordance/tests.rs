@@ -1,8 +1,10 @@
 use super::*;
+use crate::analysis::concordance::index::{
+    InMemoryIndexStore, IndexStore, SurfaceIndexDocumentInput, SurfaceIndexError,
+};
 use crate::analysis::test_support::*;
-use crate::decode::{DecodeStrategy, SourceEncoding, decode_source_bytes};
-use crate::index::{InMemoryIndexStore, IndexStore, SurfaceIndexDocumentInput, SurfaceIndexError};
-use crate::tokenization::TokenizationConfig;
+use crate::sources::decode::{DecodeStrategy, SourceEncoding, decode_source_bytes};
+use crate::text::tokenisation::TokenizationConfig;
 
 fn included_rows(result: &ConcordanceResult) -> &[ConcordanceRow] {
     result.rows.as_deref().expect("rows were requested")
@@ -1017,7 +1019,8 @@ fn routed_index_disk_cache_reuses_content_across_restart_and_recovers_from_corru
     assert_eq!(changed_config_context.index_build_count(), 1);
 
     let manifest = concordance_surface_index_manifest(&renamed_documents, &config).unwrap();
-    let cache_path = crate::index::surface_index_cache_path(temp_dir.path(), &manifest);
+    let cache_path =
+        crate::analysis::concordance::index::surface_index_cache_path(temp_dir.path(), &manifest);
     std::fs::write(&cache_path, b"truncated").unwrap();
     let mut corrupted_context =
         ConcordanceSearchContext::with_cache_root(temp_dir.path().to_path_buf());
@@ -1299,12 +1302,12 @@ fn benchmark_concordance_scale() {
     use crate::analysis::collocation::{
         ConcordanceCollocationQuery, aggregate_concordance_collocations_routed_provider,
     };
+    use crate::analysis::concordance::index::SurfaceIndexCancellationToken;
     use crate::analysis::concordance::{
         ConcordanceDocument, ConcordancePhase, ConcordanceQuery, ConcordanceSearchContext,
         ConcordanceSortKey, search_concordance_documents_routed_provider,
     };
-    use crate::index::SurfaceIndexCancellationToken;
-    use crate::tokenization::TokenizationConfig;
+    use crate::text::tokenisation::TokenizationConfig;
     use std::env;
     use std::time::Instant;
 

@@ -1,4 +1,6 @@
-use crate::language::ProjectLanguage;
+pub mod sources;
+
+use crate::text::language::ProjectLanguage;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 

@@ -1,7 +1,7 @@
-use crate::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
-use crate::clean::CleaningConfig;
-use crate::pdf::PdfExtractionOptions;
-use crate::scan::{DocumentRecord, DocumentType};
+use crate::corpus::{DocumentRecord, DocumentType};
+use crate::preparation::cleaning::CleaningConfig;
+use crate::sources::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
+use crate::sources::pdf::PdfExtractionOptions;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -59,7 +59,7 @@ pub struct FilePreview {
     pub included_char_count: usize,
     pub truncated: bool,
     pub warnings: Vec<PreviewWarning>,
-    pub cleaning_report: Option<crate::clean::CleaningReport>,
+    pub cleaning_report: Option<crate::preparation::cleaning::CleaningReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -70,7 +70,7 @@ pub struct CombinedPreview {
     pub total_files_previewed: usize,
     pub total_characters_included: usize,
     pub warnings: Vec<PreviewWarning>,
-    pub cleaning_report: Option<crate::clean::CleaningReport>,
+    pub cleaning_report: Option<crate::preparation::cleaning::CleaningReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -114,7 +114,7 @@ pub fn preview_file_with_config(
                         path: record.source_path.clone(),
                         message: error.to_string(),
                     })?;
-                match crate::docx::extract_docx(&bytes, &CleaningConfig::default()) {
+                match crate::sources::docx::extract_docx(&bytes, &CleaningConfig::default()) {
                     Ok(extracted) => (
                         limit_text(extracted.text, options.max_chars_per_file, false),
                         extracted.warnings,
@@ -138,7 +138,7 @@ pub fn preview_file_with_config(
                 path: record.source_path.clone(),
                 message: error.to_string(),
             })?;
-            match crate::docx::extract_docx(&bytes, &CleaningConfig::default()) {
+            match crate::sources::docx::extract_docx(&bytes, &CleaningConfig::default()) {
                 Ok(extracted) => (
                     limit_text(extracted.text, options.max_chars_per_file, false),
                     extracted.warnings,
@@ -172,7 +172,11 @@ pub fn preview_file_with_config(
                         path: record.source_path.clone(),
                         message: error.to_string(),
                     })?;
-                match crate::pdf::extract_pdf(&bytes, options.max_chars_per_file, pdf_options) {
+                match crate::sources::pdf::extract_pdf(
+                    &bytes,
+                    options.max_chars_per_file,
+                    pdf_options,
+                ) {
                     Ok(extracted) => {
                         let read = limit_text(
                             extracted.text,
@@ -200,7 +204,8 @@ pub fn preview_file_with_config(
                 path: record.source_path.clone(),
                 message: error.to_string(),
             })?;
-            match crate::pdf::extract_pdf(&bytes, options.max_chars_per_file, pdf_options) {
+            match crate::sources::pdf::extract_pdf(&bytes, options.max_chars_per_file, pdf_options)
+            {
                 Ok(extracted) => {
                     let read = limit_text(
                         extracted.text,
@@ -372,12 +377,12 @@ pub fn preview_processed_files(
                 cache,
             ) {
                 Ok(document) => document,
-                Err(message) => crate::cache::DocumentText {
+                Err(message) => crate::sources::cache::DocumentText {
                     text: String::new(),
                     warnings: vec![message],
                     page_count: None,
                     page_texts: None,
-                    cleaning_report: Some(crate::clean::CleaningReport::default()),
+                    cleaning_report: Some(crate::preparation::cleaning::CleaningReport::default()),
                 },
             };
             let source_read = limit_text(document.text, preview_options.max_chars_per_file, false);
@@ -432,7 +437,7 @@ pub fn preview_processed_files(
         .iter()
         .map(|file| file.included_char_count)
         .sum::<usize>();
-    let cleaning_report = crate::clean::CleaningReport::merge(
+    let cleaning_report = crate::preparation::cleaning::CleaningReport::merge(
         files
             .iter()
             .filter_map(|file| file.cleaning_report.as_ref()),
@@ -556,7 +561,7 @@ pub fn read_bounded_lossy_text(
     }
 
     let decoded_prefix = if had_utf8_error {
-        crate::decode::decode_windows_1252_bytes(&prefix_bytes)
+        crate::sources::decode::decode_windows_1252_bytes(&prefix_bytes)
     } else {
         decode_utf8_prefix(&prefix_bytes)
     };
@@ -615,12 +620,12 @@ fn decode_utf8_prefix(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::{CacheEntry, ExtractionCache, document_text_from_cache_entry};
-    use crate::clean::{
+    use crate::corpus::scan_directory;
+    use crate::preparation::cleaning::{
         CleaningConfig, CleaningOperation, RemovalMatcher, RemovalRule, RemovalRuleSource,
         RemovalScope, ReplacementRule,
     };
-    use crate::scan::scan_directory;
+    use crate::sources::cache::{CacheEntry, ExtractionCache, document_text_from_cache_entry};
     use std::fs;
     use tempfile::tempdir;
 
@@ -982,8 +987,10 @@ mod tests {
                 .all(|warning| warning.kind != PreviewWarningKind::Truncated)
         );
 
-        let (pdf_cleaned, _) =
-            crate::pdf::clean_extracted_pdf_text(&preview.text, &CleaningConfig::default());
+        let (pdf_cleaned, _) = crate::sources::pdf::clean_extracted_pdf_text(
+            &preview.text,
+            &CleaningConfig::default(),
+        );
         let late_marker = pdf_cleaned
             .chars()
             .skip(5_000)

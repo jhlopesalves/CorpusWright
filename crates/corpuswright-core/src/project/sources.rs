@@ -1,6 +1,6 @@
-use crate::clean::{PdfOcrQuality, PdfTextSource};
-use crate::pdf_audit::{PdfAuditQuality, PdfAuditSuggestedProfile, audit_pdf_files};
-use crate::preview::FilePreview;
+use crate::corpus::preview::FilePreview;
+use crate::preparation::cleaning::{PdfOcrQuality, PdfTextSource};
+use crate::sources::pdf::audit::{PdfAuditQuality, PdfAuditSuggestedProfile, audit_pdf_files};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};

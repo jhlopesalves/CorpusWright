@@ -1,5 +1,5 @@
-use crate::pdf::PDFIUM_LOCK;
-use crate::pdf_quality::ExtractionQuality;
+use crate::sources::pdf::PDFIUM_LOCK;
+use crate::sources::pdf::quality::ExtractionQuality;
 use lopdf::Document;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -62,8 +62,8 @@ struct PdfAuditSample {
 
 pub fn audit_pdf_files(paths: Vec<PathBuf>) -> Vec<PdfAuditResult> {
     let environment = PdfAuditEnvironment {
-        pdfium: crate::pdf_ocr::init_pdfium().map_err(|error| error.to_string()),
-        ocr_model_resources_available: crate::pdf_ocr::ocr_model_resources_available(),
+        pdfium: crate::sources::pdf::ocr::init_pdfium().map_err(|error| error.to_string()),
+        ocr_model_resources_available: crate::sources::pdf::ocr::ocr_model_resources_available(),
     };
 
     paths
@@ -290,7 +290,7 @@ fn classify_sample_text(text: &str) -> (PdfAuditQuality, usize, bool) {
         return (PdfAuditQuality::Empty, embedded_text_chars, false);
     }
 
-    let (quality, _) = crate::pdf_quality::evaluate(text);
+    let (quality, _) = crate::sources::pdf::quality::evaluate(text);
     (
         match quality {
             ExtractionQuality::Good => PdfAuditQuality::Good,
@@ -355,7 +355,7 @@ mod tests {
 
     macro_rules! require_pdfium {
         () => {
-            if !crate::pdf_ocr::pdfium_available() {
+            if !crate::sources::pdf::ocr::pdfium_available() {
                 eprintln!("skipping PDFium-dependent audit test: PDFium library is not available");
                 return;
             }

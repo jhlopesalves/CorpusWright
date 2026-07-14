@@ -1,4 +1,4 @@
-use crate::clean::TableExtractionStrategy;
+use crate::preparation::cleaning::TableExtractionStrategy;
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use std::io::{Cursor, Read};
@@ -33,7 +33,7 @@ pub struct ExtractedDocx {
 /// Extracts text from a DOCX file byte slice.
 pub fn extract_docx(
     bytes: &[u8],
-    config: &crate::clean::CleaningConfig,
+    config: &crate::preparation::cleaning::CleaningConfig,
 ) -> Result<ExtractedDocx, DocxError> {
     let cursor = Cursor::new(bytes);
     let mut archive = ZipArchive::new(cursor).map_err(|_| DocxError::InvalidZip)?;
@@ -301,7 +301,11 @@ mod tests {
             </w:document>
         "#;
         let bytes = create_mock_docx(xml, vec![]);
-        let extracted = extract_docx(&bytes, &crate::clean::CleaningConfig::default()).unwrap();
+        let extracted = extract_docx(
+            &bytes,
+            &crate::preparation::cleaning::CleaningConfig::default(),
+        )
+        .unwrap();
         assert_eq!(extracted.text, "Hello world\n\nSecond paragraph");
         assert!(extracted.warnings.is_empty());
     }
@@ -325,12 +329,16 @@ mod tests {
             </w:document>
         "#;
         let bytes = create_mock_docx(xml, vec![]);
-        let extracted_tab = extract_docx(&bytes, &crate::clean::CleaningConfig::default()).unwrap();
+        let extracted_tab = extract_docx(
+            &bytes,
+            &crate::preparation::cleaning::CleaningConfig::default(),
+        )
+        .unwrap();
         assert_eq!(extracted_tab.text, "Header 1\tHeader 2\nCell 1\tCell 2");
 
-        let config_flat = crate::clean::CleaningConfig {
+        let config_flat = crate::preparation::cleaning::CleaningConfig {
             table_extraction_strategy: TableExtractionStrategy::FlattenParagraphs,
-            ..crate::clean::CleaningConfig::default()
+            ..crate::preparation::cleaning::CleaningConfig::default()
         };
         let extracted_flat = extract_docx(&bytes, &config_flat).unwrap();
         assert_eq!(
@@ -338,9 +346,9 @@ mod tests {
             "Header 1\n\nHeader 2\n\nCell 1\n\nCell 2"
         );
 
-        let config_ignore = crate::clean::CleaningConfig {
+        let config_ignore = crate::preparation::cleaning::CleaningConfig {
             table_extraction_strategy: TableExtractionStrategy::Ignore,
-            ..crate::clean::CleaningConfig::default()
+            ..crate::preparation::cleaning::CleaningConfig::default()
         };
         let extracted_ignore = extract_docx(&bytes, &config_ignore).unwrap();
         assert_eq!(extracted_ignore.text, "");
@@ -358,7 +366,11 @@ mod tests {
             </w:document>
         "#;
         let bytes = create_mock_docx(xml, vec![]);
-        let extracted = extract_docx(&bytes, &crate::clean::CleaningConfig::default()).unwrap();
+        let extracted = extract_docx(
+            &bytes,
+            &crate::preparation::cleaning::CleaningConfig::default(),
+        )
+        .unwrap();
         assert_eq!(extracted.text, "Tom & Jerry <classic>");
     }
 
@@ -378,9 +390,9 @@ mod tests {
         "#;
         let bytes = create_mock_docx(doc_xml, vec![("word/header1.xml", header_xml)]);
 
-        let mut config = crate::clean::CleaningConfig {
+        let mut config = crate::preparation::cleaning::CleaningConfig {
             remove_headers: false,
-            ..crate::clean::CleaningConfig::default()
+            ..crate::preparation::cleaning::CleaningConfig::default()
         };
         let extracted = extract_docx(&bytes, &config).unwrap();
         assert_eq!(extracted.text, "Main Document Content\n\nHeader Content");
@@ -405,13 +417,13 @@ mod tests {
         "#;
         let bytes = create_mock_docx(doc_xml, vec![]);
 
-        let config = crate::clean::CleaningConfig::default();
+        let config = crate::preparation::cleaning::CleaningConfig::default();
         let extracted = extract_docx(&bytes, &config).unwrap();
         assert_eq!(extracted.text, "Table of Contents Item 1\n\nMain Content");
 
-        let config = crate::clean::CleaningConfig {
+        let config = crate::preparation::cleaning::CleaningConfig {
             remove_table_of_contents: true,
-            ..crate::clean::CleaningConfig::default()
+            ..crate::preparation::cleaning::CleaningConfig::default()
         };
         let extracted_removed = extract_docx(&bytes, &config).unwrap();
         assert_eq!(extracted_removed.text, "Main Content");
@@ -434,14 +446,22 @@ mod tests {
             </w:document>
         "#;
         let bytes = create_mock_docx(xml, vec![]);
-        let extracted = extract_docx(&bytes, &crate::clean::CleaningConfig::default()).unwrap();
+        let extracted = extract_docx(
+            &bytes,
+            &crate::preparation::cleaning::CleaningConfig::default(),
+        )
+        .unwrap();
         assert_eq!(extracted.text, "Line 1\n\tLine 2");
     }
 
     #[test]
     fn test_invalid_zip() {
         let bytes = b"This is not a zip file";
-        let err = extract_docx(bytes, &crate::clean::CleaningConfig::default()).unwrap_err();
+        let err = extract_docx(
+            bytes,
+            &crate::preparation::cleaning::CleaningConfig::default(),
+        )
+        .unwrap_err();
         assert!(matches!(err, DocxError::InvalidZip));
     }
 
@@ -455,7 +475,11 @@ mod tests {
             zip.write_all(b"<xml></xml>").unwrap();
             zip.finish().unwrap();
         }
-        let err = extract_docx(&bytes, &crate::clean::CleaningConfig::default()).unwrap_err();
+        let err = extract_docx(
+            &bytes,
+            &crate::preparation::cleaning::CleaningConfig::default(),
+        )
+        .unwrap_err();
         assert!(matches!(err, DocxError::MissingDocumentXml));
     }
 
@@ -473,7 +497,11 @@ mod tests {
             </w:document>
         "#;
         let bytes = create_mock_docx(xml, vec![]);
-        let extracted = extract_docx(&bytes, &crate::clean::CleaningConfig::default()).unwrap();
+        let extracted = extract_docx(
+            &bytes,
+            &crate::preparation::cleaning::CleaningConfig::default(),
+        )
+        .unwrap();
         assert_eq!(extracted.text, "Normal text");
         assert_eq!(extracted.warnings.len(), 2);
         assert!(

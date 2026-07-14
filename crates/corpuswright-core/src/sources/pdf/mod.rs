@@ -1,6 +1,12 @@
-use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource};
-use crate::project_sources::ProjectSourcePdfProfile;
-use crate::scan::{DocumentRecord, DocumentType};
+pub mod audit;
+pub mod ocr;
+pub mod quality;
+
+use crate::corpus::{DocumentRecord, DocumentType};
+use crate::preparation::cleaning::{
+    CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource,
+};
+use crate::project::sources::ProjectSourcePdfProfile;
 use lopdf::Document;
 use pdfium_render::prelude::*;
 use regex::Regex;
@@ -28,7 +34,7 @@ pub struct PdfExtractionOptions {
 
 impl PdfExtractionOptions {
     /// Build options from a `CleaningConfig`.
-    pub fn from_cleaning_config(config: &crate::clean::CleaningConfig) -> Self {
+    pub fn from_cleaning_config(config: &crate::preparation::cleaning::CleaningConfig) -> Self {
         Self {
             strategy: config.pdf_embedded_text_strategy,
             text_source: config.pdf_text_source,
@@ -133,9 +139,9 @@ fn run_pdf_ocr(
     ocr_quality: PdfOcrQuality,
     warnings: &mut Vec<String>,
     success_warning: &str,
-) -> Option<crate::pdf_ocr::OcrExtraction> {
+) -> Option<crate::sources::pdf::ocr::OcrExtraction> {
     warn_about_ocr_preview_cap(warnings, max_chars);
-    match crate::pdf_ocr::extract_text_via_ocr(
+    match crate::sources::pdf::ocr::extract_text_via_ocr(
         bytes,
         capped_ocr_chars_for_preview(max_chars),
         max_chars.map(|_| PDF_OCR_PREVIEW_PAGE_CAP),
@@ -326,7 +332,7 @@ pub(crate) fn is_page_label(line: &str) -> bool {
         return false;
     }
 
-    if crate::clean::is_isolated_page_marker_line(s) {
+    if crate::preparation::cleaning::is_isolated_page_marker_line(s) {
         return true;
     }
 
@@ -450,27 +456,27 @@ fn finalize_lopdf_fallback_text(
 
     warnings.push("PDF backend: lopdf fallback (degraded).".to_string());
 
-    let (quality, _) = crate::pdf_quality::evaluate(&text);
+    let (quality, _) = crate::sources::pdf::quality::evaluate(&text);
     match quality {
-        crate::pdf_quality::ExtractionQuality::Good => {
+        crate::sources::pdf::quality::ExtractionQuality::Good => {
             warnings.push(
                 "PDFium is unavailable; used degraded lopdf embedded-text extraction.".to_string(),
             );
         }
-        crate::pdf_quality::ExtractionQuality::Suspicious => {
+        crate::sources::pdf::quality::ExtractionQuality::Suspicious => {
             warnings.push(
                 "PDFium is unavailable; degraded lopdf extraction produced suspicious text quality."
                     .to_string(),
             );
         }
-        crate::pdf_quality::ExtractionQuality::Poor => {
+        crate::sources::pdf::quality::ExtractionQuality::Poor => {
             warnings.push(
                 "PDFium is unavailable and degraded PDF extraction produced low-quality text. OCR/PDFium extraction is required for this PDF."
                     .to_string(),
             );
             text.clear();
         }
-        crate::pdf_quality::ExtractionQuality::Empty => {
+        crate::sources::pdf::quality::ExtractionQuality::Empty => {
             warnings.push(
                 "PDFium is unavailable and degraded PDF extraction produced no text.".to_string(),
             );
@@ -711,7 +717,7 @@ fn extract_pdf_embedded_page_range(
     requested_page_count: usize,
     options: PdfExtractionOptions,
 ) -> Result<(usize, Vec<PdfPageRangePage>), PdfExtractionError> {
-    let pdfium = crate::pdf_ocr::init_pdfium().map_err(|error| {
+    let pdfium = crate::sources::pdf::ocr::init_pdfium().map_err(|error| {
         PdfExtractionError::InvalidFormat(format!("Failed to initialize PDFium: {error}"))
     })?;
 
@@ -807,7 +813,7 @@ pub fn extract_pdf_page_range(
                         .to_string(),
                 );
             }
-            let (page_count, ocr_pages) = crate::pdf_ocr::extract_page_range_via_ocr(
+            let (page_count, ocr_pages) = crate::sources::pdf::ocr::extract_page_range_via_ocr(
                 bytes,
                 start_page_index,
                 requested_page_count,
@@ -1291,7 +1297,7 @@ pub fn extract_pdf(
     }
 
     // Fall back to lopdf when the native PDFium library is unavailable.
-    let pdfium = match crate::pdf_ocr::init_pdfium() {
+    let pdfium = match crate::sources::pdf::ocr::init_pdfium() {
         Ok(p) => p,
         Err(e) => {
             let pdfium_error = e.to_string();
@@ -1498,9 +1504,9 @@ pub fn extract_pdf(
         }
     }
 
-    let (quality, _) = crate::pdf_quality::evaluate(&all_text);
-    let is_poor_quality = quality == crate::pdf_quality::ExtractionQuality::Poor
-        || quality == crate::pdf_quality::ExtractionQuality::Suspicious;
+    let (quality, _) = crate::sources::pdf::quality::evaluate(&all_text);
+    let is_poor_quality = quality == crate::sources::pdf::quality::ExtractionQuality::Poor
+        || quality == crate::sources::pdf::quality::ExtractionQuality::Suspicious;
 
     if !has_any_text {
         warnings.push(
@@ -1875,9 +1881,11 @@ fn classify_pdf_line(line: &str) -> PdfLineKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource};
-    use crate::project_sources::{ProjectSourceExtractionRoute, ProjectSourcePdfProfile};
-    use crate::scan::{DocumentRecord, DocumentType};
+    use crate::corpus::{DocumentRecord, DocumentType};
+    use crate::preparation::cleaning::{
+        CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource,
+    };
+    use crate::project::sources::{ProjectSourceExtractionRoute, ProjectSourcePdfProfile};
     use lopdf::content::{Content, Operation};
     use lopdf::{Document, Object, Stream, StringFormat, dictionary};
     use std::path::PathBuf;
@@ -2240,7 +2248,7 @@ mod tests {
     /// Skip this test if PDFium is not available on the current platform.
     macro_rules! require_pdfium {
         () => {
-            if !crate::pdf_ocr::pdfium_available() {
+            if !crate::sources::pdf::ocr::pdfium_available() {
                 eprintln!("skipping PDFium-dependent test: PDFium library is not available");
                 return;
             }

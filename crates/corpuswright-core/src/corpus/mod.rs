@@ -1,10 +1,14 @@
+pub mod preview;
+pub mod search;
+pub mod word_count;
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
-use crate::clean::PdfOcrQuality;
-use crate::project_sources::{ProjectSourceExtractionRoute, ProjectSourcePdfProfile};
+use crate::preparation::cleaning::PdfOcrQuality;
+use crate::project::sources::{ProjectSourceExtractionRoute, ProjectSourcePdfProfile};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "snake_case")]

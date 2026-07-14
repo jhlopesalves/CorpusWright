@@ -4,7 +4,7 @@
 //! Languages below the confidence threshold require an explicit override;
 //! if no override is set the document is flagged as low-confidence.
 
-use crate::scan::DocumentRecord;
+use crate::corpus::DocumentRecord;
 use lingua::{Language, LanguageDetector, LanguageDetectorBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
