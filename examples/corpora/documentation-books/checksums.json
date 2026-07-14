@@ -1,0 +1,100 @@
+{
+  "algorithm": "SHA-256",
+  "analysisConfiguration": {
+    "config": {
+      "foldAggregationKeys": true,
+      "includePunctuation": true,
+      "normalization": "nfc",
+      "retainApostropheContractions": true,
+      "retainAsciiHyphenCompounds": true,
+      "splitNumericSeparators": true
+    },
+    "id": "corpuswright-uax29",
+    "unicodeSegmentationVersion": "1.13.3",
+    "version": "1"
+  },
+  "corpusChecksum": "2f5a213218f94783c16258f0719fbae293021bb8426e44abfd9b884c1899d81d",
+  "documents": {
+    "examples/corpora/documentation-books/texts/1984 - George Orwell.txt": {
+      "bytes": 586983,
+      "sha256": "a3c6383383608a64d9557968b6ab6ca423cdf00c3724a96c69737ab9cb392261"
+    },
+    "examples/corpora/documentation-books/texts/A Farewell to Arms - Ernest Hemingway.txt": {
+      "bytes": 492574,
+      "sha256": "d0d90eb9dd9668ece68b1edcff4127bdfd7319f1397c874d4df2fcc0f8a440f6"
+    },
+    "examples/corpora/documentation-books/texts/Animal Farm - George Orwell.txt": {
+      "bytes": 168609,
+      "sha256": "5423bea2d81b2acc225a6a6dbe5d8e63cb3ffd9031f8f1140355381948e7fdb5"
+    },
+    "examples/corpora/documentation-books/texts/Cane - Jean Toomer.txt": {
+      "bytes": 238831,
+      "sha256": "11b2fc791cc32a10dd3a03ffb1fc40e0d47924062088737a28dfb0d655e71cdb"
+    },
+    "examples/corpora/documentation-books/texts/Crime and Punishment - Fyodor Dostoevsky.txt": {
+      "bytes": 1159820,
+      "sha256": "fba26c8bf4e71596a60ecdd18370299136bb48737111d0608195bfedbeac0ae6"
+    },
+    "examples/corpora/documentation-books/texts/Dracula - Bram Stoker.txt": {
+      "bytes": 855107,
+      "sha256": "9f3c4db2c669cfc2327d353e244f7b651cf1216d80f8c0655d6b65d1ce56ed17"
+    },
+    "examples/corpora/documentation-books/texts/Dubliners - James Joyce.txt": {
+      "bytes": 378037,
+      "sha256": "5eb91ae6e244833a1802887b29ae80edc80b1a7340bd5398746382c8c27e2eca"
+    },
+    "examples/corpora/documentation-books/texts/Frankenstein; or, The Modern Prometheus - Mary Shelley.txt": {
+      "bytes": 421537,
+      "sha256": "cf74445da4b49bc601875264c5fa972b136faec8b37d184b768693f3aadddde1"
+    },
+    "examples/corpora/documentation-books/texts/Heart of Darkness - Joseph Conrad.txt": {
+      "bytes": 213940,
+      "sha256": "3c7d598eb8c4b590e25412f70c2c79188f04e384587dd00e83c4cf8b2c3bc6b6"
+    },
+    "examples/corpora/documentation-books/texts/Intentions - Oscar Wilde.txt": {
+      "bytes": 336031,
+      "sha256": "91906e92de569b0417673fced8333bf9367c8e060b1d78642fccbb09286c8510"
+    },
+    "examples/corpora/documentation-books/texts/Mrs. Dalloway - Virginia Woolf.txt": {
+      "bytes": 364007,
+      "sha256": "e7520f5490d156791f62b203deab68d4b86ed8d77718a9085bf54685fdc9db38"
+    },
+    "examples/corpora/documentation-books/texts/Poems, with The Ballad of Reading Gaol - Oscar Wilde.txt": {
+      "bytes": 237031,
+      "sha256": "4513ecd7d0b3abbe561c933e207ee88aadc9c529923913884b5b9490c663e712"
+    },
+    "examples/corpora/documentation-books/texts/Pygmalion - Bernard Shaw.txt": {
+      "bytes": 190982,
+      "sha256": "51652bfed7432eace5b96a5eea7b8291ef1ffffc4b3f6079c0a30fbbe830a1cc"
+    },
+    "examples/corpora/documentation-books/texts/The Awakening and Selected Short Stories - Kate Chopin.txt": {
+      "bytes": 365634,
+      "sha256": "22543872538b7b8bb26477f758d6535146eb1d2b70959f9bf772a6553e02c0e2"
+    },
+    "examples/corpora/documentation-books/texts/The Good Soldier - Ford Madox Ford.txt": {
+      "bytes": 411679,
+      "sha256": "b2e371dda749f609cbf9051e7fea7f783ff98162bd5b9d228c006968d8b694f9"
+    },
+    "examples/corpora/documentation-books/texts/The Great Gatsby - F. Scott Fitzgerald.txt": {
+      "bytes": 280269,
+      "sha256": "d1f407098e147b65893524a5b27a43408d16bbc5567a78c48f8308a76ab6e124"
+    },
+    "examples/corpora/documentation-books/texts/The Picture of Dorian Gray - Oscar Wilde.txt": {
+      "bytes": 437457,
+      "sha256": "c3c88cddeda2a73da304724339ff50303a8065096dcbf3d3b6d83a41f4c95148"
+    },
+    "examples/corpora/documentation-books/texts/The Souls of Black Folk - W. E. B. Du Bois.txt": {
+      "bytes": 402254,
+      "sha256": "5b09c5c30657a49c94cadc9057d3fb83375e352140a2fbc500f5a6dfc403512a"
+    },
+    "examples/corpora/documentation-books/texts/The War of the Worlds - H. G. Wells.txt": {
+      "bytes": 340505,
+      "sha256": "b9740b407e1ffb7a818d476cd25db6b43a1c928b8bef71dd7a8f9e7bcf9e1e80"
+    },
+    "examples/corpora/documentation-books/texts/Winesburg, Ohio - Sherwood Anderson.txt": {
+      "bytes": 399538,
+      "sha256": "6b0464659051adaffcf1d906f6941f31c5f3f17195f6ce49fd563b623adf1c82"
+    }
+  },
+  "schemaVersion": 1
+}
