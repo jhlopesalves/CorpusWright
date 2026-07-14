@@ -21,12 +21,12 @@ const importantAllowList = [
   },
 ];
 const dynamicStyleAllowList = [
-  { file: "src/corpus.ts", property: "width", reason: "PDF materialisation progress is data-sized." },
-  { file: "src/file-list.ts", property: "height", reason: "The virtual-scroll extent is data-sized." },
-  { file: "src/file-list.ts", property: "transform", reason: "The virtual-scroll offset is data-sized." },
-  { file: "src/preview.ts", property: "height", reason: "Preview virtualization spacers are data-sized." },
-  { file: "src/workbench/build.ts", property: "width", reason: "Analysis build progress is data-sized." },
-  { file: "src/workbench/concordance/collocations.ts", property: "gridTemplateColumns", reason: "Position-bin columns follow the selected evidence shape." },
+  { file: "src/features/prepare/corpus/controller.ts", property: "width", reason: "PDF materialisation progress is data-sized." },
+  { file: "src/features/prepare/corpus/file-list.ts", property: "height", reason: "The virtual-scroll extent is data-sized." },
+  { file: "src/features/prepare/corpus/file-list.ts", property: "transform", reason: "The virtual-scroll offset is data-sized." },
+  { file: "src/features/prepare/preview/controller.ts", property: "height", reason: "Preview virtualization spacers are data-sized." },
+  { file: "src/features/analyse/workbench/build.ts", property: "width", reason: "Analysis build progress is data-sized." },
+  { file: "src/features/analyse/workbench/concordance/collocations.ts", property: "gridTemplateColumns", reason: "Position-bin columns follow the selected evidence shape." },
 ];
 const featurePanelAllowList = [
   {

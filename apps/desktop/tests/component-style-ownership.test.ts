@@ -23,7 +23,7 @@ const featureCss = graph.modules
   .map(module => module.contents)
   .join("\n");
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-const distribution = readFileSync(new URL("../src/workbench/concordance/distribution.ts", import.meta.url), "utf8");
+const distribution = readFileSync(new URL("../src/features/analyse/workbench/concordance/distribution.ts", import.meta.url), "utf8");
 const ownershipCheck = readFileSync(new URL("../scripts/check-style-ownership.mjs", import.meta.url), "utf8");
 
 for (const token of [

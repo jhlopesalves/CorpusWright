@@ -3,7 +3,7 @@ import {
   overviewGlossary,
   type OverviewGlossaryEntry,
   type OverviewGlossaryId,
-} from "../../src/overview-glossary";
+} from "../../src/features/analyse/overview/glossary";
 import {
   createOverviewFigure,
   createOverviewRangeControl,
@@ -116,7 +116,7 @@ if (methodDisclosure) {
   await animationFrame();
 }
 
-const overviewShellSource = overviewMode ? await fetch("/src/workbench/shell.ts").then((response) => response.text()) : "";
+const overviewShellSource = overviewMode ? await fetch("/src/features/analyse/workbench/shell.ts").then((response) => response.text()) : "";
 const auditFailures = overviewMode ? auditOverviewSuite(builtFigures, overviewShellSource) : auditFigure(built.figure);
 const failures = [...errors, ...timedFailures, ...auditFailures];
 document.body.dataset.consoleErrors = String(errors.length);

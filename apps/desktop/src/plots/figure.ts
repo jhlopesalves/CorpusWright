@@ -11,7 +11,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 
-import { dom } from "../dom";
+import { dom } from "../app/dom";
 import {
   figurePaletteLabel,
   type FigurePaletteMode,

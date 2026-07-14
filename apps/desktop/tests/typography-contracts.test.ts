@@ -111,7 +111,7 @@ for (const [selector, token] of [
   assert.match(analyse, new RegExp(`${escaped}\\s*\\{[^}]*font-size:\\s*var\\(${token}\\)`, "s"));
 }
 
-const appearance = readFileSync(new URL("../src/appearance.ts", import.meta.url), "utf8");
+const appearance = readFileSync(new URL("../src/app/appearance.ts", import.meta.url), "utf8");
 const optionNames = (constant: "FONT_OPTIONS" | "MONO_FONT_OPTIONS"): string[] => {
   const block = appearance.match(new RegExp(`export const ${constant}[^=]*=\\s*\\[([\\s\\S]*?)\\n\\];`))?.[1] ?? "";
   return [...block.matchAll(/\bname:\s*"([^"]+)"/g)].map(match => match[1]);

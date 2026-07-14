@@ -5,7 +5,7 @@ const overview = readFileSync(
   new URL("../src/generated/CorpusOverview.ts", import.meta.url),
   "utf8",
 );
-const analysis = readFileSync(new URL("../src/analysis.ts", import.meta.url), "utf8");
+const analysis = readFileSync(new URL("../src/features/analyse/api.ts", import.meta.url), "utf8");
 
 const overviewTypes = [
   "AnalysisInputSource",

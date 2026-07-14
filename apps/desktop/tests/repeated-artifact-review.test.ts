@@ -6,7 +6,7 @@ import {
   compareCandidatesByEvidence,
   decisionStateForCandidate,
   filterCandidatesForReview,
-} from "../src/repeated-artifact-review.ts";
+} from "../src/features/prepare/repeated-artifacts/review.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import type { RemovalRule } from "../src/generated/RemovalRule.js";
-import { cloneRemovalRules } from "../src/removal-rule-utils.ts";
+import { cloneRemovalRules } from "../src/features/prepare/cleaning/removal-rule-utils.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);

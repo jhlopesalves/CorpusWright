@@ -5,28 +5,28 @@ import { loadStyleGraph } from "../scripts/style-graph.mjs";
 const styles = (await loadStyleGraph(new URL("../src/styles.css", import.meta.url))).css;
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const frequency = readFileSync(
-  new URL("../src/workbench/frequency.ts", import.meta.url),
+  new URL("../src/features/analyse/workbench/frequency.ts", import.meta.url),
   "utf8",
 );
-const concordance = readFileSync(new URL("../src/concordance.ts", import.meta.url), "utf8");
+const concordance = readFileSync(new URL("../src/features/analyse/concordance/model.ts", import.meta.url), "utf8");
 const lines = readFileSync(
-  new URL("../src/workbench/concordance/lines.ts", import.meta.url),
+  new URL("../src/features/analyse/workbench/concordance/lines.ts", import.meta.url),
   "utf8",
 );
 const collocations = readFileSync(
-  new URL("../src/workbench/concordance/collocations.ts", import.meta.url),
+  new URL("../src/features/analyse/workbench/concordance/collocations.ts", import.meta.url),
   "utf8",
 );
 const distribution = readFileSync(
-  new URL("../src/workbench/concordance/distribution.ts", import.meta.url),
+  new URL("../src/features/analyse/workbench/concordance/distribution.ts", import.meta.url),
   "utf8",
 );
 const concordanceState = readFileSync(
-  new URL("../src/workbench/concordance/state.ts", import.meta.url),
+  new URL("../src/features/analyse/workbench/concordance/state.ts", import.meta.url),
   "utf8",
 );
 const concordanceShared = readFileSync(
-  new URL("../src/workbench/concordance/shared.ts", import.meta.url),
+  new URL("../src/features/analyse/workbench/concordance/shared.ts", import.meta.url),
   "utf8",
 );
 

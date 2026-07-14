@@ -85,7 +85,7 @@ const placed = placeLabels(
 assert.deepEqual(placed.map((label) => label.text), ["pinned", "priority"]);
 assert.equal(evidenceKey("rank", 1, "the/of"), "rank:1:the%2Fof");
 
-const shellSource = readFileSync(new URL("../src/workbench/shell.ts", import.meta.url), "utf8");
+const shellSource = readFileSync(new URL("../src/features/analyse/workbench/shell.ts", import.meta.url), "utf8");
 const figureSource = readFileSync(new URL("../src/plots/figure.ts", import.meta.url), "utf8");
 const renderSource = readFileSync(new URL("../src/plots/render.ts", import.meta.url), "utf8");
 const modelSource = readFileSync(new URL("../src/plots/model.ts", import.meta.url), "utf8");
