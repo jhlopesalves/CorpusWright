@@ -199,7 +199,7 @@ const hiddenGrowthFit = buildVocabularyGrowthGeometry({
 assert.equal(hiddenGrowthFit.fitPath, null);
 assert.equal(hiddenGrowthFit.yScale.domain[1], 2_200, "hidden fit values cannot control the visible domain");
 
-const shell = readFileSync(new URL("../src/workbench/shell.ts", import.meta.url), "utf8");
+const shell = readFileSync(new URL("../src/features/analyse/workbench/shell.ts", import.meta.url), "utf8");
 const marks = readFileSync(new URL("../src/styles/plots/marks.css", import.meta.url), "utf8");
 assert.match(shell, /How quickly does frequency fall as vocabulary rank increases\?/);
 assert.match(shell, /top three ranks and frequency-one tail remain visible but are not used to estimate the fit/);

@@ -14,7 +14,7 @@ const desktopRoot = path.resolve(scriptDir, "..");
 const srcRoot = path.join(desktopRoot, "src");
 const themesPath = path.join(srcRoot, "styles/foundations/themes.css");
 const figurePalettesPath = path.join(srcRoot, "styles/foundations/figure-palettes.css");
-const appearancePath = path.join(srcRoot, "appearance.ts");
+const appearancePath = path.join(srcRoot, "app/appearance.ts");
 const rawColourPattern = /(?<!&)#(?:[0-9a-fA-F]{3,8})\b|rgba?\([^)\n]+\)|hsla?\([^)\n]+\)/g;
 const namedColourPattern = /\b(?:color|background(?:-color)?|border(?:-[\w-]+)?|outline(?:-color)?|fill|stroke)\s*[:=]\s*["']?[^;\n"'`]*\b(?:white|black|red|green|blue|yellow|orange|purple|gray|grey)\b/gi;
 

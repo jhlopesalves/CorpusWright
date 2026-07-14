@@ -119,7 +119,7 @@ assert.deepEqual(singularProfile.points[0]?.tooltipRows, [
 const palette = readFileSync(new URL("../src/styles/foundations/figure-palettes.css", import.meta.url), "utf8");
 const marks = readFileSync(new URL("../src/styles/plots/marks.css", import.meta.url), "utf8");
 const annotations = readFileSync(new URL("../src/styles/plots/legends-and-annotations.css", import.meta.url), "utf8");
-const shell = readFileSync(new URL("../src/workbench/shell.ts", import.meta.url), "utf8");
+const shell = readFileSync(new URL("../src/features/analyse/workbench/shell.ts", import.meta.url), "utf8");
 const model = readFileSync(new URL("../src/plots/model.ts", import.meta.url), "utf8");
 const render = readFileSync(new URL("../src/plots/render.ts", import.meta.url), "utf8");
 const workbench = readFileSync(new URL("../src/plots/figure-workbench.ts", import.meta.url), "utf8");

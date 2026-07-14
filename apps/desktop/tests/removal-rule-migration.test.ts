@@ -2,8 +2,8 @@ import {
   formatRemovalRuleMigrationSummary,
   migrateRemovalRules,
   migrateRepeatedArtifactDecisionRule,
-} from "../src/removal-rule-migration.ts";
-import { normaliseCleaningConfigWithMigration } from "../src/config.ts";
+} from "../src/features/prepare/cleaning/removal-rule-migration.ts";
+import { normaliseCleaningConfigWithMigration } from "../src/features/prepare/cleaning/config.ts";
 import type { RemovalRule } from "../src/generated/CleaningConfig.js";
 
 function assert(condition: unknown, message: string): asserts condition {

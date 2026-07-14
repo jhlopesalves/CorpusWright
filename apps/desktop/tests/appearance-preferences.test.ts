@@ -129,7 +129,7 @@ globalThis.document = {
 
 globalThis.localStorage = new FakeStorage() as unknown as Storage;
 
-const appearance = await import("../src/appearance.ts");
+const appearance = await import("../src/app/appearance.ts");
 const key = appearance.APPEARANCE_STORAGE_KEY;
 for (const family of appearance.THEME_FAMILIES) {
   assert(typeof family.id === "string" && family.id.length > 0, "theme families must have stable ids");

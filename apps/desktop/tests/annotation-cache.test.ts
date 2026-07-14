@@ -7,7 +7,7 @@ import {
   estimateAnnotationTokenThroughput,
   formatAnnotationTokenRate,
   type AnnotationTokenProgressSample,
-} from "../src/annotation-layer-control.ts";
+} from "../src/features/analyse/annotation/control.ts";
 import type { AnnotationCacheAvailability } from "../src/generated/AnnotationCacheAvailability.ts";
 import type { AnnotationCacheBuildProgress } from "../src/generated/AnnotationCacheBuildProgress.ts";
 import type { AnnotationCacheState } from "../src/generated/AnnotationCacheState.ts";

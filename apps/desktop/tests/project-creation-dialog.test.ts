@@ -5,7 +5,7 @@ import {
   projectCreationMetadataIsValid,
   projectLanguageFromValue,
   projectLanguageLabel,
-} from "../src/project-creation-dialog.ts";
+} from "../src/features/project/creation-dialog.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
