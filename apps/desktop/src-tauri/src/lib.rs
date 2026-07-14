@@ -10,6 +10,8 @@ use tauri::Manager;
 use tauri::path::BaseDirectory;
 
 mod features;
+#[cfg(feature = "native-smoke")]
+mod native_smoke;
 mod platform;
 mod runtime;
 
@@ -35,6 +37,14 @@ pub fn run() {
         .manage(runtime_config)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .on_page_load(|webview, payload| {
+            #[cfg(feature = "native-smoke")]
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                native_smoke::start(webview.app_handle().clone());
+            }
+            #[cfg(not(feature = "native-smoke"))]
+            let _ = (webview, payload);
+        })
         .setup(move |app| {
             let concordance_cache_root = app
                 .path()

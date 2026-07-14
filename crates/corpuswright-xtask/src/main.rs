@@ -428,8 +428,8 @@ fn package_linux(args: &[String]) -> Result<()> {
         bail!("Linux Debian packaging requires a Linux host");
     }
     println!(
-        "Ubuntu build prerequisites: libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
-         libxdo-dev libssl-dev build-essential libayatana-appindicator3-dev patchelf"
+        "Ubuntu prerequisites: build-essential curl file jq libayatana-appindicator3-dev \
+         libgtk-3-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev patchelf xvfb"
     );
     run_named(
         "verified Linux PDFium",
@@ -440,10 +440,22 @@ fn package_linux(args: &[String]) -> Result<()> {
             "apps/desktop/src-tauri/resources/ocr",
         ]),
     )?;
-    run_named(
-        "Linux Debian package",
-        npm(&["run", "tauri", "build", "--", "--bundles", "deb"]),
-    )?;
+    let install_smoke = args.iter().any(|arg| arg == "--install-smoke");
+    let package_args = if install_smoke {
+        vec![
+            "run",
+            "tauri",
+            "build",
+            "--",
+            "--bundles",
+            "deb",
+            "--features",
+            "native-smoke",
+        ]
+    } else {
+        vec!["run", "tauri", "build", "--", "--bundles", "deb"]
+    };
+    run_named("Linux Debian package", npm(&package_args))?;
     let packages = find_deb_packages(&repository_root().join("target/release/bundle/deb"))?;
     for package in &packages {
         println!("Built Debian package: {}", package.display());
@@ -452,20 +464,68 @@ fn package_linux(args: &[String]) -> Result<()> {
             command("dpkg-deb", &["--contents", path_arg(package)?]),
         )?;
     }
-    if args.iter().any(|arg| arg == "--install-smoke") {
-        print!("Install the package with sudo and run the native smoke workflow? [y/N] ");
+    if install_smoke {
+        print!(
+            "Install, exercise, and uninstall the dedicated native-smoke package with sudo? [y/N] "
+        );
         io::stdout().flush()?;
         let mut answer = String::new();
         io::stdin().read_line(&mut answer)?;
         if matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+            if !command_available("xvfb-run", &["--help"]) {
+                bail!("installed smoke requires xvfb-run (Ubuntu package: xvfb)");
+            }
             let package = packages
                 .first()
                 .ok_or_else(|| anyhow!("no Debian package was produced"))?;
+            let package_name = Command::new("dpkg-deb")
+                .args(["--field", path_arg(package)?, "Package"])
+                .output()
+                .context("read Debian package name")?;
+            if !package_name.status.success() {
+                bail!("dpkg-deb could not read the package name");
+            }
+            let package_name = String::from_utf8(package_name.stdout)?.trim().to_string();
             run_named(
                 "install Debian package",
                 command("sudo", &["apt-get", "install", "-y", path_arg(package)?]),
             )?;
-            run_named("installed native smoke", cargo(&["xtask", "browser-test"]))?;
+            let smoke_root = PathBuf::from(format!(
+                "/tmp/corpuswright-native-smoke-{}",
+                std::process::id()
+            ));
+            let corpus_dir = smoke_root.join("corpus");
+            let export_dir = smoke_root.join("export");
+            let result_path = smoke_root.join("result.json");
+            let smoke_result = (|| -> Result<()> {
+                fs::create_dir_all(&smoke_root)?;
+                corpuswright_test_support::generate_corpus_at(&corpus_dir)?;
+                let mut smoke = command(
+                    "timeout",
+                    &["180s", "xvfb-run", "-a", "/usr/bin/corpuswright-desktop"],
+                );
+                smoke
+                    .env("CORPUSWRIGHT_NATIVE_SMOKE_CORPUS", &corpus_dir)
+                    .env("CORPUSWRIGHT_NATIVE_SMOKE_EXPORT", &export_dir)
+                    .env("CORPUSWRIGHT_NATIVE_SMOKE_RESULT", &result_path);
+                run_named("installed native smoke", smoke)?;
+                let evidence: Value = serde_json::from_slice(&fs::read(&result_path)?)?;
+                if evidence.get("status").and_then(Value::as_str) != Some("passed") {
+                    bail!("installed native smoke failed: {evidence}");
+                }
+                println!("Installed resource and workflow evidence: {evidence}");
+                Ok(())
+            })();
+            let uninstall_result = run_named(
+                "uninstall Debian package",
+                command("sudo", &["apt-get", "remove", "-y", &package_name]),
+            );
+            let _ = fs::remove_dir_all(&smoke_root);
+            smoke_result?;
+            uninstall_result?;
+            if Path::new("/usr/bin/corpuswright-desktop").exists() {
+                bail!("Debian package uninstall left /usr/bin/corpuswright-desktop behind");
+            }
         } else {
             println!("Installation skipped; no sudo command was run.");
         }
