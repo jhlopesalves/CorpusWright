@@ -1675,6 +1675,23 @@ fn read_surface_index_cache(
     Ok(store)
 }
 
+/// Exercises the complete bounded cache-header/body reader with arbitrary bytes.
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub fn fuzz_surface_index_cache(bytes: &[u8]) {
+    let expected = SurfaceIndexManifest {
+        schema_version: INDEX_SCHEMA_VERSION,
+        processed_texts_hash_sha256: String::new(),
+        decode_policy_version: crate::sources::decode::DECODE_POLICY_VERSION,
+        tokenization: TokenizationManifest::default(),
+    };
+    let _ = read_surface_index_cache(
+        std::io::Cursor::new(bytes),
+        &expected,
+        SurfaceIndexResourceLimits::default(),
+    );
+}
+
 fn cache_io_error(error: std::io::Error) -> SurfaceIndexCacheError {
     SurfaceIndexCacheError(error.to_string())
 }

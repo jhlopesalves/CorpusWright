@@ -377,6 +377,9 @@ impl NativeModel {
                 error: format!("model path contains an interior NUL byte: {error}"),
             }
         })?;
+        // SAFETY: `c_path` is NUL-terminated and remains alive for the call. The shim returns
+        // either null or a uniquely owned model handle that must be released with
+        // `cw_udpipe_model_free`; `NativeModel::drop` performs that release exactly once.
         let ptr = unsafe { cw_udpipe_model_load(c_path.as_ptr()) };
         let Some(ptr) = NonNull::new(ptr) else {
             return Err(AnnotationError::ModelLoadFailed {
@@ -405,6 +408,9 @@ impl NativeModel {
             .iter()
             .map(|token| token.as_ptr())
             .collect::<Vec<_>>();
+        // SAFETY: the non-null model handle remains owned by `self`; every token pointer is
+        // NUL-terminated and both pointer arrays remain alive for the duration of the call. The
+        // shim copies/consumes the input synchronously and returns an owned result or null.
         let raw_result = unsafe {
             cw_udpipe_tag_pretokenized(self.ptr.as_ptr(), token_ptrs.as_ptr(), token_ptrs.len())
         };
@@ -420,6 +426,9 @@ impl NativeModel {
 
 impl Drop for NativeModel {
     fn drop(&mut self) {
+        // SAFETY: `ptr` was returned non-null by the load function, is uniquely owned by this
+        // value, and has not been freed. NativeModel is dropped once and is never concurrently
+        // accessed because model use is mutex-serialised.
         unsafe { cw_udpipe_model_free(self.ptr.as_ptr()) };
     }
 }
@@ -430,11 +439,14 @@ struct NativeTaggedResult {
 
 impl NativeTaggedResult {
     fn tagged_words(&self) -> Result<(Vec<TaggedWord>, usize), AnnotationError> {
+        // SAFETY: the tagged-result handle is non-null, owned by `self`, and remains alive for
+        // the complete query. The count functions do not retain the pointer.
         let word_count = unsafe { cw_udpipe_result_word_count(self.ptr.as_ptr()) };
         let word_count =
             usize::try_from(word_count).map_err(|_| AnnotationError::TaggingFailed {
                 error: "UDPipe returned a negative word count".to_string(),
             })?;
+        // SAFETY: identical handle lifetime and thread assumptions to the word-count call above.
         let range_count = unsafe { cw_udpipe_result_range_count(self.ptr.as_ptr()) };
         let range_count =
             usize::try_from(range_count).map_err(|_| AnnotationError::TaggingFailed {
@@ -443,6 +455,9 @@ impl NativeTaggedResult {
 
         let mut words = Vec::with_capacity(word_count);
         for index in 0..word_count {
+            // SAFETY: `index` is below the native word count and therefore within the shim's
+            // result table. Returned string pointers remain valid while `self` is alive and are
+            // copied into Rust-owned strings before the next iteration or free operation.
             let word = unsafe { cw_udpipe_result_get_word(self.ptr.as_ptr(), index as i32) };
             words.push(TaggedWord {
                 surface: c_string(word.form, "FORM")?,
@@ -460,6 +475,8 @@ impl NativeTaggedResult {
 
 impl Drop for NativeTaggedResult {
     fn drop(&mut self) {
+        // SAFETY: `ptr` is the uniquely owned non-null result returned by the tagging function;
+        // no borrowed native fields escape `tagged_words`, so it is safe to free exactly once.
         unsafe { cw_udpipe_tagged_result_free(self.ptr.as_ptr()) };
     }
 }
@@ -470,16 +487,22 @@ fn c_string(ptr: *const c_char, field: &str) -> Result<String, AnnotationError> 
             error: format!("UDPipe returned a null {field} field"),
         });
     }
+    // SAFETY: the caller established that `ptr` is non-null. The UDPipe shim contract guarantees
+    // a NUL-terminated string owned by the live result; it is copied before that result is freed.
     Ok(unsafe { CStr::from_ptr(ptr) }
         .to_string_lossy()
         .into_owned())
 }
 
 fn last_udpipe_error() -> String {
+    // SAFETY: this no-argument shim function returns either null or a pointer into thread-local
+    // NUL-terminated error storage. We copy the message immediately on the calling thread.
     let ptr = unsafe { cw_udpipe_get_error() };
     if ptr.is_null() {
         return "unknown UDPipe error".to_string();
     }
+    // SAFETY: null was rejected above and the thread-local string remains valid for this immediate
+    // conversion; no borrowed pointer escapes.
     unsafe { CStr::from_ptr(ptr) }
         .to_string_lossy()
         .into_owned()

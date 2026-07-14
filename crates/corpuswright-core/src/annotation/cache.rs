@@ -122,6 +122,13 @@ pub(crate) struct LemmaTableDto {
     pub entries: Vec<String>,
 }
 
+/// Exercises the owned cache-envelope parser without exposing its persistence representation.
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub fn fuzz_annotation_cache_envelope(bytes: &[u8]) {
+    let _ = serde_json::from_slice::<AnnotationLayerCacheEnvelope>(bytes);
+}
+
 impl From<&LemmaTable> for LemmaTableDto {
     fn from(table: &LemmaTable) -> Self {
         Self {

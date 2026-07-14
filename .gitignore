@@ -108,6 +108,10 @@ logs/
 /sample-corpora-local/
 /test-corpora/
 /documentation-corpus-local/
+fuzz/artifacts/
+fuzz/corpus/
+fuzz/coverage/
+fuzz/target/
 coragrarian/
 crates/corpuswright-core/tests/fixtures/non-tracked/
 

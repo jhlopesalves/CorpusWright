@@ -17,7 +17,7 @@ use corpuswright_core::sources::cache::{
 };
 use corpuswright_core::support::hash::sha256_hex;
 use corpuswright_core::text::tokenisation::TokenizationConfig;
-use corpuswright_core::{ExportOptions, export_corpus, scan_directory};
+use corpuswright_core::{CancellationToken, ExportOptions, export_corpus, scan_directory};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::env;
@@ -25,7 +25,6 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::AtomicBool;
 
 fn main() {
     if let Err(error) = dispatch(env::args().skip(1).collect()) {
@@ -188,6 +187,10 @@ fn repository_policy() -> Result<()> {
     run_named(
         "repository data policy",
         node(&["scripts/check-repository-data.cjs"]),
+    )?;
+    run_named(
+        "architecture policy",
+        node(&["scripts/check-architecture.cjs"]),
     )
 }
 
@@ -233,7 +236,7 @@ fn documentation_dossier(args: &[String]) -> Result<()> {
     }
     let cleaning = CleaningConfig::default();
     let cache = ExtractionCache::new();
-    let cancellation = AtomicBool::new(false);
+    let cancellation = CancellationToken::new();
     let config_signature = cleaning_config_signature(&cleaning);
     let corpus_checksum = checksum_records(&scan.files)?;
     let analysis = build_analysis_corpus(
@@ -407,7 +410,14 @@ fn security() -> Result<()> {
     } else {
         bail!("cargo-deny is required; install it with `cargo install cargo-deny --locked`");
     }
-    run_named("npm production audit", npm(&["audit", "--omit=dev"]))?;
+    run_named(
+        "npm dependency audit",
+        npm(&["audit", "--audit-level=high"]),
+    )?;
+    run_named(
+        "parser hardening tests",
+        cargo(&["test", "-p", "corpuswright-core", "sources::docx::tests"]),
+    )?;
     repository_policy()?;
     Ok(())
 }
