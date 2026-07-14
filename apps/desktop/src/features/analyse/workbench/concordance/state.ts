@@ -12,7 +12,7 @@ import type {
   ConcordanceResult,
   ConcordanceSortKey,
   SortDirection,
-} from "../../api";
+} from "../../ipc";
 import {
   CONCORDANCE_DEFAULT_PAGE_SIZE,
   CONCORDANCE_DEFAULT_WINDOW,

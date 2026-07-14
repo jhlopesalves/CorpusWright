@@ -1,5 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { invoke, open, save } from "./system-ipc";
 
 import {
   BOOLEAN_CLEANING_CONFIG_KEYS,
@@ -8,6 +7,7 @@ import {
   type BooleanCleaningConfigKey,
 } from "../features/prepare/cleaning/config";
 import { dom } from "./dom";
+import { bindModalVisibility } from "./modal";
 import { syncDraftCustomRemovalsFromConfig } from "../features/prepare/cleaning/custom-removals";
 import {
   syncDecisionsWithActiveRules,
@@ -220,10 +220,15 @@ export function initSettingsModal(callbacks: SettingsModalCallbacks): void {
   dom.btnLoadConfig.addEventListener("click", handleLoadConfig);
   dom.btnSaveConfig.addEventListener("click", handleSaveConfig);
 
-  dom.prepareCleaningSettings.addEventListener("click", () => openSettingsModal("tab-general"));
-
-  dom.cancelSettingsBtn.addEventListener("click", closeSettingsModal);
-  dom.btnCloseSettingsModalTop.addEventListener("click", closeSettingsModal);
+  bindModalVisibility(
+    {
+      modal: dom.settingsModal,
+      open: dom.prepareCleaningSettings,
+      close: [dom.cancelSettingsBtn, dom.btnCloseSettingsModalTop],
+    },
+    () => openSettingsModal("tab-general"),
+    closeSettingsModal,
+  );
 
   dom.applySettingsBtn.addEventListener("click", () => {
     const nextConfig = buildConfigFromModalControls();

@@ -4,8 +4,6 @@
  * Each asynchronous build and availability probe carries a generation. Progress, errors, and final
  * state reach the workbench only while that generation remains current.
  */
-import { listen } from "@tauri-apps/api/event";
-
 import {
   buildAnnotationCache,
   buildAnalysisCorpus,
@@ -21,7 +19,9 @@ import {
   type AnnotationCacheState,
   type AnalysisBuildProgress,
   type CorpusOverview as AnalysisCorpus,
-} from "../api";
+  listen,
+} from "../ipc";
+import { GenerationCounter, type Generation } from "../../../app/generation";
 import {
   appendAnnotationTokenProgressSample,
   annotationLayerControlViewModel,
@@ -46,7 +46,7 @@ let analysisBuildInProgress = false;
 
 let analysisBuildProgress: AnalysisBuildProgress | null = null;
 
-let analysisBuildGeneration = 0;
+let analysisBuildGeneration = new GenerationCounter<"analysis-build">();
 
 let analysisProgressUnlisten: (() => void) | null = null;
 
@@ -54,7 +54,7 @@ let analysisNotice: { kind: "info" | "warning"; message: string } | null = null;
 
 let annotationCacheAvailability: AnnotationCacheAvailability = { state: "missing", detail: null };
 
-let annotationCacheProbeGeneration = 0;
+let annotationCacheProbeGeneration = new GenerationCounter<"annotation-cache-probe">();
 
 let annotationCacheProbeKey: string | null = null;
 
@@ -62,7 +62,7 @@ let annotationCacheProbePending = false;
 
 let annotationBuildTransient: AnnotationLayerTransientState | null = null;
 
-let annotationBuildGeneration = 0;
+let annotationBuildGeneration = new GenerationCounter<"annotation-build">();
 
 let annotationBuildStartedAt: number | null = null;
 
@@ -103,11 +103,11 @@ function readyAnnotationCacheAvailability(): AnnotationCacheAvailability {
 
 export function resetAnnotationLayerState(): void {
   annotationCacheAvailability = { state: "missing", detail: null };
-  annotationCacheProbeGeneration += 1;
+  annotationCacheProbeGeneration.invalidate();
   annotationCacheProbeKey = null;
   annotationCacheProbePending = false;
   annotationBuildTransient = null;
-  annotationBuildGeneration += 1;
+  annotationBuildGeneration.invalidate();
   annotationBuildStartedAt = null;
   lastAnnotationBuildReport = null;
   if (annotationBuildTimer !== null) {
@@ -234,7 +234,10 @@ export function annotationCacheStateForUi(corpus: AnalysisCorpus | null = state.
   return annotationCacheAvailabilityForUi(corpus).state;
 }
 
-async function refreshAnnotationCacheAvailability(probeKey: string, generation: number): Promise<void> {
+async function refreshAnnotationCacheAvailability(
+  probeKey: string,
+  generation: Generation<"annotation-cache-probe">,
+): Promise<void> {
   try {
     const page = await queryAnnotatedFrequency(
       {
@@ -257,17 +260,17 @@ async function refreshAnnotationCacheAvailability(probeKey: string, generation: 
     );
     // The probe can outlive a corpus or cleaning change. Generation ownership is checked before its
     // cache state reaches Frequency controls.
-    if (annotationCacheProbeGeneration !== generation) {
+    if (!annotationCacheProbeGeneration.isCurrent(generation)) {
       return;
     }
     annotationCacheAvailability = page.cache;
     annotationCacheProbeKey = probeKey;
   } catch {
-    if (annotationCacheProbeGeneration === generation) {
+    if (annotationCacheProbeGeneration.isCurrent(generation)) {
       annotationCacheProbeKey = probeKey;
     }
   } finally {
-    if (annotationCacheProbeGeneration === generation) {
+    if (annotationCacheProbeGeneration.isCurrent(generation)) {
       annotationCacheProbePending = false;
       if (state.activeWorkbench === "analyse") {
         renderFrequencyList();
@@ -297,7 +300,7 @@ export function ensureAnnotationCacheAvailability(corpus: AnalysisCorpus | null)
     return;
   }
   annotationCacheProbePending = true;
-  const generation = ++annotationCacheProbeGeneration;
+  const generation = annotationCacheProbeGeneration.next();
   void refreshAnnotationCacheAvailability(probeKey, generation);
 }
 
@@ -463,7 +466,9 @@ function annotationBuildWasCancelled(error: unknown): boolean {
     : `${error}`.toLowerCase().includes("cancelled");
 }
 
-async function refreshSurfaceAnalysisAfterAnnotationBuild(generation: number): Promise<void> {
+async function refreshSurfaceAnalysisAfterAnnotationBuild(
+  generation: Generation<"annotation-build">,
+): Promise<void> {
   if (!state.analysisCorpus) {
     return;
   }
@@ -474,11 +479,11 @@ async function refreshSurfaceAnalysisAfterAnnotationBuild(generation: number): P
     analysisBuildSignature(),
     effectiveCleaningConfig(),
   );
-  if (annotationBuildGeneration !== generation) {
+  if (!annotationBuildGeneration.isCurrent(generation)) {
     return;
   }
   const overview = await computeCorpusOverview(effectiveCleaningConfig()).catch(() => builtOverview);
-  if (annotationBuildGeneration !== generation) {
+  if (!annotationBuildGeneration.isCurrent(generation)) {
     return;
   }
   state.analysisCorpus = overview;
@@ -520,8 +525,8 @@ export async function handleAnnotationLayerAction(): Promise<void> {
     return;
   }
 
-  const generation = ++annotationBuildGeneration;
-  annotationCacheProbeGeneration += 1;
+  const generation = annotationBuildGeneration.next();
+  annotationCacheProbeGeneration.invalidate();
   annotationCacheProbePending = false;
   annotationBuildStartedAt = Date.now();
   annotationBuildAnnotatingStartedAt = null;
@@ -545,7 +550,7 @@ export async function handleAnnotationLayerAction(): Promise<void> {
       analysisBuildSignature(),
       effectiveCleaningConfig(),
     );
-    if (annotationBuildGeneration !== generation) {
+    if (!annotationBuildGeneration.isCurrent(generation)) {
       return;
     }
 
@@ -556,7 +561,7 @@ export async function handleAnnotationLayerAction(): Promise<void> {
     if (state.analysisCorpus) {
       dom.statusBar.textContent = "Refreshing surface analysis for annotations...";
       await refreshSurfaceAnalysisAfterAnnotationBuild(generation);
-      if (annotationBuildGeneration !== generation) {
+      if (!annotationBuildGeneration.isCurrent(generation)) {
         return;
       }
     }
@@ -568,7 +573,7 @@ export async function handleAnnotationLayerAction(): Promise<void> {
       ? `Annotations ready. ${reportSummary}.`
       : `Annotations built. ${reportSummary}. Build surface analysis to inspect lemma and POS frequency.`;
   } catch (error) {
-    if (annotationBuildGeneration !== generation) {
+    if (!annotationBuildGeneration.isCurrent(generation)) {
       return;
     }
     const message = annotationBuildErrorMessage(error);
@@ -577,7 +582,7 @@ export async function handleAnnotationLayerAction(): Promise<void> {
       : { status: "failed", message };
     dom.statusBar.textContent = message;
   } finally {
-    if (annotationBuildGeneration === generation) {
+    if (annotationBuildGeneration.isCurrent(generation)) {
       stopAnnotationBuildTimer();
       annotationBuildStartedAt = null;
       annotationBuildAnnotatingStartedAt = null;
@@ -620,7 +625,7 @@ export async function handleBuildAnalysisCorpus(): Promise<void> {
 
   analysisBuildInProgress = true;
   analysisBuildProgress = null;
-  const buildGeneration = ++analysisBuildGeneration;
+  const buildGeneration = analysisBuildGeneration.next();
   state.analysisCorpus = null;
   resetFrequencyCorpusState();
   renderAnalyseWorkbench();
@@ -633,7 +638,7 @@ export async function handleBuildAnalysisCorpus(): Promise<void> {
       buildSignature,
       effectiveCleaningConfig(),
     );
-    if (analysisBuildGeneration !== buildGeneration) {
+    if (!analysisBuildGeneration.isCurrent(buildGeneration)) {
       return;
     }
     const overview = await computeCorpusOverview(effectiveCleaningConfig()).catch(() => builtOverview);
@@ -655,7 +660,7 @@ export async function handleBuildAnalysisCorpus(): Promise<void> {
     dom.statusBar.textContent =
       `Analysis corpus built from ${inputTextSourceLabel(overview.inputTextSource)}. ${formatNumber(overview.documentCount)} documents · ${formatNumber(overview.totalTokens)} tokens · ${formatNumber(overview.totalTypes)} types.`;
   } catch (error) {
-    if (analysisBuildGeneration !== buildGeneration) {
+    if (!analysisBuildGeneration.isCurrent(buildGeneration)) {
       return;
     }
     state.analysisCorpus = null;
@@ -669,7 +674,7 @@ export async function handleBuildAnalysisCorpus(): Promise<void> {
     };
     dom.statusBar.textContent = analysisNotice.message;
   } finally {
-    if (analysisBuildGeneration !== buildGeneration) {
+    if (!analysisBuildGeneration.isCurrent(buildGeneration)) {
       return;
     }
     analysisBuildInProgress = false;
@@ -760,7 +765,7 @@ export function updateAnnotationCacheAvailabilityFromFrequencyPage(
 }
 
 export function resetAnalysisBuildStateForWorkbench(): void {
-  analysisBuildGeneration += 1;
+  analysisBuildGeneration.invalidate();
   if (analysisBuildInProgress) {
     void cancelAnalysisBuild();
   }

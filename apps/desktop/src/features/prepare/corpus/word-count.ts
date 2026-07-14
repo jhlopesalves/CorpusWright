@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../ipc";
 
 import { dom, getSummaryAvgWords, getSummaryTotalWords, getSummaryWordLabel } from "../../../app/dom";
 import { state } from "../../../app/state";
