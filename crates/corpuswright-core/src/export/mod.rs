@@ -1,8 +1,14 @@
-use crate::cache::ExtractionCache;
-use crate::clean::{CleaningConfig, PdfEmbeddedTextStrategy, PdfTextSource, clean_text};
-use crate::decode::{DECODE_POLICY_VERSION, DecodeStrategy, SourceEncoding, decode_source_bytes};
-use crate::manifest::{ExportManifest, ManifestFileRecord};
-use crate::scan::{DocumentRecord, DocumentType};
+pub mod manifest;
+
+use crate::corpus::{DocumentRecord, DocumentType};
+use crate::export::manifest::{ExportManifest, ManifestFileRecord};
+use crate::preparation::cleaning::{
+    CleaningConfig, PdfEmbeddedTextStrategy, PdfTextSource, clean_text,
+};
+use crate::sources::cache::ExtractionCache;
+use crate::sources::decode::{
+    DECODE_POLICY_VERSION, DecodeStrategy, SourceEncoding, decode_source_bytes,
+};
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -10,7 +16,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use ts_rs::TS;
 
-pub use crate::manifest::ManifestFileRecord as ExportedFileRecord;
+pub use crate::export::manifest::ManifestFileRecord as ExportedFileRecord;
 
 /// Configuration options for exporting a corpus.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -135,7 +141,7 @@ pub fn export_corpus(
                 path: record.source_path.clone(),
                 message: error.to_string(),
             })?;
-            let source_hash_sha256 = crate::hash::sha256_hex(&source_bytes);
+            let source_hash_sha256 = crate::support::hash::sha256_hex(&source_bytes);
             let decoded_source = matches!(
                 record.document_type,
                 DocumentType::Text | DocumentType::Html
@@ -149,7 +155,7 @@ pub fn export_corpus(
 
             let pdf_options = if record.document_type == DocumentType::Pdf {
                 Some(
-                    crate::pdf::PdfExtractionOptions::raw_from_record_and_cleaning_config(
+                    crate::sources::pdf::PdfExtractionOptions::raw_from_record_and_cleaning_config(
                         record,
                         cleaning_config,
                     ),
@@ -211,7 +217,7 @@ pub fn export_corpus(
                         }
                     }
                 } else {
-                    match crate::docx::extract_docx(&source_bytes, cleaning_config) {
+                    match crate::sources::docx::extract_docx(&source_bytes, cleaning_config) {
                         Ok(extracted) => {
                             for w in extracted.warnings {
                                 file_warnings.push(w.clone());
@@ -268,7 +274,7 @@ pub fn export_corpus(
                         }
                     }
                 } else {
-                    match crate::pdf::extract_pdf(&source_bytes, None, pdf_options) {
+                    match crate::sources::pdf::extract_pdf(&source_bytes, None, pdf_options) {
                         Ok(extracted) => {
                             for w in extracted.warnings {
                                 file_warnings.push(w.clone());
@@ -305,17 +311,21 @@ pub fn export_corpus(
             };
 
             let processed_text = if record.document_type == DocumentType::Pdf {
-                let (pdf_cleaned, cleanup_warnings, cleaned_pages) = if let Some(page_texts) =
-                    pdf_page_texts.as_deref()
-                {
-                    let (text, warnings, pages) =
-                        crate::pdf::clean_extracted_pdf_pages_and_text(page_texts, cleaning_config);
-                    (text, warnings, Some(pages))
-                } else {
-                    let (text, warnings) =
-                        crate::pdf::clean_extracted_pdf_text(&original_text, cleaning_config);
-                    (text, warnings, None)
-                };
+                let (pdf_cleaned, cleanup_warnings, cleaned_pages) =
+                    if let Some(page_texts) = pdf_page_texts.as_deref() {
+                        let (text, warnings, pages) =
+                            crate::sources::pdf::clean_extracted_pdf_pages_and_text(
+                                page_texts,
+                                cleaning_config,
+                            );
+                        (text, warnings, Some(pages))
+                    } else {
+                        let (text, warnings) = crate::sources::pdf::clean_extracted_pdf_text(
+                            &original_text,
+                            cleaning_config,
+                        );
+                        (text, warnings, None)
+                    };
                 for w in cleanup_warnings {
                     file_warnings.push(w.clone());
                     warnings.push(ExportWarning {
@@ -327,18 +337,27 @@ pub fn export_corpus(
                 }
                 if let Some(cleaned_pages) = cleaned_pages {
                     let document =
-                        crate::structured_document::StructuredDocument::from_pages(cleaned_pages);
-                    crate::clean::clean_structured_document(&document, cleaning_config).text
+                        crate::sources::structured_document::StructuredDocument::from_pages(
+                            cleaned_pages,
+                        );
+                    crate::preparation::cleaning::clean_structured_document(
+                        &document,
+                        cleaning_config,
+                    )
+                    .text
                 } else {
                     clean_text(&pdf_cleaned, cleaning_config)
                 }
             } else if cleaning_config.extract_html {
-                clean_text(&crate::html::extract_html(&original_text), cleaning_config)
+                clean_text(
+                    &crate::sources::html::extract_html(&original_text),
+                    cleaning_config,
+                )
             } else {
                 clean_text(&original_text, cleaning_config)
             };
             let processed_bytes = processed_text.as_bytes();
-            let processed_hash_sha256 = crate::hash::sha256_hex(processed_bytes);
+            let processed_hash_sha256 = crate::support::hash::sha256_hex(processed_bytes);
 
             if decoded_source
                 .as_ref()
@@ -429,7 +448,7 @@ pub fn export_corpus(
         warnings_count: warnings.len(),
         cleaning_config: cleaning_config.clone(),
         decode_policy_version: DECODE_POLICY_VERSION,
-        tokenization: crate::tokenization::TokenizationManifest::default(),
+        tokenization: crate::text::tokenisation::TokenizationManifest::default(),
         files: exported_files.clone(),
     };
 
@@ -662,7 +681,7 @@ fn unique_output_relative_path(
         }
     }
 
-    let hash: String = crate::hash::sha256_hex(
+    let hash: String = crate::support::hash::sha256_hex(
         format!(
             "{}\n{}",
             record.source_path.display(),
@@ -719,15 +738,15 @@ fn readme_text(app_name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::{
-        CacheEntry, DocumentTextMode, ExtractionCache, document_text_from_cache_entry,
-    };
-    use crate::clean::{
+    use crate::corpus::scan_directory;
+    use crate::preparation::cleaning::{
         CleaningConfig, RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope,
         ReplacementRule,
     };
-    use crate::pdf::PdfExtractionOptions;
-    use crate::scan::scan_directory;
+    use crate::sources::cache::{
+        CacheEntry, DocumentTextMode, ExtractionCache, document_text_from_cache_entry,
+    };
+    use crate::sources::pdf::PdfExtractionOptions;
     use std::fs;
     use tempfile::tempdir;
 
@@ -1173,14 +1192,17 @@ mod tests {
         assert_eq!(manifest.files.len(), 1);
         assert_eq!(manifest.files[0].source_hash_sha256.len(), 64);
         assert_eq!(manifest.files[0].processed_hash_sha256.len(), 64);
-        assert_eq!(manifest.tokenization.id, crate::tokenization::TOKENIZER_ID);
+        assert_eq!(
+            manifest.tokenization.id,
+            crate::text::tokenisation::TOKENIZER_ID
+        );
         assert_eq!(
             manifest.tokenization.version,
-            crate::tokenization::TOKENIZER_VERSION
+            crate::text::tokenisation::TOKENIZER_VERSION
         );
         assert_eq!(
             manifest.tokenization.config,
-            crate::tokenization::TokenizationConfig::default()
+            crate::text::tokenisation::TokenizationConfig::default()
         );
     }
 
@@ -1207,7 +1229,7 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(export.manifest_path).unwrap()).unwrap();
         assert_eq!(
             manifest.decode_policy_version,
-            crate::decode::DECODE_POLICY_VERSION
+            crate::sources::decode::DECODE_POLICY_VERSION
         );
 
         let utf8 = manifest
@@ -1217,12 +1239,15 @@ mod tests {
             .unwrap();
         assert_eq!(
             utf8.decode_policy_version,
-            crate::decode::DECODE_POLICY_VERSION
+            crate::sources::decode::DECODE_POLICY_VERSION
         );
-        assert_eq!(utf8.detected_encoding, crate::decode::SourceEncoding::Utf8);
+        assert_eq!(
+            utf8.detected_encoding,
+            crate::sources::decode::SourceEncoding::Utf8
+        );
         assert_eq!(
             utf8.decode_strategy,
-            crate::decode::DecodeStrategy::Utf8Strict
+            crate::sources::decode::DecodeStrategy::Utf8Strict
         );
         assert_eq!(utf8.replacement_char_count, 0);
 
@@ -1233,11 +1258,11 @@ mod tests {
             .unwrap();
         assert_eq!(
             latin.detected_encoding,
-            crate::decode::SourceEncoding::Windows1252
+            crate::sources::decode::SourceEncoding::Windows1252
         );
         assert_eq!(
             latin.decode_strategy,
-            crate::decode::DecodeStrategy::Windows1252Fallback
+            crate::sources::decode::DecodeStrategy::Windows1252Fallback
         );
         assert_eq!(latin.replacement_char_count, 0);
         assert!(
@@ -1251,12 +1276,12 @@ mod tests {
         assert_eq!(exported_latin, "café");
         assert_eq!(
             latin.processed_hash_sha256,
-            crate::hash::sha256_hex("café".as_bytes())
+            crate::support::hash::sha256_hex("café".as_bytes())
         );
         let old_lossy = String::from_utf8_lossy(&latin_bytes);
         assert_ne!(
             latin.processed_hash_sha256,
-            crate::hash::sha256_hex(old_lossy.as_bytes())
+            crate::support::hash::sha256_hex(old_lossy.as_bytes())
         );
     }
 

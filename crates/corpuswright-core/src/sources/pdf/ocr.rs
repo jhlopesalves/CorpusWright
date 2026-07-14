@@ -1,4 +1,4 @@
-use crate::clean::PdfOcrQuality;
+use crate::preparation::cleaning::PdfOcrQuality;
 use ocrs::{OcrEngine, OcrEngineParams};
 use pdfium_render::prelude::*;
 use rten::Model;
@@ -333,14 +333,14 @@ pub fn extract_text_via_ocr(
     let preview_mode = max_chars.is_some() || max_pages.is_some();
 
     let document = {
-        let _lock = crate::pdf::PDFIUM_LOCK.lock().unwrap();
+        let _lock = crate::sources::pdf::PDFIUM_LOCK.lock().unwrap();
         pdfium.load_pdf_from_byte_slice(bytes, None)?
     };
     let mut all_text = String::new();
     let mut warnings = Vec::new();
 
     let page_count = {
-        let _lock = crate::pdf::PDFIUM_LOCK.lock().unwrap();
+        let _lock = crate::sources::pdf::PDFIUM_LOCK.lock().unwrap();
         document.pages().len() as usize
     };
 
@@ -357,7 +357,7 @@ pub fn extract_text_via_ocr(
         }
 
         let image = {
-            let _lock = crate::pdf::PDFIUM_LOCK.lock().unwrap();
+            let _lock = crate::sources::pdf::PDFIUM_LOCK.lock().unwrap();
             let page = document.pages().get(page_index as i32)?;
             let (render_config, render_warning) =
                 render_config_for_page(&page, quality, page_index + 1, preview_mode);
@@ -420,12 +420,12 @@ pub fn extract_page_range_via_ocr(
     let engine = init_ocr_engine()?;
 
     let document = {
-        let _lock = crate::pdf::PDFIUM_LOCK.lock().unwrap();
+        let _lock = crate::sources::pdf::PDFIUM_LOCK.lock().unwrap();
         pdfium.load_pdf_from_byte_slice(bytes, None)?
     };
 
     let page_count = {
-        let _lock = crate::pdf::PDFIUM_LOCK.lock().unwrap();
+        let _lock = crate::sources::pdf::PDFIUM_LOCK.lock().unwrap();
         document.pages().len() as usize
     };
 
@@ -440,7 +440,7 @@ pub fn extract_page_range_via_ocr(
         let mut render_clamped = false;
 
         let image = {
-            let _lock = crate::pdf::PDFIUM_LOCK.lock().unwrap();
+            let _lock = crate::sources::pdf::PDFIUM_LOCK.lock().unwrap();
             match document.pages().get(page_index as i32) {
                 Ok(page) => {
                     let (render_config, render_warning) =

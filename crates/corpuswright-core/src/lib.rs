@@ -20,34 +20,32 @@
 
 pub mod analysis;
 pub mod annotation;
-pub mod annotation_cache;
-pub mod cache;
-pub mod clean;
-pub mod decode;
-pub mod documentation_corpus;
-pub mod docx;
+pub mod corpus;
 pub mod export;
-pub mod hash;
-pub mod html;
-pub mod index;
-pub mod language;
-pub mod manifest;
-pub mod pdf;
-pub mod pdf_audit;
-pub mod pdf_ocr;
-pub mod pdf_quality;
-pub mod preview;
+pub mod preparation;
 pub mod project;
-pub mod project_sources;
-pub mod repeated_artifact_promotion;
-pub mod repeated_artifacts;
-pub mod scan;
-pub mod search;
-pub mod structured_document;
-mod text_normalization;
-pub mod text_profile;
-pub mod tokenization;
-pub mod word_count;
+pub mod sources;
+pub mod support;
+pub mod text;
+pub mod tooling;
+
+// These aliases preserve the established module paths while the domain namespaces become the
+// canonical architecture. Downstream crates can migrate deliberately without an IPC or API break.
+pub use analysis::concordance::index;
+pub use annotation::cache as annotation_cache;
+pub use corpus as scan;
+pub use corpus::{preview, search, word_count};
+pub use export::manifest;
+pub use preparation::cleaning as clean;
+pub use preparation::repeated_artifacts;
+pub use preparation::repeated_artifacts::promotion as repeated_artifact_promotion;
+pub use project::sources as project_sources;
+pub use sources::pdf;
+pub use sources::pdf::{audit as pdf_audit, ocr as pdf_ocr, quality as pdf_quality};
+pub use sources::{cache, decode, docx, html, structured_document};
+pub use support::hash;
+pub use text::{language, profile as text_profile, tokenisation as tokenization};
+pub use tooling::documentation_corpus;
 
 pub use analysis::{
     AnalysisDocumentSelection, AnnotatedFrequencyMode, AnnotatedFrequencyQuery,

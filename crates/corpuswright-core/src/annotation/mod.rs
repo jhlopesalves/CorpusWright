@@ -8,7 +8,9 @@
 //! vendored UDPipe public header. `udpipe-rs` is still used for model filenames
 //! and downloads, but not for tagging text.
 
-use crate::tokenization::{Token, TokenKind};
+pub mod cache;
+
+use crate::text::tokenisation::{Token, TokenKind};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;

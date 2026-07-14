@@ -6,7 +6,7 @@ use super::concordance::{
 };
 use super::frequency::annotated_dispersion_label;
 use super::shared::MAX_QUERY_WINDOW;
-use crate::tokenization::TokenizationConfig;
+use crate::text::tokenisation::TokenizationConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use ts_rs::TS;

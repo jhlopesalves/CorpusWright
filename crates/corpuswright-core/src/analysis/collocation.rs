@@ -6,11 +6,11 @@ use super::concordance::{
 };
 use super::frequency::SortDirection;
 use super::shared::{StopwordLanguage, stopword_matches};
-use crate::index::{
+use crate::analysis::concordance::index::{
     IndexStore, SurfaceIndexCancellationToken, SurfaceIndexError, SurfaceIndexQuery,
     SurfaceIndexResourceLimits, SurfaceIndexTokenRecord,
 };
-use crate::tokenization::{TokenizationConfig, visit_tokens};
+use crate::text::tokenisation::{TokenizationConfig, visit_tokens};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -1641,7 +1641,9 @@ fn collocation_error_from_surface_index(error: SurfaceIndexError) -> Concordance
     }
 }
 
-fn collocation_inconsistent_index_error(hit: &crate::index::SurfaceIndexHit) -> ConcordanceError {
+fn collocation_inconsistent_index_error(
+    hit: &crate::analysis::concordance::index::SurfaceIndexHit,
+) -> ConcordanceError {
     ConcordanceError::Index(SurfaceIndexError::InconsistentStore {
         document_id: hit.document_id,
         token_ordinal_in_document: hit.token_ordinal_in_document,

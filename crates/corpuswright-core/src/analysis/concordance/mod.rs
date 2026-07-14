@@ -1,13 +1,15 @@
+pub mod index;
+
 use super::build::AnalysisDocumentSelection;
 use super::frequency::{annotated_dispersion_label, case_fold_surface};
 use super::shared::MAX_QUERY_WINDOW;
-use crate::index::{
+use crate::analysis::concordance::index::{
     InMemoryIndexStore, IndexStore, SurfaceIndexBuilder, SurfaceIndexCacheLoad,
     SurfaceIndexDocumentInput, SurfaceIndexError, SurfaceIndexHit, SurfaceIndexManifest,
     SurfaceIndexQuery, SurfaceIndexResourceLimits, load_surface_index_cache,
     materialize_surface_index_kwic_row, write_surface_index_cache,
 };
-use crate::tokenization::{
+use crate::text::tokenisation::{
     Token, TokenizationConfig, TokenizationManifest, tokenize, visit_tokens,
 };
 use serde::{Deserialize, Serialize};
@@ -545,7 +547,7 @@ pub(super) fn analysis_word_tokens<'text>(
     text: &'text str,
     document_id: u32,
     config: &TokenizationConfig,
-) -> Vec<crate::tokenization::Token<'text>> {
+) -> Vec<crate::text::tokenisation::Token<'text>> {
     tokenize(text, document_id, config)
         .into_iter()
         .filter(|token| token.counts_as_word())
@@ -1076,7 +1078,7 @@ struct ConcordanceDocumentStats {
 }
 
 pub(super) fn concordance_token_sequence_matches<'text>(
-    tokens: &[crate::tokenization::Token<'text>],
+    tokens: &[crate::text::tokenisation::Token<'text>],
     query_keys: &[String],
     case_sensitive: bool,
 ) -> bool {
@@ -1089,7 +1091,7 @@ pub(super) fn concordance_token_sequence_matches<'text>(
 }
 
 pub(super) fn count_concordance_token_sequence_matches<'text>(
-    tokens: &[crate::tokenization::Token<'text>],
+    tokens: &[crate::text::tokenisation::Token<'text>],
     query_keys: &[String],
     case_sensitive: bool,
 ) -> u64 {
@@ -1111,7 +1113,9 @@ fn compare_optional_context(left: Option<&str>, right: Option<&str>) -> Ordering
     }
 }
 
-fn concordance_token_surfaces<'text>(tokens: &[crate::tokenization::Token<'text>]) -> Vec<String> {
+fn concordance_token_surfaces<'text>(
+    tokens: &[crate::text::tokenisation::Token<'text>],
+) -> Vec<String> {
     tokens
         .iter()
         .map(|token| token.surface.to_string())
@@ -1880,7 +1884,7 @@ fn index_context_filter_matches(
 
 fn index_record_sequence_matches(
     store: &impl IndexStore,
-    records: &[crate::index::SurfaceIndexTokenRecord],
+    records: &[crate::analysis::concordance::index::SurfaceIndexTokenRecord],
     query_keys: &[String],
     case_sensitive: bool,
 ) -> Result<bool, ConcordanceError> {

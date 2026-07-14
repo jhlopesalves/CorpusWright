@@ -6,10 +6,10 @@
 //! OCR modes only use matching cached extraction results. Automatic word counts
 //! skip uncached OCR PDFs instead of counting a different text source.
 
-use crate::cache::ExtractionCache;
-use crate::clean::{CleaningConfig, PdfTextSource, clean_text};
-use crate::scan::{DocumentRecord, DocumentType};
-use crate::tokenization::{TokenizationConfig, tokenize};
+use crate::corpus::{DocumentRecord, DocumentType};
+use crate::preparation::cleaning::{CleaningConfig, PdfTextSource, clean_text};
+use crate::sources::cache::ExtractionCache;
+use crate::text::tokenisation::{TokenizationConfig, tokenize};
 
 pub const OCR_WORD_COUNT_SKIPPED_STATUS: &str =
     "Cleaned token count unavailable until sources are processed with cleaning settings.";
@@ -48,7 +48,7 @@ pub fn count_words_for_record(
 ) -> WordCountOutcome {
     let pdf_options = if record.document_type == DocumentType::Pdf {
         Some(
-            crate::pdf::PdfExtractionOptions::raw_from_record_and_cleaning_config(
+            crate::sources::pdf::PdfExtractionOptions::raw_from_record_and_cleaning_config(
                 record,
                 cleaning_config,
             ),
@@ -81,7 +81,7 @@ pub fn count_words_for_record(
     } else {
         if record.document_type == DocumentType::Docx {
             if let Ok(bytes) = std::fs::read(&record.source_path)
-                && let Ok(extracted) = crate::docx::extract_docx(&bytes, cleaning_config)
+                && let Ok(extracted) = crate::sources::docx::extract_docx(&bytes, cleaning_config)
             {
                 extracted.text
             } else {
@@ -89,7 +89,7 @@ pub fn count_words_for_record(
             }
         } else if record.document_type == DocumentType::Pdf {
             if let Ok(bytes) = std::fs::read(&record.source_path)
-                && let Ok(extracted) = crate::pdf::extract_pdf(
+                && let Ok(extracted) = crate::sources::pdf::extract_pdf(
                     &bytes,
                     None,
                     pdf_options.expect("PDF options are present for PDF records"),
@@ -102,7 +102,7 @@ pub fn count_words_for_record(
         } else {
             // Plain text, HTML, or other textual files
             if let Ok(bytes) = std::fs::read(&record.source_path) {
-                crate::decode::decode_source_bytes(&bytes).text
+                crate::sources::decode::decode_source_bytes(&bytes).text
             } else {
                 return WordCountOutcome::count(0);
             }
@@ -119,7 +119,7 @@ pub fn count_words_for_record(
 }
 
 fn apply_pdf_cleaning_for_word_count(raw: &str, cleaning_config: &CleaningConfig) -> String {
-    let (text, _) = crate::pdf::clean_extracted_pdf_text(raw, cleaning_config);
+    let (text, _) = crate::sources::pdf::clean_extracted_pdf_text(raw, cleaning_config);
     text
 }
 
@@ -147,7 +147,7 @@ pub(crate) fn word_token_surfaces_in_processed_text(
 
 fn cleaned_word_count_text(raw: &str, cleaning_config: &CleaningConfig) -> String {
     let text = if cleaning_config.extract_html {
-        crate::html::extract_html(raw)
+        crate::sources::html::extract_html(raw)
     } else {
         raw.to_string()
     };
@@ -157,8 +157,8 @@ fn cleaned_word_count_text(raw: &str, cleaning_config: &CleaningConfig) -> Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clean::{CleaningConfig, PdfTextSource, ReplacementRule};
-    use crate::scan::DocumentRecord;
+    use crate::corpus::DocumentRecord;
+    use crate::preparation::cleaning::{CleaningConfig, PdfTextSource, ReplacementRule};
     use std::fs;
     use std::path::PathBuf;
     use tempfile::tempdir;

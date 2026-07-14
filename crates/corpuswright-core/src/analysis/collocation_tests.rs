@@ -1,12 +1,12 @@
 use super::*;
 use crate::analysis::concordance::analysis_word_tokens;
-use crate::analysis::test_support::*;
-use crate::analysis::{ConcordanceBackend, aggregate_concordance_collocations_documents_routed};
-use crate::index::{
+use crate::analysis::concordance::index::{
     InMemoryIndexStore, IndexStore, SurfaceIndexCancellationToken, SurfaceIndexDocumentInput,
     SurfaceIndexQuery, search_surface_index,
 };
-use crate::tokenization::TokenizationConfig;
+use crate::analysis::test_support::*;
+use crate::analysis::{ConcordanceBackend, aggregate_concordance_collocations_documents_routed};
+use crate::text::tokenisation::TokenizationConfig;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
@@ -418,7 +418,7 @@ fn surface_collocation_index_phrase_hits_match_overlapping_scan_nodes() {
         &store,
         &query,
         &tokenization_config,
-        crate::index::SurfaceIndexCancellationToken::default(),
+        crate::analysis::concordance::index::SurfaceIndexCancellationToken::default(),
     )
     .unwrap();
 
@@ -1155,7 +1155,7 @@ fn surface_collocation_high_node_frequency_without_materializing_all_occurrences
         &store,
         &query,
         &tokenization_config,
-        crate::index::SurfaceIndexCancellationToken::default(),
+        crate::analysis::concordance::index::SurfaceIndexCancellationToken::default(),
     )
     .unwrap();
 
@@ -1272,7 +1272,7 @@ fn surface_collocation_final_strings_materialised_only_for_returned_rows() {
         &store,
         &query,
         &tokenization_config,
-        crate::index::SurfaceIndexCancellationToken::default(),
+        crate::analysis::concordance::index::SurfaceIndexCancellationToken::default(),
     )
     .unwrap();
     let result = super::query_concordance_collocations_from_aggregate(&aggregate, &query);
@@ -1282,19 +1282,19 @@ fn surface_collocation_final_strings_materialised_only_for_returned_rows() {
 
 #[test]
 fn surface_collocation_vocabulary_sized_aggregate_resource_limit_failure() {
-    let limits = crate::index::SurfaceIndexResourceLimits {
+    let limits = crate::analysis::concordance::index::SurfaceIndexResourceLimits {
         max_projected_resident_index_bytes: 1,
         ..Default::default()
     };
     let mut builder = super::NumericCollocationBuilder::new(
         limits,
-        crate::index::SurfaceIndexCancellationToken::default(),
+        crate::analysis::concordance::index::SurfaceIndexCancellationToken::default(),
     );
     let err = builder.intern("any").unwrap_err();
     assert!(matches!(
         err,
         ConcordanceError::Index(
-            crate::index::SurfaceIndexError::ProjectedResidentIndexExceedsLimit { .. }
+            crate::analysis::concordance::index::SurfaceIndexError::ProjectedResidentIndexExceedsLimit { .. }
         )
     ));
 }
@@ -1310,7 +1310,7 @@ fn surface_collocation_index_refuses_candidate_growth_before_budget() {
         prepared_text: text,
     }];
     let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
-    let limits = crate::index::SurfaceIndexResourceLimits {
+    let limits = crate::analysis::concordance::index::SurfaceIndexResourceLimits {
         max_projected_resident_index_bytes: 1,
         ..Default::default()
     };
@@ -1325,7 +1325,7 @@ fn surface_collocation_index_refuses_candidate_growth_before_budget() {
     assert!(matches!(
         error,
         ConcordanceError::Index(
-            crate::index::SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
+            crate::analysis::concordance::index::SurfaceIndexError::ProjectedResidentIndexExceedsLimit {
                 projected_bytes,
                 limit_bytes: 1,
             }
@@ -1391,7 +1391,7 @@ fn surface_collocation_combined_budget_admits_small_and_refuses_growth() {
     }];
     let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
     let index_bytes = store.estimated_resident_bytes();
-    let surface_limits = crate::index::SurfaceIndexResourceLimits::default();
+    let surface_limits = crate::analysis::concordance::index::SurfaceIndexResourceLimits::default();
     let safety_margin_bytes = 1_024;
     let admitted_limit = index_bytes
         .saturating_add(safety_margin_bytes)
@@ -1471,13 +1471,13 @@ fn surface_collocation_cancellation_interrupts_frequency_finalisation() {
         candidates,
         false,
         &cancellation,
-        crate::index::SurfaceIndexResourceLimits::default(),
+        crate::analysis::concordance::index::SurfaceIndexResourceLimits::default(),
         || cancellation.cancel(),
     )
     .unwrap_err();
     assert!(matches!(
         error,
-        ConcordanceError::Index(crate::index::SurfaceIndexError::Cancelled)
+        ConcordanceError::Index(crate::analysis::concordance::index::SurfaceIndexError::Cancelled)
     ));
 }
 
@@ -1605,12 +1605,12 @@ fn surface_collocation_scale_evidence() {
         projected_candidate_symbol_bytes,
     );
     let compact_60m_token_array_floor =
-        crate::index::SurfaceIndexResourceEstimate::compact_token_array_lower_bound(
+        crate::analysis::concordance::index::SurfaceIndexResourceEstimate::compact_token_array_lower_bound(
             PROJECTED_TOKENS,
         )
         .unwrap();
     let legacy_60m_structural_floor =
-        crate::index::SurfaceIndexResourceEstimate::legacy_structural_lower_bound(PROJECTED_TOKENS)
+        crate::analysis::concordance::index::SurfaceIndexResourceEstimate::legacy_structural_lower_bound(PROJECTED_TOKENS)
             .unwrap();
 
     eprintln!(
@@ -1682,14 +1682,14 @@ fn surface_collocation_cancellation_interrupts_indexed_aggregation() {
     }];
     let store = InMemoryIndexStore::build(&inputs, &tokenization_config).unwrap();
 
-    let token = crate::index::SurfaceIndexCancellationToken::default();
+    let token = crate::analysis::concordance::index::SurfaceIndexCancellationToken::default();
     token.cancel();
 
     let err = aggregate_concordance_collocations_index(&store, &query, &tokenization_config, token)
         .unwrap_err();
     assert!(matches!(
         err,
-        ConcordanceError::Index(crate::index::SurfaceIndexError::Cancelled)
+        ConcordanceError::Index(crate::analysis::concordance::index::SurfaceIndexError::Cancelled)
     ));
 }
 
@@ -1699,7 +1699,7 @@ fn surface_collocation_cancellation_interrupts_streaming_fallback() {
     let query = collocation_query("target");
     let tokenization_config = TokenizationConfig::default();
 
-    let token = crate::index::SurfaceIndexCancellationToken::default();
+    let token = crate::analysis::concordance::index::SurfaceIndexCancellationToken::default();
     token.cancel();
 
     let err = aggregate_concordance_collocations_documents(
@@ -1711,6 +1711,6 @@ fn surface_collocation_cancellation_interrupts_streaming_fallback() {
     .unwrap_err();
     assert!(matches!(
         err,
-        ConcordanceError::Index(crate::index::SurfaceIndexError::Cancelled)
+        ConcordanceError::Index(crate::analysis::concordance::index::SurfaceIndexError::Cancelled)
     ));
 }

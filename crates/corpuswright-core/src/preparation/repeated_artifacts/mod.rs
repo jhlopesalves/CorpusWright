@@ -7,13 +7,17 @@
 //! - Processed-text scans are slower because they apply extraction/cleanup settings.
 //! - Uses a two-pass strategy: fingerprint counts first, then materialises survivors.
 
-use crate::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
-use crate::clean::CleaningConfig;
-use crate::repeated_artifact_promotion::{RepeatedArtifactPromotion, promotion_for_candidate};
-use crate::scan::DocumentRecord;
-use crate::structured_document::StructuredDocument;
-use crate::text_normalization::normalize_line_for_repeated_artifact as normalize_line;
-use crate::text_profile::{
+pub mod promotion;
+
+use crate::corpus::DocumentRecord;
+use crate::preparation::cleaning::CleaningConfig;
+use crate::preparation::repeated_artifacts::promotion::{
+    RepeatedArtifactPromotion, promotion_for_candidate,
+};
+use crate::sources::cache::{DocumentTextMode, ExtractionCache, document_text_for_record};
+use crate::sources::structured_document::StructuredDocument;
+use crate::text::normalisation::normalize_line_for_repeated_artifact as normalize_line;
+use crate::text::profile::{
     KNOWN_INLINE_PATTERNS, TextSignalContext, classify_text_signal, is_common_section_heading,
     is_decimal_digit, is_page_label_like, profile_text_line, text_signal_reasons,
 };
@@ -27,7 +31,7 @@ use std::sync::{
 };
 use ts_rs::TS;
 
-pub use crate::text_profile::{CandidateTextProfile, CandidateTextSignalLabel};
+pub use crate::text::profile::{CandidateTextProfile, CandidateTextSignalLabel};
 
 /// Maximum distinct raw variants tracked per candidate key.
 /// Beyond this cap, `raw_variant_overflow` is set to true.
@@ -519,7 +523,10 @@ struct FileText {
 }
 
 impl FileText {
-    fn document_line(&self, line_idx: usize) -> Option<&crate::structured_document::DocumentLine> {
+    fn document_line(
+        &self,
+        line_idx: usize,
+    ) -> Option<&crate::sources::structured_document::DocumentLine> {
         let (page_idx, line_idx_in_page) = *self.line_locations.get(line_idx)?;
         self.document
             .pages
@@ -2522,7 +2529,7 @@ pub fn scan_repeated_artifacts_with_cancel(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scan::DocumentType;
+    use crate::corpus::DocumentType;
     use std::path::PathBuf;
 
     #[test]
@@ -3080,7 +3087,7 @@ mod tests {
 
         let input = "Running Header\nBody";
         assert_eq!(
-            crate::clean::clean_text(input, &CleaningConfig::default()),
+            crate::preparation::cleaning::clean_text(input, &CleaningConfig::default()),
             input
         );
 
@@ -3088,7 +3095,10 @@ mod tests {
             removal_rules: vec![promotion.rule.clone().unwrap()],
             ..CleaningConfig::default()
         };
-        assert_eq!(crate::clean::clean_text(input, &cleaning_config), "Body");
+        assert_eq!(
+            crate::preparation::cleaning::clean_text(input, &cleaning_config),
+            "Body"
+        );
     }
 
     #[test]
@@ -3312,11 +3322,13 @@ mod tests {
         let cache = ExtractionCache::new();
         cache.insert_extracted(
             &record,
-            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
-                &scan_cleaning_config,
-            )),
+            Some(
+                crate::sources::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                    &scan_cleaning_config,
+                ),
+            ),
             &scan_cleaning_config,
-            crate::cache::CacheEntry {
+            crate::sources::cache::CacheEntry {
                 extracted_text: raw_text.clone(),
                 warnings: Vec::new(),
                 page_count: Some(pages.len()),
@@ -3359,12 +3371,14 @@ mod tests {
             ..CleaningConfig::default()
         };
         let structured = StructuredDocument::from_pages(pages);
-        let promoted = crate::clean::clean_structured_document(&structured, &rule_config).text;
+        let promoted =
+            crate::preparation::cleaning::clean_structured_document(&structured, &rule_config).text;
         let fallback_config = CleaningConfig {
             remove_repeated_pdf_headers_footers: true,
             ..CleaningConfig::default()
         };
-        let (legacy, _) = crate::pdf::clean_extracted_pdf_text(&raw_text, &fallback_config);
+        let (legacy, _) =
+            crate::sources::pdf::clean_extracted_pdf_text(&raw_text, &fallback_config);
 
         for artifact in ["Header", "Footer"] {
             assert!(!promoted.contains(artifact));
@@ -3421,11 +3435,13 @@ mod tests {
         let page_texts = repeated_cached_pdf_pages();
         cache.insert_extracted(
             &doc,
-            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
-                &cleaning_config,
-            )),
+            Some(
+                crate::sources::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                    &cleaning_config,
+                ),
+            ),
             &cleaning_config,
-            crate::cache::CacheEntry {
+            crate::sources::cache::CacheEntry {
                 extracted_text: page_texts.join("\n\n"),
                 warnings: Vec::new(),
                 page_count: Some(3),
@@ -3532,11 +3548,13 @@ mod tests {
         let cache = ExtractionCache::new();
         cache.insert_extracted(
             &doc,
-            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
-                &cleaning_config,
-            )),
+            Some(
+                crate::sources::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                    &cleaning_config,
+                ),
+            ),
             &cleaning_config,
-            crate::cache::CacheEntry {
+            crate::sources::cache::CacheEntry {
                 extracted_text: repeated_cached_pdf_text(),
                 warnings: Vec::new(),
                 page_count: Some(3),
@@ -3602,7 +3620,7 @@ mod tests {
 
     #[test]
     fn test_approximate_positions_for_inferred_pdf() {
-        if !crate::pdf_ocr::pdfium_available() {
+        if !crate::sources::pdf::ocr::pdfium_available() {
             return;
         }
         let pages = vec![
@@ -3935,7 +3953,7 @@ mod tests {
 
     #[test]
     fn test_pdf_no_ocr_by_default() {
-        if !crate::pdf_ocr::pdfium_available() {
+        if !crate::sources::pdf::ocr::pdfium_available() {
             return;
         }
         let pages = vec![vec!["Header", "Body line 1", "Body line 2", "Footer"]];
@@ -4962,8 +4980,8 @@ mod tests {
 
     fn force_ocr_cleaning_config() -> CleaningConfig {
         CleaningConfig {
-            pdf_text_source: crate::clean::PdfTextSource::ForceOcr,
-            pdf_ocr_quality: crate::clean::PdfOcrQuality::HighQuality,
+            pdf_text_source: crate::preparation::cleaning::PdfTextSource::ForceOcr,
+            pdf_ocr_quality: crate::preparation::cleaning::PdfOcrQuality::HighQuality,
             ..CleaningConfig::default()
         }
     }
@@ -4976,11 +4994,13 @@ mod tests {
         let cache = ExtractionCache::new();
         cache.insert_extracted(
             &doc,
-            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
-                &cleaning_config,
-            )),
+            Some(
+                crate::sources::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                    &cleaning_config,
+                ),
+            ),
             &cleaning_config,
-            crate::cache::CacheEntry {
+            crate::sources::cache::CacheEntry {
                 extracted_text: "Header\nbody line\nHeader\nother body line\nHeader".to_string(),
                 warnings: Vec::new(),
                 page_count: Some(1),
@@ -5021,11 +5041,13 @@ mod tests {
         let cache = ExtractionCache::new();
         cache.insert_extracted(
             &doc,
-            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
-                &cleaning_config,
-            )),
+            Some(
+                crate::sources::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                    &cleaning_config,
+                ),
+            ),
             &cleaning_config,
-            crate::cache::CacheEntry {
+            crate::sources::cache::CacheEntry {
                 extracted_text: "Header\nKept line\nHeader\nKept line\nHeader".to_string(),
                 warnings: Vec::new(),
                 page_count: Some(1),
@@ -5071,11 +5093,13 @@ mod tests {
         let cache = ExtractionCache::new();
         cache.insert_extracted(
             &doc,
-            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
-                &cleaning_config,
-            )),
+            Some(
+                crate::sources::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                    &cleaning_config,
+                ),
+            ),
             &cleaning_config,
-            crate::cache::CacheEntry {
+            crate::sources::cache::CacheEntry {
                 extracted_text: "HEADER\n\nBODY".to_string(),
                 warnings: Vec::new(),
                 page_count: Some(2),
@@ -5117,11 +5141,13 @@ mod tests {
         let cache = ExtractionCache::new();
         cache.insert_extracted(
             &doc,
-            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
-                &cleaning_config,
-            )),
+            Some(
+                crate::sources::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                    &cleaning_config,
+                ),
+            ),
             &cleaning_config,
-            crate::cache::CacheEntry {
+            crate::sources::cache::CacheEntry {
                 extracted_text: "Alpha\nBeta".to_string(),
                 warnings: Vec::new(),
                 page_count: Some(2),
@@ -5160,11 +5186,13 @@ mod tests {
         let doc_page_based = make_pdf_record("page-based.pdf", temp_dir.path());
         cache.insert_extracted(
             &doc_page_based,
-            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
-                &cleaning_config,
-            )),
+            Some(
+                crate::sources::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                    &cleaning_config,
+                ),
+            ),
             &cleaning_config,
-            crate::cache::CacheEntry {
+            crate::sources::cache::CacheEntry {
                 extracted_text: "Header line\nbody line\nHeader line\nother body\nHeader line"
                     .to_string(),
                 warnings: Vec::new(),
@@ -5180,11 +5208,13 @@ mod tests {
         let doc_flat = make_pdf_record("flat-based.pdf", temp_dir.path());
         cache.insert_extracted(
             &doc_flat,
-            Some(crate::pdf::PdfExtractionOptions::raw_from_cleaning_config(
-                &cleaning_config,
-            )),
+            Some(
+                crate::sources::pdf::PdfExtractionOptions::raw_from_cleaning_config(
+                    &cleaning_config,
+                ),
+            ),
             &cleaning_config,
-            crate::cache::CacheEntry {
+            crate::sources::cache::CacheEntry {
                 extracted_text: "Header line\nbody line\nHeader line\nother body\nHeader line"
                     .to_string(),
                 warnings: Vec::new(),

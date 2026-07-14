@@ -1,4 +1,4 @@
-use crate::text_normalization::normalize_line_for_repeated_artifact as normalize_line;
+use crate::text::normalisation::normalize_line_for_repeated_artifact as normalize_line;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;

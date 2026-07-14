@@ -11,10 +11,10 @@ use super::overview::{
     MTLD_TTR_THRESHOLD, VocabularyGrowthPoint, build_overview, mattr, mtld,
 };
 use crate::annotation::LemmaTable;
-use crate::clean::CleaningConfig;
-use crate::language::detect_and_resolve;
-use crate::scan::{DocumentRecord, DocumentType};
-use crate::tokenization::TokenizationConfig;
+use crate::corpus::{DocumentRecord, DocumentType};
+use crate::preparation::cleaning::CleaningConfig;
+use crate::text::language::detect_and_resolve;
+use crate::text::tokenisation::TokenizationConfig;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -566,11 +566,11 @@ where
             &language_overrides,
         );
         if let Ok(expected_manifest) = expected_manifest {
-            let load_res = crate::annotation_cache::load_annotation_layer_cache(
+            let load_res = crate::annotation::cache::load_annotation_layer_cache(
                 cache_root,
                 &expected_manifest,
             );
-            if let crate::annotation_cache::AnnotationLayerCacheLoad::Ready(layer) = load_res {
+            if let crate::annotation::cache::AnnotationLayerCacheLoad::Ready(layer) = load_res {
                 let _ = attach_annotation_layer(&mut corpus, layer);
             }
         }
@@ -637,7 +637,7 @@ fn map_loaded_analysis_input<'record>(
             text,
         } => {
             let processed_hash_sha256 = if cache_enabled {
-                crate::hash::sha256_hex(text.as_bytes())
+                crate::support::hash::sha256_hex(text.as_bytes())
             } else {
                 String::new()
             };
