@@ -44,6 +44,25 @@ assert.equal(curve.points.at(-1)?.fitMembership.kind === "shown-not-fitted" ? cu
 assert(curve.labels.some((label) => label.text === "Top three ranks not fitted"));
 assert(curve.labels.some((label) => label.text === "Frequency-one tail not fitted"));
 
+const downsampledCurve = buildRankFrequencyGeometry({
+  points: [
+    ...rankPoints.slice(0, 3),
+    { rank: 205, frequency: 500, ratePerMillion: 500, token: "sample-start" },
+    { rank: 24_283, frequency: 2, ratePerMillion: 2, token: "sample-end" },
+    { rank: 40_000, frequency: 1, ratePerMillion: 1, token: "tail" },
+  ],
+  yMode: "rate",
+  totalTokens: 1_000_000,
+  zipfExponent: 1,
+  zipfCoefficient: 100_000,
+  fittedRankStart: 4,
+  fittedRankEnd: 24_292,
+  view: "curve",
+  fitVisible: true,
+  labelsMode: "examples",
+});
+assert.equal(downsampledCurve.fittedRange?.label, "Model fitted over ranks 4–24,292");
+
 const denseRankPoints = Array.from({ length: 80 }, (_, index) => ({
   rank: index + 1,
   frequency: Math.max(1, Math.round(100_000 / (index + 1) ** 1.08)),
