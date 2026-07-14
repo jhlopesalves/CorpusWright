@@ -4,7 +4,8 @@
  * Generated types preserve serialised field ownership. This module supplies stable frontend names,
  * request defaults, and Tauri invocation functions used by the workbench controllers.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../../app/system-ipc";
+export { listen, type UnlistenFn } from "../../app/system-ipc";
 
 import type { AnnotatedFrequencyMode as GeneratedAnnotatedFrequencyMode } from "../../generated/AnnotatedFrequencyMode.js";
 import type { AnnotatedFrequencyQuery as GeneratedAnnotatedFrequencyQuery } from "../../generated/AnnotatedFrequencyQuery.js";
