@@ -1,0 +1,128 @@
+name: Linux installed-package smoke
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installed-package:
+    name: Ubuntu 22.04 Debian install smoke
+    runs-on: ubuntu-22.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Tauri and virtual-display dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential curl file jq libayatana-appindicator3-dev libgtk-3-dev \
+            librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev patchelf xvfb
+
+      - name: Install frontend dependencies
+        run: npm --prefix apps/desktop ci
+
+      - name: Fetch and verify Linux PDFium
+        run: |
+          node scripts/fetch-pdfium.cjs linux-x64 --output-dir apps/desktop/src-tauri/resources/ocr
+          node scripts/check-pdfium.cjs
+
+      - name: Build dedicated native-smoke Debian package
+        working-directory: apps/desktop
+        run: npm run tauri build -- --bundles deb --features native-smoke
+
+      - name: Inspect Debian package contents
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEB="$(find target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          test -n "${DEB}"
+          dpkg-deb --contents "${DEB}" | tee /tmp/corpuswright-deb-contents.txt
+          grep -q 'usr/bin/corpuswright-desktop$' /tmp/corpuswright-deb-contents.txt
+          grep -q 'usr/lib/CorpusWright/ocr/libpdfium.so$' /tmp/corpuswright-deb-contents.txt
+          grep -q 'usr/lib/CorpusWright/ocr/text-detection.rten$' /tmp/corpuswright-deb-contents.txt
+          grep -q 'usr/lib/CorpusWright/ocr/text-recognition.rten$' /tmp/corpuswright-deb-contents.txt
+          grep -q 'usr/lib/CorpusWright/udpipe/english-ud-2.1-20180111.udpipe$' /tmp/corpuswright-deb-contents.txt
+          grep -q 'usr/share/applications/CorpusWright.desktop$' /tmp/corpuswright-deb-contents.txt
+          PACKAGE="$(dpkg-deb --field "${DEB}" Package)"
+          echo "path=${DEB}" >> "${GITHUB_OUTPUT}"
+          echo "name=${PACKAGE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Generate synthetic smoke corpus
+        run: cargo xtask generate-fixtures --output /tmp/corpuswright-native-corpus
+
+      - name: Install Debian package
+        id: install
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y "./${{ steps.package.outputs.path }}"
+          test -x /usr/bin/corpuswright-desktop
+          test -f /usr/share/applications/CorpusWright.desktop
+
+      - name: Exercise installed package under Xvfb
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 180s xvfb-run -a env \
+            CORPUSWRIGHT_NATIVE_SMOKE_CORPUS=/tmp/corpuswright-native-corpus \
+            CORPUSWRIGHT_NATIVE_SMOKE_EXPORT=/tmp/corpuswright-native-export \
+            CORPUSWRIGHT_NATIVE_SMOKE_RESULT=/tmp/corpuswright-native-result.json \
+            /usr/bin/corpuswright-desktop
+          jq -e \
+            '.status == "passed" and
+             .evidence.documentsScanned == 8 and
+             .evidence.documentsPreviewed == 8 and
+             .evidence.analysisTokens > 0 and
+             .evidence.frequencyRows > 0 and
+             .evidence.concordanceHits > 0 and
+             .evidence.exportedFiles == 8 and
+             (.evidence.pdfiumLibrary | endswith("/libpdfium.so"))' \
+            /tmp/corpuswright-native-result.json
+
+      - name: Uninstall Debian package
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE="${{ steps.package.outputs.name }}"
+          if test -n "${PACKAGE}" && dpkg-query -W "${PACKAGE}" >/dev/null 2>&1; then
+            sudo apt-get remove -y "${PACKAGE}"
+          fi
+
+      - name: Prove package removal
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e /usr/bin/corpuswright-desktop
+          test ! -e /usr/share/applications/CorpusWright.desktop
+
+      - name: Upload non-release smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-installed-package-smoke-${{ github.sha }}
+          path: |
+            target/release/bundle/deb/*.deb
+            /tmp/corpuswright-deb-contents.txt
+            /tmp/corpuswright-native-result.json
+          if-no-files-found: warn
