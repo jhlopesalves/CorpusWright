@@ -1,13 +1,24 @@
 use crate::preparation::cleaning::TableExtractionStrategy;
 use quick_xml::Reader;
 use quick_xml::events::Event;
+use std::collections::HashSet;
 use std::io::{Cursor, Read};
 use zip::ZipArchive;
+
+/// Generous safety budgets for untrusted DOCX containers. Exceeding a budget is an explicit
+/// failure: source text is never silently truncated.
+const MAX_ZIP_ENTRIES: usize = 10_000;
+const MAX_XML_ENTRY_BYTES: u64 = 128 * 1024 * 1024;
+const MAX_RELEVANT_XML_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_XML_DEPTH: usize = 4_096;
 
 #[derive(Debug)]
 pub enum DocxError {
     InvalidZip,
     MissingDocumentXml,
+    DuplicateEntry(String),
+    UnsafeEntryName(String),
+    ResourceLimit(String),
     XmlParseError(String),
 }
 
@@ -16,12 +27,35 @@ impl std::fmt::Display for DocxError {
         match self {
             DocxError::InvalidZip => write!(f, "Invalid or corrupted DOCX (ZIP) archive"),
             DocxError::MissingDocumentXml => write!(f, "DOCX archive is missing word/document.xml"),
+            DocxError::DuplicateEntry(name) => {
+                write!(f, "DOCX archive contains a duplicate entry: {name}")
+            }
+            DocxError::UnsafeEntryName(name) => {
+                write!(f, "DOCX archive contains an unsafe entry name: {name}")
+            }
+            DocxError::ResourceLimit(message) => {
+                write!(f, "DOCX safety budget exceeded: {message}")
+            }
             DocxError::XmlParseError(e) => write!(f, "Failed to parse DOCX XML: {}", e),
         }
     }
 }
 
 impl std::error::Error for DocxError {}
+
+fn register_zip_entry(
+    entry_names: &mut HashSet<String>,
+    name: &str,
+    is_enclosed: bool,
+) -> Result<(), DocxError> {
+    if !is_enclosed {
+        return Err(DocxError::UnsafeEntryName(name.to_string()));
+    }
+    if !entry_names.insert(name.to_string()) {
+        return Err(DocxError::DuplicateEntry(name.to_string()));
+    }
+    Ok(())
+}
 
 /// Result of DOCX extraction.
 #[derive(Debug)]
@@ -37,6 +71,12 @@ pub fn extract_docx(
 ) -> Result<ExtractedDocx, DocxError> {
     let cursor = Cursor::new(bytes);
     let mut archive = ZipArchive::new(cursor).map_err(|_| DocxError::InvalidZip)?;
+    if archive.len() > MAX_ZIP_ENTRIES {
+        return Err(DocxError::ResourceLimit(format!(
+            "archive has {} entries; maximum is {MAX_ZIP_ENTRIES}",
+            archive.len()
+        )));
+    }
 
     let mut header_files = Vec::new();
     let mut footer_files = Vec::new();
@@ -44,9 +84,11 @@ pub fn extract_docx(
     let mut endnote_files = Vec::new();
     let mut comment_files = Vec::new();
 
+    let mut entry_names = HashSet::with_capacity(archive.len());
     for i in 0..archive.len() {
         if let Ok(file) = archive.by_index(i) {
             let name = file.name().to_string();
+            register_zip_entry(&mut entry_names, &name, file.enclosed_name().is_some())?;
             if name.starts_with("word/header") && name.ends_with(".xml") {
                 header_files.push(name);
             } else if name.starts_with("word/footer") && name.ends_with(".xml") {
@@ -83,6 +125,7 @@ pub fn extract_docx(
 
     let mut text = String::new();
     let mut warnings = Vec::new();
+    let mut relevant_xml_bytes = 0_u64;
 
     for file_name in files_to_parse {
         let mut xml_bytes = Vec::new();
@@ -96,11 +139,38 @@ pub fn extract_docx(
                     continue;
                 }
             };
-            if file.read_to_end(&mut xml_bytes).is_err() {
+            let reported_size = file.size();
+            if reported_size > MAX_XML_ENTRY_BYTES {
+                return Err(DocxError::ResourceLimit(format!(
+                    "{file_name} reports {reported_size} uncompressed bytes; per-entry maximum is {MAX_XML_ENTRY_BYTES}"
+                )));
+            }
+            relevant_xml_bytes =
+                relevant_xml_bytes
+                    .checked_add(reported_size)
+                    .ok_or_else(|| {
+                        DocxError::ResourceLimit("relevant XML size overflowed".to_string())
+                    })?;
+            if relevant_xml_bytes > MAX_RELEVANT_XML_BYTES {
+                return Err(DocxError::ResourceLimit(format!(
+                    "relevant XML reports {relevant_xml_bytes} uncompressed bytes; maximum is {MAX_RELEVANT_XML_BYTES}"
+                )));
+            }
+            if file
+                .by_ref()
+                .take(MAX_XML_ENTRY_BYTES + 1)
+                .read_to_end(&mut xml_bytes)
+                .is_err()
+            {
                 if file_name == "word/document.xml" {
                     return Err(DocxError::MissingDocumentXml);
                 }
                 continue;
+            }
+            if xml_bytes.len() as u64 > MAX_XML_ENTRY_BYTES {
+                return Err(DocxError::ResourceLimit(format!(
+                    "{file_name} expanded beyond the {MAX_XML_ENTRY_BYTES}-byte per-entry maximum"
+                )));
             }
         }
 
@@ -115,43 +185,55 @@ pub fn extract_docx(
         let mut in_text = false;
         let mut in_unsupported = false;
         let mut table_depth: usize = 0;
+        let mut xml_depth: usize = 0;
         let mut in_toc_p = false;
 
         loop {
             match reader.read_event() {
-                Ok(Event::Start(ref e)) => match e.name().as_ref() {
-                    b"w:tbl" => table_depth += 1,
-                    b"w:t" => in_text = true,
-                    b"w:commentRangeStart" | b"w:ins" | b"w:del" | b"w:drawing" => {
-                        in_unsupported = true;
-                        warnings.push(format!(
-                            "Unsupported element encountered: <{}>",
-                            String::from_utf8_lossy(e.name().as_ref())
-                        ));
+                Ok(Event::Start(ref e)) => {
+                    xml_depth = xml_depth.checked_add(1).ok_or_else(|| {
+                        DocxError::ResourceLimit("XML nesting depth overflowed".to_string())
+                    })?;
+                    if xml_depth > MAX_XML_DEPTH {
+                        return Err(DocxError::ResourceLimit(format!(
+                            "{file_name} exceeds the XML nesting maximum of {MAX_XML_DEPTH}"
+                        )));
                     }
-                    b"w:p" => in_toc_p = false,
-                    b"w:pStyle" => {
-                        for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"w:val" {
-                                let val = String::from_utf8_lossy(&attr.value);
-                                if val.starts_with("TOC") {
-                                    in_toc_p = true;
+                    match e.name().as_ref() {
+                        b"w:tbl" => table_depth += 1,
+                        b"w:t" => in_text = true,
+                        b"w:commentRangeStart" | b"w:ins" | b"w:del" | b"w:drawing" => {
+                            in_unsupported = true;
+                            warnings.push(format!(
+                                "Unsupported element encountered: <{}>",
+                                String::from_utf8_lossy(e.name().as_ref())
+                            ));
+                        }
+                        b"w:p" => in_toc_p = false,
+                        b"w:pStyle" => {
+                            for attr in e.attributes().flatten() {
+                                if attr.key.as_ref() == b"w:val" {
+                                    let val = String::from_utf8_lossy(&attr.value);
+                                    if val.starts_with("TOC") {
+                                        in_toc_p = true;
+                                    }
                                 }
                             }
                         }
-                    }
-                    b"w:tr" => {
-                        if config.table_extraction_strategy == TableExtractionStrategy::TabSeparated
-                            && !text.is_empty()
-                            && !text.ends_with('\n')
-                        {
-                            text.push('\n');
+                        b"w:tr" => {
+                            if config.table_extraction_strategy
+                                == TableExtractionStrategy::TabSeparated
+                                && !text.is_empty()
+                                && !text.ends_with('\n')
+                            {
+                                text.push('\n');
+                            }
                         }
+                        b"w:br" => text.push('\n'),
+                        b"w:tab" => text.push('\t'),
+                        _ => (),
                     }
-                    b"w:br" => text.push('\n'),
-                    b"w:tab" => text.push('\t'),
-                    _ => (),
-                },
+                }
                 Ok(Event::Empty(ref e)) => match e.name().as_ref() {
                     b"w:br" => text.push('\n'),
                     b"w:tab" => text.push('\t'),
@@ -172,53 +254,84 @@ pub fn extract_docx(
                         && config.table_extraction_strategy == TableExtractionStrategy::Ignore;
                     let ignoring_toc = in_toc_p && config.remove_table_of_contents;
                     if in_text && !in_unsupported && !ignoring_table && !ignoring_toc {
-                        let unescaped = e
-                            .unescape()
+                        let decoded = e
+                            .decode()
+                            .map_err(|err| DocxError::XmlParseError(err.to_string()))?;
+                        let unescaped = quick_xml::escape::unescape(&decoded)
                             .map_err(|err| DocxError::XmlParseError(err.to_string()))?;
                         text.push_str(&unescaped);
                     }
                 }
-                Ok(Event::End(ref e)) => match e.name().as_ref() {
-                    b"w:t" => in_text = false,
-                    b"w:commentRangeStart" | b"w:ins" | b"w:del" | b"w:drawing" => {
-                        in_unsupported = false;
+                Ok(Event::GeneralRef(reference)) => {
+                    let ignoring_table = table_depth > 0
+                        && config.table_extraction_strategy == TableExtractionStrategy::Ignore;
+                    let ignoring_toc = in_toc_p && config.remove_table_of_contents;
+                    if in_text && !in_unsupported && !ignoring_table && !ignoring_toc {
+                        if let Some(character) = reference
+                            .resolve_char_ref()
+                            .map_err(|err| DocxError::XmlParseError(err.to_string()))?
+                        {
+                            text.push(character);
+                        } else {
+                            let entity = reference
+                                .decode()
+                                .map_err(|err| DocxError::XmlParseError(err.to_string()))?;
+                            let resolved = quick_xml::escape::resolve_xml_entity(&entity)
+                                .ok_or_else(|| {
+                                    DocxError::XmlParseError(format!(
+                                        "unrecognised XML entity reference: &{entity};"
+                                    ))
+                                })?;
+                            text.push_str(resolved);
+                        }
                     }
-                    b"w:tc" => {
-                        if config.table_extraction_strategy == TableExtractionStrategy::TabSeparated
-                        {
-                            text.push('\t');
-                        } else if config.table_extraction_strategy
-                            == TableExtractionStrategy::FlattenParagraphs
-                            && !text.ends_with("\n\n")
-                        {
-                            if text.ends_with('\n') {
-                                text.push('\n');
-                            } else {
-                                text.push_str("\n\n");
+                }
+                Ok(Event::End(ref e)) => {
+                    match e.name().as_ref() {
+                        b"w:t" => in_text = false,
+                        b"w:commentRangeStart" | b"w:ins" | b"w:del" | b"w:drawing" => {
+                            in_unsupported = false;
+                        }
+                        b"w:tc" => {
+                            if config.table_extraction_strategy
+                                == TableExtractionStrategy::TabSeparated
+                            {
+                                text.push('\t');
+                            } else if config.table_extraction_strategy
+                                == TableExtractionStrategy::FlattenParagraphs
+                                && !text.ends_with("\n\n")
+                            {
+                                if text.ends_with('\n') {
+                                    text.push('\n');
+                                } else {
+                                    text.push_str("\n\n");
+                                }
                             }
                         }
-                    }
-                    b"w:p" => {
-                        if !text.ends_with("\n\n") {
-                            if text.ends_with('\n') {
+                        b"w:p" => {
+                            if !text.ends_with("\n\n") {
+                                if text.ends_with('\n') {
+                                    text.push('\n');
+                                } else {
+                                    text.push_str("\n\n");
+                                }
+                            }
+                            in_toc_p = false;
+                        }
+                        b"w:tr" => {
+                            if config.table_extraction_strategy
+                                == TableExtractionStrategy::TabSeparated
+                            {
                                 text.push('\n');
-                            } else {
-                                text.push_str("\n\n");
                             }
                         }
-                        in_toc_p = false;
-                    }
-                    b"w:tr" => {
-                        if config.table_extraction_strategy == TableExtractionStrategy::TabSeparated
-                        {
-                            text.push('\n');
+                        b"w:tbl" if table_depth > 0 => {
+                            table_depth = table_depth.saturating_sub(1);
                         }
+                        _ => (),
                     }
-                    b"w:tbl" if table_depth > 0 => {
-                        table_depth = table_depth.saturating_sub(1);
-                    }
-                    _ => (),
-                },
+                    xml_depth = xml_depth.saturating_sub(1);
+                }
                 Ok(Event::Eof) => break,
                 Err(e) => return Err(DocxError::XmlParseError(e.to_string())),
                 _ => (),
@@ -360,7 +473,7 @@ mod tests {
             <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
                 <w:body>
                     <w:p>
-                        <w:r><w:t>Tom &amp; Jerry &lt;classic&gt;</w:t></w:r>
+                        <w:r><w:t>Tom &amp; Jerry &lt;classic&gt; &#x2014; &#35;1</w:t></w:r>
                     </w:p>
                 </w:body>
             </w:document>
@@ -371,7 +484,7 @@ mod tests {
             &crate::preparation::cleaning::CleaningConfig::default(),
         )
         .unwrap();
-        assert_eq!(extracted.text, "Tom & Jerry <classic>");
+        assert_eq!(extracted.text, "Tom & Jerry <classic> — #1");
     }
 
     #[test]
@@ -514,5 +627,41 @@ mod tests {
                 .warnings
                 .contains(&"Unsupported element encountered: <w:del>".to_string())
         );
+    }
+
+    #[test]
+    fn rejects_duplicate_zip_entry_names() {
+        let mut entry_names = HashSet::new();
+        register_zip_entry(&mut entry_names, "word/document.xml", true).unwrap();
+        let error = register_zip_entry(&mut entry_names, "word/document.xml", true).unwrap_err();
+        assert!(matches!(error, DocxError::DuplicateEntry(name) if name == "word/document.xml"));
+    }
+
+    #[test]
+    fn rejects_path_traversal_entry_names() {
+        let bytes = create_mock_docx("<w:document/>", vec![("../escaped.xml", "<xml/>")]);
+        let error = extract_docx(
+            &bytes,
+            &crate::preparation::cleaning::CleaningConfig::default(),
+        )
+        .unwrap_err();
+        assert!(matches!(error, DocxError::UnsafeEntryName(name) if name == "../escaped.xml"));
+    }
+
+    #[test]
+    fn rejects_extreme_xml_nesting() {
+        let mut xml = String::from("<w:document>");
+        xml.push_str(&"<w:p>".repeat(MAX_XML_DEPTH));
+        xml.push_str("<w:r><w:t>bounded</w:t></w:r>");
+        xml.push_str(&"</w:p>".repeat(MAX_XML_DEPTH));
+        xml.push_str("</w:document>");
+        let bytes = create_mock_docx(&xml, vec![]);
+
+        let error = extract_docx(
+            &bytes,
+            &crate::preparation::cleaning::CleaningConfig::default(),
+        )
+        .unwrap_err();
+        assert!(matches!(error, DocxError::ResourceLimit(_)));
     }
 }
