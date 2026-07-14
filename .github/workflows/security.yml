@@ -33,9 +33,9 @@ jobs:
       - uses: taiki-e/install-action@cargo-fuzz
       - name: Run bounded parser fuzz smoke
         run: |
-          cargo fuzz run source_parsers -- -max_total_time=45
-          cargo fuzz run persistent_state -- -max_total_time=45
-          cargo fuzz run tokenisation -- -max_total_time=30
+          cargo fuzz run --codegen-units 16 source_parsers -- -max_total_time=45
+          cargo fuzz run --codegen-units 16 persistent_state -- -max_total_time=45
+          cargo fuzz run --codegen-units 16 tokenisation -- -max_total_time=30
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
