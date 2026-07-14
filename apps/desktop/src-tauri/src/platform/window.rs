@@ -1,4 +1,4 @@
-use crate::*;
+use tauri::Window;
 
 #[cfg(target_os = "windows")]
 mod win32 {

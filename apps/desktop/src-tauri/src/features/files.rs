@@ -1,4 +1,4 @@
-use crate::*;
+use std::path::{Path, PathBuf};
 
 /// Checks whether the given path has a `.json` extension (case-insensitive).
 pub(crate) fn is_json_path(path: &Path) -> bool {

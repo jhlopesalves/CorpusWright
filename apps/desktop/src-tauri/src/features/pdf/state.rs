@@ -1,4 +1,9 @@
-use crate::*;
+use corpuswright_core::preparation::cleaning::{PdfOcrQuality, PdfTextSource};
+use corpuswright_core::sources::pdf::PdfPageRangeResult;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, RwLock};
 
 pub(crate) struct PdfIntakeState {
     pub(crate) cancel: Arc<AtomicBool>,

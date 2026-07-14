@@ -5,4 +5,5 @@ pub(crate) mod files;
 pub(crate) mod pdf;
 pub(crate) mod preview;
 pub(crate) mod processing;
-pub(crate) mod window;
+pub(crate) mod project;
+pub(crate) mod sources;

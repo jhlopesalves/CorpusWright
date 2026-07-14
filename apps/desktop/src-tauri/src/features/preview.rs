@@ -1,4 +1,15 @@
-use crate::*;
+use crate::features::corpus::state::CorpusState;
+use crate::features::project;
+use corpuswright_core::corpus::preview::{
+    CombinedPreview, PreviewOptions, preview_file_with_config, preview_files_with_config,
+    preview_processed_files,
+};
+use corpuswright_core::preparation::cleaning::CleaningConfig;
+use corpuswright_core::project::sources::{
+    ProjectSource, ProjectSourceKind, ProjectSourcePreviewItem, ProjectSourcePreviewViewport,
+    ProjectSourceSelectionDescriptor, ProjectSourceStatus,
+};
+use corpuswright_core::sources::cache::ExtractionCache;
 
 pub(crate) fn preview_char_limit_for_explicit_selection(
     selected_count: usize,
@@ -195,6 +206,8 @@ pub(crate) fn query_selected_source_preview_viewport_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use corpuswright_core::project::sources::ProjectSourceExtractionRoute;
+    use std::path::PathBuf;
 
     #[test]
     fn explicit_single_source_preview_is_exhaustive() {
