@@ -24,6 +24,7 @@ pub mod annotation_cache;
 pub mod cache;
 pub mod clean;
 pub mod decode;
+pub mod documentation_corpus;
 pub mod docx;
 pub mod export;
 pub mod hash;
