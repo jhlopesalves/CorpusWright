@@ -18,6 +18,8 @@ cargo xtask check --scope frontend
 
 Without `--fresh-node`, the frontend scope reuses an existing `apps/desktop/node_modules` and reports a clear error when dependencies are missing.
 
+The runtime, cache, Concordance, IPC, test-layer, and packaged-resource ownership rules are documented in [the maintained architecture boundaries](architecture.md).
+
 ## Fixture and corpus policy
 
 CorpusWright's Git repository contains software, software resources, tests, provenance mechanisms, and generated non-content-bearing evidence. It does not distribute corpora, books, papers, or user/research source documents.
@@ -63,11 +65,13 @@ It uses the real scan, extraction, cleaning, tokenisation, analysis, distributio
 
 ## Security and Linux packaging
 
-Run dependency, audit, repository-policy, and fuzz-smoke orchestration with:
+Run dependency, npm audit, parser-hardening, and repository-policy checks with:
 
 ```bash
 cargo xtask security
 ```
+
+Scheduled CI also runs bounded fuzz smoke jobs. Longer local fuzzing and crash-to-regression instructions are in [`fuzz/README.md`](../../fuzz/README.md).
 
 On Ubuntu, build the mandatory Debian package with:
 
@@ -75,7 +79,7 @@ On Ubuntu, build the mandatory Debian package with:
 cargo xtask package-linux
 ```
 
-`cargo xtask package-linux --install-smoke` asks before any `sudo` command, installs only after explicit confirmation, reports package/resource paths, and runs the maintained smoke workflow. It never publishes an artefact.
+The command prints its required Ubuntu packages before building. `cargo xtask package-linux --install-smoke` additionally requires `xvfb-run`; it asks before any `sudo` command, installs only after explicit confirmation, reports package/resource paths, runs the maintained smoke workflow with a timeout, and uninstalls the package. It never publishes an artefact.
 
 ## Legacy implementation
 
