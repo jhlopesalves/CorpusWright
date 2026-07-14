@@ -7,14 +7,14 @@ use corpuswright_core::analysis::{
     cleaning_config_signature, query_frequency_list, query_overview_distribution,
     query_term_distribution,
 };
-use corpuswright_core::documentation_corpus::{
+use corpuswright_core::scan::{DocumentRecord, load_files};
+use corpuswright_core::tokenization::{TokenizationConfig, TokenizationManifest, tokenize};
+use corpuswright_core::tooling::documentation_corpus::{
     CandidateEvaluation, CandidateScoringInput, GutenbergCatalogRecord, GutenbergCleanResult,
     RetrievalPolicy, SeedTechnicalAudit, clean_gutenberg_text, corpus_checksum,
     detect_duplicate_content, is_publishable_status, manifest_paths_are_strictly_ordered,
     parse_gutenberg_catalog, score_candidate, sha256_hex, technical_audit,
 };
-use corpuswright_core::scan::{DocumentRecord, load_files};
-use corpuswright_core::tokenization::{TokenizationConfig, TokenizationManifest, tokenize};
 use corpuswright_core::{CleaningConfig, scan_directory};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

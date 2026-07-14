@@ -3,9 +3,9 @@ use crate::analysis::overview::OVERVIEW_DOCUMENT_LIMIT;
 use crate::analysis::test_support::*;
 use crate::analysis::*;
 use crate::annotation::{UniversalPos, default_model_dir};
-use crate::clean::CleaningConfig;
-use crate::language::{ProjectLanguage, resolve_effective_document_languages};
-use crate::tokenization::TokenizationConfig;
+use crate::preparation::cleaning::CleaningConfig;
+use crate::text::language::{ProjectLanguage, resolve_effective_document_languages};
+use crate::text::tokenisation::TokenizationConfig;
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 
@@ -308,9 +308,10 @@ fn prepare_analyse_token_parity() {
     ];
 
     for fixture in fixtures {
-        let prepare = crate::word_count::word_token_surfaces_in_processed_text(fixture, &config);
-        let html = crate::html::extract_html(fixture);
-        let cleaned = crate::clean::clean_text(&html, &config);
+        let prepare =
+            crate::corpus::word_count::word_token_surfaces_in_processed_text(fixture, &config);
+        let html = crate::sources::html::extract_html(fixture);
+        let cleaned = crate::preparation::cleaning::clean_text(&html, &config);
         let analyse = analysis_word_tokens(&cleaned, 0, &TokenizationConfig::default())
             .into_iter()
             .map(|token| token.surface.to_string())
@@ -386,7 +387,12 @@ fn cleaning_rule_changes_analysed_token_count_after_rebuild() {
                 Ok(resolve_analysis_input(
                     record,
                     cleaning_config,
-                    |_, config| Ok(crate::clean::clean_text("keep REMOVE", config)),
+                    |_, config| {
+                        Ok(crate::preparation::cleaning::clean_text(
+                            "keep REMOVE",
+                            config,
+                        ))
+                    },
                     |_, _| unreachable!("processing succeeds"),
                 ))
             },
@@ -423,7 +429,12 @@ fn inline_repeated_artifact_rule_is_absent_from_frequency_after_rebuild() {
             Ok(resolve_analysis_input(
                 record,
                 &cleaning_config,
-                |_, config| Ok(crate::clean::clean_text("alpha<br /><br />beta", config)),
+                |_, config| {
+                    Ok(crate::preparation::cleaning::clean_text(
+                        "alpha<br /><br />beta",
+                        config,
+                    ))
+                },
                 |_, _| unreachable!("processing succeeds"),
             ))
         },
@@ -596,7 +607,7 @@ fn some_path_hash_unchanged() {
 
     assert_eq!(
         product.corpus.documents[0].processed_hash_sha256,
-        crate::hash::sha256_hex("The quick brown fox.".as_bytes())
+        crate::support::hash::sha256_hex("The quick brown fox.".as_bytes())
     );
 }
 
@@ -645,7 +656,7 @@ fn some_path_cache_still_ready() {
         &options.language_overrides,
     )
     .unwrap();
-    crate::annotation_cache::write_annotation_layer_cache(
+    crate::annotation::cache::write_annotation_layer_cache(
         temp_dir.path(),
         &manifest,
         &surface_term_table(&corpus),
@@ -672,14 +683,14 @@ fn some_path_cache_still_ready() {
 #[test]
 fn manifest_builder_rejects_too_short_document_hash_input() {
     let corpus = corpus_for(&[("doc1.txt", "hello")]);
-    let result = crate::annotation_cache::build_annotation_manifest(
+    let result = crate::annotation::cache::build_annotation_manifest(
         &corpus,
         &[],
-        crate::tokenization::TokenizationManifest {
+        crate::text::tokenisation::TokenizationManifest {
             id: "".into(),
             version: String::new(),
             unicode_segmentation_version: "".into(),
-            config: crate::tokenization::TokenizationConfig::default(),
+            config: crate::text::tokenisation::TokenizationConfig::default(),
         },
         &std::collections::HashMap::new(),
         vec![],
@@ -688,21 +699,21 @@ fn manifest_builder_rejects_too_short_document_hash_input() {
     );
     assert!(matches!(
         result,
-        Err(crate::annotation_cache::AnnotationLayerCacheError::ValidationError(_))
+        Err(crate::annotation::cache::AnnotationLayerCacheError::ValidationError(_))
     ));
 }
 
 #[test]
 fn manifest_builder_rejects_too_long_document_hash_input() {
     let corpus = corpus_for(&[]); // count = 0
-    let result = crate::annotation_cache::build_annotation_manifest(
+    let result = crate::annotation::cache::build_annotation_manifest(
         &corpus,
         &[],
-        crate::tokenization::TokenizationManifest {
+        crate::text::tokenisation::TokenizationManifest {
             id: "".into(),
             version: String::new(),
             unicode_segmentation_version: "".into(),
-            config: crate::tokenization::TokenizationConfig::default(),
+            config: crate::text::tokenisation::TokenizationConfig::default(),
         },
         &std::collections::HashMap::new(),
         vec![],
@@ -711,21 +722,21 @@ fn manifest_builder_rejects_too_long_document_hash_input() {
     );
     assert!(matches!(
         result,
-        Err(crate::annotation_cache::AnnotationLayerCacheError::ValidationError(_))
+        Err(crate::annotation::cache::AnnotationLayerCacheError::ValidationError(_))
     ));
 }
 
 #[test]
 fn manifest_builder_rejects_too_short_document_language_input() {
     let corpus = corpus_for(&[("doc1.txt", "hello")]);
-    let result = crate::annotation_cache::build_annotation_manifest(
+    let result = crate::annotation::cache::build_annotation_manifest(
         &corpus,
         &[],
-        crate::tokenization::TokenizationManifest {
+        crate::text::tokenisation::TokenizationManifest {
             id: "".into(),
             version: String::new(),
             unicode_segmentation_version: "".into(),
-            config: crate::tokenization::TokenizationConfig::default(),
+            config: crate::text::tokenisation::TokenizationConfig::default(),
         },
         &std::collections::HashMap::new(),
         vec![],
@@ -734,21 +745,21 @@ fn manifest_builder_rejects_too_short_document_language_input() {
     );
     assert!(matches!(
         result,
-        Err(crate::annotation_cache::AnnotationLayerCacheError::ValidationError(_))
+        Err(crate::annotation::cache::AnnotationLayerCacheError::ValidationError(_))
     ));
 }
 
 #[test]
 fn manifest_builder_rejects_too_long_document_language_input() {
     let corpus = corpus_for(&[]); // count = 0
-    let result = crate::annotation_cache::build_annotation_manifest(
+    let result = crate::annotation::cache::build_annotation_manifest(
         &corpus,
         &[],
-        crate::tokenization::TokenizationManifest {
+        crate::text::tokenisation::TokenizationManifest {
             id: "".into(),
             version: String::new(),
             unicode_segmentation_version: "".into(),
-            config: crate::tokenization::TokenizationConfig::default(),
+            config: crate::text::tokenisation::TokenizationConfig::default(),
         },
         &std::collections::HashMap::new(),
         vec![],
@@ -757,7 +768,7 @@ fn manifest_builder_rejects_too_long_document_language_input() {
     );
     assert!(matches!(
         result,
-        Err(crate::annotation_cache::AnnotationLayerCacheError::ValidationError(_))
+        Err(crate::annotation::cache::AnnotationLayerCacheError::ValidationError(_))
     ));
 }
 
@@ -803,20 +814,20 @@ fn test_build_is_deterministic() {
 
     let cache_file1 = temp_dir1.path().join(format!(
         "annotation-layer.v{}.json",
-        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
     ));
     let cache_file2 = temp_dir2.path().join(format!(
         "annotation-layer.v{}.json",
-        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
     ));
 
     let bytes1 = std::fs::read(&cache_file1).unwrap();
     let bytes2 = std::fs::read(&cache_file2).unwrap();
 
     // Use semantic envelope equality
-    let envelope1: crate::annotation_cache::AnnotationLayerCacheEnvelope =
+    let envelope1: crate::annotation::cache::AnnotationLayerCacheEnvelope =
         serde_json::from_slice(&bytes1).unwrap();
-    let envelope2: crate::annotation_cache::AnnotationLayerCacheEnvelope =
+    let envelope2: crate::annotation::cache::AnnotationLayerCacheEnvelope =
         serde_json::from_slice(&bytes2).unwrap();
 
     assert_eq!(envelope1, envelope2);

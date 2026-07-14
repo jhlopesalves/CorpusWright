@@ -2,9 +2,9 @@ use super::*;
 use crate::analysis::test_support::*;
 use crate::analysis::*;
 use crate::annotation::{AnnotatedToken, LemmaTable, UniversalPos, default_model_dir};
-use crate::language::{ProjectLanguage, resolve_effective_document_languages};
-use crate::scan::DocumentRecord;
-use crate::tokenization::{TokenizationConfig, tokenize};
+use crate::corpus::DocumentRecord;
+use crate::text::language::{ProjectLanguage, resolve_effective_document_languages};
+use crate::text::tokenisation::{TokenizationConfig, tokenize};
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
@@ -181,7 +181,7 @@ fn multi_wave_english_texts() -> (Vec<(String, String)>, usize, usize) {
 fn cache_file_path(cache_root: &Path) -> PathBuf {
     cache_root.join(format!(
         "annotation-layer.v{}.json",
-        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
     ))
 }
 
@@ -207,7 +207,7 @@ fn build_cache_with_reusable_surface(
     reusable_surface_corpus: &AnalysisCorpus,
 ) -> (
     AnnotationCacheBuildReport,
-    crate::annotation_cache::AnnotationLayerCacheEnvelope,
+    crate::annotation::cache::AnnotationLayerCacheEnvelope,
     Vec<String>,
 ) {
     let records = cache_records(texts);
@@ -259,7 +259,7 @@ fn build_full_rebuild_cache(
     texts: &[(&str, &str)],
     language_overrides: HashMap<usize, String>,
     reusable_surface_corpus: &AnalysisCorpus,
-) -> crate::annotation_cache::AnnotationLayerCacheEnvelope {
+) -> crate::annotation::cache::AnnotationLayerCacheEnvelope {
     build_cache_with_reusable_surface(
         cache_root,
         texts,
@@ -271,7 +271,7 @@ fn build_full_rebuild_cache(
 
 fn write_cache_envelope(
     cache_root: &Path,
-    envelope: &crate::annotation_cache::AnnotationLayerCacheEnvelope,
+    envelope: &crate::annotation::cache::AnnotationLayerCacheEnvelope,
 ) {
     std::fs::write(
         cache_file_path(cache_root),
@@ -1599,7 +1599,7 @@ fn test_annotation_cache_seam_stale_cache() {
         languages_used: vec![],
     };
 
-    crate::annotation_cache::write_annotation_layer_cache(
+    crate::annotation::cache::write_annotation_layer_cache(
         temp_dir.path(),
         &manifest,
         &surface_term_table(&corpus),
@@ -1652,7 +1652,7 @@ fn annotation_cache_decision_diagnostics_name_first_manifest_mismatch() {
     processed_mismatch.corpus.processed_texts_hash_sha256 = "different".to_string();
     assert_eq!(
         annotation_manifest_mismatch_for_diagnostics(
-            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION,
+            crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION,
             &processed_mismatch,
             &expected,
         ),
@@ -1663,7 +1663,7 @@ fn annotation_cache_decision_diagnostics_name_first_manifest_mismatch() {
     model_mismatch.models[0].sha256 = "different".to_string();
     assert_eq!(
         annotation_manifest_mismatch_for_diagnostics(
-            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION,
+            crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION,
             &model_mismatch,
             &expected,
         ),
@@ -1678,7 +1678,7 @@ fn test_annotation_cache_seam_invalid_cache() {
 
     let final_path = temp_dir.path().join(format!(
         "annotation-layer.v{}.json",
-        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
     ));
     std::fs::write(&final_path, b"{ corrupt json").unwrap();
 
@@ -1754,7 +1754,7 @@ fn test_annotation_cache_seam_valid_cache() {
         &options.language_overrides,
     )
     .unwrap();
-    crate::annotation_cache::write_annotation_layer_cache(
+    crate::annotation::cache::write_annotation_layer_cache(
         temp_dir.path(),
         &manifest,
         &surface_term_table(&corpus),
@@ -1854,7 +1854,7 @@ fn test_annotation_cache_seam_validation_reject_bad_layer_docs() {
     )
     .unwrap();
 
-    crate::annotation_cache::write_annotation_layer_cache(
+    crate::annotation::cache::write_annotation_layer_cache(
         temp_dir.path(),
         &manifest,
         &surface_term_table(&corpus),
@@ -1932,7 +1932,7 @@ fn test_annotation_cache_seam_validation_reject_bad_ids() {
         &options.language_overrides,
     )
     .unwrap();
-    crate::annotation_cache::write_annotation_layer_cache(
+    crate::annotation::cache::write_annotation_layer_cache(
         temp_dir.path(),
         &manifest,
         &surface_term_table(&corpus),
@@ -2015,7 +2015,7 @@ fn test_annotation_cache_seam_tokenisation_threading() {
     )
     .unwrap();
 
-    crate::annotation_cache::write_annotation_layer_cache(
+    crate::annotation::cache::write_annotation_layer_cache(
         temp_dir.path(),
         &manifest,
         &surface_term_table(&corpus),
@@ -2105,7 +2105,7 @@ fn test_annotation_cache_seam_mixed_en_pt() {
     assert!(manifest.models.iter().any(|m| m.language == "pt"));
     assert!(manifest.models.iter().any(|m| m.language == "en"));
 
-    crate::annotation_cache::write_annotation_layer_cache(
+    crate::annotation::cache::write_annotation_layer_cache(
         temp_dir.path(),
         &manifest,
         &surface_term_table(&corpus),
@@ -2223,10 +2223,10 @@ fn test_explicit_build_writes_ready_cache() {
         &options.language_overrides,
     )
     .unwrap();
-    let load = crate::annotation_cache::load_annotation_layer_cache(temp_dir.path(), &manifest);
+    let load = crate::annotation::cache::load_annotation_layer_cache(temp_dir.path(), &manifest);
     assert!(matches!(
         load,
-        crate::annotation_cache::AnnotationLayerCacheLoad::Ready(_)
+        crate::annotation::cache::AnnotationLayerCacheLoad::Ready(_)
     ));
 }
 
@@ -2290,10 +2290,10 @@ fn test_persisted_manifest_matches_reader() {
 
     let cache_file = temp_dir.path().join(format!(
         "annotation-layer.v{}.json",
-        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
     ));
     let bytes = std::fs::read(&cache_file).unwrap();
-    let envelope: crate::annotation_cache::AnnotationLayerCacheEnvelope =
+    let envelope: crate::annotation::cache::AnnotationLayerCacheEnvelope =
         serde_json::from_slice(&bytes).unwrap();
 
     let mut manifest_options = build_options();
@@ -2351,10 +2351,10 @@ fn test_annotation_timing_does_not_change_cache_output() {
 
         let cache_file = cache_root.join(format!(
             "annotation-layer.v{}.json",
-            crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+            crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
         ));
         let bytes = std::fs::read(cache_file).unwrap();
-        serde_json::from_slice::<crate::annotation_cache::AnnotationLayerCacheEnvelope>(&bytes)
+        serde_json::from_slice::<crate::annotation::cache::AnnotationLayerCacheEnvelope>(&bytes)
             .unwrap()
     };
 
@@ -2661,7 +2661,7 @@ fn test_ready_cache_skips_rebuild() {
 
     let cache_file = temp_dir.path().join(format!(
         "annotation-layer.v{}.json",
-        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
     ));
     let mtime1 = std::fs::metadata(&cache_file).unwrap().modified().unwrap();
 
@@ -2871,7 +2871,7 @@ fn test_stale_or_invalid_replaced_after_full_build() {
 
     let cache_file = temp_dir.path().join(format!(
         "annotation-layer.v{}.json",
-        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
     ));
     std::fs::create_dir_all(temp_dir.path()).unwrap();
     std::fs::write(&cache_file, "INVALID JSON DATA").unwrap();
@@ -2891,7 +2891,7 @@ fn test_stale_or_invalid_replaced_after_full_build() {
 
     let bytes = std::fs::read(&cache_file).unwrap();
     assert!(
-        serde_json::from_slice::<crate::annotation_cache::AnnotationLayerCacheEnvelope>(&bytes)
+        serde_json::from_slice::<crate::annotation::cache::AnnotationLayerCacheEnvelope>(&bytes)
             .is_ok()
     );
 }
@@ -2929,7 +2929,7 @@ fn test_unsupported_language_writes_no_partial_cache() {
 
     let cache_file = temp_dir.path().join(format!(
         "annotation-layer.v{}.json",
-        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
     ));
     assert!(!cache_file.exists());
 }
@@ -2961,7 +2961,7 @@ fn test_unsupported_language_does_not_overwrite_existing_cache() {
 
     let cache_file = temp_dir.path().join(format!(
         "annotation-layer.v{}.json",
-        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
     ));
 
     // Save the valid cache content
@@ -3033,7 +3033,7 @@ fn test_cancelled_build_writes_no_final_cache() {
 
     let cache_file = temp_dir.path().join(format!(
         "annotation-layer.v{}.json",
-        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
     ));
     assert!(!cache_file.exists());
 }

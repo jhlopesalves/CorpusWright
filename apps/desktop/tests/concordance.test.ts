@@ -51,7 +51,7 @@ import {
   normaliseConcordanceQuery,
   toggleConcordanceExpansionKey,
   nextConcordanceCollocateDisplayCount,
-} from "../src/concordance.ts";
+} from "../src/features/analyse/concordance/model.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);

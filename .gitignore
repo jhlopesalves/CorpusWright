@@ -149,6 +149,9 @@ pdf_test.pdf
 # Accidental local checkout copy
 /CorpusWright/
 
+# Local maintainer knowledge base
+/.maintainer/
+
 # Local agents notes
 AGENTS.md
 .agents/

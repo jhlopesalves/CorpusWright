@@ -22,7 +22,7 @@ const themes = parseCompleteThemes(themesModule.contents, "foundations/themes.cs
 assert.equal(themes.length, 14, "exactly fourteen complete theme variants must exist");
 assert.equal(new Set(themes.map(theme => theme.id)).size, 14, "complete theme ids must be unique");
 
-const appearanceSource = readFileSync(new URL("../src/appearance.ts", import.meta.url), "utf8");
+const appearanceSource = readFileSync(new URL("../src/app/appearance.ts", import.meta.url), "utf8");
 assert.deepEqual(
   themes.map(theme => theme.id).sort(),
   appearanceThemeIds(appearanceSource).sort(),

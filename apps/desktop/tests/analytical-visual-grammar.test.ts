@@ -8,24 +8,24 @@ import {
   CONCORDANCE_COLLOCATION_SHOW_MORE_STEP,
   concordanceContextSortLevels,
   nextConcordanceCollocateDisplayCount,
-} from "../src/concordance.ts";
+} from "../src/features/analyse/concordance/model.ts";
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const styles = (await loadStyleGraph(new URL("../src/styles.css", import.meta.url))).css;
 const collocations = readFileSync(
-  new URL("../src/workbench/concordance/collocations.ts", import.meta.url),
+  new URL("../src/features/analyse/workbench/concordance/collocations.ts", import.meta.url),
   "utf8",
 );
 const shared = readFileSync(
-  new URL("../src/workbench/concordance/shared.ts", import.meta.url),
+  new URL("../src/features/analyse/workbench/concordance/shared.ts", import.meta.url),
   "utf8",
 );
 const state = readFileSync(
-  new URL("../src/workbench/concordance/state.ts", import.meta.url),
+  new URL("../src/features/analyse/workbench/concordance/state.ts", import.meta.url),
   "utf8",
 );
 const figures = readFileSync(new URL("../src/plots/figure.ts", import.meta.url), "utf8");
-const shell = readFileSync(new URL("../src/workbench/shell.ts", import.meta.url), "utf8");
+const shell = readFileSync(new URL("../src/features/analyse/workbench/shell.ts", import.meta.url), "utf8");
 
 for (const card of ["lines", "collocates", "distribution"]) {
   assert(!html.includes(`id="concordance-${card}-collapse"`), `${card} must not expose a collapse control`);

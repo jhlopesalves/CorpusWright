@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const shell = readFileSync(new URL("../src/workbench/shell.ts", import.meta.url), "utf8");
+const shell = readFileSync(new URL("../src/features/analyse/workbench/shell.ts", import.meta.url), "utf8");
 const figure = readFileSync(new URL("../src/plots/figure.ts", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../src/styles/plots/figures.css", import.meta.url), "utf8");
 

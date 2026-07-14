@@ -129,9 +129,7 @@ function liveDocumentationFiles() {
         }
         visit(absolutePath);
       } else if (entry.isFile() && /\.(?:md|html)$/i.test(entry.name)) {
-        if (relativePath !== "docs/release-cleanup-alpha-3.md") {
-          files.push(absolutePath);
-        }
+        files.push(absolutePath);
       }
     }
   }
@@ -164,7 +162,7 @@ function validateHtml(filePath) {
 }
 
 function validateTestingGuidePaths() {
-  const filePath = path.join(ROOT, "docs", "testing.md");
+  const filePath = path.join(ROOT, "docs", "contributing", "testing.md");
   const text = fs.readFileSync(filePath, "utf8");
   const intentionallyLocal = new Set([
     ".local-corpora/",
