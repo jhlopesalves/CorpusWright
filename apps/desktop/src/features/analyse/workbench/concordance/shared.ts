@@ -1,3 +1,9 @@
+/**
+ * Coordinates shared Concordance search across Lines and Distribution cards.
+ *
+ * One backend traversal can serve both cards. Each section retains its request key and generation,
+ * allowing independent paging while rejecting stale sections from earlier searches.
+ */
 import { listen } from "@tauri-apps/api/event";
 import {
   searchConcordance,
@@ -300,6 +306,8 @@ async function refreshConcordanceCards(
     return false;
   }
 
+  // Each requested section records the identity it expects. The combined response is projected only
+  // into sections whose key and generation still match after the shared traversal finishes.
   const requests = new Map<"lines" | "distribution", { generation: number; requestKey: string }>();
   for (const card of cards) {
     const request = beginConcordanceCardRequest(workbenchState, card);

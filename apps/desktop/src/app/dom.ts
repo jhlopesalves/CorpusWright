@@ -1,3 +1,9 @@
+/**
+ * Typed references for the static application shell.
+ *
+ * The entry point imports this module after the document is ready, so feature code can share one
+ * stable set of elements and keep lookup details outside interaction lifecycles.
+ */
 function getElement<T extends HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
 }

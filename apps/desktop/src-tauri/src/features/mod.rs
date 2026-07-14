@@ -1,3 +1,5 @@
+//! Desktop feature registry. Each feature owns its commands and long-lived runtime state.
+
 pub(crate) mod analysis;
 pub(crate) mod concordance;
 pub(crate) mod corpus;

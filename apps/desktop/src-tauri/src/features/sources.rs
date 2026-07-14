@@ -1,3 +1,8 @@
+//! Resolves source and processed text for desktop features and persists extracted project text.
+//!
+//! Analysis, preview, and processing share this boundary so cache identity and PDF extraction
+//! options remain consistent across their separate command lifecycles.
+
 use corpuswright_core::analysis::{ConcordanceDocument, resolve_analysis_input};
 use corpuswright_core::corpus::{DocumentRecord, DocumentType};
 use corpuswright_core::preparation::cleaning::CleaningConfig;

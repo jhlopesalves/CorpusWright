@@ -1,3 +1,9 @@
+/**
+ * Coordinates project creation, opening, upgrade, and activation.
+ *
+ * Project activation resets corpus-owned feature state before source inventory and prepared text
+ * are loaded for the new root.
+ */
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 

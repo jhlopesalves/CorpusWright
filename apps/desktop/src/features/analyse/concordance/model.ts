@@ -1,3 +1,9 @@
+/**
+ * Defines Concordance query defaults, normalisation, labels, and presentation models.
+ *
+ * Backend search and collocation semantics remain Rust-owned; these helpers keep every card aligned
+ * on the same query identity and units.
+ */
 import type { ConcordanceCollocateRow } from "../../../generated/ConcordanceCollocateRow.js";
 import type { ConcordanceCollocationDirection } from "../../../generated/ConcordanceCollocationDirection.js";
 import type { ConcordanceCollocationMeasure } from "../../../generated/ConcordanceCollocationMeasure.js";

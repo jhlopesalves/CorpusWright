@@ -1,11 +1,8 @@
-//! Corpus-wide repeated artefact scanner for boilerplate, headers, footers, and graphical noise.
+//! Finds corpus-wide boilerplate, headers, footers, and graphical noise with bounded memory.
 //!
-//! - Default scan uses original extracted text for speed and avoids OCR.
-//! - Exact lines, normalised lines, known inline artefacts, numeric-dominant
-//!   candidates, and 2-line blocks are enabled by default.
-//! - 3-line blocks are opt-in because they multiply the candidate space.
-//! - Processed-text scans are slower because they apply extraction/cleanup settings.
-//! - Uses a two-pass strategy: fingerprint counts first, then materialises survivors.
+//! The first pass counts compact fingerprints; the second materialises evidence only for surviving
+//! candidates. Original extracted text is the default scan input, while processed-text mode applies
+//! the active preparation configuration. Candidate order remains deterministic across both passes.
 
 pub mod promotion;
 

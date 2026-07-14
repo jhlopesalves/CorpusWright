@@ -1,3 +1,8 @@
+//! Materialises PDF project sources with bounded parallel page batches.
+//!
+//! Each batch extracts pages independently, restores page order before progress and cache updates,
+//! and checks cancellation between bounded units of work.
+
 use crate::features::sources::modified_time_secs;
 use corpuswright_core::corpus::{DocumentRecord, DocumentType};
 use corpuswright_core::preparation::cleaning::{
@@ -516,7 +521,8 @@ pub(crate) fn materialize_force_ocr_pdf(
         let batch_end = next_page_index
             .saturating_add(worker_count)
             .min(total_pages);
-        // Check cancellation before spawning the parallel OCR batch
+        // Pages in a batch are independent. Rayon returns local page results, then explicit sorting
+        // restores document order before text, warnings, and progress are committed.
         if cancel.load(Ordering::Relaxed) {
             return Err(pdf_intake_cancelled_message());
         }

@@ -1,3 +1,9 @@
+//! Aggregates collocates for Concordance and projects bounded result pages.
+//!
+//! Indexed aggregation stores candidate-proportional state and admits the combined resident index
+//! and peak aggregate estimate before work proceeds. A memory refusal is terminal for that request,
+//! preserving the resource bound across backend routing.
+
 use super::build::AnalysisDocumentSelection;
 use super::concordance::{
     ConcordanceBackendUsed, ConcordanceDocument, ConcordanceError, ConcordanceFallbackReason,
@@ -25,8 +31,11 @@ pub const CONCORDANCE_MAX_COMBINED_BYTES_ENV: &str = "CORPUSWRIGHT_CONCORDANCE_M
 pub const DEFAULT_CONCORDANCE_MAX_COMBINED_BYTES: u64 = 1_610_612_736;
 pub const DEFAULT_CONCORDANCE_ANALYSIS_SAFETY_MARGIN_BYTES: u64 = 268_435_456;
 
-/// A bounded estimate for the two large concordance-owned structures. This is
-/// deliberately not described as complete process RSS.
+/// Bounds the two large concordance-owned analysis structures.
+///
+/// The estimate covers the resident surface index, projected collocation aggregate, and a safety
+/// margin for concordance allocations outside those structures. Complete process RSS also includes
+/// the runtime, source buffers, and unrelated application state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConcordanceAnalysisMemoryLimits {
     pub max_combined_bytes: u64,
@@ -58,6 +67,10 @@ pub struct ConcordanceAnalysisMemoryEstimate {
 }
 
 impl ConcordanceAnalysisMemoryEstimate {
+    /// Admits a projected aggregate within the configured combined analysis budget.
+    ///
+    /// Checked subtraction makes an index-plus-margin excess a typed refusal before aggregation.
+    /// Candidate growth is checked again during indexed finalisation.
     pub fn admit(
         estimated_resident_index_bytes: u64,
         projected_aggregate_bytes: u64,
@@ -1208,6 +1221,9 @@ fn finalise_indexed_collocation_candidates(
     source_ids.extend(candidates.counts.keys().copied());
     source_ids.sort_unstable();
 
+    // Index symbol IDs provide a deterministic source order. Compact local IDs keep the frequency
+    // vector proportional to observed candidates and copy each retained symbol exactly once.
+
     let mut candidate_symbols = Vec::new();
     candidate_symbols
         .try_reserve_exact(candidate_count)
@@ -1290,6 +1306,8 @@ fn finalise_indexed_collocation_candidates(
         candidate_counts.insert(local_id, counts);
     }
 
+    // The frequency pass scans selected token records once and updates candidate-local counters.
+    // Periodic cancellation checks bound response latency without synchronising every token.
     before_frequency_scan();
     let mut frequency_records_seen = 0u64;
     for document in store
@@ -1387,6 +1405,8 @@ fn aggregate_concordance_collocations_index_with_memory_limits(
     mut surface_limits: SurfaceIndexResourceLimits,
     analysis_limits: ConcordanceAnalysisMemoryLimits,
 ) -> Result<(ConcordanceCollocationAggregate, CollocationAggregationStats), ConcordanceError> {
+    // Combined admission accounts for the index already held in memory. The remaining byte budget
+    // becomes the aggregate limit used during candidate discovery and finalisation.
     let estimated_resident_index_bytes = store.estimated_resident_bytes();
     let initial_estimate = ConcordanceAnalysisMemoryEstimate::admit(
         estimated_resident_index_bytes,

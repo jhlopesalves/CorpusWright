@@ -1,3 +1,9 @@
+//! Composes the desktop runtime from feature-owned commands and state.
+//!
+//! Tauri registration remains explicit here so every IPC endpoint and managed state has one
+//! auditable owner. Analytical behaviour stays in `corpuswright-core`; feature services own desktop
+//! orchestration, progress events, and cache lifecycles.
+
 use corpuswright_core::sources::cache::ExtractionCache;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};

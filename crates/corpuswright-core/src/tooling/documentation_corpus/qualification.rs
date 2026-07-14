@@ -122,7 +122,10 @@ pub fn detect_duplicate_content<'a>(
         .collect()
 }
 
-/// Stable corpus identity from ordered path/checksum pairs plus analysis configuration.
+/// Returns stable corpus identity from ordered path/checksum pairs and analysis configuration.
+///
+/// Callers must supply strictly ordered paths. Length boundaries use zero bytes, and the domain
+/// prefix keeps this digest separate from individual document checksums.
 pub fn corpus_checksum<'a>(
     ordered_documents: impl IntoIterator<Item = (&'a str, &'a str)>,
     analysis_configuration: &[u8],

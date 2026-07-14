@@ -1,22 +1,9 @@
-//! Rust core for the CorpusWright desktop application.
+//! UI-independent corpus processing and analysis for CorpusWright.
 //!
-//! This crate is UI-agnostic and Tauri-ready. It provides:
-//!
-//! - **scanning**: recursive directory scanning with metadata collection;
-//! - **cleaning**: configurable text cleaning with replacement rules;
-//! - **plain-text extraction**: `.txt` file handling;
-//! - **DOCX extraction**: main document body extraction from `.docx` files;
-//! - **HTML extraction**: plain-text extraction from `.html` and `.htm` files;
-//! - **PDF extraction**: embedded-text extraction from born-digital PDFs;
-//! - **PDF audit**: lightweight diagnostics for selected PDFs;
-//! - **PDF OCR**: optical character recognition for scanned PDFs;
-//! - **PDF quality assessment**: quality metrics for PDF pages;
-//! - **repeated-artefact detection**: identification of recurring boilerplate;
-//! - **preview**: bounded text preview for individual and multiple files;
-//! - **search**: text search across corpus documents;
-//! - **word counting**: word-level statistics;
-//! - **export**: export processed UTF-8 `.txt` files with `manifest.json` and
-//!   metadata artefacts.
+//! The crate owns source extraction, deterministic preparation, project and corpus identity,
+//! bounded analytical queries, and reproducible export. Tauri runtime state and frontend
+//! presentation remain downstream boundaries. Root re-exports preserve the established API while
+//! the domain modules provide the canonical paths for new code.
 
 pub mod analysis;
 pub mod annotation;

@@ -1,3 +1,9 @@
+/**
+ * Provides ID-based project-source selection, paging, status, and import helpers.
+ *
+ * Source text preserves imported evidence. Processed text belongs to the active deterministic
+ * cleaning configuration, and callers can inspect both through the shared source identity.
+ */
 import { invoke } from "@tauri-apps/api/core";
 
 import type { PdfOcrQuality } from "../../generated/PdfOcrQuality.js";

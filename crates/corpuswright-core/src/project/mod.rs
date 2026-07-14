@@ -1,3 +1,8 @@
+//! Defines project IPC contracts and the persisted source-inventory domain.
+//!
+//! Project source IDs, manifest versions, and ordering are stable storage contracts shared by
+//! import, preparation, preview, and analysis orchestration.
+
 pub mod sources;
 
 use crate::text::language::ProjectLanguage;

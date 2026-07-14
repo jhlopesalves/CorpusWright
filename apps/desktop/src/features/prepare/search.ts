@@ -1,3 +1,9 @@
+/**
+ * Runs bounded Prepare search and coordinates result selection with Preview.
+ *
+ * Search uses the active cleaning configuration and corpus version, while Preview owns rendering
+ * and rejection of responses from earlier selections.
+ */
 import { invoke } from "@tauri-apps/api/core";
 
 import {

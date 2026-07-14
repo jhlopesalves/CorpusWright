@@ -1,3 +1,9 @@
+/**
+ * Authored Analyse gateway over Rust-generated IPC contracts.
+ *
+ * Generated types preserve serialised field ownership. This module supplies stable frontend names,
+ * request defaults, and Tauri invocation functions used by the workbench controllers.
+ */
 import { invoke } from "@tauri-apps/api/core";
 
 import type { AnnotatedFrequencyMode as GeneratedAnnotatedFrequencyMode } from "../../generated/AnnotatedFrequencyMode.js";

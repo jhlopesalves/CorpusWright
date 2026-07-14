@@ -1,3 +1,7 @@
+//! Extracts page-ordered text from PDF sources and coordinates embedded text, layout recovery, and
+//! OCR. PDFium access remains behind the process-wide rendering lock, while callers receive page
+//! methods and warnings as provenance for the extracted text.
+
 pub mod audit;
 pub mod ocr;
 pub mod quality;

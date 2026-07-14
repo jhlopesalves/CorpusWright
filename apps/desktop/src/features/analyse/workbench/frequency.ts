@@ -1,3 +1,9 @@
+/**
+ * Coordinates Frequency query state, complete-result sorting, pagination, and rendering.
+ *
+ * Corpus construction and tokenisation remain backend responsibilities. Query generations ensure
+ * that rapid filter or scope changes cannot render an older page.
+ */
 import {
   defaultAnalysisDocumentSelection,
   queryAnnotatedFrequency,
@@ -808,6 +814,8 @@ export async function refreshFrequencyPage(resetOffset = true): Promise<void> {
   if (resetOffset) {
     frequencyPageOffset = 0;
   }
+  // One generation covers the request and its pending/error state. Every asynchronous exit checks
+  // this identity before it mutates or renders the current page.
   const generation = ++frequencyQueryGeneration;
   frequencyQueryPending = true;
   frequencyQueryFailure = null;

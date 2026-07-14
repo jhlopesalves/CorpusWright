@@ -1,3 +1,8 @@
+//! Applies the ordered, serialisable preparation configuration to extracted text.
+//!
+//! Rule order is part of the public result: replacements, structured removals, Unicode handling,
+//! and whitespace operations contribute to deterministic output and an auditable cleaning report.
+
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use lazy_static::lazy_static;
 use regex::Regex;

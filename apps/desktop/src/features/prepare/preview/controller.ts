@@ -1,3 +1,9 @@
+/**
+ * Owns preview selection, debouncing, virtual viewports, and stale-response rejection.
+ *
+ * File-list and Search report changes through this boundary. Source and processed panes share one
+ * preview generation so they cannot present evidence from different corpus states.
+ */
 import { invoke } from "@tauri-apps/api/core";
 
 import { dom } from "../../../app/dom";
@@ -215,6 +221,8 @@ async function renderSelectedProjectSourcePreviewViewport(
         processed: true,
       }),
     ]);
+    // Request, corpus, and preview generations identify the complete rendering context. A response
+    // may update both panes only while all three identities remain current.
     if (
       request !== projectSourcePreviewRequest
       || corpusVersion !== state.currentCorpusVersion

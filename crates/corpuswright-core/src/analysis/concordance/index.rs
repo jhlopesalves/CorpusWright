@@ -1386,6 +1386,10 @@ impl<R: Read> ChecksummedReader<R> {
     }
 }
 
+/// Returns the content-addressed cache path for one complete surface-index identity.
+///
+/// Schema and file versions precede the serialised manifest in the digest. A change to document
+/// identity, tokenisation, or index representation therefore selects a new cache file.
 pub fn surface_index_cache_path(cache_root: &Path, manifest: &SurfaceIndexManifest) -> PathBuf {
     let mut key_bytes = Vec::new();
     key_bytes.extend_from_slice(b"corpuswright-surface-index-cache-key-v2\0");
