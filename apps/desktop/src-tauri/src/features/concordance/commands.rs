@@ -1,38 +1,41 @@
 use crate::features::analysis::state::AnalysisState;
 use crate::features::corpus::state::{CorpusState, project_root_cache_key};
 use crate::features::sources::concordance_document_from_record;
+use crate::runtime::config::DesktopRuntimeConfig;
+use crate::runtime::identity::{IndexIdentity, ProjectRootIdentity};
 use corpuswright_core::analysis::{
     CompareExpressionsQuery, CompareExpressionsResult, ConcordanceCollocationQuery,
     ConcordanceCollocationResult, ConcordanceExpansionQuery, ConcordanceExpansionResult,
-    ConcordanceQuery, ConcordanceResult, aggregate_concordance_collocations_scan_provider,
-    cleaning_config_signature, compare_expressions, concordance_collocation_aggregation_signature,
-    expand_concordance_context, query_concordance_collocations_from_aggregate,
-    search_concordance_documents_routed_scan_provider,
+    ConcordanceQuery, ConcordanceResult, cleaning_config_signature, compare_expressions,
+    concordance_collocation_aggregation_signature, expand_concordance_context,
+    query_concordance_collocations_from_aggregate,
 };
 use corpuswright_core::preparation::cleaning::CleaningConfig;
 use corpuswright_core::sources::cache::ExtractionCache;
 use corpuswright_core::text::tokenisation::TokenizationConfig;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use tauri::Emitter;
 
 use super::service::{
     ConcordanceBackendMode, aggregate_concordance_collocations_audit_mode,
-    aggregate_concordance_collocations_with_warm_index_provider, concordance_backend_mode_from_env,
+    aggregate_concordance_collocations_scan_provider,
+    aggregate_concordance_collocations_with_warm_index_provider,
     concordance_default_index_disabled_for_key, log_concordance_collocation_index_error,
     log_concordance_collocation_index_result,
     log_concordance_default_index_previous_error_recovery, log_concordance_default_index_recovery,
     log_concordance_default_index_recovery_scan_error, log_concordance_index_error,
     log_concordance_index_result, record_concordance_default_index_error,
-    search_concordance_documents_audit_mode, search_concordance_with_warm_index_provider,
+    search_concordance_documents_audit_mode, search_concordance_documents_routed_scan_provider,
+    search_concordance_with_warm_index_provider,
 };
 use super::state::{
     ConcordanceCollocationCache, ConcordanceCollocationCacheKey, ConcordanceIndexContextKey,
     ConcordanceIndexContextState,
 };
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub(crate) async fn search_concordance_command(
     query: ConcordanceQuery,
@@ -41,13 +44,13 @@ pub(crate) async fn search_concordance_command(
     corpus: tauri::State<'_, CorpusState>,
     cache: tauri::State<'_, ExtractionCache>,
     index_context: tauri::State<'_, ConcordanceIndexContextState>,
+    runtime: tauri::State<'_, DesktopRuntimeConfig>,
     app: tauri::AppHandle,
 ) -> Result<ConcordanceResult, String> {
     let (records, project_root) = corpus.all_records_and_root(corpus_version)?;
-    let mode = concordance_backend_mode_from_env();
+    let mode = runtime.concordance_backend();
     let context_key = ConcordanceIndexContextKey {
-        corpus_version,
-        cleaning_config_signature: cleaning_config_signature(&cleaning_config),
+        index: IndexIdentity::from_ipc(corpus_version, cleaning_config_signature(&cleaning_config)),
     };
     let index_context = index_context.context_handle();
     let cache = cache.inner().clone();
@@ -82,11 +85,10 @@ pub(crate) async fn search_concordance_command(
                     return Ok(scan.result);
                 }
                 let started = Instant::now();
-                let cancellation = Arc::new(AtomicBool::new(false));
-                {
+                let cancellation = {
                     let cache_guard = index_context.lock().unwrap();
-                    *cache_guard.cancel.lock().unwrap() = Some(cancellation.clone());
-                }
+                    cache_guard.cancel.begin()
+                };
 
                 let routed = search_concordance_with_warm_index_provider(
                     records.len(),
@@ -110,7 +112,7 @@ pub(crate) async fn search_concordance_command(
 
                 {
                     let cache_guard = index_context.lock().unwrap();
-                    *cache_guard.cancel.lock().unwrap() = None;
+                    cache_guard.cancel.finish(&cancellation);
                 }
                 match routed {
                     Ok(routed) => {
@@ -254,23 +256,22 @@ pub(crate) async fn query_concordance_collocations_command(
     cache: tauri::State<'_, ExtractionCache>,
     collocation_cache: tauri::State<'_, ConcordanceCollocationCache>,
     index_context: tauri::State<'_, ConcordanceIndexContextState>,
+    runtime: tauri::State<'_, DesktopRuntimeConfig>,
     app: tauri::AppHandle,
 ) -> Result<ConcordanceCollocationResult, String> {
     let tokenization_config = TokenizationConfig::default();
     let aggregation = concordance_collocation_aggregation_signature(&query, &tokenization_config)
         .map_err(|error| error.to_string())?;
     let (records, project_root) = corpus.all_records_and_root(corpus_version)?;
-    let mode = concordance_backend_mode_from_env();
+    let mode = runtime.concordance_backend();
     let project_root_key = project_root_cache_key(project_root.as_deref());
     let cleaning_config_signature = cleaning_config_signature(&cleaning_config);
     let context_key = ConcordanceIndexContextKey {
-        corpus_version,
-        cleaning_config_signature: cleaning_config_signature.clone(),
+        index: IndexIdentity::from_ipc(corpus_version, cleaning_config_signature.clone()),
     };
     let cache_key = ConcordanceCollocationCacheKey {
-        corpus_version,
-        project_root: project_root_key,
-        cleaning_config_signature,
+        index: IndexIdentity::from_ipc(corpus_version, cleaning_config_signature),
+        project_root: project_root_key.map(ProjectRootIdentity::new),
         selection: query.selection.clone(),
         aggregation,
     };
@@ -287,11 +288,10 @@ pub(crate) async fn query_concordance_collocations_command(
     tauri::async_runtime::spawn_blocking(move || match mode {
         ConcordanceBackendMode::DefaultIndex | ConcordanceBackendMode::StrictIndex => {
             let started = Instant::now();
-            let cancellation = Arc::new(AtomicBool::new(false));
-            {
+            let cancellation = {
                 let cache_guard = index_context.lock().unwrap();
-                *cache_guard.cancel.lock().unwrap() = Some(cancellation.clone());
-            }
+                cache_guard.cancel.begin()
+            };
 
             let routed = aggregate_concordance_collocations_with_warm_index_provider(
                 records.len(),
@@ -299,7 +299,7 @@ pub(crate) async fn query_concordance_collocations_command(
                 &tokenization_config,
                 &index_context,
                 context_key,
-                &cancellation.clone().into(),
+                &cancellation,
                 |document_index| {
                     concordance_document_from_record(
                         &records[document_index],
@@ -316,7 +316,7 @@ pub(crate) async fn query_concordance_collocations_command(
 
             {
                 let cache_guard = index_context.lock().unwrap();
-                *cache_guard.cancel.lock().unwrap() = None;
+                cache_guard.cancel.finish(&cancellation);
             }
 
             match routed {
@@ -341,17 +341,16 @@ pub(crate) async fn query_concordance_collocations_command(
             }
         }
         ConcordanceBackendMode::Scan | ConcordanceBackendMode::Audit => {
-            let cancellation = Arc::new(AtomicBool::new(false));
-            {
+            let cancellation = {
                 let cache_guard = index_context.lock().unwrap();
-                *cache_guard.cancel.lock().unwrap() = Some(cancellation.clone());
-            }
+                cache_guard.cancel.begin()
+            };
             let res = if mode == ConcordanceBackendMode::Scan {
                 aggregate_concordance_collocations_scan_provider(
                     records.len(),
                     &query_for_aggregation,
                     &tokenization_config,
-                    &cancellation.clone().into(),
+                    &cancellation,
                     |document_index| {
                         concordance_document_from_record(
                             &records[document_index],
@@ -371,7 +370,7 @@ pub(crate) async fn query_concordance_collocations_command(
                     &tokenization_config,
                     &index_context,
                     context_key,
-                    &cancellation.clone().into(),
+                    &cancellation,
                     |document_index| {
                         concordance_document_from_record(
                             &records[document_index],
@@ -389,7 +388,7 @@ pub(crate) async fn query_concordance_collocations_command(
 
             {
                 let cache_guard = index_context.lock().unwrap();
-                *cache_guard.cancel.lock().unwrap() = None;
+                cache_guard.cancel.finish(&cancellation);
             }
             res
         }
@@ -408,9 +407,7 @@ pub(crate) fn cancel_concordance_command(
     index_context: tauri::State<'_, ConcordanceIndexContextState>,
 ) {
     let cache_guard = index_context.inner.lock().unwrap();
-    if let Some(cancel) = cache_guard.cancel.lock().unwrap().as_ref() {
-        cancel.store(true, Ordering::Relaxed);
-    }
+    cache_guard.cancel.cancel();
 }
 
 #[tauri::command]

@@ -1,6 +1,6 @@
-use corpuswright_core::cache::apply_document_processing;
-use corpuswright_core::repeated_artifacts::scan_repeated_artifacts_report;
-use corpuswright_core::word_count::count_words_for_record;
+use corpuswright_core::corpus::word_count::count_words_for_record;
+use corpuswright_core::preparation::repeated_artifacts::scan_repeated_artifacts_report;
+use corpuswright_core::sources::cache::apply_document_processing;
 use corpuswright_core::{
     CleaningConfig, ExportOptions, PreviewOptions, PreviewWarningKind, RepeatedArtifactKind,
     RepeatedArtifactScanConfig, clean_text, export_corpus, preview_file, preview_processed_files,

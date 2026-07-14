@@ -1,9 +1,12 @@
-use corpuswright_core::clean::{
+use corpuswright_core::DocumentType;
+use corpuswright_core::corpus::load_files;
+use corpuswright_core::preparation::cleaning::{
     CleaningConfig, PdfEmbeddedTextStrategy, PdfOcrQuality, PdfTextSource,
 };
-use corpuswright_core::pdf::{PdfExtractionOptions, extract_pdf_page_range, pdf_page_count};
-use corpuswright_core::scan::load_files;
-use corpuswright_core::{DocumentType, pdf_ocr};
+use corpuswright_core::sources::pdf::ocr as pdf_ocr;
+use corpuswright_core::sources::pdf::{
+    PdfExtractionOptions, extract_pdf_page_range, pdf_page_count,
+};
 use rayon::prelude::*;
 use std::env;
 use std::path::PathBuf;

@@ -1,5 +1,6 @@
-use corpuswright_core::pdf::{PdfExtractionOptions, extract_pdf, extract_pdf_page_range};
-use corpuswright_core::{PdfOcrQuality, PdfTextSource, pdf_ocr, pdf_quality};
+use corpuswright_core::sources::pdf::{PdfExtractionOptions, extract_pdf, extract_pdf_page_range};
+use corpuswright_core::sources::pdf::{ocr as pdf_ocr, quality as pdf_quality};
+use corpuswright_core::{PdfOcrQuality, PdfTextSource};
 use lopdf::Document;
 use pdfium_render::prelude::*;
 use std::ffi::OsString;
@@ -299,12 +300,12 @@ fn run_object_scan(cli: Cli) -> anyhow::Result<()> {
 
     let pdfium = pdf_ocr::init_pdfium()?;
     let document = {
-        let _lock = corpuswright_core::pdf::PDFIUM_LOCK.lock().unwrap();
+        let _lock = corpuswright_core::sources::pdf::PDFIUM_LOCK.lock().unwrap();
         pdfium.load_pdf_from_byte_slice(&bytes, None)?
     };
     let document_version = format!("{:?}", document.version());
     let page_count = {
-        let _lock = corpuswright_core::pdf::PDFIUM_LOCK.lock().unwrap();
+        let _lock = corpuswright_core::sources::pdf::PDFIUM_LOCK.lock().unwrap();
         document.pages().len() as usize
     };
 
@@ -389,7 +390,7 @@ fn object_summaries_from_pdfium(
 
     for page_index in 0..page_count {
         let summary = {
-            let _lock = corpuswright_core::pdf::PDFIUM_LOCK.lock().unwrap();
+            let _lock = corpuswright_core::sources::pdf::PDFIUM_LOCK.lock().unwrap();
             let page = document.pages().get(page_index as i32)?;
             let embedded_chars = page.text()?.all().chars().count();
             let mut summary = PdfPageObjectSummary {
@@ -489,12 +490,12 @@ fn run_embedded_diagnostic(cli: Cli) -> anyhow::Result<()> {
     };
 
     let document = {
-        let _lock = corpuswright_core::pdf::PDFIUM_LOCK.lock().unwrap();
+        let _lock = corpuswright_core::sources::pdf::PDFIUM_LOCK.lock().unwrap();
         pdfium.load_pdf_from_byte_slice(&bytes, None)?
     };
     let document_version = format!("{:?}", document.version());
     let page_count = {
-        let _lock = corpuswright_core::pdf::PDFIUM_LOCK.lock().unwrap();
+        let _lock = corpuswright_core::sources::pdf::PDFIUM_LOCK.lock().unwrap();
         document.pages().len() as usize
     };
 
@@ -619,7 +620,7 @@ fn direct_pdfium_pages(
 
     for page_index in 0..page_count {
         let (label, text) = {
-            let _lock = corpuswright_core::pdf::PDFIUM_LOCK.lock().unwrap();
+            let _lock = corpuswright_core::sources::pdf::PDFIUM_LOCK.lock().unwrap();
             let page = document.pages().get(page_index as i32)?;
             let label = page.label().map(ToOwned::to_owned);
             let text_page = page.text()?;

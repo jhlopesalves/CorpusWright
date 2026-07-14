@@ -4,20 +4,43 @@
 //! commands provide records and progress sinks; analytical execution remains in the core crate.
 
 use corpuswright_core::analysis::{
-    ConcordanceBackend, ConcordanceBackendUsed, ConcordanceCollocationAggregate,
-    ConcordanceCollocationQuery, ConcordanceDocument, ConcordanceFallbackReason, ConcordanceQuery,
-    ConcordanceResult, ConcordanceRow, ConcordanceSearchContext,
-    RoutedConcordanceCollocationAggregate, RoutedConcordanceResult,
-    aggregate_concordance_collocations_routed_provider,
-    aggregate_concordance_collocations_scan_provider, search_concordance_documents,
-    search_concordance_documents_routed, search_concordance_documents_routed_provider,
+    ConcordanceBackendUsed, ConcordanceCollocationAggregate, ConcordanceCollocationQuery,
+    ConcordanceDocument, ConcordanceQuery, ConcordanceResult,
+    RoutedConcordanceCollocationAggregate, RoutedConcordanceResult, search_concordance_documents,
 };
-use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
+mod backend;
+mod indexed;
+mod parity;
+mod recovery;
+mod scan;
+mod telemetry;
+
+pub(crate) use backend::{ConcordanceBackendMode, concordance_backend_mode_from_env};
+#[cfg(test)]
+use backend::{concordance_backend_used_is_index_error_fallback, parse_concordance_backend_mode};
+use backend::{concordance_backend_used_label, concordance_fallback_label};
+pub(crate) use indexed::{
+    aggregate_concordance_collocations_with_warm_index_provider,
+    search_concordance_documents_with_warm_index, search_concordance_with_warm_index_provider,
+};
+use parity::{
+    ConcordanceAuditDifference, compare_concordance_collocation_aggregates,
+    compare_concordance_results, concordance_materialised_row_count,
+};
+use recovery::concordance_default_index_failure_state_label;
+pub(crate) use recovery::{
+    concordance_default_index_disabled_for_key, record_concordance_default_index_error,
+};
+pub(crate) use scan::{
+    aggregate_concordance_collocations_scan_provider,
+    search_concordance_documents_routed_scan_provider,
+};
+use telemetry::{duration_ms, log_string};
+
 use super::state::{
-    ConcordanceDefaultIndexFailureState, ConcordanceIndexContextEntry,
-    ConcordanceIndexContextHandle, ConcordanceIndexContextKey,
+    ConcordanceDefaultIndexFailureState, ConcordanceIndexContextHandle, ConcordanceIndexContextKey,
 };
 
 #[cfg(test)]
@@ -29,305 +52,6 @@ use corpuswright_core::analysis::{
 };
 #[cfg(test)]
 use std::sync::{Arc, Mutex};
-
-pub(crate) const CONCORDANCE_BACKEND_ENV: &str = "CORPUSWRIGHT_CONCORDANCE_BACKEND";
-
-fn duration_ms(duration: Duration) -> u64 {
-    duration.as_millis().try_into().unwrap_or(u64::MAX)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConcordanceBackendMode {
-    DefaultIndex,
-    Scan,
-    StrictIndex,
-    Audit,
-}
-
-impl ConcordanceBackendMode {
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::DefaultIndex => "default_index",
-            Self::Scan => "scan",
-            Self::StrictIndex => "strict_index",
-            Self::Audit => "audit",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ConcordanceBackendModeParse {
-    pub(crate) mode: ConcordanceBackendMode,
-    pub(crate) unknown_value: Option<String>,
-}
-
-pub(crate) fn parse_concordance_backend_mode(value: Option<&str>) -> ConcordanceBackendModeParse {
-    let Some(trimmed) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return ConcordanceBackendModeParse {
-            mode: ConcordanceBackendMode::DefaultIndex,
-            unknown_value: None,
-        };
-    };
-
-    let mode = match trimmed.to_ascii_lowercase().as_str() {
-        "scan" => ConcordanceBackendMode::Scan,
-        "index" => ConcordanceBackendMode::StrictIndex,
-        "audit" => ConcordanceBackendMode::Audit,
-        _ => {
-            return ConcordanceBackendModeParse {
-                mode: ConcordanceBackendMode::DefaultIndex,
-                unknown_value: Some(trimmed.to_string()),
-            };
-        }
-    };
-
-    ConcordanceBackendModeParse {
-        mode,
-        unknown_value: None,
-    }
-}
-
-pub(crate) fn concordance_backend_mode_from_env() -> ConcordanceBackendMode {
-    match std::env::var(CONCORDANCE_BACKEND_ENV) {
-        Ok(value) => {
-            let parsed = parse_concordance_backend_mode(Some(&value));
-            if let Some(unknown_value) = parsed.unknown_value.as_deref() {
-                eprintln!(
-                    "[concordance-backend] mode=default_index warning=unknown_env env={} value={}",
-                    CONCORDANCE_BACKEND_ENV,
-                    log_string(unknown_value, 80)
-                );
-            }
-            parsed.mode
-        }
-        Err(std::env::VarError::NotPresent) => ConcordanceBackendMode::DefaultIndex,
-        Err(std::env::VarError::NotUnicode(_)) => {
-            eprintln!(
-                "[concordance-backend] mode=default_index warning=invalid_env_unicode env={}",
-                CONCORDANCE_BACKEND_ENV
-            );
-            ConcordanceBackendMode::DefaultIndex
-        }
-    }
-}
-
-pub(crate) fn log_string(value: &str, max_chars: usize) -> String {
-    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut truncated = String::new();
-    for (index, character) in compact.chars().enumerate() {
-        if index >= max_chars {
-            truncated.push_str("...");
-            break;
-        }
-        truncated.push(if character.is_control() {
-            ' '
-        } else {
-            character
-        });
-    }
-    if truncated.is_empty() {
-        truncated.push_str("<empty>");
-    }
-    serde_json::to_string(&truncated).unwrap_or_else(|_| "\"<unavailable>\"".to_string())
-}
-
-pub(crate) fn concordance_backend_used_label(backend: ConcordanceBackendUsed) -> &'static str {
-    match backend {
-        ConcordanceBackendUsed::Scan => "scan",
-        ConcordanceBackendUsed::Index => "index",
-        ConcordanceBackendUsed::ScanFallback { .. } => "scan_fallback",
-    }
-}
-
-pub(crate) fn concordance_fallback_reason_label(reason: ConcordanceFallbackReason) -> &'static str {
-    match reason {
-        ConcordanceFallbackReason::IndexError => "index_error",
-    }
-}
-
-pub(crate) fn concordance_fallback_label(backend: ConcordanceBackendUsed) -> &'static str {
-    match backend {
-        ConcordanceBackendUsed::ScanFallback { reason } => {
-            concordance_fallback_reason_label(reason)
-        }
-        ConcordanceBackendUsed::Scan | ConcordanceBackendUsed::Index => "none",
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn concordance_backend_used_is_index_error_fallback(
-    backend: ConcordanceBackendUsed,
-) -> bool {
-    matches!(
-        backend,
-        ConcordanceBackendUsed::ScanFallback {
-            reason: ConcordanceFallbackReason::IndexError,
-        }
-    )
-}
-
-pub(crate) fn concordance_row_identity(row: &ConcordanceRow) -> String {
-    format!(
-        "document_id={},token_ordinal={},node_len={}",
-        row.document_index, row.token_index, row.node_token_length
-    )
-}
-
-pub(crate) fn concordance_materialised_row_count(result: &ConcordanceResult) -> usize {
-    result.rows.as_ref().map_or(0, Vec::len)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ConcordanceAuditDifference {
-    pub(crate) field: &'static str,
-    pub(crate) row_index: Option<usize>,
-    pub(crate) scan: String,
-    pub(crate) index: String,
-}
-
-pub(crate) fn concordance_audit_difference(
-    field: &'static str,
-    scan: impl Into<String>,
-    index: impl Into<String>,
-) -> ConcordanceAuditDifference {
-    ConcordanceAuditDifference {
-        field,
-        row_index: None,
-        scan: scan.into(),
-        index: index.into(),
-    }
-}
-
-pub(crate) fn compare_concordance_results(
-    scan: &ConcordanceResult,
-    index: &ConcordanceResult,
-) -> Option<ConcordanceAuditDifference> {
-    if scan.total_hits != index.total_hits {
-        return Some(concordance_audit_difference(
-            "total_hits",
-            scan.total_hits.to_string(),
-            index.total_hits.to_string(),
-        ));
-    }
-    if scan.documents_with_hits != index.documents_with_hits {
-        return Some(concordance_audit_difference(
-            "documents_with_hits",
-            scan.documents_with_hits.to_string(),
-            index.documents_with_hits.to_string(),
-        ));
-    }
-    if scan.rows.is_some() != index.rows.is_some() {
-        return Some(concordance_audit_difference(
-            "rows_included",
-            scan.rows.is_some().to_string(),
-            index.rows.is_some().to_string(),
-        ));
-    }
-    let scan_rows = scan.rows.as_deref().unwrap_or_default();
-    let index_rows = index.rows.as_deref().unwrap_or_default();
-    if scan_rows.len() != index_rows.len() {
-        return Some(concordance_audit_difference(
-            "rows_len",
-            scan_rows.len().to_string(),
-            index_rows.len().to_string(),
-        ));
-    }
-
-    for (row_index, (scan_row, index_row)) in scan_rows.iter().zip(index_rows).enumerate() {
-        let scan_identity = concordance_row_identity(scan_row);
-        let index_identity = concordance_row_identity(index_row);
-        if scan_identity != index_identity {
-            return Some(ConcordanceAuditDifference {
-                field: "row_identity",
-                row_index: Some(row_index),
-                scan: scan_identity,
-                index: index_identity,
-            });
-        }
-        if scan_row != index_row {
-            return Some(ConcordanceAuditDifference {
-                field: "row_payload",
-                row_index: Some(row_index),
-                scan: scan_identity,
-                index: index_identity,
-            });
-        }
-    }
-
-    if scan.top_document_share.to_bits() != index.top_document_share.to_bits() {
-        return Some(concordance_audit_difference(
-            "top_document_share",
-            format!("{:.6}", scan.top_document_share),
-            format!("{:.6}", index.top_document_share),
-        ));
-    }
-    if scan.distribution.is_some() != index.distribution.is_some() {
-        return Some(concordance_audit_difference(
-            "distribution_included",
-            scan.distribution.is_some().to_string(),
-            index.distribution.is_some().to_string(),
-        ));
-    }
-    let Some(scan_distribution) = scan.distribution.as_ref() else {
-        return (scan != index).then(|| {
-            concordance_audit_difference(
-                "result",
-                "differs_after_checked_fields",
-                "differs_after_checked_fields",
-            )
-        });
-    };
-    let index_distribution = index
-        .distribution
-        .as_ref()
-        .expect("distribution presence checked above");
-    if scan_distribution.total_documents != index_distribution.total_documents {
-        return Some(concordance_audit_difference(
-            "distribution_total_documents",
-            scan_distribution.total_documents.to_string(),
-            index_distribution.total_documents.to_string(),
-        ));
-    }
-    if scan_distribution.items.len() != index_distribution.items.len() {
-        return Some(concordance_audit_difference(
-            "distribution_items_len",
-            scan_distribution.items.len().to_string(),
-            index_distribution.items.len().to_string(),
-        ));
-    }
-    for (item_index, (scan_item, index_item)) in scan_distribution
-        .items
-        .iter()
-        .zip(&index_distribution.items)
-        .enumerate()
-    {
-        let scan_summary = format!(
-            "document_id={},count={},tokens={}",
-            scan_item.document_id, scan_item.count, scan_item.token_count
-        );
-        let index_summary = format!(
-            "document_id={},count={},tokens={}",
-            index_item.document_id, index_item.count, index_item.token_count
-        );
-        if scan_summary != index_summary {
-            return Some(ConcordanceAuditDifference {
-                field: "distribution_item",
-                row_index: Some(item_index),
-                scan: scan_summary,
-                index: index_summary,
-            });
-        }
-    }
-    if scan != index {
-        return Some(concordance_audit_difference(
-            "result",
-            "differs_after_checked_fields",
-            "differs_after_checked_fields",
-        ));
-    }
-
-    None
-}
 
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -376,162 +100,6 @@ impl ConcordanceCollocationAggregationOutcome {
             recovery_reason: None,
         }
     }
-}
-
-pub(crate) fn concordance_default_index_failure_state_label(
-    state: ConcordanceDefaultIndexFailureState,
-) -> &'static str {
-    match state {
-        ConcordanceDefaultIndexFailureState::RetryPending => "retry_pending",
-        ConcordanceDefaultIndexFailureState::Disabled => "disabled",
-    }
-}
-
-pub(crate) fn concordance_default_index_disabled_for_key(
-    context_state: &ConcordanceIndexContextHandle,
-    key: &ConcordanceIndexContextKey,
-) -> bool {
-    context_state
-        .lock()
-        .unwrap()
-        .default_index_disabled_for(key)
-}
-
-pub(crate) fn record_concordance_default_index_error(
-    context_state: &ConcordanceIndexContextHandle,
-    key: &ConcordanceIndexContextKey,
-) -> ConcordanceDefaultIndexFailureState {
-    context_state
-        .lock()
-        .unwrap()
-        .record_default_index_error(key)
-}
-
-pub(crate) fn search_concordance_documents_with_warm_index(
-    documents: &[ConcordanceDocument],
-    query: &ConcordanceQuery,
-    tokenization_config: &corpuswright_core::text::tokenisation::TokenizationConfig,
-    context_state: &ConcordanceIndexContextHandle,
-    key: ConcordanceIndexContextKey,
-) -> Result<RoutedConcordanceResult, corpuswright_core::analysis::ConcordanceError> {
-    let mut cache = context_state.lock().unwrap();
-    if cache
-        .entry
-        .as_ref()
-        .is_none_or(|cached_entry| cached_entry.key != key)
-    {
-        let context = cache
-            .cache_root
-            .clone()
-            .map(ConcordanceSearchContext::with_cache_root)
-            .unwrap_or_default();
-        cache.entry = Some(ConcordanceIndexContextEntry {
-            key: key.clone(),
-            context,
-        });
-    }
-    let entry = cache
-        .entry
-        .as_mut()
-        .expect("concordance index context exists after insertion");
-    let routed = search_concordance_documents_routed(
-        documents,
-        query,
-        tokenization_config,
-        &mut entry.context,
-        ConcordanceBackend::Index,
-    )?;
-    if routed.backend_used == ConcordanceBackendUsed::Index {
-        cache.clear_default_index_failure_for(&key);
-    }
-    Ok(routed)
-}
-
-pub(crate) fn search_concordance_with_warm_index_provider<Resolve, Progress>(
-    document_slots: usize,
-    query: &ConcordanceQuery,
-    tokenization_config: &corpuswright_core::text::tokenisation::TokenizationConfig,
-    context_state: &ConcordanceIndexContextHandle,
-    key: ConcordanceIndexContextKey,
-    resolve: Resolve,
-    report_progress: Progress,
-) -> Result<RoutedConcordanceResult, corpuswright_core::analysis::ConcordanceError>
-where
-    Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
-    Progress: FnMut(corpuswright_core::analysis::ConcordanceProgress),
-{
-    let mut cache = context_state.lock().unwrap();
-    if cache
-        .entry
-        .as_ref()
-        .is_none_or(|cached_entry| cached_entry.key != key)
-    {
-        let context = cache
-            .cache_root
-            .clone()
-            .map(ConcordanceSearchContext::with_cache_root)
-            .unwrap_or_default();
-        cache.entry = Some(ConcordanceIndexContextEntry {
-            key: key.clone(),
-            context,
-        });
-    }
-    let entry = cache.entry.as_mut().expect("inserted above");
-    let routed = search_concordance_documents_routed_provider(
-        document_slots,
-        query,
-        tokenization_config,
-        &mut entry.context,
-        resolve,
-        report_progress,
-    )?;
-    cache.clear_default_index_failure_for(&key);
-    Ok(routed)
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn aggregate_concordance_collocations_with_warm_index_provider<Resolve, Progress>(
-    document_slots: usize,
-    query: &ConcordanceCollocationQuery,
-    tokenization_config: &corpuswright_core::text::tokenisation::TokenizationConfig,
-    context_state: &ConcordanceIndexContextHandle,
-    key: ConcordanceIndexContextKey,
-    cancellation: &corpuswright_core::analysis::concordance::index::SurfaceIndexCancellationToken,
-    resolve: Resolve,
-    report_progress: Progress,
-) -> Result<RoutedConcordanceCollocationAggregate, corpuswright_core::analysis::ConcordanceError>
-where
-    Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
-    Progress: FnMut(corpuswright_core::analysis::ConcordanceProgress),
-{
-    let mut cache = context_state.lock().unwrap();
-    if cache
-        .entry
-        .as_ref()
-        .is_none_or(|cached_entry| cached_entry.key != key)
-    {
-        let context = cache
-            .cache_root
-            .clone()
-            .map(ConcordanceSearchContext::with_cache_root)
-            .unwrap_or_default();
-        cache.entry = Some(ConcordanceIndexContextEntry {
-            key: key.clone(),
-            context,
-        });
-    }
-    let entry = cache.entry.as_mut().expect("inserted above");
-    let routed = aggregate_concordance_collocations_routed_provider(
-        document_slots,
-        query,
-        tokenization_config,
-        &mut entry.context,
-        cancellation,
-        resolve,
-        report_progress,
-    )?;
-    cache.clear_default_index_failure_for(&key);
-    Ok(routed)
 }
 
 pub(crate) fn log_concordance_index_result(
@@ -1222,64 +790,6 @@ where
     }
 }
 
-pub(crate) fn compare_concordance_collocation_aggregates(
-    scan: &ConcordanceCollocationAggregate,
-    index: &ConcordanceCollocationAggregate,
-) -> Option<ConcordanceAuditDifference> {
-    if scan.signature != index.signature {
-        return Some(concordance_audit_difference(
-            "collocation_signature",
-            format!("{:?}", scan.signature),
-            format!("{:?}", index.signature),
-        ));
-    }
-    if scan.f_node != index.f_node {
-        return Some(concordance_audit_difference(
-            "collocation_f_node",
-            scan.f_node.to_string(),
-            index.f_node.to_string(),
-        ));
-    }
-    if scan.r1 != index.r1 {
-        return Some(concordance_audit_difference(
-            "collocation_r1",
-            format!("{:?}", scan.r1),
-            format!("{:?}", index.r1),
-        ));
-    }
-    if scan.n != index.n {
-        return Some(concordance_audit_difference(
-            "collocation_n",
-            scan.n.to_string(),
-            index.n.to_string(),
-        ));
-    }
-    let semantic_candidates = |aggregate: &ConcordanceCollocationAggregate| {
-        aggregate
-            .candidate_counts
-            .iter()
-            .filter_map(|(symbol_id, counts)| {
-                let index = *symbol_id as usize;
-                Some((
-                    aggregate.symbols.get(index)?.clone(),
-                    (counts.clone(), *aggregate.collocate_frequencies.get(index)?),
-                ))
-            })
-            .collect::<BTreeMap<_, _>>()
-    };
-    let scan_candidates = semantic_candidates(scan);
-    let index_candidates = semantic_candidates(index);
-    if scan_candidates != index_candidates {
-        return Some(concordance_audit_difference(
-            "collocation_candidates",
-            format!("{:?}", scan_candidates),
-            format!("{:?}", index_candidates),
-        ));
-    }
-
-    None
-}
-
 pub(crate) fn log_concordance_collocation_audit_result(
     query: &ConcordanceCollocationQuery,
     scan: &ConcordanceCollocationAggregate,
@@ -1481,8 +991,7 @@ mod tests {
 
     fn concordance_test_context_key(corpus_version: u64) -> ConcordanceIndexContextKey {
         ConcordanceIndexContextKey {
-            corpus_version,
-            cleaning_config_signature: "cleaning-v1".to_string(),
+            index: crate::runtime::identity::IndexIdentity::from_ipc(corpus_version, "cleaning-v1"),
         }
     }
 

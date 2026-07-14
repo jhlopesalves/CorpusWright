@@ -22,10 +22,7 @@ use aho_corasick::AhoCorasick;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{
-    LazyLock,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::{LazyLock, atomic::Ordering};
 use ts_rs::TS;
 
 pub use crate::text::profile::{CandidateTextProfile, CandidateTextSignalLabel};
@@ -344,11 +341,11 @@ enum LinePosition {
 }
 
 /// Shared cancellation flag cloned into parallel scan workers.
-pub type CancellationFlag = std::sync::Arc<AtomicBool>;
+pub type CancellationFlag = crate::support::cancellation::CancellationToken;
 
 /// No-op cancellation flag that never triggers.
 pub fn no_cancellation() -> CancellationFlag {
-    std::sync::Arc::new(AtomicBool::new(false))
+    CancellationFlag::new()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -2492,7 +2489,7 @@ where
 ///
 /// Three-phase scan with cancellation support.
 ///
-/// `cancel` is an `AtomicBool`. The scanner checks it:
+/// `cancel` is a shared cancellation token. The scanner checks it:
 /// - before extracting each file
 /// - after extracting each file
 /// - after counting each file
@@ -2510,7 +2507,7 @@ pub fn scan_repeated_artifacts(
 
 /// Like `scan_repeated_artifacts` but accepts an external cancellation flag.
 ///
-/// Pass an `Arc<AtomicBool>` set to `true` to request cancellation.
+/// Call [`CancellationFlag::cancel`] to request cancellation.
 /// The scanner checks it cooperatively between operations.
 pub fn scan_repeated_artifacts_with_cancel(
     records: &[DocumentRecord],
@@ -3983,7 +3980,8 @@ mod tests {
 
     #[test]
     fn test_cancellation_returns_err() {
-        let cancel = std::sync::Arc::new(AtomicBool::new(true));
+        let cancel = CancellationFlag::new();
+        cancel.cancel();
         let temp_dir = tempfile::tempdir().unwrap();
         let doc = make_text_record("cancel_test.txt", "Some text", temp_dir.path());
 
