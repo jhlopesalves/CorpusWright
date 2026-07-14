@@ -1,5 +1,9 @@
 [workspace]
-members = ["crates/corpuswright-core", "apps/desktop/src-tauri"]
+members = [
+    "crates/corpuswright-core",
+    "crates/corpuswright-test-support",
+    "apps/desktop/src-tauri",
+]
 exclude = ["legacy/pyside/rust_preview"]
 resolver = "2"
 
