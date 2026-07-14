@@ -4,6 +4,7 @@ version = "0.1.0-alpha.8"
 description = "CorpusWright — corpus preprocessing and cleaning desktop app"
 authors = { workspace = true }
 edition = { workspace = true }
+publish = false
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary

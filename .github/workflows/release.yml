@@ -90,6 +90,22 @@ jobs:
       - name: Check PDFium provenance
         run: node scripts/check-pdfium.cjs
 
+      - name: Load canonical release notes
+        id: release_notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          RELEASE_NOTES_PATH="$(node -p "require('./release-metadata.json').releaseNotes")"
+          if [ ! -f "${RELEASE_NOTES_PATH}" ]; then
+            echo "FATAL: release notes do not exist: ${RELEASE_NOTES_PATH}" >&2
+            exit 1
+          fi
+          {
+            echo 'body<<__CORPUSWRIGHT_RELEASE_NOTES__'
+            cat "${RELEASE_NOTES_PATH}"
+            echo '__CORPUSWRIGHT_RELEASE_NOTES__'
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Build Tauri artifacts and update draft prerelease
         uses: tauri-apps/tauri-action@v0.6.2
         env:
@@ -100,21 +116,7 @@ jobs:
           tauriScript: npm run tauri
           tagName: ${{ steps.release_metadata.outputs.release_tag }}
           releaseName: ${{ steps.release_metadata.outputs.release_name }}
-          releaseBody: |
-            Experimental alpha release for manual inspection.
-
-            This prerelease supersedes v0.1.0-alpha.5.
-
-            Theme: sortable repeated artefact candidates, resizable column layout, and Windows compatibility fixes.
-
-            See docs/releases/v0.1.0-alpha.6.md for the release-note draft, including known limitations and validation.
-
-            Windows and macOS builds may be unsigned or ad-hoc signed. Windows may show SmartScreen warnings. macOS may require users to allow the app from Privacy & Security settings.
-
-            Expected artifacts:
-            - Windows NSIS setup executable.
-            - macOS DMG for Intel.
-            - macOS DMG for Apple Silicon.
+          releaseBody: ${{ steps.release_notes.outputs.body }}
           releaseDraft: true
           prerelease: true
           releaseCommitish: ${{ github.sha }}

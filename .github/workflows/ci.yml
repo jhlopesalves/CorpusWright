@@ -19,6 +19,8 @@ jobs:
           node-version: 20
       - name: Check release metadata
         run: node scripts/check-release-consistency.cjs
+      - name: Check repository references
+        run: node scripts/check-repository-references.cjs
       - name: Check PDFium provenance
         run: node scripts/check-pdfium.cjs
 
