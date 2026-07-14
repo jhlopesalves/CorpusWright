@@ -1,0 +1,1749 @@
+//! Exports a reproducible processed corpus with provenance and content hashes.
+//!
+//! Output paths are allocated in corpus order before parallel processing. The manifest retains
+//! source and processed identities, preparation configuration, decode policy, tokenisation, and
+//! warnings required to audit the exported snapshot.
+
+pub mod manifest;
+
+use crate::corpus::{DocumentRecord, DocumentType};
+use crate::export::manifest::{ExportManifest, ManifestFileRecord};
+use crate::preparation::cleaning::{
+    CleaningConfig, PdfEmbeddedTextStrategy, PdfTextSource, clean_text,
+};
+use crate::sources::cache::ExtractionCache;
+use crate::sources::decode::{
+    DECODE_POLICY_VERSION, DecodeStrategy, SourceEncoding, decode_source_bytes,
+};
+use chrono::{SecondsFormat, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fs;
+use std::path::{Component, Path, PathBuf};
+use ts_rs::TS;
+
+pub use crate::export::manifest::ManifestFileRecord as ExportedFileRecord;
+
+/// Configuration options for exporting a corpus.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExportOptions {
+    pub app_name: String,
+    pub app_version: Option<String>,
+    pub overwrite: bool,
+}
+
+impl Default for ExportOptions {
+    fn default() -> Self {
+        Self {
+            app_name: "CorpusWright".to_string(),
+            app_version: None,
+            overwrite: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum ExportWarningKind {
+    InvalidUtf8,
+    ExtractionWarning,
+    ExtractionError,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct ExportWarning {
+    pub source_path: Option<PathBuf>,
+    pub output_path: Option<PathBuf>,
+    pub kind: ExportWarningKind,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export)]
+pub struct ExportReport {
+    pub output_dir: PathBuf,
+    pub texts_dir: PathBuf,
+    pub manifest_path: PathBuf,
+    pub warnings_path: PathBuf,
+    pub config_path: PathBuf,
+    pub readme_path: PathBuf,
+    pub files_exported: usize,
+    pub warnings_count: usize,
+    pub exported_files: Vec<ExportedFileRecord>,
+    pub warnings: Vec<ExportWarning>,
+    pub manifest: ExportManifest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum ExportError {
+    ExistingOutputDirectory { path: PathBuf },
+    OutputPathIsNotDirectory { path: PathBuf },
+    UnsafeOutputDirectory { path: PathBuf, message: String },
+    Io { path: PathBuf, message: String },
+    Json { path: PathBuf, message: String },
+}
+
+/// Safely exports the corpus to the specified output directory.
+///
+/// This applies cleaning rules and writes the processed texts as well as
+/// a manifest, configuration log, and warnings log.
+type ExportProgressCallback<'a> = &'a (dyn Fn(usize, &str) + Sync);
+
+pub fn export_corpus(
+    records: &[DocumentRecord],
+    output_dir: impl AsRef<Path>,
+    cleaning_config: &CleaningConfig,
+    options: &ExportOptions,
+    progress_callback: Option<ExportProgressCallback<'_>>,
+    cache: Option<&ExtractionCache>,
+) -> Result<ExportReport, ExportError> {
+    let output_dir = output_dir.as_ref();
+    validate_output_path(records, output_dir)?;
+
+    if output_dir.exists() {
+        if !output_dir.is_dir() {
+            return Err(ExportError::OutputPathIsNotDirectory {
+                path: output_dir.to_path_buf(),
+            });
+        }
+
+        if !options.overwrite {
+            return Err(ExportError::ExistingOutputDirectory {
+                path: output_dir.to_path_buf(),
+            });
+        }
+
+        fs::remove_dir_all(output_dir).map_err(|error| ExportError::Io {
+            path: output_dir.to_path_buf(),
+            message: error.to_string(),
+        })?;
+    }
+
+    let texts_dir = output_dir.join("texts");
+    fs::create_dir_all(&texts_dir).map_err(|error| ExportError::Io {
+        path: texts_dir.clone(),
+        message: error.to_string(),
+    })?;
+
+    // Output paths are allocated in corpus order before workers start. Collision suffixes therefore
+    // depend on stable document identity and remain reproducible across Rayon schedules.
+    let mut used_paths = HashSet::new();
+    let mut relative_output_paths = Vec::with_capacity(records.len());
+    for record in records.iter() {
+        relative_output_paths.push(unique_output_relative_path(record, &mut used_paths));
+    }
+
+    use rayon::prelude::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let processed_count = AtomicUsize::new(0);
+
+    // Documents are independent after path allocation. Each worker returns one manifest record and
+    // local warnings; indexed collection restores corpus order without synchronising extraction.
+    let results: Result<Vec<(ManifestFileRecord, Vec<ExportWarning>)>, ExportError> = records
+        .par_iter()
+        .zip(relative_output_paths.par_iter())
+        .map(|(record, relative_path)| {
+            let source_bytes = fs::read(&record.source_path).map_err(|error| ExportError::Io {
+                path: record.source_path.clone(),
+                message: error.to_string(),
+            })?;
+            let source_hash_sha256 = crate::support::hash::sha256_hex(&source_bytes);
+            let decoded_source = matches!(
+                record.document_type,
+                DocumentType::Text | DocumentType::Html
+            )
+            .then(|| decode_source_bytes(&source_bytes));
+
+            let mut file_warnings = Vec::new();
+            let mut warnings = Vec::new();
+            let mut page_count = None;
+            let mut pdf_page_texts = None;
+
+            let pdf_options = if record.document_type == DocumentType::Pdf {
+                Some(
+                    crate::sources::pdf::PdfExtractionOptions::raw_from_record_and_cleaning_config(
+                        record,
+                        cleaning_config,
+                    ),
+                )
+            } else {
+                None
+            };
+
+            let extraction_method = match record.document_type {
+                DocumentType::Text => Some("plain_text".to_string()),
+                DocumentType::Html => Some("html2text".to_string()),
+                DocumentType::Docx => Some("docx_zip_wordprocessingml".to_string()),
+                DocumentType::Pdf => match pdf_options
+                    .expect("PDF options are present for PDF records")
+                    .text_source
+                {
+                    PdfTextSource::Ocr => Some("pdf_legacy_mixed_ocr".to_string()),
+                    PdfTextSource::ForceOcr => Some("pdf_force_ocr".to_string()),
+                    PdfTextSource::EmbeddedText => match cleaning_config.pdf_embedded_text_strategy
+                    {
+                        PdfEmbeddedTextStrategy::PdfiumFlat => Some("pdfium_flat".to_string()),
+                        PdfEmbeddedTextStrategy::PdfiumVisualSingleColumn => {
+                            Some("pdfium_visual_single_column".to_string())
+                        }
+                        PdfEmbeddedTextStrategy::PdfiumVisualColumnsExperimental => {
+                            Some("pdfium_visual_columns_experimental".to_string())
+                        }
+                    },
+                },
+            };
+
+            let manifest_output_path = PathBuf::from("texts").join(relative_path);
+
+            let original_text = if record.document_type == DocumentType::Docx {
+                if let Some(cache) = cache {
+                    match cache.get_or_extract(record, None, cleaning_config) {
+                        Ok(entry) => {
+                            for w in &entry.warnings {
+                                file_warnings.push(w.clone());
+                                warnings.push(ExportWarning {
+                                    source_path: Some(record.source_path.clone()),
+                                    output_path: Some(manifest_output_path.clone()),
+                                    kind: export_extraction_warning_kind(w),
+                                    message: w.clone(),
+                                });
+                            }
+                            entry.extracted_text
+                        }
+                        Err(e) => {
+                            let msg = format!("DOCX Extraction Failed: {}", e);
+                            file_warnings.push(msg.clone());
+                            warnings.push(ExportWarning {
+                                source_path: Some(record.source_path.clone()),
+                                output_path: Some(manifest_output_path.clone()),
+                                kind: ExportWarningKind::ExtractionError,
+                                message: msg,
+                            });
+                            String::new()
+                        }
+                    }
+                } else {
+                    match crate::sources::docx::extract_docx(&source_bytes, cleaning_config) {
+                        Ok(extracted) => {
+                            for w in extracted.warnings {
+                                file_warnings.push(w.clone());
+                                warnings.push(ExportWarning {
+                                    source_path: Some(record.source_path.clone()),
+                                    output_path: Some(manifest_output_path.clone()),
+                                    kind: export_extraction_warning_kind(&w),
+                                    message: w,
+                                });
+                            }
+                            extracted.text
+                        }
+                        Err(e) => {
+                            let msg = format!("DOCX Extraction Failed: {}", e);
+                            file_warnings.push(msg.clone());
+                            warnings.push(ExportWarning {
+                                source_path: Some(record.source_path.clone()),
+                                output_path: Some(manifest_output_path.clone()),
+                                kind: ExportWarningKind::ExtractionError,
+                                message: msg,
+                            });
+                            String::new()
+                        }
+                    }
+                }
+            } else if record.document_type == DocumentType::Pdf {
+                let pdf_options = pdf_options.expect("PDF options are present for PDF records");
+                if let Some(cache) = cache {
+                    match cache.get_or_extract(record, Some(pdf_options), cleaning_config) {
+                        Ok(entry) => {
+                            for w in &entry.warnings {
+                                file_warnings.push(w.clone());
+                                warnings.push(ExportWarning {
+                                    source_path: Some(record.source_path.clone()),
+                                    output_path: Some(manifest_output_path.clone()),
+                                    kind: export_extraction_warning_kind(w),
+                                    message: w.clone(),
+                                });
+                            }
+                            page_count = entry.page_count;
+                            pdf_page_texts = entry.page_texts;
+                            entry.extracted_text
+                        }
+                        Err(e) => {
+                            let msg = format!("PDF Extraction Failed: {}", e);
+                            file_warnings.push(msg.clone());
+                            warnings.push(ExportWarning {
+                                source_path: Some(record.source_path.clone()),
+                                output_path: Some(manifest_output_path.clone()),
+                                kind: ExportWarningKind::ExtractionError,
+                                message: msg,
+                            });
+                            String::new()
+                        }
+                    }
+                } else {
+                    match crate::sources::pdf::extract_pdf(&source_bytes, None, pdf_options) {
+                        Ok(extracted) => {
+                            for w in extracted.warnings {
+                                file_warnings.push(w.clone());
+                                warnings.push(ExportWarning {
+                                    source_path: Some(record.source_path.clone()),
+                                    output_path: Some(manifest_output_path.clone()),
+                                    kind: export_extraction_warning_kind(&w),
+                                    message: w,
+                                });
+                            }
+                            page_count = Some(extracted.page_count);
+                            pdf_page_texts = extracted.page_texts;
+                            extracted.text
+                        }
+                        Err(e) => {
+                            let msg = format!("PDF Extraction Failed: {}", e);
+                            file_warnings.push(msg.clone());
+                            warnings.push(ExportWarning {
+                                source_path: Some(record.source_path.clone()),
+                                output_path: Some(manifest_output_path.clone()),
+                                kind: ExportWarningKind::ExtractionError,
+                                message: msg,
+                            });
+                            String::new()
+                        }
+                    }
+                }
+            } else {
+                decoded_source
+                    .as_ref()
+                    .expect("textual records are decoded before export")
+                    .text
+                    .clone()
+            };
+
+            let processed_text = if record.document_type == DocumentType::Pdf {
+                let (pdf_cleaned, cleanup_warnings, cleaned_pages) =
+                    if let Some(page_texts) = pdf_page_texts.as_deref() {
+                        let (text, warnings, pages) =
+                            crate::sources::pdf::clean_extracted_pdf_pages_and_text(
+                                page_texts,
+                                cleaning_config,
+                            );
+                        (text, warnings, Some(pages))
+                    } else {
+                        let (text, warnings) = crate::sources::pdf::clean_extracted_pdf_text(
+                            &original_text,
+                            cleaning_config,
+                        );
+                        (text, warnings, None)
+                    };
+                for w in cleanup_warnings {
+                    file_warnings.push(w.clone());
+                    warnings.push(ExportWarning {
+                        source_path: Some(record.source_path.clone()),
+                        output_path: Some(manifest_output_path.clone()),
+                        kind: export_extraction_warning_kind(&w),
+                        message: w,
+                    });
+                }
+                if let Some(cleaned_pages) = cleaned_pages {
+                    let document =
+                        crate::sources::structured_document::StructuredDocument::from_pages(
+                            cleaned_pages,
+                        );
+                    crate::preparation::cleaning::clean_structured_document(
+                        &document,
+                        cleaning_config,
+                    )
+                    .text
+                } else {
+                    clean_text(&pdf_cleaned, cleaning_config)
+                }
+            } else if cleaning_config.extract_html {
+                clean_text(
+                    &crate::sources::html::extract_html(&original_text),
+                    cleaning_config,
+                )
+            } else {
+                clean_text(&original_text, cleaning_config)
+            };
+            let processed_bytes = processed_text.as_bytes();
+            let processed_hash_sha256 = crate::support::hash::sha256_hex(processed_bytes);
+
+            if decoded_source
+                .as_ref()
+                .is_some_and(|decoded| decoded.had_utf8_error)
+            {
+                let message =
+                    "Source was not valid UTF-8 and was recovered with Windows-1252 fallback."
+                        .to_string();
+                file_warnings.push(message.clone());
+                warnings.push(ExportWarning {
+                    source_path: Some(record.source_path.clone()),
+                    output_path: Some(manifest_output_path.clone()),
+                    kind: ExportWarningKind::InvalidUtf8,
+                    message,
+                });
+            }
+
+            let (detected_encoding, decode_strategy, replacement_char_count) =
+                if let Some(decoded) = decoded_source.as_ref() {
+                    (
+                        decoded.detected_encoding,
+                        decoded.decode_strategy,
+                        decoded.replacement_char_count,
+                    )
+                } else {
+                    (SourceEncoding::Utf8, DecodeStrategy::Utf8Strict, 0)
+                };
+
+            let output_path = texts_dir.join(relative_path);
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent).map_err(|error| ExportError::Io {
+                    path: parent.to_path_buf(),
+                    message: error.to_string(),
+                })?;
+            }
+
+            fs::write(&output_path, processed_bytes).map_err(|error| ExportError::Io {
+                path: output_path.clone(),
+                message: error.to_string(),
+            })?;
+
+            let manifest_record = ManifestFileRecord {
+                source_path: record.source_path.clone(),
+                relative_path: record.relative_path.clone(),
+                document_type: record.document_type.clone(),
+                output_path: manifest_output_path,
+                source_size_bytes: record.size_bytes,
+                original_char_count: original_text.chars().count(),
+                processed_char_count: processed_text.chars().count(),
+                source_hash_sha256,
+                processed_hash_sha256,
+                decode_policy_version: DECODE_POLICY_VERSION,
+                detected_encoding,
+                decode_strategy,
+                replacement_char_count,
+                warnings: file_warnings,
+                extraction_method,
+                page_count,
+            };
+
+            let current_count = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
+            if let Some(cb) = &progress_callback {
+                let display_name = record
+                    .relative_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
+                cb(current_count, display_name);
+            }
+
+            Ok((manifest_record, warnings))
+        })
+        .collect();
+
+    let results = results?;
+    let mut exported_files = Vec::with_capacity(records.len());
+    let mut warnings = Vec::new();
+    for (manifest_record, mut file_warnings) in results {
+        exported_files.push(manifest_record);
+        warnings.append(&mut file_warnings);
+    }
+
+    let manifest = ExportManifest {
+        app_name: options.app_name.clone(),
+        app_version: options.app_version.clone(),
+        export_timestamp: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+        files_exported: exported_files.len(),
+        warnings_count: warnings.len(),
+        cleaning_config: cleaning_config.clone(),
+        decode_policy_version: DECODE_POLICY_VERSION,
+        tokenization: crate::text::tokenisation::TokenizationManifest::default(),
+        files: exported_files.clone(),
+    };
+
+    let manifest_path = output_dir.join("manifest.json");
+    write_json(&manifest_path, &manifest)?;
+
+    let warnings_path = output_dir.join("warnings.json");
+    write_json(&warnings_path, &warnings)?;
+
+    let config_path = output_dir.join("config.json");
+    write_json(&config_path, cleaning_config)?;
+
+    let readme_path = output_dir.join("README.txt");
+    fs::write(&readme_path, readme_text(&options.app_name)).map_err(|error| ExportError::Io {
+        path: readme_path.clone(),
+        message: error.to_string(),
+    })?;
+
+    Ok(ExportReport {
+        output_dir: output_dir.to_path_buf(),
+        texts_dir,
+        manifest_path,
+        warnings_path,
+        config_path,
+        readme_path,
+        files_exported: manifest.files_exported,
+        warnings_count: manifest.warnings_count,
+        exported_files,
+        warnings,
+        manifest,
+    })
+}
+
+fn validate_output_path(records: &[DocumentRecord], output_dir: &Path) -> Result<(), ExportError> {
+    let output_path = normalized_absolute_path(output_dir)?;
+
+    for source_root in infer_source_roots(records) {
+        let source_root = normalized_absolute_path(&source_root)?;
+        if output_path == source_root {
+            return Err(ExportError::UnsafeOutputDirectory {
+                path: output_dir.to_path_buf(),
+                message: "Output directory must not be the same as the source root.".to_string(),
+            });
+        }
+
+        if source_root.starts_with(&output_path) {
+            return Err(ExportError::UnsafeOutputDirectory {
+                path: output_dir.to_path_buf(),
+                message: "Output directory must not contain a source root.".to_string(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn normalized_absolute_path(path: &Path) -> Result<PathBuf, ExportError> {
+    if path.exists() {
+        return path.canonicalize().map_err(|error| ExportError::Io {
+            path: path.to_path_buf(),
+            message: error.to_string(),
+        });
+    }
+
+    let mut parent = path.parent().unwrap_or_else(|| Path::new("."));
+    if parent.as_os_str().is_empty() {
+        parent = Path::new(".");
+    }
+
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| ExportError::UnsafeOutputDirectory {
+            path: path.to_path_buf(),
+            message: "Output directory must have a final path component.".to_string(),
+        })?;
+    let parent = parent.canonicalize().map_err(|error| ExportError::Io {
+        path: parent.to_path_buf(),
+        message: error.to_string(),
+    })?;
+
+    Ok(parent.join(file_name))
+}
+
+fn infer_source_roots(records: &[DocumentRecord]) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    for record in records {
+        let Some(mut root) = record.source_path.parent().map(Path::to_path_buf) else {
+            continue;
+        };
+
+        for component in record
+            .relative_path
+            .parent()
+            .into_iter()
+            .flat_map(Path::components)
+        {
+            if matches!(component, Component::Normal(_)) {
+                root.pop();
+            }
+        }
+
+        if !roots.contains(&root) {
+            roots.push(root);
+        }
+    }
+
+    roots
+}
+
+/// Windows-reserved filenames that cannot be used as bare path components.
+const WINDOWS_RESERVED_NAMES: &[&str] = &[
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+    "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+];
+
+/// Sanitise a single path component (a filename or directory name) for safe
+/// cross-platform use, preserving Unicode readability.
+///
+/// * Replaces Windows-invalid filename characters (`< > : " / \ | ? *`) and
+///   control characters with `_`.
+/// * Trims leading/trailing whitespace and trailing dots.
+/// * Collapses consecutive `_` characters.
+/// * If the component (case-insensitively) matches a Windows reserved name
+///   (CON, PRN, AUX, NUL, COM1–COM9, LPT1–LPT9) a trailing `_` is added.
+/// * Caps at 128 Unicode characters.
+/// * Falls back to `fallback` if the result would be empty.
+fn sanitize_path_component(component: &str, fallback: &str) -> String {
+    let trimmed = component.trim();
+    if trimmed.is_empty() {
+        return fallback.to_string();
+    }
+
+    let mut sanitized = String::new();
+    let mut previous_was_separator = false;
+
+    for ch in trimmed.chars() {
+        if sanitized.len() >= 128 {
+            break;
+        }
+        let ch_is_bad = ch.is_ascii_control()
+            || matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*');
+        let replacement = if ch_is_bad { Some('_') } else { Some(ch) };
+
+        if let Some(c) = replacement {
+            if c == '_' {
+                if previous_was_separator {
+                    continue;
+                }
+                previous_was_separator = true;
+            } else {
+                previous_was_separator = false;
+            }
+            sanitized.push(c);
+        }
+    }
+
+    // Trim trailing dots (Windows restriction) and whitespace
+    let trimmed_sanitized = sanitized.trim_end_matches('.').trim().to_string();
+    let result = if trimmed_sanitized.is_empty() {
+        fallback.to_string()
+    } else {
+        trimmed_sanitized
+    };
+
+    // Check for Windows reserved names (case-insensitive)
+    let lower = result.to_lowercase();
+    if WINDOWS_RESERVED_NAMES.contains(&lower.as_str()) {
+        format!("{}_", result)
+    } else {
+        result
+    }
+}
+
+/// Build a relative output path under `texts/` for the given record.
+///
+/// * Preserves the relative directory structure (sanitised) from `record.relative_path.parent()`.
+/// * Uses the original file stem (sanitised) and forces `.txt` extension.
+/// * No index prefix or hash by default.
+/// * On collision against `used_paths`, appends `__N` before `.txt`.
+/// * If collisions exceed 100, falls back to a short hash suffix.
+fn unique_output_relative_path(
+    record: &DocumentRecord,
+    used_paths: &mut HashSet<PathBuf>,
+) -> PathBuf {
+    let parent = record
+        .relative_path
+        .parent()
+        .unwrap_or_else(|| Path::new(""));
+    let sub_dir: PathBuf = parent
+        .components()
+        .filter_map(|c| {
+            if let std::path::Component::Normal(name) = c {
+                let s = name.to_str().map(|s| sanitize_path_component(s, "folder"));
+                s.filter(|s| !s.is_empty())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let raw_stem = record
+        .relative_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("document");
+    let sane_stem = sanitize_path_component(raw_stem, "document");
+
+    let base_path: PathBuf = if sub_dir.as_os_str().is_empty() {
+        PathBuf::from(format!("{}.txt", sane_stem))
+    } else {
+        sub_dir.join(format!("{}.txt", sane_stem))
+    };
+
+    if !used_paths.contains(&base_path) {
+        used_paths.insert(base_path.clone());
+        return base_path;
+    }
+
+    let dir_empty = sub_dir.as_os_str().is_empty();
+    for n in 2..=100usize {
+        let candidate = if dir_empty {
+            PathBuf::from(format!("{}__{}.txt", sane_stem, n))
+        } else {
+            sub_dir.join(format!("{}__{}.txt", sane_stem, n))
+        };
+        if !used_paths.contains(&candidate) {
+            used_paths.insert(candidate.clone());
+            return candidate;
+        }
+    }
+
+    let hash: String = crate::support::hash::sha256_hex(
+        format!(
+            "{}\n{}",
+            record.source_path.display(),
+            record.relative_path.display()
+        )
+        .as_bytes(),
+    )
+    .chars()
+    .take(8)
+    .collect();
+
+    let candidate = if dir_empty {
+        PathBuf::from(format!("{}__{}.txt", sane_stem, hash))
+    } else {
+        sub_dir.join(format!("{}__{}.txt", sane_stem, hash))
+    };
+    used_paths.insert(candidate.clone());
+    candidate
+}
+
+fn export_extraction_warning_kind(message: &str) -> ExportWarningKind {
+    if message.contains("Failed")
+        || message.contains("low-quality text")
+        || message.contains("required for this PDF")
+    {
+        ExportWarningKind::ExtractionError
+    } else {
+        ExportWarningKind::ExtractionWarning
+    }
+}
+
+fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), ExportError> {
+    let json = serde_json::to_string_pretty(value).map_err(|error| ExportError::Json {
+        path: path.to_path_buf(),
+        message: error.to_string(),
+    })?;
+    fs::write(path, format!("{json}\n")).map_err(|error| ExportError::Io {
+        path: path.to_path_buf(),
+        message: error.to_string(),
+    })
+}
+
+fn readme_text(app_name: &str) -> String {
+    format!(
+        "{app_name} processed corpus export\n\n\
+         This directory contains processed UTF-8 .txt files under texts/.\n\
+         manifest.json records source paths, output paths, hashes, character counts, and warnings.\n\
+         config.json records the cleaning configuration used for this export.\n\
+         warnings.json records export warnings and is present even when empty.\n\
+         Source files were not modified.\n"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::corpus::scan_directory;
+    use crate::preparation::cleaning::{
+        CleaningConfig, RemovalMatcher, RemovalRule, RemovalRuleSource, RemovalScope,
+        ReplacementRule,
+    };
+    use crate::sources::cache::{
+        CacheEntry, DocumentTextMode, ExtractionCache, document_text_from_cache_entry,
+    };
+    use crate::sources::pdf::PdfExtractionOptions;
+    use std::fs;
+    use tempfile::tempdir;
+
+    /// Build a DocumentRecord manually for testing naming/export logic.
+    fn make_record(
+        source_dir: &Path,
+        relative: &str,
+        doc_type: DocumentType,
+        content: &str,
+    ) -> DocumentRecord {
+        let source_path = source_dir.join(relative);
+        if let Some(parent) = source_path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(&source_path, content).unwrap();
+        DocumentRecord {
+            source_path,
+            relative_path: PathBuf::from(relative),
+            document_type: doc_type,
+            size_bytes: content.len() as u64,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        }
+    }
+
+    #[test]
+    fn sanitize_keeps_valid_unicode() {
+        assert_eq!(sanitize_path_component("Linha_10", "document"), "Linha_10");
+        assert_eq!(sanitize_path_component("café", "document"), "café");
+        // Spaces are valid on modern filesystems and preserved
+        assert_eq!(sanitize_path_component("a b.txt", "document"), "a b.txt");
+    }
+
+    #[test]
+    fn sanitize_replaces_invalid_chars() {
+        let s = sanitize_path_component("a<b>c:d\"e/f\\g|h?i*j", "document");
+        assert_eq!(s, "a_b_c_d_e_f_g_h_i_j");
+    }
+
+    #[test]
+    fn sanitize_handles_windows_reserved_names() {
+        assert_eq!(sanitize_path_component("CON", "document"), "CON_");
+        assert_eq!(sanitize_path_component("con", "document"), "con_");
+        assert_eq!(sanitize_path_component("nul", "document"), "nul_");
+        assert_eq!(sanitize_path_component("COM1", "document"), "COM1_");
+        assert_eq!(sanitize_path_component("lpt9", "document"), "lpt9_");
+    }
+
+    #[test]
+    fn sanitize_empty_falls_back() {
+        assert_eq!(sanitize_path_component("", "document"), "document");
+        assert_eq!(sanitize_path_component("   ", "document"), "document");
+    }
+
+    #[test]
+    fn sanitize_trims_trailing_dots() {
+        let s = sanitize_path_component("file...", "document");
+        assert!(!s.ends_with('.'));
+    }
+
+    #[test]
+    fn sanitize_caps_at_128_chars() {
+        let long = "a".repeat(200);
+        let s = sanitize_path_component(&long, "document");
+        assert!(s.len() <= 128);
+    }
+
+    #[test]
+    fn relative_path_plain_txt_file() {
+        let rec = DocumentRecord {
+            source_path: PathBuf::from("/tmp/Linha_10.txt"),
+            relative_path: PathBuf::from("Linha_10.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 10,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+        let mut used = HashSet::new();
+        let out = unique_output_relative_path(&rec, &mut used);
+        assert_eq!(out, PathBuf::from("Linha_10.txt"));
+    }
+
+    #[test]
+    fn relative_path_pdf_extension_changed() {
+        let rec = DocumentRecord {
+            source_path: PathBuf::from("/tmp/paper.pdf"),
+            relative_path: PathBuf::from("paper.pdf"),
+            document_type: DocumentType::Pdf,
+            size_bytes: 100,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+        let mut used = HashSet::new();
+        let out = unique_output_relative_path(&rec, &mut used);
+        assert_eq!(out, PathBuf::from("paper.txt"));
+    }
+
+    #[test]
+    fn relative_path_nested_subdirectory() {
+        let rec = DocumentRecord {
+            source_path: PathBuf::from("/tmp/sub/a.txt"),
+            relative_path: PathBuf::from("sub/a.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+        let mut used = HashSet::new();
+        let out = unique_output_relative_path(&rec, &mut used);
+        assert_eq!(out, PathBuf::from("sub/a.txt"));
+    }
+
+    #[test]
+    fn relative_path_collision_creates_suffixed_name() {
+        let mut used = HashSet::new();
+        let rec1 = DocumentRecord {
+            source_path: PathBuf::from("/tmp/one/name.txt"),
+            relative_path: PathBuf::from("one/name.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+        let rec2 = DocumentRecord {
+            source_path: PathBuf::from("/tmp/two/name.txt"),
+            relative_path: PathBuf::from("two/name.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+        let out1 = unique_output_relative_path(&rec1, &mut used);
+        assert_eq!(out1, PathBuf::from("one/name.txt"));
+        let out2 = unique_output_relative_path(&rec2, &mut used);
+        assert_eq!(out2, PathBuf::from("two/name.txt"));
+    }
+
+    #[test]
+    fn relative_path_collision_same_subdir() {
+        let mut used = HashSet::new();
+        let rec1 = DocumentRecord {
+            source_path: PathBuf::from("/tmp/sub/name.txt"),
+            relative_path: PathBuf::from("sub/name.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+        // Symlinks can surface distinct sources with the same relative path.
+        let rec2 = DocumentRecord {
+            source_path: PathBuf::from("/tmp/sub/name_other.txt"),
+            relative_path: PathBuf::from("sub/name.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+        let out1 = unique_output_relative_path(&rec1, &mut used);
+        assert_eq!(out1, PathBuf::from("sub/name.txt"));
+        let out2 = unique_output_relative_path(&rec2, &mut used);
+        assert_eq!(out2, PathBuf::from("sub/name__2.txt"));
+    }
+
+    #[test]
+    fn relative_path_unsafe_characters_sanitised() {
+        let rec = DocumentRecord {
+            source_path: PathBuf::from("/tmp/file<bad>.txt"),
+            relative_path: PathBuf::from("file<bad>.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+        let mut used = HashSet::new();
+        let out = unique_output_relative_path(&rec, &mut used);
+        assert_eq!(out, PathBuf::from("file_bad_.txt"));
+    }
+
+    #[test]
+    fn relative_path_empty_stem_falls_back() {
+        let rec = DocumentRecord {
+            source_path: PathBuf::from("/tmp/.hidden"),
+            relative_path: PathBuf::from(".hidden"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+        let mut used = HashSet::new();
+        let out = unique_output_relative_path(&rec, &mut used);
+        assert!(!out.as_os_str().is_empty());
+    }
+
+    #[test]
+    fn exports_one_file() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "Hello").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        let expected_output = export.texts_dir.join("a.txt");
+        assert_eq!(fs::read_to_string(&expected_output).unwrap(), "Hello");
+        assert_eq!(
+            export.exported_files[0].output_path,
+            PathBuf::from("texts").join("a.txt")
+        );
+    }
+
+    #[test]
+    fn export_matches_document_text_for_cached_pdf_page_zone_rule() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("running-head.pdf"), b"%PDF-1.4").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+        let record = &report.files[0];
+        let page_texts = vec![
+            "4\u{2002}|\u{2002}Some fundamentals of empirical research\nFirst body".to_string(),
+            "Second body\n5\u{2002}|\u{2002}Some fundamentals of empirical research".to_string(),
+            "Third body".to_string(),
+        ];
+        let entry = CacheEntry {
+            extracted_text: page_texts.join("\n\n"),
+            warnings: Vec::new(),
+            page_count: Some(page_texts.len()),
+            page_texts: Some(page_texts),
+        };
+        let cleaning = CleaningConfig {
+            removal_rules: vec![RemovalRule {
+                id: "running-head".to_string(),
+                label: "running head".to_string(),
+                source: RemovalRuleSource::PromotedRepeatedArtifact,
+                matcher: RemovalMatcher::NormalizedLine {
+                    normalized_key: "# | some fundamentals of empirical research".to_string(),
+                },
+                scope: RemovalScope::PageTopOrBottom,
+                enabled: true,
+            }],
+            ..CleaningConfig::default()
+        };
+        let cache = ExtractionCache::new();
+        let pdf_options =
+            PdfExtractionOptions::raw_from_record_and_cleaning_config(record, &cleaning);
+        cache.insert_extracted(record, Some(pdf_options), &cleaning, entry.clone());
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &cleaning,
+            &ExportOptions::default(),
+            None,
+            Some(&cache),
+        )
+        .unwrap();
+        let exported_text = fs::read_to_string(export.texts_dir.join("running-head.txt")).unwrap();
+        let document =
+            document_text_from_cache_entry(record, &cleaning, DocumentTextMode::Processed, entry);
+
+        assert_eq!(exported_text, document.text);
+        assert!(!exported_text.contains("Some fundamentals of empirical research"));
+    }
+
+    #[test]
+    fn exports_multiple_files() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        fs::write(source.path().join("b.html"), "B").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 2);
+        assert_eq!(fs::read_dir(&export.texts_dir).unwrap().count(), 2);
+        let mut names: Vec<String> = fs::read_dir(&export.texts_dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["a.txt", "b.txt"]);
+    }
+
+    #[test]
+    fn duplicate_basenames_do_not_collide() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::create_dir(source.path().join("one")).unwrap();
+        fs::create_dir(source.path().join("two")).unwrap();
+        fs::write(source.path().join("one").join("same.txt"), "one").unwrap();
+        fs::write(source.path().join("two").join("same.txt"), "two").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 2);
+        assert!(
+            export
+                .exported_files
+                .iter()
+                .any(|f| f.output_path == *"texts/one/same.txt")
+        );
+        assert!(
+            export
+                .exported_files
+                .iter()
+                .any(|f| f.output_path == *"texts/two/same.txt")
+        );
+        assert_eq!(
+            fs::read_to_string(export.texts_dir.join("one/same.txt")).unwrap(),
+            "one"
+        );
+        assert_eq!(
+            fs::read_to_string(export.texts_dir.join("two/same.txt")).unwrap(),
+            "two"
+        );
+    }
+
+    #[test]
+    fn writes_only_txt_files_under_texts() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::create_dir(source.path().join("sub")).unwrap();
+        fs::write(source.path().join("sub").join("a.html"), "<h1>A</h1>").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        for entry in walkdir(export.texts_dir.as_path()) {
+            let path = entry.path();
+            if path.is_file() {
+                assert_eq!(
+                    path.extension().unwrap(),
+                    "txt",
+                    "Non-txt file found: {:?}",
+                    path
+                );
+            }
+        }
+    }
+
+    fn walkdir(dir: &Path) -> Vec<std::fs::DirEntry> {
+        let mut entries = Vec::new();
+        if dir.is_dir()
+            && let Ok(read_dir) = fs::read_dir(dir)
+        {
+            for entry in read_dir.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    entries.extend(walkdir(&entry.path()));
+                } else {
+                    entries.push(entry);
+                }
+            }
+        }
+        entries
+    }
+
+    #[test]
+    fn writes_manifest_warnings_config_and_readme() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(export.manifest_path.exists());
+        assert!(export.warnings_path.exists());
+        assert!(export.config_path.exists());
+        assert!(export.readme_path.exists());
+    }
+
+    #[test]
+    fn manifest_contains_source_and_processed_hashes() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let manifest: ExportManifest =
+            serde_json::from_str(&fs::read_to_string(export.manifest_path).unwrap()).unwrap();
+        assert_eq!(manifest.files.len(), 1);
+        assert_eq!(manifest.files[0].source_hash_sha256.len(), 64);
+        assert_eq!(manifest.files[0].processed_hash_sha256.len(), 64);
+        assert_eq!(
+            manifest.tokenization.id,
+            crate::text::tokenisation::TOKENIZER_ID
+        );
+        assert_eq!(
+            manifest.tokenization.version,
+            crate::text::tokenisation::TOKENIZER_VERSION
+        );
+        assert_eq!(
+            manifest.tokenization.config,
+            crate::text::tokenisation::TokenizationConfig::default()
+        );
+    }
+
+    #[test]
+    fn manifest_records_decode_provenance_for_text_files() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("utf8.txt"), "café").unwrap();
+        let latin_bytes = [b'c', b'a', b'f', 0xe9];
+        fs::write(source.path().join("latin.txt"), latin_bytes).unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let manifest: ExportManifest =
+            serde_json::from_str(&fs::read_to_string(export.manifest_path).unwrap()).unwrap();
+        assert_eq!(
+            manifest.decode_policy_version,
+            crate::sources::decode::DECODE_POLICY_VERSION
+        );
+
+        let utf8 = manifest
+            .files
+            .iter()
+            .find(|file| file.relative_path.as_path() == Path::new("utf8.txt"))
+            .unwrap();
+        assert_eq!(
+            utf8.decode_policy_version,
+            crate::sources::decode::DECODE_POLICY_VERSION
+        );
+        assert_eq!(
+            utf8.detected_encoding,
+            crate::sources::decode::SourceEncoding::Utf8
+        );
+        assert_eq!(
+            utf8.decode_strategy,
+            crate::sources::decode::DecodeStrategy::Utf8Strict
+        );
+        assert_eq!(utf8.replacement_char_count, 0);
+
+        let latin = manifest
+            .files
+            .iter()
+            .find(|file| file.relative_path.as_path() == Path::new("latin.txt"))
+            .unwrap();
+        assert_eq!(
+            latin.detected_encoding,
+            crate::sources::decode::SourceEncoding::Windows1252
+        );
+        assert_eq!(
+            latin.decode_strategy,
+            crate::sources::decode::DecodeStrategy::Windows1252Fallback
+        );
+        assert_eq!(latin.replacement_char_count, 0);
+        assert!(
+            latin
+                .warnings
+                .iter()
+                .any(|warning| { warning.contains("recovered with Windows-1252 fallback") })
+        );
+
+        let exported_latin = fs::read_to_string(export.texts_dir.join("latin.txt")).unwrap();
+        assert_eq!(exported_latin, "café");
+        assert_eq!(
+            latin.processed_hash_sha256,
+            crate::support::hash::sha256_hex("café".as_bytes())
+        );
+        let old_lossy = String::from_utf8_lossy(&latin_bytes);
+        assert_ne!(
+            latin.processed_hash_sha256,
+            crate::support::hash::sha256_hex(old_lossy.as_bytes())
+        );
+    }
+
+    #[test]
+    fn refuses_existing_output_directory_unless_overwrite_is_true() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        let output = output_parent.path().join("export");
+        fs::create_dir(&output).unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let result = export_corpus(
+            &report.files,
+            &output,
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        );
+        assert!(matches!(
+            result,
+            Err(ExportError::ExistingOutputDirectory { .. })
+        ));
+
+        let options = ExportOptions {
+            overwrite: true,
+            ..ExportOptions::default()
+        };
+        assert!(
+            export_corpus(
+                &report.files,
+                &output,
+                &CleaningConfig::default(),
+                &options,
+                None,
+                None,
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn source_files_are_unchanged_after_export() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        let source_path = source.path().join("a.txt");
+        fs::write(&source_path, "Original").unwrap();
+        let before = fs::read(&source_path).unwrap();
+        let report = scan_directory(source.path()).unwrap();
+        let config = CleaningConfig {
+            lowercase: true,
+            ..CleaningConfig::default()
+        };
+
+        export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &config,
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(fs::read(&source_path).unwrap(), before);
+    }
+
+    #[test]
+    fn allows_output_inside_source_root_subdirectory() {
+        let source = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let result = export_corpus(
+            &report.files,
+            source.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        );
+
+        assert!(result.is_ok());
+        let export = result.unwrap();
+        assert_eq!(export.files_exported, 1);
+        assert!(export.texts_dir.join("a.txt").exists());
+    }
+
+    #[test]
+    fn applies_cleaning_during_export() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "HELLO old").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+        let config = CleaningConfig {
+            lowercase: true,
+            replace_patterns: vec![ReplacementRule {
+                pattern: "old".to_string(),
+                replacement: "new".to_string(),
+            }],
+            ..CleaningConfig::default()
+        };
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &config,
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let output_file = export.texts_dir.join("a.txt");
+        assert_eq!(fs::read_to_string(output_file).unwrap(), "hello new");
+    }
+
+    #[test]
+    fn warnings_json_is_written_even_when_empty() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(fs::read_to_string(export.warnings_path).unwrap(), "[]\n");
+    }
+
+    #[test]
+    fn public_export_structs_serialize_to_json() {
+        let options = ExportOptions::default();
+        let json = serde_json::to_string(&options).unwrap();
+        assert!(json.contains("app_name"));
+    }
+
+    #[test]
+    fn exports_to_bare_relative_output_directory() {
+        let source = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let output_dir_name = "test_bare_relative_output_dir_12345";
+        let output_path = std::path::PathBuf::from(output_dir_name);
+        if output_path.exists() {
+            fs::remove_dir_all(&output_path).unwrap();
+        }
+
+        let export = export_corpus(
+            &report.files,
+            &output_path,
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        assert!(export.manifest_path.exists());
+        fs::remove_dir_all(&output_path).unwrap();
+    }
+
+    #[test]
+    fn exports_to_dot_slash_relative_output_directory() {
+        let source = tempdir().unwrap();
+        fs::write(source.path().join("a.txt"), "A").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let output_dir_name = "./test_dot_slash_relative_output_dir_12345";
+        let output_path = std::path::PathBuf::from(output_dir_name);
+        if output_path.exists() {
+            fs::remove_dir_all(&output_path).unwrap();
+        }
+
+        let export = export_corpus(
+            &report.files,
+            &output_path,
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        assert!(export.manifest_path.exists());
+        fs::remove_dir_all(&output_path).unwrap();
+    }
+
+    #[test]
+    fn exports_text_file_with_source_like_name() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+        fs::write(source.path().join("Linha_10.txt"), "Hello").unwrap();
+        let report = scan_directory(source.path()).unwrap();
+
+        let export = export_corpus(
+            &report.files,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        let output_path = export.texts_dir.join("Linha_10.txt");
+        assert!(output_path.exists());
+        assert_eq!(fs::read_to_string(output_path).unwrap(), "Hello");
+        assert_eq!(
+            export.exported_files[0].output_path,
+            PathBuf::from("texts").join("Linha_10.txt")
+        );
+    }
+
+    #[test]
+    fn exports_non_txt_changes_extension_to_txt() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+
+        let record = make_record(
+            source.path(),
+            "paper.pdf",
+            DocumentType::Pdf,
+            "dummy content",
+        );
+        let records = vec![record];
+
+        let export = export_corpus(
+            &records,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        assert_eq!(
+            export.exported_files[0].output_path,
+            PathBuf::from("texts").join("paper.txt")
+        );
+        assert!(export.texts_dir.join("paper.txt").exists());
+    }
+
+    #[test]
+    fn exports_html_changes_extension_to_txt() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+
+        let record = make_record(source.path(), "page.html", DocumentType::Html, "<h1>A</h1>");
+        let records = vec![record];
+
+        let export = export_corpus(
+            &records,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        assert_eq!(
+            export.exported_files[0].output_path,
+            PathBuf::from("texts").join("page.txt")
+        );
+        assert!(export.texts_dir.join("page.txt").exists());
+    }
+
+    #[test]
+    fn exports_docx_changes_extension_to_txt() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+
+        let record = make_record(source.path(), "essay.docx", DocumentType::Docx, "dummy");
+        let records = vec![record];
+
+        let export = export_corpus(
+            &records,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        assert_eq!(
+            export.exported_files[0].output_path,
+            PathBuf::from("texts").join("essay.txt")
+        );
+        assert!(export.texts_dir.join("essay.txt").exists());
+    }
+
+    #[test]
+    fn preserves_relative_subdirectories() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+
+        let record = make_record(
+            source.path(),
+            "CoreReviews/IMBD Corpus/Linha_10.txt",
+            DocumentType::Text,
+            "Hello",
+        );
+        let records = vec![record];
+
+        let export = export_corpus(
+            &records,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        let expected_rel = PathBuf::from("texts/CoreReviews/IMBD Corpus/Linha_10.txt");
+        assert_eq!(export.exported_files[0].output_path, expected_rel);
+        assert!(
+            export
+                .texts_dir
+                .join("CoreReviews/IMBD Corpus/Linha_10.txt")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn collision_handling_integration() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+
+        fs::create_dir_all(source.path().join("sub")).unwrap();
+        fs::write(source.path().join("sub").join("name.txt"), "first").unwrap();
+        fs::write(source.path().join("sub").join("name_other.txt"), "second").unwrap();
+
+        // Manual records let the export path exercise same-directory relative-path collisions.
+        let rec1 = DocumentRecord {
+            source_path: source.path().join("sub").join("name.txt"),
+            relative_path: PathBuf::from("sub").join("name.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 5,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+        let rec2 = DocumentRecord {
+            source_path: source.path().join("sub").join("name_other.txt"),
+            relative_path: PathBuf::from("sub").join("name.txt"), // Same relative path intentionally
+            document_type: DocumentType::Text,
+            size_bytes: 6,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+
+        let records = vec![rec1, rec2];
+        let export = export_corpus(
+            &records,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 2);
+
+        let paths: Vec<&PathBuf> = export
+            .exported_files
+            .iter()
+            .map(|f| &f.output_path)
+            .collect();
+        assert!(paths.contains(&&PathBuf::from("texts/sub/name.txt")));
+        assert!(paths.contains(&&PathBuf::from("texts/sub/name__2.txt")));
+
+        assert!(export.texts_dir.join("sub/name.txt").exists());
+        assert!(export.texts_dir.join("sub/name__2.txt").exists());
+        assert_eq!(
+            fs::read_to_string(export.texts_dir.join("sub/name.txt")).unwrap(),
+            "first"
+        );
+        assert_eq!(
+            fs::read_to_string(export.texts_dir.join("sub/name__2.txt")).unwrap(),
+            "second"
+        );
+    }
+
+    #[test]
+    fn unsafe_path_characters_are_sanitised_in_export() {
+        let source = tempdir().unwrap();
+        let output_parent = tempdir().unwrap();
+
+        // On Windows we cannot create a file with '<' or ':' in the name,
+        // so we use a safe source filename but override the relative_path
+        // to contain unsafe characters, simulating what would happen on Linux.
+        let source_path = source.path().join("source.txt");
+        fs::write(&source_path, "content").unwrap();
+        let record = DocumentRecord {
+            source_path,
+            relative_path: PathBuf::from("file<bad>:name.txt"),
+            document_type: DocumentType::Text,
+            size_bytes: 7,
+            extraction_route: None,
+            pdf_profile: None,
+            ocr_quality: None,
+        };
+        let records = vec![record];
+
+        let export = export_corpus(
+            &records,
+            output_parent.path().join("export"),
+            &CleaningConfig::default(),
+            &ExportOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(export.files_exported, 1);
+        let rel = export.exported_files[0].output_path.clone();
+        assert_eq!(rel, PathBuf::from("texts/file_bad_name.txt"));
+        assert!(export.texts_dir.join("file_bad_name.txt").exists());
+    }
+
+    #[test]
+    fn degraded_pdf_quality_warning_is_export_extraction_error() {
+        assert_eq!(
+            export_extraction_warning_kind(
+                "PDFium is unavailable and degraded PDF extraction produced low-quality text. OCR/PDFium extraction is required for this PDF."
+            ),
+            ExportWarningKind::ExtractionError
+        );
+        assert_eq!(
+            export_extraction_warning_kind("PDF backend: PDFium."),
+            ExportWarningKind::ExtractionWarning
+        );
+    }
+}

@@ -1,3 +1,9 @@
+/**
+ * Captures the documentation-corpus figure dossier through the real plot and export pipeline.
+ *
+ * Every witness is rendered in both corpus themes, validated as standalone SVG, and rasterised at
+ * its native viewBox size. The resulting manifest records the evidence inspected by qualification.
+ */
 import { createServer } from "node:http";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -67,6 +73,8 @@ try {
   chrome = browser.process;
   const cdp = new Cdp(browser.webSocketUrl);
   await cdp.open();
+  // Theme order followed by case order defines the manifest sequence. Stable ordering keeps witness
+  // diffs attributable to rendering or evidence changes across repeated qualification runs.
   const manifest = [];
   for (const theme of ["light", "dark"]) {
     const themeName = theme === "light" ? "corpus-light" : "corpus-dark";

@@ -4,14 +4,14 @@ use super::build::{
 };
 use super::concordance::analysis_word_tokens;
 use super::input::{AnalysisInputProvenance, AnalysisInputResolution};
+use crate::annotation::cache::{AnnotationLayerCacheEnvelope, AnnotationManifest};
 use crate::annotation::{
     ANNOTATION_SENTENCE_CHUNK_WORD_CAP, AnnotatedToken, AnnotationError, LemmaTable, ModelManager,
     UniversalPos, default_model_dir, sentence_chunks,
 };
-use crate::annotation_cache::{AnnotationLayerCacheEnvelope, AnnotationManifest};
-use crate::language::detect_and_resolve;
-use crate::scan::DocumentRecord;
-use crate::tokenization::{Token, TokenizationConfig, tokenize};
+use crate::corpus::DocumentRecord;
+use crate::text::language::detect_and_resolve;
+use crate::text::tokenisation::{Token, TokenizationConfig, tokenize};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
@@ -349,7 +349,7 @@ fn log_annotation_cache_decision(outcome: &str, mismatch: Option<&str>) {
 fn annotation_cache_file_path(cache_root: &Path) -> PathBuf {
     cache_root.join(format!(
         "annotation-layer.v{}.json",
-        crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
+        crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION
     ))
 }
 
@@ -365,7 +365,7 @@ fn annotation_manifest_mismatch_for_diagnostics(
     cached: &AnnotationManifest,
     expected: &AnnotationManifest,
 ) -> Option<&'static str> {
-    if cache_file_version != crate::annotation_cache::ANNOTATION_LAYER_CACHE_FILE_VERSION {
+    if cache_file_version != crate::annotation::cache::ANNOTATION_LAYER_CACHE_FILE_VERSION {
         return Some("schema_version");
     }
     if cached.schema_version != expected.schema_version {
@@ -443,22 +443,22 @@ fn annotation_cache_mismatch_for_diagnostics(
 fn log_annotation_cache_load_decision(
     cache_root: &Path,
     expected_manifest: &AnnotationManifest,
-    load: &crate::annotation_cache::AnnotationLayerCacheLoad,
+    load: &crate::annotation::cache::AnnotationLayerCacheLoad,
 ) {
     match load {
-        crate::annotation_cache::AnnotationLayerCacheLoad::Ready(_) => {
+        crate::annotation::cache::AnnotationLayerCacheLoad::Ready(_) => {
             log_annotation_cache_decision("ready", None);
         }
-        crate::annotation_cache::AnnotationLayerCacheLoad::Missing => {
+        crate::annotation::cache::AnnotationLayerCacheLoad::Missing => {
             log_annotation_cache_decision("missing", None);
         }
-        crate::annotation_cache::AnnotationLayerCacheLoad::Stale => {
+        crate::annotation::cache::AnnotationLayerCacheLoad::Stale => {
             log_annotation_cache_decision(
                 "stale",
                 annotation_cache_mismatch_for_diagnostics(cache_root, expected_manifest, None),
             );
         }
-        crate::annotation_cache::AnnotationLayerCacheLoad::Invalid(detail) => {
+        crate::annotation::cache::AnnotationLayerCacheLoad::Invalid(detail) => {
             log_annotation_cache_decision(
                 "invalid",
                 annotation_cache_mismatch_for_diagnostics(
@@ -474,20 +474,20 @@ fn log_annotation_cache_load_decision(
 fn log_annotation_cache_envelope_decision(
     cache_root: &Path,
     expected_manifest: &AnnotationManifest,
-    load: &crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad,
+    load: &crate::annotation::cache::AnnotationLayerCacheEnvelopeLoad,
 ) {
     match load {
-        crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Ready(_) => {}
-        crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Missing => {
+        crate::annotation::cache::AnnotationLayerCacheEnvelopeLoad::Ready(_) => {}
+        crate::annotation::cache::AnnotationLayerCacheEnvelopeLoad::Missing => {
             log_annotation_cache_decision("missing", None);
         }
-        crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Stale => {
+        crate::annotation::cache::AnnotationLayerCacheEnvelopeLoad::Stale => {
             log_annotation_cache_decision(
                 "stale",
                 annotation_cache_mismatch_for_diagnostics(cache_root, expected_manifest, None),
             );
         }
-        crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Invalid(detail) => {
+        crate::annotation::cache::AnnotationLayerCacheEnvelopeLoad::Invalid(detail) => {
             log_annotation_cache_decision(
                 "invalid",
                 annotation_cache_mismatch_for_diagnostics(
@@ -1164,12 +1164,12 @@ where
         }
     };
 
-    let cache_load = crate::annotation_cache::load_annotation_layer_cache(&cache_root, &manifest);
+    let cache_load = crate::annotation::cache::load_annotation_layer_cache(&cache_root, &manifest);
     log_annotation_cache_load_decision(&cache_root, &manifest, &cache_load);
     if let Some(timing) = timing_ref {
         timing.record_manifest_cache_ready(manifest_cache_started.elapsed());
     }
-    if let crate::annotation_cache::AnnotationLayerCacheLoad::Ready(layer) = cache_load {
+    if let crate::annotation::cache::AnnotationLayerCacheLoad::Ready(layer) = cache_load {
         let documents_annotated = layer.documents.len();
         let total_annotated_term_count_rows = layer
             .documents
@@ -1210,10 +1210,10 @@ where
         });
     }
 
-    let envelope_load = crate::annotation_cache::read_annotation_layer_cache_envelope(&cache_root);
+    let envelope_load = crate::annotation::cache::read_annotation_layer_cache_envelope(&cache_root);
     log_annotation_cache_envelope_decision(&cache_root, &manifest, &envelope_load);
     let salvage_plan = match envelope_load {
-        crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Ready(envelope) => {
+        crate::annotation::cache::AnnotationLayerCacheEnvelopeLoad::Ready(envelope) => {
             let surface_term_lookup = match build_surface_term_lookup(corpus) {
                 Ok(lookup) => lookup,
                 Err(error) => {
@@ -1264,9 +1264,9 @@ where
                 }
             }
         }
-        crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Stale
-        | crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Missing
-        | crate::annotation_cache::AnnotationLayerCacheEnvelopeLoad::Invalid(_) => None,
+        crate::annotation::cache::AnnotationLayerCacheEnvelopeLoad::Stale
+        | crate::annotation::cache::AnnotationLayerCacheEnvelopeLoad::Missing
+        | crate::annotation::cache::AnnotationLayerCacheEnvelopeLoad::Invalid(_) => None,
     };
 
     report_progress(annotation_build_progress_with_tokens(
@@ -1473,7 +1473,7 @@ where
         .collect::<Vec<_>>();
     let write_result = std::thread::scope(|s| {
         let handle = s.spawn(|| {
-            crate::annotation_cache::write_annotation_layer_cache_with_timing(
+            crate::annotation::cache::write_annotation_layer_cache_with_timing(
                 &cache_root,
                 &manifest,
                 &surface_terms,
@@ -1554,13 +1554,14 @@ pub(super) fn build_expected_manifest(
     model_dir: Option<&Path>,
     language_overrides: &HashMap<usize, String>,
 ) -> Result<
-    crate::annotation_cache::AnnotationManifest,
-    crate::annotation_cache::AnnotationLayerCacheError,
+    crate::annotation::cache::AnnotationManifest,
+    crate::annotation::cache::AnnotationLayerCacheError,
 > {
-    let tokenization = crate::tokenization::TokenizationManifest {
-        id: crate::tokenization::TOKENIZER_ID.to_string(),
-        version: crate::tokenization::TOKENIZER_VERSION.to_string(),
-        unicode_segmentation_version: crate::tokenization::UNICODE_SEGMENTATION_VERSION.to_string(),
+    let tokenization = crate::text::tokenisation::TokenizationManifest {
+        id: crate::text::tokenisation::TOKENIZER_ID.to_string(),
+        version: crate::text::tokenisation::TOKENIZER_VERSION.to_string(),
+        unicode_segmentation_version: crate::text::tokenisation::UNICODE_SEGMENTATION_VERSION
+            .to_string(),
         config: corpus.tokenization,
     };
 
@@ -1584,9 +1585,9 @@ pub(super) fn build_expected_manifest(
     for lang in &languages_set {
         let (language, model_filename, udpipe_model_name, sha256) =
             crate::annotation::model_identity(lang, resolved_model_dir).map_err(|e| {
-                crate::annotation_cache::AnnotationLayerCacheError::ValidationError(e.to_string())
+                crate::annotation::cache::AnnotationLayerCacheError::ValidationError(e.to_string())
             })?;
-        models.push(crate::annotation_cache::AnnotationModelIdentity {
+        models.push(crate::annotation::cache::AnnotationModelIdentity {
             language,
             model_filename,
             udpipe_model_name,
@@ -1600,7 +1601,7 @@ pub(super) fn build_expected_manifest(
         .map(|doc| doc.processed_hash_sha256.clone())
         .collect();
 
-    crate::annotation_cache::build_annotation_manifest(
+    crate::annotation::cache::build_annotation_manifest(
         corpus,
         records,
         tokenization,
@@ -2171,7 +2172,7 @@ fn annotation_cache_reuse_context(
 impl AnnotationCacheReuseContext {
     fn key_for_document(
         &self,
-        document: &crate::annotation_cache::AnnotationDocumentIdentity,
+        document: &crate::annotation::cache::AnnotationDocumentIdentity,
     ) -> Option<AnnotationCacheReuseKey> {
         let effective_language = self
             .language_by_document_index
@@ -3405,25 +3406,28 @@ pub fn annotation_cache_availability_for_corpus(
             }
         };
 
-    let load = crate::annotation_cache::load_annotation_layer_cache(cache_root, &expected_manifest);
+    let load =
+        crate::annotation::cache::load_annotation_layer_cache(cache_root, &expected_manifest);
     log_annotation_cache_load_decision(cache_root, &expected_manifest, &load);
 
     match load {
-        crate::annotation_cache::AnnotationLayerCacheLoad::Ready(_) => {
+        crate::annotation::cache::AnnotationLayerCacheLoad::Ready(_) => {
             AnnotationCacheAvailability {
                 state: AnnotationCacheState::Ready,
                 detail: None,
             }
         }
-        crate::annotation_cache::AnnotationLayerCacheLoad::Missing => AnnotationCacheAvailability {
-            state: AnnotationCacheState::Missing,
-            detail: None,
-        },
-        crate::annotation_cache::AnnotationLayerCacheLoad::Stale => AnnotationCacheAvailability {
+        crate::annotation::cache::AnnotationLayerCacheLoad::Missing => {
+            AnnotationCacheAvailability {
+                state: AnnotationCacheState::Missing,
+                detail: None,
+            }
+        }
+        crate::annotation::cache::AnnotationLayerCacheLoad::Stale => AnnotationCacheAvailability {
             state: AnnotationCacheState::Stale,
             detail: None,
         },
-        crate::annotation_cache::AnnotationLayerCacheLoad::Invalid(detail) => {
+        crate::annotation::cache::AnnotationLayerCacheLoad::Invalid(detail) => {
             AnnotationCacheAvailability {
                 state: AnnotationCacheState::Invalid,
                 detail: Some(detail),

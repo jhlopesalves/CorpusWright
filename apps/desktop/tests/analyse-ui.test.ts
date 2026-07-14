@@ -6,7 +6,7 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-const analysis = readFileSync(new URL("../src/analysis.ts", import.meta.url), "utf8");
+const analysis = readFileSync(new URL("../src/features/analyse/api.ts", import.meta.url), "utf8");
 const workbench = readWorkbenchSources();
 const styles = (await loadStyleGraph(new URL("../src/styles.css", import.meta.url))).css;
 const generatedConcordanceQuery = readFileSync(new URL("../src/generated/ConcordanceQuery.ts", import.meta.url), "utf8");
@@ -22,7 +22,7 @@ function readWorkbenchSources(): string {
     files.push(legacyWorkbench);
   }
 
-  const workbenchRoot = new URL("../src/workbench/", import.meta.url);
+  const workbenchRoot = new URL("../src/features/analyse/workbench/", import.meta.url);
   if (existsSync(workbenchRoot)) {
     collectTypescriptFiles(workbenchRoot, files);
   }

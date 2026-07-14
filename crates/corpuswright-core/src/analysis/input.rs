@@ -1,5 +1,5 @@
-use crate::clean::CleaningConfig;
-use crate::scan::DocumentRecord;
+use crate::corpus::DocumentRecord;
+use crate::preparation::cleaning::CleaningConfig;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 

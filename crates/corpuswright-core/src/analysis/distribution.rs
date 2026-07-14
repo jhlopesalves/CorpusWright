@@ -1,3 +1,8 @@
+//! Provides bounded document and term distributions for analytical drill-down.
+//!
+//! Selection and grouping reuse Frequency semantics, while offsets and limits keep evidence
+//! responses independent of the complete result size.
+
 use super::build::{AnalysisCorpus, AnalysisDocumentSelection};
 use super::frequency::{
     FrequencyGroupMode, FrequencyMatchMode, FrequencyQuery, FrequencySortKey, FrequencyTokenClass,

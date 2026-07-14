@@ -1,10 +1,14 @@
-//! Rust-owned corpus analysis and bounded query APIs.
+//! Builds the shared analysis corpus and exposes bounded descriptive query APIs.
+//!
+//! Overview, Frequency, Concordance, Collocates, comparison, and annotation projection all use
+//! the same ordered document and token identities. Presentation state and progress events remain
+//! in the desktop layers.
 
 mod annotation_build;
 mod build;
 mod collocation;
 mod compare;
-mod concordance;
+pub mod concordance;
 mod distribution;
 mod frequency;
 mod input;
@@ -100,10 +104,10 @@ pub use overview_distribution::{
 pub(crate) fn aggregate_concordance_collocations_documents_routed(
     documents: &[ConcordanceDocument],
     query: &ConcordanceCollocationQuery,
-    tokenization_config: &crate::tokenization::TokenizationConfig,
+    tokenization_config: &crate::text::tokenisation::TokenizationConfig,
     context: &mut ConcordanceSearchContext,
     backend: ConcordanceBackend,
-    cancellation: &crate::index::SurfaceIndexCancellationToken,
+    cancellation: &crate::analysis::concordance::index::SurfaceIndexCancellationToken,
 ) -> Result<RoutedConcordanceCollocationAggregate, ConcordanceError> {
     match backend {
         ConcordanceBackend::Scan => aggregate_concordance_collocations_scan_provider(

@@ -1,3 +1,8 @@
+//! Computes the descriptive corpus Overview and its bounded evidence witnesses.
+//!
+//! Measures share one analysis-corpus snapshot. Order-sensitive outputs, including vocabulary
+//! growth, follow stable document order so repeated builds of the same corpus remain reproducible.
+
 use super::build::{AnalysisBuildMetadata, AnalysisDocument, AnalysisTerm, document_name};
 use super::input::AnalysisInputSource;
 use serde::{Deserialize, Serialize};

@@ -1,6 +1,6 @@
 use super::*;
 use crate::analysis::test_support::*;
-use crate::clean::CleaningConfig;
+use crate::preparation::cleaning::CleaningConfig;
 use std::cell::Cell;
 
 #[test]
@@ -15,7 +15,12 @@ fn resolver_uses_active_processed_pipeline_output() {
     let resolution = resolve_analysis_input(
         &record,
         &cleaning_config,
-        |_, config| Ok(crate::clean::clean_text("keep REMOVE", config)),
+        |_, config| {
+            Ok(crate::preparation::cleaning::clean_text(
+                "keep REMOVE",
+                config,
+            ))
+        },
         |_, _| {
             fallback_called.set(true);
             Ok("keep REMOVE".to_string())
@@ -41,7 +46,12 @@ fn resolver_uses_inline_repeated_artifact_removal_rule() {
     let resolution = resolve_analysis_input(
         &record,
         &cleaning_config,
-        |_, config| Ok(crate::clean::clean_text("foo<br />bar", config)),
+        |_, config| {
+            Ok(crate::preparation::cleaning::clean_text(
+                "foo<br />bar",
+                config,
+            ))
+        },
         |_, _| {
             fallback_called.set(true);
             Ok("foo<br />bar".to_string())

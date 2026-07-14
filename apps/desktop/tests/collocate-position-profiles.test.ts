@@ -8,10 +8,10 @@ import {
   concordancePositionProfileDomain,
   concordancePositionProfileSummaryText,
   concordancePositionProfileTooltip,
-} from "../src/concordance.ts";
+} from "../src/features/analyse/concordance/model.ts";
 
 const source = readFileSync(
-  new URL("../src/workbench/concordance/collocations.ts", import.meta.url),
+  new URL("../src/features/analyse/workbench/concordance/collocations.ts", import.meta.url),
   "utf8",
 );
 const styles = (await loadStyleGraph(new URL("../src/styles.css", import.meta.url))).css;

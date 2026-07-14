@@ -2,7 +2,7 @@ use super::*;
 use crate::analysis::test_support::{
     assert_close, concordance_document, concordance_for, concordance_query,
 };
-use crate::tokenization::TokenizationConfig;
+use crate::text::tokenisation::TokenizationConfig;
 use std::collections::HashMap;
 
 fn compare_query(expressions: &[&str]) -> CompareExpressionsQuery {
