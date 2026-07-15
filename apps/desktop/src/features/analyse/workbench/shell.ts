@@ -18,7 +18,7 @@ import {
   type OverviewDistributionEvidencePage,
   type OverviewDistributionMetric,
   type OverviewDistributionResult,
-} from "../api";
+} from "../ipc";
 import { BOOLEAN_CLEANING_CONFIG_KEYS } from "../../prepare/cleaning/config";
 import { dom } from "../../../app/dom";
 import { effectiveCleaningConfig } from "../../prepare/cleaning/effective-config";

@@ -111,43 +111,6 @@
               <p>A native Rust core keeps analysis local and deterministic, with reproducible outputs and explicit manifests.</p>
             </div>
           </div>
-          <div>
-            <div class="shot-tabs" role="tablist" aria-label="Interface screenshots">
-              <button class="shot-tab" role="tab" id="tab-0" aria-controls="panel-0"
-                aria-selected="true">Prepare</button>
-              <button class="shot-tab" role="tab" id="tab-1" aria-controls="panel-1" aria-selected="false">Cleaning
-                settings</button>
-              <button class="shot-tab" role="tab" id="tab-2" aria-controls="panel-2" aria-selected="false">Repeated
-                artefacts</button>
-            </div>
-            <div class="shot-panel" role="tabpanel" id="panel-0" aria-labelledby="tab-0">
-              <figure class="screenshot">
-                <div class="theme-img-dark"><img src="assets/screenshots/prepare-dark.png" alt="Prepare, dark"></div>
-                <div class="theme-img-light"><img src="assets/screenshots/prepare-light.png" alt="Prepare, light"></div>
-                <figcaption>Prepare workbench with source selection, corpus summary, and original/processed text
-                  preview.</figcaption>
-              </figure>
-            </div>
-            <div class="shot-panel" role="tabpanel" id="panel-1" aria-labelledby="tab-1" hidden>
-              <figure class="screenshot">
-                <div class="theme-img-dark"><img src="assets/screenshots/prepare-cleaning-settings-dark.png"
-                    alt="Cleaning settings, dark"></div>
-                <div class="theme-img-light"><img src="assets/screenshots/prepare-cleaning-settings-light.png"
-                    alt="Cleaning settings, light"></div>
-                <figcaption>Cleaning settings used to configure repeatable preprocessing behaviour.</figcaption>
-              </figure>
-            </div>
-            <div class="shot-panel" role="tabpanel" id="panel-2" aria-labelledby="tab-2" hidden>
-              <figure class="screenshot">
-                <div class="theme-img-dark"><img src="assets/screenshots/prepare-repeated-artefacts-dark.png"
-                    alt="Repeated artefacts, dark"></div>
-                <div class="theme-img-light"><img src="assets/screenshots/prepare-repeated-artefacts-light.png"
-                    alt="Repeated artefacts, light"></div>
-                <figcaption>Repeated-artefact finder for reviewing recurring extraction noise before adding removal
-                  rules.</figcaption>
-              </figure>
-            </div>
-          </div>
         </div>
       </div>
     </section>
@@ -234,36 +197,6 @@ keywords:
         syncToggle();
       });
 
-      var tabs = Array.prototype.slice.call(document.querySelectorAll('.shot-tab'));
-      var panels = Array.prototype.slice.call(document.querySelectorAll('.shot-panel'));
-
-      function show(i) {
-        tabs.forEach(function (t, n) {
-          t.setAttribute('aria-selected', n === i ? 'true' : 'false');
-          t.tabIndex = n === i ? 0 : -1;
-        });
-        panels.forEach(function (p, n) {
-          if (n === i) { p.removeAttribute('hidden'); } else { p.setAttribute('hidden', ''); }
-        });
-      }
-
-      tabs.forEach(function (t, i) {
-        t.addEventListener('click', function () { show(i); });
-      });
-
-      var tablist = document.querySelector('.shot-tabs');
-      tablist.addEventListener('keydown', function (e) {
-        var cur = tabs.indexOf(document.activeElement);
-        if (cur < 0) return;
-        var nx = null;
-        if (e.key === 'ArrowRight') nx = (cur + 1) % tabs.length;
-        else if (e.key === 'ArrowLeft') nx = (cur - 1 + tabs.length) % tabs.length;
-        else if (e.key === 'Home') nx = 0;
-        else if (e.key === 'End') nx = tabs.length - 1;
-        if (nx !== null) { e.preventDefault(); tabs[nx].focus(); show(nx); }
-      });
-
-      show(0);
     })();
   </script>
 </body>

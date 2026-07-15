@@ -11,7 +11,7 @@ import type { ProjectSource } from "../generated/ProjectSource.js";
 import type { ProjectSourceSummary } from "../generated/ProjectSourceSummary.js";
 import type { RepeatedArtifactCandidate } from "../generated/RepeatedArtifactCandidate.js";
 import type { SearchResult } from "../generated/SearchResult.js";
-import type { CorpusOverview } from "../features/analyse/api";
+import type { CorpusOverview } from "../features/analyse/ipc";
 import type { ActiveProject } from "../generated/ActiveProject.js";
 import type {
   VisibleFile,

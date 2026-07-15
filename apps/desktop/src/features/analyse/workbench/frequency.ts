@@ -25,7 +25,7 @@ import {
   type FrequencyTokenClass as FrequencyTokenClassFilter,
   type SortDirection,
   type TermDistributionPage,
-} from "../api";
+} from "../ipc";
 import { createChevron } from "../../../shared/chevron";
 import { dom } from "../../../app/dom";
 import { effectiveCleaningConfig } from "../../prepare/cleaning/effective-config";

@@ -1,0 +1,35 @@
+[package]
+name = "corpuswright-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "MIT"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1"
+corpuswright-core = { path = "../crates/corpuswright-core", default-features = false, features = ["fuzzing"] }
+
+[[bin]]
+name = "source_parsers"
+path = "fuzz_targets/source_parsers.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "persistent_state"
+path = "fuzz_targets/persistent_state.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tokenisation"
+path = "fuzz_targets/tokenisation.rs"
+test = false
+doc = false
+bench = false

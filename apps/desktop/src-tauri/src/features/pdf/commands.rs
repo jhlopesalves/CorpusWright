@@ -17,7 +17,6 @@ use corpuswright_core::sources::pdf::{
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use tauri::Window;
 
 use super::service::{
@@ -52,56 +51,57 @@ pub(crate) fn load_pdf_intake_files_command(
         return Err("Choose at least one PDF.".to_string());
     }
 
-    intake_state.cancel.store(false, Ordering::Relaxed);
-    cache.clear();
-    page_cache.clear();
-    collocation_cache.clear();
-    index_context.clear();
-    corpus_state.inner.write().unwrap().clear();
-
-    let path_bufs = paths.into_iter().map(PathBuf::from).collect();
-    let report = load_files(path_bufs).map_err(|e| format!("{:?}", e))?;
-    if report
-        .files
-        .iter()
-        .any(|record| record.document_type != DocumentType::Pdf)
-    {
+    intake_state.cancel.run(|cancellation| {
         cache.clear();
-        return Err("PDF intake accepts PDF files only.".to_string());
-    }
+        page_cache.clear();
+        collocation_cache.clear();
+        index_context.clear();
+        corpus_state.inner.write().unwrap().clear();
 
-    let total_files = report.files.len();
-    for (file_index, record) in report.files.iter().enumerate() {
-        if intake_state.cancel.load(Ordering::Relaxed) {
+        let path_bufs = paths.into_iter().map(PathBuf::from).collect();
+        let report = load_files(path_bufs).map_err(|e| format!("{:?}", e))?;
+        if report
+            .files
+            .iter()
+            .any(|record| record.document_type != DocumentType::Pdf)
+        {
             cache.clear();
-            page_cache.clear();
-            return Err(pdf_intake_cancelled_message());
+            return Err("PDF intake accepts PDF files only.".to_string());
         }
 
-        if let Err(error) = materialize_pdf_record(
-            &window,
-            record,
-            file_index,
-            total_files,
-            &profile,
-            &cleaning_config,
-            &cache,
-            &intake_state.cancel,
-        ) {
-            cache.clear();
-            page_cache.clear();
-            return Err(error);
-        }
-    }
+        let total_files = report.files.len();
+        for (file_index, record) in report.files.iter().enumerate() {
+            if cancellation.is_cancelled() {
+                cache.clear();
+                page_cache.clear();
+                return Err(pdf_intake_cancelled_message());
+            }
 
-    let version = {
-        let mut inner = corpus_state.inner.write().unwrap();
-        inner.load(None, report.files.clone());
-        inner.version
-    };
-    Ok(CorpusLoadResult {
-        report,
-        corpus_version: version,
+            if let Err(error) = materialize_pdf_record(
+                &window,
+                record,
+                file_index,
+                total_files,
+                &profile,
+                &cleaning_config,
+                &cache,
+                cancellation,
+            ) {
+                cache.clear();
+                page_cache.clear();
+                return Err(error);
+            }
+        }
+
+        let version = {
+            let mut inner = corpus_state.inner.write().unwrap();
+            inner.load(None, report.files.clone());
+            inner.version.into_ipc()
+        };
+        Ok(CorpusLoadResult {
+            report,
+            corpus_version: version,
+        })
     })
 }
 
@@ -125,141 +125,147 @@ pub(crate) fn prepare_project_pdf_sources_command(
         return Err("Choose at least one project PDF source.".to_string());
     }
 
-    intake_state.cancel.store(false, Ordering::Relaxed);
-    cache.clear();
-    page_cache.clear();
-    collocation_cache.clear();
-    index_context.clear();
-    corpus_state.inner.write().unwrap().clear();
+    intake_state.cancel.run(|cancellation| {
+        cache.clear();
+        page_cache.clear();
+        collocation_cache.clear();
+        index_context.clear();
+        corpus_state.inner.write().unwrap().clear();
 
-    if let Some(profile) = profile_override {
-        project::update_project_source_pdf_profiles_command(
-            root_path.clone(),
-            paths.clone(),
-            profile,
-            ocr_quality,
-        )?;
-    }
-
-    let selected_paths = paths.iter().map(PathBuf::from).collect::<Vec<_>>();
-    let (project_root, project_sources) = project::load_project_source_inventory(root_path)?;
-    let project_sources_by_path = project_sources
-        .sources
-        .iter()
-        .map(|source| (canonical_or_original(&source.path), source))
-        .collect::<HashMap<_, _>>();
-
-    let mut report = load_files(selected_paths.clone()).map_err(|error| format!("{error:?}"))?;
-    for record in &mut report.files {
-        let key = canonical_or_original(&record.source_path);
-        let project_source = project_sources_by_path.get(&key).ok_or_else(|| {
-            format!(
-                "Selected PDF source is not in the project inventory: {}",
-                record.source_path.display()
-            )
-        })?;
-        if project_source.kind != ProjectSourceKind::Pdf {
-            return Err(format!(
-                "Selected source is not a PDF: {}",
-                record.source_path.display()
-            ));
-        }
-        record.extraction_route = Some(project_source.extraction_route);
-        record.pdf_profile = project_source.pdf_profile;
-        record.ocr_quality = project_source.ocr_quality;
-    }
-
-    let plan = project_pdf_preparation_plan(&report.files, &selected_paths, profile_override)?;
-    let records_by_path = selected_record_by_path(&report.files);
-    let mut ordered_records = Vec::with_capacity(plan.len());
-    let mut extraction_results = Vec::with_capacity(plan.len());
-    let total_files = plan.len();
-    let batch_label = project_pdf_preparation_batch_label(&plan);
-    if total_files == 0 {
-        return Err(format!(
-            "No selected PDFs could be prepared with {batch_label}."
-        ));
-    }
-
-    for (file_index, item) in plan.iter().enumerate() {
-        if intake_state.cancel.load(Ordering::Relaxed) {
-            let _ = update_project_source_extraction_results(
-                &project_root,
-                vec![ProjectSourceExtractionResult {
-                    path: item.path.clone(),
-                    failed: true,
-                    warning_count: 1,
-                    reason_codes: vec!["extraction_cancelled".to_string()],
-                }],
-            );
-            cache.clear();
-            page_cache.clear();
-            return Err(pdf_intake_cancelled_message());
+        if let Some(profile) = profile_override {
+            project::update_project_source_pdf_profiles_command(
+                root_path.clone(),
+                paths.clone(),
+                profile,
+                ocr_quality,
+            )?;
         }
 
-        let record = records_by_path
-            .get(&canonical_or_original(&item.path))
-            .ok_or_else(|| {
+        let selected_paths = paths.iter().map(PathBuf::from).collect::<Vec<_>>();
+        let (project_root, project_sources) = project::load_project_source_inventory(root_path)?;
+        let project_sources_by_path = project_sources
+            .sources
+            .iter()
+            .map(|source| (canonical_or_original(&source.path), source))
+            .collect::<HashMap<_, _>>();
+
+        let mut report =
+            load_files(selected_paths.clone()).map_err(|error| format!("{error:?}"))?;
+        for record in &mut report.files {
+            let key = canonical_or_original(&record.source_path);
+            let project_source = project_sources_by_path.get(&key).ok_or_else(|| {
                 format!(
-                    "Selected PDF source is not processable: {}",
-                    item.path.display()
+                    "Selected PDF source is not in the project inventory: {}",
+                    record.source_path.display()
                 )
             })?;
+            if project_source.kind != ProjectSourceKind::Pdf {
+                return Err(format!(
+                    "Selected source is not a PDF: {}",
+                    record.source_path.display()
+                ));
+            }
+            record.extraction_route = Some(project_source.extraction_route);
+            record.pdf_profile = project_source.pdf_profile;
+            record.ocr_quality = project_source.ocr_quality;
+        }
 
-        let prepared_record = record_with_preparation_profile(record, item);
-        let pdf_options = PdfExtractionOptions::raw_from_record_and_cleaning_config(
-            &prepared_record,
-            &cleaning_config,
-        );
-        let entry = match materialize_pdf_record(
-            &window,
-            &prepared_record,
-            file_index,
-            total_files,
-            &item.profile_label,
-            &cleaning_config,
-            &cache,
-            &intake_state.cancel,
-        ) {
-            Ok(entry) => entry,
-            Err(error) => {
-                let reason_code =
-                    project_pdf_extraction_failure_reason(&error, &intake_state.cancel);
+        let plan = project_pdf_preparation_plan(&report.files, &selected_paths, profile_override)?;
+        let records_by_path = selected_record_by_path(&report.files);
+        let mut ordered_records = Vec::with_capacity(plan.len());
+        let mut extraction_results = Vec::with_capacity(plan.len());
+        let total_files = plan.len();
+        let batch_label = project_pdf_preparation_batch_label(&plan);
+        if total_files == 0 {
+            return Err(format!(
+                "No selected PDFs could be prepared with {batch_label}."
+            ));
+        }
+
+        for (file_index, item) in plan.iter().enumerate() {
+            if cancellation.is_cancelled() {
                 let _ = update_project_source_extraction_results(
                     &project_root,
                     vec![ProjectSourceExtractionResult {
-                        path: prepared_record.source_path.clone(),
+                        path: item.path.clone(),
                         failed: true,
                         warning_count: 1,
-                        reason_codes: vec![reason_code.to_string()],
+                        reason_codes: vec!["extraction_cancelled".to_string()],
                     }],
                 );
                 cache.clear();
                 page_cache.clear();
-                return Err(error);
+                return Err(pdf_intake_cancelled_message());
             }
+
+            let record = records_by_path
+                .get(&canonical_or_original(&item.path))
+                .ok_or_else(|| {
+                    format!(
+                        "Selected PDF source is not processable: {}",
+                        item.path.display()
+                    )
+                })?;
+
+            let prepared_record = record_with_preparation_profile(record, item);
+            let pdf_options = PdfExtractionOptions::raw_from_record_and_cleaning_config(
+                &prepared_record,
+                &cleaning_config,
+            );
+            let entry = match materialize_pdf_record(
+                &window,
+                &prepared_record,
+                file_index,
+                total_files,
+                &item.profile_label,
+                &cleaning_config,
+                &cache,
+                cancellation,
+            ) {
+                Ok(entry) => entry,
+                Err(error) => {
+                    let reason_code = project_pdf_extraction_failure_reason(&error, cancellation);
+                    let _ = update_project_source_extraction_results(
+                        &project_root,
+                        vec![ProjectSourceExtractionResult {
+                            path: prepared_record.source_path.clone(),
+                            failed: true,
+                            warning_count: 1,
+                            reason_codes: vec![reason_code.to_string()],
+                        }],
+                    );
+                    cache.clear();
+                    page_cache.clear();
+                    return Err(error);
+                }
+            };
+            persist_project_source_text_cache(
+                &project_root,
+                &prepared_record,
+                pdf_options,
+                &entry,
+            )?;
+            extraction_results.push(ProjectSourceExtractionResult {
+                path: prepared_record.source_path.clone(),
+                failed: false,
+                warning_count: entry.warnings.len(),
+                reason_codes: extraction_reason_codes_for_warnings(&entry.warnings),
+            });
+            ordered_records.push(prepared_record);
+        }
+
+        update_project_source_extraction_results(&project_root, extraction_results)?;
+
+        report.files = ordered_records;
+        let version = {
+            let mut inner = corpus_state.inner.write().unwrap();
+            inner.load(None, report.files.clone());
+            inner.version.into_ipc()
         };
-        persist_project_source_text_cache(&project_root, &prepared_record, pdf_options, &entry)?;
-        extraction_results.push(ProjectSourceExtractionResult {
-            path: prepared_record.source_path.clone(),
-            failed: false,
-            warning_count: entry.warnings.len(),
-            reason_codes: extraction_reason_codes_for_warnings(&entry.warnings),
-        });
-        ordered_records.push(prepared_record);
-    }
-
-    update_project_source_extraction_results(&project_root, extraction_results)?;
-
-    report.files = ordered_records;
-    let version = {
-        let mut inner = corpus_state.inner.write().unwrap();
-        inner.load(None, report.files.clone());
-        inner.version
-    };
-    Ok(CorpusLoadResult {
-        report,
-        corpus_version: version,
+        Ok(CorpusLoadResult {
+            report,
+            corpus_version: version,
+        })
     })
 }
 
@@ -267,7 +273,7 @@ pub(crate) fn prepare_project_pdf_sources_command(
 pub(crate) fn cancel_pdf_intake_materialization_command(
     intake_state: tauri::State<'_, PdfIntakeState>,
 ) -> Result<(), String> {
-    intake_state.cancel.store(true, Ordering::Relaxed);
+    intake_state.cancel.cancel();
     Ok(())
 }
 

@@ -4,13 +4,13 @@
  * One backend traversal can serve both cards. Each section retains its request key and generation,
  * allowing independent paging while rejecting stale sections from earlier searches.
  */
-import { listen } from "@tauri-apps/api/event";
 import {
+  listen,
   searchConcordance,
   type ConcordanceContextFilterDirection,
   type ConcordanceProgress,
   type ConcordanceResult,
-} from "../../api";
+} from "../../ipc";
 import {
   concordanceContextTokenSegments,
   concordanceDistributionCardStatsText,

@@ -1,0 +1,13 @@
+[package]
+name = "corpuswright-xtask"
+version = "0.1.0"
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+publish = false
+
+[dependencies]
+anyhow = "1.0.103"
+corpuswright-core = { path = "../corpuswright-core" }
+corpuswright-test-support = { path = "../corpuswright-test-support" }
+serde_json = { workspace = true }

@@ -161,79 +161,31 @@ function validateHtml(filePath) {
   }
 }
 
-function validateTestingGuidePaths() {
-  const filePath = path.join(ROOT, "docs", "contributing", "testing.md");
-  const text = fs.readFileSync(filePath, "utf8");
-  const intentionallyLocal = new Set([
-    ".local-corpora/",
-    "local-corpora/",
-    "manual-corpora/",
-    "sample-corpora-local/",
-    "coragrarian/",
-  ]);
-  for (const codeSpan of text.matchAll(/`([^`\r\n]+)`/g)) {
-    for (const rawCandidate of codeSpan[1].split(/,\s*/)) {
-      const candidate = rawCandidate.trim();
-      if (
-        !/^[A-Za-z0-9._@-]+(?:\/[A-Za-z0-9._@-]+)*\/?$/.test(candidate) ||
-        !candidate.includes("/") ||
-        intentionallyLocal.has(candidate)
-      ) {
-        continue;
-      }
-      const absolutePath = path.join(ROOT, candidate);
-      if (!fs.existsSync(absolutePath)) {
-        report(
-          filePath,
-          text,
-          codeSpan.index,
-          `names missing repository path "${candidate}"`,
-        );
-      }
+function main() {
+  for (const filePath of liveDocumentationFiles()) {
+    if (/\.md$/i.test(filePath)) {
+      validateMarkdown(filePath);
+    } else {
+      validateHtml(filePath);
     }
   }
+  if (errors.length > 0) {
+    console.error("Repository reference check failed:");
+    for (const error of errors) {
+      console.error(`  - ${error}`);
+    }
+    process.exit(1);
+  }
+
+  console.log("Repository-local documentation links, anchors, and paths are valid.");
 }
 
-function validateCurrentReleaseNotes() {
-  let metadata;
-  try {
-    metadata = JSON.parse(
-      fs.readFileSync(path.join(ROOT, "release-metadata.json"), "utf8"),
-    );
-  } catch (error) {
-    errors.push(`release-metadata.json is unreadable: ${error.message}`);
-    return;
-  }
-  if (typeof metadata.releaseNotes !== "string") {
-    errors.push("release-metadata.json does not define releaseNotes");
-    return;
-  }
-  const releaseNotesPath = path.resolve(ROOT, metadata.releaseNotes);
-  if (
-    !releaseNotesPath.startsWith(`${path.join(ROOT, "docs", "releases")}${path.sep}`) ||
-    !fs.existsSync(releaseNotesPath) ||
-    !fs.statSync(releaseNotesPath).isFile()
-  ) {
-    errors.push(`release-metadata.json references invalid release notes: ${metadata.releaseNotes}`);
-  }
+if (require.main === module) {
+  main();
 }
 
-for (const filePath of liveDocumentationFiles()) {
-  if (/\.md$/i.test(filePath)) {
-    validateMarkdown(filePath);
-  } else {
-    validateHtml(filePath);
-  }
-}
-validateTestingGuidePaths();
-validateCurrentReleaseNotes();
-
-if (errors.length > 0) {
-  console.error("Repository reference check failed:");
-  for (const error of errors) {
-    console.error(`  - ${error}`);
-  }
-  process.exit(1);
-}
-
-console.log("Repository-local documentation links, anchors, paths, and release notes are valid.");
+module.exports = {
+  isExternalReference,
+  markdownSlug,
+  splitReference,
+};

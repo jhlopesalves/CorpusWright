@@ -20,6 +20,7 @@ use crate::text::tokenisation::{TokenizationConfig, visit_tokens};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::OnceLock;
 use ts_rs::TS;
 
 const CONCORDANCE_COLLOCATION_DEFAULT_SPAN: usize = 5;
@@ -30,6 +31,8 @@ const CONCORDANCE_COLLOCATION_MAX_LIMIT: usize = 500;
 pub const CONCORDANCE_MAX_COMBINED_BYTES_ENV: &str = "CORPUSWRIGHT_CONCORDANCE_MAX_COMBINED_BYTES";
 pub const DEFAULT_CONCORDANCE_MAX_COMBINED_BYTES: u64 = 1_610_612_736;
 pub const DEFAULT_CONCORDANCE_ANALYSIS_SAFETY_MARGIN_BYTES: u64 = 268_435_456;
+
+static DEFAULT_ANALYSIS_MEMORY_LIMITS: OnceLock<ConcordanceAnalysisMemoryLimits> = OnceLock::new();
 
 /// Bounds the two large concordance-owned analysis structures.
 ///
@@ -44,6 +47,19 @@ pub struct ConcordanceAnalysisMemoryLimits {
 
 impl Default for ConcordanceAnalysisMemoryLimits {
     fn default() -> Self {
+        *DEFAULT_ANALYSIS_MEMORY_LIMITS.get_or_init(Self::from_environment)
+    }
+}
+
+impl ConcordanceAnalysisMemoryLimits {
+    pub const fn conservative() -> Self {
+        Self {
+            max_combined_bytes: DEFAULT_CONCORDANCE_MAX_COMBINED_BYTES,
+            safety_margin_bytes: DEFAULT_CONCORDANCE_ANALYSIS_SAFETY_MARGIN_BYTES,
+        }
+    }
+
+    pub fn from_environment() -> Self {
         let max_combined_bytes = std::env::var(CONCORDANCE_MAX_COMBINED_BYTES_ENV)
             .ok()
             .and_then(|value| value.parse::<u64>().ok())
@@ -53,6 +69,11 @@ impl Default for ConcordanceAnalysisMemoryLimits {
             max_combined_bytes,
             safety_margin_bytes: DEFAULT_CONCORDANCE_ANALYSIS_SAFETY_MARGIN_BYTES,
         }
+    }
+
+    /// Installs the product runtime's already-validated defaults before work begins.
+    pub fn install_as_default(self) -> Result<(), Self> {
+        DEFAULT_ANALYSIS_MEMORY_LIMITS.set(self)
     }
 }
 

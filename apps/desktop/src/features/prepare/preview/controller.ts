@@ -4,7 +4,7 @@
  * File-list and Search report changes through this boundary. Source and processed panes share one
  * preview generation so they cannot present evidence from different corpus states.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../ipc";
 
 import { dom } from "../../../app/dom";
 import { renderVisibleItems } from "../corpus/file-list";

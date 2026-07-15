@@ -1,5 +1,5 @@
 import { dom } from "./dom.ts";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./system-ipc.ts";
 
 export const APPEARANCE_STORAGE_KEY = "corpuswright.appearance.v1";
 

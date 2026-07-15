@@ -963,12 +963,20 @@ mod tests {
     #[test]
     fn exhaustive_pdf_preview_is_not_limited_to_five_thousand_characters() {
         let dir = tempdir().unwrap();
-        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests")
-            .join("fixtures")
-            .join("pdfs")
-            .join("bert.pdf");
-        fs::copy(fixture, dir.path().join("bert.pdf")).unwrap();
+        let mut lines = (0..120)
+            .map(|index| {
+                format!(
+                    "Synthetic evidence line {index:03} repeats amber quartz tokens for deterministic preview length."
+                )
+            })
+            .collect::<Vec<_>>();
+        lines.push("LATE_SYNTHETIC_MARKER remains removable after the preview boundary.".into());
+        let line_refs = lines.iter().map(String::as_str).collect::<Vec<_>>();
+        fs::write(
+            dir.path().join("long-synthetic.pdf"),
+            corpuswright_test_support::born_digital_pdf_bytes(&line_refs).unwrap(),
+        )
+        .unwrap();
         let report = scan_directory(dir.path()).unwrap();
         let options = PreviewOptions {
             max_chars_per_file: None,

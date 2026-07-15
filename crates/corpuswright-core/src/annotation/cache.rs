@@ -11,11 +11,18 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
+use std::sync::OnceLock;
 use std::time::Instant;
 
 pub const ANNOTATION_LAYER_SCHEMA_VERSION: u32 = 1;
 pub const ANNOTATION_LAYER_CACHE_FILE_VERSION: u32 = 2;
 const VERIFY_CACHE_WRITE_ENV: &str = "CORPUSWRIGHT_VERIFY_CACHE_WRITE";
+static VERIFY_CACHE_WRITE_SETTING: OnceLock<bool> = OnceLock::new();
+
+/// Installs the product runtime's already-validated cache verification setting.
+pub fn install_cache_write_verification(enabled: bool) -> Result<(), bool> {
+    VERIFY_CACHE_WRITE_SETTING.set(enabled)
+}
 
 #[cfg(test)]
 static VERIFY_CACHE_WRITE_OVERRIDE: std::sync::atomic::AtomicU8 =
@@ -115,6 +122,13 @@ pub(crate) struct LemmaTableDto {
     pub entries: Vec<String>,
 }
 
+/// Exercises the owned cache-envelope parser without exposing its persistence representation.
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub fn fuzz_annotation_cache_envelope(bytes: &[u8]) {
+    let _ = serde_json::from_slice::<AnnotationLayerCacheEnvelope>(bytes);
+}
+
 impl From<&LemmaTable> for LemmaTableDto {
     fn from(table: &LemmaTable) -> Self {
         Self {
@@ -182,7 +196,8 @@ fn verify_cache_write_enabled() -> bool {
         _ => {}
     }
 
-    std::env::var(VERIFY_CACHE_WRITE_ENV).as_deref() == Ok("1")
+    *VERIFY_CACHE_WRITE_SETTING
+        .get_or_init(|| std::env::var(VERIFY_CACHE_WRITE_ENV).as_deref() == Ok("1"))
 }
 
 /// Constructs the full AnnotationManifest for a given corpus analysis and options.

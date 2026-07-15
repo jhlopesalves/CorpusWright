@@ -1,6 +1,11 @@
 [workspace]
-members = ["crates/corpuswright-core", "apps/desktop/src-tauri"]
-exclude = ["legacy/pyside/rust_preview"]
+members = [
+    "crates/corpuswright-core",
+    "crates/corpuswright-test-support",
+    "crates/corpuswright-xtask",
+    "apps/desktop/src-tauri",
+]
+exclude = ["legacy/pyside/rust_preview", "fuzz"]
 resolver = "2"
 
 [workspace.package]
@@ -8,6 +13,7 @@ edition = "2024"
 authors = ["Jhonatan Lopes <jhlopesalves@gmail.com>"]
 repository = "https://github.com/jhlopesalves/corpuswright"
 rust-version = "1.85"
+license = "MIT"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

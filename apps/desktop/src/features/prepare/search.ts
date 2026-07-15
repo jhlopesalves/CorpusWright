@@ -4,7 +4,7 @@
  * Search uses the active cleaning configuration and corpus version, while Preview owns rendering
  * and rejection of responses from earlier selections.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./ipc";
 
 import {
   dom,

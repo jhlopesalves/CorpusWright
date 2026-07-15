@@ -58,7 +58,7 @@ pub(crate) fn scan_directory_command(
     let version = {
         let mut inner = corpus_state.inner.write().unwrap();
         inner.load(Some(PathBuf::from(&path)), report.files.clone());
-        inner.version
+        inner.version.into_ipc()
     };
     Ok(CorpusLoadResult {
         report,
@@ -86,7 +86,7 @@ pub(crate) fn load_files_command(
     let version = {
         let mut inner = corpus_state.inner.write().unwrap();
         inner.load(None, report.files.clone());
-        inner.version
+        inner.version.into_ipc()
     };
     Ok(CorpusLoadResult {
         report,
@@ -114,7 +114,7 @@ pub(crate) fn load_project_source_records_command(
     let version = {
         let mut inner = corpus_state.inner.write().unwrap();
         inner.load(Some(report.root.clone()), report.files.clone());
-        inner.version
+        inner.version.into_ipc()
     };
     Ok(ProjectCorpusLoadResult {
         summary: report.summary,

@@ -22,6 +22,26 @@ licences.
   release asset, archive checksum, and extracted-library checksum for Windows
   x64, Linux x64, macOS x64, and macOS arm64
 
+## Ocrs pre-trained OCR models
+
+- **Component:** Ocrs text-detection and text-recognition RTen models
+- **Source:** `https://github.com/robertknight/ocrs`, release `ocrs-v0.12.2`
+  (commit `2dbc1f840e47d45630ef6060499138bf597a9f65`)
+- **Training source:** `https://github.com/robertknight/ocrs-models`; the model
+  card identifies HierText and synthetic training data
+- **Licence:** Creative Commons Attribution-ShareAlike 4.0 International
+  (CC BY-SA 4.0)
+- **Attribution:** Ocrs pre-trained models by Robert Knight
+- **Detection model SHA-256:**
+  `f15cfb56bd02c4bf478a20343986504a1f01e1665c2b3a0ad66340f054b1b5ca`
+- **Recognition model SHA-256:**
+  `e484866d4cce403175bd8d00b128feb08ab42e208de30e42cd9889d8f1735a6e`
+- **Locations:** `apps/desktop/src-tauri/resources/ocr/text-detection.rten`
+  and `apps/desktop/src-tauri/resources/ocr/text-recognition.rten`
+- **Reproducibility manifest:** `third-party/ocr-models.json` records the
+  authoritative URLs, S3 version identifiers, ETags, sizes, checksums, and
+  exact upstream refs
+
 ## UDPipe Universal Dependencies 2.1 models
 
 - **Component:** UDPipe Universal Dependencies 2.1 models
@@ -56,6 +76,19 @@ licences.
 - **Model build attribution:** bnosac credits the `udpipe` R package, fastText
   word-vector work by Bojanowski, Grave, Joulin, and Mikolov, and the
   corresponding Universal Dependencies treebanks for the model builds.
+
+## Bundled fonts
+
+- **Components:** Application and website font files under
+  `apps/desktop/src/assets/fonts/` and `docs/assets/fonts/`
+- **Sources:** Google Fonts, Inter, IBM Plex, JetBrains Mono, Adobe Source Sans,
+  Adobe Source Serif, and SIL Gentium
+- **Licence:** SIL Open Font License 1.1
+- **Provenance manifest:** `third-party/fonts.json` records every bundled font's
+  SHA-256, exact upstream path, source repository, and immutable commit or
+  release
+- **Licence texts:** `third-party/fonts/licenses/` retains the applicable
+  upstream copyright, Reserved Font Name, and OFL terms
 
 ## stopwords-iso
 
