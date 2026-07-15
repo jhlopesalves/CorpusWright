@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "verifiedDate": "2026-07-14",
+  "component": "ocrs pre-trained text detection and recognition models",
+  "engine": {
+    "repository": "https://github.com/robertknight/ocrs",
+    "version": "0.12.2",
+    "tag": "ocrs-v0.12.2",
+    "commit": "2dbc1f840e47d45630ef6060499138bf597a9f65",
+    "modelDownloadScript": "ocrs/examples/download-models.sh"
+  },
+  "trainingSource": {
+    "repository": "https://github.com/robertknight/ocrs-models",
+    "commitReferencedByEngine": "3d98fc655d6fd4acddc06e7f5d60a55b55748a48",
+    "modelCardRepository": "https://huggingface.co/robertknight/ocrs",
+    "modelCardCommit": "df0edd170279ab971b53e094c627255a87e1a503",
+    "datasets": [
+      "HierText",
+      "synthetic data"
+    ]
+  },
+  "license": {
+    "spdx": "CC-BY-SA-4.0",
+    "attribution": "Ocrs pre-trained models by Robert Knight; trained on HierText and synthetic data.",
+    "redistribution": "Permitted under CC BY-SA 4.0 with attribution and ShareAlike obligations."
+  },
+  "files": [
+    {
+      "path": "apps/desktop/src-tauri/resources/ocr/text-detection.rten",
+      "sourceUrl": "https://ocrs-models.s3-accelerate.amazonaws.com/text-detection.rten",
+      "s3VersionId": "qHssUV9J43lyTc2eP9hCekFtSW1cUUZ6",
+      "etag": "b641e0e4a565fc9bddd047da5452dda7",
+      "bytes": 2510284,
+      "sha256": "f15cfb56bd02c4bf478a20343986504a1f01e1665c2b3a0ad66340f054b1b5ca"
+    },
+    {
+      "path": "apps/desktop/src-tauri/resources/ocr/text-recognition.rten",
+      "sourceUrl": "https://ocrs-models.s3-accelerate.amazonaws.com/text-recognition.rten",
+      "s3VersionId": "tzqkE445s8OoMD_yESVj7DNdD7eQa9X0",
+      "etag": "77765e7fc69c0bddad9ebf5bbc3e778d",
+      "bytes": 9716568,
+      "sha256": "e484866d4cce403175bd8d00b128feb08ab42e208de30e42cd9889d8f1735a6e"
+    }
+  ]
+}
