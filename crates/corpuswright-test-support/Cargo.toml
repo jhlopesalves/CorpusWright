@@ -7,7 +7,7 @@ license = { workspace = true }
 publish = false
 
 [dependencies]
-lopdf = "0.42.0"
+lopdf = "0.44.0"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tempfile = "3.10"

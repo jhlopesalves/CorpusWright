@@ -27,7 +27,7 @@ unicode-segmentation = "=1.13.3"
 html2text = "0.13"
 zip = "8.6.0"
 quick-xml = "0.41.0"
-lopdf = "0.42.0"
+lopdf = "0.44.0"
 rayon = { workspace = true }
 pdfium-render = "0.9.1"
 ocrs = "0.12.2"
