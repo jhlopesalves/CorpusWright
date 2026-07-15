@@ -38,10 +38,10 @@ jobs:
 
     steps:
       - name: Checkout selected commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -154,7 +154,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Build Tauri artifacts and update draft prerelease
-        uses: tauri-apps/tauri-action@v0.6.2
+        uses: tauri-apps/tauri-action@v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_SIGNING_IDENTITY: ${{ matrix.platform == 'macos-latest' && '-' || '' }}

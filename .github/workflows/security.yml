@@ -13,10 +13,10 @@ jobs:
   dependency-and-policy:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-deny
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -28,7 +28,7 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
       - uses: taiki-e/install-action@cargo-fuzz
       - name: Run bounded parser fuzz smoke
@@ -36,7 +36,7 @@ jobs:
           cargo fuzz run --codegen-units 16 source_parsers -- -max_total_time=45
           cargo fuzz run --codegen-units 16 persistent_state -- -max_total_time=45
           cargo fuzz run --codegen-units 16 tokenisation -- -max_total_time=30
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: fuzz-crash-artifacts
