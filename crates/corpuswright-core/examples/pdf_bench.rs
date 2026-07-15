@@ -1,8 +1,9 @@
 use corpuswright_core::sources::pdf::ocr::init_pdfium;
 use lopdf::Document;
 use pdfium_render::prelude::*;
+use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 #[derive(Clone, Debug)]
@@ -15,6 +16,12 @@ struct CharInfo {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let artifact_dir = env::args_os()
+        .nth(1)
+        .map(PathBuf::from)
+        .ok_or("usage: cargo run -p corpuswright-core --example pdf_bench -- <output-directory>")?;
+    fs::create_dir_all(&artifact_dir)?;
+
     let possible_paths = vec![
         Path::new(".local-corpora/pdf-benchmarks").to_path_buf(),
         Path::new("../../.local-corpora/pdf-benchmarks").to_path_buf(),
@@ -56,10 +63,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     };
-
-    let artifact_dir = Path::new(
-        "C:/Users/jhonm/.gemini/antigravity-ide/brain/04c58a98-8503-4862-b308-7375810882a5",
-    );
 
     for path in &paths {
         let filename = path.file_name().unwrap().to_string_lossy();

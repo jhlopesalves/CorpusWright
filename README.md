@@ -20,9 +20,6 @@ CorpusWright is an experimental alpha.
 
 The preparation workflow and the first analysis and exploration tools are usable, but the application is still changing quickly. Expect rough edges and possible project-format changes between alpha releases.
 
-Developer setup, testing, and repository checks are documented in
-[`docs/contributing/testing.md`](docs/contributing/testing.md).
-
 ## License
 
 CorpusWright is released under the [MIT License](LICENSE).
