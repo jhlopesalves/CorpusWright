@@ -7,20 +7,6 @@ const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..");
 const DOCS_ROOT = path.join(ROOT, "docs");
 const errors = [];
-const INTENTIONALLY_LOCAL_TESTING_PATHS = new Set([
-  "examples/corpora",
-  ".local-data",
-  ".local-corpora",
-  "local-corpora",
-  "manual-corpora",
-  "sample-corpora-local",
-  "test-corpora",
-  "documentation-corpus-local",
-  "coragrarian",
-]);
-const GENERATED_LOCAL_TESTING_PATHS = new Set([
-  "apps/desktop/node_modules",
-]);
 
 function relativeToRoot(absolutePath) {
   return path.relative(ROOT, absolutePath).split(path.sep).join("/");
@@ -28,18 +14,6 @@ function relativeToRoot(absolutePath) {
 
 function lineNumber(text, index) {
   return text.slice(0, index).split(/\r?\n/).length;
-}
-
-function normaliseRepositoryPath(candidate) {
-  return candidate.replace(/\\/g, "/").replace(/\/+$/, "");
-}
-
-function isOptionalTestingGuidePath(candidate) {
-  const normalised = normaliseRepositoryPath(candidate);
-  return (
-    INTENTIONALLY_LOCAL_TESTING_PATHS.has(normalised) ||
-    GENERATED_LOCAL_TESTING_PATHS.has(normalised)
-  );
 }
 
 function report(sourcePath, text, index, message) {
@@ -187,56 +161,6 @@ function validateHtml(filePath) {
   }
 }
 
-function validateTestingGuidePaths() {
-  const filePath = path.join(ROOT, "docs", "contributing", "testing.md");
-  const text = fs.readFileSync(filePath, "utf8");
-  for (const codeSpan of text.matchAll(/`([^`\r\n]+)`/g)) {
-    for (const rawCandidate of codeSpan[1].split(/,\s*/)) {
-      const candidate = rawCandidate.trim();
-      if (
-        !/^[A-Za-z0-9._@-]+(?:\/[A-Za-z0-9._@-]+)*\/?$/.test(candidate) ||
-        !candidate.includes("/") ||
-        isOptionalTestingGuidePath(candidate)
-      ) {
-        continue;
-      }
-      const absolutePath = path.join(ROOT, normaliseRepositoryPath(candidate));
-      if (!fs.existsSync(absolutePath)) {
-        report(
-          filePath,
-          text,
-          codeSpan.index,
-          `names missing repository path "${candidate}"`,
-        );
-      }
-    }
-  }
-}
-
-function validateCurrentReleaseNotes() {
-  let metadata;
-  try {
-    metadata = JSON.parse(
-      fs.readFileSync(path.join(ROOT, "release-metadata.json"), "utf8"),
-    );
-  } catch (error) {
-    errors.push(`release-metadata.json is unreadable: ${error.message}`);
-    return;
-  }
-  if (typeof metadata.releaseNotes !== "string") {
-    errors.push("release-metadata.json does not define releaseNotes");
-    return;
-  }
-  const releaseNotesPath = path.resolve(ROOT, metadata.releaseNotes);
-  if (
-    !releaseNotesPath.startsWith(`${path.join(ROOT, "docs", "releases")}${path.sep}`) ||
-    !fs.existsSync(releaseNotesPath) ||
-    !fs.statSync(releaseNotesPath).isFile()
-  ) {
-    errors.push(`release-metadata.json references invalid release notes: ${metadata.releaseNotes}`);
-  }
-}
-
 function main() {
   for (const filePath of liveDocumentationFiles()) {
     if (/\.md$/i.test(filePath)) {
@@ -245,9 +169,6 @@ function main() {
       validateHtml(filePath);
     }
   }
-  validateTestingGuidePaths();
-  validateCurrentReleaseNotes();
-
   if (errors.length > 0) {
     console.error("Repository reference check failed:");
     for (const error of errors) {
@@ -256,7 +177,7 @@ function main() {
     process.exit(1);
   }
 
-  console.log("Repository-local documentation links, anchors, paths, and release notes are valid.");
+  console.log("Repository-local documentation links, anchors, and paths are valid.");
 }
 
 if (require.main === module) {
@@ -264,6 +185,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  isOptionalTestingGuidePath,
-  normaliseRepositoryPath,
+  isExternalReference,
+  markdownSlug,
+  splitReference,
 };

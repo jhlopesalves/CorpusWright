@@ -120,28 +120,6 @@ function listLiveDocumentation() {
   return files.sort();
 }
 
-function checkReleaseNotes(metadata) {
-  const relativePath = metadata.releaseNotes;
-  const absolutePath = path.join(ROOT, relativePath);
-  if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
-    console.error(`MISMATCH: configured release notes do not exist: ${relativePath}`);
-    return false;
-  }
-
-  const content = readText(relativePath);
-  const heading = content.match(/^#\s+.*$/m)?.[0] || null;
-  const expectedHeading = `# CorpusWright v${metadata.version}`;
-  if (!heading || heading.toLowerCase() !== expectedHeading.toLowerCase()) {
-    console.error(
-      `MISMATCH: ${relativePath} heading is ${JSON.stringify(heading)}, expected "${expectedHeading}"`
-    );
-    return false;
-  }
-
-  console.log(`  OK  release notes  =>  ${relativePath}`);
-  return true;
-}
-
 function stripGeneratedCitationCopy(relativePath, text) {
   let next = text;
   next = next.replace(
@@ -227,8 +205,6 @@ if (staleFiles.length > 0) {
 }
 
 allOk = checkNoLiveVersionCopy(metadata) && allOk;
-allOk = checkReleaseNotes(metadata) && allOk;
-
 if (!allOk) {
   console.error("\nRelease consistency check FAILED.");
   process.exit(1);

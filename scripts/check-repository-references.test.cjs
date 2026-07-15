@@ -4,22 +4,29 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
-  isOptionalTestingGuidePath,
-  normaliseRepositoryPath,
+  isExternalReference,
+  markdownSlug,
+  splitReference,
 } = require("./check-repository-references.cjs");
 
-test("clean checkout may omit generated frontend dependencies", () => {
-  assert.equal(isOptionalTestingGuidePath("apps/desktop/node_modules"), true);
-  assert.equal(isOptionalTestingGuidePath("apps/desktop/node_modules/"), true);
+test("external documentation references are not resolved as repository paths", () => {
+  assert.equal(isExternalReference("https://example.com/guide.md"), true);
+  assert.equal(isExternalReference("mailto:security@example.com"), true);
+  assert.equal(isExternalReference("../SECURITY.md"), false);
 });
 
-test("testing-guide path normalisation removes only trailing separators", () => {
-  assert.equal(normaliseRepositoryPath("apps/desktop/node_modules/"), "apps/desktop/node_modules");
-  assert.equal(normaliseRepositoryPath("apps/desktop/src"), "apps/desktop/src");
+test("references split local targets from anchors and queries", () => {
+  assert.deepEqual(splitReference("guide.html#details"), {
+    target: "guide.html",
+    anchor: "details",
+  });
+  assert.deepEqual(splitReference("guide.html?mode=print"), {
+    target: "guide.html",
+    anchor: "",
+  });
 });
 
-test("genuine repository paths remain required", () => {
-  assert.equal(isOptionalTestingGuidePath("apps/desktop/src"), false);
-  assert.equal(isOptionalTestingGuidePath("crates/corpuswright-core"), false);
-  assert.equal(isOptionalTestingGuidePath("arbitrary/missing/path"), false);
+test("Markdown headings use deterministic repository anchors", () => {
+  assert.equal(markdownSlug("Public Markdown policy"), "public-markdown-policy");
+  assert.equal(markdownSlug("OCR & PDFium"), "ocr-pdfium");
 });

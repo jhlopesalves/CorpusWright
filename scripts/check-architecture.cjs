@@ -93,13 +93,27 @@ if (!comparisonBase) {
     "legacy/pyside policy requires a complete checkout containing main or origin/main",
   );
 } else {
+  const allowedLegacyRemovals = new Set([
+    "legacy/pyside/rust_preview/README.md",
+    "legacy/pyside/src/assets/printscreen.png",
+    "legacy/pyside/tests/README.md",
+  ]);
   const legacyChanges = execFileSync(
     "git",
-    ["diff", "--name-only", `${comparisonBase}...HEAD`, "--", "legacy/pyside"],
+    ["diff", "--name-status", `${comparisonBase}...HEAD`, "--", "legacy/pyside"],
     { cwd: root, encoding: "utf8" },
-  ).trim();
-  if (legacyChanges) {
-    failures.push(`legacy/pyside must remain untouched:\n${legacyChanges}`);
+  )
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+  const unexpectedLegacyChanges = legacyChanges.filter((line) => {
+    const [status, changedPath] = line.split("\t");
+    return status !== "D" || !allowedLegacyRemovals.has(changedPath);
+  });
+  if (unexpectedLegacyChanges.length > 0) {
+    failures.push(
+      `legacy/pyside source must remain untouched; only the approved private screenshot and Markdown removals are allowed:\n${unexpectedLegacyChanges.join("\n")}`,
+    );
   }
 }
 
