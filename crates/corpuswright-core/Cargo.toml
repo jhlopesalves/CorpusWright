@@ -21,7 +21,7 @@ regex = "1.12.3"
 rust-stemmers = "1.2.0"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-sha2 = "0.10"
+sha2 = "0.11"
 unicode-normalization = "0.1.25"
 unicode-segmentation = "=1.13.3"
 html2text = "0.13"
