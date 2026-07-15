@@ -36,3 +36,36 @@ export function normaliseProjectDescription(value: string): string | null {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
+
+export interface ProjectCreationMetadataElements {
+  name: HTMLInputElement;
+  language: HTMLSelectElement;
+  confirm: HTMLButtonElement;
+  cancel: HTMLButtonElement;
+  status: HTMLElement;
+}
+
+/** Binds the real metadata controls while leaving request construction with the controller. */
+export function bindProjectCreationMetadataControls(
+  elements: ProjectCreationMetadataElements,
+  onSubmit: () => void,
+  onCancel: () => void,
+): void {
+  const sync = () => {
+    elements.confirm.disabled = !projectCreationMetadataIsValid({
+      name: elements.name.value,
+      language: elements.language.value,
+    });
+  };
+  elements.name.addEventListener("input", sync);
+  elements.language.addEventListener("change", sync);
+  elements.cancel.addEventListener("click", onCancel);
+  elements.confirm.addEventListener("click", () => {
+    if (elements.confirm.disabled) {
+      elements.status.textContent = "Project name and language are required.";
+      return;
+    }
+    onSubmit();
+  });
+  sync();
+}

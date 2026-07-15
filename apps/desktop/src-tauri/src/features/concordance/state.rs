@@ -1,16 +1,16 @@
+use crate::runtime::cancellation::ActiveCancellation;
+use crate::runtime::identity::{IndexIdentity, ProjectRootIdentity};
 use corpuswright_core::analysis::{
     AnalysisDocumentSelection, ConcordanceCollocationAggregate,
     ConcordanceCollocationAggregationSignature, ConcordanceSearchContext,
 };
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConcordanceCollocationCacheKey {
-    pub(crate) corpus_version: u64,
-    pub(crate) project_root: Option<String>,
-    pub(crate) cleaning_config_signature: String,
+    pub(crate) index: IndexIdentity,
+    pub(crate) project_root: Option<ProjectRootIdentity>,
     pub(crate) selection: AnalysisDocumentSelection,
     pub(crate) aggregation: ConcordanceCollocationAggregationSignature,
 }
@@ -58,8 +58,7 @@ impl ConcordanceCollocationCache {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConcordanceIndexContextKey {
-    pub(crate) corpus_version: u64,
-    pub(crate) cleaning_config_signature: String,
+    pub(crate) index: IndexIdentity,
 }
 
 pub(crate) struct ConcordanceIndexContextEntry {
@@ -84,7 +83,7 @@ pub(crate) struct ConcordanceIndexContextCache {
     pub(crate) entry: Option<ConcordanceIndexContextEntry>,
     pub(crate) default_index_failure: Option<ConcordanceDefaultIndexFailure>,
     pub(crate) cache_root: Option<PathBuf>,
-    pub(crate) cancel: Mutex<Option<Arc<AtomicBool>>>,
+    pub(crate) cancel: ActiveCancellation,
 }
 
 pub(crate) type ConcordanceIndexContextHandle = Arc<Mutex<ConcordanceIndexContextCache>>;
@@ -100,7 +99,7 @@ impl ConcordanceIndexContextState {
                 entry: None,
                 default_index_failure: None,
                 cache_root,
-                cancel: Mutex::new(None),
+                cancel: ActiveCancellation::new(),
             })),
         }
     }
@@ -180,9 +179,8 @@ mod tests {
         case_sensitive: bool,
     ) -> ConcordanceCollocationCacheKey {
         ConcordanceCollocationCacheKey {
-            corpus_version,
-            project_root: Some("project".to_string()),
-            cleaning_config_signature: "cleaning-v1".to_string(),
+            index: IndexIdentity::from_ipc(corpus_version, "cleaning-v1"),
+            project_root: Some(ProjectRootIdentity::new("project")),
             selection,
             aggregation: ConcordanceCollocationAggregationSignature {
                 query: query.to_string(),
@@ -240,9 +238,8 @@ mod tests {
         let aggregation =
             concordance_collocation_aggregation_signature(query, &tokenization_config).unwrap();
         let cache_key = ConcordanceCollocationCacheKey {
-            corpus_version: 7,
-            project_root: Some("project".to_string()),
-            cleaning_config_signature: "cleaning-v1".to_string(),
+            index: IndexIdentity::from_ipc(7, "cleaning-v1"),
+            project_root: Some(ProjectRootIdentity::new("project")),
             selection: query.selection.clone(),
             aggregation: aggregation.clone(),
         };
@@ -266,10 +263,11 @@ mod tests {
 
         assert!(cache.get(&key).is_some());
         let mut other_project = key.clone();
-        other_project.project_root = Some("other-project".to_string());
+        other_project.project_root = Some(ProjectRootIdentity::new("other-project"));
         assert!(cache.get(&other_project).is_none());
         let mut other_cleaning = key.clone();
-        other_cleaning.cleaning_config_signature = "cleaning-v2".to_string();
+        other_cleaning.index.cleaning =
+            crate::runtime::identity::CleaningConfigSignature::new("cleaning-v2");
         assert!(cache.get(&other_cleaning).is_none());
         assert!(
             cache

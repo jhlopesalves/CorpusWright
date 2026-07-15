@@ -1,0 +1,95 @@
+[graph]
+all-features = true
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+  "aarch64-apple-darwin",
+]
+
+[advisories]
+version = 2
+yanked = "deny"
+unmaintained = "all"
+ignore = [
+  # quick-xml 0.39.4 via Tauri/plist: RUSTSEC-2026-0194 and -0195. It parses trusted
+  # application plist/configuration data, not imported documents; the owned DOCX boundary uses
+  # quick-xml >=0.41. Owner: project maintainer. Remove when Tauri/plist updates, or review by
+  # 2026-10-01.
+  "RUSTSEC-2026-0194",
+  "RUSTSEC-2026-0195",
+
+  # proc-macro-error and paste: RUSTSEC-2024-0370 and -0436. These are compile-time transitive
+  # macro helpers and are not present as document-processing code at runtime. Owner: project
+  # maintainer. Remove with their upstream dependency or review by 2026-10-01.
+  "RUSTSEC-2024-0370",
+  "RUSTSEC-2024-0436",
+
+  # Tauri's required GTK3 stack: gdkwayland-sys, gdk, atk, gdkx11-sys, gtk, atk-sys, gdkx11,
+  # gdk-sys, gtk3-macros, and gtk-sys (RUSTSEC-2024-0411 through -0420). These advisories record
+  # maintenance status rather than a known exploit; exposure is the Linux UI runtime. Owner:
+  # project maintainer. Migrate when Tauri supports a maintained GTK stack, or review by 2026-10-01.
+  "RUSTSEC-2024-0411",
+  "RUSTSEC-2024-0412",
+  "RUSTSEC-2024-0413",
+  "RUSTSEC-2024-0414",
+  "RUSTSEC-2024-0415",
+  "RUSTSEC-2024-0416",
+  "RUSTSEC-2024-0417",
+  "RUSTSEC-2024-0418",
+  "RUSTSEC-2024-0419",
+  "RUSTSEC-2024-0420",
+
+  # Tauri urlpattern's rust-unic chain: unic-char-range, unic-common, unic-char-property,
+  # unic-ucd-version, and unic-ucd-ident (RUSTSEC-2025-0075, -0080, -0081, -0098, -0100).
+  # These are maintenance advisories with URL-pattern parsing exposure, not known vulnerabilities.
+  # Owner: project maintainer. Remove with the Tauri/urlpattern update or review by 2026-10-01.
+  "RUSTSEC-2025-0075",
+  "RUSTSEC-2025-0080",
+  "RUSTSEC-2025-0081",
+  "RUSTSEC-2025-0098",
+  "RUSTSEC-2025-0100",
+
+  # ttf-parser via lopdf: RUSTSEC-2026-0192. Imported PDFs may exercise font parsing, but this is
+  # a maintenance-status advisory without a safe upgrade; the actual lopdf nesting vulnerability
+  # is fixed by pinning >=0.42. Owner: project maintainer. Remove when lopdf replaces ttf-parser or
+  # review by 2026-10-01.
+  "RUSTSEC-2026-0192",
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.93
+allow = [
+  "0BSD",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "bzip2-1.0.6",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "MIT-0",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

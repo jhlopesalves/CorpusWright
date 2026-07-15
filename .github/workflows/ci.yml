@@ -10,19 +10,18 @@ concurrency:
 
 jobs:
   release-consistency:
-    name: Release metadata consistency
+    name: Repository and release policy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Check release metadata
-        run: node scripts/check-release-consistency.cjs
-      - name: Check repository references
-        run: node scripts/check-repository-references.cjs
-      - name: Check PDFium provenance
-        run: node scripts/check-pdfium.cjs
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run canonical repository and release preflight
+        run: cargo xtask release-preflight
 
   rust-core:
     name: Rust core (corpuswright-core)
@@ -36,36 +35,10 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Check formatting
-        run: cargo fmt --all --check
-      - name: Run clippy
-        run: cargo clippy -p corpuswright-core --all-targets -- -D warnings
       - name: Install PDFium for tests
         run: node scripts/fetch-pdfium.cjs linux-x64 --output-dir apps/desktop/src-tauri/resources/ocr
-      - name: Run tests
-        run: cargo test -p corpuswright-core
-      - name: Check generated TypeScript bindings are up to date
-        run: |
-          echo "::group::Regenerating TypeScript bindings"
-          cargo run -p corpuswright-core --example export_ts
-          echo "::endgroup::"
-
-          echo "::group::Checking for stale generated files"
-          if [ -n "$(git status --porcelain -- apps/desktop/src/generated/)" ]; then
-            echo "ERROR: Generated TypeScript bindings are out of date."
-            echo ""
-            echo "Run the following command locally and commit the updated files:"
-            echo "  cargo run -p corpuswright-core --example export_ts"
-            echo ""
-            echo "Changed generated files:"
-            git status --short -- apps/desktop/src/generated/
-            echo ""
-            echo "Diff:"
-            git diff -- apps/desktop/src/generated/
-            exit 1
-          fi
-          echo "Generated TypeScript bindings are up to date."
-          echo "::endgroup::"
+      - name: Run canonical core checks and generated-binding drift test
+        run: cargo xtask check --scope core
 
   tauri-check:
     name: Tauri check (corpuswright-desktop)
@@ -80,12 +53,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Check Tauri crate
-        run: cargo check -p corpuswright-desktop --all-targets
-      - name: Run clippy on Tauri crate
-        run: cargo clippy -p corpuswright-desktop --all-targets -- -D warnings
-      - name: Run Tauri tests
-        run: cargo test -p corpuswright-desktop
+      - name: Run canonical desktop checks
+        run: cargo xtask check --scope desktop
 
   frontend:
     name: Frontend (Vite + TypeScript)
@@ -97,9 +66,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
-      - name: Install dependencies
-        working-directory: apps/desktop
-        run: npm ci
-      - name: Check frontend
-        working-directory: apps/desktop
-        run: npm run check
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install dependencies and run canonical frontend checks
+        run: cargo xtask check --scope frontend --fresh-node

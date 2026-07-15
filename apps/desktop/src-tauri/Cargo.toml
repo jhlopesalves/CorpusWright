@@ -3,8 +3,12 @@ name = "corpuswright-desktop"
 version = "0.1.0-alpha.8"
 description = "CorpusWright — corpus preprocessing and cleaning desktop app"
 authors = { workspace = true }
+license = { workspace = true }
 edition = { workspace = true }
 publish = false
+
+[features]
+native-smoke = []
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -25,3 +29,6 @@ corpuswright-core = { path = "../../../crates/corpuswright-core" }
 tauri-plugin-dialog = "2.7.1"
 rayon = { workspace = true }
 jiff = "0.2"
+
+[dev-dependencies]
+corpuswright-test-support = { path = "../../../crates/corpuswright-test-support" }

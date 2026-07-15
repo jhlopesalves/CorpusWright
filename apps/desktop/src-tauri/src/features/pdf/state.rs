@@ -1,12 +1,12 @@
+use crate::runtime::cancellation::ActiveCancellation;
 use corpuswright_core::preparation::cleaning::{PdfOcrQuality, PdfTextSource};
 use corpuswright_core::sources::pdf::PdfPageRangeResult;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
 pub(crate) struct PdfIntakeState {
-    pub(crate) cancel: Arc<AtomicBool>,
+    pub(crate) cancel: ActiveCancellation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

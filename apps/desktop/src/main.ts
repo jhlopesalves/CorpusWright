@@ -87,3 +87,10 @@ function init(): void {
 }
 
 document.addEventListener("DOMContentLoaded", init);
+
+if (import.meta.env.VITE_BROWSER_WORKFLOW === "1"
+  && new URLSearchParams(window.location.search).has("browser-workflow")) {
+  void import("./testing/browser-workflow").then(({ installBrowserWorkflowHarness }) => {
+    installBrowserWorkflowHarness();
+  });
+}

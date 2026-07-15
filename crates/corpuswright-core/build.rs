@@ -43,7 +43,9 @@ fn main() {
         .expect("unicode-segmentation must be present in Cargo.lock");
     println!("cargo:rustc-env=CORPUSWRIGHT_UNICODE_SEGMENTATION_VERSION={version}");
 
-    build_udpipe_pretokenised_bridge(Path::new(&manifest_dir), &lockfile);
+    if std::env::var_os("CARGO_FEATURE_NATIVE_ANNOTATION").is_some() {
+        build_udpipe_pretokenised_bridge(Path::new(&manifest_dir), &lockfile);
+    }
 }
 
 fn build_udpipe_pretokenised_bridge(manifest_dir: &Path, lockfile: &str) {

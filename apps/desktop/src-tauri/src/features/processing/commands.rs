@@ -19,7 +19,6 @@ use corpuswright_core::sources::cache::{
 };
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use tauri::{Emitter, Window};
 
 use super::project::{process_failure_reason, processed_text_path, records_for_project_processing};
@@ -255,24 +254,25 @@ pub(crate) fn scan_repeated_artifacts_command(
     } else {
         corpus.all_records_and_root(corpus_version)?.0
     };
-    // A previous cancellation must not leak into the next scan.
-    state.cancel.store(false, Ordering::Relaxed);
-    scan_repeated_artifacts_report_with_cancel_cache_and_progress(
+    let cancellation = state.cancel.begin();
+    let result = scan_repeated_artifacts_report_with_cancel_cache_and_progress(
         &records,
         &config,
         &cleaning_config,
         Some(&*cache),
-        &state.cancel,
+        &cancellation,
         |progress| {
             let _ = window.emit("repeated-artifact-scan-progress", progress);
         },
-    )
+    );
+    state.cancel.finish(&cancellation);
+    result
 }
 
 #[tauri::command(async)]
 pub(crate) fn cancel_repeated_artifacts_command(
     state: tauri::State<'_, ScanState>,
 ) -> Result<(), String> {
-    state.cancel.store(true, Ordering::Relaxed);
+    state.cancel.cancel();
     Ok(())
 }

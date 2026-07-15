@@ -1,7 +1,8 @@
+use crate::runtime::cancellation::ActiveCancellation;
+use crate::runtime::identity::AnalysisGeneration;
 use corpuswright_core::analysis::{AnalysisCorpus, CorpusOverview};
 use corpuswright_core::preparation::cleaning::CleaningConfig;
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -45,7 +46,7 @@ pub(crate) struct AnalysisBuildRequest {
 }
 
 pub(crate) struct AnalysisStateInner {
-    pub(crate) generation: u64,
+    pub(crate) generation: AnalysisGeneration,
     pub(crate) state: AnalysisBuildStateKind,
     pub(crate) progress: Option<AnalysisBuildProgressPayload>,
     pub(crate) error: Option<String>,
@@ -54,20 +55,20 @@ pub(crate) struct AnalysisStateInner {
 
 pub(crate) struct AnalysisState {
     pub(crate) inner: Arc<RwLock<AnalysisStateInner>>,
-    pub(crate) cancel: Arc<AtomicBool>,
+    pub(crate) cancel: ActiveCancellation,
 }
 
 impl AnalysisState {
     pub(crate) fn new() -> Self {
         Self {
             inner: Arc::new(RwLock::new(AnalysisStateInner {
-                generation: 0,
+                generation: AnalysisGeneration::default(),
                 state: AnalysisBuildStateKind::NotBuilt,
                 progress: None,
                 error: None,
                 corpus: None,
             })),
-            cancel: Arc::new(AtomicBool::new(false)),
+            cancel: ActiveCancellation::new(),
         }
     }
 
@@ -101,9 +102,9 @@ impl AnalysisState {
     }
 
     pub(crate) fn clear(&self) {
-        self.cancel.store(true, Ordering::Relaxed);
+        self.cancel.cancel();
         let mut inner = self.inner.write().unwrap();
-        inner.generation += 1;
+        inner.generation.advance();
         inner.state = AnalysisBuildStateKind::NotBuilt;
         inner.progress = None;
         inner.error = None;

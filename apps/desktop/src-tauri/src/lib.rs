@@ -5,13 +5,15 @@
 //! orchestration, progress events, and cache lifecycles.
 
 use corpuswright_core::sources::cache::ExtractionCache;
-use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 use tauri::Manager;
 use tauri::path::BaseDirectory;
 
 mod features;
+#[cfg(feature = "native-smoke")]
+mod native_smoke;
 mod platform;
+mod runtime;
 
 use features::analysis::annotation_state::AnnotationBuildState;
 use features::analysis::state::AnalysisState;
@@ -20,27 +22,39 @@ use features::corpus::scanning_state::ScanState;
 use features::corpus::state::{CorpusState, CorpusStateInner};
 use features::pdf::state::{PdfIntakeState, PdfPageRangeCache};
 use features::project;
+use runtime::cancellation::ActiveCancellation;
+use runtime::config::DesktopRuntimeConfig;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let runtime_config = DesktopRuntimeConfig::from_environment();
+    runtime_config.install();
+    let ocr_resource_override = runtime_config
+        .ocr_resource_override()
+        .map(ToOwned::to_owned);
+
     tauri::Builder::default()
+        .manage(runtime_config)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
+        .on_page_load(|webview, payload| {
+            #[cfg(feature = "native-smoke")]
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                native_smoke::start(webview.app_handle().clone());
+            }
+            #[cfg(not(feature = "native-smoke"))]
+            let _ = (webview, payload);
+        })
+        .setup(move |app| {
             let concordance_cache_root = app
                 .path()
                 .app_cache_dir()
                 .ok()
                 .map(|path| path.join("concordance"));
             app.manage(ConcordanceIndexContextState::new(concordance_cache_root));
-            if let Ok(pdfium_path) = app
-                .path()
-                .resolve("ocr/pdfium.dll", BaseDirectory::Resource)
-                && let Some(ocr_dir) = pdfium_path.parent()
-            {
-                let _ = corpuswright_core::sources::pdf::ocr::set_ocr_resource_dir(
-                    ocr_dir.to_path_buf(),
-                );
+            let packaged_ocr_dir = app.path().resolve("ocr", BaseDirectory::Resource).ok();
+            if let Some(ocr_dir) = ocr_resource_override.clone().or(packaged_ocr_dir) {
+                let _ = corpuswright_core::sources::pdf::ocr::set_ocr_resource_dir(ocr_dir);
             }
 
             #[cfg(target_os = "windows")]
@@ -55,10 +69,10 @@ pub fn run() {
             Ok(())
         })
         .manage(ScanState {
-            cancel: Arc::new(AtomicBool::new(false)),
+            cancel: ActiveCancellation::new(),
         })
         .manage(PdfIntakeState {
-            cancel: Arc::new(AtomicBool::new(false)),
+            cancel: ActiveCancellation::new(),
         })
         .manage(AnnotationBuildState::new())
         .manage(AnalysisState::new())

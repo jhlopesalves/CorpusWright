@@ -1,4 +1,4 @@
-import type { ConcordanceResult } from "../../api";
+import type { ConcordanceResult } from "../../ipc";
 import {
   CONCORDANCE_NO_HITS_MESSAGE,
   CONCORDANCE_NO_QUERY_MESSAGE,

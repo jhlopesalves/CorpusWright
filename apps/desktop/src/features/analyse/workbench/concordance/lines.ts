@@ -4,7 +4,7 @@ import {
   type ConcordanceResult,
   type ConcordanceRow,
   type ConcordanceSortKey,
-} from "../../api";
+} from "../../ipc";
 import {
   clampConcordancePageSize,
   clampConcordanceWindow,
