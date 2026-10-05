@@ -5,23 +5,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
-    content="Concepts overview: how to read the statistics CorpusWright reports, from dispersion and lexical diversity to Zipf, Heaps, and entropy.">
-  <title>Concepts - Overview - CorpusWright</title>
+    content="Methods and measures: how to read the statistics CorpusWright reports, from dispersion and lexical diversity to Zipf, Heaps, and entropy.">
+  <title>Methods &amp; measures · CorpusWright</title>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="CorpusWright">
-  <meta property="og:title" content="Concepts - Overview - CorpusWright">
-  <meta property="og:description" content="Concepts overview: how to read the statistics CorpusWright reports.">
+  <meta property="og:title" content="Methods &amp; measures · CorpusWright">
+  <meta property="og:description" content="Methods and measures: how to read the statistics CorpusWright reports.">
   <meta property="og:url" content="https://jhlopesalves.github.io/CorpusWright/concepts/overview.html">
   <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Concepts - Overview - CorpusWright">
-  <meta name="twitter:description" content="Concepts overview: how to read the statistics CorpusWright reports.">
+  <meta name="twitter:title" content="Methods &amp; measures · CorpusWright">
+  <meta name="twitter:description" content="Methods and measures: how to read the statistics CorpusWright reports.">
   <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
   <link rel="stylesheet" href="../assets/site.css">
   <link rel="icon" href="../assets/icon.png">
   <script>
     (function () {
-      const savedTheme = localStorage.getItem('theme');
+      let savedTheme;
+      try { savedTheme = localStorage.getItem('theme'); } catch { /* Use the system theme when storage is unavailable. */ }
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
     })();
@@ -42,25 +43,17 @@
 </head>
 
 <body>
+  <a class="skip-link" href="#top">Skip to content</a>
   <header class="site-header">
     <div class="shell nav">
       <a class="brand" href="../index.html"><img class="mark" src="../assets/icon-32.png" alt="" width="28" height="28">
         CorpusWright</a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="../quick-start.html">Quick Start</a>
-        <a href="overview.html" aria-current="page">Concepts</a>
-        <a href="../roadmap.html">Roadmap</a>
-        <a href="../technical-docs.html">Docs</a>
+        <a href="../quick-start.html">Guide</a>
+        <a aria-current="page" href="overview.html">Methods</a>
         <a href="../about.html">About</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
         <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download</a>
-        <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round" aria-hidden="true">
-            <path
-              d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
-            </path>
-          </svg>
-        </a>
         <button class="theme-btn" id="theme-toggle" type="button" aria-pressed="false" aria-label="Switch to dark theme">
         <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <circle cx="12" cy="12" r="4" />
@@ -74,12 +67,12 @@
     </div>
   </header>
 
-  <main id="top">
+  <main id="top" tabindex="-1">
 
     <section class="section">
       <div class="shell">
         <div class="section-lead learn-lead">
-          <p class="eyebrow">Concepts</p>
+          <p class="eyebrow">Methods</p>
           <h1>Overview</h1>
         </div>
       </div>
@@ -125,17 +118,11 @@ flowchart TD
 </pre>
               <figcaption>A chain of diagnostic questions that cuts across measures, from what is in the corpus to what can be asked next.</figcaption>
             </figure>
-            <p>CorpusWright treats the description of a corpus as the first stage of statistical analysis, not a preliminary to it: exploratory data analysis (Tukey, 1977) done as exploratory data analysis, kept distinct from confirmatory inference. The position, and the principles behind it, are stated on the <a href="../about.html">About</a> page; this section does the explaining.</p>
+            <p>A frequency list tells you which forms occur often. It does not tell you whether they recur across documents, how much a few sources dominate the corpus, or how vocabulary changes as more text is read. The Corpus Overview brings these questions together.</p>
 
-            <p>It is also why the Overview is large. Its length is intentional: the page is built to inform, a
-              comprehensive diagnostic view rather than a display of what CorpusWright can do. Each panel answers a
-              specific question that should be asked of a corpus before trusting anything built on top of it: whether it
-              is the size it is assumed to be, whether its vocabulary is varied or repetitive, whether words are spread
-              across the whole corpus or concentrated in a small number of texts, and whether it is still acquiring new
-              word forms or has stabilised. Every measure on that page exists to make one of those questions properly
-              answerable.</p>
+            <p>Use this page alongside the application: start with <a href="#tokens-and-types-why-the-definition-comes-first">tokens and types</a>, then follow the measure you are reading. Each section gives its definition, a worked example or plot, and limits on interpretation. For installation and the practical workflow, use the <a href="../quick-start.html">Guide</a>.</p>
 
-            <p>None of the mathematics here is new - Zipf (1949), Shannon (1948) - and the page does not pretend otherwise; the <a href="../about.html">About</a> page says in what limited sense the tool is modern.</p>
+            <p>Describing a corpus is the first stage of analysis. These diagnostics help you inspect the evidence before choosing a comparison or model; they do not establish representativeness or support a confirmatory claim on their own.</p>
 
             <p>Three commitments run underneath everything below. They are worth stating up front, because they decide
               how every section is written.</p>
@@ -819,8 +806,12 @@ flowchart TD
 
   <footer class="site-footer">
     <div class="shell foot">
-      <span>CorpusWright is an open, local-first corpus linguistics workbench, currently in public alpha.</span>
-      <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
+      <span>CorpusWright · open-source desktop software · public alpha</span>
+      <div class="footer-links">
+        <a href="../about.html#citation">Citation</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/LICENSE">Licence</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a>
+      </div>
     </div>
   </footer>
 
@@ -905,7 +896,7 @@ flowchart TD
     toggle.addEventListener('click', function () {
       var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
       root.setAttribute('data-theme', next);
-      localStorage.setItem('theme', next);
+      try { localStorage.setItem('theme', next); } catch { /* Switching still works without persistence. */ }
       syncToggle();
     });
   })();

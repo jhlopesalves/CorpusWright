@@ -21,7 +21,8 @@
   <link rel="icon" href="assets/icon.png">
   <script>
     (function () {
-      var stored = localStorage.getItem('theme');
+      var stored;
+      try { stored = localStorage.getItem('theme'); } catch { /* Use the system theme when storage is unavailable. */ }
       var sys = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       document.documentElement.setAttribute('data-theme', stored || sys);
     })();
@@ -29,25 +30,17 @@
 </head>
 
 <body>
+  <a class="skip-link" href="#top">Skip to content</a>
   <header class="site-header">
     <div class="shell nav">
       <a class="brand" href="index.html"><img class="mark" src="assets/icon-32.png" alt="" width="28" height="28">
         CorpusWright</a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="quick-start.html">Quick Start</a>
-        <a href="concepts/overview.html">Concepts</a>
-        <a href="roadmap.html">Roadmap</a>
-        <a href="technical-docs.html">Docs</a>
+        <a href="quick-start.html">Guide</a>
+        <a href="concepts/overview.html">Methods</a>
         <a href="about.html">About</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
         <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download</a>
-        <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round" aria-hidden="true">
-            <path
-              d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
-            </path>
-          </svg>
-        </a>
         <button class="theme-btn" id="theme-toggle" type="button" aria-pressed="false"
           aria-label="Switch to dark theme">
           <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -65,7 +58,7 @@
     </div>
   </header>
 
-  <main id="top">
+  <main id="top" tabindex="-1">
     <section class="hero">
       <div class="shell">
         <div class="hero-split">
@@ -104,7 +97,7 @@
             </div>
             <div class="principle">
               <h3>Transparent</h3>
-              <p>The concepts guide presents formulas, interpretations and limitations for the principal reported statistics.</p>
+              <p>The methods guide presents formulas, interpretations and limitations for the principal reported statistics.</p>
             </div>
             <div class="principle">
               <h3>Built in Rust</h3>
@@ -123,8 +116,8 @@
             <p>Install CorpusWright, create a project, and clean a corpus from start to finish in a guided walkthrough that assumes no prior corpus experience.</p><span class="card-link">To the tutorials &#x2192;</span>
           </a>
           <a class="card" href="concepts/overview.html">
-            <h3>Concepts</h3>
-            <p>How CorpusWright prepares a corpus and how to read what it reports: deterministic, reviewable cleaning, then dispersion, lexical diversity, vocabulary growth, and how to interpret them.</p><span class="card-link">Concepts &#x2192;</span>
+            <h3>Methods</h3>
+            <p>How CorpusWright prepares a corpus and how to read what it reports: deterministic, reviewable cleaning, then dispersion, lexical diversity, vocabulary growth, and how to interpret them.</p><span class="card-link">Methods &#x2192;</span>
           </a>
           <a class="card" href="roadmap.html">
             <h3>Roadmap</h3>
@@ -139,7 +132,7 @@
         <div class="section-lead">
           <h2>Citation</h2>
         </div>
-        <p>If you use CorpusWright in your research or teaching, please cite it when appropriate. The repository provides the authoritative machine-readable <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a>; the <a href="citation.html">citation guidance</a> gives APA and BibTeX examples.</p>
+        <p>If you use CorpusWright in your research or teaching, please cite it when appropriate. The repository provides the authoritative machine-readable <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a>; the <a href="about.html#citation">citation guidance</a> gives APA and BibTeX examples.</p>
 
 </div>
     </section>
@@ -147,8 +140,12 @@
 
   <footer class="site-footer">
     <div class="shell foot">
-      <span>CorpusWright is an open, local-first corpus linguistics tool, currently in public alpha.</span>
-      <span><a href="https://github.com/jhlopesalves/CorpusWright">Source on GitHub</a></span>
+      <span>CorpusWright · open-source desktop software · public alpha</span>
+      <div class="footer-links">
+        <a href="about.html#citation">Citation</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/LICENSE">Licence</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a>
+      </div>
     </div>
   </footer>
 
@@ -167,7 +164,7 @@
       toggle.addEventListener('click', function () {
         var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
         root.setAttribute('data-theme', next);
-        localStorage.setItem('theme', next);
+        try { localStorage.setItem('theme', next); } catch { /* Switching still works without persistence. */ }
         syncToggle();
       });
 
