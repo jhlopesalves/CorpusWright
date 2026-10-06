@@ -12,11 +12,16 @@
   <meta property="og:title" content="Methods &amp; measures · CorpusWright">
   <meta property="og:description" content="Definitions and interpretation of CorpusWright's counts, dispersion, collocation and vocabulary measures.">
   <meta property="og:url" content="https://jhlopesalves.github.io/CorpusWright/concepts/overview.html">
-  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Methods &amp; measures · CorpusWright">
   <meta name="twitter:description" content="Definitions and interpretation of CorpusWright's counts, dispersion, collocation and vocabulary measures.">
-  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
+  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta name="twitter:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
   <link rel="stylesheet" href="../assets/site.css">
   <link rel="icon" href="../assets/icon-32.png">
   <script>
@@ -40,9 +45,10 @@
     };
   </script>
   <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+  <script src="../assets/theme.js" defer></script>
 </head>
 
-<body>
+<body class="methods">
   <a class="skip-link" href="#top">Skip to content</a>
   <header class="site-header">
     <div class="shell nav">
@@ -801,25 +807,7 @@ flowchart TD
     })();
   </script>
 
-<script>
-  (function () {
-    var root = document.documentElement;
-    var toggle = document.getElementById('theme-toggle');
-    if (!toggle) { return; }
-    function syncToggle() {
-      var dark = root.getAttribute('data-theme') === 'dark';
-      toggle.setAttribute('aria-pressed', String(dark));
-      toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-    }
-    syncToggle();
-    toggle.addEventListener('click', function () {
-      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      root.setAttribute('data-theme', next);
-      try { localStorage.setItem('theme', next); } catch { /* Switching still works without persistence. */ }
-      syncToggle();
-    });
-  })();
-</script>
+
 <style>
   pre.mermaid,
   pre.mermaid svg,

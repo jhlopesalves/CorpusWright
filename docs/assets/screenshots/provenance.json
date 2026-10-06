@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "identity": "GUI demonstration corpus",
+  "purpose": "Eight synthetic documents illustrating the application workflow; no collected observations.",
+  "viewport": {
+    "width": 1440,
+    "height": 1000,
+    "deviceScaleFactor": 1
+  },
+  "theme": "corpus-light",
+  "browser": "Chrome headless",
+  "capture": "Unmodified application HTML and controllers, native IPC replaced by this isolated core adapter",
+  "command": "npm --prefix apps/desktop run capture:public-product",
+  "generator": "apps/desktop/tests/visual/public-product-corpus.mjs",
+  "renderedChecks": [
+    "Prepare uses the shared core token count; Overview agrees",
+    "Single Lexical spectrum heading",
+    "Complete Concordance filenames and contexts",
+    "Default MI collocate tray",
+    "Enter opens wider context; Escape closes it"
+  ],
+  "totals": {
+    "documents": 8,
+    "tokens": 2052,
+    "types": 734
+  },
+  "concordanceAudit": {
+    "query": "seed",
+    "caseSensitive": false,
+    "windowTokens": 10,
+    "totalHits": 15,
+    "documentsWithHits": 7,
+    "selectedDocumentsTotal": 8,
+    "selectedTokensTotal": 2052,
+    "dp": 0.3485380116959064
+  },
+  "collocationAudit": {
+    "query": "seed",
+    "caseSensitive": false,
+    "span": 5,
+    "direction": "both",
+    "minCooccurrence": 5,
+    "minCollocateFrequency": 5,
+    "hideStopwords": false,
+    "sortMeasure": "mi",
+    "sortKey": "association",
+    "sortDirection": "desc",
+    "limit": 500,
+    "r1": 147,
+    "n": 2052,
+    "fNode": 15,
+    "witness": {
+      "surface": "tray",
+      "events": 11,
+      "corpusFrequency": 15,
+      "mi": 3.3556836937994685
+    }
+  },
+  "sourceChecksums": {
+    "bed-plan.txt": "198717bfa85783b510d6d0c918706a7982b2e6406c2425978f46e12af9827890",
+    "compost-guide.txt": "4f4306a8337e954406f1a606c1ecd9086b788a739cbe89e8b183b05051df14a4",
+    "harvest-kitchen.txt": "4a337f254a6d6cbc9ef5d0e76d1e2f5a6f5432e476ddab8cfd0cd0e7e37bbfe0",
+    "path-repairs.txt": "507f4d8f86b92ba46058c302f255805e8392787c971d8ba0c5f734867b44bf04",
+    "season-diary.txt": "e3c10cab52010c459be37047ccfd9130fe925b709b5a1dc88eb1ceefd6b8b5dd",
+    "seed-swap.txt": "14bcf94a5bace47f08a5c83c8f0d102b97b802fcbfd764811de36d656d2fa752",
+    "sowing-guide.txt": "57ac8e60c8a000debe176debdc1ab9849da731c268b75d8ef7f59b30f8b72de8",
+    "watering-plan.txt": "f1384cc4a27dfb96cf532518e6d6a6fef817f6f5485a3293544b32e4a94be6fd"
+  },
+  "coreTree": "46968f9c1c085b5cc75e3a293158b279cfb1313f",
+  "frontendTree": "c9122def935edd44d64fd704436922ad9ba0ee38",
+  "captureInputs": {
+    "apps/desktop/scripts/capture-public-product.mjs": "01ce58122499ec1a6f2bd335886be528934ee89ef443c698c7aea310fd95ea80",
+    "apps/desktop/scripts/browser-capture.mjs": "87c14d7ab7760fd57496b65db387a96ee1c0cc0230709e348fc86c76500e01df",
+    "apps/desktop/tests/visual/public-product-corpus.mjs": "29d18088f19f443715d0bf05fc7c62cb521a8af414325471fa10f7b69caa3b36",
+    "apps/desktop/tests/visual/public-product-data.rs": "61d3291c61662d25607a316ff14ab768a90c01eddd6196c2113930e2ec407eaf",
+    "apps/desktop/tests/visual/public-product-fixture.ts": "35727e7e03700692d1f2ab374ee0f33b3d1bbb7c674eaa52a3c8cb312b6e9e7d",
+    "apps/desktop/index.html": "508fb8f1d614cbd9d680f259f35151d6b002aa212561e4b3cbdb4b06630c028a"
+  },
+  "captures": [
+    {
+      "stage": "prepare",
+      "asset": "corpuswright-prepare.png",
+      "sha256": "6a603770197ade8e55fbeff9f6d0c6705854c71fb0dd2c20eacdcf085c7391e2",
+      "visibleTextSha256": "4d928aba480b4a347fe1b93a8cbaa3882de4dd60a859ab1a4fb1a8b6fb6ee9e8"
+    },
+    {
+      "stage": "overview",
+      "asset": "corpuswright-overview.png",
+      "sha256": "2e780d55d76bb6895eea32cdcc2cac18e1e96e6c23bdffb83fad6fdbab7734b4",
+      "visibleTextSha256": "5385c82c57d93ed962cdcd074259889fe3b6acd7a54e86a54921a2e1d6acf147"
+    },
+    {
+      "stage": "concordance",
+      "asset": "corpuswright-concordance.png",
+      "sha256": "459490619d5b756b2237350fdf74a65221f843871d7d505033e5172aade6c75d",
+      "visibleTextSha256": "39b6153796f94d377497e02b9d6f47f6facb8c7c443e494c14caad3139cffd1e"
+    }
+  ]
+}

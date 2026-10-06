@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "width": 1200,
+  "height": 630,
+  "source": "docs/assets/screenshots/corpuswright-overview.png",
+  "sourceSha256": "2e780d55d76bb6895eea32cdcc2cac18e1e96e6c23bdffb83fad6fdbab7734b4",
+  "sourceCrop": {
+    "x": 0,
+    "y": 0,
+    "width": 1440,
+    "height": 1000
+  },
+  "generator": "scripts/generate-social-preview.mjs",
+  "generatorSha256": "50ba27052fe8d08caa014345f1c29153d4ed473e2e8335dcf472be327e3e7fe5",
+  "sha256": "7f1d5055888b0014b7a3d2cb13bd74e4be4a6e06c334c09934dac3d37c9a887f",
+  "provenance": "Public card composed from an unmodified crop of the GUI demonstration screenshot and locally bundled fonts. The recorded full-view crop retains the application navigation, Analyse tool rail, Corpus Overview and lexical-spectrum figure."
+}

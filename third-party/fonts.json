@@ -241,6 +241,20 @@
       "licenseFile": "third-party/fonts/licenses/ibm-plex-OFL.txt"
     },
     {
+      "path": "docs/assets/fonts/IBMPlexSans-Italic.woff2",
+      "sha256": "13284fab1821ba6e3652c1580fcf2bbfd8c9309520c69b3d1224dab40b37c597",
+      "source": "ibmPlex",
+      "upstreamPath": "packages/plex-sans/fonts/complete/woff2/IBMPlexSans-Italic.woff2",
+      "licenseFile": "third-party/fonts/licenses/ibm-plex-OFL.txt"
+    },
+    {
+      "path": "docs/assets/fonts/IBMPlexSans-Medium.woff2",
+      "sha256": "5660f8a658f8bb50dbc005232f885eadffd2bc1c235c4f6fbb63469d1f9cde6d",
+      "source": "ibmPlex",
+      "upstreamPath": "packages/plex-sans/fonts/complete/woff2/IBMPlexSans-Medium.woff2",
+      "licenseFile": "third-party/fonts/licenses/ibm-plex-OFL.txt"
+    },
+    {
       "path": "docs/assets/fonts/IBMPlexSans-Regular.woff2",
       "sha256": "ba711a3085ff9f27440b6b9c4550cfc47c97bf36591d5da958b975bb3add8c1a",
       "source": "ibmPlex",

@@ -10,13 +10,18 @@
   <meta property="og:title" content="Guide · CorpusWright">
   <meta property="og:description" content="Install CorpusWright and follow the preparation, analysis and concordance workflow.">
   <meta property="og:url" content="https://jhlopesalves.github.io/CorpusWright/quick-start.html">
-  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Guide · CorpusWright">
   <meta name="twitter:description" content="Install CorpusWright and follow the preparation, analysis and concordance workflow.">
-  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
+  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta name="twitter:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
   <link rel="stylesheet" href="assets/site.css">
-  <link rel="icon" href="assets/icon.png">
+  <link rel="icon" href="assets/icon-32.png">
   <script>
     (function() {
       let savedTheme;
@@ -25,6 +30,7 @@
       document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
     })();
   </script>
+  <script src="assets/theme.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#top">Skip to content</a>
@@ -66,24 +72,32 @@
       <div class="actions">
         <a class="btn primary" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download latest alpha</a>
       </div>
-      <p class="text-link muted">The public alpha is usable and still changing. Keep your original sources; expect rough edges and possible project-format changes between releases.</p>
+      <p class="text-link muted">CorpusWright is a public experimental alpha. Interfaces, project formats and behaviour may change. Keep original sources and backups of project data.</p>
     </div>
   </section>
   <section class="section">
     <div class="shell narrow">
-      <h2>From source files to evidence</h2>
+      <h2>Basic workflow</h2>
       <h3>Prepare the text</h3>
       <ol class="workflow-steps">
         <li><strong>Create or open a project.</strong> Choose a project folder for its source inventory and saved settings.</li>
         <li><strong>Add sources in Prepare.</strong> Use Add sources → Add files or Add folder, then review the Import Sources dialogue. For PDFs that need extraction, select them and use Selected actions → Extract text / OCR.</li>
         <li><strong>Review the text and cleaning.</strong> Select a source to compare Original Text with Processed Text. Review warnings and use Cleaning Settings, Repeated Artefacts or the Custom Removals tab where needed. Check the processed preview after changing rules.</li>
       </ol>
-      <h3>Read the corpus description</h3>
+      <figure class="guide-figure">
+        <a href="assets/screenshots/corpuswright-prepare.png"><img src="assets/screenshots/corpuswright-prepare.png" alt="Prepare with a synthetic source selected, Original Text visible and cleaning controls above the preview." width="1440" height="1000" loading="lazy"></a>
+        <figcaption>Prepare: select a source to inspect its text. GUI demonstration corpus; select the image to view it at full size.</figcaption>
+      </figure>
+      <h3>Inspect Corpus Overview</h3>
       <ol class="workflow-steps" start="4">
         <li><strong>Open Analyse and build the counts.</strong> Select Build surface analysis. Surface analysis uses word-form tokens rather than lemma- or POS-based annotation. Standard analysis keys are NFC-normalised and lowercased. The application uses processed text where available and reports any source-text fallback; check that input before interpreting a result.</li>
         <li><strong>Read Corpus Overview.</strong> Select Corpus Overview in the Analysis tools rail. Check the included documents and token counts, then inspect document lengths, dispersion and vocabulary structure. Frequency List sits in the same rail and shows forms, counts, rates, range and DP.</li>
       </ol>
-      <h3>Inspect occurrences and retain the prepared corpus</h3>
+      <figure class="guide-figure">
+        <a href="assets/screenshots/corpuswright-overview.png"><img src="assets/screenshots/corpuswright-overview.png" alt="Analyse with Corpus Overview selected in the Analysis tools rail and its Lexical spectrum plot visible." width="1440" height="1000" loading="lazy"></a>
+        <figcaption>Analyse → Corpus Overview: the Lexical spectrum describes the frequency classes of the GUI demonstration vocabulary.</figcaption>
+      </figure>
+      <h3>Use Concordance and export prepared text</h3>
       <ol class="workflow-steps" start="6">
         <li><strong>Select Concordance within Analyse.</strong> Enter a word or phrase under Surface word or phrase and select Search. Read the Concordance Lines; Collocates and Distribution appear below them. Select a line to open its document context.</li>
         <li><strong>Export the prepared text.</strong> Use File → Export Processed Corpus... to retain cleaned text, preparation settings, checksums and warnings. The top-level Export stage is marked Coming later in this alpha; the File menu provides the current cleaned-corpus export.</li>
@@ -95,7 +109,7 @@
     <div class="shell narrow">
       <h2>Supported source formats</h2>
       <p>CorpusWright imports plain text (TXT), HTML/HTM, DOCX and PDF. PDF extraction can use embedded text or OCR; the result depends on source quality and the selected extraction route. Review the extracted text before using its counts in research.</p>
-      <p>Corpus files are processed on your computer rather than uploaded to a CorpusWright analysis service.</p>
+      <p>CorpusWright processes corpus files on your computer. It does not upload them to a hosted analysis service.</p>
       <details class="build-details">
         <summary>Building from source</summary>
         <p>A development checkout needs Rust, Node.js and the platform dependencies for Tauri. The <a href="https://github.com/jhlopesalves/CorpusWright">repository</a> holds the implementation and build tooling.</p>
@@ -120,24 +134,6 @@ npm run tauri dev</code></pre>
   </footer>
 
 
-<script>
-  (function () {
-    var root = document.documentElement;
-    var toggle = document.getElementById('theme-toggle');
-    if (!toggle) { return; }
-    function syncToggle() {
-      var dark = root.getAttribute('data-theme') === 'dark';
-      toggle.setAttribute('aria-pressed', String(dark));
-      toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-    }
-    syncToggle();
-    toggle.addEventListener('click', function () {
-      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      root.setAttribute('data-theme', next);
-      try { localStorage.setItem('theme', next); } catch { /* Switching still works without persistence. */ }
-      syncToggle();
-    });
-  })();
-</script>
+
 </body>
 </html>

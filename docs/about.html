@@ -11,13 +11,18 @@
   <meta property="og:title" content="About · CorpusWright">
   <meta property="og:description" content="About CorpusWright: where the project stands, and who maintains it.">
   <meta property="og:url" content="https://jhlopesalves.github.io/CorpusWright/about.html">
-  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="About · CorpusWright">
   <meta name="twitter:description" content="About CorpusWright: where the project stands, and who maintains it.">
-  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
+  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta name="twitter:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
   <link rel="stylesheet" href="assets/site.css">
-  <link rel="icon" href="assets/icon.png">
+  <link rel="icon" href="assets/icon-32.png">
   <script>
     (function () {
       let savedTheme;
@@ -26,6 +31,7 @@
       document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
     })();
   </script>
+  <script src="assets/theme.js" defer></script>
 </head>
 
 <body>
@@ -70,27 +76,27 @@
 
           <section class="learn-section">
             <h2 id="what-it-is">What CorpusWright is</h2>
-            <p>CorpusWright is desktop software for preparing text corpora, examining their statistical structure and exploring words in context. It brings text extraction, reviewed cleaning rules, descriptive measures and Concordance into one workflow. Corpus files are processed on your computer.</p>
+            <p>CorpusWright is desktop software for corpus preparation and descriptive corpus analysis. Prepare shows extracted text and the effect of cleaning rules; Analyse provides descriptive summaries and Concordance. Corpus files are processed on your computer.</p>
             <p>The <a href="quick-start.html">Guide</a> covers installation and the basic workflow. <a href="concepts/overview.html">Methods &amp; measures</a> explains the definitions, diagnostic figures and limits on interpretation.</p>
           </section>
 
           <section class="learn-section">
             <h2 id="origin">Why it exists</h2>
-            <p>As an undergraduate on an <em>iniciação científica</em> project, I was given eight to twelve months to clean a corpus one file at a time. A few weeks of Python reduced the job to days, and the corpus still went barely examined. CorpusWright is the longer response to that experience.</p>
-            <p>Preparation and examination belong together: the text that survives cleaning determines what can be counted, and the counts need to be read against the documents that produced them.</p>
+            <p>As an undergraduate on an <em>iniciação científica</em> project, I was given eight to twelve months to clean a corpus one file at a time. Automating the preparation in Python reduced the manual cleaning workload to days, but the resulting corpus still required systematic examination. I began CorpusWright to keep corpus preparation, descriptive statistics and inspection of the underlying text in the same research workflow.</p>
+            <p>Cleaning changes the text that is counted. Aggregate results therefore need to remain traceable to the documents and contexts from which they were calculated.</p>
           </section>
 
           <section class="learn-section">
-            <h2 id="stance">Methodological stance</h2>
-            <p>The project treats corpus description as part of statistical analysis. Descriptive diagnostics help examine a corpus's structure, distribution and limits before later claims are made. Frequency alone does not establish how a word is distributed, nor whether a corpus is appropriate for a research question.</p>
-            <p>The workflow keeps cleaning decisions inspectable, records settings and warnings, and includes preparation metadata with cleaned-corpus exports. <a href="concepts/overview.html#how-the-numbers-are-produced">Methods documents how the numbers are produced</a>.</p>
+            <h2 id="stance">Analysis approach</h2>
+            <p>CorpusWright reports descriptive diagnostics for the prepared corpus. These outputs describe the observed sample; they do not establish representativeness or justify broader inferential claims by themselves.</p>
+            <p>The application records cleaning settings and warnings, and includes preparation metadata with cleaned-corpus exports. <a href="concepts/overview.html#how-the-numbers-are-produced">Methods documents how the numbers are produced</a>.</p>
           </section>
 
           <section class="learn-section">
             <h2 id="maintainer">Maintainer</h2>
 
             <p>Jhonatan H. Lopes created CorpusWright and maintains it as a solo project.</p>
-            <p>Find me on <a href="https://github.com/jhlopesalves">GitHub</a> and <a href="https://substack.com/@jhonatanhlopes">Substack</a>.</p>
+            <p><a href="https://github.com/jhlopesalves">GitHub</a> · <a href="https://substack.com/@jhonatanhlopes">Substack</a></p>
             <p>The processing and analysis core is written in Rust; the <a href="https://github.com/jhlopesalves/CorpusWright">repository</a> contains the source and development tooling.</p>
           </section>
 
@@ -104,7 +110,7 @@
 
           <section class="learn-section">
             <h2 id="status">Status and licence</h2>
-            <p>CorpusWright is a public experimental alpha: usable, changing and still rough in places. Project formats and behaviour may change between releases. Keep original sources and backups of project data, and consult the <a href="https://github.com/jhlopesalves/CorpusWright/releases">release notes</a> for the version you use.</p>
+            <p>CorpusWright is currently in public alpha. Interfaces, project formats and behaviour may change between releases. Keep original sources and backups of project data, and consult the <a href="https://github.com/jhlopesalves/CorpusWright/releases">release notes</a> for the version you use.</p>
             <p>The source is available under the <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/LICENSE">MIT licence</a>. Bundled dependencies and resources have their own terms, recorded in the <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md">third-party notices</a>.</p>
           </section>
         </div>
@@ -124,25 +130,7 @@
     </div>
   </footer>
 
-  <script>
-    (function () {
-      var root = document.documentElement;
-      var toggle = document.getElementById('theme-toggle');
-      if (!toggle) { return; }
-      function syncToggle() {
-        var dark = root.getAttribute('data-theme') === 'dark';
-        toggle.setAttribute('aria-pressed', String(dark));
-        toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-      }
-      syncToggle();
-      toggle.addEventListener('click', function () {
-        var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-        root.setAttribute('data-theme', next);
-        try { localStorage.setItem('theme', next); } catch { /* Switching still works without persistence. */ }
-        syncToggle();
-      });
-    })();
-  </script>
+
 </body>
 
 </html>
