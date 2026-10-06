@@ -187,8 +187,8 @@ function buildRankFigure(selectedView: string, corpus: CorpusOverview): HTMLElem
     id,
     title: selectedView === "residuals" ? "Rank residuals" : "Rank-frequency",
     subtitle: selectedView === "residuals" ? "Where does observed frequency depart from the fitted interval?" : "How quickly does frequency fall as vocabulary rank increases?",
-    captionStats: `alpha ${formatNumber(rank.zipfExponent, 3)} · R² ${formatNumber(rank.rSquared, 3)} · fitted ranks ${rank.fittedRankStart ?? "–"}–${rank.fittedRankEnd ?? "–"}`,
-    captionReading: "Top ranks and the frequency-one tail remain visible but are excluded from the documented fit interval.",
+    captionStats: `Optional trend · slope ${formatNumber(rank.zipfExponent === null ? null : -rank.zipfExponent, 3)} · R² ${formatNumber(rank.rSquared, 3)} · fitted ranks ${rank.fittedRankStart ?? "–"}–${rank.fittedRankEnd ?? "–"}`,
+    captionReading: "The default curve shows the empirical distribution. The optional unweighted log–log trend excludes ranks 1–3 and frequency-one types, without a documented statistical rationale.",
     controller: state,
     renderSvg: () => renderRankFrequencySvg(id, buildRankFrequencyGeometry({
       points: rank.points.map((point) => ({ ...point, token: point.token ?? undefined })),
@@ -199,7 +199,7 @@ function buildRankFigure(selectedView: string, corpus: CorpusOverview): HTMLElem
       fittedRankStart: rank.fittedRankStart,
       fittedRankEnd: rank.fittedRankEnd,
       view: selectedView as "curve" | "residuals",
-      fitVisible: true,
+      fitVisible: false,
       labelsMode: "examples",
       pinnedKeys: state.pins,
     }), selectedView === "residuals" ? "Log observed − log fitted frequency" : "Frequency per million (log scale)"),
@@ -212,10 +212,10 @@ function buildGrowthFigure(selectedView: string, corpus: CorpusOverview): HTMLEl
   const growth = corpus.vocabularyGrowth;
   return createOverviewFigure({
     id,
-    title: selectedView === "heaps" ? "Heaps fit" : "Vocabulary growth",
+    title: "Observed-order vocabulary growth",
     subtitle: "How quickly does the accepted corpus encounter new types as tokens accumulate?",
     captionStats: `K ${formatNumber(growth.heapsK, 3)} · beta ${formatNumber(growth.heapsBeta, 3)} · R² ${formatNumber(growth.rSquared, 3)}`,
-    captionReading: "Checkpoints follow deterministic canonical filename order; the fitted model describes this corpus snapshot.",
+    captionReading: "Stable source-path order; power-of-two token checkpoints plus final total. The log–log trend describes this path, not saturation or representativeness.",
     controller: state,
     renderSvg: () => renderVocabularyGrowthSvg(id, buildVocabularyGrowthGeometry({
       points: growth.points,
@@ -330,8 +330,8 @@ function buildPlaneFigure(corpus: CorpusOverview): HTMLElement {
     id,
     title: "Dispersion plane",
     subtitle: "Which types are frequent, and which are evenly distributed across documents?",
-    captionStats: `${formatNumber(corpus.totals.types)} types · ${plane.xBins}×${plane.yBins} grid · ${plane.loudButLocalCount} loud-but-local types`,
-    captionReading: "Density is the count of types in a frequency–DP region; labelled witnesses are reproducible selected examples.",
+    captionStats: `${formatNumber(corpus.totals.types)} types · ${plane.xBins}×${plane.yBins} grid`,
+    captionReading: "Density counts types in a frequency–DP region; witnesses are selected examples. The default display has no dividing reference lines.",
     controller: state,
     layoutFamily: "plane",
     renderSvg: () => renderDispersionPlaneSvg(id, buildDispersionPlaneGeometry({
@@ -342,7 +342,7 @@ function buildPlaneFigure(corpus: CorpusOverview): HTMLElement {
       densityMode: "log",
       examplesMode: "labelled",
       marginalsVisible: true,
-      thresholdsVisible: true,
+      thresholdsVisible: false,
       pinnedKeys: state.pins,
     })),
   });

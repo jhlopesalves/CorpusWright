@@ -1,0 +1,425 @@
+{
+  "schemaVersion": 1,
+  "scope": "Public-site figures: product output and reproducible concept schematics/worked examples.",
+  "legacyFigures": [],
+  "canonicalFigures": [
+    {
+      "asset": "rank-frequency-light.svg",
+      "figure": "rank-frequency",
+      "theme": "corpus-light",
+      "status": "canonical application renderer/exporter output",
+      "sha256": "6c0c5e82e76b84725affc9a7553b61cbae1bec52a7db60bbec11f9e580912b79",
+      "type": "Product figure"
+    },
+    {
+      "asset": "lexical-spectrum-light.svg",
+      "figure": "lexical-spectrum",
+      "theme": "corpus-light",
+      "status": "canonical application renderer/exporter output",
+      "sha256": "97de9707aed1ca56bb0fb278c9a24523af54a74d37a0bf610f229069a3c543fb",
+      "type": "Product figure"
+    },
+    {
+      "asset": "vocabulary-growth-light.svg",
+      "figure": "vocabulary-growth",
+      "theme": "corpus-light",
+      "status": "canonical application renderer/exporter output",
+      "sha256": "70179e9fb9d0440a0bcbc4742e34f9e7e3d80ed7955e9890758be4369e88a306",
+      "type": "Product figure"
+    },
+    {
+      "asset": "dispersion-plane-light.svg",
+      "figure": "dispersion-plane",
+      "theme": "corpus-light",
+      "status": "canonical application renderer/exporter output",
+      "sha256": "36718726d2cc2a6871adc3ff0db76550838132e60b1034beabf16f95cb037804",
+      "type": "Product figure"
+    },
+    {
+      "asset": "rank-frequency-dark.svg",
+      "figure": "rank-frequency",
+      "theme": "corpus-dark",
+      "status": "canonical application renderer/exporter output",
+      "sha256": "5cfb66caac1f401742defa3c62c7cf8a4ecf6d1530c54b7ebff5b47edddb02b8",
+      "type": "Product figure"
+    },
+    {
+      "asset": "lexical-spectrum-dark.svg",
+      "figure": "lexical-spectrum",
+      "theme": "corpus-dark",
+      "status": "canonical application renderer/exporter output",
+      "sha256": "a93b16b90737f1a113af23c718f7d9478d7d3498bc784b6bd5997a8166f17244",
+      "type": "Product figure"
+    },
+    {
+      "asset": "vocabulary-growth-dark.svg",
+      "figure": "vocabulary-growth",
+      "theme": "corpus-dark",
+      "status": "canonical application renderer/exporter output",
+      "sha256": "42c6c4ec8daf055fcf942066b3c7d89a082c71e5dbc3a8b5a210721ad4a82bb3",
+      "type": "Product figure"
+    },
+    {
+      "asset": "dispersion-plane-dark.svg",
+      "figure": "dispersion-plane",
+      "theme": "corpus-dark",
+      "status": "canonical application renderer/exporter output",
+      "sha256": "41da96fc4f670f1745bb84341fae4c0cc4f1b6e6cba265c251cf00bffc21ea87",
+      "type": "Product figure"
+    }
+  ],
+  "demonstration": {
+    "generator": "scripts/generate-public-site-demo.mjs",
+    "purpose": "Twelve equal-length synthetic documents with controlled frequency distributions; not a sampled language corpus.",
+    "seed": 20261005,
+    "documents": 12,
+    "tokens": 49152,
+    "types": 1662,
+    "corpusChecksum": "a0d535441e1ef396b5e9f90e287da7917b4be29bafa19f3e8b578f7f9e9b21a6",
+    "sourceChecksums": {
+      "document-01.txt": "045dcc8e34e0a0bbdd4cc6c6bbb2a4949d0b21240e1d6fc0a9ab089cd1bae518",
+      "document-02.txt": "d1cb915fcdcb90b075d8342b4c87e8f2059f42c2c424f05faf974c1f268aeb65",
+      "document-03.txt": "863a456e992277b0ec7440e8706bc86efbab7d4c80e5faacd63d49e967e2ddd5",
+      "document-04.txt": "77772b789019a7e1c1a9f19a218195e1c92c374384695bd14067a263d9322d9a",
+      "document-05.txt": "b1cc9a58c05224d27afd30824a78121de44978f91124522988af5cc728937554",
+      "document-06.txt": "d304e904a15acb0e7b2cf2f04211c519da414d8cfbe542e58423df0fc5d497d9",
+      "document-07.txt": "767ae98a4d0f8f4fd540d9c03afe10c3fba2e9938a997b000c804c59062c5bdf",
+      "document-08.txt": "f2056c189a649ccf97bc1733bd4867a5609ccbf0b14e34d1cef8a3a398d3b0cd",
+      "document-09.txt": "bfb3e47f4aeb6e0dc8143277d9809fdea9893de31fbf233503d01e29427e739d",
+      "document-10.txt": "44e10042c90d969279b69b0678d05e1cf86efd709d133dd5527c30c4c4ff38a5",
+      "document-11.txt": "af121e200096f41874b92ef141c686722083747a7e50a6b7e75e45cb6fe60e86",
+      "document-12.txt": "176bdf3f48e95b3a8182f49f3a72a3820a8f44bd3b4e52f6849e2d9279dc6749"
+    },
+    "configuration": {
+      "cleaning": {
+        "collapse_blank_lines": false,
+        "expand_ligatures": false,
+        "extract_html": false,
+        "join_line_breaks": false,
+        "lowercase": false,
+        "normalize_irregular_line_breaks": false,
+        "normalize_line_endings": false,
+        "normalize_unicode": false,
+        "normalize_whitespace_line_endings": false,
+        "pdf_embedded_text_strategy": "PdfiumFlat",
+        "pdf_ocr_quality": "Balanced",
+        "pdf_text_source": "EmbeddedText",
+        "removal_rules": [],
+        "remove_comments": false,
+        "remove_doi_only_lines": false,
+        "remove_email_only_lines": false,
+        "remove_endnotes": false,
+        "remove_figure_table_captions": false,
+        "remove_footers": false,
+        "remove_footnotes": false,
+        "remove_headers": false,
+        "remove_invisible_controls": false,
+        "remove_isolated_page_markers": false,
+        "remove_obvious_extraction_noise": false,
+        "remove_page_delimiters": false,
+        "remove_page_indicators": false,
+        "remove_patterns": [],
+        "remove_pdf_code_like_blocks": false,
+        "remove_pdf_formula_like_lines": false,
+        "remove_pdf_page_labels": false,
+        "remove_pdf_symbol_heavy_artifacts": false,
+        "remove_repeated_pdf_headers_footers": false,
+        "remove_standalone_page_numbers": false,
+        "remove_standalone_roman_page_numbers": false,
+        "remove_table_of_contents": false,
+        "remove_url_only_lines": false,
+        "repair_wrapped_pdf_line_breaks": false,
+        "replace_diacritics": false,
+        "replace_patterns": [],
+        "table_extraction_strategy": "TabSeparated",
+        "trim_lines": false
+      },
+      "cleaningSignature": "6118ebd4c930806d",
+      "sourceTextIncluded": false,
+      "tokenization": {
+        "foldAggregationKeys": true,
+        "includePunctuation": true,
+        "normalization": "nfc",
+        "retainApostropheContractions": true,
+        "retainAsciiHyphenCompounds": true,
+        "splitNumericSeparators": true
+      }
+    },
+    "pipeline": [
+      "cargo xtask documentation-dossier",
+      "apps/desktop/tests/visual/local-corpus-dossier-fixture.ts",
+      "apps/desktop/src/plots/model.ts",
+      "apps/desktop/src/plots/render.ts",
+      "apps/desktop/src/plots/figure.ts",
+      "apps/desktop/src/plots/svg-export.ts"
+    ],
+    "regeneration": [
+      "node scripts/generate-public-site-demo.mjs <empty-temporary-corpus-directory>",
+      "cargo xtask documentation-dossier --corpus-dir <temporary-corpus-directory> --output <temporary-dossier-directory>"
+    ],
+    "coreTree": "46968f9c1c085b5cc75e3a293158b279cfb1313f",
+    "plotTree": "a6385a72f0ccf0a7724be21eed4bebb8f366616a",
+    "generatorSha256": "5578c67fd71ab25481b52c6768c18ca4e045bbb5a4ea970a037926eddc356078",
+    "identity": "Controlled statistical demonstration corpus",
+    "rankTrend": {
+      "excludedRanks": [
+        1,
+        2,
+        3
+      ],
+      "excludedTailFrequency": 1,
+      "fittedRanks": [
+        4,
+        462
+      ],
+      "visibleByDefault": false,
+      "method": "Unweighted natural-log OLS over ranks 4 onward with raw frequency greater than one; exclusions have no documented statistical rationale.",
+      "rSquaredUnavailable": "Response sum of squared deviations at most f64::EPSILON; a finite slope and intercept can remain available.",
+      "logLogSlope": -1.5732123437630254,
+      "rSquared": 0.8243973587391037
+    }
+  },
+  "screenshots": [],
+  "inlineIllustrations": {
+    "count": 6,
+    "content": [
+      "three Mermaid process/reading diagrams",
+      "one token/type schematic under the shared lowercase aggregation policy",
+      "MATTR algorithm schematic",
+      "MTLD algorithm schematic"
+    ],
+    "status": "documentation explanations, not analytical product output",
+    "type": "Concept schematic/worked example"
+  },
+  "deferred": [
+    "The descriptive rank-frequency trend still excludes ranks 1-3 and frequency-one types. No statistical rationale for these exact exclusions was found in the implementation history or tests; no power-law adequacy test is implemented.",
+    "Observed-order vocabulary growth follows stable source-path order without permutations or rarefaction. Its exponent and R-squared describe this one nested accumulation path; uncertainty and order sensitivity are not estimated.",
+    "The former window-slot score is inactive in the score selector. Its legacy logDice field uses total window positions rather than ordinary node frequency. Overlapping windows can repeat token events; contingency-derived scores can become unavailable. A standard logDice option requires a separately specified event model and numerical validation."
+  ],
+  "removedFigures": [
+    {
+      "measure": "Raw and normalised frequency",
+      "data": "120 occurrences in 240,000 and 12,000,000 tokens",
+      "calculationAudit": "500 and 10 per million: arithmetic agrees with the core rate calculation",
+      "visualAudit": "Documentation bars, not the Frequency List or a product export",
+      "asset": "frequency.svg",
+      "generator": "Matplotlib v3.11.0 (embedded SVG metadata); original generator not retained",
+      "status": "removed",
+      "sha256": "ae43b03733b706fcc708ba8bc1df6e967ef593e784852c3ccca384665773c995",
+      "reason": "Replaced by a worked table with retained inputs and arithmetic."
+    },
+    {
+      "measure": "Gries DP",
+      "data": "Four equal documents; counts [3,3,3,3] and [12,0,0,0]",
+      "calculationAudit": "DP 0 and 0.75: arithmetic agrees with unnormalised core DP",
+      "visualAudit": "Documentation per-document bars; the product uses a reach profile and frequency–DP plane",
+      "asset": "dispersion.svg",
+      "generator": "Matplotlib v3.11.0 (embedded SVG metadata); original generator not retained",
+      "status": "removed",
+      "sha256": "31147a9842f430c965812e5d530db72f7b5513e265fbb2b839423c5222d6940f",
+      "reason": "Replaced by a worked table with retained inputs and arithmetic."
+    },
+    {
+      "measure": "Effective documents",
+      "data": "Document sizes [1000,1000,1000,1000] and [2000,667,667,666]",
+      "calculationAudit": "4 and approximately 3 effective documents: arithmetic agrees with inverse squared token shares",
+      "visualAudit": "Documentation bars; the product reports the effective count within document balance",
+      "asset": "effective_documents.svg",
+      "generator": "Matplotlib v3.11.0 (embedded SVG metadata); original generator not retained",
+      "status": "removed",
+      "sha256": "005915c54fda000b6c61109b763c992cdff2d99bbc7bfb9138a2c9014aeba6ef",
+      "reason": "Replaced by a worked table with retained inputs and arithmetic."
+    },
+    {
+      "measure": "Shannon entropy and normalised entropy / evenness",
+      "data": "Probabilities [0.25,0.25,0.25,0.25] and [0.7,0.1,0.1,0.1]",
+      "calculationAudit": "2 and 1.35678 bits; evenness 1 and 0.67839: arithmetic agrees with core base-2 formulas",
+      "visualAudit": "Documentation probability bars; the product reports entropy summaries",
+      "asset": "entropy.svg",
+      "generator": "Matplotlib v3.11.0 (embedded SVG metadata); original generator not retained",
+      "status": "removed",
+      "sha256": "923c6b7da1fd02a28219c9f646077f2d75cf964ce7b79991f44c0921f7cafe6b",
+      "reason": "Replaced by a worked table with retained inputs and arithmetic."
+    },
+    {
+      "measure": "Raw TTR over tokens read",
+      "data": "Caption attributes data to Chesterton, The Man Who Was Thursday, lowercased alphabetic tokens",
+      "calculationAudit": "UNVERIFIED: original source corpus and generator are absent from the maintained repository",
+      "visualAudit": "No corresponding current product TTR-curve export; product diversity plots describe per-document MATTR",
+      "asset": "ttr_curve.svg",
+      "generator": "Matplotlib v3.11.0 (embedded SVG metadata); original generator not retained",
+      "status": "removed",
+      "sha256": "8f5745bed1ea99126da46b9e4c2aa755a4205f4d11383ab7e1c3e0ec95606a99",
+      "reason": "Unverified source or generator; no longer distributed as documentation."
+    },
+    {
+      "measure": "Token-frequency spectrum",
+      "data": "Caption attributes data to Chesterton, lowercased alphabetic tokens",
+      "calculationAudit": "UNVERIFIED: original source corpus and generator are absent",
+      "visualAudit": "Linear bars for classes 1–10; replaced in Methods by canonical logarithmic lexical-spectrum output",
+      "asset": "hapax_spectrum.svg",
+      "generator": "Matplotlib v3.11.0 (embedded SVG metadata); original generator not retained",
+      "status": "removed",
+      "sha256": "cb6f6b18eb6b3620ad311c764225978eb31572c706df234749e0ac605b31c700",
+      "reason": "Unverified source or generator; no longer distributed as documentation."
+    },
+    {
+      "measure": "Rank-frequency / Zipf fit",
+      "data": "Caption attributes data to Chesterton, lowercased alphabetic tokens",
+      "calculationAudit": "UNVERIFIED: original source and fitted interval cannot be recovered from the SVG; old page said rank 1 was excluded, while the core excludes ranks 1–3",
+      "visualAudit": "Replaced in Methods by canonical empirical rank-frequency output; the optional descriptive trend and its interval are documented separately.",
+      "asset": "zipf.svg",
+      "generator": "Matplotlib v3.11.0 (embedded SVG metadata); original generator not retained",
+      "status": "removed",
+      "sha256": "bf6093806133d3f11e088d1c5b5b876ecc54760d2fa8bbd68d1d6bdea13b5d5f",
+      "reason": "Unverified source or generator; no longer distributed as documentation."
+    },
+    {
+      "measure": "Vocabulary growth / Heaps fit",
+      "data": "Caption attributes data to Chesterton, lowercased alphabetic tokens",
+      "calculationAudit": "UNVERIFIED: original source, tokenisation and checkpoints cannot be replayed",
+      "visualAudit": "Replaced in Methods by canonical observed checkpoints and fitted growth curve",
+      "asset": "heaps.svg",
+      "generator": "Matplotlib v3.11.0 (embedded SVG metadata); original generator not retained",
+      "status": "removed",
+      "sha256": "9bd04159a770bb57fee0de7a6351cdbc0be1bccb02406cf1c0e2f09c13151e5b",
+      "reason": "Unverified source or generator; no longer distributed as documentation."
+    }
+  ],
+  "workedExamples": [
+    {
+      "id": "example-frequency",
+      "type": "Concept schematic/worked example",
+      "source": "docs/concepts/overview.html",
+      "inputs": {
+        "counts": [
+          120,
+          120
+        ],
+        "tokens": [
+          240000,
+          12000000
+        ],
+        "base": 1000000
+      },
+      "results": [
+        500,
+        10
+      ]
+    },
+    {
+      "id": "example-dispersion",
+      "type": "Concept schematic/worked example",
+      "source": "docs/concepts/overview.html",
+      "inputs": {
+        "tokenShares": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "counts": [
+          [
+            3,
+            3,
+            3,
+            3
+          ],
+          [
+            12,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "results": [
+        0,
+        0.75
+      ]
+    },
+    {
+      "id": "example-entropy",
+      "type": "Concept schematic/worked example",
+      "source": "docs/concepts/overview.html",
+      "inputs": {
+        "probabilities": [
+          [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          [
+            0.7,
+            0.1,
+            0.1,
+            0.1
+          ]
+        ]
+      },
+      "results": {
+        "entropyBits": [
+          2,
+          1.3567796494470397
+        ],
+        "normalisedEntropy": [
+          1,
+          0.6783898247235198
+        ]
+      }
+    },
+    {
+      "id": "example-effective-documents",
+      "type": "Concept schematic/worked example",
+      "source": "docs/concepts/overview.html",
+      "inputs": {
+        "tokenShares": [
+          [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          [
+            0.5,
+            0.16666666666666666,
+            0.16666666666666666,
+            0.16666666666666666
+          ]
+        ]
+      },
+      "results": [
+        4,
+        3
+      ]
+    },
+    {
+      "id": "example-collocation",
+      "type": "Concept schematic/worked example",
+      "source": "docs/concepts/overview.html",
+      "inputs": {
+        "documents": [
+          "red alpha blue target green alpha blue",
+          "yellow target blue green"
+        ],
+        "query": "target",
+        "span": 2,
+        "direction": "both",
+        "caseSensitive": false,
+        "hideStopwords": false,
+        "minCooccurrence": 1,
+        "minCorpusFrequency": 1,
+        "nodeHits": 2,
+        "slots": 7,
+        "events": 2,
+        "corpusFrequency": 3,
+        "tokens": 11
+      },
+      "results": {
+        "score": 0.06711419585853703
+      },
+      "nativeTest": "analysis::collocation::tests::surface_collocations_compute_window_counts_and_scores"
+    }
+  ]
+}
