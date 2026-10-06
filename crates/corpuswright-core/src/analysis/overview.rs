@@ -634,7 +634,7 @@ pub(super) fn entropy_metrics(
     }
 }
 
-fn linear_regression(points: &[(f64, f64)]) -> Option<(f64, f64, f64)> {
+fn linear_regression(points: &[(f64, f64)]) -> Option<(f64, f64, Option<f64>)> {
     if points.len() < 2 {
         return None;
     }
@@ -662,13 +662,15 @@ fn linear_regression(points: &[(f64, f64)]) -> Option<(f64, f64, f64)> {
         .iter()
         .map(|(x, y)| (y - (intercept + slope * x)).powi(2))
         .sum::<f64>();
+    // A constant response has no variance against which residual variance can be compared.
+    // Keep its valid slope/intercept, but do not describe 0/0 as a perfect fit.
     let r_squared = if ss_total <= f64::EPSILON {
-        1.0
+        None
     } else {
-        (1.0 - ss_residual / ss_total).clamp(0.0, 1.0)
+        let value = (1.0 - ss_residual / ss_total).clamp(0.0, 1.0);
+        value.is_finite().then_some(value)
     };
-    (slope.is_finite() && intercept.is_finite() && r_squared.is_finite())
-        .then_some((slope, intercept, r_squared))
+    (slope.is_finite() && intercept.is_finite()).then_some((slope, intercept, r_squared))
 }
 
 fn sampled_indices(length: usize, maximum: usize) -> Vec<usize> {
@@ -717,7 +719,7 @@ pub(super) fn rank_frequency_summary(
     CorpusOverviewRankFrequency {
         zipf_exponent: fit.map(|(slope, _, _)| -slope),
         zipf_coefficient: fit.map(|(_, intercept, _)| intercept.exp()),
-        r_squared: fit.map(|(_, _, r_squared)| r_squared),
+        r_squared: fit.and_then(|(_, _, r_squared)| r_squared),
         fitted_rank_start,
         fitted_rank_end,
         points,
@@ -738,7 +740,7 @@ pub(super) fn vocabulary_growth_summary(
     CorpusOverviewVocabularyGrowth {
         heaps_k: fit.map(|(_, intercept, _)| intercept.exp()),
         heaps_beta: fit.map(|(slope, _, _)| slope),
-        r_squared: fit.map(|(_, _, r_squared)| r_squared),
+        r_squared: fit.and_then(|(_, _, r_squared)| r_squared),
         points: points.to_vec(),
         reading: "Observed-order vocabulary growth follows stable source-path order at power-of-two checkpoints plus the final total. The unconstrained log-log trend describes this accumulation path; it does not establish saturation, representativeness or a vocabulary ceiling."
             .to_string(),
