@@ -111,7 +111,7 @@ for (const browserAssertion of [
   "adjacent dispersion density cells contain an intentional gap",
   "witness-category legend remains",
   "Fixed references must not create qualitative vocabulary categories",
-  "dispersion threshold lines are too visually prominent",
+  "Default dispersion plane retains dividing reference lines",
   "dispersion density grid keyboard contract changed",
   "switched ${expectedLabel} control remains visible",
   "residual point outside fitted population",
