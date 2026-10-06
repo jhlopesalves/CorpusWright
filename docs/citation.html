@@ -10,13 +10,18 @@
   <meta property="og:title" content="Citation · CorpusWright">
   <meta property="og:description" content="Citation guidelines for the CorpusWright corpus linguistics software.">
   <meta property="og:url" content="https://jhlopesalves.github.io/CorpusWright/citation.html">
-  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Citation · CorpusWright">
   <meta name="twitter:description" content="Citation guidelines for the CorpusWright corpus linguistics software.">
-  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
+  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta name="twitter:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
   <link rel="stylesheet" href="assets/site.css">
-  <link rel="icon" href="assets/icon.png">
+  <link rel="icon" href="assets/icon-32.png">
   <script>
     (function() {
       let savedTheme;
@@ -25,6 +30,7 @@
       document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
     })();
   </script>
+  <script src="assets/theme.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#top">Skip to content</a>
@@ -63,14 +69,14 @@
 
 <section class="section">
   <div class="shell">
-    <div class="principles">
-      <div style="max-width: var(--prose);">
+    <div class="docs-content learn-prose">
+      <section class="learn-section">
         <h2>Preferred citation format (APA)</h2>
-        <p class="muted">Cite the software directly, naming the specific version you used. For example:</p>
+        <p>Cite the software directly, naming the specific version you used. For example:</p>
         <p><strong>Lopes, J. H. (2026). <em>CorpusWright</em> (Version 0.1.0-alpha.8) [Computer software]. <a href="https://github.com/jhlopesalves/CorpusWright">https://github.com/jhlopesalves/CorpusWright</a></strong></p>
 
         <h2 style="margin-top: 36px;">BibTeX template</h2>
-        <p class="muted">For LaTeX, Pandoc, or reference managers, you can adapt the template below:</p>
+        <p>For LaTeX, Pandoc, or reference managers, you can adapt the template below:</p>
         <pre class="code" id="citation-bibtex"><code class="mono">@software{lopes_corpuswright_2026,
   author  = {Lopes, Jhonatan H.},
   title   = {CorpusWright},
@@ -81,11 +87,11 @@
 }</code></pre>
 
         <h2 style="margin-top: 36px;">Machine-readable CITATION.cff</h2>
-        <p class="muted">The authoritative machine-readable citation record is the repository's <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a>. The examples above follow that metadata.</p>
+        <p>The authoritative machine-readable citation record is the repository's <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a>. The examples above follow that metadata.</p>
 
         <h2 style="margin-top: 36px;">GitHub citation support</h2>
         <p>GitHub reads the repository's <code>CITATION.cff</code> when it presents citation information. Check the version in that record against the version of CorpusWright you used.</p>
-      </div>
+      </section>
     </div>
   </div>
 </section>
@@ -104,24 +110,6 @@
   </footer>
 
 
-<script>
-  (function () {
-    var root = document.documentElement;
-    var toggle = document.getElementById('theme-toggle');
-    if (!toggle) { return; }
-    function syncToggle() {
-      var dark = root.getAttribute('data-theme') === 'dark';
-      toggle.setAttribute('aria-pressed', String(dark));
-      toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-    }
-    syncToggle();
-    toggle.addEventListener('click', function () {
-      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      root.setAttribute('data-theme', next);
-      try { localStorage.setItem('theme', next); } catch { /* Switching still works without persistence. */ }
-      syncToggle();
-    });
-  })();
-</script>
+
 </body>
 </html>

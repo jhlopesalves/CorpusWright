@@ -3,20 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.">
+  <meta name="robots" content="noindex, follow">
+  <meta name="description" content="Page not found. Continue to the CorpusWright homepage, Guide or Methods.">
   <title>Page not found · CorpusWright</title>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="CorpusWright">
   <meta property="og:title" content="Page not found · CorpusWright">
-  <meta property="og:description" content="CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.">
+  <meta property="og:description" content="Page not found. Continue to the CorpusWright homepage, Guide or Methods.">
   <meta property="og:url" content="https://jhlopesalves.github.io/CorpusWright/404.html">
-  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Page not found · CorpusWright">
-  <meta name="twitter:description" content="CorpusWright: a local-first corpus linguistics workbench for cleaning, inspecting, and analysing text corpora.">
-  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
+  <meta name="twitter:description" content="Page not found. Continue to the CorpusWright homepage, Guide or Methods.">
+  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta name="twitter:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
   <link rel="stylesheet" href="assets/site.css">
-  <link rel="icon" href="assets/icon.png">
+  <link rel="icon" href="assets/icon-32.png">
   <script>
     (function() {
       let savedTheme;
@@ -25,6 +31,7 @@
       document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
     })();
   </script>
+  <script src="assets/theme.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#top">Skip to content</a>
@@ -51,21 +58,8 @@
 </header>
 
 <main id="top" tabindex="-1">
-
-<section class="section page-intro">
-  <div class="shell">
-    <div class="section-lead">
-      <p class="eyebrow">404</p>
-      <h1>That page does not exist.</h1>
-      <p class="lede">Try the homepage, the roadmap, or the technical documentation index.</p>
-    </div>
-    <div class="actions">
-      <a class="btn primary" href="index.html">Home</a>
-      <a class="btn ghost" href="technical-docs.html">Technical docs</a>
-    </div>
-  </div>
-</section>
-
+  <section class="section page-intro"><div class="shell"><div class="section-lead learn-lead"><h1>Page not found</h1><p class="lede">The requested page is unavailable. Use the current pages below.</p></div></div></section>
+  <section class="section learn-content"><div class="shell"><div class="docs-content learn-prose"><section class="learn-section"><h2>Continue reading</h2><p><a href="index.html">Home</a> describes the application. The <a href="quick-start.html">Guide</a> covers the basic workflow, and <a href="concepts/overview.html">Methods</a> defines its measures.</p></section></div></div></section>
 </main>
 
 <footer class="site-footer">
@@ -80,24 +74,6 @@
   </footer>
 
 
-<script>
-  (function () {
-    var root = document.documentElement;
-    var toggle = document.getElementById('theme-toggle');
-    if (!toggle) { return; }
-    function syncToggle() {
-      var dark = root.getAttribute('data-theme') === 'dark';
-      toggle.setAttribute('aria-pressed', String(dark));
-      toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-    }
-    syncToggle();
-    toggle.addEventListener('click', function () {
-      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      root.setAttribute('data-theme', next);
-      try { localStorage.setItem('theme', next); } catch { /* Switching still works without persistence. */ }
-      syncToggle();
-    });
-  })();
-</script>
+
 </body>
 </html>

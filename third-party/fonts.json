@@ -267,20 +267,6 @@
       "source": "ibmPlex",
       "upstreamPath": "packages/plex-sans/fonts/complete/woff2/IBMPlexSans-SemiBold.woff2",
       "licenseFile": "third-party/fonts/licenses/ibm-plex-OFL.txt"
-    },
-    {
-      "path": "docs/assets/fonts/IBMPlexSerif-Regular.woff2",
-      "sha256": "024ebce13cec984b46e350dd85fa7c01105c777e116bfe95f097ad7fa93f39f2",
-      "source": "ibmPlex",
-      "upstreamPath": "packages/plex-serif/fonts/complete/woff2/IBMPlexSerif-Regular.woff2",
-      "licenseFile": "third-party/fonts/licenses/ibm-plex-OFL.txt"
-    },
-    {
-      "path": "docs/assets/fonts/IBMPlexSerif-SemiBold.woff2",
-      "sha256": "030d808e82f99ebe5c21d50745bd06e5ce16ad9e94b360f5adcc19362beb5344",
-      "source": "ibmPlex",
-      "upstreamPath": "packages/plex-serif/fonts/complete/woff2/IBMPlexSerif-SemiBold.woff2",
-      "licenseFile": "third-party/fonts/licenses/ibm-plex-OFL.txt"
     }
   ]
 }
