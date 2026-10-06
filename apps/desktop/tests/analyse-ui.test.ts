@@ -171,7 +171,7 @@ assert(
 );
 assert(
   concordanceCollocationsPanel.includes('id="concordance-collocates-title">Collocates</h3>')
-    && concordanceCollocationsPanel.includes("Which words systematically occur near the node")
+    && concordanceCollocationsPanel.includes("Which forms occur in the selected node windows?")
     && concordanceCollocationsPanel.includes('<p id="concordance-collocates-stats" class="concordance-card-stats cw-result-table-note">')
     && concordanceCollocationsPanel.includes('class="concordance-card-controls concordance-collocation-controls cw-panel__controls"')
     && concordanceCollocationsPanel.includes('id="concordance-collocation-span"')
@@ -629,8 +629,8 @@ assert(
     && workbench.includes('token.classList.add(`is-sort-level-${level}`)')
     && workbench.includes("const activeContextFilter = concordanceResult?.contextFilter ?? null;")
     && workbench.includes("const contextFilterCaseSensitive = concordanceResult?.caseSensitive ?? false;")
-    && workbench.includes("left.textContent = concordanceRowText(concordanceExpansionResult.leftContext);")
-    && workbench.includes("right.textContent = concordanceRowText(concordanceExpansionResult.rightContext);")
+    && workbench.includes("left.textContent = expansion.leftText;")
+    && workbench.includes("right.textContent = expansion.rightText;")
     && !workbench.includes("renderContextTokens(concordanceExpansionResult.leftContext")
     && !workbench.includes("renderContextTokens(concordanceExpansionResult.rightContext")
     && workbench.includes("function createCollocateEvidenceSnippet(row: ConcordanceRow): HTMLSpanElement")
@@ -851,23 +851,23 @@ assert(
     && styles.includes(".concordance-node-column {\n  width: clamp(7rem, 11vw, 12rem);")
     && styles.includes("padding: 2px 5px;")
     && styles.includes("line-height: 1.34;")
-    && styles.includes(".concordance-left {\n  color: var(--text-color);\n  direction: rtl;")
+    && styles.includes(".concordance-left {\n  color: var(--text-color);\n  direction: ltr;")
     && styles.includes(".concordance-context-run {\n  display: inline;\n  direction: ltr;")
     && styles.includes(".cw-result-table tbody tr:nth-child(even) > td")
     && styles.includes("height: 22px;")
     && !styles.includes(".concordance-table-head {\n  position: absolute;")
     && !html.includes("concordance-sort-legend"),
-  "KWIC should retain a compact semantic table, quiet file lane, outer-clipped contexts, stable node axis, visible restrained header, and no separate sort legend",
+  "KWIC should retain a compact semantic table, quiet file lane, complete wrapping contexts, stable node axis, visible restrained header, and no separate sort legend",
 );
 
 const concordanceRightCssMatch = styles.match(/\.concordance-right \{\n  color: var\(--text-color\);([\s\S]*?)\n\}/);
 assert(concordanceRightCssMatch, "Concordance right-context CSS should exist");
 const concordanceRightCss = concordanceRightCssMatch[1];
 assert(
-  concordanceRightCss.includes("white-space: nowrap")
-    && concordanceRightCss.includes("text-overflow: ellipsis")
-    && concordanceRightCss.includes("overflow: hidden"),
-  "Concordance right context should clip inside its own cell instead of forcing table scroll",
+  concordanceRightCss.includes("white-space: normal")
+    && concordanceRightCss.includes("overflow-wrap: anywhere")
+    && !concordanceRightCss.includes("text-overflow: ellipsis"),
+  "Concordance right context should wrap completely inside its cell without forcing table scroll",
 );
 assert(
   styles.includes(".concordance-association-column {\n  width: 11rem;")

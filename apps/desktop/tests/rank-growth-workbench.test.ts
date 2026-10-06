@@ -4,6 +4,7 @@ import {
   buildRankFrequencyGeometry,
   buildVocabularyGrowthGeometry,
   estimateLabelBox,
+  formatTokenCount,
   rankResidual,
 } from "../src/plots/model.ts";
 
@@ -35,9 +36,9 @@ assert(curve.fittedRange);
 assert(curve.fittedRange.y >= curve.box.margin.top);
 assert(curve.fittedRange.y + curve.fittedRange.height <= curve.box.height - curve.box.margin.bottom);
 assert.equal(curve.points[0]?.rawY, 100_000, "authored curve geometry uses frequency per million");
-assert.deepEqual(curve.legend.map((item) => item.label), ["Included in fit", "Zipf fit", "Shown, not fitted"]);
+assert.deepEqual(curve.legend.map((item) => item.label), ["Included in fit", "Log–log trend", "Shown, not fitted"]);
 assert(curve.legend.some((item) => item.label === "Shown, not fitted" && item.hollow));
-assert.equal(curve.fittedRange?.label, "Model fitted over ranks 4–5");
+assert.equal(curve.fittedRange?.label, "Trend fitted over ranks 4–5");
 assert.equal(curve.points[0]?.fitMembership.kind, "shown-not-fitted");
 assert.equal(curve.points[0]?.fitMembership.kind === "shown-not-fitted" ? curve.points[0].fitMembership.reasonCode : null, "top-three");
 assert.equal(curve.points.at(-1)?.fitMembership.kind === "shown-not-fitted" ? curve.points.at(-1)!.fitMembership.reasonCode : null, "frequency-one-tail");
@@ -61,7 +62,7 @@ const downsampledCurve = buildRankFrequencyGeometry({
   fitVisible: true,
   labelsMode: "examples",
 });
-assert.equal(downsampledCurve.fittedRange?.label, "Model fitted over ranks 4–24,292");
+assert.equal(downsampledCurve.fittedRange?.label, "Trend fitted over ranks 4–24,292");
 
 const denseRankPoints = Array.from({ length: 80 }, (_, index) => ({
   rank: index + 1,
@@ -100,7 +101,7 @@ const hiddenFit = buildRankFrequencyGeometry({
   labelsMode: "off",
 });
 assert.equal(hiddenFit.fitPath, null);
-assert(!hiddenFit.legend.some((item) => item.label === "Zipf fit"));
+assert(!hiddenFit.legend.some((item) => item.label === "Log–log trend"));
 assert.equal(hiddenFit.labels.length, 0);
 
 assert.equal(rankResidual(rankPoints[3]!, 1, 1_200), 0);
@@ -202,11 +203,21 @@ assert.equal(hiddenGrowthFit.yScale.domain[1], 2_200, "hidden fit values cannot 
 const shell = readFileSync(new URL("../src/features/analyse/workbench/shell.ts", import.meta.url), "utf8");
 const marks = readFileSync(new URL("../src/styles/plots/marks.css", import.meta.url), "utf8");
 assert.match(shell, /How quickly does frequency fall as vocabulary rank increases\?/);
-assert.match(shell, /top three ranks and frequency-one tail remain visible but are not used to estimate the fit/);
+assert.match(shell, /Curve view shows the empirical distribution by default/);
 assert.match(shell, /How quickly does the corpus encounter new types as tokens accumulate\?/);
-assert.match(shell, /Both axes are logarithmic in Curve view/);
-assert.match(shell, /stable source order/);
-assert.match(shell, /Zipf fit f\(r\) = C r\^-alpha/);
-assert.match(shell, /V\(N\) = K N\^beta/);
+assert.match(shell, /Both axes are logarithmic/);
+assert.match(shell, /stable source-path order/);
+assert.match(shell, /Optional log–log trend · slope/);
+assert.match(shell, /V\(N\) ≈ K N\^beta/);
 assert.doesNotMatch(shell, /(?:alpha|beta)[\s\S]{0,80}type\s*=\s*["'](?:range|number)["']/i);
 assert.match(marks, /cw-plot-heaps-fit[\s\S]*stroke-dasharray/);
+
+// Check both the numerical scale and the actual growth endpoint label.
+for (const [count, expected] of [[0, "0"], [999, "999"], [1_000, "1k"], [1_234, "1.23k"], [49_152, "49.2k"], [123_456, "123k"], [999_999, "1M"], [1_240_000, "1.24M"]] as const) {
+  assert.equal(formatTokenCount(count), expected);
+  const endpoint = buildVocabularyGrowthGeometry({ points: [{ tokens: count, types: 42 }], heapsK: null, heapsBeta: null });
+  if (count > 0) assert(endpoint.labels.some(label => label.text.includes(`at ${expected} tokens`)));
+}
+
+assert.match(shell, /fitVisible: controller\.controls\.view === "trend"/);
+assert.match(shell, /rank\.rSquared === null \? "N\/A"/);

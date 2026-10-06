@@ -107,6 +107,7 @@ const rankFrequencyRaw = buildRankFrequencyGeometry({
   zipfCoefficient: 1_200,
   fittedRankStart: 4,
   fittedRankEnd: 4,
+  fitVisible: true,
 });
 const rankFrequencyRate = buildRankFrequencyGeometry({
   points: rankFrequencyRaw.points.map((point) => point.datum),
@@ -116,6 +117,7 @@ const rankFrequencyRate = buildRankFrequencyGeometry({
   zipfCoefficient: 1_200,
   fittedRankStart: 4,
   fittedRankEnd: 4,
+  fitVisible: true,
 });
 assert(
   rankFrequencyRaw.points.map((point) => `${point.x},${point.y}`).join(",")
@@ -129,8 +131,8 @@ assert(
 );
 assert(
   rankFrequencyRaw.points.filter((point) => point.fitMembership.kind === "shown-not-fitted").length === 4
-    && rankFrequencyRaw.legend.map((item) => item.label).join(",") === "Included in fit,Zipf fit,Shown, not fitted"
-    && rankFrequencyRaw.fittedRange?.label === "Model fitted over ranks 4–4"
+    && rankFrequencyRaw.legend.map((item) => item.label).join(",") === "Included in fit,Log–log trend,Shown, not fitted"
+    && rankFrequencyRaw.fittedRange?.label === "Trend fitted over ranks 4–4"
     && rankFrequencyRaw.fittedRange.y >= rankFrequencyRaw.box.margin.top
     && rankFrequencyRaw.fittedRange.y + rankFrequencyRaw.fittedRange.height <= rankFrequencyRaw.box.height - rankFrequencyRaw.box.margin.bottom,
   "Rank-frequency should explicitly disclose the fitted range and hollow exclusions",
@@ -337,8 +339,8 @@ assert(
   "Dispersion plane labels control should remove permanent labels without removing hover witnesses",
 );
 assert(
-  formatDispersionPlaneStats(100, 48, 32, 2, 1_000, 0.5)
-    === "100 types · grid 48×32 · 2 loud-but-local (f ≥ 1k, DP ≥ 0.5)",
+  formatDispersionPlaneStats(100, 48, 32)
+    === "100 types · grid 48×32",
   "Dispersion plane stats caption should use the exact computed template",
 );
 
@@ -427,6 +429,15 @@ const vocabulary = buildVocabularyGrowthGeometry({
 assert(vocabulary.labels[0]?.lines?.length === 2, "Vocabulary endpoint label should render as two measured lines");
 assert(vocabulary.labels[0]?.anchor === "end", "Vocabulary endpoint label should be end anchored near the endpoint");
 assert(
-  vocabulary.fitPath !== null && vocabulary.legend.map((item) => item.label).join(",") === "Observed,Heaps fit",
-  "Vocabulary growth should show a distinct Heaps fitted series and legend",
+  vocabulary.fitPath !== null && vocabulary.legend.map((item) => item.label).join(",") === "Observed,Log–log trend",
+  "Vocabulary growth should show a distinct Log–log trendted series and legend",
 );
+
+const empiricalRank = buildRankFrequencyGeometry({
+  points: rankFrequencyRaw.points.map(point => point.datum), yMode: "raw", totalTokens: 10_000,
+  zipfExponent: 1, zipfCoefficient: 1_200, fittedRankStart: 4, fittedRankEnd: 4,
+});
+assert(empiricalRank.fitPath === null && empiricalRank.fittedRange === null, "Default rank view must retain empirical points without a trend overlay");
+assert(empiricalRank.legend.map(item => item.label).join() === "Observed" && empiricalRank.points.every(point => !point.excluded), "Default rank view must not visually classify fit membership");
+assert(empiricalRank.points.every(point => point.tooltipRows.length === 3 && !/fit|residual/.test(point.tooltipRows.join(" "))), "Default rank tooltips must describe observations without the optional trend");
+assert(dispersionPlane.thresholdLines.length === 0 && dispersionPlane.thresholdLabels.length === 0, "Default DP view must not impose arbitrary frequency or DP references");

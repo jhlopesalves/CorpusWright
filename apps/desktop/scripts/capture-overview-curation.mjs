@@ -124,7 +124,7 @@ const legibilityScreenshotCases = [
   legibilityShot("mattr-ecdf-final", "mattr", { view: "ecdf" }),
   legibilityShot("document-qq-legend", "document", { view: "qq" }),
   legibilityShot("vocabulary-growth-legend", "growth", { view: "growth" }),
-  legibilityShot("document-balance-disclosure", "document", { view: "histogram", methodDisclosure: "documentBalance" }),
+  legibilityShot("document-concentration-disclosure", "document", { view: "histogram", methodDisclosure: "documentBalance" }),
   legibilityShot("dispersion-profile-tooltip", "profile", { hoverProfileBand: true }),
   legibilityShot("dispersion-plane", "plane", { pinned: true }),
 ];
@@ -459,21 +459,16 @@ function assertStandaloneSvg(source, filename) {
       "cw-plot-plane-marginal is-dp",
       "cw-plot-density-legend",
       "Types per cell · logarithmic colour scale",
-      "cw-plot-threshold-line",
-      "cw-plot-quadrant-label",
       "cw-plot-plane-witness",
-      "Raw frequency 1,000",
-      "DP 0.50",
     ]) {
       if (!source.includes(required)) throw new Error(`${filename} is missing simplified plane geometry: ${required}`);
     }
     const densityCells = Array.from(source.matchAll(/<rect\b[^>]*class="[^"]*\bcw-plot-density-cell\b[^"]*"[^>]*>/g), (match) => match[0]);
     if (densityCells.length === 0 || densityCells.some((cell) => !/\brx="0(?:\.0+)?"/.test(cell))) throw new Error(`${filename} does not contain only square density cells`);
-    if (/cw-plot-quadrant-pill|cw-plot-witness-legend/.test(source)) {
+    if (/cw-plot-threshold-line|cw-plot-quadrant-label|cw-plot-quadrant-pill|cw-plot-witness-legend/.test(source)) {
       throw new Error(`${filename} retains transient or removed plane decoration`);
     }
     if ((source.match(/cw-plot-density-legend"/g) ?? []).length !== 1) throw new Error(`${filename} does not contain exactly one density legend`);
-    if ((source.match(/cw-plot-quadrant-label/g) ?? []).length !== 4) throw new Error(`${filename} does not contain four quiet quadrant labels`);
   }
 }
 

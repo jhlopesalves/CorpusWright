@@ -58,14 +58,14 @@ assert.doesNotMatch(lexicalPanel, /label: "MATTR"[\s\S]{0,160}glossaryId: "mattr
 assert.match(lexicalPanel, /label: "MTLD"[\s\S]{0,120}glossaryId: "mtld"/);
 const concentrationPanel = functionSource("renderFrequencyConcentration");
 assert.doesNotMatch(concentrationPanel, /Top (?:100|1,000|10,000) types cover/);
-for (const retained of ["Normalised entropy / evenness", "Shannon entropy", "Effective vocabulary (perplexity)"]) {
+for (const retained of ["Normalised entropy", "Shannon entropy", "Entropy-equivalent vocabulary size"]) {
   assert(concentrationPanel.includes(retained), `missing retained concentration metric: ${retained}`);
 }
 assert.doesNotMatch(concentrationPanel, /glossaryId:/);
 assert.match(concentrationPanel, /createGroupedMethodDisclosure\("Frequency concentration", \[\s*"shannonEntropy",\s*"normalisedEntropy",\s*"effectiveVocabulary",\s*\]\)/);
 const balancePanel = functionSource("renderDocumentBalance");
 assert.doesNotMatch(balancePanel, /glossaryId:/);
-assert.match(balancePanel, /createGroupedMethodDisclosure\("Document balance", \[\s*"giniCoefficient",\s*"coefficientOfVariation",\s*"effectiveDocuments",\s*\]\)/);
+assert.match(balancePanel, /createGroupedMethodDisclosure\("Document-size concentration", \[\s*"giniCoefficient",\s*"coefficientOfVariation",\s*"effectiveDocuments",\s*\]\)/);
 assert.match(shell, /function createGroupedMethodDisclosure/);
 for (const name of ["renderRankFrequency", "renderVocabularyGrowth"]) {
   assert.doesNotMatch(functionSource(name), /glossaryId:/, `${name} repeats a figure-owned method disclosure`);
@@ -78,7 +78,7 @@ assert.doesNotMatch(dispersionPanel, /glossaryId: "griesDp"/);
 for (const retained of ["Frequent types (10+ occurrences)", "Gries DP", "Universe: all analysis types", "renderDispersionFigure", "renderDispersionPlaneFigure"]) {
   assert(dispersionPanel.includes(retained), `missing retained dispersion content: ${retained}`);
 }
-for (const advanced of ["Gini coefficient", "Coefficient of variation", "Effective documents", "MATTR", "MTLD", "Shannon entropy", "Zipf exponent", "Heaps K", "Gries DP"]) {
+for (const advanced of ["Gini coefficient", "Coefficient of variation", "Effective document count", "MATTR", "MTLD", "Shannon entropy", "Log–log slope (optional trend)", "Growth coefficient K", "Gries DP"]) {
   assert(shell.includes(advanced), `missing advanced Overview metric: ${advanced}`);
 }
 
@@ -88,3 +88,9 @@ assert.match(styles, /cw-overview-figure-controls[\s\S]*flex-wrap: wrap/);
 assert.match(styles, /\.cw-overview-control-field\[hidden\][\s\S]*display: none/);
 assert.doesNotMatch(styles, /cw-overview-figure-options/);
 assert.doesNotMatch(styles, /cw-overview-palette-toolbar/);
+
+assert.match(functionSource("renderRankFrequencyFigure"), /initialControls: \{ view: "curve" \}/);
+assert.match(functionSource("renderRankFrequencyFigure"), /fitVisible: controller\.controls\.view === "trend"/);
+assert.doesNotMatch(functionSource("renderRankFrequencyFigure"), /alpha|r\^-/);
+assert.match(functionSource("renderDispersionPlaneFigure"), /thresholdsVisible: false/);
+assert.doesNotMatch(dispersionPanel, /highDpFrequentTypes/);

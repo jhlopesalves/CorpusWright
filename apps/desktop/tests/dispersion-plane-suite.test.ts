@@ -98,19 +98,14 @@ assert(logRaw.witnesses.every((witness) => witness.shape === "circle"));
 assert.deepEqual(logRaw.witnesses.map((witness) => witness.datum), witnesses);
 assert(logRaw.witnesses.every((witness) => witness.className === "cw-plot-plane-witness-mark"));
 assert(logRaw.witnesses.every((witness) => witness.ariaLabel?.includes(witness.datum.token)));
-assert(logRaw.witnesses.every((witness) => witness.tooltipRows?.some((row) => row.startsWith("category "))));
+assert(logRaw.witnesses.every((witness) => witness.tooltipRows?.some((row) => row.startsWith("DP ")) && witness.tooltipRows?.some((row) => row.startsWith("frequency ")) && !witness.tooltipRows?.some((row) => row.startsWith("category "))));
 assert.equal(logRaw.labels.filter((label) => label.text.startsWith("core-")).length, 1);
 assert.equal(logRaw.labels.filter((label) => label.text.startsWith("loud-")).length, 1);
 assert.equal(logRaw.labels.filter((label) => label.text.startsWith("quiet-")).length, 1);
 assert.equal(logRaw.labels.filter((label) => label.text.startsWith("rare-")).length, 1);
 assert(logRaw.labels.length <= 4);
 assert(logRaw.witnesses.every((witness) => witness.rampIndex === 2));
-assert.deepEqual(logRaw.quadrantLabels.map((label) => label.text).sort(), [
-  "Frequent · concentrated",
-  "Frequent · even",
-  "Rare · concentrated",
-  "Rare · even",
-]);
+assert.deepEqual(logRaw.quadrantLabels, [], "Fixed references must not create qualitative vocabulary categories");
 for (const label of logRaw.labels.filter((candidate) => !candidate.pinned)) {
   for (const threshold of logRaw.thresholdLabels) {
     assert(!layoutBoxesOverlap(estimateLabelBox(label), estimateLabelBox(threshold), 1));
@@ -154,7 +149,7 @@ assert.equal(hiddenLayers.frequencyMarginal.length, 0);
 assert.equal(hiddenLayers.dpMarginal.length, 0);
 assert.equal(hiddenLayers.thresholdLines.length, 0);
 assert.equal(hiddenLayers.thresholdLabels.length, 0);
-assert.deepEqual(logRaw.thresholdLabels.map((label) => label.text), ["DP 0.50", "Raw frequency 1,000"]);
+assert.deepEqual(logRaw.thresholdLabels.map((label) => label.text), ["DP reference 0.50", "Frequency reference 1,000"]);
 
 const controller = new OverviewFigureController({
   initialControls: { frequency: "raw", density: "log", examples: "labelled", marginals: "show", thresholds: "show" },

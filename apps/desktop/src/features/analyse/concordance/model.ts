@@ -60,7 +60,7 @@ export const CONCORDANCE_COLLOCATION_MEASURE_OPTIONS: Array<{
   value: ConcordanceCollocationMeasure;
   label: string;
 }> = [
-  { value: "logDice", label: "logDice" },
+  { value: "logDice", label: "logDice (slots)" },
   { value: "mi", label: "MI" },
   { value: "mi3", label: "MI3" },
   { value: "tScore", label: "t-score" },
@@ -117,6 +117,22 @@ export function formatConcordanceProgress(progress: ConcordanceProgress | null):
 
 export function concordanceRowText(tokens: string[]): string {
   return tokens.join(" ");
+}
+
+/** Preserve punctuation and spacing around the unchanged analytical word tokens. */
+export function concordanceContextGaps(tokens: string[], displayText?: string | null): string[] {
+  const fallback = [...tokens.map((_, index) => index === 0 ? "" : " "), ""];
+  if (displayText == null) return fallback;
+  const gaps: string[] = [];
+  let cursor = 0;
+  for (const token of tokens) {
+    const start = displayText.indexOf(token, cursor);
+    if (start < 0) return fallback;
+    gaps.push(displayText.slice(cursor, start));
+    cursor = start + token.length;
+  }
+  gaps.push(displayText.slice(cursor));
+  return gaps;
 }
 
 export function concordanceCollocateEvidenceDomId(surface: string): string {
@@ -286,7 +302,7 @@ export function concordanceMiddleEllipsis(value: string, maximumLength = 28): st
 export function concordanceCollocationMeasureLabel(
   measure: ConcordanceCollocationMeasure,
 ): string {
-  return CONCORDANCE_COLLOCATION_MEASURE_OPTIONS.find((option) => option.value === measure)?.label ?? "logDice";
+  return CONCORDANCE_COLLOCATION_MEASURE_OPTIONS.find((option) => option.value === measure)?.label ?? "logDice (slots)";
 }
 
 export type ConcordanceStrengthDirection = "negative" | "zero" | "positive" | "nonNegative";
@@ -613,16 +629,6 @@ export function concordanceDistributionMagnitudePercent(
   return Math.min(100, Math.max(0, value / maximum * 100));
 }
 
-export function concordanceIsSparse(result: {
-  totalHits: number;
-  documentsWithHits: number;
-  selectedDocumentsTotal: number;
-}): boolean {
-  return result.totalHits < 20
-    || result.documentsWithHits < 10
-    || concordanceRangePercent(result) < 1.0;
-}
-
 export function concordanceSummaryText(result: {
   query: string;
   totalHits: number;
@@ -643,8 +649,7 @@ export function concordanceSummaryMetricsText(result: {
 }): string {
   const rangePct = concordanceRangePercent(result).toFixed(1);
   const topFilePct = (result.topDocumentShare * 100).toFixed(1);
-  const sparse = concordanceIsSparse(result) ? " · Sparse" : "";
-  return `${result.totalHits.toLocaleString()} hits · ${result.documentsWithHits.toLocaleString()} / ${result.selectedDocumentsTotal.toLocaleString()} files · range ${rangePct}% · top file ${topFilePct}% · DP ${result.dp.toFixed(2)}${sparse}`;
+  return `${result.totalHits.toLocaleString()} hits · ${result.documentsWithHits.toLocaleString()} / ${result.selectedDocumentsTotal.toLocaleString()} files · range ${rangePct}% · top file ${topFilePct}% · DP ${result.dp.toFixed(2)}`;
 }
 
 export function concordanceCollocationScore(
@@ -753,9 +758,9 @@ export function concordanceExpansionViewModel(
       ariaExpanded: "true",
       status: "ready",
       message: "",
-      leftText: concordanceRowText(state.result.leftContext),
-      nodeText: state.result.nodeTokens.join(" "),
-      rightText: concordanceRowText(state.result.rightContext),
+      leftText: state.result.leftText ?? concordanceRowText(state.result.leftContext),
+      nodeText: state.result.nodeText ?? state.result.nodeTokens.join(" "),
+      rightText: state.result.rightText ?? concordanceRowText(state.result.rightContext),
     };
   }
   return {

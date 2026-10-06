@@ -31,12 +31,12 @@ import {
   concordanceCollocationStrengthBar,
   concordanceCollocationSortHeaderLabel,
   concordanceContextTokenSegments,
+  concordanceContextGaps,
   concordanceDistributionCardStatsText,
   concordanceDistributionMagnitudePercent,
   concordanceCollocatePositionProfile,
   concordanceContextSortLevels,
   concordanceExpansionViewModel,
-  concordanceIsSparse,
   concordanceLinesCardStatsText,
   concordanceRangePercent,
   concordanceMiddleEllipsis,
@@ -137,7 +137,7 @@ assert(concordanceCollocationMeasureLabel("g2") === "log-likelihood", "Measure l
 assert(concordanceCollocationDirectionLabel("both") === "both sides", "Both-side direction should be readable");
 assert(
   concordanceCollocationExplanation("movie", 5, "both", "logDice")
-    === 'Collocates near "movie" · 5-token window · both sides · ranked by logDice',
+    === 'Collocates near "movie" · 5-token window · both sides · ranked by logDice (slots)',
   "Collocation explanation should translate the active query, span, direction, and measure compactly",
 );
 assert(
@@ -187,7 +187,7 @@ assert(
   "Collocation sort options should expose true backend ranking columns",
 );
 assert(
-  concordanceCollocationSortHeaderLabel("association", "logDice") === "Association: logDice",
+  concordanceCollocationSortHeaderLabel("association", "logDice") === "Association: logDice (slots)",
   "Association sort header should include the active measure",
 );
 assert(
@@ -278,7 +278,7 @@ assert(
     shown: 10,
     loadedRows: 214,
     totalCandidates: 214,
-  }) === "span 5L–5R · logDice · min freq 5 · showing 10 of 214",
+  }) === "span 5L–5R · logDice (slots) · min freq 5 · showing 10 of 214",
   "Uncapped Collocates stats should use the qualifying total directly",
 );
 assert(
@@ -302,10 +302,7 @@ assert(
   }) === "47 of 529 documents with hits · showing 10 of 47",
   "Distribution stats should distinguish selected documents, hit documents, and page rows",
 );
-assert(
-  concordanceIsSparse({ totalHits: 19, documentsWithHits: 12, selectedDocumentsTotal: 12 }),
-  "Thin hit counts should be sparse",
-);
+
 assert(
   concordanceSummaryText({
     query: "rare",
@@ -314,8 +311,8 @@ assert(
     selectedDocumentsTotal: 500,
     topDocumentShare: 1,
     dp: 0.99,
-  }).endsWith(" · Sparse"),
-  "Sparse caveat should be appended as plain summary text",
+  }).endsWith("DP 0.99"),
+  "Small counts should retain continuous metrics without qualitative classification",
 );
 
 const collocates = [
@@ -435,3 +432,10 @@ const collapsedView = concordanceExpansionViewModel(rowKey, {
 });
 assert(!collapsedView.expanded, "Collapsed rows should not render expanded context");
 assert(collapsedView.ariaExpanded === "false", "Collapsed rows should expose aria-expanded=false");
+
+assertDeepEqual(concordanceContextGaps(["école", "seed"], '“école,” seed.\n'), ['“', ',” ', '.\n'], "Punctuation gaps must preserve Unicode source text without changing tokens");
+assertDeepEqual(concordanceContextGaps(["a", "a"], "(a), a!"), ["(", "), ", "!"], "Repeated token surfaces must map in source order");
+assertDeepEqual(concordanceContextGaps(["old", "response"]), ["", " ", ""], "Older token-only responses retain their display fallback");
+assertDeepEqual(concordanceContextGaps([], ".\n"), [".\n"], "Punctuation remains visible when the context contains no words");
+
+assertDeepEqual(concordanceContextGaps(["old", "response"], null), ["", " ", ""], "Unavailable source slices retain the token-only display fallback");

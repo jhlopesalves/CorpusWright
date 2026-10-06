@@ -2,13 +2,13 @@ use std::collections::HashSet;
 use std::sync::LazyLock;
 
 pub(super) const MAX_QUERY_WINDOW: usize = 500;
-/// Heuristic DP threshold below which an item is treated as broadly dispersed.
+/// Lower fixed DP reference used for literal interval labels.
 ///
 /// Plain Gries-style DP is unnormalised here: its upper bound depends on the
-/// document-size shares, so these labels are corpus-internal orientation aids,
-/// not cross-corpus cut-offs.
+/// document-size shares, so these references are implementation heuristics,
+/// not validated qualitative categories or cross-corpus cut-offs.
 pub(super) const ANNOTATED_DP_BROADLY_DISPERSED_MAX: f64 = 0.30;
-/// Heuristic DP threshold from which an item is treated as highly concentrated.
+/// Upper fixed DP reference used for literal interval labels.
 pub(super) const ANNOTATED_DP_HIGHLY_CONCENTRATED_MIN: f64 = 0.70;
 
 use crate::analysis::frequency::case_fold_surface;

@@ -244,11 +244,11 @@ pub struct AnnotatedFrequencyResult {
 
 pub(super) fn annotated_dispersion_label(dp: f64) -> &'static str {
     if dp < ANNOTATED_DP_BROADLY_DISPERSED_MAX {
-        "broadly dispersed"
+        "DP < 0.30 (fixed reference)"
     } else if dp < ANNOTATED_DP_HIGHLY_CONCENTRATED_MIN {
-        "moderately concentrated"
+        "0.30 ≤ DP < 0.70 (fixed references)"
     } else {
-        "highly concentrated"
+        "DP ≥ 0.70 (fixed reference)"
     }
 }
 

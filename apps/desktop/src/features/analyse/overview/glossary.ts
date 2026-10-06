@@ -24,11 +24,10 @@ export const overviewGlossary = {
       { sym: String.raw`N_d`, def: "Tokens in document d." },
       { sym: String.raw`D`, def: "Number of documents." },
     ],
-    interpretation:
-      "Tokens measure corpus size - how much running text there is. Every 'per million' rate and every proportion on this page uses N as its denominator.",
+    interpretation: "Tokens measure the amount of counted text. Per-million frequency uses N as its denominator; a type share uses V and a document share uses the stated document total.",
     limitations: [
-      "Counts depend on the tokenisation rules above; corpora processed with different rules are not comparable.",
-      "Numbers count as tokens, so number-heavy material (tables, OCR output) inflates N.",
+      "Counts depend on the tokenisation rules above; comparisons must account for differences in processing.",
+      "Number-heavy material contributes to N under this word-and-number policy.",
     ],
   },
   type: {
@@ -46,42 +45,38 @@ export const overviewGlossary = {
     interpretation:
       "Types measure vocabulary breadth. The Frequency List applies its own view filters (alphabetic words only, hidden stopwords), so its displayed type count can legitimately differ from the Overview's total. The Overview is a fixed corpus snapshot; the Frequency List is an interactive filtered table.",
     limitations: [
-      "Types are case-folded surface forms, not lemmas - inflected variants count separately.",
-      "OCR errors and spelling variants each create their own type, inflating V in noisy corpora.",
+      "Types are NFC-normalised, lowercased surface forms, not lemmas - inflected variants count separately.",
+      "OCR errors and spelling variants can create additional observed types.",
     ],
   },
   documentUnit: {
     id: "document",
     label: "Document",
-    explanation:
-      "One source text in the analysis corpus - the unit behind balance, dispersion, and document-frequency measures.",
+    explanation: "One source text in the analysis corpus: the unit behind document-size concentration, dispersion and document frequency.",
     latex: String.raw`s_d=\frac{N_d}{N}`,
-    detail:
-      "Every file included in the analysis is one document. Balance metrics compare document sizes; dispersion metrics ask how each type spreads across documents. Documents that yield no tokens are excluded from these calculations.",
+    detail: "Every included, non-empty source file is one document. Document-size metrics compare token totals; dispersion compares a type's occurrence shares with document token shares. Empty or failed sources do not enter the analysis population.",
     symbols: [
       { sym: String.raw`s_d`, def: "Document d's share of all corpus tokens." },
     ],
-    interpretation:
-      "Every document-based measure inherits your segmentation choices. One enormous file among thousands of small ones dominates the shares - check the largest-document share in the balance panel before reading dispersion.",
+    interpretation: "Merging or splitting files changes the document partition. Read the largest-document share in Document-size concentration before interpreting document distribution.",
     limitations: [
-      "Merging or splitting source files changes every document-based measure without changing a word of text.",
+      "Merging or splitting source files can change document-based measures without changing a word of text.",
     ],
   },
   giniCoefficient: {
     id: "gini-coefficient",
     label: "Gini coefficient",
-    explanation: "Summarises inequality in document lengths: 0 means equal lengths, while larger values mean greater imbalance.",
+    explanation: "Summarises inequality in document token counts: 0 means equal counts; larger values mean greater inequality.",
     latex: String.raw`G=\frac{\sum_{i=1}^{n}\sum_{j=1}^{n}\lvert x_i-x_j\rvert}{2n\sum_{i=1}^{n}x_i}`,
     detail:
-      "Borrowed from economics, the Gini coefficient summarises inequality in document lengths. It is the average absolute difference in length between all document pairs, normalised by the mean: 0 means every document is the same length, values approaching 1 mean a few documents hold most of the tokens.",
+      "The Gini coefficient is the mean absolute difference in token length across all document pairs, divided by twice the mean length. Zero means equal token counts; larger values mean greater inequality. It does not describe differences in document content.",
     symbols: [
       { sym: String.raw`G`, def: "Gini coefficient for document lengths." },
       { sym: String.raw`x_i,\ x_j`, def: "Token lengths of documents i and j." },
       { sym: String.raw`n`, def: "Number of documents." },
       { sym: String.raw`\sum x_i`, def: "Total tokens across all documents." },
     ],
-    interpretation:
-      "Runs from 0 (perfect equality) to near 1 (extreme imbalance). It tells you whether corpus-level frequencies rest on a balanced set of documents or are dominated by a few large ones. A high value is a warning that aggregate counts may really reflect a handful of documents - read it with dispersion (Gries DP) and effective documents, not on its own.",
+    interpretation: "Larger values mean greater inequality in token counts. Read Gini with the largest-document share, effective document count and feature dispersion. It does not assess corpus-design balance or representativeness.",
     limitations: [
       "Measures document-length inequality only, not content or quality.",
       "Unequal lengths are not inherently a problem - they are context for interpreting corpus-level frequencies.",
@@ -99,31 +94,29 @@ export const overviewGlossary = {
       { sym: String.raw`\sigma_x`, def: "Standard deviation of document lengths." },
       { sym: String.raw`\mu_x`, def: "Mean document length." },
     ],
-    interpretation:
-      "0 means all documents are the same length; higher means greater relative spread. As a rough guide, below about 0.3 is fairly uniform, 0.5-1 is moderately uneven, and above 1 means lengths vary wildly. Like Gini, it is context for reading corpus-level counts, not a quality score.",
+    interpretation: "0 means equal document token counts; larger values mean greater spread relative to the mean. CorpusWright uses the population standard deviation of the included document lengths. There are no validated quality categories for this value.",
     limitations: [
-      "Assumes the mean is a meaningful centre; for very skewed length distributions the Gini view is more informative.",
+      "Read with percentiles and concentration measures; CV alone does not describe the distribution's shape.",
       "Measures length only, not content.",
     ],
   },
   effectiveDocuments: {
     id: "effective-documents",
-    label: "Effective documents",
-    explanation: "Expresses document balance as the equivalent number of equally sized documents.",
-    latex: String.raw`N_{\mathrm{eff}}=\frac{1}{\sum_{d=1}^{D}s_d^2}`,
-    detail:
-      "The inverse Simpson index applied to document size shares - the equivalent number of equally sized documents that would give the same balance as your actual corpus. When a few documents dominate, the effective count falls well below the real number.",
+    label: "Effective document count",
+    explanation: "Inverse squared token-share concentration, expressed as an equivalent count of equally sized documents.",
+    latex: String.raw`D_{\mathrm{eff}}=\frac{1}{\sum_{d=1}^{D}s_d^2}`,
+    detail: "For token shares s_d, calculate 1 divided by their sum of squares. The result is the equivalent count of equally sized documents with the same squared-share concentration; it need not be an integer.",
     symbols: [
-      { sym: String.raw`N_{\mathrm{eff}}`, def: "Effective document count." },
+      { sym: String.raw`D_{\mathrm{eff}}`, def: "Effective document count." },
       { sym: String.raw`s_d`, def: "Document d's share of total corpus tokens (its size as a fraction)." },
       { sym: String.raw`D`, def: "Number of documents." },
       { sym: String.raw`\sum s_d^2`, def: "Sum of squared shares - the Simpson concentration." },
     ],
-    interpretation:
-      "It answers: given this imbalance, how many equally sized documents would the corpus behave like? Compare it to the real document count. Close to the actual number means well balanced; much lower means a few large documents carry most of the mass. For example, '7.0 of 8' means the eight documents behave almost like eight equal ones - well balanced. It is the document-level analogue of effective vocabulary.",
+    interpretation: "Equal token shares give D_eff = D. More concentrated shares give a smaller equivalent count. Four shares of 1/4 give 4; shares of 1/2, 1/6, 1/6 and 1/6 give 3.",
     limitations: [
-      "Measures balance of document sizes, not content or quality.",
-      "Depends on how the corpus is segmented into documents.",
+      "This is not an inferential effective sample size or a count of independent observations.",
+      "Document-size concentration does not establish corpus-design balance, representativeness or sampling adequacy.",
+      "Depends on the document partition.",
     ],
   },
   hapax: {
@@ -131,16 +124,14 @@ export const overviewGlossary = {
     label: "Hapax",
     explanation: "A type that occurs exactly once in the analysis corpus.",
     latex: String.raw`f(w)=1`,
-    detail:
-      "Hapax legomena are types that occur exactly once in the analysis corpus. Their count and proportion are a quick gauge of vocabulary richness and of the long tail.",
+    detail: "Hapax legomena occur exactly once in the prepared sample. Their share of types describes the observed low-frequency tail.",
     symbols: [
       { sym: String.raw`f(w)=1`, def: "Type w occurs exactly once." },
     ],
-    interpretation:
-      "In natural language a large share of types - often roughly 40-60% - are hapax; the proportion rises with vocabulary richness and falls as a corpus grows and words recur. A very high hapax rate can also flag noise (OCR errors, unnormalised variants) rather than genuine richness, so read it next to the cleaning results.",
+    interpretation: "Interpret the share with corpus size, morphology, names, terminology, composition and processing. A high share does not establish corpus inadequacy, saturation or representativeness. Inspect unexpected forms directly before attributing them to extraction errors.",
     limitations: [
-      "Sensitive to tokenisation, casing and cleaning - OCR and spelling variants inflate the count.",
-      "Corpus-size-dependent; only compare across corpora of similar size.",
+      "Tokenisation, casing, cleaning, OCR and spelling variants can change the count.",
+      "Depends on corpus size and design; similar sizes alone do not establish comparability.",
     ],
   },
   disLegomena: {
@@ -153,11 +144,10 @@ export const overviewGlossary = {
     symbols: [
       { sym: String.raw`f(w)=2`, def: "Type w occurs exactly twice." },
     ],
-    interpretation:
-      "Like hapax, a high proportion points to a rich or noisy long tail; tracking hapax and dis legomena together shows how quickly the tail thins. Both shrink as a corpus grows and types recur.",
+    interpretation: "Read frequency-two types alongside hapaxes and the remaining frequency classes. Their count changes as existing types recur and new types enter the sample; it need not decrease as the corpus grows.",
     limitations: [
       "Sensitive to tokenisation, casing and cleaning, like hapax.",
-      "Corpus-size-dependent; only compare across corpora of similar size.",
+      "Depends on corpus size and design; similar sizes alone do not establish comparability.",
     ],
   },
   mattr: {
@@ -165,8 +155,7 @@ export const overviewGlossary = {
     label: "MATTR",
     explanation: "Averages type–token ratios across overlapping same-size token windows within each document.",
     latex: String.raw`\mathrm{MATTR}_W=\frac{1}{N-W+1}\sum_{j=1}^{N-W+1}\frac{V_j}{W}`,
-    detail:
-      "Moving-average TTR. It slides a window of W tokens across the text, computes the type-token ratio inside each window, and averages them. Because every window uses the same W, it removes raw TTR's dependence on total length.",
+    detail: "CorpusWright slides a 100-token window one token at a time within each document and averages the window TTRs. A fixed window reduces raw TTR's length sensitivity without making the result independent of sequence or vocabulary distribution.",
     symbols: [
       { sym: String.raw`\mathrm{MATTR}_W`, def: "Moving-average TTR computed with window size W." },
       { sym: String.raw`W`, def: "Window size, in tokens." },
@@ -174,10 +163,9 @@ export const overviewGlossary = {
       { sym: String.raw`V_j`, def: "Number of distinct types in the window starting at position j." },
       { sym: String.raw`N-W+1`, def: "Number of overlapping windows." },
     ],
-    interpretation:
-      "Runs from 0 to 1; higher means richer vocabulary within a typical window. Because all windows share one size, MATTR is comparable across documents of different lengths, unlike raw TTR. Values depend on the chosen window, so only compare figures computed with the same W.",
+    interpretation: "Larger values mean more distinct types within the fixed window. Keep the window, tokenisation and aggregation policy consistent when comparing documents; composition and token sequence still matter.",
     limitations: [
-      "Depends on the window size W; figures from different windows are not comparable.",
+      "Depends on the window size W; comparisons across windows require an explicit design.",
       "Requires documents at least as long as the window.",
       "Sensitive to tokenisation and casing.",
     ],
@@ -185,10 +173,10 @@ export const overviewGlossary = {
   mtld: {
     id: "mtld",
     label: "MTLD",
-    explanation: "Estimates the mean length of token runs that keep their running TTR above a threshold.",
+    explanation: "Reports a factor-adjusted run length at a fixed running-TTR threshold.",
     latex: String.raw`\mathrm{MTLD}=\frac{N}{F+F_{\mathrm{partial}}}`,
     detail:
-      "MTLD walks through the tokens accumulating a running type-token ratio. Each time the running TTR falls to the threshold (0.720 by convention), it closes a factor and resets. MTLD is the total tokens divided by the number of factors, plus a fractional partial factor for the leftover run; it is computed forwards and backwards and the two are averaged. Intuitively, it is the average length of text you can read before lexical variety dips to the threshold.",
+      "MTLD walks through the tokens accumulating a running type-token ratio. Each time the running TTR reaches or falls below 0.720, it closes a factor and resets. For each direction, divide total tokens by the sum of complete factors and the fractional final factor. CorpusWright averages the forward and backward results.",
     symbols: [
       { sym: String.raw`N`, def: "Number of tokens." },
       { sym: String.raw`F`, def: "Number of complete factors - runs whose running TTR fell to the 0.720 threshold." },
@@ -197,12 +185,11 @@ export const overviewGlossary = {
         def: "The fractional final factor for the leftover tokens that never reached the threshold.",
       },
     ],
-    interpretation:
-      "Higher MTLD means greater lexical diversity - longer runs before variety drops. Unlike raw TTR it is largely length-independent, so it is comparable across documents of different lengths. A median in the dozens to low hundreds is typical for natural prose; the figure is roughly the number of tokens you read before the running type-token ratio falls to 0.720.",
+    interpretation: "Larger values describe longer runs before running TTR reaches 0.720, with the partial-factor adjustment and forward/backward averaging. MTLD reduces some length sensitivity but remains conditional on its threshold, sequence, type definition and vocabulary distribution.",
     limitations: [
-      "Depends on the 0.720 threshold (the McCarthy & Jarvis 2010 convention) and is unstable for very short documents (roughly under 100 tokens).",
-      "The reported value is the mean of a forward and a backward pass.",
-      "Sensitive to tokenisation and casing.",
+      "CorpusWright requires at least 100 tokens. This is an availability rule, not evidence of estimate stability at that length.",
+      "The partial factor is (1 - final TTR) / (1 - 0.720); a pass with no positive factor is unavailable.",
+      "The result averages forward and backward passes and depends on tokenisation and aggregation.",
     ],
   },
   distributionDiagnostics: {
@@ -252,8 +239,7 @@ export const overviewGlossary = {
     explanation:
       "Counts types within cells of logarithmic raw frequency and Gries DP, separating the population field from selected lexical witnesses.",
     latex: String.raw`c_{ij}=\left\lvert\{w:x_i\le\log_{10}f(w)<x_{i+1},\ y_j\le\mathrm{DP}(w)<y_{j+1}\}\right\rvert`,
-    detail:
-      "The cool density field represents the complete bounded grid returned by Rust. A log density display transforms colour contrast only; it never changes cell membership or raw counts. Labelled witnesses are selected deterministically to illustrate named descriptive regions and are not a random or representative sample.",
+    detail: "The density field represents the complete bounded grid returned by Rust. Log density changes colour contrast, not cell membership or raw counts. Witnesses are selected deterministically to illustrate positions in the plane, not as a random or representative sample.",
     symbols: [
       { sym: String.raw`c_{ij}`, def: "Type count in frequency cell i and DP cell j." },
       { sym: String.raw`f(w)`, def: "Raw frequency of type w." },
@@ -262,8 +248,8 @@ export const overviewGlossary = {
     interpretation:
       "Read horizontal position as frequency, vertical position as concentration, and colour strength as the number of types in that region. Witness marks sit above the density field as evidence, not as the population itself.",
     limitations: [
-      "The grid fixes visual resolution and should not be interpreted as natural categorical boundaries.",
-      "Thresholds and witness categories are descriptive orientation conventions, not significance tests.",
+      "The grid fixes visual resolution; its cells are not natural vocabulary categories.",
+      "The default view uses continuous coordinates without dividing reference lines or validated categories.",
     ],
   },
   shannonEntropy: {
@@ -273,63 +259,56 @@ export const overviewGlossary = {
       "The average uncertainty, in bits, of the type of a randomly drawn token.",
     latex: String.raw`H=-\sum_{i=1}^{V}p_i\log_2 p_i`,
     detail:
-      "Shannon entropy treats the corpus as a probability distribution over types. Drawing one token at random, H is the average number of yes/no questions needed to identify its type. It is highest when token mass is spread evenly across many types, and falls as a few types come to dominate.",
+      "Shannon entropy averages -log2(p_i) over the empirical type distribution. It describes the type of a uniformly sampled corpus token, ignoring word order and context. For a fixed observed vocabulary, equal type frequencies maximise H.",
     symbols: [
       { sym: String.raw`H`, def: "Shannon entropy, in bits (base-2 logarithm)." },
       { sym: String.raw`p_i`, def: "Relative frequency of type i - its count divided by total tokens." },
       { sym: String.raw`V`, def: "Number of distinct types." },
     ],
-    interpretation:
-      "Raw H rises with both vocabulary size and evenness, so read it through its two derived figures: normalised entropy (H rescaled to 0-1) and effective vocabulary (2 to the power H). H is the quantity those two are built from.",
+    interpretation: "For V observed types, the maximum is log2(V), reached at equal frequencies. Observed H depends on the full frequency distribution and need not rise whenever V rises. Normalised entropy and effective vocabulary derive from this same H.",
     limitations: [
-      "Depends on tokenisation and the type definition; only comparable across identically processed corpora.",
-      "Base-2 by convention here, so that effective vocabulary is two raised to H.",
+      "Uses empirical frequencies in bits, without a finite-sample bias correction or uncertainty interval.",
+      "Comparisons remain conditional on size, composition, sampling, tokenisation and type definition.",
     ],
   },
   zipfFit: {
     id: "zipf-fit",
-    label: "Rank-frequency (Zipf) fit",
-    explanation:
-      "Fits a straight line to log frequency against log rank, testing how closely the vocabulary follows a power law.",
-    latex: String.raw`f(r)\approx C\,r^{-a}\;\Longleftrightarrow\;\ln f(r)=\ln C-a\ln r`,
-    detail:
-      "Types are ranked by frequency and a least-squares line is fitted to ln(frequency) against ln(rank). Rank 1 and the frequency-one tail are excluded before fitting: the top rank is often idiosyncratic, and the tail of once-only types forms horizontal steps that distort the slope. The fitted-ranks row reports exactly which ranks the line describes.",
+    label: "Rank-frequency trend",
+    explanation: "Summarises a selected log-frequency versus log-rank interval with an ordinary least-squares line.",
+    latex: String.raw`\ln f(r)=b+m\ln r`,
+    detail: "The optional trend uses unweighted OLS on natural-log raw frequency and rank. Ranks 1–3 and frequency-one types remain visible but are excluded from the regression. The empirical curve is the default; the eligible interval is an implementation convention without a documented statistical justification.",
     symbols: [
-      { sym: String.raw`r`, def: "A type's frequency rank (1 = most frequent)." },
-      { sym: String.raw`f(r)`, def: "Token frequency of the type at rank r." },
-      { sym: String.raw`a`, def: "Zipf exponent - the negated slope. Classic Zipf's law predicts a near 1." },
-      { sym: String.raw`C`, def: "Zipf coefficient - exp(intercept), the fitted frequency at rank 1." },
-      { sym: String.raw`R^2`, def: "Share of log-frequency variance explained, over the fitted ranks only." },
+      { sym: String.raw`r`, def: "Frequency rank (1 = most frequent)." },
+      { sym: String.raw`f(r)`, def: "Raw frequency at rank r." },
+      { sym: String.raw`m`, def: "Log–log slope over the eligible interval." },
+      { sym: String.raw`b`, def: "Intercept on the natural-log raw-frequency scale." },
+      { sym: String.raw`R^2`, def: "1 − residual squared error / total squared log-frequency deviation; unavailable when total response variance is effectively zero." },
     ],
-    interpretation:
-      "The exponent says how steeply frequency falls with rank: near 1 is the classic Zipfian profile; steeper means high-frequency types dominate more; shallower means a flatter, more even vocabulary. Read the fitted range before the parameters - the fit describes only those ranks.",
+    interpretation: "Read observed points first. A slope and R² describe the selected log–log interval; they do not establish a power-law distribution.",
     limitations: [
-      "A high R-squared says the selected log-log segment is nearly straight. It does not prove Zipf's law and says nothing about corpus quality.",
-      "Rank 1 and the frequency-one tail are excluded by design; the fit does not describe them.",
-      "Least squares on log-log data is the pragmatic convention for power laws, not the statistically optimal estimator.",
-      "The coefficient is scale-dependent: rescaling the y-axis (raw frequency vs rate per million) rescales C but leaves the exponent and R-squared unchanged.",
+      "No power-law goodness-of-fit test, uncertainty interval or tokenisation validation is supplied.",
+      "The fixed rank and frequency exclusions have no documented statistical justification.",
+      "Per-million scaling changes the intercept, while slope and R² remain unchanged.",
     ],
   },
   heapsFit: {
     id: "heaps-fit",
-    label: "Vocabulary growth (Heaps) fit",
+    label: "Observed-order vocabulary growth",
     explanation:
       "Describes how the number of distinct types grows as more tokens are read.",
-    latex: String.raw`V(N)=K\,N^{\beta}\;\Longleftrightarrow\;\ln V=\ln K+\beta\ln N`,
-    detail:
-      "As the corpus is read in its current document order, vocabulary size is recorded at doubling token checkpoints, plus a final point for the whole corpus. Heaps' law proposes the power relation above; K and beta come from a least-squares line on the ln-ln checkpoints.",
+    latex: String.raw`V(N)\approx K\,N^{\beta}\;\Longleftrightarrow\;\ln V\approx\ln K+\beta\ln N`,
+    detail: "Documents accumulate in stable source-path order, preserving within-document token order. Distinct types are recorded at power-of-two token checkpoints plus the final total. Unweighted natural-log OLS uses checkpoints with N > 1 and V > 1; beta is unconstrained.",
     symbols: [
       { sym: String.raw`N`, def: "Tokens read so far." },
       { sym: String.raw`V(N)`, def: "Distinct types observed after N tokens." },
       { sym: String.raw`K`, def: "Fitted coefficient - the scale of the growth curve." },
-      { sym: String.raw`\beta`, def: "Growth exponent. Natural-language corpora typically show values around 0.4-0.6." },
-      { sym: String.raw`R^2`, def: "Fit quality on the log-log checkpoints." },
+      { sym: String.raw`\beta`, def: "Log-log slope along this accumulation path." },
+      { sym: String.raw`R^2`, def: "Descriptive regression summary of the nested log-log checkpoints." },
     ],
-    interpretation:
-      "Beta near 1 means nearly every stretch of new text brings new types (rich or noisy vocabulary, or a corpus still far from saturation); lower beta means the vocabulary is levelling off. The final observed point is simply the whole corpus: total tokens and total types.",
+    interpretation: "A smaller beta describes slower fitted growth over the observed range in this order. Different document orders can produce different trajectories. Neither beta nor R-squared establishes saturation, representativeness or a vocabulary ceiling.",
     limitations: [
-      "The curve describes vocabulary growth in the corpus's current document order. It is not a prediction of growth under other orderings or samples - reordering documents changes the checkpoints and can change the fit.",
-      "K and beta are correlated estimates from few checkpoints; read them as a pair describing the growth curve, not as precise constants.",
+      "The nested checkpoints describe one observed accumulation path, not an order-invariant corpus property.",
+      "No document-order permutations, uncertainty bands or extrapolated vocabulary ceiling are computed.",
     ],
   },
   topNCoverage: {
@@ -337,57 +316,52 @@ export const overviewGlossary = {
     label: "Top-N coverage",
     explanation: "The share of all tokens accounted for by the N most frequent types.",
     latex: String.raw`C_N=\frac{1}{T}\sum_{i=1}^{N}f_{(i)}`,
-    detail:
-      "Sort types by frequency, take the top N, and divide their combined token count by the corpus total. It shows how much of the running text a reader covers by knowing only the commonest words.",
+    detail: "Sort types by frequency, take the top N and divide their combined token count by the corpus total. This describes the share of counted tokens carried by those surface types, not a reader's comprehension.",
     symbols: [
       { sym: String.raw`C_N`, def: "Coverage of the top N types, in [0, 1]." },
       { sym: String.raw`f_{(i)}`, def: "Frequency of the i-th most frequent type." },
       { sym: String.raw`T`, def: "Total tokens in the corpus." },
     ],
-    interpretation:
-      "In natural language the top 100 types - mostly function words - often cover 40-50% of all tokens. Very high coverage at small N signals strong concentration; compare corpora only at the same N.",
+    interpretation: "Read coverage at a stated N with the observed frequency distribution. A small number of types can carry much of the token mass; this does not establish semantic coverage or a quality category.",
     limitations: [
-      "Depends on tokenisation and case folding, like every frequency measure.",
+      "Depends on tokenisation, NFC normalisation and the lowercased aggregation keys, like every frequency measure.",
     ],
   },
   normalisedEntropy: {
     id: "normalised-entropy",
-    label: "Normalised entropy / evenness",
-    explanation: "Measures how evenly token mass is distributed across types, from 0 (concentrated) to 1 (perfectly even).",
-    latex: String.raw`J=\frac{H}{\log_2 V},\qquad H=-\sum_{i=1}^{V}p_i\log_2 p_i`,
-    detail:
-      "Shannon entropy H is the average number of bits needed to identify the type of a randomly drawn token; it is largest when every type is equally frequent. Dividing H by its maximum possible value rescales it to Pielou's evenness J on a 0-1 scale, so corpora with different vocabulary sizes can be compared.",
+    label: "Normalised entropy",
+    explanation: "Bounds entropy relative to the maximum for the observed type count; equal frequencies give 1.",
+    latex: String.raw`H_{\mathrm{norm}}=\frac{H}{\log_2 V},\qquad H=-\sum_{i=1}^{V}p_i\log_2 p_i`,
+    detail: "Divide empirical H by log2(V), the maximum for the observed support. This bounds the ratio relative to that maximum; it does not remove differences in corpus size, composition, sampling, tokenisation, processing or estimator behaviour.",
     symbols: [
       { sym: String.raw`H`, def: "Shannon entropy, in bits (base-2 logarithm)." },
       { sym: String.raw`p_i`, def: "Relative frequency of type i - its token count divided by the total tokens N." },
       { sym: String.raw`V`, def: "Number of distinct types (vocabulary size)." },
       { sym: String.raw`\log_2 V`, def: "Maximum possible entropy, reached when all V types are equally frequent." },
-      { sym: String.raw`J`, def: "Normalised entropy / evenness - H divided by its maximum, in [0, 1]." },
+      { sym: String.raw`H_{\mathrm{norm}}`, def: "Normalised entropy - H divided by its maximum, in [0, 1]." },
     ],
-    interpretation:
-      "J runs from 0 to 1. Near 0, a few types dominate almost all tokens (highly concentrated); near 1, token mass is spread evenly across types. Natural-language corpora usually sit in a middle band, because a handful of function words are very frequent while most types are rare. Higher means more even; lower means more concentrated.",
+    interpretation: "A higher ratio means a more even observed frequency distribution relative to the maximum for V. Comparisons remain descriptive and conditional on corpus design and processing.",
     limitations: [
-      "Entirely dependent on tokenisation and what counts as a type (casing, lemmatisation, punctuation). Only comparable across corpora processed the same way.",
-      "Computed in bits (base-2), to match the effective-vocabulary formula.",
+      "No finite-sample bias correction or uncertainty interval is applied; identical processing alone does not establish comparability.",
+      "Unavailable for an empty or single-type corpus, where log2(V) cannot provide the denominator.",
     ],
   },
   effectiveVocabulary: {
     id: "effective-vocabulary",
-    label: "Effective vocabulary (perplexity)",
+    label: "Entropy-equivalent vocabulary size",
     explanation: "Gives the number of equally frequent types that would have the same entropy as this corpus.",
     latex: String.raw`V_{\mathrm{eff}}=2^H`,
     detail:
-      "The effective vocabulary is the exponential of the Shannon entropy (a Hill number of order 1, also called perplexity). It answers: how many equally frequent types would it take to produce this much entropy? It is a diversity figure that discounts the long tail of rare words.",
+      "This is the count of equally frequent types with the same empirical entropy (the effective-number transformation in Hill, 1973, expressed for base-2 entropy). It describes the observed frequency distribution; it does not estimate unseen types.",
     symbols: [
       { sym: String.raw`H`, def: "Shannon entropy, in bits (the same H as in normalised entropy)." },
       { sym: String.raw`2^H`, def: "Two raised to H, because H is measured in bits (base-2)." },
-      { sym: String.raw`V_{\mathrm{eff}}`, def: "Effective vocabulary - the equivalent count of equally frequent types." },
+      { sym: String.raw`V_{\mathrm{eff}}`, def: "Entropy-equivalent vocabulary size - the equivalent count of equally frequent types." },
     ],
-    interpretation:
-      "Read it against the raw type count. A corpus can have tens of thousands of unique types but a much smaller effective vocabulary - meaning its diversity behaves as if there were only that many equally common words. A large gap between the two is the signature of a Zipfian long tail: a small set of high-frequency forms carries most of the token mass while the bulk of types are rare. Higher effective vocabulary means richer effective diversity. Some tools report this same quantity as perplexity - they are one number, not two metrics.",
+    interpretation: "Compare this equivalent count with the observed type count. A gap records frequency inequality; it does not establish a Zipf distribution or describe unseen vocabulary. Perplexity here is this empirical quantity, not a language-model evaluation.",
     limitations: [
-      "Derived from H, so it inherits the same base-2 and tokenisation dependence.",
-      "Robust to the exact size of the rare tail, but not to how types are defined.",
+      "Inherits H's dependence on the full observed distribution, sampling and type definition.",
+      "No bias correction or uncertainty interval is applied.",
     ],
   },
   griesDp: {
@@ -416,11 +390,10 @@ export const overviewGlossary = {
         def: "Half the summed deviations, which bounds DP to [0, 1].",
       },
     ],
-    interpretation:
-      "DP runs from 0 (the type is spread exactly in proportion to document sizes - maximally dispersed) to near 1 (the type is concentrated in one or a few documents - clumped). Lower DP means more evenly dispersed, more general vocabulary; higher DP means document- or topic-bound. The bench reports two readouts over frequent types: the count whose DP is at least 0.5 (how many are noticeably clumped), and the median DP (how uneven the typical frequent type is).",
+    interpretation: "DP = 0 matches the size-proportional reference; larger DP means greater departure. DP does not identify a cause such as topic, register or sampling composition. The Overview reports a median for types with at least 10 occurrences; that reporting selection is not an adequacy threshold.",
     limitations: [
-      "This is Gries's (2008) original DP. A normalised variant, DPnorm, divides the original DP by one minus the smallest document-size share, which helps when documents differ greatly in size or for cross-corpus comparison. CorpusWright reports the original DP, not DPnorm.",
-      "Depends on how the corpus is segmented into documents, and on the frequent-types threshold.",
+      "Reports Gries's original, unnormalised DP. Its maximum is 1 minus the smallest positive document token share; CorpusWright does not report DPnorm.",
+      "Raw DP values under different document partitions can have different maxima. Low-frequency occurrence allocations are coarse; read DP with count and document range. A size-proportional reference is not a fitted sampling model.",
     ],
   },
   documentFrequencySpectrum: {
@@ -429,7 +402,7 @@ export const overviewGlossary = {
     explanation: "Groups types by the number of documents in which each type occurs.",
     latex: String.raw`\mathrm{df}(w)=\left\lvert\{d:f_d(w)>0\}\right\rvert`,
     detail:
-      "Groups the vocabulary by document frequency - the number of documents in which each type appears at least once - rather than by raw token count. It separates words that are common because they are spread across many documents from words that are common because they cluster in a few.",
+      "Groups the vocabulary by document frequency - the number of documents in which each type appears at least once. Read this reach alongside raw token count; the two measures answer different questions about the observed occurrences.",
     symbols: [
       { sym: String.raw`\mathrm{df}(w)`, def: "Document frequency of type w - the count of documents containing it." },
       { sym: String.raw`w`, def: "A type in the vocabulary." },
@@ -440,10 +413,9 @@ export const overviewGlossary = {
         def: "The number of documents whose within-document frequency for w is greater than zero.",
       },
     ],
-    interpretation:
-      "Read it alongside the token-frequency spectrum. A type with high token frequency but low document frequency is bursty and topic-specific (frequent in a few documents); a type with high document frequency is genuinely widespread. The shape of the spectrum shows how much vocabulary is shared corpus-wide versus document-bound.",
+    interpretation: "High token frequency with low document frequency means many occurrences in few documents. Document frequency records reach without establishing topic specificity or use outside this sample. The ≥90% callout is a fixed coverage reference, not a natural vocabulary category.",
     limitations: [
-      "Depends entirely on how the corpus is segmented into documents - merging or splitting documents changes every value.",
+      "Depends on how the corpus is partitioned into documents; merging or splitting files can change values even when the text is unchanged.",
       "Counts in how many documents a type occurs, not how often within each.",
     ],
   },

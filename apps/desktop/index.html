@@ -584,7 +584,7 @@
                     <header class="concordance-card-header cw-panel__header">
                       <div class="concordance-card-heading">
                         <h3 id="concordance-collocates-title">Collocates</h3>
-                        <p>Which words systematically occur near the node, and where relative to it?</p>
+                        <p>Which forms occur in the selected node windows?</p>
                       </div>
                       <div class="concordance-card-actions">
                         <p id="concordance-collocates-stats" class="concordance-card-stats cw-result-table-note">span 5L–5R · logDice · min freq 5 · showing 0 of 0</p>
@@ -605,8 +605,8 @@
                       </label>
                       <label class="concordance-collocation-measure-field" for="concordance-collocation-measure">
                         <span>Measure</span>
-                        <select id="concordance-collocation-measure">
-                          <option value="logDice" selected>logDice</option>
+                        <select id="concordance-collocation-measure" title="logDice (slots): 14 + log₂(2c/(W + F)); c is near-query events, W is window positions and F is corpus frequency.">
+                          <option value="logDice" selected>logDice (slots)</option>
                           <option value="mi">MI</option>
                           <option value="mi3">MI3</option>
                           <option value="tScore">t-score</option>

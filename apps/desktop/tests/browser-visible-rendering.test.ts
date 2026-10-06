@@ -69,7 +69,7 @@ for (const filename of [
   "mattr-ecdf-final",
   "document-qq-legend",
   "vocabulary-growth-legend",
-  "document-balance-disclosure",
+  "document-concentration-disclosure",
   "dispersion-profile-tooltip",
   "dispersion-plane",
 ]) {
@@ -110,7 +110,7 @@ for (const browserAssertion of [
   "density legend colour strength is not monotonic",
   "adjacent dispersion density cells contain an intentional gap",
   "witness-category legend remains",
-  "four quiet dispersion quadrant labels are not retained",
+  "Fixed references must not create qualitative vocabulary categories",
   "dispersion threshold lines are too visually prominent",
   "dispersion density grid keyboard contract changed",
   "switched ${expectedLabel} control remains visible",

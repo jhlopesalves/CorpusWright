@@ -78,7 +78,8 @@ pub struct CorpusOverviewDocument {
     pub relative_length: Option<f64>,
 }
 
-/// Document-level balance and concentration metrics.
+/// Document-size distribution and concentration metrics.
+/// The legacy `balance` field name is retained for serialised contract compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewBalance {
@@ -231,7 +232,8 @@ pub struct RankFrequencyPoint {
     pub rate_per_million: f64,
 }
 
-/// Zipf fit and bounded rank-frequency series.
+/// Descriptive log-log rank-frequency trend and bounded display series.
+/// Zipf-named fields are retained for serialised contract compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewRankFrequency {
@@ -255,7 +257,8 @@ pub struct VocabularyGrowthPoint {
     pub types: usize,
 }
 
-/// Heaps-law fit and bounded vocabulary-growth series.
+/// Descriptive observed-order vocabulary growth and log-log trend.
+/// Heaps-named fields are retained for serialised contract compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CorpusOverviewVocabularyGrowth {
@@ -400,9 +403,9 @@ pub enum CorpusOverviewFindingSeverity {
 impl CorpusOverviewFindingSeverity {
     fn label(self) -> &'static str {
         match self {
-            Self::NoIssue => "no immediate issue",
-            Self::WorthALook => "worth a look",
-            Self::NeedsFixing => "needs fixing",
+            Self::NoIssue => "below fixed attention references",
+            Self::WorthALook => "fixed attention reference reached",
+            Self::NeedsFixing => "upper fixed attention reference reached",
         }
     }
 }
@@ -718,7 +721,7 @@ pub(super) fn rank_frequency_summary(
         fitted_rank_start,
         fitted_rank_end,
         points,
-        reading: "The Zipf fit uses log frequency against log rank, excluding the three highest-frequency types and the frequency-one tail where the classic law is least reliable."
+        reading: "The rank-frequency trend uses unweighted natural-log OLS over ranks 4 onward with frequency greater than one. Ranks 1–3 and frequency-one types are not fitted; no documented statistical justification selects these exact boundaries. R-squared describes this interval, not power-law goodness of fit."
             .to_string(),
     }
 }
@@ -737,7 +740,7 @@ pub(super) fn vocabulary_growth_summary(
         heaps_beta: fit.map(|(slope, _, _)| slope),
         r_squared: fit.map(|(_, _, r_squared)| r_squared),
         points: points.to_vec(),
-        reading: "Heaps' law is fitted to deterministic, power-of-two token checkpoints in stable source-path order; it describes this snapshot rather than predicting a universal vocabulary ceiling."
+        reading: "Observed-order vocabulary growth follows stable source-path order at power-of-two checkpoints plus the final total. The unconstrained log-log trend describes this accumulation path; it does not establish saturation, representativeness or a vocabulary ceiling."
             .to_string(),
     }
 }
@@ -1776,15 +1779,16 @@ pub(super) fn build_overview(
             .unwrap_or_else(|| "unavailable".to_string())
     };
     let balance_finding_text = if document_count == 0 {
-        "No documents are available for a balance assessment.".to_string()
+        "No documents are available for document-size concentration.".to_string()
     } else if total_tokens == 0 {
-        "All document token counts are zero, so document balance is unavailable.".to_string()
+        "All document token counts are zero, so document-size concentration is unavailable."
+            .to_string()
     } else if document_count == 1 {
-        "The analysis contains one document, so between-document balance cannot be assessed."
+        "The analysis contains one document; there is no between-document size variation."
             .to_string()
     } else {
         format!(
-            "The largest document contains {} of tokens; the top three contain {}. Effective documents: {:.1} of {}.",
+            "The largest document contains {} of tokens; the top three contain {}. Effective document count: {:.1} of {}.",
             percent(largest_share),
             percent(top3_share),
             effective_documents.unwrap_or(0.0),
@@ -1855,25 +1859,25 @@ pub(super) fn build_overview(
     } else {
         match highest_severity {
             CorpusOverviewFindingSeverity::NeedsFixing =>
-                "The corpus has diagnostics that need fixing before aggregate results are relied on."
+                "An upper fixed attention reference was reached. These implementation heuristics are not validated quality, balance or adequacy tests."
                     .to_string(),
             CorpusOverviewFindingSeverity::WorthALook =>
-                "The corpus is available for exploration, with diagnostics worth inspecting alongside aggregate results."
+                "A fixed attention reference was reached. Inspect the continuous metrics and research design; this is not a quality classification."
                     .to_string(),
             CorpusOverviewFindingSeverity::NoIssue =>
-                "No immediate issue is indicated by these first-stage corpus diagnostics."
+                "The fixed attention references were not reached. This does not establish quality, balance, adequacy or representativeness."
                     .to_string(),
         }
     };
 
     let balance_reading = if document_count < 2 {
-        "Analysis unit: the document. At least two documents are required to assess document balance."
+        "Analysis unit: the document. At least two documents are required to compare document token counts."
             .to_string()
     } else if balance_severity == CorpusOverviewFindingSeverity::NoIssue {
         "Analysis unit: the document. Token totals are descriptive; read aggregate frequencies alongside dispersion even when document lengths are relatively even."
             .to_string()
     } else {
-        "Analysis unit: the document. Token totals are descriptive, but a few documents carry a disproportionate share of the token mass; read aggregate frequencies alongside dispersion, not on their own."
+        "Analysis unit: the document. Token totals are descriptive, but document token shares are unequal; read aggregate frequencies alongside dispersion, not on their own."
             .to_string()
     };
 
@@ -2045,7 +2049,7 @@ pub(super) fn build_overview(
                 "Dispersion and document-frequency spread require at least two documents."
                     .to_string()
             } else {
-                "Most types may occur in few documents, which is common in sparse vocabularies. Interpret this with token-mass coverage and frequent-type dispersion."
+                "Document frequency records the number of documents containing each type. Read it with token-mass coverage and DP; occurrence concentration does not identify its cause."
                     .to_string()
             },
         },
