@@ -78,7 +78,7 @@ assert(clampConcordanceCollocationFloor(3.8) === 3, "Collocation floors should u
 assertDeepEqual(DEFAULT_CONCORDANCE_SORT_KEYS, ["right1", "right2", "right3"], "Default sort should be 1R / 2R / 3R");
 assert(CONCORDANCE_DEFAULT_WINDOW === 10, "Default KWIC context should be ten tokens per side");
 assert(CONCORDANCE_DEFAULT_PAGE_SIZE === 24, "Default KWIC page size should be 24 rows");
-assert(DEFAULT_CONCORDANCE_COLLOCATION_MEASURE === "logDice", "Default collocation measure should be logDice");
+assert(DEFAULT_CONCORDANCE_COLLOCATION_MEASURE === "mi", "Default collocation measure should be MI");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY === "association", "Default collocation sort should be association");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION === "desc", "Default collocation sort should descend");
 
@@ -133,17 +133,17 @@ assert(
   concordanceMiddleEllipsis("a-very-long-document-filename.txt", 16) === "a-very-l…ame.txt",
   "Long file names should retain recognisable start and end text",
 );
-assert(concordanceCollocationMeasureLabel("g2") === "log-likelihood", "Measure labels should be readable");
+assert(concordanceCollocationMeasureLabel("g2") === "G² (window table)", "Measure labels should be readable");
 assert(concordanceCollocationDirectionLabel("both") === "both sides", "Both-side direction should be readable");
 assert(
-  concordanceCollocationExplanation("movie", 5, "both", "logDice")
-    === 'Collocates near "movie" · 5-token window · both sides · ranked by logDice (slots)',
+  concordanceCollocationExplanation("movie", 5, "both", "mi")
+    === 'Collocates near "movie" · 5-token window · both sides · ranked by MI',
   "Collocation explanation should translate the active query, span, direction, and measure compactly",
 );
 assert(
-  !concordanceCollocationExplanation("movie", 5, "both", "logDice").includes("Near query =")
-    && !concordanceCollocationExplanation("movie", 5, "both", "logDice").includes("Corpus frequency =")
-    && !concordanceCollocationExplanation("movie", 5, "both", "logDice").includes("Association:"),
+  !concordanceCollocationExplanation("movie", 5, "both", "mi").includes("Near query =")
+    && !concordanceCollocationExplanation("movie", 5, "both", "mi").includes("Corpus frequency =")
+    && !concordanceCollocationExplanation("movie", 5, "both", "mi").includes("Association:"),
   "Collocation explanation should not include persistent definition copy or Association prefix",
 );
 assert(concordanceRowText(["not", "very", "good"]) === "not very good", "KWIC token text should use token spacing");
@@ -178,8 +178,8 @@ assert(
 );
 assert(
   CONCORDANCE_COLLOCATION_MEASURE_OPTIONS.map((option) => option.value).join("|")
-    === "logDice|mi|mi3|tScore|zScore|g2|logRatio",
-  "Collocation measures should include all requested association scores",
+    === "mi|mi3|tScore|zScore|g2|logRatio",
+  "Only methodologically documented active association choices should be selectable",
 );
 assert(
   CONCORDANCE_COLLOCATION_SORT_OPTIONS.map((option) => option.value).join("|")
@@ -187,7 +187,7 @@ assert(
   "Collocation sort options should expose true backend ranking columns",
 );
 assert(
-  concordanceCollocationSortHeaderLabel("association", "logDice") === "Association: logDice (slots)",
+  concordanceCollocationSortHeaderLabel("association", "mi") === "Association: MI",
   "Association sort header should include the active measure",
 );
 assert(
@@ -273,12 +273,12 @@ assert(
   concordanceCollocatesCardStatsText({
     span: 5,
     direction: "both",
-    measure: "logDice",
+    measure: "mi",
     minimumFrequency: 5,
     shown: 10,
     loadedRows: 214,
     totalCandidates: 214,
-  }) === "span 5L–5R · logDice (slots) · min freq 5 · showing 10 of 214",
+  }) === "span 5L–5R · MI · min freq 5 · showing 10 of 214",
   "Uncapped Collocates stats should use the qualifying total directly",
 );
 assert(
@@ -439,3 +439,6 @@ assertDeepEqual(concordanceContextGaps(["old", "response"]), ["", " ", ""], "Old
 assertDeepEqual(concordanceContextGaps([], ".\n"), [".\n"], "Punctuation remains visible when the context contains no words");
 
 assertDeepEqual(concordanceContextGaps(["old", "response"], null), ["", " ", ""], "Unavailable source slices retain the token-only display fallback");
+
+assert(!CONCORDANCE_COLLOCATION_MEASURE_OPTIONS.some(option => option.value === "logDice"), "The inactive slot score must not be a selectable standard measure");
+assert(concordanceCollocationMeasureLabel("logDice") === "Inactive window-slot score", "Compatibility fields must not be presented as standard logDice");

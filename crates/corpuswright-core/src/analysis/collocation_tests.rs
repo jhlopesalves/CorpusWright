@@ -922,6 +922,112 @@ fn surface_collocations_compute_window_counts_and_scores() {
 }
 
 #[test]
+fn association_scores_match_independent_numeric_witnesses() {
+    // Fixed hand-calculated witnesses cover both attraction and depletion. The
+    // final two values retain the inactive wire score and the window log ratio.
+    let cases = [
+        (
+            (8, 16, 32, 128),
+            [
+                1.0,
+                7.0,
+                1.414213562373095,
+                2.0,
+                5.391203279261245,
+                12.415037499278844,
+                1.584962500721156,
+            ],
+        ),
+        (
+            (2, 32, 32, 128),
+            [
+                -2.0,
+                0.0,
+                -4.242640687119285,
+                -2.1213203435596424,
+                9.746546950594475,
+                10.0,
+                -2.321928094887362,
+            ],
+        ),
+    ];
+    for ((events, frequency, slots, tokens), expected) in cases {
+        let row = collocation_row(
+            "witness".to_string(),
+            events,
+            frequency,
+            slots,
+            tokens,
+            ConcordanceCollocatePositionCounts {
+                left: vec![0; 5],
+                right: vec![0; 5],
+            },
+        );
+        let actual = [
+            row.mi,
+            row.mi3,
+            row.t_score,
+            row.z_score,
+            row.g2,
+            row.log_dice,
+            row.log_ratio,
+        ];
+        for (actual, expected) in actual.into_iter().zip(expected) {
+            let actual = actual.expect("numeric witness should be available");
+            assert!((actual - expected).abs() < 1e-12, "{actual} != {expected}");
+        }
+    }
+}
+
+#[test]
+fn association_scores_preserve_zero_and_unavailable_conventions() {
+    let positions = || ConcordanceCollocatePositionCounts {
+        left: vec![0; 5],
+        right: vec![0; 5],
+    };
+    let empty = collocation_row("empty".to_string(), 0, 0, 0, 0, positions());
+    assert_eq!(empty.mi, None);
+    assert_eq!(empty.mi3, None);
+    assert_eq!(empty.t_score, None);
+    assert_eq!(empty.z_score, None);
+    assert_eq!(empty.g2, None);
+    assert_eq!(empty.log_dice, None);
+    assert_eq!(empty.log_ratio, None);
+
+    let zero_events = collocation_row("zero".to_string(), 0, 16, 32, 128, positions());
+    assert_eq!(zero_events.mi, None);
+    assert_eq!(zero_events.mi3, None);
+    assert_eq!(zero_events.t_score, None);
+    assert_eq!(zero_events.z_score, Some(-2.0));
+    assert!(zero_events.g2.is_some());
+    assert_eq!(zero_events.log_dice, None);
+    assert_eq!(zero_events.log_ratio, None);
+
+    // Zero observed and expected cells contribute zero; no pseudo-count is added.
+    let complete = collocation_row("complete".to_string(), 1, 1, 1, 1, positions());
+    assert_eq!(complete.mi, Some(0.0));
+    assert_eq!(complete.g2, Some(0.0));
+    assert_eq!(complete.log_ratio, None);
+}
+
+#[test]
+fn overlapping_windows_count_events_without_fabricating_contingency_scores() {
+    let documents = vec![concordance_document(0, "overlap.txt", "target blue target")];
+    let mut query = collocation_query("target");
+    query.span = 1;
+    let result = collocations_for(&documents, query).unwrap();
+    let blue = collocate(&result, "blue");
+    assert_eq!((result.f_node, result.r1, result.n), (2, 2, 3));
+    assert_eq!((blue.o11, blue.collocate_frequency, blue.o21), (2, 1, -1));
+    assert!((blue.mi.unwrap() - 1.584962500721156).abs() < 1e-12);
+    assert_eq!(blue.g2, None);
+    assert_eq!(blue.log_ratio, None);
+    // This retained legacy result exceeds the usual Dice maximum; it is not an
+    // authoritative logDice choice in the product's association selector.
+    assert!((blue.log_dice.unwrap() - 14.415037499278844).abs() < 1e-12);
+}
+
+#[test]
 fn surface_collocation_floors_exclude_below_threshold_candidates() {
     let documents = vec![
         concordance_document(0, "a.txt", "red alpha blue target green alpha blue"),

@@ -227,7 +227,7 @@ assert(
     && html.includes('id="concordance-collocation-hide-stopwords"'),
   "Concordance should expose collocation controls",
 );
-for (const label of ["Collocate", "Near query", "O11", "Corpus frequency", "f_c", "Association: logDice"]) {
+for (const label of ["Collocate", "Near query", "O11", "Corpus frequency", "f_c", "Association: MI"]) {
   assert(html.includes(label), `Collocation table should render ${label}`);
 }
 assert(
@@ -246,7 +246,7 @@ assert(
     && workbench.includes("workbenchState.lines.error ?? workbenchState.distribution.error"),
   "Collocate resource refusals should stay inside the Collocates card and preserve other results",
 );
-for (const measure of ["logDice", "mi", "mi3", "tScore", "zScore", "g2", "logRatio"]) {
+for (const measure of ["mi", "mi3", "tScore", "zScore", "g2", "logRatio"]) {
   assert(html.includes(`value="${measure}"`), `Collocation measure should include ${measure}`);
 }
 assert(
@@ -1036,3 +1036,6 @@ assert(
     && workbench.includes("return signed && value > 0 ? `+${formatted}` : formatted;"),
   "Concordance should fit at ordinary widths and reserve horizontal scrolling for the narrow fallback while retaining visible non-colour cues",
 );
+
+assert(!html.includes('<option value="logDice"'), "The inactive slot score must not remain in the association selector");
+assert(html.includes('<option value="mi" selected>MI</option>'), "The static selector and model must share the MI default");
