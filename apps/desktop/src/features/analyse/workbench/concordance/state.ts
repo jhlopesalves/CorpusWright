@@ -16,6 +16,7 @@ import type {
 import {
   CONCORDANCE_DEFAULT_PAGE_SIZE,
   CONCORDANCE_DEFAULT_WINDOW,
+  DEFAULT_CONCORDANCE_COLLOCATION_MEASURE,
 } from "../../concordance/model.ts";
 
 export type ConcordanceCardId = "lines" | "collocates" | "distribution";
@@ -122,7 +123,7 @@ export function createConcordanceWorkbenchState(
       ...cardState(),
       span: 5,
       direction: "both",
-      measure: "logDice",
+      measure: DEFAULT_CONCORDANCE_COLLOCATION_MEASURE,
       minimumCooccurrence: 5,
       minimumFrequency: 5,
       hideStopwords: false,

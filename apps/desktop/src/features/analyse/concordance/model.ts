@@ -41,7 +41,7 @@ export const CONCORDANCE_COLLOCATION_NOT_COMPUTED_MESSAGE =
   "The collocate profile has not been computed yet.";
 export const CONCORDANCE_COLLOCATION_STALE_MESSAGE =
   "Update the collocate profile for the current query.";
-export const DEFAULT_CONCORDANCE_COLLOCATION_MEASURE: ConcordanceCollocationMeasure = "logDice";
+export const DEFAULT_CONCORDANCE_COLLOCATION_MEASURE: ConcordanceCollocationMeasure = "mi";
 export const DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY: ConcordanceCollocationSortKey = "association";
 export const DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION: SortDirection = "desc";
 
@@ -60,13 +60,12 @@ export const CONCORDANCE_COLLOCATION_MEASURE_OPTIONS: Array<{
   value: ConcordanceCollocationMeasure;
   label: string;
 }> = [
-  { value: "logDice", label: "logDice (slots)" },
   { value: "mi", label: "MI" },
-  { value: "mi3", label: "MI3" },
+  { value: "mi3", label: "MI³" },
   { value: "tScore", label: "t-score" },
   { value: "zScore", label: "z-score" },
-  { value: "g2", label: "log-likelihood" },
-  { value: "logRatio", label: "log-ratio" },
+  { value: "g2", label: "G² (window table)" },
+  { value: "logRatio", label: "log ratio (window)" },
 ];
 
 export const CONCORDANCE_COLLOCATION_SORT_OPTIONS: Array<{
@@ -302,7 +301,7 @@ export function concordanceMiddleEllipsis(value: string, maximumLength = 28): st
 export function concordanceCollocationMeasureLabel(
   measure: ConcordanceCollocationMeasure,
 ): string {
-  return CONCORDANCE_COLLOCATION_MEASURE_OPTIONS.find((option) => option.value === measure)?.label ?? "logDice (slots)";
+  return CONCORDANCE_COLLOCATION_MEASURE_OPTIONS.find((option) => option.value === measure)?.label ?? "Inactive window-slot score";
 }
 
 export type ConcordanceStrengthDirection = "negative" | "zero" | "positive" | "nonNegative";
