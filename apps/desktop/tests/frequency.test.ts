@@ -35,13 +35,13 @@ assert(annotatedFrequencyModeEnabled("pos", "ready"), "POS mode should be enable
 
 assert(formatDocumentFrequency(3, 12) === "3 / 12", "Document frequency should render as N / total");
 
-assert(annotatedDispersionLevel("broadly dispersed") === "low", "Broad labels should map to low display level");
+assert(annotatedDispersionLevel("DP < 0.30 (fixed reference)") === "low", "Broad labels should map to low display level");
 assert(
-  annotatedDispersionLevel("moderately concentrated") === "medium",
+  annotatedDispersionLevel("0.30 ≤ DP < 0.70 (fixed references)") === "medium",
   "Moderate labels should map to medium display level",
 );
 assert(
-  annotatedDispersionLevel("highly concentrated") === "high",
+  annotatedDispersionLevel("DP ≥ 0.70 (fixed reference)") === "high",
   "Concentrated labels should map to high display level",
 );
 

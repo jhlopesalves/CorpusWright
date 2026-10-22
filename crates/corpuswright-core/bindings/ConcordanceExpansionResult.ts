@@ -3,4 +3,4 @@
 /**
  * Wider context for one surface-token concordance hit.
  */
-export type ConcordanceExpansionResult = { documentIndex: number, sourcePath: string, displayName: string, tokenIndex: number, nodeTokenLength: number, windowTokens: number, leftContext: Array<string>, nodeTokens: Array<string>, node: string, rightContext: Array<string>, };
+export type ConcordanceExpansionResult = { documentIndex: number, sourcePath: string, displayName: string, tokenIndex: number, nodeTokenLength: number, windowTokens: number, leftContext: Array<string>, nodeTokens: Array<string>, node: string, rightContext: Array<string>, leftText?: string | null, nodeText?: string | null, rightText?: string | null, };

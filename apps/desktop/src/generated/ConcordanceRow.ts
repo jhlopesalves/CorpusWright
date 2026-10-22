@@ -1,1 +1,1 @@
-export type ConcordanceRow = { documentIndex: number, sourcePath: string, displayName: string, tokenIndex: number, nodeTokenLength: number, leftContext: Array<string>, node: string, rightContext: Array<string>, };
+export type ConcordanceRow = { documentIndex: number, sourcePath: string, displayName: string, tokenIndex: number, nodeTokenLength: number, leftContext: Array<string>, node: string, rightContext: Array<string>, leftText?: string | null, nodeText?: string | null, rightText?: string | null, };

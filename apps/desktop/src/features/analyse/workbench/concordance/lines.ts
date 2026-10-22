@@ -9,11 +9,10 @@ import {
   clampConcordancePageSize,
   clampConcordanceWindow,
   concordanceContextSortLevels,
+  concordanceContextGaps,
   concordanceContextTokenSegments,
   concordanceExpansionViewModel,
-  concordanceMiddleEllipsis,
   concordanceRowExpansionKey,
-  concordanceRowText,
   concordanceSortSequence,
   CONCORDANCE_COLUMNS,
   CONCORDANCE_EXPANSION_WINDOW,
@@ -215,18 +214,20 @@ function appendConcordanceKwicCells(
   const file = document.createElement("td");
   file.className = "concordance-file cw-result-table-file";
   file.title = row.displayName || row.sourcePath;
-  file.textContent = concordanceMiddleEllipsis(row.displayName || row.sourcePath, 16);
+  file.textContent = row.displayName || row.sourcePath;
 
   const appendContext = (
     cell: HTMLTableCellElement,
     tokens: string[],
     levels: Array<1 | 2 | 3 | null>,
+    displayText?: string | null,
   ) => {
     const run = document.createElement("span");
     run.className = "concordance-context-run";
     const segments = concordanceContextTokenSegments(tokens, activeFilter, caseSensitive);
+    const gaps = concordanceContextGaps(tokens, displayText);
     segments.forEach((segment, index) => {
-      if (index > 0) run.appendChild(document.createTextNode(" "));
+      run.appendChild(document.createTextNode(gaps[index]!));
       const token = document.createElement("span");
       token.className = "concordance-context-token";
       if (segment.collocate) token.classList.add("concordance-kwic-pair");
@@ -241,23 +242,24 @@ function appendConcordanceKwicCells(
       token.textContent = segment.text;
       run.appendChild(token);
     });
+    run.appendChild(document.createTextNode(gaps[gaps.length - 1]!));
     cell.appendChild(run);
   };
 
   const left = document.createElement("td");
   left.className = "concordance-left cw-result-table-kwic";
-  appendContext(left, row.leftContext, sortLevels.left);
+  appendContext(left, row.leftContext, sortLevels.left, row.leftText);
 
   const nodeCell = document.createElement("td");
   nodeCell.className = "concordance-node-cell cw-result-table-kwic";
   const node = document.createElement("mark");
   node.className = "concordance-node";
-  node.textContent = row.node;
+  node.textContent = row.nodeText ?? row.node;
   nodeCell.appendChild(node);
 
   const right = document.createElement("td");
   right.className = "concordance-right cw-result-table-kwic";
-  appendContext(right, row.rightContext, sortLevels.right);
+  appendContext(right, row.rightContext, sortLevels.right, row.rightText);
 
   item.append(file, left, nodeCell, right);
 }
@@ -321,7 +323,7 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
     const left = document.createElement("span");
     left.className = "concordance-expansion-left";
     if (concordanceExpansionResult !== null) {
-      left.textContent = concordanceRowText(concordanceExpansionResult.leftContext);
+      left.textContent = expansion.leftText;
     } else {
       left.textContent = expansion.leftText;
     }
@@ -331,7 +333,7 @@ function createConcordanceSourcePreviewPanel(row: ConcordanceRow): HTMLDivElemen
     const right = document.createElement("span");
     right.className = "concordance-expansion-right";
     if (concordanceExpansionResult !== null) {
-      right.textContent = concordanceRowText(concordanceExpansionResult.rightContext);
+      right.textContent = expansion.rightText;
     } else {
       right.textContent = expansion.rightText;
     }

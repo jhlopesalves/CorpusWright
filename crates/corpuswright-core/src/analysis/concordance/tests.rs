@@ -708,8 +708,20 @@ fn provider_index_reuses_full_corpus_store_across_selection_changes_and_warm_que
     assert_eq!(second.result.total_hits, 2);
     assert_eq!(context.index_build_count(), 1);
     assert_eq!(context.index_cache_load_count(), 0);
-    assert_eq!(resolutions.get(), cold_resolutions);
-    assert_eq!(cold_resolutions, documents.len() * 2);
+    // Punctuation display reopens only documents represented in the bounded result page.
+    assert_eq!(cold_resolutions, documents.len() * 2 + 1);
+    assert_eq!(resolutions.get(), cold_resolutions + 2);
+    let mut distribution_query = second_query.clone();
+    distribution_query.include_rows = false;
+    search_concordance_documents_routed_provider(
+        documents.len(),
+        &distribution_query,
+        &TokenizationConfig::default(),
+        &mut context,
+        |_| panic!("A warm distribution-only request must not reopen source text"),
+        |_| {},
+    )
+    .unwrap();
 }
 
 #[test]
@@ -748,7 +760,10 @@ fn provider_cache_load_streams_identity_once_and_content_changes_invalidate() {
     .unwrap();
     assert!(!cached.index_rebuilt);
     assert_eq!(restarted.index_cache_load_count(), 1);
-    assert_eq!(cache_resolutions.get(), documents.len());
+    assert_eq!(
+        cache_resolutions.get(),
+        documents.len() + cached.result.documents_with_hits
+    );
 
     let mut changed_documents = documents.clone();
     changed_documents[0].text.push_str(" alpha");
@@ -1474,4 +1489,106 @@ fn benchmark_concordance_scale() {
 
     println!("Warm Concordance Search completed in {:?}", warm_duration);
     println!("Index rebuilt: {}", warm_result.index_rebuilt);
+}
+
+#[test]
+fn display_preserves_punctuation_without_changing_word_windows_or_backend_counts() {
+    let documents = vec![concordance_document(
+        0,
+        "garden.txt",
+        "“École,” said Ana. A seed, then rain! End.",
+    )];
+    let mut query = concordance_query("seed");
+    query.window_tokens = 2;
+    let config = TokenizationConfig::default();
+    let mut context = ConcordanceSearchContext::default();
+    let scan = search_concordance_documents_routed(
+        &documents,
+        &query,
+        &config,
+        &mut context,
+        ConcordanceBackend::Scan,
+    )
+    .unwrap()
+    .result;
+    let index = search_concordance_documents_routed(
+        &documents,
+        &query,
+        &config,
+        &mut context,
+        ConcordanceBackend::Index,
+    )
+    .unwrap()
+    .result;
+    let provider = search_concordance_documents_routed_provider(
+        1,
+        &query,
+        &config,
+        &mut context,
+        |id| Some(documents[id].clone()),
+        |_| {},
+    )
+    .unwrap()
+    .result;
+    assert_eq!(scan, index);
+    assert_eq!(scan, provider);
+    assert_eq!(scan.total_hits, 1);
+    assert_eq!(scan.selected_tokens_total, 8);
+    let row = &included_rows(&scan)[0];
+    assert_eq!(row.left_context, ["Ana", "A"]);
+    assert_eq!(row.right_context, ["then", "rain"]);
+    assert_eq!(row.left_text.as_deref(), Some("Ana. A "));
+    assert_eq!(row.node_text.as_deref(), Some("seed"));
+    assert_eq!(row.right_text.as_deref(), Some(", then rain! "));
+    let expansion = expand_concordance_context(
+        &documents[0],
+        &ConcordanceExpansionQuery {
+            document_index: 0,
+            token_index: row.token_index,
+            node_token_length: 1,
+            window_tokens: 40,
+        },
+        &config,
+    )
+    .unwrap();
+    assert_eq!(
+        expansion.left_text.as_deref(),
+        Some("“École,” said Ana. A ")
+    );
+    assert_eq!(expansion.right_text.as_deref(), Some(", then rain! End."));
+}
+
+#[test]
+fn phrase_display_keeps_internal_punctuation_and_multibyte_source_offsets() {
+    let documents = vec![concordance_document(
+        0,
+        "phrase.txt",
+        "École: seed,\ntray! End.",
+    )];
+    let query = concordance_query("seed tray");
+    let result = concordance_for(&documents, query).unwrap();
+    let row = &included_rows(&result)[0];
+    assert_eq!(result.total_hits, 1);
+    assert_eq!(row.node_token_length, 2);
+    assert_eq!(row.node, "seed tray");
+    assert_eq!(row.left_text.as_deref(), Some("École: "));
+    assert_eq!(row.node_text.as_deref(), Some("seed,\ntray"));
+    assert_eq!(row.right_text.as_deref(), Some("! End."));
+}
+
+#[test]
+fn token_only_concordance_responses_accept_unavailable_display_slices() {
+    let row: ConcordanceRow = serde_json::from_value(serde_json::json!({
+        "documentIndex": 0, "sourcePath": "old.txt", "displayName": "old.txt",
+        "tokenIndex": 0, "nodeTokenLength": 1, "leftContext": [],
+        "node": "word", "rightContext": [],
+    }))
+    .unwrap();
+    assert_eq!(row.left_text, None);
+    assert_eq!(row.node_text, None);
+    assert_eq!(row.right_text, None);
+    let encoded = serde_json::to_value(&row).unwrap();
+    assert!(encoded["leftText"].is_null());
+    assert!(encoded["nodeText"].is_null());
+    assert!(encoded["rightText"].is_null());
 }

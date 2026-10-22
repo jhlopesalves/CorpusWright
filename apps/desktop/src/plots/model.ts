@@ -583,14 +583,6 @@ export const MONO_SMALL_LABEL_FONT_SIZE = ANNOTATION_LABEL_FONT_SIZE;
 const LABEL_WIDTH_FACTOR = 0.62;
 const LABEL_LINE_HEIGHT_FACTOR = 1.3;
 const DENSITY_CELL_LABEL_OBSTACLE_T = 0.52;
-const WITNESS_KIND_CONTRACT: Record<DispersionWitnessKind, {
-  label: string;
-}> = {
-  core: { label: "Core vocabulary" },
-  loudButLocal: { label: "Loud but local" },
-  quietAndEven: { label: "Quiet and even" },
-  rareAndLocal: { label: "Rare and local" },
-};
 
 export function createPlotBox(
   width = DEFAULT_PLOT_WIDTH,
@@ -1047,7 +1039,7 @@ export function buildRankFrequencyGeometry(options: {
   const box = options.box ?? createPlotBox();
   const visible = options.points.filter((point) => point.rank > 0 && point.frequency > 0);
   const view = options.view ?? "curve";
-  const fitVisible = options.fitVisible ?? true;
+  const fitVisible = options.fitVisible ?? false;
   const fittedStart = options.fittedRankStart;
   const fittedEnd = options.fittedRankEnd;
   const analysed = visible.map((point) => ({
@@ -1096,7 +1088,7 @@ export function buildRankFrequencyGeometry(options: {
       ? membership.kind === "included-in-fit" ? membership.residual : 0
       : rankCurveValue(point, options.yMode);
     const key = `rank:${point.rank}:${point.token ?? ""}`;
-    const shownNotFitted = membership.kind === "shown-not-fitted";
+    const shownNotFitted = fitVisible && membership.kind === "shown-not-fitted";
     const fitted = membership.fitted;
     return {
       x: scaleValue(xScale, point.rank),
@@ -1115,15 +1107,17 @@ export function buildRankFrequencyGeometry(options: {
         `rank ${formatInteger(point.rank)}`,
         `${formatInteger(point.frequency)} tokens`,
         `${formatFixed(point.ratePerMillion, 2)} per million`,
-        membership.kind === "included-in-fit" ? "fit membership: included in fit" : "fit membership: shown, not fitted",
-        membership.kind === "shown-not-fitted" ? `reason: ${membership.reason}` : "",
-        fitted === null ? "" : `fitted raw ${formatFixed(fitted, 2)}`,
-        fitted === null || options.totalTokens <= 0 ? "" : `fitted ${formatFixed(fitted / options.totalTokens * 1_000_000, 2)} per million`,
-        membership.kind === "included-in-fit" ? `log residual ${formatFixed(membership.residual, 3)}` : "",
+        ...(fitVisible || view === "residuals" ? [
+          membership.kind === "included-in-fit" ? "fit membership: included in fit" : "fit membership: shown, not fitted",
+          membership.kind === "shown-not-fitted" ? `reason: ${membership.reason}` : "",
+          fitted === null ? "" : `fitted raw ${formatFixed(fitted, 2)}`,
+          fitted === null || options.totalTokens <= 0 ? "" : `fitted ${formatFixed(fitted / options.totalTokens * 1_000_000, 2)} per million`,
+          membership.kind === "included-in-fit" ? `log residual ${formatFixed(membership.residual, 3)}` : "",
+        ] : []),
       ].filter(Boolean),
     };
   });
-  const fitPoints = view === "curve" ? fitPointsForRank({
+  const fitPoints = view === "curve" && fitVisible ? fitPointsForRank({
     ...options,
   }, xScale, yScale) : [];
   const fitPath = view === "curve" && fitVisible && fitPoints.length > 0
@@ -1170,7 +1164,7 @@ export function buildRankFrequencyGeometry(options: {
         height: box.innerHeight,
         labelX: scaleValue(xScale, Math.max(fittedStart, xScale.domain[0])) + 6,
         labelY: box.margin.top + 13,
-        label: `Model fitted over ranks ${formatInteger(fittedStart)}–${formatInteger(fittedEnd)}`,
+        label: `Trend fitted over ranks ${formatInteger(fittedStart)}–${formatInteger(fittedEnd)}`,
       }
     : null;
   const fitAnnotations: PlotLabelGeometry[] = view === "curve" && fitVisible && options.labelsMode !== "off"
@@ -1212,9 +1206,9 @@ export function buildRankFrequencyGeometry(options: {
       y2: scaleValue(yScale, 0),
       className: "cw-plot-residual-zero",
     } : null,
-    legend: view === "residuals" ? [] : [
+    legend: view === "residuals" ? [] : !fitVisible ? [{ label: "Observed", kind: "point", shape: "circle" }] : [
         { label: "Included in fit", kind: "point", shape: "circle" },
-        ...(fitPath ? [{ label: "Zipf fit", kind: "line" as const, className: "cw-plot-fit-line" }] : []),
+        ...(fitPath ? [{ label: "Log–log trend", kind: "line" as const, className: "cw-plot-fit-line" }] : []),
         { label: "Shown, not fitted", kind: "point", shape: "circle", hollow: true, className: "cw-plot-shown-not-fitted" },
       ],
     labels: [...headLabels, ...fitAnnotations],
@@ -1243,7 +1237,7 @@ export function classifyRankFitMembership(
   const fitted = fittedRankFrequency(point.rank, exponent, coefficient);
   const residual = rankResidual(point, exponent, coefficient);
   if (point.rank <= 3) {
-    return shownNotFitted("top-three", "top three ranks are shown but not used to estimate the classic Zipf fit", fitted);
+    return shownNotFitted("top-three", "top three ranks are shown but not used to estimate the descriptive log–log trend", fitted);
   }
   if (point.frequency === 1) {
     return shownNotFitted("frequency-one-tail", "frequency-one tail observations are shown but not fitted", fitted);
@@ -1351,8 +1345,8 @@ export function buildVocabularyGrowthGeometry(options: {
         labelPoints.map((point) => ({
           x: point.x,
           y: point.y,
-          text: `${formatInteger(point.datum.types)} types at ${formatMillions(point.datum.tokens)} tokens`,
-          lines: [`${formatInteger(point.datum.types)} types`, `at ${formatMillions(point.datum.tokens)} tokens`],
+          text: `${formatInteger(point.datum.types)} types at ${formatTokenCount(point.datum.tokens)} tokens`,
+          lines: [`${formatInteger(point.datum.types)} types`, `at ${formatTokenCount(point.datum.tokens)} tokens`],
           className: "cw-plot-label-callout",
           key: point.key,
           pinned: point.pinned,
@@ -1386,7 +1380,7 @@ export function buildVocabularyGrowthGeometry(options: {
     legend: fitPath
       ? [
           { label: "Observed", className: "cw-plot-line" },
-          { label: "Heaps fit", className: "cw-plot-fit-line", dashed: true },
+          { label: "Log–log trend", className: "cw-plot-fit-line", dashed: true },
         ]
       : [],
     labels,
@@ -1958,7 +1952,7 @@ export function buildDispersionPlaneGeometry(options: {
   );
   const thresholdY = scaleValue(yScale, plane.highDispersionThreshold);
   const frequencyThresholdX = scaleValue(xScale, Math.log10(1_000) + frequencyOffset);
-  const thresholdLines: PlotLineGeometry[] = options.thresholdsVisible === false ? [] : [
+  const thresholdLines: PlotLineGeometry[] = options.thresholdsVisible !== true ? [] : [
     {
       x1: box.margin.left,
       y1: thresholdY,
@@ -1974,11 +1968,11 @@ export function buildDispersionPlaneGeometry(options: {
       className: "cw-plot-threshold-line",
     }] : []),
   ];
-  const thresholdLabels: PlotLabelGeometry[] = options.thresholdsVisible === false ? [] : [
+  const thresholdLabels: PlotLabelGeometry[] = options.thresholdsVisible !== true ? [] : [
     {
       x: box.width - box.margin.right - 4,
       y: thresholdY - 8,
-      text: `DP ${formatFixed(plane.highDispersionThreshold, 2)}`,
+      text: `DP reference ${formatFixed(plane.highDispersionThreshold, 2)}`,
       anchor: "end" as const,
       className: "cw-plot-label-mono cw-plot-label-muted",
       fontSize: 10.5,
@@ -1986,7 +1980,7 @@ export function buildDispersionPlaneGeometry(options: {
     ...(freqLog10Max >= 3 ? [{
       x: frequencyThresholdX + 6,
       y: box.margin.top + 14,
-      text: "Raw frequency 1,000",
+      text: "Frequency reference 1,000",
       anchor: "start" as const,
       className: "cw-plot-label-mono cw-plot-label-muted",
       fontSize: 10.5,
@@ -2008,14 +2002,13 @@ export function buildDispersionPlaneGeometry(options: {
       className: "cw-plot-plane-witness-mark",
       key,
       pinned: options.pinnedKeys?.has(key) ?? false,
-      ariaLabel: `${witness.token}, ${witnessKindLabel(witness.kind)}`,
+      ariaLabel: `${witness.token}, frequency ${formatInteger(witness.frequency)}, DP ${formatFixed(witness.dp, 3)}`,
       tooltipTitle: witness.token,
       tooltipRows: [
         `frequency ${formatInteger(witness.frequency)}`,
         options.totalTokens ? `rate ${formatFixed((witness.frequency / options.totalTokens) * 1_000_000, 2)} per million` : "",
         `document frequency ${formatInteger(witness.documentFrequency)}`,
         `DP ${formatFixed(witness.dp, 3)}`,
-        `category ${witnessKindLabel(witness.kind)}`,
       ].filter(Boolean),
     };
   });
@@ -2039,29 +2032,12 @@ export function buildDispersionPlaneGeometry(options: {
     ...pinnedWitnesses,
     ...automaticWitnesses,
   ]);
-  const preliminaryWitnessLabels = placeLabels(
-    witnessLabelRequests,
-    [
-      ...denseCellObstacles,
-      ...witnessDotObstacles,
-      ...thresholdObstacles,
-    ],
-    plotLabelBounds(box),
-  );
-  const quadrantLabels = buildDispersionPlaneQuadrantLabels(
-    box,
-    [
-      ...witnessDotObstacles,
-      ...preliminaryWitnessLabels.map((label) => ({ kind: "box" as const, box: estimateLabelBox(label) })),
-      ...thresholdObstacles,
-    ],
-  );
-  const quadrantObstacles = quadrantLabels.map((label) => ({ kind: "box" as const, box: estimateLabelBox(label) }));
+  // Fixed references do not partition vocabulary into validated qualitative categories.
+  const quadrantLabels: PlotLabelGeometry[] = [];
   const witnessObstacles = [
     ...denseCellObstacles,
     ...witnessDotObstacles,
     ...thresholdObstacles,
-    ...quadrantObstacles,
   ];
   const labels = placeLabels(
     witnessLabelRequests,
@@ -2108,11 +2084,8 @@ export function formatDispersionPlaneStats(
   totalTypes: number,
   xBins: number,
   yBins: number,
-  loudButLocalCount: number,
-  loudButLocalMinFrequency: number,
-  highDispersionThreshold: number,
 ): string {
-  return `${formatInteger(totalTypes)} types · grid ${formatInteger(xBins)}×${formatInteger(yBins)} · ${formatInteger(loudButLocalCount)} loud-but-local (f ≥ ${formatCompactFrequency(loudButLocalMinFrequency)}, DP ≥ ${formatFixed(highDispersionThreshold, 1)})`;
+  return `${formatInteger(totalTypes)} types · grid ${formatInteger(xBins)}×${formatInteger(yBins)}`;
 }
 
 export function buildDistributionDiagnosticGeometry(options: {
@@ -2635,11 +2608,14 @@ export function formatPercent(value: number, digits = 1): string {
   })}%`;
 }
 
-export function formatMillions(value: number): string {
-  return `${(value / 1_000_000).toLocaleString("en-US", {
-    maximumFractionDigits: 1,
-    minimumFractionDigits: 1,
-  })}M`;
+/** Format a token count on a useful scale without rounding small corpora to zero millions. */
+export function formatTokenCount(value: number): string {
+  if (Math.abs(value) < 1_000) return formatInteger(value);
+  const rounded = Number(value.toPrecision(3));
+  const scale = Math.abs(rounded) >= 1_000_000 ? 1_000_000 : 1_000;
+  const suffix = scale === 1_000_000 ? "M" : "k";
+  // Three significant digits keep endpoint labels useful at every corpus size.
+  return `${Number((value / scale).toPrecision(3)).toLocaleString("en-US", { maximumFractionDigits: 2 })}${suffix}`;
 }
 
 function normaliseLinearDomain(domain: [number, number]): [number, number] {
@@ -2846,75 +2822,6 @@ function automaticDispersionPlaneWitnesses(
   ].flatMap((quadrant) => quadrants.get(quadrant) ?? []);
 }
 
-function witnessKindLabel(kind: DispersionWitnessKind): string {
-  return WITNESS_KIND_CONTRACT[kind].label;
-}
-
-function buildDispersionPlaneQuadrantLabels(
-  box: PlotBox,
-  obstacles: LabelObstacle[],
-): PlotLabelGeometry[] {
-  const bounds = plotLabelBounds(box);
-  const labels = placeLabels(
-    [
-      {
-        x: box.margin.left + 12,
-        y: box.margin.top + 19,
-        text: "Rare · concentrated",
-        className: "cw-plot-quadrant-label",
-        fontSize: 10,
-        candidates: [
-          { dx: 0, dy: 0, anchor: "start" },
-          { dx: 0, dy: 24, anchor: "start" },
-          { dx: 18, dy: 0, anchor: "start" },
-        ],
-      },
-      {
-        x: box.width - box.margin.right - 12,
-        y: box.margin.top + 19,
-        text: "Frequent · concentrated",
-        className: "cw-plot-quadrant-label",
-        fontSize: 10,
-        candidates: [
-          { dx: 0, dy: 0, anchor: "end" },
-          { dx: 0, dy: 24, anchor: "end" },
-          { dx: -18, dy: 0, anchor: "end" },
-          { dx: 0, dy: 48, anchor: "end" },
-          { dx: -18, dy: 48, anchor: "end" },
-        ],
-      },
-      {
-        x: box.margin.left + 12,
-        y: box.height - box.margin.bottom - 12,
-        text: "Rare · even",
-        className: "cw-plot-quadrant-label",
-        fontSize: 10,
-        candidates: [
-          { dx: 0, dy: 0, anchor: "start" },
-          { dx: 0, dy: -24, anchor: "start" },
-          { dx: 18, dy: -8, anchor: "start" },
-        ],
-      },
-      {
-        x: box.width - box.margin.right - 12,
-        y: box.height - box.margin.bottom - 30,
-        text: "Frequent · even",
-        className: "cw-plot-quadrant-label",
-        fontSize: 10,
-        candidates: [
-          { dx: 0, dy: 0, anchor: "end" },
-          { dx: 0, dy: -26, anchor: "end" },
-          { dx: -18, dy: -42, anchor: "end" },
-          { dx: 0, dy: -58, anchor: "end" },
-        ],
-      },
-    ],
-    obstacles,
-    bounds,
-  );
-  return labels.map((label) => ({ ...label, leader: undefined }));
-}
-
 function dispersionPlaneDecadeTicks(
   freqLog10Max: number,
   scale: PlotScale,
@@ -2964,11 +2871,6 @@ function densityRampFill(t: number): string {
   return `color-mix(in srgb, var(--cw-plot-density-${lower}, var(--cw-plot-ramp-${lower})) ${formatFixed(lowerWeight, 2)}%, var(--cw-plot-density-${upper}, var(--cw-plot-ramp-${upper})) ${formatFixed(upperWeight, 2)}%)`;
 }
 
-function formatCompactFrequency(value: number): string {
-  if (value >= 1_000_000 && value % 1_000_000 === 0) return `${formatInteger(value / 1_000_000)}M`;
-  if (value >= 1_000 && value % 1_000 === 0) return `${formatInteger(value / 1_000)}k`;
-  return formatInteger(value);
-}
 
 function formatFrequencyRangeBoundary(value: number): string {
   if (value >= 1_000_000) return `${formatFixed(value / 1_000_000, value % 1_000_000 === 0 ? 0 : 1)}M`;

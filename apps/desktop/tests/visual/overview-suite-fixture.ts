@@ -284,11 +284,11 @@ function buildRankFigure(selectedView: string): BuiltFigure {
     id,
     title: "Rank-frequency",
     subtitle: "How quickly does frequency fall as vocabulary rank increases?",
-    captionStats: "alpha 1.080 · R-squared 0.984 · fitted ranks 4–70",
+    captionStats: "Optional trend · slope −1.080 · R-squared 0.984 · fitted ranks 4–70",
     captionReading: "Residuals use log observed minus log fitted raw frequency and retain the documented fitted range.",
     controls,
     controller,
-    exportMetadata: () => [selectedView === "residuals" ? "Residuals · Zipf fit over ranks 4–70" : "Curve · frequency per million · Zipf fit over ranks 4–70"],
+    exportMetadata: () => [selectedView === "residuals" ? "Residuals · Log–log trend over ranks 4–70" : "Curve · frequency per million · Log–log trend over ranks 4–70"],
     renderSvg,
   });
   return { figure, controller };
@@ -305,7 +305,7 @@ function buildGrowthFigure(selectedView: string): BuiltFigure {
   const controls = document.createElement("div");
   controls.appendChild(createOverviewSegmentedControl("View", [
     { value: "growth", label: "Growth" },
-    { value: "heaps", label: "Heaps fit" },
+    { value: "heaps", label: "Log–log trend" },
   ], selectedView, () => undefined));
   const renderSvg = () => renderVocabularyGrowthSvg(id, buildVocabularyGrowthGeometry({
     points,
@@ -321,10 +321,10 @@ function buildGrowthFigure(selectedView: string): BuiltFigure {
     title: "Vocabulary growth",
     subtitle: "How quickly does the corpus encounter new types as tokens accumulate?",
     captionStats: "K 5.200 · beta 0.670 · R-squared 0.991",
-    captionReading: "Observed checkpoints and the fitted Heaps model share the visible domain in both authored views.",
+    captionReading: "Observed checkpoints and the descriptive trend share the visible domain in both authored views.",
     controls,
     controller,
-    exportMetadata: () => [selectedView === "heaps" ? "Heaps fit · observed and fitted model" : "Growth · observed and Heaps fit"],
+    exportMetadata: () => [selectedView === "heaps" ? "Log–log trend · observed and fitted model" : "Growth · observed and Log–log trend"],
     renderSvg,
   });
   return { figure, controller };
@@ -489,15 +489,15 @@ function buildPlaneFigure(): BuiltFigure {
     densityMode: "log",
     examplesMode: "labelled",
     marginalsVisible: true,
-    thresholdsVisible: true,
+    thresholdsVisible: false,
     pinnedKeys: controller.pins,
   }));
   const figure = createOverviewFigure({
     id,
     title: "Dispersion plane",
     subtitle: "Which types are frequent, and which are evenly distributed across documents?",
-    captionStats: "5,000 types · grid 12×8 · raw frequency threshold 1,000 · DP threshold 0.50",
-    captionReading: "Logarithmic density changes contrast rather than counts; authored witnesses, marginals, thresholds and legends remain visible.",
+    captionStats: "5,000 types · grid 12×8",
+    captionReading: "Logarithmic density changes contrast rather than counts; authored witnesses, marginals and legends remain visible.",
     controller,
     layoutFamily: "plane",
     exportMetadata: () => ["Raw frequency against Gries's DP · logarithmic density"],
@@ -533,7 +533,7 @@ function buildFixtureExplanation(): HTMLElement {
 
 function buildGroupedMethodFixture(kind: string): HTMLElement {
   const documentBalance = kind === "documentBalance";
-  const label = documentBalance ? "Document balance" : "Frequency concentration";
+  const label = documentBalance ? "Document-size concentration" : "Frequency concentration";
   const glossaryIds: OverviewGlossaryId[] = documentBalance
     ? ["giniCoefficient", "coefficientOfVariation", "effectiveDocuments"]
     : ["shannonEntropy", "normalisedEntropy", "effectiveVocabulary"];
@@ -933,7 +933,7 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
       if (observed && fitted && getComputedStyle(observed).fill === getComputedStyle(fitted).stroke) failures.push("rank observed and fitted paint are identical");
       if (fitted && !isWarmPaint(getComputedStyle(fitted).stroke)) failures.push("rank model fit is not in the muted warm direction");
       const legendLabels = Array.from(svg.querySelectorAll(".cw-plot-legend-label")).map((label) => label.textContent);
-      if (legendLabels.join("|") !== "Included in fit|Zipf fit|Shown, not fitted") failures.push("rank fit-membership legend uses obsolete semantics");
+      if (legendLabels.join("|") !== "Included in fit|Log–log trend|Shown, not fitted") failures.push("rank fit-membership legend uses obsolete semantics");
     }
   }
   if (figureName === "growth") {
@@ -943,7 +943,7 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
     const fittedLegend = svg.querySelector<SVGGraphicsElement>(".cw-plot-legend-swatch.cw-plot-fit-line");
     if (!observed || !observedLegend || getComputedStyle(observed).stroke !== getComputedStyle(observedLegend).stroke) failures.push("growth observed legend paint does not match series");
     if (!fitted || !fittedLegend || getComputedStyle(fitted).stroke !== getComputedStyle(fittedLegend).stroke) failures.push("growth fitted legend paint does not match series");
-    if (fitted && !isWarmPaint(getComputedStyle(fitted).stroke)) failures.push("Heaps model fit is not in the muted warm direction");
+    if (fitted && !isWarmPaint(getComputedStyle(fitted).stroke)) failures.push("Descriptive growth trend is not in the muted warm direction");
     auditOrdinaryLegendBounds(svg, svg.querySelector<SVGGElement>(".cw-plot-legend"), failures, "Vocabulary-growth");
   }
   if (figureName === "lexical") {
@@ -1028,7 +1028,13 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
     const witnessFills = new Set(witnesses.map((witness) => getComputedStyle(witness).fill));
     if (witnessFills.size !== 1) failures.push("dispersion witness classes do not share one base colour");
     if (witnesses.some((witness) => witness.dataset.pointShape !== "circle" || witness.tagName.toLowerCase() !== "circle")) failures.push("dispersion witnesses do not share one circle shape");
-    if (witnesses.some((witness) => !witness.dataset.tooltipRows?.includes("category ") || !witness.getAttribute("aria-label")?.includes(", ") || !witness.dataset.witnessKind)) failures.push("dispersion witness omits its category from tooltip, accessibility label or internal data");
+    if (witnesses.some((witness) => {
+      const tooltip = witness.dataset.tooltipRows ?? "";
+      const accessible = witness.getAttribute("aria-label") ?? "";
+      return !tooltip.includes("frequency ") || !tooltip.includes("document frequency ") || !tooltip.includes("DP ")
+        || tooltip.includes("category ") || !accessible.includes("frequency ") || !accessible.includes("DP ")
+        || !witness.dataset.witnessKind;
+    })) failures.push("dispersion witness must expose frequency, document frequency and DP without a qualitative category");
     if (svg.querySelector(".cw-plot-witness-legend")) failures.push("witness-category legend remains");
     const pinnedWitness = svg.querySelector<SVGGraphicsElement>(".cw-plot-plane-witness.is-pinned");
     if (pinnedWitness && !svg.querySelector(".cw-plot-plane-witness-pin-ring")) failures.push("pinned witness lacks a distinct outer selection ring");
@@ -1053,7 +1059,7 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
     const legendBounds = Array.from(svg.querySelectorAll<SVGTextElement>(".cw-plot-density-legend-bound")).map((label) => label.textContent);
     if (legendBounds.join("|") !== `${cellsByCount[0]!.count}|${cellsByCount.at(-1)!.count}`) failures.push("density legend omits the minimum or maximum cell count");
     const quadrantLabels = Array.from(svg.querySelectorAll<SVGTextElement>(".cw-plot-quadrant-label")).map((label) => label.textContent).sort();
-    if (quadrantLabels.join("|") !== ["Frequent · concentrated", "Frequent · even", "Rare · concentrated", "Rare · even"].sort().join("|")) failures.push("four quiet dispersion quadrant labels are not retained");
+    if (quadrantLabels.length !== 0) failures.push("Fixed references must not create qualitative vocabulary categories");
     if (svg.querySelector(".cw-plot-quadrant-pill-bg, .cw-plot-quadrant-pills")) failures.push("dispersion quadrant pill background remains");
     const automaticLabels = svg.querySelectorAll(".cw-plot-plane-witness-label:not(.is-pinned)");
     if (automaticLabels.length > 4) failures.push("dispersion plane renders more than four automatic witness labels");
@@ -1071,7 +1077,7 @@ function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
         || Math.abs(Number(marginal.getAttribute("height")) - Number(cell.getAttribute("height"))) > 0.01;
     })) failures.push("DP marginals are not aligned with density rows");
     const thresholdLines = Array.from(svg.querySelectorAll<SVGGraphicsElement>(".cw-plot-threshold-line"));
-    if (thresholdLines.some((line) => Number(getComputedStyle(line).strokeOpacity) > 0.55)) failures.push("dispersion threshold lines are too visually prominent");
+    if (thresholdLines.length !== 0) failures.push("Default dispersion plane retains dividing reference lines");
     if (svg.querySelector(".cw-plot-density-cells")?.getAttribute("role") !== "grid" || positiveCells.some((cell) => cell.getAttribute("role") !== "gridcell" || cell.getAttribute("tabindex") !== "-1")) failures.push("dispersion density grid keyboard contract changed");
   }
   if (figureName === "coverage") {

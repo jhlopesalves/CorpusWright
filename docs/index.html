@@ -5,49 +5,49 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description"
-    content="CorpusWright is a local-first workbench for preparing, describing, and exploring a corpus.">
-  <title>CorpusWright - local-first corpus workbench</title>
+    content="Desktop software for corpus preparation and descriptive corpus analysis.">
+  <title>CorpusWright · desktop corpus analysis</title>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="CorpusWright">
-  <meta property="og:title" content="CorpusWright - local-first corpus workbench">
-  <meta property="og:description" content="CorpusWright is a local-first workbench for preparing, describing, and exploring a corpus.">
+  <meta property="og:title" content="CorpusWright · desktop corpus analysis">
+  <meta property="og:description" content="Desktop software for corpus preparation and descriptive corpus analysis.">
   <meta property="og:url" content="https://jhlopesalves.github.io/CorpusWright/">
-  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="CorpusWright - local-first corpus workbench">
-  <meta name="twitter:description" content="CorpusWright is a local-first workbench for preparing, describing, and exploring a corpus.">
-  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
+  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CorpusWright · desktop corpus analysis">
+  <meta name="twitter:description" content="Desktop software for corpus preparation and descriptive corpus analysis.">
+  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta name="twitter:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
   <link rel="stylesheet" href="assets/site.css">
-  <link rel="icon" href="assets/icon.png">
+  <link rel="icon" href="assets/icon-32.png">
+  <script src="assets/product-gallery.js" defer></script>
   <script>
     (function () {
-      var stored = localStorage.getItem('theme');
+      var stored;
+      try { stored = localStorage.getItem('theme'); } catch { /* Use the system theme when storage is unavailable. */ }
       var sys = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       document.documentElement.setAttribute('data-theme', stored || sys);
     })();
   </script>
+  <script src="assets/theme.js" defer></script>
 </head>
 
-<body>
+<body class="home">
+  <a class="skip-link" href="#top">Skip to content</a>
   <header class="site-header">
     <div class="shell nav">
       <a class="brand" href="index.html"><img class="mark" src="assets/icon-32.png" alt="" width="28" height="28">
         CorpusWright</a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="quick-start.html">Quick Start</a>
-        <a href="concepts/overview.html">Concepts</a>
-        <a href="roadmap.html">Roadmap</a>
-        <a href="technical-docs.html">Docs</a>
+        <a href="quick-start.html">Guide</a>
+        <a href="concepts/overview.html">Methods</a>
         <a href="about.html">About</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
         <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download</a>
-        <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round" aria-hidden="true">
-            <path
-              d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
-            </path>
-          </svg>
-        </a>
         <button class="theme-btn" id="theme-toggle" type="button" aria-pressed="false"
           aria-label="Switch to dark theme">
           <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -65,114 +65,101 @@
     </div>
   </header>
 
-  <main id="top">
-    <section class="hero">
+  <main id="top" tabindex="-1">
+    <section class="home-hero">
       <div class="shell">
-        <div class="hero-split">
-          <img class="hero-logo" src="assets/icon.png" alt="CorpusWright logo">
-          <div>
-            <h1>A local-first corpus tool, built in Rust.</h1>
-            <p class="lede">CorpusWright is a local-first desktop workbench for preparing, inspecting, and exploring text corpora, with frequency lists, KWIC concordances, collocate and document-spread views. Cleaned-corpus exports record the cleaning and tokenisation configuration.</p>
-            <div class="hero-downloads">
-              <div class="dl-list">
-                <p class="dl-heading">Downloads</p>
-                <ul>
-                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download latest alpha</a></li>
-                  <li><a href="https://github.com/jhlopesalves/CorpusWright/releases/latest">View the latest release</a></li>
-                </ul>
-              </div>
-              <p class="muted dl-note">Experimental alpha. Windows, macOS, and Linux builds are listed on the release page where available; unsigned Windows and macOS builds may prompt a warning before running.</p>
+        <div class="home-intro">
+          <h1>CorpusWright</h1>
+          <div class="home-definition">
+            <p class="lede">Desktop software for corpus preparation and descriptive corpus analysis.</p>
+            <p>Inspect the processed text before counting. Examine counts and distributions across documents, then use Concordance to read individual occurrences in context.</p>
+            <div class="actions">
+              <a class="btn primary" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download latest alpha</a>
+              <a class="btn ghost" href="quick-start.html">Start with the Guide</a>
             </div>
+            <p class="alpha-note">Public experimental alpha. <a href="about.html#status">Project status</a> and <a href="https://github.com/jhlopesalves/CorpusWright/releases/latest">release details</a>.</p>
           </div>
         </div>
-      </div>
-    </section>
-
-    <section class="section tight">
-      <div class="shell">
-        <div class="intro-split">
-          <div class="principle-list">
-            <div class="principle">
-              <h3>Preparation records</h3>
-              <p>Cleaned-corpus exports include a manifest with the cleaning configuration, tokeniser settings and
-                SHA-256 checksums for the included source and processed files.</p>
-            </div>
-            <div class="principle">
-              <h3>Statistical profile</h3>
-              <p>The corpus overview reports frequency, diversity, dispersion, concentration and distributional-shape
-                measures. Definitions and interpretation notes accompany the principal measures.</p>
-            </div>
-            <div class="principle">
-              <h3>Transparent</h3>
-              <p>The concepts guide presents formulas, interpretations and limitations for the principal reported statistics.</p>
-            </div>
-            <div class="principle">
-              <h3>Built in Rust</h3>
-              <p>A native Rust core performs corpus preparation and analysis on the user's machine.</p>
-            </div>
+        <section class="product-gallery" aria-labelledby="workflow-title" data-product-gallery>
+          <h2 id="workflow-title">Inside CorpusWright</h2>
+          <div class="gallery-tabs" aria-label="Application views" hidden>
+            <button id="gallery-tab-prepare" type="button" data-gallery-tab="prepare">Prepare</button>
+            <button id="gallery-tab-overview" type="button" data-gallery-tab="overview">Corpus Overview</button>
+            <button id="gallery-tab-concordance" type="button" data-gallery-tab="concordance">Concordance</button>
           </div>
+          <div id="gallery-panel-prepare" class="gallery-panel" data-gallery-panel="prepare">
+            <figure>
+              <figcaption><div class="gallery-copy"><span class="gallery-location">Prepare</span><strong>What text are you counting?</strong> Review Original Text, cleaning settings and Processed Text before analysis.</div><a class="gallery-fullsize" href="assets/screenshots/corpuswright-prepare.png">View full size</a></figcaption>
+              <a class="gallery-image" href="assets/screenshots/corpuswright-prepare.png" aria-label="Open the Prepare application screenshot at full size">
+                <img src="assets/screenshots/corpuswright-prepare.png" alt="CorpusWright Prepare workspace with eight synthetic demonstration sources, an original-text preview and cleaning controls." width="1440" height="1000" fetchpriority="high">
+              </a>
+            </figure>
+          </div>
+          <div id="gallery-panel-overview" class="gallery-panel" data-gallery-panel="overview">
+            <figure>
+              <figcaption><div class="gallery-copy"><span class="gallery-location">Analyse / Corpus Overview</span><strong>Inspect corpus-level distributions.</strong> Corpus Overview reports document sizes, dispersion and vocabulary structure.</div><a class="gallery-fullsize" href="assets/screenshots/corpuswright-overview.png">View full size</a></figcaption>
+              <a class="gallery-image" href="assets/screenshots/corpuswright-overview.png" aria-label="Open the Corpus Overview application screenshot at full size">
+                <img src="assets/screenshots/corpuswright-overview.png" alt="CorpusWright Analyse workspace with Corpus Overview selected and the complete Lexical spectrum figure from the GUI demonstration corpus." width="1440" height="1000" loading="lazy">
+              </a>
+            </figure>
+          </div>
+          <div id="gallery-panel-concordance" class="gallery-panel" data-gallery-panel="concordance">
+            <figure>
+              <figcaption><div class="gallery-copy"><span class="gallery-location">Analyse / Concordance</span><strong>Where does the query occur?</strong> Read concordance lines and inspect collocates and document context.</div><a class="gallery-fullsize" href="assets/screenshots/corpuswright-concordance.png">View full size</a></figcaption>
+              <a class="gallery-image" href="assets/screenshots/corpuswright-concordance.png" aria-label="Open the Concordance application screenshot at full size">
+                <img src="assets/screenshots/corpuswright-concordance.png" alt="CorpusWright Concordance tool inside Analyse, searching for seed in synthetic gardening prose, with highlighted nodes, surrounding words and collocate controls." width="1440" height="1000" loading="lazy">
+              </a>
+            </figure>
+          </div>
+          <p class="gallery-note">Three application views from eight synthetic garden texts. The <a href="quick-start.html">Guide</a> uses the same demonstration corpus.</p>
+        </section>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="shell">
+        <div class="home-analysis">
+          <div class="home-reading">
+            <h2>Frequency and dispersion</h2>
+            <p>CorpusWright reports frequency with document range and DP, so a corpus total can be checked against its distribution across documents.</p>
+            <p>In the Dispersion plane, <em>seedling</em> occurs 1,200 times, all in one of twelve equally sized documents (<span class="mono">DP ≈ 0.92</span>). The word <em>and</em> occurs 3,600 times in equal shares across all twelve (<span class="mono">DP = 0</span>).</p>
+            <p class="text-link"><a href="concepts/overview.html">Methods &amp; measures</a> explains the definitions and limits on interpretation.</p>
+          </div>
+          <figure class="dispersion-witness">
+            <a class="theme-img-light" href="assets/figures/dispersion-plane-light.svg" aria-label="Open the Dispersion plane at full size"><img src="assets/figures/dispersion-plane-light.svg" alt="Dispersion plane showing seedling concentrated in one document and the word and evenly distributed across twelve equally sized documents." width="720" height="544" loading="lazy"></a>
+            <a class="theme-img-dark" href="assets/figures/dispersion-plane-dark.svg" aria-label="Open the Dispersion plane at full size"><img src="assets/figures/dispersion-plane-dark.svg" alt="Dispersion plane showing seedling concentrated in one document and the word and evenly distributed across twelve equally sized documents." width="720" height="544" loading="lazy"></a>
+            <figcaption>Controlled statistical demonstration corpus: twelve equally sized synthetic documents. CorpusWright output.</figcaption>
+          </figure>
         </div>
       </div>
     </section>
 
-    <section class="section compact">
-      <div class="shell">
-        <div class="card-grid-2">
-          <a class="card" href="quick-start.html">
-            <h3>Get started</h3>
-            <p>Install CorpusWright, create a project, and clean a corpus from start to finish in a guided walkthrough that assumes no prior corpus experience.</p><span class="card-link">To the tutorials &#x2192;</span>
-          </a>
-          <a class="card" href="concepts/overview.html">
-            <h3>Concepts</h3>
-            <p>How CorpusWright prepares a corpus and how to read what it reports: deterministic, reviewable cleaning, then dispersion, lexical diversity, vocabulary growth, and how to interpret them.</p><span class="card-link">Concepts &#x2192;</span>
-          </a>
-          <a class="card" href="roadmap.html">
-            <h3>Roadmap</h3>
-            <p>What the latest published alpha contains, its current limits, and broad areas being considered.</p><span class="card-link">See the roadmap &#x2192;</span>
-          </a>
+    <section class="section">
+      <div class="shell home-details">
+        <div>
+          <h2>Preparation record</h2>
+          <p>The cleaned-corpus export records cleaning and tokenisation settings, extraction warnings and source/output checksums, so later file changes can be detected.</p>
+        </div>
+        <div>
+          <h2>Local processing</h2>
+          <p>CorpusWright processes corpus files on your computer. It does not upload them to a hosted analysis service. Keep the original sources and review the processed text before relying on its counts.</p>
         </div>
       </div>
-    </section>
-
-    <section class="section compact" id="citation">
-      <div class="shell">
-        <div class="section-lead">
-          <h2>Citation</h2>
-        </div>
-        <p>If you use CorpusWright in your research or teaching, please cite it when appropriate. The repository provides the authoritative machine-readable <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a>; the <a href="citation.html">citation guidance</a> gives APA and BibTeX examples.</p>
-
-</div>
     </section>
   </main>
 
-  <footer class="site-footer">
+  <footer class="site-footer" id="citation">
     <div class="shell foot">
-      <span>CorpusWright is an open, local-first corpus linguistics tool, currently in public alpha.</span>
-      <span><a href="https://github.com/jhlopesalves/CorpusWright">Source on GitHub</a></span>
+      <span>CorpusWright · open-source desktop software · public alpha</span>
+      <div class="footer-links">
+        <a href="about.html#citation">Citation</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/LICENSE">Licence</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a>
+      </div>
     </div>
   </footer>
 
-  <script>
-    (function () {
-      var root = document.documentElement;
-      var toggle = document.getElementById('theme-toggle');
 
-      function syncToggle() {
-        var dark = root.getAttribute('data-theme') === 'dark';
-        toggle.setAttribute('aria-pressed', String(dark));
-        toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-      }
-      syncToggle();
-
-      toggle.addEventListener('click', function () {
-        var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-        root.setAttribute('data-theme', next);
-        localStorage.setItem('theme', next);
-        syncToggle();
-      });
-
-    })();
-  </script>
 </body>
 
 </html>

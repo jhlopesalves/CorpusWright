@@ -11,7 +11,6 @@ import {
   type AnalysisInputSource,
   type CorpusOverview as AnalysisCorpus,
   type CorpusOverviewFinding,
-  type CorpusOverviewFindingSeverity,
   cancelConcordance,
   queryOverviewDistribution,
   queryOverviewDistributionEvidence,
@@ -132,7 +131,6 @@ const FUTURE_ANALYSIS_TOOLS = [
   "N-grams",
   "Exports",
 ];
-const BALANCE_ATTENTION_SHARE = 0.15;
 
 type AnalysisToolId = "overview" | "frequency" | "concordance";
 
@@ -785,18 +783,10 @@ function createMetricTable(rows: OverviewMetricRow[], className = ""): HTMLTable
 
 function findingLabel(finding: CorpusOverviewFinding): string {
   switch (finding.key) {
-    case "balance": return "Balance";
+    case "balance": return "Document-size concentration";
     case "extractionQuality": return "Extraction quality";
     case "lexicalSpectrum": return "Lexical spectrum";
     case "dispersion": return "Dispersion";
-  }
-}
-
-function severityClass(severity: CorpusOverviewFindingSeverity): string {
-  switch (severity) {
-    case "noIssue": return "no-issue";
-    case "worthALook": return "worth-a-look";
-    case "needsFixing": return "needs-fixing";
   }
 }
 
@@ -821,65 +811,24 @@ function countWithInlineShareRow(
 function renderCorpusReading(corpus: AnalysisCorpus): HTMLElement {
   const panel = createOverviewPanel("Reading of this corpus");
   panel.classList.add("analysis-reading-panel");
-
-  const verdict = document.createElement("p");
-  verdict.className = "analysis-reading-verdict";
-  verdict.textContent = corpus.reading.verdict;
-
+  appendPanelReading(panel, "These counts describe the prepared sample. They do not grade corpus quality, design balance or representativeness.");
   const list = document.createElement("ul");
   list.className = "analysis-reading-findings";
   for (const finding of corpus.reading.findings) {
     const item = document.createElement("li");
-    item.className = `analysis-reading-finding is-${severityClass(finding.severity)}`;
-
-    const dot = document.createElement("span");
-    dot.className = "analysis-reading-status-dot";
-    dot.setAttribute("aria-hidden", "true");
-
+    item.className = "analysis-reading-finding";
     const body = document.createElement("div");
     body.className = "analysis-reading-finding-body";
-
-    const heading = document.createElement("span");
-    heading.className = "analysis-reading-finding-heading";
-
     const label = document.createElement("strong");
-    label.textContent = findingLabel(finding);
-
-    const status = document.createElement("span");
-    status.className = "analysis-reading-status";
-    status.textContent = `(${finding.severityLabel})`;
-
+    label.textContent = `${findingLabel(finding)}. `;
     const text = document.createElement("span");
     text.className = "analysis-reading-finding-text";
     text.textContent = finding.text;
-
-    heading.append(label, document.createTextNode(" "), status, document.createTextNode("."));
-    body.append(heading, text);
-    item.append(dot, body);
+    body.append(label, text);
+    item.appendChild(body);
     list.appendChild(item);
   }
-
-  const legend = document.createElement("ul");
-  legend.className = "analysis-severity-legend";
-  for (const [severity, label] of [
-    ["noIssue", "no immediate issue"],
-    ["worthALook", "worth a look"],
-    ["needsFixing", "needs fixing"],
-  ] as const) {
-    const item = document.createElement("li");
-    item.className = `is-${severityClass(severity)}`;
-
-    const dot = document.createElement("span");
-    dot.className = "analysis-reading-status-dot";
-    dot.setAttribute("aria-hidden", "true");
-
-    const text = document.createElement("span");
-    text.textContent = label;
-    item.append(dot, text);
-    legend.appendChild(item);
-  }
-
-  panel.append(verdict, list, legend);
+  panel.appendChild(list);
   return panel;
 }
 
@@ -1370,7 +1319,7 @@ function renderDistributionEvidencePage(
 }
 
 function renderDocumentBalance(corpus: AnalysisCorpus): HTMLElement {
-  const panel = createOverviewPanel("Document balance");
+  const panel = createOverviewPanel("Document-size concentration");
   const balance = corpus.balance;
   panel.appendChild(renderDocumentLengthDistribution(corpus));
   const lengthHistogramFigure = renderLengthHistogramFigure(corpus);
@@ -1397,7 +1346,7 @@ function renderDocumentBalance(corpus: AnalysisCorpus): HTMLElement {
   }
   if (balance.effectiveDocuments !== null) {
     rows.push({
-      label: "Effective documents",
+      label: "Effective document count",
       value: `${formatFixedNumber(balance.effectiveDocuments, 1)} of ${formatNumber(corpus.totals.documents)}`,
     });
   }
@@ -1405,17 +1354,17 @@ function renderDocumentBalance(corpus: AnalysisCorpus): HTMLElement {
     panel.appendChild(createMetricTable(rows));
   }
   if ([balance.gini, balance.coefficientOfVariation, balance.effectiveDocuments].some((value) => value !== null)) {
-    panel.appendChild(createGroupedMethodDisclosure("Document balance", [
+    panel.appendChild(createGroupedMethodDisclosure("Document-size concentration", [
       "giniCoefficient",
       "coefficientOfVariation",
       "effectiveDocuments",
     ]));
   }
-  if (balance.largestShare !== null && balance.largestShare >= BALANCE_ATTENTION_SHARE) {
+  if (balance.largestShare !== null) {
     const imbalanceWarning = document.createElement("p");
     imbalanceWarning.className = "analysis-panel-note";
     imbalanceWarning.textContent =
-      `One document holds ${formatPercent(balance.largestShare)} of all tokens. Corpus-level frequencies may largely reflect that document.`;
+      `One document holds ${formatPercent(balance.largestShare)} of all tokens. This is its token contribution; document-size concentration does not assess the sampling design.`;
     panel.appendChild(imbalanceWarning);
   }
   appendPanelReading(panel, balance.reading);
@@ -1451,19 +1400,19 @@ function renderExtractionQuality(corpus: AnalysisCorpus): HTMLElement {
 function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
   const rank = corpus.rankFrequency;
   interface RankControls extends FigureControlState {
-    view: "curve" | "residuals";
+    view: "curve" | "trend" | "residuals";
   }
   const controller = new OverviewFigureController<RankControls>({
     initialControls: { view: "curve" },
     policy: FIGURE_INTERACTION_POLICIES["overview-rank-frequency"],
     exportMetadata: (controls) => [
-      controls.view === "curve"
-        ? `Curve · frequency per million · Zipf fit over ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)}`
-        : `Residuals · log observed minus log fitted · Zipf fit over ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)}`,
+      controls.view !== "residuals"
+        ? `Empirical curve${controls.view === "trend" ? " with optional log–log trend" : ""} · frequency per million · eligible ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)}`
+        : `Residuals · log observed minus log fitted · Log–log trend over ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)}`,
     ],
   });
   let figure: HTMLElement | null = null;
-  const figureStats = () => `Zipf fit f(r) = C r^-alpha · alpha ${formatOptionalFixed(rank.zipfExponent, 3)} · C ${formatOptionalFixed(rank.zipfCoefficient, 2)} · R-squared ${formatOptionalFixed(rank.rSquared, 3)} · fitted ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)}`;
+  const figureStats = () => `Optional log–log trend · slope ${formatOptionalFixed(rank.zipfExponent === null ? null : -rank.zipfExponent, 3)} · R² ${(rank.rSquared === null ? "N/A" : formatFixedNumber(rank.rSquared, 3))} · eligible ranks ${formatRankRange(rank.fittedRankStart, rank.fittedRankEnd)}`;
   const renderSvg = () => renderRankFrequencySvg(
     "overview-rank-frequency",
     buildRankFrequencyGeometry({
@@ -1479,8 +1428,8 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
       zipfCoefficient: rank.zipfCoefficient,
       fittedRankStart: rank.fittedRankStart,
       fittedRankEnd: rank.fittedRankEnd,
-      view: controller.controls.view,
-      fitVisible: true,
+      view: controller.controls.view === "residuals" ? "residuals" : "curve",
+      fitVisible: controller.controls.view === "trend",
       labelsMode: "examples",
     }),
     controller.controls.view === "residuals"
@@ -1492,7 +1441,7 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
     "View",
     rank.zipfExponent === null || rank.zipfCoefficient === null
       ? [{ value: "curve", label: "Curve" }]
-      : [{ value: "curve", label: "Curve" }, { value: "residuals", label: "Residuals" }],
+      : [{ value: "curve", label: "Curve" }, { value: "trend", label: "Curve with trend" }, { value: "residuals", label: "Residuals" }],
     "curve",
     (view) => {
       controller.updateControls({ view });
@@ -1500,9 +1449,6 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
     },
   );
   controls.append(viewControl);
-  const rarity = rank.zipfExponent === null
-    ? "the fitted rarity ratio is unavailable"
-    : `ten times deeper in the rank list = ~${formatFixedNumber(10 ** rank.zipfExponent, 1)}x rarer`;
   figure = createOverviewFigure({
     id: "overview-rank-frequency",
     title: "Rank-frequency",
@@ -1510,7 +1456,7 @@ function renderRankFrequencyFigure(corpus: AnalysisCorpus): HTMLElement {
     controls,
     controller,
     captionStats: figureStats(),
-    captionReading: `Both axes are logarithmic in Curve view. The top three ranks and frequency-one tail remain visible but are not used to estimate the fit; R-squared is not proof of a universal law. Per-million scaling changes units, not curve shape or alpha; ${rarity}.`,
+    captionReading: "Curve view shows the empirical distribution by default. Both axes are logarithmic. Curve with trend adds unweighted natural-log OLS over ranks 4 onward with frequency greater than one. These exclusions have no documented statistical justification. The slope and R² describe that interval; R² is N/A for effectively constant log frequency. Per-million scaling does not change slope or R². This is not a power-law goodness-of-fit test.",
     explanation: createFigureExplanation("zipfFit"),
     renderSvg,
   });
@@ -1526,7 +1472,7 @@ function renderVocabularyGrowthFigure(corpus: AnalysisCorpus): HTMLElement {
     initialControls: { view: "growth" },
     policy: FIGURE_INTERACTION_POLICIES["overview-vocabulary-growth"],
     exportMetadata: (controls) => [
-      controls.view === "growth" ? "Growth · observed and Heaps fit" : "Heaps fit · observed and fitted model",
+      controls.view === "growth" ? "Observed order · power-of-two checkpoints and final total" : "Observed order · log–log descriptive trend",
     ],
   });
   let figure: HTMLElement | null = null;
@@ -1549,7 +1495,7 @@ function renderVocabularyGrowthFigure(corpus: AnalysisCorpus): HTMLElement {
   controls.append(
     createOverviewSegmentedControl(
       "View",
-      [{ value: "growth", label: "Growth" }, { value: "heaps", label: "Heaps fit" }],
+      [{ value: "growth", label: "Growth" }, { value: "heaps", label: "Log–log trend" }],
       "growth",
       (view) => {
         controller.updateControls({ view });
@@ -1559,12 +1505,12 @@ function renderVocabularyGrowthFigure(corpus: AnalysisCorpus): HTMLElement {
   );
   figure = createOverviewFigure({
     id: "overview-vocabulary-growth",
-    title: "Vocabulary growth",
+    title: "Observed-order vocabulary growth",
     subtitle: "How quickly does the corpus encounter new types as tokens accumulate?",
     controls,
     controller,
-    captionStats: `k ${formatOptionalFixed(growth.heapsK, 3)} · beta ${formatOptionalFixed(growth.heapsBeta, 3)} · R-squared ${formatOptionalFixed(growth.rSquared, 3)}`,
-    captionReading: `V(N) = K N^beta: each doubling of tokens yields ~${betaYield} more types. Checkpoints follow stable source order; the fit describes this snapshot, not a universal vocabulary ceiling.`,
+    captionStats: `k ${formatOptionalFixed(growth.heapsK, 3)} · beta ${formatOptionalFixed(growth.heapsBeta, 3)} · R-squared ${(growth.rSquared === null ? "N/A" : formatFixedNumber(growth.rSquared, 3))}`,
+    captionReading: `V(N) ≈ K N^beta: the trend implies ~${betaYield} more types per doubling within this path. Documents follow stable source-path order, with power-of-two token checkpoints plus the final total. Different orders may differ; beta and R-squared do not establish saturation or representativeness.`,
     explanation: createFigureExplanation("heapsFit"),
     renderSvg,
   });
@@ -1763,7 +1709,7 @@ function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null
       densityMode: "log",
       examplesMode: "labelled",
       marginalsVisible: true,
-      thresholdsVisible: true,
+      thresholdsVisible: false,
       pinnedKeys: controller.pins,
     }),
   );
@@ -1777,11 +1723,8 @@ function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null
       corpus.totals.types,
       plane.xBins,
       plane.yBins,
-      plane.loudButLocalCount,
-      plane.loudButLocalMinFrequency,
-      plane.highDispersionThreshold,
     ),
-    captionReading: "Density colour represents the number of types in each frequency–DP region. Witnesses are deliberately selected examples, not a random sample. Lower DP indicates more even distribution; higher DP indicates concentration. Log density changes visual contrast, not counts; thresholds are descriptive orientation conventions and no significance test is performed.",
+    captionReading: "Density colour represents the number of types in each frequency–DP region. Witnesses are deliberately selected examples, not a random sample. Lower DP indicates more even distribution; higher DP indicates concentration. Log density changes visual contrast, not counts. No frequency or DP cut-off partitions the default display into categories.",
     explanation: createFigureExplanation("dispersionPlaneDensity", "griesDp"),
     renderSvg,
   });
@@ -1789,14 +1732,14 @@ function renderDispersionPlaneFigure(corpus: AnalysisCorpus): HTMLElement | null
 }
 
 function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
-  const panel = createOverviewPanel("Lexical spectrum");
+  const panel = createOverviewPanel("Vocabulary distribution");
   const spectrum = corpus.lexicalSpectrum;
   const band3To9Note = document.createElement("p");
   band3To9Note.className = "analysis-panel-note";
-  band3To9Note.textContent = "3-9: recurring but still rare types.";
+  band3To9Note.textContent = "Frequency classes: 1, 2, 3–9 and 10+ occurrences. These are fixed reporting intervals.";
   const band10PlusNote = document.createElement("p");
   band10PlusNote.className = "analysis-panel-note";
-  band10PlusNote.textContent = "10+: frequent types - the same threshold feeds the dispersion profile.";
+  band10PlusNote.textContent = "The dispersion profile summarises types with 10+ occurrences; this is a fixed selection reference.";
   panel.append(band3To9Note, band10PlusNote);
   panel.appendChild(renderLexicalSpectrumFigure(corpus));
 
@@ -1869,7 +1812,7 @@ function renderFrequencyConcentration(corpus: AnalysisCorpus): HTMLElement {
   const rows: OverviewMetricRow[] = [];
   if (concentration.evennessJ !== null) {
     rows.push({
-      label: "Normalised entropy / evenness",
+      label: "Normalised entropy",
       value: formatFixedNumber(concentration.evennessJ, 3),
     });
   }
@@ -1882,7 +1825,7 @@ function renderFrequencyConcentration(corpus: AnalysisCorpus): HTMLElement {
   }
   if (concentration.effectiveVocabularyEntropy !== null) {
     rows.push({
-      label: "Effective vocabulary (perplexity)",
+      label: "Entropy-equivalent vocabulary size",
       value: `≈ ${formatNumber(concentration.effectiveVocabularyEntropy)} types`,
     });
   }
@@ -1900,25 +1843,19 @@ function renderFrequencyConcentration(corpus: AnalysisCorpus): HTMLElement {
 }
 
 function renderRankFrequency(corpus: AnalysisCorpus): HTMLElement {
-  const panel = createOverviewPanel("Rank–frequency fit");
+  const panel = createOverviewPanel("Rank-frequency structure");
   const rank = corpus.rankFrequency;
   const rows: OverviewMetricRow[] = [
     { label: "Sampled rank points", value: formatNumber(rank.points.length) },
   ];
   if (rank.zipfExponent !== null) {
     rows.push({
-      label: "Zipf exponent",
-      value: formatFixedNumber(rank.zipfExponent, 3),
+      label: "Log–log slope (optional trend)",
+      value: formatFixedNumber(-rank.zipfExponent, 3),
     });
   }
-  if (rank.zipfCoefficient !== null) {
-    rows.push({
-      label: "Zipf coefficient (raw-frequency scale)",
-      value: formatFixedNumber(rank.zipfCoefficient, 2),
-    });
-  }
-  if (rank.rSquared !== null) {
-    rows.push({ label: "Fit R²", value: formatFixedNumber(rank.rSquared, 3) });
+  if (rank.zipfExponent !== null) {
+    rows.push({ label: "Log–log R² (descriptive)", value: (rank.rSquared === null ? "N/A" : formatFixedNumber(rank.rSquared, 3)) });
   }
   if (rank.fittedRankStart !== null && rank.fittedRankEnd !== null) {
     rows.push({
@@ -1933,7 +1870,7 @@ function renderRankFrequency(corpus: AnalysisCorpus): HTMLElement {
 }
 
 function renderVocabularyGrowth(corpus: AnalysisCorpus): HTMLElement {
-  const panel = createOverviewPanel("Vocabulary growth");
+  const panel = createOverviewPanel("Observed-order vocabulary growth");
   const growth = corpus.vocabularyGrowth;
   const finalPoint = growth.points[growth.points.length - 1];
   const rows: OverviewMetricRow[] = [
@@ -1946,13 +1883,13 @@ function renderVocabularyGrowth(corpus: AnalysisCorpus): HTMLElement {
     });
   }
   if (growth.heapsK !== null) {
-    rows.push({ label: "Heaps K", value: formatFixedNumber(growth.heapsK, 3) });
+    rows.push({ label: "Growth coefficient K", value: formatFixedNumber(growth.heapsK, 3) });
   }
   if (growth.heapsBeta !== null) {
-    rows.push({ label: "Heaps β", value: formatFixedNumber(growth.heapsBeta, 3) });
+    rows.push({ label: "Observed-order exponent β", value: formatFixedNumber(growth.heapsBeta, 3) });
   }
-  if (growth.rSquared !== null) {
-    rows.push({ label: "Fit R²", value: formatFixedNumber(growth.rSquared, 3) });
+  if (growth.heapsBeta !== null) {
+    rows.push({ label: "Log–log R² (descriptive)", value: (growth.rSquared === null ? "N/A" : formatFixedNumber(growth.rSquared, 3)) });
   }
   panel.appendChild(createMetricTable(rows));
   panel.appendChild(renderVocabularyGrowthFigure(corpus));
@@ -1967,12 +1904,6 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
     { label: "Frequent types (10+ occurrences)", value: formatNumber(dispersion.frequentTypes) },
   ];
   if (corpus.totals.documents >= 2) {
-    rows.push({
-      label: "Gries DP",
-      labelSuffix: "(at least 0.5, frequent types)",
-      value: `${formatNumber(dispersion.highDpFrequentTypes)} of ${formatNumber(dispersion.frequentTypes)}`,
-      description: "How many frequent types are noticeably clumped - their DP is 0.5 or higher.",
-    });
     if (dispersion.medianDp !== null) {
       rows.push({
         label: "Gries DP",
@@ -1984,11 +1915,11 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
   }
   panel.appendChild(createMetricTable(rows));
 
-  if (corpus.balance.largestShare !== null && corpus.balance.largestShare >= BALANCE_ATTENTION_SHARE) {
+  if (corpus.balance.largestShare !== null) {
     const imbalanceWarning = document.createElement("p");
     imbalanceWarning.className = "analysis-panel-note";
     imbalanceWarning.textContent =
-      `One document holds ${formatPercent(corpus.balance.largestShare)} of all tokens. DP has a floor of about half that share for any type absent from it - a high median DP here may reflect imbalance, not clumpy vocabulary.`;
+      `One document holds ${formatPercent(corpus.balance.largestShare)} of all tokens. A type absent from it has DP at least that token share. DP describes departure from token-size proportions; it does not diagnose corpus-design imbalance.`;
     panel.appendChild(imbalanceWarning);
   }
   const universe = document.createElement("p");

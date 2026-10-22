@@ -241,9 +241,8 @@
 }
 
 .concordance-file {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .concordance-file {
@@ -259,11 +258,10 @@
 
 .concordance-left {
   color: var(--text-color);
-  direction: rtl;
-  overflow: hidden;
+  direction: ltr;
+  overflow-wrap: anywhere;
   text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .concordance-node-cell {
@@ -274,10 +272,9 @@
 
 .concordance-right {
   color: var(--text-color);
-  overflow: hidden;
+  overflow-wrap: anywhere;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .concordance-context-run {

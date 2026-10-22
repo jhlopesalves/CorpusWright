@@ -138,6 +138,16 @@ pub struct ConcordanceRow {
     pub left_context: Vec<String>,
     pub node: String,
     pub right_context: Vec<String>,
+    // Prepared-text slices for display; token vectors remain the matching/sorting units.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub left_text: Option<String>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub node_text: Option<String>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub right_text: Option<String>,
 }
 
 /// Wider context for one surface-token concordance hit.
@@ -155,6 +165,15 @@ pub struct ConcordanceExpansionResult {
     pub node_tokens: Vec<String>,
     pub node: String,
     pub right_context: Vec<String>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub left_text: Option<String>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub node_text: Option<String>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub right_text: Option<String>,
 }
 
 /// One per-document row for a concordance hit distribution.
@@ -1255,7 +1274,7 @@ pub fn search_concordance_documents_routed_provider<Resolve, Progress>(
     query: &ConcordanceQuery,
     tokenization_config: &TokenizationConfig,
     context: &mut ConcordanceSearchContext,
-    resolve: Resolve,
+    mut resolve: Resolve,
     mut report_progress: Progress,
 ) -> Result<RoutedConcordanceResult, ConcordanceError>
 where
@@ -1266,7 +1285,7 @@ where
     let (store, index_rebuilt) = context.index_store_for_provider(
         document_slots,
         tokenization_config,
-        resolve,
+        &mut resolve,
         &mut report_progress,
     )?;
     let documents = store
@@ -1284,7 +1303,7 @@ where
         files_done: 0,
         files_total: documents.len(),
     });
-    let (result, _, execution_stats) = search_concordance_documents_index_from_store(
+    let (mut result, _, execution_stats) = search_concordance_documents_index_from_store(
         &documents,
         query,
         tokenization_config,
@@ -1292,6 +1311,18 @@ where
         &selected_document_ids,
         index_rebuilt,
     )?;
+    if let Some(rows) = result.rows.as_mut() {
+        let mut ids = rows
+            .iter()
+            .map(|row| row.document_index)
+            .collect::<Vec<_>>();
+        ids.sort_unstable();
+        ids.dedup();
+        for id in ids {
+            let document = resolve(id).ok_or(ConcordanceError::InvalidDocumentIdentity)?;
+            attach_concordance_display(rows, &document, result.window_tokens, tokenization_config)?;
+        }
+    }
     Ok(RoutedConcordanceResult {
         result,
         backend_used: ConcordanceBackendUsed::Index,
@@ -1660,8 +1691,20 @@ fn search_concordance_documents_index_from_store(
             left_context: row.left_context,
             node: row.node,
             right_context: row.right_context,
+            left_text: None,
+            node_text: None,
+            right_text: None,
         });
         execution_stats.rows_materialised += 1;
+    }
+    let page_documents = rows
+        .iter()
+        .map(|row| row.document_index)
+        .collect::<HashSet<_>>();
+    for document in documents {
+        if !document.text.is_empty() && page_documents.contains(&document.document_index) {
+            attach_concordance_display(&mut rows, document, window_tokens, tokenization_config)?;
+        }
     }
     let rows = query.include_rows.then_some(rows);
 
@@ -2335,7 +2378,7 @@ fn materialize_streaming_scan_hit(
     if node_tokens.len() != hit.node_token_length {
         return Err(ConcordanceError::InvalidHitIdentity);
     }
-    Ok(ConcordanceRow {
+    let mut row = ConcordanceRow {
         document_index: document.document_index,
         source_path: document.source_path.clone(),
         display_name: document.display_name.clone(),
@@ -2344,7 +2387,98 @@ fn materialize_streaming_scan_hit(
         left_context,
         node: node_tokens.join(" "),
         right_context,
-    })
+        left_text: None,
+        node_text: None,
+        right_text: None,
+    };
+    attach_concordance_display(
+        std::slice::from_mut(&mut row),
+        document,
+        window_tokens,
+        tokenization_config,
+    )?;
+    Ok(row)
+}
+
+/// Adds original punctuation without putting it into analytical token vectors or the index.
+/// Only token-boundary positions needed by this result page are retained; a document is scanned
+/// once even when the page contains many of its hits. This preserves the compact index's bound.
+fn attach_concordance_display(
+    rows: &mut [ConcordanceRow],
+    document: &ConcordanceDocument,
+    window_tokens: usize,
+    tokenization_config: &TokenizationConfig,
+) -> Result<(), ConcordanceError> {
+    let relevant = rows
+        .iter()
+        .filter(|row| row.document_index == document.document_index);
+    let mut wanted = HashSet::new();
+    for row in relevant {
+        let end = row
+            .token_index
+            .checked_add(row.node_token_length)
+            .filter(|_| row.node_token_length > 0)
+            .ok_or(ConcordanceError::InvalidHitIdentity)?;
+        wanted.extend([
+            row.token_index.saturating_sub(window_tokens),
+            row.token_index,
+            end - 1,
+            end.saturating_add(window_tokens),
+        ]);
+    }
+    let Some(maximum) = wanted.iter().copied().max() else {
+        return Ok(());
+    };
+    let mut boundaries = HashMap::new();
+    let mut ordinal = 0usize;
+    let _ = visit_tokens(
+        &document.text,
+        document.document_index as u32,
+        tokenization_config,
+        |token| {
+            if !token.counts_as_word() {
+                return Ok(());
+            }
+            if wanted.contains(&ordinal) {
+                boundaries.insert(ordinal, (token.byte_start, token.byte_end));
+            }
+            if ordinal >= maximum {
+                return Err(());
+            }
+            ordinal += 1;
+            Ok(())
+        },
+    );
+    for row in rows
+        .iter_mut()
+        .filter(|row| row.document_index == document.document_index)
+    {
+        let end = row.token_index + row.node_token_length;
+        let node_start = boundaries
+            .get(&row.token_index)
+            .ok_or(ConcordanceError::InvalidHitIdentity)?
+            .0;
+        let node_end = boundaries
+            .get(&(end - 1))
+            .ok_or(ConcordanceError::InvalidHitIdentity)?
+            .1;
+        let left_ordinal = row.token_index.saturating_sub(window_tokens);
+        let left_start = if left_ordinal == 0 {
+            0
+        } else {
+            boundaries
+                .get(&left_ordinal)
+                .ok_or(ConcordanceError::InvalidHitIdentity)?
+                .0
+        };
+        let right_end = boundaries
+            .get(&end.saturating_add(window_tokens))
+            .map_or(document.text.len(), |(start, _)| *start);
+        row.left_text = Some(document.text[left_start..node_start].to_string());
+        row.node_text = Some(document.text[node_start..node_end].to_string());
+        row.right_text = Some(document.text[node_end..right_end].to_string());
+    }
+    Ok(())
 }
 
 /// Expands one surface-token concordance hit in its source document.
@@ -2388,6 +2522,25 @@ pub fn expand_concordance_context(
         node: node_tokens.join(" "),
         node_tokens,
         right_context: concordance_token_surfaces(&tokens[node_end..right_end]),
+        left_text: Some(
+            document.text[if left_start == 0 {
+                0
+            } else {
+                tokens[left_start].byte_start
+            }..tokens[query.token_index].byte_start]
+                .to_string(),
+        ),
+        node_text: Some(
+            document.text[tokens[query.token_index].byte_start..tokens[node_end - 1].byte_end]
+                .to_string(),
+        ),
+        right_text: Some(
+            document.text[tokens[node_end - 1].byte_end
+                ..tokens
+                    .get(right_end)
+                    .map_or(document.text.len(), |token| token.byte_start)]
+                .to_string(),
+        ),
     })
 }
 

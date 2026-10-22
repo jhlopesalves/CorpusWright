@@ -20,18 +20,18 @@ const ffmpegBinary = process.env.FFMPEG_BIN ?? "ffmpeg";
 const payloadBytes = readFileSync(payloadPath);
 
 const cases = [
-  witness("document-length-histogram", "Document-length histogram", "document", "histogram", "Full-corpus document balance", "Binning and scale affect appearance; read with quartiles."),
+  witness("document-length-histogram", "Document-length histogram", "document", "histogram", "Full-corpus document-size concentration", "Binning and scale affect appearance; read with quartiles."),
   witness("document-length-ecdf", "Document-length ECDF", "document", "ecdf", "Full-corpus document percentiles", "Small document count produces visible steps."),
   witness("document-length-qq", "Document-length Q–Q", "document", "qq", "Selected/full-corpus shape diagnostic", "A reference comparison, not a normality test."),
-  witness("rank-frequency", "Rank–frequency curve", "rank", "curve", "Full-corpus Zipf discussion", "The fit excludes documented head and tail ranks."),
+  witness("rank-frequency", "Rank–frequency curve", "rank", "curve", "Empirical full-corpus rank-frequency distribution", "The default curve has no trend overlay; an optional log–log trend has fixed, unjustified head and tail exclusions."),
   witness("rank-residuals", "Rank residuals", "rank", "residuals", "Full-corpus departures from fitted rank interval", "Residuals depend on the fitted interval."),
   witness("lexical-spectrum", "Lexical spectrum", "lexical", "histogram", "Full-corpus hapax/dislegomena evidence", "Log axes require careful frequency-class reading."),
   witness("cumulative-coverage", "Cumulative coverage", "coverage", "histogram", "Full-corpus Top-N token coverage", "Coverage is token mass, not semantic completeness."),
   witness("vocabulary-growth", "Vocabulary growth", "growth", "growth", "Full-corpus observed vocabulary growth", "The curve depends on deterministic document order."),
-  witness("heaps-fit", "Heaps fit", "growth", "heaps", "Full-corpus fitted growth model", "The fit describes this snapshot only."),
+  witness("heaps-fit", "Log–log trend", "growth", "heaps", "Full-corpus fitted growth model", "The fit describes this snapshot only."),
   witness("mattr-distribution", "MATTR distribution", "mattr", "histogram", "Full-corpus lexical-diversity variation", "MATTR is window-dependent and higher is not automatically better."),
   witness("dispersion-profile", "Dispersion profile", "profile", "histogram", "Full-corpus document-frequency reach", "Exclusive reach bands differ from cumulative thresholds."),
-  witness("dispersion-plane", "Dispersion plane", "plane", "histogram", "Full-corpus density plus selected real witnesses", "Thresholds are descriptive and DP is corpus-internal."),
+  witness("dispersion-plane", "Dispersion plane", "plane", "histogram", "Full-corpus density plus selected real witnesses", "The default plane has no dividing reference lines; raw DP depends on the document partition and its token shares."),
 ];
 
 const outputDirectories = {

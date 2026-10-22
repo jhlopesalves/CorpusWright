@@ -10,41 +10,40 @@
   <meta property="og:title" content="Citation · CorpusWright">
   <meta property="og:description" content="Citation guidelines for the CorpusWright corpus linguistics software.">
   <meta property="og:url" content="https://jhlopesalves.github.io/CorpusWright/citation.html">
-  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Citation · CorpusWright">
   <meta name="twitter:description" content="Citation guidelines for the CorpusWright corpus linguistics software.">
-  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
+  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta name="twitter:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
   <link rel="stylesheet" href="assets/site.css">
-  <link rel="icon" href="assets/icon.png">
+  <link rel="icon" href="assets/icon-32.png">
   <script>
     (function() {
-      const savedTheme = localStorage.getItem('theme');
+      let savedTheme;
+      try { savedTheme = localStorage.getItem('theme'); } catch { /* Use the system theme when storage is unavailable. */ }
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
     })();
   </script>
+  <script src="assets/theme.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#top">Skip to content</a>
 <header class="site-header">
   <div class="shell nav">
     <a class="brand" href="index.html"><img class="mark" src="assets/icon-32.png" alt="" width="28" height="28"> CorpusWright</a>
     <nav class="nav-links" aria-label="Primary">
-      <a href="quick-start.html">Quick Start</a>
-      <a href="concepts/overview.html">Concepts</a>
-      <a href="roadmap.html">Roadmap</a>
-      <a href="technical-docs.html">Docs</a>
-      <a href="about.html">About</a>
-      <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download</a>
-      <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-          stroke-linejoin="round" aria-hidden="true">
-          <path
-            d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
-          </path>
-        </svg>
-      </a>
-      <button class="theme-btn" id="theme-toggle" type="button" aria-pressed="false" aria-label="Switch to dark theme">
+        <a href="quick-start.html">Guide</a>
+        <a href="concepts/overview.html">Methods</a>
+        <a href="about.html">About</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
+        <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download</a>
+        <button class="theme-btn" id="theme-toggle" type="button" aria-pressed="false" aria-label="Switch to dark theme">
         <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <circle cx="12" cy="12" r="4" />
           <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
@@ -53,32 +52,31 @@
           <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
         </svg>
       </button>
-    </nav>
+      </nav>
   </div>
 </header>
 
-<main id="top">
+<main id="top" tabindex="-1">
 
-<section class="section">
+<section class="section page-intro">
   <div class="shell">
     <div class="section-lead">
-      <p class="eyebrow">Citation Guidance</p>
-      <h1>Citing CorpusWright in research and teaching</h1>
-      <p class="lede">CorpusWright is open-source research software. If it helps you compile, preprocess, or clean your text corpora for publications, studies, or presentations, please cite the specific version you used.</p>
+      <h1>Citation examples for CorpusWright</h1>
+      <p class="lede">These examples follow the current citation metadata. Cite the specific version you used; <a href="about.html#citation">About gives the citation guidance and template</a>.</p>
     </div>
   </div>
 </section>
 
 <section class="section">
   <div class="shell">
-    <div class="principles">
-      <div style="max-width: var(--prose);">
-        <h3>Preferred citation format (APA)</h3>
-        <p class="muted">Cite the software directly, naming the specific version you used. For example:</p>
+    <div class="docs-content learn-prose">
+      <section class="learn-section">
+        <h2>Preferred citation format (APA)</h2>
+        <p>Cite the software directly, naming the specific version you used. For example:</p>
         <p><strong>Lopes, J. H. (2026). <em>CorpusWright</em> (Version 0.1.0-alpha.8) [Computer software]. <a href="https://github.com/jhlopesalves/CorpusWright">https://github.com/jhlopesalves/CorpusWright</a></strong></p>
 
-        <h3 style="margin-top: 36px;">BibTeX template</h3>
-        <p class="muted">For LaTeX, Pandoc, or reference managers, you can adapt the template below:</p>
+        <h2 style="margin-top: 36px;">BibTeX template</h2>
+        <p>For LaTeX, Pandoc, or reference managers, you can adapt the template below:</p>
         <pre class="code" id="citation-bibtex"><code class="mono">@software{lopes_corpuswright_2026,
   author  = {Lopes, Jhonatan H.},
   title   = {CorpusWright},
@@ -88,12 +86,12 @@
   note    = {ORCID: 0009-0008-4914-0262}
 }</code></pre>
 
-        <h3 style="margin-top: 36px;">Machine-readable CITATION.cff</h3>
-        <p class="muted">The authoritative machine-readable citation record is the repository's <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a>. The examples above follow that metadata.</p>
+        <h2 style="margin-top: 36px;">Machine-readable CITATION.cff</h2>
+        <p>The authoritative machine-readable citation record is the repository's <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a>. The examples above follow that metadata.</p>
 
-        <h3 style="margin-top: 36px;">GitHub citation support</h3>
+        <h2 style="margin-top: 36px;">GitHub citation support</h2>
         <p>GitHub reads the repository's <code>CITATION.cff</code> when it presents citation information. Check the version in that record against the version of CorpusWright you used.</p>
-      </div>
+      </section>
     </div>
   </div>
 </section>
@@ -101,31 +99,17 @@
 </main>
 
 <footer class="site-footer">
-  <div class="shell foot">
-    <span>CorpusWright is an open, local-first corpus linguistics workbench, currently in public alpha.</span>
-    <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
-  </div>
-</footer>
+    <div class="shell foot">
+      <span>CorpusWright · open-source desktop software · public alpha</span>
+      <div class="footer-links">
+        <a href="about.html#citation">Citation</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/LICENSE">Licence</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a>
+      </div>
+    </div>
+  </footer>
 
 
-<script>
-  (function () {
-    var root = document.documentElement;
-    var toggle = document.getElementById('theme-toggle');
-    if (!toggle) { return; }
-    function syncToggle() {
-      var dark = root.getAttribute('data-theme') === 'dark';
-      toggle.setAttribute('aria-pressed', String(dark));
-      toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-    }
-    syncToggle();
-    toggle.addEventListener('click', function () {
-      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      root.setAttribute('data-theme', next);
-      localStorage.setItem('theme', next);
-      syncToggle();
-    });
-  })();
-</script>
+
 </body>
 </html>

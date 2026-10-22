@@ -188,9 +188,9 @@ export function annotatedDispersionLevel(
   label: string,
 ): "low" | "medium" | "high" {
   switch (label) {
-    case "broadly dispersed":
+    case "DP < 0.30 (fixed reference)":
       return "low";
-    case "moderately concentrated":
+    case "0.30 ≤ DP < 0.70 (fixed references)":
       return "medium";
     default:
       return "high";

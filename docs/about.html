@@ -11,42 +11,41 @@
   <meta property="og:title" content="About · CorpusWright">
   <meta property="og:description" content="About CorpusWright: where the project stands, and who maintains it.">
   <meta property="og:url" content="https://jhlopesalves.github.io/CorpusWright/about.html">
-  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="About · CorpusWright">
   <meta name="twitter:description" content="About CorpusWright: where the project stands, and who maintains it.">
-  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/icon.png">
+  <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
+  <meta name="twitter:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
   <link rel="stylesheet" href="assets/site.css">
-  <link rel="icon" href="assets/icon.png">
+  <link rel="icon" href="assets/icon-32.png">
   <script>
     (function () {
-      const savedTheme = localStorage.getItem('theme');
+      let savedTheme;
+      try { savedTheme = localStorage.getItem('theme'); } catch { /* Use the system theme when storage is unavailable. */ }
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
     })();
   </script>
+  <script src="assets/theme.js" defer></script>
 </head>
 
 <body>
+  <a class="skip-link" href="#top">Skip to content</a>
   <header class="site-header">
     <div class="shell nav">
       <a class="brand" href="index.html"><img class="mark" src="assets/icon-32.png" alt="" width="28" height="28">
         CorpusWright</a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="quick-start.html">Quick Start</a>
-        <a href="concepts/overview.html">Concepts</a>
-        <a href="roadmap.html">Roadmap</a>
-        <a href="technical-docs.html">Docs</a>
-        <a href="about.html" aria-current="page">About</a>
+        <a href="quick-start.html">Guide</a>
+        <a href="concepts/overview.html">Methods</a>
+        <a aria-current="page" href="about.html">About</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
         <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download</a>
-        <a class="icon-btn" href="https://github.com/jhlopesalves/CorpusWright" aria-label="GitHub repository">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round" aria-hidden="true">
-            <path
-              d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
-            </path>
-          </svg>
-        </a>
         <button class="theme-btn" id="theme-toggle" type="button" aria-pressed="false" aria-label="Switch to dark theme">
         <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <circle cx="12" cy="12" r="4" />
@@ -60,13 +59,13 @@
     </div>
   </header>
 
-  <main id="top">
+  <main id="top" tabindex="-1">
 
-    <section class="section">
+    <section class="section page-intro">
       <div class="shell">
         <div class="section-lead learn-lead">
-          <p class="eyebrow">About</p>
-          <h1>About</h1>
+          <h1>About CorpusWright</h1>
+          <p class="lede">An open-source corpus-linguistics workbench, created and maintained by Jhonatan H. Lopes.</p>
         </div>
       </div>
     </section>
@@ -76,42 +75,43 @@
         <div class="docs-content learn-prose">
 
           <section class="learn-section">
-            <h2 id="stance">Where CorpusWright stands</h2>
+            <h2 id="what-it-is">What CorpusWright is</h2>
+            <p>CorpusWright is desktop software for corpus preparation and descriptive corpus analysis. Prepare shows extracted text and the effect of cleaning rules; Analyse provides descriptive summaries and Concordance. Corpus files are processed on your computer.</p>
+            <p>The <a href="quick-start.html">Guide</a> covers installation and the basic workflow. <a href="concepts/overview.html">Methods &amp; measures</a> explains the definitions, diagnostic figures and limits on interpretation.</p>
+          </section>
 
-            <p>CorpusWright is built on one position: the description of a corpus is not a preliminary step taken before statistical analysis; it is the first stage of statistical analysis. The data-science tradition has a name for this stage: exploratory data analysis (Tukey, 1977), the work of understanding a dataset's structure, its distribution, and its limits before any confirmatory claim is made. CorpusWright's response is to place descriptive diagnostics in the analysis workflow, where they can be examined before later claims are made.</p>
+          <section class="learn-section">
+            <h2 id="origin">Why it exists</h2>
+            <p>As an undergraduate on an <em>iniciação científica</em> project, I was given eight to twelve months to clean a corpus one file at a time. Automating the preparation in Python reduced the manual cleaning workload to days, but the resulting corpus still required systematic examination. I began CorpusWright to keep corpus preparation, descriptive statistics and inspection of the underlying text in the same research workflow.</p>
+            <p>Cleaning changes the text that is counted. Aggregate results therefore need to remain traceable to the documents and contexts from which they were calculated.</p>
+          </section>
 
-            <p>The position is not novel, and the project does not claim it as its own. The project draws on ordinary open-science practices - reproducible results, transparent methods, findings that carry their provenance, and claims held to organised scepticism - in corpus preparation and analysis. In practice, that discipline means five things:</p>
-
-            <ul>
-              <li><strong>Deterministic.</strong> For the same supported inputs and cleaning configuration, the cleaning rules produce the same processed text. A saved cleaning configuration is part of the research record: it can be inspected, shared, and re-applied without relying on anyone's recollection of manual steps.</li>
-              <li><strong>Conservative.</strong> Where a cleaning decision is uncertain, the original text is preserved. Detected noise is evidence, not an instruction; it becomes a cleaning rule only after explicit review. The tool would rather under-clean than silently discard what cannot be recovered.</li>
-              <li><strong>Auditable.</strong> Extraction warnings, cleaning rules and export metadata remain inspectable, because changing tokenisation or annotation choices can change the counts.</li>
-              <li><strong>Local-first.</strong> Corpus data is processed locally and is not sent to a hosted CorpusWright analysis service.</li>
-              <li><strong>Statistically restrained.</strong> Frequencies are reported as what they are, without overstatement; measures respect corpus design, dispersion, document-level variation, and their own uncertainty.</li>
-            </ul>
-
-            <h3>Established methods in the workflow</h3>
-
-            <p>The project does not claim novelty for established measures such as Zipf’s law (Zipf, 1949) or Shannon entropy (Shannon, 1948), nor for the principles of careful corpus design. Its purpose is to place corpus preparation and descriptive diagnostics in one local workflow and make the relevant settings available for review.</p>
+          <section class="learn-section">
+            <h2 id="stance">Analysis approach</h2>
+            <p>CorpusWright reports descriptive diagnostics for the prepared corpus. These outputs describe the observed sample; they do not establish representativeness or justify broader inferential claims by themselves.</p>
+            <p>The application records cleaning settings and warnings, and includes preparation metadata with cleaned-corpus exports. <a href="concepts/overview.html#how-the-numbers-are-produced">Methods documents how the numbers are produced</a>.</p>
           </section>
 
           <section class="learn-section">
             <h2 id="maintainer">Maintainer</h2>
 
-            <div class="maintainer-card">
-              <div>
-                <p>CorpusWright started as a solo project and is maintained, for now, by the person who started it.</p>
+            <p>Jhonatan H. Lopes created CorpusWright and maintains it as a solo project.</p>
+            <p><a href="https://github.com/jhlopesalves">GitHub</a> · <a href="https://substack.com/@jhonatanhlopes">Substack</a></p>
+            <p>The processing and analysis core is written in Rust; the <a href="https://github.com/jhlopesalves/CorpusWright">repository</a> contains the source and development tooling.</p>
+          </section>
 
-                <p>The short version of the origin: as an undergraduate on an iniciação científica project, I was given eight to twelve months to clean a corpus one file at a time; a few weeks of Python reduced the job to days - and the corpus still went barely examined. CorpusWright is the long answer to that experience.</p>
+          <section class="learn-section">
+            <h2 id="citation">Citation</h2>
+            <p>If you use CorpusWright in research or teaching, cite the software and the version you used. A human-readable template is:</p>
+            <p>Lopes, J. H. (<var>release year</var>). <em>CorpusWright</em> (Version <var>version used</var>) [Computer software]. <a href="https://github.com/jhlopesalves/CorpusWright">https://github.com/jhlopesalves/CorpusWright</a></p>
+            <p>Replace the year and version with the details of your release. The repository's <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a> is the authoritative machine-readable record. <a href="citation.html">APA and BibTeX examples</a> follow its current metadata; check them against the version you used.</p>
+            <p>Report the relevant preparation and analysis settings alongside the software citation.</p>
+          </section>
 
-                <p>Where to find me:</p>
-
-                <ul>
-                  <li>GitHub: <a href="https://github.com/jhlopesalves">jhlopesalves</a></li>
-                  <li>Substack: <a href="https://substack.com/@jhonatanhlopes">https://substack.com/@jhonatanhlopes</a></li>
-                </ul>
-              </div>
-            </div>
+          <section class="learn-section">
+            <h2 id="status">Status and licence</h2>
+            <p>CorpusWright is currently in public alpha. Interfaces, project formats and behaviour may change between releases. Keep original sources and backups of project data, and consult the <a href="https://github.com/jhlopesalves/CorpusWright/releases">release notes</a> for the version you use.</p>
+            <p>The source is available under the <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/LICENSE">MIT licence</a>. Bundled dependencies and resources have their own terms, recorded in the <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md">third-party notices</a>.</p>
           </section>
         </div>
       </div>
@@ -121,30 +121,16 @@
 
   <footer class="site-footer">
     <div class="shell foot">
-      <span>CorpusWright is an open, local-first corpus linguistics workbench, currently in public alpha.</span>
-      <span><a href="https://github.com/jhlopesalves/CorpusWright">View the source on GitHub</a></span>
+      <span>CorpusWright · open-source desktop software · public alpha</span>
+      <div class="footer-links">
+        <a href="about.html#citation">Citation</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/LICENSE">Licence</a>
+        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a>
+      </div>
     </div>
   </footer>
 
-  <script>
-    (function () {
-      var root = document.documentElement;
-      var toggle = document.getElementById('theme-toggle');
-      if (!toggle) { return; }
-      function syncToggle() {
-        var dark = root.getAttribute('data-theme') === 'dark';
-        toggle.setAttribute('aria-pressed', String(dark));
-        toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-      }
-      syncToggle();
-      toggle.addEventListener('click', function () {
-        var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-        root.setAttribute('data-theme', next);
-        localStorage.setItem('theme', next);
-        syncToggle();
-      });
-    })();
-  </script>
+
 </body>
 
 </html>

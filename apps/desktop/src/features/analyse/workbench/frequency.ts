@@ -380,7 +380,7 @@ export function syncFrequencyCaseFoldToggle(): void {
     dom.frequencyCaseFoldInput.checked = isFolded;
   }
   dom.frequencyCaseFoldInput.setAttribute("aria-checked", controls.caseFold && isFolded ? "true" : "false");
-  dom.frequencyCaseFoldState.textContent = controls.caseFold && isFolded ? "Folded" : "As typed";
+  dom.frequencyCaseFoldState.textContent = controls.caseFold && isFolded ? "Lowercased" : "As typed";
 }
 
 function tokenClassSummary(filter: FrequencyTokenClassFilter): string {
@@ -399,9 +399,9 @@ function tokenClassSummary(filter: FrequencyTokenClassFilter): string {
 function frequencyGroupingSummary(): string {
   switch (currentFrequencyGroupMode()) {
     case "surface":
-      return currentFrequencyCaseFold() ? "case-folded surface forms" : "surface forms";
+      return currentFrequencyCaseFold() ? "lowercased surface forms" : "surface forms";
     case "lemma":
-      return currentFrequencyCaseFold() ? "case-folded lemmas" : "lemmas";
+      return currentFrequencyCaseFold() ? "lowercased lemmas" : "lemmas";
     case "stem":
       return `${activeProjectLanguageLabel()} stems`;
   }

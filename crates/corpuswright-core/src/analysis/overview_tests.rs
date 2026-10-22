@@ -405,6 +405,51 @@ fn zipf_fit_recovers_known_synthetic_exponent() {
 }
 
 #[test]
+fn regression_keeps_constant_trend_but_leaves_r_squared_unavailable() {
+    let (slope, intercept, r_squared) =
+        linear_regression(&[(1.0, 2.0), (2.0, 2.0), (3.0, 2.0)]).unwrap();
+    assert_eq!(slope, 0.0);
+    assert_eq!(intercept, 2.0);
+    assert_eq!(r_squared, None);
+    let near_constant = linear_regression(&[(1.0, 2.0), (2.0, 2.0 + 1e-10)]).unwrap();
+    assert!(near_constant.0.is_finite());
+    assert_eq!(near_constant.2, None);
+    assert_eq!(linear_regression(&[(1.0, 2.0), (1.0, 3.0)]), None);
+}
+
+#[test]
+fn constant_rank_and_growth_responses_serialize_r_squared_as_null() {
+    let frequencies = vec![4; 8];
+    let rank = rank_frequency_summary(&frequencies, &[], 32);
+    assert_eq!(rank.zipf_exponent, Some(-0.0));
+    assert_eq!(rank.fitted_rank_start, Some(4));
+    assert_eq!(rank.fitted_rank_end, Some(8));
+    assert_eq!(
+        serde_json::to_value(&rank).unwrap()["rSquared"],
+        serde_json::Value::Null
+    );
+    let growth = vocabulary_growth_summary(&[
+        VocabularyGrowthPoint {
+            tokens: 4,
+            types: 2,
+        },
+        VocabularyGrowthPoint {
+            tokens: 8,
+            types: 2,
+        },
+        VocabularyGrowthPoint {
+            tokens: 16,
+            types: 2,
+        },
+    ]);
+    assert_eq!(growth.heaps_beta, Some(0.0));
+    assert_eq!(
+        serde_json::to_value(&growth).unwrap()["rSquared"],
+        serde_json::Value::Null
+    );
+}
+
+#[test]
 fn cumulative_coverage_uses_125_ladder_and_full_vocabulary() {
     assert!(cumulative_coverage_checkpoints(&[], 0).is_empty());
 

@@ -584,10 +584,10 @@
                     <header class="concordance-card-header cw-panel__header">
                       <div class="concordance-card-heading">
                         <h3 id="concordance-collocates-title">Collocates</h3>
-                        <p>Which words systematically occur near the node, and where relative to it?</p>
+                        <p>Which forms occur in the selected node windows?</p>
                       </div>
                       <div class="concordance-card-actions">
-                        <p id="concordance-collocates-stats" class="concordance-card-stats cw-result-table-note">span 5L–5R · logDice · min freq 5 · showing 0 of 0</p>
+                        <p id="concordance-collocates-stats" class="concordance-card-stats cw-result-table-note">span 5L–5R · MI · min freq 5 · showing 0 of 0</p>
                       </div>
                     </header>
                     <div id="concordance-collocates-controls" class="concordance-card-controls concordance-collocation-controls cw-panel__controls">
@@ -605,14 +605,13 @@
                       </label>
                       <label class="concordance-collocation-measure-field" for="concordance-collocation-measure">
                         <span>Measure</span>
-                        <select id="concordance-collocation-measure">
-                          <option value="logDice" selected>logDice</option>
-                          <option value="mi">MI</option>
-                          <option value="mi3">MI3</option>
+                        <select id="concordance-collocation-measure" title="Association ranking from window-event counts and selected-corpus frequencies; formulas and limits are defined in Methods.">
+                          <option value="mi" selected>MI</option>
+                          <option value="mi3">MI³</option>
                           <option value="tScore">t-score</option>
                           <option value="zScore">z-score</option>
-                          <option value="g2">log-likelihood</option>
-                          <option value="logRatio">log-ratio</option>
+                          <option value="g2">G² (window table)</option>
+                          <option value="logRatio">log ratio (window)</option>
                         </select>
                       </label>
                       <label for="concordance-collocation-min-o11">
@@ -650,7 +649,7 @@
                             <th>Collocate</th>
                             <th title="Co-occurrences within the selected span; O11">Near query <span class="concordance-collocation-heading-sublabel">O11</span></th>
                             <th title="Total frequency of the collocate in scope; f_c">Corpus frequency <span class="concordance-collocation-heading-sublabel">f_c</span></th>
-                            <th>Association: logDice</th>
+                            <th>Association: MI</th>
                             <th>
                               <span class="concordance-position-heading">
                                 <span>Position</span>

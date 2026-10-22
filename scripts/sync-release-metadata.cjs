@@ -262,13 +262,7 @@ function syncIndex(writer) {
       "docs/index.html",
       "download nav link"
     );
-    next = replaceOrThrow(
-      next,
-      /<p>If you use CorpusWright[\s\S]*?(?:APA and BibTeX templates|APA and BibTeX examples)\.<\/p>/,
-      '<p>If you use CorpusWright in your research or teaching, please cite it when appropriate. The repository provides the authoritative machine-readable <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/CITATION.cff"><code>CITATION.cff</code></a>; the <a href="citation.html">citation guidance</a> gives APA and BibTeX examples.</p>',
-      "docs/index.html",
-      "citation paragraph"
-    );
+    // Citation examples are synchronised on their compatibility page; Home owns its prose.
     return next;
   });
 }
