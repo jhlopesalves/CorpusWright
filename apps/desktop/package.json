@@ -22,6 +22,7 @@
     "capture:overview-curation": "node scripts/capture-overview-curation.mjs",
     "capture:local-dossier": "node scripts/capture-local-corpus-dossier.mjs",
     "capture:public-product": "node scripts/capture-public-product.mjs",
+    "capture:walkthrough": "node scripts/capture-walkthrough.mjs",
     "check:overview-rendering-recovery": "node scripts/capture-overview-curation.mjs --rendering-recovery",
     "check:overview-distribution-dispersion-cleanup": "node scripts/capture-overview-curation.mjs --distribution-dispersion-cleanup",
     "check:overview-legibility-and-dispersion-plane": "node scripts/capture-overview-curation.mjs --overview-legibility-and-dispersion-plane",

@@ -1,0 +1,72 @@
+[
+  {
+    "work": "Boole, Laws of Thought",
+    "repository": "An-Investigation-of-the-Laws-of-Thought--13-On-which-are-founded-the-mathematical-theories-of__15114",
+    "commit": "4e2c0edb77ffe07825d0850ad7bb4758d73daae3",
+    "path": "15114-pdf.pdf",
+    "sha256": "a4a127e6b94088faa394615cc4d2ef0790828db5b3de314520cdcd78b1d504ba"
+  },
+  {
+    "work": "Venn, The Logic of Chance",
+    "repository": "The-Logic-of-Chance-3rd-edition-An-Essay-on-the-Foundations-and-Provice-of-the-Theory-of-Prob__57359",
+    "commit": "4a65664bd835a4e7a1b32ed102d207781482a85f",
+    "path": "57359-0.txt",
+    "sha256": "a92e523f6fd298b1e778230c99ad37e17e868ec9c04567e8896eceb05ee53bae"
+  },
+  {
+    "work": "De Morgan, A Budget of Paradoxes, vol. I",
+    "repository": "A-Budget-of-Paradoxes-Volume-I_23100",
+    "commit": "0361f507cbe15114b7a6f10d6d88a55d68ed041f",
+    "path": "23100-8.txt",
+    "sha256": "f3aeac65b6f2f3dd4dff9cb83b7866a10e2942e9b28cfd234711e93ea721e974"
+  },
+  {
+    "work": "Laplace, A Philosophical Essay on Probabilities",
+    "repository": "A-Philosophical-Essay-on-Probabilities_58881",
+    "commit": "0c0ca3fe0528d6aa2f4cac95314a7036cb9c75c2",
+    "path": "58881-0.txt",
+    "sha256": "fe478b0d705fa1e745635ee2c547f0c93db2bc0323a4170337705f6d5757b74a"
+  },
+  {
+    "work": "Babbage, On the Economy of Machinery and Manufactures",
+    "repository": "On-the-Economy-of-Machinery-and-Manufactures_4238",
+    "commit": "4371c43a0101a5df636c0087cc3989295000d8e9",
+    "path": "4238.txt",
+    "sha256": "e4a77ff8dbcc6e46d3ec82dff2595667d83ebe23e9f816ddf1f2a7a5cde9c6d1"
+  },
+  {
+    "work": "Menabrea and Lovelace, Sketch of the Analytical Engine",
+    "repository": "Sketch-of-the-Analytical-Engine-invented-by-Charles-Babbage-Esq_75107",
+    "commit": "c5537a39a54ca884a621ca2626dc3e167d85cf3c",
+    "path": "75107-h/75107-h.htm",
+    "sha256": "2f79129483f3e315df45a1b75cf1327a5121bac3262fa3f42edbb8d9f0e05700"
+  },
+  {
+    "work": "Jevons, The Principles of Science",
+    "repository": "The-principles-of-science-b-a-treatise-on-logic-and-scientific-method_74864",
+    "commit": "2e0e164850243d55866fd42bd07889f93870dbcb",
+    "path": "74864-0.txt",
+    "sha256": "d742d2263745de5225d62a6c8dc078cda10dbf3e2697576c783d7493fd3186cc"
+  },
+  {
+    "work": "Nightingale, Notes on Nursing",
+    "repository": "Notes-on-NursingWhat-It-Is-and-What-It-Is-Not_12439",
+    "commit": "1bb16079c19d0ae8ac844f88f994f227111be33c",
+    "path": "12439-8.txt",
+    "sha256": "a821ba3aaccaea089e970aafd209c66266904b6a92d63aa5a02961251ea98c45"
+  },
+  {
+    "work": "Snow, On the Mode of Communication of Cholera",
+    "repository": "On-the-mode-of-communication-of-cholera_72894",
+    "commit": "6a27453cc0bb85c3fc125c5e13900c8f3a8b48db",
+    "path": "72894-0.txt",
+    "sha256": "3f3e71972f603e5fa50a0e71045afffa994ae38a86a8912dda3e90c8babb37af"
+  },
+  {
+    "work": "Abbott, Flatland",
+    "repository": "Flatland--a-romance-of-many-dimensions_97",
+    "commit": "5ed685b7d3d8484f94ea5f1a061b7ef6fb93d2c8",
+    "path": "97.txt",
+    "sha256": "9933a0838441f03d5c8600da5f54c4a8af9cbcbf845bfeaa8e1b7213a2c3917f"
+  }
+]
