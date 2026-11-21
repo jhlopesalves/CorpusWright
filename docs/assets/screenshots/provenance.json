@@ -66,7 +66,7 @@
     "sowing-guide.txt": "57ac8e60c8a000debe176debdc1ab9849da731c268b75d8ef7f59b30f8b72de8",
     "watering-plan.txt": "f1384cc4a27dfb96cf532518e6d6a6fef817f6f5485a3293544b32e4a94be6fd"
   },
-  "coreTree": "46968f9c1c085b5cc75e3a293158b279cfb1313f",
+  "coreTree": "e36572821c7bb5228f6bae04679e2fe7bc43057f",
   "frontendTree": "c9122def935edd44d64fd704436922ad9ba0ee38",
   "captureInputs": {
     "apps/desktop/scripts/capture-public-product.mjs": "01ce58122499ec1a6f2bd335886be528934ee89ef443c698c7aea310fd95ea80",

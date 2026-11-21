@@ -157,7 +157,7 @@
       "node scripts/generate-public-site-demo.mjs <empty-temporary-corpus-directory>",
       "cargo xtask documentation-dossier --corpus-dir <temporary-corpus-directory> --output <temporary-dossier-directory>"
     ],
-    "coreTree": "46968f9c1c085b5cc75e3a293158b279cfb1313f",
+    "coreTree": "e36572821c7bb5228f6bae04679e2fe7bc43057f",
     "plotTree": "a6385a72f0ccf0a7724be21eed4bebb8f366616a",
     "generatorSha256": "5578c67fd71ab25481b52c6768c18ca4e045bbb5a4ea970a037926eddc356078",
     "identity": "Controlled statistical demonstration corpus",
