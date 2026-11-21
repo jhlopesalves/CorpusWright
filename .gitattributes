@@ -10,3 +10,5 @@
 *.png  binary
 *.ico  binary
 *.udpipe binary
+*.dll  binary
+*.rten binary
