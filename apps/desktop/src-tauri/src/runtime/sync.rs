@@ -8,7 +8,7 @@
 //! - Checked access (`read_checked`, `write_checked`) returns a typed
 //!   `LockPoisonedError` for authoritative multi-field state whose invariants
 //!   could be broken by a mid-write panic.
-//! - Recovering access (`read_recover`, `write_recover`, `write_reset`,
+//! - Recovering access (`read_recover`, `write_recover`, `reset_to`,
 //!   `lock_recover`, `lock_recover_with`) recovers with
 //!   `PoisonError::into_inner` for single-value slots, ephemeral caches, or
 //!   full-state resets where invariants remain valid or are restored before use.
@@ -108,19 +108,17 @@ pub(crate) fn write_recover<'a, T>(
     })
 }
 
-/// Acquires a write lock to overwrite every field with a fresh valid state and clears poison.
-pub(crate) fn write_reset<'a, T>(
-    lock: &'a RwLock<T>,
-    resource: &'static str,
-) -> RwLockWriteGuard<'a, T> {
-    match lock.write() {
+/// Replaces the locked value with a complete fresh `value` and clears any poison flag.
+pub(crate) fn reset_to<T>(lock: &RwLock<T>, resource: &'static str, value: T) {
+    let mut guard = match lock.write() {
         Ok(guard) => guard,
         Err(poisoned) => {
             log_poisoned(resource, "reset", DesktopErrorClass::InternalInvariant);
-            lock.clear_poison();
             PoisonError::into_inner(poisoned)
         }
-    }
+    };
+    *guard = value;
+    lock.clear_poison();
 }
 
 /// Acquires a mutex lock on state whose invariants remain valid after a panic.
@@ -188,9 +186,41 @@ mod tests {
             LockPoisonedError::new("test state")
         );
 
-        *write_reset(&lock, "test state") = 7;
+        reset_to(&lock, "test state", 7);
         assert!(!lock.is_poisoned());
         assert_eq!(*read_checked(&lock, "test state").unwrap(), 7);
+    }
+
+    #[test]
+    fn reset_to_after_poisoning_replaces_every_field_with_exact_fresh_value() {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        struct MultiFieldState {
+            generation: u64,
+            label: Option<String>,
+            items: Vec<usize>,
+        }
+
+        let lock = RwLock::new(MultiFieldState {
+            generation: 1,
+            label: Some("initial".to_string()),
+            items: vec![1, 2, 3],
+        });
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            let mut guard = lock.write().unwrap();
+            guard.generation = 2;
+            guard.label = Some("half-written".to_string());
+            panic!("simulated mid-write panic");
+        }));
+        assert!(lock.is_poisoned());
+
+        let fresh = MultiFieldState {
+            generation: 3,
+            label: None,
+            items: Vec::new(),
+        };
+        reset_to(&lock, "multi-field state", fresh.clone());
+        assert!(!lock.is_poisoned());
+        assert_eq!(*read_checked(&lock, "multi-field state").unwrap(), fresh);
     }
 
     #[test]

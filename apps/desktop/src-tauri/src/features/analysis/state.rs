@@ -1,6 +1,6 @@
 use crate::runtime::cancellation::ActiveCancellation;
-use crate::runtime::identity::AnalysisGeneration;
-use crate::runtime::sync::{read_checked, write_reset};
+use crate::runtime::identity::{AnalysisGeneration, AnalysisGenerationSequence};
+use crate::runtime::sync::{read_checked, reset_to};
 use corpuswright_core::analysis::{AnalysisCorpus, CorpusOverview};
 use corpuswright_core::preparation::cleaning::CleaningConfig;
 use serde::{Deserialize, Serialize};
@@ -56,23 +56,37 @@ pub(crate) struct AnalysisStateInner {
     pub(crate) corpus: Option<Arc<AnalysisCorpus>>,
 }
 
+impl AnalysisStateInner {
+    pub(crate) fn not_built(generation: AnalysisGeneration) -> Self {
+        Self {
+            generation,
+            state: AnalysisBuildStateKind::NotBuilt,
+            progress: None,
+            error: None,
+            corpus: None,
+        }
+    }
+}
+
 pub(crate) struct AnalysisState {
     pub(crate) inner: Arc<RwLock<AnalysisStateInner>>,
     pub(crate) cancel: ActiveCancellation,
+    generations: AnalysisGenerationSequence,
 }
 
 impl AnalysisState {
     pub(crate) fn new() -> Self {
         Self {
-            inner: Arc::new(RwLock::new(AnalysisStateInner {
-                generation: AnalysisGeneration::default(),
-                state: AnalysisBuildStateKind::NotBuilt,
-                progress: None,
-                error: None,
-                corpus: None,
-            })),
+            inner: Arc::new(RwLock::new(AnalysisStateInner::not_built(
+                AnalysisGeneration::default(),
+            ))),
             cancel: ActiveCancellation::new(),
+            generations: AnalysisGenerationSequence::default(),
         }
+    }
+
+    pub(crate) fn next_generation(&self) -> AnalysisGeneration {
+        self.generations.next()
     }
 
     pub(crate) fn corpus(
@@ -105,12 +119,11 @@ impl AnalysisState {
 
     pub(crate) fn clear(&self) {
         self.cancel.cancel();
-        let mut inner = write_reset(&self.inner, ANALYSIS_STATE_RESOURCE);
-        inner.generation.advance();
-        inner.state = AnalysisBuildStateKind::NotBuilt;
-        inner.progress = None;
-        inner.error = None;
-        inner.corpus = None;
+        reset_to(
+            &self.inner,
+            ANALYSIS_STATE_RESOURCE,
+            AnalysisStateInner::not_built(self.next_generation()),
+        );
     }
 
     pub(crate) fn status(&self, cleaning_config: &CleaningConfig) -> AnalysisBuildStatus {

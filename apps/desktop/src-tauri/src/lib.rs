@@ -5,7 +5,6 @@
 //! orchestration, progress events, and cache lifecycles.
 
 use corpuswright_core::sources::cache::ExtractionCache;
-use std::sync::RwLock;
 use tauri::Manager;
 use tauri::path::BaseDirectory;
 
@@ -19,7 +18,7 @@ use features::analysis::annotation_state::AnnotationBuildState;
 use features::analysis::state::AnalysisState;
 use features::concordance::state::{ConcordanceCollocationCache, ConcordanceIndexContextState};
 use features::corpus::scanning_state::ScanState;
-use features::corpus::state::{CorpusState, CorpusStateInner};
+use features::corpus::state::CorpusState;
 use features::pdf::state::{PdfIntakeState, PdfPageRangeCache};
 use features::project;
 use runtime::cancellation::ActiveCancellation;
@@ -76,9 +75,7 @@ pub fn run() {
         })
         .manage(AnnotationBuildState::new())
         .manage(AnalysisState::new())
-        .manage(CorpusState {
-            inner: RwLock::new(CorpusStateInner::empty()),
-        })
+        .manage(CorpusState::new())
         .manage(ExtractionCache::new())
         .manage(PdfPageRangeCache::new())
         .manage(ConcordanceCollocationCache::new())

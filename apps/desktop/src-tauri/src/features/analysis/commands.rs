@@ -279,7 +279,7 @@ pub(crate) async fn build_analysis_corpus_command(
                 return Err(error.into_command_error());
             }
         };
-        inner.generation.advance();
+        inner.generation = analysis.next_generation();
         inner.state = AnalysisBuildStateKind::Building;
         inner.progress = None;
         inner.error = None;
@@ -668,7 +668,9 @@ mod tests {
     fn poisoned_analysis_lock_returns_typed_error_instead_of_panicking() {
         let analysis = AnalysisState::new();
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _guard = analysis.inner.write().unwrap();
+            let mut guard = analysis.inner.write().unwrap();
+            guard.state = AnalysisBuildStateKind::Failed;
+            guard.error = Some("stale error before panic".to_string());
             panic!("simulated panic while holding analysis write lock");
         }));
         assert!(analysis.inner.is_poisoned());
@@ -692,9 +694,10 @@ mod tests {
 
         analysis.clear();
         assert!(!analysis.inner.is_poisoned());
-        assert_eq!(
-            analysis.status(&CleaningConfig::default()).state,
-            AnalysisBuildStateKind::NotBuilt
-        );
+        let reset_status = analysis.status(&CleaningConfig::default());
+        assert_eq!(reset_status.state, AnalysisBuildStateKind::NotBuilt);
+        assert!(reset_status.error.is_none());
+        assert!(reset_status.progress.is_none());
+        assert!(reset_status.overview.is_none());
     }
 }

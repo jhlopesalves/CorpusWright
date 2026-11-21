@@ -3,8 +3,10 @@
 //! IPC and persisted representations remain primitive. Conversion occurs only at command,
 //! serialisation, and cache-construction boundaries.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 macro_rules! numeric_identity {
-    ($name:ident) => {
+    ($name:ident, $sequence:ident) => {
         #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub(crate) struct $name(u64);
 
@@ -16,32 +18,35 @@ macro_rules! numeric_identity {
             pub(crate) const fn into_ipc(self) -> u64 {
                 self.0
             }
+        }
 
-            pub(crate) fn advance(&mut self) -> Self {
-                self.0 = self.0.wrapping_add(1);
-                *self
+        #[derive(Default)]
+        pub(crate) struct $sequence(AtomicU64);
+
+        impl $sequence {
+            pub(crate) fn next(&self) -> $name {
+                $name(self.0.fetch_add(1, Ordering::Relaxed).wrapping_add(1))
             }
         }
     };
 }
 
-numeric_identity!(CorpusVersion);
+numeric_identity!(CorpusVersion, CorpusVersionSequence);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct AnalysisGeneration(u64);
 
+#[derive(Default)]
+pub(crate) struct AnalysisGenerationSequence(AtomicU64);
+
+impl AnalysisGenerationSequence {
+    pub(crate) fn next(&self) -> AnalysisGeneration {
+        AnalysisGeneration(self.0.fetch_add(1, Ordering::Relaxed).wrapping_add(1))
+    }
+}
+
+#[cfg(test)]
 impl AnalysisGeneration {
-    pub(crate) fn advance(&mut self) -> Self {
-        self.0 = self.0.wrapping_add(1);
-        *self
-    }
-
-    #[cfg(test)]
-    const fn from_test_value(value: u64) -> Self {
-        Self(value)
-    }
-
-    #[cfg(test)]
     const fn test_value(self) -> u64 {
         self.0
     }
@@ -86,13 +91,16 @@ mod tests {
 
     #[test]
     fn numeric_domains_advance_independently_and_cross_only_at_ipc() {
-        let mut corpus = CorpusVersion::from_ipc(4);
-        let mut analysis = AnalysisGeneration::from_test_value(4);
-        assert_eq!(corpus.advance().into_ipc(), 5);
-        assert_eq!(analysis.advance().test_value(), 5);
+        let corpus = CorpusVersionSequence::default();
+        let analysis = AnalysisGenerationSequence::default();
+        let corpus_next = corpus.next();
+        let analysis_next = analysis.next();
+        assert_eq!(corpus_next.into_ipc(), 1);
+        assert_eq!(analysis_next.test_value(), 1);
+        assert_eq!(corpus.next().into_ipc(), 2);
         // The types deliberately have no cross-domain PartialEq implementation. Primitive
         // comparison is possible only after an explicit IPC-boundary conversion.
-        assert_eq!(corpus.into_ipc(), analysis.test_value());
+        assert_eq!(corpus_next.into_ipc(), analysis_next.test_value());
     }
 
     #[test]
