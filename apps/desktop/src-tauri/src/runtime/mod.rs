@@ -4,3 +4,4 @@ pub(crate) mod cancellation;
 pub(crate) mod config;
 pub(crate) mod error;
 pub(crate) mod identity;
+pub(crate) mod sync;

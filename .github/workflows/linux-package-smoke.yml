@@ -25,7 +25,8 @@ jobs:
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Activate pinned Rust toolchain
+        run: rustc --version && cargo --version
 
       - uses: Swatinem/rust-cache@v2
 

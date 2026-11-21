@@ -1,9 +1,12 @@
 use crate::runtime::cancellation::ActiveCancellation;
-use crate::runtime::identity::AnalysisGeneration;
+use crate::runtime::identity::{AnalysisGeneration, AnalysisGenerationSequence};
+use crate::runtime::sync::{read_checked, reset_to};
 use corpuswright_core::analysis::{AnalysisCorpus, CorpusOverview};
 use corpuswright_core::preparation::cleaning::CleaningConfig;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
+
+pub(crate) const ANALYSIS_STATE_RESOURCE: &str = "analysis state";
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -53,33 +56,44 @@ pub(crate) struct AnalysisStateInner {
     pub(crate) corpus: Option<Arc<AnalysisCorpus>>,
 }
 
+impl AnalysisStateInner {
+    pub(crate) fn not_built(generation: AnalysisGeneration) -> Self {
+        Self {
+            generation,
+            state: AnalysisBuildStateKind::NotBuilt,
+            progress: None,
+            error: None,
+            corpus: None,
+        }
+    }
+}
+
 pub(crate) struct AnalysisState {
     pub(crate) inner: Arc<RwLock<AnalysisStateInner>>,
     pub(crate) cancel: ActiveCancellation,
+    generations: AnalysisGenerationSequence,
 }
 
 impl AnalysisState {
     pub(crate) fn new() -> Self {
         Self {
-            inner: Arc::new(RwLock::new(AnalysisStateInner {
-                generation: AnalysisGeneration::default(),
-                state: AnalysisBuildStateKind::NotBuilt,
-                progress: None,
-                error: None,
-                corpus: None,
-            })),
+            inner: Arc::new(RwLock::new(AnalysisStateInner::not_built(
+                AnalysisGeneration::default(),
+            ))),
             cancel: ActiveCancellation::new(),
+            generations: AnalysisGenerationSequence::default(),
         }
+    }
+
+    pub(crate) fn next_generation(&self) -> AnalysisGeneration {
+        self.generations.next()
     }
 
     pub(crate) fn corpus(
         &self,
         cleaning_config: &CleaningConfig,
     ) -> Result<Arc<AnalysisCorpus>, String> {
-        let corpus = self
-            .inner
-            .read()
-            .unwrap()
+        let corpus = read_checked(&self.inner, ANALYSIS_STATE_RESOURCE)?
             .corpus
             .clone()
             .ok_or_else(|| "Build the analysis corpus before querying it.".to_string())?;
@@ -93,7 +107,9 @@ impl AnalysisState {
     }
 
     pub(crate) fn reusable_corpus_for_annotation(&self) -> Option<Arc<AnalysisCorpus>> {
-        let inner = self.inner.read().unwrap();
+        let Ok(inner) = read_checked(&self.inner, ANALYSIS_STATE_RESOURCE) else {
+            return None;
+        };
         if inner.state == AnalysisBuildStateKind::Ready {
             inner.corpus.clone()
         } else {
@@ -103,16 +119,25 @@ impl AnalysisState {
 
     pub(crate) fn clear(&self) {
         self.cancel.cancel();
-        let mut inner = self.inner.write().unwrap();
-        inner.generation.advance();
-        inner.state = AnalysisBuildStateKind::NotBuilt;
-        inner.progress = None;
-        inner.error = None;
-        inner.corpus = None;
+        reset_to(
+            &self.inner,
+            ANALYSIS_STATE_RESOURCE,
+            AnalysisStateInner::not_built(self.next_generation()),
+        );
     }
 
     pub(crate) fn status(&self, cleaning_config: &CleaningConfig) -> AnalysisBuildStatus {
-        let inner = self.inner.read().unwrap();
+        let inner = match read_checked(&self.inner, ANALYSIS_STATE_RESOURCE) {
+            Ok(inner) => inner,
+            Err(error) => {
+                return AnalysisBuildStatus {
+                    state: AnalysisBuildStateKind::Failed,
+                    progress: None,
+                    error: Some(error.into_command_error()),
+                    overview: None,
+                };
+            }
+        };
         let stale = inner
             .corpus
             .as_ref()

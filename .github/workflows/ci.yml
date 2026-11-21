@@ -19,7 +19,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Activate pinned Rust toolchain
+        run: rustc --version && cargo --version
       - name: Run canonical repository and release preflight
         run: cargo xtask release-preflight
 
@@ -31,9 +32,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      - name: Activate pinned Rust toolchain
+        run: rustc --version && cargo --version && rustfmt --version && cargo clippy --version
       - uses: Swatinem/rust-cache@v2
       - name: Install PDFium for tests
         run: node scripts/fetch-pdfium.cjs linux-x64 --output-dir apps/desktop/src-tauri/resources/ocr
@@ -49,9 +49,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev build-essential libayatana-appindicator3-dev patchelf
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+      - name: Activate pinned Rust toolchain
+        run: rustc --version && cargo --version && rustfmt --version && cargo clippy --version
       - uses: Swatinem/rust-cache@v2
       - name: Run canonical desktop checks
         run: cargo xtask check --scope desktop
@@ -66,7 +65,35 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Activate pinned Rust toolchain
+        run: rustc --version && cargo --version && rustfmt --version
       - uses: Swatinem/rust-cache@v2
       - name: Install dependencies and run canonical frontend checks
         run: cargo xtask check --scope frontend --fresh-node
+
+  msrv:
+    name: MSRV check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri v2 Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev build-essential libayatana-appindicator3-dev patchelf
+      - name: Read workspace MSRV
+        id: msrv
+        run: |
+          MSRV="$(sed -nE 's/^rust-version[[:space:]]*=[[:space:]]*"([^"]+)"/\1/p' Cargo.toml | head -n 1)"
+          test -n "${MSRV}"
+          echo "version=${MSRV}" >> "${GITHUB_OUTPUT}"
+      - name: Install MSRV toolchain
+        run: rustup toolchain install "${{ steps.msrv.outputs.version }}" --profile minimal
+      - uses: Swatinem/rust-cache@v2
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.version }}
+      - name: Check workspace against MSRV
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.version }}
+        run: |
+          rustc --version
+          cargo check --workspace --all-targets --locked

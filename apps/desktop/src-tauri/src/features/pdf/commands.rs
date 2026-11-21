@@ -56,7 +56,7 @@ pub(crate) fn load_pdf_intake_files_command(
         page_cache.clear();
         collocation_cache.clear();
         index_context.clear();
-        corpus_state.inner.write().unwrap().clear();
+        corpus_state.clear();
 
         let path_bufs = paths.into_iter().map(PathBuf::from).collect();
         let report = load_files(path_bufs).map_err(|e| format!("{:?}", e))?;
@@ -93,11 +93,7 @@ pub(crate) fn load_pdf_intake_files_command(
             }
         }
 
-        let version = {
-            let mut inner = corpus_state.inner.write().unwrap();
-            inner.load(None, report.files.clone());
-            inner.version.into_ipc()
-        };
+        let version = corpus_state.load(None, report.files.clone());
         Ok(CorpusLoadResult {
             report,
             corpus_version: version,
@@ -130,7 +126,7 @@ pub(crate) fn prepare_project_pdf_sources_command(
         page_cache.clear();
         collocation_cache.clear();
         index_context.clear();
-        corpus_state.inner.write().unwrap().clear();
+        corpus_state.clear();
 
         if let Some(profile) = profile_override {
             project::update_project_source_pdf_profiles_command(
@@ -257,11 +253,7 @@ pub(crate) fn prepare_project_pdf_sources_command(
         update_project_source_extraction_results(&project_root, extraction_results)?;
 
         report.files = ordered_records;
-        let version = {
-            let mut inner = corpus_state.inner.write().unwrap();
-            inner.load(None, report.files.clone());
-            inner.version.into_ipc()
-        };
+        let version = corpus_state.load(None, report.files.clone());
         Ok(CorpusLoadResult {
             report,
             corpus_version: version,

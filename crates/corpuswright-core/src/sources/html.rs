@@ -1,9 +1,8 @@
-use lazy_static::lazy_static;
 use regex::Regex;
+use std::sync::LazyLock;
 
-lazy_static! {
-    static ref NOSCRIPT_RE: Regex = Regex::new(r"(?is)<noscript[^>]*>.*?</noscript>").unwrap();
-}
+static NOSCRIPT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<noscript[^>]*>.*?</noscript>").unwrap());
 
 /// Extracts readable plain text from HTML content.
 ///

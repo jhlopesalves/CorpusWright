@@ -11,7 +11,6 @@ It imports PDF, DOCX, HTML, and plain-text sources; keeps extraction and cleanin
 
 [Download CorpusWright](https://github.com/jhlopesalves/CorpusWright/releases/latest) ·
 [Documentation](https://jhlopesalves.github.io/CorpusWright/) ·
-[Roadmap](https://jhlopesalves.github.io/CorpusWright/roadmap.html) ·
 [Citation](CITATION.cff)
 
 ## Status

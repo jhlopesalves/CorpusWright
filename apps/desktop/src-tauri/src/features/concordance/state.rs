@@ -1,11 +1,15 @@
 use crate::runtime::cancellation::ActiveCancellation;
 use crate::runtime::identity::{IndexIdentity, ProjectRootIdentity};
+use crate::runtime::sync::{lock_recover, lock_recover_with};
 use corpuswright_core::analysis::{
     AnalysisDocumentSelection, ConcordanceCollocationAggregate,
     ConcordanceCollocationAggregationSignature, ConcordanceSearchContext,
 };
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
+
+const COLLOCATION_CACHE_RESOURCE: &str = "concordance collocation cache";
+const INDEX_CONTEXT_RESOURCE: &str = "concordance index context";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConcordanceCollocationCacheKey {
@@ -37,7 +41,7 @@ impl ConcordanceCollocationCache {
         &self,
         key: &ConcordanceCollocationCacheKey,
     ) -> Option<Arc<ConcordanceCollocationAggregate>> {
-        let inner = self.inner.lock().unwrap();
+        let inner = lock_recover(&self.inner, COLLOCATION_CACHE_RESOURCE);
         inner
             .as_ref()
             .and_then(|(cached_key, aggregate)| (cached_key == key).then(|| Arc::clone(aggregate)))
@@ -48,11 +52,11 @@ impl ConcordanceCollocationCache {
         key: ConcordanceCollocationCacheKey,
         aggregate: Arc<ConcordanceCollocationAggregate>,
     ) {
-        *self.inner.lock().unwrap() = Some((key, aggregate));
+        *lock_recover(&self.inner, COLLOCATION_CACHE_RESOURCE) = Some((key, aggregate));
     }
 
     pub(crate) fn clear(&self) {
-        *self.inner.lock().unwrap() = None;
+        *lock_recover(&self.inner, COLLOCATION_CACHE_RESOURCE) = None;
     }
 }
 
@@ -88,6 +92,15 @@ pub(crate) struct ConcordanceIndexContextCache {
 
 pub(crate) type ConcordanceIndexContextHandle = Arc<Mutex<ConcordanceIndexContextCache>>;
 
+pub(crate) fn lock_index_context(
+    handle: &ConcordanceIndexContextHandle,
+) -> MutexGuard<'_, ConcordanceIndexContextCache> {
+    lock_recover_with(handle, INDEX_CONTEXT_RESOURCE, |cache| {
+        // Discard any warm index context that may have been left half-mutated by a panic.
+        cache.entry = None;
+    })
+}
+
 pub(crate) struct ConcordanceIndexContextState {
     pub(crate) inner: ConcordanceIndexContextHandle,
 }
@@ -108,8 +121,13 @@ impl ConcordanceIndexContextState {
         Arc::clone(&self.inner)
     }
 
+    pub(crate) fn cancel(&self) {
+        let cache_guard = lock_index_context(&self.inner);
+        cache_guard.cancel.cancel();
+    }
+
     pub(crate) fn clear(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = lock_index_context(&self.inner);
         let cache_root = inner.cache_root.clone();
         *inner = ConcordanceIndexContextCache {
             cache_root,
@@ -436,5 +454,44 @@ mod tests {
         different_case.case_sensitive = true;
         query_cached_collocations_for_test(&cache, &different_case, &mut aggregate);
         assert_eq!(aggregation_runs.get(), 3);
+    }
+
+    #[test]
+    fn poisoned_concordance_locks_recover_without_panicking() {
+        let cache = ConcordanceCollocationCache::new();
+        let key = collocation_cache_key(7, AnalysisDocumentSelection::default(), "movie", false);
+        cache.insert(
+            key.clone(),
+            Arc::new(collocation_aggregate(key.aggregation.clone())),
+        );
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = cache.inner.lock().unwrap();
+            panic!("simulated panic while holding collocation cache lock");
+        }));
+        assert!(cache.inner.is_poisoned());
+        assert!(cache.get(&key).is_some());
+
+        let index_state = ConcordanceIndexContextState::new(None);
+        let context_key = ConcordanceIndexContextKey {
+            index: IndexIdentity::from_ipc(7, "cleaning-v1"),
+        };
+        let active_token = {
+            let mut guard = lock_index_context(&index_state.inner);
+            guard.entry = Some(ConcordanceIndexContextEntry {
+                key: context_key,
+                context: ConcordanceSearchContext::default(),
+            });
+            guard.cancel.begin()
+        };
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = index_state.inner.lock().unwrap();
+            panic!("simulated panic while holding concordance index context lock");
+        }));
+        assert!(index_state.inner.is_poisoned());
+
+        index_state.cancel();
+        assert!(active_token.is_cancelled());
+        assert!(!index_state.inner.is_poisoned());
+        assert!(lock_index_context(&index_state.inner).entry.is_none());
     }
 }

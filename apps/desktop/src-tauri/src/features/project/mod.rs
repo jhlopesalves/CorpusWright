@@ -1,3 +1,4 @@
+use crate::runtime::sync::write_recover;
 use corpuswright_core::corpus::{ScanReport, load_files, scan_directory};
 use corpuswright_core::preparation::cleaning::PdfOcrQuality;
 use corpuswright_core::project::sources::{
@@ -27,6 +28,8 @@ const PROJECT_VERSION: u32 = 2;
 const MIN_SUPPORTED_PROJECT_VERSION: u32 = 1;
 const PROJECT_LANGUAGE_UPGRADE_REQUIRED: &str = "Project language upgrade required.";
 
+const PROJECT_SOURCE_INVENTORY_RESOURCE: &str = "project source inventory";
+
 struct CachedProjectSourceInventory {
     root: PathBuf,
     modified: Option<SystemTime>,
@@ -54,7 +57,7 @@ impl ProjectSourceInventoryState {
         let metadata = fs::metadata(&inventory_path).ok();
         let modified = metadata.as_ref().and_then(|value| value.modified().ok());
         let file_size = metadata.as_ref().map_or(0, fs::Metadata::len);
-        let mut cached = self.inner.write().unwrap();
+        let mut cached = write_recover(&self.inner, PROJECT_SOURCE_INVENTORY_RESOURCE);
         let needs_reload = cached.as_ref().is_none_or(|current| {
             current.root != root || current.modified != modified || current.file_size != file_size
         });
@@ -71,12 +74,13 @@ impl ProjectSourceInventoryState {
 
     fn replace(&self, root: &Path, manifest: ProjectSourceManifest) {
         let metadata = fs::metadata(source_manifest_path(root)).ok();
-        *self.inner.write().unwrap() = Some(CachedProjectSourceInventory {
-            root: root.to_path_buf(),
-            modified: metadata.as_ref().and_then(|value| value.modified().ok()),
-            file_size: metadata.as_ref().map_or(0, fs::Metadata::len),
-            manifest,
-        });
+        *write_recover(&self.inner, PROJECT_SOURCE_INVENTORY_RESOURCE) =
+            Some(CachedProjectSourceInventory {
+                root: root.to_path_buf(),
+                modified: metadata.as_ref().and_then(|value| value.modified().ok()),
+                file_size: metadata.as_ref().map_or(0, fs::Metadata::len),
+                manifest,
+            });
     }
 
     pub(crate) fn source_by_id(

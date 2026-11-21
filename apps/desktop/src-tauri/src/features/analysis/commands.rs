@@ -8,6 +8,7 @@ use crate::features::pdf::service::duration_ms;
 use crate::features::project;
 use crate::features::sources::{project_annotation_cache_dir, resolve_analysis_input_for_record};
 use crate::runtime::config::DesktopRuntimeConfig;
+use crate::runtime::sync::{read_checked, write_checked};
 use corpuswright_core::analysis::{
     AnalysisBuildError, AnalysisBuildOptions, AnalysisBuildProgress, AnalysisDocumentPage,
     AnalysisDocumentSelection, AnnotatedFrequencyQuery, AnnotatedFrequencyResult,
@@ -35,8 +36,8 @@ use tauri::{Emitter, Manager, Window};
 
 use super::annotation_state::AnnotationBuildState;
 use super::state::{
-    AnalysisBuildProgressPayload, AnalysisBuildRequest, AnalysisBuildStateKind,
-    AnalysisBuildStatus, AnalysisState,
+    ANALYSIS_STATE_RESOURCE, AnalysisBuildProgressPayload, AnalysisBuildRequest,
+    AnalysisBuildStateKind, AnalysisBuildStatus, AnalysisState,
 };
 
 fn udpipe_model_dir(window: &Window, runtime: &DesktopRuntimeConfig) -> Option<std::path::PathBuf> {
@@ -210,6 +211,22 @@ pub(crate) fn cancel_annotation_cache_build_command(
     Ok(())
 }
 
+fn ensure_analysis_not_building(analysis: &AnalysisState) -> Result<(), String> {
+    if read_checked(&analysis.inner, ANALYSIS_STATE_RESOURCE)?.state
+        == AnalysisBuildStateKind::Building
+    {
+        return Err("An analysis corpus build is already running.".to_string());
+    }
+    Ok(())
+}
+
+fn compute_corpus_overview(
+    analysis: &AnalysisState,
+    cleaning_config: &CleaningConfig,
+) -> Result<CorpusOverview, String> {
+    Ok(analysis.corpus(cleaning_config)?.overview().clone())
+}
+
 #[tauri::command]
 pub(crate) async fn build_analysis_corpus_command(
     request: AnalysisBuildRequest,
@@ -227,9 +244,7 @@ pub(crate) async fn build_analysis_corpus_command(
     if records.is_empty() {
         return Err("No text is available for analysis.".to_string());
     }
-    if analysis.inner.read().unwrap().state == AnalysisBuildStateKind::Building {
-        return Err("An analysis corpus build is already running.".to_string());
-    }
+    ensure_analysis_not_building(&analysis)?;
 
     let overview_context = if let Some(root) = project_root.as_deref() {
         let summary = inventory.summary(root)?;
@@ -257,8 +272,14 @@ pub(crate) async fn build_analysis_corpus_command(
     // Each build receives a generation before background work begins. Progress and completion may
     // update shared state only while that generation remains current.
     let build_generation = {
-        let mut inner = analysis.inner.write().unwrap();
-        inner.generation.advance();
+        let mut inner = match write_checked(&analysis.inner, ANALYSIS_STATE_RESOURCE) {
+            Ok(inner) => inner,
+            Err(error) => {
+                analysis.cancel.finish(&cancel);
+                return Err(error.into_command_error());
+            }
+        };
+        inner.generation = analysis.next_generation();
         inner.state = AnalysisBuildStateKind::Building;
         inner.progress = None;
         inner.error = None;
@@ -311,7 +332,9 @@ pub(crate) async fn build_analysis_corpus_command(
                 last_phase = Some(progress.current_phase);
                 last_emit = Instant::now();
                 let payload = analysis_progress_payload(progress, started_at);
-                let mut inner = analysis_inner.write().unwrap();
+                let Ok(mut inner) = write_checked(&analysis_inner, ANALYSIS_STATE_RESOURCE) else {
+                    return;
+                };
                 if inner.generation != build_generation {
                     return;
                 }
@@ -324,7 +347,7 @@ pub(crate) async fn build_analysis_corpus_command(
 
     let task_result = task.await;
     analysis.cancel.finish(&cancel);
-    if analysis.inner.read().unwrap().generation != build_generation {
+    if read_checked(&analysis.inner, ANALYSIS_STATE_RESOURCE)?.generation != build_generation {
         return Err("Analysis build cancelled.".to_string());
     }
     match task_result {
@@ -332,19 +355,19 @@ pub(crate) async fn build_analysis_corpus_command(
             let overview = corpus.overview().clone();
             if overview.document_count == 0 {
                 let message = "No usable text is available for analysis.".to_string();
-                let mut inner = analysis.inner.write().unwrap();
+                let mut inner = write_checked(&analysis.inner, ANALYSIS_STATE_RESOURCE)?;
                 inner.state = AnalysisBuildStateKind::Failed;
                 inner.error = Some(message.clone());
                 return Err(message);
             }
-            let mut inner = analysis.inner.write().unwrap();
+            let mut inner = write_checked(&analysis.inner, ANALYSIS_STATE_RESOURCE)?;
             inner.state = AnalysisBuildStateKind::Ready;
             inner.error = None;
             inner.corpus = Some(Arc::new(corpus));
             Ok(overview)
         }
         Ok(Err(AnalysisBuildError::Cancelled)) => {
-            let mut inner = analysis.inner.write().unwrap();
+            let mut inner = write_checked(&analysis.inner, ANALYSIS_STATE_RESOURCE)?;
             inner.state = AnalysisBuildStateKind::Cancelled;
             inner.error = None;
             Err("Analysis build cancelled.".to_string())
@@ -355,7 +378,7 @@ pub(crate) async fn build_analysis_corpus_command(
                 "[desktop-error] boundary=analysis_build code={}",
                 crate::runtime::error::classify_message(&message).code()
             );
-            let mut inner = analysis.inner.write().unwrap();
+            let mut inner = write_checked(&analysis.inner, ANALYSIS_STATE_RESOURCE)?;
             inner.state = AnalysisBuildStateKind::Failed;
             inner.error = Some(message.clone());
             Err(message)
@@ -366,7 +389,7 @@ pub(crate) async fn build_analysis_corpus_command(
                 "[desktop-error] boundary=analysis_build code={}",
                 crate::runtime::error::classify_message(&message).code()
             );
-            let mut inner = analysis.inner.write().unwrap();
+            let mut inner = write_checked(&analysis.inner, ANALYSIS_STATE_RESOURCE)?;
             inner.state = AnalysisBuildStateKind::Failed;
             inner.error = Some(message.clone());
             Err(message)
@@ -392,7 +415,7 @@ pub(crate) fn compute_corpus_overview_command(
     analysis: tauri::State<'_, AnalysisState>,
     cleaning_config: CleaningConfig,
 ) -> Result<CorpusOverview, String> {
-    Ok(analysis.corpus(&cleaning_config)?.overview().clone())
+    compute_corpus_overview(&analysis, &cleaning_config)
 }
 
 #[tauri::command]
@@ -639,5 +662,42 @@ mod tests {
         assert_eq!(overrides.len(), records.len());
         assert!(overrides.values().all(|language| language == "pt"));
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn poisoned_analysis_lock_returns_typed_error_instead_of_panicking() {
+        let analysis = AnalysisState::new();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut guard = analysis.inner.write().unwrap();
+            guard.state = AnalysisBuildStateKind::Failed;
+            guard.error = Some("stale error before panic".to_string());
+            panic!("simulated panic while holding analysis write lock");
+        }));
+        assert!(analysis.inner.is_poisoned());
+
+        let build_error = ensure_analysis_not_building(&analysis).unwrap_err();
+        assert!(!build_error.contains(ANALYSIS_STATE_RESOURCE));
+        assert!(build_error.contains("Clear or reload the corpus"));
+
+        let overview_error =
+            compute_corpus_overview(&analysis, &CleaningConfig::default()).unwrap_err();
+        assert!(!overview_error.contains(ANALYSIS_STATE_RESOURCE));
+        assert!(overview_error.contains("Clear or reload the corpus"));
+
+        let status = analysis.status(&CleaningConfig::default());
+        assert_eq!(status.state, AnalysisBuildStateKind::Failed);
+        assert!(status.error.as_deref().is_some_and(|message| {
+            !message.contains(ANALYSIS_STATE_RESOURCE)
+                && message.contains("Clear or reload the corpus")
+        }));
+        assert!(analysis.reusable_corpus_for_annotation().is_none());
+
+        analysis.clear();
+        assert!(!analysis.inner.is_poisoned());
+        let reset_status = analysis.status(&CleaningConfig::default());
+        assert_eq!(reset_status.state, AnalysisBuildStateKind::NotBuilt);
+        assert!(reset_status.error.is_none());
+        assert!(reset_status.progress.is_none());
+        assert!(reset_status.overview.is_none());
     }
 }

@@ -931,7 +931,7 @@ fn association_scores_match_independent_numeric_witnesses() {
             [
                 1.0,
                 7.0,
-                1.414213562373095,
+                std::f64::consts::SQRT_2,
                 2.0,
                 5.391203279261245,
                 12.415037499278844,

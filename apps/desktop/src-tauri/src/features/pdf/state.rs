@@ -1,9 +1,12 @@
 use crate::runtime::cancellation::ActiveCancellation;
+use crate::runtime::sync::{read_recover, write_recover};
 use corpuswright_core::preparation::cleaning::{PdfOcrQuality, PdfTextSource};
 use corpuswright_core::sources::pdf::PdfPageRangeResult;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::RwLock;
+
+const PDF_PAGE_RANGE_CACHE_RESOURCE: &str = "PDF page-range cache";
 
 pub(crate) struct PdfIntakeState {
     pub(crate) cancel: ActiveCancellation,
@@ -35,14 +38,16 @@ impl PdfPageRangeCache {
     }
 
     pub(crate) fn get(&self, key: &PdfPageRangeCacheKey) -> Option<PdfPageRangeResult> {
-        self.inner.read().unwrap().get(key).cloned()
+        read_recover(&self.inner, PDF_PAGE_RANGE_CACHE_RESOURCE)
+            .get(key)
+            .cloned()
     }
 
     pub(crate) fn insert(&self, key: PdfPageRangeCacheKey, result: PdfPageRangeResult) {
-        self.inner.write().unwrap().insert(key, result);
+        write_recover(&self.inner, PDF_PAGE_RANGE_CACHE_RESOURCE).insert(key, result);
     }
 
     pub(crate) fn clear(&self) {
-        self.inner.write().unwrap().clear();
+        write_recover(&self.inner, PDF_PAGE_RANGE_CACHE_RESOURCE).clear();
     }
 }

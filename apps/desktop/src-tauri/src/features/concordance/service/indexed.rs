@@ -2,6 +2,7 @@
 
 use super::super::state::{
     ConcordanceIndexContextEntry, ConcordanceIndexContextHandle, ConcordanceIndexContextKey,
+    lock_index_context,
 };
 use corpuswright_core::analysis::{
     ConcordanceBackend, ConcordanceBackendUsed, ConcordanceCollocationQuery, ConcordanceDocument,
@@ -17,7 +18,7 @@ pub(crate) fn search_concordance_documents_with_warm_index(
     context_state: &ConcordanceIndexContextHandle,
     key: ConcordanceIndexContextKey,
 ) -> Result<RoutedConcordanceResult, corpuswright_core::analysis::ConcordanceError> {
-    let mut cache = context_state.lock().unwrap();
+    let mut cache = lock_index_context(context_state);
     if cache
         .entry
         .as_ref()
@@ -63,7 +64,7 @@ where
     Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
     Progress: FnMut(corpuswright_core::analysis::ConcordanceProgress),
 {
-    let mut cache = context_state.lock().unwrap();
+    let mut cache = lock_index_context(context_state);
     if cache
         .entry
         .as_ref()
@@ -107,7 +108,7 @@ where
     Resolve: FnMut(usize) -> Option<ConcordanceDocument>,
     Progress: FnMut(corpuswright_core::analysis::ConcordanceProgress),
 {
-    let mut cache = context_state.lock().unwrap();
+    let mut cache = lock_index_context(context_state);
     if cache
         .entry
         .as_ref()
