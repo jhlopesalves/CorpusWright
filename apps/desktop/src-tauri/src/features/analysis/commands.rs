@@ -676,20 +676,20 @@ mod tests {
         assert!(analysis.inner.is_poisoned());
 
         let build_error = ensure_analysis_not_building(&analysis).unwrap_err();
-        assert!(build_error.contains(ANALYSIS_STATE_RESOURCE));
+        assert!(!build_error.contains(ANALYSIS_STATE_RESOURCE));
+        assert!(build_error.contains("Clear or reload the corpus"));
 
         let overview_error =
             compute_corpus_overview(&analysis, &CleaningConfig::default()).unwrap_err();
-        assert!(overview_error.contains(ANALYSIS_STATE_RESOURCE));
+        assert!(!overview_error.contains(ANALYSIS_STATE_RESOURCE));
+        assert!(overview_error.contains("Clear or reload the corpus"));
 
         let status = analysis.status(&CleaningConfig::default());
         assert_eq!(status.state, AnalysisBuildStateKind::Failed);
-        assert!(
-            status
-                .error
-                .as_deref()
-                .is_some_and(|message| message.contains(ANALYSIS_STATE_RESOURCE))
-        );
+        assert!(status.error.as_deref().is_some_and(|message| {
+            !message.contains(ANALYSIS_STATE_RESOURCE)
+                && message.contains("Clear or reload the corpus")
+        }));
         assert!(analysis.reusable_corpus_for_annotation().is_none());
 
         analysis.clear();

@@ -17,6 +17,8 @@ use crate::runtime::error::DesktopErrorClass;
 use std::fmt;
 use std::sync::{Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+const USER_FACING_LOCK_ERROR: &str = "Application state became unavailable after an unexpected error. Clear or reload the corpus before trying again.";
+
 /// Typed error returned when an authoritative desktop state lock is poisoned.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LockPoisonedError {
@@ -26,6 +28,10 @@ pub(crate) struct LockPoisonedError {
 impl LockPoisonedError {
     pub(crate) const fn new(resource: &'static str) -> Self {
         Self { resource }
+    }
+
+    pub(crate) const fn resource(&self) -> &'static str {
+        self.resource
     }
 
     pub(crate) const fn class(&self) -> DesktopErrorClass {
@@ -39,11 +45,7 @@ impl LockPoisonedError {
 
 impl fmt::Display for LockPoisonedError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "Internal desktop state ({}) became unavailable after an unexpected error. Clear or reload the corpus before trying again.",
-            self.resource
-        )
+        formatter.write_str(USER_FACING_LOCK_ERROR)
     }
 }
 
@@ -69,7 +71,7 @@ pub(crate) fn read_checked<'a, T>(
 ) -> Result<RwLockReadGuard<'a, T>, LockPoisonedError> {
     lock.read().map_err(|_| {
         let error = LockPoisonedError::new(resource);
-        log_poisoned(resource, "reject", error.class());
+        log_poisoned(error.resource(), "reject", error.class());
         error
     })
 }
@@ -81,7 +83,7 @@ pub(crate) fn write_checked<'a, T>(
 ) -> Result<RwLockWriteGuard<'a, T>, LockPoisonedError> {
     lock.write().map_err(|_| {
         let error = LockPoisonedError::new(resource);
-        log_poisoned(resource, "reject", error.class());
+        log_poisoned(error.resource(), "reject", error.class());
         error
     })
 }
@@ -176,9 +178,13 @@ mod tests {
 
         let read_error = read_checked(&lock, "test state").unwrap_err();
         assert_eq!(read_error, LockPoisonedError::new("test state"));
+        assert_eq!(read_error.resource(), "test state");
         assert_eq!(read_error.class(), DesktopErrorClass::InternalInvariant);
+        let rendered = read_error.to_string();
+        assert!(!rendered.contains("test state"));
+        assert!(rendered.contains("Clear or reload the corpus"));
         assert_eq!(
-            classify_message(&read_error.to_string()),
+            classify_message(&rendered),
             DesktopErrorClass::InternalInvariant
         );
         assert_eq!(

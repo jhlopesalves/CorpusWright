@@ -308,7 +308,8 @@ mod tests {
         assert!(corpus.inner.is_poisoned());
 
         let error = corpus.all_records_and_root(initial_version).unwrap_err();
-        assert!(error.contains(CORPUS_STATE_RESOURCE));
+        assert!(!error.contains(CORPUS_STATE_RESOURCE));
+        assert!(error.contains("Clear or reload the corpus"));
 
         let next_version = corpus.load(None, vec![second.clone()]);
         assert_ne!(next_version, initial_version);
