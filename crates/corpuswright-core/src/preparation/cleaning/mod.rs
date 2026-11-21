@@ -4,9 +4,9 @@
 //! and whitespace operations contribute to deterministic output and an auditable cleaning report.
 
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
-use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
 use ts_rs::TS;
 use unicode_normalization::UnicodeNormalization;
 
@@ -16,27 +16,27 @@ use crate::text::profile::{
     TextSignalContext, classify_text_signal, profile_text_line, text_signal_reasons,
 };
 
-lazy_static! {
-    static ref RE_EXCESSIVE_SPACES: Regex = Regex::new(r" {2,}").unwrap();
-    static ref RE_EXCESSIVE_HORIZONTAL_WHITESPACE: Regex = Regex::new(r"[ \t]{2,}").unwrap();
-    static ref RE_PAGE_MARKER_ARABIC: Regex = Regex::new(r"^\d{1,5}$").unwrap();
-    static ref RE_PAGE_MARKER_ROMAN: Regex =
-        Regex::new(r"(?i)^M{0,4}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$")
-            .unwrap();
-    static ref RE_PAGE_MARKER_LABEL: Regex =
-        Regex::new(r"(?i)^(?:page|pag\.|p\.|página)\s*(\d{1,5}|[ivxlcdm]{1,15})\.?$")
-            .unwrap();
-    static ref RE_URL_ONLY_LINE: Regex =
-        Regex::new(r"(?i)^(?:https?://|www\.)[^\s<>]+$").unwrap();
-    static ref RE_EMAIL_ONLY_LINE: Regex =
-        Regex::new(r"(?i)^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$").unwrap();
-    static ref RE_DOI_ONLY_LINE: Regex =
-        Regex::new(r"(?i)^(?:doi:\s*)?10\.\d{4,9}/\S+$").unwrap();
-    static ref RE_FIGURE_TABLE_CAPTION_LINE: Regex = Regex::new(
-        r"(?i)^(?:figure|fig\.|table|tabela|quadro|gr[aá]fico)\s+(?:\d+|[ivxlcdm]+)(?:[\s:.\-–—].*)?$"
+static RE_EXCESSIVE_HORIZONTAL_WHITESPACE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[ \t]{2,}").unwrap());
+static RE_PAGE_MARKER_ARABIC: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d{1,5}$").unwrap());
+static RE_PAGE_MARKER_ROMAN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^M{0,4}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$").unwrap()
+});
+static RE_PAGE_MARKER_LABEL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(?:page|pag\.|p\.|página)\s*(\d{1,5}|[ivxlcdm]{1,15})\.?$").unwrap()
+});
+static RE_URL_ONLY_LINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(?:https?://|www\.)[^\s<>]+$").unwrap());
+static RE_EMAIL_ONLY_LINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$").unwrap());
+static RE_DOI_ONLY_LINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(?:doi:\s*)?10\.\d{4,9}/\S+$").unwrap());
+static RE_FIGURE_TABLE_CAPTION_LINE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)^(?:figure|fig\.|table|tabela|quadro|gr[aá]fico)\s+(?:\d+|[ivxlcdm]+)(?:[\s:.\-–—].*)?$",
     )
-    .unwrap();
-}
+    .unwrap()
+});
 
 const MAX_ROMAN_PAGE_MARKER_VALUE: u32 = 399;
 const MAX_REMOVED_TEXT_EXAMPLES: usize = 20;
