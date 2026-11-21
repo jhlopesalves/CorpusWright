@@ -9,8 +9,8 @@ import { browserFailures, createCapturePage, launchCaptureBrowser, waitFor } fro
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const output = resolve(process.argv[2] ?? join(root, "docs/assets/social-preview.png"));
-const screenshot = "docs/assets/screenshots/corpuswright-overview.png";
-// Keep the application navigation and Analyse tool rail with the complete Overview figure.
+const screenshot = "docs/assets/walkthrough/05-dispersion-light.png";
+// Keep the application navigation and Analyse tool rail with the complete Dispersion plane.
 // Coordinates select original capture pixels without altering the application view.
 const crop = { x: 0, y: 0, width: 1440, height: 1000 };
 const previewWidth = 820;
@@ -22,19 +22,19 @@ let browser;
 try {
   const source = `<!doctype html><html lang="en-GB"><meta charset="utf-8"><title>CorpusWright social preview</title>
 <style>
-@font-face { font-family: Plex; src: url("${url("docs/assets/fonts/IBMPlexSans-Regular.woff2")}"); font-weight: 400; }
-@font-face { font-family: Plex; src: url("${url("docs/assets/fonts/IBMPlexSans-SemiBold.woff2")}"); font-weight: 600; }
+@font-face { font-family: Reading; src: url("${url("docs/assets/fonts/wright/WrightReading.woff2")}"); font-weight: 200 900; }
+@font-face { font-family: Manrope; src: url("${url("docs/assets/fonts/wright/Manrope.woff2")}"); font-weight: 200 800; }
 * { box-sizing: border-box; }
-body { margin: 0; width: 1200px; height: 630px; background: #f7f9fc; color: #141a22; font: 20px/1.45 Plex, sans-serif; }
+body { margin: 0; width: 1200px; height: 630px; background: #222b36; color: #f1f5fa; font: 20px/1.45 Reading, sans-serif; }
 main { display: grid; grid-template-columns: 280px 820px; gap: 24px; height: 100%; padding: 30px 38px; align-items: center; }
 .copy { align-self: stretch; display: flex; flex-direction: column; }
-h1 { margin: 0 0 36px; font-size: 34px; line-height: 1.2; font-weight: 600; letter-spacing: -0.02em; }
+h1 { margin: 0 0 36px; font: 600 34px/1.2 Manrope, sans-serif; letter-spacing: -0.02em; }
 .descriptor { font-size: 25px; line-height: 1.3; margin: 0 0 30px; }
-.status { margin: auto 0 0; color: #566273; font-size: 17px; }
-.gui-crop { position: relative; width: 820px; height: ${crop.height * scale}px; overflow: hidden; border: 1px solid #c7d0de; border-radius: 4px; }
+.status { margin: auto 0 0; color: #bdc9d7; font-size: 17px; }
+.gui-crop { position: relative; width: 820px; height: ${crop.height * scale}px; overflow: hidden; border: 1px solid #3b495b; border-radius: 10px; }
 .gui-crop img { position: absolute; width: ${1440 * scale}px; max-width: none; left: ${-crop.x * scale}px; top: ${-crop.y * scale}px; display: block; }
 </style>
-<main><div class="copy"><h1>CorpusWright</h1><p class="descriptor">Desktop software for corpus preparation and descriptive corpus analysis.</p><p class="status">Open-source software · public alpha</p></div><div class="gui-crop"><img src="${url(screenshot)}" alt="CorpusWright navigation, Analyse tools and Corpus Overview from synthetic garden texts."></div></main></html>`;
+<main><div class="copy"><h1>CorpusWright</h1><p class="descriptor">Desktop software for corpus preparation and descriptive corpus analysis.</p><p class="status">Open-source software · public alpha</p></div><div class="gui-crop"><img src="${url(screenshot)}" alt="CorpusWright desktop application displaying the Dispersion plane for the walkthrough corpus."></div></main></html>`;
   const html = join(temporary, "preview.html");
   writeFileSync(html, source);
   browser = await launchCaptureBrowser();
@@ -52,7 +52,7 @@ h1 { margin: 0 0 36px; font-size: 34px; line-height: 1.2; font-weight: 600; lett
       sourceCrop: crop,
       generator: "scripts/generate-social-preview.mjs", generatorSha256: sha256(fileURLToPath(import.meta.url)),
       sha256: createHash("sha256").update(pixels).digest("hex"),
-      provenance: "Public card composed from an unmodified crop of the GUI demonstration screenshot and locally bundled fonts. The recorded full-view crop retains the application navigation, Analyse tool rail, Corpus Overview and lexical-spectrum figure.",
+      provenance: "Public card composed from an unmodified crop of the walkthrough screenshot and locally bundled Wright fonts. The full-view source retains the application navigation, Analyse tools and Dispersion plane.",
     }, null, 2) + "\n");
     process.stdout.write(`Generated ${output} (1200 × 630, ${pixels.length} bytes)\n`);
   } finally { await page.close(); }

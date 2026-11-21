@@ -392,6 +392,7 @@ function checkSocialPreview() {
   const pixels = fs.readFileSync(asset);
   assert.deepEqual([pixels.readUInt32BE(16), pixels.readUInt32BE(20)], [1200, 630]);
   assert.equal(sha256(asset), provenance.sha256);
+  assert.equal(provenance.source, "docs/assets/walkthrough/05-dispersion-light.png");
   assert.equal(sha256(path.join(ROOT, provenance.source)), provenance.sourceSha256);
   assert.equal(sha256(path.join(ROOT, provenance.generator)), provenance.generatorSha256);
   const crop = provenance.sourceCrop;
