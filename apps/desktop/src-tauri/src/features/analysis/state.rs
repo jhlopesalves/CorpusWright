@@ -1,9 +1,12 @@
 use crate::runtime::cancellation::ActiveCancellation;
 use crate::runtime::identity::AnalysisGeneration;
+use crate::runtime::sync::{read_checked, write_reset};
 use corpuswright_core::analysis::{AnalysisCorpus, CorpusOverview};
 use corpuswright_core::preparation::cleaning::CleaningConfig;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
+
+pub(crate) const ANALYSIS_STATE_RESOURCE: &str = "analysis state";
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -76,10 +79,7 @@ impl AnalysisState {
         &self,
         cleaning_config: &CleaningConfig,
     ) -> Result<Arc<AnalysisCorpus>, String> {
-        let corpus = self
-            .inner
-            .read()
-            .unwrap()
+        let corpus = read_checked(&self.inner, ANALYSIS_STATE_RESOURCE)?
             .corpus
             .clone()
             .ok_or_else(|| "Build the analysis corpus before querying it.".to_string())?;
@@ -93,7 +93,9 @@ impl AnalysisState {
     }
 
     pub(crate) fn reusable_corpus_for_annotation(&self) -> Option<Arc<AnalysisCorpus>> {
-        let inner = self.inner.read().unwrap();
+        let Ok(inner) = read_checked(&self.inner, ANALYSIS_STATE_RESOURCE) else {
+            return None;
+        };
         if inner.state == AnalysisBuildStateKind::Ready {
             inner.corpus.clone()
         } else {
@@ -103,7 +105,7 @@ impl AnalysisState {
 
     pub(crate) fn clear(&self) {
         self.cancel.cancel();
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = write_reset(&self.inner, ANALYSIS_STATE_RESOURCE);
         inner.generation.advance();
         inner.state = AnalysisBuildStateKind::NotBuilt;
         inner.progress = None;
@@ -112,7 +114,17 @@ impl AnalysisState {
     }
 
     pub(crate) fn status(&self, cleaning_config: &CleaningConfig) -> AnalysisBuildStatus {
-        let inner = self.inner.read().unwrap();
+        let inner = match read_checked(&self.inner, ANALYSIS_STATE_RESOURCE) {
+            Ok(inner) => inner,
+            Err(error) => {
+                return AnalysisBuildStatus {
+                    state: AnalysisBuildStateKind::Failed,
+                    progress: None,
+                    error: Some(error.into_command_error()),
+                    overview: None,
+                };
+            }
+        };
         let stale = inner
             .corpus
             .as_ref()

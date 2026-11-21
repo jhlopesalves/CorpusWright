@@ -4,11 +4,14 @@
 //! which prevents indices and paths from an earlier corpus reaching current state.
 
 use crate::runtime::identity::CorpusVersion;
+use crate::runtime::sync::{read_checked, write_reset};
 use corpuswright_core::corpus::{DocumentRecord, ScanReport};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
+
+const CORPUS_STATE_RESOURCE: &str = "corpus state";
 
 pub(crate) struct CorpusStateInner {
     pub(crate) version: CorpusVersion,
@@ -53,12 +56,22 @@ pub(crate) struct CorpusState {
 }
 
 impl CorpusState {
+    pub(crate) fn load(&self, root: Option<PathBuf>, records: Vec<DocumentRecord>) -> u64 {
+        let mut inner = write_reset(&self.inner, CORPUS_STATE_RESOURCE);
+        inner.load(root, records);
+        inner.version.into_ipc()
+    }
+
+    pub(crate) fn clear(&self) {
+        write_reset(&self.inner, CORPUS_STATE_RESOURCE).clear();
+    }
+
     pub(crate) fn records_for_indices(
         &self,
         indices: &[usize],
         corpus_version: u64,
     ) -> Result<Vec<DocumentRecord>, String> {
-        let inner = self.inner.read().unwrap();
+        let inner = read_checked(&self.inner, CORPUS_STATE_RESOURCE)?;
         if inner.version != CorpusVersion::from_ipc(corpus_version) {
             return Err(
                 "Corpus has been reloaded. Please re-select files and try again.".to_string(),
@@ -84,7 +97,7 @@ impl CorpusState {
         indices: &[usize],
         corpus_version: u64,
     ) -> Result<(Vec<DocumentRecord>, Option<PathBuf>), String> {
-        let inner = self.inner.read().unwrap();
+        let inner = read_checked(&self.inner, CORPUS_STATE_RESOURCE)?;
         if inner.version != CorpusVersion::from_ipc(corpus_version) {
             return Err(
                 "Corpus has been reloaded. Please re-select files and try again.".to_string(),
@@ -109,7 +122,7 @@ impl CorpusState {
         &self,
         corpus_version: u64,
     ) -> Result<(Vec<DocumentRecord>, Option<PathBuf>), String> {
-        let inner = self.inner.read().unwrap();
+        let inner = read_checked(&self.inner, CORPUS_STATE_RESOURCE)?;
         if inner.version != CorpusVersion::from_ipc(corpus_version) {
             return Err(
                 "Corpus has been reloaded. Please re-select files and try again.".to_string(),
@@ -124,7 +137,7 @@ impl CorpusState {
         limit: usize,
         corpus_version: u64,
     ) -> Result<(Vec<DocumentRecord>, usize), String> {
-        let inner = self.inner.read().unwrap();
+        let inner = read_checked(&self.inner, CORPUS_STATE_RESOURCE)?;
         if inner.version != CorpusVersion::from_ipc(corpus_version) {
             return Err(
                 "Corpus has been reloaded. Please re-select files and try again.".to_string(),
@@ -141,7 +154,7 @@ impl CorpusState {
         path: &Path,
         corpus_version: u64,
     ) -> Result<Option<DocumentRecord>, String> {
-        let inner = self.inner.read().unwrap();
+        let inner = read_checked(&self.inner, CORPUS_STATE_RESOURCE)?;
         if inner.version != CorpusVersion::from_ipc(corpus_version) {
             return Err(
                 "Corpus has been reloaded. Please re-select the source and try again.".to_string(),
@@ -159,7 +172,7 @@ impl CorpusState {
         path: &Path,
         corpus_version: u64,
     ) -> Result<(Option<DocumentRecord>, Option<PathBuf>), String> {
-        let inner = self.inner.read().unwrap();
+        let inner = read_checked(&self.inner, CORPUS_STATE_RESOURCE)?;
         if inner.version != CorpusVersion::from_ipc(corpus_version) {
             return Err(
                 "Corpus has been reloaded. Please re-select the source and try again.".to_string(),
@@ -178,7 +191,7 @@ impl CorpusState {
         paths: Vec<PathBuf>,
         corpus_version: u64,
     ) -> Result<Vec<DocumentRecord>, String> {
-        let inner = self.inner.read().unwrap();
+        let inner = read_checked(&self.inner, CORPUS_STATE_RESOURCE)?;
         if inner.version != CorpusVersion::from_ipc(corpus_version) {
             return Err(
                 "Corpus has been reloaded. Please re-select files and try again.".to_string(),
@@ -268,5 +281,28 @@ mod tests {
                 .unwrap(),
             vec![second, first]
         );
+    }
+
+    #[test]
+    fn poisoned_corpus_lock_returns_error_on_read_and_recovers_on_reload() {
+        let first = pdf_record("first.pdf", Some(ProjectSourcePdfProfile::Standard), None);
+        let corpus = CorpusState {
+            inner: RwLock::new(CorpusStateInner::empty()),
+        };
+        let initial_version = corpus.load(None, vec![first.clone()]);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = corpus.inner.write().unwrap();
+            panic!("simulated panic while holding corpus write lock");
+        }));
+        assert!(corpus.inner.is_poisoned());
+
+        let error = corpus.all_records_and_root(initial_version).unwrap_err();
+        assert!(error.contains(CORPUS_STATE_RESOURCE));
+
+        let next_version = corpus.load(None, vec![first.clone()]);
+        assert!(!corpus.inner.is_poisoned());
+        let (records, root) = corpus.all_records_and_root(next_version).unwrap();
+        assert_eq!(records, vec![first]);
+        assert!(root.is_none());
     }
 }

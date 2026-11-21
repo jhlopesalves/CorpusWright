@@ -55,11 +55,7 @@ pub(crate) fn scan_directory_command(
     collocation_cache.clear();
     index_context.clear();
     let report = scan_directory(&path).map_err(|e| format!("{:?}", e))?;
-    let version = {
-        let mut inner = corpus_state.inner.write().unwrap();
-        inner.load(Some(PathBuf::from(&path)), report.files.clone());
-        inner.version.into_ipc()
-    };
+    let version = corpus_state.load(Some(PathBuf::from(&path)), report.files.clone());
     Ok(CorpusLoadResult {
         report,
         corpus_version: version,
@@ -83,11 +79,7 @@ pub(crate) fn load_files_command(
     index_context.clear();
     let path_bufs = paths.into_iter().map(PathBuf::from).collect();
     let report = load_files(path_bufs).map_err(|e| format!("{:?}", e))?;
-    let version = {
-        let mut inner = corpus_state.inner.write().unwrap();
-        inner.load(None, report.files.clone());
-        inner.version.into_ipc()
-    };
+    let version = corpus_state.load(None, report.files.clone());
     Ok(CorpusLoadResult {
         report,
         corpus_version: version,
@@ -111,11 +103,7 @@ pub(crate) fn load_project_source_records_command(
     index_context.clear();
     let report = project::load_project_source_records(root_path)?;
     hydrate_project_source_text_cache(&report.root, &report.files, &cache);
-    let version = {
-        let mut inner = corpus_state.inner.write().unwrap();
-        inner.load(Some(report.root.clone()), report.files.clone());
-        inner.version.into_ipc()
-    };
+    let version = corpus_state.load(Some(report.root.clone()), report.files.clone());
     Ok(ProjectCorpusLoadResult {
         summary: report.summary,
         corpus_version: version,
@@ -137,7 +125,7 @@ pub(crate) fn clear_corpus_command(
     page_cache.clear();
     collocation_cache.clear();
     index_context.clear();
-    corpus_state.inner.write().unwrap().clear();
+    corpus_state.clear();
     Ok(())
 }
 

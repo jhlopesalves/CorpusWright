@@ -32,7 +32,7 @@ use super::service::{
 };
 use super::state::{
     ConcordanceCollocationCache, ConcordanceCollocationCacheKey, ConcordanceIndexContextKey,
-    ConcordanceIndexContextState,
+    ConcordanceIndexContextState, lock_index_context,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -86,7 +86,7 @@ pub(crate) async fn search_concordance_command(
                 }
                 let started = Instant::now();
                 let cancellation = {
-                    let cache_guard = index_context.lock().unwrap();
+                    let cache_guard = lock_index_context(&index_context);
                     cache_guard.cancel.begin()
                 };
 
@@ -111,7 +111,7 @@ pub(crate) async fn search_concordance_command(
                 );
 
                 {
-                    let cache_guard = index_context.lock().unwrap();
+                    let cache_guard = lock_index_context(&index_context);
                     cache_guard.cancel.finish(&cancellation);
                 }
                 match routed {
@@ -289,7 +289,7 @@ pub(crate) async fn query_concordance_collocations_command(
         ConcordanceBackendMode::DefaultIndex | ConcordanceBackendMode::StrictIndex => {
             let started = Instant::now();
             let cancellation = {
-                let cache_guard = index_context.lock().unwrap();
+                let cache_guard = lock_index_context(&index_context);
                 cache_guard.cancel.begin()
             };
 
@@ -315,7 +315,7 @@ pub(crate) async fn query_concordance_collocations_command(
             );
 
             {
-                let cache_guard = index_context.lock().unwrap();
+                let cache_guard = lock_index_context(&index_context);
                 cache_guard.cancel.finish(&cancellation);
             }
 
@@ -342,7 +342,7 @@ pub(crate) async fn query_concordance_collocations_command(
         }
         ConcordanceBackendMode::Scan | ConcordanceBackendMode::Audit => {
             let cancellation = {
-                let cache_guard = index_context.lock().unwrap();
+                let cache_guard = lock_index_context(&index_context);
                 cache_guard.cancel.begin()
             };
             let res = if mode == ConcordanceBackendMode::Scan {
@@ -387,7 +387,7 @@ pub(crate) async fn query_concordance_collocations_command(
             };
 
             {
-                let cache_guard = index_context.lock().unwrap();
+                let cache_guard = lock_index_context(&index_context);
                 cache_guard.cancel.finish(&cancellation);
             }
             res
@@ -406,8 +406,7 @@ pub(crate) async fn query_concordance_collocations_command(
 pub(crate) fn cancel_concordance_command(
     index_context: tauri::State<'_, ConcordanceIndexContextState>,
 ) {
-    let cache_guard = index_context.inner.lock().unwrap();
-    cache_guard.cancel.cancel();
+    index_context.cancel();
 }
 
 #[tauri::command]

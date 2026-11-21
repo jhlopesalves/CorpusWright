@@ -1,7 +1,10 @@
 //! Ownership for at most one active cooperative-cancellation job.
 
+use crate::runtime::sync::lock_recover;
 use corpuswright_core::CancellationToken;
 use std::sync::Mutex;
+
+const CANCELLATION_RESOURCE: &str = "cancellation state";
 
 #[derive(Default)]
 pub(crate) struct ActiveCancellation {
@@ -16,7 +19,7 @@ impl ActiveCancellation {
     /// Starts a distinct job and cancels any job this owner previously tracked.
     pub(crate) fn begin(&self) -> CancellationToken {
         let next = CancellationToken::new();
-        let mut active = self.active.lock().unwrap();
+        let mut active = lock_recover(&self.active, CANCELLATION_RESOURCE);
         if let Some(previous) = active.replace(next.clone()) {
             previous.cancel();
         }
@@ -24,14 +27,14 @@ impl ActiveCancellation {
     }
 
     pub(crate) fn cancel(&self) {
-        if let Some(active) = self.active.lock().unwrap().as_ref() {
+        if let Some(active) = lock_recover(&self.active, CANCELLATION_RESOURCE).as_ref() {
             active.cancel();
         }
     }
 
     /// Finishes only the supplied job, so stale completions cannot clear a newer token.
     pub(crate) fn finish(&self, token: &CancellationToken) {
-        let mut active = self.active.lock().unwrap();
+        let mut active = lock_recover(&self.active, CANCELLATION_RESOURCE);
         if active
             .as_ref()
             .is_some_and(|current| current.same_job(token))
