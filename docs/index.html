@@ -23,8 +23,8 @@
   <meta name="twitter:image" content="https://jhlopesalves.github.io/CorpusWright/assets/social-preview.png">
   <meta name="twitter:image:alt" content="CorpusWright desktop application with its navigation, Analyse tools and Corpus Overview from synthetic garden texts.">
   <link rel="stylesheet" href="assets/site.css">
+  <link rel="stylesheet" href="assets/walkthrough.css">
   <link rel="icon" href="assets/icon-32.png">
-  <script src="assets/product-gallery.js" defer></script>
   <script>
     (function () {
       var stored;
@@ -34,6 +34,7 @@
     })();
   </script>
   <script src="assets/theme.js" defer></script>
+  <script src="assets/walkthrough.js" defer></script>
 </head>
 
 <body class="home">
@@ -47,7 +48,7 @@
         <a href="concepts/overview.html">Methods</a>
         <a href="about.html">About</a>
         <a href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
-        <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download</a>
+        <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases">Download</a>
         <button class="theme-btn" id="theme-toggle" type="button" aria-pressed="false"
           aria-label="Switch to dark theme">
           <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -66,83 +67,183 @@
   </header>
 
   <main id="top" tabindex="-1">
-    <section class="home-hero">
-      <div class="shell">
-        <div class="home-intro">
-          <h1>CorpusWright</h1>
-          <div class="home-definition">
-            <p class="lede">Desktop software for corpus preparation and descriptive corpus analysis.</p>
-            <p>Inspect the processed text before counting. Examine counts and distributions across documents, then use Concordance to read individual occurrences in context.</p>
-            <div class="actions">
-              <a class="btn primary" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download latest alpha</a>
-              <a class="btn ghost" href="quick-start.html">Start with the Guide</a>
-            </div>
-            <p class="alpha-note">Public experimental alpha. <a href="about.html#status">Project status</a> and <a href="https://github.com/jhlopesalves/CorpusWright/releases/latest">release details</a>.</p>
+    <div class="shell walkthrough">
+      <section class="walk-hero" aria-labelledby="product-title">
+        <div class="walk-hero-copy">
+          <h1 id="product-title">CorpusWright</h1>
+          <p class="lede">Open-source desktop software for preparing text corpora, describing them statistically and reading the occurrences behind the counts.</p>
+          <div class="actions">
+            <a class="btn primary" href="#download">Download CorpusWright</a>
+            <a class="btn ghost" href="quick-start.html">Read the Guide</a>
           </div>
+          <p class="walk-status">Public alpha · <a href="https://github.com/jhlopesalves/CorpusWright/releases">Release notes</a></p>
+          <p class="walk-cue">Follow one corpus from its files to a figure and back to the text.</p>
         </div>
-        <section class="product-gallery" aria-labelledby="workflow-title" data-product-gallery>
-          <h2 id="workflow-title">Inside CorpusWright</h2>
-          <div class="gallery-tabs" aria-label="Application views" hidden>
-            <button id="gallery-tab-prepare" type="button" data-gallery-tab="prepare">Prepare</button>
-            <button id="gallery-tab-overview" type="button" data-gallery-tab="overview">Corpus Overview</button>
-            <button id="gallery-tab-concordance" type="button" data-gallery-tab="concordance">Concordance</button>
-          </div>
-          <div id="gallery-panel-prepare" class="gallery-panel" data-gallery-panel="prepare">
-            <figure>
-              <figcaption><div class="gallery-copy"><span class="gallery-location">Prepare</span><strong>What text are you counting?</strong> Review Original Text, cleaning settings and Processed Text before analysis.</div><a class="gallery-fullsize" href="assets/screenshots/corpuswright-prepare.png">View full size</a></figcaption>
-              <a class="gallery-image" href="assets/screenshots/corpuswright-prepare.png" aria-label="Open the Prepare application screenshot at full size">
-                <img src="assets/screenshots/corpuswright-prepare.png" alt="CorpusWright Prepare workspace with eight synthetic demonstration sources, an original-text preview and cleaning controls." width="1440" height="1000" fetchpriority="high">
-              </a>
-            </figure>
-          </div>
-          <div id="gallery-panel-overview" class="gallery-panel" data-gallery-panel="overview">
-            <figure>
-              <figcaption><div class="gallery-copy"><span class="gallery-location">Analyse / Corpus Overview</span><strong>Inspect corpus-level distributions.</strong> Corpus Overview reports document sizes, dispersion and vocabulary structure.</div><a class="gallery-fullsize" href="assets/screenshots/corpuswright-overview.png">View full size</a></figcaption>
-              <a class="gallery-image" href="assets/screenshots/corpuswright-overview.png" aria-label="Open the Corpus Overview application screenshot at full size">
-                <img src="assets/screenshots/corpuswright-overview.png" alt="CorpusWright Analyse workspace with Corpus Overview selected and the complete Lexical spectrum figure from the GUI demonstration corpus." width="1440" height="1000" loading="lazy">
-              </a>
-            </figure>
-          </div>
-          <div id="gallery-panel-concordance" class="gallery-panel" data-gallery-panel="concordance">
-            <figure>
-              <figcaption><div class="gallery-copy"><span class="gallery-location">Analyse / Concordance</span><strong>Where does the query occur?</strong> Read concordance lines and inspect collocates and document context.</div><a class="gallery-fullsize" href="assets/screenshots/corpuswright-concordance.png">View full size</a></figcaption>
-              <a class="gallery-image" href="assets/screenshots/corpuswright-concordance.png" aria-label="Open the Concordance application screenshot at full size">
-                <img src="assets/screenshots/corpuswright-concordance.png" alt="CorpusWright Concordance tool inside Analyse, searching for seed in synthetic gardening prose, with highlighted nodes, surrounding words and collocate controls." width="1440" height="1000" loading="lazy">
-              </a>
-            </figure>
-          </div>
-          <p class="gallery-note">Three application views from eight synthetic garden texts. The <a href="quick-start.html">Guide</a> uses the same demonstration corpus.</p>
+        <figure class="walk-hero-figure">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/walkthrough/01-sources-dark.png">
+            <img src="assets/walkthrough/01-sources-light.png" alt="CorpusWright’s Prepare workspace with the Victorian corpus loaded." width="1440" height="1000" fetchpriority="high">
+          </picture>
+          <figcaption>The corpus in Prepare, before the application of removal rules.</figcaption>
+        </figure>
+      </section>
+
+      <div class="walkthrough-stage" aria-hidden="true" hidden>
+        <div class="walk-stage-media"></div>
+        <div class="walk-stage-caption"></div>
+      </div>
+
+      <div class="walkthrough-steps">
+        <section class="walk-step" data-walk-step="sources" aria-labelledby="sources">
+          <p class="walk-step-label"><span>01</span> Sources</p>
+          <h2 id="sources">Read the files before counting</h2>
+          <p>The corpus brings together <span data-fact="sources">10</span> nineteenth-century works on logic, probability and related subjects. Prepare counts <span data-fact="originalTokens">1,150,196</span> tokens extracted from plain text, HTML and PDF.</p>
+          <p>Before preparation, the corpus count includes both the books and their digitisation notices.</p>
+          <figure>
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="assets/walkthrough/01-sources-dark.png">
+              <img src="assets/walkthrough/01-sources-light.png" alt="CorpusWright Prepare showing source files and the original-text preview." width="1440" height="1000" loading="lazy">
+            </picture>
+            <figcaption><strong>Figure 1.</strong> The sources loaded in Prepare.</figcaption>
+          </figure>
+          <a class="walk-full-image" href="assets/walkthrough/01-sources-light.png" aria-label="View the sources capture at full size">View full-size capture</a>
+        </section>
+
+        <section class="walk-step" data-walk-step="artefacts" aria-labelledby="artefacts">
+          <p class="walk-step-label"><span>02</span> Repeated artefacts</p>
+          <h2 id="artefacts">Review repeated text before removing it</h2>
+          <p>The artefact finder groups recurring lines and short blocks. The highlighted licence fragment occurs <span data-fact="artefactCandidateOccurrences">6</span> times across <span data-fact="artefactCandidateRange">3</span> files.</p>
+          <p>Review the examples before accepting individual removal rules. Different editions can wrap the same notice differently or carry a different notice.</p>
+          <figure>
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="assets/walkthrough/02-artefacts-dark.png">
+              <img src="assets/walkthrough/02-artefacts-light.png" alt="CorpusWright Repeated Artefacts review, with a Gutenberg licence fragment selected." width="1440" height="1000" loading="lazy">
+            </picture>
+            <figcaption><strong>Figure 2.</strong> Repeated Artefacts shows licence fragments and their occurrences.</figcaption>
+          </figure>
+          <a class="walk-full-image" href="assets/walkthrough/02-artefacts-light.png" aria-label="View the licence-fragment capture at full size">View full-size capture</a>
+        </section>
+
+        <section class="walk-step" data-walk-step="cleaning" aria-labelledby="cleaning">
+          <p class="walk-step-label"><span>03</span> Cleaning</p>
+          <h2 id="cleaning">Check which text reaches the counts</h2>
+          <p>Open <em>Flatland</em> in Prepare and compare its Original Text and Processed Text tabs. The original preserves the extracted text, and the processed preview reflects the current preparation settings.</p>
+          <p>This rule removes <span data-fact="tokensRemoved">84</span> tokens across the corpus, leaving <span data-fact="preparedTokens">1,150,112</span>. Check what remains in each edition before relying on its counts.</p>
+          <figure>
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="assets/walkthrough/03-cleaning-dark.png">
+              <img src="assets/walkthrough/03-cleaning-light.png" alt="CorpusWright Prepare showing the processed-text preview for Flatland." width="1440" height="1000" loading="lazy">
+            </picture>
+            <figcaption><strong>Figure 3.</strong> The Processed Text tab shows the effect of the accepted rules on <em>Flatland</em>.</figcaption>
+          </figure>
+          <a class="walk-full-image" href="assets/walkthrough/03-cleaning-light.png" aria-label="View the processed Flatland capture at full size">View full-size capture</a>
+        </section>
+
+        <section class="walk-step" data-walk-step="counts" aria-labelledby="counts">
+          <p class="walk-step-label"><span>04</span> Counts</p>
+          <h2 id="counts">Read frequency with range and dispersion</h2>
+          <p>Frequency counts all occurrences. Range counts the documents in which a type occurs. Gries’s DP compares a type’s observed shares across documents with the token shares of those documents.</p>
+          <p>Before cleaning, <em>gutenberg</em> occurred <span data-fact="originalGutenbergHits">223</span> times across <span data-fact="originalGutenbergRange">10</span> works (DP <span data-fact="originalGutenbergDp" data-decimals="4">0.3531</span>). All <span data-fact="preparedGutenbergHits">223</span> occurrences remain after applying the reviewed rule, which targets a licence line without that word.</p>
+          <figure>
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="assets/walkthrough/04-counts-dark.png">
+              <img src="assets/walkthrough/04-counts-light.png" alt="CorpusWright Frequency List filtered to gutenberg, with frequency, document range and dispersion columns." width="1440" height="1000" loading="lazy">
+            </picture>
+            <figcaption><strong>Figure 4.</strong> The Frequency List locates <em>gutenberg</em> in the analysis.</figcaption>
+          </figure>
+          <a class="walk-full-image" href="assets/walkthrough/04-counts-light.png" aria-label="View the frequency-list capture at full size">View full-size capture</a>
+        </section>
+
+        <section class="walk-step" data-walk-step="dispersion" aria-labelledby="dispersion">
+          <p class="walk-step-label"><span>05</span> Dispersion</p>
+          <h2 id="dispersion">Frequency alone hides how a type is spread</h2>
+          <p>The Dispersion plane plots frequency against DP for the <span data-fact="preparedTypes">34,954</span> observed types. A low DP indicates that a type’s occurrences are distributed roughly in proportion to document sizes.</p>
+          <p>Use the plane to see how different combinations of frequency and dispersion occur in the corpus. Look up a particular word in the Frequency List or read its occurrences in Concordance.</p>
+          <figure>
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="assets/walkthrough/05-dispersion-dark.png">
+              <img src="assets/walkthrough/05-dispersion-light.png" alt="CorpusWright Corpus Overview displaying its Dispersion plane, a density plot of frequency against DP." width="1440" height="1000" loading="lazy">
+            </picture>
+            <figcaption><strong>Figure 5.</strong> The Dispersion plane shows the density of types by frequency and DP.</figcaption>
+          </figure>
+          <a class="walk-full-image" href="assets/walkthrough/05-dispersion-light.png" aria-label="View the Dispersion plane capture at full size">View full-size capture</a>
+        </section>
+
+        <section class="walk-step" data-walk-step="context" aria-labelledby="context">
+          <p class="walk-step-label"><span>06</span> Context</p>
+          <h2 id="context">Return from the distribution to the text</h2>
+          <p>Search for <em>probability</em> in Concordance. It appears <span data-fact="probabilityHits">1,765</span> times in <span data-fact="probabilityRange">8</span> works. Distribution shows which books contain the word, and the lines show individual matches in context.</p>
+          <p>Outside the treatises by Boole, Venn, Laplace and Jevons, <span data-fact="phraseOutsideTreatises">7</span> of the <span data-fact="probabilityOutsideTreatises">17</span> hits occur in the phrase <em>in all probability</em>. It expresses how likely the writer judges something to be.</p>
+          <figure>
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="assets/walkthrough/06-context-dark.png">
+              <img src="assets/walkthrough/06-context-light.png" alt="CorpusWright Concordance searching for probability, with lines sorted by file and position." width="1440" height="1000" loading="lazy">
+            </picture>
+            <picture class="walk-distribution">
+              <source media="(prefers-color-scheme: dark)" srcset="assets/walkthrough/06-distribution-dark.png">
+              <img src="assets/walkthrough/06-distribution-light.png" alt="CorpusWright Concordance showing the document distribution for probability." width="1440" height="1000" loading="lazy">
+            </picture>
+            <figcaption><strong>Figure 6.</strong> File-sorted concordance lines and the separate Distribution panel for <em>probability</em>.</figcaption>
+          </figure>
+          <a class="walk-full-image" href="assets/walkthrough/06-context-light.png" aria-label="View the Concordance capture at full size">View full-size capture</a>
+          <a class="walk-full-image walk-distribution-link" href="assets/walkthrough/06-distribution-light.png">View document distribution</a>
+        </section>
+
+        <section class="walk-step" data-walk-step="record" aria-labelledby="record">
+          <p class="walk-step-label"><span>07</span> Record</p>
+          <h2 id="record">Keep the record that accompanies the export</h2>
+          <p>The cleaned-corpus export includes preparation settings, warning records and SHA-256 checksums for source and processed files. This export recorded <span data-fact="exportWarnings">4</span> warnings.</p>
+          <p>Keep the original files and the software release alongside the export. Use the checksums to verify the bytes when you revisit the analysis.</p>
+          <figure>
+            <pre class="code walk-record"><code data-export-excerpt>{
+  "cleaning_config": {"removal_rules": [{"enabled": true,"scope": "whole_line"}]},
+  "files": [{
+    "processed_hash_sha256": "b84a8e6a8f871b17b7d73221d7a8239a9cf95623e49c4ed133ba0568953270d7",
+    "relative_path": "97.txt",
+    "source_hash_sha256": "9933a0838441f03d5c8600da5f54c4a8af9cbcbf845bfeaa8e1b7213a2c3917f"
+  }],
+  "files_exported": 10,
+  "warnings_count": 4
+}</code></pre>
+            <figcaption><strong>Figure 7.</strong> Selected fields from the exported <code>manifest.json</code>. Source paths are omitted.</figcaption>
+          </figure>
         </section>
       </div>
-    </section>
+    </div>
 
-    <section class="section">
+    <section class="section walk-reference" aria-labelledby="measures">
       <div class="shell">
-        <div class="home-analysis">
-          <div class="home-reading">
-            <h2>Frequency and dispersion</h2>
-            <p>CorpusWright reports frequency with document range and DP, so a corpus total can be checked against its distribution across documents.</p>
-            <p>In the Dispersion plane, <em>seedling</em> occurs 1,200 times, all in one of twelve equally sized documents (<span class="mono">DP ≈ 0.92</span>). The word <em>and</em> occurs 3,600 times in equal shares across all twelve (<span class="mono">DP = 0</span>).</p>
-            <p class="text-link"><a href="concepts/overview.html">Methods &amp; measures</a> explains the definitions and limits on interpretation.</p>
-          </div>
-          <figure class="dispersion-witness">
-            <a class="theme-img-light" href="assets/figures/dispersion-plane-light.svg" aria-label="Open the Dispersion plane at full size"><img src="assets/figures/dispersion-plane-light.svg" alt="Dispersion plane showing seedling concentrated in one document and the word and evenly distributed across twelve equally sized documents." width="720" height="544" loading="lazy"></a>
-            <a class="theme-img-dark" href="assets/figures/dispersion-plane-dark.svg" aria-label="Open the Dispersion plane at full size"><img src="assets/figures/dispersion-plane-dark.svg" alt="Dispersion plane showing seedling concentrated in one document and the word and evenly distributed across twelve equally sized documents." width="720" height="544" loading="lazy"></a>
-            <figcaption>Controlled statistical demonstration corpus: twelve equally sized synthetic documents. CorpusWright output.</figcaption>
-          </figure>
+        <h2 id="measures">Measures and their sources</h2>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Measures and references">
+          <table class="walk-measures">
+            <thead><tr><th scope="col">Measure</th><th scope="col">Definition used</th><th scope="col">Reference</th></tr></thead>
+            <tbody>
+              <tr><th scope="row"><a href="concepts/overview.html#dispersion-how-evenly-a-word-is-spread">Dispersion</a></th><td>Unnormalised deviation of proportions</td><td><a href="concepts/overview.html#ref-gries">Gries, 2008</a> and <a href="concepts/overview.html#ref-dp-correction">Lijffijt &amp; Gries, 2012</a></td></tr>
+              <tr><th scope="row"><a href="concepts/overview.html#lexical-diversity-past-the-type-token-ratio">Lexical diversity</a></th><td>Moving-average type-token ratio and measure of textual lexical diversity</td><td><a href="concepts/overview.html#ref-mattr">Covington &amp; McFall, 2010</a> and <a href="concepts/overview.html#ref-mtld">McCarthy &amp; Jarvis, 2010</a></td></tr>
+              <tr><th scope="row"><a href="concepts/overview.html#collocation">Collocation</a></th><td>Association within a context window</td><td><a href="concepts/overview.html#ref-evert">Evert, 2008</a> and <a href="concepts/overview.html#ref-hardie-log-ratio">Hardie, 2014</a></td></tr>
+              <tr><th scope="row"><a href="concepts/overview.html#document-size-concentration">Concentration</a></th><td>Effective document count and entropy-equivalent vocabulary size</td><td><a href="concepts/overview.html#ref-hill">Hill, 1973</a> and <a href="concepts/overview.html#ref-shannon">Shannon, 1948</a></td></tr>
+              <tr><th scope="row"><a href="concepts/overview.html#the-frequency-distribution-zipfs-law">Vocabulary</a></th><td>Lexical spectrum, rank–frequency and observed-order vocabulary growth</td><td><a href="concepts/overview.html#ref-baayen">Baayen, 2001</a> and <a href="concepts/overview.html#ref-clauset">Clauset, Shalizi &amp; Newman, 2009</a></td></tr>
+            </tbody>
+          </table>
         </div>
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="shell home-details">
-        <div>
-          <h2>Preparation record</h2>
-          <p>The cleaned-corpus export records cleaning and tokenisation settings, extraction warnings and source/output checksums, so later file changes can be detected.</p>
-        </div>
-        <div>
-          <h2>Local processing</h2>
-          <p>CorpusWright processes corpus files on your computer. It does not upload them to a hosted analysis service. Keep the original sources and review the processed text before relying on its counts.</p>
+        <div class="walk-cards">
+          <section id="download" class="walk-card" aria-labelledby="download-title">
+            <h3 id="download-title">Download CorpusWright</h3>
+            <ul class="walk-downloads">
+              <li data-platform="macos-arm64"><span>macOS · Apple silicon</span><code>.dmg</code></li>
+              <li data-platform="macos-x64"><span>macOS · Intel</span><code>.dmg</code></li>
+              <li data-platform="windows-x64"><span>Windows · x64</span><code>.exe</code></li>
+            </ul>
+            <a class="btn primary" href="https://github.com/jhlopesalves/CorpusWright/releases">Open GitHub Releases</a>
+          </section>
+          <section class="walk-card" aria-labelledby="citation-title">
+            <h3 id="citation-title">Cite CorpusWright</h3>
+            <p>Use the citation for the software release used in your analysis.</p>
+            <div class="actions">
+              <a class="btn ghost" href="citation.html">Citation files</a>
+              <a class="btn ghost" href="about.html#citation">Citation guidance</a>
+            </div>
+          </section>
         </div>
       </div>
     </section>
@@ -150,13 +251,38 @@
 
   <footer class="site-footer" id="citation">
     <div class="shell foot">
-      <span>CorpusWright · open-source desktop software · public alpha</span>
-      <div class="footer-links">
-        <a href="about.html#citation">Citation</a>
-        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/LICENSE">Licence</a>
-        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a>
+      <div class="foot-brand">
+        <a class="brand" href="index.html"><img class="mark" src="assets/icon-32.png" alt="" width="28" height="28">CorpusWright</a>
+        <p>Open-source desktop software for corpus preparation and descriptive corpus analysis.</p>
+        <a class="btn primary" href="https://github.com/jhlopesalves/CorpusWright/releases">Download</a>
+      </div>
+      <div class="foot-columns">
+        <nav aria-label="Software">
+          <h2>Software</h2>
+          <a href="index.html#download">Download</a>
+          <a href="https://github.com/jhlopesalves/CorpusWright/releases">Release notes</a>
+          <a href="https://github.com/jhlopesalves/CorpusWright/releases">Earlier releases</a>
+          <a href="quick-start.html#build-from-source">Build from source</a>
+        </nav>
+        <nav aria-label="Documentation">
+          <h2>Documentation</h2>
+          <a href="quick-start.html">Guide</a>
+          <a href="concepts/overview.html">Methods</a>
+          <a href="about.html#citation">Citation</a>
+        </nav>
+        <nav aria-label="Project">
+          <h2>Project</h2>
+          <a href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
+          <a href="about.html">About</a>
+          <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/LICENSE">Licence</a>
+          <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a>
+        </nav>
       </div>
     </div>
+    <div class="shell"><div class="foot-meta">
+      <span>MIT licence</span>
+      <span>Created and maintained by Jhonatan H. Lopes</span>
+    </div></div>
   </footer>
 
 

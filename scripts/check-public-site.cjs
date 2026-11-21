@@ -20,7 +20,7 @@ const navigation = [
   ["Methods", "concepts/overview.html"],
   ["About", "about.html"],
   ["GitHub", "https://github.com/jhlopesalves/CorpusWright"],
-  ["Download", "https://github.com/jhlopesalves/CorpusWright/releases/latest"],
+  ["Download", "https://github.com/jhlopesalves/CorpusWright/releases"],
 ];
 
 function htmlFiles(directory) {
@@ -65,6 +65,8 @@ function checkPage(file) {
     return;
   }
 
+  assert.doesNotMatch(html, /<(?:link|script|img|source|iframe)\b[^>]*\b(?:href|src|srcset)="(?:https?:)?\/\//i,
+    `${label}: runtime assets must be served locally`);
   const nav = html.match(/<nav\b[^>]*aria-label="Primary"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
   assert.ok(nav, `${label}: missing primary navigation`);
   const actual = [...nav.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/g)].map(match => {
@@ -151,23 +153,9 @@ function checkWitnesses() {
   return assets.length;
 }
 
-function checkProductGallery() {
-  const home = fs.readFileSync(path.join(DOCS, "index.html"), "utf8");
-  const gallery = home.match(/<section class="product-gallery"[\s\S]*?<\/section>/)?.[0];
-  assert.ok(gallery, "Homepage needs a product gallery");
+// Guide still uses the original synthetic captures and their score witness.
+function checkGuideCaptures() {
   const stages = ["prepare", "overview", "concordance"];
-  assert.deepEqual([...gallery.matchAll(/data-gallery-tab="([^"]+)"/g)].map(match => match[1]), stages);
-  assert.deepEqual([...gallery.matchAll(/data-gallery-tab="[^"]+">([^<]+)</g)].map(match => match[1]),
-    ["Prepare", "Corpus Overview", "Concordance"]);
-  for (const figure of gallery.matchAll(/<figure>([\s\S]*?)<\/figure>/g)) {
-    assert.ok(figure[1].indexOf("<figcaption>") < figure[1].indexOf("<img "), "Gallery explanation must precede the screenshot");
-  }
-  assert.deepEqual([...gallery.matchAll(/<img src="([^"]+)"/g)].map(match => match[1]),
-    stages.map(stage => `assets/screenshots/corpuswright-${stage}.png`));
-  assert.doesNotMatch(home, /data-plot-|home-carousel|plot-carousel/);
-  const script = fs.readFileSync(path.join(DOCS, "assets/product-gallery.js"), "utf8");
-  new Script(script, { filename: "product-gallery.js" });
-  assert.doesNotMatch(script, /setInterval|setTimeout/, "Product screenshots must remain under manual control");
   const provenance = JSON.parse(fs.readFileSync(path.join(DOCS, "assets/screenshots/provenance.json"), "utf8"));
   assert.equal(provenance.schemaVersion, 1);
   assert.deepEqual(provenance.viewport, { width: 1440, height: 1000, deviceScaleFactor: 1 });
@@ -207,6 +195,109 @@ function checkProductGallery() {
     fs.rmSync(temporary, { recursive: true, force: true });
   }
   return provenance.captures.length;
+}
+
+function checkWalkthrough() {
+  const home = fs.readFileSync(path.join(DOCS, "index.html"), "utf8");
+  const directory = path.join(DOCS, "assets/walkthrough");
+  const provenance = JSON.parse(fs.readFileSync(path.join(directory, "provenance.json"), "utf8"));
+  const expected = ["sources", "artefacts", "cleaning", "counts", "dispersion", "context", "record"];
+  const steps = [...home.matchAll(/<section\b[^>]*data-walk-step="([^"]+)"[^>]*>([\s\S]*?)<\/section>/g)];
+  assert.deepEqual(steps.map(step => step[1]), expected, "Walkthrough step order");
+  assert.match(home, /class="walkthrough-stage" aria-hidden="true" hidden/);
+  assert.doesNotMatch(home, /data-product-gallery|gallery-tabs|product-gallery\.js/);
+  const script = fs.readFileSync(path.join(DOCS, "assets/walkthrough.js"), "utf8");
+  new Script(script, { filename: "walkthrough.js" });
+  assert.doesNotMatch(script, /setInterval|setTimeout/, "Walkthrough progression must be driven by reading position");
+
+  assert.equal(provenance.schemaVersion, 1);
+  assert.deepEqual(provenance.viewport, { width: 1440, height: 1000, deviceScaleFactor: 1 });
+  const pins = JSON.parse(fs.readFileSync(path.join(ROOT, "apps/desktop/tests/visual/walkthrough-sources.json"), "utf8"));
+  assert.equal(pins.length, 10);
+  for (const pin of pins) {
+    assert.match(pin.commit, /^[a-f0-9]{40}$/);
+    assert.match(pin.sha256, /^[a-f0-9]{64}$/);
+  }
+  assert.deepEqual(provenance.sourceChecksums, Object.fromEntries(pins.map(pin => [pin.path, pin.sha256])));
+  for (const [directory, tree] of [["crates/corpuswright-core", provenance.coreTree], ["apps/desktop/src", provenance.frontendTree]]) {
+    execFileSync("git", ["diff", "--quiet", "--", directory], { cwd: ROOT });
+    assert.equal(execFileSync("git", ["write-tree", `--prefix=${directory}/`], { cwd: ROOT, encoding: "utf8" }).trim(), tree);
+  }
+  const mandatoryCaptureInputs = [
+    "Cargo.lock", "rust-toolchain.toml", "apps/desktop/index.html", "apps/desktop/package-lock.json",
+    "apps/desktop/scripts/browser-capture.mjs", "apps/desktop/scripts/capture-walkthrough.mjs",
+    "apps/desktop/tests/visual/walkthrough-fixture.ts", "apps/desktop/tests/visual/walkthrough-data.rs",
+    "apps/desktop/tests/visual/walkthrough-sources.json", "scripts/fetch-pdfium.cjs", "third-party/pdfium.json",
+  ];
+  assert.deepEqual(Object.keys(provenance.captureInputs).sort(), mandatoryCaptureInputs.sort());
+  for (const [file, expectedHash] of Object.entries(provenance.captureInputs)) {
+    assert.equal(sha256(path.join(ROOT, file)), expectedHash, `${file}: recapture after capture input changes`);
+  }
+  const captureCount = expected.length * 2;
+  assert.equal(provenance.captures.length, captureCount);
+  assert.equal(new Set(provenance.captures.map(capture => capture.asset)).size, captureCount);
+  assert.equal(new Set(provenance.captures.map(capture => capture.sha256)).size, captureCount, "Every capture must witness a distinct view or theme");
+  assert.match(home, /01-sources-light\.png"[^>]*fetchpriority="high"/, "The hero capture is eager");
+  assert.deepEqual([...home.matchAll(/data-platform="([^"]+)"/g)].map(match => match[1]),
+    ["macos-arm64", "macos-x64", "windows-x64"], "Only verified prerelease installers may be listed");
+
+  const verifiedFacts = new Set();
+  for (const [i, [, name, markup]] of steps.entries()) {
+    const figure = markup.match(/<figure>([\s\S]*?)<\/figure>/)?.[1];
+    assert.ok(figure, `${name}: one inline figure is required`);
+    assert.ok(markup.indexOf("<h2") < markup.indexOf("<figure>"), `${name}: the prose precedes its evidence`);
+    assert.match(figure, new RegExp(`<figcaption><strong>Figure ${i + 1}\\.</strong>`));
+    const prose = markup.replace(/<p class="walk-step-label">[^]*?<\/p>/, "").split("<figure>")[0]
+      .replace(/<span data-fact="([a-zA-Z]+)"(?: data-decimals="(\d+)")?>([^<]+)<\/span>/g, (_, key, decimals, value) => {
+        const fact = provenance.facts[key];
+        assert.ok(Number.isFinite(fact), `${name}: missing numeric fact ${key}`);
+        const digits = decimals === undefined ? 0 : Number(decimals);
+        assert.equal(value, fact.toLocaleString("en-GB", { minimumFractionDigits: digits, maximumFractionDigits: digits }), key);
+        verifiedFacts.add(key);
+        return "";
+      });
+    assert.doesNotMatch(prose.replace(/<[^>]+>/g, "").replace(/SHA-256/g, ""), /\b[0-9]/,
+      `${name}: use a provenance-bound span for every quantitative figure`);
+
+    if (name === "record") {
+      const excerpt = figure.match(/<code data-export-excerpt>([\s\S]*?)<\/code>/)?.[1];
+      assert.ok(excerpt, "Export figure needs an excerpt");
+      assert.deepEqual(JSON.parse(excerpt.replaceAll("&quot;", '"').replaceAll("&amp;", "&")), provenance.exportExcerpt);
+      assert.doesNotMatch(excerpt, /app_version|source_path|\/(?:home|Users|tmp)\//);
+      assert.equal(provenance.exportExcerpt.files[0].source_hash_sha256, provenance.sourceChecksums["97.txt"]);
+      assert.match(provenance.exportExcerpt.files[0].processed_hash_sha256, /^[a-f0-9]{64}$/);
+      assert.equal(provenance.exportExcerpt.cleaning_config.removal_rules.length, provenance.facts.rules);
+      assert.equal(provenance.exportExcerpt.cleaning_config.removal_rules[0].enabled, true);
+      continue;
+    }
+
+    const stage = `${String(i + 1).padStart(2, "0")}-${name}`;
+    const views = name === "context" ? [stage, "06-distribution"] : [stage];
+    for (const view of views) for (const theme of ["light", "dark"]) {
+      const asset = `${view}-${theme}.png`;
+      const capture = provenance.captures.find(item => item.asset === asset);
+      assert.ok(capture, `Missing capture provenance: ${asset}`);
+      assert.equal(capture.stage, view);
+      assert.equal(capture.theme, `corpus-${theme}`);
+      assert.match(capture.visibleTextSha256, /^[a-f0-9]{64}$/);
+      const file = path.join(directory, asset);
+      assert.equal(sha256(file), capture.sha256, `${asset}: capture changed without provenance`);
+      checkScreenshot(file);
+      const png = fs.readFileSync(file);
+      assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1440, 1000]);
+      assert.ok(png.length < 220_000, `${asset}: keep the lossless capture compact`);
+      assert.ok(figure.includes(`assets/walkthrough/${asset}`), `${asset}: missing inline theme variant`);
+    }
+    assert.match(figure, /<img[^>]+width="1440" height="1000" loading="lazy"/);
+  }
+  for (const required of ["sources", "originalTokens", "artefactCandidateRange", "artefactCandidateOccurrences",
+    "tokensRemoved", "preparedTokens", "preparedTypes", "originalGutenbergHits", "preparedGutenbergHits",
+    "originalGutenbergDp", "probabilityHits", "probabilityRange", "probabilityOutsideTreatises", "phraseOutsideTreatises"]) {
+    assert.ok(verifiedFacts.has(required), `Walkthrough must explain ${required}`);
+  }
+  assert.equal(provenance.facts.originalTokens - provenance.facts.preparedTokens, provenance.facts.tokensRemoved);
+  assert.equal(provenance.facts.rules, 1, "This walkthrough applies a single reviewed fragment rule");
+  return captureCount;
 }
 
 function checkWorkedExamples() {
@@ -319,15 +410,20 @@ function checkSocialPreview() {
 const pages = htmlFiles(DOCS);
 for (const file of pages) checkPage(file);
 const cssPath = path.join(DOCS, "assets/site.css");
-const css = fs.readFileSync(cssPath, "utf8");
+const cssFiles = ["wright-tokens.css", "site.css", "walkthrough.css"].map(file => path.join(path.dirname(cssPath), file));
+const css = cssFiles.map(file => fs.readFileSync(file, "utf8")).join("\n");
 checkCustomProperties(css);
-assert.doesNotMatch(css, /IBM Plex Serif|--serif|hero-split|hero-downloads/);
+assert.match(css, /--font-chrome:\s*Manrope/);
+assert.match(css, /--font-reading:\s*"Wright Reading"/);
+assert.match(css, /--font-code:\s*"Wright Code"/);
+assert.doesNotMatch(css, /IBM Plex|product-gallery|hero-split|hero-downloads/);
 for (const reference of css.matchAll(/url\(['"]?([^'"\)]+)['"]?\)/g)) {
   assert.ok(fs.existsSync(path.resolve(path.dirname(cssPath), reference[1])), `Missing CSS asset: ${reference[1]}`);
 }
 const witnesses = checkWitnesses();
-const screenshots = checkProductGallery();
+const guideScreenshots = checkGuideCaptures();
+const walkthroughScreenshots = checkWalkthrough();
 const workedExamples = checkWorkedExamples();
 checkSocialPreview();
 execFileSync(process.execPath, [path.join(ROOT, "scripts/check-repository-references.cjs")], { stdio: "inherit" });
-console.log(`Public site contracts passed: ${pages.length} HTML pages, inline JavaScript, CSS asset paths, ${witnesses} audited product figures, ${workedExamples} worked calculations, ${screenshots} product screenshots, social preview and reproducible demonstration bytes.`);
+console.log(`Public site contracts passed: ${pages.length} HTML pages, inline JavaScript, CSS asset paths, ${witnesses} audited product figures, ${workedExamples} worked calculations, ${guideScreenshots} Guide screenshots, ${walkthroughScreenshots} walkthrough screenshots, social preview and reproducible demonstration bytes.`);

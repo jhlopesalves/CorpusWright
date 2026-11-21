@@ -252,51 +252,6 @@ function stripFooterVersion(writer, relativePath) {
   );
 }
 
-function syncIndex(writer) {
-  syncText(writer, "docs/index.html", (content) => {
-    let next = content;
-    next = replaceOrThrow(
-      next,
-      /href="https:\/\/github\.com\/jhlopesalves\/CorpusWright\/releases\/(?:tag\/v\d+\.\d+\.\d+-alpha\.\d+|latest)">Download (?:alpha\.\d+|latest alpha)<\/a>/,
-      'href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download latest alpha</a>',
-      "docs/index.html",
-      "download nav link"
-    );
-    // Citation examples are synchronised on their compatibility page; Home owns its prose.
-    return next;
-  });
-}
-
-function syncQuickStart(writer) {
-  syncText(writer, "docs/quick-start.html", (content) => {
-    let next = content;
-    next = next.replace(
-      /\bDownload alpha\.\d+ from the release page\./,
-      "Download the latest alpha from the release page."
-    );
-    next = replaceOrThrow(
-      next,
-      /href="https:\/\/github\.com\/jhlopesalves\/CorpusWright\/releases\/(?:tag\/v\d+\.\d+\.\d+-alpha\.\d+|latest)">Download (?:alpha\.\d+|latest alpha)<\/a>/,
-      'href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download latest alpha</a>',
-      "docs/quick-start.html",
-      "download button"
-    );
-    return next;
-  });
-}
-
-function syncTechnicalDocs(writer) {
-  syncText(writer, "docs/technical-docs.html", (content) =>
-    replaceOrThrow(
-      content,
-      /<a href="https:\/\/github\.com\/jhlopesalves\/CorpusWright\/releases\/(?:tag\/v\d+\.\d+\.\d+-alpha\.\d+|latest)">(?:v\d+\.\d+\.\d+-alpha\.\d+|Latest alpha release)<\/a>/,
-      '<a href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Latest alpha release</a>',
-      "docs/technical-docs.html",
-      "latest release link"
-    )
-  );
-}
-
 function syncRoadmap(writer) {
   syncText(writer, "docs/roadmap.html", (content) => {
     let next = content;
@@ -378,9 +333,7 @@ function syncReleaseMetadata(options = {}) {
   );
 
   syncReadme(writer, metadata);
-  syncIndex(writer);
-  syncQuickStart(writer);
-  syncTechnicalDocs(writer);
+  // The public site owns its version-independent download links.
   syncRoadmap(writer);
   syncCitationPage(writer, metadata);
 

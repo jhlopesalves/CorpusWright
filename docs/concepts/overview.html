@@ -32,19 +32,6 @@
       document.documentElement.setAttribute('data-theme', savedTheme || systemTheme);
     })();
   </script>
-  <script>
-    window.MathJax = {
-      tex: {
-        inlineMath: [['\\(', '\\)']],
-        displayMath: [['\\[', '\\]']],
-        processEscapes: true
-      },
-      options: {
-        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
-      }
-    };
-  </script>
-  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
   <script src="../assets/theme.js" defer></script>
 </head>
 
@@ -59,7 +46,7 @@
         <a aria-current="page" href="overview.html">Methods</a>
         <a href="../about.html">About</a>
         <a href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
-        <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases/latest">Download</a>
+        <a class="nav-cta" href="https://github.com/jhlopesalves/CorpusWright/releases">Download</a>
         <button class="theme-btn" id="theme-toggle" type="button" aria-pressed="false" aria-label="Switch to dark theme">
         <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <circle cx="12" cy="12" r="4" />
@@ -109,19 +96,19 @@
 
             <p>Read measures together: frequency with document distribution, lexical diversity with text length, and fitted curves with their observed points and settings. Begin with the token definition and sampling design.</p>
 
-            <p>Product figures on this page are CorpusWright exports from a controlled statistical demonstration corpus: twelve equally sized synthetic documents, totalling 49,152 tokens and 1,662 types. The recorded generator, seed, settings and implementation make these exports reproducible; they are not a sample of a language variety. The homepage and Guide use a separate GUI demonstration corpus of eight synthetic prose documents. Tables and algorithm diagrams below are concept schematics or worked examples, with their inputs and calculations shown.</p>
+            <p>Product figures on this page are CorpusWright exports from a controlled statistical demonstration corpus: twelve equally sized synthetic documents, totalling 49,152 tokens and 1,662 types. The recorded generator, seed, settings and implementation make these exports reproducible; they are not a sample of a language variety. The Guide uses a separate GUI demonstration corpus of eight synthetic prose documents. Tables and algorithm diagrams below are concept schematics or worked examples, with their inputs and calculations shown.</p>
 
             <details class="method-illustration">
               <summary>A diagnostic reading order</summary>
 <figure>
-            <pre class="mermaid">
-flowchart TD
-    Q1["What is<br>in it?"] --> Q2["What shape<br>does it have?"]
-    Q2 --> Q3["Where are the<br>occurrences located?"]
-    Q3 --> Q4["What limits<br>the evidence?"]
-    Q4 --> Q5["What question does<br>the design support?"]
-    Q5 -.-> N["Further inference needs<br>an estimand, design,<br>assumptions, uncertainty<br>and stated scope"]
-</pre>
+            <ol class="method-flow">
+                <li>What is in it?</li>
+                <li>What shape does it have?</li>
+                <li>Where are the occurrences located?</li>
+                <li>What limits the evidence?</li>
+                <li>What question does the design support?</li>
+              </ol>
+              <p class="method-flow-note">Further inference needs an estimand, design, assumptions, uncertainty and stated scope.</p>
               <figcaption>Concept schematic: questions for inspecting a corpus before formulating further analyses.</figcaption>
             </figure>
             </details>
@@ -133,19 +120,18 @@ flowchart TD
             <h2 id="how-the-workbench-treats-your-text">How the workbench treats your text</h2>
 
 <figure>
-              <pre class="mermaid">
-flowchart TD
-    A["Source<br>text"] --> B["Extract<br>text"]
-    B --> C["Detect<br>artefacts"]
-    C --> D["Human<br>review"]
-    D --> E["Saved cleaning<br>rules"]
-    E --> F["Apply cleaning<br>rules"]
-    F --> G["Compare Original Text<br>and Processed Text"]
-    G --> H{"Intended<br>changes?"}
-    H -->|revise| D
-    H -->|yes| I["Build analysis;<br>read counts and contexts"]
-    E -.->|re-run| F
-</pre>
+              <ol class="method-flow">
+                <li>Source text</li>
+                <li>Extract text</li>
+                <li>Detect artefacts</li>
+                <li>Human review</li>
+                <li>Saved cleaning rules</li>
+                <li>Apply cleaning rules</li>
+                <li>Compare Original Text and Processed Text</li>
+                <li>Intended changes?</li>
+                <li>Build analysis and read counts and contexts</li>
+              </ol>
+              <p class="method-flow-note">Revise unintended changes at Human review. Re-run with the saved cleaning rules.</p>
               <figcaption>Concept schematic: preparation determines what later analysis can count. Saved cleaning rules form part of the analytical record.</figcaption>
             </figure>
 
@@ -183,11 +169,9 @@ flowchart TD
             <p>Normalised frequency rescales a count to a stated base. CorpusWright offers rates per ten thousand, hundred thousand and million tokens:</p>
 
             <div class="math-display">
-              \[
-              \text{normalised frequency} = \frac{f}{N} \times B
-              \]
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mtext>normalised frequency</mtext><mo>=</mo><mfrac><mi>f</mi><mi>N</mi></mfrac><mo>×</mo><mi>B</mi></mrow><annotation encoding="application/x-tex">\text{normalised frequency} = \frac{f}{N} \times B</annotation></semantics></math>
             </div>
-            <p>Here \(f\) is the raw count, \(N\) the total tokens in the selected scope, and \(B\) the reporting base.</p>
+            <p>Here <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>f</mi></mrow><annotation encoding="application/x-tex">f</annotation></semantics></math> is the raw count, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math> the total tokens in the selected scope, and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi></mrow><annotation encoding="application/x-tex">B</annotation></semantics></math> the reporting base.</p>
 
             <figure class="worked-example" id="example-frequency">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Normalised frequency worked example">
@@ -213,13 +197,11 @@ flowchart TD
 <p>A frequency total does not locate the occurrences. Two words can have the same count while one occurs in every document and the other occurs in only one. CorpusWright reports Gries's Deviation of Proportions (DP) over individual documents (<a href="#ref-gries">Gries, 2008</a>).</p>
 
             <div class="math-display">
-              \[
-              DP = \frac{1}{2}\sum_{i=1}^{D}|v_i-s_i|
-              \]
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>D</mi><mi>P</mi><mo>=</mo><mfrac><mn>1</mn><mn>2</mn></mfrac><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>D</mi></munderover><mi mathvariant="normal">∣</mi><msub><mi>v</mi><mi>i</mi></msub><mo>−</mo><msub><mi>s</mi><mi>i</mi></msub><mi mathvariant="normal">∣</mi></mrow><annotation encoding="application/x-tex">DP = \frac{1}{2}\sum_{i=1}^{D}|v_i-s_i|</annotation></semantics></math>
             </div>
-            <p>For \(D\) documents, \(s_i=N_i/N\) is document \(i\)'s share of the corpus tokens and \(v_i=f_i/f\) its share of the word's occurrences. Documents with no occurrence still contribute \(s_i\) to the absolute differences. These “expected” shares are a size-proportional reference, not a fitted sampling model.</p>
+            <p>For <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>D</mi></mrow><annotation encoding="application/x-tex">D</annotation></semantics></math> documents, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>s</mi><mi>i</mi></msub><mo>=</mo><msub><mi>N</mi><mi>i</mi></msub><mi mathvariant="normal">/</mi><mi>N</mi></mrow><annotation encoding="application/x-tex">s_i=N_i/N</annotation></semantics></math> is document <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math>'s share of the corpus tokens and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>v</mi><mi>i</mi></msub><mo>=</mo><msub><mi>f</mi><mi>i</mi></msub><mi mathvariant="normal">/</mi><mi>f</mi></mrow><annotation encoding="application/x-tex">v_i=f_i/f</annotation></semantics></math> its share of the word's occurrences. Documents with no occurrence still contribute <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>s</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">s_i</annotation></semantics></math> to the absolute differences. These “expected” shares are a size-proportional reference, not a fitted sampling model.</p>
 
-            <p>DP is zero when occurrence shares match token shares. Larger values describe greater departure from that reference. For a fixed partition of non-empty documents, its upper bound is \(1-\min_i(s_i)\), reached when all occurrences lie in the smallest document. CorpusWright reports unnormalised DP; it does not divide by this bound (<a href="#ref-dp-correction">Lijffijt &amp; Gries, 2012</a>).</p>
+            <p>DP is zero when occurrence shares match token shares. Larger values describe greater departure from that reference. For a fixed partition of non-empty documents, its upper bound is <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mo>−</mo><msub><mrow><mi>min</mi><mo>⁡</mo></mrow><mi>i</mi></msub><mo stretchy="false">(</mo><msub><mi>s</mi><mi>i</mi></msub><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">1-\min_i(s_i)</annotation></semantics></math>, reached when all occurrences lie in the smallest document. CorpusWright reports unnormalised DP; it does not divide by this bound (<a href="#ref-dp-correction">Lijffijt &amp; Gries, 2012</a>).</p>
 
             <figure class="worked-example" id="example-dispersion">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Dispersion worked example">
@@ -249,11 +231,9 @@ flowchart TD
 
           <section class="learn-section">
             <h2 id="document-size-concentration">Document-size concentration</h2>
-            <p>Corpus Overview's <em>Document-size concentration</em> section describes token-size concentration: the largest document's share, the combined share of the three largest documents and the effective document count. For the included documents, with token shares \(s_i=N_i/N\):</p>
+            <p>Corpus Overview's <em>Document-size concentration</em> section describes token-size concentration: the largest document's share, the combined share of the three largest documents and the effective document count. For the included documents, with token shares <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>s</mi><mi>i</mi></msub><mo>=</mo><msub><mi>N</mi><mi>i</mi></msub><mi mathvariant="normal">/</mi><mi>N</mi></mrow><annotation encoding="application/x-tex">s_i=N_i/N</annotation></semantics></math>:</p>
             <div class="math-display">
-              \[
-              D_{\mathrm{eff}}=\frac{1}{\sum_{i=1}^{D}s_i^2}
-              \]
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><msub><mi>D</mi><mrow><mi mathvariant="normal">e</mi><mi mathvariant="normal">f</mi><mi mathvariant="normal">f</mi></mrow></msub><mo>=</mo><mfrac><mn>1</mn><mrow><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>D</mi></munderover><msubsup><mi>s</mi><mi>i</mi><mn>2</mn></msubsup></mrow></mfrac></mrow><annotation encoding="application/x-tex">D_{\mathrm{eff}}=\frac{1}{\sum_{i=1}^{D}s_i^2}</annotation></semantics></math>
             </div>
             <p>This is the number of equally sized documents with the same squared-share concentration: the inverse-concentration effective-number transformation (<a href="#ref-hill">Hill, 1973</a>, pp. 428–429), applied here to document token shares. It is not an effective sample size for inference, a count of independent observations, or a test of genre balance, representativeness or sampling adequacy.</p>
 
@@ -270,16 +250,14 @@ flowchart TD
               <figcaption>Worked example: four documents in both cases. Unequal token shares reduce the effective document count from four to three; document-size concentration alone does not judge the sampling design.</figcaption>
             </figure>
 
-            <p>The size summary also reports Gini and a population coefficient of variation. For sorted token counts \(N_{(i)}\), mean \(\bar N\), and \(D\) included documents:</p>
+            <p>The size summary also reports Gini and a population coefficient of variation. For sorted token counts <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>N</mi><mrow><mo stretchy="false">(</mo><mi>i</mi><mo stretchy="false">)</mo></mrow></msub></mrow><annotation encoding="application/x-tex">N_{(i)}</annotation></semantics></math>, mean <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mover accent="true"><mi>N</mi><mo>ˉ</mo></mover></mrow><annotation encoding="application/x-tex">\bar N</annotation></semantics></math>, and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>D</mi></mrow><annotation encoding="application/x-tex">D</annotation></semantics></math> included documents:</p>
             <div class="math-display">
-              \[
-              \begin{gathered}
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mtable rowspacing="0.25em" columnalign="center" columnspacing="0em"><mtr><mtd><mstyle scriptlevel="0" displaystyle="true"><mrow><mi>G</mi><mo>=</mo><mfrac><mrow><mn>2</mn><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>D</mi></munderover><mi>i</mi><msub><mi>N</mi><mrow><mo stretchy="false">(</mo><mi>i</mi><mo stretchy="false">)</mo></mrow></msub></mrow><mrow><mi>D</mi><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>D</mi></munderover><msub><mi>N</mi><mi>i</mi></msub></mrow></mfrac><mo>−</mo><mfrac><mrow><mi>D</mi><mo>+</mo><mn>1</mn></mrow><mi>D</mi></mfrac></mrow></mstyle></mtd></mtr><mtr><mtd><mstyle scriptlevel="0" displaystyle="true"><mrow><mi>C</mi><mi>V</mi><mo>=</mo><mfrac><msqrt><mrow><msup><mi>D</mi><mrow><mo>−</mo><mn>1</mn></mrow></msup><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>D</mi></munderover><mo stretchy="false">(</mo><msub><mi>N</mi><mi>i</mi></msub><mo>−</mo><mover accent="true"><mi>N</mi><mo>ˉ</mo></mover><msup><mo stretchy="false">)</mo><mn>2</mn></msup></mrow></msqrt><mover accent="true"><mi>N</mi><mo>ˉ</mo></mover></mfrac></mrow></mstyle></mtd></mtr></mtable><annotation encoding="application/x-tex">\begin{gathered}
               G=\frac{2\sum_{i=1}^{D}iN_{(i)}}{D\sum_{i=1}^{D}N_i}-\frac{D+1}{D}\\[1em]
               CV=\frac{\sqrt{D^{-1}\sum_{i=1}^{D}(N_i-\bar N)^2}}{\bar N}
-              \end{gathered}
-              \]
+              \end{gathered}</annotation></semantics></math>
             </div>
-            <p>These describe the supplied token-size distribution. The variance uses \(D\), rather than \(D-1\), because this is a summary of the included documents. None of these quantities supplies inferential uncertainty or independent replication.</p>
+            <p>These describe the supplied token-size distribution. The variance uses <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>D</mi></mrow><annotation encoding="application/x-tex">D</annotation></semantics></math>, rather than <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>D</mi><mo>−</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">D-1</annotation></semantics></math>, because this is a summary of the included documents. None of these quantities supplies inferential uncertainty or independent replication.</p>
             <details class="implementation-details">
               <summary>Implementation details</summary>
               <p>Blank resolved texts are skipped. Included non-blank texts with no counted word tokens contribute zero size. With no tokens, token shares and effective document count are unavailable; CV is unavailable at zero mean, and an all-zero non-empty size vector has Gini zero by convention. The top-three share includes all available documents when fewer than three are present.</p>
@@ -292,50 +270,46 @@ flowchart TD
             <p><em>Span</em> counts word-token positions from each edge of the whole node. The default is five positions per side; the control accepts 1–20. <em>Direction</em> selects left, right or both. Windows stop at document boundaries but can cross sentence boundaries. Standalone punctuation is not a counted position. Concordance display retains punctuation from the prepared text; display characters and analytical positions are distinct.</p>
             <p>Each node–context-position pair is one co-occurrence event. Repeated collocates within a window count repeatedly; overlapping node windows can count the same corpus occurrence more than once. The corpus frequency of a candidate counts its word tokens once across the selected documents, including occurrences outside the windows. Direction and span therefore change the event count and the available window positions, while leaving that corpus frequency unchanged.</p>
             <p>Read association scores with their event counts and corpus frequencies. A high score ranks a candidate under the chosen counting model; it does not establish a lexical unit, semantic similarity or causality. None of these outputs is a p-value or a calibrated significance test for the sampling design.</p>
-            <p>Let \(c\) be a candidate's node–context-position event count, \(W\) the total positions in the selected windows, \(F\) its token frequency across the selected corpus, and \(N\) the corpus token total. The node-hit count is a separate quantity. \(W\) includes positions occupied by excluded query forms and hidden stopwords. The window baseline is:</p>
+            <p>Let <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi></mrow><annotation encoding="application/x-tex">c</annotation></semantics></math> be a candidate's node–context-position event count, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>W</mi></mrow><annotation encoding="application/x-tex">W</annotation></semantics></math> the total positions in the selected windows, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>F</mi></mrow><annotation encoding="application/x-tex">F</annotation></semantics></math> its token frequency across the selected corpus, and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math> the corpus token total. The node-hit count is a separate quantity. <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>W</mi></mrow><annotation encoding="application/x-tex">W</annotation></semantics></math> includes positions occupied by excluded query forms and hidden stopwords. The window baseline is:</p>
             <div class="math-display">
-              \[
-              E=\frac{WF}{N}
-              \]
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>E</mi><mo>=</mo><mfrac><mrow><mi>W</mi><mi>F</mi></mrow><mi>N</mi></mfrac></mrow><annotation encoding="application/x-tex">E=\frac{WF}{N}</annotation></semantics></math>
             </div>
             <p>The default is <em>MI</em>. The six selectable scores use the quantities above. Their formula forms follow established association measures (<a href="#ref-evert">Evert, 2008</a>; <a href="#ref-hardie-log-ratio">Hardie, 2014</a>); the definitions below specify CorpusWright's window-event inputs. Overlapping windows count events repeatedly, so they need not form a disjoint partition of corpus tokens. In particular, the complements used by G² and log ratio need not be actual counts outside the union of the windows.</p>
 
             <details class="association-definition" id="association-mi">
               <summary>MI — observed events relative to the window baseline</summary>
-              <div class="math-display">\[\mathrm{MI}=\log_2(c/E)\]</div>
-              <p>Zero means \(c=E\); positive and negative values indicate more and fewer events than this baseline. An additional point doubles \(c/E\). A large value can be based on very few events, so retain the raw counts and minimum-frequency settings. The score is unavailable unless \(c>0\), \(E>0\) and the ratio is finite. There is no smoothing.</p>
+              <div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mrow><mi mathvariant="normal">M</mi><mi mathvariant="normal">I</mi></mrow><mo>=</mo><msub><mrow><mi>log</mi><mo>⁡</mo></mrow><mn>2</mn></msub><mo stretchy="false">(</mo><mi>c</mi><mi mathvariant="normal">/</mi><mi>E</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">\mathrm{MI}=\log_2(c/E)</annotation></semantics></math></div>
+              <p>Zero means <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi><mo>=</mo><mi>E</mi></mrow><annotation encoding="application/x-tex">c=E</annotation></semantics></math>; positive and negative values indicate more and fewer events than this baseline. An additional point doubles <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi><mi mathvariant="normal">/</mi><mi>E</mi></mrow><annotation encoding="application/x-tex">c/E</annotation></semantics></math>. A large value can be based on very few events, so retain the raw counts and minimum-frequency settings. The score is unavailable unless <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi><mo>&gt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">c&gt;0</annotation></semantics></math>, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi><mo>&gt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">E&gt;0</annotation></semantics></math> and the ratio is finite. There is no smoothing.</p>
             </details>
             <details class="association-definition" id="association-mi3">
               <summary>MI³ — an association ranking with greater weight on event count</summary>
-              <div class="math-display">\[\mathrm{MI}^3=\log_2(c^3/E)\]</div>
-              <p>This is not MI cubed: the event count is cubed inside the logarithm. It equals MI plus \(2\log_2 c\), giving more weight to frequent co-occurrences. Its zero is \(c^3=E\), so its sign does not indicate whether \(c\) exceeds \(E\). It requires positive \(c\), positive \(E\) and a finite ratio; there is no smoothing. Values depend on the event counts and corpus size.</p>
+              <div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><msup><mrow><mi mathvariant="normal">M</mi><mi mathvariant="normal">I</mi></mrow><mn>3</mn></msup><mo>=</mo><msub><mrow><mi>log</mi><mo>⁡</mo></mrow><mn>2</mn></msub><mo stretchy="false">(</mo><msup><mi>c</mi><mn>3</mn></msup><mi mathvariant="normal">/</mi><mi>E</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">\mathrm{MI}^3=\log_2(c^3/E)</annotation></semantics></math></div>
+              <p>This is not MI cubed: the event count is cubed inside the logarithm. It equals MI plus <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>2</mn><msub><mrow><mi>log</mi><mo>⁡</mo></mrow><mn>2</mn></msub><mi>c</mi></mrow><annotation encoding="application/x-tex">2\log_2 c</annotation></semantics></math>, giving more weight to frequent co-occurrences. Its zero is <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>c</mi><mn>3</mn></msup><mo>=</mo><mi>E</mi></mrow><annotation encoding="application/x-tex">c^3=E</annotation></semantics></math>, so its sign does not indicate whether <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi></mrow><annotation encoding="application/x-tex">c</annotation></semantics></math> exceeds <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E</annotation></semantics></math>. It requires positive <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi></mrow><annotation encoding="application/x-tex">c</annotation></semantics></math>, positive <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E</annotation></semantics></math> and a finite ratio; there is no smoothing. Values depend on the event counts and corpus size.</p>
             </details>
             <details class="association-definition" id="association-t-score">
               <summary>t-score — event excess scaled by the observed count</summary>
-              <div class="math-display">\[t=\frac{c-E}{\sqrt c}\]</div>
-              <p>Positive values indicate more events than the baseline and negative values fewer; higher positive values favour frequent event excesses. The denominator is the square root of the observed event count. The score is unavailable when \(c=0\) or the result is non-finite. No smoothing is applied. This ranking is not a Student's t-test and supplies no inferential degrees of freedom or p-value.</p>
+              <div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>t</mi><mo>=</mo><mfrac><mrow><mi>c</mi><mo>−</mo><mi>E</mi></mrow><msqrt><mi>c</mi></msqrt></mfrac></mrow><annotation encoding="application/x-tex">t=\frac{c-E}{\sqrt c}</annotation></semantics></math></div>
+              <p>Positive values indicate more events than the baseline and negative values fewer; higher positive values favour frequent event excesses. The denominator is the square root of the observed event count. The score is unavailable when <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">c=0</annotation></semantics></math> or the result is non-finite. No smoothing is applied. This ranking is not a Student's t-test and supplies no inferential degrees of freedom or p-value.</p>
             </details>
             <details class="association-definition" id="association-z-score">
               <summary>z-score — event excess scaled by the expected count</summary>
-              <div class="math-display">\[z=\frac{c-E}{\sqrt E}\]</div>
-              <p>The sign compares \(c\) with \(E\), as for t-score, but the denominator is the square root of the baseline count. Small \(E\) can produce large values. The score is unavailable unless \(E>0\) and the result is finite. No smoothing is applied. It is not a calibrated normal-test result for overlapping corpus windows.</p>
+              <div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>z</mi><mo>=</mo><mfrac><mrow><mi>c</mi><mo>−</mo><mi>E</mi></mrow><msqrt><mi>E</mi></msqrt></mfrac></mrow><annotation encoding="application/x-tex">z=\frac{c-E}{\sqrt E}</annotation></semantics></math></div>
+              <p>The sign compares <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi></mrow><annotation encoding="application/x-tex">c</annotation></semantics></math> with <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E</annotation></semantics></math>, as for t-score, but the denominator is the square root of the baseline count. Small <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E</annotation></semantics></math> can produce large values. The score is unavailable unless <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi><mo>&gt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">E&gt;0</annotation></semantics></math> and the result is finite. No smoothing is applied. It is not a calibrated normal-test result for overlapping corpus windows.</p>
             </details>
             <details class="association-definition" id="association-g2">
               <summary>G² (window table) — departure in either direction</summary>
               <p>The implementation constructs a table from the window events and corpus totals:</p>
               <div class="math-display">
-                \[
-                O=\begin{pmatrix}c&amp;W-c\\F-c&amp;N-W-F+c\end{pmatrix}
-                \]
+                <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>O</mi><mo>=</mo><mrow><mo fence="true">(</mo><mtable rowspacing="0.16em" columnalign="center center" columnspacing="1em"><mtr><mtd><mstyle scriptlevel="0" displaystyle="false"><mi>c</mi></mstyle></mtd><mtd><mstyle scriptlevel="0" displaystyle="false"><mrow><mi>a</mi><mi>m</mi><mi>p</mi><mo separator="true">;</mo><mi>W</mi><mo>−</mo><mi>c</mi></mrow></mstyle></mtd></mtr><mtr><mtd><mstyle scriptlevel="0" displaystyle="false"><mrow><mi>F</mi><mo>−</mo><mi>c</mi></mrow></mstyle></mtd><mtd><mstyle scriptlevel="0" displaystyle="false"><mrow><mi>a</mi><mi>m</mi><mi>p</mi><mo separator="true">;</mo><mi>N</mi><mo>−</mo><mi>W</mi><mo>−</mo><mi>F</mi><mo>+</mo><mi>c</mi></mrow></mstyle></mtd></mtr></mtable><mo fence="true">)</mo></mrow></mrow><annotation encoding="application/x-tex">O=\begin{pmatrix}c&amp;amp;W-c\\F-c&amp;amp;N-W-F+c\end{pmatrix}</annotation></semantics></math>
               </div>
-              <p>Its row totals are \(R=(W,N-W)\) and column totals \(C=(F,N-F)\). With \(E_{ij}=R_iC_j/N\), it reports:</p>
-              <div class="math-display">\[G^2=2\sum_{i,j}O_{ij}\ln(O_{ij}/E_{ij})\]</div>
-              <p>The logarithm is natural. A zero observed cell contributes zero, including when its expected value is zero. A negative observed cell or marginal, a positive observed cell with a non-positive expectation, or a non-finite result makes the score unavailable; \(N\) must be positive. There is no smoothing or attraction/repulsion sign. Larger departures can describe either excess or deficit; inspect \(c\) and \(E\). Round-off is not clamped. The constructed table does not justify a likelihood-ratio test when its cells do not represent a disjoint token partition.</p>
+              <p>Its row totals are <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>R</mi><mo>=</mo><mo stretchy="false">(</mo><mi>W</mi><mo separator="true">,</mo><mi>N</mi><mo>−</mo><mi>W</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">R=(W,N-W)</annotation></semantics></math> and column totals <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>C</mi><mo>=</mo><mo stretchy="false">(</mo><mi>F</mi><mo separator="true">,</mo><mi>N</mi><mo>−</mo><mi>F</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">C=(F,N-F)</annotation></semantics></math>. With <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>E</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo>=</mo><msub><mi>R</mi><mi>i</mi></msub><msub><mi>C</mi><mi>j</mi></msub><mi mathvariant="normal">/</mi><mi>N</mi></mrow><annotation encoding="application/x-tex">E_{ij}=R_iC_j/N</annotation></semantics></math>, it reports:</p>
+              <div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><msup><mi>G</mi><mn>2</mn></msup><mo>=</mo><mn>2</mn><munder><mo>∑</mo><mrow><mi>i</mi><mo separator="true">,</mo><mi>j</mi></mrow></munder><msub><mi>O</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mi>ln</mi><mo>⁡</mo><mo stretchy="false">(</mo><msub><mi>O</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mi mathvariant="normal">/</mi><msub><mi>E</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">G^2=2\sum_{i,j}O_{ij}\ln(O_{ij}/E_{ij})</annotation></semantics></math></div>
+              <p>The logarithm is natural. A zero observed cell contributes zero, including when its expected value is zero. A negative observed cell or marginal, a positive observed cell with a non-positive expectation, or a non-finite result makes the score unavailable; <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math> must be positive. There is no smoothing or attraction/repulsion sign. Larger departures can describe either excess or deficit; inspect <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi></mrow><annotation encoding="application/x-tex">c</annotation></semantics></math> and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E</annotation></semantics></math>. Round-off is not clamped. The constructed table does not justify a likelihood-ratio test when its cells do not represent a disjoint token partition.</p>
             </details>
             <details class="association-definition" id="association-log-ratio">
               <summary>log ratio (window) — a ratio using the algebraic complement</summary>
-              <div class="math-display">\[\mathrm{LR}=\log_2\!\left(\frac{c/W}{(F-c)/(N-W)}\right)\]</div>
-              <p>Zero means the two ratios are equal; positive values mean the window ratio is larger, and each additional point doubles their ratio. This follows the base-2 relative-frequency-ratio form (<a href="#ref-hardie-log-ratio">Hardie, 2014</a>). The complement \(F-c\) is an actual outside-window count only when events partition token occurrences without repetition. CorpusWright does not deduplicate overlapping windows for this calculation. The result is unavailable unless \(W>0\), \(N-W>0\), \(F-c>0\) and the ratio is positive and finite. Zero cells are not smoothed.</p>
+              <div class="math-display"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mrow><mi mathvariant="normal">L</mi><mi mathvariant="normal">R</mi></mrow><mo>=</mo><msub><mrow><mi>log</mi><mo>⁡</mo></mrow><mn>2</mn></msub><mtext> ⁣</mtext><mrow><mo fence="true">(</mo><mfrac><mrow><mi>c</mi><mi mathvariant="normal">/</mi><mi>W</mi></mrow><mrow><mo stretchy="false">(</mo><mi>F</mi><mo>−</mo><mi>c</mi><mo stretchy="false">)</mo><mi mathvariant="normal">/</mi><mo stretchy="false">(</mo><mi>N</mi><mo>−</mo><mi>W</mi><mo stretchy="false">)</mo></mrow></mfrac><mo fence="true">)</mo></mrow></mrow><annotation encoding="application/x-tex">\mathrm{LR}=\log_2\!\left(\frac{c/W}{(F-c)/(N-W)}\right)</annotation></semantics></math></div>
+              <p>Zero means the two ratios are equal; positive values mean the window ratio is larger, and each additional point doubles their ratio. This follows the base-2 relative-frequency-ratio form (<a href="#ref-hardie-log-ratio">Hardie, 2014</a>). The complement <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>F</mi><mo>−</mo><mi>c</mi></mrow><annotation encoding="application/x-tex">F-c</annotation></semantics></math> is an actual outside-window count only when events partition token occurrences without repetition. CorpusWright does not deduplicate overlapping windows for this calculation. The result is unavailable unless <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>W</mi><mo>&gt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">W&gt;0</annotation></semantics></math>, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi><mo>−</mo><mi>W</mi><mo>&gt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">N-W&gt;0</annotation></semantics></math>, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>F</mi><mo>−</mo><mi>c</mi><mo>&gt;</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">F-c&gt;0</annotation></semantics></math> and the ratio is positive and finite. Zero cells are not smoothed.</p>
             </details>
 
             <figure class="worked-example" id="example-collocation">
@@ -348,15 +322,15 @@ flowchart TD
               <p class="calculation">Documents: <code>red alpha blue target green alpha blue</code> and <code>yellow target blue green</code>. Query: <code>target</code>; span 2, both directions, case-insensitive, stopwords shown, both minimum counts 1. The two windows supply four and three positions. The form <em>blue</em> occupies two of them and occurs three times in eleven corpus tokens: E = 7 × 3 ÷ 11; MI = log₂(2 ÷ E) = 0.06711.</p>
               <figcaption>Worked example: window counts and the default MI score, checked by the core's numerical association tests. This example uses lower minimum counts than the interface defaults.</figcaption>
             </figure>
-            <p>The minimum co-occurrence and minimum corpus-frequency controls default to five each. They filter candidate rows; they do not remove tokens from \(W\), \(F\) or \(N\). <em>Hide stopwords</em> filters rows after counting. Span, direction, boundaries, processing, case policy and corpus composition change the profile. Retain those settings with a reported result, and examine document distribution and concordance contexts before interpreting an association.</p>
+            <p>The minimum co-occurrence and minimum corpus-frequency controls default to five each. They filter candidate rows; they do not remove tokens from <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>W</mi></mrow><annotation encoding="application/x-tex">W</annotation></semantics></math>, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>F</mi></mrow><annotation encoding="application/x-tex">F</annotation></semantics></math> or <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math>. <em>Hide stopwords</em> filters rows after counting. Span, direction, boundaries, processing, case policy and corpus composition change the profile. Retain those settings with a reported result, and examine document distribution and concordance contexts before interpreting an association.</p>
             <details class="implementation-details">
               <summary>Implementation details</summary>
-              <p>Left, right and both use the same formulas; direction selects the events and positions included in \(c\) and \(W\), while \(F\) and \(N\) retain their selected-corpus scope. The bundled English, French and Portuguese stopword lists follow the language setting; missing or other language tags use English. Rows with no events are excluded even if a requested minimum is zero.</p>
+              <p>Left, right and both use the same formulas; direction selects the events and positions included in <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>c</mi></mrow><annotation encoding="application/x-tex">c</annotation></semantics></math> and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>W</mi></mrow><annotation encoding="application/x-tex">W</annotation></semantics></math>, while <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>F</mi></mrow><annotation encoding="application/x-tex">F</annotation></semantics></math> and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math> retain their selected-corpus scope. The bundled English, French and Portuguese stopword lists follow the language setting; missing or other language tags use English. Rows with no events are excluded even if a requested minimum is zero.</p>
               <p>Association sorting defaults to descending MI. Alternative primary sorts use near-query event count or corpus frequency. Ties use descending selected association score, event count, corpus frequency, then ascending form. Unavailable scores follow available ones in either score-sort direction. The backend retains up to 100 rows by default (maximum 500); the interface requests up to 500 and initially displays ten. A collocate evidence filter restricts concordance lines rather than redefining the base node profile.</p>
-              <p><strong>Inactive compatibility calculation.</strong> The former <em>logDice (slots)</em> choice is no longer selectable. Its retained wire field <code>logDice</code> computes \(14+\log_2(2c/(W+F))\), with a positive finite ratio required. It substitutes window positions for the node-frequency marginal in the standard logDice formula (<a href="#ref-rychly">Rychlý, 2008</a>, section 4). Historical tests establish this behaviour, but do not establish a methodological rationale for a distinct measure. The algorithm remains unchanged for compatibility; it is not offered as standard logDice. A defensible event model and intended logDice definition require separate methodological work.</p>
+              <p><strong>Inactive compatibility calculation.</strong> The former <em>logDice (slots)</em> choice is no longer selectable. Its retained wire field <code>logDice</code> computes <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>14</mn><mo>+</mo><msub><mrow><mi>log</mi><mo>⁡</mo></mrow><mn>2</mn></msub><mo stretchy="false">(</mo><mn>2</mn><mi>c</mi><mi mathvariant="normal">/</mi><mo stretchy="false">(</mo><mi>W</mi><mo>+</mo><mi>F</mi><mo stretchy="false">)</mo><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">14+\log_2(2c/(W+F))</annotation></semantics></math>, with a positive finite ratio required. It substitutes window positions for the node-frequency marginal in the standard logDice formula (<a href="#ref-rychly">Rychlý, 2008</a>, section 4). Historical tests establish this behaviour, but do not establish a methodological rationale for a distinct measure. The algorithm remains unchanged for compatibility; it is not offered as standard logDice. A defensible event model and intended logDice definition require separate methodological work.</p>
             </details>
             <h3 id="concordance-distribution">Concordance Distribution</h3>
-            <p>Distribution counts matching query occurrences by document. A phrase match counts once at its starting position; overlapping matches count separately. For document \(i\), it shows hits \(h_i\), counted word-and-number tokens \(N_i\), hits per 10,000 document tokens \(10{,}000h_i/N_i\), and the document's percentage of all hits \(100h_i/H\), where \(H=\sum_i h_i\). A phrase hit is not multiplied by the number of words in the phrase.</p>
+            <p>Distribution counts matching query occurrences by document. A phrase match counts once at its starting position; overlapping matches count separately. For document <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math>, it shows hits <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>h</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">h_i</annotation></semantics></math>, counted word-and-number tokens <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>N</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">N_i</annotation></semantics></math>, hits per 10,000 document tokens <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>10,000</mn><msub><mi>h</mi><mi>i</mi></msub><mi mathvariant="normal">/</mi><msub><mi>N</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">10{,}000h_i/N_i</annotation></semantics></math>, and the document's percentage of all hits <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>100</mn><msub><mi>h</mi><mi>i</mi></msub><mi mathvariant="normal">/</mi><mi>H</mi></mrow><annotation encoding="application/x-tex">100h_i/H</annotation></semantics></math>, where <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>H</mi><mo>=</mo><msub><mo>∑</mo><mi>i</mi></msub><msub><mi>h</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">H=\sum_i h_i</annotation></semantics></math>. A phrase hit is not multiplied by the number of words in the phrase.</p>
             <p>The table lists hit-bearing documents. Its rate bars divide each document rate by the highest rate across all hit-bearing documents, including other pages of results; they do not show shares of all hits. The summary reports document range, the largest document's hit share and <a href="#dispersion-how-evenly-a-word-is-spread">the same DP calculation</a>, applied to query-hit shares against token shares across all selected documents. Zero-hit documents are omitted from the table but remain in the range denominator and DP partition.</p>
             <p>Read the counts, rates and document metadata together. A high rate in a short document and many hits in a long document are different observations. Distribution describes this query under the selected case policy and document scope; it does not measure corpus representativeness. The Collocates span and score do not redefine its query hits.</p>
             <details class="implementation-details">
@@ -370,15 +344,13 @@ flowchart TD
 
             <h2 id="lexical-diversity-past-the-type-token-ratio">Lexical diversity: TTR, MATTR, MTLD</h2>
 
-<p>The type-token ratio is \(TTR=V/N\), with \(V\) distinct types and \(N\) tokens. It is sensitive to text length: repeated forms add tokens without adding types. TTR commonly falls over longer samples, but it need not decline at every checkpoint; a run of new types can raise it. Unequal lengths confound a comparison of raw TTR (<a href="#ref-mattr">Covington &amp; McFall, 2010</a>).</p>
+<p>The type-token ratio is <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi><mi>T</mi><mi>R</mi><mo>=</mo><mi>V</mi><mi mathvariant="normal">/</mi><mi>N</mi></mrow><annotation encoding="application/x-tex">TTR=V/N</annotation></semantics></math>, with <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>V</mi></mrow><annotation encoding="application/x-tex">V</annotation></semantics></math> distinct types and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math> tokens. It is sensitive to text length: repeated forms add tokens without adding types. TTR commonly falls over longer samples, but it need not decline at every checkpoint; a run of new types can raise it. Unequal lengths confound a comparison of raw TTR (<a href="#ref-mattr">Covington &amp; McFall, 2010</a>).</p>
 
             <p>CorpusWright reports MATTR and MTLD per document. They reduce particular forms of length sensitivity; their settings, text order and vocabulary distribution still matter.</p>
 
-            <p><strong>MATTR</strong> averages TTR over every contiguous window of \(w\) tokens, moving one token at a time. CorpusWright fixes \(w=100\). If \(V_k\) is the distinct-type count in window \(k\):</p>
+            <p><strong>MATTR</strong> averages TTR over every contiguous window of <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>w</mi></mrow><annotation encoding="application/x-tex">w</annotation></semantics></math> tokens, moving one token at a time. CorpusWright fixes <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>w</mi><mo>=</mo><mn>100</mn></mrow><annotation encoding="application/x-tex">w=100</annotation></semantics></math>. If <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>V</mi><mi>k</mi></msub></mrow><annotation encoding="application/x-tex">V_k</annotation></semantics></math> is the distinct-type count in window <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math>:</p>
             <div class="math-display">
-              \[
-              \mathrm{MATTR}=\frac{1}{N-w+1}\sum_{k=1}^{N-w+1}\frac{V_k}{w},\qquad N\geq w
-              \]
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mrow><mi mathvariant="normal">M</mi><mi mathvariant="normal">A</mi><mi mathvariant="normal">T</mi><mi mathvariant="normal">T</mi><mi mathvariant="normal">R</mi></mrow><mo>=</mo><mfrac><mn>1</mn><mrow><mi>N</mi><mo>−</mo><mi>w</mi><mo>+</mo><mn>1</mn></mrow></mfrac><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mrow><mi>N</mi><mo>−</mo><mi>w</mi><mo>+</mo><mn>1</mn></mrow></munderover><mfrac><msub><mi>V</mi><mi>k</mi></msub><mi>w</mi></mfrac><mo separator="true">,</mo><mspace width="2em"/><mi>N</mi><mo>≥</mo><mi>w</mi></mrow><annotation encoding="application/x-tex">\mathrm{MATTR}=\frac{1}{N-w+1}\sum_{k=1}^{N-w+1}\frac{V_k}{w},\qquad N\geq w</annotation></semantics></math>
             </div>
 
 <figure class="concept-figure" tabindex="0">
@@ -487,7 +459,7 @@ flowchart TD
               <figcaption>Lexical spectrum from CorpusWright: 1,200 hapaxes and 360 dislegomena in the synthetic corpus. Each point is an exact frequency class; the axes are logarithmic. Exported by the application renderer from twelve synthetic documents (49,152 tokens, 1,662 types). Select the image to view the figure at full size.</figcaption>
             </figure>
 
-            <p>A hapax legomenon is a type occurring once; a dislegomenon occurs twice. CorpusWright's hapax share is \(V_1/V\), where \(V_1\) is the number of types occurring once and \(V\) the observed vocabulary size. It describes the low-frequency part of the observed frequency spectrum.</p>
+            <p>A hapax legomenon is a type occurring once; a dislegomenon occurs twice. CorpusWright's hapax share is <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>V</mi><mn>1</mn></msub><mi mathvariant="normal">/</mi><mi>V</mi></mrow><annotation encoding="application/x-tex">V_1/V</annotation></semantics></math>, where <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>V</mi><mn>1</mn></msub></mrow><annotation encoding="application/x-tex">V_1</annotation></semantics></math> is the number of types occurring once and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>V</mi></mrow><annotation encoding="application/x-tex">V</annotation></semantics></math> the observed vocabulary size. It describes the low-frequency part of the observed frequency spectrum.</p>
 
             <p>The share depends on corpus size, sampling, morphology, genre mixture, names, terminology and preprocessing. Language has a long low-frequency tail: a high share is not a measure of corpus inadequacy, a saturation threshold or proof that more data are required for a particular question. Interpret it with the frequency spectrum, vocabulary growth and the sampling design (<a href="#ref-baayen">Baayen, 2001</a>; <a href="#ref-baayen-process">Baayen, 1991</a>).</p>
 
@@ -505,25 +477,21 @@ flowchart TD
             <p>A rank-frequency plot orders types from most to least frequent. Language samples often have a long low-frequency tail and approximately Zipf-like behaviour over part of the range. A familiar shape does not validate tokenisation; an unfamiliar shape does not identify an extraction fault. Inspect unexpected forms and contexts directly.</p>
             <p>The optional <em>Curve with trend</em> view adds an unweighted ordinary least-squares line:</p>
             <div class="math-display">
-              \[
-              \ln f(r)=b+m\ln r
-              \]
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>ln</mi><mo>⁡</mo><mi>f</mi><mo stretchy="false">(</mo><mi>r</mi><mo stretchy="false">)</mo><mo>=</mo><mi>b</mi><mo>+</mo><mi>m</mi><mi>ln</mi><mo>⁡</mo><mi>r</mi></mrow><annotation encoding="application/x-tex">\ln f(r)=b+m\ln r</annotation></semantics></math>
             </div>
-            <p>Here \(r\) is frequency rank, \(f(r)\) the raw frequency, \(m\) the log–log slope and \(b\) the intercept. The regression excludes ranks 1–3 and all frequency-one types, and needs at least two eligible points. The reported interval states the included ranks. The fixed exclusions have no documented statistical justification; they are an implementation convention, not a method for selecting a power-law range.</p>
-            <p>Displaying frequencies per million changes the intercept, while slope and \(R^2\) remain unchanged.</p>
+            <p>Here <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>r</mi></mrow><annotation encoding="application/x-tex">r</annotation></semantics></math> is frequency rank, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>f</mi><mo stretchy="false">(</mo><mi>r</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">f(r)</annotation></semantics></math> the raw frequency, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>m</mi></mrow><annotation encoding="application/x-tex">m</annotation></semantics></math> the log–log slope and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>b</mi></mrow><annotation encoding="application/x-tex">b</annotation></semantics></math> the intercept. The regression excludes ranks 1–3 and all frequency-one types, and needs at least two eligible points. The reported interval states the included ranks. The fixed exclusions have no documented statistical justification; they are an implementation convention, not a method for selecting a power-law range.</p>
+            <p>Displaying frequencies per million changes the intercept, while slope and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>R</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">R^2</annotation></semantics></math> remain unchanged.</p>
             <div class="math-display">
-              \[
-              \begin{gathered}
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mtable rowspacing="0.25em" columnalign="center" columnspacing="0em"><mtr><mtd><mstyle scriptlevel="0" displaystyle="true"><mrow><msup><mi>R</mi><mn>2</mn></msup><mo>=</mo><mn>1</mn><mo>−</mo><mfrac><mrow><munder><mo>∑</mo><mi>j</mi></munder><mo stretchy="false">(</mo><msub><mi>y</mi><mi>j</mi></msub><mo>−</mo><msub><mover accent="true"><mi>y</mi><mo stretchy="true">^</mo></mover><mi>j</mi></msub><msup><mo stretchy="false">)</mo><mn>2</mn></msup></mrow><mrow><munder><mo>∑</mo><mi>j</mi></munder><mo stretchy="false">(</mo><msub><mi>y</mi><mi>j</mi></msub><mo>−</mo><mover accent="true"><mi>y</mi><mo>ˉ</mo></mover><msup><mo stretchy="false">)</mo><mn>2</mn></msup></mrow></mfrac></mrow></mstyle></mtd></mtr><mtr><mtd><mstyle scriptlevel="0" displaystyle="true"><mrow><msub><mi>y</mi><mi>j</mi></msub><mo>=</mo><mi>ln</mi><mo>⁡</mo><mi>f</mi><mo stretchy="false">(</mo><msub><mi>r</mi><mi>j</mi></msub><mo stretchy="false">)</mo></mrow></mstyle></mtd></mtr></mtable><annotation encoding="application/x-tex">\begin{gathered}
               R^2=1-\frac{\sum_j(y_j-\widehat y_j)^2}{\sum_j(y_j-\bar y)^2}\\[1em]
               y_j=\ln f(r_j)
-              \end{gathered}
-              \]
+              \end{gathered}</annotation></semantics></math>
             </div>
             <p>This describes log-frequency residuals only within the eligible interval. A constant response is not reported as a perfect explanatory fit.</p>
-            <p>The optional line and \(R^2\) are descriptive. Log–log least squares does not provide a formal power-law estimate or goodness-of-fit test (<a href="#ref-clauset">Clauset, Shalizi &amp; Newman, 2009</a>). CorpusWright supplies neither uncertainty intervals nor extrapolated predictions here.</p>
+            <p>The optional line and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>R</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">R^2</annotation></semantics></math> are descriptive. Log–log least squares does not provide a formal power-law estimate or goodness-of-fit test (<a href="#ref-clauset">Clauset, Shalizi &amp; Newman, 2009</a>). CorpusWright supplies neither uncertainty intervals nor extrapolated predictions here.</p>
             <details class="implementation-details">
               <summary>Implementation details</summary>
-              <p>Frequency ties have separate ranks in deterministic lexical-key order. The legacy <code>zipfExponent</code> compatibility field stores \(-m\); the interface reports the slope. Finite \(R^2\) values are bounded to [0, 1]. \(R^2\) is unavailable when the response sum of squared deviations is at most machine epsilon; the same numerical convention applies to vocabulary growth.</p>
+              <p>Frequency ties have separate ranks in deterministic lexical-key order. The legacy <code>zipfExponent</code> compatibility field stores <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo>−</mo><mi>m</mi></mrow><annotation encoding="application/x-tex">-m</annotation></semantics></math>; the interface reports the slope. Finite <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>R</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">R^2</annotation></semantics></math> values are bounded to [0, 1]. <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>R</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">R^2</annotation></semantics></math> is unavailable when the response sum of squared deviations is at most machine epsilon; the same numerical convention applies to vocabulary growth.</p>
             </details>
 
           </section>
@@ -540,13 +508,11 @@ flowchart TD
 
             <p>Vocabulary growth records how many distinct types have been encountered after successive token counts. A Heaps curve summarises the observed relationship:</p>
             <div class="math-display">
-              \[
-              V(N)\approx K N^\beta
-              \]
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>V</mi><mo stretchy="false">(</mo><mi>N</mi><mo stretchy="false">)</mo><mo>≈</mo><mi>K</mi><msup><mi>N</mi><mi>β</mi></msup></mrow><annotation encoding="application/x-tex">V(N)\approx K N^\beta</annotation></semantics></math>
             </div>
-            <p>Here \(N\) is tokens read, \(V(N)\) the distinct types seen by that point, \(K\) the fitted coefficient and \(\beta\) the growth exponent. CorpusWright fits an unweighted least-squares line to natural-log type count against natural-log token count at power-of-two checkpoints and the final corpus point. Checkpoints with either count at most one are omitted. The software does not constrain \(\beta\) to [0, 1].</p>
+            <p>Here <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math> is tokens read, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>V</mi><mo stretchy="false">(</mo><mi>N</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">V(N)</annotation></semantics></math> the distinct types seen by that point, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>K</mi></mrow><annotation encoding="application/x-tex">K</annotation></semantics></math> the fitted coefficient and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi></mrow><annotation encoding="application/x-tex">\beta</annotation></semantics></math> the growth exponent. CorpusWright fits an unweighted least-squares line to natural-log type count against natural-log token count at power-of-two checkpoints and the final corpus point. Checkpoints with either count at most one are omitted. The software does not constrain <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi></mrow><annotation encoding="application/x-tex">\beta</annotation></semantics></math> to [0, 1].</p>
 
-            <p>The product labels this output <em>Observed-order vocabulary growth</em>. A smaller fitted exponent describes slower growth over the observed range in this order. Neither the exponent nor \(R^2\) is an order-invariant corpus property; neither establishes saturation, representativeness or a vocabulary ceiling. Different document orders may yield different trajectories, especially in a heterogeneous sample. Growth depends on text order, token definition and composition (<a href="#ref-baayen">Baayen, 2001</a>). CorpusWright reads documents in stable source-path order, without averaging over permutations. Checkpoints are nested observations, not independent samples; the fitted line and \(R^2\) are descriptive, with no uncertainty estimate or predictive guarantee.</p>
+            <p>The product labels this output <em>Observed-order vocabulary growth</em>. A smaller fitted exponent describes slower growth over the observed range in this order. Neither the exponent nor <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>R</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">R^2</annotation></semantics></math> is an order-invariant corpus property; neither establishes saturation, representativeness or a vocabulary ceiling. Different document orders may yield different trajectories, especially in a heterogeneous sample. Growth depends on text order, token definition and composition (<a href="#ref-baayen">Baayen, 2001</a>). CorpusWright reads documents in stable source-path order, without averaging over permutations. Checkpoints are nested observations, not independent samples; the fitted line and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>R</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">R^2</annotation></semantics></math> are descriptive, with no uncertainty estimate or predictive guarantee.</p>
 
           </section>
 
@@ -556,11 +522,9 @@ flowchart TD
 
 <p>Shannon entropy summarises uncertainty in the observed type-frequency distribution (<a href="#ref-shannon">Shannon, 1948</a>). CorpusWright calculates the empirical value in bits:</p>
             <div class="math-display">
-              \[
-              H=-\sum_{i=1}^{V}p_i\log_2p_i,\qquad p_i=f_i/N
-              \]
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>H</mi><mo>=</mo><mo>−</mo><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>V</mi></munderover><msub><mi>p</mi><mi>i</mi></msub><msub><mrow><mi>log</mi><mo>⁡</mo></mrow><mn>2</mn></msub><msub><mi>p</mi><mi>i</mi></msub><mo separator="true">,</mo><mspace width="2em"/><msub><mi>p</mi><mi>i</mi></msub><mo>=</mo><msub><mi>f</mi><mi>i</mi></msub><mi mathvariant="normal">/</mi><mi>N</mi></mrow><annotation encoding="application/x-tex">H=-\sum_{i=1}^{V}p_i\log_2p_i,\qquad p_i=f_i/N</annotation></semantics></math>
             </div>
-            <p>Here \(f_i\) is type \(i\)'s count, \(N\) the total tokens and \(V\) the observed types. With a fixed vocabulary, the maximum \(\log_2 V\) occurs at equal probabilities. Observed entropy depends on the entire distribution; it does not necessarily rise when observed vocabulary size rises. This unigram summary ignores word order and is not an estimate of uncertainty conditional on linguistic context.</p>
+            <p>Here <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>f</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">f_i</annotation></semantics></math> is type <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math>'s count, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math> the total tokens and <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>V</mi></mrow><annotation encoding="application/x-tex">V</annotation></semantics></math> the observed types. With a fixed vocabulary, the maximum <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mrow><mi>log</mi><mo>⁡</mo></mrow><mn>2</mn></msub><mi>V</mi></mrow><annotation encoding="application/x-tex">\log_2 V</annotation></semantics></math> occurs at equal probabilities. Observed entropy depends on the entire distribution; it does not necessarily rise when observed vocabulary size rises. This unigram summary ignores word order and is not an estimate of uncertainty conditional on linguistic context.</p>
 
             <figure class="worked-example" id="example-entropy">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Entropy worked example">
@@ -577,13 +541,11 @@ flowchart TD
 
             <p>The application labels this ratio <em>Normalised entropy</em>:</p>
             <div class="math-display">
-              \[
-              H_{\mathrm{norm}}=\frac{H}{\log_2 V},\qquad V>1
-              \]
+              <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><msub><mi>H</mi><mrow><mi mathvariant="normal">n</mi><mi mathvariant="normal">o</mi><mi mathvariant="normal">r</mi><mi mathvariant="normal">m</mi></mrow></msub><mo>=</mo><mfrac><mi>H</mi><mrow><msub><mrow><mi>log</mi><mo>⁡</mo></mrow><mn>2</mn></msub><mi>V</mi></mrow></mfrac><mo separator="true">,</mo><mspace width="2em"/><mi>V</mi><mo>&gt;</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">H_{\mathrm{norm}}=\frac{H}{\log_2 V},\qquad V&gt;1</annotation></semantics></math>
             </div>
             <p>This bounds the result and adjusts for the vocabulary-size-dependent maximum. It does not remove differences in corpus size, sampling, composition, preprocessing, tokenisation or estimation. Comparisons are descriptive and conditional on comparable design and processing.</p>
 
-            <p>CorpusWright uses observed relative frequencies without a finite-sample bias correction or uncertainty interval. Those matter if empirical entropy is interpreted as an estimate of a population quantity (<a href="#ref-paninski">Paninski, 2003</a>). It also reports <em>Entropy-equivalent vocabulary size</em>, \(2^H\): the number of equally likely types with the same empirical entropy. This is the effective-number transformation of Shannon entropy (<a href="#ref-hill">Hill, 1973</a>, p. 428), expressed for base-2 logarithms. The application leaves these metrics unavailable for an empty or single-type corpus, rather than displaying a normalised value with an undefined denominator.</p>
+            <p>CorpusWright uses observed relative frequencies without a finite-sample bias correction or uncertainty interval. Those matter if empirical entropy is interpreted as an estimate of a population quantity (<a href="#ref-paninski">Paninski, 2003</a>). It also reports <em>Entropy-equivalent vocabulary size</em>, <math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mn>2</mn><mi>H</mi></msup></mrow><annotation encoding="application/x-tex">2^H</annotation></semantics></math>: the number of equally likely types with the same empirical entropy. This is the effective-number transformation of Shannon entropy (<a href="#ref-hill">Hill, 1973</a>, p. 428), expressed for base-2 logarithms. The application leaves these metrics unavailable for an empty or single-type corpus, rather than displaying a normalised value with an undefined denominator.</p>
 
           </section>
 
@@ -618,14 +580,14 @@ flowchart TD
             <details class="method-illustration">
               <summary>Reading sequence</summary>
               <figure>
-                <pre class="mermaid">
-flowchart TD
-    P["Input and<br>sample design"] --> C["Counts and<br>document sizes"]
-    C --> D["Frequency and<br>dispersion"]
-    D --> V["Vocabulary,<br>growth and diversity"]
-    V --> I["Contexts and<br>interpretive limits"]
-    I --> Q["What question does<br>the design support?"]
-                </pre>
+                <ol class="method-flow">
+                <li>Input and sample design</li>
+                <li>Counts and document sizes</li>
+                <li>Frequency and dispersion</li>
+                <li>Vocabulary, growth and diversity</li>
+                <li>Contexts and interpretive limits</li>
+                <li>What question does the design support?</li>
+              </ol>
                 <figcaption>Concept schematic: a reading sequence for descriptive evidence. An unexpected value calls for inspection; it does not identify a cleaning fault.</figcaption>
               </figure>
             </details>
@@ -721,13 +683,38 @@ flowchart TD
 
   <footer class="site-footer">
     <div class="shell foot">
-      <span>CorpusWright · open-source desktop software · public alpha</span>
-      <div class="footer-links">
-        <a href="../about.html#citation">Citation</a>
-        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/LICENSE">Licence</a>
-        <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a>
+      <div class="foot-brand">
+        <a class="brand" href="../index.html"><img class="mark" src="../assets/icon-32.png" alt="" width="28" height="28">CorpusWright</a>
+        <p>Open-source desktop software for corpus preparation and descriptive corpus analysis.</p>
+        <a class="btn primary" href="https://github.com/jhlopesalves/CorpusWright/releases">Download</a>
+      </div>
+      <div class="foot-columns">
+        <nav aria-label="Software">
+          <h2>Software</h2>
+          <a href="../index.html#download">Download</a>
+          <a href="https://github.com/jhlopesalves/CorpusWright/releases">Release notes</a>
+          <a href="https://github.com/jhlopesalves/CorpusWright/releases">Earlier releases</a>
+          <a href="../quick-start.html#build-from-source">Build from source</a>
+        </nav>
+        <nav aria-label="Documentation">
+          <h2>Documentation</h2>
+          <a href="../quick-start.html">Guide</a>
+          <a href="../concepts/overview.html">Methods</a>
+          <a href="../about.html#citation">Citation</a>
+        </nav>
+        <nav aria-label="Project">
+          <h2>Project</h2>
+          <a href="https://github.com/jhlopesalves/CorpusWright">GitHub</a>
+          <a href="../about.html">About</a>
+          <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/LICENSE">Licence</a>
+          <a href="https://github.com/jhlopesalves/CorpusWright/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a>
+        </nav>
       </div>
     </div>
+    <div class="shell"><div class="foot-meta">
+      <span>MIT licence</span>
+      <span>Created and maintained by Jhonatan H. Lopes</span>
+    </div></div>
   </footer>
 
   <script>
@@ -808,34 +795,6 @@ flowchart TD
   </script>
 
 
-<style>
-  pre.mermaid,
-  pre.mermaid svg,
-  pre.mermaid svg text {
-    font-family: "IBM Plex Sans", sans-serif !important;
-  }
-</style>
-<script type="module">
-  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
-  mermaid.initialize({
-    startOnLoad: true,
-    theme: "base",
-    themeVariables: {
-      primaryColor: "#f6f6f6",
-      primaryTextColor: "#333333",
-      primaryBorderColor: "#4d4d4d",
-      secondaryColor: "#f6f6f6",
-      secondaryTextColor: "#333333",
-      secondaryBorderColor: "#4d4d4d",
-      tertiaryColor: "#ffffff",
-      tertiaryTextColor: "#333333",
-      tertiaryBorderColor: "#4d4d4d",
-      lineColor: "#4d4d4d",
-      edgeLabelBackground: "#ffffff",
-      fontFamily: "IBM Plex Sans, sans-serif"
-    }
-  });
-</script>
 </body>
 
 </html>
