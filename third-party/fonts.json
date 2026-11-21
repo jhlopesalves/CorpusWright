@@ -41,6 +41,17 @@
       "releaseArchive": "Gentium-7.000.tar.xz",
       "releaseArchiveSha256": "85f3f40bce2d4e1ba7f8656e13bc82a40624946f6177f6a65ef7425a0a7231cd",
       "licenseFile": "third-party/fonts/licenses/gentium-OFL.txt"
+    },
+    "wrightGoogleFonts": {
+      "repository": "https://github.com/google/fonts",
+      "commit": "86aced91de05cd4f96a06838124cca45be337b2b",
+      "licenseDirectory": "docs/assets/fonts/wright"
+    },
+    "sourceCodePro": {
+      "repository": "https://github.com/adobe-fonts/source-code-pro",
+      "tag": "2.042R-u/1.062R-i/1.026R-vf",
+      "commit": "d3f1a5962cde503f9409c21e58527611d4a19ef1",
+      "licenseFile": "docs/assets/fonts/wright/source-code-pro-OFL.txt"
     }
   },
   "files": [
@@ -267,6 +278,58 @@
       "source": "ibmPlex",
       "upstreamPath": "packages/plex-sans/fonts/complete/woff2/IBMPlexSans-SemiBold.woff2",
       "licenseFile": "third-party/fonts/licenses/ibm-plex-OFL.txt"
+    },
+    {
+      "path": "docs/assets/fonts/wright/Manrope.woff2",
+      "sha256": "e474cf064dd6983c2795064d323d6abd0d2cd7c28e99a662d579973251b39320",
+      "source": "wrightGoogleFonts",
+      "upstreamPath": "ofl/manrope/Manrope[wght].ttf",
+      "upstreamSha256": "3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6ae6",
+      "licenseFile": "docs/assets/fonts/wright/manrope-OFL.txt",
+      "siteSubset": {
+        "cssFamily": "Manrope",
+        "fontToolsVersion": "4.68.0",
+        "unicodes": "U+0020-007E,U+00A0-00FF,U+02C9,U+03B2,U+2009,U+2010-2027,U+2080-2089,U+2153,U+2159,U+2192,U+2211-2212,U+2248,U+2265"
+      }
+    },
+    {
+      "path": "docs/assets/fonts/wright/WrightReading.woff2",
+      "sha256": "5b6b0ae77cde68f8d5e202b481cea47b0a99ffafa3ca37cd05c910699acb5048",
+      "source": "wrightGoogleFonts",
+      "upstreamPath": "ofl/sourcesans3/SourceSans3[wght].ttf",
+      "upstreamSha256": "042fe2cc0b933e328410d7acbd0aa6a1873dca5aef81875f4bc214b08825c7b9",
+      "licenseFile": "docs/assets/fonts/wright/source-sans-3-OFL.txt",
+      "siteSubset": {
+        "cssFamily": "Wright Reading",
+        "fontToolsVersion": "4.68.0",
+        "unicodes": "U+0020-007E,U+00A0-00FF,U+02C9,U+03B2,U+2009,U+2010-2027,U+2080-2089,U+2153,U+2159,U+2192,U+2211-2212,U+2248,U+2265"
+      }
+    },
+    {
+      "path": "docs/assets/fonts/wright/WrightReading-Italic.woff2",
+      "sha256": "022e829b41a72cd16ee244c4712aeb3bc1721c1df55c762bedf100e89f9ffec3",
+      "source": "wrightGoogleFonts",
+      "upstreamPath": "ofl/sourcesans3/SourceSans3-Italic[wght].ttf",
+      "upstreamSha256": "39e3ab05ccd7cb94907c31005bb5bec1d5432f0b096a2b782976e217a540eb6c",
+      "licenseFile": "docs/assets/fonts/wright/source-sans-3-OFL.txt",
+      "siteSubset": {
+        "cssFamily": "Wright Reading",
+        "fontToolsVersion": "4.68.0",
+        "unicodes": "U+0020-007E,U+00A0-00FF,U+02C9,U+03B2,U+2009,U+2010-2027,U+2080-2089,U+2153,U+2159,U+2192,U+2211-2212,U+2248,U+2265"
+      }
+    },
+    {
+      "path": "docs/assets/fonts/wright/WrightCode.woff2",
+      "sha256": "10533e11867ab491997e418279931bb3a430e5fdeb21806d338c2740406a558b",
+      "source": "sourceCodePro",
+      "upstreamPath": "VF/SourceCodeVF-Upright.ttf",
+      "upstreamSha256": "c4066e584e995ec317a072f1777742861d3ce0bf210096b84450a249d0210198",
+      "licenseFile": "docs/assets/fonts/wright/source-code-pro-OFL.txt",
+      "siteSubset": {
+        "cssFamily": "Wright Code",
+        "fontToolsVersion": "4.68.0",
+        "unicodes": "U+0020-007E,U+00A0-00FF,U+02C9,U+03B2,U+2009,U+2010-2027,U+2080-2089,U+2153,U+2159,U+2192,U+2211-2212,U+2248,U+2265"
+      }
     }
   ]
 }

@@ -82,13 +82,18 @@ licences.
 - **Components:** Application and website font files under
   `apps/desktop/src/assets/fonts/` and `docs/assets/fonts/`
 - **Sources:** Google Fonts, Inter, IBM Plex, JetBrains Mono, Adobe Source Sans,
-  Adobe Source Serif, and SIL Gentium
+  Adobe Source Serif, Adobe Source Code Pro, and SIL Gentium
 - **Licence:** SIL Open Font License 1.1
 - **Provenance manifest:** `third-party/fonts.json` records every bundled font's
   SHA-256, exact upstream path, source repository, and immutable commit or
   release
 - **Licence texts:** `third-party/fonts/licenses/` retains the applicable
   upstream copyright, Reserved Font Name, and OFL terms
+- **Wright public-site typefaces:** Manrope 4.505, Source Sans 3 3.052
+  (upright and italic) and Source Code Pro 1.026 Variable (upright) are served
+  as local WOFF2 subsets. The Adobe subsets are named Wright Reading and
+  Wright Code to respect the upstream Reserved Font Name. Their original
+  notices accompany the subsets in `docs/assets/fonts/wright/`.
 
 ## stopwords-iso
 
