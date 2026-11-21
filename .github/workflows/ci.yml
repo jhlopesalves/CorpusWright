@@ -21,6 +21,8 @@ jobs:
           node-version: 22
       - name: Activate pinned Rust toolchain
         run: rustc --version && cargo --version
+      - name: Verify Chrome for public-site acceptance
+        run: google-chrome --version
       - name: Run canonical repository and release preflight
         run: cargo xtask release-preflight
 

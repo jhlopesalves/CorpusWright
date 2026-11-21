@@ -46,6 +46,7 @@ fn dispatch(args: Vec<String>) -> Result<()> {
         "security" => security(),
         "browser-test" => run_named("frontend browser tests", npm(&["run", "test:browser"])),
         "package-linux" => package_linux(&args[1..]),
+        "public-site-check" => public_site_check(),
         "release-preflight" => release_preflight(),
         "help" | "--help" | "-h" => {
             print_help();
@@ -65,6 +66,7 @@ fn print_help() {
          cargo xtask security\n\
          cargo xtask browser-test\n\
          cargo xtask package-linux [--install-smoke]\n\
+         cargo xtask public-site-check\n\
          cargo xtask release-preflight"
     );
 }
@@ -550,6 +552,17 @@ fn find_deb_packages(directory: &Path) -> Result<Vec<PathBuf>> {
     Ok(packages)
 }
 
+fn public_site_check() -> Result<()> {
+    run_named(
+        "public site static contracts",
+        node(&["scripts/check-public-site.cjs"]),
+    )?;
+    run_named(
+        "public site browser contracts",
+        node(&["scripts/check-public-site-browser.mjs"]),
+    )
+}
+
 fn release_preflight() -> Result<()> {
     run_named(
         "release metadata consistency",
@@ -568,7 +581,8 @@ fn release_preflight() -> Result<()> {
         node(&["scripts/check-repository-references.cjs"]),
     )?;
     run_named("PDFium provenance", node(&["scripts/check-pdfium.cjs"]))?;
-    repository_policy()
+    repository_policy()?;
+    public_site_check()
 }
 
 fn required_path(args: &[String], flag: &str) -> Result<PathBuf> {
