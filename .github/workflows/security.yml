@@ -14,7 +14,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Activate pinned Rust toolchain
+        run: rustc --version && cargo --version
       - uses: taiki-e/install-action@cargo-deny
       - uses: actions/setup-node@v4
         with:
@@ -32,6 +33,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
       - uses: taiki-e/install-action@cargo-fuzz
       - name: Run bounded parser fuzz smoke
+        env:
+          RUSTUP_TOOLCHAIN: nightly
         run: |
           cargo fuzz run --codegen-units 16 source_parsers -- -max_total_time=45
           cargo fuzz run --codegen-units 16 persistent_state -- -max_total_time=45

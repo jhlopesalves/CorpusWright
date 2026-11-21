@@ -72,10 +72,12 @@ jobs:
           " "${APP_VERSION}" >> "${GITHUB_OUTPUT}"
           echo "Computed canonical release tag: v${APP_VERSION}"
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust-targets }}
+      - name: Activate pinned Rust toolchain
+        shell: bash
+        run: |
+          rustc --version
+          cargo --version
+          rustup target add "${{ matrix.rust-targets }}"
 
       - name: Install Linux build and smoke dependencies
         if: matrix.platform == 'ubuntu-22.04'
