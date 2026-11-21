@@ -245,41 +245,6 @@
       "licenseFile": "third-party/fonts/licenses/source-serif-OFL.txt"
     },
     {
-      "path": "docs/assets/fonts/IBMPlexMono-Regular.woff2",
-      "sha256": "ba204497f16b6d334cee9d1e963a831b73e3a56e1d6300a8489d18df7214b350",
-      "source": "ibmPlex",
-      "upstreamPath": "packages/plex-mono/fonts/complete/woff2/IBMPlexMono-Regular.woff2",
-      "licenseFile": "third-party/fonts/licenses/ibm-plex-OFL.txt"
-    },
-    {
-      "path": "docs/assets/fonts/IBMPlexSans-Italic.woff2",
-      "sha256": "13284fab1821ba6e3652c1580fcf2bbfd8c9309520c69b3d1224dab40b37c597",
-      "source": "ibmPlex",
-      "upstreamPath": "packages/plex-sans/fonts/complete/woff2/IBMPlexSans-Italic.woff2",
-      "licenseFile": "third-party/fonts/licenses/ibm-plex-OFL.txt"
-    },
-    {
-      "path": "docs/assets/fonts/IBMPlexSans-Medium.woff2",
-      "sha256": "5660f8a658f8bb50dbc005232f885eadffd2bc1c235c4f6fbb63469d1f9cde6d",
-      "source": "ibmPlex",
-      "upstreamPath": "packages/plex-sans/fonts/complete/woff2/IBMPlexSans-Medium.woff2",
-      "licenseFile": "third-party/fonts/licenses/ibm-plex-OFL.txt"
-    },
-    {
-      "path": "docs/assets/fonts/IBMPlexSans-Regular.woff2",
-      "sha256": "ba711a3085ff9f27440b6b9c4550cfc47c97bf36591d5da958b975bb3add8c1a",
-      "source": "ibmPlex",
-      "upstreamPath": "packages/plex-sans/fonts/complete/woff2/IBMPlexSans-Regular.woff2",
-      "licenseFile": "third-party/fonts/licenses/ibm-plex-OFL.txt"
-    },
-    {
-      "path": "docs/assets/fonts/IBMPlexSans-SemiBold.woff2",
-      "sha256": "f78048030eab62e860efa39a0df79e2e5581bf122eb95b9bc42c0b8a4988d205",
-      "source": "ibmPlex",
-      "upstreamPath": "packages/plex-sans/fonts/complete/woff2/IBMPlexSans-SemiBold.woff2",
-      "licenseFile": "third-party/fonts/licenses/ibm-plex-OFL.txt"
-    },
-    {
       "path": "docs/assets/fonts/wright/Manrope.woff2",
       "sha256": "e474cf064dd6983c2795064d323d6abd0d2cd7c28e99a662d579973251b39320",
       "source": "wrightGoogleFonts",
