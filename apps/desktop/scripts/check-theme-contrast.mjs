@@ -64,6 +64,22 @@ const navigationChecks = ["bg", "hover", "selected", "selected-hover"].flatMap(g
   { label: `navigation focus on ${ground}`, fg: "--cw-navigation-focus", bg: `--cw-navigation-${ground}`, min: 3 },
 ]);
 
+const componentChecks = [
+  { label: "node ink", fg: "--cw-node-ink", bg: "--cw-node-bg", min: 4.5 },
+  { label: "node underline", fg: "--cw-node-line", bg: "--cw-node-bg", min: 3 },
+  { label: "selection ink", fg: "--cw-selected-ink", bg: "--cw-selected-bg", min: 4.5 },
+  { label: "Original Text label", fg: "--cw-original-ink", bg: "--cw-original-bg", min: 4.5 },
+  { label: "Processed Text label", fg: "--cw-processed-ink", bg: "--cw-processed-bg", min: 4.5 },
+  { label: "collocation ink", fg: "--cw-collocate-text", bg: "--cw-collocate-bg", bgBase: "--panel-bg", min: 4.5 },
+  { label: "muted status ink", fg: "--cw-neutral-text", bg: "--cw-neutral-bg", bgBase: "--panel-bg", min: 4.5 },
+  { label: "warning ink", fg: "--cw-warning-text", bg: "--cw-warning-bg", bgBase: "--panel-bg", min: 4.5 },
+  { label: "danger ink in a status", fg: "--cw-danger-text", bg: "--cw-danger-bg-subtle", bgBase: "--panel-bg", min: 4.5 },
+  { label: "accent ink on hover", fg: "--cw-accent-ink", bg: "--cw-interaction-bg-hover", min: 4.5 },
+  { label: "project path", fg: "--cw-text-metadata", bg: "--cw-header-bg", min: 4.5 },
+  { label: "field boundary on app", fg: "--cw-field-border", bg: "--bg-color", min: 3 },
+  { label: "field boundary on panel", fg: "--cw-field-border", bg: "--panel-bg", min: 3 },
+];
+
 const wrightChecks = [
   ...["active", "selected", "range", "source", "target", "success", "warning", "muted"].flatMap(role => [
     { label: `${role} ink`, fg: `--visual-${role}-ink`, bg: `--visual-${role}-bg`, min: 4.5 },
@@ -88,7 +104,7 @@ const wrightChecks = [
 const paletteRoleTokens = {
   theme: [
     "--cw-plot-point", "--cw-theme-plot-model-fit", "--cw-theme-plot-statistical-reference", "--cw-theme-plot-target",
-    "--cw-plot-ramp-4", "--cw-plot-ramp-4",
+    "--cw-theme-plot-target", "--cw-danger-text",
     "--cw-plot-point",
     "--cw-plot-ramp-0", "--cw-plot-ramp-4", "--cw-plot-ramp-0", "--cw-plot-ramp-4",
     "--cw-theme-plot-coverage-trajectory",
@@ -116,25 +132,16 @@ const paletteRoleLabels = [
   "coverage trajectory",
 ];
 
-export function validatePaletteContrast(themes) {
-  const failures = [];
-  for (const theme of themes) {
-    const background = opaqueTokenColour("--panel-bg", theme.declarations);
-    for (const [mode, tokens] of Object.entries(paletteRoleTokens)) {
-      tokens.forEach((token, index) => {
-        try {
-          const foreground = opaqueTokenColour(token, theme.declarations, "--panel-bg");
-          const ratio = contrastRatio(foreground, background);
-          if (ratio < 3) {
-            failures.push(`${theme.id} × ${mode}: ${paletteRoleLabels[index]} is ${ratio.toFixed(2)}:1, expected at least 3:1`);
-          }
-        } catch (error) {
-          failures.push(`${theme.id} × ${mode}: ${paletteRoleLabels[index]} could not parse ${token}: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      });
-    }
-  }
-  return failures;
+const paletteChecks = Object.entries(paletteRoleTokens).flatMap(([mode, tokens]) =>
+  tokens.map((fg, index) => ({
+    label: `${mode}: ${paletteRoleLabels[index]}`, fg, bg: "--panel-bg", min: 3,
+  })),
+);
+
+function measureContrast(declarations, { fg, bg, bgBase }) {
+  const background = opaqueTokenColour(bg, declarations, bgBase);
+  const foreground = compositeColours(colourForToken(fg, declarations), background);
+  return contrastRatio(foreground, background);
 }
 
 export function validateThemeContrast(themes, checks = contrastChecks) {
@@ -142,9 +149,7 @@ export function validateThemeContrast(themes, checks = contrastChecks) {
   for (const theme of themes) {
     for (const check of checks) {
       try {
-        const background = opaqueTokenColour(check.bg, theme.declarations, check.bgBase);
-        const foreground = opaqueTokenColour(check.fg, theme.declarations, check.bg);
-        const ratio = contrastRatio(foreground, background);
+        const ratio = measureContrast(theme.declarations, check);
         if (ratio < check.min) {
           failures.push(`${theme.id}: ${check.label} is ${ratio.toFixed(2)}:1, expected at least ${check.min}:1`);
         }
@@ -175,7 +180,8 @@ if (themes.length !== 4) failures.push(`expected exactly 4 complete themes, foun
 if (contrastChecks.length !== 44) failures.push(`expected exactly 44 contrast checks, found ${contrastChecks.length}`);
 failures.push(...validateThemeContrast(themes));
 failures.push(...validateThemeContrast(themes, navigationChecks));
-failures.push(...validatePaletteContrast(themes));
+failures.push(...validateThemeContrast(themes, componentChecks));
+failures.push(...validateThemeContrast(themes, paletteChecks));
 failures.push(...validateThemeContrast(themes.filter(theme => theme.id.startsWith("wright-")), wrightChecks));
 
 if (failures.length) {
@@ -185,5 +191,19 @@ if (failures.length) {
 }
 
 console.log(`Theme contrast check passed for exactly ${themes.length} complete themes (${contrastChecks.length} base checks and ${Object.keys(paletteRoleTokens).length * paletteRoleLabels.length} theme × palette role checks each).`);
-console.log(`Each theme passed ${navigationChecks.length} navigation pairings.`);
+console.log(`Each theme passed ${navigationChecks.length} navigation and ${componentChecks.length} component pairings.`);
 console.log(`Wright passed ${wrightChecks.length} additional pairings per variant.`);
+
+if (process.argv.includes("--report")) {
+  const names = themes.map(theme => theme.id);
+  console.log(`\n| Pairing | Ink / ground | Minimum | ${names.join(" | ")} |`);
+  console.log(`|---|---|---:|${names.map(() => "---:").join("|")}|`);
+  const sharedChecks = [...contrastChecks, ...navigationChecks, ...componentChecks, ...paletteChecks];
+  for (const check of [...sharedChecks, ...wrightChecks]) {
+    const ratios = themes.map(theme => {
+      if (wrightChecks.includes(check) && !theme.id.startsWith("wright-")) return "—";
+      return `${measureContrast(theme.declarations, check).toFixed(2)}:1`;
+    });
+    console.log(`| ${check.label} | \`${check.fg}\` / \`${check.bg}\` | ${check.min}:1 | ${ratios.join(" | ")} |`);
+  }
+}
