@@ -6,65 +6,65 @@
     {
       "asset": "rank-frequency-light.svg",
       "figure": "rank-frequency",
-      "theme": "corpus-light",
+      "theme": "wright-light",
       "status": "canonical application renderer/exporter output",
-      "sha256": "5951c34d98ccc1a44cd37308191997cce32472a59a94ce1d7c581193fe3d9b8b",
+      "sha256": "fbb9a12a5dc817ee756b14abaf3c833badd7bc2c0dcfd4efb33804e0b1ae4967",
       "type": "Product figure"
     },
     {
       "asset": "lexical-spectrum-light.svg",
       "figure": "lexical-spectrum",
-      "theme": "corpus-light",
+      "theme": "wright-light",
       "status": "canonical application renderer/exporter output",
-      "sha256": "5bc34b658e3c2f8ab7811e861210be83f859f8110b2851050b9adb12b9d8eb68",
+      "sha256": "189c606c2d7fd94b573b928bc645793383ca74f6480051c9a7de93bda09e927d",
       "type": "Product figure"
     },
     {
       "asset": "vocabulary-growth-light.svg",
       "figure": "vocabulary-growth",
-      "theme": "corpus-light",
+      "theme": "wright-light",
       "status": "canonical application renderer/exporter output",
-      "sha256": "568bddd968baa976d237669ab7a41b03fd4d1603ff1180f0fec46f8620a9bc9f",
+      "sha256": "c6da957e09326365abb598984db8ff1d39c969e1459679166923d2616e613b24",
       "type": "Product figure"
     },
     {
       "asset": "dispersion-plane-light.svg",
       "figure": "dispersion-plane",
-      "theme": "corpus-light",
+      "theme": "wright-light",
       "status": "canonical application renderer/exporter output",
-      "sha256": "3c629efdef54b6868e5d5ed60ca4f601c39ee71b2b1d6b4562443364b353cca8",
+      "sha256": "a27ed1a9720b41b5f9dee43586af4b2d589e8ee9d01a0374fd7faa6f6345ab5c",
       "type": "Product figure"
     },
     {
       "asset": "rank-frequency-dark.svg",
       "figure": "rank-frequency",
-      "theme": "corpus-dark",
+      "theme": "wright-dark",
       "status": "canonical application renderer/exporter output",
-      "sha256": "b87b9c953de9fb54a87e79caea9d603692087fdcfe185415884a81edacba481f",
+      "sha256": "63092a215b7933d1b918eef690177721c3b7fef4b0e0fc644afa4c91b98fe3e9",
       "type": "Product figure"
     },
     {
       "asset": "lexical-spectrum-dark.svg",
       "figure": "lexical-spectrum",
-      "theme": "corpus-dark",
+      "theme": "wright-dark",
       "status": "canonical application renderer/exporter output",
-      "sha256": "a5d4db13a68f0f37acf604696e8aef9d05b7a98d86133c2cb57adb6dbaa3d154",
+      "sha256": "f0871227dadc6f86b08c41756dd5f105ca6a8ee704b19011721e90f182a9eb5f",
       "type": "Product figure"
     },
     {
       "asset": "vocabulary-growth-dark.svg",
       "figure": "vocabulary-growth",
-      "theme": "corpus-dark",
+      "theme": "wright-dark",
       "status": "canonical application renderer/exporter output",
-      "sha256": "09bb1e5a814e8614975b9202815268fdcc0621ea18180fcced8adb3dc7ef9e69",
+      "sha256": "6b567c14498d279cf9b5b5e5e4fc2a614da72b49071ed7b15f6130173ffdc5e5",
       "type": "Product figure"
     },
     {
       "asset": "dispersion-plane-dark.svg",
       "figure": "dispersion-plane",
-      "theme": "corpus-dark",
+      "theme": "wright-dark",
       "status": "canonical application renderer/exporter output",
-      "sha256": "8e371ef100240c87b21a0f30af76869b4648ce685bafb2031efe52bde1dd4c79",
+      "sha256": "5b7a16b8fe1e22fad5ae4c05fee5d51962b4a6bcfde9b9b6a200855791d8e063",
       "type": "Product figure"
     }
   ],
@@ -158,7 +158,7 @@
       "cargo xtask documentation-dossier --corpus-dir <temporary-corpus-directory> --output <temporary-dossier-directory>"
     ],
     "coreTree": "069d0a29ae1641b66c3809d9e0011428e274ec93",
-    "plotTree": "22177b464c8f819f293d6b622018a83098e34cb7",
+    "plotTree": "7c6bd7aea8aed4df31b25148521831466af819cc",
     "generatorSha256": "5578c67fd71ab25481b52c6768c18ca4e045bbb5a4ea970a037926eddc356078",
     "identity": "Controlled statistical demonstration corpus",
     "rankTrend": {

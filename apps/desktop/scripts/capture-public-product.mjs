@@ -38,7 +38,7 @@ path = ${JSON.stringify(join(desktop, "tests/visual/public-product-data.rs"))}
 `);
 // Reuse the repository lock and build cache; the temporary package never changes workspace metadata.
 writeFileSync(join(helper, "Cargo.lock"), readFileSync(join(repository, "Cargo.lock")));
-const target = join(repository, "target");
+const target = resolve(process.env.CARGO_TARGET_DIR ?? join(repository, "target"));
 let server;
 let browser;
 let concordanceAudit;
@@ -143,6 +143,12 @@ try {
     assert.equal(await page.evaluate("document.querySelector('#concordance-collocations-table-body tr td')?.innerText.trim()"), "tray", "The authored corpus should demonstrate a substantive collocate under the default settings");
     const clippedCells = await page.evaluate("[...document.querySelectorAll('#concordance-table-body .concordance-file, #concordance-table-body .concordance-left, #concordance-table-body .concordance-right')].filter(el => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1).map(el => el.textContent)");
     assert.deepEqual(clippedCells, [], "Concordance filenames and contexts must remain fully readable");
+    await page.evaluate("document.querySelector('.analyse-workbench').scrollTo({ top: 0, behavior: 'instant' })");
+    await waitFor(page, `(() => {
+      const row = document.querySelector('#concordance-table-body tr').getBoundingClientRect();
+      const viewport = document.querySelector('.analyse-workbench').getBoundingClientRect();
+      return row.top >= viewport.top && row.bottom <= viewport.bottom;
+    })()`);
     await capture("concordance");
     await page.evaluate("document.querySelector('#concordance-table-body tr').focus()");
     await browser.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 }, page.sessionId);

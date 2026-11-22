@@ -3,7 +3,7 @@
   "width": 1200,
   "height": 630,
   "source": "docs/assets/walkthrough/05-dispersion-light.png",
-  "sourceSha256": "341631055a89694f24d06b2a46a66ff9b8f3eea60a0ce06707487030a5f7592c",
+  "sourceSha256": "69d87c5a2c0f69cc0e2995a32c04e0a1d06d193bda0c9630d273602fa135c8f3",
   "sourceCrop": {
     "x": 0,
     "y": 0,
@@ -12,6 +12,6 @@
   },
   "generator": "scripts/generate-social-preview.mjs",
   "generatorSha256": "adc035032cf3824c32c9ee218b6543c291e76905bff785fdb5ff9b1dfb5348d4",
-  "sha256": "f68458dd0cfb02ea2d5a735bce35afdcef51ce868f6bc3a04b75811871434207",
+  "sha256": "d1e6f995b0fe7752e0d1b524e6b493c0860d4e6b8f817260e7234674cec2043d",
   "provenance": "Public card composed from an unmodified crop of the walkthrough screenshot and locally bundled Wright fonts. The full-view source retains the application navigation, Analyse tools and Dispersion plane."
 }

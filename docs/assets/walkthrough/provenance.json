@@ -7,7 +7,7 @@
     "deviceScaleFactor": 1
   },
   "coreTree": "069d0a29ae1641b66c3809d9e0011428e274ec93",
-  "frontendTree": "c024f963c33fa8638dcd00452a0dc620b076eaf1",
+  "frontendTree": "63446cb55f2252daf33180eb7284014e3ba85050",
   "sourceChecksums": {
     "15114-pdf.pdf": "a4a127e6b94088faa394615cc4d2ef0790828db5b3de314520cdcd78b1d504ba",
     "57359-0.txt": "a92e523f6fd298b1e778230c99ad37e17e868ec9c04567e8896eceb05ee53bae",
@@ -21,12 +21,12 @@
     "97.txt": "9933a0838441f03d5c8600da5f54c4a8af9cbcbf845bfeaa8e1b7213a2c3917f"
   },
   "captureInputs": {
-    "apps/desktop/scripts/capture-walkthrough.mjs": "a12b152c198bdc971097d08dd1a6323a7edc895ff1ea2f8c1b013df9d9f533c0",
-    "apps/desktop/scripts/browser-capture.mjs": "87c14d7ab7760fd57496b65db387a96ee1c0cc0230709e348fc86c76500e01df",
+    "apps/desktop/scripts/capture-walkthrough.mjs": "081eb82762378361db851d413bd4dda425f97c50ea27207692447daeca6fdce0",
+    "apps/desktop/scripts/browser-capture.mjs": "9ce8146babf2672e837b166f3ef77fa99a785041175591bcd673d1947c6ec811",
     "apps/desktop/tests/visual/walkthrough-fixture.ts": "bab146bc1eb16b5cfbd2f81a51d72b5f940f4282f96801ba84fbf24388806023",
     "apps/desktop/tests/visual/walkthrough-data.rs": "9a6ff3f430c9ffb51f67b800335139a1b6739bc79bbf89a49c7c920bd4c76eae",
     "apps/desktop/tests/visual/walkthrough-sources.json": "4060115f15b823ec838692fec5365ee6aaae78241cc7180a20a06bf8e73e4c22",
-    "apps/desktop/index.html": "3232d6aacf96c822c659a146a8a034e67e8a01eeca2e9e4ae545973c2844e4dc",
+    "apps/desktop/index.html": "a471f750072ade5411a97b49a11478cc944a1afd8a0bbb35b2c4f398d08b79a1",
     "apps/desktop/package-lock.json": "4a0d4234a475d897adba29a41adedcae3284f8c5ccaeb387df6e99ed28f7a5d2",
     "Cargo.lock": "c6e13ac7920c0c644221530fba6a4331c9db7182d654648d86fed639845599d9",
     "rust-toolchain.toml": "404f81071062a23f245fc19302d4d0e68185bea2e4d31c520790ddd40d467fc0",
@@ -104,100 +104,100 @@
     {
       "stage": "01-sources",
       "asset": "01-sources-light.png",
-      "theme": "corpus-light",
-      "sha256": "c50ec65e0942415679e1418fd97f17d0364d5612687f0f4208ce2cd28845f8a0",
-      "visibleTextSha256": "5a2eefe2c8028df1fb70e6b262fc98abc6afc4166933c04fc9dbc9580a8f6c82"
+      "theme": "wright-light",
+      "sha256": "ee49aeebc4cbb0cff743e5373c0ef78cdf85204a5739e22ffdb0f9681f808d20",
+      "visibleTextSha256": "88fc4001fe6182ac6f3ad220b6243222750c1fee5bc7ffa6084295da53dd754e"
     },
     {
       "stage": "02-artefacts",
       "asset": "02-artefacts-light.png",
-      "theme": "corpus-light",
-      "sha256": "e944e8efb80e154f972530fe58e5a9ef90491d5890833d1e83be267b5b587c34",
-      "visibleTextSha256": "1b16ae411a03c0f229d7435100a6c59d7aa5e9388d54830e5b7269368c9c3e4a"
+      "theme": "wright-light",
+      "sha256": "7b24d3d37f9a2c2dce947a6671c94a326dda98a4343d66dfaf745b3d8becad22",
+      "visibleTextSha256": "00dc2e326960247ba69cdf704c632dd8e62c76600f73c3cbd7a02f74415cf94d"
     },
     {
       "stage": "03-cleaning",
       "asset": "03-cleaning-light.png",
-      "theme": "corpus-light",
-      "sha256": "1cf957353bc89dc23373049fcfa78d9f7efe733b23a45a089da568608ae4ab8d",
-      "visibleTextSha256": "3e2ea57e08d7adb523758063511468ab560a8c94f16a6e0d317ee5cadda6f01a"
+      "theme": "wright-light",
+      "sha256": "b0f83cc854671dd97e2a9246a426c1b0e4a95b91b9c5d10a14c6cdc67de89265",
+      "visibleTextSha256": "c3f73e12da8c9af9771ce0578d879dcc0d23068dd6a7ade7eee0b9e4bb71fd6d"
     },
     {
       "stage": "04-counts",
       "asset": "04-counts-light.png",
-      "theme": "corpus-light",
-      "sha256": "449b2a2b529a8a2f97803e173022c3b4cfcbd4dcb4bbfa684a0306fddb75fe43",
-      "visibleTextSha256": "5d5bb8d8a60413abf9b9c6ce1aa8e8443888d2b443e88acf61b1cf2d192da73a"
+      "theme": "wright-light",
+      "sha256": "bdeca93cf73197fa07a05e99f83abe7b3db09a4f319a56ce2f8293a68598bd6d",
+      "visibleTextSha256": "1d89728a4de1994b2800b19f36c09993ca4c7b09b4b22c66dda32e171d4700f1"
     },
     {
       "stage": "05-dispersion",
       "asset": "05-dispersion-light.png",
-      "theme": "corpus-light",
-      "sha256": "341631055a89694f24d06b2a46a66ff9b8f3eea60a0ce06707487030a5f7592c",
-      "visibleTextSha256": "11667c9644e20455e44c2bcd1086d25a24430739ae0a7d04f2a443802ce7bd93"
+      "theme": "wright-light",
+      "sha256": "69d87c5a2c0f69cc0e2995a32c04e0a1d06d193bda0c9630d273602fa135c8f3",
+      "visibleTextSha256": "9cfd7b8763c1c470233906af30d38bddd832bb62e2c01fa50408983b38a761e2"
     },
     {
       "stage": "06-context",
       "asset": "06-context-light.png",
-      "theme": "corpus-light",
-      "sha256": "1d3a0b95c182370f443aeac1845ed7dda96402b540cb0ef968920b14a2ed0ff2",
-      "visibleTextSha256": "4b2ec3bb07a5e97036100dfef85a8ea54376024fd50edc52ac4ca41cda1a5442"
+      "theme": "wright-light",
+      "sha256": "dd739373ff8032ac54c01d47edcc8ff0baab9fecd9f27c76e9cff34072a933a3",
+      "visibleTextSha256": "26c4b8d9f57e3b207c4678b722d72670c21f9facb2a3303b65d2c8c226eb535e"
     },
     {
       "stage": "06-distribution",
       "asset": "06-distribution-light.png",
-      "theme": "corpus-light",
-      "sha256": "4fa537c9f3e73293358bc4404f246a35c988c2813283bcb15e9a7a86ebdbbfb7",
-      "visibleTextSha256": "4b2ec3bb07a5e97036100dfef85a8ea54376024fd50edc52ac4ca41cda1a5442"
+      "theme": "wright-light",
+      "sha256": "9b8966c582b0bab5f823b07bfa5d22bf5734b60e0e77bd8c0abedb0f389d0061",
+      "visibleTextSha256": "26c4b8d9f57e3b207c4678b722d72670c21f9facb2a3303b65d2c8c226eb535e"
     },
     {
       "stage": "01-sources",
       "asset": "01-sources-dark.png",
-      "theme": "corpus-dark",
-      "sha256": "e05937c4669b5a04767001a66e36bf518c12c94abc6cb074b0d532869c2e62d8",
-      "visibleTextSha256": "5a2eefe2c8028df1fb70e6b262fc98abc6afc4166933c04fc9dbc9580a8f6c82"
+      "theme": "wright-dark",
+      "sha256": "d742f6e254ddb03fb528a7b894b8b6b54487425193feeebb39f2e8b9b762b20a",
+      "visibleTextSha256": "9b288e8727fbf86763a20775a0785f34d9602531456d154cab23a4d65e1be2de"
     },
     {
       "stage": "02-artefacts",
       "asset": "02-artefacts-dark.png",
-      "theme": "corpus-dark",
-      "sha256": "a6d59bd5e0bff04b8d109e82a20d24a0c656a24a04b2ab66aff7bfbddd126b70",
-      "visibleTextSha256": "389c25b9dc2b649fae79c308b6e497e00700c978991f3cb6f59d81c59107ce8a"
+      "theme": "wright-dark",
+      "sha256": "8f2b9e3a2f9b8e11b9613951916454400ed30818c3f9347c1ab34b539b439f50",
+      "visibleTextSha256": "9596c7664a9f2f04f1d953d4728e9335a056038c32fbb9799c5fb27287c286ff"
     },
     {
       "stage": "03-cleaning",
       "asset": "03-cleaning-dark.png",
-      "theme": "corpus-dark",
-      "sha256": "201da319a8a6ba686f7789bd8356329e1710f7c593252dfab1948db333ab75a1",
-      "visibleTextSha256": "3e2ea57e08d7adb523758063511468ab560a8c94f16a6e0d317ee5cadda6f01a"
+      "theme": "wright-dark",
+      "sha256": "37ff51ffcef15425335076a12b039257d9801e6df13399488a93836d149af861",
+      "visibleTextSha256": "518f38c51fe8eacc1205369a04a3ba11b44f256f608372fae65b3ffe1c2be488"
     },
     {
       "stage": "04-counts",
       "asset": "04-counts-dark.png",
-      "theme": "corpus-dark",
-      "sha256": "ba8126f20ea0579383c1a36ed22936e02f2f68624cffb954057276a35ca858ad",
-      "visibleTextSha256": "5d5bb8d8a60413abf9b9c6ce1aa8e8443888d2b443e88acf61b1cf2d192da73a"
+      "theme": "wright-dark",
+      "sha256": "737b54366eee1c8c12381e86b55ef8c88b437d213d2628dd55017a780a916770",
+      "visibleTextSha256": "eaced8d0baf5ecec9c912275bf89aa2b14b985ccdd60426717842b56532af7da"
     },
     {
       "stage": "05-dispersion",
       "asset": "05-dispersion-dark.png",
-      "theme": "corpus-dark",
-      "sha256": "cbcfe12d54c00dc1d5d09e1f1ef493fbf053636c57e1e85d577792f83dae2d9e",
-      "visibleTextSha256": "11667c9644e20455e44c2bcd1086d25a24430739ae0a7d04f2a443802ce7bd93"
+      "theme": "wright-dark",
+      "sha256": "b348fd41925f3a1a7aa7d31a8e1f38767a0071e8e17bb9c1da63fbcebb06f01c",
+      "visibleTextSha256": "9e4af29d5564d52c3e9f137e0d58f9082ad1912b1e16f2cce0aa6aad16d82c57"
     },
     {
       "stage": "06-context",
       "asset": "06-context-dark.png",
-      "theme": "corpus-dark",
-      "sha256": "4450c29e16250e4df6a4c44c6ceddbb0806e500cecf647e22d8fe76132224488",
-      "visibleTextSha256": "4b2ec3bb07a5e97036100dfef85a8ea54376024fd50edc52ac4ca41cda1a5442"
+      "theme": "wright-dark",
+      "sha256": "16c3ec9d84dc293e35825e6e4cd5374dc355099eb07ff974275932d930301a5b",
+      "visibleTextSha256": "43b12525ca32d620e7e2e62ba34faefdc666ff1bfc700dc2430f0f0760b670a1"
     },
     {
       "stage": "06-distribution",
       "asset": "06-distribution-dark.png",
-      "theme": "corpus-dark",
-      "sha256": "1470b7b3f8ed8bb4451e6b7fbe31f32ef4a9b20a34c606e6945ecda654513897",
-      "visibleTextSha256": "4b2ec3bb07a5e97036100dfef85a8ea54376024fd50edc52ac4ca41cda1a5442"
+      "theme": "wright-dark",
+      "sha256": "5268c374218d1cf4e88fb84e4e305018642dc39cd1d3f4f4e478d993adb9eb0f",
+      "visibleTextSha256": "43b12525ca32d620e7e2e62ba34faefdc666ff1bfc700dc2430f0f0760b670a1"
     }
   ]
 }

@@ -16,7 +16,14 @@ const repository = resolve(desktop, "../..");
 const fixturePath = "apps/desktop/tests/visual/walkthrough-fixture.ts";
 const adapterPath = "apps/desktop/tests/visual/walkthrough-data.rs";
 const sourcesPath = "apps/desktop/tests/visual/walkthrough-sources.json";
-const output = resolve(process.argv[2] ?? join(tmpdir(), "corpuswright-walkthrough-output"));
+const [outputPath, flag, evidencePath] = process.argv.slice(2);
+if ((flag && flag !== "--evidence-directory") || (flag && !evidencePath) || process.argv.length > 5) {
+  throw new Error("Usage: capture-walkthrough.mjs [output-directory] [--evidence-directory directory]");
+}
+const output = resolve(outputPath ?? join(tmpdir(), "corpuswright-walkthrough-output"));
+const evidenceDirectory = evidencePath ? resolve(evidencePath) : null;
+const defaultThemeFamily = process.env.CORPUSWRIGHT_CAPTURE_THEME_FAMILY ?? "wright";
+const themeFamilies = evidenceDirectory ? [defaultThemeFamily, "high-contrast"] : [defaultThemeFamily];
 const viewport = { width: 1440, height: 1000, deviceScaleFactor: 1 };
 const digest = bytes => createHash("sha256").update(bytes).digest("hex");
 const execute = promisify(execFile);
@@ -61,7 +68,7 @@ name = "corpuswright-walkthrough-data"
 path = ${JSON.stringify(join(repository, adapterPath))}
 `);
   await copyFile(join(repository, "Cargo.lock"), join(directory, "Cargo.lock"));
-  const target = join(repository, "target");
+  const target = resolve(process.env.CARGO_TARGET_DIR ?? join(repository, "target"));
   execFileSync("cargo", ["build", "--offline", "--manifest-path", join(directory, "Cargo.toml"), "--target-dir", target], {
     cwd: repository, stdio: "inherit",
   });
@@ -133,19 +140,20 @@ function control(selector, value, event = "change") {
   })()`;
 }
 
-async function capture(page, stage, theme) {
+async function capture(page, stage, theme, family) {
   await waitFor(page, "window.walkthroughPendingRequests === 0");
   await page.evaluate("(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); })()");
   const visible = await page.evaluate("document.body.innerText");
   assert.doesNotMatch(visible, /\/home\/|\/Users\/|\/tmp\/|Invalid Date|Preparing preview\.\.\.|Build failed/);
   assert.deepEqual(await page.evaluate("window.walkthroughFailures"), []);
   assert.deepEqual(browserFailures(browser, page.sessionId), []);
-  assert.equal(await page.evaluate("document.documentElement.dataset.theme"), `wright-${theme}`);
-  const asset = `${stage}-${theme}.png`;
+  assert.equal(await page.evaluate("document.documentElement.dataset.theme"), `${family}-${theme}`);
+  const publicCapture = family === defaultThemeFamily && stage !== "appearance";
+  const asset = publicCapture ? `${stage}-${theme}.png` : `${stage}-${family}-${theme}.png`;
   const png = await page.screenshot();
   assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [viewport.width, viewport.height]);
   await writeFile(join(scratchOutput, asset), png);
-  captures.push({ stage, asset, theme: `wright-${theme}`, sha256: digest(png), visibleTextSha256: digest(visible) });
+  captures.push({ stage, asset, theme: `${family}-${theme}`, sha256: digest(png), visibleTextSha256: digest(visible) });
   process.stdout.write(`Captured ${asset}\n`);
 }
 
@@ -179,16 +187,18 @@ async function openCandidate(page, candidate) {
   await page.evaluate(nodeClick("#artifact-decision-filters [data-decision-filter=marked]"));
 }
 
-async function frameSection(page, selector, maxTop = 250) {
+async function frameSection(page, selector, topAllowance = 115) {
   const target = `document.querySelector(${JSON.stringify(selector)})`;
   await page.evaluate(`${target}.scrollIntoView({ block: "start", behavior: "instant" })`);
   await waitFor(page, `(() => {
     const bounds = ${target}.getBoundingClientRect();
-    return bounds.top >= 135 && bounds.top < ${maxTop} && bounds.bottom <= 972;
+    const viewport = document.querySelector(".analyse-workbench").getBoundingClientRect();
+    return bounds.top >= viewport.top - 1 && bounds.top < viewport.top + ${topAllowance}
+      && bounds.bottom <= viewport.bottom + 1;
   })()`);
 }
 
-async function walkthrough(url, theme) {
+async function walkthrough(url, theme, family) {
   const page = await createCapturePage(browser, viewport.width, viewport.height);
   try {
     await browser.send("Emulation.setEmulatedMedia", { features: [
@@ -196,12 +206,23 @@ async function walkthrough(url, theme) {
     ] }, page.sessionId);
     await browser.send("Emulation.setTimezoneOverride", { timezoneId: "UTC" }, page.sessionId);
     await browser.send("Emulation.setLocaleOverride", { locale: "en-GB" }, page.sessionId);
+    await browser.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: family === "high-contrast"
+        ? `localStorage.setItem("corpuswright.appearance.v1", ${JSON.stringify(JSON.stringify({ themeFamilyId: family, themeVariant: theme }))})`
+        : 'localStorage.removeItem("corpuswright.appearance.v1")',
+    }, page.sessionId);
     await page.navigate(`${url}/walkthrough`);
     await waitFor(page, "document.querySelectorAll('#file-list input[type=checkbox]').length === 10 && Number(document.querySelector('#summary-total-words')?.textContent.replace(/[^0-9]/g,'')) > 0");
     const preparationCount = await page.evaluate("Number(document.querySelector('#summary-total-words').textContent.replace(/[^0-9]/g,''))");
     await page.evaluate("Array.from(document.querySelectorAll('#file-list li')).find(row => row.innerText.includes('97.txt')).querySelector('input').click()");
     await waitFor(page, "document.querySelector('#preview-content').innerText.includes('This eBook is for the use of anyone')");
-    await capture(page, "01-sources", theme);
+    await capture(page, "01-sources", theme, family);
+    if (evidenceDirectory) {
+      await page.evaluate(nodeClick("#menu-appearance"));
+      await waitFor(page, "!document.querySelector('#appearance-modal').classList.contains('hidden')");
+      await capture(page, "appearance", theme, family);
+      await page.evaluate(nodeClick("#appearance-cancel-button"));
+    }
     await page.evaluate("Array.from(document.querySelectorAll('#file-list li')).find(row => row.innerText.includes('97.txt')).querySelector('input').click()");
     await page.evaluate(nodeClick("#prepare-repeated-artifact-finder"));
     await page.evaluate(control("#num-artifact-min-files", "3"));
@@ -209,26 +230,26 @@ async function walkthrough(url, theme) {
     await waitFor(page, "document.querySelector('#artifact-scan-diagnostics').textContent.startsWith('Files: 10/10 scanned')");
     const fragment = findFragment(artefacts);
     await openCandidate(page, fragment);
-    await capture(page, "02-artefacts", theme);
+    await capture(page, "02-artefacts", theme, family);
     await page.evaluate(nodeClick("#btn-apply-artifact-decisions"));
     await waitFor(page, "document.querySelector('#repeated-artifact-modal').classList.contains('hidden')");
     await page.evaluate("Array.from(document.querySelectorAll('#file-list li')).find(row => row.innerText.includes('97.txt')).querySelector('input').click()");
     await page.evaluate(nodeClick('[data-target="processed-text"]'));
     await waitFor(page, "document.querySelector('#processed-preview-content').innerText.includes('Flatland') && !document.querySelector('#processed-preview-content').innerText.includes('This eBook is for the use of anyone')");
-    await capture(page, "03-cleaning", theme);
+    await capture(page, "03-cleaning", theme, family);
     await page.evaluate(nodeClick("#workbench-analyse"));
     await page.evaluate(nodeClick("#analyse-build-button"));
-    await waitFor(page, "document.querySelector('#analyse-status-chip')?.innerText.includes('Built') && document.querySelector('[data-plot-id=overview-dispersion-plane]')");
+    await waitFor(page, "document.querySelector('#analyse-status-chip')?.innerText.includes('Built') && document.querySelector('[data-plot-id=overview-dispersion-plane]')", 120_000);
     await page.evaluate(nodeClick('[data-analysis-tool="frequency"]'));
     await page.evaluate(control("#frequency-search-input", "gutenberg", "input"));
     await page.evaluate(control("#frequency-match-mode", "exact"));
     await page.evaluate(nodeClick("#frequency-case-fold"));
     await page.evaluate(control("#frequency-token-class", "all"));
     await waitFor(page, "document.querySelector('#frequency-table-body').innerText.toLowerCase().includes('gutenberg')");
-    await capture(page, "04-counts", theme);
+    await capture(page, "04-counts", theme, family);
     await page.evaluate(nodeClick('[data-analysis-tool="overview"]'));
     await frameSection(page, ".cw-overview-figure:has([data-plot-id=overview-dispersion-plane])");
-    await capture(page, "05-dispersion", theme);
+    await capture(page, "05-dispersion", theme, family);
     await page.evaluate(nodeClick('[data-analysis-tool="concordance"]'));
     await page.evaluate(control("#concordance-sort-1-select", "filePosition"));
     await page.evaluate(control("#concordance-page-size-input", "4"));
@@ -238,12 +259,12 @@ async function walkthrough(url, theme) {
     await waitFor(page, "window.walkthroughPendingRequests === 0");
     await browser.send("Page.bringToFront", {}, page.sessionId);
     await page.evaluate("document.querySelector('.analyse-workbench').scrollTo({ top: 0, behavior: 'instant' })");
-    await waitFor(page, "(() => { const row = document.querySelector('#concordance-table-body tr').getBoundingClientRect(); return row.top >= 140 && row.bottom < 969; })()");
-    await capture(page, "06-context", theme);
+    await waitFor(page, "(() => { const row = document.querySelector('#concordance-table-body tr').getBoundingClientRect(); const viewport = document.querySelector('.analyse-workbench').getBoundingClientRect(); return row.top >= viewport.top && row.bottom <= viewport.bottom; })()");
+    await capture(page, "06-context", theme, family);
     // The native Concordance panels are stacked, with Collocates between them.
     // Capture Distribution independently at its normal size.
-    await frameSection(page, "#concordance-distribution-panel", 440);
-    await capture(page, "06-distribution", theme);
+    await frameSection(page, "#concordance-distribution-panel", 305);
+    await capture(page, "06-distribution", theme, family);
     assert.notEqual(captures.at(-1).sha256, captures.at(-2).sha256, "Distinct Concordance panels must yield distinct captures");
     await page.evaluate("window.walkthroughChooseExport()");
     await page.evaluate(nodeClick("#menu-save-corpus"));
@@ -268,6 +289,8 @@ function tree(path) {
 }
 
 try {
+  const coreTree = tree("crates/corpuswright-core");
+  const frontendTree = tree("apps/desktop/src");
   const [sourceChecksums] = await completeAll([
     fetchCorpus(corpus),
     execute(process.execPath, [join(repository, "scripts/fetch-pdfium.cjs"), "linux-x64", "--output-dir", ocr]),
@@ -277,7 +300,7 @@ try {
   const binary = await buildAdapter(join(temporary, "helper"));
   server = await createServer({
     root: desktop,
-    server: { host: "127.0.0.1", port: 0 },
+    server: { host: "127.0.0.1", port: 0, strictPort: false },
     plugins: [{
       name: "walkthrough-capture-only",
       configureServer(vite) {
@@ -310,14 +333,15 @@ try {
   browser = await launchCaptureBrowser();
   let witness;
   let audit;
-  for (const theme of ["light", "dark"]) {
-    const themeExport = join(exports, theme);
+  const variants = themeFamilies.flatMap(family => ["light", "dark"].map(theme => ({ family, theme })));
+  for (const { family, theme } of variants) {
+    const themeExport = join(exports, `${family}-${theme}`);
     await mkdir(themeExport);
     adapter = openAdapter(binary, [corpus, ocr, themeExport]);
     try {
-      const current = await walkthrough(url, theme);
+      const current = await walkthrough(url, theme, family);
       if (witness) {
-        assert.deepEqual(current, witness, "Both themes must witness the same state");
+        assert.deepEqual(current, witness, "All themes must witness the same state");
       } else {
         witness = current;
         audit = await adapter.call("audit");
@@ -334,12 +358,14 @@ try {
     fixturePath, adapterPath, sourcesPath, "apps/desktop/index.html", "apps/desktop/package-lock.json",
     "Cargo.lock", "rust-toolchain.toml", "scripts/fetch-pdfium.cjs", "third-party/pdfium.json",
   ];
+  assert.equal(tree("crates/corpuswright-core"), coreTree, "Core changed during capture");
+  assert.equal(tree("apps/desktop/src"), frontendTree, "Frontend changed during capture");
   const provenance = {
     schemaVersion: 1,
     capture: "Unmodified application rendered in headless Chrome, with core-backed native IPC",
     viewport,
-    coreTree: tree("crates/corpuswright-core"),
-    frontendTree: tree("apps/desktop/src"),
+    coreTree,
+    frontendTree,
     sourceChecksums,
     captureInputs: Object.fromEntries(await Promise.all(properties.map(async path => [path, digest(await readFile(join(repository, path)))]))),
     ...audit,
@@ -352,11 +378,26 @@ try {
       exportWarnings: witness.exportExcerpt.warnings_count,
     },
     exportExcerpt: witness.exportExcerpt,
-    captures,
+    captures: captures.filter(({ stage, theme }) => stage !== "appearance" && theme.startsWith(`${defaultThemeFamily}-`)),
   };
   await mkdir(output, { recursive: true });
-  for (const { asset } of captures) await copyFile(join(scratchOutput, asset), join(output, asset));
+  for (const { asset } of provenance.captures) await copyFile(join(scratchOutput, asset), join(output, asset));
   await writeFile(join(output, "provenance.json"), JSON.stringify(provenance, null, 2) + "\n");
+  if (evidenceDirectory) {
+    await mkdir(evidenceDirectory, { recursive: true });
+    const reviewStages = new Set(["01-sources", "02-artefacts", "04-counts", "05-dispersion", "06-context", "appearance"]);
+    const review = [];
+    for (const capture of captures.filter(({ stage }) => reviewStages.has(stage))) {
+      const asset = `${capture.stage}-${capture.theme}.png`;
+      await copyFile(join(scratchOutput, capture.asset), join(evidenceDirectory, asset));
+      review.push({ ...capture, asset });
+    }
+    const comparison = {
+      frontendTree: provenance.frontendTree, coreTree: provenance.coreTree, viewport,
+      captures: review,
+    };
+    await writeFile(join(evidenceDirectory, "provenance.json"), JSON.stringify(comparison, null, 2) + "\n");
+  }
   process.stdout.write(`${JSON.stringify(provenance.facts, null, 2)}\nCaptures written to ${output}\n`);
 } finally {
   await browser?.close();

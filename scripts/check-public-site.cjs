@@ -153,13 +153,13 @@ function checkWitnesses() {
   return assets.length;
 }
 
-// Guide still uses the original synthetic captures and their score witness.
+// Guide uses the synthetic captures and their score witness.
 function checkGuideCaptures() {
   const stages = ["prepare", "overview", "concordance"];
   const provenance = JSON.parse(fs.readFileSync(path.join(DOCS, "assets/screenshots/provenance.json"), "utf8"));
   assert.equal(provenance.schemaVersion, 1);
   assert.deepEqual(provenance.viewport, { width: 1440, height: 1000, deviceScaleFactor: 1 });
-  assert.equal(provenance.theme, "corpus-light");
+  assert.equal(provenance.theme, "wright-light");
   assert.equal(provenance.identity, "GUI demonstration corpus");
   assert.equal(provenance.collocationAudit.sortMeasure, "mi", "Public Concordance must show the active default score");
   const association = provenance.collocationAudit;
@@ -278,7 +278,7 @@ function checkWalkthrough() {
       const capture = provenance.captures.find(item => item.asset === asset);
       assert.ok(capture, `Missing capture provenance: ${asset}`);
       assert.equal(capture.stage, view);
-      assert.equal(capture.theme, `corpus-${theme}`);
+      assert.equal(capture.theme, `wright-${theme}`);
       assert.match(capture.visibleTextSha256, /^[a-f0-9]{64}$/);
       const file = path.join(directory, asset);
       assert.equal(sha256(file), capture.sha256, `${asset}: capture changed without provenance`);

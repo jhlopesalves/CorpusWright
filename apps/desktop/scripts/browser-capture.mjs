@@ -102,8 +102,9 @@ export async function createCapturePage(browser, width, height) {
   };
 }
 
-export async function waitFor(page, expression) {
-  for (let attempt = 0; attempt < 300; attempt += 1) {
+export async function waitFor(page, expression, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
     if (await page.evaluate(expression)) return;
     await delay(100);
   }
