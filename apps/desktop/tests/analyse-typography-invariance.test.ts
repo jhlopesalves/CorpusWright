@@ -38,9 +38,9 @@ const stableMarkup = html.slice(
 );
 for (const witness of [
   'class="analyse-eyebrow">Analyse',
-  '<h1>Analyse Corpus</h1>',
+  '<h1>Analyse corpus</h1>',
   'id="analyse-tools-title">Analysis tools',
-  'id="analyse-overview-title">Corpus Overview',
+  'id="analyse-overview-title">Corpus overview',
   'id="analyse-build-button" class="primary-btn"',
   'id="analyse-build-note"',
 ]) {

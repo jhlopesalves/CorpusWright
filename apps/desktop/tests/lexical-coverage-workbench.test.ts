@@ -155,7 +155,7 @@ const shell = readFileSync(new URL("../src/features/analyse/workbench/shell.ts",
 const render = readFileSync(new URL("../src/plots/render.ts", import.meta.url), "utf8");
 const marks = readFileSync(new URL("../src/styles/plots/marks.css", import.meta.url), "utf8");
 assert.doesNotMatch(shell, /Frequency-class spectrum/);
-assert.match(shell, /How many types occur once, twice, or at each higher frequency\?/);
+assert.match(shell, /How many types occur once, twice or at each higher frequency\?/);
 assert.match(shell, /How much token mass is carried by the most frequent vocabulary\?/);
 assert.match(shell, /exactTargetCrossings\.find/);
 assert.match(render, /renderCompositionStrip\(svg, geometry\.compositionStrip\)/);

@@ -82,17 +82,17 @@ assert(DEFAULT_CONCORDANCE_COLLOCATION_MEASURE === "mi", "Default collocation me
 assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_KEY === "association", "Default collocation sort should be association");
 assert(DEFAULT_CONCORDANCE_COLLOCATION_SORT_DIRECTION === "desc", "Default collocation sort should descend");
 
-assert(formatConcordanceProgress(null) === "Searching...", "Progress should fallback to Searching... when null");
+assert(formatConcordanceProgress(null) === "Searching…", "Progress should fallback to Searching… when null");
 assert(
-  formatConcordanceProgress({ filesDone: 0, filesTotal: 10, currentPhase: "buildingIndex" }) === "Reading index... 0%",
+  formatConcordanceProgress({ filesDone: 0, filesTotal: 10, currentPhase: "buildingIndex" }) === "Reading index… 0%",
   "Progress should report reading index"
 );
 assert(
-  formatConcordanceProgress({ filesDone: 5, filesTotal: 10, currentPhase: "searching" }) === "Searching... 50%",
+  formatConcordanceProgress({ filesDone: 5, filesTotal: 10, currentPhase: "searching" }) === "Searching… 50%",
   "Progress should report searching"
 );
 assert(
-  formatConcordanceProgress({ filesDone: 10, filesTotal: 10, currentPhase: "aggregatingCollocations" }) === "Aggregating collocates... 100%",
+  formatConcordanceProgress({ filesDone: 10, filesTotal: 10, currentPhase: "aggregatingCollocations" }) === "Aggregating collocates… 100%",
   "Progress should report aggregating collocates"
 );
 assert(CONCORDANCE_COLLOCATION_DEFAULT_SPAN === 5, "Default collocation span should be +/-5");

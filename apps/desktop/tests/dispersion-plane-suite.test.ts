@@ -191,7 +191,7 @@ for (const question of [
   "How much does lexical diversity vary between documents?",
   "How quickly does frequency fall as vocabulary rank increases?",
   "How quickly does the corpus encounter new types as tokens accumulate?",
-  "How many types occur once, twice, or at each higher frequency?",
+  "How many types occur once, twice or at each higher frequency?",
   "How much token mass is carried by the most frequent vocabulary?",
   "How widely across documents does the vocabulary reach?",
   "Which types are frequent, and which are evenly distributed across documents?",

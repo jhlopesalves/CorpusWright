@@ -243,7 +243,7 @@ function createSourceEmptyState(): HTMLLIElement {
   title.textContent = "This corpus project has no source files yet.";
 
   const body = document.createElement("span");
-  body.textContent = "Add PDFs, DOCX, TXT, HTML, or plain text files to begin preparing your corpus.";
+  body.textContent = "Add PDFs, DOCX, TXT, HTML or plain text files to begin preparing your corpus.";
 
   const actions = document.createElement("div");
   actions.className = "source-empty-actions";
@@ -608,11 +608,11 @@ function applySourceActionSummary(
 
   if (keepLegacyPdfButton) {
     if (hasRetryableFailure) {
-      dom.sourcePreparePdfsBtn.textContent = "Retry extraction...";
+      dom.sourcePreparePdfsBtn.textContent = "Retry extraction…";
     } else if (hasReextractablePdf) {
-      dom.sourcePreparePdfsBtn.textContent = "Re-extract/OCR selected PDFs...";
+      dom.sourcePreparePdfsBtn.textContent = "Re-extract/OCR selected PDFs…";
     } else {
-      dom.sourcePreparePdfsBtn.textContent = "Extract/OCR selected PDFs...";
+      dom.sourcePreparePdfsBtn.textContent = "Extract/OCR selected PDFs…";
     }
     dom.sourcePreparePdfsBtn.classList.remove("hidden");
     dom.sourcePreparePdfsBtn.disabled = false;

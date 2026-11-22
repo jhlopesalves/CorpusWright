@@ -288,7 +288,7 @@ function updateSearchUI(): void {
   }
 
   if (state.isSearching) {
-    dom.previewMatchCount.textContent = "Searching...";
+    dom.previewMatchCount.textContent = "Searching…";
     dom.searchPrev.disabled = true;
     dom.searchNext.disabled = true;
     return;

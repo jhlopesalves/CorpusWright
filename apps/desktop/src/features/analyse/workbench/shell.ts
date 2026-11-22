@@ -151,8 +151,8 @@ const ANALYSIS_TOOLS: Array<{
   name: string;
   panelId: string;
 }> = [
-  { id: "overview", name: "Corpus Overview", panelId: "analyse-overview-pane" },
-  { id: "frequency", name: "Frequency List", panelId: "frequency-list-pane" },
+  { id: "overview", name: "Corpus overview", panelId: "analyse-overview-pane" },
+  { id: "frequency", name: "Frequency list", panelId: "frequency-list-pane" },
   { id: "concordance", name: "Concordance", panelId: "concordance-pane" },
 ];
 
@@ -165,7 +165,7 @@ export function pluralise(count: number, singular: string, plural = `${singular}
 }
 
 function activeAnalysisToolName(): string {
-  return ANALYSIS_TOOLS.find((tool) => tool.id === activeAnalysisTool)?.name ?? "Corpus Overview";
+  return ANALYSIS_TOOLS.find((tool) => tool.id === activeAnalysisTool)?.name ?? "Corpus overview";
 }
 
 export function activeProjectLanguageCode(): ProjectLanguage | null {
@@ -288,7 +288,7 @@ function prepareStageStatus(): string {
   const warnings = warningSourceCount();
 
   if (sourceCount === null) {
-    return state.projectSourceQueryPending ? "Sources loading..." : "Loading source summary...";
+    return state.projectSourceQueryPending ? "Sources loading…" : "Loading source summary…";
   }
   if (sourceCount === 0) {
     return "No sources";
@@ -322,7 +322,7 @@ function refreshPrepareCockpit(): void {
   const cleaningCount = activeCleaningItemCount();
 
   dom.prepareCockpitSourceCount.textContent = sourceCount === null
-    ? (state.projectSourceQueryPending ? "Sources loading..." : "Loading source summary...")
+    ? (state.projectSourceQueryPending ? "Sources loading…" : "Loading source summary…")
     : pluralise(sourceCount, "source");
   dom.prepareCockpitCleaningSummary.textContent = cleaningCount === 0
     ? "Cleaning defaults"
@@ -870,7 +870,7 @@ function renderAnalysisPopulation(corpus: AnalysisCorpus): HTMLElement {
   panel.appendChild(createMetricTable(rows));
   const universe = document.createElement("p");
   universe.className = "analysis-panel-note";
-  universe.textContent = "Universe: all analysis types - independent of Frequency List filters.";
+  universe.textContent = "Universe: all analysis types – independent of Frequency list filters.";
   panel.appendChild(universe);
   appendPanelReading(panel, population.reading);
   return panel;
@@ -1546,7 +1546,7 @@ function renderLexicalSpectrumFigure(corpus: AnalysisCorpus): HTMLElement {
   figure = createOverviewFigure({
     id: "overview-lexical-spectrum",
     title: "Lexical spectrum",
-    subtitle: "How many types occur once, twice, or at each higher frequency?",
+    subtitle: "How many types occur once, twice or at each higher frequency?",
     controller,
     captionStats: `hapax ${formatNumber(spectrum.hapaxCount)} · dis ${formatNumber(spectrum.disLegomenaCount)} · ${truncation}`,
     captionReading: "Each point is V(f) for one exact integer frequency; bars are avoided because log-scale bar lengths would imply intervals that were not observed.",
@@ -1758,9 +1758,9 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
       3,
     );
   } else if (corpus.totals.documents === 0) {
-    mattrValue = "not computable — no documents";
+    mattrValue = "not computable – no documents";
   } else {
-    mattrValue = `not computable — documents shorter than ${formatNumber(spectrum.mattrWindow)}-token window`;
+    mattrValue = `not computable – documents shorter than ${formatNumber(spectrum.mattrWindow)}-token window`;
   }
 
   let mtldValue: string;
@@ -1774,14 +1774,14 @@ function renderLexicalSpectrum(corpus: AnalysisCorpus): HTMLElement {
       2,
     );
   } else if (corpus.totals.documents === 0) {
-    mtldValue = "not computable — no documents";
+    mtldValue = "not computable – no documents";
   } else if (
     corpus.balance.maximumTokens !== null
     && corpus.balance.maximumTokens < spectrum.mtldMinDocumentTokens
   ) {
-    mtldValue = `not computable — documents shorter than ${formatNumber(spectrum.mtldMinDocumentTokens)}-token minimum`;
+    mtldValue = `not computable – documents shorter than ${formatNumber(spectrum.mtldMinDocumentTokens)}-token minimum`;
   } else {
-    mtldValue = "not computable — no eligible document produced a finite value";
+    mtldValue = "not computable – no eligible document produced a finite value";
   }
 
   const diversityRows: OverviewMetricRow[] = [
@@ -1906,10 +1906,10 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
   if (corpus.totals.documents >= 2) {
     if (dispersion.medianDp !== null) {
       rows.push({
-        label: "Gries DP",
+        label: "Gries's DP",
         labelSuffix: "(median, frequent types)",
         value: formatFixedNumber(dispersion.medianDp, 2),
-        description: "The middle DP value across frequent types - how uneven the typical frequent type is.",
+        description: "The middle DP value across frequent types – how uneven the typical frequent type is.",
       });
     }
   }
@@ -1924,7 +1924,7 @@ function renderDispersionProfile(corpus: AnalysisCorpus): HTMLElement {
   }
   const universe = document.createElement("p");
   universe.className = "analysis-panel-note";
-  universe.textContent = "Universe: all analysis types - independent of Frequency List filters.";
+  universe.textContent = "Universe: all analysis types – independent of Frequency list filters.";
   panel.appendChild(universe);
   panel.appendChild(renderDispersionFigure(corpus));
   const planeFigure = renderDispersionPlaneFigure(corpus);
@@ -1976,7 +1976,7 @@ function renderBuildDetails(corpus: AnalysisCorpus): HTMLElement {
   if (!build.metadataAttached) {
     appendPanelReading(
       details,
-      "No metadata attached to sources. Corpus composition is assessed from file-level diagnostics only — genre, register, author and date cannot be reported, and no representativeness or domain claim is made.",
+      "No metadata attached to sources. Corpus composition is assessed from file-level diagnostics only – genre, register, author and date cannot be reported, and no representativeness or domain claim is made.",
     );
   }
   return details;

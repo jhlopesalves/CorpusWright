@@ -499,7 +499,7 @@ function createBaseSvg(plotId: string, box: PlotBox): SVGSVGElement {
   });
   const instructions = createSvgElement("desc");
   instructions.id = instructionId;
-  instructions.textContent = "Interactive plot. Use arrow keys to explore marks, Home and End for boundaries, Enter or Space to pin evidence, and Escape to return to the plot.";
+  instructions.textContent = "Interactive plot. Use arrow keys to explore marks, Home and End for boundaries, Enter or Space to pin evidence and Escape to return to the plot.";
   svg.appendChild(instructions);
   return svg;
 }

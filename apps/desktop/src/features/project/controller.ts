@@ -422,7 +422,7 @@ async function upgradeProjectLanguage(path: string): Promise<ActiveProject | nul
     setWelcomeStatus("Open project cancelled.");
     return null;
   }
-  dom.projectLanguageUpgradeStatus.textContent = "Saving project language...";
+  dom.projectLanguageUpgradeStatus.textContent = "Saving project language…";
   return invoke<ActiveProject>("upgrade_project_language_command", { path, language });
 }
 
@@ -464,7 +464,7 @@ async function handleNewProject(): Promise<void> {
   }
 
   try {
-    setWelcomeStatus("Creating project...");
+    setWelcomeStatus("Creating project…");
     const project = await invoke<ActiveProject>("create_corpus_project_command", { request: choice.request });
     recordRecentProject(project);
     await activateProject(project, false);
@@ -481,7 +481,7 @@ async function handleOpenProject(): Promise<void> {
   }
 
   try {
-    setWelcomeStatus("Opening project...");
+    setWelcomeStatus("Opening project…");
     await openProjectFromPath(selected, true);
   } catch (error) {
     setWelcomeStatus(formatError(error), true);
@@ -495,7 +495,7 @@ async function handleOpenFolderAsProject(): Promise<void> {
   }
 
   try {
-    setWelcomeStatus("Opening project...");
+    setWelcomeStatus("Opening project…");
     await openProjectFromPath(selected, true);
     return;
   } catch (error) {
@@ -512,7 +512,7 @@ async function handleOpenFolderAsProject(): Promise<void> {
   }
 
   try {
-    setWelcomeStatus("Creating project metadata...");
+    setWelcomeStatus("Creating project metadata…");
     const project = await invoke<ActiveProject>("initialise_folder_as_corpus_project_command", {
       request: choice.request,
     });
@@ -525,7 +525,7 @@ async function handleOpenFolderAsProject(): Promise<void> {
 
 async function handleRecentProjectOpen(project: RecentProject): Promise<void> {
   try {
-    setWelcomeStatus("Opening project...");
+    setWelcomeStatus("Opening project…");
     await openProjectFromPath(project.rootPath, true);
   } catch (error) {
     setWelcomeStatus(formatError(error), true);

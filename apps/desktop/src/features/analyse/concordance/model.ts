@@ -100,7 +100,7 @@ export function normaliseConcordanceQuery(value: string): string {
 
 export function formatConcordanceProgress(progress: ConcordanceProgress | null): string {
   if (!progress) {
-    return "Searching...";
+    return "Searching…";
   }
   const percent = progress.filesTotal > 0 ? Math.round((progress.filesDone / progress.filesTotal) * 100) : 0;
   let phaseText = "Searching";
@@ -111,7 +111,7 @@ export function formatConcordanceProgress(progress: ConcordanceProgress | null):
   } else if (progress.currentPhase === "aggregatingCollocations") {
     phaseText = "Aggregating collocates";
   }
-  return `${phaseText}... ${percent}%`;
+  return `${phaseText}… ${percent}%`;
 }
 
 export function concordanceRowText(tokens: string[]): string {
@@ -734,7 +734,7 @@ export function concordanceExpansionViewModel(
       expanded: true,
       ariaExpanded: "true",
       status: "loading",
-      message: "Loading wider context...",
+      message: "Loading wider context…",
       leftText: "",
       nodeText: "",
       rightText: "",
@@ -766,7 +766,7 @@ export function concordanceExpansionViewModel(
     expanded: true,
     ariaExpanded: "true",
     status: "loading",
-    message: "Loading wider context...",
+    message: "Loading wider context…",
     leftText: "",
     nodeText: "",
     rightText: "",

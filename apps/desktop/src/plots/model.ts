@@ -1628,7 +1628,7 @@ export function buildCoverageGeometry(options: {
     .map((point) => ({
     x: point.x,
     y: point.y,
-    text: `top ${formatInteger(point.datum.k)} - ${formatPercent(point.datum.share)}`,
+    text: `top ${formatInteger(point.datum.k)} – ${formatPercent(point.datum.share)}`,
     className: `cw-plot-label-muted cw-plot-ramp-${point.rampIndex} ${point.className ?? ""}`.trim(),
     candidates: [
       { dx: 10, dy: 18, anchor: "start" },

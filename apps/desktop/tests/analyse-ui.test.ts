@@ -156,7 +156,7 @@ assert(
 const concordanceLinesPanel = html.slice(concordanceLinesStart, concordanceCollocationsStart);
 const concordanceCollocationsPanel = html.slice(concordanceCollocationsStart, concordanceDistributionStart);
 assert(
-  concordanceLinesPanel.includes('id="concordance-lines-title">Concordance Lines</h3>')
+  concordanceLinesPanel.includes('id="concordance-lines-title">Concordance lines</h3>')
     && concordanceLinesPanel.includes("Where and how does the node occur in context?")
     && concordanceLinesPanel.includes('<p id="concordance-lines-stats" class="concordance-card-stats cw-result-table-note">')
     && !concordanceLinesPanel.includes('data-concordance-card-action=')
@@ -324,7 +324,7 @@ assert(
     && workbench.includes('panelHeader.className = "concordance-document-spread-header"')
     && workbench.includes('summary.className = "concordance-distribution-summary"')
     && workbench.includes('title.textContent = "Distribution"')
-    && !workbench.includes('title.textContent = `Distribution — ${concordanceSummaryMetricsText(result)}`')
+    && !workbench.includes('title.textContent = `Distribution – ${concordanceSummaryMetricsText(result)}`')
     && !workbench.includes('const panel = document.createElement("details");\n  panel.className = "concordance-document-spread-panel";'),
   "Concordance Distribution should render directly with a compact title and editorial summary rather than as a collapsed details widget",
 );
@@ -367,7 +367,7 @@ assert(
     && styles.includes(".concordance-distribution-rate-bar {\n  display: block;")
     && styles.includes("background: var(--accent-color);")
     && styles.includes(".concordance-distribution-reading")
-    && renderConcordanceDistributionBody.includes("Concentration in a few documents may suggest topic, genre, or source dependence; broad reach may suggest more corpus-general use.")
+    && renderConcordanceDistributionBody.includes("Concentration in a few documents may suggest topic, genre or source dependence; broad reach may suggest more corpus-general use.")
     && !renderConcordanceDistributionBody.includes("significance")
     && !renderConcordanceDistributionBody.includes("representative"),
   "Concordance Distribution should use editorial summary copy and a restrained rate ledger with cautious interpretation",
@@ -714,7 +714,7 @@ assert(
     && workbench.includes('const actionLabel = `Inspect co-occurrence lines for “${row.surface}” with “${query}”`;')
     && !workbench.includes('title.textContent = `Evidence for')
     && !workbench.includes('const actionLabel = `Show evidence')
-    && !workbench.includes('"Loading evidence..."')
+    && !workbench.includes('"Loading evidence…"')
     && !workbench.includes("No evidence lines found"),
   "Collocate drawer user-visible terminology should use co-occurrence lines rather than Evidence copy",
 );
@@ -739,7 +739,7 @@ assert(
   html.includes('id="concordance-lines-filter" class="concordance-filter-chip hidden" role="status"')
     && html.includes('id="concordance-lines-filter-clear"')
     && html.includes('id="concordance-lines-panel" class="concordance-card concordance-kwic-panel cw-panel cw-panel--stacked" aria-labelledby="concordance-lines-title" tabindex="-1"')
-    && collocateEvidenceDrawerBody.includes('openInLines.textContent = "Open in Concordance Lines";')
+    && collocateEvidenceDrawerBody.includes('openInLines.textContent = "Open in Concordance lines";')
     && collocateEvidenceDrawerBody.includes("openCollocateInConcordanceLines(row.surface, direction);")
     && openInLinesBody.includes("applyConcordanceLinesContextFilter(workbenchState, surface, direction);")
     && openInLinesBody.includes("dom.concordanceLinesPanel.focus({ preventScroll: true });")
@@ -764,7 +764,7 @@ assert(
 assert(
   collocateEvidenceDrawerBody.indexOf("if (collocateEvidenceResult !== null && collocateEvidenceResult.totalHits > 0)") >= 0
     && collocateEvidenceDrawerBody.indexOf("panel.appendChild(createCollocateEvidenceList(collocateEvidenceResult));")
-      < collocateEvidenceDrawerBody.indexOf("appendCollocateEvidenceMessage(panel, \"Loading co-occurrence lines...\");")
+      < collocateEvidenceDrawerBody.indexOf("appendCollocateEvidenceMessage(panel, \"Loading co-occurrence lines…\");")
     && collocateEvidenceDrawerBody.includes("appendCollocateEvidenceMessage(panel, `Could not load more co-occurrence lines: ${collocateEvidenceFailure}`, true);"),
   "Collocate evidence drawer should keep existing rows visible while loading or reporting a failed show-more request",
 );
@@ -775,7 +775,7 @@ assert(
     && collocateEvidenceShowMoreBody.includes("const nextCount = Math.min(CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT, remaining);")
     && collocateEvidenceShowMoreBody.includes("remaining <= 0")
     && collocateEvidenceShowMoreBody.includes("Showing ${formatNumber(shown)} of ${formatNumber(result.totalHits)}")
-    && collocateEvidenceShowMoreBody.includes('? "Loading..."')
+    && collocateEvidenceShowMoreBody.includes('? "Loading…"')
     && collocateEvidenceShowMoreBody.includes("`Show remaining ${formatNumber(remaining)}`")
     && collocateEvidenceShowMoreBody.includes("`Show ${formatNumber(nextCount)} more`")
     && collocateEvidenceShowMoreBody.includes("collocateEvidenceLimit += nextCount")
