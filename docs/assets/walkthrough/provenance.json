@@ -7,7 +7,7 @@
     "deviceScaleFactor": 1
   },
   "coreTree": "069d0a29ae1641b66c3809d9e0011428e274ec93",
-  "frontendTree": "63446cb55f2252daf33180eb7284014e3ba85050",
+  "frontendTree": "ba0220deeb9eba008c645412a0576f3e3dfa0901",
   "sourceChecksums": {
     "15114-pdf.pdf": "a4a127e6b94088faa394615cc4d2ef0790828db5b3de314520cdcd78b1d504ba",
     "57359-0.txt": "a92e523f6fd298b1e778230c99ad37e17e868ec9c04567e8896eceb05ee53bae",
@@ -112,8 +112,8 @@
       "stage": "02-artefacts",
       "asset": "02-artefacts-light.png",
       "theme": "wright-light",
-      "sha256": "7b24d3d37f9a2c2dce947a6671c94a326dda98a4343d66dfaf745b3d8becad22",
-      "visibleTextSha256": "00dc2e326960247ba69cdf704c632dd8e62c76600f73c3cbd7a02f74415cf94d"
+      "sha256": "d56e4f3886da38839ec0be512d399f136db38d3ae81ea05dde7669cd13835f2c",
+      "visibleTextSha256": "742e74c15a8ceb1707e03b8d780344af47b914b741883ca3d3e9e86866baded7"
     },
     {
       "stage": "03-cleaning",
@@ -126,7 +126,7 @@
       "stage": "04-counts",
       "asset": "04-counts-light.png",
       "theme": "wright-light",
-      "sha256": "bdeca93cf73197fa07a05e99f83abe7b3db09a4f319a56ce2f8293a68598bd6d",
+      "sha256": "5cf660f7fca487c4c4451b0f7c7584bec06f442b072244d2ee243993ada0be08",
       "visibleTextSha256": "1d89728a4de1994b2800b19f36c09993ca4c7b09b4b22c66dda32e171d4700f1"
     },
     {
@@ -140,14 +140,14 @@
       "stage": "06-context",
       "asset": "06-context-light.png",
       "theme": "wright-light",
-      "sha256": "dd739373ff8032ac54c01d47edcc8ff0baab9fecd9f27c76e9cff34072a933a3",
+      "sha256": "495149dbc9656ff48bfdee822972cb773bb93b9056a11fa55a11070ee0448b87",
       "visibleTextSha256": "26c4b8d9f57e3b207c4678b722d72670c21f9facb2a3303b65d2c8c226eb535e"
     },
     {
       "stage": "06-distribution",
       "asset": "06-distribution-light.png",
       "theme": "wright-light",
-      "sha256": "9b8966c582b0bab5f823b07bfa5d22bf5734b60e0e77bd8c0abedb0f389d0061",
+      "sha256": "19df93820f6748108d38033db91fdeb5eff52f0a0532162e23e492fce8702ea0",
       "visibleTextSha256": "26c4b8d9f57e3b207c4678b722d72670c21f9facb2a3303b65d2c8c226eb535e"
     },
     {
@@ -161,8 +161,8 @@
       "stage": "02-artefacts",
       "asset": "02-artefacts-dark.png",
       "theme": "wright-dark",
-      "sha256": "8f2b9e3a2f9b8e11b9613951916454400ed30818c3f9347c1ab34b539b439f50",
-      "visibleTextSha256": "9596c7664a9f2f04f1d953d4728e9335a056038c32fbb9799c5fb27287c286ff"
+      "sha256": "dd2897077831ded43d7493bf12157d0e85a1abece12a4880ff69330dadbffeb7",
+      "visibleTextSha256": "ca27259a09ee3f7af0653853ba5c806ae97e3841e65b9b51ef51b4b24e1a87d4"
     },
     {
       "stage": "03-cleaning",
@@ -175,7 +175,7 @@
       "stage": "04-counts",
       "asset": "04-counts-dark.png",
       "theme": "wright-dark",
-      "sha256": "737b54366eee1c8c12381e86b55ef8c88b437d213d2628dd55017a780a916770",
+      "sha256": "7fe30e2fb549afeb5c72e9e0a84c0ddfa298e3d35d3a55a5ee81d4c3955b822a",
       "visibleTextSha256": "eaced8d0baf5ecec9c912275bf89aa2b14b985ccdd60426717842b56532af7da"
     },
     {
@@ -189,14 +189,14 @@
       "stage": "06-context",
       "asset": "06-context-dark.png",
       "theme": "wright-dark",
-      "sha256": "16c3ec9d84dc293e35825e6e4cd5374dc355099eb07ff974275932d930301a5b",
+      "sha256": "e959e83df29bff716ef76d4cfa4b4e7f654ab11b4f6c153d6a89bf0b47024db9",
       "visibleTextSha256": "43b12525ca32d620e7e2e62ba34faefdc666ff1bfc700dc2430f0f0760b670a1"
     },
     {
       "stage": "06-distribution",
       "asset": "06-distribution-dark.png",
       "theme": "wright-dark",
-      "sha256": "5268c374218d1cf4e88fb84e4e305018642dc39cd1d3f4f4e478d993adb9eb0f",
+      "sha256": "eca8355ce75af4d7f23ffabb6e2b253026819262b33cd11a8eacdaf9658c0e41",
       "visibleTextSha256": "43b12525ca32d620e7e2e62ba34faefdc666ff1bfc700dc2430f0f0760b670a1"
     }
   ]

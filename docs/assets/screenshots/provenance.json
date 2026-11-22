@@ -67,7 +67,7 @@
     "watering-plan.txt": "f1384cc4a27dfb96cf532518e6d6a6fef817f6f5485a3293544b32e4a94be6fd"
   },
   "coreTree": "069d0a29ae1641b66c3809d9e0011428e274ec93",
-  "frontendTree": "63446cb55f2252daf33180eb7284014e3ba85050",
+  "frontendTree": "ba0220deeb9eba008c645412a0576f3e3dfa0901",
   "captureInputs": {
     "apps/desktop/scripts/capture-public-product.mjs": "93acbc51ae966437fef7a357da900681604433870c3681b2196c01481b1cdbe4",
     "apps/desktop/scripts/browser-capture.mjs": "9ce8146babf2672e837b166f3ef77fa99a785041175591bcd673d1947c6ec811",
@@ -92,7 +92,7 @@
     {
       "stage": "concordance",
       "asset": "corpuswright-concordance.png",
-      "sha256": "f5a1255afcdbd8fbe97352a53702f995212da67eddfbf793686a04f5b192651b",
+      "sha256": "8c1ad38aeed2eda63c0208f6358f3c55ab80310477246718706b20216dc3fca6",
       "visibleTextSha256": "70353c54ec2d77028c578b18305bfd0dbdc954a8cdb8945fcbf48ac499691c4a"
     }
   ]
