@@ -347,13 +347,20 @@ export function refreshStageNavigator(): void {
   const status = analysisStatus();
   const sourceCount = prepareSourceCount();
 
-  dom.workbenchPrepare.classList.toggle("active", !analyseIsActive);
-  dom.workbenchAnalyse.classList.toggle("active", analyseIsActive);
-  dom.workbenchExport.classList.remove("active");
-
-  dom.workbenchPrepare.setAttribute("aria-selected", analyseIsActive ? "false" : "true");
-  dom.workbenchAnalyse.setAttribute("aria-selected", analyseIsActive ? "true" : "false");
-  dom.workbenchExport.setAttribute("aria-selected", "false");
+  const projectOpen = !dom.projectWorkspace.classList.contains("hidden");
+  for (const [button, active] of [
+    [dom.workbenchPrepare, !analyseIsActive],
+    [dom.workbenchAnalyse, analyseIsActive],
+  ] as const) {
+    button.disabled = !projectOpen;
+    button.setAttribute("aria-disabled", String(!projectOpen));
+    button.classList.toggle("active", projectOpen && active);
+    if (projectOpen && active) {
+      button.setAttribute("aria-current", "page");
+    } else {
+      button.removeAttribute("aria-current");
+    }
+  }
 
   dom.workbenchPrepare.dataset.stageState = sourceCount === null ? "loading" : sourceCount > 0 ? "ready" : "blocked";
   dom.workbenchAnalyse.dataset.stageState = status === "ready" ? "ready" : status === "stale" ? "stale" : "blocked";
@@ -2062,15 +2069,13 @@ export function resetWorkbenchForProject(): void {
   resetAnalysisBuildStateForWorkbench();
   activeAnalysisTool = "overview";
   resetFrequencyCorpusState();
-  dom.workbenchSwitcher.classList.remove("hidden");
   setActiveWorkbench("prepare");
 }
 
-export function hideWorkbenchSwitcher(): void {
+export function resetWorkbenchWithoutProject(): void {
   resetAnalysisBuildStateForWorkbench();
   activeAnalysisTool = "overview";
   resetFrequencyCorpusState();
-  dom.workbenchSwitcher.classList.add("hidden");
   setActiveWorkbench("prepare");
 }
 
@@ -2088,10 +2093,10 @@ function focusWorkbench(workbench: WorkbenchId): void {
 }
 
 function handleWorkbenchKeydown(event: KeyboardEvent): void {
-  if (event.key === "ArrowLeft" || event.key === "Home") {
+  if (event.key === "ArrowUp" || event.key === "ArrowLeft" || event.key === "Home") {
     event.preventDefault();
     focusWorkbench("prepare");
-  } else if (event.key === "ArrowRight" || event.key === "End") {
+  } else if (event.key === "ArrowDown" || event.key === "ArrowRight" || event.key === "End") {
     event.preventDefault();
     focusWorkbench("analyse");
   }

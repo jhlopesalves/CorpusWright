@@ -58,15 +58,16 @@ export const contrastChecks = [
   })),
 ];
 
+const navigationChecks = ["bg", "hover", "selected", "selected-hover"].flatMap(ground => [
+  { label: `navigation text on ${ground}`, fg: "--cw-navigation-text", bg: `--cw-navigation-${ground}`, min: 4.5 },
+  { label: `navigation secondary text on ${ground}`, fg: "--cw-navigation-muted", bg: `--cw-navigation-${ground}`, min: 4.5 },
+  { label: `navigation focus on ${ground}`, fg: "--cw-navigation-focus", bg: `--cw-navigation-${ground}`, min: 3 },
+]);
+
 const wrightChecks = [
   ...["active", "selected", "range", "source", "target", "success", "warning", "muted"].flatMap(role => [
     { label: `${role} ink`, fg: `--visual-${role}-ink`, bg: `--visual-${role}-bg`, min: 4.5 },
     { label: `${role} line`, fg: `--visual-${role}-line`, bg: `--visual-${role}-bg`, min: 3 },
-  ]),
-  ...["navigation", "navigation-hover", "navigation-selected", "navigation-selected-hover"].flatMap(ground => [
-    { label: `navigation text on ${ground}`, fg: "--color-navigation-text", bg: `--color-${ground}`, min: 4.5 },
-    { label: `navigation secondary text on ${ground}`, fg: "--color-navigation-muted", bg: `--color-${ground}`, min: 4.5 },
-    { label: `navigation focus on ${ground}`, fg: "--color-navigation-focus", bg: `--color-${ground}`, min: 3 },
   ]),
   ...["app", "surface", "surface-subtle", "header", "hover", "selected"].flatMap(ground =>
     ["primary", "secondary", "tertiary"].map(role => ({
@@ -173,6 +174,7 @@ const failures = [];
 if (themes.length !== 4) failures.push(`expected exactly 4 complete themes, found ${themes.length}`);
 if (contrastChecks.length !== 44) failures.push(`expected exactly 44 contrast checks, found ${contrastChecks.length}`);
 failures.push(...validateThemeContrast(themes));
+failures.push(...validateThemeContrast(themes, navigationChecks));
 failures.push(...validatePaletteContrast(themes));
 failures.push(...validateThemeContrast(themes.filter(theme => theme.id.startsWith("wright-")), wrightChecks));
 
@@ -183,4 +185,5 @@ if (failures.length) {
 }
 
 console.log(`Theme contrast check passed for exactly ${themes.length} complete themes (${contrastChecks.length} base checks and ${Object.keys(paletteRoleTokens).length * paletteRoleLabels.length} theme × palette role checks each).`);
+console.log(`Each theme passed ${navigationChecks.length} navigation pairings.`);
 console.log(`Wright passed ${wrightChecks.length} additional pairings per variant.`);

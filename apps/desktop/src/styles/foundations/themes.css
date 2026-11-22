@@ -1,5 +1,13 @@
 [data-theme="wright-light"],
 [data-theme="wright-dark"] {
+  --cw-navigation-bg: var(--color-navigation);
+  --cw-navigation-text: var(--color-navigation-text);
+  --cw-navigation-muted: var(--color-navigation-muted);
+  --cw-navigation-hover: var(--color-navigation-hover);
+  --cw-navigation-selected: var(--color-navigation-selected);
+  --cw-navigation-selected-hover: var(--color-navigation-selected-hover);
+  --cw-navigation-border: var(--color-navigation-border);
+  --cw-navigation-focus: var(--color-navigation-focus);
   --cw-font-ui: var(--cw-font-chrome);
   --cw-font-chrome: var(--font-chrome);
   --cw-font-reading: var(--font-reading);
@@ -160,6 +168,14 @@
 }
 
 [data-theme="high-contrast-light"] {
+  --cw-navigation-bg: #000000;
+  --cw-navigation-text: #ffffff;
+  --cw-navigation-muted: #e1e1e1;
+  --cw-navigation-hover: #222222;
+  --cw-navigation-selected: #283645;
+  --cw-navigation-selected-hover: #35465a;
+  --cw-navigation-border: #9b9b9b;
+  --cw-navigation-focus: #ffe45e;
   --cw-font-ui: var(--cw-font-chrome);
   --cw-font-chrome: var(--font-chrome);
   --cw-font-reading: var(--font-reading);
@@ -320,6 +336,14 @@
 }
 
 [data-theme="high-contrast-dark"] {
+  --cw-navigation-bg: #000000;
+  --cw-navigation-text: #ffffff;
+  --cw-navigation-muted: #e1e1e1;
+  --cw-navigation-hover: #222222;
+  --cw-navigation-selected: #283645;
+  --cw-navigation-selected-hover: #35465a;
+  --cw-navigation-border: #9b9b9b;
+  --cw-navigation-focus: #ffe45e;
   --cw-font-ui: var(--cw-font-chrome);
   --cw-font-chrome: var(--font-chrome);
   --cw-font-reading: var(--font-reading);

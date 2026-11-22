@@ -14,6 +14,7 @@ import {
   renderProjectEmptyState,
 } from "../prepare/corpus/controller";
 import { dom } from "../../app/dom";
+import { closeAppMenu } from "../../app/theme";
 import { loadProjectSourcesForActiveProject, projectSourceTotalCount } from "../prepare/sources";
 import { state, type ActiveProject } from "../../app/state";
 import type { CreateCorpusProjectRequest } from "../../generated/CreateCorpusProjectRequest.js";
@@ -29,7 +30,7 @@ import {
 } from "./creation-dialog";
 import { clearDecisions, loadDecisionsForProject } from "../prepare/repeated-artifacts/controller";
 import { formatRemovalRuleMigrationSummary } from "../prepare/cleaning/removal-rule-migration.ts";
-import { hideWorkbenchSwitcher, resetWorkbenchForProject } from "../analyse/workbench";
+import { resetWorkbenchWithoutProject, resetWorkbenchForProject } from "../analyse/workbench";
 
 interface RecentProject {
   name: string;
@@ -143,12 +144,6 @@ function setWelcomeStatus(message: string, isError = false): void {
   dom.welcomeStatus.classList.toggle("is-error", isError);
 }
 
-function closeMenus(): void {
-  document.querySelectorAll(".dropdown").forEach((dropdown) => {
-    dropdown.classList.remove("is-open");
-  });
-}
-
 function showWelcome(message = ""): void {
   dom.welcomeScreen.classList.remove("hidden");
   dom.projectWorkspace.classList.add("hidden");
@@ -157,10 +152,10 @@ function showWelcome(message = ""): void {
   dom.projectContextName.textContent = "";
   dom.projectContextLanguage.textContent = "";
   dom.projectContextPath.textContent = "";
-  hideWorkbenchSwitcher();
+  resetWorkbenchWithoutProject();
   setWelcomeStatus(message);
   renderRecentProjects();
-  closeMenus();
+  closeAppMenu();
 }
 
 async function activateProject(project: ActiveProject, scanSourceRoot: boolean): Promise<void> {
@@ -184,7 +179,7 @@ async function activateProject(project: ActiveProject, scanSourceRoot: boolean):
   clearStateForLoad();
   renderProjectEmptyState();
   resetWorkbenchForProject();
-  closeMenus();
+  closeAppMenu();
 
   await loadProjectSourcesForActiveProject();
   if (scanSourceRoot && project.sourceRoots.length > 0 && projectSourceTotalCount() === 0) {

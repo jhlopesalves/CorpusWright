@@ -1,38 +1,3 @@
-.stage-tab.active .stage-tab-status {
-  color: var(--cw-text-selected, inherit);
-  opacity: 0.85;
-}
-
-.stage-tab-status {
-  display: block;
-  margin-top: 5px;
-  min-height: 17px;
-  padding: 0;
-  border: 0;
-  color: var(--text-muted);
-  font-size: var(--cw-type-micro-size);
-  line-height: 1.2;
-  background: transparent;
-}
-
-.stage-tab[data-stage-state="blocked"] .stage-tab-status,
-.stage-tab[data-stage-state="stale"] .stage-tab-status,
-.stage-tab[data-stage-state="future"] .stage-tab-status {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 6px;
-  border: 1px solid var(--cw-warning-border);
-  border-radius: 999px;
-  color: var(--cw-warning-text);
-  background: var(--cw-warning-bg);
-}
-
-.stage-tab-future .stage-tab-status {
-  border-color: var(--cw-info-border);
-  color: var(--cw-info-text);
-  background: var(--cw-info-bg);
-}
-
 .status-line {
   font-size: var(--cw-type-ui-size);
   color: var(--text-muted);
@@ -135,8 +100,9 @@
 
 #status-bar {
   padding: 5px 20px;
-  background-color: var(--accent-color);
-  color: var(--cw-text-inverse);
+  background-color: var(--cw-header-bg);
+  border-top: 1px solid var(--border-color);
+  color: var(--text-muted);
   font-size: var(--cw-type-ui-size);
 }
 

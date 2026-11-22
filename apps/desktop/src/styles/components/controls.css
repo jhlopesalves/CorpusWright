@@ -355,13 +355,6 @@
 
 /* UI Refinements */
 
-.top-right-controls {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .icon-btn {
   background: transparent;
   border: 1px solid transparent;

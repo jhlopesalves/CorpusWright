@@ -52,96 +52,83 @@
 
 <body>
   <div id="app">
-    <nav class="app-bar">
+    <nav class="app-rail" aria-label="Primary">
       <div class="app-title">CorpusWright</div>
-      <div class="menu-items">
-        <div class="dropdown" id="menu-file-dropdown">
-          <span class="menu-item" tabindex="0">File</span>
-          <div class="dropdown-content">
-            <div class="dropdown-item" id="menu-new-project" tabindex="0">New Project</div>
-            <div class="dropdown-item" id="menu-open-project" tabindex="0">Open Project</div>
-            <div class="dropdown-item" id="menu-open-folder-project" tabindex="0">Open Folder as Project</div>
-            <div class="dropdown-item hidden" id="menu-close-project" tabindex="0">Close Project</div>
-            <hr class="dropdown-divider">
-            <div class="dropdown-item" id="menu-save-corpus" tabindex="0">Export cleaned corpus…</div>
+      <div class="app-menu-anchor">
+        <button id="app-menu-button" class="rail-row" type="button" aria-expanded="false" aria-controls="app-menu">
+          <span>Menu</span>
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" aria-hidden="true">
+            <path d="m4 6 4 4 4-4" />
+          </svg>
+        </button>
+        <div id="app-menu" class="app-menu" hidden>
+          <div id="menu-file-dropdown" class="app-menu-group" role="group" aria-labelledby="app-menu-file-label">
+            <div id="app-menu-file-label" class="app-menu-label">File</div>
+            <button class="dropdown-item" id="menu-new-project" type="button">New Project</button>
+            <button class="dropdown-item" id="menu-open-project" type="button">Open Project</button>
+            <button class="dropdown-item" id="menu-open-folder-project" type="button">Open Folder as Project</button>
+            <button class="dropdown-item hidden" id="menu-close-project" type="button">Close Project</button>
+            <button class="dropdown-item" id="menu-save-corpus" type="button">Export cleaned corpus…</button>
           </div>
-        </div>
-        <div class="dropdown" id="menu-view-dropdown">
-          <span class="menu-item" tabindex="0">View</span>
-          <div class="dropdown-content">
-            <div class="dropdown-item" id="menu-appearance" tabindex="0">Appearance…</div>
-            <hr class="dropdown-divider">
-            <div class="dropdown-item" id="menu-toggle-theme" tabindex="0">Toggle Light/Dark</div>
+          <div id="menu-view-dropdown" class="app-menu-group" role="group" aria-labelledby="app-menu-view-label">
+            <div id="app-menu-view-label" class="app-menu-label">View</div>
+            <button class="dropdown-item" id="menu-appearance" type="button">Appearance…</button>
+            <button class="dropdown-item" id="menu-toggle-theme" type="button">Toggle light and dark</button>
           </div>
-        </div>
-        <div class="dropdown">
-          <span class="menu-item" tabindex="0">Help</span>
-          <div class="dropdown-content">
-            <div class="dropdown-item" id="menu-about-corpuswright" tabindex="0">About CorpusWright</div>
+          <div class="app-menu-group" role="group" aria-labelledby="app-menu-help-label">
+            <div id="app-menu-help-label" class="app-menu-label">Help</div>
+            <button class="dropdown-item" id="menu-about-corpuswright" type="button">About CorpusWright</button>
           </div>
         </div>
       </div>
-      <div class="top-right-controls">
-        <div id="project-context" class="project-context hidden">
-          <span id="project-context-name"></span>
-          <span id="project-context-language"></span>
-          <span id="project-context-path"></span>
+      <div id="workbench-switcher" class="stage-navigator" role="group" aria-label="Workbench stages">
+        <div class="stage-navigator-inner">
+          <button
+            id="workbench-prepare"
+            class="stage-tab"
+            type="button"
+            aria-controls="prepare-workbench"
+            aria-disabled="true"
+            disabled
+          >
+            <span class="stage-tab-title">Prepare</span>
+            <span id="stage-prepare-status" class="stage-tab-status">No sources</span>
+          </button>
+          <button
+            id="workbench-analyse"
+            class="stage-tab"
+            type="button"
+            aria-controls="analyse-workbench"
+            aria-disabled="true"
+            disabled
+          >
+            <span class="stage-tab-title">Analyse</span>
+            <span id="stage-analyse-status" class="stage-tab-status">Not built</span>
+          </button>
+          <button
+            id="workbench-export"
+            class="stage-tab stage-tab-future"
+            type="button"
+            aria-disabled="true"
+            disabled
+          >
+            <span class="stage-tab-title">Export</span>
+            <span id="stage-export-status" class="stage-tab-status">Coming later</span>
+          </button>
         </div>
-        <button id="theme-toggle" class="icon-btn" title="Toggle Light/Dark" aria-label="Toggle Light/Dark">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="5"></circle>
-            <line x1="12" y1="1" x2="12" y2="3"></line>
-            <line x1="12" y1="21" x2="12" y2="23"></line>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-            <line x1="1" y1="12" x2="3" y2="12"></line>
-            <line x1="21" y1="12" x2="23" y2="12"></line>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-          </svg>
-        </button>
+      </div>
+      <div class="rail-footer">
+        <button id="rail-appearance" class="rail-row" type="button">Appearance</button>
+        <button id="theme-toggle" class="rail-row" type="button">Toggle light and dark</button>
+        <button id="rail-about" class="rail-row" type="button">About</button>
       </div>
     </nav>
 
-    <div id="workbench-switcher" class="stage-navigator hidden" role="tablist" aria-label="Workbench stages">
-      <div class="stage-navigator-inner">
-        <button
-          id="workbench-prepare"
-          class="stage-tab active"
-          type="button"
-          role="tab"
-          aria-selected="true"
-          aria-controls="prepare-workbench"
-        >
-          <span class="stage-tab-title">Prepare</span>
-          <span id="stage-prepare-status" class="stage-tab-status">No sources</span>
-        </button>
-        <button
-          id="workbench-analyse"
-          class="stage-tab"
-          type="button"
-          role="tab"
-          aria-selected="false"
-          aria-controls="analyse-workbench"
-        >
-          <span class="stage-tab-title">Analyse</span>
-          <span id="stage-analyse-status" class="stage-tab-status">Not built</span>
-        </button>
-        <button
-          id="workbench-export"
-          class="stage-tab stage-tab-future"
-          type="button"
-          role="tab"
-          aria-selected="false"
-          aria-disabled="true"
-          disabled
-        >
-          <span class="stage-tab-title">Export</span>
-          <span id="stage-export-status" class="stage-tab-status">Coming later</span>
-        </button>
-      </div>
-    </div>
+    <header id="project-context" class="project-context hidden" aria-label="Project context">
+      <span id="project-context-name"></span>
+      <span id="project-context-language"></span>
+      <span id="project-context-path"></span>
+    </header>
 
     <main id="welcome-screen" class="welcome-screen">
       <section class="welcome-content" aria-labelledby="welcome-title">
@@ -161,7 +148,7 @@
     </main>
 
     <main id="project-workspace" class="project-workspace hidden">
-      <div id="prepare-workbench" class="prepare-workbench" role="tabpanel" aria-labelledby="workbench-prepare">
+      <div id="prepare-workbench" class="prepare-workbench" role="region" aria-labelledby="workbench-prepare">
         <aside class="left-panel">
         <div class="source-panel-header">
           <h2>Sources</h2>
@@ -265,7 +252,7 @@
         </div>
         </section>
       </div>
-      <section id="analyse-workbench" class="analyse-workbench hidden" role="tabpanel" aria-labelledby="workbench-analyse">
+      <section id="analyse-workbench" class="analyse-workbench hidden" role="region" aria-labelledby="workbench-analyse">
         <div class="analyse-content">
           <header class="analyse-header">
             <div>

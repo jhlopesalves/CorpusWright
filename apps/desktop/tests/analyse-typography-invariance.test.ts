@@ -69,8 +69,6 @@ for (const match of styles.matchAll(statefulSelector)) {
 }
 
 for (const selector of [
-  ".stage-tab-title",
-  ".stage-tab.active .stage-tab-title",
   ".analyse-eyebrow",
   ".analyse-header h1",
   ".analyse-status-text",

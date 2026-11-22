@@ -9,16 +9,6 @@
   background-color: var(--cw-theme-selection-hover-bg);
 }
 
-[data-theme="high-contrast-dark"] .stage-tab.active {
-  background-color: var(--cw-theme-selection-bg);
-  color: var(--cw-theme-selection-text);
-  border: 1.5px solid var(--cw-theme-selection-outline);
-  box-shadow: none;
-}
-[data-theme="high-contrast-dark"] .stage-tab.active:not(:disabled):hover {
-  background-color: var(--cw-theme-selection-hover-bg);
-}
-
 [data-theme="high-contrast-dark"] .analyse-tool-item[aria-current="page"] {
   background-color: var(--cw-theme-selection-bg);
   color: var(--cw-theme-selection-text);

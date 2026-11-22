@@ -104,7 +104,8 @@ function oppositeMode(mode: ThemeVariant): ThemeVariant {
 }
 
 function setThemeToggleIcon(targetMode: ThemeVariant): void {
-  dom.themeToggle.innerHTML = targetMode === "light" ? SUN_ICON : MOON_ICON;
+  const icon = targetMode === "light" ? SUN_ICON : MOON_ICON;
+  dom.themeToggle.innerHTML = `${icon}<span>${targetMode === "light" ? "Light mode" : "Dark mode"}</span>`;
 }
 
 function refreshLightDarkToggleState(currentVariant: ThemeVariant): void {
