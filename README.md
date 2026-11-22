@@ -21,10 +21,6 @@ CorpusWright takes PDF, DOCX, HTML and plain-text sources through preparation, d
 
 <sub>The Dispersion plane for ten nineteenth-century works on logic, probability and related subjects, 1,150,112 tokens after cleaning. The <a href="https://jhlopesalves.github.io/CorpusWright/">walkthrough</a> on the website follows this corpus from its files to its figures.</sub>
 
-## Why it exists
-
-CorpusWright grew out of an undergraduate research project in which a corpus had to be cleaned one file at a time. Automating the preparation in Python reduced months of manual work to days, but the cleaned corpus still had to be examined systematically. Cleaning changes the text that is counted, so aggregate results have to remain traceable to the documents and contexts they were calculated from. CorpusWright keeps corpus preparation, descriptive statistics and the underlying text in the same workflow.
-
 ## From the files to the figures and back
 
 **Prepare.** Import the sources and read what was extracted before anything is counted. PDFs are read from their embedded text by default, and a scanned PDF can be imported with full OCR instead. The Repeated Artefact Finder groups recurring lines and short blocks, such as licence notices and running heads, so that each removal rule is reviewed before it is accepted. The Original Text and Processed Text tabs show what the rules change, and the source files are never modified.
