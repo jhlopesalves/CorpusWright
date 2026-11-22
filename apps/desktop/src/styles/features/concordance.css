@@ -308,7 +308,7 @@
   border: 0;
   background: var(--cw-node-bg);
   color: var(--cw-node-ink);
-  box-shadow: inset 0 -1px var(--cw-node-line);
+  box-shadow: inset 0 -2px var(--cw-node-line);
   border-radius: var(--radius-avatar);
   font-weight: var(--cw-weight-semibold);
   white-space: nowrap;

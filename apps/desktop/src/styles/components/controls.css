@@ -281,14 +281,11 @@
   user-select: none;
 }
 
-#file-list li.selected {
-  background-color: var(--selected-color);
-  color: var(--cw-text-selected, inherit);
-}
-
+#file-list li.selected,
 #file-list li.selected:hover {
-  background-color: var(--cw-interaction-bg-selected-hover);
-  color: var(--cw-text-selected, inherit);
+  background-color: var(--cw-selected-bg);
+  color: var(--cw-selected-ink);
+  box-shadow: inset 2px 0 var(--cw-selected-line);
 }
 
 .source-empty-actions button {
