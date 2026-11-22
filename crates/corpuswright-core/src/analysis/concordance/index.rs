@@ -239,7 +239,7 @@ impl std::fmt::Display for SurfaceIndexError {
             }
             Self::DocumentIdTooLarge(document_id) => write!(
                 formatter,
-                "surface index document id {document_id} cannot be passed to the canonical tokenizer"
+                "surface index document id {document_id} cannot be passed to the canonical tokeniser"
             ),
             Self::InvalidPreparedOffset {
                 document_id,
@@ -1259,7 +1259,7 @@ pub fn search_surface_index_kwic(
     let window_tokens = surface_index_window_tokens(window_tokens);
     let search = search_surface_index(store, query)?;
     let mut rows = Vec::new();
-    try_reserve(&mut rows, search.hits.len(), "materialized KWIC rows")?;
+    try_reserve(&mut rows, search.hits.len(), "materialised KWIC rows")?;
     for hit in &search.hits {
         rows.push(materialize_surface_index_kwic_row(
             store,
@@ -2063,7 +2063,7 @@ fn surfaces(
     records: &[SurfaceIndexTokenRecord],
 ) -> Result<Vec<String>, SurfaceIndexError> {
     let mut surfaces = Vec::new();
-    try_reserve(&mut surfaces, records.len(), "materialized KWIC surfaces")?;
+    try_reserve(&mut surfaces, records.len(), "materialised KWIC surfaces")?;
     for record in records {
         let surface =
             store

@@ -504,7 +504,7 @@ impl std::fmt::Display for ConcordanceError {
                 formatter.write_str("At least one concordance result view must be requested.")
             }
             Self::InvalidSortKeys => formatter.write_str(
-                "Concordance sorting requires one to three unique context keys, or File/position or Node on its own.",
+                "Choose one to three unique context keys or use File/position or Node on its own.",
             ),
             Self::InvalidDocumentIdentity => {
                 formatter.write_str("The concordance document no longer matches the result.")

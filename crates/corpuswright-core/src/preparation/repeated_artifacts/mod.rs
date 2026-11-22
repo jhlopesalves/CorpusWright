@@ -166,9 +166,9 @@ impl RepeatedArtifactScanError {
             ceiling_bytes,
             estimated_bytes,
             suggestions: vec![
-                "Raise Min Files to discard corpus-specific singletons.".to_string(),
+                "Raise Minimum files to discard corpus-specific singletons.".to_string(),
                 "Disable inline artefacts or 2-line blocks to reduce candidate keys.".to_string(),
-                "Lower Max Candidates to materialise fewer survivors.".to_string(),
+                "Lower Maximum candidates to materialise fewer survivors.".to_string(),
             ],
         }
     }

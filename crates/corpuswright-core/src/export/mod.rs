@@ -214,7 +214,7 @@ pub fn export_corpus(
                             entry.extracted_text
                         }
                         Err(e) => {
-                            let msg = format!("DOCX Extraction Failed: {}", e);
+                            let msg = format!("Failed to extract DOCX text: {}", e);
                             file_warnings.push(msg.clone());
                             warnings.push(ExportWarning {
                                 source_path: Some(record.source_path.clone()),
@@ -240,7 +240,7 @@ pub fn export_corpus(
                             extracted.text
                         }
                         Err(e) => {
-                            let msg = format!("DOCX Extraction Failed: {}", e);
+                            let msg = format!("Failed to extract DOCX text: {}", e);
                             file_warnings.push(msg.clone());
                             warnings.push(ExportWarning {
                                 source_path: Some(record.source_path.clone()),
@@ -271,7 +271,7 @@ pub fn export_corpus(
                             entry.extracted_text
                         }
                         Err(e) => {
-                            let msg = format!("PDF Extraction Failed: {}", e);
+                            let msg = format!("Failed to extract PDF text: {}", e);
                             file_warnings.push(msg.clone());
                             warnings.push(ExportWarning {
                                 source_path: Some(record.source_path.clone()),
@@ -299,7 +299,7 @@ pub fn export_corpus(
                             extracted.text
                         }
                         Err(e) => {
-                            let msg = format!("PDF Extraction Failed: {}", e);
+                            let msg = format!("Failed to extract PDF text: {}", e);
                             file_warnings.push(msg.clone());
                             warnings.push(ExportWarning {
                                 source_path: Some(record.source_path.clone()),
@@ -735,9 +735,9 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), ExportError> {
 
 fn readme_text(app_name: &str) -> String {
     format!(
-        "{app_name} processed corpus export\n\n\
+        "{app_name} cleaned-corpus export\n\n\
          This directory contains processed UTF-8 .txt files under texts/.\n\
-         manifest.json records source paths, output paths, hashes, character counts, and warnings.\n\
+         manifest.json records source paths, output paths, hashes, character counts and warnings.\n\
          config.json records the cleaning configuration used for this export.\n\
          warnings.json records export warnings and is present even when empty.\n\
          Source files were not modified.\n"
