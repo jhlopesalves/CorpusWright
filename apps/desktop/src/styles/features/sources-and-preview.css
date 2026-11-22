@@ -497,7 +497,7 @@
 
 .file-card-num {
   font-size: var(--cw-type-help-size);
-  color: var(--cw-accent-ink);
+  color: var(--cw-text-metadata);
   white-space: nowrap;
 }
 

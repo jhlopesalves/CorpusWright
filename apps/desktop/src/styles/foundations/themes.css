@@ -215,7 +215,7 @@
   --border-color: #000000;
   --hover-color: #e5e5e5;
   --selected-color: #000000;
-  --cw-interaction-bg-hover: #202020;
+  --cw-interaction-bg-hover: var(--hover-color);
   --cw-interaction-bg-selected-hover: #004d56;
   --cw-interaction-border-hover: rgba(0, 229, 255, 0.8);
   --cw-interaction-focus-ring: 0 0 0 3px var(--focus-ring);
@@ -247,7 +247,7 @@
   --cw-success-text: var(--text-color);
   --cw-neutral-bg: rgba(215, 215, 215, 0.18);
   --cw-neutral-border: rgba(215, 215, 215, 0.75);
-  --cw-neutral-text: #e8e8e8;
+  --cw-neutral-text: var(--text-color);
   --cw-category-mixed-bg: rgba(221, 173, 255, 0.18);
   --cw-category-mixed-bg-strong: rgba(221, 173, 255, 0.22);
   --cw-category-mixed-border: rgba(221, 173, 255, 0.82);
@@ -322,7 +322,7 @@
   --cw-header-bg: var(--panel-bg);
   --cw-node-bg: var(--selected-color);
   --cw-node-ink: var(--cw-text-selected);
-  --cw-node-line: var(--focus-ring);
+  --cw-node-line: var(--cw-node-ink);
   --cw-original-bg: var(--panel-bg);
   --cw-original-ink: var(--text-color);
   --cw-original-line: var(--cw-warning-indicator);
@@ -490,7 +490,7 @@
   --cw-header-bg: var(--panel-bg);
   --cw-node-bg: var(--selected-color);
   --cw-node-ink: var(--cw-text-selected);
-  --cw-node-line: var(--focus-ring);
+  --cw-node-line: var(--cw-node-ink);
   --cw-original-bg: var(--panel-bg);
   --cw-original-ink: var(--text-color);
   --cw-original-line: var(--cw-warning-indicator);
