@@ -86,3 +86,9 @@ for (const selector of [
   );
 }
 assert.match(styles, /--cw-weight-bold:\s*700/);
+
+const selectedTool = ruleBody('.analyse-tool-item[aria-current="page"]');
+assert.match(selectedTool, /border-color: transparent/);
+assert.match(selectedTool, /border-inline-start-color: var\(--accent-color\)/);
+assert.match(selectedTool, /background: transparent/);
+assert.match(ruleBody(".analyse-tool-item:focus-visible"), /outline: var\(--cw-interaction-focus-outline\)/);

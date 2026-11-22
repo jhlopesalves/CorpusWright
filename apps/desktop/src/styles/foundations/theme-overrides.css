@@ -9,15 +9,6 @@
   background-color: var(--cw-theme-selection-hover-bg);
 }
 
-[data-theme="high-contrast-dark"] .analyse-tool-item[aria-current="page"] {
-  background-color: var(--cw-theme-selection-bg);
-  color: var(--cw-theme-selection-text);
-  border: 1.5px solid var(--cw-theme-selection-outline);
-}
-[data-theme="high-contrast-dark"] .analyse-tool-item[aria-current="page"]:hover {
-  background-color: var(--cw-theme-selection-hover-bg);
-}
-
 [data-theme="high-contrast-dark"] .repeated-artifact-table-container tbody tr.is-focused {
   background-color: var(--cw-theme-selection-bg);
   color: var(--cw-theme-selection-text);
