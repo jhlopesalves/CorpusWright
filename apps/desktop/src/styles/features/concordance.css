@@ -28,7 +28,6 @@
 
 .concordance-controls input:not([type="checkbox"]),
 .concordance-controls select {
-  height: 34px;
   padding: 5px 8px;
   font-size: var(--cw-type-control-size);
 }
@@ -53,7 +52,6 @@
 .concordance-lines-controls input:not([type="checkbox"]),
 .concordance-lines-controls select {
   width: 100%;
-  height: 30px;
   padding: 4px 7px;
   font-size: var(--cw-type-control-size);
 }
@@ -178,7 +176,6 @@
 
 #concordance-collocation-measure {
   width: 122px;
-  height: 30px;
   border-color: var(--border-color);
   background: var(--bg-color);
   color: var(--text-color);
@@ -374,7 +371,6 @@
 
 .concordance-expansion-close {
   flex: 0 0 auto;
-  min-height: 28px;
   padding: 3px 8px;
   font-size: var(--cw-type-compact-size);
 }
@@ -441,7 +437,6 @@
 }
 
 .concordance-filter-clear {
-  min-height: 28px;
   padding: 3px 8px;
   font-size: var(--cw-type-compact-size);
 }
@@ -610,7 +605,6 @@
 
 .concordance-collocation-controls input:not([type="checkbox"]),
 .concordance-collocation-controls select {
-  height: 32px;
   padding: 5px 8px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
@@ -786,7 +780,6 @@
 }
 
 .concordance-collocate-open-lines {
-  min-height: 28px;
   padding: 3px 8px;
   font-size: var(--cw-type-compact-size);
 }
@@ -843,7 +836,6 @@
 
 .concordance-collocate-evidence-close {
   flex: 0 0 auto;
-  min-height: 28px;
   padding: 3px 8px;
   font-size: var(--cw-type-compact-size);
 }
@@ -1002,7 +994,6 @@
 }
 
 .concordance-collocation-progress-cancel {
-  min-height: 28px;
   padding: 3px 8px;
   font-size: var(--cw-type-compact-size);
 }

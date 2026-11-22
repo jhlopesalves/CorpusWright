@@ -26,6 +26,13 @@ describe("runtime-generated synthetic corpus workflow", () => {
     await expect($("#app-menu")).toBeDisplayed();
     await browser.keys("Escape");
     await expect($("#app-menu")).not.toBeDisplayed();
+
+    await $("#rail-appearance").click();
+    for (const field of await $$(".appearance-controls :is(select, input)")) {
+      await expect(field).toBeDisplayed();
+      expect(await field.getSize("height")).toBe(36);
+    }
+    await $("#appearance-cancel-button").click();
   });
 
   it("completes project, preparation, analysis, recovery, export, and reopen", async () => {

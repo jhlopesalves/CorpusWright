@@ -178,7 +178,7 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  min-height: 34px;
+  min-block-size: var(--control-height);
   gap: 8px;
   padding: 5px 10px;
   border: 1px solid var(--border-color);
