@@ -241,7 +241,6 @@
 .cw-plot-density-legend-step.cw-plot-ramp-2 { fill: var(--cw-plot-density-2, var(--cw-plot-ramp-2)); }
 .cw-plot-density-legend-step.cw-plot-ramp-3 { fill: var(--cw-plot-density-3, var(--cw-plot-ramp-3)); }
 .cw-plot-density-legend-step.cw-plot-ramp-4 { fill: var(--cw-plot-density-4, var(--cw-plot-ramp-4)); }
-.cw-plot-density-legend-step.cw-plot-ramp-5 { fill: var(--cw-plot-density-5, var(--cw-plot-ramp-5)); }
 
 .cw-plot-density-legend-bound {
   fill: var(--text-muted);
@@ -255,13 +254,13 @@
 }
 
 .cw-plot-legend-swatch.is-threshold {
-  stroke: var(--cw-plot-attention, var(--cw-plot-ramp-5));
+  stroke: var(--cw-plot-attention, var(--cw-plot-ramp-4));
   stroke-dasharray: 4 3;
 }
 
 .cw-plot-legend-swatch.is-dp-attention {
-  fill: var(--cw-plot-attention, var(--cw-plot-ramp-5));
-  stroke: var(--cw-plot-attention, var(--cw-plot-ramp-5));
+  fill: var(--cw-plot-attention, var(--cw-plot-ramp-4));
+  stroke: var(--cw-plot-attention, var(--cw-plot-ramp-4));
 }
 
 .cw-plot-legend-swatch.is-dp-observed {

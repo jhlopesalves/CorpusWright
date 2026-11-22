@@ -31,13 +31,8 @@ export interface AppearancePreference {
 }
 
 export const THEME_FAMILIES: ThemeFamily[] = [
-  { id: "corpus", name: "Corpus" },
-  { id: "solar", name: "Solar" },
-  { id: "graphite", name: "Graphite" },
-  { id: "retro", name: "Retro" },
-  { id: "sepia", name: "Sepia" },
-  { id: "moss", name: "Moss" },
-  { id: "high-contrast", name: "High Contrast" },
+  { id: "wright", name: "Wright" },
+  { id: "high-contrast", name: "High contrast" },
 ];
 
 export const FONT_OPTIONS: FontOption[] = [
@@ -79,7 +74,7 @@ function preferredDefaultThemeVariant(): ThemeVariant {
 
 function createDefaultAppearance(): AppearancePreference {
   return {
-    themeFamilyId: "corpus",
+    themeFamilyId: "wright",
     themeVariant: preferredDefaultThemeVariant(),
     fontFamily: SYSTEM_UI_STACK,
     monoFontFamily: DEFAULT_MONO_STACK,
@@ -161,39 +156,39 @@ function migrateLegacyAppearance(raw: any): Partial<AppearancePreference> {
 
   const legacyId = typeof raw.themeId === "string" ? raw.themeId : "dark";
   const migrationMap: Record<string, { family: string, variant: ThemeVariant }> = {
-    "dark": { family: "corpus", variant: "dark" },
-    "light": { family: "corpus", variant: "light" },
-    "repository-light": { family: "corpus", variant: "light" },
-    "repository-dark": { family: "corpus", variant: "dark" },
-    "solar-paper": { family: "solar", variant: "light" },
-    "solar-night": { family: "solar", variant: "dark" },
-    "graphite-day": { family: "graphite", variant: "light" },
-    "graphite-desk": { family: "graphite", variant: "dark" },
-    "retro-paper": { family: "retro", variant: "light" },
-    "retro-console": { family: "retro", variant: "dark" },
-    "sepia-reading": { family: "sepia", variant: "light" },
+    "dark": { family: "wright", variant: "dark" },
+    "light": { family: "wright", variant: "light" },
+    "repository-light": { family: "wright", variant: "light" },
+    "repository-dark": { family: "wright", variant: "dark" },
+    "solar-paper": { family: "wright", variant: "light" },
+    "solar-night": { family: "wright", variant: "dark" },
+    "graphite-day": { family: "wright", variant: "light" },
+    "graphite-desk": { family: "wright", variant: "dark" },
+    "retro-paper": { family: "wright", variant: "light" },
+    "retro-console": { family: "wright", variant: "dark" },
+    "sepia-reading": { family: "wright", variant: "light" },
     "high-contrast": { family: "high-contrast", variant: "dark" },
-    "moss-day": { family: "moss", variant: "light" },
-    "moss-desk": { family: "moss", variant: "dark" },
-    "clear-day": { family: "corpus", variant: "light" },
-    "clear-night": { family: "corpus", variant: "dark" },
-    "spectrum-paper": { family: "solar", variant: "light" },
-    "spectrum-ink": { family: "solar", variant: "dark" },
-    "cloud-desk": { family: "corpus", variant: "light" },
-    "cloud-night": { family: "corpus", variant: "dark" },
-    "amber-paper": { family: "sepia", variant: "light" },
-    "ink-amber": { family: "sepia", variant: "dark" },
-    "mineral-chalk": { family: "graphite", variant: "light" },
-    "mineral-slate": { family: "graphite", variant: "dark" },
-    "studio-light": { family: "corpus", variant: "light" },
-    "studio-dark": { family: "corpus", variant: "dark" }
+    "moss-day": { family: "wright", variant: "light" },
+    "moss-desk": { family: "wright", variant: "dark" },
+    "clear-day": { family: "wright", variant: "light" },
+    "clear-night": { family: "wright", variant: "dark" },
+    "spectrum-paper": { family: "wright", variant: "light" },
+    "spectrum-ink": { family: "wright", variant: "dark" },
+    "cloud-desk": { family: "wright", variant: "light" },
+    "cloud-night": { family: "wright", variant: "dark" },
+    "amber-paper": { family: "wright", variant: "light" },
+    "ink-amber": { family: "wright", variant: "dark" },
+    "mineral-chalk": { family: "wright", variant: "light" },
+    "mineral-slate": { family: "wright", variant: "dark" },
+    "studio-light": { family: "wright", variant: "light" },
+    "studio-dark": { family: "wright", variant: "dark" }
   };
 
-  const migrated = migrationMap[legacyId] ?? { family: "corpus", variant: "dark" };
+  const migrated = migrationMap[legacyId] ?? { family: "wright", variant: "dark" };
 
   return {
     themeFamilyId: migrated.family,
-    themeVariant: migrated.variant,
+    themeVariant: raw.themeVariant ?? migrated.variant,
     fontFamily: raw.fontFamily,
     monoFontFamily: raw.monoFontFamily,
     fontSize: raw.fontSize,

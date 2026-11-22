@@ -1,3 +1,4 @@
+import { parseCompleteThemes } from "../scripts/css-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { loadStyleGraph } from "../scripts/style-graph.mjs";
@@ -9,35 +10,12 @@ const requiredTokens = [
   "--cw-kwic-sort-3",
   "--cw-kwic-pair",
 ] as const;
-const expectedThemes = [
-  "corpus-dark",
-  "corpus-light",
-  "retro-light",
-  "retro-dark",
-  "graphite-light",
-  "graphite-dark",
-  "solar-light",
-  "solar-dark",
-  "sepia-light",
-  "sepia-dark",
-  "moss-light",
-  "moss-dark",
-  "high-contrast-light",
-  "high-contrast-dark",
-] as const;
-
-const themeBlocks = new Map<string, string>();
-const themePattern = /(?:^|\n)\[data-theme="([^"]+)"\]\s*\{([\s\S]*?)\n\}/g;
+const expectedThemes = ["wright-light", "wright-dark", "high-contrast-light", "high-contrast-dark"];
 const themeSource = readFileSync(new URL("../src/styles/foundations/themes.css", import.meta.url), "utf8");
-for (const match of themeSource.matchAll(themePattern)) {
-  themeBlocks.set(match[1]!, match[2]!);
-}
+const themeBlocks = new Map(parseCompleteThemes(themeSource).map(({ id, body }) => [id, body]));
 
-assert.deepEqual(
-  [...themeBlocks.keys()].sort(),
-  [...expectedThemes].sort(),
-  "Focused theme coverage must enumerate every standalone data-theme block",
-);
+assert.deepEqual([...themeBlocks.keys()].sort(), [...expectedThemes].sort());
+
 for (const theme of expectedThemes) {
   const body = themeBlocks.get(theme)!;
   for (const token of requiredTokens) {
@@ -50,8 +28,10 @@ for (const theme of expectedThemes) {
   });
   assert.deepEqual(
     sortValues,
-    ["var(--cw-collocate-text)", "var(--cw-success-text)", "var(--cw-category-numeric-text)"],
-    `${theme} must map sort priority to magenta, green, and amber categorical roles`,
+    theme.startsWith("wright-")
+      ? ["var(--visual-range-ink)", "var(--visual-success-ink)", "var(--visual-source-ink)"]
+      : ["var(--cw-collocate-text)", "var(--cw-success-text)", "var(--cw-category-numeric-text)"],
+    `${theme} must map sort priority to distinct semantic inks`,
   );
   assert.equal(new Set(sortValues).size, 3, `${theme} sort roles must remain distinct`);
   assert(sortValues.every((value) => !value.includes("plot-ramp")), `${theme} sort roles must not use a sequential ramp`);

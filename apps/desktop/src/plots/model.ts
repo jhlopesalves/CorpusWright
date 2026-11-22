@@ -1517,10 +1517,10 @@ export function deriveCoverageBandShares(options: {
   const correction = (options.totalTypes === 0 ? 0 : 1) - values.reduce((sum, share) => sum + share, 0);
   values[values.length - 1] = Math.max(0, values[values.length - 1]! + correction);
   return [
-    { key: "coverage-top10", label: "Top 10", share: values[0]!, rampIndex: 5, className: "cw-plot-coverage-band-top10" },
-    { key: "coverage-11-100", label: "Ranks 11–100", share: values[1]!, rampIndex: 4, className: "cw-plot-coverage-band-11-100" },
-    { key: "coverage-101-1000", label: "Ranks 101–1,000", share: values[2]!, rampIndex: 3, className: "cw-plot-coverage-band-101-1000" },
-    { key: "coverage-1001-10000", label: "Ranks 1,001–10,000", share: values[3]!, rampIndex: 2, className: "cw-plot-coverage-band-1001-10000" },
+    { key: "coverage-top10", label: "Top 10", share: values[0]!, rampIndex: 4, className: "cw-plot-coverage-band-top10" },
+    { key: "coverage-11-100", label: "Ranks 11–100", share: values[1]!, rampIndex: 3, className: "cw-plot-coverage-band-11-100" },
+    { key: "coverage-101-1000", label: "Ranks 101–1,000", share: values[2]!, rampIndex: 2, className: "cw-plot-coverage-band-101-1000" },
+    { key: "coverage-1001-10000", label: "Ranks 1,001–10,000", share: values[3]!, rampIndex: 1, className: "cw-plot-coverage-band-1001-10000" },
     { key: "coverage-tail", label: "Remaining vocabulary", share: values[4]!, rampIndex: 0, className: "cw-plot-coverage-band-tail" },
   ];
 }
@@ -1749,7 +1749,7 @@ export function buildDispersionGeometry(options: {
     const share = bucket.share ?? (totalTypes > 0 ? bucket.count / totalTypes : 0);
     const documentBounds = dispersionReachBounds(bucket, options.totalDocuments);
     const profileIndex = buckets.length <= 1 ? 5 : Math.round((index / Math.max(1, buckets.length - 1)) * 9);
-    const rampIndex = Math.round((profileIndex / 9) * 5);
+    const rampIndex = Math.round((profileIndex / 9) * 4);
     const key = `dispersion-reach-${bucket.key}`;
     const examples = (bucket.sampleTypes ?? []).slice(0, Math.min(3, bucket.count));
     const remainingExamples = Math.max(0, bucket.count - examples.length);
@@ -1940,8 +1940,13 @@ export function buildDispersionPlaneGeometry(options: {
   ]);
   const yScale = createScale("linear", [0, 1], [box.height - box.margin.bottom, box.margin.top]);
   const densityMode = options.densityMode ?? "log";
+  const minimumCellCount = plane.counts.reduce(
+    (minimum, count) => count > 0 ? Math.min(minimum, count) : minimum,
+    Number.POSITIVE_INFINITY,
+  );
   const cells = buildDispersionPlaneCells(
     plane,
+    minimumCellCount,
     xScale,
     yScale,
     densityMode,
@@ -2071,7 +2076,7 @@ export function buildDispersionPlaneGeometry(options: {
     witnessObstacles,
     densityLegend: {
       mode: densityMode,
-      minimum: plane.counts.some((count) => count > 0) ? Math.min(...plane.counts.filter((count) => count > 0)) : 0,
+      minimum: Number.isFinite(minimumCellCount) ? minimumCellCount : 0,
       maximum: plane.maxCellCount,
     },
     xAxisLabel: frequencyMode === "perMillion"
@@ -2316,7 +2321,7 @@ export function buildDistributionDiagnosticGeometry(options: {
         height: 22,
         segments: [
           { key: "mattr-eligible", label: `Used · window ${options.mattrWindow ?? 100}`, count: result.population, rampIndex: 2 },
-          { key: "mattr-excluded", label: "Excluded · shorter than window", count: result.excludedCount, rampIndex: 5, className: "is-excluded" },
+          { key: "mattr-excluded", label: "Excluded · shorter than window", count: result.excludedCount, rampIndex: 4, className: "is-excluded" },
         ],
         pinnedKeys: options.pinnedKeys,
       })
@@ -2680,6 +2685,7 @@ function extent(values: number[]): [number, number] {
 
 function buildDispersionPlaneCells(
   plane: DispersionPlanePayload,
+  minimumCellCount: number,
   xScale: PlotScale,
   yScale: PlotScale,
   densityMode: "log" | "linear",
@@ -2690,6 +2696,9 @@ function buildDispersionPlaneCells(
 ): DispersionPlaneCellGeometry[] {
   const cells: DispersionPlaneCellGeometry[] = [];
   const maxCellCount = Math.max(1, plane.maxCellCount);
+  const scaleDensity = densityMode === "linear" ? (count: number) => count : Math.log1p;
+  const minimum = scaleDensity(minimumCellCount);
+  const maximum = scaleDensity(maxCellCount);
   for (let index = 0; index < plane.counts.length; index += 1) {
     const count = plane.counts[index] ?? 0;
     const xi = index % plane.xBins;
@@ -2702,9 +2711,9 @@ function buildDispersionPlaneCells(
     const x2 = scaleValue(xScale, freqUpperLog + frequencyOffset);
     const y = scaleValue(yScale, dpUpper);
     const y2 = scaleValue(yScale, dpLower);
-    const t = densityMode === "linear"
-      ? count / maxCellCount
-      : Math.log1p(count) / Math.log1p(maxCellCount);
+    const scaledCount = scaleDensity(count);
+    const t = scaledCount / maximum;
+    const rampPosition = maximum > minimum ? (scaledCount - minimum) / (maximum - minimum) : 0;
     const opacity = count === 0 ? 0 : 1;
     const rawLower = 10 ** freqLowerLog;
     const rawUpper = 10 ** freqUpperLog;
@@ -2723,7 +2732,7 @@ function buildDispersionPlaneCells(
       count,
       t,
       opacity,
-      fill: densityRampFill(t),
+      fill: count > 0 ? densityRampFill(rampPosition) : "none",
       tooltipTitle: count === 0 ? "No types in this cell" : `${formatInteger(count)} types`,
       tooltipRows: [
         `raw frequency ${frequencyRange}`,
@@ -2859,16 +2868,11 @@ function dispersionPlaneDecadeTicks(
   return ticks.sort((left, right) => left.value - right.value);
 }
 
+export const DENSITY_RAMP_STEPS = 5;
+
 function densityRampFill(t: number): string {
-  const clamped = clamp(t, 0, 1);
-  if (clamped <= 0) return "var(--cw-plot-density-0, var(--cw-plot-ramp-0))";
-  if (clamped >= 1) return "var(--cw-plot-density-5, var(--cw-plot-ramp-5))";
-  const scaled = clamped * 5;
-  const lower = Math.floor(scaled);
-  const upper = Math.min(5, lower + 1);
-  const upperWeight = (scaled - Math.floor(scaled)) * 100;
-  const lowerWeight = 100 - upperWeight;
-  return `color-mix(in srgb, var(--cw-plot-density-${lower}, var(--cw-plot-ramp-${lower})) ${formatFixed(lowerWeight, 2)}%, var(--cw-plot-density-${upper}, var(--cw-plot-ramp-${upper})) ${formatFixed(upperWeight, 2)}%)`;
+  const level = Math.min(DENSITY_RAMP_STEPS - 1, Math.floor(clamp(t, 0, 1) * DENSITY_RAMP_STEPS));
+  return `var(--cw-plot-density-${level}, var(--cw-plot-ramp-${level}))`;
 }
 
 
@@ -2986,10 +2990,10 @@ function lexicalSpectrumRampIndex(frequency: number): number {
 }
 
 function coverageBandForRank(rank: number): Pick<CoverageBandShare, "rampIndex" | "className"> {
-  if (rank <= 10) return { rampIndex: 5, className: "cw-plot-coverage-band-top10" };
-  if (rank <= 100) return { rampIndex: 4, className: "cw-plot-coverage-band-11-100" };
-  if (rank <= 1_000) return { rampIndex: 3, className: "cw-plot-coverage-band-101-1000" };
-  if (rank <= 10_000) return { rampIndex: 2, className: "cw-plot-coverage-band-1001-10000" };
+  if (rank <= 10) return { rampIndex: 4, className: "cw-plot-coverage-band-top10" };
+  if (rank <= 100) return { rampIndex: 3, className: "cw-plot-coverage-band-11-100" };
+  if (rank <= 1_000) return { rampIndex: 2, className: "cw-plot-coverage-band-101-1000" };
+  if (rank <= 10_000) return { rampIndex: 1, className: "cw-plot-coverage-band-1001-10000" };
   return { rampIndex: 0, className: "cw-plot-coverage-band-tail" };
 }
 

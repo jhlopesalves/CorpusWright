@@ -21,7 +21,7 @@ const feedback = moduleSource("components/feedback.css");
 const analyse = moduleSource("features/analyse.css");
 const concordance = moduleSource("features/concordance.css");
 
-assert.equal(themes.length, 14, "focus contracts must cover all fourteen themes");
+assert.equal(themes.length, 4, "focus contracts must cover all four themes");
 for (const theme of themes) {
   assert.match(theme.declarations.get("--cw-interaction-focus-ring") ?? "", /^0 0 0 [23]px var\(--focus-ring\)$/);
   assert.match(theme.declarations.get("--cw-interaction-focus-outline") ?? "", /^[23]px solid var\(--focus-ring\)$/);
@@ -47,7 +47,7 @@ assert.equal(
   1,
   "excluded points must have one authoritative rule",
 );
-for (let index = 0; index < 6; index += 1) {
+for (let index = 0; index < 5; index += 1) {
   const rampRule = new RegExp(`\\.cw-plot-ramp-${index}\\s*\\{([^}]*)\\}`).exec(marks)?.[1] ?? "";
   assert.match(rampRule, new RegExp(`color:\\s*var\\(--cw-plot-ramp-${index}\\)`));
   assert.match(rampRule, new RegExp(`fill:\\s*var\\(--cw-plot-ramp-${index}\\)`));

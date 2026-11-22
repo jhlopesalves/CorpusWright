@@ -19,7 +19,7 @@ const corpus = join(temporary, "corpus");
 const helper = join(temporary, "helper");
 const run = promisify(execFile);
 const viewport = { width: 1440, height: 1000, deviceScaleFactor: 1 };
-const theme = "corpus-light";
+const theme = "wright-light";
 mkdirSync(corpus);
 mkdirSync(helper);
 mkdirSync(output, { recursive: true });

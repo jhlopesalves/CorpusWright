@@ -1,3 +1,4 @@
+import { parseCompleteThemes } from "../scripts/css-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { loadStyleGraph } from "../scripts/style-graph.mjs";
@@ -45,28 +46,9 @@ const resultTableTokens = [
   "--cw-result-table-track",
   "--cw-result-table-bar",
 ] as const;
-const expectedThemes = [
-  "corpus-dark",
-  "corpus-light",
-  "retro-light",
-  "retro-dark",
-  "graphite-light",
-  "graphite-dark",
-  "solar-light",
-  "solar-dark",
-  "sepia-light",
-  "sepia-dark",
-  "moss-light",
-  "moss-dark",
-  "high-contrast-light",
-  "high-contrast-dark",
-] as const;
-
-const themeBlocks = new Map<string, string>();
-const themePattern = /(?:^|\n)\[data-theme="([^"]+)"\]\s*\{([\s\S]*?)\n\}/g;
-for (const match of styles.matchAll(themePattern)) {
-  themeBlocks.set(match[1]!, match[2]!);
-}
+const expectedThemes = ["wright-light", "wright-dark", "high-contrast-light", "high-contrast-dark"];
+const themeSource = readFileSync(new URL("../src/styles/foundations/themes.css", import.meta.url), "utf8");
+const themeBlocks = new Map(parseCompleteThemes(themeSource).map(({ id, body }) => [id, body]));
 
 for (const theme of expectedThemes) {
   const body = themeBlocks.get(theme);

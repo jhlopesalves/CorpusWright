@@ -8,39 +8,28 @@
   <link rel="icon" type="image/png" href="/favicon.png" />
   <script>
     (() => {
+      const root = document.documentElement;
+      const variant = window.matchMedia?.("(prefers-color-scheme: light)")?.matches ? "light" : "dark";
+      root.dataset.theme = `wright-${variant}`;
       try {
         const raw = localStorage.getItem("corpuswright.appearance.v1");
-        if (!raw) {
-          const prefersLight = window.matchMedia?.("(prefers-color-scheme: light)")?.matches;
-          document.documentElement.dataset.theme = prefersLight ? "corpus-light" : "corpus-dark";
-          return;
-        }
+        if (!raw) return;
         const preference = JSON.parse(raw);
-        const root = document.documentElement;
-
-        let themeValue = "corpus-dark";
-        if (preference.themeFamilyId && preference.themeVariant) {
-          themeValue = `${preference.themeFamilyId}-${preference.themeVariant}`;
-        } else if (typeof preference.themeId === "string") {
-          const id = preference.themeId;
-          const m = {
-            "dark": "corpus-dark", "light": "corpus-light",
-            "repository-light": "workbench-light", "repository-dark": "workbench-dark",
-            "solar-paper": "solar-light", "solar-night": "solar-dark",
-            "graphite-day": "graphite-light", "graphite-desk": "graphite-dark",
-            "retro-paper": "retro-light", "retro-console": "retro-dark",
-            "sepia-reading": "sepia-light", "high-contrast": "high-contrast-dark",
-            "moss-day": "moss-light", "moss-desk": "moss-dark",
-            "clear-day": "corpus-light", "clear-night": "corpus-dark",
-            "spectrum-paper": "solar-light", "spectrum-ink": "solar-dark",
-            "cloud-desk": "workbench-light", "cloud-night": "workbench-dark",
-            "amber-paper": "sepia-light", "ink-amber": "sepia-dark",
-            "mineral-chalk": "graphite-light", "mineral-slate": "graphite-dark",
-            "studio-light": "workbench-light", "studio-dark": "workbench-dark"
-          };
-          themeValue = m[id] || "corpus-dark";
+        const family = preference.themeFamilyId === "high-contrast"
+          || (!preference.themeFamilyId && preference.themeId === "high-contrast")
+          ? "high-contrast" : "wright";
+        const legacyLightIds = [
+          "light", "repository-light", "solar-paper", "graphite-day", "retro-paper",
+          "sepia-reading", "moss-day", "clear-day", "spectrum-paper", "cloud-desk",
+          "amber-paper", "mineral-chalk", "studio-light"
+        ];
+        let savedVariant = preference.themeVariant;
+        if (savedVariant !== "light" && savedVariant !== "dark") {
+          savedVariant = !preference.themeFamilyId
+            ? (legacyLightIds.includes(preference.themeId) ? "light" : "dark")
+            : variant;
         }
-        root.dataset.theme = themeValue;
+        root.dataset.theme = `${family}-${savedVariant}`;
 
         if (typeof preference.fontFamily === "string") {
           root.style.setProperty("--cw-font-ui", preference.fontFamily);

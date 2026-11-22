@@ -17,7 +17,7 @@
   padding: 24px;
   width: 450px;
   max-width: 90%;
-  box-shadow: 0 8px 24px var(--cw-shadow-modal);
+  box-shadow: var(--cw-shadow-modal);
   border-radius: 6px;
 }
 

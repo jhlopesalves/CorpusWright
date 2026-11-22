@@ -13,8 +13,8 @@ const analyse = readFileSync(new URL("../src/styles/features/analyse.css", impor
 const livePalette = palette.match(/\.cw-overview-figure\s*,[^\{]*\{([\s\S]*?)\n\}/)?.[1] ?? "";
 for (const role of [
   "observed", "model-fit", "statistical-reference", "target", "coverage-trajectory", "selected", "attention",
-  ...Array.from({ length: 6 }, (_, index) => `density-${index}`),
-  ...Array.from({ length: 6 }, (_, index) => `composition-${index}`),
+  ...Array.from({ length: 5 }, (_, index) => `density-${index}`),
+  ...Array.from({ length: 5 }, (_, index) => `composition-${index}`),
   "rank-band-top10", "rank-band-11-100", "rank-band-101-1000", "rank-band-1001-10000", "rank-band-tail",
   ...Array.from({ length: 10 }, (_, index) => `profile-${index}`),
   "witness",
@@ -29,7 +29,7 @@ assert.match(livePalette, /--cw-plot-witness:\s*var\(--cw-plot-observed\)/);
 assert.match(figure, /exportMount\.dataset\.figurePalette = paletteMode/);
 assert.doesNotMatch(figure, /figure\.dataset\.figurePalette = paletteMode/);
 
-for (const fallback of ["cw-plot-point", "cw-plot-fit", "cw-plot-ramp-4", "cw-plot-ramp-5"]) {
+for (const fallback of ["cw-plot-point", "cw-plot-fit", "cw-plot-ramp-4"]) {
   assert.match(marks, new RegExp(`var\\(--cw-plot-[^)]+, var\\(--${fallback}\\)\\)`), `missing semantic fallback to ${fallback}`);
 }
 

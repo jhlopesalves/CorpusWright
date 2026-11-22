@@ -140,12 +140,12 @@ async function capture(page, stage, theme) {
   assert.doesNotMatch(visible, /\/home\/|\/Users\/|\/tmp\/|Invalid Date|Preparing preview\.\.\.|Build failed/);
   assert.deepEqual(await page.evaluate("window.walkthroughFailures"), []);
   assert.deepEqual(browserFailures(browser, page.sessionId), []);
-  assert.equal(await page.evaluate("document.documentElement.dataset.theme"), `corpus-${theme}`);
+  assert.equal(await page.evaluate("document.documentElement.dataset.theme"), `wright-${theme}`);
   const asset = `${stage}-${theme}.png`;
   const png = await page.screenshot();
   assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [viewport.width, viewport.height]);
   await writeFile(join(scratchOutput, asset), png);
-  captures.push({ stage, asset, theme: `corpus-${theme}`, sha256: digest(png), visibleTextSha256: digest(visible) });
+  captures.push({ stage, asset, theme: `wright-${theme}`, sha256: digest(png), visibleTextSha256: digest(visible) });
   process.stdout.write(`Captured ${asset}\n`);
 }
 

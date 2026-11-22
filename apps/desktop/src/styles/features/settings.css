@@ -368,7 +368,7 @@
   font-weight: var(--cw-weight-regular);
   line-height: 1.45;
   white-space: normal;
-  box-shadow: 0 4px 14px var(--cw-shadow-tooltip);
+  box-shadow: var(--cw-shadow-tooltip);
   pointer-events: none;
   opacity: 0;
   visibility: hidden;

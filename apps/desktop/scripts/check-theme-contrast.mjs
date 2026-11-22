@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseCompleteThemes } from "./css-contracts.mjs";
+import { resolveCompleteThemes } from "./css-contracts.mjs";
 import {
   colourForToken,
   compositeColours,
@@ -50,7 +50,7 @@ export const contrastChecks = [
   { label: "statistical reference on panel", fg: "--cw-theme-plot-statistical-reference", bg: "--panel-bg", min: 3 },
   { label: "selected target on panel", fg: "--cw-theme-plot-target", bg: "--panel-bg", min: 3 },
   { label: "coverage trajectory on panel", fg: "--cw-theme-plot-coverage-trajectory", bg: "--panel-bg", min: 3 },
-  ...Array.from({ length: 6 }, (_, level) => ({
+  ...Array.from({ length: 5 }, (_, level) => ({
     label: `plot ramp ${level} on panel`,
     fg: `--cw-plot-ramp-${level}`,
     bg: "--panel-bg",
@@ -58,19 +58,45 @@ export const contrastChecks = [
   })),
 ];
 
+const wrightChecks = [
+  ...["active", "selected", "range", "source", "target", "success", "warning", "muted"].flatMap(role => [
+    { label: `${role} ink`, fg: `--visual-${role}-ink`, bg: `--visual-${role}-bg`, min: 4.5 },
+    { label: `${role} line`, fg: `--visual-${role}-line`, bg: `--visual-${role}-bg`, min: 3 },
+  ]),
+  ...["navigation", "navigation-hover", "navigation-selected", "navigation-selected-hover"].flatMap(ground => [
+    { label: `navigation text on ${ground}`, fg: "--color-navigation-text", bg: `--color-${ground}`, min: 4.5 },
+    { label: `navigation secondary text on ${ground}`, fg: "--color-navigation-muted", bg: `--color-${ground}`, min: 4.5 },
+    { label: `navigation focus on ${ground}`, fg: "--color-navigation-focus", bg: `--color-${ground}`, min: 3 },
+  ]),
+  ...["app", "surface", "surface-subtle", "header", "hover", "selected"].flatMap(ground =>
+    ["primary", "secondary", "tertiary"].map(role => ({
+      label: `${role} text on ${ground}`, fg: `--color-text-${role}`, bg: `--color-${ground}`, min: 4.5,
+    })),
+  ),
+  ...["hover", "selected", "surface", "surface-subtle", "accent-subtle"].map(ground => ({
+    label: `accent ink on ${ground}`, fg: "--color-accent-ink", bg: `--color-${ground}`, min: 4.5,
+  })),
+  ...["surface", "surface-subtle"].flatMap(ground =>
+    Array.from({ length: 5 }, (_, level) => ({
+      label: `Wright chart step ${level} on ${ground}`, fg: `--chart-seq-${level}`, bg: `--color-${ground}`, min: 3,
+    })),
+  ),
+  { label: "primary text during hover", fg: "--color-on-accent", bg: "--color-accent-hover", min: 4.5 },
+];
+
 const paletteRoleTokens = {
   theme: [
     "--cw-plot-point", "--cw-theme-plot-model-fit", "--cw-theme-plot-statistical-reference", "--cw-theme-plot-target",
-    "--cw-plot-ramp-4", "--cw-plot-ramp-5",
+    "--cw-plot-ramp-4", "--cw-plot-ramp-4",
     "--cw-plot-point",
-    "--cw-plot-ramp-0", "--cw-plot-ramp-5", "--cw-plot-ramp-0", "--cw-plot-ramp-5",
+    "--cw-plot-ramp-0", "--cw-plot-ramp-4", "--cw-plot-ramp-0", "--cw-plot-ramp-4",
     "--cw-theme-plot-coverage-trajectory",
   ],
   colorBlind: [
-    "--accent-color", "--cw-theme-plot-model-fit", "--cw-theme-plot-statistical-reference", "--cw-theme-plot-target",
-    "--cw-category-mixed-text", "--cw-danger-text",
-    "--accent-color",
-    "--cw-plot-ramp-0", "--cw-plot-ramp-5", "--cw-plot-ramp-0", "--cw-plot-ramp-5",
+    "--cw-plot-point", "--cw-theme-plot-model-fit", "--cw-theme-plot-statistical-reference", "--cw-theme-plot-target",
+    "--cw-theme-plot-target", "--cw-danger-text",
+    "--cw-plot-point",
+    "--cw-plot-ramp-0", "--cw-plot-ramp-4", "--cw-plot-ramp-0", "--cw-plot-ramp-4",
     "--cw-theme-plot-coverage-trajectory",
   ],
   monochrome: [
@@ -140,12 +166,15 @@ function opaqueTokenColour(token, declarations, backdropToken) {
 const graph = await loadStyleGraph();
 const themesModule = graph.modules.find(module => module.path === themesPath);
 if (!themesModule) throw new Error("The style graph does not import foundations/themes.css");
-const themes = parseCompleteThemes(themesModule.contents, "src/styles/foundations/themes.css");
+const wrightModule = graph.modules.find(module => module.path.endsWith("/foundations/wright-tokens.css"));
+if (!wrightModule) throw new Error("The style graph does not import the Wright token source");
+const themes = resolveCompleteThemes(themesModule.contents, wrightModule.contents);
 const failures = [];
-if (themes.length !== 14) failures.push(`expected exactly 14 complete themes, found ${themes.length}`);
-if (contrastChecks.length !== 45) failures.push(`expected exactly 45 contrast checks, found ${contrastChecks.length}`);
+if (themes.length !== 4) failures.push(`expected exactly 4 complete themes, found ${themes.length}`);
+if (contrastChecks.length !== 44) failures.push(`expected exactly 44 contrast checks, found ${contrastChecks.length}`);
 failures.push(...validateThemeContrast(themes));
 failures.push(...validatePaletteContrast(themes));
+failures.push(...validateThemeContrast(themes.filter(theme => theme.id.startsWith("wright-")), wrightChecks));
 
 if (failures.length) {
   console.error("Theme contrast check failed:");
@@ -154,3 +183,4 @@ if (failures.length) {
 }
 
 console.log(`Theme contrast check passed for exactly ${themes.length} complete themes (${contrastChecks.length} base checks and ${Object.keys(paletteRoleTokens).length * paletteRoleLabels.length} theme × palette role checks each).`);
+console.log(`Wright passed ${wrightChecks.length} additional pairings per variant.`);

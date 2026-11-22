@@ -44,7 +44,7 @@ const figureName = params.get("figure") ?? "document";
 const view = params.get("view") ?? defaultView(figureName);
 const switchTo = params.get("switchTo");
 let auditedView = view;
-const theme = params.get("theme") ?? "corpus-light";
+const theme = params.get("theme") ?? "wright-light";
 const target = params.get("target") ?? "0.5";
 const customBins = params.get("customBins") === "true";
 const pinned = params.get("pinned") === "true";
@@ -760,9 +760,9 @@ function auditFigure(figure: HTMLElement): string[] {
     "selected",
     "attention",
     "density-0",
-    "density-5",
+    "density-4",
     "composition-0",
-    "composition-5",
+    "composition-4",
   ]) {
     if (!getComputedStyle(figure).getPropertyValue(`--cw-plot-${role}`).trim()) failures.push(`missing live semantic role: ${role}`);
   }
@@ -879,7 +879,7 @@ function auditMethodDisclosure(figure: HTMLElement, failures: string[]): void {
 }
 
 function auditComputedPaint(svg: SVGSVGElement, failures: string[]): void {
-  const rejectBrowserBlack = theme === "corpus-light" || theme === "corpus-dark";
+  const rejectBrowserBlack = theme === "wright-light" || theme === "wright-dark";
   const assertPaint = (selector: string, property: "fill" | "stroke", label: string, nonBlack = false, requireArea = false): SVGGraphicsElement | null => {
     const element = svg.querySelector<SVGGraphicsElement>(selector);
     if (!element) {

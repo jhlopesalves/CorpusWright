@@ -19,8 +19,8 @@ assert(themesModule, "style graph must contain the complete theme contract modul
 assert(overridesModule, "style graph must contain the explicit theme-exception module");
 
 const themes = parseCompleteThemes(themesModule.contents, "foundations/themes.css");
-assert.equal(themes.length, 14, "exactly fourteen complete theme variants must exist");
-assert.equal(new Set(themes.map(theme => theme.id)).size, 14, "complete theme ids must be unique");
+assert.equal(themes.length, 4, "exactly four complete theme variants must exist");
+assert.equal(new Set(themes.map(theme => theme.id)).size, 4, "complete theme ids must be unique");
 
 const appearanceSource = readFileSync(new URL("../src/app/appearance.ts", import.meta.url), "utf8");
 assert.deepEqual(
@@ -69,4 +69,4 @@ const contrastOutput = execFileSync("node", ["scripts/check-theme-contrast.mjs"]
   cwd: desktopRoot,
   encoding: "utf8",
 });
-assert.match(contrastOutput, /exactly 14 complete themes/, "contrast validation must report only complete themes");
+assert.match(contrastOutput, /exactly 4 complete themes/, "contrast validation must report only complete themes");

@@ -77,7 +77,7 @@ try {
   // diffs attributable to rendering or evidence changes across repeated qualification runs.
   const manifest = [];
   for (const theme of ["light", "dark"]) {
-    const themeName = theme === "light" ? "corpus-light" : "corpus-dark";
+    const themeName = theme === "light" ? "wright-light" : "wright-dark";
     for (const item of cases) {
       const page = await createCasePage(cdp);
       try {
@@ -176,8 +176,8 @@ try {
     renderer: "CorpusWright plot model, measured layout, SVG renderer, theme tokens, standalone exporter",
     pngRasterizer: "FFmpeg with librsvg at the native standalone-SVG viewBox size",
     corpusPayload: payloadPath,
-    corpusLightCount: manifest.filter((item) => item.theme === "corpus-light").length,
-    corpusDarkCount: manifest.filter((item) => item.theme === "corpus-dark").length,
+    corpusLightCount: manifest.filter((item) => item.theme === "wright-light").length,
+    corpusDarkCount: manifest.filter((item) => item.theme === "wright-dark").length,
     forbiddenPaintCount: 0,
     figures: manifest,
   };
