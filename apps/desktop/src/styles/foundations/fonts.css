@@ -213,3 +213,35 @@
   font-display: swap;
   src: url("../../assets/fonts/FiraCode.ttf") format("truetype");
 }
+
+@font-face {
+  font-family: "Manrope";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("../../assets/fonts/Manrope[wght].ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Source Sans 3";
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("../../assets/fonts/SourceSans3VF-Italic.otf.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Source Code Pro";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("../../assets/fonts/SourceCodeVF-Upright.otf.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Source Code Pro";
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("../../assets/fonts/SourceCodeVF-Italic.otf.woff2") format("woff2");
+}
