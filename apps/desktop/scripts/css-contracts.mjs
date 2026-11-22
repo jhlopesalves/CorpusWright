@@ -82,11 +82,13 @@ export function parseCompleteThemes(source, modulePath = "themes.css") {
 }
 
 export function resolveCompleteThemes(themeSource, wrightSource) {
-  const sources = new Map(parseCompleteThemes(wrightSource, "wright-tokens.css")
-    .map(theme => [theme.id, theme.declarations]));
+  const sources = new Map();
+  for (const theme of parseCompleteThemes(wrightSource, "wright-tokens.css")) {
+    sources.set(theme.id, new Map([...(sources.get(theme.id) ?? []), ...theme.declarations]));
+  }
   return parseCompleteThemes(themeSource).map(theme => ({
     ...theme,
-    declarations: new Map([...sources.get(theme.id) ?? [], ...theme.declarations]),
+    declarations: new Map([...(sources.get(theme.id) ?? []), ...theme.declarations]),
   }));
 }
 

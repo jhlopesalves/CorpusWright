@@ -109,7 +109,7 @@ for (const module of graph.modules) {
   if (module.path.includes(`${path.sep}styles${path.sep}features${path.sep}`)) {
     for (const match of module.contents.matchAll(/font-family\s*:\s*([^;]+);/g)) {
       const value = match[1].trim();
-      if (value !== "inherit" && !/^var\(--cw-font-(?:ui|mono|math)\)$/.test(value)) {
+      if (value !== "inherit" && !/^var\(--cw-font-(?:ui|chrome|reading|mono|math)\)$/.test(value)) {
         report(module.path, module.contents, match.index, `feature font-family must use a semantic font token, found ${value}`);
       }
     }

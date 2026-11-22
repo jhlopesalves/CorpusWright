@@ -29,6 +29,9 @@
   margin-top: 0;
   font-size: var(--cw-type-dialog-title-size);
   margin-bottom: 8px;
+  line-height: var(--type-display-line-height);
+  letter-spacing: var(--type-display-letter-spacing);
+  font-weight: var(--type-display-font-weight);
 }
 
 .modal-description {

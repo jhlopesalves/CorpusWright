@@ -1,6 +1,8 @@
 [data-theme="wright-light"],
 [data-theme="wright-dark"] {
-  --cw-font-ui: var(--font-chrome);
+  --cw-font-ui: var(--cw-font-chrome);
+  --cw-font-chrome: var(--font-chrome);
+  --cw-font-reading: var(--font-reading);
   --cw-font-mono: var(--font-code);
   --cw-font-math: var(--font-chrome);
   --cw-font-size-base: var(--type-reading-body-font-size);
@@ -158,8 +160,10 @@
 }
 
 [data-theme="high-contrast-light"] {
-  --cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
+  --cw-font-ui: var(--cw-font-chrome);
+  --cw-font-chrome: var(--font-chrome);
+  --cw-font-reading: var(--font-reading);
+  --cw-font-mono: var(--font-code);
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
   --cw-result-table-surface: var(--panel-bg);
@@ -316,8 +320,10 @@
 }
 
 [data-theme="high-contrast-dark"] {
-  --cw-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --cw-font-mono: "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
+  --cw-font-ui: var(--cw-font-chrome);
+  --cw-font-chrome: var(--font-chrome);
+  --cw-font-reading: var(--font-reading);
+  --cw-font-mono: var(--font-code);
   --cw-font-math: var(--cw-font-ui);
   --cw-font-size-base: 16px;
   --cw-result-table-surface: var(--panel-bg);

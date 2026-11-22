@@ -32,7 +32,7 @@
         root.dataset.theme = `${family}-${savedVariant}`;
 
         if (typeof preference.fontFamily === "string") {
-          root.style.setProperty("--cw-font-ui", preference.fontFamily);
+          root.style.setProperty("--cw-font-reading", preference.fontFamily);
         }
         if (typeof preference.monoFontFamily === "string") {
           root.style.setProperty("--cw-font-mono", preference.monoFontFamily);
@@ -40,6 +40,7 @@
         if (Number.isFinite(preference.fontSize)) {
           const fontSize = Math.min(20, Math.max(12, Math.round(preference.fontSize)));
           root.style.setProperty("--cw-font-size-base", `${fontSize}px`);
+          root.style.setProperty("--cw-font-scale", String(fontSize / 16));
         }
       } catch (_) {
         // Keep startup resilient if stored presentation preferences are malformed.
@@ -718,7 +719,7 @@
           </label>
 
           <label class="appearance-field" for="appearance-font-select">
-            <span>Font family</span>
+            <span>Reading font</span>
             <select id="appearance-font-select" class="settings-select"></select>
           </label>
 

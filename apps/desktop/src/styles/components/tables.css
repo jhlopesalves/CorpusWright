@@ -85,6 +85,8 @@
 .cw-result-table-kwic {
   font-family: var(--cw-font-mono);
   font-weight: var(--cw-weight-regular);
+  font-size: var(--cw-type-concordance-size);
+  line-height: var(--type-concordance-line-height);
 }
 
 .cw-result-table-note,

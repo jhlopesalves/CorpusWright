@@ -232,3 +232,11 @@
 .sidebar-splitter.active {
   background-color: var(--accent-color);
 }
+
+#summary-total-words {
+  font-size: var(--cw-type-metric-size);
+  line-height: var(--type-metric-line-height);
+  letter-spacing: var(--type-metric-letter-spacing);
+  font-weight: var(--type-metric-font-weight);
+  font-variant-numeric: tabular-nums;
+}

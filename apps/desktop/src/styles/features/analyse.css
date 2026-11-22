@@ -26,7 +26,9 @@
 .analyse-header h1 {
   margin: 0;
   font-size: var(--cw-type-page-title-size);
-  font-weight: var(--cw-weight-bold);
+  line-height: var(--type-display-line-height);
+  letter-spacing: var(--type-display-letter-spacing);
+  font-weight: var(--type-display-font-weight);
 }
 
 .analyse-status-line {

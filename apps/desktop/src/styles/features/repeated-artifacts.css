@@ -708,6 +708,7 @@
 }
 
 .artifact-example-body {
+  font-family: var(--cw-font-reading);
   font-family: var(--cw-font-mono);
   font-size: var(--cw-type-help-size);
   line-height: 1.4;

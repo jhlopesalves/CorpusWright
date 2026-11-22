@@ -145,6 +145,9 @@ assert(firaCode, "Fira Code must be in the fixed monospace shortlist");
 
 appearance.initAppearanceDialog();
 assert(root.dataset.theme === "wright-dark", "initial appearance must apply the default dark theme");
+assert(root.style.values.get("--cw-font-reading")?.startsWith('"Source Sans 3"'), "default reading face");
+assert(root.style.values.get("--cw-font-mono")?.startsWith('"Source Code Pro"'), "default monospace face");
+assert(!root.style.values.has("--cw-font-chrome"), "appearance preferences cannot replace chrome typography");
 assert(root.style.values.get("--cw-font-size-base") === "16px", "initial appearance must apply the default font size");
 assert(element("theme-toggle").disabled === false, "paired default theme must leave the quick toggle enabled");
 assert(element("menu-toggle-theme").textContent === "Switch to light variant", "dark themes must target their light pair");
@@ -159,7 +162,7 @@ element("appearance-mono-font-select").dispatch("change");
 element("appearance-font-size-input").valueAsNumber = 18;
 element("appearance-font-size-input").dispatch("input");
 assert(root.dataset.theme === "high-contrast-dark", "theme selection must preview immediately");
-assert(root.style.values.get("--cw-font-ui") === gentium.stack, "font selection must preview immediately");
+assert(root.style.values.get("--cw-font-reading") === gentium.stack, "font selection must preview immediately");
 assert(root.style.values.get("--cw-font-mono") === firaCode.stack, "monospace selection must preview immediately");
 assert(root.style.values.get("--cw-font-size-base") === "18px", "font size must preview immediately");
 element("appearance-save-button").dispatch("click");
@@ -212,3 +215,5 @@ assert(appearance.readAppearancePreference().themeVariant === "light", "migratio
 localStorage.setItem(key, JSON.stringify({ themeId: "retro-paper" }));
 assert(appearance.readAppearancePreference().themeFamilyId === "wright", "legacy theme ids must migrate to Wright");
 assert(appearance.readAppearancePreference().themeVariant === "light", "legacy aliases must retain their variant");
+localStorage.setItem(key, JSON.stringify({ themeId: "repository-light", fontFamily: gentium.stack }));
+assert(appearance.readAppearancePreference().fontFamily === gentium.stack, "legacy interface font must become the reading font");

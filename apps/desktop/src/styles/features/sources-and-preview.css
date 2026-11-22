@@ -528,10 +528,10 @@
 .file-card-body {
   margin: 0;
   padding: 12px;
-  font-family: var(--cw-font-mono);
-  font-size: var(--cw-type-code-size);
+  font-family: var(--cw-font-reading);
+  font-size: var(--cw-type-reading-size);
   font-weight: var(--cw-weight-regular);
-  line-height: 1.55;
+  line-height: var(--type-reading-body-line-height);
   letter-spacing: 0;
   color: var(--text-color);
   white-space: pre-wrap;
@@ -673,7 +673,7 @@
 .full-ocr-page-body,
 .full-ocr-page-error {
   padding: 10px;
-  font-family: var(--cw-font-mono);
+  font-family: var(--cw-font-reading);
   font-size: var(--cw-type-help-size);
   font-weight: var(--cw-weight-regular);
   line-height: 1.45;

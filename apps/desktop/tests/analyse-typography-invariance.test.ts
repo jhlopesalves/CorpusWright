@@ -79,7 +79,8 @@ for (const selector of [
   '.analyse-tool-item[aria-current="page"]',
 ]) {
   const body = ruleBody(selector);
-  assert.match(body, /font-weight:\s*var\(--cw-weight-bold\)/);
+  const weight = selector === ".analyse-header h1" ? "--type-display-font-weight" : "--cw-weight-bold";
+  assert(body.includes(`font-weight: var(${weight})`), `${selector} must retain its semantic weight`);
   assert.doesNotMatch(
     body,
     /font-weight:\s*(?:[1-9]50)/,
