@@ -90,6 +90,7 @@ pre {
 }
 
 :where(button:not(.concordance-node), input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]), select:not([multiple])) {
+  box-sizing: border-box;
   min-block-size: var(--control-height);
 }
 

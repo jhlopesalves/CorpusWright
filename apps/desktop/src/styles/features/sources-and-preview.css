@@ -436,17 +436,26 @@
 .search-container {
   display: flex;
   align-items: center;
-  background: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  padding: 4px 8px;
+  box-sizing: border-box;
+  height: var(--control-height);
+  background: var(--cw-surface-input);
+  border: 1px solid var(--cw-field-border);
+  border-radius: var(--radius-control);
+  padding-inline: var(--space-2);
   gap: 8px;
   min-width: 280px;
   max-width: 520px;
   flex: 1;
 }
 
+.search-container:focus-within {
+  outline: var(--cw-interaction-focus-outline);
+  outline-offset: 2px;
+}
+
 .search-container input {
+  min-block-size: 0;
+  height: 100%;
   background: transparent;
   border: none;
   color: var(--text-color);
@@ -459,6 +468,7 @@
 
 .search-nav {
   display: flex;
+  height: 100%;
   gap: 4px;
   flex-shrink: 0;
 }
@@ -705,6 +715,8 @@ mark.search-match.current-match {
 }
 
 .search-nav-btn {
+  min-block-size: 0;
+  height: 100%;
   padding: 2px;
   display: flex;
   align-items: center;
