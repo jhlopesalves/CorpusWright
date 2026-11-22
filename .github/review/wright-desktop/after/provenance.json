@@ -1,0 +1,203 @@
+{
+  "frontendTree": "63446cb55f2252daf33180eb7284014e3ba85050",
+  "coreTree": "069d0a29ae1641b66c3809d9e0011428e274ec93",
+  "viewport": {
+    "width": 1440,
+    "height": 1000,
+    "deviceScaleFactor": 1
+  },
+  "captures": [
+    {
+      "stage": "01-sources",
+      "asset": "01-sources-wright-light.png",
+      "theme": "wright-light",
+      "sha256": "ee49aeebc4cbb0cff743e5373c0ef78cdf85204a5739e22ffdb0f9681f808d20",
+      "visibleTextSha256": "88fc4001fe6182ac6f3ad220b6243222750c1fee5bc7ffa6084295da53dd754e",
+      "repositoryPath": "docs/assets/walkthrough/01-sources-light.png"
+    },
+    {
+      "stage": "appearance",
+      "asset": "appearance-wright-light.png",
+      "theme": "wright-light",
+      "sha256": "c6a670fdd973c5784f0fbb068375dee16568269c27985eabb0253fb68ba50997",
+      "visibleTextSha256": "9a074f7f6f2411ba78179f50e0383c4aed5f3fbd38bbcdf456d9f240c6fe68cb",
+      "repositoryPath": ".github/review/wright-desktop/after/appearance-wright-light.png"
+    },
+    {
+      "stage": "02-artefacts",
+      "asset": "02-artefacts-wright-light.png",
+      "theme": "wright-light",
+      "sha256": "7b24d3d37f9a2c2dce947a6671c94a326dda98a4343d66dfaf745b3d8becad22",
+      "visibleTextSha256": "00dc2e326960247ba69cdf704c632dd8e62c76600f73c3cbd7a02f74415cf94d",
+      "repositoryPath": "docs/assets/walkthrough/02-artefacts-light.png"
+    },
+    {
+      "stage": "04-counts",
+      "asset": "04-counts-wright-light.png",
+      "theme": "wright-light",
+      "sha256": "bdeca93cf73197fa07a05e99f83abe7b3db09a4f319a56ce2f8293a68598bd6d",
+      "visibleTextSha256": "1d89728a4de1994b2800b19f36c09993ca4c7b09b4b22c66dda32e171d4700f1",
+      "repositoryPath": "docs/assets/walkthrough/04-counts-light.png"
+    },
+    {
+      "stage": "05-dispersion",
+      "asset": "05-dispersion-wright-light.png",
+      "theme": "wright-light",
+      "sha256": "69d87c5a2c0f69cc0e2995a32c04e0a1d06d193bda0c9630d273602fa135c8f3",
+      "visibleTextSha256": "9cfd7b8763c1c470233906af30d38bddd832bb62e2c01fa50408983b38a761e2",
+      "repositoryPath": "docs/assets/walkthrough/05-dispersion-light.png"
+    },
+    {
+      "stage": "06-context",
+      "asset": "06-context-wright-light.png",
+      "theme": "wright-light",
+      "sha256": "dd739373ff8032ac54c01d47edcc8ff0baab9fecd9f27c76e9cff34072a933a3",
+      "visibleTextSha256": "26c4b8d9f57e3b207c4678b722d72670c21f9facb2a3303b65d2c8c226eb535e",
+      "repositoryPath": "docs/assets/walkthrough/06-context-light.png"
+    },
+    {
+      "stage": "01-sources",
+      "asset": "01-sources-wright-dark.png",
+      "theme": "wright-dark",
+      "sha256": "d742f6e254ddb03fb528a7b894b8b6b54487425193feeebb39f2e8b9b762b20a",
+      "visibleTextSha256": "9b288e8727fbf86763a20775a0785f34d9602531456d154cab23a4d65e1be2de",
+      "repositoryPath": "docs/assets/walkthrough/01-sources-dark.png"
+    },
+    {
+      "stage": "appearance",
+      "asset": "appearance-wright-dark.png",
+      "theme": "wright-dark",
+      "sha256": "836f425210a1c444fa01aa43c5583123e7d8515289dafa16ee9e3cc82abcb5f8",
+      "visibleTextSha256": "3e487eccb090739d93baf611621ff4f2f46530f3f5f83dd4a837a8691c43012f",
+      "repositoryPath": ".github/review/wright-desktop/after/appearance-wright-dark.png"
+    },
+    {
+      "stage": "02-artefacts",
+      "asset": "02-artefacts-wright-dark.png",
+      "theme": "wright-dark",
+      "sha256": "8f2b9e3a2f9b8e11b9613951916454400ed30818c3f9347c1ab34b539b439f50",
+      "visibleTextSha256": "9596c7664a9f2f04f1d953d4728e9335a056038c32fbb9799c5fb27287c286ff",
+      "repositoryPath": "docs/assets/walkthrough/02-artefacts-dark.png"
+    },
+    {
+      "stage": "04-counts",
+      "asset": "04-counts-wright-dark.png",
+      "theme": "wright-dark",
+      "sha256": "737b54366eee1c8c12381e86b55ef8c88b437d213d2628dd55017a780a916770",
+      "visibleTextSha256": "eaced8d0baf5ecec9c912275bf89aa2b14b985ccdd60426717842b56532af7da",
+      "repositoryPath": "docs/assets/walkthrough/04-counts-dark.png"
+    },
+    {
+      "stage": "05-dispersion",
+      "asset": "05-dispersion-wright-dark.png",
+      "theme": "wright-dark",
+      "sha256": "b348fd41925f3a1a7aa7d31a8e1f38767a0071e8e17bb9c1da63fbcebb06f01c",
+      "visibleTextSha256": "9e4af29d5564d52c3e9f137e0d58f9082ad1912b1e16f2cce0aa6aad16d82c57",
+      "repositoryPath": "docs/assets/walkthrough/05-dispersion-dark.png"
+    },
+    {
+      "stage": "06-context",
+      "asset": "06-context-wright-dark.png",
+      "theme": "wright-dark",
+      "sha256": "16c3ec9d84dc293e35825e6e4cd5374dc355099eb07ff974275932d930301a5b",
+      "visibleTextSha256": "43b12525ca32d620e7e2e62ba34faefdc666ff1bfc700dc2430f0f0760b670a1",
+      "repositoryPath": "docs/assets/walkthrough/06-context-dark.png"
+    },
+    {
+      "stage": "01-sources",
+      "asset": "01-sources-high-contrast-light.png",
+      "theme": "high-contrast-light",
+      "sha256": "60dacf2f918c499229a1f0de2206c2be984ada6454765566b8047cfc8c4bddc4",
+      "visibleTextSha256": "88fc4001fe6182ac6f3ad220b6243222750c1fee5bc7ffa6084295da53dd754e",
+      "repositoryPath": ".github/review/wright-desktop/after/01-sources-high-contrast-light.png"
+    },
+    {
+      "stage": "appearance",
+      "asset": "appearance-high-contrast-light.png",
+      "theme": "high-contrast-light",
+      "sha256": "8c345c752492cfe09879cf0af29e6525092847c97b76c4357b36fec318fc8088",
+      "visibleTextSha256": "9a074f7f6f2411ba78179f50e0383c4aed5f3fbd38bbcdf456d9f240c6fe68cb",
+      "repositoryPath": ".github/review/wright-desktop/after/appearance-high-contrast-light.png"
+    },
+    {
+      "stage": "02-artefacts",
+      "asset": "02-artefacts-high-contrast-light.png",
+      "theme": "high-contrast-light",
+      "sha256": "e526f5e74f3de96f6a82003a8817d2be3de9a8f6966b5b35c7ae3c67079b555e",
+      "visibleTextSha256": "2f07c1b5e5deff747d5e557b185d0346f109d23e5aec613d34b4442a0f7e9de7",
+      "repositoryPath": ".github/review/wright-desktop/after/02-artefacts-high-contrast-light.png"
+    },
+    {
+      "stage": "04-counts",
+      "asset": "04-counts-high-contrast-light.png",
+      "theme": "high-contrast-light",
+      "sha256": "87ae30d8ec12573f2b750a7d6ed069c8441603320fbeaadbc689284cd79a969e",
+      "visibleTextSha256": "1d89728a4de1994b2800b19f36c09993ca4c7b09b4b22c66dda32e171d4700f1",
+      "repositoryPath": ".github/review/wright-desktop/after/04-counts-high-contrast-light.png"
+    },
+    {
+      "stage": "05-dispersion",
+      "asset": "05-dispersion-high-contrast-light.png",
+      "theme": "high-contrast-light",
+      "sha256": "64ed4fb30ddeebad562e55f29fca8ea4d18e1f7d0e2b779f43d9989eb1f5abc3",
+      "visibleTextSha256": "9cfd7b8763c1c470233906af30d38bddd832bb62e2c01fa50408983b38a761e2",
+      "repositoryPath": ".github/review/wright-desktop/after/05-dispersion-high-contrast-light.png"
+    },
+    {
+      "stage": "06-context",
+      "asset": "06-context-high-contrast-light.png",
+      "theme": "high-contrast-light",
+      "sha256": "0c3509fe50b24fb6334ef263bb9f76a0cc34e5c83baa820c86a99157f20a9cef",
+      "visibleTextSha256": "26c4b8d9f57e3b207c4678b722d72670c21f9facb2a3303b65d2c8c226eb535e",
+      "repositoryPath": ".github/review/wright-desktop/after/06-context-high-contrast-light.png"
+    },
+    {
+      "stage": "01-sources",
+      "asset": "01-sources-high-contrast-dark.png",
+      "theme": "high-contrast-dark",
+      "sha256": "56d37cb1a642400ade76c03d4635a360a79ed61bc5acec2807019cd54fdb2c81",
+      "visibleTextSha256": "9b288e8727fbf86763a20775a0785f34d9602531456d154cab23a4d65e1be2de",
+      "repositoryPath": ".github/review/wright-desktop/after/01-sources-high-contrast-dark.png"
+    },
+    {
+      "stage": "appearance",
+      "asset": "appearance-high-contrast-dark.png",
+      "theme": "high-contrast-dark",
+      "sha256": "16d3e0cf2b4be9806ca59afc1eea515f908e04342932f31005357fe1fcba9ecb",
+      "visibleTextSha256": "3e487eccb090739d93baf611621ff4f2f46530f3f5f83dd4a837a8691c43012f",
+      "repositoryPath": ".github/review/wright-desktop/after/appearance-high-contrast-dark.png"
+    },
+    {
+      "stage": "02-artefacts",
+      "asset": "02-artefacts-high-contrast-dark.png",
+      "theme": "high-contrast-dark",
+      "sha256": "b40be389e8ba0139dfa8cc08c8648b2243c51f7072132b076ef9fcf51819fad5",
+      "visibleTextSha256": "ebb3da6b5d953788bc6c9913c8f4e593c8dc0d785b9d407bd6d992b551d0d41a",
+      "repositoryPath": ".github/review/wright-desktop/after/02-artefacts-high-contrast-dark.png"
+    },
+    {
+      "stage": "04-counts",
+      "asset": "04-counts-high-contrast-dark.png",
+      "theme": "high-contrast-dark",
+      "sha256": "0870d9308a88b1d0e4ac1ad686dada6659113217c5f1e41529d71464ea9cde2d",
+      "visibleTextSha256": "eaced8d0baf5ecec9c912275bf89aa2b14b985ccdd60426717842b56532af7da",
+      "repositoryPath": ".github/review/wright-desktop/after/04-counts-high-contrast-dark.png"
+    },
+    {
+      "stage": "05-dispersion",
+      "asset": "05-dispersion-high-contrast-dark.png",
+      "theme": "high-contrast-dark",
+      "sha256": "7f4fc19346f47dd1667ff082a8cb776963695757d12e48db650b8acb78b0d1af",
+      "visibleTextSha256": "9e4af29d5564d52c3e9f137e0d58f9082ad1912b1e16f2cce0aa6aad16d82c57",
+      "repositoryPath": ".github/review/wright-desktop/after/05-dispersion-high-contrast-dark.png"
+    },
+    {
+      "stage": "06-context",
+      "asset": "06-context-high-contrast-dark.png",
+      "theme": "high-contrast-dark",
+      "sha256": "2bf397b958e5cb9d250d9a543286f995ce92f69b94989e24f5620a19ddcb2113",
+      "visibleTextSha256": "43b12525ca32d620e7e2e62ba34faefdc666ff1bfc700dc2430f0f0760b670a1",
+      "repositoryPath": ".github/review/wright-desktop/after/06-context-high-contrast-dark.png"
+    }
+  ]
+}
