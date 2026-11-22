@@ -51,7 +51,7 @@ for (const selector of ["cw-plot-density-cell", "cw-plot-bar", "cw-plot-composit
 }
 const lollipopRule = interactions.match(/\.cw-plot-point\.is-lollipop[\s\S]*?\{([\s\S]*?)\}/)?.[1] ?? "";
 assert.doesNotMatch(lollipopRule, /transform:\s*scale\(/, "lollipop hover must not move its endpoint off the stem");
-assert.match(interactions, /cw-plot-tooltip[\s\S]*transition: opacity 120ms ease/);
+assert.match(interactions, /cw-plot-tooltip[\s\S]*transition: opacity var\(--motion-fast\) var\(--motion-easing\)/);
 assert.match(interactions, /prefers-reduced-motion: reduce[\s\S]*\.cw-plot-tooltip[\s\S]*transition: none/);
 assert.equal(render.match(/renderInteractionLayer\(svg, geometry\.box, true\)/g)?.length, 4);
 assert.equal(render.match(/renderInteractionLayer\(svg, geometry\.box, false\)/g)?.length, 4);

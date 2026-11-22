@@ -250,7 +250,7 @@
   width: 14px;
   height: 14px;
   color: var(--text-muted);
-  transition: color 0.12s ease, transform 0.12s ease;
+  transition: color var(--motion-fast) var(--motion-easing), transform var(--motion-fast) var(--motion-easing);
 }
 
 .frequency-term-row[aria-expanded="true"] .frequency-token-caret {
@@ -296,12 +296,12 @@
 
 .frequency-sort[aria-sort="ascending"]::after {
   content: "↑";
-  color: var(--accent-color);
+  color: var(--cw-accent-ink);
 }
 
 .frequency-sort[aria-sort="descending"]::after {
   content: "↓";
-  color: var(--accent-color);
+  color: var(--cw-accent-ink);
 }
 
 .frequency-dp-cell {

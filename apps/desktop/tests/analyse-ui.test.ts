@@ -840,9 +840,9 @@ assert(
   !concordanceNodeCss.includes("overflow-x")
     && concordanceNodeCss.includes("white-space: nowrap")
     && concordanceNodeCss.includes("border: 0")
-    && concordanceNodeCss.includes("background: transparent")
-    && concordanceNodeCss.includes("color: var(--accent-color)"),
-  "Concordance nodes should form an accent-colour spine without a badge or nested scrollbar",
+    && concordanceNodeCss.includes("background: var(--cw-node-bg)")
+    && concordanceNodeCss.includes("color: var(--cw-node-ink)"),
+  "Concordance nodes must use the active role without a nested scrollbar",
 );
 assert(
   styles.includes(".concordance-table {\n  width: 100%;")
@@ -909,7 +909,7 @@ const frequencyTableWrapCss = frequencyTableWrapCssMatch[1];
 assert(
   concordanceTableWrapCss.includes("max-height: none;")
     && concordanceTableWrapCss.includes("overflow: clip;")
-    && styles.includes(".cw-result-table-wrap {\n  border: 1px solid var(--cw-result-table-border);\n  border-radius: 4px;\n  background: var(--cw-result-table-surface);")
+    && styles.includes(".cw-result-table-wrap {\n  border: 1px solid var(--cw-result-table-border);\n  border-radius: var(--radius-card);\n  background: var(--cw-result-table-surface);")
     && !styles.includes(".concordance-table {\n    min-width: 760px;"),
   "Concordance lines wrapper should use the shared table shell without nested scrolling",
 );
@@ -931,7 +931,7 @@ assert(
   frequencyTableWrapCss.includes("max-height: min(58vh, 680px);")
     && frequencyTableWrapCss.includes("overflow: auto;")
     && styles.includes(".cw-result-table-wrap {\n  border: 1px solid var(--cw-result-table-border);")
-    && styles.includes("border-radius: 4px;")
+    && styles.includes("border-radius: var(--radius-card);")
     && styles.includes("background: var(--cw-result-table-surface);"),
   "Frequency List table wrap should keep the existing internal scroll discipline",
 );

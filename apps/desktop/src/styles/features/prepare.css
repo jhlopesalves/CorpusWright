@@ -223,7 +223,7 @@
   width: 4px;
   background-color: var(--border-color);
   cursor: col-resize;
-  transition: background-color 0.2s;
+  transition: background-color var(--motion-ui) var(--motion-easing);
   flex-shrink: 0;
   z-index: 10;
 }

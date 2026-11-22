@@ -174,7 +174,7 @@
   min-width: 200px;
   background: var(--bg-color);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: var(--radius-popover);
   box-shadow: var(--cw-shadow-popup);
   z-index: 100;
   padding: 4px 0;
@@ -232,7 +232,7 @@
   font-size: var(--cw-type-control-size);
   font-family: inherit;
   border-bottom: 2px solid transparent;
-  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  transition: background-color var(--motion-fast) var(--motion-easing), color var(--motion-fast) var(--motion-easing), border-color var(--motion-fast) var(--motion-easing), box-shadow var(--motion-fast) var(--motion-easing);
 }
 
 .tab:hover {
@@ -257,4 +257,16 @@
 .tab.active:hover {
   background-color: var(--cw-interaction-bg-selected-hover);
   border-bottom-color: var(--accent-color);
+}
+
+.tab.active[data-target="original-text"] {
+  background: var(--cw-original-bg);
+  color: var(--cw-original-ink);
+  border-bottom-color: var(--cw-original-line);
+}
+
+.tab.active[data-target="processed-text"] {
+  background: var(--cw-processed-bg);
+  color: var(--cw-processed-ink);
+  border-bottom-color: var(--cw-processed-line);
 }

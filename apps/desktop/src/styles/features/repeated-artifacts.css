@@ -387,7 +387,7 @@
 
 .repeated-artifact-type-tabs .tab:hover {
   background-color: var(--cw-interaction-bg-hover);
-  color: var(--accent-color);
+  color: var(--cw-accent-ink);
 }
 
 .repeated-artifact-type-tabs .tab.active {
@@ -455,7 +455,7 @@
 .repeated-artifact-table-container tbody tr {
   cursor: pointer;
   border-bottom: 1px solid var(--border-color);
-  transition: background-color 0.15s ease;
+  transition: background-color var(--motion-fast) var(--motion-easing);
 }
 
 /* If tabs ever reach tens of thousands of rows, prefer content-visibility: auto over custom windowing. */
@@ -796,7 +796,7 @@
 .sort-indicator {
   display: inline-block;
   font-size: var(--cw-type-help-size);
-  color: var(--accent-color);
+  color: var(--cw-accent-ink);
   width: 10px;
   height: 14px;
   line-height: 14px;

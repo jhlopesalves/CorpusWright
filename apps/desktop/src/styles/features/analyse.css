@@ -216,7 +216,7 @@
   font-family: inherit;
   font-size: var(--cw-type-control-size);
   text-align: left;
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+  transition: background-color var(--motion-fast) var(--motion-easing), border-color var(--motion-fast) var(--motion-easing), color var(--motion-fast) var(--motion-easing), box-shadow var(--motion-fast) var(--motion-easing);
 }
 
 .analyse-tool-status {
@@ -538,7 +538,7 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: color 120ms ease, box-shadow 120ms ease;
+  transition: color var(--motion-fast) var(--motion-easing), box-shadow var(--motion-fast) var(--motion-easing);
 }
 
 .analysis-glossary-term:hover {
@@ -554,7 +554,7 @@
   display: inline-block;
   color: var(--text-muted);
   font-size: var(--cw-type-body-compact-size);
-  transition: transform 120ms ease;
+  transition: transform var(--motion-fast) var(--motion-easing);
 }
 
 .analysis-glossary-term[aria-expanded="true"] .analysis-glossary-caret {
@@ -1068,7 +1068,7 @@
 
 .annotation-layer-progress-bar.is-indeterminate .annotation-layer-progress-fill {
   width: 42%;
-  animation: annotation-progress-indeterminate 1.2s ease-in-out infinite;
+  animation: annotation-progress-indeterminate var(--motion-state) var(--motion-easing) infinite;
 }
 
 @keyframes annotation-progress-indeterminate {

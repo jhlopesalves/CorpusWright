@@ -88,3 +88,22 @@ pre {
 .hidden {
   display: none !important;
 }
+
+:where(button:not(.concordance-node), input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]), select:not([multiple])) {
+  min-block-size: var(--control-height);
+}
+
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]), select, textarea) {
+  border-color: var(--cw-field-border);
+  border-radius: var(--radius-control);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  [data-theme="wright-light"],
+  [data-theme="wright-dark"] {
+    --motion-fast: 0ms;
+    --motion-ui: 0ms;
+    --motion-state: 0ms;
+  }
+}

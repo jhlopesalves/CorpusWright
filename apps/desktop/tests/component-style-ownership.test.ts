@@ -61,7 +61,7 @@ assert.match(html, /class="frequency-table cw-result-table"/);
 assert.match(html, /class="concordance-collocations-table cw-result-table cw-result-table--compact"/);
 assert.match(distribution, /concordance-distribution-table cw-result-table cw-result-table--compact/);
 
-assert.match(panels, /\.cw-panel \{[\s\S]*border: 1px solid var\(--border-color\);[\s\S]*border-radius: 6px;[\s\S]*background: var\(--panel-bg\);[\s\S]*box-shadow:/);
+assert.match(panels, /\.cw-panel \{[\s\S]*border: 1px solid var\(--border-color\);[\s\S]*border-radius: var\(--radius-card\);[\s\S]*background: var\(--panel-bg\);/);
 assert.match(panels, /\.cw-panel__header \{/);
 assert.match(panels, /\.cw-panel__controls \{/);
 assert.match(panels, /\.cw-panel__body \{/);

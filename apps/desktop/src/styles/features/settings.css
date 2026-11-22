@@ -176,7 +176,7 @@
 .btn-text {
   background: none;
   border: none;
-  color: var(--accent-color);
+  color: var(--cw-accent-ink);
   cursor: pointer;
   padding: 0;
   font-family: inherit;
@@ -264,7 +264,7 @@
   border-radius: 6px;
   font-family: var(--cw-font-ui);
   font-size: var(--cw-type-control-size);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color var(--motion-ui) var(--motion-easing), box-shadow var(--motion-ui) var(--motion-easing);
 }
 
 #custom-removal-input.settings-input:focus {
@@ -337,7 +337,7 @@
   cursor: help;
   padding: 0;
   opacity: 0.55;
-  transition: opacity 0.15s ease, color 0.15s ease;
+  transition: opacity var(--motion-fast) var(--motion-easing), color var(--motion-fast) var(--motion-easing);
 }
 
 .setting-help:hover,
@@ -372,7 +372,7 @@
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.12s ease, visibility 0.12s ease;
+  transition: opacity var(--motion-fast) var(--motion-easing), visibility var(--motion-fast) var(--motion-easing);
   z-index: 20;
 }
 
@@ -413,7 +413,7 @@
   font-family: var(--cw-font-mono);
   color: var(--text-color);
   box-shadow: 0 2px 4px var(--cw-shadow-pill);
-  transition: background-color 0.2s, border-color 0.2s;
+  transition: background-color var(--motion-ui) var(--motion-easing), border-color var(--motion-ui) var(--motion-easing);
 }
 
 .removal-pill:hover {
@@ -460,7 +460,7 @@
   width: 14px;
   height: 14px;
   color: var(--text-muted);
-  transition: color 0.12s ease, transform 0.12s ease;
+  transition: color var(--motion-fast) var(--motion-easing), transform var(--motion-fast) var(--motion-easing);
 }
 
 .scan-settings-toggle[aria-expanded="true"] .scan-settings-chevron {

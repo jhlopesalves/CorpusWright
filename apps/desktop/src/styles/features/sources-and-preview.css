@@ -421,7 +421,7 @@
   width: 0%;
   height: 100%;
   background: var(--accent-color);
-  transition: width 160ms ease;
+  transition: width var(--motion-fast) var(--motion-easing);
 }
 
 .preview-toolbar {
@@ -497,7 +497,7 @@
 
 .file-card-num {
   font-size: var(--cw-type-help-size);
-  color: var(--accent-color);
+  color: var(--cw-accent-ink);
   white-space: nowrap;
 }
 
@@ -529,6 +529,7 @@
   margin: 0;
   padding: 12px;
   font-family: var(--cw-font-reading);
+  max-width: var(--reading-width);
   font-size: var(--cw-type-reading-size);
   font-weight: var(--cw-weight-regular);
   line-height: var(--type-reading-body-line-height);

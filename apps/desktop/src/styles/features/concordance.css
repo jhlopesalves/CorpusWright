@@ -306,8 +306,9 @@
   display: inline-block;
   padding: 0;
   border: 0;
-  background: transparent;
-  color: var(--accent-color);
+  background: var(--cw-node-bg);
+  color: var(--cw-node-ink);
+  border-radius: var(--radius-avatar);
   font-weight: var(--cw-weight-semibold);
   white-space: nowrap;
   vertical-align: middle;
@@ -318,7 +319,7 @@
 }
 
 .concordance-row td {
-  transition: background-color 120ms ease, box-shadow 120ms ease;
+  transition: background-color var(--motion-fast) var(--motion-easing), box-shadow var(--motion-fast) var(--motion-easing);
 }
 
 .concordance-row.is-expanded td {
@@ -690,7 +691,7 @@
 }
 
 .concordance-collocation-row td {
-  transition: background-color 120ms ease, box-shadow 120ms ease;
+  transition: background-color var(--motion-fast) var(--motion-easing), box-shadow var(--motion-fast) var(--motion-easing);
 }
 
 .concordance-collocation-row td:first-child {
@@ -715,7 +716,7 @@
 
 .concordance-collocation-row:hover .concordance-collocate-text,
 .concordance-collocation-row:focus-visible .concordance-collocate-text {
-  color: var(--accent-color);
+  color: var(--cw-accent-ink);
 }
 
 .concordance-collocation-row.is-active:hover td,
@@ -983,7 +984,7 @@
   width: 38%;
   border-radius: inherit;
   background: var(--accent-color);
-  animation: concordance-collocation-progress 1.3s ease-in-out infinite;
+  animation: concordance-collocation-progress var(--motion-state) var(--motion-easing) infinite;
 }
 
 @keyframes concordance-collocation-progress {

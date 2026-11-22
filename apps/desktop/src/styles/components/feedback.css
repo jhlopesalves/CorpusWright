@@ -83,7 +83,7 @@
   border: 4px solid var(--cw-spinner-track);
   border-left-color: var(--accent-color);
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin var(--motion-state) linear infinite;
   margin-bottom: 15px;
 }
 

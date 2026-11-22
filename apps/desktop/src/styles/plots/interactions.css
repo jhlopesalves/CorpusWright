@@ -19,7 +19,7 @@
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms ease;
+  transition: opacity var(--motion-fast) var(--motion-easing);
 }
 
 .cw-plot-tooltip[aria-hidden="false"] {
@@ -102,7 +102,7 @@
 .cw-plot-animated-path {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: cw-plot-path-draw 700ms ease-out forwards;
+  animation: cw-plot-path-draw var(--motion-state) var(--motion-easing) forwards;
 }
 
 @keyframes cw-plot-path-draw {

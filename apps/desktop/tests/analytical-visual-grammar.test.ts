@@ -62,7 +62,7 @@ assert(
   "KWIC and Collocates wrappers should consume the shared result-table shell",
 );
 assert(
-  styles.includes(".cw-result-table-wrap {\n  border: 1px solid var(--cw-result-table-border);\n  border-radius: 4px;\n  background: var(--cw-result-table-surface);"),
+  styles.includes(".cw-result-table-wrap {\n  border: 1px solid var(--cw-result-table-border);\n  border-radius: var(--radius-card);\n  background: var(--cw-result-table-surface);"),
   "Concordance table wrappers should inherit the shared border and surface owner",
 );
 assert(

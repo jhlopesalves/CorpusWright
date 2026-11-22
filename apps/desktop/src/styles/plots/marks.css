@@ -279,6 +279,6 @@
 .cw-plot-plane-witness {
   opacity: 0;
   transform: scale(0.6);
-  animation: cw-plot-point-in 360ms ease-out forwards;
+  animation: cw-plot-point-in var(--motion-state) var(--motion-easing) forwards;
   animation-delay: var(--cw-plot-stagger, 0ms);
 }
