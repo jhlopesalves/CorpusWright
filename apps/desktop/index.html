@@ -73,13 +73,13 @@
             <div class="dropdown-item" id="menu-open-folder-project" tabindex="0">Open Folder as Project</div>
             <div class="dropdown-item hidden" id="menu-close-project" tabindex="0">Close Project</div>
             <hr class="dropdown-divider">
-            <div class="dropdown-item" id="menu-save-corpus" tabindex="0">Export Processed Corpus...</div>
+            <div class="dropdown-item" id="menu-save-corpus" tabindex="0">Export cleaned corpus…</div>
           </div>
         </div>
         <div class="dropdown" id="menu-view-dropdown">
           <span class="menu-item" tabindex="0">View</span>
           <div class="dropdown-content">
-            <div class="dropdown-item" id="menu-appearance" tabindex="0">Appearance...</div>
+            <div class="dropdown-item" id="menu-appearance" tabindex="0">Appearance…</div>
             <hr class="dropdown-divider">
             <div class="dropdown-item" id="menu-toggle-theme" tabindex="0">Toggle Light/Dark</div>
           </div>
@@ -156,15 +156,15 @@
     <main id="welcome-screen" class="welcome-screen">
       <section class="welcome-content" aria-labelledby="welcome-title">
         <h1 id="welcome-title">Welcome to CorpusWright</h1>
-        <p>Create or open a corpus project to prepare documents, review cleaning decisions, and analyse your corpus.</p>
+        <p>Create or open a corpus project to prepare documents, review cleaning decisions and analyse your corpus.</p>
         <div class="welcome-actions">
-          <button id="btn-new-project" class="primary-btn" type="button">New Corpus Project</button>
+          <button id="btn-new-project" class="primary-btn" type="button">New corpus project</button>
           <button id="btn-open-project" type="button">Open Existing Project</button>
           <button id="btn-open-folder-project" type="button">Open Folder as Corpus Project</button>
         </div>
         <div id="welcome-status" class="welcome-status" aria-live="polite"></div>
         <section class="recent-projects" aria-labelledby="recent-projects-title">
-          <h2 id="recent-projects-title">Recent Projects</h2>
+          <h2 id="recent-projects-title">Recent projects</h2>
           <div id="recent-projects-list" class="recent-projects-list"></div>
         </section>
       </section>
@@ -203,7 +203,7 @@
           </div>
         </div>
         <div class="status-line" id="files-status">0 loaded | 0 selected</div>
-        <input id="search-input" type="text" placeholder="Search sources..." />
+        <input id="search-input" type="text" placeholder="Search sources…" />
         <div class="list-controls-bar">
           <label class="select-all-label" title="Select all filtered files">
             <input type="checkbox" id="select-all-checkbox" /> Select All
@@ -220,13 +220,13 @@
         <section class="right-panel">
         <div class="prepare-cockpit" aria-label="Prepare tools">
           <div class="prepare-cockpit-status" aria-live="polite">
-            <span id="prepare-cockpit-source-count">Sources loading...</span>
+            <span id="prepare-cockpit-source-count">Sources loading…</span>
             <span id="prepare-cockpit-cleaning-summary">Cleaning settings ready</span>
             <span id="prepare-processing-status">Processed Text previews current settings</span>
           </div>
           <div class="prepare-cockpit-actions">
-            <button id="prepare-cleaning-settings" class="secondary-btn" type="button">Cleaning Settings...</button>
-            <button id="prepare-repeated-artifact-finder" class="secondary-btn" type="button">Repeated Artefacts...</button>
+            <button id="prepare-cleaning-settings" class="secondary-btn" type="button">Cleaning settings…</button>
+            <button id="prepare-repeated-artifact-finder" class="secondary-btn" type="button">Repeated Artefact Finder…</button>
           </div>
         </div>
 
@@ -242,7 +242,7 @@
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
-            <input type="text" id="preview-search-input" placeholder="Search in active preview..." />
+            <input type="text" id="preview-search-input" placeholder="Search in active preview…" />
             <span class="match-count" id="preview-match-count"></span>
             <div class="search-nav">
               <button id="search-prev" class="icon-btn search-nav-btn" aria-label="Previous match" title="Previous"><svg
@@ -261,7 +261,7 @@
 
         <div id="preview-loading-overlay" class="loading-overlay hidden">
           <div class="spinner"></div>
-          <span id="preview-loading-text">Loading...</span>
+          <span id="preview-loading-text">Loading…</span>
         </div>
 
         <div class="tab-content active" id="original-text">
@@ -280,7 +280,7 @@
           <header class="analyse-header">
             <div>
               <p class="analyse-eyebrow">Analyse</p>
-              <h1>Analyse Corpus</h1>
+              <h1>Analyse corpus</h1>
             </div>
             <div class="analyse-status-line" aria-live="polite">
               <span id="analyse-status-chip" class="analyse-status-text">Surface analysis not built</span>
@@ -304,7 +304,7 @@
 
             <div class="analyse-tool-content">
               <section id="analyse-overview-pane" class="analyse-section analyse-tool-pane" aria-labelledby="analyse-overview-title">
-                <h2 id="analyse-overview-title">Corpus Overview</h2>
+                <h2 id="analyse-overview-title">Corpus overview</h2>
                 <div id="analyse-overview" class="analyse-overview"></div>
                 <details class="analyse-project-details">
                   <summary id="analyse-current-project-title">Project details</summary>
@@ -315,7 +315,7 @@
               <section id="frequency-list-pane" class="analyse-section analyse-tool-pane frequency-section" aria-labelledby="frequency-list-title">
                 <div class="frequency-section-header">
                   <div>
-                    <h2 id="frequency-list-title">Frequency List</h2>
+                    <h2 id="frequency-list-title">Frequency list</h2>
                     <p id="frequency-summary" class="frequency-summary">Build surface analysis to populate the frequency list.</p>
                   </div>
                   <span id="frequency-result-count" class="frequency-result-count"></span>
@@ -330,7 +330,7 @@
                   <div class="frequency-control-cluster frequency-query-cluster">
                     <label class="frequency-query-control" for="frequency-search-input">
                       <span>Token search</span>
-                      <input id="frequency-search-input" type="search" placeholder="Filter tokens..." autocomplete="off" />
+                      <input id="frequency-search-input" type="search" placeholder="Filter tokens…" autocomplete="off" />
                     </label>
                     <label for="frequency-match-mode">
                       <span>Match mode</span>
@@ -491,7 +491,7 @@
                   <section id="concordance-lines-panel" class="concordance-card concordance-kwic-panel cw-panel cw-panel--stacked" aria-labelledby="concordance-lines-title" tabindex="-1">
                     <header class="concordance-card-header cw-panel__header">
                       <div class="concordance-card-heading">
-                        <h3 id="concordance-lines-title">Concordance Lines</h3>
+                        <h3 id="concordance-lines-title">Concordance lines</h3>
                         <p>Where and how does the node occur in context?</p>
                       </div>
                       <div class="concordance-card-actions">
@@ -774,7 +774,7 @@
         </button>
         <h2 id="frequency-files-title">Choose files</h2>
         <p id="frequency-files-description" class="modal-description">
-          Frequency counts, rates, range, and DP use only the selected files.
+          Frequency counts, rates, range and DP use only the selected files.
         </p>
 
         <label class="frequency-files-search" for="frequency-files-search-input">
@@ -808,11 +808,11 @@
           id="btn-close-project-create-modal-top"
           class="modal-close-btn"
           type="button"
-          aria-label="Close New Corpus Project"
+          aria-label="Close New corpus project"
         >
           &times;
         </button>
-        <h2 id="project-create-title">New Corpus Project</h2>
+        <h2 id="project-create-title">New corpus project</h2>
         <p id="project-create-description-text" class="modal-description">
           Set the project identity before CorpusWright creates the project.
         </p>
@@ -870,7 +870,7 @@
         >
           &times;
         </button>
-        <h2 id="project-language-upgrade-title">Project Language Required</h2>
+        <h2 id="project-language-upgrade-title">Project language required</h2>
         <p id="project-language-upgrade-description" class="modal-description">
           Choose the language for this project before CorpusWright opens it.
         </p>
@@ -907,7 +907,7 @@
         </button>
         <h2 id="about-title">CorpusWright</h2>
         <p id="about-description" class="modal-description">
-          A free and open-source desktop workbench for preparing, cleaning, inspecting, and exporting text corpora.
+          A free and open-source desktop workbench for preparing, cleaning, inspecting and exporting text corpora.
         </p>
 
         <div class="about-details">
@@ -918,7 +918,7 @@
         </div>
 
         <p class="about-alpha-note">
-          This is experimental alpha software. Please report issues through the GitHub repository.
+          CorpusWright is in public alpha. Please report issues through the GitHub repository.
         </p>
 
         <div class="modal-actions">
@@ -935,11 +935,11 @@
           id="btn-close-source-import-modal-top"
           class="modal-close-btn"
           type="button"
-          aria-label="Close Import Sources"
+          aria-label="Close Import sources"
         >
           &times;
         </button>
-        <h2 id="source-import-title">Import Sources</h2>
+        <h2 id="source-import-title">Import sources</h2>
         <p id="source-import-description" class="modal-description">
           CorpusWright inspected the selected files. Importing registers them in the project and stores how PDFs should be handled. Text extraction/OCR and cleaning are separate steps.
         </p>
@@ -989,10 +989,10 @@
         >
           &times;
         </button>
-        <h2 id="pdf-intake-title">Open Scanned or Complex PDFs</h2>
+        <h2 id="pdf-intake-title">Open scanned or complex PDFs</h2>
         <p id="pdf-intake-description" class="modal-description">
           Choose PDF handling for inspection-oriented processing. Preview before export: OCR may contain errors, layout
-          reconstruction is imperfect, and source files are never modified.
+          reconstruction is imperfect and source files are never modified.
         </p>
 
         <div id="pdf-intake-stored-handling" class="pdf-intake-stored-handling hidden">
@@ -1078,7 +1078,7 @@
           <span id="pdf-intake-status" class="pdf-intake-status"></span>
           <button id="cancel-pdf-intake-btn" class="secondary-btn" type="button">Cancel</button>
           <button id="load-pdf-intake-files-btn" class="primary-btn hidden" type="button">Load PDFs</button>
-          <button id="choose-pdf-intake-files-btn" class="primary-btn" type="button">Choose PDFs...</button>
+          <button id="choose-pdf-intake-files-btn" class="primary-btn" type="button">Choose PDFs…</button>
         </div>
       </div>
     </div>
@@ -1090,16 +1090,16 @@
           id="btn-close-settings-modal-top"
           class="modal-close-btn"
           type="button"
-          aria-label="Close Cleaning Settings"
+          aria-label="Close Cleaning settings"
         >
           &times;
         </button>
-        <h2 id="settings-title">Cleaning Settings</h2>
+        <h2 id="settings-title">Cleaning settings</h2>
         <p class="modal-description">These cleaning settings affect processed previews and exported text. Source files are never
           modified.</p>
         <div class="modal-config-toolbar">
-          <button type="button" id="btn-load-config">Load Config...</button>
-          <button type="button" id="btn-save-config">Save Config...</button>
+          <button type="button" id="btn-load-config">Load Config…</button>
+          <button type="button" id="btn-save-config">Save Config…</button>
           <span id="modal-config-status" class="modal-config-status"></span>
         </div>
         <div class="tabs">
@@ -1110,34 +1110,34 @@
           <button class="tab settings-tab" data-target="tab-extraction" type="button" role="tab"
             aria-selected="false">Formats &amp; Fallbacks</button>
           <button class="tab settings-tab" data-target="tab-custom-removals" type="button" role="tab"
-            aria-selected="false">Custom Removals</button>
+            aria-selected="false">Custom removals</button>
         </div>
 
         <div id="tab-general" class="tab-content settings-tab-content active" role="tabpanel">
           <div class="cleaning-controls-vertical">
             <strong class="settings-section-title">Text repair</strong>
             <div class="setting-row">
-              <label><input type="checkbox" id="chk-normalize-unicode" /> Normalize Unicode</label>
-              <button type="button" class="setting-help" aria-label="Show help for Normalize Unicode" tabindex="0">
+              <label><input type="checkbox" id="chk-normalize-unicode" /> Normalise Unicode</label>
+              <button type="button" class="setting-help" aria-label="Show help for Normalise Unicode" tabindex="0">
                 &#9432;<span class="setting-tooltip" role="tooltip">Composes Unicode text to NFC without removing accents or changing case.</span>
               </button>
             </div>
             <div class="setting-row">
               <label><input type="checkbox" id="chk-expand-ligatures" /> Expand typographic ligatures</label>
               <button type="button" class="setting-help" aria-label="Show help for Expand typographic ligatures" tabindex="0">
-                &#9432;<span class="setting-tooltip" role="tooltip">Expands typographic ligatures such as ﬀ, ﬁ, ﬂ, ﬃ, ﬄ, ﬅ, and ﬆ to their ASCII letter sequences.</span>
+                &#9432;<span class="setting-tooltip" role="tooltip">Expands typographic ligatures such as ﬀ, ﬁ, ﬂ, ﬃ, ﬄ, ﬅ and ﬆ to their ASCII letter sequences.</span>
               </button>
             </div>
             <div class="setting-row">
               <label><input type="checkbox" id="chk-remove-invisible-controls" /> Remove invisible/control characters</label>
               <button type="button" class="setting-help" aria-label="Show help for Remove invisible/control characters" tabindex="0">
-                &#9432;<span class="setting-tooltip" role="tooltip">Removes soft hyphen, zero-width space, word joiner, BOM, and non-layout control characters. Preserves ZWJ/ZWNJ, tabs, and line breaks.</span>
+                &#9432;<span class="setting-tooltip" role="tooltip">Removes soft hyphen, zero-width space, word joiner, BOM and non-layout control characters. Preserves ZWJ/ZWNJ, tabs and line breaks.</span>
               </button>
             </div>
             <div class="setting-row">
-              <label><input type="checkbox" id="chk-normalize-whitespace-line-endings" /> Normalize whitespace and line endings</label>
-              <button type="button" class="setting-help" aria-label="Show help for Normalize whitespace and line endings" tabindex="0">
-                &#9432;<span class="setting-tooltip" role="tooltip">Normalises line endings, trims line edges, collapses excess blank lines, and smooths obvious repeated spaces or tabs.</span>
+              <label><input type="checkbox" id="chk-normalize-whitespace-line-endings" /> Normalise whitespace and line endings</label>
+              <button type="button" class="setting-help" aria-label="Show help for Normalise whitespace and line endings" tabindex="0">
+                &#9432;<span class="setting-tooltip" role="tooltip">Normalises line endings, trims line edges, collapses excess blank lines and smooths obvious repeated spaces or tabs.</span>
               </button>
             </div>
             <div class="setting-row">
@@ -1167,7 +1167,7 @@
             <div class="setting-row">
               <label><input type="checkbox" id="chk-remove-isolated-page-markers" /> Remove isolated page markers</label>
               <button type="button" class="setting-help" aria-label="Show help for Remove isolated page markers" tabindex="0">
-                &#9432;<span class="setting-tooltip" role="tooltip">Removes standalone page-number or page-label lines such as "23", "- 23 -", "Page 23", "pag. 23", "p. 23", or Roman-numeral page markers.</span>
+                &#9432;<span class="setting-tooltip" role="tooltip">Removes standalone page-number or page-label lines such as “23”, “- 23 -”, “Page 23”, “pag. 23”, “p. 23” or Roman-numeral page markers.</span>
               </button>
             </div>
             <div class="setting-row">
@@ -1191,13 +1191,13 @@
             <div class="setting-row">
               <label><input type="checkbox" id="chk-remove-obvious-extraction-noise" /> Remove obvious extraction/OCR noise lines</label>
               <button type="button" class="setting-help" aria-label="Show help for Remove obvious extraction/OCR noise lines" tabindex="0">
-                &#9432;<span class="setting-tooltip" role="tooltip">Removes lines that overwhelmingly look like extraction artefacts, OCR junk, repeated symbols, markup fragments, or symbol-heavy noise.</span>
+                &#9432;<span class="setting-tooltip" role="tooltip">Removes lines that overwhelmingly look like extraction artefacts, OCR junk, repeated symbols, markup fragments or symbol-heavy noise.</span>
               </button>
             </div>
             <div class="setting-row">
               <label><input type="checkbox" id="chk-remove-figure-table-captions" /> Remove figure/table captions</label>
               <button type="button" class="setting-help" aria-label="Show help for Remove figure/table captions" tabindex="0">
-                &#9432;<span class="setting-tooltip" role="tooltip">Removes caption-like lines that begin with labels such as "Figure 1", "Fig. 1", "Table 1", "Tabela 1", "Quadro 1", or "Gráfico 1".</span>
+                &#9432;<span class="setting-tooltip" role="tooltip">Removes caption-like lines that begin with labels such as “Figure 1”, “Fig. 1”, “Table 1”, “Tabela 1”, “Quadro 1” or “Gráfico 1”.</span>
               </button>
             </div>
 
@@ -1222,16 +1222,16 @@
         <div id="tab-extraction" class="tab-content settings-tab-content" role="tabpanel">
           <div class="cleaning-controls-vertical extraction-accordion">
             <details>
-              <summary>HTML Extraction</summary>
+              <summary>HTML extraction</summary>
               <label><input type="checkbox" id="chk-extract-html" /> Extract HTML to Plain Text</label>
               <p class="settings-extraction-description settings-extraction-description--indented">
                 HTML files are extracted to readable plain text before normal cleaning is applied. Strips tags, decodes
-                entities, and preserves spacing.
+                entities and preserves spacing.
               </p>
             </details>
 
             <details>
-              <summary>Table Extraction Strategy</summary>
+              <summary>Table extraction strategy</summary>
               <div class="settings-extraction-group">
                 <select id="sel-table-extraction" class="settings-select settings-select--plain">
                   <option value="TabSeparated">Tab-Separated (Preserve grid with tabs and newlines)</option>
@@ -1285,7 +1285,7 @@
             </details>
 
             <details>
-              <summary>DOCX Extraction</summary>
+              <summary>DOCX extraction</summary>
               <label><input type="checkbox" id="chk-remove-headers" /> Strip Headers</label>
               <label><input type="checkbox" id="chk-remove-footers" /> Strip Footers</label>
               <label><input type="checkbox" id="chk-remove-footnotes" /> Strip Footnotes</label>
@@ -1300,14 +1300,14 @@
 
         <div id="tab-custom-removals" class="tab-content settings-tab-content" role="tabpanel">
           <div class="cleaning-controls-vertical">
-            <strong class="settings-section-title">Exact Sequences to Remove</strong>
+            <strong class="settings-section-title">Exact sequences to remove</strong>
             <p class="settings-extraction-description settings-extraction-description--flush">
               Add literal sequences to strip from the text. Great for removing specific HTML tags like
               <code><br /></code> or repetitive branding.
             </p>
 
             <div class="custom-removals-input-group">
-              <input type="text" id="custom-removal-input" placeholder="Type exact sequence here..."
+              <input type="text" id="custom-removal-input" placeholder="Type exact sequence here…"
                 class="settings-input" />
               <button type="button" id="btn-add-custom-removal" class="primary-btn custom-removals-add">Add</button>
             </div>
@@ -1324,12 +1324,12 @@
             <section class="repeated-artifacts-settings" aria-labelledby="repeated-artifacts-settings-title">
               <strong id="repeated-artifacts-settings-title">Repeated artefacts</strong>
               <p>
-                Find repeated headers, footers, page labels, and extraction artefacts, then turn accepted candidates
+                Find repeated headers, footers, page labels and extraction artefacts, then turn accepted candidates
                 into cleaning rules.
               </p>
               <div class="repeated-artifacts-settings-action">
                 <button type="button" id="btn-find-repeated-artifacts-settings" class="primary-btn">
-                  Find repeated artefacts...
+                  Find repeated artefacts…
                 </button>
                 <span id="repeated-artifact-scope-help" class="settings-helper-text"></span>
               </div>
@@ -1361,19 +1361,19 @@
         </button>
         <h2 id="repeated-artifact-title">Repeated Artefact Finder</h2>
         <p class="modal-description repeated-artifact-description">Scan the corpus to find repeated lines or blocks of
-          lines (likely boilerplate, headers/footers, or graphical noise). <strong>Diagnostic only — no files are modified.</strong></p>
+          lines (likely boilerplate, headers and footers or graphical noise). <strong>Diagnostic only – no files are modified.</strong></p>
 
         <div class="repeated-artifact-toolbar">
           <div class="repeated-artifact-toolbar-left">
             <button type="button" id="btn-toggle-scan-settings" class="scan-settings-toggle"
               aria-expanded="true" aria-controls="repeated-artifact-config-panel">
               <span id="scan-settings-arrow" aria-hidden="true"></span>
-              Scan Settings
+              Scan settings
             </button>
             <span id="lbl-artifact-scan-scope"></span>
           </div>
           <div class="repeated-artifact-toolbar-actions">
-            <button type="button" id="btn-run-artifact-scan" class="primary-btn">Run Scan</button>
+            <button type="button" id="btn-run-artifact-scan" class="primary-btn">Run scan</button>
             <button type="button" id="btn-cancel-artifact-scan" class="primary-btn hidden">Cancel</button>
             <span id="lbl-artifact-scan-time" class="hidden"></span>
           </div>
@@ -1381,20 +1381,20 @@
 
         <div id="repeated-artifact-config-panel" class="repeated-artifact-config cw-panel cw-panel--inset cw-panel--config">
           <div class="artifact-config-group artifact-config-group--roomy">
-            <strong>Analyze Text Mode:</strong>
+            <strong>Text to scan:</strong>
             <label class="artifact-config-option">
-              <input type="radio" name="artifact-text-mode" value="original" checked /> Original extracted text
+              <input type="radio" name="artifact-text-mode" value="original" checked /> Original Text
             </label>
             <label class="artifact-config-option">
-              <input type="radio" name="artifact-text-mode" value="processed" /> Processed text with current settings
+              <input type="radio" name="artifact-text-mode" value="processed" /> Processed Text
             </label>
-            <span class="artifact-config-help artifact-config-help--spaced">Original extracted text: scans extracted/raw text before current processing rules.</span>
-            <span class="artifact-config-help">Processed text with current settings: scans text after current Cleaning Settings and Custom Removals have been applied.</span>
+            <span class="artifact-config-help artifact-config-help--spaced">Original Text: scans extracted/raw text before current processing rules.</span>
+            <span class="artifact-config-help">Processed Text: scans text after current Cleaning settings and Custom removals have been applied.</span>
             <div id="artifact-processed-warning" class="artifact-config-warning hidden"></div>
           </div>
 
           <div class="artifact-config-group">
-            <strong>Candidate Types:</strong>
+            <strong>Candidate types:</strong>
             <label class="artifact-config-option">
               <input type="checkbox" id="chk-artifact-exact" checked /> Exact repeated lines
             </label>
@@ -1407,7 +1407,7 @@
           </div>
 
           <div class="artifact-config-group">
-            <strong>Candidate Content:</strong>
+            <strong>Candidate content:</strong>
             <label class="artifact-config-option">
               <input type="checkbox" id="chk-artifact-text" checked /> Text
             </label>
@@ -1420,11 +1420,11 @@
             <label class="artifact-config-option">
               <input type="checkbox" id="chk-artifact-symbol" checked /> Symbols / noise
             </label>
-            <span class="artifact-config-help artifact-config-help--spaced">Numeric-dominant may group unrelated tables, formulas, or statistical output.</span>
+            <span class="artifact-config-help artifact-config-help--spaced">Numeric-dominant may group unrelated tables, formulae or statistical output.</span>
           </div>
 
           <div class="artifact-config-group">
-            <strong>Block Detection:</strong>
+            <strong>Block detection:</strong>
             <label class="artifact-config-option">
               <input type="checkbox" id="chk-artifact-2line" checked /> Repeated 2-line blocks
             </label>
@@ -1435,16 +1435,16 @@
           </div>
 
           <div class="artifact-config-thresholds">
-            <label for="num-artifact-min-occ">Min Occurrences:</label>
+            <label for="num-artifact-min-occ">Minimum occurrences:</label>
             <input type="number" id="num-artifact-min-occ" class="artifact-config-number" value="3" min="2" />
 
-            <label for="num-artifact-min-files">Min Files:</label>
+            <label for="num-artifact-min-files">Minimum files:</label>
             <input type="number" id="num-artifact-min-files" class="artifact-config-number" value="1" min="1" />
 
-            <label for="num-artifact-max-cand">Max Candidates:</label>
+            <label for="num-artifact-max-cand">Maximum candidates:</label>
             <input type="number" id="num-artifact-max-cand" class="artifact-config-number artifact-config-number--wide" value="" min="1" placeholder="All" />
 
-            <label for="num-artifact-max-examples">Max Examples:</label>
+            <label for="num-artifact-max-examples">Maximum examples:</label>
             <input type="number" id="num-artifact-max-examples" class="artifact-config-number" value="25" min="1" max="100" />
           </div>
         </div>
@@ -1455,15 +1455,15 @@
           <!-- Left Pane: Candidates Table -->
           <div class="repeated-artifact-left-pane">
             <div class="repeated-artifact-pane-header">
-              <span>Suspicious Candidates</span>
+              <span>Suspicious candidates</span>
               <span id="lbl-artifact-results-count">0 found</span>
             </div>
             <div id="artifact-type-tabs" class="tabs repeated-artifact-type-tabs" aria-label="Artefact type">
               <button type="button" class="tab active" data-category="page_labels">Page numbers &amp; labels</button>
               <button type="button" class="tab" data-category="headings">Headings</button>
-              <button type="button" class="tab" data-category="headers_footers">Headers / Footers</button>
+              <button type="button" class="tab" data-category="headers_footers">Headers / footers</button>
               <button type="button" class="tab" data-category="boilerplate">Boilerplate</button>
-              <button type="button" class="tab" data-category="symbol_noise">Symbol / Noise</button>
+              <button type="button" class="tab" data-category="symbol_noise">Symbol / noise</button>
               <button type="button" class="tab" data-category="other">Other</button>
             </div>
             <div id="artifact-decision-filters" class="repeated-artifact-decision-filters" role="group" aria-label="Decision state">
@@ -1488,31 +1488,31 @@
                       <input type="checkbox" id="chk-select-all-tab" title="Mark all shown candidates for removal" aria-label="Mark all shown candidates for removal" disabled />
                     </th>
                     <th class="th-candidate-pattern">
-                      <button class="sort-header" data-column="text" aria-label="Sort by Candidate or Pattern">
-                        <span>Candidate / Pattern</span>
+                      <button class="sort-header" data-column="text" aria-label="Sort by candidate or pattern">
+                        <span>Candidate / pattern</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                     </th>
                     <th>
-                      <button class="sort-header sort-header-right" data-column="occs" aria-label="Sort by Occurrences">
+                      <button class="sort-header sort-header-right" data-column="occs" aria-label="Sort by occurrences">
                         <span>Occs</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                     </th>
                     <th>
-                      <button class="sort-header sort-header-right" data-column="files" aria-label="Sort by Files">
+                      <button class="sort-header sort-header-right" data-column="files" aria-label="Sort by files">
                         <span>Files</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                     </th>
                     <th>
-                      <button class="sort-header" data-column="position" aria-label="Sort by Position">
+                      <button class="sort-header" data-column="position" aria-label="Sort by position">
                         <span>Position</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                     </th>
                     <th>
-                      <button class="sort-header" data-column="risk" aria-label="Sort by Risk">
+                      <button class="sort-header" data-column="risk" aria-label="Sort by risk">
                         <span>Risk</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
@@ -1522,7 +1522,7 @@
                 <tbody id="tbl-artifact-candidates">
                   <tr>
                     <td colspan="6" class="artifact-table-message">Configure
-                      options above and click Run Scan to begin.</td>
+                      options above and click Run scan to begin.</td>
                   </tr>
                 </tbody>
               </table>
@@ -1532,7 +1532,7 @@
           <!-- Right Pane: Candidate Details & Examples -->
           <div class="repeated-artifact-right-pane">
             <div class="repeated-artifact-pane-header">
-              Candidate Detail & Examples
+              Candidate details and examples
             </div>
             <div id="artifact-details-content" class="artifact-details-content">
               <div class="artifact-details-empty">Select a

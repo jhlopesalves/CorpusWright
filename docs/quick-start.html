@@ -68,11 +68,11 @@
   <section class="section">
     <div class="shell narrow">
       <h2>Install a release build</h2>
-      <p>Open GitHub Releases and choose a package for your computer. The public prerelease includes separate installers for Apple silicon, Intel macOS and Windows x64. Unsigned Windows and macOS builds may prompt a warning before running.</p>
+      <p>Open GitHub Releases and choose a package for your computer. The public prerelease includes separate installers for Apple silicon, Intel macOS and Windows x64. The macOS builds are signed ad hoc and the Windows installer is unsigned. Both systems may show a warning before the first launch.</p>
       <div class="actions">
         <a class="btn primary" href="https://github.com/jhlopesalves/CorpusWright/releases">Download latest alpha</a>
       </div>
-      <p class="text-link muted">CorpusWright is a public experimental alpha. Interfaces, project formats and behaviour may change. Keep original sources and backups of project data.</p>
+      <p class="text-link muted">CorpusWright is a public alpha. Interfaces, project formats and behaviour may change. Keep original sources and backups of project data.</p>
     </div>
   </section>
   <section class="section">
@@ -81,26 +81,26 @@
       <h3>Prepare the text</h3>
       <ol class="workflow-steps">
         <li><strong>Create or open a project.</strong> Choose a project folder for its source inventory and saved settings.</li>
-        <li><strong>Add sources in Prepare.</strong> Use Add sources → Add files or Add folder, then review the Import Sources dialogue. For PDFs that need extraction, select them and use Selected actions → Extract text / OCR.</li>
-        <li><strong>Review the text and cleaning.</strong> Select a source to compare Original Text with Processed Text. Review warnings and use Cleaning Settings, Repeated Artefacts or the Custom Removals tab where needed. Check the processed preview after changing rules.</li>
+        <li><strong>Add sources in Prepare.</strong> Use Add sources → Add files or Add folder, then review the Import sources dialog. For PDFs that need extraction, select them and use Selected actions → Extract text / OCR.</li>
+        <li><strong>Review the text and cleaning.</strong> Select a source to compare Original Text with Processed Text. Review warnings and use Cleaning settings, the Repeated Artefact Finder or the Custom removals tab where needed. Check the processed preview after changing rules.</li>
       </ol>
       <figure class="guide-figure">
         <a href="assets/screenshots/corpuswright-prepare.png"><img src="assets/screenshots/corpuswright-prepare.png" alt="Prepare with a synthetic source selected, Original Text visible and cleaning controls above the preview." width="1440" height="1000" loading="lazy"></a>
         <figcaption>Prepare: select a source to inspect its text. GUI demonstration corpus; select the image to view it at full size.</figcaption>
       </figure>
-      <h3>Inspect Corpus Overview</h3>
+      <h3>Inspect Corpus overview</h3>
       <ol class="workflow-steps" start="4">
         <li><strong>Open Analyse and build the counts.</strong> Select Build surface analysis. Surface analysis uses word-form tokens rather than lemma- or POS-based annotation. Standard analysis keys are NFC-normalised and lowercased. The application uses processed text where available and reports any source-text fallback; check that input before interpreting a result.</li>
-        <li><strong>Read Corpus Overview.</strong> Select Corpus Overview in the Analysis tools rail. Check the included documents and token counts, then inspect document lengths, dispersion and vocabulary structure. Frequency List sits in the same rail and shows forms, counts, rates, range and DP.</li>
+        <li><strong>Read Corpus overview.</strong> Select Corpus overview in the Analysis tools rail. Check the included documents and token counts, then inspect document lengths, dispersion and vocabulary structure. Frequency list sits in the same rail and shows forms, counts, rates, range and DP.</li>
       </ol>
       <figure class="guide-figure">
-        <a href="assets/screenshots/corpuswright-overview.png"><img src="assets/screenshots/corpuswright-overview.png" alt="Analyse with Corpus Overview selected in the Analysis tools rail and its Lexical spectrum plot visible." width="1440" height="1000" loading="lazy"></a>
-        <figcaption>Analyse → Corpus Overview: the Lexical spectrum describes the frequency classes of the GUI demonstration vocabulary.</figcaption>
+        <a href="assets/screenshots/corpuswright-overview.png"><img src="assets/screenshots/corpuswright-overview.png" alt="Analyse with Corpus overview selected in the Analysis tools rail and its Lexical spectrum plot visible." width="1440" height="1000" loading="lazy"></a>
+        <figcaption>Analyse → Corpus overview: the Lexical spectrum describes the frequency classes of the GUI demonstration vocabulary.</figcaption>
       </figure>
       <h3>Use Concordance and export prepared text</h3>
       <ol class="workflow-steps" start="6">
-        <li><strong>Select Concordance within Analyse.</strong> Enter a word or phrase under Surface word or phrase and select Search. Read the Concordance Lines; Collocates and Distribution appear below them. Select a line to open its document context.</li>
-        <li><strong>Export the prepared text.</strong> Use File → Export Processed Corpus... to retain cleaned text, preparation settings, checksums and warnings. The top-level Export stage is marked Coming later in this alpha; the File menu provides the current cleaned-corpus export.</li>
+        <li><strong>Select Concordance within Analyse.</strong> Enter a word or phrase under Surface word or phrase and select Search. The Concordance lines panel displays key-word-in-context (KWIC) rows. Collocates and Distribution appear below it. Select a line to open its document context.</li>
+        <li><strong>Export the prepared text.</strong> Use File → Export cleaned corpus… to retain cleaned text, preparation settings, checksums and warnings. The top-level Export stage is marked Coming later; the File menu provides the current cleaned-corpus export.</li>
       </ol>
       <p>For definitions and interpretation, turn to <a href="concepts/overview.html">Methods &amp; measures</a>. You can start using the application before reading the full methods reference.</p>
     </div>

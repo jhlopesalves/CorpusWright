@@ -152,9 +152,9 @@ export async function updatePreview(): Promise<void> {
 
   state.currentPreviewOffset = 0;
 
-  dom.previewLoadingText.textContent = "Loading preview...";
+  dom.previewLoadingText.textContent = "Loading preview…";
   dom.previewLoadingOverlay.classList.remove("hidden");
-  dom.statusBar.textContent = "Previewing...";
+  dom.statusBar.textContent = "Previewing…";
 
   await fetchAndRenderPreviewChunk(selectedIndices, state.currentPreviewOffset, false, myVersion, myPreviewGeneration);
 }
@@ -195,10 +195,10 @@ async function renderSelectedProjectSourcePreviewViewport(
     processedScroll.scrollTop = scrollTop;
   }
   if (showBlockingOverlay) {
-    dom.previewLoadingText.textContent = "Preparing preview...";
+    dom.previewLoadingText.textContent = "Preparing preview…";
     dom.previewLoadingOverlay.classList.remove("hidden");
   }
-  dom.statusBar.textContent = "Previewing selected sources...";
+  dom.statusBar.textContent = "Previewing selected sources…";
   let requestSucceeded = false;
 
   try {
@@ -341,7 +341,7 @@ function createProjectSourcePreviewViewportCard(
       const body = card.querySelector<HTMLElement>(".file-card-body");
       if (body) {
         body.textContent = isPendingProjectSourcePreview(item.preview_error)
-          ? "Preparing preview..."
+          ? "Preparing preview…"
           : `Preview unavailable: ${item.preview_error}`;
       }
     }
@@ -596,7 +596,7 @@ function projectSourceDetailLines(source: ProjectSource, mode: "original" | "pro
       lines.push("Source text is unavailable.");
     }
     lines.push(source.kind === "pdf"
-      ? "You can retry extraction, change PDF handling, or remove this source from the project."
+      ? "You can retry extraction, change PDF handling or remove this source from the project."
       : "You can remove this source from the project inventory.");
     lines.push(reasonText);
     return lines;
@@ -807,7 +807,7 @@ function renderFullOcrPreviewLauncher(
   cancelButton.addEventListener("click", () => {
     fullOcrCancelRequested = true;
     cancelButton.disabled = true;
-    progress.textContent = "Cancelling after the current chunk...";
+    progress.textContent = "Cancelling after the current chunk…";
   });
 
   section.append(controls, progress, pageList);
@@ -1099,7 +1099,7 @@ function appendSourcePreviewNotices(
   if (mode === "processed") {
     card.appendChild(createSourcePreviewNotice(
       "source-preview-notice-info",
-      "Processed preview generated with current Cleaning Settings.",
+      "Processed preview generated with current Cleaning settings.",
       ["This is an on-demand preview; source files are not modified."],
     ));
   }
@@ -1204,7 +1204,7 @@ async function loadFullSingleSourcePreview(
   const myPreviewGeneration = state.activePreviewGeneration;
   const container = mode === "processed" ? dom.processedPreviewContent : dom.previewContent;
   button.disabled = true;
-  button.textContent = "Loading...";
+  button.textContent = "Loading…";
 
   try {
     const command = mode === "processed" ? "preview_processed_files_command" : "preview_files_command";

@@ -37,15 +37,15 @@ export const overviewGlossary = {
       "A distinct token form. Counting every occurrence gives tokens; counting each distinct form once gives types.",
     latex: String.raw`V=\bigl\lvert\{\mathrm{key}(t):t\in\text{corpus}\}\bigr\rvert`,
     detail:
-      "Two tokens belong to the same type when they share an aggregation key: the token's text, Unicode-normalised (NFC) and lowercased. 'The' and 'the' are one type; 'run' and 'running' remain two - types are surface forms, not lemmas. The Overview always computes over the full type universe of the analysis corpus.",
+      "Two tokens belong to the same type when they share an aggregation key: the token's text, Unicode-normalised (NFC) and lowercased. “The” and “the” are one type; “run” and “running” remain two – types are surface forms, not lemmas. The overview always computes over the full type universe of the analysis corpus.",
     symbols: [
-      { sym: String.raw`V`, def: "Vocabulary size - the number of distinct types." },
+      { sym: String.raw`V`, def: "Vocabulary size – the number of distinct types." },
       { sym: String.raw`\mathrm{key}(t)`, def: "Token t's aggregation key: NFC-normalised, lowercased text." },
     ],
     interpretation:
-      "Types measure vocabulary breadth. The Frequency List applies its own view filters (alphabetic words only, hidden stopwords), so its displayed type count can legitimately differ from the Overview's total. The Overview is a fixed corpus snapshot; the Frequency List is an interactive filtered table.",
+      "Types measure vocabulary breadth. The Frequency list applies its own view filters (alphabetic words only, hidden stopwords), so its displayed type count can legitimately differ from the overview's total. The overview is a fixed corpus snapshot; the Frequency list is an interactive filtered table.",
     limitations: [
-      "Types are NFC-normalised, lowercased surface forms, not lemmas - inflected variants count separately.",
+      "Types are NFC-normalised, lowercased surface forms, not lemmas – inflected variants count separately.",
       "OCR errors and spelling variants can create additional observed types.",
     ],
   },
@@ -79,7 +79,7 @@ export const overviewGlossary = {
     interpretation: "Larger values mean greater inequality in token counts. Read Gini with the largest-document share, effective document count and feature dispersion. It does not assess corpus-design balance or representativeness.",
     limitations: [
       "Measures document-length inequality only, not content or quality.",
-      "Unequal lengths are not inherently a problem - they are context for interpreting corpus-level frequencies.",
+      "Unequal lengths are not inherently a problem – they are context for interpreting corpus-level frequencies.",
     ],
   },
   coefficientOfVariation: {
@@ -88,7 +88,7 @@ export const overviewGlossary = {
     explanation: "Compares the spread of document lengths with their mean length.",
     latex: String.raw`\mathrm{CV}=\frac{\sigma_x}{\mu_x}`,
     detail:
-      "The standard deviation of document lengths divided by their mean - a scale-free measure of how spread out document lengths are. Being relative to the mean, it can compare variability between corpora of different average sizes.",
+      "The standard deviation of document lengths divided by their mean – a scale-free measure of how spread out document lengths are. Being relative to the mean, it can compare variability between corpora of different average sizes.",
     symbols: [
       { sym: String.raw`\mathrm{CV}`, def: "Coefficient of variation for document lengths." },
       { sym: String.raw`\sigma_x`, def: "Standard deviation of document lengths." },
@@ -110,7 +110,7 @@ export const overviewGlossary = {
       { sym: String.raw`D_{\mathrm{eff}}`, def: "Effective document count." },
       { sym: String.raw`s_d`, def: "Document d's share of total corpus tokens (its size as a fraction)." },
       { sym: String.raw`D`, def: "Number of documents." },
-      { sym: String.raw`\sum s_d^2`, def: "Sum of squared shares - the Simpson concentration." },
+      { sym: String.raw`\sum s_d^2`, def: "Sum of squared shares – the Simpson concentration." },
     ],
     interpretation: "Equal token shares give D_eff = D. More concentrated shares give a smaller equivalent count. Four shares of 1/4 give 4; shares of 1/2, 1/6, 1/6 and 1/6 give 3.",
     limitations: [
@@ -140,7 +140,7 @@ export const overviewGlossary = {
     explanation: "Types that occur exactly twice in the analysis corpus.",
     latex: String.raw`f(w)=2`,
     detail:
-      "Dis legomena are types that occur exactly twice. With hapax, they describe the bottom of the frequency distribution - the rare-word tail.",
+      "Dis legomena are types that occur exactly twice. With hapax, they describe the bottom of the frequency distribution – the rare-word tail.",
     symbols: [
       { sym: String.raw`f(w)=2`, def: "Type w occurs exactly twice." },
     ],
@@ -179,7 +179,7 @@ export const overviewGlossary = {
       "MTLD walks through the tokens accumulating a running type-token ratio. Each time the running TTR reaches or falls below 0.720, it closes a factor and resets. For each direction, divide total tokens by the sum of complete factors and the fractional final factor. CorpusWright averages the forward and backward results.",
     symbols: [
       { sym: String.raw`N`, def: "Number of tokens." },
-      { sym: String.raw`F`, def: "Number of complete factors - runs whose running TTR fell to the 0.720 threshold." },
+      { sym: String.raw`F`, def: "Number of complete factors – runs whose running TTR fell to the 0.720 threshold." },
       {
         sym: String.raw`F_{\mathrm{partial}}`,
         def: "The fractional final factor for the leftover tokens that never reached the threshold.",
@@ -196,7 +196,7 @@ export const overviewGlossary = {
     id: "distribution-diagnostics",
     label: "distribution diagnostics",
     explanation:
-      "Histogram, empirical cumulative distribution, and Q–Q views answer different questions about a complete document-level distribution.",
+      "Histogram, empirical cumulative distribution and Q–Q views answer different questions about a complete document-level distribution.",
     latex: String.raw`\widehat F(x)=\frac{1}{n}\sum_{i=1}^{n}\mathbf 1(x_i\le x),\qquad p_i=\frac{i-0.5}{n}`,
     detail:
       "A histogram groups observations into numeric intervals and therefore depends on its binning rule. An ECDF keeps exact cumulative counts at observed values; when display points are deterministically compressed, CorpusWright retains the first and final observations and reports the compression. A Q–Q diagnostic pairs ordered observations with reference quantiles to reveal departures from a chosen reference shape.",
@@ -207,7 +207,7 @@ export const overviewGlossary = {
       { sym: String.raw`\mathbf 1(\cdot)`, def: "Indicator equal to one when its condition is true." },
     ],
     interpretation:
-      "Use the histogram to see mass by interval, the ECDF to read percentiles without choosing bins, and the Q–Q view to diagnose shape. A nearly straight Q–Q pattern indicates similarity to the named reference over the displayed range; it is not a pass/fail test.",
+      "Use the histogram to see mass by interval, the ECDF to read percentiles without choosing bins and the Q–Q view to diagnose shape. A nearly straight Q–Q pattern indicates similarity to the named reference over the displayed range; it is not a pass/fail test.",
     limitations: [
       "Histogram appearance changes with the bin rule and active scale.",
       "A reference distribution is a comparison device, not a claim that the metric must follow it.",
@@ -237,16 +237,16 @@ export const overviewGlossary = {
     id: "dispersion-plane-density",
     label: "dispersion-plane density",
     explanation:
-      "Counts types within cells of logarithmic raw frequency and Gries DP, separating the population field from selected lexical witnesses.",
+      "Counts types within cells of logarithmic raw frequency and Gries's DP, separating the population field from selected lexical witnesses.",
     latex: String.raw`c_{ij}=\left\lvert\{w:x_i\le\log_{10}f(w)<x_{i+1},\ y_j\le\mathrm{DP}(w)<y_{j+1}\}\right\rvert`,
     detail: "The density field represents the complete bounded grid returned by Rust. Log density changes colour contrast, not cell membership or raw counts. Witnesses are selected deterministically to illustrate positions in the plane, not as a random or representative sample.",
     symbols: [
       { sym: String.raw`c_{ij}`, def: "Type count in frequency cell i and DP cell j." },
       { sym: String.raw`f(w)`, def: "Raw frequency of type w." },
-      { sym: String.raw`\mathrm{DP}(w)`, def: "Gries DP of type w." },
+      { sym: String.raw`\mathrm{DP}(w)`, def: "Gries's DP of type w." },
     ],
     interpretation:
-      "Read horizontal position as frequency, vertical position as concentration, and colour strength as the number of types in that region. Witness marks sit above the density field as evidence, not as the population itself.",
+      "Read horizontal position as frequency, vertical position as concentration and colour strength as the number of types in that region. Witness marks sit above the density field as evidence, not as the population itself.",
     limitations: [
       "The grid fixes visual resolution; its cells are not natural vocabulary categories.",
       "The default view uses continuous coordinates without dividing reference lines or validated categories.",
@@ -262,7 +262,7 @@ export const overviewGlossary = {
       "Shannon entropy averages -log2(p_i) over the empirical type distribution. It describes the type of a uniformly sampled corpus token, ignoring word order and context. For a fixed observed vocabulary, equal type frequencies maximise H.",
     symbols: [
       { sym: String.raw`H`, def: "Shannon entropy, in bits (base-2 logarithm)." },
-      { sym: String.raw`p_i`, def: "Relative frequency of type i - its count divided by total tokens." },
+      { sym: String.raw`p_i`, def: "Relative frequency of type i – its count divided by total tokens." },
       { sym: String.raw`V`, def: "Number of distinct types." },
     ],
     interpretation: "For V observed types, the maximum is log2(V), reached at equal frequencies. Observed H depends on the full frequency distribution and need not rise whenever V rises. Normalised entropy and effective vocabulary derive from this same H.",
@@ -301,7 +301,7 @@ export const overviewGlossary = {
     symbols: [
       { sym: String.raw`N`, def: "Tokens read so far." },
       { sym: String.raw`V(N)`, def: "Distinct types observed after N tokens." },
-      { sym: String.raw`K`, def: "Fitted coefficient - the scale of the growth curve." },
+      { sym: String.raw`K`, def: "Fitted coefficient – the scale of the growth curve." },
       { sym: String.raw`\beta`, def: "Log-log slope along this accumulation path." },
       { sym: String.raw`R^2`, def: "Descriptive regression summary of the nested log-log checkpoints." },
     ],
@@ -335,10 +335,10 @@ export const overviewGlossary = {
     detail: "Divide empirical H by log2(V), the maximum for the observed support. This bounds the ratio relative to that maximum; it does not remove differences in corpus size, composition, sampling, tokenisation, processing or estimator behaviour.",
     symbols: [
       { sym: String.raw`H`, def: "Shannon entropy, in bits (base-2 logarithm)." },
-      { sym: String.raw`p_i`, def: "Relative frequency of type i - its token count divided by the total tokens N." },
+      { sym: String.raw`p_i`, def: "Relative frequency of type i – its token count divided by the total tokens N." },
       { sym: String.raw`V`, def: "Number of distinct types (vocabulary size)." },
       { sym: String.raw`\log_2 V`, def: "Maximum possible entropy, reached when all V types are equally frequent." },
-      { sym: String.raw`H_{\mathrm{norm}}`, def: "Normalised entropy - H divided by its maximum, in [0, 1]." },
+      { sym: String.raw`H_{\mathrm{norm}}`, def: "Normalised entropy – H divided by its maximum, in [0, 1]." },
     ],
     interpretation: "A higher ratio means a more even observed frequency distribution relative to the maximum for V. Comparisons remain descriptive and conditional on corpus design and processing.",
     limitations: [
@@ -356,7 +356,7 @@ export const overviewGlossary = {
     symbols: [
       { sym: String.raw`H`, def: "Shannon entropy, in bits (the same H as in normalised entropy)." },
       { sym: String.raw`2^H`, def: "Two raised to H, because H is measured in bits (base-2)." },
-      { sym: String.raw`V_{\mathrm{eff}}`, def: "Entropy-equivalent vocabulary size - the equivalent count of equally frequent types." },
+      { sym: String.raw`V_{\mathrm{eff}}`, def: "Entropy-equivalent vocabulary size – the equivalent count of equally frequent types." },
     ],
     interpretation: "Compare this equivalent count with the observed type count. A gap records frequency inequality; it does not establish a Zipf distribution or describe unseen vocabulary. Perplexity here is this empirical quantity, not a language-model evaluation.",
     limitations: [
@@ -366,8 +366,8 @@ export const overviewGlossary = {
   },
   griesDp: {
     id: "gries-dp",
-    label: "Gries DP",
-    explanation: "Compares a type’s distribution across documents with the documents’ shares of corpus tokens.",
+    label: "Gries's DP",
+    explanation: "Compares a type's distribution across documents with the documents' shares of corpus tokens.",
     latex: String.raw`\mathrm{DP}=\frac{1}{2}\sum_{d=1}^{D}\lvert p_d-s_d\rvert`,
     detail:
       "For a given type, DP measures how far its actual spread across documents departs from what you would expect if it were distributed in proportion to document sizes. For each document, take the absolute difference between the type's observed document share and that document's share of all corpus tokens; sum these differences and halve.",
@@ -379,7 +379,7 @@ export const overviewGlossary = {
       },
       {
         sym: String.raw`s_d`,
-        def: "Document d's size as a fraction of total corpus tokens - its expected share (these sum to 1).",
+        def: "Document d's size as a fraction of total corpus tokens – its expected share (these sum to 1).",
       },
       {
         sym: String.raw`\lvert p_d-s_d\rvert`,
@@ -390,7 +390,7 @@ export const overviewGlossary = {
         def: "Half the summed deviations, which bounds DP to [0, 1].",
       },
     ],
-    interpretation: "DP = 0 matches the size-proportional reference; larger DP means greater departure. DP does not identify a cause such as topic, register or sampling composition. The Overview reports a median for types with at least 10 occurrences; that reporting selection is not an adequacy threshold.",
+    interpretation: "DP = 0 matches the size-proportional reference; larger DP means greater departure. DP does not identify a cause such as topic, register or sampling composition. The overview reports a median for types with at least 10 occurrences; that reporting selection is not an adequacy threshold.",
     limitations: [
       "Reports Gries's original, unnormalised DP. Its maximum is 1 minus the smallest positive document token share; CorpusWright does not report DPnorm.",
       "Raw DP values under different document partitions can have different maxima. Low-frequency occurrence allocations are coarse; read DP with count and document range. A size-proportional reference is not a fitted sampling model.",
@@ -402,9 +402,9 @@ export const overviewGlossary = {
     explanation: "Groups types by the number of documents in which each type occurs.",
     latex: String.raw`\mathrm{df}(w)=\left\lvert\{d:f_d(w)>0\}\right\rvert`,
     detail:
-      "Groups the vocabulary by document frequency - the number of documents in which each type appears at least once. Read this reach alongside raw token count; the two measures answer different questions about the observed occurrences.",
+      "Groups the vocabulary by document frequency – the number of documents in which each type appears at least once. Read this reach alongside raw token count; the two measures answer different questions about the observed occurrences.",
     symbols: [
-      { sym: String.raw`\mathrm{df}(w)`, def: "Document frequency of type w - the count of documents containing it." },
+      { sym: String.raw`\mathrm{df}(w)`, def: "Document frequency of type w – the count of documents containing it." },
       { sym: String.raw`w`, def: "A type in the vocabulary." },
       { sym: String.raw`d`, def: "A document in the corpus." },
       { sym: String.raw`f_d(w)`, def: "Frequency of type w within document d." },

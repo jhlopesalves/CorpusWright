@@ -145,7 +145,7 @@ export function renderAnalyseStatus(): void {
     dom.analyseStatusChip.textContent =
       `Built ${new Date(corpus.builtAt).toLocaleString()} from ${inputTextSourceLabel(corpus.inputTextSource)}`;
     dom.analyseStatusDetail.textContent =
-      `${pluralise(corpus.documentCount, "document")} - ${formatNumber(corpus.totalTokens)} tokens`;
+      `${pluralise(corpus.documentCount, "document")} – ${formatNumber(corpus.totalTokens)} tokens`;
     dom.analyseBuildNote.textContent = "Rebuilds surface analysis from the current project text.";
     return;
   }
@@ -177,7 +177,7 @@ function analysisPhaseLabel(progress: AnalysisBuildProgress): string {
 
 function analysisBuildProgressText(progress: AnalysisBuildProgress | null): string {
   if (!progress) {
-    return "Building surface analysis...";
+    return "Building surface analysis…";
   }
   return `${formatNumber(progress.filesDone)} / ${formatNumber(progress.filesTotal)} sources · ${formatNumber(progress.tokensSeen)} tokens · ${analysisPhaseLabel(progress)}`;
 }
@@ -507,7 +507,7 @@ export async function handleAnnotationLayerAction(): Promise<void> {
         cancellationRequested: true,
       };
     }
-    dom.statusBar.textContent = "Cancelling annotation build...";
+    dom.statusBar.textContent = "Cancelling annotation build…";
     renderFrequencyList();
     await cancelAnnotationBuild().catch(() => undefined);
     renderFrequencyList();
@@ -541,7 +541,7 @@ export async function handleAnnotationLayerAction(): Promise<void> {
   lastAnnotationBuildReport = null;
   startAnnotationBuildTimer();
   renderFrequencyList();
-  dom.statusBar.textContent = "Building annotations...";
+  dom.statusBar.textContent = "Building annotations…";
 
   try {
     const report = await buildAnnotationCache(
@@ -559,7 +559,7 @@ export async function handleAnnotationLayerAction(): Promise<void> {
     annotationCacheProbeKey = null;
 
     if (state.analysisCorpus) {
-      dom.statusBar.textContent = "Refreshing surface analysis for annotations...";
+      dom.statusBar.textContent = "Refreshing surface analysis for annotations…";
       await refreshSurfaceAnalysisAfterAnnotationBuild(generation);
       if (!annotationBuildGeneration.isCurrent(generation)) {
         return;
@@ -595,8 +595,8 @@ export async function handleAnnotationLayerAction(): Promise<void> {
 export async function handleBuildAnalysisCorpus(): Promise<void> {
   if (analysisBuildInProgress) {
     dom.analyseBuildButton.disabled = true;
-    dom.analyseBuildNote.textContent = "Cancelling analysis build...";
-    dom.statusBar.textContent = "Cancelling analysis build...";
+    dom.analyseBuildNote.textContent = "Cancelling analysis build…";
+    dom.statusBar.textContent = "Cancelling analysis build…";
     try {
       await cancelAnalysisBuild();
     } finally {
@@ -629,7 +629,7 @@ export async function handleBuildAnalysisCorpus(): Promise<void> {
   state.analysisCorpus = null;
   resetFrequencyCorpusState();
   renderAnalyseWorkbench();
-  dom.statusBar.textContent = "Building surface analysis...";
+  dom.statusBar.textContent = "Building surface analysis…";
 
   try {
     const builtOverview = await buildAnalysisCorpus(
@@ -731,7 +731,7 @@ export async function initialiseAnalysisBuildState(): Promise<void> {
     }
     analysisBuildProgress = event.payload;
     const progressText = analysisBuildProgressText(event.payload);
-    dom.statusBar.textContent = `Building surface analysis... ${progressText}`;
+    dom.statusBar.textContent = `Building surface analysis… ${progressText}`;
     if (state.activeWorkbench === "analyse") {
       renderAnalyseStatus();
     }

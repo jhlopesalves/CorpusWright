@@ -1,4 +1,4 @@
-# UDPipe Models
+# UDPipe models
 
 Bundled models are Universal Dependencies 2.1 models for UDPipe, sourced from
 `https://github.com/bnosac/udpipe.models.ud`.

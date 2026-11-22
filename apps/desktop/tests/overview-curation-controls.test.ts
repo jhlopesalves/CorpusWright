@@ -75,10 +75,10 @@ assert.match(shell, /explanation: createFigureExplanation\("heapsFit"\)/);
 const dispersionPanel = functionSource("renderDispersionProfile");
 assert.doesNotMatch(dispersionPanel, /Types in (?:1 document|2–9 documents|10–99 documents|100\+ documents|at least|all )|Median documents per type/);
 assert.doesNotMatch(dispersionPanel, /glossaryId: "griesDp"/);
-for (const retained of ["Frequent types (10+ occurrences)", "Gries DP", "Universe: all analysis types", "renderDispersionFigure", "renderDispersionPlaneFigure"]) {
+for (const retained of ["Frequent types (10+ occurrences)", "Gries's DP", "Universe: all analysis types", "renderDispersionFigure", "renderDispersionPlaneFigure"]) {
   assert(dispersionPanel.includes(retained), `missing retained dispersion content: ${retained}`);
 }
-for (const advanced of ["Gini coefficient", "Coefficient of variation", "Effective document count", "MATTR", "MTLD", "Shannon entropy", "Log–log slope (optional trend)", "Growth coefficient K", "Gries DP"]) {
+for (const advanced of ["Gini coefficient", "Coefficient of variation", "Effective document count", "MATTR", "MTLD", "Shannon entropy", "Log–log slope (optional trend)", "Growth coefficient K", "Gries's DP"]) {
   assert(shell.includes(advanced), `missing advanced Overview metric: ${advanced}`);
 }
 

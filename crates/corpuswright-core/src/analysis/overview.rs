@@ -1226,7 +1226,7 @@ fn mattr_distribution(documents: &[AnalysisDocument]) -> Option<CorpusOverviewMa
         excluded_documents: documents.len().saturating_sub(used_documents),
         low_witnesses,
         high_witnesses,
-        reading: "Low-MATTR outliers are where cleaning failures hide: repeated boilerplate, OCR stutter, and template text all crater a document's diversity."
+        reading: "Low-MATTR outliers are where cleaning failures hide: repeated boilerplate, OCR errors and template text can reduce a document's lexical diversity."
             .to_string(),
     })
 }
@@ -1961,7 +1961,7 @@ pub(super) fn build_overview(
             numeric_only_share: type_share(numeric_only_types, total_types),
             single_character_count: Some(single_character_types),
             single_character_share: type_share(single_character_types, total_types),
-            reading: "Numeric-only forms may include page numbers, table fragments, formula fragments, references, or legitimate numeric examples. Inspect before removing numeric-heavy material."
+            reading: "Numeric-only forms may include page numbers, table fragments, formula fragments, references or legitimate numeric examples. Inspect before removing numeric-heavy material."
                 .to_string(),
         },
         lexical_spectrum: CorpusOverviewLexicalSpectrum {

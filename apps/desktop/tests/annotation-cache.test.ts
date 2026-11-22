@@ -99,7 +99,7 @@ assert(
   "Building should wire the action to cancel",
 );
 const cancelling = model("missing", building(null, 38000, null, [], true));
-assert(cancelling.actionLabel === "Cancelling...", "Requested cancellation should be acknowledged");
+assert(cancelling.actionLabel === "Cancelling…", "Requested cancellation should be acknowledged");
 assert(cancelling.actionDisabled, "Requested cancellation should disable a second cancel click");
 assert(model("ready").actionLabel === "Rebuild annotations", "Ready should rebuild");
 assert(model("stale").actionLabel === "Rebuild annotations", "Stale should rebuild");
@@ -114,7 +114,7 @@ assert(
   loading.progress.phaseLabel === "Loading model / preparing models",
   "Loading model phase should have a phase-aware label",
 );
-assert(loading.progress.etaLabel === "Estimating...", "Indeterminate phases should estimate ETA");
+assert(loading.progress.etaLabel === "Estimating…", "Indeterminate phases should estimate ETA");
 
 const annotatingSamples = [
   { atMs: 0, tokensDone: 0n },
@@ -138,7 +138,7 @@ assert(
   "ETA should use rolling token throughput",
 );
 assert(
-  annotating.progress.heartbeatLine === "annotating - 800 tokens/s",
+  annotating.progress.heartbeatLine === "annotating – 800 tokens/s",
   "Annotating progress should show rounded token throughput",
 );
 
@@ -152,11 +152,11 @@ const earlyAnnotating = model("missing", building(
   ],
 ));
 assert(
-  earlyAnnotating.progress?.etaLabel === "Estimating...",
+  earlyAnnotating.progress?.etaLabel === "Estimating…",
   "ETA should wait until enough token-window data is available",
 );
 assert(
-  earlyAnnotating.progress?.heartbeatLine === "annotating - Estimating...",
+  earlyAnnotating.progress?.heartbeatLine === "annotating – Estimating…",
   "Heartbeat should show active annotation before throughput is ready",
 );
 
@@ -214,7 +214,7 @@ assert(
       { atMs: 0, tokensDone: 0n },
       { atMs: 30000, tokensDone: 37500n },
     ],
-  ) === "annotating - 1,300 tokens/s",
+  ) === "annotating – 1,300 tokens/s",
   "Heartbeat throughput should round coarsely to hundreds",
 );
 assert(

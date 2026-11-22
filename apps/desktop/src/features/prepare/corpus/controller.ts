@@ -198,7 +198,7 @@ function createProjectEmptyState(): HTMLElement {
   title.textContent = "This corpus project has no source files yet.";
 
   const body = document.createElement("p");
-  body.textContent = "Add PDFs, DOCX, TXT, HTML, or plain text files to begin preparing your corpus.";
+  body.textContent = "Add PDFs, DOCX, TXT, HTML or plain text files to begin preparing your corpus.";
 
   const actions = document.createElement("div");
   actions.className = "project-empty-actions";
@@ -581,7 +581,7 @@ function resetImportSourcesDialog(review: ProjectSourceImportReview): void {
     : "";
 
   if (importDialogMode === "import") {
-    dom.sourceImportTitle.textContent = "Import Sources";
+    dom.sourceImportTitle.textContent = "Import sources";
     dom.sourceImportDescription.textContent =
       "CorpusWright inspected the selected files. Importing registers them in the project and stores how PDFs should be handled. Text extraction/OCR and cleaning are separate steps.";
     dom.cancelSourceImportBtn.textContent = "Cancel";
@@ -791,8 +791,8 @@ function resetPdfIntakeSession(): void {
   pdfIntakeIsForceOcr = false;
   lastPdfIntakeProgressRenderAt = 0;
   lastPdfIntakeRenderedFileIndex = 0;
-  dom.pdfIntakeTitle.textContent = "Open Scanned or Complex PDFs";
-  dom.pdfIntakeDescription.textContent = "Choose PDF handling for inspection-oriented processing. Preview before export: OCR may contain errors, layout reconstruction is imperfect, and source files are never modified.";
+  dom.pdfIntakeTitle.textContent = "Open scanned or complex PDFs";
+  dom.pdfIntakeDescription.textContent = "Choose PDF handling for inspection-oriented processing. Preview before export: OCR may contain errors, layout reconstruction is imperfect and source files are never modified.";
   dom.pdfIntakeModal.classList.remove("pdf-intake-processing");
   dom.pdfIntakeStoredHandling.classList.add("hidden");
   dom.pdfIntakeStoredHandlingSummary.textContent = "";
@@ -808,7 +808,7 @@ function resetPdfIntakeSession(): void {
   dom.loadPdfIntakeFilesBtn.disabled = true;
   dom.choosePdfIntakeFilesBtn.classList.remove("hidden");
   dom.choosePdfIntakeFilesBtn.disabled = false;
-  dom.choosePdfIntakeFilesBtn.textContent = "Choose PDFs...";
+  dom.choosePdfIntakeFilesBtn.textContent = "Choose PDFs…";
   dom.cancelPdfIntakeBtn.textContent = "Cancel";
   dom.cancelPdfIntakeBtn.disabled = false;
   dom.btnClosePdfIntakeModalTop.disabled = false;
@@ -850,7 +850,7 @@ function formatDurationMs(ms: number | null): string {
 }
 
 function formatApproxDurationMs(ms: number | null): string {
-  if (ms === null || !Number.isFinite(ms)) return "estimating...";
+  if (ms === null || !Number.isFinite(ms)) return "estimating…";
   const totalSeconds = Math.max(0, Math.round(ms / 1000));
   if (totalSeconds === 0) return "complete";
   if (totalSeconds < 60) return "less than 1 min";
@@ -868,12 +868,12 @@ function renderPdfIntakeMaterializationProgress(progress: PdfIntakeMaterializati
   dom.pdfIntakeMaterializationProfile.textContent = progress.profile;
   dom.pdfIntakeMaterializationMethod.textContent = progress.method;
   dom.pdfIntakeMaterializationFile.textContent =
-    `${progress.currentFileIndex.toLocaleString()} / ${progress.totalFiles.toLocaleString()} - ${progress.currentFile}`;
+    `${progress.currentFileIndex.toLocaleString()} / ${progress.totalFiles.toLocaleString()} – ${progress.currentFile}`;
   dom.pdfIntakeMaterializationPage.textContent = `${currentPage} / ${totalPages}`;
   dom.pdfIntakeMaterializationElapsed.textContent = formatDurationMs(progress.elapsedMs);
   dom.pdfIntakeMaterializationRemaining.textContent = formatApproxDurationMs(progress.estimatedRemainingMs);
   dom.pdfIntakeMaterializationSpeed.textContent =
-    progress.pagesPerMinute === null ? "estimating..." : `about ${progress.pagesPerMinute.toFixed(1)} pages/min`;
+    progress.pagesPerMinute === null ? "estimating…" : `about ${progress.pagesPerMinute.toFixed(1)} pages/min`;
   const progressPercent = progress.totalPages === null || progress.totalPages === 0
     ? 0
     : Math.min(100, Math.max(0, (progress.currentPage / progress.totalPages) * 100));
@@ -946,17 +946,17 @@ export async function openPdfIntakeModalForSources(paths: string[], extractAfter
   setPdfIntakeHandlingChoicesVisible(false);
   renderStoredPdfHandlingSummary(paths, storedProfileId);
   dom.pdfIntakeDescription.textContent =
-    "Using stored PDF handling. Diagnostics check embedded text availability, OCR resources, page counts, and extraction risk before text extraction.";
+    "Using stored PDF handling. Diagnostics check embedded text availability, OCR resources, page counts and extraction risk before text extraction.";
   dom.loadPdfIntakeFilesBtn.textContent = "Extract text now";
   dom.choosePdfIntakeFilesBtn.classList.add("hidden");
 
   pdfIntakeSelectedPaths = paths;
   dom.pdfIntakeStatus.textContent = extractAfterDiagnostics
-    ? "Checking PDFs before text extraction..."
-    : "Checking PDFs...";
+    ? "Checking PDFs before text extraction…"
+    : "Checking PDFs…";
   dom.statusBar.textContent = extractAfterDiagnostics
-    ? "Checking selected PDFs before text extraction..."
-    : "Checking selected PDFs...";
+    ? "Checking selected PDFs before text extraction…"
+    : "Checking selected PDFs…";
   dom.choosePdfIntakeFilesBtn.disabled = true;
   dom.loadPdfIntakeFilesBtn.disabled = true;
   renderPdfAuditLoading(paths.length);
@@ -996,15 +996,15 @@ async function handleCancelPdfIntake(): Promise<void> {
   const isProjectExtraction = pdfIntakeMode === "prepare-sources";
   // Use accurate wording depending on whether force OCR is running
   if (pdfIntakeIsForceOcr) {
-    dom.pdfIntakeStatus.textContent = "Cancelling after the current OCR batch...";
+    dom.pdfIntakeStatus.textContent = "Cancelling after the current OCR batch…";
     dom.statusBar.textContent = isProjectExtraction
-      ? "Cancelling PDF text extraction after the current OCR batch..."
-      : "Cancelling PDF intake after the current OCR batch...";
+      ? "Cancelling PDF text extraction after the current OCR batch…"
+      : "Cancelling PDF intake after the current OCR batch…";
   } else {
-    dom.pdfIntakeStatus.textContent = "Cancelling after the current PDF extraction step...";
+    dom.pdfIntakeStatus.textContent = "Cancelling after the current PDF extraction step…";
     dom.statusBar.textContent = isProjectExtraction
-      ? "Cancelling PDF text extraction after the current extraction step..."
-      : "Cancelling PDF intake after the current extraction step...";
+      ? "Cancelling PDF text extraction after the current extraction step…"
+      : "Cancelling PDF intake after the current extraction step…";
   }
   try {
     await invoke("cancel_pdf_intake_materialization_command");
@@ -1042,8 +1042,8 @@ async function handleChoosePdfIntakeFiles(): Promise<void> {
 
   try {
     pdfIntakeSelectedPaths = selected;
-    dom.pdfIntakeStatus.textContent = "Auditing PDFs...";
-    dom.statusBar.textContent = "Auditing selected PDFs...";
+    dom.pdfIntakeStatus.textContent = "Auditing PDFs…";
+    dom.statusBar.textContent = "Auditing selected PDFs…";
     dom.choosePdfIntakeFilesBtn.disabled = true;
     dom.loadPdfIntakeFilesBtn.disabled = true;
     renderPdfAuditLoading(selected.length);
@@ -1061,7 +1061,7 @@ async function handleChoosePdfIntakeFiles(): Promise<void> {
     dom.statusBar.textContent = `PDF diagnostics ready. Suggested handling: ${profileDisplayNames[suggestedProfile]}.`;
     dom.loadPdfIntakeFilesBtn.classList.remove("hidden");
     dom.loadPdfIntakeFilesBtn.disabled = false;
-    dom.choosePdfIntakeFilesBtn.textContent = "Choose different PDFs...";
+    dom.choosePdfIntakeFilesBtn.textContent = "Choose different PDFs…";
   } catch (error) {
     dom.pdfIntakeStatus.textContent = `Audit error: ${error}`;
     dom.statusBar.textContent = `Audit error: ${error}`;
@@ -1114,11 +1114,11 @@ async function handleLoadPdfIntakeFiles(): Promise<void> {
     resetPdfIntakeMaterializationProgress();
     await listenForPdfIntakeProgress();
     dom.pdfIntakeStatus.textContent = isProjectPreparation
-      ? "Starting text extraction..."
-      : "Preparing PDF materialisation...";
+      ? "Starting text extraction…"
+      : "Preparing PDF materialisation…";
     dom.statusBar.textContent = isProjectPreparation
-      ? "Starting PDF text extraction..."
-      : "Preparing PDF materialisation...";
+      ? "Starting PDF text extraction…"
+      : "Preparing PDF materialisation…";
     dom.choosePdfIntakeFilesBtn.disabled = true;
     dom.loadPdfIntakeFilesBtn.disabled = true;
     dom.cancelPdfIntakeBtn.textContent = isProjectPreparation ? "Cancel extraction" : "Cancel materialisation";
@@ -1261,7 +1261,7 @@ function renderPdfAuditResults(
       : `The suggested handling is ${profileDisplayNames[suggestedProfile]}; your selected ${profileDisplayNames[currentProfile]} handling was kept.`;
   }
   dom.pdfIntakeAuditSummary.textContent =
-    `${profileMessage} Diagnostics check embedded text availability, OCR resources, page counts, and extraction risk before text extraction.`;
+    `${profileMessage} Diagnostics check embedded text availability, OCR resources, page counts and extraction risk before text extraction.`;
 
   for (const result of results) {
     dom.pdfIntakeAuditResults.appendChild(renderPdfAuditCard(result));
@@ -1353,7 +1353,7 @@ export async function loadDirectoryPath(selected: string, registerProjectSources
   }
 
   try {
-    dom.statusBar.textContent = "Scanning...";
+    dom.statusBar.textContent = "Scanning…";
     clearStateForLoad();
 
     const result = await invoke<CorpusLoadResult>("scan_directory_command", { path: selected });
@@ -1380,7 +1380,7 @@ export async function loadDirectoryPath(selected: string, registerProjectSources
 
 export async function loadFilesIntoCorpus(selected: string[]): Promise<void> {
   try {
-    dom.statusBar.textContent = "Loading files...";
+    dom.statusBar.textContent = "Loading files…";
     clearStateForLoad();
 
     const result = await invoke<CorpusLoadResult>("load_files_command", { paths: selected });
@@ -1459,7 +1459,7 @@ async function withProjectSourceImportProgress<T>(work: () => Promise<T>): Promi
     "project-source-import-progress",
     ({ payload }) => {
       dom.statusBar.textContent = payload.status === "scanning"
-        ? "Scanning source folder..."
+        ? "Scanning source folder…"
         : `Registering sources: ${payload.current.toLocaleString()} / ${payload.total.toLocaleString()}`;
     },
   );
@@ -1507,7 +1507,7 @@ export async function loadCorpusFromProjectSources(): Promise<void> {
   }
 
   try {
-    dom.statusBar.textContent = "Loading project sources...";
+    dom.statusBar.textContent = "Loading project sources…";
     clearStateForLoad();
 
     const result = await invoke<ProjectCorpusLoadResult>("load_project_source_records_command", {
@@ -1538,7 +1538,7 @@ export async function registerFilesForActiveProject(selected: string[]): Promise
   }
 
   try {
-    dom.statusBar.textContent = "Inspecting selected source files...";
+    dom.statusBar.textContent = "Inspecting selected source files…";
     const fastImport = await withProjectSourceImportProgress(
       () => fastImportFilesToActiveProject(selected),
     );
@@ -1560,7 +1560,7 @@ export async function registerFilesForActiveProject(selected: string[]): Promise
       return;
     }
 
-    dom.statusBar.textContent = "Importing source files...";
+    dom.statusBar.textContent = "Importing source files…";
     const update = await confirmFilesForActiveProjectSources(
       selected,
       choice.pdfHandlingOverrides,
@@ -1595,7 +1595,7 @@ export async function registerFolderForActiveProject(selected: string): Promise<
   }
 
   try {
-    dom.statusBar.textContent = "Inspecting source folder...";
+    dom.statusBar.textContent = "Inspecting source folder…";
     const fastImport = await withProjectSourceImportProgress(
       () => fastImportFolderToActiveProject(selected),
     );
@@ -1617,7 +1617,7 @@ export async function registerFolderForActiveProject(selected: string): Promise<
       return;
     }
 
-    dom.statusBar.textContent = "Importing source folder...";
+    dom.statusBar.textContent = "Importing source folder…";
     const update = await confirmFolderForActiveProjectSources(
       selected,
       choice.pdfHandlingOverrides,
@@ -1701,11 +1701,11 @@ function renderSummary(summary: CorpusSummary): void {
         <div class="summary-label">Average File</div>
       </div>
       <div class="summary-metric">
-        <div class="summary-value" id="summary-total-words">Calculating...</div>
+        <div class="summary-value" id="summary-total-words">Calculating…</div>
         <div class="summary-label" id="summary-word-label">Cleaned Token Count</div>
       </div>
       <div class="summary-metric full-width">
-        <div class="summary-value" id="summary-avg-words">Calculating...</div>
+        <div class="summary-value" id="summary-avg-words">Calculating…</div>
         <div class="summary-label">Avg Words / File</div>
       </div>
     </div>
@@ -1730,7 +1730,7 @@ async function handleRemoveSelectedSources(): Promise<void> {
   }
 
   try {
-    dom.statusBar.textContent = "Removing selected sources...";
+    dom.statusBar.textContent = "Removing selected sources…";
     const result = await removeSelectedProjectSources();
     state.selectedCorpusIndices.clear();
     clearProjectSourceSelection();
@@ -1850,7 +1850,7 @@ export async function openSourcePdfHandlingDialog(mode: "re-extract" | "change-h
   }));
 
   try {
-    dom.statusBar.textContent = "Saving handling overrides...";
+    dom.statusBar.textContent = "Saving handling overrides…";
     await invoke("update_project_source_pdf_handling_command", {
       rootPath: state.activeProject!.rootPath,
       overrides,

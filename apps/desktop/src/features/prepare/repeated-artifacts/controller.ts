@@ -97,11 +97,11 @@ const REPEATED_ARTIFACT_MEMORY_CEILING_BYTES = 1_288_490_188;
 function repeatedArtifactProgressLabel(progress: RepeatedArtifactScanProgress): string {
   switch (progress.phase) {
     case "pass_1_scanning":
-      return `Counting candidates... ${progress.files_completed.toLocaleString()}/${progress.files_total.toLocaleString()} files`;
+      return `Counting candidates… ${progress.files_completed.toLocaleString()}/${progress.files_total.toLocaleString()} files`;
     case "filtering":
-      return "Filtering candidates...";
+      return "Filtering candidates…";
     case "pass_2_materialising":
-      return `Materialising candidates... ${progress.files_completed.toLocaleString()}/${progress.files_total.toLocaleString()} files`;
+      return `Materialising candidates… ${progress.files_completed.toLocaleString()}/${progress.files_total.toLocaleString()} files`;
   }
 }
 
@@ -292,7 +292,7 @@ export function getRepeatedArtifactScanScope(): RepeatedArtifactScanScope {
     return {
       canScan: false,
       indices: [],
-      buttonLabel: "Find repeated artefacts...",
+      buttonLabel: "Find repeated artefacts…",
       helperText,
       modalText: helperText,
     };
@@ -310,7 +310,7 @@ export function getRepeatedArtifactScanScope(): RepeatedArtifactScanScope {
       canScan: true,
       indices: selected,
       buttonLabel: `Find repeated artefacts in ${selectedLabel}...`,
-      helperText: "The scan will use the current Source Explorer selection.",
+      helperText: "The scan will use the current Source explorer selection.",
       modalText: `Scope: ${selectedLabel}.`,
     };
   }
@@ -663,13 +663,13 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     if (isProcessed && count > 0) {
       const legacyRemovals = state.activeCleaningConfig.remove_patterns;
       const ruleRemovals = state.activeCleaningConfig.removal_rules.filter(rule => rule.enabled);
-      let previewText = `Processed scans apply ${count} active Custom Removal item(s).`;
+      let previewText = `Processed scans apply ${count} active custom removal item(s).`;
       if (count > 0) {
         const examples = [
           ...legacyRemovals,
           ...ruleRemovals.map(ruleDisplayText),
         ].slice(0, 3);
-        previewText += ` Active removals include: ${examples.join(", ")}${count > 3 ? ", ..." : ""}.`;
+        previewText += ` Active removals include: ${examples.join(", ")}${count > 3 ? ", …" : ""}.`;
       }
       dom.artifactProcessedWarning.textContent = previewText;
       dom.artifactProcessedWarning.classList.remove("hidden");
@@ -688,13 +688,13 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
         </td>
       </tr>
     `;
-    dom.artifactDetailsContent.innerHTML = `<div class="artifact-details-empty">${stage}...</div>`;
+    dom.artifactDetailsContent.innerHTML = `<div class="artifact-details-empty">${stage}…</div>`;
   }
 
   function resetScanControls(): void {
     dom.btnRunArtifactScan.classList.remove("hidden");
     dom.btnRunArtifactScan.disabled = false;
-    dom.btnRunArtifactScan.textContent = "Run Scan";
+    dom.btnRunArtifactScan.textContent = "Run scan";
     dom.btnCancelScan.classList.add("hidden");
     if (scanTimerInterval) { clearInterval(scanTimerInterval); scanTimerInterval = null; }
     syncRepeatedArtifactModalScope();
@@ -740,10 +740,10 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     }
 
     if (diags.analysed_processed_text && diags.custom_removals_active > 0) {
-      text += ` · Processed scan applied ${diags.custom_removals_active} active Custom Removal item(s).`;
+      text += ` · Processed scan applied ${diags.custom_removals_active} active custom removal item(s).`;
     }
     if (diags.candidates_truncated > 0) {
-      text += ` · ${diags.candidates_truncated.toLocaleString()} more not shown because Max Candidates limited the result.`;
+      text += ` · ${diags.candidates_truncated.toLocaleString()} more not shown because Maximum candidates limited the result.`;
     }
 
     dom.artifactDiagnostics.textContent = text;
@@ -1080,7 +1080,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     const myGen = ++scanGeneration;
     const startTime = performance.now();
 
-    setStatus("Preparing files...", 0);
+    setStatus("Preparing files…", 0);
 
     if (scanTimerInterval) clearInterval(scanTimerInterval);
     scanTimerInterval = setInterval(() => {
@@ -1216,15 +1216,15 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
             msg += ` Extraction failures were reported for ${diagnostics.files_failed_extraction} file(s).`;
           }
         } else if (diagnostics && diagnostics.total_candidate_keys_before_filtering > 0 && diagnostics.candidates_after_min_occurrences === 0) {
-          msg = "Candidate keys were found, but none met Min Occurrences. Try lowering Min Occurrences.";
+          msg = "Candidate keys were found, but none met the minimum occurrence count. Try lowering Minimum occurrences.";
         } else if (diagnostics && diagnostics.candidates_after_min_occurrences > 0 && diagnostics.candidates_after_min_files === 0) {
-          msg = "Candidates were found, but none appeared in enough distinct files. Try Min Files = 1 for repeated artefacts inside a single PDF/book.";
+          msg = "Candidates were found, but none appeared in enough distinct files. Try Minimum files = 1 for repeated artefacts inside a single PDF/book.";
         } else {
           msg = "No candidates meeting the thresholds.";
         }
 
         if (state.scanWasProcessed && state.removalCountAtScanStart > 0) {
-          msg += " Processed scans apply current Custom Removals, so already-removed artefacts will not appear. Scan Original extracted text to rediscover raw artefacts.";
+          msg += " Processed scans apply current Custom removals, so already-removed artefacts will not appear. Scan Original Text to rediscover raw artefacts.";
         }
       }
 
@@ -1334,8 +1334,8 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       const isDismissed = decision === "dismissed";
       decisionAction.textContent = isDismissed ? "Restore" : "Dismiss";
       decisionAction.title = isDismissed
-        ? "Restore - show this candidate in scan results again."
-        : "Dismiss - stop suggesting this candidate on future scans.";
+        ? "Restore – show this candidate in scan results again."
+        : "Dismiss – stop suggesting this candidate on future scans.";
       decisionAction.addEventListener("click", (event) => {
         event.stopPropagation();
         const changed = isDismissed
@@ -1516,7 +1516,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
     if (cand.content_class === "numeric_dominant") {
       const numericCaution = document.createElement("div");
       numericCaution.className = "artifact-numeric-caution";
-      numericCaution.textContent = "Numeric-dominant candidate — review carefully. These may group unrelated tables, formulas, axis ticks, or statistical output.";
+      numericCaution.textContent = "Numeric-dominant candidate – review carefully. These may group unrelated tables, formulae, axis ticks or statistical output.";
       dom.artifactDetailsContent.appendChild(numericCaution);
     }
 
@@ -1535,12 +1535,12 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
 
       const copyBtn = document.createElement("button");
       copyBtn.className = "btn-copy-candidate";
-      copyBtn.textContent = "Copy Candidate";
+      copyBtn.textContent = "Copy candidate";
       copyBtn.addEventListener("click", async () => {
         try {
           await navigator.clipboard.writeText(cand.display_text);
           copyBtn.textContent = "Copied";
-          setTimeout(() => { copyBtn.textContent = "Copy Candidate"; }, 2000);
+          setTimeout(() => { copyBtn.textContent = "Copy candidate"; }, 2000);
         } catch (_) {
           copyBtn.textContent = "Copy failed";
         }
@@ -1631,7 +1631,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
       const botPct = total > 0 ? Math.round((cand.position_summary.bottom_count / total) * 100) : 0;
 
       posSummaryDiv.innerHTML = `
-        <strong>Estimated Layout Positions (Approximate):</strong>
+        <strong>Estimated layout positions:</strong>
         <div class="artifact-position-summary-values">
           <span>Top: ${cand.position_summary.top_count} (${topPct}%)</span>
           <span>Body: ${cand.position_summary.middle_count} (${midPct}%)</span>

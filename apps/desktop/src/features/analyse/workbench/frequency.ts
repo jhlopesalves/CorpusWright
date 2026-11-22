@@ -709,7 +709,7 @@ function createFrequencyDistributionPanel(
   if (!page) {
     const loading = document.createElement("p");
     loading.className = "analysis-panel-note";
-    loading.textContent = "Loading distribution...";
+    loading.textContent = "Loading distribution…";
     panel.appendChild(loading);
     return panel;
   }
@@ -926,12 +926,12 @@ function renderAnnotatedFrequencyList(corpus: AnalysisCorpus): void {
   if (!annotatedFrequencyPage) {
     dom.frequencySummary.textContent = frequencyQueryFailure
       ? "Frequency query failed."
-      : "Querying the analysis...";
+      : "Querying the analysis…";
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = frequencyTableColumnCount();
     cell.className = "frequency-empty";
-    cell.textContent = frequencyQueryFailure ?? "Loading frequency results...";
+    cell.textContent = frequencyQueryFailure ?? "Loading frequency results…";
     row.appendChild(cell);
     dom.frequencyTableBody.appendChild(row);
     dom.frequencyPageStatus.textContent = "";
@@ -1109,12 +1109,12 @@ export function renderFrequencyList(): void {
   if (!frequencyPage) {
     dom.frequencySummary.textContent = frequencyQueryFailure
       ? "Frequency query failed."
-      : "Querying the analysis...";
+      : "Querying the analysis…";
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = frequencyTableColumnCount();
     cell.className = "frequency-empty";
-    cell.textContent = frequencyQueryFailure ?? "Loading frequency results...";
+    cell.textContent = frequencyQueryFailure ?? "Loading frequency results…";
     row.appendChild(cell);
     dom.frequencyTableBody.appendChild(row);
     dom.frequencyPageStatus.textContent = "";
@@ -1449,7 +1449,7 @@ function renderFrequencyFilesModal(): void {
   if (!page) {
     const loading = document.createElement("p");
     loading.className = "frequency-files-empty";
-    loading.textContent = frequencyDocumentsPending ? "Loading files..." : "No file window loaded.";
+    loading.textContent = frequencyDocumentsPending ? "Loading files…" : "No file window loaded.";
     dom.frequencyFilesList.appendChild(loading);
     dom.frequencyFilesPreviousButton.disabled = true;
     dom.frequencyFilesNextButton.disabled = true;

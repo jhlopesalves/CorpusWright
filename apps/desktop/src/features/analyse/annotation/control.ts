@@ -34,7 +34,7 @@ export interface AnnotationLayerControlViewModel {
   help: string;
   progress: AnnotationLayerProgressViewModel | null;
   action: AnnotationLayerAction;
-  actionLabel: "Build annotations" | "Cancel" | "Cancelling..." | "Rebuild annotations";
+  actionLabel: "Build annotations" | "Cancel" | "Cancelling…" | "Rebuild annotations";
   actionDisabled: boolean;
   actionDisabledReason: string | null;
 }
@@ -197,7 +197,7 @@ export function annotationTokenEtaLabel(
 
   const tokensPerSecond = estimateAnnotationTokenThroughput(samples);
   if (tokensPerSecond === null) {
-    return "Estimating...";
+    return "Estimating…";
   }
 
   const remainingMs = Number(remainingTokens) / tokensPerSecond * 1000;
@@ -215,8 +215,8 @@ export function annotationHeartbeatLine(
 
   const tokensPerSecond = estimateAnnotationTokenThroughput(samples);
   return tokensPerSecond === null
-    ? "annotating - Estimating..."
-    : `annotating - ${formatAnnotationTokenRate(tokensPerSecond)}`;
+    ? "annotating – Estimating…"
+    : `annotating – ${formatAnnotationTokenRate(tokensPerSecond)}`;
 }
 
 function annotationProgressViewModel(
@@ -232,7 +232,7 @@ function annotationProgressViewModel(
       percent: null,
       percentLabel: null,
       filesLine: null,
-      etaLabel: "Estimating...",
+      etaLabel: "Estimating…",
       heartbeatLine: null,
     };
   }
@@ -304,7 +304,7 @@ export function annotationLayerControlViewModel(
   const cancellationRequested =
     input.transient?.status === "building" && input.transient.cancellationRequested;
   const actionLabel = status === "building"
-    ? cancellationRequested ? "Cancelling..." : "Cancel"
+    ? cancellationRequested ? "Cancelling…" : "Cancel"
     : status === "ready" || status === "stale"
       ? "Rebuild annotations"
       : "Build annotations";

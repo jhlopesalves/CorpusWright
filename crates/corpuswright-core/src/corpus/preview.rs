@@ -121,7 +121,7 @@ pub fn preview_file_with_config(
                     ),
                     Err(e) => {
                         let mut warnings = Vec::new();
-                        warnings.push(format!("DOCX Extraction Failed: {}", e));
+                        warnings.push(format!("Failed to extract DOCX text: {}", e));
                         (
                             BoundedRead {
                                 text: String::new(),
@@ -145,7 +145,7 @@ pub fn preview_file_with_config(
                 ),
                 Err(e) => {
                     let mut warnings = Vec::new();
-                    warnings.push(format!("DOCX Extraction Failed: {}", e));
+                    warnings.push(format!("Failed to extract DOCX text: {}", e));
                     (
                         BoundedRead {
                             text: String::new(),
@@ -187,7 +187,7 @@ pub fn preview_file_with_config(
                     }
                     Err(e) => {
                         let mut warnings = Vec::new();
-                        warnings.push(format!("PDF Extraction Failed: {}", e));
+                        warnings.push(format!("Failed to extract PDF text: {}", e));
                         (
                             BoundedRead {
                                 text: String::new(),
@@ -216,7 +216,7 @@ pub fn preview_file_with_config(
                 }
                 Err(e) => {
                     let mut warnings = Vec::new();
-                    warnings.push(format!("PDF Extraction Failed: {}", e));
+                    warnings.push(format!("Failed to extract PDF text: {}", e));
                     (
                         BoundedRead {
                             text: String::new(),

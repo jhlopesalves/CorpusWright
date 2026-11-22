@@ -30,9 +30,9 @@ export function renderConcordanceDistribution(
   if (result && result.totalHits > 0) {
     title.textContent = "Distribution";
   } else if (result) {
-    title.textContent = "Distribution — no hits in the selected files";
+    title.textContent = "Distribution – no hits in the selected files";
   } else {
-    title.textContent = `Distribution — ${emptyMessage}`;
+    title.textContent = `Distribution – ${emptyMessage}`;
   }
   panelHeader.appendChild(title);
   panel.appendChild(panelHeader);
@@ -53,7 +53,7 @@ export function renderConcordanceDistribution(
     const reading = document.createElement("p");
     reading.className = "concordance-distribution-reading cw-result-table-note";
     reading.textContent =
-      "Concentration in a few documents may suggest topic, genre, or source dependence; broad reach may suggest more corpus-general use.";
+      "Concentration in a few documents may suggest topic, genre or source dependence; broad reach may suggest more corpus-general use.";
     panel.appendChild(reading);
   }
 

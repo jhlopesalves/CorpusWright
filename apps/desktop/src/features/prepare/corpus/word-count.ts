@@ -39,9 +39,9 @@ export async function updateWordCount(): Promise<void> {
     ? "Source token count unavailable until OCR sources have materialised text."
     : OCR_WORD_COUNT_SKIPPED_STATUS;
 
-  totalWordsEl.textContent = "Counting...";
-  avgWordsEl.textContent = "Counting...";
-  state.cleanedTokenCountText = "Counting...";
+  totalWordsEl.textContent = "Counting…";
+  avgWordsEl.textContent = "Counting…";
+  state.cleanedTokenCountText = "Counting…";
   refreshAnalyseWorkbench();
   if (wordLabelEl) wordLabelEl.textContent = countLabel;
 

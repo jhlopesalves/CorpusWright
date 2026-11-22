@@ -82,7 +82,7 @@
         <figure class="walk-hero-figure">
           <picture>
             <source media="(prefers-color-scheme: dark)" srcset="assets/walkthrough/01-sources-dark.png">
-            <img src="assets/walkthrough/01-sources-light.png" alt="CorpusWright’s Prepare workspace with the Victorian corpus loaded." width="1440" height="1000" fetchpriority="high">
+            <img src="assets/walkthrough/01-sources-light.png" alt="CorpusWright's Prepare workspace with the Victorian corpus loaded." width="1440" height="1000" fetchpriority="high">
           </picture>
           <figcaption>The corpus in Prepare, before the application of removal rules.</figcaption>
         </figure>
@@ -112,14 +112,14 @@
         <section class="walk-step" data-walk-step="artefacts" aria-labelledby="artefacts">
           <p class="walk-step-label"><span>02</span> Repeated artefacts</p>
           <h2 id="artefacts">Review repeated text before removing it</h2>
-          <p>The artefact finder groups recurring lines and short blocks. The highlighted licence fragment occurs <span data-fact="artefactCandidateOccurrences">6</span> times across <span data-fact="artefactCandidateRange">3</span> files.</p>
+          <p>The Repeated Artefact Finder groups recurring lines and short blocks. The highlighted licence fragment occurs <span data-fact="artefactCandidateOccurrences">6</span> times across <span data-fact="artefactCandidateRange">3</span> files.</p>
           <p>Review the examples before accepting individual removal rules. Different editions can wrap the same notice differently or carry a different notice.</p>
           <figure>
             <picture>
               <source media="(prefers-color-scheme: dark)" srcset="assets/walkthrough/02-artefacts-dark.png">
-              <img src="assets/walkthrough/02-artefacts-light.png" alt="CorpusWright Repeated Artefacts review, with a Gutenberg licence fragment selected." width="1440" height="1000" loading="lazy">
+              <img src="assets/walkthrough/02-artefacts-light.png" alt="The Repeated Artefact Finder with a Gutenberg licence fragment selected." width="1440" height="1000" loading="lazy">
             </picture>
-            <figcaption><strong>Figure 2.</strong> Repeated Artefacts shows licence fragments and their occurrences.</figcaption>
+            <figcaption><strong>Figure 2.</strong> The Repeated Artefact Finder shows licence fragments and their occurrences.</figcaption>
           </figure>
           <a class="walk-full-image" href="assets/walkthrough/02-artefacts-light.png" aria-label="View the licence-fragment capture at full size">View full-size capture</a>
         </section>
@@ -142,14 +142,14 @@
         <section class="walk-step" data-walk-step="counts" aria-labelledby="counts">
           <p class="walk-step-label"><span>04</span> Counts</p>
           <h2 id="counts">Read frequency with range and dispersion</h2>
-          <p>Frequency counts all occurrences. Range counts the documents in which a type occurs. Gries’s DP compares a type’s observed shares across documents with the token shares of those documents.</p>
+          <p>Frequency counts all occurrences. Range counts the documents in which a type occurs. Gries's DP compares a type's observed shares across documents with the token shares of those documents.</p>
           <p>Before cleaning, <em>gutenberg</em> occurred <span data-fact="originalGutenbergHits">223</span> times across <span data-fact="originalGutenbergRange">10</span> works (DP <span data-fact="originalGutenbergDp" data-decimals="4">0.3531</span>). All <span data-fact="preparedGutenbergHits">223</span> occurrences remain after applying the reviewed rule, which targets a licence line without that word.</p>
           <figure>
             <picture>
               <source media="(prefers-color-scheme: dark)" srcset="assets/walkthrough/04-counts-dark.png">
-              <img src="assets/walkthrough/04-counts-light.png" alt="CorpusWright Frequency List filtered to gutenberg, with frequency, document range and dispersion columns." width="1440" height="1000" loading="lazy">
+              <img src="assets/walkthrough/04-counts-light.png" alt="CorpusWright Frequency list filtered to gutenberg, with frequency, document range and dispersion columns." width="1440" height="1000" loading="lazy">
             </picture>
-            <figcaption><strong>Figure 4.</strong> The Frequency List locates <em>gutenberg</em> in the analysis.</figcaption>
+            <figcaption><strong>Figure 4.</strong> The Frequency list locates <em>gutenberg</em> in the analysis.</figcaption>
           </figure>
           <a class="walk-full-image" href="assets/walkthrough/04-counts-light.png" aria-label="View the frequency-list capture at full size">View full-size capture</a>
         </section>
@@ -157,12 +157,12 @@
         <section class="walk-step" data-walk-step="dispersion" aria-labelledby="dispersion">
           <p class="walk-step-label"><span>05</span> Dispersion</p>
           <h2 id="dispersion">Frequency alone hides how a type is spread</h2>
-          <p>The Dispersion plane plots frequency against DP for the <span data-fact="preparedTypes">34,954</span> observed types. A low DP indicates that a type’s occurrences are distributed roughly in proportion to document sizes.</p>
-          <p>Use the plane to see how different combinations of frequency and dispersion occur in the corpus. Look up a particular word in the Frequency List or read its occurrences in Concordance.</p>
+          <p>The Dispersion plane plots frequency against DP for the <span data-fact="preparedTypes">34,954</span> observed types. A low DP indicates that a type's occurrences are distributed roughly in proportion to document sizes.</p>
+          <p>Use the plane to see how different combinations of frequency and dispersion occur in the corpus. Look up a particular word in the Frequency list or read its occurrences in Concordance.</p>
           <figure>
             <picture>
               <source media="(prefers-color-scheme: dark)" srcset="assets/walkthrough/05-dispersion-dark.png">
-              <img src="assets/walkthrough/05-dispersion-light.png" alt="CorpusWright Corpus Overview displaying its Dispersion plane, a density plot of frequency against DP." width="1440" height="1000" loading="lazy">
+              <img src="assets/walkthrough/05-dispersion-light.png" alt="CorpusWright Corpus overview displaying its Dispersion plane, a density plot of frequency against DP." width="1440" height="1000" loading="lazy">
             </picture>
             <figcaption><strong>Figure 5.</strong> The Dispersion plane shows the density of types by frequency and DP.</figcaption>
           </figure>

@@ -149,7 +149,7 @@ function layoutCompositionStripLabels(
     if (mode === "medium") {
       setTextPosition(detail, x + 12, y, "start");
     } else {
-      category.textContent = `${category.textContent} — ${detail.textContent}`;
+      category.textContent = `${category.textContent} – ${detail.textContent}`;
       setTextPosition(category, x + 12, y, "start");
     }
     extent.bottom = Math.max(extent.bottom, y + 6);

@@ -25,7 +25,7 @@ export async function exportProcessedCorpus(): Promise<void> {
     defaultPath: state.currentCorpusRoot ? state.currentCorpusRoot : undefined,
   });
   if (selected === null || Array.isArray(selected)) {
-    dom.statusBar.textContent = "Save cancelled.";
+    dom.statusBar.textContent = "Export cancelled.";
     return;
   }
 
@@ -44,7 +44,7 @@ export async function exportProcessedCorpus(): Promise<void> {
   const separator = selected.includes("\\") ? "\\" : "/";
   const targetDir = `${selected}${selected.endsWith(separator) ? "" : separator}${exportDirName}`;
 
-  dom.statusBar.textContent = "Saving processed corpus... 0%";
+  dom.statusBar.textContent = "Exporting cleaned corpus… 0%";
   document.body.classList.add("is-exporting");
 
   await new Promise(requestAnimationFrame);
@@ -55,7 +55,7 @@ export async function exportProcessedCorpus(): Promise<void> {
     unlisten = await listen<{ current: number; total: number; current_file: string }>("export-progress", (event) => {
       const { current, total, current_file } = event.payload;
       const pct = Math.round((current / total) * 100);
-      dom.statusBar.textContent = `Saving... ${pct}% (${current}/${total}) — ${current_file}`;
+      dom.statusBar.textContent = `Exporting… ${pct}% (${current}/${total}) – ${current_file}`;
     });
 
     const myVersion = state.currentCorpusVersion;
@@ -72,7 +72,7 @@ export async function exportProcessedCorpus(): Promise<void> {
 
     if (myVersion !== state.currentCorpusVersion) return;
 
-    dom.statusBar.textContent = `Saved processed corpus: ${report.files_exported} files written to ${targetDir}`;
+    dom.statusBar.textContent = `Cleaned-corpus export: ${report.files_exported} files written to ${targetDir}`;
   } catch (error) {
     dom.statusBar.textContent = `Save error: ${error}`;
     console.error("Save error", error);

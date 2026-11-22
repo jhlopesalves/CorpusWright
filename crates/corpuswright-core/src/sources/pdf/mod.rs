@@ -517,7 +517,7 @@ fn extract_with_lopdf_fallback(
             warnings,
         )),
         Err(lopdf_err) => Err(PdfExtractionError::InvalidFormat(format!(
-            "Failed to initialize PDFium ({}) and lopdf fallback also failed: {}",
+            "Failed to initialise PDFium ({}) and lopdf fallback also failed: {}",
             pdfium_error, lopdf_err
         ))),
     }
@@ -722,7 +722,7 @@ fn extract_pdf_embedded_page_range(
     options: PdfExtractionOptions,
 ) -> Result<(usize, Vec<PdfPageRangePage>), PdfExtractionError> {
     let pdfium = crate::sources::pdf::ocr::init_pdfium().map_err(|error| {
-        PdfExtractionError::InvalidFormat(format!("Failed to initialize PDFium: {error}"))
+        PdfExtractionError::InvalidFormat(format!("Failed to initialise PDFium: {error}"))
     })?;
 
     let document = {

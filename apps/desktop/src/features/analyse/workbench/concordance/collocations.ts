@@ -581,7 +581,7 @@ function createCollocateEvidenceExpansionRow(row: ConcordanceRow): HTMLDivElemen
   panel.setAttribute("role", "cell");
 
   if (collocateEvidenceExpansionPending) {
-    appendCollocateEvidenceMessage(panel, "Loading wider context...");
+    appendCollocateEvidenceMessage(panel, "Loading wider context…");
   } else if (collocateEvidenceExpansionFailure !== null) {
     appendCollocateEvidenceMessage(panel, collocateEvidenceExpansionFailure, true);
   } else if (collocateEvidenceExpansionResult !== null) {
@@ -621,7 +621,7 @@ function createCollocateEvidenceExpansionRow(row: ConcordanceRow): HTMLDivElemen
 
     panel.appendChild(context);
   } else {
-    appendCollocateEvidenceMessage(panel, "Loading wider context...");
+    appendCollocateEvidenceMessage(panel, "Loading wider context…");
   }
 
   item.appendChild(panel);
@@ -709,7 +709,7 @@ function appendCollocateEvidenceShowMore(parent: HTMLElement, result: Concordanc
   more.type = "button";
   more.className = "secondary-btn";
   more.textContent = collocateEvidencePending
-    ? "Loading..."
+    ? "Loading…"
     : remaining <= CONCORDANCE_COLLOCATE_EVIDENCE_LIMIT
       ? `Show remaining ${formatNumber(remaining)}`
       : `Show ${formatNumber(nextCount)} more`;
@@ -778,7 +778,7 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
   const openInLines = document.createElement("button");
   openInLines.type = "button";
   openInLines.className = "secondary-btn concordance-collocate-open-lines";
-  openInLines.textContent = "Open in Concordance Lines";
+  openInLines.textContent = "Open in Concordance lines";
   openInLines.addEventListener("click", () => {
     openCollocateInConcordanceLines(row.surface, direction);
   });
@@ -802,7 +802,7 @@ function createCollocateEvidenceDrawerRow(row: ConcordanceCollocateRow): HTMLTab
       appendCollocateEvidenceMessage(panel, `Could not load more co-occurrence lines: ${collocateEvidenceFailure}`, true);
     }
   } else if (collocateEvidencePending) {
-    appendCollocateEvidenceMessage(panel, "Loading co-occurrence lines...");
+    appendCollocateEvidenceMessage(panel, "Loading co-occurrence lines…");
   } else if (collocateEvidenceFailure !== null) {
     appendCollocateEvidenceMessage(panel, `Could not load co-occurrence lines: ${collocateEvidenceFailure}`, true);
   } else if (collocateEvidenceResult === null || collocateEvidenceResult.totalHits === 0) {

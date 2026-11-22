@@ -1,4 +1,4 @@
-# Third-Party Notices
+# Third-party notices
 
 CorpusWright itself is licensed under the MIT License (see `LICENSE`).
 The following bundled third-party components are subject to their own
@@ -19,8 +19,8 @@ licences.
 - **Location in repository:**
   `apps/desktop/src-tauri/resources/ocr/pdfium.dll`
 - **Reproducibility manifest:** `third-party/pdfium.json` records the exact
-  release asset, archive checksum, and extracted-library checksum for Windows
-  x64, Linux x64, macOS x64, and macOS arm64
+  release asset, archive checksum and extracted-library checksum for Windows
+  x64, Linux x64, macOS x64 and macOS arm64
 
 ## Ocrs pre-trained OCR models
 
@@ -39,7 +39,7 @@ licences.
 - **Locations:** `apps/desktop/src-tauri/resources/ocr/text-detection.rten`
   and `apps/desktop/src-tauri/resources/ocr/text-recognition.rten`
 - **Reproducibility manifest:** `third-party/ocr-models.json` records the
-  authoritative URLs, S3 version identifiers, ETags, sizes, checksums, and
+  authoritative URLs, S3 version identifiers, ETags, sizes, checksums and
   exact upstream refs
 
 ## UDPipe Universal Dependencies 2.1 models
@@ -74,7 +74,7 @@ licences.
     - SHA-256:
       `476c5d0d3f435449a4d42629259d0925dfdcd4da71f9175b88e892a6d09d4345`
 - **Model build attribution:** bnosac credits the `udpipe` R package, fastText
-  word-vector work by Bojanowski, Grave, Joulin, and Mikolov, and the
+  word-vector work by Bojanowski, Grave, Joulin and Mikolov, as well as the
   corresponding Universal Dependencies treebanks for the model builds.
 
 ## Bundled fonts
@@ -82,13 +82,13 @@ licences.
 - **Components:** Application and website font files under
   `apps/desktop/src/assets/fonts/` and `docs/assets/fonts/`
 - **Sources:** Google Fonts, Inter, IBM Plex, JetBrains Mono, Adobe Source Sans,
-  Adobe Source Serif, Adobe Source Code Pro, and SIL Gentium
+  Adobe Source Serif, Adobe Source Code Pro and SIL Gentium
 - **Licence:** SIL Open Font License 1.1
 - **Provenance manifest:** `third-party/fonts.json` records every bundled font's
-  SHA-256, exact upstream path, source repository, and immutable commit or
+  SHA-256, exact upstream path, source repository and immutable commit or
   release
 - **Licence texts:** `third-party/fonts/licenses/` retains the applicable
-  upstream copyright, Reserved Font Name, and OFL terms
+  upstream copyright, Reserved Font Name and OFL terms
 - **Wright public-site typefaces:** Manrope 4.505, Source Sans 3 3.052
   (upright and italic) and Source Code Pro 1.026 Variable (upright) are served
   as local WOFF2 subsets. The Adobe subsets are named Wright Reading and

@@ -83,8 +83,8 @@ message: "If you use CorpusWright in your research or teaching, please cite it a
 title: CorpusWright
 abstract: >-
   A desktop corpus-linguistics workbench with a Rust core for preparing,
-  inspecting, and analysing text corpora. Corpus data is processed locally,
-  and cleaned-corpus exports include preparation settings and file checksums.
+  inspecting and analysing text corpora. Corpus data is processed locally.
+  Cleaned-corpus exports include preparation settings and file checksums.
 type: software
 authors:
   - family-names: Lopes
@@ -210,7 +210,7 @@ function syncReadme(writer, metadata) {
     next = replaceOrThrow(
       next,
       /^\[!\[Release\]\([^)]+\)\]\([^)]+\)$/m,
-      "[![Release](https://img.shields.io/github/v/release/jhlopesalves/CorpusWright?include_prereleases&label=release)](https://github.com/jhlopesalves/CorpusWright/releases/latest)",
+      "[![Release](https://img.shields.io/github/v/release/jhlopesalves/CorpusWright?include_prereleases&label=release&labelColor=222b36&color=016cd6)](https://github.com/jhlopesalves/CorpusWright/releases/latest)",
       "README.md",
       "release badge"
     );
