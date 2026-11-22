@@ -83,8 +83,8 @@ message: "If you use CorpusWright in your research or teaching, please cite it a
 title: CorpusWright
 abstract: >-
   A desktop corpus-linguistics workbench with a Rust core for preparing,
-  inspecting, and analysing text corpora. Corpus data is processed locally,
-  and cleaned-corpus exports include preparation settings and file checksums.
+  inspecting and analysing text corpora. Corpus data is processed locally.
+  Cleaned-corpus exports include preparation settings and file checksums.
 type: software
 authors:
   - family-names: Lopes

@@ -1,7 +1,7 @@
 [package]
 name = "corpuswright-desktop"
 version = "0.1.0-alpha.8"
-description = "CorpusWright — corpus preprocessing and cleaning desktop app"
+description = "Desktop software for corpus preparation and descriptive corpus analysis"
 authors = { workspace = true }
 license = { workspace = true }
 edition = { workspace = true }
