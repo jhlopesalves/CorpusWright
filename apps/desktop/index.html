@@ -1368,7 +1368,7 @@
             <button type="button" id="btn-toggle-scan-settings" class="scan-settings-toggle"
               aria-expanded="true" aria-controls="repeated-artifact-config-panel">
               <span id="scan-settings-arrow" aria-hidden="true"></span>
-              Scan Settings
+              Scan settings
             </button>
             <span id="lbl-artifact-scan-scope"></span>
           </div>
@@ -1435,7 +1435,7 @@
           </div>
 
           <div class="artifact-config-thresholds">
-            <label for="num-artifact-min-occ">Min Occurrences:</label>
+            <label for="num-artifact-min-occ">Minimum occurrences:</label>
             <input type="number" id="num-artifact-min-occ" class="artifact-config-number" value="3" min="2" />
 
             <label for="num-artifact-min-files">Minimum files:</label>
@@ -1444,7 +1444,7 @@
             <label for="num-artifact-max-cand">Maximum candidates:</label>
             <input type="number" id="num-artifact-max-cand" class="artifact-config-number artifact-config-number--wide" value="" min="1" placeholder="All" />
 
-            <label for="num-artifact-max-examples">Max Examples:</label>
+            <label for="num-artifact-max-examples">Maximum examples:</label>
             <input type="number" id="num-artifact-max-examples" class="artifact-config-number" value="25" min="1" max="100" />
           </div>
         </div>
@@ -1455,15 +1455,15 @@
           <!-- Left Pane: Candidates Table -->
           <div class="repeated-artifact-left-pane">
             <div class="repeated-artifact-pane-header">
-              <span>Suspicious Candidates</span>
+              <span>Suspicious candidates</span>
               <span id="lbl-artifact-results-count">0 found</span>
             </div>
             <div id="artifact-type-tabs" class="tabs repeated-artifact-type-tabs" aria-label="Artefact type">
               <button type="button" class="tab active" data-category="page_labels">Page numbers &amp; labels</button>
               <button type="button" class="tab" data-category="headings">Headings</button>
-              <button type="button" class="tab" data-category="headers_footers">Headers / Footers</button>
+              <button type="button" class="tab" data-category="headers_footers">Headers / footers</button>
               <button type="button" class="tab" data-category="boilerplate">Boilerplate</button>
-              <button type="button" class="tab" data-category="symbol_noise">Symbol / Noise</button>
+              <button type="button" class="tab" data-category="symbol_noise">Symbol / noise</button>
               <button type="button" class="tab" data-category="other">Other</button>
             </div>
             <div id="artifact-decision-filters" class="repeated-artifact-decision-filters" role="group" aria-label="Decision state">
@@ -1488,31 +1488,31 @@
                       <input type="checkbox" id="chk-select-all-tab" title="Mark all shown candidates for removal" aria-label="Mark all shown candidates for removal" disabled />
                     </th>
                     <th class="th-candidate-pattern">
-                      <button class="sort-header" data-column="text" aria-label="Sort by Candidate or Pattern">
-                        <span>Candidate / Pattern</span>
+                      <button class="sort-header" data-column="text" aria-label="Sort by candidate or pattern">
+                        <span>Candidate / pattern</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                     </th>
                     <th>
-                      <button class="sort-header sort-header-right" data-column="occs" aria-label="Sort by Occurrences">
+                      <button class="sort-header sort-header-right" data-column="occs" aria-label="Sort by occurrences">
                         <span>Occs</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                     </th>
                     <th>
-                      <button class="sort-header sort-header-right" data-column="files" aria-label="Sort by Files">
+                      <button class="sort-header sort-header-right" data-column="files" aria-label="Sort by files">
                         <span>Files</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                     </th>
                     <th>
-                      <button class="sort-header" data-column="position" aria-label="Sort by Position">
+                      <button class="sort-header" data-column="position" aria-label="Sort by position">
                         <span>Position</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
                     </th>
                     <th>
-                      <button class="sort-header" data-column="risk" aria-label="Sort by Risk">
+                      <button class="sort-header" data-column="risk" aria-label="Sort by risk">
                         <span>Risk</span>
                         <span class="sort-indicator" aria-hidden="true"></span>
                       </button>
@@ -1532,7 +1532,7 @@
           <!-- Right Pane: Candidate Details & Examples -->
           <div class="repeated-artifact-right-pane">
             <div class="repeated-artifact-pane-header">
-              Candidate Detail & Examples
+              Candidate details and examples
             </div>
             <div id="artifact-details-content" class="artifact-details-content">
               <div class="artifact-details-empty">Select a

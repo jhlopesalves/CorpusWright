@@ -1216,7 +1216,7 @@ export function initRepeatedArtifactFinder(callbacks: RepeatedArtifactCallbacks)
             msg += ` Extraction failures were reported for ${diagnostics.files_failed_extraction} file(s).`;
           }
         } else if (diagnostics && diagnostics.total_candidate_keys_before_filtering > 0 && diagnostics.candidates_after_min_occurrences === 0) {
-          msg = "Candidate keys were found, but none met Min Occurrences. Try lowering Min Occurrences.";
+          msg = "Candidate keys were found, but none met the minimum occurrence count. Try lowering Minimum occurrences.";
         } else if (diagnostics && diagnostics.candidates_after_min_occurrences > 0 && diagnostics.candidates_after_min_files === 0) {
           msg = "Candidates were found, but none appeared in enough distinct files. Try Minimum files = 1 for repeated artefacts inside a single PDF/book.";
         } else {

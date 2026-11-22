@@ -24,9 +24,9 @@ export const ARTIFACT_CATEGORIES: readonly ArtifactCategory[] = [
 export const ARTIFACT_CATEGORY_LABELS: Readonly<Record<ArtifactCategory, string>> = {
   page_labels: "Page numbers & labels",
   headings: "Headings",
-  headers_footers: "Headers / Footers",
+  headers_footers: "Headers / footers",
   boilerplate: "Boilerplate",
-  symbol_noise: "Symbol / Noise",
+  symbol_noise: "Symbol / noise",
   other: "Other",
 };
 
