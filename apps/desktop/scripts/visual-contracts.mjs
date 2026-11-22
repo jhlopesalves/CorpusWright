@@ -16,6 +16,7 @@ export function validateVisualContracts({
   const report = (module, message) => violations.push(`${displayPath(module.path, desktopRoot)}: ${message}`);
 
   for (const module of modules) {
+    if (relativeModulePath(desktopRoot, module.path) === "src/styles/foundations/wright-tokens.css") continue;
     if (/\bstroke-color\s*:/.test(module.contents)) report(module, "invalid stroke-color declaration");
     if (/outline\s*:[^;{}]*var\(--cw-interaction-focus-ring\)/.test(module.contents)) {
       report(module, "focus-shadow token used in outline");

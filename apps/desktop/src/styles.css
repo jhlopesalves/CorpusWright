@@ -4,6 +4,7 @@
  * theme exceptions, then responsive overrides. Rules belong in owner modules.
  */
 @import "./styles/foundations/fonts.css";
+@import "./styles/foundations/wright-tokens.css";
 @import "./styles/foundations/themes.css";
 @import "./styles/foundations/base.css";
 @import "./styles/layout/app-shell.css";

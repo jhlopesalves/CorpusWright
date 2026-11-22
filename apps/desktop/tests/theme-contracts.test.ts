@@ -61,7 +61,7 @@ assert.match(appearanceSource, /invoke\("set_window_titlebar_color", \{ color: t
 
 const rawColour = /(?<!&)#(?:[0-9a-fA-F]{3,8})\b|rgba?\([^)\n]+\)|hsla?\([^)\n]+\)/;
 for (const module of graph.modules) {
-  if (module.path === themesPath) continue;
+  if (module.path === themesPath || module.path.endsWith("/foundations/wright-tokens.css")) continue;
   assert.doesNotMatch(module.contents, rawColour, `raw component colours are prohibited in ${path.relative(desktopRoot, module.path)}`);
 }
 

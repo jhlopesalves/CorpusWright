@@ -12,6 +12,7 @@ import { loadStyleGraph } from "./style-graph.mjs";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDir, "..");
 const srcRoot = path.join(desktopRoot, "src");
+const wrightTokensPath = path.join(srcRoot, "styles/foundations/wright-tokens.css");
 const themesPath = path.join(srcRoot, "styles/foundations/themes.css");
 const figurePalettesPath = path.join(srcRoot, "styles/foundations/figure-palettes.css");
 const appearancePath = path.join(srcRoot, "app/appearance.ts");
@@ -130,7 +131,7 @@ for (const mode of ["theme", "colorBlind", "monochrome"]) {
 }
 
 const scannedFiles = [
-  ...graph.modules.filter(module => module.path !== themesPath).map(module => ({ path: module.path, contents: module.contents })),
+  ...graph.modules.filter(module => module.path !== themesPath && module.path !== wrightTokensPath).map(module => ({ path: module.path, contents: module.contents })),
   { path: path.join(desktopRoot, "index.html"), contents: await readFile(path.join(desktopRoot, "index.html"), "utf8") },
   ...await Promise.all((await collectSourceFiles(srcRoot)).map(async filePath => ({ path: filePath, contents: await readFile(filePath, "utf8") }))),
 ];

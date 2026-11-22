@@ -8,6 +8,7 @@ const desktopRoot = path.resolve("apps/desktop");
 const entryPath = path.join(desktopRoot, "src/styles.css");
 const expectedModules = [
   "foundations/fonts.css",
+  "foundations/wright-tokens.css",
   "foundations/themes.css",
   "foundations/base.css",
   "layout/app-shell.css",

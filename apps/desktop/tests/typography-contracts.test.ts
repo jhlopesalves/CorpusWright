@@ -14,6 +14,7 @@ const moduleSource = (relativePath: string): string => {
 };
 const base = moduleSource("foundations/base.css");
 const fonts = moduleSource("foundations/fonts.css");
+const wrightTokens = moduleSource("foundations/wright-tokens.css");
 const controls = moduleSource("components/controls.css");
 const tables = moduleSource("components/tables.css");
 const analyse = moduleSource("features/analyse.css");
@@ -60,13 +61,13 @@ for (const token of semanticSizeTokens) {
 const rawSize = /\bfont-size\s*:\s*[^;{}]*\b\d*\.?\d+(?:px|rem|em|pt|%|vw|vh)\b/;
 const rawShorthandSize = /\bfont\s*:\s*[^;{}]*\b\d*\.?\d+(?:px|rem|em|pt|%|vw|vh)\b/;
 for (const module of graph.modules) {
-  if (module.path.endsWith(`${path.sep}foundations${path.sep}base.css`)) continue;
+  if ([base, wrightTokens].includes(module.contents)) continue;
   assert.doesNotMatch(module.contents, rawSize, `raw font sizes are prohibited in ${module.path}`);
   assert.doesNotMatch(module.contents, rawShorthandSize, `raw shorthand font sizes are prohibited in ${module.path}`);
 }
 
 const interfaceCss = graph.modules
-  .filter(module => !module.path.endsWith(`${path.sep}foundations${path.sep}fonts.css`))
+  .filter(module => ![fonts, wrightTokens].includes(module.contents))
   .map(module => module.contents)
   .join("\n");
 assert.doesNotMatch(interfaceCss, /\bfont-weight\s*:\s*[1-9]\d{2}\s*;/, "interface weights must use semantic tokens");

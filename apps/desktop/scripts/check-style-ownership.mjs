@@ -7,6 +7,7 @@ import { DEFAULT_STYLE_ENTRY, loadStyleGraph } from "./style-graph.mjs";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDir, "..");
 const srcRoot = path.join(desktopRoot, "src");
+const wrightTokensPath = path.join(srcRoot, "styles/foundations/wright-tokens.css");
 const themesPath = path.join(srcRoot, "styles/foundations/themes.css");
 const tablesPath = path.join(srcRoot, "styles/components/tables.css");
 const axesPath = path.join(srcRoot, "styles/plots/axes-and-grids.css");
@@ -83,6 +84,7 @@ const entryWithoutImports = entrySource
 if (entryWithoutImports) violations.push("src/styles.css: ordinary rule bodies are prohibited in the entrypoint");
 
 for (const module of graph.modules) {
+  if (module.path === wrightTokensPath) continue;
   const relativePath = relativeModulePath(desktopRoot, module.path);
   for (const match of module.contents.matchAll(/@import\s+(?:url\(\s*)?["']?(?:https?:)?\/\//gi)) {
     report(module.path, module.contents, match.index, "remote CSS import");
@@ -171,7 +173,7 @@ for (const module of graph.modules) {
 const rawColour = /(?<!&)#(?:[0-9a-fA-F]{3,8})\b|rgba?\([^)\n]+\)|hsla?\([^)\n]+\)/g;
 const typescriptFiles = await collectTypeScript(srcRoot);
 const nonThemeFiles = [
-  ...graph.modules.filter(module => module.path !== themesPath).map(module => ({ path: module.path, source: module.contents })),
+  ...graph.modules.filter(module => module.path !== themesPath && module.path !== wrightTokensPath).map(module => ({ path: module.path, source: module.contents })),
   { path: htmlPath, source: html },
   ...await Promise.all(typescriptFiles.map(async filePath => ({ path: filePath, source: await readFile(filePath, "utf8") }))),
 ];

@@ -28,7 +28,8 @@ const expectedThemes = [
 
 const themeBlocks = new Map<string, string>();
 const themePattern = /(?:^|\n)\[data-theme="([^"]+)"\]\s*\{([\s\S]*?)\n\}/g;
-for (const match of styles.matchAll(themePattern)) {
+const themeSource = readFileSync(new URL("../src/styles/foundations/themes.css", import.meta.url), "utf8");
+for (const match of themeSource.matchAll(themePattern)) {
   themeBlocks.set(match[1]!, match[2]!);
 }
 
