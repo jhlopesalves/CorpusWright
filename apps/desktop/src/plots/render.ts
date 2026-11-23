@@ -1,3 +1,4 @@
+import { DENSITY_RAMP_STEPS } from "./model";
 /**
  * Renders the figure grammar into SVG and attaches mark-level interaction.
  *
@@ -707,12 +708,12 @@ function renderLegendSwatch(item: PlotLegendItem, x: number, y: number): SVGElem
     if (kind === "density") {
       const group = createSvgElement("g");
       group.setAttribute("class", `${className} is-density`);
-      for (let index = 0; index < 6; index += 1) {
+      for (let index = 0; index < DENSITY_RAMP_STEPS; index += 1) {
         const step = createSvgElement("rect");
         setAttrs(step, {
-          x: x - 7.5 + index * 2.5,
+          x: x - 7.5 + index * (15 / DENSITY_RAMP_STEPS),
           y: y - 4,
-          width: 2.5,
+          width: 15 / DENSITY_RAMP_STEPS,
           height: 8,
           class: `cw-plot-density-legend-step cw-plot-ramp-${index}`,
         });
@@ -1011,7 +1012,7 @@ function renderPlaneDensityLegend(svg: SVGSVGElement, geometry: DispersionPlaneG
   const x = geometry.box.margin.left;
   const y = 24;
   const stepWidth = 22;
-  for (let index = 0; index < 6; index += 1) {
+  for (let index = 0; index < DENSITY_RAMP_STEPS; index += 1) {
     const rect = createSvgElement("rect");
     setAttrs(rect, { x: x + index * stepWidth, y, width: stepWidth, height: 10, rx: 0, class: `cw-plot-density-legend-step cw-plot-ramp-${index}` });
     group.appendChild(rect);
@@ -1023,7 +1024,7 @@ function renderPlaneDensityLegend(svg: SVGSVGElement, geometry: DispersionPlaneG
   setAttrs(minimum, { x, y: y + 23, class: "cw-plot-density-legend-bound", "text-anchor": "start" });
   minimum.textContent = String(geometry.densityLegend.minimum);
   const maximum = createSvgElement("text");
-  setAttrs(maximum, { x: x + stepWidth * 6, y: y + 23, class: "cw-plot-density-legend-bound", "text-anchor": "end" });
+  setAttrs(maximum, { x: x + stepWidth * DENSITY_RAMP_STEPS, y: y + 23, class: "cw-plot-density-legend-bound", "text-anchor": "end" });
   maximum.textContent = String(geometry.densityLegend.maximum);
   group.append(label, minimum, maximum);
   svg.appendChild(group);

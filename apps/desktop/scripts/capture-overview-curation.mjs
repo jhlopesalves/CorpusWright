@@ -34,17 +34,17 @@ const screenshotCases = [
   shot(13, "coverage-50", "coverage", { target: "0.5" }),
   shot(14, "coverage-90", "coverage", { target: "0.9" }),
   shot(15, "dispersion-profile", "profile"),
-  shot(16, "document-qq-dark", "document", { view: "qq", theme: "corpus-dark" }),
-  shot(17, "rank-curve-dark", "rank", { view: "curve", theme: "corpus-dark" }),
+  shot(16, "document-qq-dark", "document", { view: "qq", theme: "wright-dark" }),
+  shot(17, "rank-curve-dark", "rank", { view: "curve", theme: "wright-dark" }),
   shot(18, "dispersion-plane", "plane"),
   shot(19, "mattr-1024", "mattr", {}, 1024, 768),
   shot(20, "lexical-spectrum-1024", "lexical", {}, 1024, 768),
   shot(21, "dispersion-profile-1024", "profile", {}, 1024, 768),
   shot(22, "dispersion-plane-1024", "plane", {}, 1024, 768),
-  shot(23, "rank-residuals-dark", "rank", { view: "residuals", theme: "corpus-dark" }),
-  shot(24, "lexical-spectrum-dark", "lexical", { theme: "corpus-dark" }),
-  shot(25, "dispersion-profile-dark", "profile", { theme: "corpus-dark" }),
-  shot(26, "dispersion-plane-dark", "plane", { theme: "corpus-dark" }),
+  shot(23, "rank-residuals-dark", "rank", { view: "residuals", theme: "wright-dark" }),
+  shot(24, "lexical-spectrum-dark", "lexical", { theme: "wright-dark" }),
+  shot(25, "dispersion-profile-dark", "profile", { theme: "wright-dark" }),
+  shot(26, "dispersion-plane-dark", "plane", { theme: "wright-dark" }),
   shot(28, "lexical-spectrum-high-contrast", "lexical", { theme: "high-contrast-light" }),
   shot(29, "dispersion-plane-high-contrast", "plane", { theme: "high-contrast-light" }),
   shot(30, "pinned-lexical-frequency", "lexical", { pinned: true }),
@@ -54,9 +54,9 @@ const screenshotCases = [
   shot(34, "custom-document-bins", "document", { customBins: true }),
   shot(35, "keyboard-focused-density-cell", "plane", { focusDensity: true }),
   shot(36, "export-colour-dialog", "lexical", { exportDialog: true }),
-  shot(43, "vocabulary-growth-dark", "growth", { view: "growth", theme: "corpus-dark" }),
-  shot(44, "vocabulary-heaps-fit-dark", "growth", { view: "heaps", theme: "corpus-dark" }),
-  shot(45, "coverage-90-dark", "coverage", { target: "0.9", theme: "corpus-dark" }),
+  shot(43, "vocabulary-growth-dark", "growth", { view: "growth", theme: "wright-dark" }),
+  shot(44, "vocabulary-heaps-fit-dark", "growth", { view: "heaps", theme: "wright-dark" }),
+  shot(45, "coverage-90-dark", "coverage", { target: "0.9", theme: "wright-dark" }),
 ];
 
 const exportCases = [
@@ -86,8 +86,8 @@ const recoveryScreenshotCases = [
   recoveryShot("vocabulary-growth", "growth", { view: "heaps" }),
   recoveryShot("dispersion-profile", "profile"),
   recoveryShot("dispersion-plane", "plane"),
-  recoveryShot("dispersion-profile-dark", "profile", { theme: "corpus-dark" }),
-  recoveryShot("dispersion-plane-dark", "plane", { theme: "corpus-dark" }),
+  recoveryShot("dispersion-profile-dark", "profile", { theme: "wright-dark" }),
+  recoveryShot("dispersion-plane-dark", "plane", { theme: "wright-dark" }),
 ];
 
 const recoveryExportCases = [
@@ -275,41 +275,41 @@ try {
 
 function shot(index, slug, figure, options = {}, width = 1440, height = 900) {
   const filename = `${String(index).padStart(2, "0")}-${slug}.png`;
-  return { kind: "screenshot", index, filename, figure, width, height, theme: options.theme ?? "corpus-light", url: fixtureUrl(figure, options) };
+  return { kind: "screenshot", index, filename, figure, width, height, theme: options.theme ?? "wright-light", url: fixtureUrl(figure, options) };
 }
 
 function exportCase(slug, figure, options = {}) {
-  return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: options.theme ?? "corpus-light", url: fixtureUrl(figure, { ...options, export: true }) };
+  return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: options.theme ?? "wright-light", url: fixtureUrl(figure, { ...options, export: true }) };
 }
 
 function recoveryShot(slug, figure, options = {}) {
-  return { kind: "screenshot", filename: `${slug}.png`, figure, width: 1440, height: 900, theme: options.theme ?? "corpus-light", url: fixtureUrl(figure, options) };
+  return { kind: "screenshot", filename: `${slug}.png`, figure, width: 1440, height: 900, theme: options.theme ?? "wright-light", url: fixtureUrl(figure, options) };
 }
 
 function recoveryExportCase(slug, figure, options = {}) {
-  return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: options.theme ?? "corpus-light", url: fixtureUrl(figure, { ...options, export: true }) };
+  return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: options.theme ?? "wright-light", url: fixtureUrl(figure, { ...options, export: true }) };
 }
 
 function cleanupShot(slug, figure, options = {}) {
   const postRenderDelayMs = options.view === "ecdf" || options.view === "qq" ? 1_000 : 0;
-  return { kind: "screenshot", filename: `${slug}.png`, figure, width: 1440, height: 900, theme: "corpus-light", postRenderDelayMs, url: fixtureUrl(figure, { ...options, theme: "corpus-light" }) };
+  return { kind: "screenshot", filename: `${slug}.png`, figure, width: 1440, height: 900, theme: "wright-light", postRenderDelayMs, url: fixtureUrl(figure, { ...options, theme: "wright-light" }) };
 }
 
 function cleanupExportCase(slug, figure, options = {}) {
-  return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: "corpus-light", url: fixtureUrl(figure, { ...options, theme: "corpus-light", export: true }) };
+  return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: "wright-light", url: fixtureUrl(figure, { ...options, theme: "wright-light", export: true }) };
 }
 
 function legibilityShot(slug, figure, options = {}) {
   const postRenderDelayMs = options.view === "ecdf" || options.view === "qq" ? 1_000 : 0;
-  return { kind: "screenshot", filename: `${slug}.png`, figure, width: 1440, height: 900, theme: "corpus-light", postRenderDelayMs, url: fixtureUrl(figure, { ...options, theme: "corpus-light" }) };
+  return { kind: "screenshot", filename: `${slug}.png`, figure, width: 1440, height: 900, theme: "wright-light", postRenderDelayMs, url: fixtureUrl(figure, { ...options, theme: "wright-light" }) };
 }
 
 function legibilityExportCase(slug, figure, options = {}) {
-  return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: "corpus-light", url: fixtureUrl(figure, { ...options, theme: "corpus-light", export: true }) };
+  return { kind: "svg", filename: `${slug}.svg`, figure, width: 1440, height: 900, theme: "wright-light", url: fixtureUrl(figure, { ...options, theme: "wright-light", export: true }) };
 }
 
 function recoveryAuditCase(name, figure, switchTo) {
-  return { kind: "audit", name, figure, width: 1440, height: 900, theme: "corpus-light", url: fixtureUrl(figure, { view: "histogram", switchTo }) };
+  return { kind: "audit", name, figure, width: 1440, height: 900, theme: "wright-light", url: fixtureUrl(figure, { view: "histogram", switchTo }) };
 }
 
 function fixtureUrl(figure, options) {

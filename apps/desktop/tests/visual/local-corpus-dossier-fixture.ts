@@ -47,7 +47,7 @@ interface DossierPayload {
 const params = new URLSearchParams(location.search);
 const figureName = params.get("figure") ?? "document";
 const view = params.get("view") ?? defaultView(figureName);
-const theme = params.get("theme") ?? "corpus-light";
+const theme = params.get("theme") ?? "wright-light";
 const exportMode = params.get("export") === "true";
 const payloadUrl = params.get("payload") ?? "http://127.0.0.1:4180/dossier.json";
 document.documentElement.dataset.theme = theme;

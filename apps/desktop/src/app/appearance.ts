@@ -4,7 +4,9 @@ import { invoke } from "./system-ipc.ts";
 export const APPEARANCE_STORAGE_KEY = "corpuswright.appearance.v1";
 
 const SYSTEM_UI_STACK = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-const DEFAULT_MONO_STACK = '"JetBrains Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace';
+const DEFAULT_READING_STACK = '"Source Sans 3", ' + SYSTEM_UI_STACK;
+const DEFAULT_MONO_STACK = '"Source Code Pro", ui-monospace, SFMono-Regular, Consolas, monospace';
+const JETBRAINS_MONO_STACK = '"JetBrains Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace';
 const DEFAULT_FONT_SIZE = 16;
 const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 20;
@@ -31,13 +33,8 @@ export interface AppearancePreference {
 }
 
 export const THEME_FAMILIES: ThemeFamily[] = [
-  { id: "corpus", name: "Corpus" },
-  { id: "solar", name: "Solar" },
-  { id: "graphite", name: "Graphite" },
-  { id: "retro", name: "Retro" },
-  { id: "sepia", name: "Sepia" },
-  { id: "moss", name: "Moss" },
-  { id: "high-contrast", name: "High Contrast" },
+  { id: "wright", name: "Wright" },
+  { id: "high-contrast", name: "High contrast" },
 ];
 
 export const FONT_OPTIONS: FontOption[] = [
@@ -45,7 +42,7 @@ export const FONT_OPTIONS: FontOption[] = [
   { id: "inter", name: "Inter", stack: '"Inter", ' + SYSTEM_UI_STACK },
   { id: "roboto", name: "Roboto", stack: '"Roboto", ' + SYSTEM_UI_STACK },
   { id: "ibm-plex-sans", name: "IBM Plex Sans", stack: '"IBM Plex Sans", ' + SYSTEM_UI_STACK },
-  { id: "source-sans-3", name: "Source Sans 3", stack: '"Source Sans 3", ' + SYSTEM_UI_STACK },
+  { id: "source-sans-3", name: "Source Sans 3", stack: DEFAULT_READING_STACK },
   { id: "noto-sans", name: "Noto Sans", stack: '"Noto Sans", ' + SYSTEM_UI_STACK },
   { id: "fira-sans", name: "Fira Sans", stack: '"Fira Sans", ' + SYSTEM_UI_STACK },
   { id: "open-sans", name: "Open Sans", stack: '"Open Sans", ' + SYSTEM_UI_STACK },
@@ -59,8 +56,9 @@ export const FONT_OPTIONS: FontOption[] = [
 ];
 
 export const MONO_FONT_OPTIONS: FontOption[] = [
-  { id: "jetbrains-mono", name: "JetBrains Mono", stack: DEFAULT_MONO_STACK },
-  { id: "fira-code", name: "Fira Code", stack: '"Fira Code", ' + DEFAULT_MONO_STACK },
+  { id: "source-code-pro", name: "Source Code Pro", stack: DEFAULT_MONO_STACK },
+  { id: "jetbrains-mono", name: "JetBrains Mono", stack: JETBRAINS_MONO_STACK },
+  { id: "fira-code", name: "Fira Code", stack: '"Fira Code", ' + JETBRAINS_MONO_STACK },
 ];
 
 const SUN_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`;
@@ -79,9 +77,9 @@ function preferredDefaultThemeVariant(): ThemeVariant {
 
 function createDefaultAppearance(): AppearancePreference {
   return {
-    themeFamilyId: "corpus",
+    themeFamilyId: "wright",
     themeVariant: preferredDefaultThemeVariant(),
-    fontFamily: SYSTEM_UI_STACK,
+    fontFamily: DEFAULT_READING_STACK,
     monoFontFamily: DEFAULT_MONO_STACK,
     fontSize: DEFAULT_FONT_SIZE,
   };
@@ -106,7 +104,8 @@ function oppositeMode(mode: ThemeVariant): ThemeVariant {
 }
 
 function setThemeToggleIcon(targetMode: ThemeVariant): void {
-  dom.themeToggle.innerHTML = targetMode === "light" ? SUN_ICON : MOON_ICON;
+  const icon = targetMode === "light" ? SUN_ICON : MOON_ICON;
+  dom.themeToggle.innerHTML = `${icon}<span>${targetMode === "light" ? "Light mode" : "Dark mode"}</span>`;
 }
 
 function refreshLightDarkToggleState(currentVariant: ThemeVariant): void {
@@ -161,39 +160,39 @@ function migrateLegacyAppearance(raw: any): Partial<AppearancePreference> {
 
   const legacyId = typeof raw.themeId === "string" ? raw.themeId : "dark";
   const migrationMap: Record<string, { family: string, variant: ThemeVariant }> = {
-    "dark": { family: "corpus", variant: "dark" },
-    "light": { family: "corpus", variant: "light" },
-    "repository-light": { family: "corpus", variant: "light" },
-    "repository-dark": { family: "corpus", variant: "dark" },
-    "solar-paper": { family: "solar", variant: "light" },
-    "solar-night": { family: "solar", variant: "dark" },
-    "graphite-day": { family: "graphite", variant: "light" },
-    "graphite-desk": { family: "graphite", variant: "dark" },
-    "retro-paper": { family: "retro", variant: "light" },
-    "retro-console": { family: "retro", variant: "dark" },
-    "sepia-reading": { family: "sepia", variant: "light" },
+    "dark": { family: "wright", variant: "dark" },
+    "light": { family: "wright", variant: "light" },
+    "repository-light": { family: "wright", variant: "light" },
+    "repository-dark": { family: "wright", variant: "dark" },
+    "solar-paper": { family: "wright", variant: "light" },
+    "solar-night": { family: "wright", variant: "dark" },
+    "graphite-day": { family: "wright", variant: "light" },
+    "graphite-desk": { family: "wright", variant: "dark" },
+    "retro-paper": { family: "wright", variant: "light" },
+    "retro-console": { family: "wright", variant: "dark" },
+    "sepia-reading": { family: "wright", variant: "light" },
     "high-contrast": { family: "high-contrast", variant: "dark" },
-    "moss-day": { family: "moss", variant: "light" },
-    "moss-desk": { family: "moss", variant: "dark" },
-    "clear-day": { family: "corpus", variant: "light" },
-    "clear-night": { family: "corpus", variant: "dark" },
-    "spectrum-paper": { family: "solar", variant: "light" },
-    "spectrum-ink": { family: "solar", variant: "dark" },
-    "cloud-desk": { family: "corpus", variant: "light" },
-    "cloud-night": { family: "corpus", variant: "dark" },
-    "amber-paper": { family: "sepia", variant: "light" },
-    "ink-amber": { family: "sepia", variant: "dark" },
-    "mineral-chalk": { family: "graphite", variant: "light" },
-    "mineral-slate": { family: "graphite", variant: "dark" },
-    "studio-light": { family: "corpus", variant: "light" },
-    "studio-dark": { family: "corpus", variant: "dark" }
+    "moss-day": { family: "wright", variant: "light" },
+    "moss-desk": { family: "wright", variant: "dark" },
+    "clear-day": { family: "wright", variant: "light" },
+    "clear-night": { family: "wright", variant: "dark" },
+    "spectrum-paper": { family: "wright", variant: "light" },
+    "spectrum-ink": { family: "wright", variant: "dark" },
+    "cloud-desk": { family: "wright", variant: "light" },
+    "cloud-night": { family: "wright", variant: "dark" },
+    "amber-paper": { family: "wright", variant: "light" },
+    "ink-amber": { family: "wright", variant: "dark" },
+    "mineral-chalk": { family: "wright", variant: "light" },
+    "mineral-slate": { family: "wright", variant: "dark" },
+    "studio-light": { family: "wright", variant: "light" },
+    "studio-dark": { family: "wright", variant: "dark" }
   };
 
-  const migrated = migrationMap[legacyId] ?? { family: "corpus", variant: "dark" };
+  const migrated = migrationMap[legacyId] ?? { family: "wright", variant: "dark" };
 
   return {
     themeFamilyId: migrated.family,
-    themeVariant: migrated.variant,
+    themeVariant: raw.themeVariant ?? migrated.variant,
     fontFamily: raw.fontFamily,
     monoFontFamily: raw.monoFontFamily,
     fontSize: raw.fontSize,
@@ -220,9 +219,10 @@ export function applyAppearancePreference(preference: AppearancePreference): voi
   const next = normaliseAppearance(preference);
   const root = document.documentElement;
   root.dataset.theme = `${next.themeFamilyId}-${next.themeVariant}`;
-  root.style.setProperty("--cw-font-ui", next.fontFamily);
+  root.style.setProperty("--cw-font-reading", next.fontFamily);
   root.style.setProperty("--cw-font-mono", next.monoFontFamily);
   root.style.setProperty("--cw-font-size-base", `${next.fontSize}px`);
+  root.style.setProperty("--cw-font-scale", String(next.fontSize / DEFAULT_FONT_SIZE));
   refreshLightDarkToggleState(next.themeVariant);
 
   // Dynamically set native titlebar color on Windows

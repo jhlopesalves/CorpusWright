@@ -8,6 +8,7 @@ const desktopRoot = path.resolve("apps/desktop");
 const entryPath = path.join(desktopRoot, "src/styles.css");
 const expectedModules = [
   "foundations/fonts.css",
+  "foundations/wright-tokens.css",
   "foundations/themes.css",
   "foundations/base.css",
   "layout/app-shell.css",
@@ -55,7 +56,7 @@ for (const relativePath of expectedModules) {
 const moduleSource = (relativePath: string): string => graph.modules.find(
   module => module.path === path.join(desktopRoot, "src/styles", relativePath),
 )?.contents ?? "";
-assert.equal(parseCompleteThemes(moduleSource("foundations/themes.css")).length, 14);
+assert.equal(parseCompleteThemes(moduleSource("foundations/themes.css")).length, 4);
 assert.match(moduleSource("components/tables.css"), /\.cw-result-table \{/);
 assert.match(moduleSource("components/panels.css"), /\.cw-panel \{/);
 assert.match(moduleSource("components/controls.css"), /\.primary-btn/);

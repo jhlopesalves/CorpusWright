@@ -144,13 +144,16 @@ assert(roboto, "Roboto must be in the fixed font shortlist");
 assert(firaCode, "Fira Code must be in the fixed monospace shortlist");
 
 appearance.initAppearanceDialog();
-assert(root.dataset.theme === "corpus-dark", "initial appearance must apply the default dark theme");
+assert(root.dataset.theme === "wright-dark", "initial appearance must apply the default dark theme");
+assert(root.style.values.get("--cw-font-reading")?.startsWith('"Source Sans 3"'), "default reading face");
+assert(root.style.values.get("--cw-font-mono")?.startsWith('"Source Code Pro"'), "default monospace face");
+assert(!root.style.values.has("--cw-font-chrome"), "appearance preferences cannot replace chrome typography");
 assert(root.style.values.get("--cw-font-size-base") === "16px", "initial appearance must apply the default font size");
 assert(element("theme-toggle").disabled === false, "paired default theme must leave the quick toggle enabled");
 assert(element("menu-toggle-theme").textContent === "Switch to light variant", "dark themes must target their light pair");
 
 element("menu-appearance").dispatch("click");
-element("appearance-theme-select").value = "solar";
+element("appearance-theme-select").value = "high-contrast";
 element("appearance-theme-select").dispatch("change");
 element("appearance-font-select").value = "gentium-plus";
 element("appearance-font-select").dispatch("change");
@@ -158,41 +161,41 @@ element("appearance-mono-font-select").value = "fira-code";
 element("appearance-mono-font-select").dispatch("change");
 element("appearance-font-size-input").valueAsNumber = 18;
 element("appearance-font-size-input").dispatch("input");
-assert(root.dataset.theme === "solar-dark", "theme selection must preview immediately");
-assert(root.style.values.get("--cw-font-ui") === gentium.stack, "font selection must preview immediately");
+assert(root.dataset.theme === "high-contrast-dark", "theme selection must preview immediately");
+assert(root.style.values.get("--cw-font-reading") === gentium.stack, "font selection must preview immediately");
 assert(root.style.values.get("--cw-font-mono") === firaCode.stack, "monospace selection must preview immediately");
 assert(root.style.values.get("--cw-font-size-base") === "18px", "font size must preview immediately");
 element("appearance-save-button").dispatch("click");
 
 let saved = JSON.parse(localStorage.getItem(key) ?? "{}");
-assert(saved.themeFamilyId === "solar", "saved appearance must persist the selected theme family");
+assert(saved.themeFamilyId === "high-contrast", "saved appearance must persist the selected theme family");
 assert(saved.themeVariant === "dark", "saved appearance must persist the selected theme variant");
 assert(saved.fontFamily === gentium.stack, "saved appearance must persist the selected font stack");
 assert(saved.monoFontFamily === firaCode.stack, "saved appearance must persist the selected monospace stack");
 assert(saved.fontSize === 18, "saved appearance must persist the selected font size");
 
 element("menu-appearance").dispatch("click");
-element("appearance-theme-select").value = "high-contrast";
+element("appearance-theme-select").value = "wright";
 element("appearance-theme-select").dispatch("change");
-assert(root.dataset.theme === "high-contrast-dark", "cancelled edits must still preview before cancellation");
+assert(root.dataset.theme === "wright-dark", "cancelled edits must still preview before cancellation");
 assert(element("theme-toggle").disabled === false, "all current theme families have light/dark variants");
 assert(element("menu-toggle-theme").textContent === "Switch to light variant", "dark paired themes must target their light pair");
 element("appearance-cancel-button").dispatch("click");
-assert(root.dataset.theme === "solar-dark", "cancel must restore the last saved theme");
+assert(root.dataset.theme === "high-contrast-dark", "cancel must restore the last saved theme");
 assert(element("theme-toggle").disabled === false, "restoring a paired theme must re-enable the title-bar toggle");
 assert(element("menu-toggle-theme").textContent === "Switch to light variant", "dark themes must target their light pair");
 
 appearance.toggleLightDarkTheme();
 saved = JSON.parse(localStorage.getItem(key) ?? "{}");
-assert(saved.themeFamilyId === "solar", "quick toggle must preserve the active theme family");
+assert(saved.themeFamilyId === "high-contrast", "quick toggle must preserve the active theme family");
 assert(saved.themeVariant === "light", "quick toggle must persist the active theme's light variant");
-assert(root.dataset.theme === "solar-light", "quick toggle must apply the active theme's light pair immediately");
+assert(root.dataset.theme === "high-contrast-light", "quick toggle must apply the active theme's light pair immediately");
 assert(element("menu-toggle-theme").textContent === "Switch to dark variant", "light paired themes must target their dark pair");
 
 appearance.toggleLightDarkTheme();
 saved = JSON.parse(localStorage.getItem(key) ?? "{}");
 assert(saved.themeVariant === "dark", "quick toggle must persist the active theme's dark variant");
-assert(root.dataset.theme === "solar-dark", "quick toggle must apply the active theme's dark pair immediately");
+assert(root.dataset.theme === "high-contrast-dark", "quick toggle must apply the active theme's dark pair immediately");
 
 element("menu-appearance").dispatch("click");
 element("appearance-font-size-input").valueAsNumber = 99;
@@ -202,6 +205,15 @@ element("appearance-reset-button").dispatch("click");
 element("appearance-save-button").dispatch("click");
 
 saved = JSON.parse(localStorage.getItem(key) ?? "{}");
-assert(saved.themeFamilyId === "corpus", "reset must restore the default theme family");
+assert(saved.themeFamilyId === "wright", "reset must restore the default theme family");
 assert(saved.themeVariant === "dark", "reset must restore the default theme variant");
 assert(saved.fontSize === 16, "reset must restore the default font size");
+
+localStorage.setItem(key, JSON.stringify({ ...saved, themeFamilyId: "solar", themeVariant: "light" }));
+assert(appearance.readAppearancePreference().themeFamilyId === "wright", "retired families must migrate to Wright");
+assert(appearance.readAppearancePreference().themeVariant === "light", "migration must preserve the stored variant");
+localStorage.setItem(key, JSON.stringify({ themeId: "retro-paper" }));
+assert(appearance.readAppearancePreference().themeFamilyId === "wright", "legacy theme ids must migrate to Wright");
+assert(appearance.readAppearancePreference().themeVariant === "light", "legacy aliases must retain their variant");
+localStorage.setItem(key, JSON.stringify({ themeId: "repository-light", fontFamily: gentium.stack }));
+assert(appearance.readAppearancePreference().fontFamily === gentium.stack, "legacy interface font must become the reading font");

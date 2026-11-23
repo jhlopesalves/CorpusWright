@@ -90,7 +90,7 @@
   color: var(--text-color);
   font: var(--cw-weight-semibold) var(--cw-type-control-size)/1.2 var(--cw-font-ui);
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+  transition: background-color var(--motion-fast) var(--motion-easing), border-color var(--motion-fast) var(--motion-easing), color var(--motion-fast) var(--motion-easing), box-shadow var(--motion-fast) var(--motion-easing);
 }
 
 .cw-overview-figure-action:hover {
@@ -261,7 +261,7 @@
   border-radius: 6px;
   background: var(--panel-bg);
   color: var(--text-color);
-  box-shadow: 0 18px 48px var(--cw-shadow-tooltip);
+  box-shadow: var(--cw-shadow-tooltip);
 }
 
 .cw-overview-export-dialog::backdrop {

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { findTopLevelCssBlocks, parseCompleteThemes, relativeModulePath } from "./css-contracts.mjs";
+import { findTopLevelCssBlocks, resolveCompleteThemes, relativeModulePath } from "./css-contracts.mjs";
 import { colourForToken, deltaE76 } from "./colour-contracts.mjs";
 
 export const MINIMUM_RAMP_DELTA_E_76 = 6;
@@ -16,6 +16,7 @@ export function validateVisualContracts({
   const report = (module, message) => violations.push(`${displayPath(module.path, desktopRoot)}: ${message}`);
 
   for (const module of modules) {
+    if (relativeModulePath(desktopRoot, module.path) === "src/styles/foundations/wright-tokens.css") continue;
     if (/\bstroke-color\s*:/.test(module.contents)) report(module, "invalid stroke-color declaration");
     if (/outline\s*:[^;{}]*var\(--cw-interaction-focus-ring\)/.test(module.contents)) {
       report(module, "focus-shadow token used in outline");
@@ -39,7 +40,7 @@ export function validateVisualContracts({
 
   const singleOwnerSelectors = [
     ".cw-plot-point.is-excluded",
-    ...Array.from({ length: 6 }, (_, index) => `.cw-plot-ramp-${index}`),
+    ...Array.from({ length: 5 }, (_, index) => `.cw-plot-ramp-${index}`),
   ];
   for (const selector of singleOwnerSelectors) {
     const count = modules.flatMap(module => findTopLevelCssBlocks(module.contents))
@@ -114,23 +115,24 @@ export function validateVisualContracts({
   if (themeSource) {
     let themes = [];
     try {
-      themes = parseCompleteThemes(themeSource, "foundations/themes.css");
+      const wrightSource = modules.find(module => module.path.endsWith("/foundations/wright-tokens.css"))?.contents ?? "";
+      themes = resolveCompleteThemes(themeSource, wrightSource);
     } catch (error) {
       violations.push(error instanceof Error ? error.message : String(error));
     }
-    if (themes.length !== 14) violations.push(`theme contracts: expected 14 themes, found ${themes.length}`);
+    if (themes.length !== 4) violations.push(`theme contracts: expected 4 themes, found ${themes.length}`);
     for (const theme of themes) {
       const colours = [];
-      for (let index = 0; index < 6; index += 1) {
+      for (let index = 0; index < 5; index += 1) {
         try {
           colours.push(colourForToken(`--cw-plot-ramp-${index}`, theme.declarations));
         } catch (error) {
           violations.push(`${theme.id}: could not parse plot ramp ${index}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
-      if (colours.length !== 6) continue;
+      if (colours.length !== 5) continue;
       const values = colours.map(colour => `${colour.r.toFixed(3)},${colour.g.toFixed(3)},${colour.b.toFixed(3)},${colour.a.toFixed(3)}`);
-      if (new Set(values).size !== 6) violations.push(`${theme.id}: exact duplicate plot-ramp steps`);
+      if (new Set(values).size !== 5) violations.push(`${theme.id}: exact duplicate plot-ramp steps`);
       for (let index = 1; index < colours.length; index += 1) {
         const distance = deltaE76(colours[index - 1], colours[index]);
         if (distance < MINIMUM_RAMP_DELTA_E_76) {

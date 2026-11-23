@@ -34,7 +34,7 @@ test("local dossier captures every required witness in light and dark", () => {
     assert(witnesses.includes(required), required);
   }
   assert.match(capture, /for \(const theme of \["light", "dark"\]\)/);
-  assert.match(capture, /theme === "light" \? "corpus-light" : "corpus-dark"/);
+  assert.match(capture, /theme === "light" \? "wright-light" : "wright-dark"/);
 });
 
 test("local dossier uses real plotting and standalone export paths", () => {

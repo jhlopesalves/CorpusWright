@@ -12,7 +12,9 @@
 .welcome-content h1 {
   margin: 0 0 12px;
   font-size: var(--cw-type-workspace-title-size);
-  font-weight: var(--cw-weight-semibold);
+  line-height: var(--type-display-line-height);
+  letter-spacing: var(--type-display-letter-spacing);
+  font-weight: var(--type-display-font-weight);
 }
 
 .welcome-content p {
@@ -143,14 +145,10 @@
 }
 
 .project-context {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  max-width: min(42vw, 520px);
-  margin-right: 12px;
+  background: var(--cw-header-bg);
+  border-bottom: 1px solid var(--border-color);
   font-size: var(--cw-type-help-size);
-  line-height: 1.2;
+  line-height: var(--type-meta-line-height);
 }
 
 #project-context-name {
@@ -163,7 +161,8 @@
 }
 
 #project-context-path {
-  color: var(--text-muted);
+  color: var(--cw-text-metadata);
+  min-width: 0;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

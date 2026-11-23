@@ -1,6 +1,40 @@
 import { expect } from "@wdio/globals";
 
 describe("runtime-generated synthetic corpus workflow", () => {
+
+  it("keeps project stages visible and opens the application menu from the keyboard", async () => {
+    const rail = await $("nav.app-rail");
+    await expect(rail).toBeDisplayed();
+    for (const stage of ["prepare", "analyse", "export"]) {
+      const button = await $(`#workbench-${stage}`);
+      await expect(button).toBeDisplayed();
+      await expect(button).toBeDisabled();
+      await expect(button).toHaveAttribute("aria-disabled", "true");
+    }
+
+    const trigger = await $("#app-menu-button");
+    await browser.execute((element: HTMLElement) => element.focus(), trigger);
+    await browser.keys("Enter");
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await browser.keys("Tab");
+    await expect($("#menu-new-project")).toBeFocused();
+    await browser.keys("Escape");
+    await expect(trigger).toBeFocused();
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+    await browser.keys("Space");
+    await expect($("#app-menu")).toBeDisplayed();
+    await browser.keys("Escape");
+    await expect($("#app-menu")).not.toBeDisplayed();
+
+    await $("#rail-appearance").click();
+    for (const field of await $$(".appearance-controls :is(select, input)")) {
+      await expect(field).toBeDisplayed();
+      expect(await field.getSize("height")).toBe(36);
+    }
+    await $("#appearance-cancel-button").click();
+  });
+
   it("completes project, preparation, analysis, recovery, export, and reopen", async () => {
     const commands = [
       "create_corpus_project_command",

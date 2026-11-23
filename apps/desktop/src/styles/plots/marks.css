@@ -100,11 +100,6 @@
   fill: var(--cw-plot-ramp-4);
 }
 
-.cw-plot-ramp-5 {
-  color: var(--cw-plot-ramp-5);
-  fill: var(--cw-plot-ramp-5);
-}
-
 .cw-plot-coverage-band-top10 { color: var(--cw-plot-rank-band-top10); fill: var(--cw-plot-rank-band-top10); }
 .cw-plot-coverage-band-11-100 { color: var(--cw-plot-rank-band-11-100); fill: var(--cw-plot-rank-band-11-100); }
 .cw-plot-coverage-band-101-1000 { color: var(--cw-plot-rank-band-101-1000); fill: var(--cw-plot-rank-band-101-1000); }
@@ -123,33 +118,6 @@
   shape-rendering: crispEdges;
 }
 
-.cw-plot-svg[data-plot-id="overview-dispersion-plane"] {
-  --cw-plot-density-0: color-mix(in srgb, var(--cw-info-text) 7%, var(--panel-bg));
-  --cw-plot-density-1: color-mix(in srgb, var(--cw-info-text) 20%, var(--panel-bg));
-  --cw-plot-density-2: color-mix(in srgb, var(--cw-info-text) 42%, var(--panel-bg));
-  --cw-plot-density-3: color-mix(in srgb, var(--cw-info-text) 72%, var(--panel-bg));
-  --cw-plot-density-4: color-mix(in srgb, var(--cw-info-text) 65%, var(--cw-category-mixed-text) 35%);
-  --cw-plot-density-5: color-mix(in srgb, var(--cw-category-mixed-text) 75%, var(--text-color));
-}
-
-[data-theme="high-contrast-light"] .cw-plot-svg[data-plot-id="overview-dispersion-plane"],
-[data-theme="high-contrast-dark"] .cw-plot-svg[data-plot-id="overview-dispersion-plane"] {
-  --cw-plot-density-0: color-mix(in srgb, var(--text-color) 8%, var(--panel-bg));
-  --cw-plot-density-1: color-mix(in srgb, var(--text-color) 24%, var(--panel-bg));
-  --cw-plot-density-2: color-mix(in srgb, var(--text-color) 42%, var(--panel-bg));
-  --cw-plot-density-3: color-mix(in srgb, var(--text-color) 62%, var(--panel-bg));
-  --cw-plot-density-4: color-mix(in srgb, var(--text-color) 82%, var(--panel-bg));
-  --cw-plot-density-5: var(--text-color);
-}
-
-[data-figure-palette="monochrome"] .cw-plot-svg[data-plot-id="overview-dispersion-plane"] {
-  --cw-plot-density-0: color-mix(in srgb, var(--text-muted) 8%, var(--panel-bg));
-  --cw-plot-density-1: color-mix(in srgb, var(--text-muted) 24%, var(--panel-bg));
-  --cw-plot-density-2: color-mix(in srgb, var(--text-color) 42%, var(--panel-bg));
-  --cw-plot-density-3: color-mix(in srgb, var(--text-color) 62%, var(--panel-bg));
-  --cw-plot-density-4: color-mix(in srgb, var(--text-color) 82%, var(--panel-bg));
-  --cw-plot-density-5: var(--text-color);
-}
 
 .cw-plot-spectrum-band {
   fill: var(--cw-surface-subtle);
@@ -202,7 +170,6 @@
 .cw-plot-composition-strip .cw-plot-ramp-2 { fill: var(--cw-plot-composition-2, var(--cw-plot-ramp-2)); }
 .cw-plot-composition-strip .cw-plot-ramp-3 { fill: var(--cw-plot-composition-3, var(--cw-plot-ramp-3)); }
 .cw-plot-composition-strip .cw-plot-ramp-4 { fill: var(--cw-plot-composition-4, var(--cw-plot-ramp-4)); }
-.cw-plot-composition-strip .cw-plot-ramp-5 { fill: var(--cw-plot-composition-5, var(--cw-plot-ramp-5)); }
 .cw-plot-composition-strip .cw-plot-composition-segment.cw-plot-coverage-band-top10 { fill: var(--cw-plot-rank-band-top10); }
 .cw-plot-composition-strip .cw-plot-composition-segment.cw-plot-coverage-band-11-100 { fill: var(--cw-plot-rank-band-11-100); }
 .cw-plot-composition-strip .cw-plot-composition-segment.cw-plot-coverage-band-101-1000 { fill: var(--cw-plot-rank-band-101-1000); }
@@ -253,7 +220,6 @@
 [data-figure-palette="monochrome"] .cw-plot-composition-strip .cw-plot-ramp-2 { fill-opacity: 0.48; }
 [data-figure-palette="monochrome"] .cw-plot-composition-strip .cw-plot-ramp-3 { fill-opacity: 0.62; }
 [data-figure-palette="monochrome"] .cw-plot-composition-strip .cw-plot-ramp-4 { fill-opacity: 0.78; }
-[data-figure-palette="monochrome"] .cw-plot-composition-strip .cw-plot-ramp-5 { fill-opacity: 0.94; }
 
 .cw-plot-cumulative-marker {
   fill: var(--cw-plot-point);
@@ -280,10 +246,14 @@
 .cw-plot-plane-witness {
   fill: var(--cw-plot-witness, var(--cw-plot-observed, var(--cw-plot-point)));
   stroke: var(--panel-bg);
-  stroke-width: 1.4;
+  stroke-width: 2;
   fill-opacity: 1;
   transform-box: fill-box;
   transform-origin: center;
+}
+
+.cw-plot-plane-witness.is-pinned {
+  fill: var(--cw-plot-selected, var(--cw-theme-plot-target));
 }
 
 .cw-plot-plane-marginal {
@@ -295,7 +265,7 @@
 
 .cw-plot-plane-witness-pin-ring {
   fill: none;
-  stroke: var(--cw-plot-selected, var(--cw-category-mixed-text));
+  stroke: var(--panel-bg);
   stroke-width: 2.4;
   vector-effect: non-scaling-stroke;
 }
@@ -309,6 +279,6 @@
 .cw-plot-plane-witness {
   opacity: 0;
   transform: scale(0.6);
-  animation: cw-plot-point-in 360ms ease-out forwards;
+  animation: cw-plot-point-in var(--motion-state) var(--motion-easing) forwards;
   animation-delay: var(--cw-plot-stagger, 0ms);
 }

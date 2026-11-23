@@ -13,6 +13,10 @@ export const dom = {
   projectWorkspace: getElement<HTMLElement>("project-workspace"),
   prepareWorkbench: getElement<HTMLElement>("prepare-workbench"),
   analyseWorkbench: getElement<HTMLElement>("analyse-workbench"),
+  appMenu: getElement<HTMLDivElement>("app-menu"),
+  appMenuButton: getElement<HTMLButtonElement>("app-menu-button"),
+  railAppearance: getElement<HTMLButtonElement>("rail-appearance"),
+  railAbout: getElement<HTMLButtonElement>("rail-about"),
   workbenchSwitcher: getElement<HTMLDivElement>("workbench-switcher"),
   workbenchPrepare: getElement<HTMLButtonElement>("workbench-prepare"),
   workbenchAnalyse: getElement<HTMLButtonElement>("workbench-analyse"),
@@ -355,14 +359,6 @@ export function getArtifactTextModeRadios(): NodeListOf<HTMLInputElement> {
 
 export function getSelectedArtifactTextMode(): HTMLInputElement | null {
   return document.querySelector('input[name="artifact-text-mode"]:checked') as HTMLInputElement | null;
-}
-
-export function getDropdowns(): NodeListOf<HTMLElement> {
-  return document.querySelectorAll(".dropdown") as NodeListOf<HTMLElement>;
-}
-
-export function getDropdownItems(): NodeListOf<HTMLElement> {
-  return document.querySelectorAll(".dropdown-item") as NodeListOf<HTMLElement>;
 }
 
 export function getLeftPanel(): HTMLElement | null {

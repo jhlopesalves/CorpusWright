@@ -32,16 +32,16 @@
     gap: 4px;
   }
 
-  .stage-navigator {
-    padding: 8px 12px;
+  #app {
+    grid-template-columns: 8.25rem minmax(0, 1fr);
   }
 
-  .stage-navigator-inner {
-    overflow-x: auto;
+  .app-rail {
+    padding-inline: var(--space-2);
   }
 
-  .stage-tab {
-    min-width: 132px;
+  .stage-tab-status {
+    display: none;
   }
 
   .document-length-header,

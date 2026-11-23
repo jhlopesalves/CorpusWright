@@ -421,7 +421,7 @@
   width: 0%;
   height: 100%;
   background: var(--accent-color);
-  transition: width 160ms ease;
+  transition: width var(--motion-fast) var(--motion-easing);
 }
 
 .preview-toolbar {
@@ -436,17 +436,26 @@
 .search-container {
   display: flex;
   align-items: center;
-  background: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  padding: 4px 8px;
+  box-sizing: border-box;
+  height: var(--control-height);
+  background: var(--cw-surface-input);
+  border: 1px solid var(--cw-field-border);
+  border-radius: var(--radius-control);
+  padding-inline: var(--space-2);
   gap: 8px;
   min-width: 280px;
   max-width: 520px;
   flex: 1;
 }
 
+.search-container:focus-within {
+  outline: var(--cw-interaction-focus-outline);
+  outline-offset: 2px;
+}
+
 .search-container input {
+  min-block-size: 0;
+  height: 100%;
   background: transparent;
   border: none;
   color: var(--text-color);
@@ -459,6 +468,7 @@
 
 .search-nav {
   display: flex;
+  height: 100%;
   gap: 4px;
   flex-shrink: 0;
 }
@@ -497,7 +507,7 @@
 
 .file-card-num {
   font-size: var(--cw-type-help-size);
-  color: var(--accent-color);
+  color: var(--cw-text-metadata);
   white-space: nowrap;
 }
 
@@ -528,10 +538,11 @@
 .file-card-body {
   margin: 0;
   padding: 12px;
-  font-family: var(--cw-font-mono);
-  font-size: var(--cw-type-code-size);
+  font-family: var(--cw-font-reading);
+  max-width: var(--reading-width);
+  font-size: var(--cw-type-reading-size);
   font-weight: var(--cw-weight-regular);
-  line-height: 1.55;
+  line-height: var(--type-reading-body-line-height);
   letter-spacing: 0;
   color: var(--text-color);
   white-space: pre-wrap;
@@ -673,7 +684,7 @@
 .full-ocr-page-body,
 .full-ocr-page-error {
   padding: 10px;
-  font-family: var(--cw-font-mono);
+  font-family: var(--cw-font-reading);
   font-size: var(--cw-type-help-size);
   font-weight: var(--cw-weight-regular);
   line-height: 1.45;
@@ -704,6 +715,8 @@ mark.search-match.current-match {
 }
 
 .search-nav-btn {
+  min-block-size: 0;
+  height: 100%;
   padding: 2px;
   display: flex;
   align-items: center;

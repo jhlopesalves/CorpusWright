@@ -11,7 +11,7 @@ import {
 } from "../../src/plots/render";
 
 const query = new URLSearchParams(location.search);
-document.documentElement.dataset.theme = query.get("theme") ?? "corpus-light";
+document.documentElement.dataset.theme = query.get("theme") ?? "wright-light";
 const root = document.querySelector<HTMLElement>("#fixture-root")!;
 
 const profileCounts = [211_271, 14_610, 12_420, 10_210, 8_500, 7_200, 6_100, 5_000, 3_800, 0];

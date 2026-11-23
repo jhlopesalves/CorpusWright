@@ -69,8 +69,6 @@ for (const match of styles.matchAll(statefulSelector)) {
 }
 
 for (const selector of [
-  ".stage-tab-title",
-  ".stage-tab.active .stage-tab-title",
   ".analyse-eyebrow",
   ".analyse-header h1",
   ".analyse-status-text",
@@ -79,7 +77,8 @@ for (const selector of [
   '.analyse-tool-item[aria-current="page"]',
 ]) {
   const body = ruleBody(selector);
-  assert.match(body, /font-weight:\s*var\(--cw-weight-bold\)/);
+  const weight = selector === ".analyse-header h1" ? "--type-display-font-weight" : "--cw-weight-bold";
+  assert(body.includes(`font-weight: var(${weight})`), `${selector} must retain its semantic weight`);
   assert.doesNotMatch(
     body,
     /font-weight:\s*(?:[1-9]50)/,
@@ -87,3 +86,9 @@ for (const selector of [
   );
 }
 assert.match(styles, /--cw-weight-bold:\s*700/);
+
+const selectedTool = ruleBody('.analyse-tool-item[aria-current="page"]');
+assert.match(selectedTool, /border-color: transparent/);
+assert.match(selectedTool, /border-inline-start-color: var\(--accent-color\)/);
+assert.match(selectedTool, /background: transparent/);
+assert.match(ruleBody(".analyse-tool-item:focus-visible"), /outline: var\(--cw-interaction-focus-outline\)/);

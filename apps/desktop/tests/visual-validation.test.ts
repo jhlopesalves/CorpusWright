@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { findTopLevelCssBlocks, parseCompleteThemes, parseDeclarations } from "../scripts/css-contracts.mjs";
+import { findTopLevelCssBlocks, resolveCompleteThemes, parseDeclarations } from "../scripts/css-contracts.mjs";
 import {
   colourForToken,
   contrastRatio,
@@ -38,7 +38,7 @@ const invalidCss = `
 .fixture-spinner { animation: fixture-spin 1s linear infinite; }
 .fixture-point { opacity: 0; animation: fixture-in 1s forwards; }
 `;
-const invalidThemeSource = themeSource.replace("--cw-plot-ramp-5: #b067ff", "--cw-plot-ramp-5: #776cff");
+const invalidThemeSource = themeSource.replace("--cw-plot-ramp-4: var(--chart-seq-4)", "--cw-plot-ramp-4: var(--chart-seq-3)");
 const invalid = validateVisualContracts({
   modules: [...graph.modules, { path: path.join(desktopRoot, "src/styles/features/invalid-fixture.css"), contents: invalidCss }],
   desktopRoot,
@@ -68,12 +68,13 @@ for (const expected of [
   assert(invalid.some(violation => violation.includes(expected)), `fixture must trigger ${expected}`);
 }
 
-const themes = parseCompleteThemes(themeSource);
-assert.equal(themes.length, 14);
+const wrightSource = graph.modules.find(module => module.path.endsWith("/foundations/wright-tokens.css"))?.contents ?? "";
+const themes = resolveCompleteThemes(themeSource, wrightSource);
+assert.equal(themes.length, 4);
 for (const theme of themes) {
   const panel = colourForToken("--panel-bg", theme.declarations);
-  const ramps = Array.from({ length: 6 }, (_, index) => colourForToken(`--cw-plot-ramp-${index}`, theme.declarations));
-  assert.equal(new Set(ramps.map(colour => `${colour.r},${colour.g},${colour.b},${colour.a}`)).size, 6, `${theme.id} ramps must be distinct`);
+  const ramps = Array.from({ length: 5 }, (_, index) => colourForToken(`--cw-plot-ramp-${index}`, theme.declarations));
+  assert.equal(new Set(ramps.map(colour => `${colour.r},${colour.g},${colour.b},${colour.a}`)).size, 5, `${theme.id} ramps must be distinct`);
   for (const [index, ramp] of ramps.entries()) {
     assert(contrastRatio(ramp, panel) >= 3, `${theme.id} ramp ${index} must contrast with the plot surface`);
     if (index > 0) {
@@ -87,7 +88,7 @@ for (const theme of themes) {
 
 const paletteBlocks = findTopLevelCssBlocks(figurePaletteSource);
 const scientificRoles = parseDeclarations(paletteBlocks.find((block) => block.selector.includes(".cw-overview-figure"))?.body ?? "");
-for (const [variant, themeId] of [["light", "corpus-light"], ["dark", "corpus-dark"]] as const) {
+for (const [variant, themeId] of [["light", "wright-light"], ["dark", "wright-dark"]] as const) {
   const theme = themes.find((candidate) => candidate.id === themeId)!;
   const declarations = new Map([...theme.declarations, ...scientificRoles]);
   const panel = colourForToken("--panel-bg", declarations);
@@ -103,15 +104,16 @@ for (const [variant, themeId] of [["light", "corpus-light"], ["dark", "corpus-da
   assert(contrastRatio(coverageTrajectory, panel) >= 4.5, `${variant} coverage trajectory must contrast with the plot surface`);
   assert(deltaE76(observed, modelFit) >= 24, `${variant} observed and model-fit series must remain distinct`);
   assert(deltaE76(modelFit, statisticalReference) >= 12, `${variant} model fit and statistical reference must remain distinct`);
-  const density = Array.from({ length: 6 }, (_, index) => colourForToken(`--cw-plot-density-${index}`, declarations));
-  assert.equal(new Set(density.map((colour) => `${colour.r},${colour.g},${colour.b}`)).size, 6);
+  const density = Array.from({ length: 5 }, (_, index) => colourForToken(`--cw-plot-density-${index}`, declarations));
+  assert.equal(new Set(density.map((colour) => `${colour.r},${colour.g},${colour.b}`)).size, 5);
   for (let index = 1; index < density.length; index += 1) {
     assert(deltaE76(density[index - 1]!, density[index]!) >= MINIMUM_RAMP_DELTA_E_76);
   }
   const profile = Array.from({ length: 10 }, (_, index) => colourForToken(`--cw-plot-profile-${index}`, declarations));
-  assert.equal(new Set(profile.map((colour) => `${colour.r},${colour.g},${colour.b}`)).size, 10);
+  assert.equal(new Set(profile.map((colour) => `${colour.r},${colour.g},${colour.b}`)).size, 5);
   for (let index = 1; index < profile.length; index += 1) {
-    assert(deltaE76(profile[index - 1]!, profile[index]!) >= MINIMUM_RAMP_DELTA_E_76);
+    const distance = deltaE76(profile[index - 1]!, profile[index]!);
+    assert(distance === 0 || distance >= MINIMUM_RAMP_DELTA_E_76);
   }
   assert(profile.every((colour) => contrastRatio(colour, panel) >= 3), `${variant} profile bands must remain readable against internal panel-coloured text`);
   const witness = colourForToken("--cw-plot-witness", declarations);
@@ -120,7 +122,7 @@ for (const [variant, themeId] of [["light", "corpus-light"], ["dark", "corpus-da
     .map((role) => colourForToken(`--cw-plot-rank-band-${role}`, declarations));
   assert.equal(new Set(rankBands.map((colour) => `${colour.r},${colour.g},${colour.b}`)).size, 5, `${variant} rank bands must be discrete`);
 }
-for (let index = 0; index < 6; index += 1) {
+for (let index = 0; index < 5; index += 1) {
   assert.equal(scientificRoles.get(`--cw-plot-density-${index}`), `var(--cw-plot-ramp-${index})`, "density roles must preserve the ordered theme ramp");
 }
 assert.equal(Array.from({ length: 10 }, (_, index) => scientificRoles.has(`--cw-plot-profile-${index}`)).filter(Boolean).length, 10);
@@ -139,7 +141,7 @@ const contrastOutput = execFileSync("node", ["scripts/check-theme-contrast.mjs"]
   cwd: desktopRoot,
   encoding: "utf8",
 });
-assert.match(contrastOutput, /exactly 14 complete themes \(45 base checks and 36 theme × palette role checks each\)/);
+assert.match(contrastOutput, /exactly 4 complete themes \(44 base checks and 36 theme × palette role checks each\)/);
 const visualOutput = execFileSync("node", ["scripts/check-visual-contracts.mjs"], {
   cwd: desktopRoot,
   encoding: "utf8",

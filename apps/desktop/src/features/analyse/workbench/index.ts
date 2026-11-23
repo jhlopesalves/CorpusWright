@@ -1,5 +1,5 @@
 export {
-  hideWorkbenchSwitcher,
+  resetWorkbenchWithoutProject,
   initWorkbenchSwitcher,
   refreshAnalyseWorkbench,
   renderAnalyseWorkbench,

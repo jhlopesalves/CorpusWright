@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseCompleteThemes } from "./css-contracts.mjs";
 import { loadStyleGraph } from "./style-graph.mjs";
 import { validateVisualContracts } from "./visual-contracts.mjs";
 
@@ -33,4 +34,4 @@ if (violations.length) {
   process.exit(1);
 }
 
-console.log(`Visual contract check passed for ${graph.modules.length} CSS modules, 14 themes, and ${typescriptSources.length} export sources.`);
+console.log(`Visual contract check passed for ${graph.modules.length} CSS modules, ${parseCompleteThemes(themeSource).length} themes, and ${typescriptSources.length} export sources.`);

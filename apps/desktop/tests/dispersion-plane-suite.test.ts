@@ -50,11 +50,11 @@ assert.deepEqual(logRaw.frequencyMarginal.map((marginal) => marginal.count), mar
 assert.deepEqual(logRaw.dpMarginal.map((marginal) => marginal.count), marginalCounts.dp);
 assert.equal(logRaw.cells.length, counts.length);
 assert.deepEqual(logRaw.cells.map((cell) => cell.count), counts);
-assert(logRaw.cells.filter((cell) => cell.count === 0).every((cell) => cell.opacity === 0));
+assert(logRaw.cells.filter((cell) => cell.count === 0).every((cell) => cell.opacity === 0 && cell.fill === "none"));
 assert(logRaw.cells.filter((cell) => cell.count > 0).every((cell) => cell.opacity === 1));
-assert(new Set(logRaw.cells.filter((cell) => cell.count > 0).map((cell) => cell.fill)).size >= 5);
+assert.match(logRaw.cells.find((cell) => cell.count === 1)?.fill ?? "", /--cw-plot-density-0/);
 assert.notEqual(logRaw.cells.find((cell) => cell.count === 1)?.fill, logRaw.cells.find((cell) => cell.count === 5)?.fill);
-assert.match(logRaw.cells.find((cell) => cell.count === 5)?.fill ?? "", /--cw-plot-density-5/);
+assert.match(logRaw.cells.find((cell) => cell.count === 5)?.fill ?? "", /--cw-plot-density-4/);
 for (let row = 0; row < plane.yBins; row += 1) {
   const rowCells = logRaw.cells.filter((cell) => cell.row === row).sort((left, right) => left.column - right.column);
   for (let index = 1; index < rowCells.length; index += 1) {

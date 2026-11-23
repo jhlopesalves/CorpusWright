@@ -64,18 +64,32 @@ export function parseDeclarations(body) {
 }
 
 export function parseCompleteThemes(source, modulePath = "themes.css") {
-  return findTopLevelCssBlocks(source).map(block => {
-    const themeMatch = block.selector.match(/\[data-theme=["']([^"']+)["']\]/);
-    if (!themeMatch || (!block.selector.startsWith(":root") && block.selector !== themeMatch[0])) {
-      throw new Error(`${modulePath}: non-contract selector in complete theme module: ${block.selector}`);
-    }
-    return {
-      ...block,
-      id: themeMatch[1],
-      declarations: parseDeclarations(block.body),
-      modulePath,
-    };
+  return findTopLevelCssBlocks(source).flatMap(block => {
+    const selectors = block.selector.split(",").map(selector => selector.trim());
+    const themes = selectors.filter(selector => selector !== ":root");
+    if (!themes.length) throw new Error(`${modulePath}: missing theme selector`);
+    return themes.map(selector => {
+      const themeMatch = selector.match(/^\[data-theme=["']([^"']+)["']\]$/);
+      if (!themeMatch) throw new Error(`${modulePath}: non-contract selector ${selector}`);
+      return {
+        ...block,
+        id: themeMatch[1],
+        declarations: parseDeclarations(block.body),
+        modulePath,
+      };
+    });
   });
+}
+
+export function resolveCompleteThemes(themeSource, wrightSource) {
+  const sources = new Map();
+  for (const theme of parseCompleteThemes(wrightSource, "wright-tokens.css")) {
+    sources.set(theme.id, new Map([...(sources.get(theme.id) ?? []), ...theme.declarations]));
+  }
+  return parseCompleteThemes(themeSource).map(theme => ({
+    ...theme,
+    declarations: new Map([...(sources.get(theme.id) ?? []), ...theme.declarations]),
+  }));
 }
 
 export function appearanceThemeIds(source) {

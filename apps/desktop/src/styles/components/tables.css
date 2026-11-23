@@ -1,6 +1,6 @@
 .cw-result-table-wrap {
   border: 1px solid var(--cw-result-table-border);
-  border-radius: 4px;
+  border-radius: var(--radius-card);
   background: var(--cw-result-table-surface);
   overflow: hidden;
 }
@@ -85,6 +85,8 @@
 .cw-result-table-kwic {
   font-family: var(--cw-font-mono);
   font-weight: var(--cw-weight-regular);
+  font-size: var(--cw-type-concordance-size);
+  line-height: var(--type-concordance-line-height);
 }
 
 .cw-result-table-note,
@@ -109,7 +111,7 @@
 }
 
 .concordance-kwic-panel .analysis-pagination button {
-  min-height: 28px;
+  min-height: var(--control-height);
   padding: 3px 8px;
   font-size: var(--cw-type-compact-size);
 }
@@ -127,7 +129,7 @@
 }
 
 .analysis-pagination .secondary-btn {
-  min-height: 28px;
+  min-height: var(--control-height);
   padding: 3px 9px;
 }
 

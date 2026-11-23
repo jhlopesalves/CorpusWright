@@ -19,7 +19,7 @@
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms ease;
+  transition: opacity var(--motion-fast) var(--motion-easing);
 }
 
 .cw-plot-tooltip[aria-hidden="false"] {
@@ -87,18 +87,22 @@
 
 .cw-plot-point.is-lollipop.cw-plot-hover-target:not(.is-pinned):hover,
 .cw-plot-point.is-lollipop.cw-plot-hover-target:not(.is-pinned):focus,
-.cw-plot-plane-witness.cw-plot-hover-target:not(.is-pinned):hover,
-.cw-plot-plane-witness.cw-plot-hover-target:not(.is-pinned):focus,
 .cw-plot-mattr-witness-tick.cw-plot-hover-target:hover,
 .cw-plot-mattr-witness-tick.cw-plot-hover-target:focus {
   stroke: var(--cw-plot-selected, var(--cw-plot-ramp-4));
   stroke-width: 2;
 }
 
+.cw-plot-plane-witness.cw-plot-hover-target:not(.is-pinned):hover,
+.cw-plot-plane-witness.cw-plot-hover-target:not(.is-pinned):focus {
+  fill: var(--cw-plot-selected, var(--cw-theme-plot-target));
+  stroke: var(--panel-bg);
+}
+
 .cw-plot-animated-path {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: cw-plot-path-draw 700ms ease-out forwards;
+  animation: cw-plot-path-draw var(--motion-state) var(--motion-easing) forwards;
 }
 
 @keyframes cw-plot-path-draw {

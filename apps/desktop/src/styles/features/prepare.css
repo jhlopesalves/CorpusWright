@@ -223,7 +223,7 @@
   width: 4px;
   background-color: var(--border-color);
   cursor: col-resize;
-  transition: background-color 0.2s;
+  transition: background-color var(--motion-ui) var(--motion-easing);
   flex-shrink: 0;
   z-index: 10;
 }
@@ -231,4 +231,12 @@
 .sidebar-splitter:hover,
 .sidebar-splitter.active {
   background-color: var(--accent-color);
+}
+
+#summary-total-words {
+  font-size: var(--cw-type-metric-size);
+  line-height: var(--type-metric-line-height);
+  letter-spacing: var(--type-metric-letter-spacing);
+  font-weight: var(--type-metric-font-weight);
+  font-variant-numeric: tabular-nums;
 }

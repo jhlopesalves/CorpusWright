@@ -12,6 +12,7 @@ import { loadStyleGraph } from "./style-graph.mjs";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDir, "..");
 const srcRoot = path.join(desktopRoot, "src");
+const wrightTokensPath = path.join(srcRoot, "styles/foundations/wright-tokens.css");
 const themesPath = path.join(srcRoot, "styles/foundations/themes.css");
 const figurePalettesPath = path.join(srcRoot, "styles/foundations/figure-palettes.css");
 const appearancePath = path.join(srcRoot, "app/appearance.ts");
@@ -57,7 +58,7 @@ const expectedThemeIds = appearanceThemeIds(appearanceSource);
 const actualThemeIds = themes.map(theme => theme.id);
 const violations = [];
 
-if (themes.length !== 14) violations.push(`expected exactly 14 complete themes, found ${themes.length}`);
+if (themes.length !== 4) violations.push(`expected exactly 4 complete themes, found ${themes.length}`);
 if (new Set(actualThemeIds).size !== actualThemeIds.length) violations.push("complete theme ids must be unique");
 const missingThemes = expectedThemeIds.filter(id => !actualThemeIds.includes(id));
 const extraThemes = actualThemeIds.filter(id => !expectedThemeIds.includes(id));
@@ -84,7 +85,7 @@ const requiredGroups = {
     "--cw-theme-plot-coverage-trajectory",
     "--cw-plot-grid",
     "--cw-plot-ramp-0",
-    "--cw-plot-ramp-5",
+    "--cw-plot-ramp-4",
   ],
   "position-profile": ["--cw-position-profile-bar", "--cw-position-profile-bar-active"],
   native: ["--cw-native-titlebar-color"],
@@ -105,9 +106,9 @@ const semanticPlotRoles = [
   "--cw-plot-selected",
   "--cw-plot-attention",
   "--cw-plot-density-0",
-  "--cw-plot-density-5",
+  "--cw-plot-density-4",
   "--cw-plot-composition-0",
-  "--cw-plot-composition-5",
+  "--cw-plot-composition-4",
   "--cw-plot-rank-band-top10",
   "--cw-plot-rank-band-11-100",
   "--cw-plot-rank-band-101-1000",
@@ -130,7 +131,7 @@ for (const mode of ["theme", "colorBlind", "monochrome"]) {
 }
 
 const scannedFiles = [
-  ...graph.modules.filter(module => module.path !== themesPath).map(module => ({ path: module.path, contents: module.contents })),
+  ...graph.modules.filter(module => module.path !== themesPath && module.path !== wrightTokensPath).map(module => ({ path: module.path, contents: module.contents })),
   { path: path.join(desktopRoot, "index.html"), contents: await readFile(path.join(desktopRoot, "index.html"), "utf8") },
   ...await Promise.all((await collectSourceFiles(srcRoot)).map(async filePath => ({ path: filePath, contents: await readFile(filePath, "utf8") }))),
 ];

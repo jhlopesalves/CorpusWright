@@ -129,7 +129,3 @@ If you use CorpusWright in research or teaching, cite the release you used and r
 ## Licence
 
 CorpusWright is released under the [MIT licence](LICENSE). Bundled components keep their own licences, some of them ShareAlike, and are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
-
----
-
-Created and maintained by [Jhonatan H. Lopes](https://orcid.org/0009-0008-4914-0262).

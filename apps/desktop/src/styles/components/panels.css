@@ -1,8 +1,7 @@
 .cw-panel {
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   background: var(--panel-bg);
-  box-shadow: var(--cw-interaction-shadow);
 }
 
 .cw-panel--stacked {
@@ -16,7 +15,7 @@
   flex-direction: column;
   gap: 10px;
   padding: 12px;
-  border-radius: 4px;
+  border-radius: var(--radius-card);
   box-shadow: none;
 }
 
@@ -31,7 +30,7 @@
 }
 
 .cw-panel--config {
-  border-radius: 4px;
+  border-radius: var(--radius-card);
   box-shadow: none;
 }
 

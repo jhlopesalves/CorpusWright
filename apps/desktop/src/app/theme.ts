@@ -1,7 +1,5 @@
 import {
   dom,
-  getDropdownItems,
-  getDropdowns,
   getLeftPanel,
 } from "./dom";
 import { toggleLightDarkTheme } from "./appearance";
@@ -11,41 +9,45 @@ export function initThemeToggle(): void {
   dom.menuToggleTheme.addEventListener("click", toggleLightDarkTheme);
 }
 
-export function initAppChrome(): void {
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      if (!dom.settingsModal.classList.contains("hidden")) {
-        dom.settingsModal.classList.add("hidden");
-      }
+export function closeAppMenu(restoreFocus = false): void {
+  if (dom.appMenu.hidden) return;
+  dom.appMenu.hidden = true;
+  dom.appMenuButton.setAttribute("aria-expanded", "false");
+  if (restoreFocus) dom.appMenuButton.focus();
+}
 
-      document.querySelectorAll(".dropdown").forEach(d => d.classList.remove("is-open"));
+export function initAppChrome(): void {
+  dom.appMenuButton.addEventListener("click", () => {
+    if (!dom.appMenu.hidden) {
+      closeAppMenu();
+      return;
+    }
+    dom.appMenu.hidden = false;
+    dom.appMenuButton.setAttribute("aria-expanded", "true");
+  });
+
+  dom.appMenu.addEventListener("click", (event) => {
+    const item = (event.target as Element).closest("button");
+    if (item && item.getAttribute("aria-disabled") !== "true") {
+      closeAppMenu(dom.appMenu.contains(document.activeElement));
     }
   });
 
-  const dropdowns = getDropdowns();
-
-  dropdowns.forEach(dropdown => {
-    const menuLabel = dropdown.querySelector(".menu-item");
-    menuLabel?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const isOpen = dropdown.classList.contains("is-open");
-      dropdowns.forEach(d => d.classList.remove("is-open"));
-      if (!isOpen) {
-        dropdown.classList.add("is-open");
-      }
-    });
+  document.addEventListener("click", (event) => {
+    const target = event.target as Node;
+    if (!dom.appMenu.contains(target) && !dom.appMenuButton.contains(target)) closeAppMenu();
   });
 
-  document.addEventListener("click", () => {
-    dropdowns.forEach(d => d.classList.remove("is-open"));
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    closeAppMenu(dom.appMenu.contains(document.activeElement));
+    if (!dom.settingsModal.classList.contains("hidden")) {
+      dom.settingsModal.classList.add("hidden");
+    }
   });
 
-  const dropdownItems = getDropdownItems();
-  dropdownItems.forEach(item => {
-    item.addEventListener("click", () => {
-      dropdowns.forEach(d => d.classList.remove("is-open"));
-    });
-  });
+  dom.railAppearance.addEventListener("click", () => dom.menuAppearance.click());
+  dom.railAbout.addEventListener("click", () => dom.menuAboutCorpusWright.click());
 
   const splitter = dom.sidebarSplitter;
   const leftPanel = getLeftPanel();
